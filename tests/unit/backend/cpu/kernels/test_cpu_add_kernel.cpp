@@ -527,13 +527,12 @@ TEST(AddKernel, EndToEndThroughGraphLoweringAndExecutor) {
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     ASSERT_EQ(lowered->steps.size(), 3U);
-    ASSERT_EQ(lowered->step_bindings.size(), 3U);
 
-    ASSERT_EQ(lowered->steps[0].op_type, OpType::kEmbedding);
-    ASSERT_EQ(lowered->steps[1].op_type, OpType::kEmbedding);
-    ASSERT_EQ(lowered->steps[2].op_type, OpType::kAdd);
-    EXPECT_EQ(lowered->steps[2].act_dtype, DataType::Float32());
-    EXPECT_EQ(lowered->steps[2].weight_dtype, DataType::Float32());
+    ASSERT_EQ(lowered->steps[0].spec.op_type, OpType::kEmbedding);
+    ASSERT_EQ(lowered->steps[1].spec.op_type, OpType::kEmbedding);
+    ASSERT_EQ(lowered->steps[2].spec.op_type, OpType::kAdd);
+    EXPECT_EQ(lowered->steps[2].spec.selector.act_dtype, DataType::Float32());
+    EXPECT_EQ(lowered->steps[2].spec.selector.weight_dtype, DataType::Float32());
 
     RuntimeBuilder runtime_builder;
     RuntimeContext runtime = runtime_builder.Build();
@@ -612,17 +611,21 @@ TEST(AddKernel, Int64EndToEndThroughLoweredGraphAndExecutor) {
     const TensorSpec rhs_spec{.dtype = DataType::Int(64), .shape = StaticShape({1, 2})};
     const TensorSpec output_spec{.dtype = DataType::Int(64), .shape = StaticShape({2, 2})};
     LoweredGraph lowered;
-    lowered.steps.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kAdd,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Int(64),
-            .weight_dtype = DataType::Int(64),
-            .weight_format = WeightFormat::kPlain,
-            .isa = IsaLevel::kScalar,
-            .phase = ExecPhase::kBoth,
-            .input_specs = {lhs_spec, rhs_spec},
-            .output_specs = {output_spec},
-            .op_params = OpParams(AddParams{}),
+    lowered.steps.push_back(LoweredStep{
+            .spec = ExecutionPlanNodeSpec{
+                    .op_type = OpType::kAdd,
+                    .selector = {
+                            .device_type = DeviceType::kCPU,
+                            .act_dtype = DataType::Int(64),
+                            .weight_dtype = DataType::Int(64),
+                            .weight_format = WeightFormat::kPlain,
+                            .isa = IsaLevel::kScalar,
+                            .phase = ExecPhase::kBoth,
+                    },
+                    .input_specs = {lhs_spec, rhs_spec},
+                    .output_specs = {output_spec},
+                    .op_params = OpParams(AddParams{}),
+            },
     });
 
     RuntimeContext runtime = RuntimeBuilder{}.Build();
@@ -681,12 +684,14 @@ TEST(AddKernel, RejectsIncompatibleRuntimeBroadcastShapes) {
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kAdd,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPlain,
-            .isa = IsaLevel::kScalar,
-            .phase = ExecPhase::kBoth,
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+                    .weight_format = WeightFormat::kPlain,
+                    .isa = IsaLevel::kScalar,
+                    .phase = ExecPhase::kBoth,
+            },
             .input_specs = add_inputs,
             .output_specs = analyzed->outputs,
             .runtime_checks = analyzed->runtime_checks,

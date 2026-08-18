@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 
 namespace {
@@ -157,6 +158,51 @@ TEST(OperatorSchema, KVCacheUpdateSchemaUsesStateInputAndOutput) {
     EXPECT_EQ(schema->output_ports[1].kind, OperatorPortKind::kState);
 }
 
+TEST(OperatorSchema, KVCacheUpdateSchemaDeclaresStateAliasPorts) {
+    const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kKVCacheUpdate);
+
+    ASSERT_TRUE(schema.ok()) << schema.status().ToString();
+    ASSERT_EQ(schema->state_alias_ports.size(), 2U);
+    EXPECT_EQ(schema->state_alias_ports[0].input_port, "k_cache_in");
+    EXPECT_EQ(schema->state_alias_ports[0].output_port, "k_cache_out");
+    EXPECT_EQ(schema->state_alias_ports[1].input_port, "v_cache_in");
+    EXPECT_EQ(schema->state_alias_ports[1].output_port, "v_cache_out");
+}
+
+TEST(OperatorSchema, StateAliasPortsReferenceExistingStatePorts) {
+    for (const OperatorSchema& schema: GetOperatorSchemas()) {
+        for (const StateAliasPortPair& pair: schema.state_alias_ports) {
+            const StatusOr<uint32_t> in = FindInputPortIndex(schema, pair.input_port);
+            ASSERT_TRUE(in.ok()) << ToString(schema.op_type) << ": " << pair.input_port;
+            EXPECT_EQ(schema.input_ports[in.value()].kind, OperatorPortKind::kState)
+                    << ToString(schema.op_type) << ": " << pair.input_port;
+            const StatusOr<uint32_t> out = FindOutputPortIndex(schema, pair.output_port);
+            ASSERT_TRUE(out.ok()) << ToString(schema.op_type) << ": " << pair.output_port;
+            EXPECT_EQ(schema.output_ports[out.value()].kind, OperatorPortKind::kState)
+                    << ToString(schema.op_type) << ": " << pair.output_port;
+        }
+    }
+}
+
+TEST(OperatorSchema, EveryOperatorSchemaExposesActivationPort) {
+    // Lowering derives act_dtype from the first activation input/output port
+    // (see LowerModelGraph's dtype derivation contract). A schema without any
+    // activation port would silently yield an undefined selector dtype.
+    for (const OperatorSchema& schema: GetOperatorSchemas()) {
+        const bool has_activation_input = std::ranges::any_of(
+                schema.input_ports, [](const OperatorInputPort& port) {
+                    return port.kind == OperatorPortKind::kActivation;
+                });
+        const bool has_activation_output = std::ranges::any_of(
+                schema.output_ports, [](const OperatorOutputPort& port) {
+                    return port.kind == OperatorPortKind::kActivation;
+                });
+        EXPECT_TRUE(has_activation_input || has_activation_output)
+                << ToString(schema.op_type)
+                << " must expose an activation input or output port";
+    }
+}
+
 TEST(OperatorSchema, AttentionSchemaUsesActivationAndState) {
     const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kAttention);
 
@@ -201,9 +247,6 @@ TEST(OperatorSchema, ActivationOnlyOpsUseExpectedArities) {
         ASSERT_TRUE(schema.ok()) << ToString(expected.op_type);
         ASSERT_EQ(schema->input_ports.size(), expected.inputs) << ToString(expected.op_type);
         ASSERT_EQ(schema->output_ports.size(), expected.outputs) << ToString(expected.op_type);
-        for (size_t index = 0; index < schema->input_ports.size(); ++index) {
-            EXPECT_EQ(schema->input_ports[index].index, index) << ToString(expected.op_type);
-        }
         EXPECT_EQ(schema->input_ports[0].kind, OperatorPortKind::kActivation) << ToString(expected.op_type);
         if (schema->input_ports.size() > 1) {
             EXPECT_EQ(schema->input_ports[1].kind, OperatorPortKind::kActivation) << ToString(expected.op_type);
@@ -213,7 +256,6 @@ TEST(OperatorSchema, ActivationOnlyOpsUseExpectedArities) {
             EXPECT_EQ(schema->input_ports[2].name, "position_ids") << ToString(expected.op_type);
         }
         for (size_t index = 0; index < schema->output_ports.size(); ++index) {
-            EXPECT_EQ(schema->output_ports[index].index, index) << ToString(expected.op_type);
             EXPECT_EQ(schema->output_ports[index].kind, OperatorPortKind::kActivation) << ToString(expected.op_type);
         }
     }

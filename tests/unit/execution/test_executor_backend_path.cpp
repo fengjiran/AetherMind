@@ -269,9 +269,11 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     std::vector<ExecutionPlanNodeSpec> nodes;
     ExecutionPlanNodeSpec softmax_node{
             .op_type = OpType::kSoftmax,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+            },
             .workspace_requirement = {.bytes = 64, .alignment = 64},
     };
     softmax_node.op_params = OpParams{SoftmaxParams{.axis = -1}};
@@ -282,10 +284,12 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
 
     ExecutionPlanNodeSpec rope_node{
             .op_type = OpType::kRoPE,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPacked,
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+                    .weight_format = WeightFormat::kPacked,
+            },
             .workspace_requirement = {.bytes = 128, .alignment = 64},
     };
     rope_node.op_params = OpParams{rope_params};
@@ -338,9 +342,11 @@ TEST(ExecutorBackendPath, ExecutePropagatesKernelFailure) {
 
     ExecutionPlanNodeSpec node{
             .op_type = OpType::kArgmax,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+            },
             .workspace_requirement = {.bytes = 32, .alignment = 32},
     };
     node.op_params = OpParams{ArgmaxParams{.axis = -1}};
@@ -376,9 +382,11 @@ TEST(ExecutorBackendPath, ExecuteFailsWhenWorkspaceRequirementCannotBeBound) {
 
     ExecutionPlanNodeSpec node{
             .op_type = OpType::kSoftmax,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+            },
             .workspace_requirement = {.bytes = 32, .alignment = 32},
     };
     node.op_params = OpParams{SoftmaxParams{.axis = -1}};
@@ -419,9 +427,11 @@ TEST(ExecutorBackendPath, ExecuteRejectsViolatedRuntimeShapeConstraintBeforeRun)
 
     ExecutionPlanNodeSpec node{
             .op_type = OpType::kRmsNorm,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+            },
     };
     node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
     node.input_specs = {
@@ -470,9 +480,11 @@ TEST(ExecutorBackendPath, ExecuteRunsWhenRuntimeShapeConstraintIsSatisfied) {
 
     ExecutionPlanNodeSpec node{
             .op_type = OpType::kRmsNorm,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+            },
     };
     node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
     node.input_specs = {

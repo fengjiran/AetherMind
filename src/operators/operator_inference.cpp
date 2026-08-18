@@ -67,16 +67,9 @@ StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(const OperatorSchema& sc
 
     std::vector<TensorSpec> compact;
     compact.reserve(all_inputs.size());
-    for (const auto& port: schema.input_ports) {
-        if (port.index >= all_inputs.size()) {
-            return Status::InvalidArgument(
-                    "MakeCompactInputSpecs: port index " +
-                    std::to_string(port.index) + " out of bounds for " +
-                    std::to_string(all_inputs.size()) + " inputs");
-        }
-
-        if (port.contributes_tensor_spec) {
-            compact.push_back(all_inputs[port.index]);
+    for (size_t i = 0; i < schema.input_ports.size(); ++i) {
+        if (schema.input_ports[i].contributes_tensor_spec) {
+            compact.push_back(all_inputs[i]);
         }
     }
     return compact;

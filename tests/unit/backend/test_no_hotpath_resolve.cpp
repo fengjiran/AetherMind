@@ -129,12 +129,14 @@ TEST(NoHotpathPrepare, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPlain,
-            .isa = IsaLevel::kScalar,
-            .phase = ExecPhase::kBoth,
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+                    .weight_format = WeightFormat::kPlain,
+                    .isa = IsaLevel::kScalar,
+                    .phase = ExecPhase::kBoth,
+            },
             .input_specs = rmsnorm_inputs,
             .output_specs = analyzed->outputs,
             .runtime_checks = analyzed->runtime_checks,

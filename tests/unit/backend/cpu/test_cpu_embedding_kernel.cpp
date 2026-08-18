@@ -227,12 +227,14 @@ TEST(EmbeddingKernel, ExecutionPlanBuilderRunsResolvedKernel) {
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kEmbedding,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPlain,
-            .isa = IsaLevel::kScalar,
-            .phase = ExecPhase::kBoth,
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+                    .weight_format = WeightFormat::kPlain,
+                    .isa = IsaLevel::kScalar,
+                    .phase = ExecPhase::kBoth,
+            },
             .input_specs = embedding_inputs,
             .output_specs = analyzed->outputs,
             .runtime_checks = analyzed->runtime_checks,

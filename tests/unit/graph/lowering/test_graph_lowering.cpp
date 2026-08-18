@@ -147,19 +147,18 @@ TEST(GraphLowering, LowersEmbeddingGraphToExecutionStep) {
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     ASSERT_EQ(lowered->steps.size(), 1U);
     ASSERT_EQ(lowered->values.size(), graph.GetValues().size());
-    EXPECT_EQ(lowered->steps[0].op_type, OpType::kEmbedding);
-    EXPECT_EQ(lowered->steps[0].act_dtype, DataType::Float32());
-    EXPECT_EQ(lowered->steps[0].weight_dtype, DataType::Float32());
-    ASSERT_EQ(lowered->steps[0].input_specs.size(), 2U);
-    EXPECT_EQ(lowered->steps[0].input_specs[0].dtype, DataType::Int(64));
-    EXPECT_EQ(lowered->steps[0].input_specs[1].dtype, DataType::Float32());
-    ASSERT_EQ(lowered->steps[0].output_specs.size(), 1U);
-    EXPECT_EQ(lowered->steps[0].output_specs[0], HiddenSpec());
-    ASSERT_EQ(lowered->step_bindings.size(), 1U);
-    EXPECT_EQ(lowered->step_bindings[0].node, embedding.node);
-    ASSERT_EQ(lowered->step_bindings[0].input_values.size(), 2U);
-    EXPECT_EQ(lowered->step_bindings[0].input_values[0], tokens);
-    EXPECT_EQ(lowered->step_bindings[0].input_values[1], weight);
+    EXPECT_EQ(lowered->steps[0].spec.op_type, OpType::kEmbedding);
+    EXPECT_EQ(lowered->steps[0].spec.selector.act_dtype, DataType::Float32());
+    EXPECT_EQ(lowered->steps[0].spec.selector.weight_dtype, DataType::Float32());
+    ASSERT_EQ(lowered->steps[0].spec.input_specs.size(), 2U);
+    EXPECT_EQ(lowered->steps[0].spec.input_specs[0].dtype, DataType::Int(64));
+    EXPECT_EQ(lowered->steps[0].spec.input_specs[1].dtype, DataType::Float32());
+    ASSERT_EQ(lowered->steps[0].spec.output_specs.size(), 1U);
+    EXPECT_EQ(lowered->steps[0].spec.output_specs[0], HiddenSpec());
+    EXPECT_EQ(lowered->steps[0].binding.node, embedding.node);
+    ASSERT_EQ(lowered->steps[0].binding.input_values.size(), 2U);
+    EXPECT_EQ(lowered->steps[0].binding.input_values[0], tokens);
+    EXPECT_EQ(lowered->steps[0].binding.input_values[1], weight);
     ASSERT_EQ(lowered->model_inputs.size(), 1U);
     EXPECT_EQ(lowered->model_inputs[0], tokens);
     ASSERT_EQ(lowered->model_outputs.size(), 1U);
@@ -263,20 +262,20 @@ TEST(GraphLowering, AppliesCustomConfigToSteps) {
     graph.MarkOutput((*embedding_or).outputs[0]);
 
     GraphLoweringConfig config;
-    config.device_type = DeviceType::kCUDA;
-    config.isa = IsaLevel::kAVX2;
-    config.weight_format = WeightFormat::kPacked;
-    config.phase = ExecPhase::kPrefill;
+    config.selector.device_type = DeviceType::kCUDA;
+    config.selector.isa = IsaLevel::kAVX2;
+    config.selector.weight_format = WeightFormat::kPacked;
+    config.selector.phase = ExecPhase::kPrefill;
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph, config);
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     ASSERT_EQ(lowered->steps.size(), 1U);
-    for (const ExecutionPlanNodeSpec& step: lowered->steps) {
-        EXPECT_EQ(step.device_type, DeviceType::kCUDA);
-        EXPECT_EQ(step.isa, IsaLevel::kAVX2);
-        EXPECT_EQ(step.weight_format, WeightFormat::kPacked);
-        EXPECT_EQ(step.phase, ExecPhase::kPrefill);
+    for (const LoweredStep& step: lowered->steps) {
+        EXPECT_EQ(step.spec.selector.device_type, DeviceType::kCUDA);
+        EXPECT_EQ(step.spec.selector.isa, IsaLevel::kAVX2);
+        EXPECT_EQ(step.spec.selector.weight_format, WeightFormat::kPacked);
+        EXPECT_EQ(step.spec.selector.phase, ExecPhase::kPrefill);
     }
 }
 
@@ -307,16 +306,16 @@ TEST(GraphLowering, PreservesTopologicalOrderAndRmsNormParams) {
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     ASSERT_EQ(lowered->steps.size(), 2U);
-    EXPECT_EQ(lowered->steps[0].op_type, OpType::kEmbedding);
-    EXPECT_EQ(lowered->steps[1].op_type, OpType::kRmsNorm);
-    const auto* params = std::get_if<RmsNormParams>(&lowered->steps[1].op_params);
+    EXPECT_EQ(lowered->steps[0].spec.op_type, OpType::kEmbedding);
+    EXPECT_EQ(lowered->steps[1].spec.op_type, OpType::kRmsNorm);
+    const auto* params = std::get_if<RmsNormParams>(&lowered->steps[1].spec.op_params);
     ASSERT_NE(params, nullptr);
     EXPECT_FLOAT_EQ(params->eps, 2.5e-3F);
-    ASSERT_EQ(lowered->step_bindings[1].input_values.size(), 2U);
-    EXPECT_EQ(lowered->step_bindings[1].input_values[0], embedding.outputs[0]);
-    EXPECT_EQ(lowered->step_bindings[1].input_values[1], norm_weight);
-    ASSERT_EQ(lowered->steps[1].output_specs.size(), 1U);
-    EXPECT_EQ(lowered->steps[1].output_specs[0], HiddenSpec());
+    ASSERT_EQ(lowered->steps[1].binding.input_values.size(), 2U);
+    EXPECT_EQ(lowered->steps[1].binding.input_values[0], embedding.outputs[0]);
+    EXPECT_EQ(lowered->steps[1].binding.input_values[1], norm_weight);
+    ASSERT_EQ(lowered->steps[1].spec.output_specs.size(), 1U);
+    EXPECT_EQ(lowered->steps[1].spec.output_specs[0], HiddenSpec());
 }
 
 TEST(GraphLowering, RecordsKVCacheUpdateLoweringTimeStateAliases) {
@@ -339,22 +338,22 @@ TEST(GraphLowering, RecordsKVCacheUpdateLoweringTimeStateAliases) {
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     ASSERT_EQ(lowered->steps.size(), 3U);
-    EXPECT_EQ(lowered->steps[2].op_type, OpType::kKVCacheUpdate);
+    EXPECT_EQ(lowered->steps[2].spec.op_type, OpType::kKVCacheUpdate);
     // input_specs now carries the complete schema-port order (k, v, k_state, v_state).
-    ASSERT_EQ(lowered->steps[2].input_specs.size(), 4U);
-    ASSERT_EQ(lowered->step_bindings[2].input_values.size(), 4U);
-    EXPECT_EQ(lowered->step_bindings[2].input_values[2], k_state_in);
-    EXPECT_EQ(lowered->step_bindings[2].input_values[3], v_state_in);
+    ASSERT_EQ(lowered->steps[2].spec.input_specs.size(), 4U);
+    ASSERT_EQ(lowered->steps[2].binding.input_values.size(), 4U);
+    EXPECT_EQ(lowered->steps[2].binding.input_values[2], k_state_in);
+    EXPECT_EQ(lowered->steps[2].binding.input_values[3], v_state_in);
     // Compact view excludes the two state ports (k_state, v_state).
     const StatusOr<OperatorSchema> kvc_schema = GetOperatorSchema(OpType::kKVCacheUpdate);
     ASSERT_TRUE(kvc_schema.ok()) << kvc_schema.status().ToString();
     const StatusOr<std::vector<TensorSpec>> kvc_compact =
-            MakeCompactInputSpecs(*kvc_schema, lowered->steps[2].input_specs);
+            MakeCompactInputSpecs(*kvc_schema, lowered->steps[2].spec.input_specs);
     ASSERT_TRUE(kvc_compact.ok()) << kvc_compact.status().ToString();
     EXPECT_EQ(kvc_compact->size(), 2U);
-    ASSERT_EQ(lowered->steps[2].output_specs.size(), 2U);
-    EXPECT_EQ(lowered->steps[2].output_specs[0], KVSpec());
-    EXPECT_EQ(lowered->steps[2].output_specs[1], KVSpec());
+    ASSERT_EQ(lowered->steps[2].spec.output_specs.size(), 2U);
+    EXPECT_EQ(lowered->steps[2].spec.output_specs[0], KVSpec());
+    EXPECT_EQ(lowered->steps[2].spec.output_specs[1], KVSpec());
     ASSERT_EQ(lowered->state_aliases.size(), 2U);
     // Coordinates are recorded at lowering time: step 2 (the KVCacheUpdate),
     // K cache ports (2 in / 0 out), V cache ports (3 in / 1 out).
@@ -389,23 +388,23 @@ TEST(GraphLowering, LowersAttentionStatePortsWithoutTensorSpecs) {
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     ASSERT_EQ(lowered->steps.size(), 2U);
-    EXPECT_EQ(lowered->steps[1].op_type, OpType::kAttention);
+    EXPECT_EQ(lowered->steps[1].spec.op_type, OpType::kAttention);
     // input_specs now carries the complete schema-port order (q, k_cache, v_cache).
-    ASSERT_EQ(lowered->steps[1].input_specs.size(), 3U);
-    EXPECT_EQ(lowered->steps[1].input_specs[0].dtype, DataType::Float32());
+    ASSERT_EQ(lowered->steps[1].spec.input_specs.size(), 3U);
+    EXPECT_EQ(lowered->steps[1].spec.input_specs[0].dtype, DataType::Float32());
     // Compact view excludes the two state ports (k_cache, v_cache).
     const StatusOr<OperatorSchema> attn_schema = GetOperatorSchema(OpType::kAttention);
     ASSERT_TRUE(attn_schema.ok()) << attn_schema.status().ToString();
     const StatusOr<std::vector<TensorSpec>> attn_compact =
-            MakeCompactInputSpecs(*attn_schema, lowered->steps[1].input_specs);
+            MakeCompactInputSpecs(*attn_schema, lowered->steps[1].spec.input_specs);
     ASSERT_TRUE(attn_compact.ok()) << attn_compact.status().ToString();
     EXPECT_EQ(attn_compact->size(), 1U);
     EXPECT_EQ((*attn_compact)[0].dtype, DataType::Float32());
-    ASSERT_EQ(lowered->steps[1].output_specs.size(), 1U);
-    EXPECT_EQ(lowered->steps[1].output_specs[0], HiddenSpec());
-    ASSERT_EQ(lowered->step_bindings[1].input_values.size(), 3U);
-    EXPECT_EQ(lowered->step_bindings[1].input_values[1], k_cache);
-    EXPECT_EQ(lowered->step_bindings[1].input_values[2], v_cache);
+    ASSERT_EQ(lowered->steps[1].spec.output_specs.size(), 1U);
+    EXPECT_EQ(lowered->steps[1].spec.output_specs[0], HiddenSpec());
+    ASSERT_EQ(lowered->steps[1].binding.input_values.size(), 3U);
+    EXPECT_EQ(lowered->steps[1].binding.input_values[1], k_cache);
+    EXPECT_EQ(lowered->steps[1].binding.input_values[2], v_cache);
 }
 
 TEST(GraphLowering, RejectsInvalidGraph) {
@@ -427,14 +426,13 @@ TEST(GraphLowering, LowersFullLlamaDenseGraph) {
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     ASSERT_EQ(lowered->steps.size(), graph->GetNodes().size());
-    ASSERT_EQ(lowered->step_bindings.size(), graph->GetNodes().size());
-    EXPECT_EQ(lowered->steps.front().op_type, OpType::kEmbedding);
-    EXPECT_EQ(lowered->steps.back().op_type, OpType::kArgmax);
+    EXPECT_EQ(lowered->steps.front().spec.op_type, OpType::kEmbedding);
+    EXPECT_EQ(lowered->steps.back().spec.op_type, OpType::kArgmax);
     EXPECT_EQ(lowered->model_inputs.size(), graph->GetInputs().size());
     EXPECT_EQ(lowered->model_outputs.size(), graph->GetOutputs().size());
     EXPECT_EQ(lowered->state_aliases.size(), static_cast<size_t>(config.num_hidden_layers) * 2U);
     for (size_t i = 0; i < lowered->steps.size(); ++i) {
-        EXPECT_EQ(lowered->steps[i].output_specs.size(), lowered->step_bindings[i].output_values.size());
+        EXPECT_EQ(lowered->steps[i].spec.output_specs.size(), lowered->steps[i].binding.output_values.size());
     }
 }
 
@@ -563,9 +561,9 @@ TEST(GraphLowering, WeightlessOpFallsBackWeightDTypeToActDType) {
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     ASSERT_EQ(lowered->steps.size(), 3U);
     const auto& add_step = lowered->steps[2];
-    EXPECT_EQ(add_step.op_type, OpType::kAdd);
-    EXPECT_EQ(add_step.act_dtype, DataType::Float32());
-    EXPECT_EQ(add_step.weight_dtype, DataType::Float32());
+    EXPECT_EQ(add_step.spec.op_type, OpType::kAdd);
+    EXPECT_EQ(add_step.spec.selector.act_dtype, DataType::Float32());
+    EXPECT_EQ(add_step.spec.selector.weight_dtype, DataType::Float32());
 }
 
 TEST(GraphLowering, WeightedOpPreservesOriginalWeightDType) {
@@ -585,8 +583,8 @@ TEST(GraphLowering, WeightedOpPreservesOriginalWeightDType) {
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     ASSERT_EQ(lowered->steps.size(), 1U);
-    EXPECT_EQ(lowered->steps[0].op_type, OpType::kEmbedding);
-    EXPECT_EQ(lowered->steps[0].weight_dtype, DataType::Float32());
+    EXPECT_EQ(lowered->steps[0].spec.op_type, OpType::kEmbedding);
+    EXPECT_EQ(lowered->steps[0].spec.selector.weight_dtype, DataType::Float32());
 }
 
 TEST(GraphLowering, CarriesRuntimeChecksFromGraphToLoweredNode) {
@@ -621,7 +619,7 @@ TEST(GraphLowering, CarriesRuntimeChecksFromGraphToLoweredNode) {
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     ASSERT_EQ(lowered->steps.size(), 2U);
-    EXPECT_EQ(lowered->steps[1].runtime_checks, graph_node.runtime_checks)
+    EXPECT_EQ(lowered->steps[1].spec.runtime_checks, graph_node.runtime_checks)
             << "Lowered node must carry graph runtime_checks verbatim without re-inference";
 }
 
@@ -659,8 +657,8 @@ TEST(GraphLowering, CarriesRoPERuntimeChecksFromLlamaGraph) {
     // LowersFullLlamaDenseGraph). The RoPE step must carry the graph
     // node's runtime_checks verbatim without re-inference.
     const auto& rope_step = lowered->steps[5];
-    EXPECT_EQ(rope_step.op_type, OpType::kRoPE);
-    EXPECT_EQ(rope_step.runtime_checks, rope_node.runtime_checks)
+    EXPECT_EQ(rope_step.spec.op_type, OpType::kRoPE);
+    EXPECT_EQ(rope_step.spec.runtime_checks, rope_node.runtime_checks)
             << "Lowered RoPE step must carry graph runtime_checks verbatim";
 }
 
@@ -675,9 +673,9 @@ TEST(GraphLowering, LowersCompleteInputSpecsInSchemaPortOrder) {
 
     for (size_t i = 0; i < lowered->steps.size(); ++i) {
         const auto& step = lowered->steps[i];
-        const StatusOr<OperatorSchema> schema = GetOperatorSchema(step.op_type);
+        const StatusOr<OperatorSchema> schema = GetOperatorSchema(step.spec.op_type);
         ASSERT_TRUE(schema.ok()) << schema.status().ToString();
-        EXPECT_EQ(step.input_specs.size(), schema->input_ports.size())
+        EXPECT_EQ(step.spec.input_specs.size(), schema->input_ports.size())
                 << "step " << i << " input_specs must match schema port count";
     }
 }
@@ -702,18 +700,18 @@ TEST(GraphLowering, CompactInputSpecsOrderMatchesRuntimeBindings) {
     ASSERT_TRUE(schema.ok()) << schema.status().ToString();
 
     const StatusOr<std::vector<TensorSpec>> compact =
-            MakeCompactInputSpecs(*schema, attn_step.input_specs);
+            MakeCompactInputSpecs(*schema, attn_step.spec.input_specs);
     ASSERT_TRUE(compact.ok()) << compact.status().ToString();
 
     // Compact view keeps only contributing ports (q for Attention). Each
     // compact entry must match the spec at the corresponding port index.
     size_t compact_idx = 0;
-    for (const auto& port: schema->input_ports) {
-        if (!port.contributes_tensor_spec) {
+    for (size_t port_index = 0; port_index < schema->input_ports.size(); ++port_index) {
+        if (!schema->input_ports[port_index].contributes_tensor_spec) {
             continue;
         }
         ASSERT_LT(compact_idx, compact->size());
-        EXPECT_EQ((*compact)[compact_idx], attn_step.input_specs[port.index]);
+        EXPECT_EQ((*compact)[compact_idx], attn_step.spec.input_specs[port_index]);
         ++compact_idx;
     }
     EXPECT_EQ(compact_idx, compact->size());

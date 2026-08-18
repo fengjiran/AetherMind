@@ -4,8 +4,10 @@
 /// @file operator_schema.h
 /// @brief Semantic ABI for operator port order, value roles, and traits.
 ///
-/// Port indexes and names are part of the graph/operator contract and must
-/// remain synchronized with inference and model graph construction.
+/// Port order and names are part of the graph/operator contract and must
+/// remain synchronized with inference and model graph construction. A port's
+/// position in its schema vector is its index; there is no separate index
+/// field to keep in sync.
 
 #include "aethermind/base/status.h"
 #include "aethermind/operators/op_type.h"
@@ -32,10 +34,10 @@ enum class OperatorPortKind : uint8_t {
 
 /// @brief Describes one input position in an operator's semantic ABI.
 ///
-/// Each port identifies a position
-/// in the operator's input list and its expected value kind.
+/// The port's vector position is its index: `input_ports[0]` is input 0.
+/// Consumers index node inputs by this position, so the declaration order
+/// of a schema is the semantic ABI order.
 struct OperatorInputPort {
-    uint32_t index = 0;
     OperatorPortKind kind = OperatorPortKind::kActivation;
     /// @brief Controls whether this port participates in output tensor-spec inference.
     /// Ports with contributes_tensor_spec = false (e.g. state inputs whose
@@ -47,10 +49,8 @@ struct OperatorInputPort {
 
 /// @brief Describes one output position in an operator's semantic ABI.
 ///
-/// Each port identifies one of the
-/// output values produced by the operator and its value kind.
+/// The port's vector position is its index: `output_ports[0]` is output 0.
 struct OperatorOutputPort {
-    uint32_t index = 0;
     OperatorPortKind kind = OperatorPortKind::kActivation;
     std::string name{};
 };
@@ -73,6 +73,16 @@ struct OperatorTraits {
     bool compile_time_evaluable = false;
 };
 
+/// @brief One lowering-time state alias: a state input port and a state output
+/// port that must map to the same physical runtime state buffer.
+///
+/// Ports are referenced by name; the schema is the sole authority for their
+/// indexes, resolved via FindInputPortIndex/FindOutputPortIndex at use time.
+struct StateAliasPortPair {
+    std::string input_port{};
+    std::string output_port{};
+};
+
 /// @brief Associates an operator type with its port layout and semantic traits.
 ///
 /// Schemas are defined statically in operator_schema.cpp and used by graph
@@ -82,6 +92,14 @@ struct OperatorSchema {
     std::vector<OperatorInputPort> input_ports{};
     std::vector<OperatorOutputPort> output_ports{};
     OperatorTraits traits{};
+    /// @brief Lowering-time state alias pairs declared by this operator.
+    ///
+    /// Each pair names a state input port and a state output port that must
+    /// map to the same physical runtime state buffer (e.g. the KV-cache in/out
+    /// ports of KVCacheUpdate). Lowering generates one alias record per pair
+    /// from the schema, so new stateful operators need no lowering changes.
+    /// Empty for operators without persistent state.
+    std::vector<StateAliasPortPair> state_alias_ports{};
 };
 
 /// @brief Port-name constants shared by KV-cache schemas and validation.

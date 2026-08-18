@@ -1,10 +1,8 @@
 #ifndef AETHERMIND_EXECUTION_EXECUTION_NODE_SPEC_H
 #define AETHERMIND_EXECUTION_EXECUTION_NODE_SPEC_H
 
-#include "aethermind/base/device.h"
-#include "aethermind/base/kernel_attrs.h"
+#include "aethermind/base/kernel_selector.h"
 #include "aethermind/base/workspace_types.h"
-#include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/shape_inference/shape_constraint.h"
@@ -17,12 +15,10 @@ namespace aethermind {
 
 struct ExecutionPlanNodeSpec {
     OpType op_type = OpType::kUnknown;
-    DeviceType device_type = DeviceType::kCPU;
-    DataType act_dtype{};
-    DataType weight_dtype{};
-    WeightFormat weight_format = WeightFormat::kPlain;
-    IsaLevel isa = IsaLevel::kScalar;
-    ExecPhase phase = ExecPhase::kBoth;
+    /// Execution capabilities this step requires. Lowering records the
+    /// configured prefix (device/ISA/weight format/phase) and fills the
+    /// activation/weight dtypes from the operator's inputs and outputs.
+    KernelSelector selector{};
     WorkspaceRequirement workspace_requirement{};
     /// Complete schema-port-ordered input specs, including state ports that
     /// do not contribute to runtime tensor bindings. Use MakeCompactInputSpecs

@@ -1,6 +1,5 @@
 #include "aethermind/graph/lowering/graph_lowering.h"
 #include "aethermind/operators/operator_schema.h"
-#include "utils/variant_utils.h"
 
 #include <algorithm>
 #include <optional>
@@ -38,50 +37,37 @@ void MaybeSetActivationDTypeFromOutputs(const OperatorSchema& schema,
 
     // Lowering stores one activation dtype selector per op. Operator schemas are expected to keep
     // all activation outputs at the same dtype, so the first activation output is representative.
-    for (const auto& port: schema.output_ports) {
-        if (port.kind != OperatorPortKind::kActivation) {
+    for (size_t output_index = 0; output_index < schema.output_ports.size(); ++output_index) {
+        if (schema.output_ports[output_index].kind != OperatorPortKind::kActivation) {
             continue;
         }
-        act_dtype = values[node.outputs[port.index].index].spec.dtype;
+        act_dtype = values[node.outputs[output_index].index].spec.dtype;
         return;
     }
 }
 
-Status AddKVCacheLoweringTimeAliases(const OperatorSchema& schema,
-                                     const GraphNode& node,
-                                     size_t step_index,
-                                     LoweredGraph& lowered) {
-    if (node.op_type != OpType::kKVCacheUpdate) {
-        return Status::Ok();
+Status AddLoweringTimeStateAliases(const OperatorSchema& schema,
+                                   const GraphNode& node,
+                                   size_t step_index,
+                                   LoweredGraph& lowered) {
+    // State alias pairs are declared in the operator schema; each pair yields
+    // one lowering-time alias record with known step/port coordinates (see
+    // LoweredStateAlias). Operators without state aliases produce no records,
+    // so new stateful operators need no changes here.
+    for (const StateAliasPortPair& pair: schema.state_alias_ports) {
+        StatusOr<uint32_t> in = FindInputPortIndex(schema, pair.input_port);
+        AM_RETURN_IF_ERROR(in.status());
+        StatusOr<uint32_t> out = FindOutputPortIndex(schema, pair.output_port);
+        AM_RETURN_IF_ERROR(out.status());
+
+        lowered.state_aliases.push_back(LoweredStateAlias{
+                .step_index = step_index,
+                .input_port = in.value(),
+                .output_port = out.value(),
+                .input = node.inputs[in.value()],
+                .output = node.outputs[out.value()],
+        });
     }
-
-    StatusOr<uint32_t> k_in = FindInputPortIndex(schema, kv_cache_ports::kCacheIn);
-    AM_RETURN_IF_ERROR(k_in.status());
-    StatusOr<uint32_t> v_in = FindInputPortIndex(schema, kv_cache_ports::vCacheIn);
-    AM_RETURN_IF_ERROR(v_in.status());
-    StatusOr<uint32_t> k_out = FindOutputPortIndex(schema, kv_cache_ports::kCacheOut);
-    AM_RETURN_IF_ERROR(k_out.status());
-    StatusOr<uint32_t> v_out = FindOutputPortIndex(schema, kv_cache_ports::vCacheOut);
-    AM_RETURN_IF_ERROR(v_out.status());
-
-    // Step and port coordinates are known here: steps are emitted in
-    // topological order and the cache ports come from the schema. Recording
-    // them lets ResolveStateAliases validate instead of re-scanning bindings.
-    lowered.state_aliases.push_back(LoweredStateAlias{
-            .step_index = step_index,
-            .input_port = k_in.value(),
-            .output_port = k_out.value(),
-            .input = node.inputs[k_in.value()],
-            .output = node.outputs[k_out.value()],
-    });
-
-    lowered.state_aliases.push_back(LoweredStateAlias{
-            .step_index = step_index,
-            .input_port = v_in.value(),
-            .output_port = v_out.value(),
-            .input = node.inputs[v_in.value()],
-            .output = node.outputs[v_out.value()],
-    });
     return Status::Ok();
 }
 
@@ -94,7 +80,6 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
 
     LoweredGraph lowered;
     lowered.steps.reserve(order_or->size());
-    lowered.step_bindings.reserve(order_or->size());
     lowered.model_inputs.reserve(graph.GetInputs().size());
     lowered.model_outputs.reserve(graph.GetOutputs().size());
 
@@ -125,10 +110,7 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
 
         ExecutionPlanNodeSpec step{
                 .op_type = node.op_type,
-                .device_type = config.device_type,
-                .weight_format = config.weight_format,
-                .isa = config.isa,
-                .phase = config.phase,
+                .selector = config.selector,
                 .op_params = node.op_params,
         };
 
@@ -139,41 +121,30 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
 
         std::optional<DataType> act_dtype;
         std::optional<DataType> weight_dtype;
-        for (const auto& port: schema.input_ports) {
-            const GraphValueId value_id = node.inputs[port.index];
+        for (size_t input_index = 0; input_index < schema.input_ports.size(); ++input_index) {
+            const GraphValueId value_id = node.inputs[input_index];
             const GraphValue& value = values[value_id.index];
             binding.input_values.push_back(value_id);
-            MaybeSetSelectorDTypes(port, value.spec, act_dtype, weight_dtype);
+            MaybeSetSelectorDTypes(
+                    schema.input_ports[input_index], value.spec, act_dtype, weight_dtype);
             step.input_specs.push_back(value.spec);
-            // Record ConstantValue payloads so backend lowering can resolve
-            // inline data or named external constants without revisiting the
-            // graph. Other payload kinds (weight/state/input/activation) are
-            // resolved through their bindings at execution-planning time.
-            auto visitor = overloaded{
-                    [&](const ConstantValue& cv) {
-                        binding.constant_bindings.push_back(
-                                {.input_port = port.index,
-                                 .binding = cv.binding});
-                    },
-                    [](const auto&) {}};
-            std::visit(visitor, value.payload);
         }
 
-        for (const auto& port: schema.output_ports) {
-            const GraphValueId value_id = node.outputs[port.index];
+        for (size_t output_index = 0; output_index < schema.output_ports.size(); ++output_index) {
+            const GraphValueId value_id = node.outputs[output_index];
             binding.output_values.push_back(value_id);
             step.output_specs.push_back(values[value_id.index].spec);
         }
         step.runtime_checks = node.runtime_checks;
         MaybeSetActivationDTypeFromOutputs(schema, node, values, act_dtype);
 
-        step.act_dtype = act_dtype.value_or(DataType{});
-        step.weight_dtype = weight_dtype.value_or(step.act_dtype);
+        step.selector.act_dtype = act_dtype.value_or(DataType{});
+        step.selector.weight_dtype = weight_dtype.value_or(step.selector.act_dtype);
 
-        AM_RETURN_IF_ERROR(AddKVCacheLoweringTimeAliases(
+        AM_RETURN_IF_ERROR(AddLoweringTimeStateAliases(
                 schema, node, lowered.steps.size(), lowered));
-        lowered.steps.push_back(std::move(step));
-        lowered.step_bindings.push_back(std::move(binding));
+        lowered.steps.push_back(
+                LoweredStep{.spec = std::move(step), .binding = std::move(binding)});
     }
 
     return lowered;
@@ -184,11 +155,11 @@ StatusOr<StateAliasPlan> ResolveStateAliases(const LoweredGraph& lowered) {
     plan.aliases.reserve(lowered.state_aliases.size());
 
     for (const LoweredStateAlias& alias: lowered.state_aliases) {
-        if (alias.step_index >= lowered.step_bindings.size()) {
+        if (alias.step_index >= lowered.steps.size()) {
             return Status::InvalidArgument(
                     "ResolveStateAliases: alias step index out of range");
         }
-        const LoweredStepBinding& binding = lowered.step_bindings[alias.step_index];
+        const LoweredStepBinding& binding = lowered.steps[alias.step_index].binding;
         if (alias.input_port >= binding.input_values.size() ||
             binding.input_values[alias.input_port] != alias.input) {
             return Status::InvalidArgument(

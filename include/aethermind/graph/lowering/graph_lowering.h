@@ -7,8 +7,7 @@
 /// Produces a LoweredGraph of ExecutionPlanNodeSpec steps plus graph-value
 /// binding vectors and unresolved state alias records. Backend-specific kernel
 /// selection happens later; this stage only translates semantic IR.
-#include "aethermind/base/device.h"
-#include "aethermind/base/kernel_attrs.h"
+#include "aethermind/base/kernel_selector.h"
 #include "aethermind/execution/execution_node_spec.h"
 #include "aethermind/execution/state_alias_plan.h"
 #include "aethermind/graph/graph.h"
@@ -20,35 +19,28 @@ namespace aethermind {
 /// @brief Backend-independent knobs used while translating semantic graph nodes
 /// to execution-plan node specs.
 ///
-/// @note ModelGraph intentionally does not store these.
+/// @note ModelGraph intentionally does not store these. The selector's
+/// act_dtype/weight_dtype fields are ignored here: lowering infers them from
+/// the operator's inputs and outputs.
 struct GraphLoweringConfig {
-    DeviceType device_type = DeviceType::kCPU;
-    IsaLevel isa = IsaLevel::kScalar;
-    WeightFormat weight_format = WeightFormat::kPlain;
-    ExecPhase phase = ExecPhase::kBoth;
-};
-
-/// @brief Records a constant binding discovered during lowering for one input
-/// port.
-///
-/// @note Backend-specific lowering passes can use this to resolve inline data
-/// or named external constants without re-walking the semantic graph.
-struct LoweredConstantBinding {
-    uint32_t input_port = 0;
-    ConstantBinding binding{};
+    KernelSelector selector{
+            .device_type = DeviceType::kCPU,
+            .weight_format = WeightFormat::kPlain,
+            .isa = IsaLevel::kScalar,
+            .phase = ExecPhase::kBoth,
+    };
 };
 
 /// @brief Records the graph values bound to one lowered execution step.
 ///
 /// The order of each vector follows the operator schema port order, including
 /// state ports that do not contribute to compact runtime tensor specs.
-/// `constant_bindings` captures ConstantValue payloads encountered on input
-/// ports so backend lowering can resolve them without revisiting the graph.
+/// Constant inputs are not indexed separately: their payloads (and any inline
+/// ConstantBinding) remain reachable through LoweredGraph::values.
 struct LoweredStepBinding {
     GraphNodeId node{};
     std::vector<GraphValueId> input_values{};
     std::vector<GraphValueId> output_values{};
-    std::vector<LoweredConstantBinding> constant_bindings{};
 };
 
 /// @brief Unresolved lowering-time state alias record.
@@ -73,11 +65,21 @@ struct LoweredStateAlias {
     GraphValueId output{};
 };
 
+/// @brief One lowered execution step paired with its graph-value binding.
+///
+/// Combining the execution-plan spec and its binding in a single record makes
+/// the 1:1 relationship between them a type-level invariant instead of a
+/// parallel-vector indexing convention.
+struct LoweredStep {
+    ExecutionPlanNodeSpec spec{};
+    LoweredStepBinding binding{};
+};
+
 /// @brief Self-contained semantic metadata for one graph value.
 ///
 /// The entry at `LoweredGraph::values[id.index]` describes GraphValueId `id`.
 /// It copies value semantics needed after ModelGraph is destroyed; producer
-/// topology remains represented by step_bindings.
+/// topology remains represented by the step bindings.
 struct LoweredValueDesc {
     TensorSpec spec{};
     GraphValuePayload payload{};
@@ -88,14 +90,15 @@ struct LoweredValueDesc {
 /// @brief Direct 1:1 lowering artifact from semantic ModelGraph to execution
 /// planning.
 ///
-/// `steps` can be passed to ExecutionPlanBuilder; the parallel binding vectors
-/// retain graph-value identity for later runtime tensor/state binding.
-/// `state_aliases` is the only lowering-time collection of unresolved state
-/// alias records. ResolveStateAliases() converts it into the runtime
-/// StateAliasPlan consumed by ExecutionPlan and the executor.
+/// `steps` pairs each ExecutionPlanNodeSpec with its LoweredStepBinding, so
+/// the two can never drift apart; a span of the specs can be handed to
+/// ExecutionPlanBuilder, while the bindings retain graph-value identity for
+/// later runtime tensor/state binding. `state_aliases` is the only
+/// lowering-time collection of unresolved state alias records.
+/// ResolveStateAliases() converts it into the runtime StateAliasPlan consumed
+/// by ExecutionPlan and the executor.
 struct LoweredGraph {
-    std::vector<ExecutionPlanNodeSpec> steps{};
-    std::vector<LoweredStepBinding> step_bindings{};
+    std::vector<LoweredStep> steps{};
     std::vector<LoweredValueDesc> values{};
     std::vector<GraphValueId> model_inputs{};
     std::vector<GraphValueId> model_outputs{};
@@ -104,6 +107,17 @@ struct LoweredGraph {
 
 /// @brief Lowers a semantic ModelGraph into a LoweredGraph using the supplied
 /// configuration.
+///
+/// @note Selector dtype derivation contract. For each step, `act_dtype` is
+/// taken from the first contributing activation input port, or - when the
+/// operator has no activation input - from the first activation output port.
+/// `weight_dtype` is taken from the first contributing weight input port,
+/// falling back to `act_dtype` when the operator has no weight input.
+/// Operators are expected to keep all activation ports at the same dtype, so
+/// the first port is representative. Every schema must expose at least one
+/// activation input or output port; otherwise the selector would silently
+/// carry an undefined activation dtype (guarded by the schema-contract test
+/// `EveryOperatorSchemaExposesActivationPort`).
 ///
 /// @param graph Source semantic graph. Not mutated.
 /// @param config Backend-independent lowering knobs.

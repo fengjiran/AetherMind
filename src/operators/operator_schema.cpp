@@ -6,26 +6,28 @@
 namespace aethermind {
 namespace {
 
-OperatorInputPort Input(uint32_t index, std::string_view name, OperatorPortKind kind) {
-    return {.index = index, .kind = kind, .name = std::string(name)};
+OperatorInputPort Input(std::string_view name, OperatorPortKind kind) {
+    return {.kind = kind, .name = std::string(name)};
 }
 
-OperatorInputPort Input(uint32_t index, std::string_view name, OperatorPortKind kind,
+OperatorInputPort Input(std::string_view name, OperatorPortKind kind,
                         bool contributes_tensor_spec) {
-    return {.index = index,
-            .kind = kind,
+    return {.kind = kind,
             .contributes_tensor_spec = contributes_tensor_spec,
             .name = std::string(name)};
 }
 
-OperatorOutputPort Output(uint32_t index, std::string_view name) {
-    return {.index = index,
-            .kind = OperatorPortKind::kActivation,
+OperatorOutputPort Output(std::string_view name) {
+    return {.kind = OperatorPortKind::kActivation,
             .name = std::string(name)};
 }
 
-OperatorOutputPort Output(uint32_t index, std::string_view name, OperatorPortKind kind) {
-    return {.index = index, .kind = kind, .name = std::string(name)};
+OperatorOutputPort Output(std::string_view name, OperatorPortKind kind) {
+    return {.kind = kind, .name = std::string(name)};
+}
+
+StateAliasPortPair StateAlias(std::string_view input, std::string_view output) {
+    return {.input_port = std::string(input), .output_port = std::string(output)};
 }
 
 constexpr OperatorTraits RuntimeOnly() noexcept {
@@ -52,7 +54,7 @@ StatusOr<uint32_t> FindPortIndex(std::span<const Port> ports,
                                  const char* not_found_message) noexcept {
     for (const Port& port: ports) {
         if (std::string_view(port.name) == name) {
-            return port.index;
+            return static_cast<uint32_t>(&port - ports.data());
         }
     }
     return Status::InvalidArgument(not_found_message);
@@ -65,80 +67,80 @@ StatusOr<uint32_t> FindPortIndex(std::span<const Port> ports,
 const std::array<OperatorSchema, 19> kOperatorSchemas{
         OperatorSchema{
                 .op_type = OpType::kEmbedding,
-                .input_ports = {Input(0, "tokens", OperatorPortKind::kModelInput),
-                                Input(1, "weight", OperatorPortKind::kWeight)},
-                .output_ports = {Output(0, "output")},
+                .input_ports = {Input("tokens", OperatorPortKind::kModelInput),
+                                Input("weight", OperatorPortKind::kWeight)},
+                .output_ports = {Output("output")},
                 .traits = RuntimeOnly(),
         },
         OperatorSchema{
                 .op_type = OpType::kRmsNorm,
-                .input_ports = {Input(0, "input", OperatorPortKind::kActivation),
-                                Input(1, "weight", OperatorPortKind::kWeight)},
-                .output_ports = {Output(0, "output")},
+                .input_ports = {Input("input", OperatorPortKind::kActivation),
+                                Input("weight", OperatorPortKind::kWeight)},
+                .output_ports = {Output("output")},
                 .traits = RuntimeOnly(),
         },
         OperatorSchema{
                 .op_type = OpType::kLinear,
-                .input_ports = {Input(0, "input", OperatorPortKind::kActivation),
-                                Input(1, "weight", OperatorPortKind::kWeight)},
-                .output_ports = {Output(0, "output")},
+                .input_ports = {Input("input", OperatorPortKind::kActivation),
+                                Input("weight", OperatorPortKind::kWeight)},
+                .output_ports = {Output("output")},
                 .traits = RuntimeOnly(),
         },
         OperatorSchema{
                 .op_type = OpType::kQkvLinear,
-                .input_ports = {Input(0, "input", OperatorPortKind::kActivation),
-                                Input(1, "qkv_weight", OperatorPortKind::kWeight)},
-                .output_ports = {Output(0, "q"),
-                                 Output(1, "k"),
-                                 Output(2, "v")},
+                .input_ports = {Input("input", OperatorPortKind::kActivation),
+                                Input("qkv_weight", OperatorPortKind::kWeight)},
+                .output_ports = {Output("q"),
+                                 Output("k"),
+                                 Output("v")},
                 // Fused runtime projection: pure and deterministic, but not
                 // compile-time evaluable (no fused constant evaluator exists).
                 .traits = RuntimeOnly(),
         },
         OperatorSchema{
                 .op_type = OpType::kGateUpLinear,
-                .input_ports = {Input(0, "input", OperatorPortKind::kActivation),
-                                Input(1, "gate_up_weight", OperatorPortKind::kWeight)},
-                .output_ports = {Output(0, "gate"),
-                                 Output(1, "up")},
+                .input_ports = {Input("input", OperatorPortKind::kActivation),
+                                Input("gate_up_weight", OperatorPortKind::kWeight)},
+                .output_ports = {Output("gate"),
+                                 Output("up")},
                 .traits = RuntimeOnly(),
         },
         OperatorSchema{
                 .op_type = OpType::kRoPE,
-                .input_ports = {Input(0, "q", OperatorPortKind::kActivation),
-                                Input(1, "k", OperatorPortKind::kActivation),
-                                Input(2, "position_ids", OperatorPortKind::kModelInput)},
-                .output_ports = {Output(0, "q_rope"),
-                                 Output(1, "k_rope")},
+                .input_ports = {Input("q", OperatorPortKind::kActivation),
+                                Input("k", OperatorPortKind::kActivation),
+                                Input("position_ids", OperatorPortKind::kModelInput)},
+                .output_ports = {Output("q_rope"),
+                                 Output("k_rope")},
                 .traits = RuntimeOnly(),
         },
         OperatorSchema{
                 .op_type = OpType::kMatMul,
-                .input_ports = {Input(0, "lhs", OperatorPortKind::kActivation),
-                                Input(1, "rhs", OperatorPortKind::kActivation)},
-                .output_ports = {Output(0, "output")},
+                .input_ports = {Input("lhs", OperatorPortKind::kActivation),
+                                Input("rhs", OperatorPortKind::kActivation)},
+                .output_ports = {Output("output")},
                 .traits = RuntimeOnly(),
         },
         OperatorSchema{
                 .op_type = OpType::kSoftmax,
-                .input_ports = {Input(0, "input", OperatorPortKind::kActivation)},
-                .output_ports = {Output(0, "output")},
+                .input_ports = {Input("input", OperatorPortKind::kActivation)},
+                .output_ports = {Output("output")},
                 .traits = RuntimeOnly(),
         },
         OperatorSchema{
                 .op_type = OpType::kAdd,
-                .input_ports = {Input(0, "lhs", OperatorPortKind::kActivation),
-                                Input(1, "rhs", OperatorPortKind::kActivation)},
-                .output_ports = {Output(0, "output")},
+                .input_ports = {Input("lhs", OperatorPortKind::kActivation),
+                                Input("rhs", OperatorPortKind::kActivation)},
+                .output_ports = {Output("output")},
                 .traits = CompileTimeEvaluable(),
         },
         OperatorSchema{
                 .op_type = OpType::kAddRmsNorm,
-                .input_ports = {Input(0, "input", OperatorPortKind::kActivation),
-                                Input(1, "residual", OperatorPortKind::kActivation),
-                                Input(2, "weight", OperatorPortKind::kWeight)},
-                .output_ports = {Output(0, "output"),
-                                 Output(1, "new_residual")},
+                .input_ports = {Input("input", OperatorPortKind::kActivation),
+                                Input("residual", OperatorPortKind::kActivation),
+                                Input("weight", OperatorPortKind::kWeight)},
+                .output_ports = {Output("output"),
+                                 Output("new_residual")},
                 // Fused add + RMSNorm: output = RmsNorm(input + residual, weight);
                 // new_residual = input + residual feeds the next block's residual.
                 // Follows the stricter trait of RmsNorm (RuntimeOnly) rather than
@@ -147,52 +149,54 @@ const std::array<OperatorSchema, 19> kOperatorSchemas{
         },
         OperatorSchema{
                 .op_type = OpType::kSiluMul,
-                .input_ports = {Input(0, "gate", OperatorPortKind::kActivation),
-                                Input(1, "up", OperatorPortKind::kActivation)},
-                .output_ports = {Output(0, "output")},
+                .input_ports = {Input("gate", OperatorPortKind::kActivation),
+                                Input("up", OperatorPortKind::kActivation)},
+                .output_ports = {Output("output")},
                 .traits = CompileTimeEvaluable(),
         },
         OperatorSchema{
                 .op_type = OpType::kSilu,
-                .input_ports = {Input(0, "input", OperatorPortKind::kActivation)},
-                .output_ports = {Output(0, "output")},
+                .input_ports = {Input("input", OperatorPortKind::kActivation)},
+                .output_ports = {Output("output")},
                 .traits = CompileTimeEvaluable(),
         },
         OperatorSchema{
                 .op_type = OpType::kElementwiseMul,
-                .input_ports = {Input(0, "lhs", OperatorPortKind::kActivation),
-                                Input(1, "rhs", OperatorPortKind::kActivation)},
-                .output_ports = {Output(0, "output")},
+                .input_ports = {Input("lhs", OperatorPortKind::kActivation),
+                                Input("rhs", OperatorPortKind::kActivation)},
+                .output_ports = {Output("output")},
                 .traits = CompileTimeEvaluable(),
         },
         OperatorSchema{
                 .op_type = OpType::kArgmax,
-                .input_ports = {Input(0, "logits", OperatorPortKind::kActivation)},
-                .output_ports = {Output(0, "output")},
+                .input_ports = {Input("logits", OperatorPortKind::kActivation)},
+                .output_ports = {Output("output")},
                 .traits = RuntimeOnly(),
         },
         OperatorSchema{
                 .op_type = OpType::kKVCacheUpdate,
-                .input_ports = {Input(0, "k", OperatorPortKind::kActivation),
-                                Input(1, "v", OperatorPortKind::kActivation),
-                                Input(2, kv_cache_ports::kCacheIn, OperatorPortKind::kState, false),
-                                Input(3, kv_cache_ports::vCacheIn, OperatorPortKind::kState, false)},
-                .output_ports = {Output(0, kv_cache_ports::kCacheOut, OperatorPortKind::kState),
-                                 Output(1, kv_cache_ports::vCacheOut, OperatorPortKind::kState)},
+                .input_ports = {Input("k", OperatorPortKind::kActivation),
+                                Input("v", OperatorPortKind::kActivation),
+                                Input(kv_cache_ports::kCacheIn, OperatorPortKind::kState, false),
+                                Input(kv_cache_ports::vCacheIn, OperatorPortKind::kState, false)},
+                .output_ports = {Output(kv_cache_ports::kCacheOut, OperatorPortKind::kState),
+                                 Output(kv_cache_ports::vCacheOut, OperatorPortKind::kState)},
                 .traits = Stateful(),
+                .state_alias_ports = {StateAlias(kv_cache_ports::kCacheIn, kv_cache_ports::kCacheOut),
+                                      StateAlias(kv_cache_ports::vCacheIn, kv_cache_ports::vCacheOut)},
         },
         OperatorSchema{
                 .op_type = OpType::kAttention,
-                .input_ports = {Input(0, "q", OperatorPortKind::kActivation),
-                                Input(1, kv_cache_ports::kCache, OperatorPortKind::kState, false),
-                                Input(2, kv_cache_ports::vCache, OperatorPortKind::kState, false)},
-                .output_ports = {Output(0, "output")},
+                .input_ports = {Input("q", OperatorPortKind::kActivation),
+                                Input(kv_cache_ports::kCache, OperatorPortKind::kState, false),
+                                Input(kv_cache_ports::vCache, OperatorPortKind::kState, false)},
+                .output_ports = {Output("output")},
                 .traits = RuntimeOnly(),
         },
         OperatorSchema{
                 .op_type = OpType::kReshape,
-                .input_ports = {Input(0, "input", OperatorPortKind::kActivation)},
-                .output_ports = {Output(0, "output")},
+                .input_ports = {Input("input", OperatorPortKind::kActivation)},
+                .output_ports = {Output("output")},
                 // Semantic-only: pure and deterministic (so DCE-removable),
                 // but not advertised as compile-time evaluable (no constant
                 // evaluator exists; ReshapeParams is not yet a constant-foldable
@@ -201,8 +205,8 @@ const std::array<OperatorSchema, 19> kOperatorSchemas{
         },
         OperatorSchema{
                 .op_type = OpType::kPermute,
-                .input_ports = {Input(0, "input", OperatorPortKind::kActivation)},
-                .output_ports = {Output(0, "output")},
+                .input_ports = {Input("input", OperatorPortKind::kActivation)},
+                .output_ports = {Output("output")},
                 // Semantic-only: pure and deterministic (so DCE-removable),
                 // but not advertised as compile-time evaluable (no constant
                 // evaluator exists; PermuteParams is not yet a constant-foldable
@@ -211,8 +215,8 @@ const std::array<OperatorSchema, 19> kOperatorSchemas{
         },
         OperatorSchema{
                 .op_type = OpType::kReorder,
-                .input_ports = {Input(0, "input", OperatorPortKind::kActivation)},
-                .output_ports = {Output(0, "output")},
+                .input_ports = {Input("input", OperatorPortKind::kActivation)},
+                .output_ports = {Output("output")},
                 // Semantic-only: pure and deterministic (so DCE-removable when
                 // dead), but not compile-time evaluable. Reorder records a
                 // physical materialization intent (canonical contiguous) that

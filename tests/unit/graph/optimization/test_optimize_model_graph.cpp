@@ -729,12 +729,11 @@ TEST(OptimizeModelGraph, LowersFullLlamaDenseGraph) {
 
     // Step and binding counts match (contract: 1:1 with optimized graph nodes).
     EXPECT_EQ(lowered.steps.size(), optimized.GetNodes().size());
-    EXPECT_EQ(lowered.step_bindings.size(), optimized.GetNodes().size());
 
     // First step is Embedding, last step is Argmax.
     ASSERT_GT(lowered.steps.size(), 0U);
-    EXPECT_EQ(lowered.steps.front().op_type, OpType::kEmbedding);
-    EXPECT_EQ(lowered.steps.back().op_type, OpType::kArgmax);
+    EXPECT_EQ(lowered.steps.front().spec.op_type, OpType::kEmbedding);
+    EXPECT_EQ(lowered.steps.back().spec.op_type, OpType::kArgmax);
 
     // Model inputs/outputs match.
     EXPECT_EQ(lowered.model_inputs.size(), graph->GetInputs().size());
@@ -746,8 +745,8 @@ TEST(OptimizeModelGraph, LowersFullLlamaDenseGraph) {
 
     // Output spec count matches binding output count per step.
     for (size_t i = 0; i < lowered.steps.size(); ++i) {
-        EXPECT_EQ(lowered.steps[i].output_specs.size(),
-                  lowered.step_bindings[i].output_values.size());
+        EXPECT_EQ(lowered.steps[i].spec.output_specs.size(),
+                  lowered.steps[i].binding.output_values.size());
     }
 
     // ResolveStateAliases succeeds and returns expected count.
@@ -938,9 +937,9 @@ TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure)
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(*optimized);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     const ExecutionPlanNodeSpec* rms_step = nullptr;
-    for (const ExecutionPlanNodeSpec& step: lowered->steps) {
-        if (step.op_type == OpType::kRmsNorm) {
-            rms_step = &step;
+    for (const LoweredStep& step: lowered->steps) {
+        if (step.spec.op_type == OpType::kRmsNorm) {
+            rms_step = &step.spec;
             break;
         }
     }

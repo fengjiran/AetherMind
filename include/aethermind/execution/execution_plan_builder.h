@@ -30,10 +30,18 @@ public:
 
     /// Builds an ExecutionPlan from a LoweredGraph by resolving lowering-time
     /// state aliases into the runtime StateAliasPlan.
+    ///
+    /// @note Consumption scope: this overload uses only `lowered.steps` (their
+    /// specs) and the resolved state aliases. The step bindings, value
+    /// metadata, and model inputs/outputs are not yet wired into runtime
+    /// tensor/state binding; an ExecutionPlan returned here must not be treated
+    /// as having completed runtime binding.
     AM_NODISCARD static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
             const LoweredGraph& lowered);
 
+    /// Overload of Build(LoweredGraph) that also resolves packed weights for
+    /// packed-format steps; the same consumption-scope note applies.
     AM_NODISCARD static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
             const PackedWeightStore& packed_weight_store,

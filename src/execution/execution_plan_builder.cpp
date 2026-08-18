@@ -5,31 +5,22 @@
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_schema.h"
 
+#include <concepts>
+#include <ranges>
+
 namespace aethermind {
 namespace {
 
-KernelSelector MakeSelectorForNode(const ExecutionPlanNodeSpec& node) noexcept {
-    return KernelSelector{
-            .device_type = node.device_type,
-            .act_dtype = node.act_dtype,
-            .weight_dtype = node.weight_dtype,
-            .weight_format = node.weight_format,
-            .isa = node.isa,
-            .phase = node.phase,
-    };
-}
-
 StatusOr<const void*> ResolvePackedWeightsForNode(const PackedWeightStore* packed_weight_store,
                                                   const ExecutionPlanNodeSpec& node) noexcept {
-    if (node.weight_format != WeightFormat::kPacked) {
+    if (node.selector.weight_format != WeightFormat::kPacked) {
         return nullptr;
     }
     if (packed_weight_store == nullptr) {
         return Status::NotFound("Packed-weight node requires a PackedWeightStore");
     }
 
-    const auto selector = MakeSelectorForNode(node);
-    const auto* packed_weights = packed_weight_store->Find(node.op_type, selector);
+    const auto* packed_weights = packed_weight_store->Find(node.op_type, node.selector);
     if (packed_weights == nullptr) {
         return Status::NotFound("Packed weights not found for ExecutionPlan node");
     }
@@ -108,13 +99,22 @@ StatusOr<PreparedNodeMetadata> PrepareNodeMetadata(const ExecutionPlanNodeSpec& 
     return metadata;
 }
 
+// Accepts any random-access range of ExecutionPlanNodeSpec: a plain vector on
+// the untrusted adapter path, or a std::views::transform projection over
+// LoweredGraph::steps on the trusted lowering path. The constraints keep the
+// indexed access below safe and surface misuse at the call site instead of
+// deep inside template instantiation.
+template<typename NodeRange>
+    requires std::ranges::random_access_range<NodeRange> &&
+             std::same_as<std::ranges::range_value_t<NodeRange>,
+                          ExecutionPlanNodeSpec>
 StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
                                            const PackedWeightStore* packed_weight_store,
-                                           const std::vector<ExecutionPlanNodeSpec>& nodes,
+                                           NodeRange&& nodes,
                                            StateAliasPlan state_alias_plan,
                                            bool trusted) {
     std::vector<WorkspaceRequirement> workspace_requirements;
-    workspace_requirements.reserve(nodes.size());
+    workspace_requirements.reserve(std::ranges::size(nodes));
     for (const ExecutionPlanNodeSpec& node: nodes) {
         workspace_requirements.push_back(node.workspace_requirement);
     }
@@ -124,10 +124,10 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
     }
 
     std::vector<ExecutionStep> steps;
-    steps.reserve(nodes.size());
-    for (size_t index = 0; index < nodes.size(); ++index) {
+    steps.reserve(std::ranges::size(nodes));
+    for (size_t index = 0; index < std::ranges::size(nodes); ++index) {
         const ExecutionPlanNodeSpec& node = nodes[index];
-        auto backend = runtime.GetBackend(node.device_type);
+        auto backend = runtime.GetBackend(node.selector.device_type);
         if (!backend.ok()) {
             return backend.status();
         }
@@ -146,7 +146,7 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
         }
 
         steps.push_back({
-                .selector = MakeSelectorForNode(node),
+                .selector = node.selector,
                 .kernel = std::move(*kernel),
                 .packed_weights = *packed_weights,
                 .workspace_requirement = workspace_requirements[index],
@@ -169,7 +169,7 @@ StatusOr<ResolvedKernel> ExecutionPlanBuilder::PrepareKernelForNode(
     if (std::holds_alternative<std::monostate>(node.op_params)) {
         return Status::InvalidArgument("ExecutionPlanNodeSpec requires typed op_params");
     }
-    return backend.PrepareKernel(node.op_type, MakeSelectorForNode(node), node.op_params);
+    return backend.PrepareKernel(node.op_type, node.selector, node.op_params);
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
@@ -192,7 +192,9 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
     if (!alias_plan.ok()) {
         return alias_plan.status();
     }
-    return BuildExecutionPlan(runtime, nullptr, lowered.steps,
+    const auto node_specs = std::views::transform(
+            lowered.steps, &LoweredStep::spec);
+    return BuildExecutionPlan(runtime, nullptr, node_specs,
                               std::move(*alias_plan), /*trusted=*/true);
 }
 
@@ -204,7 +206,9 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
     if (!alias_plan.ok()) {
         return alias_plan.status();
     }
-    return BuildExecutionPlan(runtime, &packed_weight_store, lowered.steps,
+    const auto node_specs = std::views::transform(
+            lowered.steps, &LoweredStep::spec);
+    return BuildExecutionPlan(runtime, &packed_weight_store, node_specs,
                               std::move(*alias_plan), /*trusted=*/true);
 }
 

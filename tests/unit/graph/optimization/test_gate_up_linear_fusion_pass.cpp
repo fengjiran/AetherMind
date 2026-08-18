@@ -367,19 +367,18 @@ TEST(GateUpLinearFusionPass, HonorsFlagRunsAtO2AndRemainsIdempotentAfterDce) {
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(*fused);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    ASSERT_EQ(lowered->steps.size(), lowered->step_bindings.size());
     std::optional<size_t> gate_up_step_index;
     for (size_t i = 0; i < lowered->steps.size(); ++i) {
-        if (lowered->steps[i].op_type == OpType::kGateUpLinear) {
+        if (lowered->steps[i].spec.op_type == OpType::kGateUpLinear) {
             gate_up_step_index = i;
             break;
         }
     }
     ASSERT_TRUE(gate_up_step_index.has_value());
     const size_t step_index = *gate_up_step_index;
-    EXPECT_EQ(lowered->step_bindings[step_index].input_values.size(), 2U);
-    EXPECT_EQ(lowered->step_bindings[step_index].output_values.size(), 2U);
-    EXPECT_EQ(lowered->steps[step_index].output_specs.size(), 2U);
+    EXPECT_EQ(lowered->steps[step_index].binding.input_values.size(), 2U);
+    EXPECT_EQ(lowered->steps[step_index].binding.output_values.size(), 2U);
+    EXPECT_EQ(lowered->steps[step_index].spec.output_specs.size(), 2U);
 
     const StatusOr<ModelGraph> rerun = RunGateUpFusion(*fused, true);
     ASSERT_TRUE(rerun.ok()) << rerun.status().ToString();

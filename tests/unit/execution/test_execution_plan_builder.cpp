@@ -147,12 +147,14 @@ public:
 ExecutionPlanNodeSpec MakeRmsNormNodeSpec() {
     return ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPlain,
-            .isa = IsaLevel::kScalar,
-            .phase = ExecPhase::kBoth,
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+                    .weight_format = WeightFormat::kPlain,
+                    .isa = IsaLevel::kScalar,
+                    .phase = ExecPhase::kBoth,
+            },
     };
 }
 
@@ -443,12 +445,14 @@ TEST(ExecutionPlanBuilder, BuildPlansWorkspaceOffsetsAcrossNodes) {
                            WorkspaceRequirement{.bytes = 8, .alignment = 64, .offset = 123}}) {
         ExecutionPlanNodeSpec node{
                 .op_type = OpType::kRmsNorm,
-                .device_type = DeviceType::kCPU,
-                .act_dtype = DataType::Float32(),
-                .weight_dtype = DataType::Float32(),
-                .weight_format = WeightFormat::kPlain,
-                .isa = IsaLevel::kScalar,
-                .phase = ExecPhase::kBoth,
+                .selector = {
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float32(),
+                        .weight_format = WeightFormat::kPlain,
+                        .isa = IsaLevel::kScalar,
+                        .phase = ExecPhase::kBoth,
+                },
                 .workspace_requirement = req,
         };
         node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
@@ -498,12 +502,14 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightStore) {
     std::vector<ExecutionPlanNodeSpec> nodes;
     ExecutionPlanNodeSpec node{
             .op_type = OpType::kRmsNorm,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPacked,
-            .isa = IsaLevel::kScalar,
-            .phase = ExecPhase::kBoth,
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+                    .weight_format = WeightFormat::kPacked,
+                    .isa = IsaLevel::kScalar,
+                    .phase = ExecPhase::kBoth,
+            },
     };
     node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
     node.input_specs = {
@@ -535,12 +541,14 @@ TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutPackedWeightStore)
     std::vector<ExecutionPlanNodeSpec> nodes;
     ExecutionPlanNodeSpec node{
             .op_type = OpType::kRmsNorm,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPacked,
-            .isa = IsaLevel::kScalar,
-            .phase = ExecPhase::kBoth,
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+                    .weight_format = WeightFormat::kPacked,
+                    .isa = IsaLevel::kScalar,
+                    .phase = ExecPhase::kBoth,
+            },
     };
     node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
     node.input_specs = {
@@ -564,9 +572,11 @@ TEST(ExecutionPlanBuilder, PrepareKernelForNodeRejectsUnknownOpType) {
             ExecutionPlanBuilder::PrepareKernelForNode(backend,
                                                        ExecutionPlanNodeSpec{
                                                                .op_type = OpType::kUnknown,
-                                                               .device_type = DeviceType::kCPU,
-                                                               .act_dtype = DataType::Float32(),
-                                                               .weight_dtype = DataType::Float32(),
+                                                               .selector = {
+                                                                       .device_type = DeviceType::kCPU,
+                                                                       .act_dtype = DataType::Float32(),
+                                                                       .weight_dtype = DataType::Float32(),
+                                                               },
                                                        });
 
     EXPECT_FALSE(resolved.ok());
@@ -590,11 +600,13 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphStoresRuntimeStateAliasPlan) {
     };
     step.output_specs = analyzed->outputs;
     step.runtime_checks = analyzed->runtime_checks;
-    lowered.steps.push_back(std::move(step));
-    lowered.step_bindings.push_back(LoweredStepBinding{
-            .node = GraphNodeId{.index = 0},
-            .input_values = {GraphValueId{.index = 0}, GraphValueId{.index = 1}},
-            .output_values = {GraphValueId{.index = 2}},
+    lowered.steps.push_back(LoweredStep{
+            .spec = std::move(step),
+            .binding = LoweredStepBinding{
+                    .node = GraphNodeId{.index = 0},
+                    .input_values = {GraphValueId{.index = 0}, GraphValueId{.index = 1}},
+                    .output_values = {GraphValueId{.index = 2}},
+            },
     });
     lowered.state_aliases.push_back(LoweredStateAlias{
             .step_index = 0,
@@ -654,11 +666,13 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPropagatesTrustedMetadata) {
     spy_output.shape = spy_shape;
     step.output_specs = {spy_output};
     step.runtime_checks = analyzed->runtime_checks;
-    lowered.steps.push_back(std::move(step));
-    lowered.step_bindings.push_back(LoweredStepBinding{
-            .node = GraphNodeId{.index = 0},
-            .input_values = {GraphValueId{.index = 0}, GraphValueId{.index = 1}},
-            .output_values = {GraphValueId{.index = 2}},
+    lowered.steps.push_back(LoweredStep{
+            .spec = std::move(step),
+            .binding = LoweredStepBinding{
+                    .node = GraphNodeId{.index = 0},
+                    .input_values = {GraphValueId{.index = 0}, GraphValueId{.index = 1}},
+                    .output_values = {GraphValueId{.index = 2}},
+            },
     });
 
     RuntimeBuilder builder;
@@ -681,7 +695,7 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPropagatesTrustedMetadata) {
     EXPECT_NE(plan->steps()[0].output_specs[0].shape[1].value(), input_hidden.value());
 
     // Trusted path: runtime_checks carried forward verbatim.
-    EXPECT_EQ(plan->steps()[0].runtime_checks, lowered.steps[0].runtime_checks);
+    EXPECT_EQ(plan->steps()[0].runtime_checks, lowered.steps[0].spec.runtime_checks);
 }
 
 TEST(ExecutionPlanBuilder, BuildFromNodesAloneHasEmptyStateAliasPlan) {
@@ -773,26 +787,28 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphResolvesSchemaOnlyOpType) {
     LoweredGraph lowered;
     ExecutionPlanNodeSpec step{
             .op_type = OpType::kSoftmax,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPlain,
-            .isa = IsaLevel::kScalar,
-            .phase = ExecPhase::kBoth,
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+                    .weight_format = WeightFormat::kPlain,
+                    .isa = IsaLevel::kScalar,
+                    .phase = ExecPhase::kBoth,
+            },
     };
     step.op_params = OpParams{SoftmaxParams{.axis = -1}};
     step.input_specs = inputs;
     step.output_specs = analyzed->outputs;
     step.runtime_checks = analyzed->runtime_checks;
-    lowered.steps.push_back(std::move(step));
+    lowered.steps.push_back(LoweredStep{.spec = std::move(step)});
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, lowered);
 
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->steps().size(), 1U);
     // Trusted lowering metadata is carried forward verbatim.
-    EXPECT_EQ(plan->steps()[0].output_specs, lowered.steps[0].output_specs);
-    EXPECT_EQ(plan->steps()[0].runtime_checks, lowered.steps[0].runtime_checks);
+    EXPECT_EQ(plan->steps()[0].output_specs, lowered.steps[0].spec.output_specs);
+    EXPECT_EQ(plan->steps()[0].runtime_checks, lowered.steps[0].spec.runtime_checks);
 }
 
 TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesInferredMetadata) {
@@ -816,12 +832,14 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesInferredMetadata) {
 
     ExecutionPlanNodeSpec node{
             .op_type = OpType::kSoftmax,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPlain,
-            .isa = IsaLevel::kScalar,
-            .phase = ExecPhase::kBoth,
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+                    .weight_format = WeightFormat::kPlain,
+                    .isa = IsaLevel::kScalar,
+                    .phase = ExecPhase::kBoth,
+            },
     };
     node.op_params = OpParams{SoftmaxParams{.axis = -1}};
     node.input_specs = inputs;

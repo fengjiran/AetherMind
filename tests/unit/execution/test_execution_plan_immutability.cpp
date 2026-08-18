@@ -154,11 +154,12 @@ TEST(ExecutionPlanImmutability, StepsReturnsConstViewAfterConstruction) {
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
-                            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+            },
+            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape}, TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
             .output_specs = analyzed->outputs,
             .runtime_checks = analyzed->runtime_checks,
             .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
@@ -188,24 +189,26 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+            },
             .workspace_requirement = {.bytes = 64, .alignment = 32, .offset = 999},
-            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
-                            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
+            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape}, TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
             .output_specs = analyzed->outputs,
             .runtime_checks = analyzed->runtime_checks,
             .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
     });
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+            },
             .workspace_requirement = {.bytes = 128, .alignment = 64, .offset = 123},
-            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
-                            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
+            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape}, TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
             .output_specs = analyzed->outputs,
             .runtime_checks = analyzed->runtime_checks,
             .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
@@ -258,12 +261,13 @@ TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByPackedWeightStore)
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPacked,
-            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
-                            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+                    .weight_format = WeightFormat::kPacked,
+            },
+            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape}, TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
             .output_specs = analyzed->outputs,
             .runtime_checks = analyzed->runtime_checks,
             .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
@@ -303,11 +307,12 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
-                            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+            },
+            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape}, TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
             .output_specs = analyzed->outputs,
             .runtime_checks = analyzed->runtime_checks,
             .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
@@ -361,11 +366,12 @@ TEST(ExecutionPlanImmutability, PlanDoesNotContainRuntimeBindings) {
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
-                            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+            },
+            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape}, TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
             .output_specs = analyzed->outputs,
             .runtime_checks = analyzed->runtime_checks,
             .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},

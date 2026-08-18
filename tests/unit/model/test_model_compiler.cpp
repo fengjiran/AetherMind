@@ -41,13 +41,13 @@ TEST(ModelCompiler, LoadAndCompileTinyLlamaAtO2) {
     ASSERT_NE(lowered->loaded_model, nullptr);
     EXPECT_EQ(lowered->loaded_model->GetConfig().num_hidden_layers, 2);
     EXPECT_FALSE(lowered->graph.steps.empty());
-    EXPECT_EQ(lowered->graph.steps.size(), lowered->graph.step_bindings.size());
-    EXPECT_EQ(lowered->graph.steps.front().op_type, OpType::kEmbedding);
-    EXPECT_EQ(lowered->graph.steps.back().op_type, OpType::kArgmax);
+    EXPECT_EQ(lowered->graph.steps.front().spec.op_type, OpType::kEmbedding);
+    EXPECT_EQ(lowered->graph.steps.back().spec.op_type, OpType::kArgmax);
     EXPECT_TRUE(HasWeightRecipe(lowered->graph, &IsQkvRecipe));
     EXPECT_TRUE(HasWeightRecipe(lowered->graph, &IsGateUpRecipe));
 
-    for (const LoweredStepBinding& binding: lowered->graph.step_bindings) {
+    for (const LoweredStep& step: lowered->graph.steps) {
+        const LoweredStepBinding& binding = step.binding;
         for (const GraphValueId value: binding.input_values) {
             EXPECT_LT(value.index, lowered->graph.values.size());
         }
@@ -76,20 +76,20 @@ TEST(ModelCompiler, SupportsO0AndO2) {
 
 TEST(ModelCompiler, PropagatesLoweringTargetConfiguration) {
     ModelCompileOptions options;
-    options.lowering.device_type = DeviceType::kCUDA;
-    options.lowering.isa = IsaLevel::kAVX2;
-    options.lowering.weight_format = WeightFormat::kPacked;
-    options.lowering.phase = ExecPhase::kPrefill;
+    options.lowering.selector.device_type = DeviceType::kCUDA;
+    options.lowering.selector.isa = IsaLevel::kAVX2;
+    options.lowering.selector.weight_format = WeightFormat::kPacked;
+    options.lowering.selector.phase = ExecPhase::kPrefill;
 
     const auto lowered = ModelCompiler::LoadAndCompile(
             TestModelDir(), options);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
 
-    for (const ExecutionPlanNodeSpec& step: lowered->graph.steps) {
-        EXPECT_EQ(step.device_type, DeviceType::kCUDA);
-        EXPECT_EQ(step.isa, IsaLevel::kAVX2);
-        EXPECT_EQ(step.weight_format, WeightFormat::kPacked);
-        EXPECT_EQ(step.phase, ExecPhase::kPrefill);
+    for (const LoweredStep& step: lowered->graph.steps) {
+        EXPECT_EQ(step.spec.selector.device_type, DeviceType::kCUDA);
+        EXPECT_EQ(step.spec.selector.isa, IsaLevel::kAVX2);
+        EXPECT_EQ(step.spec.selector.weight_format, WeightFormat::kPacked);
+        EXPECT_EQ(step.spec.selector.phase, ExecPhase::kPrefill);
     }
 }
 

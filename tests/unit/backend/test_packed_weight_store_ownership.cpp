@@ -1,4 +1,4 @@
-#include "aethermind/model/backend_sidecar.h"
+#include "aethermind/model/packed_weight_store.h"
 
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/kernel_selector.h"
@@ -76,12 +76,12 @@ private:
     bool* destroyed_flag_ = nullptr;
 };
 
-TEST(BackendSidecarOwnership, SidecarOwnsPackedWeightsUntilItIsDestroyed) {
+TEST(PackedWeightStoreOwnership, StoreOwnsPackedWeightsUntilItIsDestroyed) {
     bool destroyed = false;
     const KernelSelector selector = MakePackedCpuSelector();
 
     {
-        BackendSidecar sidecar;
+        PackedWeightStore packed_weight_store;
         auto packed = std::make_unique<CountingPackedWeights>(
                 OpType::kLinear,
                 selector,
@@ -89,10 +89,10 @@ TEST(BackendSidecarOwnership, SidecarOwnsPackedWeightsUntilItIsDestroyed) {
                 &destroyed);
         const PackedWeights* raw_ptr = packed.get();
 
-        ASSERT_TRUE(sidecar.Store(std::move(packed)).ok());
+        ASSERT_TRUE(packed_weight_store.Store(std::move(packed)).ok());
         EXPECT_FALSE(destroyed);
 
-        const PackedWeights* found = sidecar.Find(OpType::kLinear, selector);
+        const PackedWeights* found = packed_weight_store.Find(OpType::kLinear, selector);
         ASSERT_NE(found, nullptr);
         EXPECT_EQ(found, raw_ptr);
         EXPECT_TRUE(found->storage().is_initialized());
@@ -101,11 +101,11 @@ TEST(BackendSidecarOwnership, SidecarOwnsPackedWeightsUntilItIsDestroyed) {
     EXPECT_TRUE(destroyed);
 }
 
-TEST(BackendSidecarOwnership, StoredPackedWeightsOutliveBackendInstance) {
+TEST(PackedWeightStoreOwnership, StoredPackedWeightsOutliveBackendInstance) {
     bool destroyed = false;
     const KernelSelector selector = MakePackedCpuSelector();
 
-    BackendSidecar sidecar;
+    PackedWeightStore packed_weight_store;
     {
         CpuBackend backend;
         (void) backend;
@@ -115,27 +115,27 @@ TEST(BackendSidecarOwnership, StoredPackedWeightsOutliveBackendInstance) {
                 selector,
                 MakeTestBuffer(128),
                 &destroyed);
-        ASSERT_TRUE(sidecar.Store(std::move(packed)).ok());
+        ASSERT_TRUE(packed_weight_store.Store(std::move(packed)).ok());
     }
 
-    const PackedWeights* found = sidecar.Find(OpType::kLinear, selector);
+    const PackedWeights* found = packed_weight_store.Find(OpType::kLinear, selector);
     ASSERT_NE(found, nullptr);
     EXPECT_FALSE(destroyed);
     EXPECT_TRUE(found->storage().device().is_cpu());
 }
 
-TEST(BackendSidecarOwnership, StoreRejectsDuplicatePackedWeightEntries) {
-    BackendSidecar sidecar;
+TEST(PackedWeightStoreOwnership, StoreRejectsDuplicatePackedWeightEntries) {
+    PackedWeightStore packed_weight_store;
     const KernelSelector selector = MakePackedCpuSelector();
 
-    ASSERT_TRUE(sidecar.Store(std::make_unique<CountingPackedWeights>(
-                                      OpType::kLinear,
-                                      selector,
-                                      MakeTestBuffer(64),
-                                      nullptr))
+    ASSERT_TRUE(packed_weight_store.Store(std::make_unique<CountingPackedWeights>(
+                                                  OpType::kLinear,
+                                                  selector,
+                                                  MakeTestBuffer(64),
+                                                  nullptr))
                         .ok());
 
-    const Status duplicate_status = sidecar.Store(std::make_unique<CountingPackedWeights>(
+    const Status duplicate_status = packed_weight_store.Store(std::make_unique<CountingPackedWeights>(
             OpType::kLinear,
             selector,
             MakeTestBuffer(64),

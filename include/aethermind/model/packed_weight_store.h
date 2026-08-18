@@ -1,5 +1,8 @@
-#ifndef AETHERMIND_MODEL_BACKEND_SIDECAR_H
-#define AETHERMIND_MODEL_BACKEND_SIDECAR_H
+#ifndef AETHERMIND_MODEL_PACKED_WEIGHT_STORE_H
+#define AETHERMIND_MODEL_PACKED_WEIGHT_STORE_H
+
+/// @file packed_weight_store.h
+/// @brief Ownership store for legacy packed-weight artifacts.
 
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/backend/packed_weights.h"
@@ -11,7 +14,11 @@
 
 namespace aethermind {
 
-class BackendSidecar {
+/// Owns PackedWeights artifacts indexed by their legacy op/selector key.
+///
+/// This store remains a compatibility facility until graph-driven weight
+/// materialization provides per-binding artifact identity.
+class PackedWeightStore {
 public:
     Status Store(std::unique_ptr<PackedWeights> packed_weights) noexcept;
 

@@ -7,7 +7,7 @@
 
 namespace aethermind {
 
-// Packed weight artifacts are owned by a BackendSidecar.
+// Packed weight artifacts are owned by a PackedWeightStore.
 // Backend/prepacker code defines the format and build path but does not own
 // the packed payload lifetime.
 class PackedWeights {

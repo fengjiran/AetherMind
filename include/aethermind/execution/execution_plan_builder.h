@@ -4,7 +4,6 @@
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/execution/execution_node_spec.h"
 #include "aethermind/execution/execution_plan.h"
-#include "aethermind/model/backend_sidecar.h"
 #include "aethermind/runtime/runtime_context.h"
 
 #include <vector>
@@ -12,6 +11,7 @@
 namespace aethermind {
 
 struct LoweredGraph;
+class PackedWeightStore;
 
 class ExecutionPlanBuilder {
 public:
@@ -25,7 +25,7 @@ public:
 
     AM_NODISCARD static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
-            const BackendSidecar& sidecar,
+            const PackedWeightStore& packed_weight_store,
             const std::vector<ExecutionPlanNodeSpec>& nodes);
 
     /// Builds an ExecutionPlan from a LoweredGraph by resolving lowering-time
@@ -36,7 +36,7 @@ public:
 
     AM_NODISCARD static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
-            const BackendSidecar& sidecar,
+            const PackedWeightStore& packed_weight_store,
             const LoweredGraph& lowered);
 };
 

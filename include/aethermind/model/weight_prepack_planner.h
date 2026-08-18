@@ -13,7 +13,7 @@ namespace aethermind {
 
 class Backend;
 class KernelRegistry;
-class BackendSidecar;
+class PackedWeightStore;
 
 class WeightPrepackPlanner {
 public:
@@ -33,11 +33,11 @@ public:
             const KernelRegistry& registry);
 
     // Executes prepack for every request and stores the resulting
-    // PackedWeights artifacts into a BackendSidecar.
+    // PackedWeights artifacts into a PackedWeightStore.
     // ModelLoader does not call this legacy planner; graph-driven artifact
     // materialization is the production integration point.
     static Status PrepackAndStore(
-            BackendSidecar& sidecar,
+            PackedWeightStore& packed_weight_store,
             const std::vector<Request>& requests);
 };
 

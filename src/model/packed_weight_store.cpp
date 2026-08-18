@@ -1,10 +1,10 @@
-#include "aethermind/model/backend_sidecar.h"
+#include "aethermind/model/packed_weight_store.h"
 
 namespace aethermind {
 
-Status BackendSidecar::Store(std::unique_ptr<PackedWeights> packed_weights) noexcept {
+Status PackedWeightStore::Store(std::unique_ptr<PackedWeights> packed_weights) noexcept {
     if (packed_weights == nullptr) {
-        return Status::InvalidArgument("BackendSidecar cannot store null packed weights");
+        return Status::InvalidArgument("PackedWeightStore cannot store null packed weights");
     }
 
     if (Find(packed_weights->op_type(), packed_weights->selector()) != nullptr) {
@@ -16,7 +16,7 @@ Status BackendSidecar::Store(std::unique_ptr<PackedWeights> packed_weights) noex
     return Status::Ok();
 }
 
-const PackedWeights* BackendSidecar::Find(
+const PackedWeights* PackedWeightStore::Find(
         OpType op_type,
         const KernelSelector& selector) const noexcept {
     for (const auto& packed_weights: packed_weights_) {

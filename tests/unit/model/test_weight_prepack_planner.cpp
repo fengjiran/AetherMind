@@ -1,8 +1,8 @@
 #include "aethermind/model/weight_prepack_planner.h"
 
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/model/backend_sidecar.h"
 #include "aethermind/model/loaded_model.h"
+#include "aethermind/model/packed_weight_store.h"
 
 #include <cstddef>
 #include <gtest/gtest.h>
@@ -157,7 +157,7 @@ TEST(WeightPrepackPlanner, PrepackAndStoreMakesWeightsFindable) {
     index.layers.push_back(MakeTestLayer(storage, 16));
 
     LoadedModel loaded_model(MakeLlamaConfig(1), std::move(index));
-    BackendSidecar packed_weight_sidecar;
+    PackedWeightStore packed_weight_store;
 
     CpuBackend backend;
     KernelRegistry registry;
@@ -165,11 +165,11 @@ TEST(WeightPrepackPlanner, PrepackAndStoreMakesWeightsFindable) {
             loaded_model.GetConfig(), loaded_model.GetResolvedWeights(), backend, registry);
     ASSERT_TRUE(requests.ok());
 
-    Status status = WeightPrepackPlanner::PrepackAndStore(packed_weight_sidecar, *requests);
+    Status status = WeightPrepackPlanner::PrepackAndStore(packed_weight_store, *requests);
     ASSERT_TRUE(status.ok());
 
     const KernelSelector expected_selector = MakeExpectedSelector();
-    const PackedWeights* found = packed_weight_sidecar.Find(
+    const PackedWeights* found = packed_weight_store.Find(
             OpType::kLinear, expected_selector);
     ASSERT_NE(found, nullptr);
     EXPECT_EQ(found->op_type(), OpType::kLinear);
@@ -189,7 +189,7 @@ TEST(WeightPrepackPlanner, PrepackAndStoreSkipsDuplicateSelectorWithoutError) {
     index.layers.push_back(MakeTestLayer(storage, 100));
 
     LoadedModel loaded_model(MakeLlamaConfig(2), std::move(index));
-    BackendSidecar packed_weight_sidecar;
+    PackedWeightStore packed_weight_store;
 
     CpuBackend backend;
     KernelRegistry registry;
@@ -199,12 +199,12 @@ TEST(WeightPrepackPlanner, PrepackAndStoreSkipsDuplicateSelectorWithoutError) {
     EXPECT_EQ(requests->size(), 14);
 
     // PrepackAndStore should succeed — duplicates are skipped, not rejected.
-    Status status = WeightPrepackPlanner::PrepackAndStore(packed_weight_sidecar, *requests);
+    Status status = WeightPrepackPlanner::PrepackAndStore(packed_weight_store, *requests);
     ASSERT_TRUE(status.ok());
 
     // Only the first unique (op_type, selector) pair is stored.
     const KernelSelector expected_selector = MakeExpectedSelector();
-    const PackedWeights* found = packed_weight_sidecar.Find(
+    const PackedWeights* found = packed_weight_store.Find(
             OpType::kLinear, expected_selector);
     ASSERT_NE(found, nullptr);
 }
@@ -219,7 +219,7 @@ TEST(WeightPrepackPlanner, RawViewsRemainAccessibleAfterPrepack) {
     index.layers.push_back(MakeTestLayer(storage, 16));
 
     LoadedModel loaded_model(MakeLlamaConfig(1), std::move(index));
-    BackendSidecar packed_weight_sidecar;
+    PackedWeightStore packed_weight_store;
 
     CpuBackend backend;
     KernelRegistry registry;
@@ -227,7 +227,7 @@ TEST(WeightPrepackPlanner, RawViewsRemainAccessibleAfterPrepack) {
             loaded_model.GetConfig(), loaded_model.GetResolvedWeights(), backend, registry);
     ASSERT_TRUE(requests.ok());
 
-    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(packed_weight_sidecar, *requests).ok());
+    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(packed_weight_store, *requests).ok());
 
     const auto& resolved_weights = loaded_model.GetResolvedWeights();
     EXPECT_TRUE(resolved_weights.embed_tokens.IsValid());

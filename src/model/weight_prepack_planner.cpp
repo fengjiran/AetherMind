@@ -5,7 +5,7 @@
 #include "aethermind/backend/kernel_registry.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/base/tensor_view.h"
-#include "aethermind/model/backend_sidecar.h"
+#include "aethermind/model/packed_weight_store.h"
 
 #include <vector>
 
@@ -66,7 +66,7 @@ StatusOr<std::vector<WeightPrepackPlanner::Request>> WeightPrepackPlanner::Build
     return requests;
 }
 
-Status WeightPrepackPlanner::PrepackAndStore(BackendSidecar& sidecar,
+Status WeightPrepackPlanner::PrepackAndStore(PackedWeightStore& packed_weight_store,
                                              const std::vector<Request>& requests) {
     CpuWeightPrepacker prepacker;
 
@@ -108,7 +108,7 @@ Status WeightPrepackPlanner::PrepackAndStore(BackendSidecar& sidecar,
             return packed.status();
         }
 
-        AM_RETURN_IF_ERROR(sidecar.Store(std::move(*packed)));
+        AM_RETURN_IF_ERROR(packed_weight_store.Store(std::move(*packed)));
         stored.push_back({req.op_type, req.selector});
     }
 

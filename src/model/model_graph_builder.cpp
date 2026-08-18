@@ -303,12 +303,10 @@ StatusOr<GraphValueId> BuildDecoderLayer(ModelGraph& graph,
 Status ValidateInputs(const HfModelConfig& config, const ResolvedModelWeights& weights) {
     // The builder is the single authority for RoPE scaling conversion
     // (kNone/kLinear mapping, rejection of unsupported HF variants in
-    // MakeRoPEParams). The validator is invoked with allow_rope_scaling=true
-    // so that supported/unsupported HF scaling types reach MakeRoPEParams
+    // MakeRoPEParams). Loading validation accepts rope_scaling by default so
+    // that supported/unsupported HF scaling types reach MakeRoPEParams
     // rather than being blanket-rejected by the Phase-1 loader policy.
-    ModelValidationOptions options;
-    options.allow_rope_scaling = true;
-    AM_RETURN_IF_ERROR(HfModelValidator::ValidateConfig(config, options));
+    AM_RETURN_IF_ERROR(HfModelValidator::ValidateConfig(config));
     return HfModelValidator::ValidateResolvedModel(config, weights);
 }
 

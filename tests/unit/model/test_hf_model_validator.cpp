@@ -342,12 +342,14 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsNonPositiveRopeTheta) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ModelLoader_HfModelValidatorTest, RejectsRopeScalingByDefault) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsRopeScalingWhenDisallowed) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.rope.scaling_factor = 2.0;
     config.rope.scaling_type = HfRopeScalingType::kLinear;
+    ModelValidationOptions options{};
+    options.allow_rope_scaling = false;
 
-    const Status status = HfModelValidator::ValidateConfig(config);
+    const Status status = HfModelValidator::ValidateConfig(config, options);
 
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);

@@ -21,9 +21,7 @@ StatusOr<std::unique_ptr<LoadedModel>> ModelLoader::Load(
         return config.status();
     }
 
-    ModelValidationOptions validation_options;
-    validation_options.allow_rope_scaling = true;
-    AM_RETURN_IF_ERROR(HfModelValidator::ValidateConfig(*config, validation_options));
+    AM_RETURN_IF_ERROR(HfModelValidator::ValidateConfig(*config));
 
     auto raw_weights = reader->LoadRawWeightTable();
     if (!raw_weights.ok()) {

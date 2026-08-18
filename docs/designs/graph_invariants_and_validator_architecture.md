@@ -164,7 +164,7 @@ Commit 的顺序是：`ValidateEdits`、计算保留集（含 DCE 语义）、�
 
 ### 5.5 常量完整性
 
-常量不得有 producer（§4.1）。lowering 时把 `ConstantValue` 的绑定记录进 `LoweredConstantBinding`，后端可直接解析内联数据或命名外部常量，无需回头翻图（[graph_lowering.cpp](../../src/graph/lowering/graph_lowering.cpp:133)）。常量折叠产生的会话常量经 Commit 进入不可变快照，提交后同样受全量复验。
+常量不得有 producer（§4.1）。lowering 后 `ConstantValue` 的绑定保留在 `LoweredGraph::values` 的 payload 中，后端可按需经 value id 延迟解析内联数据或命名外部常量（[graph_lowering.cpp](../../src/graph/lowering/graph_lowering.cpp:133)）。常量折叠产生的会话常量经 Commit 进入不可变快照，提交后同样受全量复验。
 
 部分覆盖：不存在通用校验器核对每个 `ConstantValue` 的 `inline_data` 字节数与 `TensorSpec` 声称的元素数/dtype 是否匹配；内联常量的字节数与 spec 一致性依赖生产路径（常量折叠、`AddConstant`）各自保证。
 

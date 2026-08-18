@@ -18,12 +18,10 @@ ExecutionPlanBuilder::Build(RuntimeContext& runtime,
 ```cpp
 struct ExecutionPlanNodeSpec {
     OpType op_type = OpType::kUnknown;
-    DeviceType device_type = DeviceType::kCPU;
-    DataType act_dtype{};                  // renamed from activation_dtype
-    DataType weight_dtype{};
-    WeightFormat weight_format = WeightFormat::kPlain;
-    IsaLevel isa = IsaLevel::kScalar;
-    ExecPhase phase = ExecPhase::kBoth;
+    // Execution capabilities this step requires: lowering records the
+    // configured prefix (device/ISA/weight format/phase) and fills the
+    // activation/weight dtypes from the operator's inputs and outputs.
+    KernelSelector selector{};
     WorkspaceRequirement workspace_requirement{};
     // Schema-port-ordered input specs, including state ports that do not
     // contribute to runtime tensor bindings.
@@ -36,7 +34,7 @@ struct ExecutionPlanNodeSpec {
 };
 ```
 
-也就是说，`ExecutionPlanBuilder` 的直接输入可以是已经线性化好的 node spec 列表；同时也接受 `LoweredGraph`（包含 steps、step_bindings、按 `GraphValueId` 索引的 values、inputs/outputs、state_aliases）。`ModelGraph` 通过 `LowerModelGraph()` 先转换为 `LoweredGraph`，再由 `ExecutionPlanBuilder::Build(RuntimeContext, LoweredGraph)` 执行 state alias resolution 并构建计划。
+也就是说，`ExecutionPlanBuilder` 的直接输入可以是已经线性化好的 node spec 列表；同时也接受 `LoweredGraph`（包含 steps——每步为 `LoweredStep{spec, binding}` 的 1:1 配对、按 `GraphValueId` 索引的 values、inputs/outputs、state_aliases）。`ModelGraph` 通过 `LowerModelGraph()` 先转换为 `LoweredGraph`，再由 `ExecutionPlanBuilder::Build(RuntimeContext, LoweredGraph)` 执行 state alias resolution 并构建计划。
 
 ## 2. 当前完整流程图
 
@@ -480,28 +478,28 @@ GraphLoweringConfig {
 optimized ModelGraph
   → LowerModelGraph
   → LoweredGraph
-       ├─ steps (std::vector<ExecutionPlanNodeSpec>)
-       ├─ step_bindings (std::vector<LoweredStepBinding>)
+       ├─ steps (std::vector<LoweredStep>; spec + binding 1:1 配对)
        ├─ values (std::vector<LoweredValueDesc>, indexed by GraphValueId)
        ├─ model_inputs
        ├─ model_outputs
-       ├─ state_aliases
+       ├─ state_aliases (std::vector<LoweredStateAlias>, step/port coordinates
+       │                 recorded at lowering time)
   → ExecutionPlanBuilder::Build(runtime, lowered)   // consumes full LoweredGraph
-  →   ├─ ResolveStateAliases(lowered)              // validates + converts KV cache aliases
+  →   ├─ ResolveStateAliases(lowered)              // validates + converts state aliases
   →   └─ BuildExecutionPlan(runtime, model?, steps, alias_plan, trusted=true)
   → ExecutionPlan
 ```
 
-执行计划构建的主要入口接受完整 `LoweredGraph`（含 steps、step_bindings、values、inputs/outputs、state_aliases），而非仅消费 steps：
+执行计划构建的主要入口接受完整 `LoweredGraph`（含 steps、values、inputs/outputs、state_aliases），而非仅消费 steps：
 
 ```text
 LoweredGraph
-  ├─ steps           (std::vector<ExecutionPlanNodeSpec>)
-  ├─ step_bindings   (std::vector<LoweredStepBinding>)
+  ├─ steps           (std::vector<LoweredStep>, spec + binding 1:1)
   ├─ values          (std::vector<LoweredValueDesc>)
   ├─ model_inputs    (std::vector<GraphInput>)
   ├─ model_outputs   (std::vector<GraphOutput>)
-  └─ state_aliases   (std::vector<StateAlias>)
+  └─ state_aliases   (std::vector<LoweredStateAlias>, step/port coordinates
+                     recorded at lowering time)
       │
       ▼
 ExecutionPlanBuilder::Build(RuntimeContext&, LoweredGraph const&)
@@ -516,9 +514,17 @@ BuildExecutionPlan(runtime, model?, steps, alias_plan, trusted=true)
 ExecutionPlan{... steps ..., state_alias_plan{...}}
 ```
 
-保留的 `Build(runtime, vector<ExecutionPlanNodeSpec>)` 重载仅用于测试/手工构造场景，内部构造空 StateAliasPlan（无 KV cache alias 支持）。
+保留的 `Build(runtime, vector<ExecutionPlanNodeSpec>)` 重载仅用于测试/手工构造场景，内部构造空 StateAliasPlan（无 state alias 支持）。
 
-### 6.4 仍待补齐的生产化部分
+### 6.4 state alias 的声明与解析机制
+
+状态别名的声明与解析分属两个权威，均不依赖 lowering 对具体算子的认知：
+
+- **声明**：算子在其 `OperatorSchema::state_alias_ports` 中声明（输入端口名, 输出端口名）对（如 KVCacheUpdate 声明 k_cache_in→k_cache_out、v_cache_in→v_cache_out）。新增有状态算子只需声明该字段，lowering 与解析均零改动。
+- **记录**：`LowerModelGraph` 按拓扑序逐节点消费 schema 声明，在发出每个节点时以当时已知的 step 索引与 schema 端口 index 生成 `LoweredStateAlias`（step_index/input_port/output_port + 值对），不扫描、不匹配。
+- **解析**：`ResolveStateAliases` 仅校验记录坐标（step 越界、端口值与记录不一致即失败）并转换为运行时 `ResolvedStateAlias`，不再扫描 step bindings 重新发现坐标。
+
+### 6.5 仍待补齐的生产化部分
 
 - graph-driven weight materialization/prepack，并以具体 `WeightBinding` 识别 artifact
 - 更完整的 runtime tensor/state binding 接线
@@ -588,4 +594,4 @@ LoweredGraph.steps (std::vector<ExecutionPlanNodeSpec>)
 
 ### 层次 D：LoweredModelArtifact 到 ExecutionPlan 的生产管线（未完成）
 
-正确的 production plan 仍需要从 optimized graph 的具体 `WeightBinding` 生成独立 weight artifact，并在完整 kernel 覆盖后执行 plan-time kernel resolution（见 §6.4）。
+正确的 production plan 仍需要从 optimized graph 的具体 `WeightBinding` 生成独立 weight artifact，并在完整 kernel 覆盖后执行 plan-time kernel resolution（见 §6.5）。

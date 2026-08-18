@@ -1365,10 +1365,10 @@ AM_NODISCARD StatusOr<LoweredGraph> LowerModelGraph(
 
 返回的 `LoweredGraph` 自身已自包含，不依赖任何源图存活：
 
-- 常量折叠产生 inline `ConstantValue`，`LoweredConstantBinding` 复制 `ConstantBinding`（`shared_ptr` 内联数据，共享所有权）；
+- 常量折叠产生 inline `ConstantValue`，lowering 后 `ConstantBinding`（`shared_ptr` 内联数据，共享所有权）保留在 `LoweredGraph::values` 的 payload 中；
 - 所有 `TensorSpec`、`ShapeConstraint`、`runtime_checks`、dtype 在 lowering 时值拷贝；
 - `lowered.model_outputs` 中的 `GraphValueId` 与调用方持有的优化图 `GetOutputs()` 中的 ID 一致（需要语义回查时，由调用方自行持有优化图）；
-- standalone constant graph output 的内联字节通过 `LoweredConstantBinding` 自含，编译返回后无需回读图。
+- standalone constant graph output 的内联字节经 `LoweredGraph::values` 的 payload 保持可达，编译返回后无需回读图。
 
 > 注：早期设计曾有 `CompiledModelGraph { optimized_graph, lowered }` 包装、`CompileModelGraph` 组合器与 `GraphCompileConfig` 聚合配置；随实现演进（执行路径不读图、数据值拷贝/共享所有权、组合逻辑仅为顺序调用），三者均已移除，收敛为两个显式阶段函数。
 
@@ -1637,7 +1637,7 @@ M3 验收：execution plan 构建不再依赖旧 `GraphNode.weights` / `GraphNod
 - `OpParams` serialization / round-trip：`SerializeOpParams` / `ParseOpParams`，使用 `std::from_chars` 替代 `std::stod`；
 - `QuantizationSpec`：类型定义 + `GraphValue::quantization` 字段 + `ModelGraph::SetQuantization` API + dump 输出；
 - `ConstantValue` payload：`ConstantBinding` 用 `shared_ptr<const vector<byte>>` 实现 interning，避免 `Commit` 深拷贝；
-- lowering `ConstantValue` visit 分支：`LoweredStepBinding::constant_bindings` 记录 ConstantValue input 的 binding，供 backend 解析。
+- lowering 不单独索引常量输入：`ConstantValue` 的 binding 保留在 `LoweredGraph::values` 的 payload 中，后端按真实查询模式经 value id 延迟解析。
 
 延迟项（不阻塞 M4 验收，留待后续 milestone 或 use case 驱动）：
 

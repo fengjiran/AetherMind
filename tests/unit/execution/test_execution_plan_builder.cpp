@@ -8,7 +8,7 @@
 #include "aethermind/graph/graph.h"
 #include "aethermind/graph/lowering/graph_lowering.h"
 #include "aethermind/memory/buffer.h"
-#include "aethermind/model/model_instance.h"
+#include "aethermind/model/backend_sidecar.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/ops/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -469,12 +469,12 @@ TEST(ExecutionPlanBuilder, BuildPlansWorkspaceOffsetsAcrossNodes) {
     EXPECT_EQ(plan->steps()[1].workspace_requirement.offset, 64U);
 }
 
-TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromModelInstanceSidecar) {
+TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromBackendSidecar) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<PackedTestBackendFactory>());
     RuntimeContext runtime = builder.Build();
-    ModelInstance model_instance;
+    BackendSidecar sidecar;
     KernelSelector selector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
@@ -484,10 +484,10 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromModelInstanceSidecar) {
             .phase = ExecPhase::kBoth,
     };
 
-    ASSERT_TRUE(model_instance.StorePackedWeights(std::make_unique<TestPackedWeights>(
-                                                          OpType::kRmsNorm,
-                                                          selector,
-                                                          MakeTestBuffer(128)))
+    ASSERT_TRUE(sidecar.Store(std::make_unique<TestPackedWeights>(
+                                      OpType::kRmsNorm,
+                                      selector,
+                                      MakeTestBuffer(128)))
                         .ok());
 
     const SymbolicShape act_shape = StaticShape({4, 8});
@@ -514,16 +514,16 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromModelInstanceSidecar) {
     node.runtime_checks = analyzed->runtime_checks;
     nodes.push_back(std::move(node));
 
-    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, model_instance, nodes);
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, sidecar, nodes);
 
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
     ASSERT_NE(plan->steps().front().packed_weights, nullptr);
     EXPECT_EQ(plan->steps().front().packed_weights,
-              model_instance.FindPackedWeights(OpType::kRmsNorm, selector)->storage().data());
+              sidecar.Find(OpType::kRmsNorm, selector)->storage().data());
 }
 
-TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutModelInstanceSidecar) {
+TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutBackendSidecar) {
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
 

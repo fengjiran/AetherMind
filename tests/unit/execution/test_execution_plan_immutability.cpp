@@ -6,7 +6,7 @@
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/memory/buffer.h"
-#include "aethermind/model/model_instance.h"
+#include "aethermind/model/backend_sidecar.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -226,7 +226,7 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
     EXPECT_EQ(step1.workspace_requirement.bytes, 128U);
 }
 
-TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByModelInstance) {
+TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByBackendSidecar) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<ImmutableTestBackendFactory>());
@@ -242,12 +242,12 @@ TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByModelInstance) {
             .phase = ExecPhase::kBoth,
     };
 
-    ModelInstance model_instance;
-    ASSERT_TRUE(model_instance.StorePackedWeights(std::make_unique<ImmutablePackedWeights>(
-                                                          OpType::kRmsNorm,
-                                                          selector,
-                                                          MakeTestBuffer(256),
-                                                          &packed_destroyed))
+    BackendSidecar sidecar;
+    ASSERT_TRUE(sidecar.Store(std::make_unique<ImmutablePackedWeights>(
+                                      OpType::kRmsNorm,
+                                      selector,
+                                      MakeTestBuffer(256),
+                                      &packed_destroyed))
                         .ok());
 
     const SymbolicShape act_shape = StaticShape({1, 4});
@@ -269,7 +269,7 @@ TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByModelInstance) {
             .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
     });
 
-    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, model_instance, nodes);
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, sidecar, nodes);
 
     ASSERT_TRUE(plan.ok());
     ASSERT_EQ(plan->size(), 1U);

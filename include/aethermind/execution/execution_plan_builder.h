@@ -4,7 +4,7 @@
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/execution/execution_node_spec.h"
 #include "aethermind/execution/execution_plan.h"
-#include "aethermind/model/model_instance.h"
+#include "aethermind/model/backend_sidecar.h"
 #include "aethermind/runtime/runtime_context.h"
 
 #include <vector>
@@ -25,7 +25,7 @@ public:
 
     AM_NODISCARD static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
-            const ModelInstance& model_instance,
+            const BackendSidecar& sidecar,
             const std::vector<ExecutionPlanNodeSpec>& nodes);
 
     /// Builds an ExecutionPlan from a LoweredGraph by resolving lowering-time
@@ -36,7 +36,7 @@ public:
 
     AM_NODISCARD static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
-            const ModelInstance& model_instance,
+            const BackendSidecar& sidecar,
             const LoweredGraph& lowered);
 };
 

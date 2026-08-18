@@ -8,7 +8,7 @@
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/memory/buffer.h"
-#include "aethermind/model/model_instance.h"
+#include "aethermind/model/backend_sidecar.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -215,7 +215,7 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     CpuWorkspaceArena arena(workspace, sizeof(workspace));
     RuntimeBindingContext bindings(&arena);
     g_execution_order = &execution_order;
-    ModelInstance model_instance;
+    BackendSidecar sidecar;
 
     const KernelSelector packed_selector{
             .device_type = DeviceType::kCPU,
@@ -228,10 +228,10 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     Buffer packed_storage = MakeTestBuffer(64);
     const void* expected_packed_weights = packed_storage.data();
     ASSERT_NE(expected_packed_weights, nullptr);
-    ASSERT_TRUE(model_instance.StorePackedWeights(std::make_unique<ExecutorPackedWeights>(
-                                                          OpType::kRoPE,
-                                                          packed_selector,
-                                                          std::move(packed_storage)))
+    ASSERT_TRUE(sidecar.Store(std::make_unique<ExecutorPackedWeights>(
+                                      OpType::kRoPE,
+                                      packed_selector,
+                                      std::move(packed_storage)))
                         .ok());
 
     // kSoftmax is schema-only in this test backend. InferSoftmax expects one
@@ -294,7 +294,7 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     rope_node.runtime_checks = rope_analyzed->runtime_checks;
     nodes.push_back(std::move(rope_node));
 
-    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, model_instance, nodes);
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, sidecar, nodes);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 2U);
     bindings.SetStepTensorBinding(0, StepTensorBinding{

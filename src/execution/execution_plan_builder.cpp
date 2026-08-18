@@ -1,8 +1,7 @@
 #include "aethermind/execution/execution_plan_builder.h"
-
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/graph/lowering/graph_lowering.h"
-#include "aethermind/model/model_instance.h"
+#include "aethermind/model/backend_sidecar.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_schema.h"
 
@@ -20,17 +19,17 @@ KernelSelector MakeSelectorForNode(const ExecutionPlanNodeSpec& node) noexcept {
     };
 }
 
-StatusOr<const void*> ResolvePackedWeightsForNode(const ModelInstance* model_instance,
+StatusOr<const void*> ResolvePackedWeightsForNode(const BackendSidecar* sidecar,
                                                   const ExecutionPlanNodeSpec& node) noexcept {
     if (node.weight_format != WeightFormat::kPacked) {
         return nullptr;
     }
-    if (model_instance == nullptr) {
-        return Status::NotFound("Packed-weight node requires a ModelInstance sidecar");
+    if (sidecar == nullptr) {
+        return Status::NotFound("Packed-weight node requires a BackendSidecar");
     }
 
     const auto selector = MakeSelectorForNode(node);
-    const auto* packed_weights = model_instance->FindPackedWeights(node.op_type, selector);
+    const auto* packed_weights = sidecar->Find(node.op_type, selector);
     if (packed_weights == nullptr) {
         return Status::NotFound("Packed weights not found for ExecutionPlan node");
     }
@@ -110,7 +109,7 @@ StatusOr<PreparedNodeMetadata> PrepareNodeMetadata(const ExecutionPlanNodeSpec& 
 }
 
 StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
-                                           const ModelInstance* model_instance,
+                                           const BackendSidecar* sidecar,
                                            const std::vector<ExecutionPlanNodeSpec>& nodes,
                                            StateAliasPlan state_alias_plan,
                                            bool trusted) {
@@ -141,7 +140,7 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
         if (!kernel.ok()) {
             return kernel.status();
         }
-        const auto packed_weights = ResolvePackedWeightsForNode(model_instance, node);
+        const auto packed_weights = ResolvePackedWeightsForNode(sidecar, node);
         if (!packed_weights.ok()) {
             return packed_weights.status();
         }
@@ -181,9 +180,9 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         RuntimeContext& runtime,
-        const ModelInstance& model_instance,
+        const BackendSidecar& sidecar,
         const std::vector<ExecutionPlanNodeSpec>& nodes) {
-    return BuildExecutionPlan(runtime, &model_instance, nodes, StateAliasPlan{}, /*trusted=*/false);
+    return BuildExecutionPlan(runtime, &sidecar, nodes, StateAliasPlan{}, /*trusted=*/false);
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
@@ -199,13 +198,13 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         RuntimeContext& runtime,
-        const ModelInstance& model_instance,
+        const BackendSidecar& sidecar,
         const LoweredGraph& lowered) {
     auto alias_plan = ResolveStateAliases(lowered);
     if (!alias_plan.ok()) {
         return alias_plan.status();
     }
-    return BuildExecutionPlan(runtime, &model_instance, lowered.steps,
+    return BuildExecutionPlan(runtime, &sidecar, lowered.steps,
                               std::move(*alias_plan), /*trusted=*/true);
 }
 

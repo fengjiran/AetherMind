@@ -1,5 +1,7 @@
 # ModelLoader 与权重预打包设计文档
 
+> **历史设计说明（已被当前实现取代）**：`ModelLoader` 现仅进行 HF I/O、validation 与 logical weight resolution，并返回 `LoadedModel`；它不创建 `ModelInstance`、不调用 `WeightPrepackPlanner`。当前 frontend 主流程由 `ModelCompiler` 产生 `LoweredModel`。本文后续关于加载期 prepack 和 `ModelInstanceBuilder` 的描述仅保留为历史背景，不得作为实现依据。
+
 ## 1. 文档目标
 
 本文档定义 AetherMind Phase 1 中 **模型加载（ModelLoader）** 与 **权重预打包（Weight Prepack）** 的收敛设计。

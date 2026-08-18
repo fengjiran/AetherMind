@@ -1,5 +1,7 @@
 # ModelGraph 数据结构设计全面审核报告
 
+> **历史审查快照（部分结论已过时）**：`LoadedModel` 现在持有 config 与 resolved raw weights；`ModelInstance` 仅保留 packed-weight sidecar 兼容职责。因此本文对 `ModelInstance::GetConfig()`、`GetResolvedWeights()` 和加载期 prepack 的讨论不可作为当前实现依据。
+
 ## 一、审核范围
 
 本报告审核 `docs/designs/model_graph_design.md` 中定义的核心数据结构及其与现有代码库的兼容性。审核基于以下已验证的源文件：

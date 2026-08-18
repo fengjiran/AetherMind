@@ -1,6 +1,6 @@
 # 当前图编译流程实现梳理
 
-本文按当前代码事实梳理 AetherMind 中图编译相关实现。结论先说：当前仓库已经具备 `ModelGraph -> LoweredGraph -> ExecutionPlanNodeSpec` 的语义图 lowering bridge，以及 `std::vector<ExecutionPlanNodeSpec> -> ExecutionPlan` 的计划构建流程；生产加载路径仍主要围绕手工/测试构造的 node spec，尚未形成完整的模型加载到执行计划自动编译入口。
+本文按当前代码事实梳理 AetherMind 中图编译相关实现。当前仓库已经具备 `LoadedModel -> ModelGraph -> optimized ModelGraph -> LoweredModel` 的 frontend compilation 主流程，以及 `LoweredGraph -> ExecutionPlan` 的计划构建流程；二者之间的 graph-driven weight materialization、完整 kernel 覆盖和生产 ExecutionPlan 串联仍未完成。
 
 ## 1. 当前实际入口
 
@@ -36,7 +36,7 @@ struct ExecutionPlanNodeSpec {
 };
 ```
 
-也就是说，`ExecutionPlanBuilder` 的直接输入可以是已经线性化好的 node spec 列表；同时也接受 `LoweredGraph`（包含 steps、step_bindings、inputs/outputs、state_aliases）。`ModelGraph` 通过 `LowerModelGraph()` 先转换为 `LoweredGraph`，再由 `ExecutionPlanBuilder::Build(RuntimeContext, LoweredGraph)` 执行 state alias resolution 并构建计划。
+也就是说，`ExecutionPlanBuilder` 的直接输入可以是已经线性化好的 node spec 列表；同时也接受 `LoweredGraph`（包含 steps、step_bindings、按 `GraphValueId` 索引的 values、inputs/outputs、state_aliases）。`ModelGraph` 通过 `LowerModelGraph()` 先转换为 `LoweredGraph`，再由 `ExecutionPlanBuilder::Build(RuntimeContext, LoweredGraph)` 执行 state alias resolution 并构建计划。
 
 ## 2. 当前完整流程图
 
@@ -448,7 +448,7 @@ ValidateShapeConstraints(...)
 
 ### 6.2 规范组合调用
 
-优化与降低是两个显式阶段，由调用方直接串联（不再有组合器函数或聚合配置类型）：
+优化与降低仍是两个显式阶段；`ModelCompiler` 用 `ModelLoweringOptions` 为生产 frontend 提供唯一的组合入口，诊断/测试场景可继续直接串联：
 
 ```text
 ModelGraph
@@ -470,7 +470,7 @@ GraphLoweringConfig {
 }
 ```
 
-`OptimizeModelGraph` 按 `opt_level` 确定性地选择 pass pipeline（O0 无 pass，O1 ConstantFolding→DCE，O2+ ConstantFolding→SiluMulFusion→DCE）。特征 flag（`enable_constant_folding`、`enable_swiglu_fusion`、`enable_dce`）不参与 pass 注册，仅控制已注册 pass 的运行时行为。
+`OptimizeModelGraph` 按 `opt_level` 确定性地选择 pass pipeline（O0 无 pass，O1 ConstantFolding→DCE，O2+ ConstantFolding→QkvLinearFusion→GateUpLinearFusion→SiluMulFusion→AddRmsNormFusion→DCE）。特征 flag 不参与 pass 注册，仅控制已注册 pass 的运行时行为。
 
 ### 6.3 当前的显式降低入口
 
@@ -482,6 +482,7 @@ optimized ModelGraph
   → LoweredGraph
        ├─ steps (std::vector<ExecutionPlanNodeSpec>)
        ├─ step_bindings (std::vector<LoweredStepBinding>)
+       ├─ values (std::vector<LoweredValueDesc>, indexed by GraphValueId)
        ├─ model_inputs
        ├─ model_outputs
        ├─ state_aliases
@@ -491,12 +492,13 @@ optimized ModelGraph
   → ExecutionPlan
 ```
 
-执行计划构建的主要入口接受完整 `LoweredGraph`（含 steps、step_bindings、inputs/outputs、state_aliases），而非仅消费 steps：
+执行计划构建的主要入口接受完整 `LoweredGraph`（含 steps、step_bindings、values、inputs/outputs、state_aliases），而非仅消费 steps：
 
 ```text
 LoweredGraph
   ├─ steps           (std::vector<ExecutionPlanNodeSpec>)
   ├─ step_bindings   (std::vector<LoweredStepBinding>)
+  ├─ values          (std::vector<LoweredValueDesc>)
   ├─ model_inputs    (std::vector<GraphInput>)
   ├─ model_outputs   (std::vector<GraphOutput>)
   └─ state_aliases   (std::vector<StateAlias>)
@@ -518,11 +520,11 @@ ExecutionPlan{... steps ..., state_alias_plan{...}}
 
 ### 6.4 仍待补齐的生产化部分
 
-- 从 `ModelInstance` / HF config / resolved weights 自动生成图结构并经过优化、降低到可执行 node specs 的完整生产入口
+- graph-driven weight materialization/prepack，并以具体 `WeightBinding` 识别 artifact
 - 更完整的 runtime tensor/state binding 接线
-- 更完整的 Llama layer 执行覆盖与后续优化 pass
+- 完整的 Llama layer kernel 覆盖与 `LoweredModel → ExecutionPlan` 编排
 
-所以目前 `ExecutionPlanNodeSpec` 仍主要由测试或 lowering bridge 产出，完整的"模型加载后自动生成图结构、优化、lowering 并构建可执行计划"的端到端生产入口还未完成。
+因此“模型加载后自动生成图结构、优化、lowering”已经可用；“模型加载后构建正确、可执行的 ExecutionPlan”仍未完成。
 
 ## 7. 当前最终编译产物
 
@@ -564,7 +566,7 @@ ModelGraph
        └─ StatusOr<LoweredGraph> lowered（优化图 caller-owned）
 ```
 
-`OptimizeModelGraph` + `LowerModelGraph` 是 Phase 1 中从语义图到可执行 artifact 的两个规范入口。优化 pipeline 由 `opt_level` 确定性地选择（O0 无 pass，O1 ConstantFolding→DCE，O2+ ConstantFolding→SiluMulFusion→DCE）。
+`OptimizeModelGraph` + `LowerModelGraph` 是 Phase 1 中从语义图到 lowering artifact 的两个规范入口。优化 pipeline 由 `opt_level` 确定性地选择（O0 无 pass，O1 ConstantFolding→DCE，O2+ ConstantFolding→QkvLinearFusion→GateUpLinearFusion→SiluMulFusion→AddRmsNormFusion→DCE）。
 
 ### 层次 B：LoweredGraph 到 ExecutionPlan 的构建（已实现）
 
@@ -580,6 +582,10 @@ LoweredGraph.steps (std::vector<ExecutionPlanNodeSpec>)
 
 `ExecutionPlanBuilder` 不理解模型拓扑，它只消费已经准备好的 node specs。模型拓扑到 `ExecutionPlanNodeSpec` 的转换由 `LowerModelGraph` 负责。
 
-### 层次 C：ModelInstance 到 ExecutionPlan 的生产管线（未完成）
+### 层次 C：LoadedModel 到 LoweredModel 的 frontend production pipeline（已实现）
 
-`ModelInstance` / HF config / resolved weights → graph building → optimization → lowering → execution plan 的完整生产入口目前仍不完整。当前 `ExecutionPlanNodeSpec` 主要由 lowering bridge 或测试产出；从模型加载到自动执行计划生成的端到端流程还需要 `ModelInstance` 驱动的完整 graph builder → compile pipeline 衔接（见 §6.4）。
+`ModelLoader::Load` 生成 `LoadedModel`，`ModelCompiler::BuildLoweredModel` 串联 `ModelGraphBuilder::BuildLlamaDense`、`OptimizeModelGraph` 与 `LowerModelGraph`，并以 `LoweredModel` 将 loaded raw-weight ownership 与 lowering artifact 一起返回。`ModelCompiler::LoadAndLowerModel` 是对应的一站式薄 facade。该阶段不调用 backend、prepack 或 `ExecutionPlanBuilder`。
+
+### 层次 D：LoweredModel 到 ExecutionPlan 的生产管线（未完成）
+
+正确的 production plan 仍需要从 optimized graph 的具体 `WeightBinding` 生成独立 weight artifact，并在完整 kernel 覆盖后执行 plan-time kernel resolution（见 §6.4）。

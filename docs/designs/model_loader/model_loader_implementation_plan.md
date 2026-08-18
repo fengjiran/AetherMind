@@ -1,5 +1,7 @@
 ---
 ModelLoader / Weight Prepack 实施批次方案
+
+> **历史实施计划（已过时）**：当前 `ModelLoader::Load` 返回 `LoadedModel` 并且不执行 prepack；frontend compilation 已由 `ModelCompiler::BuildLoweredModel` / `LoadAndLowerModel` 完成。本文关于 `ModelInstanceBuilder`、加载期 prepack 和旧 `Load` 签名的内容不可作为当前实现依据。
 总体原则
 按你这份设计文档和当前代码现状，最合理的推进方式是：
 1. 先打通最窄闭环

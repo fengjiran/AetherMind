@@ -79,67 +79,83 @@ private:
         };
 
         if (key == "model_type") {
-            return parse_into([&] { return ParseString(); }, config.model_type);
+            return parse_into([&] { return ParseString(); },
+                              config.model_type);
         }
 
         if (key == "architectures") {
-            return parse_into([&] { return ParseStringArray(); }, config.architectures);
+            return parse_into([&] { return ParseStringArray(); },
+                              config.architectures);
         }
 
         if (key == "hidden_size") {
-            return parse_into([&] { return ParseInt64(); }, config.hidden_size);
+            return parse_into([&] { return ParseInt64(); },
+                              config.hidden_size);
         }
 
         if (key == "intermediate_size") {
-            return parse_into([&] { return ParseInt64(); }, config.intermediate_size);
+            return parse_into([&] { return ParseInt64(); },
+                              config.intermediate_size);
         }
 
         if (key == "num_hidden_layers") {
-            return parse_into([&] { return ParseInt64(); }, config.num_hidden_layers);
+            return parse_into([&] { return ParseInt64(); },
+                              config.num_hidden_layers);
         }
 
         if (key == "num_attention_heads") {
-            return parse_into([&] { return ParseInt64(); }, config.num_attention_heads);
+            return parse_into([&] { return ParseInt64(); },
+                              config.num_attention_heads);
         }
 
         if (key == "num_key_value_heads") {
-            return parse_into([&] { return ParseInt64(); }, config.num_key_value_heads);
+            return parse_into([&] { return ParseInt64(); },
+                              config.num_key_value_heads);
         }
 
         if (key == "vocab_size") {
-            return parse_into([&] { return ParseInt64(); }, config.vocab_size);
+            return parse_into([&] { return ParseInt64(); },
+                              config.vocab_size);
         }
 
         if (key == "max_position_embeddings") {
-            return parse_into([&] { return ParseInt64(); }, config.max_position_embeddings);
+            return parse_into([&] { return ParseInt64(); },
+                              config.max_position_embeddings);
         }
 
         if (key == "head_dim") {
-            return parse_into([&] { return ParseInt64(); }, config.head_dim);
+            return parse_into([&] { return ParseInt64(); },
+                              config.head_dim);
         }
 
         if (key == "rms_norm_eps") {
-            return parse_into([&] { return ParseDouble(); }, config.rms_norm_eps);
+            return parse_into([&] { return ParseDouble(); },
+                              config.rms_norm_eps);
         }
 
         if (key == "hidden_act") {
-            return parse_into([&] { return ParseString(); }, config.hidden_act);
+            return parse_into([&] { return ParseString(); },
+                              config.hidden_act);
         }
 
         if (key == "tie_word_embeddings") {
-            return parse_into([&] { return ParseBool(); }, config.tie_word_embeddings);
+            return parse_into([&] { return ParseBool(); },
+                              config.tie_word_embeddings);
         }
 
         if (key == "attention_bias") {
-            return parse_into([&] { return ParseBool(); }, config.attention_bias);
+            return parse_into([&] { return ParseBool(); },
+                              config.attention_bias);
         }
 
         if (key == "mlp_bias") {
-            return parse_into([&] { return ParseBool(); }, config.mlp_bias);
+            return parse_into([&] { return ParseBool(); },
+                              config.mlp_bias);
         }
 
         if (key == "rope_theta") {
-            return parse_into([&] { return ParseDouble(); }, config.rope.theta);
+            return parse_into([&] { return ParseDouble(); },
+                              config.rope.theta);
         }
 
         if (key == "rope_scaling" || key == "rope_parameters") {
@@ -220,27 +236,33 @@ private:
 
     static DataType ParseTorchDType(std::string_view dtype) {
         const auto is = [&](std::string_view value) noexcept {
-            return dtype.compare(value) == 0;
+            return dtype == value;
         };
 
         if (is("auto")) {
             return DataType{};
         }
+
         if (is("float32") || is("float")) {
             return DataType::Float32();
         }
+
         if (is("float16") || is("half")) {
             return DataType::Float(16);
         }
+
         if (is("bfloat16")) {
             return DataType::BFloat(16);
         }
+
         if (is("float64") || is("double")) {
             return DataType::Double();
         }
+
         if (is("int8")) {
             return DataType::Int(8);
         }
+
         if (is("int4")) {
             return DataType::Int(4);
         }
@@ -320,12 +342,14 @@ Status ValidateShardPathIsContained(const std::filesystem::path& canonical_model
     const auto canonical_shard_path = std::filesystem::canonical(shard_path, error);
     if (error) {
         return Status::Internal(
-                hf::FormatPathMessage("Failed to canonicalize safetensors shard path", shard_path));
+                hf::FormatPathMessage(
+                        "Failed to canonicalize safetensors shard path", shard_path));
     }
 
     if (!IsPathWithinDirectory(canonical_shard_path, canonical_model_dir)) {
         return Status::InvalidArgument(
-                hf::FormatPathMessage("Safetensors shard path escapes HF model directory", shard_path));
+                hf::FormatPathMessage(
+                        "Safetensors shard path escapes HF model directory", shard_path));
     }
     return Status::Ok();
 }
@@ -341,8 +365,8 @@ StatusOr<RawWeightTable> LoadShardedRawWeightTable(const HfDirectoryDescriptor& 
     std::error_code canonical_error;
     const auto canonical_model_dir = std::filesystem::canonical(dir_desc.model_dir, canonical_error);
     if (canonical_error) {
-        return Status::Internal(
-                hf::FormatPathMessage("Failed to canonicalize HF model directory", dir_desc.model_dir));
+        return Status::Internal(hf::FormatPathMessage(
+                "Failed to canonicalize HF model directory", dir_desc.model_dir));
     }
 
     RawWeightTable raw_weights;
@@ -362,23 +386,23 @@ StatusOr<RawWeightTable> LoadShardedRawWeightTable(const HfDirectoryDescriptor& 
         for (const auto& entry: shard_file->Entries()) {
             const auto expected_shard = weight_map.find(entry.name);
             if (expected_shard == weight_map.end()) {
-                return Status::InvalidArgument(
-                        hf::FormatPathMessage("Safetensors shard contains tensor not listed in index: '" + entry.name + "'",
-                                              shard_path));
+                return Status::InvalidArgument(hf::FormatPathMessage(
+                        "Safetensors shard contains tensor not listed in index: '" + entry.name + "'",
+                        shard_path));
             }
 
             if (expected_shard->second != shard_filename) {
-                return Status::FailedPrecondition(
-                        hf::FormatPathMessage("Safetensors index assigns tensor '" + entry.name +
-                                                      "' to shard '" + expected_shard->second +
-                                                      "' but it was found in shard '" + shard_filename + "'",
-                                              shard_path));
+                return Status::FailedPrecondition(hf::FormatPathMessage(
+                        "Safetensors index assigns tensor '" + entry.name +
+                                "' to shard '" + expected_shard->second +
+                                "' but it was found in shard '" + shard_filename + "'",
+                        shard_path));
             }
 
             if (!raw_weights.emplace(entry.name, entry.view).second) {
-                return Status::AlreadyExists(
-                        hf::FormatPathMessage("Duplicate safetensors tensor across shards: '" + entry.name + "'",
-                                              shard_path));
+                return Status::AlreadyExists(hf::FormatPathMessage(
+                        "Duplicate safetensors tensor across shards: '" + entry.name + "'",
+                        shard_path));
             }
         }
     }
@@ -396,6 +420,7 @@ StatusOr<RawWeightTable> LoadShardedRawWeightTable(const HfDirectoryDescriptor& 
                 missing.push_back(std::move(entry));
             }
         }
+
         std::string message = "Safetensors index contains " +
                               std::to_string(missing.size()) +
                               " tensor(s) missing from their assigned shards: ";
@@ -446,7 +471,8 @@ StatusOr<RawWeightTable> HfDirectoryReader::LoadRawWeightTable() const {
     }
 
     return Status::FailedPrecondition(
-            hf::FormatPathMessage("Unknown HF safetensors directory layout", dir_desc_.model_dir));
+            hf::FormatPathMessage(
+                    "Unknown HF safetensors directory layout", dir_desc_.model_dir));
 }
 
 StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::filesystem::path& model_dir) {
@@ -472,7 +498,8 @@ StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::f
     if (!std::filesystem::is_directory(model_dir, error) || error) {
         if (error) {
             return Status::Internal(
-                    hf::FormatPathMessage("Failed to inspect HF model directory type", model_dir));
+                    hf::FormatPathMessage(
+                            "Failed to inspect HF model directory type", model_dir));
         }
         return Status::InvalidArgument(
                 hf::FormatPathMessage("HF model path is not a directory", model_dir));
@@ -487,63 +514,68 @@ StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::f
     AM_RETURN_IF_ERROR(hf::RejectExistingPathIfSymlink(config_path, "HF config file"));
     if (!std::filesystem::exists(config_path, error) || error) {
         if (error) {
-            return Status::Internal(
-                    hf::FormatPathMessage("Failed to stat config.json", config_path));
+            return Status::Internal(hf::FormatPathMessage(
+                    "Failed to stat config.json", config_path));
         }
-        return Status::NotFound(
-                hf::FormatPathMessage("HF model directory is missing config.json", config_path));
+        return Status::NotFound(hf::FormatPathMessage(
+                "HF model directory is missing config.json", config_path));
     }
 
     if (!std::filesystem::is_regular_file(config_path, error) || error) {
         if (error) {
             return Status::Internal(
-                    hf::FormatPathMessage("Failed to inspect config.json type", config_path));
+                    hf::FormatPathMessage(
+                            "Failed to inspect config.json type", config_path));
         }
         return Status::InvalidArgument(
-                hf::FormatPathMessage("config.json path is not a regular file", config_path));
+                hf::FormatPathMessage(
+                        "config.json path is not a regular file", config_path));
     }
 
-    AM_RETURN_IF_ERROR(hf::RejectExistingPathIfSymlink(safetensors_path, "HF safetensors file"));
+    AM_RETURN_IF_ERROR(hf::RejectExistingPathIfSymlink(
+            safetensors_path, "HF safetensors file"));
     const bool has_single_file = std::filesystem::exists(safetensors_path, error);
     if (error) {
-        return Status::Internal(
-                hf::FormatPathMessage("Failed to stat model.safetensors", safetensors_path));
+        return Status::Internal(hf::FormatPathMessage(
+                "Failed to stat model.safetensors", safetensors_path));
     }
 
-    AM_RETURN_IF_ERROR(hf::RejectExistingPathIfSymlink(safetensors_index_path, "HF safetensors index file"));
+    AM_RETURN_IF_ERROR(hf::RejectExistingPathIfSymlink(
+            safetensors_index_path, "HF safetensors index file"));
     const bool has_sharded_index = std::filesystem::exists(safetensors_index_path, error);
     if (error) {
-        return Status::Internal(
-                hf::FormatPathMessage("Failed to stat model.safetensors.index.json", safetensors_index_path));
+        return Status::Internal(hf::FormatPathMessage(
+                "Failed to stat model.safetensors.index.json", safetensors_index_path));
     }
 
     // Treat simultaneous single-file and sharded layouts as ambiguous instead of
     // choosing one implicitly; otherwise stale files could silently change which
     // weights are loaded.
     if (has_single_file && has_sharded_index) {
-        return Status::FailedPrecondition(
-                hf::FormatPathMessage("HF model directory has conflicting single-file and sharded safetensors layouts",
-                                      model_dir));
+        return Status::FailedPrecondition(hf::FormatPathMessage(
+                "HF model directory has conflicting single-file and sharded safetensors layouts",
+                model_dir));
     }
 
     if (has_single_file && (!std::filesystem::is_regular_file(safetensors_path, error) || error)) {
         if (error) {
-            return Status::Internal(
-                    hf::FormatPathMessage("Failed to inspect model.safetensors type", safetensors_path));
+            return Status::Internal(hf::FormatPathMessage(
+                    "Failed to inspect model.safetensors type", safetensors_path));
         }
-        return Status::InvalidArgument(
-                hf::FormatPathMessage("model.safetensors path is not a regular file", safetensors_path));
+        return Status::InvalidArgument(hf::FormatPathMessage(
+                "model.safetensors path is not a regular file", safetensors_path));
     }
 
     // The sharded path is only an index descriptor at this layer. Individual
     // shard files are validated later against the index before loading.
-    if (has_sharded_index && (!std::filesystem::is_regular_file(safetensors_index_path, error) || error)) {
+    if (has_sharded_index &&
+        (!std::filesystem::is_regular_file(safetensors_index_path, error) || error)) {
         if (error) {
-            return Status::Internal(
-                    hf::FormatPathMessage("Failed to inspect model.safetensors.index.json type", safetensors_index_path));
+            return Status::Internal(hf::FormatPathMessage(
+                    "Failed to inspect model.safetensors.index.json type", safetensors_index_path));
         }
-        return Status::InvalidArgument(
-                hf::FormatPathMessage("model.safetensors.index.json path is not a regular file", safetensors_index_path));
+        return Status::InvalidArgument(hf::FormatPathMessage(
+                "model.safetensors.index.json path is not a regular file", safetensors_index_path));
     }
 
     if (has_single_file) {
@@ -568,9 +600,9 @@ StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::f
 
     // A directory without either supported weight entry point is not a loadable
     // Phase 1 HF safetensors model, even if other HF files are present.
-    return Status::NotFound(
-            hf::FormatPathMessage("HF model directory is missing both model.safetensors and model.safetensors.index.json",
-                                  model_dir));
+    return Status::NotFound(hf::FormatPathMessage(
+            "HF model directory is missing both model.safetensors and model.safetensors.index.json",
+            model_dir));
 }
 
 }// namespace aethermind

@@ -88,6 +88,17 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
     lowered.model_inputs.reserve(graph.GetInputs().size());
     lowered.model_outputs.reserve(graph.GetOutputs().size());
 
+    const std::span<const GraphValue> values = graph.GetValues();
+    lowered.values.reserve(values.size());
+    for (const GraphValue& value: values) {
+        lowered.values.push_back(LoweredValueDesc{
+                .spec = value.spec,
+                .payload = value.payload,
+                .quantization = value.quantization,
+                .name = value.name,
+        });
+    }
+
     for (const auto& input: graph.GetInputs()) {
         lowered.model_inputs.push_back(input.value);
     }
@@ -96,7 +107,6 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
         lowered.model_outputs.push_back(output.value);
     }
 
-    const std::span<const GraphValue> values = graph.GetValues();
     for (const GraphNodeId node_id: *order_or) {
         const GraphNode& node = graph.GetNode(node_id);
         StatusOr<OperatorSchema> schema_or = GetOperatorSchema(node.op_type);

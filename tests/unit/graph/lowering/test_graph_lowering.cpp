@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <span>
@@ -145,6 +146,7 @@ TEST(GraphLowering, LowersEmbeddingGraphToExecutionStep) {
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     ASSERT_EQ(lowered->steps.size(), 1U);
+    ASSERT_EQ(lowered->values.size(), graph.GetValues().size());
     EXPECT_EQ(lowered->steps[0].op_type, OpType::kEmbedding);
     EXPECT_EQ(lowered->steps[0].act_dtype, DataType::Float32());
     EXPECT_EQ(lowered->steps[0].weight_dtype, DataType::Float32());
@@ -162,6 +164,89 @@ TEST(GraphLowering, LowersEmbeddingGraphToExecutionStep) {
     EXPECT_EQ(lowered->model_inputs[0], tokens);
     ASSERT_EQ(lowered->model_outputs.size(), 1U);
     EXPECT_EQ(lowered->model_outputs[0], embedding.outputs[0]);
+}
+
+TEST(GraphLowering, PreservesValueResourceSemanticsAfterSourceGraphIsDestroyed) {
+    LoweredGraph lowered;
+    GraphValueId input{};
+    GraphValueId direct_weight{};
+    GraphValueId qkv_weight{};
+    GraphValueId gate_up_weight{};
+    GraphValueId constant{};
+    GraphValueId state{};
+    GraphValueId activation{};
+    const auto inline_data = std::make_shared<const std::vector<std::byte>>(
+            std::initializer_list<std::byte>{std::byte{0x2A}});
+
+    {
+        ModelGraph graph;
+        input = graph.AddInput(TokenSpec(), "token_ids");
+        direct_weight = graph.AddWeight(
+                Spec(DataType::Float32(), {32, 8}),
+                MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
+                "embed_tokens");
+        qkv_weight = graph.AddWeight(
+                Spec(DataType::Float32(), {24, 8}),
+                MakeQkvWeightBinding(3U),
+                "layers.3.self_attn.qkv");
+        gate_up_weight = graph.AddWeight(
+                Spec(DataType::Float32(), {32, 8}),
+                MakeGateUpWeightBinding(3U),
+                "layers.3.mlp.gate_up");
+        constant = graph.AddConstant(
+                Spec(DataType::Float32(), {1}),
+                ConstantBinding{.inline_data = inline_data, .name = "scale"},
+                "scale");
+        state = graph.AddState(KVSpec(), KStateBinding(3U), "layers.3.k_cache");
+
+        auto embedding = graph.AddNode(
+                OpType::kEmbedding,
+                std::nullopt,
+                {input, direct_weight},
+                {NodeOutputDesc{.payload = ActivationValue{}, .name = "hidden"}},
+                EmbeddingParams{});
+        ASSERT_TRUE(embedding.ok()) << embedding.status().ToString();
+        activation = embedding->outputs[0];
+        graph.MarkOutput(activation);
+
+        const auto lowered_or = LowerModelGraph(graph);
+        ASSERT_TRUE(lowered_or.ok()) << lowered_or.status().ToString();
+        lowered = std::move(*lowered_or);
+    }
+
+    ASSERT_GT(lowered.values.size(), activation.index);
+    EXPECT_EQ(lowered.values[input.index].spec, TokenSpec());
+    EXPECT_EQ(lowered.values[input.index].name, "token_ids");
+    EXPECT_TRUE(std::holds_alternative<ModelInputValue>(lowered.values[input.index].payload));
+    EXPECT_TRUE(std::holds_alternative<ActivationValue>(lowered.values[activation.index].payload));
+
+    const auto* direct = std::get_if<WeightValue>(&lowered.values[direct_weight.index].payload);
+    ASSERT_NE(direct, nullptr);
+    EXPECT_EQ(direct->binding,
+              MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding));
+
+    const auto* qkv = std::get_if<WeightValue>(&lowered.values[qkv_weight.index].payload);
+    ASSERT_NE(qkv, nullptr);
+    EXPECT_TRUE(std::holds_alternative<QkvWeightBinding>(qkv->binding.spec));
+    EXPECT_EQ(qkv->binding.decoder_layer_index, 3U);
+
+    const auto* gate_up = std::get_if<WeightValue>(&lowered.values[gate_up_weight.index].payload);
+    ASSERT_NE(gate_up, nullptr);
+    EXPECT_TRUE(std::holds_alternative<GateUpWeightBinding>(gate_up->binding.spec));
+    EXPECT_EQ(gate_up->binding.decoder_layer_index, 3U);
+
+    const auto* lowered_constant = std::get_if<ConstantValue>(&lowered.values[constant.index].payload);
+    ASSERT_NE(lowered_constant, nullptr);
+    ASSERT_NE(lowered_constant->binding.inline_data, nullptr);
+    EXPECT_EQ(lowered_constant->binding.name, "scale");
+    EXPECT_EQ(*lowered_constant->binding.inline_data, *inline_data);
+
+    const auto* lowered_state = std::get_if<StateValue>(&lowered.values[state.index].payload);
+    ASSERT_NE(lowered_state, nullptr);
+    const auto* cache_state = std::get_if<KVCacheStateBinding>(&lowered_state->binding);
+    ASSERT_NE(cache_state, nullptr);
+    EXPECT_EQ(cache_state->decoder_layer_index, 3U);
+    EXPECT_EQ(cache_state->slot, KVCacheSlot::kKey);
 }
 
 TEST(GraphLowering, AppliesCustomConfigToSteps) {

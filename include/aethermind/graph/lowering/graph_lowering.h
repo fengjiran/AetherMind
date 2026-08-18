@@ -12,6 +12,8 @@
 #include "aethermind/execution/state_alias_plan.h"
 #include "aethermind/graph/graph.h"
 
+#include <string>
+
 namespace aethermind {
 
 /// @brief Backend-independent knobs used while translating semantic graph nodes
@@ -57,6 +59,18 @@ struct LoweredStateAlias {
     GraphValueId output{};
 };
 
+/// @brief Self-contained semantic metadata for one graph value.
+///
+/// The entry at `LoweredGraph::values[id.index]` describes GraphValueId `id`.
+/// It copies value semantics needed after ModelGraph is destroyed; producer
+/// topology remains represented by step_bindings.
+struct LoweredValueDesc {
+    TensorSpec spec{};
+    GraphValuePayload payload{};
+    QuantizationSpec quantization{};
+    std::string name{};
+};
+
 /// @brief Direct 1:1 lowering artifact from semantic ModelGraph to execution
 /// planning.
 ///
@@ -68,6 +82,7 @@ struct LoweredStateAlias {
 struct LoweredGraph {
     std::vector<ExecutionPlanNodeSpec> steps{};
     std::vector<LoweredStepBinding> step_bindings{};
+    std::vector<LoweredValueDesc> values{};
     std::vector<GraphValueId> model_inputs{};
     std::vector<GraphValueId> model_outputs{};
     std::vector<LoweredStateAlias> state_aliases{};

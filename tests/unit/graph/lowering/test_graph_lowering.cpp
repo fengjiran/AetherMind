@@ -356,8 +356,16 @@ TEST(GraphLowering, RecordsKVCacheUpdateLoweringTimeStateAliases) {
     EXPECT_EQ(lowered->steps[2].output_specs[0], KVSpec());
     EXPECT_EQ(lowered->steps[2].output_specs[1], KVSpec());
     ASSERT_EQ(lowered->state_aliases.size(), 2U);
+    // Coordinates are recorded at lowering time: step 2 (the KVCacheUpdate),
+    // K cache ports (2 in / 0 out), V cache ports (3 in / 1 out).
+    EXPECT_EQ(lowered->state_aliases[0].step_index, 2U);
+    EXPECT_EQ(lowered->state_aliases[0].input_port, 2U);
+    EXPECT_EQ(lowered->state_aliases[0].output_port, 0U);
     EXPECT_EQ(lowered->state_aliases[0].input, k_state_in);
     EXPECT_EQ(lowered->state_aliases[0].output, update.outputs[0]);
+    EXPECT_EQ(lowered->state_aliases[1].step_index, 2U);
+    EXPECT_EQ(lowered->state_aliases[1].input_port, 3U);
+    EXPECT_EQ(lowered->state_aliases[1].output_port, 1U);
     EXPECT_EQ(lowered->state_aliases[1].input, v_state_in);
     EXPECT_EQ(lowered->state_aliases[1].output, update.outputs[1]);
 }
@@ -525,8 +533,11 @@ TEST(GraphLowering, ResolveStateAliasesFailsOnOrphanAlias) {
     StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
     ASSERT_TRUE(lowered.ok());
 
-    // Inject a bogus alias referencing a non-existent GraphValueId.
+    // Inject a bogus alias referencing an out-of-range step.
     lowered->state_aliases.push_back(LoweredStateAlias{
+            .step_index = 999,
+            .input_port = 2U,
+            .output_port = 0U,
             .input = GraphValueId{.index = 99999},
             .output = k_state_in,
     });

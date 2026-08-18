@@ -597,6 +597,9 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphStoresRuntimeStateAliasPlan) {
             .output_values = {GraphValueId{.index = 2}},
     });
     lowered.state_aliases.push_back(LoweredStateAlias{
+            .step_index = 0,
+            .input_port = 0,
+            .output_port = 0,
             .input = GraphValueId{.index = 0},
             .output = GraphValueId{.index = 2},
     });

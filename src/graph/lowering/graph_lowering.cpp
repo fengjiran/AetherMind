@@ -49,6 +49,7 @@ void MaybeSetActivationDTypeFromOutputs(const OperatorSchema& schema,
 
 Status AddKVCacheLoweringTimeAliases(const OperatorSchema& schema,
                                      const GraphNode& node,
+                                     size_t step_index,
                                      LoweredGraph& lowered) {
     if (node.op_type != OpType::kKVCacheUpdate) {
         return Status::Ok();
@@ -63,12 +64,21 @@ Status AddKVCacheLoweringTimeAliases(const OperatorSchema& schema,
     StatusOr<uint32_t> v_out = FindOutputPortIndex(schema, kv_cache_ports::vCacheOut);
     AM_RETURN_IF_ERROR(v_out.status());
 
+    // Step and port coordinates are known here: steps are emitted in
+    // topological order and the cache ports come from the schema. Recording
+    // them lets ResolveStateAliases validate instead of re-scanning bindings.
     lowered.state_aliases.push_back(LoweredStateAlias{
+            .step_index = step_index,
+            .input_port = k_in.value(),
+            .output_port = k_out.value(),
             .input = node.inputs[k_in.value()],
             .output = node.outputs[k_out.value()],
     });
 
     lowered.state_aliases.push_back(LoweredStateAlias{
+            .step_index = step_index,
+            .input_port = v_in.value(),
+            .output_port = v_out.value(),
             .input = node.inputs[v_in.value()],
             .output = node.outputs[v_out.value()],
     });
@@ -160,7 +170,8 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
         step.act_dtype = act_dtype.value_or(DataType{});
         step.weight_dtype = weight_dtype.value_or(step.act_dtype);
 
-        AM_RETURN_IF_ERROR(AddKVCacheLoweringTimeAliases(schema, node, lowered));
+        AM_RETURN_IF_ERROR(AddKVCacheLoweringTimeAliases(
+                schema, node, lowered.steps.size(), lowered));
         lowered.steps.push_back(std::move(step));
         lowered.step_bindings.push_back(std::move(binding));
     }
@@ -173,32 +184,32 @@ StatusOr<StateAliasPlan> ResolveStateAliases(const LoweredGraph& lowered) {
     plan.aliases.reserve(lowered.state_aliases.size());
 
     for (const LoweredStateAlias& alias: lowered.state_aliases) {
-        bool found = false;
-        for (size_t s = 0; s < lowered.step_bindings.size(); ++s) {
-            const LoweredStepBinding& binding = lowered.step_bindings[s];
-            auto input_it =
-                    std::ranges::find(binding.input_values, alias.input);
-            auto output_it =
-                    std::ranges::find(binding.output_values, alias.output);
-
-            if (input_it != binding.input_values.end() && output_it != binding.output_values.end()) {
-                plan.aliases.push_back(
-                        {.step_index = s,
-                         .input_port = static_cast<uint32_t>(input_it - binding.input_values.begin()),
-                         .output_port = static_cast<uint32_t>(output_it - binding.output_values.begin())});
-                found = true;
-                break;
-            }
-        }
-
-        if (!found) {
+        if (alias.step_index >= lowered.step_bindings.size()) {
             return Status::InvalidArgument(
-                    "ResolveStateAliases: aliased GraphValueId not found in "
-                    "any step binding");
+                    "ResolveStateAliases: alias step index out of range");
         }
+        const LoweredStepBinding& binding = lowered.step_bindings[alias.step_index];
+        if (alias.input_port >= binding.input_values.size() ||
+            binding.input_values[alias.input_port] != alias.input) {
+            return Status::InvalidArgument(
+                    "ResolveStateAliases: aliased input GraphValueId not at "
+                    "recorded input port");
+        }
+        if (alias.output_port >= binding.output_values.size() ||
+            binding.output_values[alias.output_port] != alias.output) {
+            return Status::InvalidArgument(
+                    "ResolveStateAliases: aliased output GraphValueId not at "
+                    "recorded output port");
+        }
+        plan.aliases.push_back(
+                {.step_index = alias.step_index,
+                 .input_port = alias.input_port,
+                 .output_port = alias.output_port});
     }
 
-    // Sort by step_index so that ForStep() can use binary search.
+    // Lowering collects aliases in topological step order, so the plan is
+    // already sorted; sort defensively so ForStep()'s binary-search contract
+    // holds for manually constructed plans as well.
     std::ranges::sort(plan.aliases,
                       [](const ResolvedStateAlias& a, const ResolvedStateAlias& b) noexcept {
                           return a.step_index < b.step_index;

@@ -7,7 +7,8 @@
 /// Produces a LoweredGraph of ExecutionPlanNodeSpec steps plus graph-value
 /// binding vectors and unresolved state alias records. Backend-specific kernel
 /// selection happens later; this stage only translates semantic IR.
-#include "aethermind/backend/kernel_selector.h"
+#include "aethermind/base/device.h"
+#include "aethermind/base/kernel_attrs.h"
 #include "aethermind/execution/execution_node_spec.h"
 #include "aethermind/execution/state_alias_plan.h"
 #include "aethermind/graph/graph.h"
@@ -52,9 +53,22 @@ struct LoweredStepBinding {
 
 /// @brief Unresolved lowering-time state alias record.
 ///
-/// @note The input/output GraphValueIds are distinct graph values, but they
-/// must map to the same physical runtime state buffer after execution planning.
+/// The input/output GraphValueIds are distinct graph values, but they must
+/// map to the same physical runtime state buffer after execution planning.
+/// The step/port coordinates are recorded at lowering time (the KVCacheUpdate
+/// step index and its schema cache ports), so resolution only validates and
+/// translates them instead of re-scanning step bindings.
 struct LoweredStateAlias {
+    /// Index of the KVCacheUpdate step in `LoweredGraph::steps` that owns this
+    /// alias. Known at lowering time because steps are emitted in topological
+    /// order, one per graph node.
+    size_t step_index = 0;
+    /// Input port of the state value (e.g. k_cache_in) in that step's
+    /// schema-port order.
+    uint32_t input_port = 0;
+    /// Output port of the state value (e.g. k_cache_out) in that step's
+    /// schema-port order.
+    uint32_t output_port = 0;
     GraphValueId input{};
     GraphValueId output{};
 };
@@ -102,16 +116,14 @@ StatusOr<LoweredGraph> LowerModelGraph(
 /// @brief The only conversion point from lowering-time GraphValueId aliases to
 /// the runtime step/port aliases stored in StateAliasPlan.
 ///
-/// state_aliases[i] = {input GraphValueId, output GraphValueId}
-/// is resolved to ResolvedStateAlias{
-///   .step_index  = step whose bindings contain both values,
-///   .input_port  = port index of input in that step's input_values,
-///   .output_port = port index of output in that step's output_values,
-/// }.
+/// Each lowering-time alias already carries its step/port coordinates (see
+/// LoweredStateAlias); this function validates them against the step bindings
+/// and produces the runtime ResolvedStateAlias records. It never scans
+/// bindings to rediscover coordinates.
 ///
 /// @param lowered LoweredGraph whose state aliases should be resolved.
-/// @return StateAliasPlan on success, or an error status if an alias references
-/// a GraphValueId that cannot be found in any step binding.
+/// @return StateAliasPlan on success, or an error status if an alias records
+/// an out-of-range step or a port that does not bind the recorded value.
 StatusOr<StateAliasPlan> ResolveStateAliases(
         const LoweredGraph& lowered);
 

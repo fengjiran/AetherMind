@@ -8,16 +8,14 @@
 
 namespace aethermind {
 
-class Backend;
-class KernelRegistry;
-class ModelInstance;
+class LoadedModel;
 
 class ModelLoader {
 public:
-    static StatusOr<std::unique_ptr<ModelInstance>> Load(
-            const ModelLoadOptions& options,
-            const Backend& backend,
-            const KernelRegistry& registry);
+    /// Loads and validates an HF model directory into backend-independent
+    /// config and logical raw-weight views. It does not build graphs, resolve
+    /// kernels, or prepack weights.
+    static StatusOr<std::unique_ptr<LoadedModel>> Load(const ModelLoadOptions& options);
 };
 
 }// namespace aethermind

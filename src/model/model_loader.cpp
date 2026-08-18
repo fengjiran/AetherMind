@@ -2,16 +2,14 @@
 #include "aethermind/model/formats/hf/hf_directory_reader.h"
 #include "aethermind/model/formats/hf/hf_model_validator.h"
 #include "aethermind/model/formats/hf/hf_weight_resolver.h"
-#include "aethermind/model/model_instance.h"
-#include "aethermind/model/model_instance_builder.h"
-#include "aethermind/model/weight_prepack_planner.h"
-#include "aethermind/base/macros.h"
+#include "aethermind/model/loaded_model.h"
+
+#include <memory>
+#include <utility>
 
 namespace aethermind {
 
-StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(const ModelLoadOptions& options,
-                                                           const Backend& backend,
-                                                           const KernelRegistry& registry) {
+StatusOr<std::unique_ptr<LoadedModel>> ModelLoader::Load(const ModelLoadOptions& options) {
     auto reader = HfDirectoryReader::Open(options.model_dir);
     if (!reader.ok()) {
         return reader.status();
@@ -22,7 +20,9 @@ StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(const ModelLoadOption
         return config.status();
     }
 
-    AM_RETURN_IF_ERROR(HfModelValidator::ValidateConfig(*config));
+    ModelValidationOptions validation_options;
+    validation_options.allow_rope_scaling = true;
+    AM_RETURN_IF_ERROR(HfModelValidator::ValidateConfig(*config, validation_options));
 
     auto raw_weights = reader->LoadRawWeightTable();
     if (!raw_weights.ok()) {
@@ -38,20 +38,7 @@ StatusOr<std::unique_ptr<ModelInstance>> ModelLoader::Load(const ModelLoadOption
 
     AM_RETURN_IF_ERROR(HfModelValidator::ValidateResolvedModel(*config, *resolved_weights));
 
-    auto model = ModelInstanceBuilder::Create(std::move(*config), std::move(*resolved_weights));
-    if (!model.ok()) {
-        return model.status();
-    }
-
-    auto requests = WeightPrepackPlanner::BuildRequests(
-            (*model)->GetConfig(), (*model)->GetResolvedWeights(), backend, registry);
-    if (!requests.ok()) {
-        return requests.status();
-    }
-
-    AM_RETURN_IF_ERROR(WeightPrepackPlanner::PrepackAndStore(**model, *requests));
-
-    return model;
+    return std::make_unique<LoadedModel>(std::move(*config), std::move(*resolved_weights));
 }
 
 }// namespace aethermind

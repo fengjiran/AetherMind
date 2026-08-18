@@ -1,9 +1,6 @@
 #include "aethermind/model/model_loader.h"
 
-#include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/kernel_registry.h"
-#include "aethermind/backend/kernel_selector.h"
-#include "aethermind/model/model_instance.h"
+#include "aethermind/model/loaded_model.h"
 #include "test_utils.h"
 
 #include <array>
@@ -120,7 +117,7 @@ std::vector<std::byte> ZeroFloatBytes(size_t count) {
     return FloatArrayToBytes(values);
 }
 
-TEST(ModelLoader_PipelineTest, ValidSingleFileDirectoryReachesModelInstanceBoundary) {
+TEST(ModelLoader_PipelineTest, ValidSingleFileDirectoryReachesLoadedModelBoundary) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.path() / "config.json", MakeMinimalLlamaConfigJson());
     const auto raw_bytes = FloatArrayToBytes(std::array<float, 12>{});
@@ -128,9 +125,7 @@ TEST(ModelLoader_PipelineTest, ValidSingleFileDirectoryReachesModelInstanceBound
                          MakeCompleteTensorHeader(1),
                          raw_bytes);
 
-    CpuBackend backend;
-    KernelRegistry registry;
-    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()}, backend, registry);
+    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()});
 
     ASSERT_TRUE(model.ok()) << model.status().message();
     ASSERT_NE(*model, nullptr);
@@ -155,25 +150,9 @@ TEST(ModelLoader_PipelineTest, ValidSingleFileDirectoryReachesModelInstanceBound
     EXPECT_TRUE(resolved_weights.layers[0].mlp.down_proj.IsValid());
     EXPECT_TRUE(resolved_weights.layers[0].norm.input_rmsnorm.IsValid());
     EXPECT_TRUE(resolved_weights.layers[0].norm.post_attn_rmsnorm.IsValid());
-
-    const KernelSelector expected_selector{
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPacked,
-            .isa = IsaLevel::kAVX2,
-            .phase = ExecPhase::kBoth,
-    };
-    const PackedWeights* packed = (*model)->FindPackedWeights(
-            OpType::kLinear, expected_selector);
-    ASSERT_NE(packed, nullptr);
-    EXPECT_EQ(packed->op_type(), OpType::kLinear);
-    EXPECT_EQ(packed->selector(), expected_selector);
-    EXPECT_TRUE(packed->storage().is_initialized());
-    EXPECT_GT(packed->storage().nbytes(), 0U);
 }
 
-TEST(ModelLoader_PipelineTest, ValidShardedDirectoryReachesModelInstanceBoundary) {
+TEST(ModelLoader_PipelineTest, ValidShardedDirectoryReachesLoadedModelBoundary) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.path() / "config.json", MakeMinimalLlamaConfigJson());
 
@@ -195,9 +174,7 @@ TEST(ModelLoader_PipelineTest, ValidShardedDirectoryReachesModelInstanceBoundary
                          MakeTensorHeaderForNames(second_shard_names),
                          ZeroFloatBytes(second_shard_names.size()));
 
-    CpuBackend backend;
-    KernelRegistry registry;
-    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()}, backend, registry);
+    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()});
 
     ASSERT_TRUE(model.ok()) << model.status().message();
     ASSERT_NE(*model, nullptr);
@@ -209,20 +186,35 @@ TEST(ModelLoader_PipelineTest, ValidShardedDirectoryReachesModelInstanceBoundary
     ASSERT_TRUE(resolved_weights.lm_head.has_value());
     EXPECT_TRUE(resolved_weights.layers[0].attn.q_proj.IsValid());
     EXPECT_TRUE(resolved_weights.layers[0].mlp.down_proj.IsValid());
+}
 
-    const KernelSelector expected_selector{
-            .device_type = DeviceType::kCPU,
-            .act_dtype = DataType::Float32(),
-            .weight_dtype = DataType::Float32(),
-            .weight_format = WeightFormat::kPacked,
-            .isa = IsaLevel::kAVX2,
-            .phase = ExecPhase::kBoth,
-    };
-    const PackedWeights* packed = (*model)->FindPackedWeights(
-            OpType::kLinear, expected_selector);
-    ASSERT_NE(packed, nullptr);
-    EXPECT_TRUE(packed->storage().is_initialized());
-    EXPECT_GT(packed->storage().nbytes(), 0U);
+TEST(ModelLoader_PipelineTest, AllowsStructurallyValidRopeScalingForModelCompiler) {
+    TempDirectory temp_dir;
+    WriteTextFile(temp_dir.path() / "config.json", R"({
+        "architectures": ["LlamaForCausalLM"],
+        "model_type": "llama",
+        "hidden_size": 1,
+        "intermediate_size": 1,
+        "num_hidden_layers": 1,
+        "num_attention_heads": 1,
+        "num_key_value_heads": 1,
+        "max_position_embeddings": 1,
+        "vocab_size": 1,
+        "rms_norm_eps": 1e-6,
+        "tie_word_embeddings": false,
+        "rope_scaling": {"type": "linear", "factor": 2.0}
+    })");
+    const auto raw_bytes = FloatArrayToBytes(std::array<float, 12>{});
+    WriteSafetensorsFile(temp_dir.path() / "model.safetensors",
+                         MakeCompleteTensorHeader(1),
+                         raw_bytes);
+
+    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()});
+
+    ASSERT_TRUE(model.ok()) << model.status().ToString();
+    EXPECT_EQ((*model)->GetConfig().rope.scaling_type, HfRopeScalingType::kLinear);
+    ASSERT_TRUE((*model)->GetConfig().rope.scaling_factor.has_value());
+    EXPECT_DOUBLE_EQ(*(*model)->GetConfig().rope.scaling_factor, 2.0);
 }
 
 TEST(ModelLoader_PipelineTest, RejectsUnsupportedModelFamily) {
@@ -240,9 +232,7 @@ TEST(ModelLoader_PipelineTest, RejectsUnsupportedModelFamily) {
     })");
     WriteTextFile(temp_dir.path() / "model.safetensors", "dummy");
 
-    CpuBackend backend;
-    KernelRegistry registry;
-    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()}, backend, registry);
+    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()});
 
     ASSERT_FALSE(model.ok());
     EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
@@ -254,9 +244,7 @@ TEST(ModelLoader_PipelineTest, PropagatesSafetensorsArtifactError) {
     const auto prefix = EncodeLittleEndianU64(1024);
     WriteRawFile(temp_dir.path() / "model.safetensors", prefix);
 
-    CpuBackend backend;
-    KernelRegistry registry;
-    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()}, backend, registry);
+    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()});
 
     ASSERT_FALSE(model.ok());
     EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
@@ -270,9 +258,7 @@ TEST(ModelLoader_PipelineTest, RejectsIncompleteWeightSet) {
                          R"({"weight":{"dtype":"F32","shape":[2],"data_offsets":[0,8]}})",
                          raw_bytes);
 
-    CpuBackend backend;
-    KernelRegistry registry;
-    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()}, backend, registry);
+    const auto model = ModelLoader::Load(ModelLoadOptions{.model_dir = temp_dir.path()});
 
     ASSERT_FALSE(model.ok());
     EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);

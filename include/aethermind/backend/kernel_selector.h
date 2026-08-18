@@ -1,42 +1,14 @@
 #ifndef AETHERMIND_BACKEND_KERNEL_SELECTOR_H
 #define AETHERMIND_BACKEND_KERNEL_SELECTOR_H
 
-#include "aethermind/dtypes/data_type.h"
 #include "aethermind/base/device.h"
+#include "aethermind/base/kernel_attrs.h"
+#include "aethermind/dtypes/data_type.h"
 #include "utils/hash.h"
 
 #include <cstdint>
 
 namespace aethermind {
-
-enum class IsaLevel : uint8_t {
-    kScalar = 0,
-    kAVX2,
-    kAVX512,
-    kAMX,
-};
-
-enum class ExecPhase : uint8_t {
-    kPrefill = 0,
-    kDecode,
-    kBoth,
-};
-
-enum class WeightFormat : uint8_t {
-    kPlain = 0,
-    kPacked,
-    kQuantizedInt8,
-    kQuantizedInt4,
-};
-
-AM_NODISCARD const char* ToString(IsaLevel isa) noexcept;
-AM_NODISCARD const char* ToString(ExecPhase phase) noexcept;
-AM_NODISCARD const char* ToString(WeightFormat format) noexcept;
-
-AM_NODISCARD inline bool PhaseMatches(ExecPhase candidate,
-                                      ExecPhase request) noexcept {
-    return candidate == request || candidate == ExecPhase::kBoth;
-}
 
 struct KernelSelector {
     DeviceType device_type = DeviceType::kUndefined;

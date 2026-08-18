@@ -8,6 +8,7 @@
 ///
 /// Architecture:
 /// - `WorkspaceRequirement`: Describes what a step or operator needs
+///   (pure data type, defined in `base/workspace_types.h`)
 /// - `PlanWorkspaceRequirements()`: Plans offsets for all requirements into a unified layout
 /// - `WorkspaceBinding`: Actual slice handed to a kernel at execution time
 /// - `WorkspacePlanLayout`: Summary of the total workspace size and alignment needs
@@ -17,60 +18,18 @@
 ///
 /// \see WorkspaceArena, RuntimeBindingContext, ExecutionPlanBuilder
 
-#ifndef AETHERMIND_RUNTIME_WORKSPACE_TYPES_H
-#define AETHERMIND_RUNTIME_WORKSPACE_TYPES_H
+#ifndef AETHERMIND_RUNTIME_WORKSPACE_H
+#define AETHERMIND_RUNTIME_WORKSPACE_H
 
-#include "aethermind/base/status.h"
 #include "aethermind/base/macros.h"
+#include "aethermind/base/status.h"
+#include "aethermind/base/workspace_types.h"
 #include "utils/overflow_check.h"
 
 #include <algorithm>
 #include <span>
 
 namespace aethermind {
-
-enum class WorkspaceLifetime {
-    /// No workspace is required.
-    kNone = 0,
-    /// Scratch space is needed only during one operator invocation.
-    kPerOperator,
-    /// Scratch space may be reused across operators within one model layer.
-    kPerLayer,
-    /// Scratch space is scoped to one token step, such as decode-time temporary buffers.
-    kPerToken,
-    /// Scratch space is scoped to one request sequence, such as prefill/decode shared buffers.
-    kPerSequence,
-    /// Workspace must remain valid for the owning runtime object's lifetime.
-    kPersistent,
-};
-
-/// Describes workspace requirements for a single runtime step or operator.
-///
-/// Operators should set `bytes`, `alignment`, `lifetime`, and `reusable`.
-/// The `offset` field is a planning result filled by PlanWorkspaceRequirements().
-struct WorkspaceRequirement {
-    /// Number of scratch bytes this requirement needs.
-    /// Zero-byte requirements consume no space but still receive an offset marker.
-    size_t bytes = 0;
-
-    /// Alignment constraint for this workspace slice.
-    /// Must be a non-zero power of two. Default 64-byte cache-line alignment.
-    size_t alignment = 64;
-
-    /// Lifetime scope for this workspace requirement.
-    WorkspaceLifetime lifetime = WorkspaceLifetime::kNone;
-
-    /// Whether this workspace slice may be reused by later compatible requirements.
-    bool reusable = true;
-
-    /// Computed offset into the unified workspace (output field).
-    /// Filled by PlanWorkspaceRequirements(). Measured from workspace base.
-    size_t offset = 0;
-
-    AM_NODISCARD bool empty() const noexcept {
-        return bytes == 0;
-    }
-};
 
 /// Actual workspace slice bound to a kernel at execution time.
 ///

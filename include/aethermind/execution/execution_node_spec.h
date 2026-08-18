@@ -1,12 +1,12 @@
 #ifndef AETHERMIND_EXECUTION_EXECUTION_NODE_SPEC_H
 #define AETHERMIND_EXECUTION_EXECUTION_NODE_SPEC_H
 
-#include "aethermind/backend/kernel_selector.h"
 #include "aethermind/base/device.h"
+#include "aethermind/base/kernel_attrs.h"
+#include "aethermind/base/workspace_types.h"
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/op_type.h"
-#include "aethermind/runtime/workspace.h"
 #include "aethermind/shape_inference/shape_constraint.h"
 #include "aethermind/shape_inference/tensor_spec.h"
 

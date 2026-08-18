@@ -9,11 +9,13 @@
 
 namespace aethermind {
 
-/// A model that has completed HF I/O, validation, and logical-weight resolution.
+/// @brief Loaded model state: config plus resolved logical weights.
 ///
-/// LoadedModel deliberately contains no backend artifacts. Its ResolvedModelWeights
-/// retain the shared backing storage for RawWeightView instances until graph-driven
-/// materialization consumes them in a later compilation stage.
+/// A model that has completed HF I/O, validation, and logical-weight
+/// resolution. LoadedModel deliberately contains no backend artifacts. Its
+/// ResolvedModelWeights retain the shared backing storage for RawWeightView
+/// instances until graph-driven materialization consumes them in a later
+/// compilation stage.
 class LoadedModel {
 public:
     LoadedModel(HfModelConfig config, ResolvedModelWeights resolved_weights) noexcept;

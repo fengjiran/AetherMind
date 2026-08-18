@@ -1,27 +1,32 @@
 #ifndef AETHERMIND_MODEL_FORMATS_HF_HF_DIRECTORY_READER_H
 #define AETHERMIND_MODEL_FORMATS_HF_HF_DIRECTORY_READER_H
 
+/// @file hf_directory_reader.h
+/// @brief Directory-level I/O for Hugging Face models.
+
 #include "aethermind/base/status.h"
 #include "aethermind/model/formats/hf/hf_model_config.h"
 #include "aethermind/model/raw_weight.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <utility>
 
 namespace aethermind {
 
-/// HF safetensors layout detected from a model directory.
+/// @brief HF safetensors layout detected from a model directory.
 ///
 /// The reader supports either the canonical single-file layout or the sharded
 /// layout described by `model.safetensors.index.json`. Mixed layouts are rejected
 /// during inspection so later loading code can rely on one active weight source.
-enum class HfDirectoryLayout {
+/// The underlying type is fixed to uint8_t to keep the descriptor compact.
+enum class HfDirectoryLayout : uint8_t {
     kUnknown = 0,
     kSingleSafetensors,
     kShardedSafetensors,
 };
 
-/// Resolved paths and layout metadata for a Hugging Face model directory.
+/// @brief Resolved paths and layout metadata for a Hugging Face model directory.
 ///
 /// The descriptor is produced by `HfDirectoryReader::InspectDirectory` after
 /// validating the directory shape. Only the paths relevant to `layout` are set;
@@ -43,7 +48,8 @@ struct HfDirectoryDescriptor {
     }
 };
 
-/// Reads Hugging Face model metadata and raw safetensors weights from a directory.
+/// @brief Reads Hugging Face model metadata and raw safetensors weights from
+/// a directory.
 ///
 /// Instances are immutable after construction and borrow no external resources.
 /// File I/O is performed by `ParseConfig()` and `LoadRawWeightTable()`, which
@@ -51,34 +57,44 @@ struct HfDirectoryDescriptor {
 /// failures.
 class HfDirectoryReader {
 public:
-    /// Opens and validates a Hugging Face model directory.
+    /// @brief Opens and validates a Hugging Face model directory.
     ///
+    /// @param model_dir Directory containing config.json and safetensors.
     /// @return A reader bound to the inspected directory, or an error if the
     /// directory layout is missing, ambiguous, or invalid.
-    AM_NODISCARD static StatusOr<HfDirectoryReader> Open(
+    static StatusOr<HfDirectoryReader> Open(
             const std::filesystem::path& model_dir);
 
-    /// Inspects a directory without loading model configuration or weights.
+    /// @brief Inspects a directory without loading model configuration or weights.
     ///
     /// The inspection validates the presence and regular-file status of
     /// `config.json` plus exactly one supported safetensors layout.
-    AM_NODISCARD static StatusOr<HfDirectoryDescriptor> InspectDirectory(
+    ///
+    /// @param model_dir Directory containing config.json and safetensors.
+    /// @return Layout descriptor, or an error if the directory shape is
+    /// invalid or ambiguous.
+    static StatusOr<HfDirectoryDescriptor> InspectDirectory(
             const std::filesystem::path& model_dir);
 
     AM_NODISCARD const HfDirectoryDescriptor& GetDirDesc() const noexcept {
         return dir_desc_;
     }
 
-    /// Parses `config.json` into the subset of HF configuration used by Phase 1.
+    /// @brief Parses `config.json` into the subset of HF configuration used by
+    /// Phase 1.
     ///
     /// Unknown JSON fields are skipped for forward compatibility with upstream
     /// Hugging Face model configs.
+    ///
+    /// @return HfModelConfig on success.
     AM_NODISCARD StatusOr<HfModelConfig> ParseConfig() const;
 
-    /// Loads raw tensor views from the inspected safetensors layout.
+    /// @brief Loads raw tensor views from the inspected safetensors layout.
     ///
     /// For sharded models, the index must agree with every shard file and every
     /// indexed tensor must be present exactly once.
+    ///
+    /// @return RawWeightTable on success.
     AM_NODISCARD StatusOr<RawWeightTable> LoadRawWeightTable() const;
 
 private:

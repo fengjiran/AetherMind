@@ -1,6 +1,12 @@
 #ifndef AETHERMIND_MODEL_MODEL_LOADER_H
 #define AETHERMIND_MODEL_MODEL_LOADER_H
 
+/// @file model_loader.h
+/// @brief I/O-only entry point for loading HF model directories.
+///
+/// Loader responsibilities: directory I/O, config parsing, validation, and
+/// logical weight resolution. It deliberately stays free of graph building,
+/// kernel resolution, and weight prepacking.
 #include "aethermind/base/status.h"
 
 #include <filesystem>
@@ -10,6 +16,10 @@ namespace aethermind {
 
 class LoadedModel;
 
+/// @brief Loads and validates HuggingFace model directories.
+///
+/// A stateless facade over the HF loading pipeline; all failures are
+/// reported through StatusOr values.
 class ModelLoader {
 public:
     /// Loads and validates an HF model directory into backend-independent

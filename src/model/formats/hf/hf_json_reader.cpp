@@ -122,7 +122,8 @@ StatusOr<int64_t> HfJsonReader::ParseInt64() {
 
     int64_t value = 0;
     const auto token = input_.substr(start, position_ - start);
-    if (const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
+    if (const auto [ptr, ec] =
+                std::from_chars(token.data(), token.data() + token.size(), value);
         ec != std::errc{} || ptr != token.data() + token.size()) {
         return Status::InvalidArgument("Invalid integer value");
     }
@@ -141,7 +142,8 @@ StatusOr<uint64_t> HfJsonReader::ParseUInt64() {
 
     uint64_t value = 0;
     const auto token = input_.substr(start, position_ - start);
-    if (const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
+    if (const auto [ptr, ec] =
+                std::from_chars(token.data(), token.data() + token.size(), value);
         ec != std::errc{} || ptr != token.data() + token.size()) {
         return Status::InvalidArgument("Invalid unsigned integer value");
     }

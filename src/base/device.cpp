@@ -1,7 +1,3 @@
-//
-// Created by 赵丹 on 2025/8/15.
-//
-
 #include "aethermind/base/device.h"
 #include "aethermind/base/error.h"
 
@@ -10,7 +6,7 @@
 
 namespace aethermind {
 
-String DeviceType2Str(DeviceType device_type, bool lower_case) {
+std::string DeviceType2Str(DeviceType device_type, bool lower_case) {
     switch (device_type) {
         case DeviceType::kCPU: {
             return lower_case ? "cpu" : "CPU";
@@ -42,6 +38,7 @@ bool IsValidDeviceType(DeviceType device_type) {
     }
 }
 
+// Only CPU is currently supported; CUDA and CANN support is gated on future build configuration.
 bool IsDeviceKindSupported(DeviceType device_type) {
     return device_type == DeviceType::kCPU;
 }
@@ -62,6 +59,7 @@ StatusOr<Device> Device::Make(DeviceType type, int8_t index) {
     return Device(type, index);
 }
 
+// Accepted forms: a plain device kind (current device, index -1) or a kind followed by :index.
 StatusOr<Device> Device::FromString(std::string_view text) {
     if (text.empty()) {
         return Status::InvalidArgument("Device string must not be empty");
@@ -117,17 +115,17 @@ StatusOr<Device> Device::FromString(std::string_view text) {
     return Make(type, static_cast<int8_t>(parsed));
 }
 
-String Device::ToString() const {
-    String s = DeviceType2Str(type(), true);
+// Appended only when an explicit index is set; the current device (-1) prints without an index.
+std::string Device::ToString() const {
+    std::string s = DeviceType2Str(type(), true);
     if (has_index()) {
-        s += ":";
+        s += ':';
         s += std::to_string(index());
     }
     return s;
 }
 
-
-String Device::str() const {
+std::string Device::str() const {
     return ToString();
 }
 

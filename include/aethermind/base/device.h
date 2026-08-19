@@ -1,25 +1,25 @@
-// Copyright 2026 The AetherMind Authors
-// SPDX-License-Identifier: Apache-2.0
-//
-// Compute device abstraction for tensor placement and kernel dispatch.
-//
-// A Device uniquely identifies a compute resource by type (CPU/CUDA/CANN) and
-// an optional index. This module provides:
-// - DeviceType enum and Device class for device identification
-// - Factory methods with validation (Make, FromString)
-// - Query helpers (IsDeviceKindSupported, DeviceType2Str)
-//
-// Thread-safety: Device is immutable and thread-safe after construction.
-
 #ifndef AETHERMIND_BASE_DEVICE_H
 #define AETHERMIND_BASE_DEVICE_H
 
+/// @file device.h
+/// @brief Compute device abstraction for tensor placement and kernel dispatch.
+///
+/// A Device uniquely identifies a compute resource by type (CPU/CUDA/CANN) and
+/// an optional index. This module provides:
+/// - DeviceType enum and Device class for device identification
+/// - Factory methods with validation (Make, FromString)
+/// - Query helpers (IsDeviceKindSupported, DeviceType2Str)
+///
+/// Thread-safety: Device is immutable and thread-safe after construction.
+
 #include "aethermind/base/status.h"
-#include "container/string.h"
+#include "utils/logging.h"
+
+#include <string>
 
 namespace aethermind {
 
-/// Compute device types supported by the runtime.
+/// @brief Compute device types supported by the runtime.
 enum class DeviceType : uint8_t {
     kCPU = 0,
     kCUDA,
@@ -27,13 +27,13 @@ enum class DeviceType : uint8_t {
     kUndefined
 };
 
-/// Convenience aliases for DeviceType enum values.
+/// @brief Convenience aliases for DeviceType enum values.
 constexpr auto kCPU = DeviceType::kCPU;
 constexpr auto kCUDA = DeviceType::kCUDA;
 constexpr auto kCANN = DeviceType::kCANN;
 constexpr auto kUndefined = DeviceType::kUndefined;
 
-/// Represents a compute device for tensor placement and kernel dispatch.
+/// @brief Represents a compute device for tensor placement and kernel dispatch.
 ///
 /// A device is identified by:
 /// - type: The device kind (CPU, CUDA, CANN)
@@ -51,10 +51,10 @@ constexpr auto kUndefined = DeviceType::kUndefined;
 ///   auto d3 = Device::FromString("cuda:1");  // Parse from string
 class Device {
 public:
-    /// Constructs a default CPU device with index -1.
+    /// @brief Constructs a default CPU device with index -1.
     Device() : Device(DeviceType::kCPU) {}
 
-    /// Constructs a device with explicit type and optional index.
+    /// @brief Constructs a device with explicit type and optional index.
     ///
     /// @param type  Device type (CPU, CUDA, CANN).
     /// @param index Device ordinal; -1 means "current device".
@@ -71,7 +71,7 @@ public:
         return index_;
     }
 
-    /// Returns true if an explicit index was provided (index >= 0).
+    /// @brief Returns true if an explicit index was provided (index >= 0).
     AM_NODISCARD bool has_index() const noexcept {
         return index_ != -1;
     }
@@ -88,30 +88,36 @@ public:
         return type_ == kCANN;
     }
 
-    /// Returns string representation (e.g., "cpu", "cuda:0", "cuda:1").
-    AM_NODISCARD String ToString() const;
-
-    /// Alias for ToString().
-    AM_NODISCARD String str() const;
-
-    /// Creates a device with validation.
+    /// @brief Returns the string representation, e.g., "cpu" or "cuda:0".
     ///
-    /// @return StatusOr containing the device, or an error if validation fails.
-    AM_NODISCARD static StatusOr<Device> Make(DeviceType type, int8_t index = -1);
+    /// @return String representation of this device.
+    AM_NODISCARD std::string ToString() const;
 
-    /// Parses a device from string format "type[:index]".
+    /// @brief Returns the same output as ToString().
+    ///
+    /// @return String representation of this device.
+    AM_NODISCARD std::string str() const;
+
+    /// @brief Creates a device with validation.
+    ///
+    /// @param type  Device type (CPU, CUDA, CANN).
+    /// @param index Device ordinal; -1 means "current device".
+    /// @return StatusOr containing the device, or an error if validation fails.
+    static StatusOr<Device> Make(DeviceType type, int8_t index = -1);
+
+    /// @brief Parses a device from string format "type[:index]".
     ///
     /// @param text Device string (e.g., "cpu", "cuda:0", "cuda:1").
     /// @return StatusOr containing the device, or an error if parsing fails.
-    AM_NODISCARD static StatusOr<Device> FromString(std::string_view text);
+    static StatusOr<Device> FromString(std::string_view text);
 
-    /// Returns the default CPU device (index 0).
+    /// @brief Returns the default CPU device (index 0).
     static Device CPU();
 
-    /// Returns the default CUDA device (index -1, "current").
+    /// @brief Returns the default CUDA device (index -1, "current").
     static Device CUDA();
 
-    /// Returns the default CANN device (index -1, "current").
+    /// @brief Returns the default CANN device (index -1, "current").
     static Device CANN();
 
     bool operator==(const Device& other) const {
@@ -133,38 +139,44 @@ private:
     }
 };
 
-/// Converts DeviceType to string representation.
+/// @brief Converts DeviceType to string representation.
 ///
 /// @param device_type The device type to convert.
-/// @param lower_case If true, returns lowercase (e.g., "cpu"); otherwise "CPU".
-String DeviceType2Str(DeviceType device_type, bool lower_case = false);
+/// @param lower_case  If true, returns lowercase (e.g., "cpu"); otherwise "CPU".
+/// @return String representation of the device type.
+std::string DeviceType2Str(DeviceType device_type, bool lower_case = false);
 
-/// Returns true if device_type is a valid enum value (not kUndefined).
+/// @brief Returns true if device_type is a valid enum value (not kUndefined).
+///
+/// @param device_type Device type to check.
+/// @return True if device_type is not kUndefined.
 bool IsValidDeviceType(DeviceType device_type);
 
-/// Returns true if the runtime supports the given device type.
+/// @brief Returns true if the runtime supports the given device type.
 ///
 /// Currently always returns true for kCPU; GPU types depend on build configuration.
+///
+/// @param device_type Device type to query.
+/// @return True if the device type is supported.
 bool IsDeviceKindSupported(DeviceType device_type);
 
-/// Stream output for DeviceType.
+/// @brief Stream output for DeviceType.
 std::ostream& operator<<(std::ostream& os, DeviceType device_type);
 
-/// Stream output for Device.
+/// @brief Stream output for Device.
 std::ostream& operator<<(std::ostream& os, const Device& device);
 
 }// namespace aethermind
 
-namespace std {
 template<>
-struct hash<aethermind::DeviceType> {
+struct std::hash<aethermind::DeviceType> {
     std::size_t operator()(aethermind::DeviceType k) const noexcept {
         return std::hash<int>()(static_cast<int>(k));
     }
 };
 
 template<>
-struct hash<aethermind::Device> {
+struct std::hash<aethermind::Device> {
     std::size_t operator()(aethermind::Device dev) const noexcept {
         static_assert(sizeof(aethermind::DeviceType) == 1);
         const uint32_t bits = static_cast<uint32_t>(static_cast<uint8_t>(dev.type())) << 16 |
@@ -172,7 +184,5 @@ struct hash<aethermind::Device> {
         return std::hash<uint32_t>()(bits);
     }
 };
-
-}// namespace std
 
 #endif// AETHERMIND_BASE_DEVICE_H

@@ -1,12 +1,12 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_registry.h"
+#include "aethermind/compiler/graph_lowering.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/graph/graph.h"
-#include "aethermind/graph/lowering/graph_lowering.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/ops/add_op.h"
@@ -526,13 +526,13 @@ TEST(AddKernel, EndToEndThroughGraphLoweringAndExecutor) {
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    ASSERT_EQ(lowered->steps.size(), 3U);
+    ASSERT_EQ(lowered->steps().size(), 3U);
 
-    ASSERT_EQ(lowered->steps[0].spec.op_type, OpType::kEmbedding);
-    ASSERT_EQ(lowered->steps[1].spec.op_type, OpType::kEmbedding);
-    ASSERT_EQ(lowered->steps[2].spec.op_type, OpType::kAdd);
-    EXPECT_EQ(lowered->steps[2].spec.selector.act_dtype, DataType::Float32());
-    EXPECT_EQ(lowered->steps[2].spec.selector.weight_dtype, DataType::Float32());
+    ASSERT_EQ(lowered->steps()[0].spec.op_type, OpType::kEmbedding);
+    ASSERT_EQ(lowered->steps()[1].spec.op_type, OpType::kEmbedding);
+    ASSERT_EQ(lowered->steps()[2].spec.op_type, OpType::kAdd);
+    EXPECT_EQ(lowered->steps()[2].spec.selector.act_dtype, DataType::Float32());
+    EXPECT_EQ(lowered->steps()[2].spec.selector.weight_dtype, DataType::Float32());
 
     RuntimeBuilder runtime_builder;
     RuntimeContext runtime = runtime_builder.Build();
@@ -606,30 +606,27 @@ TEST(AddKernel, EndToEndThroughGraphLoweringAndExecutor) {
     EXPECT_FLOAT_EQ(add_out[3], 7.0F);
 }
 
-TEST(AddKernel, Int64EndToEndThroughLoweredGraphAndExecutor) {
+TEST(AddKernel, Int64EndToEndThroughExecutionRequestAndExecutor) {
     const TensorSpec lhs_spec{.dtype = DataType::Int(64), .shape = StaticShape({2, 1})};
     const TensorSpec rhs_spec{.dtype = DataType::Int(64), .shape = StaticShape({1, 2})};
     const TensorSpec output_spec{.dtype = DataType::Int(64), .shape = StaticShape({2, 2})};
-    LoweredGraph lowered;
-    lowered.steps.push_back(LoweredStep{
-            .spec = ExecutionPlanNodeSpec{
-                    .op_type = OpType::kAdd,
-                    .selector = {
-                            .device_type = DeviceType::kCPU,
-                            .act_dtype = DataType::Int(64),
-                            .weight_dtype = DataType::Int(64),
-                            .weight_format = WeightFormat::kPlain,
-                            .isa = IsaLevel::kScalar,
-                            .phase = ExecPhase::kBoth,
-                    },
-                    .input_specs = {lhs_spec, rhs_spec},
-                    .output_specs = {output_spec},
-                    .op_params = OpParams(AddParams{}),
+    const std::vector<ExecutionPlanNodeSpec> nodes = {ExecutionPlanNodeSpec{
+            .op_type = OpType::kAdd,
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Int(64),
+                    .weight_dtype = DataType::Int(64),
+                    .weight_format = WeightFormat::kPlain,
+                    .isa = IsaLevel::kScalar,
+                    .phase = ExecPhase::kBoth,
             },
-    });
+            .input_specs = {lhs_spec, rhs_spec},
+            .output_specs = {output_spec},
+            .op_params = OpParams(AddParams{}),
+    }};
 
     RuntimeContext runtime = RuntimeBuilder{}.Build();
-    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, lowered);
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
 
     const int64_t lhs[2] = {10, 20};

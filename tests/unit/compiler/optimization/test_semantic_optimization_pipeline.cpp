@@ -1,13 +1,13 @@
+#include "../../graph/optimization/test_optimization_helpers.h"
+#include "aethermind/compiler/graph_lowering.h"
+#include "aethermind/compiler/semantic_optimization_pipeline.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/graph/graph_dump.h"
 #include "aethermind/graph/graph_op_builder.h"
-#include "aethermind/graph/lowering/graph_lowering.h"
-#include "aethermind/graph/optimization/optimize_model_graph.h"
 #include "aethermind/model/model_graph_builder.h"
 #include "aethermind/runtime/runtime_builder.h"
-#include "test_optimization_helpers.h"
 
 #include <gtest/gtest.h>
 
@@ -613,8 +613,8 @@ TEST(OptimizeModelGraph, PreservesStandaloneConstantGraphOutput) {
     EXPECT_EQ(optimized.FindNodesByOpType(OpType::kAdd).size(), 0U);
 
     // The lowered model_output references the same output value id.
-    ASSERT_EQ(lowered.model_outputs.size(), 1U);
-    EXPECT_EQ(lowered.model_outputs[0],
+    ASSERT_EQ(lowered.model_outputs().size(), 1U);
+    EXPECT_EQ(lowered.model_outputs()[0],
               optimized.GetOutputs()[0].value);
 }
 
@@ -728,32 +728,30 @@ TEST(OptimizeModelGraph, LowersFullLlamaDenseGraph) {
     EXPECT_EQ(graph->GetValues().size(), value_count_before);
 
     // Step and binding counts match (contract: 1:1 with optimized graph nodes).
-    EXPECT_EQ(lowered.steps.size(), optimized.GetNodes().size());
+    EXPECT_EQ(lowered.steps().size(), optimized.GetNodes().size());
 
     // First step is Embedding, last step is Argmax.
-    ASSERT_GT(lowered.steps.size(), 0U);
-    EXPECT_EQ(lowered.steps.front().spec.op_type, OpType::kEmbedding);
-    EXPECT_EQ(lowered.steps.back().spec.op_type, OpType::kArgmax);
+    ASSERT_GT(lowered.steps().size(), 0U);
+    EXPECT_EQ(lowered.steps().front().spec.op_type, OpType::kEmbedding);
+    EXPECT_EQ(lowered.steps().back().spec.op_type, OpType::kArgmax);
 
     // Model inputs/outputs match.
-    EXPECT_EQ(lowered.model_inputs.size(), graph->GetInputs().size());
-    EXPECT_EQ(lowered.model_outputs.size(), graph->GetOutputs().size());
+    EXPECT_EQ(lowered.model_inputs().size(), graph->GetInputs().size());
+    EXPECT_EQ(lowered.model_outputs().size(), graph->GetOutputs().size());
 
     // State aliases: 2 per layer (K and V cache for each decoder layer).
-    EXPECT_EQ(lowered.state_aliases.size(),
+    EXPECT_EQ(lowered.state_aliases().size(),
               static_cast<size_t>(config.num_hidden_layers) * 2U);
 
     // Output spec count matches binding output count per step.
-    for (size_t i = 0; i < lowered.steps.size(); ++i) {
-        EXPECT_EQ(lowered.steps[i].spec.output_specs.size(),
-                  lowered.steps[i].binding.output_values.size());
+    for (size_t i = 0; i < lowered.steps().size(); ++i) {
+        EXPECT_EQ(lowered.steps()[i].spec.output_specs.size(),
+                  lowered.steps()[i].binding.output_values.size());
     }
 
     // ResolveStateAliases succeeds and returns expected count.
-    const StatusOr<StateAliasPlan> alias_plan = ResolveStateAliases(lowered);
-    ASSERT_TRUE(alias_plan.ok()) << alias_plan.status().ToString();
-    EXPECT_EQ(alias_plan->size(),
-              static_cast<size_t>(config.num_hidden_layers) * 2U);
+    // Runtime StateAliasPlan is deliberately execution-owned. Lowering keeps
+    // only the verified semantic alias records asserted above.
 }
 
 // Sentinel pass: increments an external counter when Run() is invoked.
@@ -936,8 +934,8 @@ TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure)
     // Layer 2: LowerModelGraph. Must carry runtime_checks into LoweredGraph.
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(*optimized);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    const ExecutionPlanNodeSpec* rms_step = nullptr;
-    for (const LoweredStep& step: lowered->steps) {
+    const LoweredNodeSpec* rms_step = nullptr;
+    for (const LoweredStep& step: lowered->steps()) {
         if (step.spec.op_type == OpType::kRmsNorm) {
             rms_step = &step.spec;
             break;

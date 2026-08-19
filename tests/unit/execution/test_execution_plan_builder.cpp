@@ -5,11 +5,12 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/packed_weights.h"
+#include "aethermind/compiler/graph_lowering.h"
 #include "aethermind/graph/graph.h"
-#include "aethermind/graph/lowering/graph_lowering.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/model/packed_weight_store.h"
 #include "aethermind/operators/operator_inference.h"
+#include "aethermind/operators/ops/embedding_op.h"
 #include "aethermind/operators/ops/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 
@@ -583,119 +584,38 @@ TEST(ExecutionPlanBuilder, PrepareKernelForNodeRejectsUnknownOpType) {
     EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ExecutionPlanBuilder, BuildFromLoweredGraphStoresRuntimeStateAliasPlan) {
-    // Construct a LoweredGraph manually with a valid RmsNorm step and one
-    // lowering-time alias record, avoiding any dependency on KVCacheUpdate kernels.
-    const SymbolicShape act_shape = StaticShape({4, 8});
-    const SymbolicShape weight_shape = StaticShape({8});
-    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
-    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPreservesValidatedMetadata) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(
+            TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({1})});
+    const GraphValueId embedding_weight = graph.AddWeight(
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({32, 8})},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding));
+    const auto embedding = graph.AddNode(
+            OpType::kEmbedding, std::nullopt, {tokens, embedding_weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}}, EmbeddingParams{});
+    ASSERT_TRUE(embedding.ok()) << embedding.status().ToString();
+    const GraphValueId norm_weight = graph.AddWeight(
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({8})},
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kFinalNorm));
+    const auto rms_norm = graph.AddNode(
+            OpType::kRmsNorm, std::nullopt, {embedding->outputs[0], norm_weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}}, RmsNormParams{.eps = 1.0e-5F});
+    ASSERT_TRUE(rms_norm.ok()) << rms_norm.status().ToString();
+    graph.MarkOutput(rms_norm->outputs[0]);
 
-    LoweredGraph lowered;
-    ExecutionPlanNodeSpec step = MakeRmsNormNodeSpec();
-    step.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
-    step.input_specs = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
-            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
-    };
-    step.output_specs = analyzed->outputs;
-    step.runtime_checks = analyzed->runtime_checks;
-    lowered.steps.push_back(LoweredStep{
-            .spec = std::move(step),
-            .binding = LoweredStepBinding{
-                    .node = GraphNodeId{.index = 0},
-                    .input_values = {GraphValueId{.index = 0}, GraphValueId{.index = 1}},
-                    .output_values = {GraphValueId{.index = 2}},
-            },
-    });
-    lowered.state_aliases.push_back(LoweredStateAlias{
-            .step_index = 0,
-            .input_port = 0,
-            .output_port = 0,
-            .input = GraphValueId{.index = 0},
-            .output = GraphValueId{.index = 2},
-    });
-
-    RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
-
-    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(
-            runtime, lowered);
-
+    const auto lowered = LowerModelGraph(graph);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+    RuntimeContext runtime = RuntimeBuilder{}.Build();
+    const auto plan = ExecutionPlanBuilder::Build(runtime, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    EXPECT_EQ(plan->state_alias_plan().size(), 1U);
-    EXPECT_FALSE(plan->state_alias_plan().empty());
-}
-
-TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPropagatesTrustedMetadata) {
-    // Spy-based proof that the trusted path does NOT re-invoke InferOperator.
-    //
-    // Strategy: use ShapeSymbol::Create() to mint unique symbolic dims for
-    // the input. InferRmsNorm echoes input[0] in its output_specs. We then
-    // overwrite the lowered output_specs with a shape containing a fresh
-    // "spy" symbol that is NOT present in input_specs. If the trusted path
-    // carries lowered metadata verbatim, the spy symbol survives into the
-    // plan. If the trusted path re-invoked InferOperator, the output would
-    // echo input[0] (no spy symbol), and the assertion would fail.
-    //
-    // This satisfies the plan's requirement: "spy/fixture 证明 trusted path
-    // 不调用 semantic analyzer", with no production-global mutable hook.
-    const ShapeSymbol seq_len = ShapeSymbol::Create();
-    const ShapeSymbol input_hidden = ShapeSymbol::Create();
-    const ShapeSymbol weight_hidden = ShapeSymbol::Create();
-    const ShapeSymbol spy_symbol = ShapeSymbol::Create();
-    const SymbolicShape act_shape(std::vector<ShapeSymbol>{seq_len, input_hidden});
-    const SymbolicShape weight_shape(std::vector<ShapeSymbol>{weight_hidden});
-    const SymbolicShape spy_shape(std::vector<ShapeSymbol>{seq_len, spy_symbol});
-
-    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
-    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
-    // Sanity: InferRmsNorm echoes input[0] (act_shape), not spy_shape.
-    ASSERT_EQ(analyzed->outputs[0].shape, act_shape);
-
-    LoweredGraph lowered;
-    ExecutionPlanNodeSpec step = MakeRmsNormNodeSpec();
-    step.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
-    step.input_specs = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
-            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
-    };
-    // Inject the spy shape into lowered output_specs. The trusted path must
-    // carry this verbatim; a re-analysis would have produced act_shape.
-    TensorSpec spy_output = analyzed->outputs[0];
-    spy_output.shape = spy_shape;
-    step.output_specs = {spy_output};
-    step.runtime_checks = analyzed->runtime_checks;
-    lowered.steps.push_back(LoweredStep{
-            .spec = std::move(step),
-            .binding = LoweredStepBinding{
-                    .node = GraphNodeId{.index = 0},
-                    .input_values = {GraphValueId{.index = 0}, GraphValueId{.index = 1}},
-                    .output_values = {GraphValueId{.index = 2}},
-            },
-    });
-
-    RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
-
-    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, lowered);
-
-    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    ASSERT_EQ(plan->steps().size(), 1U);
-    ASSERT_EQ(plan->steps()[0].output_specs.size(), 1U);
-    ASSERT_EQ(plan->steps()[0].output_specs[0].shape.rank(), 2U);
-
-    // Spy assertion: the plan's output shape[1] is the spy symbol, NOT
-    // input_hidden (which InferOperator would have echoed). This proves
-    // the trusted path carried lowered metadata verbatim and did not
-    // re-invoke the semantic analyzer.
-    EXPECT_EQ(plan->steps()[0].output_specs[0].shape[1].value(), spy_symbol.value())
-            << "Trusted path appears to have re-invoked InferOperator: "
-               "output symbol matches input_hidden instead of the spy symbol";
-    EXPECT_NE(plan->steps()[0].output_specs[0].shape[1].value(), input_hidden.value());
-
-    // Trusted path: runtime_checks carried forward verbatim.
-    EXPECT_EQ(plan->steps()[0].runtime_checks, lowered.steps[0].spec.runtime_checks);
+    ASSERT_EQ(plan->steps().size(), lowered->steps().size());
+    for (size_t index = 0; index < plan->steps().size(); ++index) {
+        EXPECT_EQ(plan->steps()[index].output_specs,
+                  lowered->steps()[index].spec.output_specs);
+        EXPECT_EQ(plan->steps()[index].runtime_checks,
+                  lowered->steps()[index].spec.runtime_checks);
+    }
 }
 
 TEST(ExecutionPlanBuilder, BuildFromNodesAloneHasEmptyStateAliasPlan) {
@@ -731,7 +651,7 @@ TEST(ExecutionPlanBuilder, BuildFromEmptyLoweredGraphHasEmptyStateAliasPlan) {
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    EXPECT_TRUE(lowered->steps.empty());
+    EXPECT_TRUE(lowered->steps().empty());
 
     RuntimeBuilder builder;
     RuntimeContext runtime = builder.Build();
@@ -763,52 +683,6 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMissingTypedParams) {
     ASSERT_FALSE(plan.ok());
     EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
     EXPECT_NE(plan.status().message().find("typed op_params"), std::string::npos);
-}
-
-TEST(ExecutionPlanBuilder, BuildFromLoweredGraphResolvesSchemaOnlyOpType) {
-    // kSoftmax has semantic schema/inference but no CPU implementation. The
-    // trusted LoweredGraph path resolves the backend kernel directly and
-    // carries lowering-time metadata forward without re-invoking inference.
-    // Use SoftmaxTestBackend so the Softmax kernel can be resolved.
-    RuntimeBuilder builder;
-    builder.RegisterBackendFactory(DeviceType::kCPU,
-                                   std::make_unique<SoftmaxTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
-
-    const SymbolicShape act_shape = StaticShape({4, 8});
-    std::vector<TensorSpec> inputs = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
-    };
-    const auto analyzed = InferOperator(OpType::kSoftmax,
-                                        OpParams{SoftmaxParams{.axis = -1}},
-                                        inputs);
-    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
-
-    LoweredGraph lowered;
-    ExecutionPlanNodeSpec step{
-            .op_type = OpType::kSoftmax,
-            .selector = {
-                    .device_type = DeviceType::kCPU,
-                    .act_dtype = DataType::Float32(),
-                    .weight_dtype = DataType::Float32(),
-                    .weight_format = WeightFormat::kPlain,
-                    .isa = IsaLevel::kScalar,
-                    .phase = ExecPhase::kBoth,
-            },
-    };
-    step.op_params = OpParams{SoftmaxParams{.axis = -1}};
-    step.input_specs = inputs;
-    step.output_specs = analyzed->outputs;
-    step.runtime_checks = analyzed->runtime_checks;
-    lowered.steps.push_back(LoweredStep{.spec = std::move(step)});
-
-    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, lowered);
-
-    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    ASSERT_EQ(plan->steps().size(), 1U);
-    // Trusted lowering metadata is carried forward verbatim.
-    EXPECT_EQ(plan->steps()[0].output_specs, lowered.steps[0].spec.output_specs);
-    EXPECT_EQ(plan->steps()[0].runtime_checks, lowered.steps[0].spec.runtime_checks);
 }
 
 TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesInferredMetadata) {

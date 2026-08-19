@@ -1,5 +1,8 @@
-#include "../test_graph_helpers.h"
-#include "aethermind/graph/lowering/graph_lowering.h"
+#include "../../graph/test_graph_helpers.h"
+#include "aethermind/compiler/graph_lowering.h"
+
+#include "compiler/lowered_graph_draft.h"
+#include "execution/lowered_graph_adapter.h"
 
 #include "aethermind/model/model_graph_builder.h"
 #include "aethermind/operators/operator_inference.h"
@@ -48,6 +51,48 @@ StateBinding KStateBinding(uint32_t decoder_layer_index = 0U) {
 StateBinding VStateBinding(uint32_t decoder_layer_index = 0U) {
     return KVCacheStateBinding{.decoder_layer_index = decoder_layer_index,
                                .slot = KVCacheSlot::kValue};
+}
+
+compiler_internal::LoweredGraphDraft MakeKVCacheUpdateDraft() {
+    compiler_internal::LoweredGraphDraft draft;
+    draft.values = {
+            {.spec = KVSpec(), .payload = ActivationValue{}},
+            {.spec = KVSpec(), .payload = ActivationValue{}},
+            {.spec = KVSpec(), .payload = StateValue{.binding = KStateBinding()}},
+            {.spec = KVSpec(), .payload = StateValue{.binding = VStateBinding()}},
+            {.spec = KVSpec(), .payload = StateValue{.binding = KStateBinding()}},
+            {.spec = KVSpec(), .payload = StateValue{.binding = VStateBinding()}},
+    };
+    draft.steps.push_back({
+            .spec = {
+                    .op_type = OpType::kKVCacheUpdate,
+                    .selector = {
+                            .device_type = DeviceType::kCPU,
+                            .act_dtype = DataType::Float32(),
+                            .weight_dtype = DataType::Float32(),
+                            .weight_format = WeightFormat::kPlain,
+                            .isa = IsaLevel::kScalar,
+                            .phase = ExecPhase::kBoth,
+                    },
+                    .input_specs = {KVSpec(), KVSpec(), KVSpec(), KVSpec()},
+                    .output_specs = {KVSpec(), KVSpec()},
+                    .op_params = KVCacheUpdateParams{},
+            },
+            .binding = {
+                    .node = GraphNodeId{.index = 0},
+                    .input_values = {
+                            GraphValueId{.index = 0},
+                            GraphValueId{.index = 1},
+                            GraphValueId{.index = 2},
+                            GraphValueId{.index = 3},
+                    },
+                    .output_values = {
+                            GraphValueId{.index = 4},
+                            GraphValueId{.index = 5},
+                    },
+            },
+    });
+    return draft;
 }
 
 GraphValueId AddActivation(ModelGraph& graph, TensorSpec spec, std::string name) {
@@ -145,24 +190,61 @@ TEST(GraphLowering, LowersEmbeddingGraphToExecutionStep) {
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    ASSERT_EQ(lowered->steps.size(), 1U);
-    ASSERT_EQ(lowered->values.size(), graph.GetValues().size());
-    EXPECT_EQ(lowered->steps[0].spec.op_type, OpType::kEmbedding);
-    EXPECT_EQ(lowered->steps[0].spec.selector.act_dtype, DataType::Float32());
-    EXPECT_EQ(lowered->steps[0].spec.selector.weight_dtype, DataType::Float32());
-    ASSERT_EQ(lowered->steps[0].spec.input_specs.size(), 2U);
-    EXPECT_EQ(lowered->steps[0].spec.input_specs[0].dtype, DataType::Int(64));
-    EXPECT_EQ(lowered->steps[0].spec.input_specs[1].dtype, DataType::Float32());
-    ASSERT_EQ(lowered->steps[0].spec.output_specs.size(), 1U);
-    EXPECT_EQ(lowered->steps[0].spec.output_specs[0], HiddenSpec());
-    EXPECT_EQ(lowered->steps[0].binding.node, embedding.node);
-    ASSERT_EQ(lowered->steps[0].binding.input_values.size(), 2U);
-    EXPECT_EQ(lowered->steps[0].binding.input_values[0], tokens);
-    EXPECT_EQ(lowered->steps[0].binding.input_values[1], weight);
-    ASSERT_EQ(lowered->model_inputs.size(), 1U);
-    EXPECT_EQ(lowered->model_inputs[0], tokens);
-    ASSERT_EQ(lowered->model_outputs.size(), 1U);
-    EXPECT_EQ(lowered->model_outputs[0], embedding.outputs[0]);
+    EXPECT_TRUE(ValidateLoweredGraph(*lowered).ok());
+    ASSERT_EQ(lowered->steps().size(), 1U);
+    ASSERT_EQ(lowered->values().size(), graph.GetValues().size());
+    EXPECT_EQ(lowered->steps()[0].spec.op_type, OpType::kEmbedding);
+    EXPECT_EQ(lowered->steps()[0].spec.selector.act_dtype, DataType::Float32());
+    EXPECT_EQ(lowered->steps()[0].spec.selector.weight_dtype, DataType::Float32());
+    ASSERT_EQ(lowered->steps()[0].spec.input_specs.size(), 2U);
+    EXPECT_EQ(lowered->steps()[0].spec.input_specs[0].dtype, DataType::Int(64));
+    EXPECT_EQ(lowered->steps()[0].spec.input_specs[1].dtype, DataType::Float32());
+    ASSERT_EQ(lowered->steps()[0].spec.output_specs.size(), 1U);
+    EXPECT_EQ(lowered->steps()[0].spec.output_specs[0], HiddenSpec());
+    EXPECT_EQ(lowered->steps()[0].binding.node, embedding.node);
+    ASSERT_EQ(lowered->steps()[0].binding.input_values.size(), 2U);
+    EXPECT_EQ(lowered->steps()[0].binding.input_values[0], tokens);
+    EXPECT_EQ(lowered->steps()[0].binding.input_values[1], weight);
+    ASSERT_EQ(lowered->model_inputs().size(), 1U);
+    EXPECT_EQ(lowered->model_inputs()[0], tokens);
+    ASSERT_EQ(lowered->model_outputs().size(), 1U);
+    EXPECT_EQ(lowered->model_outputs()[0], embedding.outputs[0]);
+}
+
+TEST(LoweredGraphDraft, RejectsSchemaUndeclaredStateAlias) {
+    auto draft = MakeKVCacheUpdateDraft();
+    // Both ports are state ports and bindings are otherwise consistent, but
+    // KVCacheUpdate declares only k_cache_in -> k_cache_out and
+    // v_cache_in -> v_cache_out.
+    draft.state_aliases.push_back({
+            .step_index = 0,
+            .input_port = 2,
+            .output_port = 1,
+            .input = GraphValueId{.index = 2},
+            .output = GraphValueId{.index = 5},
+    });
+
+    const Status status = draft.Validate();
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInternal);
+    EXPECT_NE(status.message().find("not declared"), std::string::npos);
+}
+
+TEST(LoweredGraphDraft, RejectsDuplicateStateAlias) {
+    auto draft = MakeKVCacheUpdateDraft();
+    const LoweredStateAlias alias{
+            .step_index = 0,
+            .input_port = 2,
+            .output_port = 0,
+            .input = GraphValueId{.index = 2},
+            .output = GraphValueId{.index = 4},
+    };
+    draft.state_aliases = {alias, alias};
+
+    const Status status = draft.Validate();
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInternal);
+    EXPECT_NE(status.message().find("duplicate"), std::string::npos);
 }
 
 TEST(GraphLowering, PreservesValueResourceSemanticsAfterSourceGraphIsDestroyed) {
@@ -213,34 +295,34 @@ TEST(GraphLowering, PreservesValueResourceSemanticsAfterSourceGraphIsDestroyed) 
         lowered = std::move(*lowered_or);
     }
 
-    ASSERT_GT(lowered.values.size(), activation.index);
-    EXPECT_EQ(lowered.values[input.index].spec, TokenSpec());
-    EXPECT_EQ(lowered.values[input.index].name, "token_ids");
-    EXPECT_TRUE(std::holds_alternative<ModelInputValue>(lowered.values[input.index].payload));
-    EXPECT_TRUE(std::holds_alternative<ActivationValue>(lowered.values[activation.index].payload));
+    ASSERT_GT(lowered.values().size(), activation.index);
+    EXPECT_EQ(lowered.values()[input.index].spec, TokenSpec());
+    EXPECT_EQ(lowered.values()[input.index].name, "token_ids");
+    EXPECT_TRUE(std::holds_alternative<ModelInputValue>(lowered.values()[input.index].payload));
+    EXPECT_TRUE(std::holds_alternative<ActivationValue>(lowered.values()[activation.index].payload));
 
-    const auto* direct = std::get_if<WeightValue>(&lowered.values[direct_weight.index].payload);
+    const auto* direct = std::get_if<WeightValue>(&lowered.values()[direct_weight.index].payload);
     ASSERT_NE(direct, nullptr);
     EXPECT_EQ(direct->binding,
               MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding));
 
-    const auto* qkv = std::get_if<WeightValue>(&lowered.values[qkv_weight.index].payload);
+    const auto* qkv = std::get_if<WeightValue>(&lowered.values()[qkv_weight.index].payload);
     ASSERT_NE(qkv, nullptr);
     EXPECT_TRUE(std::holds_alternative<QkvWeightBinding>(qkv->binding.spec));
     EXPECT_EQ(qkv->binding.decoder_layer_index, 3U);
 
-    const auto* gate_up = std::get_if<WeightValue>(&lowered.values[gate_up_weight.index].payload);
+    const auto* gate_up = std::get_if<WeightValue>(&lowered.values()[gate_up_weight.index].payload);
     ASSERT_NE(gate_up, nullptr);
     EXPECT_TRUE(std::holds_alternative<GateUpWeightBinding>(gate_up->binding.spec));
     EXPECT_EQ(gate_up->binding.decoder_layer_index, 3U);
 
-    const auto* lowered_constant = std::get_if<ConstantValue>(&lowered.values[constant.index].payload);
+    const auto* lowered_constant = std::get_if<ConstantValue>(&lowered.values()[constant.index].payload);
     ASSERT_NE(lowered_constant, nullptr);
     ASSERT_NE(lowered_constant->binding.inline_data, nullptr);
     EXPECT_EQ(lowered_constant->binding.name, "scale");
     EXPECT_EQ(*lowered_constant->binding.inline_data, *inline_data);
 
-    const auto* lowered_state = std::get_if<StateValue>(&lowered.values[state.index].payload);
+    const auto* lowered_state = std::get_if<StateValue>(&lowered.values()[state.index].payload);
     ASSERT_NE(lowered_state, nullptr);
     const auto* cache_state = std::get_if<KVCacheStateBinding>(&lowered_state->binding);
     ASSERT_NE(cache_state, nullptr);
@@ -270,8 +352,8 @@ TEST(GraphLowering, AppliesCustomConfigToSteps) {
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph, config);
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    ASSERT_EQ(lowered->steps.size(), 1U);
-    for (const LoweredStep& step: lowered->steps) {
+    ASSERT_EQ(lowered->steps().size(), 1U);
+    for (const LoweredStep& step: lowered->steps()) {
         EXPECT_EQ(step.spec.selector.device_type, DeviceType::kCUDA);
         EXPECT_EQ(step.spec.selector.isa, IsaLevel::kAVX2);
         EXPECT_EQ(step.spec.selector.weight_format, WeightFormat::kPacked);
@@ -305,17 +387,17 @@ TEST(GraphLowering, PreservesTopologicalOrderAndRmsNormParams) {
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    ASSERT_EQ(lowered->steps.size(), 2U);
-    EXPECT_EQ(lowered->steps[0].spec.op_type, OpType::kEmbedding);
-    EXPECT_EQ(lowered->steps[1].spec.op_type, OpType::kRmsNorm);
-    const auto* params = std::get_if<RmsNormParams>(&lowered->steps[1].spec.op_params);
+    ASSERT_EQ(lowered->steps().size(), 2U);
+    EXPECT_EQ(lowered->steps()[0].spec.op_type, OpType::kEmbedding);
+    EXPECT_EQ(lowered->steps()[1].spec.op_type, OpType::kRmsNorm);
+    const auto* params = std::get_if<RmsNormParams>(&lowered->steps()[1].spec.op_params);
     ASSERT_NE(params, nullptr);
     EXPECT_FLOAT_EQ(params->eps, 2.5e-3F);
-    ASSERT_EQ(lowered->steps[1].binding.input_values.size(), 2U);
-    EXPECT_EQ(lowered->steps[1].binding.input_values[0], embedding.outputs[0]);
-    EXPECT_EQ(lowered->steps[1].binding.input_values[1], norm_weight);
-    ASSERT_EQ(lowered->steps[1].spec.output_specs.size(), 1U);
-    EXPECT_EQ(lowered->steps[1].spec.output_specs[0], HiddenSpec());
+    ASSERT_EQ(lowered->steps()[1].binding.input_values.size(), 2U);
+    EXPECT_EQ(lowered->steps()[1].binding.input_values[0], embedding.outputs[0]);
+    EXPECT_EQ(lowered->steps()[1].binding.input_values[1], norm_weight);
+    ASSERT_EQ(lowered->steps()[1].spec.output_specs.size(), 1U);
+    EXPECT_EQ(lowered->steps()[1].spec.output_specs[0], HiddenSpec());
 }
 
 TEST(GraphLowering, RecordsKVCacheUpdateLoweringTimeStateAliases) {
@@ -337,36 +419,36 @@ TEST(GraphLowering, RecordsKVCacheUpdateLoweringTimeStateAliases) {
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    ASSERT_EQ(lowered->steps.size(), 3U);
-    EXPECT_EQ(lowered->steps[2].spec.op_type, OpType::kKVCacheUpdate);
+    ASSERT_EQ(lowered->steps().size(), 3U);
+    EXPECT_EQ(lowered->steps()[2].spec.op_type, OpType::kKVCacheUpdate);
     // input_specs now carries the complete schema-port order (k, v, k_state, v_state).
-    ASSERT_EQ(lowered->steps[2].spec.input_specs.size(), 4U);
-    ASSERT_EQ(lowered->steps[2].binding.input_values.size(), 4U);
-    EXPECT_EQ(lowered->steps[2].binding.input_values[2], k_state_in);
-    EXPECT_EQ(lowered->steps[2].binding.input_values[3], v_state_in);
+    ASSERT_EQ(lowered->steps()[2].spec.input_specs.size(), 4U);
+    ASSERT_EQ(lowered->steps()[2].binding.input_values.size(), 4U);
+    EXPECT_EQ(lowered->steps()[2].binding.input_values[2], k_state_in);
+    EXPECT_EQ(lowered->steps()[2].binding.input_values[3], v_state_in);
     // Compact view excludes the two state ports (k_state, v_state).
     const StatusOr<OperatorSchema> kvc_schema = GetOperatorSchema(OpType::kKVCacheUpdate);
     ASSERT_TRUE(kvc_schema.ok()) << kvc_schema.status().ToString();
     const StatusOr<std::vector<TensorSpec>> kvc_compact =
-            MakeCompactInputSpecs(*kvc_schema, lowered->steps[2].spec.input_specs);
+            MakeCompactInputSpecs(*kvc_schema, lowered->steps()[2].spec.input_specs);
     ASSERT_TRUE(kvc_compact.ok()) << kvc_compact.status().ToString();
     EXPECT_EQ(kvc_compact->size(), 2U);
-    ASSERT_EQ(lowered->steps[2].spec.output_specs.size(), 2U);
-    EXPECT_EQ(lowered->steps[2].spec.output_specs[0], KVSpec());
-    EXPECT_EQ(lowered->steps[2].spec.output_specs[1], KVSpec());
-    ASSERT_EQ(lowered->state_aliases.size(), 2U);
+    ASSERT_EQ(lowered->steps()[2].spec.output_specs.size(), 2U);
+    EXPECT_EQ(lowered->steps()[2].spec.output_specs[0], KVSpec());
+    EXPECT_EQ(lowered->steps()[2].spec.output_specs[1], KVSpec());
+    ASSERT_EQ(lowered->state_aliases().size(), 2U);
     // Coordinates are recorded at lowering time: step 2 (the KVCacheUpdate),
     // K cache ports (2 in / 0 out), V cache ports (3 in / 1 out).
-    EXPECT_EQ(lowered->state_aliases[0].step_index, 2U);
-    EXPECT_EQ(lowered->state_aliases[0].input_port, 2U);
-    EXPECT_EQ(lowered->state_aliases[0].output_port, 0U);
-    EXPECT_EQ(lowered->state_aliases[0].input, k_state_in);
-    EXPECT_EQ(lowered->state_aliases[0].output, update.outputs[0]);
-    EXPECT_EQ(lowered->state_aliases[1].step_index, 2U);
-    EXPECT_EQ(lowered->state_aliases[1].input_port, 3U);
-    EXPECT_EQ(lowered->state_aliases[1].output_port, 1U);
-    EXPECT_EQ(lowered->state_aliases[1].input, v_state_in);
-    EXPECT_EQ(lowered->state_aliases[1].output, update.outputs[1]);
+    EXPECT_EQ(lowered->state_aliases()[0].step_index, 2U);
+    EXPECT_EQ(lowered->state_aliases()[0].input_port, 2U);
+    EXPECT_EQ(lowered->state_aliases()[0].output_port, 0U);
+    EXPECT_EQ(lowered->state_aliases()[0].input, k_state_in);
+    EXPECT_EQ(lowered->state_aliases()[0].output, update.outputs[0]);
+    EXPECT_EQ(lowered->state_aliases()[1].step_index, 2U);
+    EXPECT_EQ(lowered->state_aliases()[1].input_port, 3U);
+    EXPECT_EQ(lowered->state_aliases()[1].output_port, 1U);
+    EXPECT_EQ(lowered->state_aliases()[1].input, v_state_in);
+    EXPECT_EQ(lowered->state_aliases()[1].output, update.outputs[1]);
 }
 
 TEST(GraphLowering, LowersAttentionStatePortsWithoutTensorSpecs) {
@@ -387,24 +469,24 @@ TEST(GraphLowering, LowersAttentionStatePortsWithoutTensorSpecs) {
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    ASSERT_EQ(lowered->steps.size(), 2U);
-    EXPECT_EQ(lowered->steps[1].spec.op_type, OpType::kAttention);
+    ASSERT_EQ(lowered->steps().size(), 2U);
+    EXPECT_EQ(lowered->steps()[1].spec.op_type, OpType::kAttention);
     // input_specs now carries the complete schema-port order (q, k_cache, v_cache).
-    ASSERT_EQ(lowered->steps[1].spec.input_specs.size(), 3U);
-    EXPECT_EQ(lowered->steps[1].spec.input_specs[0].dtype, DataType::Float32());
+    ASSERT_EQ(lowered->steps()[1].spec.input_specs.size(), 3U);
+    EXPECT_EQ(lowered->steps()[1].spec.input_specs[0].dtype, DataType::Float32());
     // Compact view excludes the two state ports (k_cache, v_cache).
     const StatusOr<OperatorSchema> attn_schema = GetOperatorSchema(OpType::kAttention);
     ASSERT_TRUE(attn_schema.ok()) << attn_schema.status().ToString();
     const StatusOr<std::vector<TensorSpec>> attn_compact =
-            MakeCompactInputSpecs(*attn_schema, lowered->steps[1].spec.input_specs);
+            MakeCompactInputSpecs(*attn_schema, lowered->steps()[1].spec.input_specs);
     ASSERT_TRUE(attn_compact.ok()) << attn_compact.status().ToString();
     EXPECT_EQ(attn_compact->size(), 1U);
     EXPECT_EQ((*attn_compact)[0].dtype, DataType::Float32());
-    ASSERT_EQ(lowered->steps[1].spec.output_specs.size(), 1U);
-    EXPECT_EQ(lowered->steps[1].spec.output_specs[0], HiddenSpec());
-    ASSERT_EQ(lowered->steps[1].binding.input_values.size(), 3U);
-    EXPECT_EQ(lowered->steps[1].binding.input_values[1], k_cache);
-    EXPECT_EQ(lowered->steps[1].binding.input_values[2], v_cache);
+    ASSERT_EQ(lowered->steps()[1].spec.output_specs.size(), 1U);
+    EXPECT_EQ(lowered->steps()[1].spec.output_specs[0], HiddenSpec());
+    ASSERT_EQ(lowered->steps()[1].binding.input_values.size(), 3U);
+    EXPECT_EQ(lowered->steps()[1].binding.input_values[1], k_cache);
+    EXPECT_EQ(lowered->steps()[1].binding.input_values[2], v_cache);
 }
 
 TEST(GraphLowering, RejectsInvalidGraph) {
@@ -425,18 +507,18 @@ TEST(GraphLowering, LowersFullLlamaDenseGraph) {
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(*graph);
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    ASSERT_EQ(lowered->steps.size(), graph->GetNodes().size());
-    EXPECT_EQ(lowered->steps.front().spec.op_type, OpType::kEmbedding);
-    EXPECT_EQ(lowered->steps.back().spec.op_type, OpType::kArgmax);
-    EXPECT_EQ(lowered->model_inputs.size(), graph->GetInputs().size());
-    EXPECT_EQ(lowered->model_outputs.size(), graph->GetOutputs().size());
-    EXPECT_EQ(lowered->state_aliases.size(), static_cast<size_t>(config.num_hidden_layers) * 2U);
-    for (size_t i = 0; i < lowered->steps.size(); ++i) {
-        EXPECT_EQ(lowered->steps[i].spec.output_specs.size(), lowered->steps[i].binding.output_values.size());
+    ASSERT_EQ(lowered->steps().size(), graph->GetNodes().size());
+    EXPECT_EQ(lowered->steps().front().spec.op_type, OpType::kEmbedding);
+    EXPECT_EQ(lowered->steps().back().spec.op_type, OpType::kArgmax);
+    EXPECT_EQ(lowered->model_inputs().size(), graph->GetInputs().size());
+    EXPECT_EQ(lowered->model_outputs().size(), graph->GetOutputs().size());
+    EXPECT_EQ(lowered->state_aliases().size(), static_cast<size_t>(config.num_hidden_layers) * 2U);
+    for (size_t i = 0; i < lowered->steps().size(); ++i) {
+        EXPECT_EQ(lowered->steps()[i].spec.output_specs.size(), lowered->steps()[i].binding.output_values.size());
     }
 }
 
-TEST(GraphLowering, ResolveStateAliasesConvertsLoweringTimeRecordsToRuntimePlan) {
+TEST(ExecutionStateAliasAdapter, ConvertsVerifiedLoweringRecordsToRuntimePlan) {
     ModelGraph graph;
     const GraphValueId k = AddActivation(graph, KVSpec(), "k");
     const GraphValueId v = AddActivation(graph, KVSpec(), "v");
@@ -453,7 +535,7 @@ TEST(GraphLowering, ResolveStateAliasesConvertsLoweringTimeRecordsToRuntimePlan)
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
     ASSERT_TRUE(lowered.ok());
 
-    const StatusOr<StateAliasPlan> alias_plan = ResolveStateAliases(*lowered);
+    const StatusOr<StateAliasPlan> alias_plan = ResolveStateAliasesForExecution(*lowered);
     ASSERT_TRUE(alias_plan.ok()) << alias_plan.status().ToString();
     EXPECT_FALSE(alias_plan->empty());
     ASSERT_EQ(alias_plan->size(), 2U);
@@ -471,7 +553,7 @@ TEST(GraphLowering, ResolveStateAliasesConvertsLoweringTimeRecordsToRuntimePlan)
     EXPECT_EQ(kvcache_aliases[1].output_port, 1U);
 }
 
-TEST(GraphLowering, ResolveStateAliasesReturnsEmptyRuntimePlanForGraphWithoutState) {
+TEST(ExecutionStateAliasAdapter, ReturnsEmptyRuntimePlanForGraphWithoutState) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}),
@@ -486,13 +568,13 @@ TEST(GraphLowering, ResolveStateAliasesReturnsEmptyRuntimePlanForGraphWithoutSta
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
     ASSERT_TRUE(lowered.ok());
 
-    const StatusOr<StateAliasPlan> alias_plan = ResolveStateAliases(*lowered);
+    const StatusOr<StateAliasPlan> alias_plan = ResolveStateAliasesForExecution(*lowered);
     ASSERT_TRUE(alias_plan.ok());
     EXPECT_TRUE(alias_plan->empty());
     EXPECT_EQ(alias_plan->size(), 0U);
 }
 
-TEST(GraphLowering, StateAliasPlanForStepReturnsEmptySpanForUnknownStep) {
+TEST(ExecutionStateAliasAdapter, ForStepReturnsEmptySpanForUnknownStep) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(TokenSpec(), "token_ids");
     const GraphValueId weight = graph.AddWeight(Spec(DataType::Float32(), {32, 8}),
@@ -507,42 +589,11 @@ TEST(GraphLowering, StateAliasPlanForStepReturnsEmptySpanForUnknownStep) {
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
     ASSERT_TRUE(lowered.ok());
 
-    const StatusOr<StateAliasPlan> alias_plan = ResolveStateAliases(*lowered);
+    const StatusOr<StateAliasPlan> alias_plan = ResolveStateAliasesForExecution(*lowered);
     ASSERT_TRUE(alias_plan.ok());
 
     const auto aliases = alias_plan->ForStep(999);
     EXPECT_TRUE(aliases.empty());
-}
-
-TEST(GraphLowering, ResolveStateAliasesFailsOnOrphanAlias) {
-    ModelGraph graph;
-    const GraphValueId k = AddActivation(graph, KVSpec(), "k");
-    const GraphValueId v = AddActivation(graph, KVSpec(), "v");
-    const GraphValueId k_state_in = graph.AddState(KVSpec(), KStateBinding(), "k_cache_in");
-    const GraphValueId v_state_in = graph.AddState(KVSpec(), VStateBinding(), "v_cache_in");
-    (void) graph.AddNode(
-            OpType::kKVCacheUpdate,
-            0U,
-            {k, v, k_state_in, v_state_in},
-            {NodeOutputDesc{.payload = StateValue{.binding = KStateBinding()}},
-             NodeOutputDesc{.payload = StateValue{.binding = VStateBinding()}}},
-            KVCacheUpdateParams{});
-
-    StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
-    ASSERT_TRUE(lowered.ok());
-
-    // Inject a bogus alias referencing an out-of-range step.
-    lowered->state_aliases.push_back(LoweredStateAlias{
-            .step_index = 999,
-            .input_port = 2U,
-            .output_port = 0U,
-            .input = GraphValueId{.index = 99999},
-            .output = k_state_in,
-    });
-
-    const StatusOr<StateAliasPlan> alias_plan = ResolveStateAliases(*lowered);
-    ASSERT_FALSE(alias_plan.ok());
-    EXPECT_EQ(alias_plan.status().code(), StatusCode::kInvalidArgument);
 }
 
 TEST(GraphLowering, WeightlessOpFallsBackWeightDTypeToActDType) {
@@ -559,8 +610,8 @@ TEST(GraphLowering, WeightlessOpFallsBackWeightDTypeToActDType) {
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    ASSERT_EQ(lowered->steps.size(), 3U);
-    const auto& add_step = lowered->steps[2];
+    ASSERT_EQ(lowered->steps().size(), 3U);
+    const auto& add_step = lowered->steps()[2];
     EXPECT_EQ(add_step.spec.op_type, OpType::kAdd);
     EXPECT_EQ(add_step.spec.selector.act_dtype, DataType::Float32());
     EXPECT_EQ(add_step.spec.selector.weight_dtype, DataType::Float32());
@@ -582,9 +633,9 @@ TEST(GraphLowering, WeightedOpPreservesOriginalWeightDType) {
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
 
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    ASSERT_EQ(lowered->steps.size(), 1U);
-    EXPECT_EQ(lowered->steps[0].spec.op_type, OpType::kEmbedding);
-    EXPECT_EQ(lowered->steps[0].spec.selector.weight_dtype, DataType::Float32());
+    ASSERT_EQ(lowered->steps().size(), 1U);
+    EXPECT_EQ(lowered->steps()[0].spec.op_type, OpType::kEmbedding);
+    EXPECT_EQ(lowered->steps()[0].spec.selector.weight_dtype, DataType::Float32());
 }
 
 TEST(GraphLowering, CarriesRuntimeChecksFromGraphToLoweredNode) {
@@ -618,8 +669,8 @@ TEST(GraphLowering, CarriesRuntimeChecksFromGraphToLoweredNode) {
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    ASSERT_EQ(lowered->steps.size(), 2U);
-    EXPECT_EQ(lowered->steps[1].spec.runtime_checks, graph_node.runtime_checks)
+    ASSERT_EQ(lowered->steps().size(), 2U);
+    EXPECT_EQ(lowered->steps()[1].spec.runtime_checks, graph_node.runtime_checks)
             << "Lowered node must carry graph runtime_checks verbatim without re-inference";
 }
 
@@ -651,12 +702,12 @@ TEST(GraphLowering, CarriesRoPERuntimeChecksFromLlamaGraph) {
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(*graph);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    ASSERT_EQ(lowered->steps.size(), nodes.size());
+    ASSERT_EQ(lowered->steps().size(), nodes.size());
 
     // Lowered step index matches graph node index 1:1 (verified by
     // LowersFullLlamaDenseGraph). The RoPE step must carry the graph
     // node's runtime_checks verbatim without re-inference.
-    const auto& rope_step = lowered->steps[5];
+    const auto& rope_step = lowered->steps()[5];
     EXPECT_EQ(rope_step.spec.op_type, OpType::kRoPE);
     EXPECT_EQ(rope_step.spec.runtime_checks, rope_node.runtime_checks)
             << "Lowered RoPE step must carry graph runtime_checks verbatim";
@@ -671,8 +722,8 @@ TEST(GraphLowering, LowersCompleteInputSpecsInSchemaPortOrder) {
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(*graph);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
 
-    for (size_t i = 0; i < lowered->steps.size(); ++i) {
-        const auto& step = lowered->steps[i];
+    for (size_t i = 0; i < lowered->steps().size(); ++i) {
+        const auto& step = lowered->steps()[i];
         const StatusOr<OperatorSchema> schema = GetOperatorSchema(step.spec.op_type);
         ASSERT_TRUE(schema.ok()) << schema.status().ToString();
         EXPECT_EQ(step.spec.input_specs.size(), schema->input_ports.size())
@@ -695,7 +746,7 @@ TEST(GraphLowering, CompactInputSpecsOrderMatchesRuntimeBindings) {
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
 
-    const auto& attn_step = lowered->steps[1];
+    const auto& attn_step = lowered->steps()[1];
     const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kAttention);
     ASSERT_TRUE(schema.ok()) << schema.status().ToString();
 

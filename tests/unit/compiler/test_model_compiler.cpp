@@ -1,4 +1,4 @@
-#include "aethermind/model/model_compiler.h"
+#include "aethermind/compiler/model_compiler.h"
 
 #include "aethermind/model/loaded_model.h"
 #include "aethermind/model/model_loader.h"
@@ -19,7 +19,7 @@ fs::path TestModelDir() {
 }
 
 bool HasWeightRecipe(const LoweredGraph& graph, bool (*predicate)(const WeightBindingSpec&)) {
-    return std::ranges::any_of(graph.values, [predicate](const LoweredValueDesc& value) {
+    return std::ranges::any_of(graph.values(), [predicate](const LoweredValueDesc& value) {
         const auto* weight = std::get_if<WeightValue>(&value.payload);
         return weight != nullptr && predicate(weight->binding.spec);
     });
@@ -40,19 +40,19 @@ TEST(ModelCompiler, LoadAndCompileTinyLlamaAtO2) {
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     ASSERT_NE(lowered->loaded_model, nullptr);
     EXPECT_EQ(lowered->loaded_model->GetConfig().num_hidden_layers, 2);
-    EXPECT_FALSE(lowered->graph.steps.empty());
-    EXPECT_EQ(lowered->graph.steps.front().spec.op_type, OpType::kEmbedding);
-    EXPECT_EQ(lowered->graph.steps.back().spec.op_type, OpType::kArgmax);
+    EXPECT_FALSE(lowered->graph.steps().empty());
+    EXPECT_EQ(lowered->graph.steps().front().spec.op_type, OpType::kEmbedding);
+    EXPECT_EQ(lowered->graph.steps().back().spec.op_type, OpType::kArgmax);
     EXPECT_TRUE(HasWeightRecipe(lowered->graph, &IsQkvRecipe));
     EXPECT_TRUE(HasWeightRecipe(lowered->graph, &IsGateUpRecipe));
 
-    for (const LoweredStep& step: lowered->graph.steps) {
+    for (const LoweredStep& step: lowered->graph.steps()) {
         const LoweredStepBinding& binding = step.binding;
         for (const GraphValueId value: binding.input_values) {
-            EXPECT_LT(value.index, lowered->graph.values.size());
+            EXPECT_LT(value.index, lowered->graph.values().size());
         }
         for (const GraphValueId value: binding.output_values) {
-            EXPECT_LT(value.index, lowered->graph.values.size());
+            EXPECT_LT(value.index, lowered->graph.values().size());
         }
     }
 }
@@ -66,12 +66,12 @@ TEST(ModelCompiler, SupportsO0AndO2) {
     ASSERT_TRUE(unoptimized.ok()) << unoptimized.status().ToString();
     EXPECT_FALSE(HasWeightRecipe(unoptimized->graph, &IsQkvRecipe));
     EXPECT_FALSE(HasWeightRecipe(unoptimized->graph, &IsGateUpRecipe));
-    EXPECT_EQ(unoptimized->graph.steps.size(), 34U);
+    EXPECT_EQ(unoptimized->graph.steps().size(), 34U);
 
     const auto optimized = ModelCompiler::LoadAndCompile(
             TestModelDir());
     ASSERT_TRUE(optimized.ok()) << optimized.status().ToString();
-    EXPECT_LT(optimized->graph.steps.size(), unoptimized->graph.steps.size());
+    EXPECT_LT(optimized->graph.steps().size(), unoptimized->graph.steps().size());
 }
 
 TEST(ModelCompiler, PropagatesLoweringTargetConfiguration) {
@@ -85,7 +85,7 @@ TEST(ModelCompiler, PropagatesLoweringTargetConfiguration) {
             TestModelDir(), options);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
 
-    for (const LoweredStep& step: lowered->graph.steps) {
+    for (const LoweredStep& step: lowered->graph.steps()) {
         EXPECT_EQ(step.spec.selector.device_type, DeviceType::kCUDA);
         EXPECT_EQ(step.spec.selector.isa, IsaLevel::kAVX2);
         EXPECT_EQ(step.spec.selector.weight_format, WeightFormat::kPacked);

@@ -52,7 +52,7 @@ template<typename Port>
 StatusOr<uint32_t> FindPortIndex(std::span<const Port> ports,
                                  std::string_view name,
                                  const char* not_found_message) noexcept {
-    for (const Port& port: ports) {
+    for (const auto& port: ports) {
         if (std::string_view(port.name) == name) {
             return static_cast<uint32_t>(&port - ports.data());
         }

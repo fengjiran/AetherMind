@@ -54,13 +54,13 @@ Status AddLoweringTimeStateAliases(const OperatorSchema& schema,
     // one lowering-time alias record with known step/port coordinates (see
     // LoweredStateAlias). Operators without state aliases produce no records,
     // so new stateful operators need no changes here.
-    for (const StateAliasPortPair& pair: schema.state_alias_ports) {
-        StatusOr<uint32_t> in = FindInputPortIndex(schema, pair.input_port);
+    for (const auto& pair: schema.state_alias_ports) {
+        auto in = FindInputPortIndex(schema, pair.input_port);
         AM_RETURN_IF_ERROR(in.status());
-        StatusOr<uint32_t> out = FindOutputPortIndex(schema, pair.output_port);
+        auto out = FindOutputPortIndex(schema, pair.output_port);
         AM_RETURN_IF_ERROR(out.status());
 
-        lowered.state_aliases.push_back(LoweredStateAlias{
+        lowered.state_aliases.push_back({
                 .step_index = step_index,
                 .input_port = in.value(),
                 .output_port = out.value(),
@@ -86,7 +86,7 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
     const std::span<const GraphValue> values = graph.GetValues();
     lowered.values.reserve(values.size());
     for (const auto& value: values) {
-        lowered.values.push_back(LoweredValueDesc{
+        lowered.values.push_back({
                 .spec = value.spec,
                 .payload = value.payload,
                 .quantization = value.quantization,
@@ -121,20 +121,20 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
 
         std::optional<DataType> act_dtype;
         std::optional<DataType> weight_dtype;
-        for (size_t input_index = 0; input_index < schema.input_ports.size(); ++input_index) {
-            const GraphValueId value_id = node.inputs[input_index];
+        for (size_t i = 0; i < schema.input_ports.size(); ++i) {
+            const GraphValueId value_id = node.inputs[i];
             const GraphValue& value = values[value_id.index];
             binding.input_values.push_back(value_id);
-            MaybeSetSelectorDTypes(
-                    schema.input_ports[input_index], value.spec, act_dtype, weight_dtype);
+            MaybeSetSelectorDTypes(schema.input_ports[i], value.spec, act_dtype, weight_dtype);
             step.input_specs.push_back(value.spec);
         }
 
-        for (size_t output_index = 0; output_index < schema.output_ports.size(); ++output_index) {
-            const GraphValueId value_id = node.outputs[output_index];
+        for (size_t i = 0; i < schema.output_ports.size(); ++i) {
+            const GraphValueId value_id = node.outputs[i];
             binding.output_values.push_back(value_id);
             step.output_specs.push_back(values[value_id.index].spec);
         }
+
         step.runtime_checks = node.runtime_checks;
         MaybeSetActivationDTypeFromOutputs(schema, node, values, act_dtype);
 
@@ -159,6 +159,7 @@ StatusOr<StateAliasPlan> ResolveStateAliases(const LoweredGraph& lowered) {
             return Status::InvalidArgument(
                     "ResolveStateAliases: alias step index out of range");
         }
+
         const LoweredStepBinding& binding = lowered.steps[alias.step_index].binding;
         if (alias.input_port >= binding.input_values.size() ||
             binding.input_values[alias.input_port] != alias.input) {
@@ -166,6 +167,7 @@ StatusOr<StateAliasPlan> ResolveStateAliases(const LoweredGraph& lowered) {
                     "ResolveStateAliases: aliased input GraphValueId not at "
                     "recorded input port");
         }
+
         if (alias.output_port >= binding.output_values.size() ||
             binding.output_values[alias.output_port] != alias.output) {
             return Status::InvalidArgument(

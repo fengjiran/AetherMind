@@ -1,4 +1,5 @@
-#include "aethermind/graph/optimization/optimize_model_graph.h"
+#include "aethermind/compiler/semantic_optimization_pipeline.h"
+
 #include "aethermind/graph/optimization/add_rmsnorm_fusion_pass.h"
 #include "aethermind/graph/optimization/constant_folding_pass.h"
 #include "aethermind/graph/optimization/dead_code_elimination_pass.h"
@@ -7,15 +8,11 @@
 #include "aethermind/graph/optimization/silu_mul_fusion_pass.h"
 
 namespace aethermind {
-
 namespace {
 
-// Builds the default optimization pipeline based solely on PassContext::opt_level.
-// Feature flags are carried in the context and checked internally by each pass;
-// the pipeline builder does not gate pass registration on flags.
-GraphPassManager BuildDefaultOptPipeline(PassContext ctx) {
-    GraphPassManager pipeline(ctx);
-    switch (ctx.opt_level) {
+GraphPassManager BuildDefaultOptPipeline(PassContext context) {
+    GraphPassManager pipeline(context);
+    switch (context.opt_level) {
         case 0:
             break;
         case 1:
@@ -31,7 +28,6 @@ GraphPassManager BuildDefaultOptPipeline(PassContext ctx) {
             pipeline.Add(std::make_unique<DeadCodeEliminationPass>());
             break;
     }
-
     return pipeline;
 }
 

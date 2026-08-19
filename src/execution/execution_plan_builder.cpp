@@ -1,9 +1,10 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/backend/packed_weights.h"
-#include "aethermind/graph/lowering/graph_lowering.h"
+#include "aethermind/compiler/lowered_graph.h"
 #include "aethermind/model/packed_weight_store.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_schema.h"
+#include "execution/lowered_graph_adapter.h"
 
 #include <concepts>
 #include <ranges>
@@ -11,8 +12,14 @@
 namespace aethermind {
 namespace {
 
+template<typename NodeSpec>
+concept ExecutionNodeMetadata =
+        std::same_as<std::remove_cvref_t<NodeSpec>, ExecutionPlanNodeSpec> ||
+        std::same_as<std::remove_cvref_t<NodeSpec>, LoweredNodeSpec>;
+
+template<ExecutionNodeMetadata NodeSpec>
 StatusOr<const void*> ResolvePackedWeightsForNode(const PackedWeightStore* packed_weight_store,
-                                                  const ExecutionPlanNodeSpec& node) noexcept {
+                                                  const NodeSpec& node) noexcept {
     if (node.selector.weight_format != WeightFormat::kPacked) {
         return nullptr;
     }
@@ -62,15 +69,8 @@ Status ValidateCallerMetadata(const ExecutionPlanNodeSpec& node,
     return Status::Ok();
 }
 
-StatusOr<PreparedNodeMetadata> PrepareNodeMetadata(const ExecutionPlanNodeSpec& node,
-                                                   bool trusted) {
-    if (node.op_type == OpType::kUnknown) {
-        return Status::InvalidArgument("ExecutionPlanNodeSpec.op_type cannot be kUnknown");
-    }
-    if (std::holds_alternative<std::monostate>(node.op_params)) {
-        return Status::InvalidArgument("ExecutionPlanNodeSpec requires typed op_params");
-    }
-
+template<ExecutionNodeMetadata NodeSpec>
+StatusOr<PreparedNodeMetadata> PrepareCompactInputMetadata(const NodeSpec& node) {
     const auto schema = GetOperatorSchema(node.op_type);
     if (!schema.ok()) {
         return schema.status();
@@ -80,42 +80,61 @@ StatusOr<PreparedNodeMetadata> PrepareNodeMetadata(const ExecutionPlanNodeSpec& 
         return compact_input_specs.status();
     }
 
-    PreparedNodeMetadata metadata{
+    return PreparedNodeMetadata{
             .compact_input_specs = std::move(*compact_input_specs),
     };
-    if (trusted) {
-        // LoweredGraph carries the exact result already produced by graph
-        // construction. Re-running inference here would create a second
-        // semantic authority and is deliberately prohibited.
-        metadata.output_specs = node.output_specs;
-        metadata.runtime_checks = node.runtime_checks;
-        return metadata;
+}
+
+StatusOr<PreparedNodeMetadata> PrepareNodeMetadata(const ExecutionPlanNodeSpec& node) {
+    if (node.op_type == OpType::kUnknown) {
+        return Status::InvalidArgument("ExecutionPlanNodeSpec.op_type cannot be kUnknown");
+    }
+    if (std::holds_alternative<std::monostate>(node.op_params)) {
+        return Status::InvalidArgument("ExecutionPlanNodeSpec requires typed op_params");
+    }
+
+    auto metadata = PrepareCompactInputMetadata(node);
+    if (!metadata.ok()) {
+        return metadata.status();
     }
 
     AM_RETURN_IF_ERROR(ValidateCallerMetadata(node,
-                                              metadata.compact_input_specs,
-                                              metadata.output_specs,
-                                              metadata.runtime_checks));
+                                              metadata->compact_input_specs,
+                                              metadata->output_specs,
+                                              metadata->runtime_checks));
     return metadata;
 }
 
-// Accepts any random-access range of ExecutionPlanNodeSpec: a plain vector on
-// the untrusted adapter path, or a std::views::transform projection over
-// LoweredGraph::steps on the trusted lowering path. The constraints keep the
-// indexed access below safe and surface misuse at the call site instead of
-// deep inside template instantiation.
+StatusOr<PreparedNodeMetadata> PrepareNodeMetadata(const LoweredNodeSpec& node) {
+    if (node.op_type == OpType::kUnknown ||
+        std::holds_alternative<std::monostate>(node.op_params)) {
+        return Status::Internal("Finalized LoweredNodeSpec is missing semantic metadata");
+    }
+
+    auto metadata = PrepareCompactInputMetadata(node);
+    if (!metadata.ok()) {
+        return Status::Internal("Finalized LoweredNodeSpec has invalid compact input metadata: " +
+                                metadata.status().message());
+    }
+    // LoweredGraph is validated by compiler and checked again at the
+    // execution trust boundary. Re-running InferOperator here would create a
+    // second semantic authority, so only the ExecutionPlan's owning copies
+    // are made below.
+    metadata->output_specs = node.output_specs;
+    metadata->runtime_checks = node.runtime_checks;
+    return metadata;
+}
+
 template<typename NodeRange>
     requires std::ranges::random_access_range<NodeRange> &&
-             std::same_as<std::ranges::range_value_t<NodeRange>,
-                          ExecutionPlanNodeSpec>
+             ExecutionNodeMetadata<std::ranges::range_value_t<NodeRange>>
 StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
                                            const PackedWeightStore* packed_weight_store,
                                            NodeRange&& nodes,
-                                           StateAliasPlan state_alias_plan,
-                                           bool trusted) {
+                                           StateAliasPlan state_alias_plan) {
     std::vector<WorkspaceRequirement> workspace_requirements;
     workspace_requirements.reserve(std::ranges::size(nodes));
-    for (const ExecutionPlanNodeSpec& node: nodes) {
+    for (const auto& node: nodes) {
         workspace_requirements.push_back(node.workspace_requirement);
     }
     if (const auto layout = PlanWorkspaceRequirements(std::span(workspace_requirements));
@@ -126,17 +145,17 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
     std::vector<ExecutionStep> steps;
     steps.reserve(std::ranges::size(nodes));
     for (size_t index = 0; index < std::ranges::size(nodes); ++index) {
-        const ExecutionPlanNodeSpec& node = nodes[index];
+        const auto& node = nodes[index];
         auto backend = runtime.GetBackend(node.selector.device_type);
         if (!backend.ok()) {
             return backend.status();
         }
 
-        auto metadata = PrepareNodeMetadata(node, trusted);
+        auto metadata = PrepareNodeMetadata(node);
         if (!metadata.ok()) {
             return metadata.status();
         }
-        auto kernel = ExecutionPlanBuilder::PrepareKernelForNode(*backend.value(), node);
+        auto kernel = backend.value()->PrepareKernel(node.op_type, node.selector, node.op_params);
         if (!kernel.ok()) {
             return kernel.status();
         }
@@ -175,41 +194,45 @@ StatusOr<ResolvedKernel> ExecutionPlanBuilder::PrepareKernelForNode(
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         RuntimeContext& runtime,
         const std::vector<ExecutionPlanNodeSpec>& nodes) {
-    return BuildExecutionPlan(runtime, nullptr, nodes, StateAliasPlan{}, /*trusted=*/false);
+    return BuildExecutionPlan(runtime, nullptr, nodes, StateAliasPlan{});
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         RuntimeContext& runtime,
         const PackedWeightStore& packed_weight_store,
         const std::vector<ExecutionPlanNodeSpec>& nodes) {
-    return BuildExecutionPlan(runtime, &packed_weight_store, nodes, StateAliasPlan{}, /*trusted=*/false);
+    return BuildExecutionPlan(runtime, &packed_weight_store, nodes, StateAliasPlan{});
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         RuntimeContext& runtime,
         const LoweredGraph& lowered) {
-    auto alias_plan = ResolveStateAliases(lowered);
+    auto alias_plan = ResolveStateAliasesForExecution(lowered);
     if (!alias_plan.ok()) {
         return alias_plan.status();
     }
     const auto node_specs = std::views::transform(
-            lowered.steps, &LoweredStep::spec);
-    return BuildExecutionPlan(runtime, nullptr, node_specs,
-                              std::move(*alias_plan), /*trusted=*/true);
+            lowered.steps(),
+            [](const LoweredStep& step) -> const LoweredNodeSpec& {
+                return step.spec;
+            });
+    return BuildExecutionPlan(runtime, nullptr, node_specs, std::move(*alias_plan));
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         RuntimeContext& runtime,
         const PackedWeightStore& packed_weight_store,
         const LoweredGraph& lowered) {
-    auto alias_plan = ResolveStateAliases(lowered);
+    auto alias_plan = ResolveStateAliasesForExecution(lowered);
     if (!alias_plan.ok()) {
         return alias_plan.status();
     }
     const auto node_specs = std::views::transform(
-            lowered.steps, &LoweredStep::spec);
-    return BuildExecutionPlan(runtime, &packed_weight_store, node_specs,
-                              std::move(*alias_plan), /*trusted=*/true);
+            lowered.steps(),
+            [](const LoweredStep& step) -> const LoweredNodeSpec& {
+                return step.spec;
+            });
+    return BuildExecutionPlan(runtime, &packed_weight_store, node_specs, std::move(*alias_plan));
 }
 
 }// namespace aethermind

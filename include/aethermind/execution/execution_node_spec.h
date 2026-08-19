@@ -13,6 +13,9 @@
 
 namespace aethermind {
 
+/// Untrusted execution request metadata. Callers using this type go through
+/// InferOperator verification in ExecutionPlanBuilder. Compiler-produced
+/// trusted metadata uses LoweredNodeSpec instead.
 struct ExecutionPlanNodeSpec {
     OpType op_type = OpType::kUnknown;
     /// Execution capabilities this step requires. Lowering records the

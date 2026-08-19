@@ -10,7 +10,7 @@
 
 namespace aethermind {
 
-struct LoweredGraph;
+class LoweredGraph;
 class PackedWeightStore;
 
 class ExecutionPlanBuilder {
@@ -28,10 +28,10 @@ public:
             const PackedWeightStore& packed_weight_store,
             const std::vector<ExecutionPlanNodeSpec>& nodes);
 
-    /// Builds an ExecutionPlan from a LoweredGraph by resolving lowering-time
-    /// state aliases into the runtime StateAliasPlan.
+    /// Builds an ExecutionPlan from a finalized compiler artifact. Execution
+    /// resolves its semantic state aliases into the runtime StateAliasPlan.
     ///
-    /// @note Consumption scope: this overload uses only `lowered.steps` (their
+    /// @note Consumption scope: this overload uses only `lowered.steps()` (their
     /// specs) and the resolved state aliases. The step bindings, value
     /// metadata, and model inputs/outputs are not yet wired into runtime
     /// tensor/state binding; an ExecutionPlan returned here must not be treated

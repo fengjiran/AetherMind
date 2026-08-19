@@ -1267,7 +1267,7 @@ AM_NODISCARD virtual Status Run(GraphRewriteSession& session,
 
 ### 16.4 当前优化 Pass Pipeline
 
-当前仓库已有 pass framework 和 rewrite session，production optimization pass 已通过 `OptimizeModelGraph` 集成到默认 pipeline 中。各 pass 当前状态标注如下：`[已实现]` / `[未实现]` / `[规划中]`。
+当前仓库已有 graph-owned pass framework 和 rewrite session；compiler-owned `OptimizeModelGraph` 负责把这些 backend-independent passes 组装为默认 pipeline。各 pass 当前状态标注如下：`[已实现]` / `[未实现]` / `[规划中]`。
 
 #### 默认 Pipeline：优化级别与 Pass 选择
 
@@ -1277,7 +1277,7 @@ AM_NODISCARD virtual Status Run(GraphRewriteSession& session,
 |---|---|---|
 | O0 | 无 | 输入图不经任何优化直接通过；`GraphPassManager` 生成输入图的合法副本 |
 | O1 | `ConstantFoldingPass` → `DeadCodeEliminationPass` | 基础清理：折叠纯常量子图，删除不可达节点；不进行语义融合 |
-| O2+ (默认) | `ConstantFoldingPass` → `QkvLinearFusionPass` → `SiluMulFusionPass` → `AddRmsNormFusionPass` → `DeadCodeEliminationPass` | 完整优化：常量折叠 + QKV 投影融合 + SwiGLU fusion + Add-RMSNorm 融合 + 死代码消除 |
+| O2+ (默认) | `ConstantFoldingPass` → `QkvLinearFusionPass` → `GateUpLinearFusionPass` → `SiluMulFusionPass` → `AddRmsNormFusionPass` → `DeadCodeEliminationPass` | 完整优化：常量折叠 + QKV/Gate-Up/SwiGLU 语义融合 + Add-RMSNorm 融合 + 死代码消除 |
 
 默认优化级别为 O2（`PassContext::opt_level` 默认值为 2）。O3 及更大的级别（如 99）使用与 O2 相同的 pipeline。
 
@@ -1337,12 +1337,12 @@ ConstantFolding 必须优先于 SiluMulFusion，因为：
 
 ### 16.6 Graph Compiler API
 
-当前仓库提供两个显式的图编译阶段入口，由调用方直接串联（不再有组合器函数或聚合配置类型）：
+compiler 模块提供两个显式的图编译阶段入口：`OptimizeModelGraph` 组装 graph-owned semantic passes，`LowerModelGraph` 产生 compiler-owned artifact。`ModelCompiler` 是 production 模型路径的组合入口。
 
 #### `OptimizeModelGraph`
 
 ```cpp
-// include/aethermind/graph/optimization/optimize_model_graph.h
+// include/aethermind/compiler/semantic_optimization_pipeline.h
 AM_NODISCARD StatusOr<ModelGraph> OptimizeModelGraph(
         const ModelGraph& graph,
         PassContext context = {});
@@ -1353,44 +1353,44 @@ AM_NODISCARD StatusOr<ModelGraph> OptimizeModelGraph(
 #### 两阶段组合调用
 
 ```cpp
-// include/aethermind/graph/lowering/graph_lowering.h
+// include/aethermind/compiler/graph_lowering.h
 AM_NODISCARD StatusOr<LoweredGraph> LowerModelGraph(
         const ModelGraph& graph,
         const GraphLoweringConfig& config = {});
 ```
 
-调用方依次执行 `OptimizeModelGraph(graph, opt_ctx)` → `LowerModelGraph(optimized, lower_cfg)`，各阶段失败即返回错误 `Status`。两个阶段的配置分别由 `PassContext` 与 `GraphLoweringConfig` 独立提供（默认 O2 优化、CPU/scalar/plain/both 低化）。
+调用方依次执行 `OptimizeModelGraph(graph, opt_ctx)` → `LowerModelGraph(optimized, lower_cfg)`，各阶段失败即返回错误 `Status`。两个阶段的配置分别由 `PassContext` 与 `GraphLoweringConfig` 独立提供（默认 O2 优化、CPU/scalar/plain/both target selector）。`KernelSelector` 是 base 纯数据契约，不使 compiler 查询 backend/kernel registry。
 
 #### 所有权设计
 
 返回的 `LoweredGraph` 自身已自包含，不依赖任何源图存活：
 
-- 常量折叠产生 inline `ConstantValue`，lowering 后 `ConstantBinding`（`shared_ptr` 内联数据，共享所有权）保留在 `LoweredGraph::values` 的 payload 中；
+- 常量折叠产生 inline `ConstantValue`，lowering 后 `ConstantBinding`（`shared_ptr` 内联数据，共享所有权）保留在 `LoweredGraph::values()` 的 payload 中；
 - 所有 `TensorSpec`、`ShapeConstraint`、`runtime_checks`、dtype 在 lowering 时值拷贝；
-- `lowered.model_outputs` 中的 `GraphValueId` 与调用方持有的优化图 `GetOutputs()` 中的 ID 一致（需要语义回查时，由调用方自行持有优化图）；
-- standalone constant graph output 的内联字节经 `LoweredGraph::values` 的 payload 保持可达，编译返回后无需回读图。
+- `lowered.model_outputs()` 中的 `GraphValueId` 与调用方持有的优化图 `GetOutputs()` 中的 ID 一致（需要语义回查时，由调用方自行持有优化图）；
+- standalone constant graph output 的内联字节经 `LoweredGraph::values()` 的 payload 保持可达，编译返回后无需回读图；
+- `LoweredGraph` storage 私有且只暴露 const spans；`LowerModelGraph` 在 finalization 时验证 schema arity、value/spec bindings、selector dtype、model I/O 与声明式 state alias。该验证不重跑 `InferOperator`。
 
 > 注：早期设计曾有 `CompiledModelGraph { optimized_graph, lowered }` 包装、`CompileModelGraph` 组合器与 `GraphCompileConfig` 聚合配置；随实现演进（执行路径不读图、数据值拷贝/共享所有权、组合逻辑仅为顺序调用），三者均已移除，收敛为两个显式阶段函数。
 
-#### 与现有 Builder / Lowering 的关系
+#### 模块所有权
 
-- `ModelGraphBuilder::BuildLlamaDense` 和 `LowerModelGraph` 的签名和行为不变；
-- `OptimizeModelGraph` 是显式优化入口，不对现有调用点产生隐式影响；
-- 优化图与 `LoweredGraph` 的关系是 1:1 node 映射：每个优化图节点对应一个 lowering step 和一个 step binding（优化图由调用方自行持有）。
+- graph 保留 `ModelGraph`、GraphRewrite/GraphPassManager 与所有 backend-independent semantic pass；不得 include compiler/execution/backend/model。
+- compiler 拥有 `OptimizeModelGraph` 的 pipeline composition、`LowerModelGraph`、`LoweredGraph`/`LoweredNodeSpec`、`ModelCompiler` 与 `ModelCompileOptions`；不得 include execution/backend/runtime。
+- execution 消费 finalized `LoweredGraph`，在内部把 state aliases 转为 `StateAliasPlan` 并进行 workspace/kernel planning；raw `ExecutionPlanNodeSpec` 是会重跑 `InferOperator` 的 untrusted adapter。
 
 ## 17. Lowering
 
-DAG lowering 的职责：
+DAG lowering（compiler）的职责：
 
 1. 拓扑排序或生成合法执行 schedule；
 2. 按 operator schema 顺序解释 `GraphNode.inputs` / `GraphNode.outputs`；
 3. 解析 `WeightValue` 的逻辑权重引用；
-4. 根据 backend / execution mode / device 选择 operator 或 kernel；
-5. 生成 packed weight mapping；
-6. 推导 buffer aliasing / in-place update 约束；
-7. 计算 workspace；
-8. 插入必要的 runtime resource / communication / synchronization；
-9. 生成 `ExecutionPlanNodeSpec`、`LoweredGraph` 或 `ExecutionPlan`。
+4. 将 `GraphLoweringConfig` 的 base `KernelSelector` 与经验证的 dtype 写入 `LoweredNodeSpec`；
+5. 声明式记录 state must-alias；
+6. 生成并验证 `LoweredGraph`。
+
+kernel registry 查询、packed weight materialization、workspace planning、runtime buffer alias binding 与 `ExecutionPlan` 构建均属 execution/backend 边界，不属于 compiler lowering。
 
 Lowering 可以派生 execution-specific views，例如 runtime activation inputs、bound weight handles、state handles、resource handles。但这些派生视图必须保留原始 schema `port_index` 或 `port_name`，不能替代 `GraphNode.inputs` 本身。
 

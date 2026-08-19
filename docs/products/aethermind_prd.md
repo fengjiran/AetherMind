@@ -137,15 +137,16 @@ Phase 1 边界（本文档）
 
 **架构执行准则**：
 
-- **前端语义分析**：算子输入验证、dtype/rank 校验、输出 shape 推导由 per-op 类型化自由函数 `Infer*`（位于 `src/operators/*_op.cpp`，如 `InferRoPE`、`InferSiluMul`、`InferRmsNorm`）统一完成，在图构建/lowering 阶段对每个节点只跑一次，产出 output_specs + deferred ShapeConstraints 写入 ExecutionPlanNodeSpec.runtime_checks，执行期不再重复推理。
-- **图编译管道**：`ModelLoader` 只产生 backend-independent 的 `LoadedModel`（HF I/O、validation、resolved raw weights）；`ModelCompiler` 串联 `ModelGraphBuilder`、`OptimizeModelGraph` 与 `LowerModelGraph`，产出拥有 `LoadedModel` 的 `LoweredModelArtifact`。`LoweredGraph` 含 steps（每步为 `LoweredStep{spec, binding}` 的 1:1 配对）、按 `GraphValueId` 稠密索引的 value metadata 和 state_aliases；最终仍由 `ExecutionPlanBuilder::Build(RuntimeContext, LoweredGraph)` 在计划构建期执行 `ResolveStateAliases` + kernel resolve（通过 `KernelRegistry` 全局单例 + `AM_REGISTER_KERNEL` 静态注册），执行期仅消费 `ResolvedKernel` 函数指针，无运行时 dispatch 开销。
+- **前端语义分析**：算子输入验证、dtype/rank 校验、输出 shape 推导由 per-op 类型化自由函数 `Infer*`（位于 `src/operators/*_op.cpp`，如 `InferRoPE`、`InferSiluMul`、`InferRmsNorm`）统一完成；结果写入 semantic graph，compiler lowering 按值携带 output specs 与 deferred ShapeConstraints，execution 对 finalized `LoweredGraph` 不重复推理。
+- **图编译管道**：`ModelLoader` 只产生 backend-independent 的 `LoadedModel`（HF I/O、validation、resolved raw weights）；compiler 模块中的 `ModelCompiler` 串联 `ModelGraphBuilder`、`OptimizeModelGraph` 与 `LowerModelGraph`，产出拥有 `LoadedModel` 的 `LoweredModelArtifact`。`LoweredGraph` 是不可变且经结构验证的 compiler artifact，含 `LoweredNodeSpec` steps、按 `GraphValueId` 稠密索引的 value metadata 和 unresolved state aliases；`ExecutionPlanBuilder::Build(RuntimeContext, LoweredGraph)` 仅在 execution 内部将 aliases 转为 `StateAliasPlan` 并 resolve kernel，执行期仅消费 `ResolvedKernel` 函数指针，无运行时 dispatch 开销。
 - **核心计算模型**：Phase 1 以 **decoder-only Transformer** 为执行核心，运行时显式区分 **Prefill** 与 **Decode** 两个阶段。
 - **核心组件**：Phase 1 架构由 `Runtime`（生命周期与资源管理）、`Executor`（同步执行流控，消费已 resolve 的 `ExecutionPlan`）与 `KVCacheManager`（静态 KV 内存池管理）构成。
 - **模块所有权（源码目录-职责冻结）**：
-  - **`graph/`（顶层）**：通用 Graph IR、GraphOpBuilder、优化 passes、lowering（`OptimizeModelGraph`/`LowerModelGraph`，产物为 `LoweredGraph`）、诊断 dump — 设备/ISA 独立，不允许包含 Backend/Kernel/Workspace。
+  - **`graph/`（顶层）**：通用 Graph IR、GraphOpBuilder、GraphRewrite/GraphPassManager 与 backend-independent semantic passes、诊断 dump — 设备/ISA 独立，不允许包含 compiler/execution/backend/model。
   - **`operators/`（顶层）**：OpType、OperatorSchema、OpParams（typed variant）、`Infer*` 自由函数、OpParams serde — 语义层，不允许包含执行/图容器细节。
-  - **`execution/`（顶层）**：ExecutionPlan、ExecutionPlanNodeSpec、StateAliasPlan、LayerRunner、ExecutionPlanBuilder。Public headers 不依赖 graph compilation；唯一 adapter edge 为 `execution_plan_builder.cpp` 内部 include `graph/lowering/graph_lowering.h`。
-  - **`model/`**：HF 加载/校验、`LoadedModel`、ModelLoader、**ModelGraphBuilder**（前端→语义图的唯一转换权威；HF-only RoPE scaling 在 `BuildLlamaDense` 路径显式拒绝，仅 kNone/kLinear 映射到 `RoPEScalingType`）和 `ModelCompiler`。ModelLoader 不执行 graph build、kernel resolve 或 prepack；权重重排/materialization 必须由优化图的具体 weight binding 驱动。`PackedWeightStore`/`WeightPrepackPlanner` 仅为现有 ExecutionPlan packed-weight API 的兼容设施。
+  - **`compiler/`（顶层）**：默认 semantic pipeline composition、`ModelCompiler`、`ModelCompileOptions`、`LowerModelGraph`、`LoweredGraph`/`LoweredNodeSpec`/`LoweredModelArtifact` 与结构验证。可携带 base `KernelSelector`，但不依赖 execution/backend/runtime。
+  - **`execution/`（顶层）**：ExecutionPlan、仅供 untrusted 手工/低层请求的 ExecutionPlanNodeSpec、StateAliasPlan、LayerRunner、ExecutionPlanBuilder。Public headers 不依赖 compiler；实现层消费 compiler artifact，负责 state alias runtime conversion、workspace 和 kernel planning。
+  - **`model/`**：HF 加载/校验、`LoadedModel`、ModelLoader、**ModelGraphBuilder**（前端→语义图的唯一转换权威；HF-only RoPE scaling 在 `BuildLlamaDense` 路径显式拒绝，仅 kNone/kLinear 映射到 `RoPEScalingType`）。ModelCompiler 归 compiler；ModelLoader 不执行 graph build、kernel resolve 或 prepack。权重重排/materialization 必须由优化图的具体 weight binding 驱动。`PackedWeightStore`/`WeightPrepackPlanner` 仅为现有 ExecutionPlan packed-weight API 的兼容设施。
   - 构建目标保持单一 `AetherMind` shared（`src/**` 由 GLOB_RECURSE 收集），无 graph/operators 专用 target。
 - 无请求调度器：Phase 1 不引入 `Request Scheduler`，不承担请求排队、批处理、连续批处理或多会话仲裁职责。
 - 无虚函数开销：使用 C++20 Concepts + 静态分发

@@ -34,7 +34,7 @@ struct ExecutionPlanNodeSpec {
 };
 ```
 
-也就是说，`ExecutionPlanBuilder` 的直接输入可以是已经线性化好的 node spec 列表；同时也接受 `LoweredGraph`（包含 steps——每步为 `LoweredStep{spec, binding}` 的 1:1 配对、按 `GraphValueId` 索引的 values、inputs/outputs、state_aliases）。`ModelGraph` 通过 `LowerModelGraph()` 先转换为 `LoweredGraph`，再由 `ExecutionPlanBuilder::Build(RuntimeContext, LoweredGraph)` 执行 state alias resolution 并构建计划。
+也就是说，`ExecutionPlanNodeSpec` 是给测试、手工构造和其他低层调用的 **untrusted execution request**；builder 会重跑 `InferOperator` 并严格比较其 metadata。compiler 的正式产物是 `LoweredNodeSpec` 组成的 immutable `LoweredGraph`；`ModelGraph` 经 `LowerModelGraph()` 转换后，execution 内部先验证 artifact 并将 state aliases 转为 `StateAliasPlan`，再构建计划。
 
 ## 2. 当前完整流程图
 
@@ -66,9 +66,9 @@ for each node:
         ├─ backend.PrepareKernel(node.op_type, selector, node.op_params)
         │      └─ 返回按值持有的 ResolvedKernel
         │
-        │   // NOTE: trusted LoweredGraph metadata is copied verbatim because
-        │   // graph construction already called InferOperator. Untrusted raw
-        │   // node specs are re-inferred and must match exactly.
+        │   // finalized LoweredGraph was validated by compiler; metadata is
+        │   // copied without a second semantic inference. Untrusted raw node
+        │   // specs are re-inferred and must match exactly.
         │
         ├─ ResolvePackedWeightsForNode(packed_weight_store?, node)
         │
@@ -439,14 +439,14 @@ ValidateShapeConstraints(...)
                                          ▼
                               ┌──────────────────────┐
                               │     LoweredGraph      │
-                              │  (ExecutionPlanNodeSpec│
+                              │  (LoweredNodeSpec     │
                               │   + bindings)         │
                               └──────────────────────┘
 ```
 
 ### 6.2 规范组合调用
 
-优化与降低仍是两个显式阶段；`ModelCompiler` 用 `ModelCompileOptions` 为生产模型编译提供唯一的组合入口，诊断/测试场景可继续直接串联：
+优化与降低仍是 compiler-owned 的两个显式阶段；`ModelCompiler` 用 `ModelCompileOptions` 为生产模型编译提供唯一的组合入口，诊断/测试场景可继续直接串联：
 
 ```text
 ModelGraph
@@ -472,20 +472,20 @@ GraphLoweringConfig {
 
 ### 6.3 当前的显式降低入口
 
-语义图优化后，通过 lowering bridge 产生 `LoweredGraph`，其 `steps` 字段作为 `ExecutionPlanBuilder` 的输入：
+语义图优化后，compiler lowering 产生 finalized `LoweredGraph`。其 storage 私有，只通过 const span accessor 公开；execution 是唯一把它适配成 plan 的模块：
 
 ```text
 optimized ModelGraph
   → LowerModelGraph
   → LoweredGraph
-       ├─ steps (std::vector<LoweredStep>; spec + binding 1:1 配对)
-       ├─ values (std::vector<LoweredValueDesc>, indexed by GraphValueId)
-       ├─ model_inputs
-       ├─ model_outputs
-       ├─ state_aliases (std::vector<LoweredStateAlias>, step/port coordinates
+       ├─ steps() (LoweredStep{LoweredNodeSpec, binding}; 1:1 配对)
+       ├─ values() (LoweredValueDesc, indexed by GraphValueId)
+       ├─ model_inputs()
+       ├─ model_outputs()
+       ├─ state_aliases() (LoweredStateAlias, step/port coordinates
        │                 recorded at lowering time)
   → ExecutionPlanBuilder::Build(runtime, lowered)   // consumes full LoweredGraph
-  →   ├─ ResolveStateAliases(lowered)              // validates + converts state aliases
+  →   ├─ ResolveStateAliasesForExecution(lowered)  // execution-private conversion
   →   └─ BuildExecutionPlan(runtime, model?, steps, alias_plan, trusted=true)
   → ExecutionPlan
 ```
@@ -493,19 +493,20 @@ optimized ModelGraph
 执行计划构建的主要入口接受完整 `LoweredGraph`（含 steps、values、inputs/outputs、state_aliases），而非仅消费 steps：
 
 ```text
-LoweredGraph
-  ├─ steps           (std::vector<LoweredStep>, spec + binding 1:1)
-  ├─ values          (std::vector<LoweredValueDesc>)
-  ├─ model_inputs    (std::vector<GraphInput>)
-  ├─ model_outputs   (std::vector<GraphOutput>)
-  └─ state_aliases   (std::vector<LoweredStateAlias>, step/port coordinates
+LoweredGraph (compiler-owned, immutable after finalization)
+  ├─ steps()          (span<LoweredStep>, LoweredNodeSpec + binding 1:1)
+  ├─ values()         (span<LoweredValueDesc>)
+  ├─ model_inputs()   (span<GraphValueId>)
+  ├─ model_outputs()  (span<GraphValueId>)
+  └─ state_aliases()  (span<LoweredStateAlias>, step/port coordinates
                      recorded at lowering time)
       │
       ▼
 ExecutionPlanBuilder::Build(RuntimeContext&, LoweredGraph const&)
       │
-      ├─ ResolveStateAliases(lowered)
-      │     └─ validates alias pairs → returns StateAliasPlan
+      ├─ ValidateLoweredGraph(lowered)
+      ├─ ResolveStateAliasesForExecution(lowered)
+      │     └─ converts verified aliases → StateAliasPlan
       │
       ▼
 BuildExecutionPlan(runtime, model?, steps, alias_plan, trusted=true)
@@ -518,11 +519,12 @@ ExecutionPlan{... steps ..., state_alias_plan{...}}
 
 ### 6.4 state alias 的声明与解析机制
 
-状态别名的声明与解析分属两个权威，均不依赖 lowering 对具体算子的认知：
+状态别名的声明、compiler validation 与 runtime conversion 分属三个清晰职责，均不依赖 lowering 对具体算子的认知：
 
-- **声明**：算子在其 `OperatorSchema::state_alias_ports` 中声明（输入端口名, 输出端口名）对（如 KVCacheUpdate 声明 k_cache_in→k_cache_out、v_cache_in→v_cache_out）。新增有状态算子只需声明该字段，lowering 与解析均零改动。
+- **声明**：算子在其 `OperatorSchema::state_alias_ports` 中声明（输入端口名, 输出端口名）对（如 KVCacheUpdate 声明 k_cache_in→k_cache_out、v_cache_in→v_cache_out）。新增有状态算子只需声明该字段，compiler lowering 无需 `OpType` 特判。
 - **记录**：`LowerModelGraph` 按拓扑序逐节点消费 schema 声明，在发出每个节点时以当时已知的 step 索引与 schema 端口 index 生成 `LoweredStateAlias`（step_index/input_port/output_port + 值对），不扫描、不匹配。
-- **解析**：`ResolveStateAliases` 仅校验记录坐标（step 越界、端口值与记录不一致即失败）并转换为运行时 `ResolvedStateAlias`，不再扫描 step bindings 重新发现坐标。
+- **验证**：compiler finalization 检查 schema declaration、state-port kind、binding/value ID、`StateValue` payload 与 state binding 一致性，以及 duplicate/conflicting aliases；失败为 trusted artifact 的 `Internal` 错误。
+- **解析**：execution-private `ResolveStateAliasesForExecution` 在 trust boundary 重查 artifact 结构后，按 `(step_index, input_port, output_port)` 确定性排序并转换为 runtime `ResolvedStateAlias`。
 
 ### 6.5 仍待补齐的生产化部分
 
@@ -577,16 +579,16 @@ ModelGraph
 ### 层次 B：LoweredGraph 到 ExecutionPlan 的构建（已实现）
 
 ```text
-LoweredGraph.steps (std::vector<ExecutionPlanNodeSpec>)
+LoweredGraph::steps() (std::span<const LoweredStep>, carrying LoweredNodeSpec)
   → workspace planning
   → operator creation
-  → shape inference / runtime constraint extraction
+  → compact runtime tensor-spec derivation
   → backend kernel resolution
   → packed weight sidecar binding
   → immutable ExecutionPlan
 ```
 
-`ExecutionPlanBuilder` 不理解模型拓扑，它只消费已经准备好的 node specs。模型拓扑到 `ExecutionPlanNodeSpec` 的转换由 `LowerModelGraph` 负责。
+`ExecutionPlanBuilder` 不理解模型拓扑；它消费 compiler artifact 并在 implementation 内部适配为 execution request metadata。模型拓扑到 `LoweredNodeSpec` 的转换由 compiler `LowerModelGraph` 负责。
 
 ### 层次 C：LoadedModel 到 LoweredModelArtifact 的生产模型编译管线（已实现）
 

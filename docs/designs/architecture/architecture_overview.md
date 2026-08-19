@@ -2,7 +2,7 @@
 
 ## 系统架构总览
 
-AetherMind Phase 1 的代码组织遵循四个**概念责任层**。这四个层是逻辑上的责任边界，**不是**源文件目录结构的一对一映射（例如 `src/execution/` 中的代码会在多个层中出现职责交叉，但概念上属于"调度控制层"或其支撑设施）。
+AetherMind Phase 1 的代码组织遵循六个**概念责任层**。这些层是逻辑责任边界，**不是**源文件目录结构的一对一映射；其中 `compiler/` 负责 semantic graph 之后、execution plan 之前的编译 artifact 与阶段编排。
 
 ```mermaid
 flowchart TB
@@ -23,14 +23,25 @@ flowchart TB
         ML["ModelLoader<br/>(已实现: Load)"]
     end
 
-    subgraph L3["3. 计算图语义层<br/>图构建、优化与执行计划编译"]
+    subgraph L3["3. 计算图语义层<br/>语义图构建与 backend-independent transforms"]
         direction LR
         MGB["ModelGraphBuilder::BuildLlamaDense<br/>(已实现)"]
-        COMP["OptimizeModelGraph / LowerModelGraph<br/>(已实现)"]
-        EPB["ExecutionPlanBuilder<br/>(已实现: Build)"]
+        SEM["GraphRewrite / GraphPassManager<br/>具体 semantic passes (已实现)"]
     end
 
-    subgraph L4["4. 硬件执行层<br/>算子执行、后端调度与内存管理"]
+    subgraph L4["4. Compiler 层<br/>pipeline composition 与 lowering"]
+        direction LR
+        COMP["ModelCompiler / OptimizeModelGraph<br/>/ LowerModelGraph (已实现)"]
+        LART["LoweredGraph / LoweredNodeSpec<br/>(已验证 compiler artifact)"]
+    end
+
+    subgraph L5["5. Execution planning 层<br/>计划构建与 runtime contracts"]
+        direction LR
+        EPB["ExecutionPlanBuilder<br/>(已实现: Build)"]
+        EPLAN["ExecutionPlan / StateAliasPlan"]
+    end
+
+    subgraph L6["6. 硬件执行层<br/>算子执行、后端调度与内存管理"]
         direction LR
         LRUN["LayerRunner::Run<br/>(已实现)"]
         OPS["Operators / Backend<br/>+ KernelRegistry (已实现)"]
@@ -54,8 +65,11 @@ flowchart TB
     EXEC --> LRUN
     RTB --> EPB
     ML -.->|"Phase 1 目标/未闭环"| MGB
-    MGB --> COMP
-    COMP --> EPB
+    MGB --> SEM
+    SEM --> COMP
+    COMP --> LART
+    LART --> EPB
+    EPB --> EPLAN
     EPB --> LRUN
     EPB --> OPS
     LRUN --> OPS
@@ -66,14 +80,14 @@ flowchart TB
     classDef tgt fill:#fce4d6,stroke:#c55a11,stroke-dasharray:5 5
     classDef neutral fill:#e8e8e8,stroke:#666
 
-    class CAPI,CPPBLD,EXEC,RTB,ML,MGB,COMP,EPB,LRUN,OPS,AMM impl
+    class CAPI,CPPBLD,EXEC,RTB,ML,MGB,SEM,COMP,LART,EPB,EPLAN,LRUN,OPS,AMM impl
     class CAPITGT,CPPTG tgt
     class EXT,HW1 neutral
 ```
 
 ---
 
-> 说明：上图刻意省略"结果向上回传"的虚线边，以突出**单一方向的数据流**。层间结果回传（如 `ExecutionPlan` 由计算图语义层产出后交调度控制层持有）属于所有权关系，详见第五节与第六节的依赖规则图。
+> 说明：上图刻意省略"结果向上回传"的虚线边，以突出**单一方向的数据流**。`LoweredGraph` 由 compiler 产出，`ExecutionPlan` 由 execution planning 产出后交调度控制层持有；它们的上游所有权关系详见第五节与第六节的依赖规则图。
 
 ---
 
@@ -127,21 +141,20 @@ API 服务层是 AetherMind **进程内**集成/服务边界。它不是 HTTP/gR
 
 ### 定位
 
-计算图语义层消费已经加载并校验的模型配置与权重语义，将模型拓扑构建为语义图（`ModelGraph`），再经过优化和降低（lowering）生成可供执行计划构建使用的表示。
+计算图语义层只负责将已加载并校验的模型配置与权重语义构建为 `ModelGraph`，并在其上执行 backend-independent semantic transforms。优化 pipeline 的组装、lowering 和 compiler artifact 归独立 compiler 层；execution planning 不属于 graph。
 
 ### 职责
 
 | 维度 | 说明 |
 |------|------|
-| **责任** | 基于已解析的模型配置与权重语义构建 Llama dense 语义图；执行图优化 passes（常量折叠、SiLU-Mul 融合、死代码消除）；lowering 为算子级 node spec；构建不可变的 `ExecutionPlan` |
-| **当前模块** | `ModelGraphBuilder`、`OptimizeModelGraph` / `LowerModelGraph`、`ExecutionPlanBuilder` |
+| **责任** | 基于已解析的模型配置与权重语义构建 Llama dense 语义图；提供 GraphRewrite/GraphPassManager 与常量折叠、语义融合、DCE 等 semantic passes |
+| **当前模块** | `ModelGraphBuilder`、`ModelGraph`、GraphRewrite/GraphPassManager、具体 semantic passes |
 | **主要输入** | `LoadedModel` 中的模型配置与 resolved weights |
-| **主要中间产物** | `LoadedModel`（config + resolved weights/backing storage，由 `ModelLoader::Load` 产生） → `ModelGraph`（语义 DAG） → `LoweredModelArtifact`（owns `LoadedModel` + self-contained `LoweredGraph`） → `ExecutionPlan`（不可变 step 序列） |
-| **主要输出** | `ExecutionPlan`（已 resolve kernel fn + packed weight ptr + workspace requirement） |
-| **目标缺口** | `LoadedModel → ModelGraph → optimized graph → LoweredModelArtifact` 已闭环；从具体 `WeightBinding` 物化 weight artifact、补齐 kernel 并构建正确 `ExecutionPlan` 尚未闭环。 |
+| **主要输出** | validated `ModelGraph`；compiler 接收它来生成 `LoweredGraph` |
+| **目标缺口** | compiler 主路径已闭环；从具体 `WeightBinding` 物化 weight artifact、补齐 kernel 并构建完整 production `ExecutionPlan` 尚未闭环。 |
 | **禁止责任泄漏** | 不得承担执行期资源绑定（如 workspace 地址绑定是调度控制层的职责）；不得承担运行时算子调度；不得处理 Token IDs |
 
-> `ExecutionPlanBuilder` 是一个层边界适配器：它消费计算图语义层产出的 `LoweredGraph`（节点规格列表），然后向硬件执行层的 Backend 发起 kernel resolve 请求，将结果冻结为 `ExecutionPlan`。计划构建本身由计算图语义层发起，kernel resolve 能力由硬件执行层暴露。
+> compiler 产出不可变且结构验证过的 `LoweredGraph`；`ExecutionPlanBuilder` 位于 execution，消费该 artifact，将 state alias 转换为 runtime `StateAliasPlan`，然后向 Backend 发起 kernel resolve 请求并冻结 `ExecutionPlan`。graph 不依赖 execution 或 backend。
 
 ### 模型加载 + 图编译数据流
 
@@ -321,52 +334,69 @@ AetherMind 的代码依赖规则是**自上而下单向依赖**，允许上层�
 
 ```mermaid
 flowchart TB
-    subgraph L1["API 服务层"]
-        A["C ABI / C++ API"]
+    subgraph API["API 服务层"]
+        A["C ABI / C++ integration API"]
     end
 
-    subgraph L2["调度控制层"]
-        B["Executor<br/>RuntimeBuilder / RuntimeContext<br/>ModelLoader / KVCacheManager"]
+    subgraph CONTROL["调度控制层"]
+        B["Executor / RuntimeBuilder<br/>RuntimeContext / KVCacheManager"]
     end
 
-    subgraph L3["计算图语义层"]
-        C["ModelGraphBuilder<br/>Compile / Lower<br/>ExecutionPlanBuilder<br/>算子语义与 shape 约束"]
+    subgraph MODEL["model：前端与模型 I/O"]
+        M["ModelLoader / LoadedModel<br/>ModelGraphBuilder"]
     end
 
-    subgraph L4["硬件执行层"]
-        D["LayerRunner<br/>Operators / Kernels<br/>Backend / KernelRegistry<br/>ammalloc"]
+    subgraph GRAPH["graph：语义 IR 与 semantic transforms"]
+        G["ModelGraph / GraphRewrite<br/>GraphPassManager / semantic passes"]
     end
 
-    A -->|"调用"| B
-    B -->|"调用"| C
-    B -->|"调用"| D
-    C -->|"调用"| D
+    subgraph COMPILER["compiler：编译阶段与 artifact"]
+        C["ModelCompiler / OptimizeModelGraph<br/>LowerModelGraph / LoweredGraph"]
+    end
 
-    B -.->|"结果回传"| A
-    C -.->|"产物回传 (ExecutionPlan)"| B
-    D -.->|"运行时状态回传"| B
+    subgraph EXECUTION["execution：计划与 runtime contracts"]
+        E["ExecutionPlanBuilder<br/>ExecutionPlan / StateAliasPlan"]
+    end
+
+    subgraph BACKEND["backend / runtime：硬件执行"]
+        D["Backend / KernelRegistry / LayerRunner<br/>WorkspaceArena / ammalloc"]
+    end
+
+    S["operators / shape_inference / base"]
+
+    A -->|"集成调用"| B
+    B -->|"计划构建与执行"| E
+    B -->|"模型装载"| M
+    M -->|"构建语义图"| G
+    C -->|"消费 LoadedModel / ModelGraph"| M
+    C --> G
+    E -->|"消费 LoweredGraph"| C
+    E -->|"kernel resolve / runtime contracts"| D
+    G --> S
+    C --> S
+    E --> S
+    D --> S
 
     classDef layer fill:#e8e8e8,stroke:#333
-    class A,B,C,D layer
-
-    linkStyle 0,1,2,3 stroke:#555,stroke-width:2px
-    linkStyle 4,5,6 stroke:#999,stroke-width:1px,stroke-dasharray:5 5
+    class A,B,M,G,C,E,D,S layer
 ```
 
 ### 规则说明
 
 **硬规则（编译期/设计期检查）**：
 
-1. **API 服务层仅依赖调度控制层暴露的集成边界**，不得绕过控制层直接操作图编译或硬件执行细节（如 kernel 函数指针）。当前底层 C++ 构建块是未闭环阶段的工程入口，不代表最终公共 API 依赖形态。
+1. **API 服务层仅依赖调度控制层暴露的集成边界**，不得绕过控制层直接操作 compiler 或硬件执行细节（如 kernel 函数指针）。当前底层 C++ 构建块是未闭环阶段的工程入口，不代表最终公共 API 依赖形态。
 2. **调度控制层不可见 API 服务层细节**。`Executor` 不知道调用方是 C ABI 还是 C++ API。
-3. **计算图语义层不可见调度控制层**。`ModelGraphBuilder` 不知道 `Executor` 如何执行它的产物。
-4. **硬件执行层不可见 API 服务层与调度控制层的高层抽象**。Kernel 函数不允许持有 `RuntimeContext*`、`SessionState*` 等宽对象指针。
-5. **不可变产物的所有权由上游持有**：当前 `LoweredModelArtifact`、`PackedWeightStore` 与 `ExecutionPlan` 由调用方或模型管理侧持有，硬件执行层只消费引用。
+3. **graph 仅依赖 operators、shape_inference 与 base**，禁止依赖 compiler、execution、backend、model；`ModelGraphBuilder` 位于 model，graph 只拥有语义 IR、rewrite framework 与 backend-independent semantic passes。
+4. **compiler 可依赖 model、graph 与 semantic base**，负责优化 pipeline composition、lowering 和 `LoweredGraph`；禁止依赖 execution、backend、runtime 或查询 kernel registry。
+5. **execution 实现消费 compiler artifact，并负责 StateAliasPlan、workspace 与 kernel planning**；execution 不得依赖 graph，public headers 只前向声明 `LoweredGraph`。
+6. **backend/runtime 禁止依赖 graph、compiler、model**。Kernel 函数不允许持有 `RuntimeContext*`、`SessionState*` 等宽对象指针。
+7. **不可变产物的所有权由上游持有**：`LoweredModelArtifact` 持有 `LoadedModel` 与 `LoweredGraph`，`ExecutionPlan` 由调用方或模型管理侧持有；execution/backend 只消费引用或按值冻结的 plan 数据。
 
 **软规则（设计原则）**：
 
-6. 结果向上回传、调用向下传递。下层从不"向上查找"或依赖上层类型。
-7. 层间通过窄接口（struct、span、function pointer）通信，避免传递高层抽象类型。
+8. 结果向上回传、调用向下传递。下层从不"向上查找"或依赖上层类型。
+9. 层间通过窄接口（struct、span、function pointer）通信，避免传递高层抽象类型。
 
 ### 为什么这样分层
 
@@ -375,7 +405,7 @@ flowchart TB
 | **可测试性** | 每层可独立测试：`ExecutionPlanBuilder` 不依赖 `Executor`；`LayerRunner` 不依赖模型加载；Kernel 函数不依赖 Runtime 上下文 |
 | **热路径效率** | kernel 执行通过 plan-build-time prepare 的 `ResolvedKernel::fn` 函数指针完成；`LayerRunner` 经通用 invoker 构造短生命周期 kernel params 后直接调用，不发生 backend 查找或对象虚调用 |
 | **可替换性** | 后端感知的差异通过 `KernelSelector`、Backend 与 `KernelRegistry` 收敛在计划构建和硬件执行边界，避免向 API 泄漏；这只是隔离能力，不代表 Phase 1 支持非 CPU 后端 |
-| **演进边界** | 后续阶段若引入批处理、PagedAttention 或非 CPU 后端，需要重新评估相应层内模块；四层边界用于局部化变化，不构成兼容性或交付承诺 |
+| **演进边界** | 后续阶段若引入批处理、PagedAttention 或非 CPU 后端，需要重新评估相应层内模块；semantic graph、compiler、execution 与 backend 的边界用于局部化变化，不构成兼容性或交付承诺 |
 
 ---
 
@@ -387,7 +417,7 @@ flowchart TB
 |------|-------------|----------|
 | **模型加载** | HF 目录 → `LoadedModel` | `ModelLoader::Load` 返回 `unique_ptr<LoadedModel>`；含 config、resolved weights 和 backing storage，不含 packed weights |
 | **图构建** | `LoadedModel` → `ModelGraph`（语义 DAG） | `ModelGraphBuilder::BuildLlamaDense` 构建 dense decoder 的算子 DAG |
-| **图编译** | `LoadedModel` → `LoweredModelArtifact` | `ModelCompiler` 串联 `BuildLlamaDense` → `OptimizeModelGraph` → `LowerModelGraph`；`LoweredGraph` 保留 `ExecutionPlanNodeSpec[]` 和 dense value metadata |
+| **图编译** | `LoadedModel` → `LoweredModelArtifact` | compiler `ModelCompiler` 串联 `BuildLlamaDense` → `OptimizeModelGraph` → `LowerModelGraph`；immutable `LoweredGraph` 保留 `LoweredNodeSpec[]` 和 dense value metadata |
 | **计划构建** | `LoweredGraph` → 不可变 `ExecutionPlan` | `ExecutionPlanBuilder` 向硬件层发起 kernel resolve，绑定 packed weight 指针，冻结 workspace requirement |
 | **执行** | `ExecutionPlan` → tensor/KV 状态 | `Executor::Execute` → `LayerRunner::Run` 按步执行；每步经 workspace 绑定、shape 校验后调用算子。Token IDs 由目标 Generate 循环经 Argmax 处理后产生 |
 
@@ -438,13 +468,14 @@ flowchart TB
 |------|----------|
 | [`include/aethermind/model/model_loader.h`](../../../include/aethermind/model/model_loader.h) / [`src/model/model_loader.cpp`](../../../src/model/model_loader.cpp) | `ModelLoader::Load` |
 | [`include/aethermind/model/model_graph_builder.h`](../../../include/aethermind/model/model_graph_builder.h) / [`src/model/model_graph_builder.cpp`](../../../src/model/model_graph_builder.cpp) | `ModelGraphBuilder::BuildLlamaDense` |
-| [`include/aethermind/graph/optimization/optimize_model_graph.h`](../../../include/aethermind/graph/optimization/optimize_model_graph.h) / [`src/graph/optimization/optimize_model_graph.cpp`](../../../src/graph/optimization/optimize_model_graph.cpp) | `OptimizeModelGraph` |
+| [`include/aethermind/compiler/semantic_optimization_pipeline.h`](../../../include/aethermind/compiler/semantic_optimization_pipeline.h) / [`src/compiler/semantic_optimization_pipeline.cpp`](../../../src/compiler/semantic_optimization_pipeline.cpp) | `OptimizeModelGraph` |
+| [`include/aethermind/compiler/graph_lowering.h`](../../../include/aethermind/compiler/graph_lowering.h) / [`src/compiler/graph_lowering.cpp`](../../../src/compiler/graph_lowering.cpp) | `LowerModelGraph` / `ValidateLoweredGraph` |
 | [`include/aethermind/execution/execution_plan_builder.h`](../../../include/aethermind/execution/execution_plan_builder.h) / [`src/execution/execution_plan_builder.cpp`](../../../src/execution/execution_plan_builder.cpp) | `ExecutionPlanBuilder::Build` |
 | [`include/aethermind/execution/executor.h`](../../../include/aethermind/execution/executor.h) / [`src/execution/executor.cpp`](../../../src/execution/executor.cpp) | `Executor::Execute` |
 | [`include/aethermind/execution/layer_runner.h`](../../../include/aethermind/execution/layer_runner.h) / [`src/execution/layer_runner.cpp`](../../../src/execution/layer_runner.cpp) | `LayerRunner::Run` |
 | [`include/aethermind/runtime/runtime_builder.h`](../../../include/aethermind/runtime/runtime_builder.h) / [`src/runtime/runtime_builder.cpp`](../../../src/runtime/runtime_builder.cpp) | `RuntimeBuilder::Build` |
 | [`include/aethermind/execution/kv_cache_manager.h`](../../../include/aethermind/execution/kv_cache_manager.h) / [`src/execution/kv_cache_manager.cpp`](../../../src/execution/kv_cache_manager.cpp) | `KVCacheManager` |
-| [`include/aethermind/model/model_compiler.h`](../../../include/aethermind/model/model_compiler.h) / [`src/model/model_compiler.cpp`](../../../src/model/model_compiler.cpp) | `ModelCompiler::Compile` / `LoadAndCompile` |
+| [`include/aethermind/compiler/model_compiler.h`](../../../include/aethermind/compiler/model_compiler.h) / [`src/compiler/model_compiler.cpp`](../../../src/compiler/model_compiler.cpp) | `ModelCompiler::Compile` / `LoadAndCompile` |
 | [`include/aethermind/model/packed_weight_store.h`](../../../include/aethermind/model/packed_weight_store.h) / [`src/model/packed_weight_store.cpp`](../../../src/model/packed_weight_store.cpp) | `PackedWeightStore` |
 | [`include/aethermind/runtime/runtime_context.h`](../../../include/aethermind/runtime/runtime_context.h) | `RuntimeContext` |
 

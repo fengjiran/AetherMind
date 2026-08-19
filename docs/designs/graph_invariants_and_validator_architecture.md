@@ -33,7 +33,7 @@
 - 图构造与全图校验：[graph.cpp](../../src/graph/graph.cpp:735) 的 `ModelGraph::ValidateAndTopologicalOrder`。
 - 重写事务：[graph_rewrite.cpp](../../src/graph/optimization/graph_rewrite.cpp:774) 的 `GraphRewriteSession::ValidateEdits` 与 [Commit](../../src/graph/optimization/graph_rewrite.cpp:1366)。
 - Pass 管线：[graph_pass_manager.cpp](../../src/graph/optimization/graph_pass_manager.cpp:40) 的 `GraphPassManager::Run`。
-- 图编译：[graph_lowering.cpp](../../src/graph/lowering/graph_lowering.cpp:80) 的 `LowerModelGraph` 与 [ResolveStateAliases](../../src/graph/lowering/graph_lowering.cpp:165)。
+- 图编译：[graph_lowering.cpp](../../src/compiler/graph_lowering.cpp) 的 `LowerModelGraph` / `ValidateLoweredGraph`，以及 execution-private [lowered_graph_adapter.cpp](../../src/execution/lowered_graph_adapter.cpp) 的 `ResolveStateAliasesForExecution`。
 - 执行计划：[execution_plan_builder.cpp](../../src/execution/execution_plan_builder.cpp:291) 与 [execution_plan.cpp](../../src/execution/execution_plan.cpp:7) 的 `ExecutionPlan::Create`。
 - 运行时：[layer_runner.cpp](../../src/execution/layer_runner.cpp:69) 的 `LayerRunner::ValidateStateAliasesForStep`，以及 [kv_cache_view.h](../../include/aethermind/execution/kv_cache_view.h:49) 的 `KVCacheView` 读写边界校验。
 
@@ -133,7 +133,7 @@ Commit 的顺序是：`ValidateEdits`、计算保留集（含 DCE 语义）、�
 
 状态变更通过 must-alias 表达，而不是拷贝语义。`KVCacheUpdate` 的输入/输出共享物理存储，绑定规则由 [ValidateStateBindingsForNode](../../src/graph/graph.cpp:175) 在构造与复验两处统一执行：slot 匹配（k/v）、layer 与节点一致、输入输出同 family、K/V 同 collection。
 
-副作用在编译期被物化：`AddKVCacheLoweringTimeAliases` 在 lowering 期为每个 `kKVCacheUpdate` 生成 K/V 两条别名（[graph_lowering.cpp](../../src/graph/lowering/graph_lowering.cpp:50)），`ResolveStateAliases` 把它们映射到 step/port 坐标并按 step_index 排序（[graph_lowering.cpp](../../src/graph/lowering/graph_lowering.cpp:165)）。
+副作用在编译期被物化：`AddLoweringTimeStateAliases` 在 lowering 期为每个声明 `state_alias_ports` 的算子生成别名（[graph_lowering.cpp](../../src/compiler/graph_lowering.cpp)）。`ValidateLoweredGraph` 验证 schema/state/value/conflict invariant；execution 的 `ResolveStateAliasesForExecution` 将它们映射到 step/port 坐标并按完整坐标确定性排序。
 
 ### 4.10 确定性语义
 
@@ -164,7 +164,7 @@ Commit 的顺序是：`ValidateEdits`、计算保留集（含 DCE 语义）、�
 
 ### 5.5 常量完整性
 
-常量不得有 producer（§4.1）。lowering 后 `ConstantValue` 的绑定保留在 `LoweredGraph::values` 的 payload 中，后端可按需经 value id 延迟解析内联数据或命名外部常量（[graph_lowering.cpp](../../src/graph/lowering/graph_lowering.cpp:133)）。常量折叠产生的会话常量经 Commit 进入不可变快照，提交后同样受全量复验。
+常量不得有 producer（§4.1）。lowering 后 `ConstantValue` 的绑定保留在 `LoweredGraph::values()` 的 payload 中，后端可按需经 value id 延迟解析内联数据或命名外部常量（[graph_lowering.cpp](../../src/compiler/graph_lowering.cpp)）。常量折叠产生的会话常量经 Commit 进入不可变快照，提交后同样受全量复验。
 
 部分覆盖：不存在通用校验器核对每个 `ConstantValue` 的 `inline_data` 字节数与 `TensorSpec` 声称的元素数/dtype 是否匹配；内联常量的字节数与 spec 一致性依赖生产路径（常量折叠、`AddConstant`）各自保证。
 
@@ -215,8 +215,8 @@ KV 池隔离是构造性的：`KVCacheManager` 独占静态存储，所有权与
 | `GraphRewriteSession::ValidateEdits` | [graph_rewrite.cpp](../../src/graph/optimization/graph_rewrite.cpp:774) | 已实现 | 替换链、dtype/shape 兼容、虚拟值、语义重放、发射序可用性 |
 | `GraphRewriteSession::Commit` | [graph_rewrite.cpp](../../src/graph/optimization/graph_rewrite.cpp:1366) | 已实现 | `ValidateEdits` 后发射，末尾 `committed.Validate()` 复验 |
 | `GraphPassManager::Run` | [graph_pass_manager.cpp](../../src/graph/optimization/graph_pass_manager.cpp:40) | 已实现 | 输入 `Validate()`，检查点与最终提交各一次完整 Commit；`checkpoint_every` 默认 0（[graph_pass_manager.h](../../include/aethermind/graph/optimization/graph_pass_manager.h:38)） |
-| `LowerModelGraph` | [graph_lowering.cpp](../../src/graph/lowering/graph_lowering.cpp:80) | 已实现 | 前置 `ValidateAndTopologicalOrder`，产出拓扑步骤、绑定、输出 spec、runtime_checks、KV 别名 |
-| `ResolveStateAliases` | [graph_lowering.cpp](../../src/graph/lowering/graph_lowering.cpp:165) | 已实现 | 别名映射到 step/port，未命中报错，按 step_index 排序 |
+| `LowerModelGraph` / `ValidateLoweredGraph` | [compiler/graph_lowering.cpp](../../src/compiler/graph_lowering.cpp) | 已实现 | 前置 `ValidateAndTopologicalOrder`，finalization 验证拓扑步骤、binding/spec、selector、model I/O 与声明式 state aliases |
+| `ResolveStateAliasesForExecution` | [execution/lowered_graph_adapter.cpp](../../src/execution/lowered_graph_adapter.cpp) | 已实现 | execution trust boundary 重查 artifact 后，将 aliases 映射为 runtime step/port 并按完整坐标排序 |
 | `ExecutionPlanBuilder::Build` | [execution_plan_builder.cpp](../../src/execution/execution_plan_builder.cpp:291) | 已实现 | 信任路径不重推断；未信任路径 `ValidateCallerMetadata` 严格相等；拒绝 monostate `op_params` |
 | `ExecutionPlan::Create` | [execution_plan.cpp](../../src/execution/execution_plan.cpp:7) | 已实现 | 每步：op 非空、resolved kernel fn 非空、workspace 对齐为 2 的幂 |
 | `PlanWorkspaceRequirements` | [workspace.h](../../include/aethermind/runtime/workspace.h:178) | 已实现 | 对齐校验、偏移溢出检查；顺序分配，不做跨步骤生命周期复用 |
@@ -341,7 +341,7 @@ struct ValidationReport {
 
 ### 9.2 checkpoint_every=1 的现状含义
 
-当前校验只挂在 `Validate()` 与 `Commit()` 上，没有 per-pass 中间检查点钩子。因此"每 pass 后完整提交校验"的唯一现成机制就是 `checkpoint_every=1`：每个 pass 边界触发一次完整 `Commit`（`ValidateEdits` + `committed.Validate()` + 快照拷贝），[graph_pass_manager.cpp](../../src/graph/optimization/graph_pass_manager.cpp:74)。已有测试证明 `checkpoint_every=1` 与无检查点的优化结果一致（[test_optimize_model_graph.cpp](../../tests/unit/graph/optimization/test_optimize_model_graph.cpp:406)）。
+当前校验只挂在 `Validate()` 与 `Commit()` 上，没有 per-pass 中间检查点钩子。因此"每 pass 后完整提交校验"的唯一现成机制就是 `checkpoint_every=1`：每个 pass 边界触发一次完整 `Commit`（`ValidateEdits` + `committed.Validate()` + 快照拷贝），[graph_pass_manager.cpp](../../src/graph/optimization/graph_pass_manager.cpp:74)。已有测试证明 `checkpoint_every=1` 与无检查点的优化结果一致（[test_semantic_optimization_pipeline.cpp](../../tests/unit/compiler/optimization/test_semantic_optimization_pipeline.cpp)）。
 
 成本是每 pass 一次深拷贝加全图重分析，量级 O(passes × |graph|)。developer/CI 是否默认启用应以编译流水线基准为依据；release 不应在缺少收益数据时默认承担该成本。
 
@@ -365,9 +365,9 @@ struct ValidationReport {
 
 ## 11. 测试与验证策略
 
-- 逐不变量负面测试：§4、§5 每条不变量至少一个"破坏后必须失败"用例。现有套件已覆盖一部分（[test_graph_rewrite.cpp](../../tests/unit/graph/optimization/test_graph_rewrite.cpp)、[test_graph_pass_manager.cpp](../../tests/unit/graph/optimization/test_graph_pass_manager.cpp)、[test_commit_pruning.cpp](../../tests/unit/graph/optimization/test_commit_pruning.cpp)、[test_graph_lowering.cpp](../../tests/unit/graph/lowering/test_graph_lowering.cpp)），M3 之后按 §7.2 矩阵逐格核对补缺。
+- 逐不变量负面测试：§4、§5 每条不变量至少一个"破坏后必须失败"用例。现有套件已覆盖一部分（[test_graph_rewrite.cpp](../../tests/unit/graph/optimization/test_graph_rewrite.cpp)、[test_graph_pass_manager.cpp](../../tests/unit/graph/optimization/test_graph_pass_manager.cpp)、[test_commit_pruning.cpp](../../tests/unit/graph/optimization/test_commit_pruning.cpp)、[test_graph_lowering.cpp](../../tests/unit/compiler/lowering/test_graph_lowering.cpp)），M3 之后按 §7.2 矩阵逐格核对补缺。
 - 矩阵驱动：§7.2 的每个"已实现"格至少一个正面用例，每个"未实现"格在 M5 前挂 TODO 测试，M5 后转为正式负面测试。
-- 节律回归：`checkpoint_every=1` 的等价性测试保持常绿（[test_optimize_model_graph.cpp](../../tests/unit/graph/optimization/test_optimize_model_graph.cpp:406)），作为"每 pass 后完整校验"不破坏结果的守门员。
+- 节律回归：`checkpoint_every=1` 的等价性测试保持常绿（[test_semantic_optimization_pipeline.cpp](../../tests/unit/compiler/optimization/test_semantic_optimization_pipeline.cpp)），作为"每 pass 后完整校验"不破坏结果的守门员。
 - 属性测试（提案）：随机合法图生成器 + 注入式破坏器，合法图必须通过全量复验，注入破坏必须被拒绝。这是 §7.2 矩阵的机械补充。
 - sanitizer：TSAN 下跑完整管线（[AGENTS.md](../../AGENTS.md) §4），重点覆盖 LayerRunner 别名路径与 KV 视图生命周期。
 - 新增规则必须带测试进入，禁止"规则先行、测试后补"。

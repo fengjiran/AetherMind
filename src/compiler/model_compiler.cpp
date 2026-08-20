@@ -1,5 +1,4 @@
 #include "aethermind/compiler/model_compiler.h"
-
 #include "aethermind/compiler/graph_lowering.h"
 #include "aethermind/compiler/semantic_optimization_pipeline.h"
 #include "aethermind/model/loaded_model.h"
@@ -25,19 +24,24 @@ StatusOr<LoweredModelArtifact> ModelCompiler::Compile(
     if (model == nullptr) {
         return Status::InvalidArgument("ModelCompiler::Compile requires a LoadedModel");
     }
+
     auto graph = ModelGraphBuilder::BuildLlamaDense(
             model->GetConfig(), model->GetResolvedWeights());
     if (!graph.ok()) {
         return AddStageContext(graph.status(), "Model graph construction failed");
     }
+
     auto optimized = OptimizeModelGraph(*graph, options.optimization);
     if (!optimized.ok()) {
         return AddStageContext(optimized.status(), "Model graph optimization failed");
     }
+
     auto lowered = LowerModelGraph(*optimized, options.lowering);
     if (!lowered.ok()) {
         return AddStageContext(lowered.status(), "Model graph lowering failed");
     }
+    // The artifact keeps ownership of the model so consumers of the lowered
+    // graph can access its weights during execution planning.
     return LoweredModelArtifact{
             .loaded_model = std::move(model),
             .graph = std::move(*lowered),

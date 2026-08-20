@@ -1,5 +1,5 @@
 #include "aethermind/compiler/graph_lowering.h"
-
+#include "aethermind/graph/graph.h"
 #include "aethermind/operators/operator_schema.h"
 #include "compiler/lowered_graph_draft.h"
 
@@ -18,11 +18,14 @@ Status SetCandidateDType(const TensorSpec& spec,
                          std::optional<DataType>& candidate,
                          std::string_view role) {
     if (spec.dtype.IsUndefined()) {
-        return Status::Internal("LowerModelGraph: undefined " + std::string(role) + " dtype");
+        return Status::Internal(
+                "LowerModelGraph: undefined " + std::string(role) + " dtype");
     }
+
     if (candidate.has_value() && *candidate != spec.dtype) {
         return Status::Internal(
-                "LowerModelGraph: inconsistent " + std::string(role) + " dtypes in one operator");
+                "LowerModelGraph: inconsistent " + std::string(role) +
+                " dtypes in one operator");
     }
     candidate = spec.dtype;
     return Status::Ok();
@@ -35,9 +38,11 @@ Status CollectInputSelectorDTypes(const OperatorInputPort& port,
     if (!port.contributes_tensor_spec) {
         return Status::Ok();
     }
+
     if (port.kind == OperatorPortKind::kActivation) {
         return SetCandidateDType(spec, act_dtype, "activation");
     }
+
     if (port.kind == OperatorPortKind::kWeight) {
         return SetCandidateDType(spec, weight_dtype, "weight");
     }
@@ -51,15 +56,17 @@ Status CollectOutputActivationDType(const OperatorSchema& schema,
     if (act_dtype.has_value()) {
         return Status::Ok();
     }
+
     bool found_activation_output = false;
-    for (size_t index = 0; index < schema.output_ports.size(); ++index) {
-        if (schema.output_ports[index].kind == OperatorPortKind::kActivation) {
+    for (size_t i = 0; i < schema.output_ports.size(); ++i) {
+        if (schema.output_ports[i].kind == OperatorPortKind::kActivation) {
             found_activation_output = true;
-            AM_RETURN_IF_ERROR(SetCandidateDType(values[node.outputs[index].index].spec,
+            AM_RETURN_IF_ERROR(SetCandidateDType(values[node.outputs[i].index].spec,
                                                  act_dtype,
                                                  "activation"));
         }
     }
+
     if (!found_activation_output) {
         return Status::Internal(
                 "LowerModelGraph: operator schema has no contributing activation dtype source");
@@ -175,39 +182,52 @@ Status ValidateLoweredGraph(const LoweredGraph& lowered) {
         const LoweredStep& step = lowered.steps()[step_index];
         const auto schema = GetOperatorSchema(step.spec.op_type);
         if (!schema.ok()) {
-            return Status::Internal("ValidateLoweredGraph: step " + std::to_string(step_index) +
-                                    " has no registered operator schema");
+            return Status::Internal(
+                    "ValidateLoweredGraph: step " + std::to_string(step_index) +
+                    " has no registered operator schema");
         }
+
         if (!nodes.insert(step.binding.node.index).second) {
-            return Status::Internal("ValidateLoweredGraph: duplicate GraphNodeId in steps");
+            return Status::Internal(
+                    "ValidateLoweredGraph: duplicate GraphNodeId in steps");
         }
+
         if (step.binding.input_values.size() != schema->input_ports.size() ||
             step.spec.input_specs.size() != schema->input_ports.size()) {
-            return Status::Internal("ValidateLoweredGraph: step " + std::to_string(step_index) +
-                                    " input binding/spec arity differs from schema");
+            return Status::Internal(
+                    "ValidateLoweredGraph: step " + std::to_string(step_index) +
+                    " input binding/spec arity differs from schema");
         }
+
         if (step.binding.output_values.size() != schema->output_ports.size() ||
             step.spec.output_specs.size() != schema->output_ports.size()) {
-            return Status::Internal("ValidateLoweredGraph: step " + std::to_string(step_index) +
-                                    " output binding/spec arity differs from schema");
+            return Status::Internal(
+                    "ValidateLoweredGraph: step " + std::to_string(step_index) +
+                    " output binding/spec arity differs from schema");
         }
+
         if (step.spec.selector.act_dtype.IsUndefined() ||
             step.spec.selector.weight_dtype.IsUndefined()) {
-            return Status::Internal("ValidateLoweredGraph: step " + std::to_string(step_index) +
-                                    " has undefined selector dtype");
+            return Status::Internal(
+                    "ValidateLoweredGraph: step " + std::to_string(step_index) +
+                    " has undefined selector dtype");
         }
+
         for (size_t port = 0; port < step.binding.input_values.size(); ++port) {
             const GraphValueId id = step.binding.input_values[port];
             AM_RETURN_IF_ERROR(ValidateValueId(lowered, id, "step input"));
             if (step.spec.input_specs[port] != lowered.values()[id.index].spec) {
-                return Status::Internal("ValidateLoweredGraph: input spec does not match value metadata");
+                return Status::Internal(
+                        "ValidateLoweredGraph: input spec does not match value metadata");
             }
         }
+
         for (size_t port = 0; port < step.binding.output_values.size(); ++port) {
             const GraphValueId id = step.binding.output_values[port];
             AM_RETURN_IF_ERROR(ValidateValueId(lowered, id, "step output"));
             if (step.spec.output_specs[port] != lowered.values()[id.index].spec) {
-                return Status::Internal("ValidateLoweredGraph: output spec does not match value metadata");
+                return Status::Internal(
+                        "ValidateLoweredGraph: output spec does not match value metadata");
             }
         }
     }
@@ -215,9 +235,11 @@ Status ValidateLoweredGraph(const LoweredGraph& lowered) {
     for (const GraphValueId id: lowered.model_inputs()) {
         AM_RETURN_IF_ERROR(ValidateValueId(lowered, id, "model input"));
         if (!std::holds_alternative<ModelInputValue>(lowered.values()[id.index].payload)) {
-            return Status::Internal("ValidateLoweredGraph: model input does not carry ModelInputValue");
+            return Status::Internal(
+                    "ValidateLoweredGraph: model input does not carry ModelInputValue");
         }
     }
+
     for (const GraphValueId id: lowered.model_outputs()) {
         AM_RETURN_IF_ERROR(ValidateValueId(lowered, id, "model output"));
     }
@@ -242,9 +264,9 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
     lowered.model_inputs.reserve(graph.GetInputs().size());
     lowered.model_outputs.reserve(graph.GetOutputs().size());
 
-    const std::span<const GraphValue> values = graph.GetValues();
+    const auto values = graph.GetValues();
     lowered.values.reserve(values.size());
-    for (const GraphValue& value: values) {
+    for (const auto& value: values) {
         lowered.values.push_back({
                 .spec = value.spec,
                 .payload = value.payload,
@@ -252,18 +274,21 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
                 .name = value.name,
         });
     }
+
     for (const GraphInput& input: graph.GetInputs()) {
         lowered.model_inputs.push_back(input.value);
     }
+
     for (const GraphOutput& output: graph.GetOutputs()) {
         lowered.model_outputs.push_back(output.value);
     }
 
-    for (const GraphNodeId node_id: *order) {
-        const GraphNode& node = graph.GetNode(node_id);
+    for (const auto node_id: *order) {
+        const auto& node = graph.GetNode(node_id);
         const auto schema = GetOperatorSchema(node.op_type);
         if (!schema.ok()) {
-            return Status::Internal("LowerModelGraph: validated graph has no registered operator schema");
+            return Status::Internal(
+                    "LowerModelGraph: validated graph has no registered operator schema");
         }
 
         LoweredNodeSpec spec{
@@ -279,23 +304,28 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
 
         std::optional<DataType> act_dtype;
         std::optional<DataType> weight_dtype;
-        for (size_t port = 0; port < schema->input_ports.size(); ++port) {
-            const GraphValueId value_id = node.inputs[port];
-            const GraphValue& value = values[value_id.index];
+        for (size_t i = 0; i < schema->input_ports.size(); ++i) {
+            const auto value_id = node.inputs[i];
+            const auto& value = values[value_id.index];
             binding.input_values.push_back(value_id);
             spec.input_specs.push_back(value.spec);
             AM_RETURN_IF_ERROR(CollectInputSelectorDTypes(
-                    schema->input_ports[port], value.spec, act_dtype, weight_dtype));
+                    schema->input_ports[i], value.spec, act_dtype, weight_dtype));
         }
-        for (size_t port = 0; port < schema->output_ports.size(); ++port) {
-            const GraphValueId value_id = node.outputs[port];
+
+        for (size_t i = 0; i < schema->output_ports.size(); ++i) {
+            const auto value_id = node.outputs[i];
             binding.output_values.push_back(value_id);
-            spec.output_specs.push_back(values[value_id.index].spec);
+            const auto& value = values[value_id.index];
+            spec.output_specs.push_back(value.spec);
         }
+
         AM_RETURN_IF_ERROR(CollectOutputActivationDType(*schema, node, values, act_dtype));
         if (!act_dtype.has_value()) {
-            return Status::Internal("LowerModelGraph: no activation dtype available for selector");
+            return Status::Internal(
+                    "LowerModelGraph: no activation dtype available for selector");
         }
+
         spec.selector.act_dtype = *act_dtype;
         spec.selector.weight_dtype = weight_dtype.value_or(*act_dtype);
         spec.runtime_checks = node.runtime_checks;

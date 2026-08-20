@@ -18,8 +18,8 @@ struct LoweredGraphDraft {
     std::vector<GraphValueId> model_outputs{};
     std::vector<LoweredStateAlias> state_aliases{};
 
-    AM_NODISCARD Status Validate() const;
-    AM_NODISCARD StatusOr<LoweredGraph> Finalize() &&;
+    Status Validate() const;
+    StatusOr<LoweredGraph> Finalize() &&;
 };
 
 }// namespace aethermind::compiler_internal

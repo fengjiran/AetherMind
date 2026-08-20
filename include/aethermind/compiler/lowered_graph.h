@@ -5,16 +5,10 @@
 /// @brief Immutable compiler artifact between semantic graph and execution planning.
 
 #include "aethermind/base/kernel_selector.h"
-#include "aethermind/base/status.h"
 #include "aethermind/base/workspace_types.h"
 #include "aethermind/graph/graph_types.h"
 #include "aethermind/operators/op_params.h"
-#include "aethermind/operators/op_type.h"
-#include "aethermind/shape_inference/shape_constraint.h"
-#include "aethermind/shape_inference/tensor_spec.h"
 
-#include <cstddef>
-#include <cstdint>
 #include <span>
 #include <string>
 #include <vector>

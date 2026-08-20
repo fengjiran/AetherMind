@@ -1,6 +1,9 @@
 #ifndef AETHERMIND_EXECUTION_EXECUTION_NODE_SPEC_H
 #define AETHERMIND_EXECUTION_EXECUTION_NODE_SPEC_H
 
+/// @file execution_node_spec.h
+/// @brief Untrusted per-node execution request metadata for manual plan building.
+
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/base/workspace_types.h"
 #include "aethermind/operators/op_params.h"
@@ -13,9 +16,11 @@
 
 namespace aethermind {
 
-/// Untrusted execution request metadata. Callers using this type go through
-/// InferOperator verification in ExecutionPlanBuilder. Compiler-produced
-/// trusted metadata uses LoweredNodeSpec instead.
+/// @brief Untrusted execution request metadata.
+///
+/// Callers using this type go through InferOperator verification in
+/// ExecutionPlanBuilder. Compiler-produced trusted metadata uses
+/// LoweredNodeSpec instead.
 struct ExecutionPlanNodeSpec {
     OpType op_type = OpType::kUnknown;
     /// Execution capabilities this step requires. Lowering records the

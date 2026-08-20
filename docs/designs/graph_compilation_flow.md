@@ -34,7 +34,7 @@ struct ExecutionPlanNodeSpec {
 };
 ```
 
-也就是说，`ExecutionPlanNodeSpec` 是给测试、手工构造和其他低层调用的 **untrusted execution request**；builder 会重跑 `InferOperator` 并严格比较其 metadata。compiler 的正式产物是 `LoweredNodeSpec` 组成的 immutable `LoweredGraph`；`ModelGraph` 经 `LowerModelGraph()` 转换后，execution 内部先验证 artifact 并将 state aliases 转为 `StateAliasPlan`，再构建计划。
+也就是说，`ExecutionPlanNodeSpec` 是给测试、手工构造和其他低层调用的 **untrusted execution request**；builder 会重跑 `InferOperator` 并严格比较其 metadata。compiler 的正式产物是 `LoweredNodeSpec` 组成的 immutable `LoweredGraph`；`ModelGraph` 经 `LowerModelGraph()` 转换后，execution 内部先验证 artifact 并将 state aliases 转为 `StateAliasPlan`，再构建计划。`LoweredNodeSpec` 不携带 `workspace_requirement`——workspace 大小是 kernel 实现细节，compiler 产物无法计算；只有 untrusted `ExecutionPlanNodeSpec` 由调用方显式预填。
 
 ## 2. 当前完整流程图
 
@@ -120,10 +120,12 @@ src/execution/execution_plan_builder.cpp
 
 ```cpp
 std::vector<WorkspaceRequirement> workspace_requirements;
-for (const ExecutionPlanNodeSpec& node : nodes) {
-    workspace_requirements.push_back(node.workspace_requirement);
+for (const auto& node : nodes) {
+    workspace_requirements.push_back(GetNodeWorkspaceRequirement(node));
 }
 ```
+
+untrusted `ExecutionPlanNodeSpec` 由调用方显式预填 workspace 需求；`LoweredNodeSpec` 不携带该字段，lowered 步骤取默认零需求。
 
 2. 规划 workspace offset：
 

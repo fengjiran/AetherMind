@@ -309,7 +309,7 @@ KernelSelector selector{};
 原因：
 
 - weight 已由 `WeightValue` payload 表达；
-- workspace、device、ISA、weight format、kernel selector 都是 lowering / planning 决策；
+- workspace 是 execution planning 决策，`LoweredNodeSpec` 不携带 workspace 需求，lowered 步骤按默认零需求参与规划；device、ISA、weight format、kernel selector 是 lowering 决策；
 - `decoder_layer_index` 只是 semantic/debug metadata，不是图结构依赖。真实依赖必须由 edges 表达。
 
 ### 7.1 Operator schema 输入顺序
@@ -1568,7 +1568,7 @@ GraphNode.inputs:  vector<TensorSpec>        -> vector<GraphValueId>
 GraphNode.outputs: vector<TensorSpec>        -> vector<GraphValueId>
 GraphNode.weights: vector<WeightBinding> -> WeightValue payload
 TensorSpec on edge                         -> GraphValue.spec
-WorkspaceRequirement on GraphNode          -> lowering / execution planning
+WorkspaceRequirement on GraphNode          -> execution planning
 ```
 
 #### M1：最小 DAG 骨架一次性替换

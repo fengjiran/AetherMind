@@ -1,6 +1,6 @@
 #include "aethermind/compiler/model_compiler.h"
 #include "aethermind/compiler/graph_lowering.h"
-#include "aethermind/compiler/semantic_optimization_pipeline.h"
+#include "aethermind/compiler/optimize_graph.h"
 #include "aethermind/model/loaded_model.h"
 #include "aethermind/model/model_graph_builder.h"
 #include "aethermind/model/model_loader.h"

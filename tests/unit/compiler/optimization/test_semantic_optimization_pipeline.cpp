@@ -1,6 +1,6 @@
 #include "../../graph/optimization/test_optimization_helpers.h"
 #include "aethermind/compiler/graph_lowering.h"
-#include "aethermind/compiler/semantic_optimization_pipeline.h"
+#include "aethermind/compiler/optimize_graph.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"

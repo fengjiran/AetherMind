@@ -1,5 +1,4 @@
-#include "aethermind/compiler/semantic_optimization_pipeline.h"
-
+#include "aethermind/compiler/optimize_graph.h"
 #include "aethermind/graph/optimization/add_rmsnorm_fusion_pass.h"
 #include "aethermind/graph/optimization/constant_folding_pass.h"
 #include "aethermind/graph/optimization/dead_code_elimination_pass.h"

@@ -1,5 +1,5 @@
 #include "aethermind/compiler/graph_lowering.h"
-#include "aethermind/compiler/semantic_optimization_pipeline.h"
+#include "aethermind/compiler/optimize_graph.h"
 #include "aethermind/graph/graph_op_builder.h"
 #include "aethermind/graph/optimization/dead_code_elimination_pass.h"
 #include "aethermind/graph/optimization/qkv_linear_fusion_pass.h"

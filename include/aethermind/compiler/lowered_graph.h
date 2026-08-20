@@ -4,9 +4,14 @@
 /// @file lowered_graph.h
 /// @brief Immutable compiler artifact between semantic graph and execution planning.
 
+#include "aethermind/base/kernel_selector.h"
 #include "aethermind/base/status.h"
-#include "aethermind/compiler/lowered_node_spec.h"
+#include "aethermind/base/workspace_types.h"
 #include "aethermind/graph/graph_types.h"
+#include "aethermind/operators/op_params.h"
+#include "aethermind/operators/op_type.h"
+#include "aethermind/shape_inference/shape_constraint.h"
+#include "aethermind/shape_inference/tensor_spec.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -18,9 +23,6 @@ namespace aethermind {
 
 struct GraphLoweringConfig;
 class ModelGraph;
-namespace compiler_internal {
-struct LoweredGraphDraft;
-}
 
 /// @brief Graph values bound to a lowered step in semantic schema-port order.
 ///
@@ -44,6 +46,28 @@ struct LoweredStateAlias {
     uint32_t output_port = 0;
     GraphValueId input{};
     GraphValueId output{};
+};
+
+/// @brief Semantic metadata emitted by graph lowering after ModelGraph
+/// validation.
+///
+/// This is deliberately distinct from execution::ExecutionPlanNodeSpec: the
+/// latter is an untrusted raw execution request and is revalidated with
+/// InferOperator. LoweredNodeSpec preserves the already-validated semantic
+/// result and is only reachable through a finalized LoweredGraph.
+struct LoweredNodeSpec {
+    OpType op_type = OpType::kUnknown;
+    KernelSelector selector{};
+    WorkspaceRequirement workspace_requirement{};
+    /// Complete schema-port-ordered specs. State ports remain present even
+    /// when they do not contribute to compact runtime tensor bindings.
+    std::vector<TensorSpec> input_specs{};
+    std::vector<TensorSpec> output_specs{};
+    /// Deferred shape constraints copied from semantic inference; they cannot
+    /// be proven until concrete runtime shapes are known, so execution
+    /// re-validates them before running the kernel.
+    std::vector<ShapeConstraint> runtime_checks{};
+    OpParams op_params{};
 };
 
 /// @brief A lowered node spec paired with the value binding of the same node.
@@ -102,14 +126,42 @@ public:
         return steps_.size();
     }
 
+    /// @brief Mutable construction state for a LoweredGraph.
+    ///
+    /// The sole construction path is `LowerModelGraph`, which accumulates
+    /// steps/values/IO/aliases here and freezes them via Build(). It is also
+    /// the focused test seam for malformed artifact input. Defined below so
+    /// it can reference the complete LoweredGraph.
+    class Builder;
+
 private:
     std::vector<LoweredStep> steps_{};
     std::vector<LoweredValueDesc> values_{};
     std::vector<GraphValueId> model_inputs_{};
     std::vector<GraphValueId> model_outputs_{};
     std::vector<LoweredStateAlias> state_aliases_{};
+};
 
-    friend struct compiler_internal::LoweredGraphDraft;
+/// @brief Mutable construction state for a LoweredGraph (see
+/// LoweredGraph::Builder).
+///
+/// Nested in LoweredGraph so construction has direct access to the private
+/// storage without a friend declaration. Build() validates the complete
+/// structure before freezing it into the immutable artifact.
+class LoweredGraph::Builder {
+public:
+    std::vector<LoweredStep> steps{};
+    std::vector<LoweredValueDesc> values{};
+    std::vector<GraphValueId> model_inputs{};
+    std::vector<GraphValueId> model_outputs{};
+    std::vector<LoweredStateAlias> state_aliases{};
+
+    /// Validates the accumulated structure without consuming the builder.
+    Status Validate() const;
+
+    /// Validates and moves the accumulated state into a frozen LoweredGraph,
+    /// consuming the builder.
+    StatusOr<LoweredGraph> Build() &&;
 };
 
 /// @brief Validates structural and provenance invariants of a finalized

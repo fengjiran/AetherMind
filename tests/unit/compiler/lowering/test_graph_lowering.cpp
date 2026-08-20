@@ -1,7 +1,7 @@
 #include "../../graph/test_graph_helpers.h"
 #include "aethermind/compiler/graph_lowering.h"
 
-#include "compiler/lowered_graph_draft.h"
+#include "aethermind/compiler/lowered_graph.h"
 #include "execution/lowered_graph_adapter.h"
 
 #include "aethermind/model/model_graph_builder.h"
@@ -53,9 +53,9 @@ StateBinding VStateBinding(uint32_t decoder_layer_index = 0U) {
                                .slot = KVCacheSlot::kValue};
 }
 
-compiler_internal::LoweredGraphDraft MakeKVCacheUpdateDraft() {
-    compiler_internal::LoweredGraphDraft draft;
-    draft.values = {
+LoweredGraph::Builder MakeKVCacheUpdateBuilder() {
+    LoweredGraph::Builder builder;
+    builder.values = {
             {.spec = KVSpec(), .payload = ActivationValue{}},
             {.spec = KVSpec(), .payload = ActivationValue{}},
             {.spec = KVSpec(), .payload = StateValue{.binding = KStateBinding()}},
@@ -63,7 +63,7 @@ compiler_internal::LoweredGraphDraft MakeKVCacheUpdateDraft() {
             {.spec = KVSpec(), .payload = StateValue{.binding = KStateBinding()}},
             {.spec = KVSpec(), .payload = StateValue{.binding = VStateBinding()}},
     };
-    draft.steps.push_back({
+    builder.steps.push_back({
             .spec = {
                     .op_type = OpType::kKVCacheUpdate,
                     .selector = {
@@ -92,7 +92,7 @@ compiler_internal::LoweredGraphDraft MakeKVCacheUpdateDraft() {
                     },
             },
     });
-    return draft;
+    return builder;
 }
 
 GraphValueId AddActivation(ModelGraph& graph, TensorSpec spec, std::string name) {
@@ -211,12 +211,12 @@ TEST(GraphLowering, LowersEmbeddingGraphToExecutionStep) {
     EXPECT_EQ(lowered->model_outputs()[0], embedding.outputs[0]);
 }
 
-TEST(LoweredGraphDraft, RejectsSchemaUndeclaredStateAlias) {
-    auto draft = MakeKVCacheUpdateDraft();
+TEST(LoweredGraphBuilder, RejectsSchemaUndeclaredStateAlias) {
+    auto builder = MakeKVCacheUpdateBuilder();
     // Both ports are state ports and bindings are otherwise consistent, but
     // KVCacheUpdate declares only k_cache_in -> k_cache_out and
     // v_cache_in -> v_cache_out.
-    draft.state_aliases.push_back({
+    builder.state_aliases.push_back({
             .step_index = 0,
             .input_port = 2,
             .output_port = 1,
@@ -224,14 +224,14 @@ TEST(LoweredGraphDraft, RejectsSchemaUndeclaredStateAlias) {
             .output = GraphValueId{.index = 5},
     });
 
-    const Status status = draft.Validate();
+    const Status status = builder.Validate();
     ASSERT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInternal);
     EXPECT_NE(status.message().find("not declared"), std::string::npos);
 }
 
-TEST(LoweredGraphDraft, RejectsDuplicateStateAlias) {
-    auto draft = MakeKVCacheUpdateDraft();
+TEST(LoweredGraphBuilder, RejectsDuplicateStateAlias) {
+    auto builder = MakeKVCacheUpdateBuilder();
     const LoweredStateAlias alias{
             .step_index = 0,
             .input_port = 2,
@@ -239,9 +239,9 @@ TEST(LoweredGraphDraft, RejectsDuplicateStateAlias) {
             .input = GraphValueId{.index = 2},
             .output = GraphValueId{.index = 4},
     };
-    draft.state_aliases = {alias, alias};
+    builder.state_aliases = {alias, alias};
 
-    const Status status = draft.Validate();
+    const Status status = builder.Validate();
     ASSERT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInternal);
     EXPECT_NE(status.message().find("duplicate"), std::string::npos);

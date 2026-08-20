@@ -5,13 +5,27 @@
 /// @brief Compiler orchestration from LoadedModel to LoweredModelArtifact.
 
 #include "aethermind/base/status.h"
-#include "aethermind/compiler/lowered_model_artifact.h"
-#include "aethermind/compiler/model_compile_options.h"
+#include "aethermind/compiler/graph_lowering.h"
+#include "aethermind/compiler/lowered_graph.h"
+#include "aethermind/graph/optimization/graph_pass_manager.h"
+#include "aethermind/model/loaded_model.h"
 
 #include <filesystem>
 #include <memory>
 
 namespace aethermind {
+
+/// @brief Options for semantic optimization and compiler lowering.
+struct ModelCompileOptions {
+    PassContext optimization{};
+    GraphLoweringConfig lowering{};
+};
+
+/// @brief Owning result of model compilation before execution planning.
+struct LoweredModelArtifact {
+    std::unique_ptr<LoadedModel> loaded_model{};
+    LoweredGraph graph{};
+};
 
 /// @brief Compiles LoadedModel instances into LoweredModelArtifacts.
 ///

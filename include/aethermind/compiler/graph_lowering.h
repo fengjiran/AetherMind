@@ -6,13 +6,14 @@
 
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/compiler/lowered_graph.h"
-#include "aethermind/graph/graph.h"
 
 namespace aethermind {
 
-/// Target selection data used by lowering. ModelGraph deliberately does not
-/// retain it; lowering derives selector dtypes from validated operator specs.
-/// It carries only base-layer data contracts, never Backend or KernelRegistry.
+/// @brief Target selection data used by lowering.
+///
+/// ModelGraph deliberately does not retain it; lowering derives selector
+/// dtypes from validated operator specs. It carries only base-layer data
+/// contracts, never Backend or KernelRegistry.
 struct GraphLoweringConfig {
     KernelSelector selector{
             .device_type = DeviceType::kCPU,
@@ -22,10 +23,18 @@ struct GraphLoweringConfig {
     };
 };
 
-/// Lowers a validated semantic ModelGraph to a finalized compiler artifact.
+/// @brief Lowers a validated semantic ModelGraph to a finalized compiler
+/// artifact.
+///
 /// The complete input-spec vector follows schema-port order, including state
 /// ports. Runtime consumers derive compact tensor specs through the schema.
-AM_NODISCARD StatusOr<LoweredGraph> LowerModelGraph(
+///
+/// @param graph Validated semantic graph to lower.
+/// @param config Target selection data; defaults select CPU, plain weights,
+///               scalar ISA, and both phases.
+/// @return Structurally validated LoweredGraph. Errors are reported via the
+///         returned Status, not exceptions.
+StatusOr<LoweredGraph> LowerModelGraph(
         const ModelGraph& graph,
         const GraphLoweringConfig& config = {});
 

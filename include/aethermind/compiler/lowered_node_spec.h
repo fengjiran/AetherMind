@@ -11,11 +11,10 @@
 #include "aethermind/shape_inference/shape_constraint.h"
 #include "aethermind/shape_inference/tensor_spec.h"
 
-#include <vector>
-
 namespace aethermind {
 
-/// Semantic metadata emitted by graph lowering after ModelGraph validation.
+/// @brief Semantic metadata emitted by graph lowering after ModelGraph
+/// validation.
 ///
 /// This is deliberately distinct from execution::ExecutionPlanNodeSpec: the
 /// latter is an untrusted raw execution request and is revalidated with
@@ -29,6 +28,9 @@ struct LoweredNodeSpec {
     /// when they do not contribute to compact runtime tensor bindings.
     std::vector<TensorSpec> input_specs{};
     std::vector<TensorSpec> output_specs{};
+    /// Deferred shape constraints copied from semantic inference; they cannot
+    /// be proven until concrete runtime shapes are known, so execution
+    /// re-validates them before running the kernel.
     std::vector<ShapeConstraint> runtime_checks{};
     OpParams op_params{};
 };

@@ -1,16 +1,15 @@
-// Copyright 2026 The AetherMind Authors
-// SPDX-License-Identifier: Apache-2.0
-//
-// Workspace requirement data types shared by execution planning and graph
-// lowering.
-//
-// Pure data: `WorkspaceRequirement` only describes how much scratch memory a
-// step needs and how it may be reused. Planning (offset assignment) happens in
-// the runtime workspace header. The types live in the base layer so execution
-// contract headers can carry them without depending on runtime headers.
-
 #ifndef AETHERMIND_BASE_WORKSPACE_TYPES_H
 #define AETHERMIND_BASE_WORKSPACE_TYPES_H
+
+/// @file workspace_types.h
+/// @brief Workspace requirement data types shared by execution planning and
+/// graph lowering.
+///
+/// Pure data: `WorkspaceRequirement` only describes how much scratch memory a
+/// step needs and how it may be reused. Planning (offset assignment) happens
+/// in the runtime workspace header. The types live in the base layer so
+/// execution contract headers can carry them without depending on runtime
+/// headers.
 
 #include "aethermind/base/macros.h"
 
@@ -18,7 +17,7 @@
 
 namespace aethermind {
 
-/// Scratch-memory lifetime scope for a workspace requirement.
+/// @brief Scratch-memory lifetime scope for a workspace requirement.
 enum class WorkspaceLifetime {
     /// No workspace is required.
     kNone = 0,
@@ -34,7 +33,8 @@ enum class WorkspaceLifetime {
     kPersistent,
 };
 
-/// Describes workspace requirements for a single runtime step or operator.
+/// @brief Describes workspace requirements for a single runtime step or
+/// operator.
 ///
 /// Operators should set `bytes`, `alignment`, `lifetime`, and `reusable`.
 /// The `offset` field is a planning result filled by PlanWorkspaceRequirements().

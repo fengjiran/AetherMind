@@ -1,19 +1,17 @@
-// Copyright 2026 The AetherMind Authors
-// SPDX-License-Identifier: Apache-2.0
-//
-// Cross-module execution request descriptor.
-//
-// A KernelSelector names the execution capabilities a step requires (device,
-// dtypes, weight layout, ISA, phase). It is a pure data contract shared by
-// graph lowering (which records it on ExecutionPlanNodeSpec), execution
-// planning (which resolves kernels against it), backend kernel registries
-// (which describe kernel capabilities with it), and model weight prepacking.
-//
-// It lives in the base layer so that the graph and execution public headers
-// can carry it without depending on backend headers.
-
 #ifndef AETHERMIND_BASE_KERNEL_SELECTOR_H
 #define AETHERMIND_BASE_KERNEL_SELECTOR_H
+
+/// @file kernel_selector.h
+/// @brief Cross-module execution request descriptor.
+///
+/// A KernelSelector names the execution capabilities a step requires (device,
+/// dtypes, weight layout, ISA, phase). It is a pure data contract shared by
+/// graph lowering (which records it on ExecutionPlanNodeSpec), execution
+/// planning (which resolves kernels against it), backend kernel registries
+/// (which describe kernel capabilities with it), and model weight prepacking.
+///
+/// It lives in the base layer so that the graph and execution public headers
+/// can carry it without depending on backend headers.
 
 #include "aethermind/base/device.h"
 #include "aethermind/base/kernel_attrs.h"
@@ -24,6 +22,9 @@
 
 namespace aethermind {
 
+/// @brief Pure-data description of the execution capabilities a step
+/// requires: device, activation and weight dtypes, weight layout, ISA level,
+/// and execution phase.
 struct KernelSelector {
     DeviceType device_type = DeviceType::kUndefined;
     DataType act_dtype{};
@@ -46,6 +47,18 @@ struct KernelSelector {
     }
 };
 
+/// @brief Reports whether a kernel described by `candidate` can serve
+/// `request`.
+///
+/// Unlike operator==, matching is intentionally asymmetric: device type,
+/// dtypes, and weight format must match exactly, but a kernel registered with
+/// ExecPhase::kBoth serves any requested phase, and a kernel's ISA
+/// requirement only has to be at or below the requested IsaLevel (a scalar
+/// kernel can serve an AVX2 request).
+///
+/// @param candidate Capabilities advertised by a registered kernel.
+/// @param request Capabilities the step requires.
+/// @return True if a kernel described by `candidate` can execute `request`.
 AM_NODISCARD inline bool SelectorMatches(const KernelSelector& candidate,
                                          const KernelSelector& request) noexcept {
     return candidate.device_type == request.device_type &&
@@ -56,10 +69,17 @@ AM_NODISCARD inline bool SelectorMatches(const KernelSelector& candidate,
            candidate.isa <= request.isa;
 }
 
+/// @brief Returns a human-readable description of all selector fields.
+///
+/// @param selector Selector to render.
+/// @return Compact single-line description, mainly for diagnostics and error
+///         messages.
 std::string ToString(const KernelSelector& selector);
 
 }// namespace aethermind
 
+// Must hash exactly the fields compared by operator== so equal selectors
+// produce equal hashes.
 template<>
 struct std::hash<aethermind::KernelSelector> {
     std::size_t operator()(const aethermind::KernelSelector& s) const noexcept {

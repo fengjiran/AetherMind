@@ -22,19 +22,23 @@ namespace compiler_internal {
 struct LoweredGraphDraft;
 }
 
-/// Graph values bound to a lowered step in semantic schema-port order.
+/// @brief Graph values bound to a lowered step in semantic schema-port order.
+///
 /// State ports remain in these vectors even when they are omitted from the
 /// compact tensor-spec view consumed by runtime kernels.
 struct LoweredStepBinding {
+    /// Originating semantic node; each node is lowered into at most one step.
     GraphNodeId node{};
     std::vector<GraphValueId> input_values{};
     std::vector<GraphValueId> output_values{};
 };
 
-/// Unresolved must-alias relation in semantic schema-port coordinates.
+/// @brief Unresolved must-alias relation in semantic schema-port coordinates.
+///
 /// Execution converts verified records into StateAliasPlan; this compiler
 /// artifact never includes execution runtime types.
 struct LoweredStateAlias {
+    /// Index into LoweredGraph::steps().
     size_t step_index = 0;
     uint32_t input_port = 0;
     uint32_t output_port = 0;
@@ -42,13 +46,16 @@ struct LoweredStateAlias {
     GraphValueId output{};
 };
 
+/// @brief A lowered node spec paired with the value binding of the same node.
 struct LoweredStep {
     LoweredNodeSpec spec{};
     LoweredStepBinding binding{};
 };
 
-/// Value metadata owned by the compiler artifact after ModelGraph lifetime
-/// ends. The entry at index id.index describes GraphValueId id.
+/// @brief Value metadata owned by the compiler artifact after ModelGraph
+/// lifetime ends.
+///
+/// The entry at index id.index describes GraphValueId id.
 struct LoweredValueDesc {
     TensorSpec spec{};
     GraphValuePayload payload{};
@@ -56,13 +63,17 @@ struct LoweredValueDesc {
     std::string name{};
 };
 
-/// A finalized, structurally verified compiler artifact.
+/// @brief A finalized, structurally verified compiler artifact.
 ///
 /// Its storage is private and exposed only through const views. The sole
 /// construction path is LowerModelGraph, which validates both semantic graph
 /// input and the finalized artifact structure. Execution may trust its
 /// inference metadata without re-running InferOperator, while raw execution
 /// node requests continue to use ExecutionPlanNodeSpec and validation.
+///
+/// @note Immutable after construction, so concurrent reads are safe. All
+/// accessors return spans that borrow from this object and must not outlive
+/// it.
 class LoweredGraph {
 public:
     LoweredGraph() = default;
@@ -101,11 +112,17 @@ private:
     friend struct compiler_internal::LoweredGraphDraft;
 };
 
-/// Validates structural and provenance invariants of a finalized compiler
-/// artifact without re-running semantic inference. This intentionally checks
-/// IDs, schema arity, bindings, copied specs, selector dtypes, model I/O, and
-/// declared state aliases rather than creating a second semantic authority.
-AM_NODISCARD Status ValidateLoweredGraph(const LoweredGraph& lowered);
+/// @brief Validates structural and provenance invariants of a finalized
+/// compiler artifact without re-running semantic inference.
+///
+/// This intentionally checks IDs, schema arity, bindings, copied specs,
+/// selector dtypes, model I/O, and declared state aliases rather than
+/// creating a second semantic authority.
+///
+/// @param lowered Finalized graph to validate.
+/// @return Ok on success; otherwise Internal with a message describing the
+///         first violated invariant.
+Status ValidateLoweredGraph(const LoweredGraph& lowered);
 
 }// namespace aethermind
 

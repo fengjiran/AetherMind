@@ -17,6 +17,19 @@ concept ExecutionNodeMetadata =
         std::same_as<std::remove_cvref_t<NodeSpec>, ExecutionPlanNodeSpec> ||
         std::same_as<std::remove_cvref_t<NodeSpec>, LoweredNodeSpec>;
 
+// Workspace size is a kernel implementation detail (e.g. tile buffer sizes)
+// that the compiler artifact cannot compute, so LoweredNodeSpec carries no
+// requirement. Untrusted callers supply theirs explicitly; lowered steps get
+// the default until kernel-prepare fills requirements on ResolvedKernel.
+template<ExecutionNodeMetadata NodeSpec>
+WorkspaceRequirement GetNodeWorkspaceRequirement(const NodeSpec& node) {
+    if constexpr (std::same_as<std::remove_cvref_t<NodeSpec>, ExecutionPlanNodeSpec>) {
+        return node.workspace_requirement;
+    } else {
+        return {};
+    }
+}
+
 template<ExecutionNodeMetadata NodeSpec>
 StatusOr<const void*> ResolvePackedWeightsForNode(const PackedWeightStore* packed_weight_store,
                                                   const NodeSpec& node) noexcept {
@@ -135,7 +148,7 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
     std::vector<WorkspaceRequirement> workspace_requirements;
     workspace_requirements.reserve(std::ranges::size(nodes));
     for (const auto& node: nodes) {
-        workspace_requirements.push_back(node.workspace_requirement);
+        workspace_requirements.push_back(GetNodeWorkspaceRequirement(node));
     }
     if (const auto layout = PlanWorkspaceRequirements(std::span(workspace_requirements));
         !layout.ok()) {

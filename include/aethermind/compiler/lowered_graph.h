@@ -5,7 +5,6 @@
 /// @brief Immutable compiler artifact between semantic graph and execution planning.
 
 #include "aethermind/base/kernel_selector.h"
-#include "aethermind/base/workspace_types.h"
 #include "aethermind/graph/graph_types.h"
 #include "aethermind/operators/op_params.h"
 
@@ -52,7 +51,6 @@ struct LoweredStateAlias {
 struct LoweredNodeSpec {
     OpType op_type = OpType::kUnknown;
     KernelSelector selector{};
-    WorkspaceRequirement workspace_requirement{};
     /// Complete schema-port-ordered specs. State ports remain present even
     /// when they do not contribute to compact runtime tensor bindings.
     std::vector<TensorSpec> input_specs{};

@@ -23,10 +23,10 @@ namespace aethermind {
 /// @note Any kernel params are constructed in stack storage whose lifetime
 ///       spans exactly this call. Kernels must not retain
 ///       KernelContext::kernel_params.
-AM_NODISCARD Status InvokeKernel(const ResolvedKernel& kernel,
-                                 KernelContext& context,
-                                 std::span<const TensorView> inputs,
-                                 std::span<const MutableTensorView> outputs) noexcept;
+Status InvokeKernel(const ResolvedKernel& kernel,
+                    KernelContext& context,
+                    std::span<const TensorView> inputs,
+                    std::span<const MutableTensorView> outputs) noexcept;
 
 }// namespace aethermind
 

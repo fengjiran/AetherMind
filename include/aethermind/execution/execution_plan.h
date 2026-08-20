@@ -45,7 +45,7 @@ public:
     ///              and of the borrowed packed-weight pointers' contract.
     /// @param state_alias_plan Runtime state aliases for the steps.
     /// @return The validated plan, or an error if any step fails validation.
-    AM_NODISCARD static StatusOr<ExecutionPlan> Create(
+    static StatusOr<ExecutionPlan> Create(
             std::vector<ExecutionStep> steps,
             StateAliasPlan state_alias_plan = {});
 

@@ -35,7 +35,7 @@ struct KVCacheLayout {
     /// @brief Returns the element size of the KV dtype.
     AM_NODISCARD size_t ElementBytes() const noexcept;
     /// @brief Validates the layout geometry and alignment.
-    AM_NODISCARD Status Validate() const noexcept;
+    Status Validate() const noexcept;
     /// @brief Computes the byte offset of an element within the plane.
     ///
     /// @param layer_idx Layer index.
@@ -44,12 +44,12 @@ struct KVCacheLayout {
     /// @param dim_idx Dimension index within the head.
     /// @return The element's byte offset, or an error if an index or stride
     ///         computation is out of range or overflows.
-    AM_NODISCARD StatusOr<size_t> Offset(size_t layer_idx,
-                                         size_t kv_head_idx,
-                                         size_t seq_pos,
-                                         size_t dim_idx) const noexcept;
+    StatusOr<size_t> Offset(size_t layer_idx,
+                            size_t kv_head_idx,
+                            size_t seq_pos,
+                            size_t dim_idx) const noexcept;
     /// @brief Returns the total bytes of one key/value plane.
-    AM_NODISCARD StatusOr<size_t> BytesPerPlane() const noexcept;
+    StatusOr<size_t> BytesPerPlane() const noexcept;
 };
 
 /// @brief Key and value backing buffers for one cache.
@@ -118,10 +118,10 @@ public:
     /// @param token_count Number of tokens written.
     /// @return Status::Ok() if the write fits the reserved and physical
     ///         capacity.
-    AM_NODISCARD Status ValidateWrite(size_t layer_idx,
-                                      size_t kv_head_idx,
-                                      size_t seq_pos,
-                                      size_t token_count) const noexcept;
+    Status ValidateWrite(size_t layer_idx,
+                         size_t kv_head_idx,
+                         size_t seq_pos,
+                         size_t token_count) const noexcept;
     /// @brief Validates a read over the committed token range.
     ///
     /// @param layer_idx Layer index.
@@ -129,10 +129,10 @@ public:
     /// @param seq_begin Inclusive read start.
     /// @param seq_end Exclusive read end.
     /// @return Status::Ok() if the range is committed and in bounds.
-    AM_NODISCARD Status ValidateRead(size_t layer_idx,
-                                     size_t kv_head_idx,
-                                     size_t seq_begin,
-                                     size_t seq_end) const noexcept;
+    Status ValidateRead(size_t layer_idx,
+                        size_t kv_head_idx,
+                        size_t seq_begin,
+                        size_t seq_end) const noexcept;
 
     /// @brief Returns a mutable pointer to key data for one token element.
     ///
@@ -141,10 +141,10 @@ public:
     /// @param seq_pos Sequence position.
     /// @param dim_idx Dimension index within the head.
     /// @return Pointer into the shared key buffer after write validation.
-    AM_NODISCARD StatusOr<void*> MutableKeyData(size_t layer_idx,
-                                                size_t kv_head_idx,
-                                                size_t seq_pos,
-                                                size_t dim_idx = 0) noexcept;
+    StatusOr<void*> MutableKeyData(size_t layer_idx,
+                                   size_t kv_head_idx,
+                                   size_t seq_pos,
+                                   size_t dim_idx = 0) noexcept;
     /// @brief Returns a mutable pointer to value data for one token element.
     ///
     /// @param layer_idx Layer index.
@@ -152,10 +152,10 @@ public:
     /// @param seq_pos Sequence position.
     /// @param dim_idx Dimension index within the head.
     /// @return Pointer into the shared value buffer after write validation.
-    AM_NODISCARD StatusOr<void*> MutableValueData(size_t layer_idx,
-                                                  size_t kv_head_idx,
-                                                  size_t seq_pos,
-                                                  size_t dim_idx = 0) noexcept;
+    StatusOr<void*> MutableValueData(size_t layer_idx,
+                                     size_t kv_head_idx,
+                                     size_t seq_pos,
+                                     size_t dim_idx = 0) noexcept;
     /// @brief Returns a const pointer to key data for one token element.
     ///
     /// @param layer_idx Layer index.
@@ -184,7 +184,7 @@ public:
     /// @param new_pos New commit position; must not move backwards or exceed
     ///                the reserved session capacity.
     /// @return Status::Ok() on success.
-    AM_NODISCARD Status CommitUntil(size_t new_pos) noexcept;
+    Status CommitUntil(size_t new_pos) noexcept;
     /// @brief Unbinds the view from all manager state, making it invalid.
     void Invalidate() noexcept;
 
@@ -192,7 +192,7 @@ private:
     /// @brief Returns whether the bound slot is still live at this generation.
     AM_NODISCARD bool IsSlotAlive() const noexcept;
     /// @brief Validates that the view is bound to live, initialized state.
-    AM_NODISCARD Status ValidateBaseState() const noexcept;
+    Status ValidateBaseState() const noexcept;
     /// @brief Computes a validated element offset within the key/value plane.
     ///
     /// @param layer_idx Layer index.
@@ -200,10 +200,10 @@ private:
     /// @param seq_pos Sequence position.
     /// @param dim_idx Dimension index within the head.
     /// @return The element's byte offset.
-    AM_NODISCARD StatusOr<size_t> Offset(size_t layer_idx,
-                                         size_t kv_head_idx,
-                                         size_t seq_pos,
-                                         size_t dim_idx) const noexcept;
+    StatusOr<size_t> Offset(size_t layer_idx,
+                            size_t kv_head_idx,
+                            size_t seq_pos,
+                            size_t dim_idx) const noexcept;
 
     const KVCacheLayout* layout_ = nullptr;
     KVCacheStorage* storage_ = nullptr;

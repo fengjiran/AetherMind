@@ -40,8 +40,8 @@ public:
     /// @return A view over the reserved slot, or an error if the manager is
     ///         uninitialized, already reserved, or the request exceeds
     ///         physical capacity.
-    AM_NODISCARD StatusOr<KVCacheView> ReserveForSession(size_t prompt_len,
-                                                         size_t max_new_tokens) noexcept;
+    StatusOr<KVCacheView> ReserveForSession(size_t prompt_len,
+                                            size_t max_new_tokens) noexcept;
     /// @brief Rewinds a session's commit position to its prompt length.
     ///
     /// @param view Active session view to reset.

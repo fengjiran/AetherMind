@@ -22,8 +22,8 @@ public:
     /// @param plan Plan to execute.
     /// @param bindings Runtime bindings for the steps.
     /// @return Status::Ok() on success, or the first failing step's error.
-    AM_NODISCARD static Status Run(const ExecutionPlan& plan,
-                                   RuntimeBindingContext& bindings) noexcept;
+    static Status Run(const ExecutionPlan& plan,
+                      RuntimeBindingContext& bindings) noexcept;
 
 private:
     /// @brief Executes a single step after alias and binding validation.
@@ -33,10 +33,10 @@ private:
     /// @param bindings Runtime bindings for the step.
     /// @param alias_plan State aliases for the whole plan.
     /// @return Status::Ok() on success.
-    AM_NODISCARD static Status RunStep(size_t step_index,
-                                       const ExecutionStep& step,
-                                       RuntimeBindingContext& bindings,
-                                       const StateAliasPlan& alias_plan) noexcept;
+    static Status RunStep(size_t step_index,
+                          const ExecutionStep& step,
+                          RuntimeBindingContext& bindings,
+                          const StateAliasPlan& alias_plan) noexcept;
 
     /// @brief Verifies that a step's state aliases have runtime backing.
     ///
@@ -45,7 +45,7 @@ private:
     /// @param alias_plan State aliases for the whole plan.
     /// @param bindings Runtime bindings for the step.
     /// @return Status::Ok() on success.
-    AM_NODISCARD static Status ValidateStateAliasesForStep(
+    static Status ValidateStateAliasesForStep(
             size_t step_index,
             const ExecutionStep& step,
             const StateAliasPlan& alias_plan,

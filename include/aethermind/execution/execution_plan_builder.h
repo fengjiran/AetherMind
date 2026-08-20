@@ -4,7 +4,6 @@
 /// @file execution_plan_builder.h
 /// @brief Factory that turns node specs or compiler artifacts into ExecutionPlans.
 
-#include "aethermind/backend/kernel_selector.h"
 #include "aethermind/execution/execution_node_spec.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/runtime/runtime_context.h"
@@ -29,7 +28,7 @@ public:
     /// @param backend Backend that prepares the kernel.
     /// @param node Untrusted node metadata.
     /// @return The prepared kernel, or an error if the node is invalid.
-    AM_NODISCARD static StatusOr<ResolvedKernel> PrepareKernelForNode(
+    static StatusOr<ResolvedKernel> PrepareKernelForNode(
             const Backend& backend,
             const ExecutionPlanNodeSpec& node);
 
@@ -38,7 +37,7 @@ public:
     /// @param runtime Runtime context providing backends.
     /// @param nodes Untrusted per-node metadata.
     /// @return The built plan, or an error on validation or kernel failure.
-    AM_NODISCARD static StatusOr<ExecutionPlan> Build(
+    static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
             const std::vector<ExecutionPlanNodeSpec>& nodes);
 
@@ -49,7 +48,7 @@ public:
     /// @param packed_weight_store Storage for packed-format weights.
     /// @param nodes Untrusted per-node metadata.
     /// @return The built plan, or an error on validation or kernel failure.
-    AM_NODISCARD static StatusOr<ExecutionPlan> Build(
+    static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
             const PackedWeightStore& packed_weight_store,
             const std::vector<ExecutionPlanNodeSpec>& nodes);
@@ -67,7 +66,7 @@ public:
     ///       metadata, and model inputs/outputs are not yet wired into runtime
     ///       tensor/state binding; an ExecutionPlan returned here must not be
     ///       treated as having completed runtime binding.
-    AM_NODISCARD static StatusOr<ExecutionPlan> Build(
+    static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
             const LoweredGraph& lowered);
 
@@ -80,7 +79,7 @@ public:
     /// @return The built plan, or an error if the artifact is invalid.
     /// @note Same consumption-scope restriction as the Build(LoweredGraph)
     ///       overload.
-    AM_NODISCARD static StatusOr<ExecutionPlan> Build(
+    static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
             const PackedWeightStore& packed_weight_store,
             const LoweredGraph& lowered);

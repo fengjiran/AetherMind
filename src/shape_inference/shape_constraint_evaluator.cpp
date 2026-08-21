@@ -1,7 +1,10 @@
 #include "aethermind/shape_inference/shape_constraint_evaluator.h"
+#include "container/array_view.h"
 #include "utils/logging.h"
 #include "utils/overflow_check.h"
 #include "utils/variant_utils.h"
+
+#include <string>
 
 namespace aethermind {
 namespace {
@@ -20,19 +23,35 @@ AM_NODISCARD const SymbolicShape* ResolveShape(const TensorPort& port,
     return &outputs[port.tensor_idx];
 }
 
-AM_NODISCARD const TensorView* ResolveTensor(const TensorPort& port,
-                                             const std::span<const TensorView> inputs) {
-    AM_CHECK(port.direction == TensorPortType::kInput && port.tensor_idx < inputs.size(),
-             "Shape constraint references missing input tensor %zu", port.tensor_idx);
-    return &inputs[port.tensor_idx];
-}
-
-AM_NODISCARD const MutableTensorView* ResolveMutableTensor(
+/// @brief Resolves the runtime shape referenced by a tensor port.
+///
+/// Returns kInvalidArgument when the port direction is invalid or the tensor
+/// index falls outside the bound spans. The runtime hot path must never abort
+/// on a malformed constraint; plan-build validation (ExecutionPlan::Create)
+/// guarantees references are in range for compiled plans.
+StatusOr<IntArrayView> ResolveRuntimeShape(
         const TensorPort& port,
+        const std::span<const TensorView> inputs,
         const std::span<const MutableTensorView> outputs) {
-    AM_CHECK(port.direction == TensorPortType::kOutput && port.tensor_idx < outputs.size(),
-             "Shape constraint references missing output tensor %zu", port.tensor_idx);
-    return &outputs[port.tensor_idx];
+    switch (port.direction) {
+        case TensorPortType::kInput:
+            if (port.tensor_idx >= inputs.size()) {
+                return Status::InvalidArgument(
+                        "Shape constraint references missing input tensor " +
+                        std::to_string(port.tensor_idx));
+            }
+            return inputs[port.tensor_idx].shape();
+
+        case TensorPortType::kOutput:
+            if (port.tensor_idx >= outputs.size()) {
+                return Status::InvalidArgument(
+                        "Shape constraint references missing output tensor " +
+                        std::to_string(port.tensor_idx));
+            }
+            return outputs[port.tensor_idx].shape();
+    }
+    return Status::InvalidArgument(
+            "Shape constraint references a tensor port with an invalid direction");
 }
 
 AM_NODISCARD std::optional<ShapeSymbol> ResolveSymbolicDim(
@@ -50,21 +69,21 @@ AM_NODISCARD std::optional<ShapeSymbol> ResolveSymbolicDim(
     return (*shape)[locator.dim_index];
 }
 
-AM_NODISCARD int64_t ResolveRuntimeDim(
+StatusOr<int64_t> ResolveRuntimeDim(
         const DimLocator& locator,
         const std::span<const TensorView> inputs,
         const std::span<const MutableTensorView> outputs) {
-    if (locator.tensor_port.direction == TensorPortType::kInput) {
-        const auto* tensor = ResolveTensor(locator.tensor_port, inputs);
-        AM_CHECK(locator.dim_index < tensor->shape().size(),
-                 "Shape constraint references missing dimension %zu", locator.dim_index);
-        return tensor->shape()[locator.dim_index];
+    const auto shape = ResolveRuntimeShape(locator.tensor_port, inputs, outputs);
+    if (!shape.ok()) {
+        return shape.status();
     }
 
-    const auto* tensor = ResolveMutableTensor(locator.tensor_port, outputs);
-    AM_CHECK(locator.dim_index < tensor->shape().size(),
-             "Shape constraint references missing dimension %zu", locator.dim_index);
-    return tensor->shape()[locator.dim_index];
+    if (locator.dim_index >= shape->size()) {
+        return Status::InvalidArgument(
+                "Shape constraint references missing dimension " +
+                std::to_string(locator.dim_index));
+    }
+    return (*shape)[locator.dim_index];
 }
 
 AM_NODISCARD std::optional<size_t> ResolveSymbolicRank(
@@ -74,14 +93,15 @@ AM_NODISCARD std::optional<size_t> ResolveSymbolicRank(
     return ResolveShape(port, inputs, outputs)->rank();
 }
 
-AM_NODISCARD size_t ResolveRuntimeRank(
+StatusOr<size_t> ResolveRuntimeRank(
         const TensorPort& port,
         const std::span<const TensorView> inputs,
         const std::span<const MutableTensorView> outputs) {
-    if (port.direction == TensorPortType::kInput) {
-        return ResolveTensor(port, inputs)->shape().size();
+    const auto shape = ResolveRuntimeShape(port, inputs, outputs);
+    if (!shape.ok()) {
+        return shape.status();
     }
-    return ResolveMutableTensor(port, outputs)->shape().size();
+    return shape->size();
 }
 
 AM_NODISCARD ShapeConstraintEvaluationResult EvaluateSymbolicDimEqual(
@@ -253,92 +273,135 @@ AM_NODISCARD ShapeConstraintEvaluationResult EvaluateSymbolicRankAtLeastConstrai
                                         : ShapeConstraintEvaluationResult::kViolated;
 }
 
-AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeDimEqual(const int64_t lhs,
-                                                                     const int64_t rhs) noexcept {
+AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeDimEqual(
+        const int64_t lhs,
+        const int64_t rhs) noexcept {
     return lhs == rhs ? ShapeConstraintEvaluationResult::kSatisfied
                       : ShapeConstraintEvaluationResult::kViolated;
 }
 
-AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeBroadcastable(const int64_t lhs,
-                                                                          const int64_t rhs) noexcept {
+AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeBroadcastable(
+        const int64_t lhs,
+        const int64_t rhs) noexcept {
     return lhs == rhs || lhs == 1 || rhs == 1 ? ShapeConstraintEvaluationResult::kSatisfied
                                               : ShapeConstraintEvaluationResult::kViolated;
 }
 
-AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeDimPositive(const int64_t dim) noexcept {
+AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeDimPositive(
+        const int64_t dim) noexcept {
     return dim > 0 ? ShapeConstraintEvaluationResult::kSatisfied
                    : ShapeConstraintEvaluationResult::kViolated;
 }
 
-AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeDimEqualConstraint(
+StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeDimEqualConstraint(
         const DimEqualConstraint& constraint,
         const std::span<const TensorView> inputs,
         const std::span<const MutableTensorView> outputs) {
-    const int64_t lhs = ResolveRuntimeDim(constraint.lhs, inputs, outputs);
-    const int64_t rhs = ResolveRuntimeDim(constraint.rhs, inputs, outputs);
-    return EvaluateRuntimeDimEqual(lhs, rhs);
+    const auto lhs = ResolveRuntimeDim(constraint.lhs, inputs, outputs);
+    if (!lhs.ok()) {
+        return lhs.status();
+    }
+
+    const auto rhs = ResolveRuntimeDim(constraint.rhs, inputs, outputs);
+    if (!rhs.ok()) {
+        return rhs.status();
+    }
+    return EvaluateRuntimeDimEqual(*lhs, *rhs);
 }
 
-AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeBroadcastableConstraint(
+StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeBroadcastableConstraint(
         const DimBroadcastableConstraint& constraint,
         const std::span<const TensorView> inputs,
         const std::span<const MutableTensorView> outputs) {
-    const int64_t lhs = ResolveRuntimeDim(constraint.lhs, inputs, outputs);
-    const int64_t rhs = ResolveRuntimeDim(constraint.rhs, inputs, outputs);
-    return EvaluateRuntimeBroadcastable(lhs, rhs);
+    const auto lhs = ResolveRuntimeDim(constraint.lhs, inputs, outputs);
+    if (!lhs.ok()) {
+        return lhs.status();
+    }
+
+    const auto rhs = ResolveRuntimeDim(constraint.rhs, inputs, outputs);
+    if (!rhs.ok()) {
+        return rhs.status();
+    }
+    return EvaluateRuntimeBroadcastable(*lhs, *rhs);
 }
 
-AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeDimPositiveConstraint(
+StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeDimPositiveConstraint(
         const DimPositiveConstraint& constraint,
         const std::span<const TensorView> inputs,
         const std::span<const MutableTensorView> outputs) {
-    const int64_t dim = ResolveRuntimeDim(constraint.dim, inputs, outputs);
-    return EvaluateRuntimeDimPositive(dim);
+    const auto dim = ResolveRuntimeDim(constraint.dim, inputs, outputs);
+    if (!dim.ok()) {
+        return dim.status();
+    }
+    return EvaluateRuntimeDimPositive(*dim);
 }
 
-AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeVolumeConstraint(
+StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeVolumeConstraint(
         const VolumeEqualConstraint& constraint,
         const std::span<const TensorView> inputs,
         const std::span<const MutableTensorView> outputs) {
-    auto compute_volume = [&](const std::span<const DimLocator> dims) -> uint64_t {
+    const auto compute_volume = [&](const std::span<const DimLocator> dims) -> StatusOr<uint64_t> {
         uint64_t product = 1;
         for (const DimLocator& locator: dims) {
-            const int64_t dim = ResolveRuntimeDim(locator, inputs, outputs);
-            AM_CHECK(!CheckOverflowMul(product, static_cast<uint64_t>(dim), &product),
-                     "Shape constraint volume overflows uint64_t");
+            const auto dim = ResolveRuntimeDim(locator, inputs, outputs);
+            if (!dim.ok()) {
+                return dim.status();
+            }
+            // Negative dims are malformed runtime bindings; oversized products
+            // surface as Overflow instead of aborting the runtime hot path.
+            if (*dim < 0) {
+                return Status::InvalidArgument(
+                        "Shape constraint volume received a negative dimension");
+            }
+            if (CheckOverflowMul(product, static_cast<uint64_t>(*dim), &product)) {
+                return Status::Overflow("Shape constraint volume overflows uint64_t");
+            }
         }
         return product;
     };
 
-    const uint64_t lhs = compute_volume(constraint.lhs_dims);
-    const uint64_t rhs = compute_volume(constraint.rhs_dims);
-    return lhs == rhs ? ShapeConstraintEvaluationResult::kSatisfied
-                      : ShapeConstraintEvaluationResult::kViolated;
+    const auto lhs = compute_volume(constraint.lhs_dims);
+    if (!lhs.ok()) {
+        return lhs.status();
+    }
+    const auto rhs = compute_volume(constraint.rhs_dims);
+    if (!rhs.ok()) {
+        return rhs.status();
+    }
+    return *lhs == *rhs ? ShapeConstraintEvaluationResult::kSatisfied
+                        : ShapeConstraintEvaluationResult::kViolated;
 }
 
-AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeRankEqualConstraint(
+StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeRankEqualConstraint(
         const RankEqualConstraint& constraint,
         const std::span<const TensorView> inputs,
         const std::span<const MutableTensorView> outputs) {
-    const size_t rank = ResolveRuntimeRank(constraint.port, inputs, outputs);
-    return rank == constraint.target_rank ? ShapeConstraintEvaluationResult::kSatisfied
-                                          : ShapeConstraintEvaluationResult::kViolated;
+    const auto rank = ResolveRuntimeRank(constraint.port, inputs, outputs);
+    if (!rank.ok()) {
+        return rank.status();
+    }
+    return *rank == constraint.target_rank ? ShapeConstraintEvaluationResult::kSatisfied
+                                           : ShapeConstraintEvaluationResult::kViolated;
 }
 
-AM_NODISCARD ShapeConstraintEvaluationResult EvaluateRuntimeRankAtLeastConstraint(
+StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeRankAtLeastConstraint(
         const RankAtLeastConstraint& constraint,
         const std::span<const TensorView> inputs,
         const std::span<const MutableTensorView> outputs) {
-    const size_t rank = ResolveRuntimeRank(constraint.port, inputs, outputs);
-    return rank >= constraint.min_rank ? ShapeConstraintEvaluationResult::kSatisfied
-                                       : ShapeConstraintEvaluationResult::kViolated;
+    const auto rank = ResolveRuntimeRank(constraint.port, inputs, outputs);
+    if (!rank.ok()) {
+        return rank.status();
+    }
+    return *rank >= constraint.min_rank ? ShapeConstraintEvaluationResult::kSatisfied
+                                        : ShapeConstraintEvaluationResult::kViolated;
 }
 
 }// namespace
 
-ShapeConstraintEvaluationResult EvaluateShapeConstraint(const ShapeConstraint& constraint,
-                                                        const std::span<const SymbolicShape> inputs,
-                                                        const std::span<const SymbolicShape> outputs) {
+ShapeConstraintEvaluationResult EvaluateShapeConstraint(
+        const ShapeConstraint& constraint,
+        const std::span<const SymbolicShape> inputs,
+        const std::span<const SymbolicShape> outputs) {
     auto visitor = overloaded{
             [&](const DimEqualConstraint& dim_equal) {
                 return EvaluateSymbolicDimEqualConstraint(dim_equal, inputs, outputs);
@@ -357,14 +420,15 @@ ShapeConstraintEvaluationResult EvaluateShapeConstraint(const ShapeConstraint& c
             },
             [&](const DimPositiveConstraint& dim_positive) {
                 return EvaluateSymbolicDimPositiveConstraint(dim_positive, inputs, outputs);
-            },
-    };
+            }};
+
     return std::visit(visitor, constraint.condition);
 }
 
-ShapeConstraintEvaluationResult EvaluateShapeConstraint(const ShapeConstraint& constraint,
-                                                        const std::span<const TensorView> inputs,
-                                                        const std::span<const MutableTensorView> outputs) {
+StatusOr<ShapeConstraintEvaluationResult> EvaluateShapeConstraint(
+        const ShapeConstraint& constraint,
+        const std::span<const TensorView> inputs,
+        const std::span<const MutableTensorView> outputs) {
     auto visitor = overloaded{
             [&](const DimEqualConstraint& dim_equal) {
                 return EvaluateRuntimeDimEqualConstraint(dim_equal, inputs, outputs);
@@ -383,8 +447,8 @@ ShapeConstraintEvaluationResult EvaluateShapeConstraint(const ShapeConstraint& c
             },
             [&](const DimPositiveConstraint& dim_positive) {
                 return EvaluateRuntimeDimPositiveConstraint(dim_positive, inputs, outputs);
-            },
-    };
+            }};
+
     return std::visit(visitor, constraint.condition);
 }
 
@@ -392,13 +456,19 @@ Status ValidateShapeConstraints(const std::span<const ShapeConstraint> constrain
                                 const std::span<const TensorView> inputs,
                                 const std::span<const MutableTensorView> outputs) {
     for (const auto& constraint: constraints) {
-        const auto result = EvaluateShapeConstraint(constraint, inputs, outputs);
-        if (result == ShapeConstraintEvaluationResult::kViolated) {
-            return Status::InvalidArgument(constraint.error_context.empty() ? "Runtime shape constraint violated"
-                                                                            : constraint.error_context);
+        const auto result =
+                EvaluateShapeConstraint(constraint, inputs, outputs);
+        if (!result.ok()) {
+            return result.status();
         }
 
-        if (result == ShapeConstraintEvaluationResult::kDeferred) {
+        if (*result == ShapeConstraintEvaluationResult::kViolated) {
+            return Status::InvalidArgument(constraint.error_context.empty()
+                                                   ? "Runtime shape constraint violated"
+                                                   : constraint.error_context);
+        }
+
+        if (*result == ShapeConstraintEvaluationResult::kDeferred) {
             return Status::Internal("Runtime shape constraint evaluation returned kDeferred; "
                                     "all dimensions are concrete at runtime, this indicates a bug");
         }

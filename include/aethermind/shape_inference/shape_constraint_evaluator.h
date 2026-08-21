@@ -27,8 +27,12 @@ AM_NODISCARD ShapeConstraintEvaluationResult EvaluateShapeConstraint(
 /// @param constraint The shape constraint to evaluate.
 /// @param inputs     Concrete runtime input tensor views.
 /// @param outputs    Concrete runtime output tensor views.
-/// @return kSatisfied or kViolated (never kDeferred at runtime).
-AM_NODISCARD ShapeConstraintEvaluationResult EvaluateShapeConstraint(
+/// @return kSatisfied or kViolated (never kDeferred at runtime), or an error
+///         Status (kInvalidArgument) when the constraint references a tensor
+///         port or dimension outside the bound spans. The runtime hot path
+///         never aborts on a malformed constraint; plan-build validation
+///         rejects out-of-range references up front.
+StatusOr<ShapeConstraintEvaluationResult> EvaluateShapeConstraint(
         const ShapeConstraint& constraint,
         std::span<const TensorView> inputs,
         std::span<const MutableTensorView> outputs);
@@ -38,8 +42,10 @@ AM_NODISCARD ShapeConstraintEvaluationResult EvaluateShapeConstraint(
 /// @param inputs      Concrete runtime input tensor views.
 /// @param outputs     Concrete runtime output tensor views.
 /// @return OkStatus if all constraints are satisfied; kInvalidArgument on
-///         violation; kInternal if evaluation unexpectedly returns kDeferred.
-AM_NODISCARD Status ValidateShapeConstraints(
+///         violation or on a constraint referencing a port/dimension outside
+///         the bound spans; kInternal if evaluation unexpectedly returns
+///         kDeferred.
+Status ValidateShapeConstraints(
         std::span<const ShapeConstraint> constraints,
         std::span<const TensorView> inputs,
         std::span<const MutableTensorView> outputs);

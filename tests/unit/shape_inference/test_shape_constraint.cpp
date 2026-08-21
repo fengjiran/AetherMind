@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <set>
+#include <string>
 #include <vector>
 
 namespace {
@@ -39,6 +40,11 @@ struct RuntimeTensorStorage {
 
 DimLocator InputDim(size_t tensor_idx, size_t dim_index) {
     return DimLocator{.tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = tensor_idx},
+                      .dim_index = dim_index};
+}
+
+DimLocator OutputDim(size_t tensor_idx, size_t dim_index) {
+    return DimLocator{.tensor_port = {.direction = TensorPortType::kOutput, .tensor_idx = tensor_idx},
                       .dim_index = dim_index};
 }
 
@@ -136,16 +142,20 @@ TEST(ShapeConstraintEvaluator, EvaluatesRuntimeDimensionEquality) {
     };
 
     std::vector<TensorView> matching_inputs{input.View(), matching_weight.View()};
-    EXPECT_EQ(EvaluateShapeConstraint(constraint,
-                                      std::span<const TensorView>(matching_inputs),
-                                      std::span<const MutableTensorView>()),
-              ShapeConstraintEvaluationResult::kSatisfied);
+    const auto matching_result = EvaluateShapeConstraint(
+            constraint,
+            std::span<const TensorView>(matching_inputs),
+            std::span<const MutableTensorView>());
+    ASSERT_TRUE(matching_result.ok()) << matching_result.status().ToString();
+    EXPECT_EQ(*matching_result, ShapeConstraintEvaluationResult::kSatisfied);
 
     std::vector<TensorView> mismatching_inputs{input.View(), mismatching_weight.View()};
-    EXPECT_EQ(EvaluateShapeConstraint(constraint,
-                                      std::span<const TensorView>(mismatching_inputs),
-                                      std::span<const MutableTensorView>()),
-              ShapeConstraintEvaluationResult::kViolated);
+    const auto mismatching_result = EvaluateShapeConstraint(
+            constraint,
+            std::span<const TensorView>(mismatching_inputs),
+            std::span<const MutableTensorView>());
+    ASSERT_TRUE(mismatching_result.ok()) << mismatching_result.status().ToString();
+    EXPECT_EQ(*mismatching_result, ShapeConstraintEvaluationResult::kViolated);
 }
 
 TEST(ShapeConstraintEvaluator, EvaluatesRuntimeBroadcastVolumeAndRankConstraints) {
@@ -171,14 +181,22 @@ TEST(ShapeConstraintEvaluator, EvaluatesRuntimeBroadcastVolumeAndRankConstraints
             .error_context = "rank mismatch",
     };
 
-    EXPECT_EQ(EvaluateShapeConstraint(broadcastable, std::span<const TensorView>(inputs), std::span<const MutableTensorView>()),
-              ShapeConstraintEvaluationResult::kSatisfied);
-    EXPECT_EQ(EvaluateShapeConstraint(volume_equal, std::span<const TensorView>(inputs), std::span<const MutableTensorView>()),
-              ShapeConstraintEvaluationResult::kSatisfied);
-    EXPECT_EQ(EvaluateShapeConstraint(rank_at_least, std::span<const TensorView>(inputs), std::span<const MutableTensorView>()),
-              ShapeConstraintEvaluationResult::kSatisfied);
-    EXPECT_EQ(EvaluateShapeConstraint(rank_equal, std::span<const TensorView>(inputs), std::span<const MutableTensorView>()),
-              ShapeConstraintEvaluationResult::kViolated);
+    const auto broadcastable_result = EvaluateShapeConstraint(
+            broadcastable, std::span<const TensorView>(inputs), std::span<const MutableTensorView>());
+    ASSERT_TRUE(broadcastable_result.ok()) << broadcastable_result.status().ToString();
+    EXPECT_EQ(*broadcastable_result, ShapeConstraintEvaluationResult::kSatisfied);
+    const auto volume_equal_result = EvaluateShapeConstraint(
+            volume_equal, std::span<const TensorView>(inputs), std::span<const MutableTensorView>());
+    ASSERT_TRUE(volume_equal_result.ok()) << volume_equal_result.status().ToString();
+    EXPECT_EQ(*volume_equal_result, ShapeConstraintEvaluationResult::kSatisfied);
+    const auto rank_at_least_result = EvaluateShapeConstraint(
+            rank_at_least, std::span<const TensorView>(inputs), std::span<const MutableTensorView>());
+    ASSERT_TRUE(rank_at_least_result.ok()) << rank_at_least_result.status().ToString();
+    EXPECT_EQ(*rank_at_least_result, ShapeConstraintEvaluationResult::kSatisfied);
+    const auto rank_equal_result = EvaluateShapeConstraint(
+            rank_equal, std::span<const TensorView>(inputs), std::span<const MutableTensorView>());
+    ASSERT_TRUE(rank_equal_result.ok()) << rank_equal_result.status().ToString();
+    EXPECT_EQ(*rank_equal_result, ShapeConstraintEvaluationResult::kViolated);
 }
 
 TEST(ShapeConstraintEvaluator, EvaluatesSymbolicDimensionEqualityStates) {
@@ -253,17 +271,21 @@ TEST(ShapeConstraintEvaluator, EvaluatesSymbolicAndRuntimeDimPositive) {
     // Runtime evaluation: positive → satisfied, zero → violated.
     RuntimeTensorStorage runtime_positive{std::vector<int64_t>{8}};
     std::vector<TensorView> positive_inputs{runtime_positive.View()};
-    EXPECT_EQ(EvaluateShapeConstraint(positive_constraint,
-                                      std::span<const TensorView>(positive_inputs),
-                                      std::span<const MutableTensorView>()),
-              ShapeConstraintEvaluationResult::kSatisfied);
+    const auto runtime_positive_result = EvaluateShapeConstraint(
+            positive_constraint,
+            std::span<const TensorView>(positive_inputs),
+            std::span<const MutableTensorView>());
+    ASSERT_TRUE(runtime_positive_result.ok()) << runtime_positive_result.status().ToString();
+    EXPECT_EQ(*runtime_positive_result, ShapeConstraintEvaluationResult::kSatisfied);
 
     RuntimeTensorStorage runtime_zero{std::vector<int64_t>{0}};
     std::vector<TensorView> zero_inputs{runtime_zero.View()};
-    EXPECT_EQ(EvaluateShapeConstraint(positive_constraint,
-                                      std::span<const TensorView>(zero_inputs),
-                                      std::span<const MutableTensorView>()),
-              ShapeConstraintEvaluationResult::kViolated);
+    const auto runtime_zero_result = EvaluateShapeConstraint(
+            positive_constraint,
+            std::span<const TensorView>(zero_inputs),
+            std::span<const MutableTensorView>());
+    ASSERT_TRUE(runtime_zero_result.ok()) << runtime_zero_result.status().ToString();
+    EXPECT_EQ(*runtime_zero_result, ShapeConstraintEvaluationResult::kViolated);
 }
 
 TEST(ShapeConstraintEvaluator, ValidateShapeConstraintsReturnsConstraintContext) {
@@ -282,6 +304,72 @@ TEST(ShapeConstraintEvaluator, ValidateShapeConstraintsReturnsConstraintContext)
 
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
     EXPECT_EQ(status.message(), "hidden size mismatch");
+}
+
+TEST(ShapeConstraintEvaluator, RuntimeEvaluationRejectsOutOfRangeReferences) {
+    RuntimeTensorStorage input{std::vector<int64_t>{2, 8}};
+    std::vector<TensorView> inputs{input.View()};
+
+    // Input tensor index beyond the bound spans.
+    const ShapeConstraint missing_input{
+            .condition = DimEqualConstraint{.lhs = InputDim(1, 0), .rhs = InputDim(0, 0)},
+            .error_context = "unused",
+    };
+    const auto missing_input_result = EvaluateShapeConstraint(
+            missing_input, std::span<const TensorView>(inputs),
+            std::span<const MutableTensorView>());
+    ASSERT_FALSE(missing_input_result.ok());
+    EXPECT_EQ(missing_input_result.status().code(), StatusCode::kInvalidArgument);
+
+    // Output tensor index beyond the bound spans (no outputs bound).
+    const ShapeConstraint missing_output{
+            .condition = DimEqualConstraint{.lhs = OutputDim(0, 0), .rhs = InputDim(0, 0)},
+            .error_context = "unused",
+    };
+    const auto missing_output_result = EvaluateShapeConstraint(
+            missing_output, std::span<const TensorView>(inputs),
+            std::span<const MutableTensorView>());
+    ASSERT_FALSE(missing_output_result.ok());
+    EXPECT_EQ(missing_output_result.status().code(), StatusCode::kInvalidArgument);
+
+    // Dimension index beyond the referenced tensor's rank.
+    const ShapeConstraint missing_dim{
+            .condition = DimEqualConstraint{.lhs = InputDim(0, 3), .rhs = InputDim(0, 0)},
+            .error_context = "unused",
+    };
+    const auto missing_dim_result = EvaluateShapeConstraint(
+            missing_dim, std::span<const TensorView>(inputs),
+            std::span<const MutableTensorView>());
+    ASSERT_FALSE(missing_dim_result.ok());
+    EXPECT_EQ(missing_dim_result.status().code(), StatusCode::kInvalidArgument);
+
+    // Rank constraint referencing a missing tensor.
+    const ShapeConstraint missing_rank{
+            .condition = RankEqualConstraint{.port = InputPort(2), .target_rank = 2},
+            .error_context = "unused",
+    };
+    const auto missing_rank_result = EvaluateShapeConstraint(
+            missing_rank, std::span<const TensorView>(inputs),
+            std::span<const MutableTensorView>());
+    ASSERT_FALSE(missing_rank_result.ok());
+    EXPECT_EQ(missing_rank_result.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ShapeConstraintEvaluator, ValidateShapeConstraintsPropagatesReferenceErrors) {
+    RuntimeTensorStorage input{std::vector<int64_t>{2, 8}};
+    std::vector<TensorView> inputs{input.View()};
+    const ShapeConstraint bad_reference{
+            .condition = RankEqualConstraint{.port = InputPort(1), .target_rank = 2},
+            .error_context = "unused",
+    };
+
+    const Status status = ValidateShapeConstraints(
+            std::span<const ShapeConstraint>(&bad_reference, 1),
+            std::span<const TensorView>(inputs),
+            std::span<const MutableTensorView>());
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("missing input tensor"), std::string::npos);
 }
 
 TEST(ShapeConstraint, EqualityIgnoresErrorContext) {

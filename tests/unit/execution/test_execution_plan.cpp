@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <span>
+#include <vector>
 
 namespace {
 
@@ -129,6 +130,93 @@ TEST(KernelInvoker, RejectsNullFunctionAndInvalidParamsContract) {
                            context, {}, {})
                       .code(),
               StatusCode::kFailedPrecondition);
+}
+
+TEST(ExecutionPlan, AcceptsRuntimeCheckWithinCompactSpecRanges) {
+    ResolvedKernel kernel{
+            .op_type = OpType::kSoftmax,
+            .fn = &FakeKernel,
+    };
+    const std::vector<int64_t> act_dims{4, 8};
+    const std::vector<int64_t> weight_dims{8};
+    const ShapeConstraint valid_check{
+            .condition = DimEqualConstraint{
+                    .lhs = {.tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 0},
+                            .dim_index = 1},
+                    .rhs = {.tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 1},
+                            .dim_index = 0},
+            },
+            .error_context = "hidden size mismatch",
+    };
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlan::Create({
+            ExecutionStep{
+                    .kernel = kernel,
+                    .input_specs = {TensorSpec{.dtype = DataType::Float32(),
+                                               .shape = SymbolicShape(IntArrayView{act_dims})},
+                                    TensorSpec{.dtype = DataType::Float32(),
+                                               .shape = SymbolicShape(IntArrayView{weight_dims})}},
+                    .output_specs = {TensorSpec{}},
+                    .runtime_checks = {valid_check},
+            },
+    });
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    EXPECT_EQ(plan->size(), 1U);
+}
+
+TEST(ExecutionPlan, RejectsRuntimeCheckReferencingMissingTensorPort) {
+    ResolvedKernel kernel{
+            .op_type = OpType::kSoftmax,
+            .fn = &FakeKernel,
+    };
+    const ShapeConstraint bad_check{
+            .condition = RankEqualConstraint{
+                    .port = {.direction = TensorPortType::kInput, .tensor_idx = 1},
+                    .target_rank = 2,
+            },
+            .error_context = "unused",
+    };
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlan::Create({
+            ExecutionStep{
+                    .kernel = kernel,
+                    .input_specs = {TensorSpec{}},
+                    .output_specs = {TensorSpec{}},
+                    .runtime_checks = {bad_check},
+            },
+    });
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ExecutionPlan, RejectsRuntimeCheckReferencingDimensionBeyondRank) {
+    ResolvedKernel kernel{
+            .op_type = OpType::kSoftmax,
+            .fn = &FakeKernel,
+    };
+    const std::vector<int64_t> input_dims{8};
+    const ShapeConstraint bad_check{
+            .condition = DimPositiveConstraint{
+                    .dim = {.tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 0},
+                            .dim_index = 1},
+            },
+            .error_context = "unused",
+    };
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlan::Create({
+            ExecutionStep{
+                    .kernel = kernel,
+                    .input_specs = {TensorSpec{.dtype = DataType::Float32(),
+                                               .shape = SymbolicShape(IntArrayView{input_dims})}},
+                    .output_specs = {TensorSpec{}},
+                    .runtime_checks = {bad_check},
+            },
+    });
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
 }
 
 }// namespace

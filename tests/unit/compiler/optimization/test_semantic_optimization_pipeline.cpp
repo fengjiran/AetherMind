@@ -934,7 +934,7 @@ TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure)
     // Layer 2: LowerModelGraph. Must carry runtime_checks into LoweredGraph.
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(*optimized);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    const LoweredNodeSpec* rms_step = nullptr;
+    const LoweredStepSpec* rms_step = nullptr;
     for (const LoweredStep& step: lowered->steps()) {
         if (step.spec.op_type == OpType::kRmsNorm) {
             rms_step = &step.spec;

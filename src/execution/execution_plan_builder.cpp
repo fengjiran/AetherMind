@@ -15,10 +15,10 @@ namespace {
 template<typename NodeSpec>
 concept ExecutionNodeMetadata =
         std::same_as<std::remove_cvref_t<NodeSpec>, ExecutionPlanNodeSpec> ||
-        std::same_as<std::remove_cvref_t<NodeSpec>, LoweredNodeSpec>;
+        std::same_as<std::remove_cvref_t<NodeSpec>, LoweredStepSpec>;
 
 // Workspace size is a kernel implementation detail (e.g. tile buffer sizes)
-// that the compiler artifact cannot compute, so LoweredNodeSpec carries no
+// that the compiler artifact cannot compute, so LoweredStepSpec carries no
 // requirement. Untrusted callers supply theirs explicitly; lowered steps get
 // the default until kernel-prepare fills requirements on ResolvedKernel.
 template<ExecutionNodeMetadata NodeSpec>
@@ -118,15 +118,15 @@ StatusOr<PreparedNodeMetadata> PrepareNodeMetadata(const ExecutionPlanNodeSpec& 
     return metadata;
 }
 
-StatusOr<PreparedNodeMetadata> PrepareNodeMetadata(const LoweredNodeSpec& node) {
+StatusOr<PreparedNodeMetadata> PrepareNodeMetadata(const LoweredStepSpec& node) {
     if (node.op_type == OpType::kUnknown ||
         std::holds_alternative<std::monostate>(node.op_params)) {
-        return Status::Internal("Finalized LoweredNodeSpec is missing semantic metadata");
+        return Status::Internal("Finalized LoweredStepSpec is missing semantic metadata");
     }
 
     auto metadata = PrepareCompactInputMetadata(node);
     if (!metadata.ok()) {
-        return Status::Internal("Finalized LoweredNodeSpec has invalid compact input metadata: " +
+        return Status::Internal("Finalized LoweredStepSpec has invalid compact input metadata: " +
                                 metadata.status().message());
     }
     // LoweredGraph is validated by compiler and checked again at the
@@ -198,6 +198,7 @@ StatusOr<ResolvedKernel> ExecutionPlanBuilder::PrepareKernelForNode(
     if (node.op_type == OpType::kUnknown) {
         return Status::InvalidArgument("ExecutionPlanNodeSpec.op_type cannot be kUnknown");
     }
+
     if (std::holds_alternative<std::monostate>(node.op_params)) {
         return Status::InvalidArgument("ExecutionPlanNodeSpec requires typed op_params");
     }
@@ -226,7 +227,7 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
     }
     const auto node_specs = std::views::transform(
             lowered.steps(),
-            [](const LoweredStep& step) -> const LoweredNodeSpec& {
+            [](const LoweredStep& step) -> const LoweredStepSpec& {
                 return step.spec;
             });
     return BuildExecutionPlan(runtime, nullptr, node_specs, std::move(*alias_plan));
@@ -242,7 +243,7 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
     }
     const auto node_specs = std::views::transform(
             lowered.steps(),
-            [](const LoweredStep& step) -> const LoweredNodeSpec& {
+            [](const LoweredStep& step) -> const LoweredStepSpec& {
                 return step.spec;
             });
     return BuildExecutionPlan(runtime, &packed_weight_store, node_specs, std::move(*alias_plan));

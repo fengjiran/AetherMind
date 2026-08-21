@@ -46,9 +46,9 @@ struct LoweredStateAlias {
 ///
 /// This is deliberately distinct from execution::ExecutionPlanNodeSpec: the
 /// latter is an untrusted raw execution request and is revalidated with
-/// InferOperator. LoweredNodeSpec preserves the already-validated semantic
+/// InferOperator. LoweredStepSpec preserves the already-validated semantic
 /// result and is only reachable through a finalized LoweredGraph.
-struct LoweredNodeSpec {
+struct LoweredStepSpec {
     OpType op_type = OpType::kUnknown;
     KernelSelector selector{};
     /// Complete schema-port-ordered specs. State ports remain present even
@@ -62,9 +62,9 @@ struct LoweredNodeSpec {
     OpParams op_params{};
 };
 
-/// @brief A lowered node spec paired with the value binding of the same node.
+/// @brief A lowered step spec paired with the value binding of the same node.
 struct LoweredStep {
-    LoweredNodeSpec spec{};
+    LoweredStepSpec spec{};
     LoweredStepBinding binding{};
 };
 

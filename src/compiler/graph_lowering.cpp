@@ -129,7 +129,7 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
                     "LowerModelGraph: validated graph has no registered operator schema");
         }
 
-        LoweredNodeSpec spec{
+        LoweredStepSpec spec{
                 .op_type = node.op_type,
                 .selector = config.selector,
                 .op_params = node.op_params,

@@ -23,6 +23,7 @@ std::span<const ResolvedStateAlias> StateAliasPlan::ForStep(size_t step_index) c
             [](const ResolvedStateAlias& a, size_t idx) noexcept {
                 return a.step_index < idx;
             });
+
     if (lower == aliases.end() || lower->step_index != step_index) {
         return {};
     }

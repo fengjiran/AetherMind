@@ -33,7 +33,7 @@
 - 图构造与全图校验：[graph.cpp](../../src/graph/graph.cpp:735) 的 `ModelGraph::ValidateAndTopologicalOrder`。
 - 重写事务：[graph_rewrite.cpp](../../src/graph/optimization/graph_rewrite.cpp:774) 的 `GraphRewriteSession::ValidateEdits` 与 [Commit](../../src/graph/optimization/graph_rewrite.cpp:1366)。
 - Pass 管线：[graph_pass_manager.cpp](../../src/graph/optimization/graph_pass_manager.cpp:40) 的 `GraphPassManager::Run`。
-- 图编译：[graph_lowering.cpp](../../src/compiler/graph_lowering.cpp) 的 `LowerModelGraph` / `ValidateLoweredGraph`，以及 execution-private [lowered_graph_adapter.cpp](../../src/execution/lowered_graph_adapter.cpp) 的 `ResolveStateAliasesForExecution`。
+- 图编译：[graph_lowering.cpp](../../src/compiler/graph_lowering.cpp) 的 `LowerModelGraph` / `ValidateLoweredGraph`，以及 execution-private [execution_plan_builder.cpp](../../src/execution/execution_plan_builder.cpp) 的 `ResolveStateAliasesForExecution`。
 - 执行计划：[execution_plan_builder.cpp](../../src/execution/execution_plan_builder.cpp:291) 与 [execution_plan.cpp](../../src/execution/execution_plan.cpp:7) 的 `ExecutionPlan::Create`。
 - 运行时：[layer_runner.cpp](../../src/execution/layer_runner.cpp:69) 的 `LayerRunner::ValidateStateAliasesForStep`，以及 [kv_cache_view.h](../../include/aethermind/execution/kv_cache_view.h:49) 的 `KVCacheView` 读写边界校验。
 
@@ -216,7 +216,7 @@ KV 池隔离是构造性的：`KVCacheManager` 独占静态存储，所有权与
 | `GraphRewriteSession::Commit` | [graph_rewrite.cpp](../../src/graph/optimization/graph_rewrite.cpp:1366) | 已实现 | `ValidateEdits` 后发射，末尾 `committed.Validate()` 复验 |
 | `GraphPassManager::Run` | [graph_pass_manager.cpp](../../src/graph/optimization/graph_pass_manager.cpp:40) | 已实现 | 输入 `Validate()`，检查点与最终提交各一次完整 Commit；`checkpoint_every` 默认 0（[graph_pass_manager.h](../../include/aethermind/graph/optimization/graph_pass_manager.h:38)） |
 | `LowerModelGraph` / `ValidateLoweredGraph` | [compiler/graph_lowering.cpp](../../src/compiler/graph_lowering.cpp) | 已实现 | 前置 `ValidateAndTopologicalOrder`，finalization 验证拓扑步骤、binding/spec、selector、model I/O 与声明式 state aliases |
-| `ResolveStateAliasesForExecution` | [execution/lowered_graph_adapter.cpp](../../src/execution/lowered_graph_adapter.cpp) | 已实现 | execution trust boundary 重查 artifact 后，将 aliases 映射为 runtime step/port 并按完整坐标排序 |
+| `ResolveStateAliasesForExecution` | [execution/execution_plan_builder.cpp](../../src/execution/execution_plan_builder.cpp) | 已实现 | execution trust boundary 重查 artifact 后，将 aliases 映射为 runtime step/port 并按完整坐标排序 |
 | `ExecutionPlanBuilder::Build` | [execution_plan_builder.cpp](../../src/execution/execution_plan_builder.cpp:291) | 已实现 | 信任路径不重推断；未信任路径 `ValidateCallerMetadata` 严格相等；拒绝 monostate `op_params` |
 | `ExecutionPlan::Create` | [execution_plan.cpp](../../src/execution/execution_plan.cpp:7) | 已实现 | 每步：op 非空、resolved kernel fn 非空、workspace 对齐为 2 的幂 |
 | `PlanWorkspaceRequirements` | [workspace.h](../../include/aethermind/runtime/workspace.h:178) | 已实现 | 对齐校验、偏移溢出检查；顺序分配，不做跨步骤生命周期复用 |

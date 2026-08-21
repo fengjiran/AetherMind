@@ -59,7 +59,7 @@ public:
     /// StateAliasPlan.
     ///
     /// @param runtime Runtime context providing backends.
-    /// @param lowered Finalized compiler artifact.
+    /// @param lowered_graph Finalized compiler artifact.
     /// @return The built plan, or an error if the artifact is invalid.
     /// @note Consumption scope: this overload uses only `lowered.steps()` (their
     ///       specs) and the resolved state aliases. The step bindings, value
@@ -68,7 +68,7 @@ public:
     ///       treated as having completed runtime binding.
     static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
-            const LoweredGraph& lowered);
+            const LoweredGraph& lowered_graph);
 
     /// @brief Builds an ExecutionPlan from a compiler artifact with packed
     ///        weights.
@@ -84,6 +84,15 @@ public:
             const PackedWeightStore& packed_weight_store,
             const LoweredGraph& lowered);
 };
+
+/// @brief Resolves compiler semantic-port state aliases into the runtime-only
+///        StateAliasPlan.
+///
+/// Revalidates the finalized artifact and deterministically orders the aliases
+/// so ExecutionStep consumers can binary-search per step. Execution-private:
+/// the compiler never includes this type.
+StatusOr<StateAliasPlan> ResolveStateAliasesForExecution(
+        const LoweredGraph& lowered);
 
 }// namespace aethermind
 

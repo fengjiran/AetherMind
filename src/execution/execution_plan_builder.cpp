@@ -4,10 +4,10 @@
 #include "aethermind/model/packed_weight_store.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_schema.h"
-#include "execution/lowered_graph_adapter.h"
-
+#include <algorithm>
 #include <concepts>
 #include <ranges>
+#include <tuple>
 
 namespace aethermind {
 namespace {
@@ -122,13 +122,15 @@ StatusOr<PreparedNodeMetadata> PrepareNodeMetadata(const ExecutionPlanNodeSpec& 
 StatusOr<PreparedNodeMetadata> PrepareNodeMetadata(const LoweredStepSpec& node) {
     if (node.op_type == OpType::kUnknown ||
         std::holds_alternative<std::monostate>(node.op_params)) {
-        return Status::Internal("Finalized LoweredStepSpec is missing semantic metadata");
+        return Status::Internal(
+                "Finalized LoweredStepSpec is missing semantic metadata");
     }
 
     auto metadata = PrepareCompactInputMetadata(node);
     if (!metadata.ok()) {
-        return Status::Internal("Finalized LoweredStepSpec has invalid compact input metadata: " +
-                                metadata.status().message());
+        return Status::Internal(
+                "Finalized LoweredStepSpec has invalid compact input metadata: " +
+                metadata.status().message());
     }
     // LoweredGraph is validated by compiler and checked again at the
     // execution trust boundary. Re-running InferOperator here would create a
@@ -151,6 +153,7 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
     for (const auto& node: nodes) {
         workspace_requirements.push_back(GetNodeWorkspaceRequirement(node));
     }
+
     if (const auto layout = PlanWorkspaceRequirements(std::span(workspace_requirements));
         !layout.ok()) {
         return layout.status();
@@ -193,6 +196,32 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
 
 }// namespace
 
+StatusOr<StateAliasPlan> ResolveStateAliasesForExecution(const LoweredGraph& lowered) {
+    // The compiler finalizer establishes these invariants. Recheck at the
+    // trust boundary so an invalid artifact is surfaced as Internal rather
+    // than passed to runtime state binding.
+    AM_RETURN_IF_ERROR(ValidateLoweredGraph(lowered));
+
+    StateAliasPlan plan;
+    plan.aliases.reserve(lowered.state_aliases().size());
+    for (const auto& alias: lowered.state_aliases()) {
+        plan.aliases.push_back({
+                .step_index = alias.step_index,
+                .input_port = alias.input_port,
+                .output_port = alias.output_port,
+        });
+    }
+
+    std::ranges::sort(
+            plan.aliases,
+            [](const ResolvedStateAlias& lhs,
+               const ResolvedStateAlias& rhs) noexcept {
+                return std::tie(lhs.step_index, lhs.input_port, lhs.output_port) <
+                       std::tie(rhs.step_index, rhs.input_port, rhs.output_port);
+            });
+    return plan;
+}
+
 StatusOr<ResolvedKernel> ExecutionPlanBuilder::PrepareKernelForNode(
         const Backend& backend,
         const ExecutionPlanNodeSpec& node) {
@@ -221,18 +250,19 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         RuntimeContext& runtime,
-        const LoweredGraph& lowered) {
-    auto alias_plan = ResolveStateAliasesForExecution(lowered);
+        const LoweredGraph& lowered_graph) {
+    auto alias_plan = ResolveStateAliasesForExecution(lowered_graph);
     if (!alias_plan.ok()) {
         return alias_plan.status();
     }
 
     const auto node_specs = std::views::transform(
-            lowered.steps(),
+            lowered_graph.steps(),
             [](const LoweredStep& step) -> const LoweredStepSpec& {
                 return step.spec;
             });
-    return BuildExecutionPlan(runtime, nullptr, node_specs, std::move(*alias_plan));
+    return BuildExecutionPlan(runtime, nullptr,
+                              node_specs, std::move(*alias_plan));
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
@@ -243,6 +273,7 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
     if (!alias_plan.ok()) {
         return alias_plan.status();
     }
+
     const auto node_specs = std::views::transform(
             lowered.steps(),
             [](const LoweredStep& step) -> const LoweredStepSpec& {

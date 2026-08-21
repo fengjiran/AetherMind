@@ -2,7 +2,7 @@
 #include "aethermind/compiler/graph_lowering.h"
 
 #include "aethermind/compiler/lowered_graph.h"
-#include "execution/lowered_graph_adapter.h"
+#include "aethermind/execution/execution_plan_builder.h"
 
 #include "aethermind/model/model_graph_builder.h"
 #include "aethermind/operators/operator_inference.h"

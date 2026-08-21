@@ -18,7 +18,8 @@ public:
     AM_NODISCARD virtual const BackendCapabilities& capabilities() const noexcept = 0;
 
     /// Resolves a kernel and freezes metadata derived from typed semantic
-    /// parameters into the returned value.
+    /// parameters into the returned value, including its scratch-space
+    /// requirement.
     ///
     /// This is the sole planning-time kernel-resolution entry point. The
     /// returned ResolvedKernel is later owned by an ExecutionStep and invoked

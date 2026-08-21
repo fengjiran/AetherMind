@@ -39,6 +39,7 @@ StatusOr<ResolvedKernel> CpuBackend::PrepareKernel(
             .debug_name = (*descriptor)->name.c_str(),
             .params_builder = (*descriptor)->params_builder,
             .params_size = (*descriptor)->params_size,
+            .workspace_requirement = {},
     };
 
     if ((*descriptor)->metadata_builder != nullptr) {

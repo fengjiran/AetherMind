@@ -2,6 +2,7 @@
 #define AETHERMIND_BACKEND_RESOLVED_KERNEL_H
 
 #include "aethermind/backend/kernel_types.h"
+#include "aethermind/base/workspace_types.h"
 #include "aethermind/operators/op_type.h"
 
 #include <cstddef>
@@ -23,6 +24,11 @@ struct ResolvedKernel {
 
     KernelParamsBuilder params_builder = nullptr;
     size_t params_size = 0;
+
+    // Immutable scratch-space requirement of this prepared kernel. Backends
+    // compute it after selecting the concrete implementation; execution
+    // planning assigns its offset before the kernel is frozen into a step.
+    WorkspaceRequirement workspace_requirement{};
 };
 
 }// namespace aethermind

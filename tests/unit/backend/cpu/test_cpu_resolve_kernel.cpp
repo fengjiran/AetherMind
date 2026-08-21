@@ -32,6 +32,8 @@ TEST(CpuPrepareKernel, RegisteredKeyReturnsPreparedKernel) {
     EXPECT_NE(resolved->fn, nullptr);
     EXPECT_EQ(resolved->op_type, OpType::kRmsNorm);
     EXPECT_EQ(resolved->attrs.size(), sizeof(float));
+    EXPECT_TRUE(resolved->workspace_requirement.empty());
+    EXPECT_EQ(resolved->workspace_requirement.alignment, 64U);
 }
 
 TEST(CpuPrepareKernel, MissingKeyReturnsNotFound) {

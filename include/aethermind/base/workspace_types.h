@@ -2,8 +2,8 @@
 #define AETHERMIND_BASE_WORKSPACE_TYPES_H
 
 /// @file workspace_types.h
-/// @brief Workspace requirement data types shared by execution planning and
-/// graph lowering.
+/// @brief Workspace requirement data types shared by backend preparation and
+/// execution planning.
 ///
 /// Pure data: `WorkspaceRequirement` only describes how much scratch memory a
 /// step needs and how it may be reused. Planning (offset assignment) happens
@@ -36,8 +36,9 @@ enum class WorkspaceLifetime {
 /// @brief Describes workspace requirements for a single runtime step or
 /// operator.
 ///
-/// Operators should set `bytes`, `alignment`, `lifetime`, and `reusable`.
-/// The `offset` field is a planning result filled by PlanWorkspaceRequirements().
+/// The prepared backend kernel sets `bytes`, `alignment`, `lifetime`, and
+/// `reusable`. The `offset` field is a planning result filled by
+/// PlanWorkspaceRequirements().
 struct WorkspaceRequirement {
     /// Number of scratch bytes this requirement needs.
     /// Zero-byte requirements consume no space but still receive an offset marker.

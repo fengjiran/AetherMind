@@ -17,17 +17,46 @@ concept ExecutionNodeMetadata =
         std::same_as<std::remove_cvref_t<NodeSpec>, ExecutionPlanNodeSpec> ||
         std::same_as<std::remove_cvref_t<NodeSpec>, LoweredStepSpec>;
 
-// Workspace size is a kernel implementation detail (e.g. tile buffer sizes)
-// that the compiler artifact cannot compute, so LoweredStepSpec carries no
-// requirement. Untrusted callers supply theirs explicitly; lowered steps get
-// the default until kernel-prepare fills requirements on ResolvedKernel.
-template<ExecutionNodeMetadata NodeSpec>
-WorkspaceRequirement GetNodeWorkspaceRequirement(const NodeSpec& node) {
-    if constexpr (std::same_as<std::remove_cvref_t<NodeSpec>, ExecutionPlanNodeSpec>) {
-        return node.workspace_requirement;
-    } else {
-        return {};
+bool HasLegacyWorkspaceRequirement(const WorkspaceRequirement& requirement) noexcept {
+    const WorkspaceRequirement default_requirement;
+    return requirement.bytes != default_requirement.bytes ||
+           requirement.alignment != default_requirement.alignment ||
+           requirement.lifetime != default_requirement.lifetime ||
+           requirement.reusable != default_requirement.reusable;
+}
+
+bool SameWorkspaceRequirement(const WorkspaceRequirement& lhs,
+                              const WorkspaceRequirement& rhs) noexcept {
+    return lhs.bytes == rhs.bytes &&
+           lhs.alignment == rhs.alignment &&
+           lhs.lifetime == rhs.lifetime &&
+           lhs.reusable == rhs.reusable;
+}
+
+Status ValidatePreparedWorkspaceRequirement(const ResolvedKernel& kernel) {
+    if (kernel.workspace_requirement.offset != 0) {
+        return Status::Internal(
+                "Backend prepared a workspace requirement with a non-zero offset");
     }
+    if (!IsValidWorkspaceAlignment(kernel.workspace_requirement.alignment)) {
+        return Status::Internal(
+                "Backend prepared a workspace requirement with an invalid alignment");
+    }
+    return Status::Ok();
+}
+
+Status ValidateCallerWorkspaceRequirement(const ExecutionPlanNodeSpec& node,
+                                          const ResolvedKernel& kernel) {
+    if (!HasLegacyWorkspaceRequirement(node.workspace_requirement)) {
+        return Status::Ok();
+    }
+    if (!SameWorkspaceRequirement(node.workspace_requirement,
+                                  kernel.workspace_requirement)) {
+        return Status::InvalidArgument(
+                "ExecutionPlanNodeSpec.workspace_requirement must match the "
+                "backend-prepared kernel workspace requirement");
+    }
+    return Status::Ok();
 }
 
 template<ExecutionNodeMetadata NodeSpec>
@@ -51,6 +80,12 @@ struct PreparedNodeMetadata {
     std::vector<TensorSpec> compact_input_specs{};
     std::vector<TensorSpec> output_specs{};
     std::vector<ShapeConstraint> runtime_checks{};
+};
+
+struct PreparedExecutionStep {
+    ResolvedKernel kernel{};
+    const void* packed_weights = nullptr;
+    PreparedNodeMetadata metadata{};
 };
 
 // Validates caller-provided semantic metadata against the sole semantic
@@ -148,21 +183,12 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
                                            const PackedWeightStore* packed_weight_store,
                                            NodeRange&& nodes,
                                            StateAliasPlan state_alias_plan) {
+    std::vector<PreparedExecutionStep> prepared_steps;
+    prepared_steps.reserve(std::ranges::size(nodes));
+
     std::vector<WorkspaceRequirement> workspace_requirements;
     workspace_requirements.reserve(std::ranges::size(nodes));
     for (const auto& node: nodes) {
-        workspace_requirements.push_back(GetNodeWorkspaceRequirement(node));
-    }
-
-    if (const auto layout = PlanWorkspaceRequirements(std::span(workspace_requirements));
-        !layout.ok()) {
-        return layout.status();
-    }
-
-    std::vector<ExecutionStep> steps;
-    steps.reserve(std::ranges::size(nodes));
-    for (size_t index = 0; index < std::ranges::size(nodes); ++index) {
-        const auto& node = nodes[index];
         auto backend = runtime.GetBackend(node.selector.device_type);
         if (!backend.ok()) {
             return backend.status();
@@ -176,19 +202,45 @@ StatusOr<ExecutionPlan> BuildExecutionPlan(RuntimeContext& runtime,
         if (!kernel.ok()) {
             return kernel.status();
         }
+        AM_RETURN_IF_ERROR(ValidatePreparedWorkspaceRequirement(*kernel));
+        if constexpr (std::same_as<std::remove_cvref_t<decltype(node)>,
+                                   ExecutionPlanNodeSpec>) {
+            AM_RETURN_IF_ERROR(ValidateCallerWorkspaceRequirement(node, *kernel));
+        }
+
         const auto packed_weights = ResolvePackedWeightsForNode(packed_weight_store, node);
         if (!packed_weights.ok()) {
             return packed_weights.status();
         }
 
-        steps.push_back({
-                .selector = node.selector,
+        workspace_requirements.push_back(kernel->workspace_requirement);
+        prepared_steps.push_back({
                 .kernel = std::move(*kernel),
                 .packed_weights = *packed_weights,
+                .metadata = std::move(*metadata),
+        });
+    }
+
+    if (const auto layout = PlanWorkspaceRequirements(std::span(workspace_requirements));
+        !layout.ok()) {
+        return layout.status();
+    }
+
+    std::vector<ExecutionStep> steps;
+    steps.reserve(std::ranges::size(nodes));
+    for (size_t index = 0; index < std::ranges::size(nodes); ++index) {
+        const auto& node = nodes[index];
+        PreparedExecutionStep& prepared = prepared_steps[index];
+        prepared.kernel.workspace_requirement = workspace_requirements[index];
+
+        steps.push_back({
+                .selector = node.selector,
+                .kernel = std::move(prepared.kernel),
+                .packed_weights = prepared.packed_weights,
                 .workspace_requirement = workspace_requirements[index],
-                .input_specs = std::move(metadata->compact_input_specs),
-                .output_specs = std::move(metadata->output_specs),
-                .runtime_checks = std::move(metadata->runtime_checks),
+                .input_specs = std::move(prepared.metadata.compact_input_specs),
+                .output_specs = std::move(prepared.metadata.output_specs),
+                .runtime_checks = std::move(prepared.metadata.runtime_checks),
         });
     }
     return ExecutionPlan::Create(std::move(steps), std::move(state_alias_plan));
@@ -232,7 +284,13 @@ StatusOr<ResolvedKernel> ExecutionPlanBuilder::PrepareKernelForNode(
     if (std::holds_alternative<std::monostate>(node.op_params)) {
         return Status::InvalidArgument("ExecutionPlanNodeSpec requires typed op_params");
     }
-    return backend.PrepareKernel(node.op_type, node.selector, node.op_params);
+    auto kernel = backend.PrepareKernel(node.op_type, node.selector, node.op_params);
+    if (!kernel.ok()) {
+        return kernel.status();
+    }
+    AM_RETURN_IF_ERROR(ValidatePreparedWorkspaceRequirement(*kernel));
+    AM_RETURN_IF_ERROR(ValidateCallerWorkspaceRequirement(node, *kernel));
+    return kernel;
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(

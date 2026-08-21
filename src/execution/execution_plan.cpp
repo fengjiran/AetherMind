@@ -120,6 +120,14 @@ Status ExecutionPlan::AddStep(ExecutionStep step) {
     if (!IsValidWorkspaceAlignment(step.workspace_requirement.alignment)) {
         return Status::InvalidArgument("Execution step workspace alignment must be a non-zero power of two");
     }
+    if (step.kernel.workspace_requirement.bytes != step.workspace_requirement.bytes ||
+        step.kernel.workspace_requirement.alignment != step.workspace_requirement.alignment ||
+        step.kernel.workspace_requirement.lifetime != step.workspace_requirement.lifetime ||
+        step.kernel.workspace_requirement.reusable != step.workspace_requirement.reusable ||
+        step.kernel.workspace_requirement.offset != step.workspace_requirement.offset) {
+        return Status::InvalidArgument(
+                "Execution step workspace requirement must match its prepared kernel");
+    }
     for (const ShapeConstraint& check: step.runtime_checks) {
         AM_RETURN_IF_ERROR(ValidateRuntimeCheckReferences(check,
                                                           step.input_specs,

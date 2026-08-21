@@ -46,6 +46,7 @@ TEST(ExecutionPlan, StoresResolvedKernelByValue) {
             .fn = &FakeKernel,
             .attrs = {std::byte{7}},
             .debug_name = "test::fake_kernel",
+            .workspace_requirement = {.bytes = 128, .alignment = 64},
     };
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlan::Create({
@@ -65,6 +66,10 @@ TEST(ExecutionPlan, StoresResolvedKernelByValue) {
     EXPECT_NE(step.kernel.attrs.data(), kernel.attrs.data());
     EXPECT_STREQ(step.kernel.debug_name, "test::fake_kernel");
     EXPECT_EQ(step.workspace_requirement.bytes, 128U);
+    EXPECT_EQ(step.kernel.workspace_requirement.bytes, step.workspace_requirement.bytes);
+    EXPECT_EQ(step.kernel.workspace_requirement.alignment,
+              step.workspace_requirement.alignment);
+    EXPECT_EQ(step.kernel.workspace_requirement.offset, step.workspace_requirement.offset);
 }
 
 TEST(ExecutionPlan, RejectsInvalidResolvedKernel) {

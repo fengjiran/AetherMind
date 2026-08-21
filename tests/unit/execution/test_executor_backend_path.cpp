@@ -139,20 +139,30 @@ public:
 
     AM_NODISCARD StatusOr<ResolvedKernel> PrepareKernel(
             OpType op_type,
-            const KernelSelector&,
+            const KernelSelector& selector,
             const OpParams&) const override {
         KernelFunc fn = nullptr;
+        WorkspaceRequirement workspace_requirement{};
         switch (op_type) {
             case OpType::kSoftmax:
+                workspace_requirement = selector.phase == ExecPhase::kPrefill
+                                                ? WorkspaceRequirement{.bytes = 64, .alignment = 64}
+                                        : selector.phase == ExecPhase::kDecode
+                                                ? WorkspaceRequirement{.bytes = 32, .alignment = 32}
+                                                : WorkspaceRequirement{};
+                fn = &FirstKernel;
+                break;
             case OpType::kAttention:
             case OpType::kRmsNorm:
                 fn = &FirstKernel;
                 break;
             case OpType::kRoPE:
                 fn = &SecondKernel;
+                workspace_requirement = {.bytes = 128, .alignment = 64};
                 break;
             case OpType::kArgmax:
                 fn = &FailingKernel;
+                workspace_requirement = {.bytes = 32, .alignment = 32};
                 break;
             default:
                 break;
@@ -165,6 +175,7 @@ public:
                 .fn = fn,
                 .attrs = {},
                 .debug_name = GetDebugName(op_type),
+                .workspace_requirement = workspace_requirement,
         };
     }
 
@@ -273,6 +284,7 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
+                    .phase = ExecPhase::kPrefill,
             },
             .workspace_requirement = {.bytes = 64, .alignment = 64},
     };
@@ -386,6 +398,7 @@ TEST(ExecutorBackendPath, ExecuteFailsWhenWorkspaceRequirementCannotBeBound) {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
+                    .phase = ExecPhase::kDecode,
             },
             .workspace_requirement = {.bytes = 32, .alignment = 32},
     };

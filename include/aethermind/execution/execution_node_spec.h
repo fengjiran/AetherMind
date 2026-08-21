@@ -27,6 +27,12 @@ struct ExecutionPlanNodeSpec {
     /// configured prefix (device/ISA/weight format/phase) and fills the
     /// activation/weight dtypes from the operator's inputs and outputs.
     KernelSelector selector{};
+    /// Legacy compatibility assertion for the backend-prepared workspace
+    /// requirement. A default value means no assertion. When non-default, its
+    /// bytes, alignment, lifetime, and reusable fields must match the concrete
+    /// kernel selected by the backend; offset is ignored because planning owns
+    /// it. The prepared kernel remains the sole workspace-requirement
+    /// authority.
     WorkspaceRequirement workspace_requirement{};
     /// Complete schema-port-ordered input specs, including state ports that
     /// do not contribute to runtime tensor bindings. Use MakeCompactInputSpecs

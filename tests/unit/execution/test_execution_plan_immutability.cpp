@@ -140,6 +140,52 @@ public:
     }
 };
 
+class WorkspaceImmutableTestBackend final : public Backend {
+public:
+    DeviceType device_type() const noexcept override {
+        return DeviceType::kCPU;
+    }
+
+    const BackendCapabilities& capabilities() const noexcept override {
+        return capabilities_;
+    }
+
+    StatusOr<ResolvedKernel> PrepareKernel(
+            OpType op_type,
+            const KernelSelector& selector,
+            const OpParams&) const override {
+        const WorkspaceRequirement workspace_requirement =
+                selector.phase == ExecPhase::kDecode
+                        ? WorkspaceRequirement{.bytes = 128, .alignment = 64}
+                        : WorkspaceRequirement{.bytes = 64, .alignment = 32};
+        return ResolvedKernel{
+                .op_type = op_type,
+                .fn = &ImmutableKernel,
+                .attrs = {},
+                .debug_name = "test::immutable_workspace_kernel",
+                .workspace_requirement = workspace_requirement,
+        };
+    }
+
+    const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override {
+        return nullptr;
+    }
+
+private:
+    BackendCapabilities capabilities_{};
+};
+
+class WorkspaceImmutableTestBackendFactory final : public BackendFactory {
+public:
+    DeviceType device_type() const noexcept override {
+        return DeviceType::kCPU;
+    }
+
+    std::unique_ptr<Backend> Create() const override {
+        return std::make_unique<WorkspaceImmutableTestBackend>();
+    }
+};
+
 TEST(ExecutionPlanImmutability, StepsReturnsConstViewAfterConstruction) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
@@ -178,7 +224,7 @@ TEST(ExecutionPlanImmutability, StepsReturnsConstViewAfterConstruction) {
 TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
-                                   std::make_unique<ImmutableTestBackendFactory>());
+                                   std::make_unique<WorkspaceImmutableTestBackendFactory>());
     RuntimeContext runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({1, 4});
@@ -193,6 +239,7 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
+                    .phase = ExecPhase::kPrefill,
             },
             .workspace_requirement = {.bytes = 64, .alignment = 32, .offset = 999},
             .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape}, TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
@@ -206,6 +253,7 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
+                    .phase = ExecPhase::kDecode,
             },
             .workspace_requirement = {.bytes = 128, .alignment = 64, .offset = 123},
             .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape}, TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},

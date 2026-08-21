@@ -125,7 +125,7 @@ for (const auto& node : nodes) {
 }
 ```
 
-untrusted `ExecutionPlanNodeSpec` 由调用方显式预填 workspace 需求；`LoweredStepSpec` 不携带该字段，lowered 步骤取默认零需求。
+workspace 需求由 backend 在 `PrepareKernel` 选定具体 kernel 后写入 `ResolvedKernel`；`ExecutionPlanBuilder` 先收集全部 prepared-kernel 需求，再统一规划 offset。`LoweredStepSpec` 不携带该字段；untrusted `ExecutionPlanNodeSpec` 中的 legacy 字段仅作为可选一致性断言，不能覆盖 backend 返回的需求。
 
 2. 规划 workspace offset：
 

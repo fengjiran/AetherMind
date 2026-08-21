@@ -3,9 +3,12 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/cpu/cpu_workspace_arena.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/compiler/graph_lowering.h"
+#include "aethermind/execution/executor.h"
+#include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/graph/graph.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/model/packed_weight_store.h"
@@ -16,6 +19,8 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -118,6 +123,70 @@ public:
 Status SoftmaxTestKernel(const KernelContext&) noexcept {
     return Status::Ok();
 }
+
+std::vector<WorkspaceBinding>* g_recorded_workspace_bindings = nullptr;
+
+Status WorkspaceRecordingKernel(const KernelContext& context) noexcept {
+    if (g_recorded_workspace_bindings != nullptr) {
+        g_recorded_workspace_bindings->push_back(context.workspace_binding);
+    }
+    return Status::Ok();
+}
+
+class WorkspaceTestBackend final : public Backend {
+public:
+    DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
+    const BackendCapabilities& capabilities() const noexcept override { return capabilities_; }
+
+    StatusOr<ResolvedKernel> PrepareKernel(OpType op_type,
+                                           const KernelSelector&,
+                                           const OpParams&) const override {
+        switch (op_type) {
+            case OpType::kEmbedding:
+                return ResolvedKernel{
+                        .op_type = op_type,
+                        .fn = &WorkspaceRecordingKernel,
+                        .attrs = {},
+                        .debug_name = "test::embedding_workspace_kernel",
+                        .workspace_requirement = {
+                                .bytes = 24,
+                                .alignment = 16,
+                                .lifetime = WorkspaceLifetime::kPerOperator,
+                        },
+                };
+            case OpType::kRmsNorm:
+                return ResolvedKernel{
+                        .op_type = op_type,
+                        .fn = &WorkspaceRecordingKernel,
+                        .attrs = {},
+                        .debug_name = "test::rmsnorm_workspace_kernel",
+                        .workspace_requirement = {
+                                .bytes = 40,
+                                .alignment = 64,
+                                .lifetime = WorkspaceLifetime::kPerOperator,
+                        },
+                };
+            default:
+                return Status::NotFound("WorkspaceTestBackend does not prepare this op type");
+        }
+    }
+
+    const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override {
+        return nullptr;
+    }
+
+private:
+    BackendCapabilities capabilities_{};
+};
+
+class WorkspaceTestBackendFactory final : public BackendFactory {
+public:
+    DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
+
+    std::unique_ptr<Backend> Create() const override {
+        return std::make_unique<WorkspaceTestBackend>();
+    }
+};
 
 class SoftmaxTestBackend final : public Backend {
 public:
@@ -432,8 +501,10 @@ TEST(ExecutionPlanBuilder, BuildRejectsMissingTypedParams) {
     EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ExecutionPlanBuilder, BuildPlansWorkspaceOffsetsAcrossNodes) {
+TEST(ExecutionPlanBuilder, BuildUsesPreparedKernelWorkspaceRequirementsForRawNodes) {
     RuntimeBuilder builder;
+    builder.RegisterBackendFactory(DeviceType::kCPU,
+                                   std::make_unique<WorkspaceTestBackendFactory>());
     RuntimeContext runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({4, 8});
@@ -442,8 +513,7 @@ TEST(ExecutionPlanBuilder, BuildPlansWorkspaceOffsetsAcrossNodes) {
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     std::vector<ExecutionPlanNodeSpec> nodes;
-    for (const auto& req: {WorkspaceRequirement{.bytes = 32, .alignment = 16, .offset = 999},
-                           WorkspaceRequirement{.bytes = 8, .alignment = 64, .offset = 123}}) {
+    for (size_t index = 0; index < 2; ++index) {
         ExecutionPlanNodeSpec node{
                 .op_type = OpType::kRmsNorm,
                 .selector = {
@@ -454,8 +524,15 @@ TEST(ExecutionPlanBuilder, BuildPlansWorkspaceOffsetsAcrossNodes) {
                         .isa = IsaLevel::kScalar,
                         .phase = ExecPhase::kBoth,
                 },
-                .workspace_requirement = req,
         };
+        if (index == 0) {
+            node.workspace_requirement = {
+                    .bytes = 40,
+                    .alignment = 64,
+                    .lifetime = WorkspaceLifetime::kPerOperator,
+                    .offset = 999,
+            };
+        }
         node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
         node.input_specs = {
                 TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
@@ -472,6 +549,37 @@ TEST(ExecutionPlanBuilder, BuildPlansWorkspaceOffsetsAcrossNodes) {
     ASSERT_EQ(plan->size(), 2U);
     EXPECT_EQ(plan->steps()[0].workspace_requirement.offset, 0U);
     EXPECT_EQ(plan->steps()[1].workspace_requirement.offset, 64U);
+    EXPECT_EQ(plan->steps()[0].workspace_requirement.bytes, 40U);
+    EXPECT_EQ(plan->steps()[1].workspace_requirement.bytes, 40U);
+}
+
+TEST(ExecutionPlanBuilder, BuildRejectsRawWorkspaceRequirementThatDisagreesWithKernel) {
+    RuntimeBuilder builder;
+    builder.RegisterBackendFactory(DeviceType::kCPU,
+                                   std::make_unique<WorkspaceTestBackendFactory>());
+    RuntimeContext runtime = builder.Build();
+
+    const SymbolicShape act_shape = StaticShape({4, 8});
+    const SymbolicShape weight_shape = StaticShape({8});
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
+    ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
+    node.workspace_requirement = {.bytes = 8, .alignment = 64};
+    node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
+    node.input_specs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+    node.output_specs = analyzed->outputs;
+    node.runtime_checks = analyzed->runtime_checks;
+
+    const StatusOr<ExecutionPlan> plan =
+            ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(plan.status().message().find("must match"), std::string::npos);
 }
 
 TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightStore) {
@@ -584,7 +692,7 @@ TEST(ExecutionPlanBuilder, PrepareKernelForNodeRejectsUnknownOpType) {
     EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPreservesValidatedMetadata) {
+TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPropagatesPreparedKernelWorkspace) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(
             TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({1})});
@@ -606,7 +714,10 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPreservesValidatedMetadata) {
 
     const auto lowered = LowerModelGraph(graph);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    RuntimeContext runtime = RuntimeBuilder{}.Build();
+    RuntimeBuilder builder;
+    builder.RegisterBackendFactory(DeviceType::kCPU,
+                                   std::make_unique<WorkspaceTestBackendFactory>());
+    RuntimeContext runtime = builder.Build();
     const auto plan = ExecutionPlanBuilder::Build(runtime, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->steps().size(), lowered->steps().size());
@@ -616,6 +727,37 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPreservesValidatedMetadata) {
         EXPECT_EQ(plan->steps()[index].runtime_checks,
                   lowered->steps()[index].spec.runtime_checks);
     }
+
+    ASSERT_EQ(plan->steps()[0].workspace_requirement.bytes, 24U);
+    EXPECT_EQ(plan->steps()[0].workspace_requirement.alignment, 16U);
+    EXPECT_EQ(plan->steps()[0].workspace_requirement.offset, 0U);
+    ASSERT_EQ(plan->steps()[1].workspace_requirement.bytes, 40U);
+    EXPECT_EQ(plan->steps()[1].workspace_requirement.alignment, 64U);
+    EXPECT_EQ(plan->steps()[1].workspace_requirement.offset, 64U);
+
+    alignas(64) std::array<std::byte, 128> workspace_storage{};
+    CpuWorkspaceArena workspace_arena(workspace_storage.data(), workspace_storage.size());
+    RuntimeBindingContext bindings(&workspace_arena);
+    for (size_t index = 0; index < plan->size(); ++index) {
+        bindings.SetStepTensorBinding(index, {
+                                                     .inputs = std::vector<TensorView>(
+                                                             plan->steps()[index].input_specs.size()),
+                                                     .outputs = std::vector<MutableTensorView>(
+                                                             plan->steps()[index].output_specs.size()),
+                                             });
+    }
+
+    std::vector<WorkspaceBinding> recorded_bindings;
+    g_recorded_workspace_bindings = &recorded_bindings;
+    const Status execution_status = Executor::Execute(*plan, bindings);
+    g_recorded_workspace_bindings = nullptr;
+
+    ASSERT_TRUE(execution_status.ok()) << execution_status.ToString();
+    ASSERT_EQ(recorded_bindings.size(), 2U);
+    EXPECT_EQ(recorded_bindings[0].data, workspace_storage.data());
+    EXPECT_EQ(recorded_bindings[0].size, 24U);
+    EXPECT_EQ(recorded_bindings[1].data, workspace_storage.data() + 64U);
+    EXPECT_EQ(recorded_bindings[1].size, 40U);
 }
 
 TEST(ExecutionPlanBuilder, BuildFromNodesAloneHasEmptyStateAliasPlan) {

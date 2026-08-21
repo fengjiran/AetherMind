@@ -6,7 +6,6 @@
 
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/backend/resolved_kernel.h"
-#include "aethermind/base/status.h"
 #include "aethermind/execution/state_alias_plan.h"
 #include "aethermind/runtime/workspace.h"
 #include "aethermind/shape_inference/shape_constraint.h"

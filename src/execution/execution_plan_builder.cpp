@@ -65,6 +65,7 @@ Status ValidateCallerMetadata(const ExecutionPlanNodeSpec& node,
                 "Untrusted ExecutionPlanNodeSpec adapter requires typed op_params; "
                 "monostate is not accepted");
     }
+
     auto analyzed = InferOperator(node.op_type, node.op_params, compact_input_specs);
     if (!analyzed.ok()) {
         return analyzed.status();
@@ -225,6 +226,7 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
     if (!alias_plan.ok()) {
         return alias_plan.status();
     }
+
     const auto node_specs = std::views::transform(
             lowered.steps(),
             [](const LoweredStep& step) -> const LoweredStepSpec& {

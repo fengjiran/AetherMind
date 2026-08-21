@@ -6,7 +6,7 @@ date: 2026-03-26
 author: OpenCode / Sisyphus
 source_documents:
   - docs/designs/phase1_implementation_breakdown.md
-  - docs/designs/aethermind_arch_design.md
+  - docs/archive/aethermind_arch_design.md（已归档）
   - docs/designs/executor_design.md
   - docs/designs/kv_cache_design.md
   - docs/designs/loaded_model_design.md
@@ -54,7 +54,7 @@ source_documents:
 本计划建立在以下设计文档之上：
 
 - `docs/designs/phase1_implementation_breakdown.md`
-- `docs/designs/aethermind_arch_design.md`
+- `docs/archive/aethermind_arch_design.md（已归档）`
 - `docs/designs/executor_design.md`
 - `docs/designs/kv_cache_design.md`
 - `docs/designs/loaded_model_design.md`

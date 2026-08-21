@@ -1,5 +1,11 @@
 # AetherMind 系统架构总览
 
+- **状态**: Current（描述已验证实现；只写仓库事实）
+- **版本**: 1.0
+- **日期**: 2026-08-21（文档系统落地时定稿为全系统唯一架构总览）
+- **术语**: 见 [docs/README.md 术语表](../../README.md)
+- **规范**: 本文档为全系统唯一权威总览，其他设计文档引用其章节而非复制内容（[文档系统规范](../../guides/documentation-guide.md)）
+
 ## 系统架构总览
 
 AetherMind Phase 1 的代码组织遵循六个**概念责任层**。这些层是逻辑责任边界，**不是**源文件目录结构的一对一映射；其中 `compiler/` 负责 semantic graph 之后、execution plan 之前的编译 artifact 与阶段编排。
@@ -32,7 +38,7 @@ flowchart TB
     subgraph L4["4. Compiler 层<br/>pipeline composition 与 lowering"]
         direction LR
         COMP["ModelCompiler / OptimizeModelGraph<br/>/ LowerModelGraph (已实现)"]
-        LART["LoweredGraph / LoweredNodeSpec<br/>(已验证 compiler artifact)"]
+        LART["LoweredGraph / LoweredStepSpec<br/>(已验证 compiler artifact)"]
     end
 
     subgraph L5["5. Execution planning 层<br/>计划构建与 runtime contracts"]
@@ -417,7 +423,7 @@ flowchart TB
 |------|-------------|----------|
 | **模型加载** | HF 目录 → `LoadedModel` | `ModelLoader::Load` 返回 `unique_ptr<LoadedModel>`；含 config、resolved weights 和 backing storage，不含 packed weights |
 | **图构建** | `LoadedModel` → `ModelGraph`（语义 DAG） | `ModelGraphBuilder::BuildLlamaDense` 构建 dense decoder 的算子 DAG |
-| **图编译** | `LoadedModel` → `LoweredModelArtifact` | compiler `ModelCompiler` 串联 `BuildLlamaDense` → `OptimizeModelGraph` → `LowerModelGraph`；immutable `LoweredGraph` 保留 `LoweredNodeSpec[]` 和 dense value metadata |
+| **图编译** | `LoadedModel` → `LoweredModelArtifact` | compiler `ModelCompiler` 串联 `BuildLlamaDense` → `OptimizeModelGraph` → `LowerModelGraph`；immutable `LoweredGraph` 保留 `LoweredStepSpec[]` 和 dense value metadata |
 | **计划构建** | `LoweredGraph` → 不可变 `ExecutionPlan` | `ExecutionPlanBuilder` 向硬件层发起 kernel resolve，绑定 packed weight 指针，冻结 workspace requirement |
 | **执行** | `ExecutionPlan` → tensor/KV 状态 | `Executor::Execute` → `LayerRunner::Run` 按步执行；每步经 workspace 绑定、shape 校验后调用算子。Token IDs 由目标 Generate 循环经 Argmax 处理后产生 |
 
@@ -458,7 +464,72 @@ flowchart TB
 
 ---
 
-## 十、参考来源
+## 十、架构级并发模型
+
+### 10.1 Phase 1 执行模型
+
+> **single-request synchronous runtime + optional intra-op parallel compute**
+
+- 控制流：单请求、同步阻塞；不提供 request scheduler，不支持多请求批处理。
+- 算子层：允许 intra-op parallelism（GEMM/GEMV 并行、Attention 局部并行），由统一线程配置驱动。
+- 线程实施指南：Phase 1 默认采用算子内部（intra-op）并行；若依赖 OpenMP 或第三方并行数学库，必须通过 `RuntimeContext` 提供统一线程数配置，避免多层嵌套并行导致 oversubscription。
+
+### 10.2 并发边界
+
+| 允许 | 不允许 |
+|---|---|
+| 算子级 intra-op 并行 | 改变 API 的同步语义 |
+| RuntimeContext 统一线程数配置 | 引入 request-level 并发调度 |
+| 单一主导的 intra-op threading runtime | 多会话共享调度器 / request-level 与 intra-op 混用 |
+
+> 当前已实现部分为单线程逐计划执行（`Executor::Execute` → `LayerRunner::Run`）；intra-op 并行属 Phase 1 目标/推进中。
+
+## 十一、内存架构与稳态零分配
+
+### 11.1 内存分区
+
+| 类别 | 生命周期 | 特征 | 管理者 |
+|---|---|---|---|
+| Model Weights | 模型级（长） | 只读、大块、长期驻留（mmap 或加载后驻留） | `LoadedModel` / `PackedWeightStore` |
+| KV Cache | Session 级（中） | 静态预分配、按 token 位置递增写入、不动态扩容 | `KVCacheManager` |
+| Workspace / Scratch | 执行期（短/中） | 预留、复用（Bind/Reset） | `WorkspaceArena`（可经 ammalloc） |
+
+### 11.2 稳态零分配定义
+
+- 允许模型加载阶段执行 mmap / 初始化分配。
+- 允许 Session 创建阶段执行一次性预分配。
+- **Decode 稳态路径禁止新的堆分配**。
+
+该定义约束热路径行为，而非要求整个进程所有阶段完全不分配内存。
+
+### 11.3 布局原则
+
+- 权重布局服从 kernel-friendly repack 需求；KV Cache 布局服从顺序写入与按层访问需求；Workspace 布局服从算子复用与 cache locality 需求。
+- 持久态与瞬时态内存分离管理；单次 kernel 调用的 tensor view / binding 不拥有存储。
+
+## 十二、确定性策略
+
+| 层级 | 定义 |
+|---|---|
+| Contract Level | 同平台 / 同构建 / 同输入 → 输出一致 |
+| Reference Level | Reference kernels 作为正确性基线，尽量保持 bit-stable 或高度稳定的数值行为 |
+| Optimized Level | Optimized kernels 与 reference path 在定义容差内一致；不以跨平台 bit-identical 作为通用承诺 |
+
+- 分层原因：SIMD 特化、不同 BLAS 路径、并行优化引入后，"所有平台 bit-identical"不再是合理工程承诺，必须区分契约确定性与实现路径确定性。
+- 测试对应：算子正确性（Reference 基线）、Reference vs Optimized 一致性（按算子定义容差）、端到端生成回归（EOS / Max Tokens 停止条件）、内存行为（Decode 稳态无新增堆分配）。
+
+## 十三、关键冻结决策
+
+1. **Runtime 边界**：token ids in / token ids out。
+2. **执行模型**：single-request synchronous。
+3. **内存策略**：static KV + steady-state zero allocation。
+4. **算子策略**：reference first, optimized second。
+5. **分发策略**：plan-build-time resolve，热路径函数指针，无虚调用与热路径查找。
+6. **对象模型**：`LoadedModel`（config + resolved weights）→ `LoweredModelArtifact`（owns LoadedModel + LoweredGraph）→ `ExecutionPlan`（不可变，调用方持有）。
+7. **KV 访问边界**：Execution / Operator 通过 `KVCacheView` 访问 KV，不耦合底层线性存储实现。
+8. **算子契约**：Reference 与 Optimized 路径共享统一逻辑签名（OpParams 为 typed variant）。
+
+## 十四、参考来源
 
 本文档的所有"当前实现"状态均基于以下代码与设计文档。当前状态以源代码为准，Phase 1 目标以 PRD 为准。
 
@@ -468,7 +539,7 @@ flowchart TB
 |------|----------|
 | [`include/aethermind/model/model_loader.h`](../../../include/aethermind/model/model_loader.h) / [`src/model/model_loader.cpp`](../../../src/model/model_loader.cpp) | `ModelLoader::Load` |
 | [`include/aethermind/model/model_graph_builder.h`](../../../include/aethermind/model/model_graph_builder.h) / [`src/model/model_graph_builder.cpp`](../../../src/model/model_graph_builder.cpp) | `ModelGraphBuilder::BuildLlamaDense` |
-| [`include/aethermind/compiler/semantic_optimization_pipeline.h`](../../../include/aethermind/compiler/semantic_optimization_pipeline.h) / [`src/compiler/semantic_optimization_pipeline.cpp`](../../../src/compiler/semantic_optimization_pipeline.cpp) | `OptimizeModelGraph` |
+| [`include/aethermind/compiler/optimize_graph.h`](../../../include/aethermind/compiler/optimize_graph.h) / [`src/compiler/optimize_graph.cpp`](../../../src/compiler/optimize_graph.cpp) | `OptimizeModelGraph` |
 | [`include/aethermind/compiler/graph_lowering.h`](../../../include/aethermind/compiler/graph_lowering.h) / [`src/compiler/graph_lowering.cpp`](../../../src/compiler/graph_lowering.cpp) | `LowerModelGraph` / `ValidateLoweredGraph` |
 | [`include/aethermind/execution/execution_plan_builder.h`](../../../include/aethermind/execution/execution_plan_builder.h) / [`src/execution/execution_plan_builder.cpp`](../../../src/execution/execution_plan_builder.cpp) | `ExecutionPlanBuilder::Build` |
 | [`include/aethermind/execution/executor.h`](../../../include/aethermind/execution/executor.h) / [`src/execution/executor.cpp`](../../../src/execution/executor.cpp) | `Executor::Execute` |

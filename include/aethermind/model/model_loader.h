@@ -7,6 +7,7 @@
 /// Loader responsibilities: directory I/O, config parsing, validation, and
 /// logical weight resolution. It deliberately stays free of graph building,
 /// kernel resolution, and weight prepacking.
+/// @see docs/designs/model/01-model-loader.md
 #include "aethermind/base/status.h"
 
 #include <filesystem>

@@ -3,6 +3,7 @@
 
 /// @file loaded_model.h
 /// @brief Ownership boundary for a validated Hugging Face model before compilation.
+/// @see docs/designs/model/01-model-loader.md
 
 #include "aethermind/model/formats/hf/hf_model_config.h"
 #include "aethermind/model/resolved_model_weights.h"

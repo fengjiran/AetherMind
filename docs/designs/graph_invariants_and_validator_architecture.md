@@ -394,5 +394,5 @@ struct ValidationReport {
 - [AGENTS.md](../../AGENTS.md)：模块所有权、跨模块依赖规则、构建测试规范。
 - [aethermind_prd.md](../products/aethermind_prd.md)：Phase 1 产品范围与验收标准。
 - [model_graph_design.md](model_graph_design.md)：ModelGraph 设计、§10 快照与 checkpoint 契约、§13 Validation 规则、§16 pass 管线、§17.1 状态缓冲别名。
-- [graph_compilation_flow.md](graph_compilation_flow.md)：按当前代码事实梳理的图编译 lowering 与计划构建流程。评审版（图编译功能完整实现流程，含已实现/待生产化边界）见 [graph_compilation_flow.md](../../reviews/graph_compilation_flow.md)。
+- [graph_compilation_flow.md](graph_compilation_flow.md)：按当前代码事实梳理的图编译 lowering 与计划构建流程。评审版（图编译功能完整实现流程，含已实现/待生产化边界）见 [graph_compilation_flow.md](../reviews/graph_compilation_flow.md)。
 - [kv_cache_design.md](kv_cache_design.md)：KV cache 静态分配模型、Manager/View 职责与布局契约。

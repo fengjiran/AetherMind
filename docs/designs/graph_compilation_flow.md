@@ -34,7 +34,7 @@ struct ExecutionPlanNodeSpec {
 };
 ```
 
-也就是说，`ExecutionPlanNodeSpec` 是给测试、手工构造和其他低层调用的 **untrusted execution request**；builder 会重跑 `InferOperator` 并严格比较其 metadata。compiler 的正式产物是 `LoweredNodeSpec` 组成的 immutable `LoweredGraph`；`ModelGraph` 经 `LowerModelGraph()` 转换后，execution 内部先验证 artifact 并将 state aliases 转为 `StateAliasPlan`，再构建计划。`LoweredNodeSpec` 不携带 `workspace_requirement`——workspace 大小是 kernel 实现细节，compiler 产物无法计算；只有 untrusted `ExecutionPlanNodeSpec` 由调用方显式预填。
+也就是说，`ExecutionPlanNodeSpec` 是给测试、手工构造和其他低层调用的 **untrusted execution request**；builder 会重跑 `InferOperator` 并严格比较其 metadata。compiler 的正式产物是 `LoweredStepSpec` 组成的 immutable `LoweredGraph`；`ModelGraph` 经 `LowerModelGraph()` 转换后，execution 内部先验证 artifact 并将 state aliases 转为 `StateAliasPlan`，再构建计划。`LoweredStepSpec` 不携带 `workspace_requirement`——workspace 大小是 kernel 实现细节，compiler 产物无法计算；只有 untrusted `ExecutionPlanNodeSpec` 由调用方显式预填。
 
 ## 2. 当前完整流程图
 
@@ -125,7 +125,7 @@ for (const auto& node : nodes) {
 }
 ```
 
-untrusted `ExecutionPlanNodeSpec` 由调用方显式预填 workspace 需求；`LoweredNodeSpec` 不携带该字段，lowered 步骤取默认零需求。
+untrusted `ExecutionPlanNodeSpec` 由调用方显式预填 workspace 需求；`LoweredStepSpec` 不携带该字段，lowered 步骤取默认零需求。
 
 2. 规划 workspace offset：
 
@@ -441,7 +441,7 @@ ValidateShapeConstraints(...)
                                          ▼
                               ┌──────────────────────┐
                               │     LoweredGraph      │
-                              │  (LoweredNodeSpec     │
+                              │  (LoweredStepSpec     │
                               │   + bindings)         │
                               └──────────────────────┘
 ```
@@ -480,7 +480,7 @@ GraphLoweringConfig {
 optimized ModelGraph
   → LowerModelGraph
   → LoweredGraph
-       ├─ steps() (LoweredStep{LoweredNodeSpec, binding}; 1:1 配对)
+       ├─ steps() (LoweredStep{LoweredStepSpec, binding}; 1:1 配对)
        ├─ values() (LoweredValueDesc, indexed by GraphValueId)
        ├─ model_inputs()
        ├─ model_outputs()
@@ -496,7 +496,7 @@ optimized ModelGraph
 
 ```text
 LoweredGraph (compiler-owned, immutable after finalization)
-  ├─ steps()          (span<LoweredStep>, LoweredNodeSpec + binding 1:1)
+  ├─ steps()          (span<LoweredStep>, LoweredStepSpec + binding 1:1)
   ├─ values()         (span<LoweredValueDesc>)
   ├─ model_inputs()   (span<GraphValueId>)
   ├─ model_outputs()  (span<GraphValueId>)
@@ -581,7 +581,7 @@ ModelGraph
 ### 层次 B：LoweredGraph 到 ExecutionPlan 的构建（已实现）
 
 ```text
-LoweredGraph::steps() (std::span<const LoweredStep>, carrying LoweredNodeSpec)
+LoweredGraph::steps() (std::span<const LoweredStep>, carrying LoweredStepSpec)
   → workspace planning
   → operator creation
   → compact runtime tensor-spec derivation
@@ -590,7 +590,7 @@ LoweredGraph::steps() (std::span<const LoweredStep>, carrying LoweredNodeSpec)
   → immutable ExecutionPlan
 ```
 
-`ExecutionPlanBuilder` 不理解模型拓扑；它消费 compiler artifact 并在 implementation 内部适配为 execution request metadata。模型拓扑到 `LoweredNodeSpec` 的转换由 compiler `LowerModelGraph` 负责。
+`ExecutionPlanBuilder` 不理解模型拓扑；它消费 compiler artifact 并在 implementation 内部适配为 execution request metadata。模型拓扑到 `LoweredStepSpec` 的转换由 compiler `LowerModelGraph` 负责。
 
 ### 层次 C：LoadedModel 到 LoweredModelArtifact 的生产模型编译管线（已实现）
 

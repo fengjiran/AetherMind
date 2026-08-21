@@ -25,7 +25,7 @@
 
 本文档基于以下设计基线：
 
-- `docs/designs/aethermind_arch_design.md`
+- `docs/archive/aethermind_arch_design.md（已归档）`
 - `docs/designs/executor_design.md`
 - `docs/designs/kv_cache_design.md`
 - `docs/designs/loaded_model_design.md`

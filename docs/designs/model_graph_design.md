@@ -309,7 +309,7 @@ KernelSelector selector{};
 原因：
 
 - weight 已由 `WeightValue` payload 表达；
-- workspace 是 execution planning 决策，`LoweredNodeSpec` 不携带 workspace 需求，lowered 步骤按默认零需求参与规划；device、ISA、weight format、kernel selector 是 lowering 决策；
+- workspace 是 execution planning 决策，`LoweredStepSpec` 不携带 workspace 需求，lowered 步骤按默认零需求参与规划；device、ISA、weight format、kernel selector 是 lowering 决策；
 - `decoder_layer_index` 只是 semantic/debug metadata，不是图结构依赖。真实依赖必须由 edges 表达。
 
 ### 7.1 Operator schema 输入顺序
@@ -1376,7 +1376,7 @@ AM_NODISCARD StatusOr<LoweredGraph> LowerModelGraph(
 #### 模块所有权
 
 - graph 保留 `ModelGraph`、GraphRewrite/GraphPassManager 与所有 backend-independent semantic pass；不得 include compiler/execution/backend/model。
-- compiler 拥有 `OptimizeModelGraph` 的 pipeline composition、`LowerModelGraph`、`LoweredGraph`/`LoweredNodeSpec`、`ModelCompiler` 与 `ModelCompileOptions`；不得 include execution/backend/runtime。
+- compiler 拥有 `OptimizeModelGraph` 的 pipeline composition、`LowerModelGraph`、`LoweredGraph`/`LoweredStepSpec`、`ModelCompiler` 与 `ModelCompileOptions`；不得 include execution/backend/runtime。
 - execution 消费 finalized `LoweredGraph`，在内部把 state aliases 转为 `StateAliasPlan` 并进行 workspace/kernel planning；raw `ExecutionPlanNodeSpec` 是会重跑 `InferOperator` 的 untrusted adapter。
 
 ## 17. Lowering
@@ -1386,7 +1386,7 @@ DAG lowering（compiler）的职责：
 1. 拓扑排序或生成合法执行 schedule；
 2. 按 operator schema 顺序解释 `GraphNode.inputs` / `GraphNode.outputs`；
 3. 解析 `WeightValue` 的逻辑权重引用；
-4. 将 `GraphLoweringConfig` 的 base `KernelSelector` 与经验证的 dtype 写入 `LoweredNodeSpec`；
+4. 将 `GraphLoweringConfig` 的 base `KernelSelector` 与经验证的 dtype 写入 `LoweredStepSpec`；
 5. 声明式记录 state must-alias；
 6. 生成并验证 `LoweredGraph`。
 

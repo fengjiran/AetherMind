@@ -1,5 +1,8 @@
 # AetherMind 推理引擎整体架构设计文档
 
+> **状态: Deprecated（已归档）**
+> 本文档为 2026-03-25 的早期架构设计。其中仍有效的内容（Phase 1 设计目标、并发模型、内存架构与稳态零分配、确定性策略、关键冻结决策）已并入当前唯一权威总览 [docs/designs/architecture/architecture_overview.md](architecture/architecture_overview.md)（第十四章起参考来源）；本文档保留作为历史参考，不作为当前实现依据。
+
 **版本**: v1.1  
 **日期**: 2026-03-25  
 **作者**: AetherMind Team

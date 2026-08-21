@@ -657,7 +657,7 @@ head.compare_exchange_weak(old_val, new_val,
 ### 💡 架构思考 (Architectural Insights)
 - **后台清理线程的并发模型**: 采用 `std::jthread` + `std::stop_token` + `std::condition_variable_any` 实现可中断的周期性扫描，符合 C++20 最佳实践。`madvise` 放在锁外的设计正确，但需配合 "in-flight span 标记" 机制避免并发合并冲突。
 - **锁策略权衡**: 当前 `PageCache` 的全局大锁在 scavenger 频繁遍历场景下成为瓶颈。P2 后期可考虑将 `PageCache` 分片 (Sharding) 以降低锁竞争。
-- **启动时机设计**: 经过对比 4 种启动方案（构造函数属性、首次 malloc、首次慢路径、阈值触发），确定采用**首次慢路径启动**作为主要策略。该方案避开热路径、延迟适中、无递归风险，且可通过环境变量 `AM_ENABLE_SCAVENGER` 控制开关。详见设计方案文档 [docs/designs/ammalloc/page_heap_scavenger_start.md](../designs/ammalloc/page_heap_scavenger_start.md)。
+- **启动时机设计**: 经过对比 4 种启动方案（构造函数属性、首次 malloc、首次慢路径、阈值触发），确定采用**首次慢路径启动**作为主要策略。该方案避开热路径、延迟适中、无递归风险，且可通过环境变量 `AM_ENABLE_SCAVENGER` 控制开关。详见 ammalloc 独立仓库的 `docs/decisions/0001-scavenger-startup-strategy.md`。
 
 ---
 
@@ -693,4 +693,4 @@ head.compare_exchange_weak(old_val, new_val,
     - **解决方案**: 在 `ObjectPool::New` 中引入 `alignof(T)` 计算 Padding，确保 `RadixNode` 严格 4KB 对齐，避免跨页。
 
 ---
-[ 查看完整 TODO List ](../designs/ammalloc/ammalloc_todo_list.md)
+[ 查看完整 TODO List ]（ammalloc 独立仓库，见其 `docs/` 索引）

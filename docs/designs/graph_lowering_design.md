@@ -1,27 +1,76 @@
 # AetherMind Graph Lowering 模块设计方案
 
-> 版本：v1.0  
+> 版本：v1.1（v1.0 为前瞻设计，v1.1 起补充实现现状对照）  
 > 目标语言：C++20  
 > 适用范围：AetherMind 大模型推理引擎 Graph IR → LoweredGraph 转换  
 > 设计目标：建立清晰、可扩展、与 Kernel 选择及 Execution Plan Generation 解耦的 Lowering 层
 
 ---
 
+## 0. 实现现状总览
+
+> 本文 v1.0 为前瞻性设计方案；v1.1 起补充「实现现状对照」。当前代码事实以 `graph_compilation_flow.md` 与 compiler/execution 模块代码为准，本节是判断本文各章节「已落地 / 未落地」的权威索引。
+
+### 0.1 当前三层链路（代码事实）
+
+```text
+ModelGraph（语义 DAG，graph 模块）
+    ↓ OptimizeModelGraph（compiler 模块，O0/O1/O2 pipeline）
+Optimized ModelGraph
+    ↓ LowerModelGraph（compiler 模块）
+LoweredGraph（immutable compiler artifact）
+    │   └─ LoweredStep{LoweredStepSpec, LoweredStepBinding}[]
+    │      LoweredValueDesc[] / model_inputs / model_outputs / state_aliases
+    ↓ ExecutionPlanBuilder::Build（execution 模块）
+ExecutionPlan（ExecutionStep[] + StateAliasPlan）
+```
+
+### 0.2 设计 vs 实现差异对照表
+
+| 本文章节 | 设计方案 | 实现现状 | 状态 |
+|---|---|---|---|
+| §3/§8/§9/§37-44 | Semantic Op → Execution Primitive（PrimitiveOpType/PrimitiveParams/LoweringRegistry） | 语义 OpType 直沉为步骤（`LoweredStepSpec.op_type` = OpType），无 Primitive 层 | 🔮 未落地-未来演进方向 |
+| §31/§41/§59 | Prefill/Decode 特化（AttentionPrefill/AttentionDecode 分裂图） | `ExecPhase` 作为 `KernelSelector.phase` 属性，单图 | 🔀 已偏离-替代方案 |
+| §24-28 | KV Cache 独立建模（LoweredResource/ResourceUse/ControlDependency） | `StateValue` payload + `state_aliases`（schema 声明式 must-alias 坐标记录） | 🔀 已偏离-替代方案 |
+| §22/§43/§44/§45/§17 | View Primitive + LayoutConstraint/StrideExpr 两阶段布局 | kReshape/kPermute/kReorder 为普通语义算子，无布局约束表达 | 🔮 未落地-未来演进方向 |
+| §33/§34 | GraphLowerer 类 + LoweringRegistry 注册表 | 自由函数 `LowerModelGraph` 单一入口，无 per-op 规则注册 | 🔀 简化-当前无需 |
+| §12 | LoweredGraph immutable + builder/finalize | `LoweredGraph` 私有 storage + 嵌套 `LoweredGraph::Builder::Build() &&` | ✅ 已落地 |
+| §13 | StrongId<Tag> 强类型 ID | `GraphValueId`/`GraphNodeId`（distinct struct） | ✅ 已落地（非模板形式） |
+| §49/§50 | LoweredGraphVerifier 类 | `ValidateLoweredGraph` 自由函数 + `Builder::Validate` | ✅ 已落地（自由函数形式） |
+| §7.1-7.4/§52/§53/§61 | 不变量与禁止清单 | 全部成立（selector 仅 base 层属性，kernel/workspace/layout 决策在 execution） | ✅ 已落地 |
+| §19-21 | Weight 作为 LoweredValue + 复合 binding | `WeightValue` payload + `QkvWeightBinding`/`GateUpWeightBinding` | ✅ 已落地 |
+| §55 | 独立 lowering/ + planner/ + kernel/ 目录 | compiler/（lowering+optimize）+ execution/（planning）+ backend/（kernel） | 🔀 目录布局不同，分层对应 |
+| §54 | Dump() 第一版实现 | 未实现 | 🔮 待办 |
+
+### 0.3 当前实现路径声明
+
+当前实现采用**「语义 OpType 直沉 + KernelSelector 属性」**的简化路径：Lowering 不做 Semantic Op → Primitive 的抽象映射，步骤类型直接复用算子语义类型（OpType），执行差异（device/ISA/weight format/phase/dtype）通过 base 层 `KernelSelector` 表达，kernel 选择完全推迟到 ExecutionPlanBuilder。Primitive 化（跨算子重排、schedule 化、backend 差异化展开需求出现时）为未来可选演进，触发条件见 §64.5。
+
+---
+
 ## 1. 设计背景
 
-在大模型推理引擎中，Graph IR 通常用于表达模型计算的高层语义，例如：
+在大模型推理引擎中，Graph IR 通常用于表达模型计算的高层语义，例如（当前 19 个 OpType 全量清单，见 `include/aethermind/operators/op_type.h`）：
 
-- `Linear`
-- `QkvLinear`
-- `GateUpLinear`
-- `Attention`
-- `RmsNorm`
-- `FusedAddRmsNorm`
-- `SiluMul`
-- `RoPE`
-- `Reshape`
-- `Transpose`
-- `KVCacheUpdate`
+- `kEmbedding`
+- `kRmsNorm`
+- `kLinear`
+- `kQkvLinear`
+- `kMatMul`
+- `kRoPE`
+- `kAttention`
+- `kSilu`
+- `kSiluMul`
+- `kElementwiseMul`
+- `kKVCacheUpdate`
+- `kAdd`
+- `kAddRmsNorm`
+- `kSoftmax`
+- `kArgmax`
+- `kReshape`
+- `kPermute`（文档旧称 Transpose）
+- `kReorder`（文档旧称 Transpose）
+- `kGateUpLinear`
 
 这些算子描述的是“模型需要完成什么计算”，但并不适合作为最终执行表示。
 
@@ -71,7 +120,7 @@ ExecutionPlan：
 
 ---
 
-# 2. 总体架构
+## 2. 总体架构
 
 AetherMind 推荐采用如下编译与执行流程：
 
@@ -133,7 +182,7 @@ Model Loader / Graph Builder
 
 ---
 
-# 3. Lowering 的正式定义
+## 3. Lowering 的正式定义（🔮 定义成立；Primitive 映射体系未落地，当前实现为 OpType 直沉，见 §0）
 
 AetherMind 中 Graph Lowering 定义为：
 
@@ -159,9 +208,9 @@ Concrete Kernel
 
 ---
 
-# 4. Lowering 与其他阶段的边界
+## 4. Lowering 与其他阶段的边界
 
-## 4.1 Graph Optimization
+### 4.1 Graph Optimization
 
 负责改变 Graph 的语义表达方式：
 
@@ -185,7 +234,7 @@ Graph Optimization 不关心具体 Kernel。
 
 ---
 
-## 4.2 Lowering
+### 4.2 Lowering（🔮 映射示意；当前实现为语义算子直沉为步骤）
 
 负责将语义 Operator 映射为执行 Primitive：
 
@@ -206,7 +255,7 @@ Attention
     ↓
 AttentionPrefill / AttentionDecode
 
-FusedAddRmsNorm
+kAddRmsNorm
     ↓
 AddRmsNorm
 ```
@@ -223,7 +272,7 @@ Lowering 允许：
 
 ---
 
-## 4.3 Execution Plan Generation
+### 4.3 Execution Plan Generation
 
 负责：
 
@@ -243,7 +292,7 @@ Lowering 允许：
 
 ---
 
-## 4.4 Runtime
+### 4.4 Runtime
 
 负责：
 
@@ -256,7 +305,7 @@ Lowering 允许：
 
 ---
 
-# 5. 职责划分表
+## 5. 职责划分表
 
 | 功能 | Graph Pass | Lowering | Execution Plan | Runtime |
 |---|---:|---:|---:|---:|
@@ -287,7 +336,7 @@ Lowering 允许：
 
 ---
 
-# 6. LoweredGraph 的定位
+## 6. LoweredGraph 的定位
 
 LoweredGraph 是一个：
 
@@ -310,9 +359,9 @@ ExecutionPlan
 
 ---
 
-# 7. LoweredGraph 核心设计原则
+## 7. LoweredGraph 核心设计原则（✅ 已落地，见 §0.2）
 
-## 7.1 LoweredGraph 不保存 KernelId
+### 7.1 LoweredGraph 不保存 KernelId
 
 错误设计：
 
@@ -334,7 +383,7 @@ struct LoweredNode {
 
 ---
 
-## 7.2 LoweredGraph 不保存 WorkspaceRequirement
+### 7.2 LoweredGraph 不保存 WorkspaceRequirement
 
 Workspace 是 Kernel implementation 的执行资源需求。
 
@@ -356,7 +405,7 @@ WorkspaceRequirement
 
 ---
 
-## 7.3 LoweredGraph 不保存最终 Physical Layout
+### 7.3 LoweredGraph 不保存最终 Physical Layout
 
 不同 Kernel 可能要求：
 
@@ -385,7 +434,7 @@ PhysicalLayout
 
 ---
 
-## 7.4 LoweredGraph 不保存 PackedWeight Format
+### 7.4 LoweredGraph 不保存 PackedWeight Format
 
 例如 QKV 权重只需要表达：
 
@@ -405,7 +454,7 @@ INT4_GROUPWISE_K64
 
 ---
 
-## 7.5 LoweredGraph 保留 View 的 mandatory alias 语义
+### 7.5 LoweredGraph 保留 View 的 mandatory alias 语义
 
 例如：
 
@@ -431,9 +480,9 @@ output MAY alias input
 
 ---
 
-# 8. Execution Primitive
+## 8. Execution Primitive（🔮 未来演进方向，当前未引入）
 
-## 8.1 PrimitiveOpType
+### 8.1 PrimitiveOpType
 
 推荐：
 
@@ -481,7 +530,7 @@ PrimitiveOpType
 
 ---
 
-# 9. Graph Operator 与 Primitive 的映射
+## 9. Graph Operator 与 Primitive 的映射（🔮 未来演进方向）
 
 推荐映射：
 
@@ -491,7 +540,7 @@ PrimitiveOpType
 | QkvLinear | QkvGemm |
 | GateUpLinear | GateUpGemm |
 | RmsNorm | RmsNorm |
-| FusedAddRmsNorm | AddRmsNorm |
+| kAddRmsNorm | AddRmsNorm |
 | Silu | Silu |
 | SiluMul | SiluMul |
 | Attention | AttentionPrefill / AttentionDecode |
@@ -526,7 +575,7 @@ Gemm V
 
 ---
 
-# 10. Primitive 参数设计
+## 10. Primitive 参数设计
 
 推荐：
 
@@ -572,9 +621,9 @@ unordered_map<string, Attribute>
 
 ---
 
-# 11. 典型 Primitive 参数
+## 11. 典型 Primitive 参数
 
-## 11.1 GemmParams
+### 11.1 GemmParams
 
 ```cpp
 struct GemmParams {
@@ -587,7 +636,7 @@ struct GemmParams {
 
 ---
 
-## 11.2 QkvGemmParams
+### 11.2 QkvGemmParams
 
 ```cpp
 struct QkvGemmParams {
@@ -601,7 +650,7 @@ struct QkvGemmParams {
 
 ---
 
-## 11.3 RmsNormParams
+### 11.3 RmsNormParams
 
 ```cpp
 struct RmsNormParams {
@@ -611,7 +660,7 @@ struct RmsNormParams {
 
 ---
 
-## 11.4 AttentionParams
+### 11.4 AttentionParams
 
 ```cpp
 struct AttentionParams {
@@ -627,7 +676,7 @@ struct AttentionParams {
 
 ---
 
-## 11.5 RopeParams
+### 11.5 RopeParams
 
 ```cpp
 struct RopeParams {
@@ -641,7 +690,7 @@ struct RopeParams {
 
 ---
 
-# 12. LoweredGraph 数据模型
+## 12. LoweredGraph 数据模型（✅ 已落地，具体结构见 §64.1）
 
 推荐：
 
@@ -684,7 +733,7 @@ LoweredGraph 在 `Finalize()` 后应保持 immutable。
 
 ---
 
-# 13. 强类型 ID
+## 13. 强类型 ID（✅ 已落地，实现为 distinct struct 而非模板 StrongId）
 
 推荐：
 
@@ -715,7 +764,7 @@ uint32_t value_id;
 
 ---
 
-# 14. LoweredNode
+## 14. LoweredNode
 
 推荐：
 
@@ -749,7 +798,7 @@ PackedWeightHandle
 
 ---
 
-# 15. LoweredValue
+## 15. LoweredValue
 
 LoweredValue 表示：
 
@@ -773,7 +822,7 @@ struct LoweredValue {
 
 ---
 
-# 16. LoweredTensorSpec
+## 16. LoweredTensorSpec
 
 推荐：
 
@@ -799,7 +848,7 @@ PhysicalTensorSpec
 
 ---
 
-# 17. LayoutConstraint
+## 17. LayoutConstraint（🔮 未来演进方向，当前无布局约束表达）
 
 推荐不要直接使用：
 
@@ -843,7 +892,7 @@ AMXTile
 
 ---
 
-# 18. LoweredValueOrigin
+## 18. LoweredValueOrigin
 
 推荐：
 
@@ -879,7 +928,7 @@ std::vector<LoweredValueId> outputs_;
 
 ---
 
-# 19. Weight 在 LoweredGraph 中的表示
+## 19. Weight 在 LoweredGraph 中的表示（✅ 已落地）
 
 权重应统一作为 LoweredValue。
 
@@ -906,7 +955,7 @@ PrimitiveOp {
 
 ---
 
-# 20. LoweredWeightSpec
+## 20. LoweredWeightSpec（✅ 概念已落地：WeightValue payload + 语义 role）
 
 推荐：
 
@@ -932,7 +981,7 @@ enum class WeightUsage : uint8_t {
 
 ---
 
-# 21. CompositeWeightBinding
+## 21. CompositeWeightBinding（✅ 已落地：QkvWeightBinding/GateUpWeightBinding）
 
 为了支持 QKV / GateUp 等复合权重：
 
@@ -970,7 +1019,7 @@ LoweredGraph 不决定具体 packing format。
 
 ---
 
-# 22. View Primitive
+## 22. View Primitive（🔮 未来演进方向，当前未引入）
 
 View 是一个特殊 Primitive。
 
@@ -1025,7 +1074,7 @@ Planner 只负责实际 buffer binding。
 
 ---
 
-# 23. Mandatory Alias 与 Optional In-place
+## 23. Mandatory Alias 与 Optional In-place
 
 必须严格区分。
 
@@ -1063,7 +1112,7 @@ LoweredGraph 不保存 `InplaceCandidate`。
 
 ---
 
-# 24. 持久化 Resource
+## 24. 持久化 Resource（🔀 已偏离：实现采用 StateValue + state_aliases 值语义建模，见 §64.3）
 
 KV Cache 不建议建模为普通 SSA Tensor Value。
 
@@ -1080,7 +1129,7 @@ side-effectful
 
 ---
 
-# 25. LoweredResource
+## 25. LoweredResource（🔀 已偏离，无独立 Resource 类型）
 
 推荐：
 
@@ -1104,7 +1153,7 @@ struct LoweredResource {
 
 ---
 
-# 26. KV Cache ResourceSpec
+## 26. KV Cache ResourceSpec（🔀 已偏离：对应 KVCacheStateBinding）
 
 例如：
 
@@ -1131,7 +1180,7 @@ physical buffer
 
 ---
 
-# 27. ResourceUse
+## 27. ResourceUse（🔀 已偏离，无显式 ResourceUse 记录）
 
 Node 显式声明 Resource 使用：
 
@@ -1170,7 +1219,7 @@ AttentionDecode:
 
 ---
 
-# 28. Control Dependency
+## 28. Control Dependency（🔀 已偏离：实现以拓扑序线性化表达顺序）
 
 Tensor edge 无法完全表达 mutable resource 的顺序约束。
 
@@ -1200,7 +1249,7 @@ Control Dependency
 
 ---
 
-# 29. DebugOrigin
+## 29. DebugOrigin
 
 建议从第一版就实现。
 
@@ -1225,7 +1274,7 @@ struct DebugOrigin {
 
 ---
 
-# 30. LoweredGraphMetadata
+## 30. LoweredGraphMetadata
 
 推荐：
 
@@ -1259,7 +1308,7 @@ thread count
 
 ---
 
-# 31. Prefill / Decode Specialization
+## 31. Prefill / Decode Specialization（🔀 已偏离：实现为 ExecPhase selector 属性，单图）
 
 建议在 Lowering 阶段完成 Primitive specialization。
 
@@ -1299,7 +1348,7 @@ DecodeLoweredGraph
 
 ---
 
-# 32. LoweringContext
+## 32. LoweringContext（🔀 已偏离：实现为 GraphLoweringConfig{KernelSelector}）
 
 推荐：
 
@@ -1329,7 +1378,7 @@ WeightManager
 
 ---
 
-# 33. GraphLowerer
+## 33. GraphLowerer（🔀 已偏离：实现为自由函数 LowerModelGraph）
 
 推荐接口：
 
@@ -1356,7 +1405,7 @@ private:
 
 ---
 
-# 34. LoweringRegistry
+## 34. LoweringRegistry（🔀 已偏离：当前 1:1 直沉无需 per-op 规则注册）
 
 不同 Graph Operator 需要不同 lowering rule。
 
@@ -1398,7 +1447,7 @@ registry.Register(
 
 ---
 
-# 35. LoweredGraphBuilder
+## 35. LoweredGraphBuilder（🔀 简化：实现为嵌套 LoweredGraph::Builder，见 §64.2）
 
 推荐：
 
@@ -1448,7 +1497,7 @@ Builder 负责维护：
 
 ---
 
-# 36. Value Mapping
+## 36. Value Mapping（🔀 简化：实现直接保留 GraphValueId 引用，无独立映射表）
 
 GraphLowerer 需要维护：
 
@@ -1481,7 +1530,7 @@ Graph Value
 
 ---
 
-# 37. Lowering Result 不要求 1:1
+## 37. Lowering Result 不要求 1:1（🔮 未来演进方向；当前实现为 1:1 直沉）
 
 Lowering rule 必须允许：
 
@@ -1526,7 +1575,7 @@ SemanticOp
 
 ---
 
-# 38. Linear Lowering
+## 38. Linear Lowering（🔮 映射示意，见 §0.3 路径声明）
 
 Graph：
 
@@ -1582,7 +1631,7 @@ Result<void> LowerLinear(
 
 ---
 
-# 39. QkvLinear Lowering
+## 39. QkvLinear Lowering（🔮 映射示意）
 
 Optimized Graph：
 
@@ -1634,7 +1683,7 @@ AMX QKV kernel
 
 ---
 
-# 40. GateUpLinear Lowering
+## 40. GateUpLinear Lowering（🔮 映射示意）
 
 Graph：
 
@@ -1667,7 +1716,7 @@ Up GEMM
 
 ---
 
-# 41. Attention Lowering
+## 41. Attention Lowering（🔀 已偏离：无 Prefill/Decode 分裂，见 §31）
 
 Graph：
 
@@ -1699,12 +1748,12 @@ FlashAttention
 
 ---
 
-# 42. AddRmsNorm Lowering
+## 42. AddRmsNorm Lowering（🔮 映射示意：语义算子 kAddRmsNorm → Primitive AddRmsNorm）
 
 Graph：
 
 ```text
-FusedAddRmsNorm
+kAddRmsNorm
 ```
 
 Lowered：
@@ -1731,7 +1780,7 @@ RmsNorm Kernel
 
 ---
 
-# 43. Reshape Lowering
+## 43. Reshape Lowering（🔮 未来演进方向：无 View 体系）
 
 Graph：
 
@@ -1760,7 +1809,7 @@ new stride expression
 
 ---
 
-# 44. Transpose Lowering
+## 44. Transpose Lowering（🔮 未来演进方向：对应 kPermute/kReorder 语义算子）
 
 Transpose 通常可以先表示为 stride-changing View：
 
@@ -1794,7 +1843,7 @@ Kernel B requires contiguous
 
 ---
 
-# 45. Layout 的两阶段处理
+## 45. Layout 的两阶段处理（🔮 未来演进方向：当前无布局约束表达）
 
 Layout 必须拆成：
 
@@ -1837,7 +1886,7 @@ CUDA_COL32
 
 ---
 
-# 46. Weight Packing 的两阶段处理
+## 46. Weight Packing 的两阶段处理（🔀 部分落地：PackedWeightStore/WeightPrepackPlanner 为兼容设施，graph-driven materialization 待 P2）
 
 LoweredGraph：
 
@@ -1874,7 +1923,7 @@ AMX_QKV_K32N16
 
 ---
 
-# 47. Kernel Selection 接口属于 Planner
+## 47. Kernel Selection 接口属于 Planner（🔀 部分落地：KernelSelector 已实现，基于 OpType 而非 Primitive）
 
 KernelSelector 应基于 Primitive 查询。
 
@@ -1907,7 +1956,7 @@ Implementation
 
 ---
 
-# 48. Implementation 可以是单 Kernel 或 Kernel Sequence
+## 48. Implementation 可以是单 Kernel 或 Kernel Sequence（🔮 未来演进方向）
 
 为了支持 fused primitive fallback：
 
@@ -1944,7 +1993,7 @@ Sequence:
 
 ---
 
-# 49. LoweredGraph Verifier
+## 49. LoweredGraph Verifier（✅ 已落地：ValidateLoweredGraph 自由函数，见 §64.4）
 
 推荐：
 
@@ -1960,9 +2009,9 @@ public:
 
 ---
 
-# 50. Verifier 检查项
+## 50. Verifier 检查项（✅ 核心检查项已落地，与实现的差异见 §64.4）
 
-## 50.1 SSA
+### 50.1 SSA
 
 每个 Internal Value：
 
@@ -1978,7 +2027,7 @@ GraphInput / Weight / Constant：
 
 ---
 
-## 50.2 Primitive Arity
+### 50.2 Primitive Arity
 
 例如：
 
@@ -1996,7 +2045,7 @@ QkvGemm:
 
 ---
 
-## 50.3 DType 约束
+### 50.3 DType 约束
 
 例如：
 
@@ -2010,7 +2059,7 @@ Embedding index:
 
 ---
 
-## 50.4 Shape 约束
+### 50.4 Shape 约束
 
 例如：
 
@@ -2022,7 +2071,7 @@ QkvGemm:
 
 ---
 
-## 50.5 View 合法性
+### 50.5 View 合法性
 
 检查：
 
@@ -2035,7 +2084,7 @@ QkvGemm:
 
 ---
 
-## 50.6 Resource 合法性
+### 50.6 Resource 合法性
 
 例如：
 
@@ -2047,7 +2096,7 @@ AttentionDecode
 
 ---
 
-## 50.7 DAG
+### 50.7 DAG
 
 检查：
 
@@ -2061,7 +2110,7 @@ control dependency
 
 ---
 
-# 51. LoweredGraph 不变量
+## 51. LoweredGraph 不变量（✅ 已落地，见 ValidateLoweredGraph）
 
 建议正式固化以下 invariant：
 
@@ -2080,7 +2129,7 @@ control dependency
 
 ---
 
-# 52. LoweredGraph Forbidden List
+## 52. LoweredGraph Forbidden List（✅ 已落地）
 
 LoweredGraph **禁止包含**：
 
@@ -2110,7 +2159,7 @@ LoweredGraph **禁止包含**：
 
 ---
 
-# 53. LoweredGraph 应包含
+## 53. LoweredGraph 应包含（✅ 大部分落地，与实现的差异见 §64）
 
 ```text
 ✓ PrimitiveOp
@@ -2133,7 +2182,7 @@ LoweredGraph **禁止包含**：
 
 ---
 
-# 54. Dump 设计
+## 54. Dump 设计（🔮 待办：当前未实现 LoweredGraph::Dump）
 
 建议 LoweredGraph 从第一版提供：
 
@@ -2188,7 +2237,7 @@ lowered_graph @llama_decode {
 
 ---
 
-# 55. 推荐目录结构
+## 55. 推荐目录结构（🔀 实际目录为 compiler/ + execution/ + backend/，见下方对照）
 
 ```text
 aethermind/
@@ -2253,9 +2302,30 @@ aethermind/
     └── executor.h
 ```
 
+### 55.1 实际目录结构对照（代码事实）
+
+```text
+include/aethermind/ + src/
+├── compiler/          （≈ 本文 lowering/：optimize + lower + artifact）
+│   ├── optimize_graph.h / .cpp        OptimizeModelGraph（O0/O1/O2 pipeline）
+│   ├── graph_lowering.h / .cpp        GraphLoweringConfig + LowerModelGraph + ValidateLoweredGraph
+│   ├── lowered_graph.h / .cpp         LoweredGraph（immutable）+ 嵌套 LoweredGraph::Builder + ValidateLoweredGraph
+│   └── model_compiler.h / .cpp        ModelCompiler / ModelCompileOptions / LoweredModelArtifact
+├── execution/         （≈ 本文 planner/：计划构建与 runtime 契约）
+│   ├── execution_plan_builder.h / .cpp  ExecutionPlanBuilder + ResolveStateAliasesForExecution
+│   ├── execution_node_spec.h             untrusted ExecutionPlanNodeSpec
+│   ├── execution_plan.h / state_alias_plan.h / executor.h / layer_runner.h ...
+├── backend/           （≈ 本文 kernel/：kernel registry / selector / CPU kernels）
+│   ├── kernel_selector.h（转发 base/kernel_selector.h）
+│   ├── kernel_registry.h / kernel_descriptor.h / packed_weights.h ...
+├── base/              kernel_attrs.h / workspace_types.h / kernel_selector.h（跨模块纯数据契约）
+├── graph/             语义 IR（ModelGraph）+ 优化 passes
+└── operators/         算子语义契约层（OpType / OperatorSchema / OpParams / Infer*）
+```
+
 ---
 
-# 56. 推荐实现顺序
+## 56. 推荐实现顺序（🔀 五阶段建议已全部越过，当前状态见 §64）
 
 第一阶段建议只实现最核心骨架：
 
@@ -2304,7 +2374,7 @@ Transpose
 ```text
 QkvLinear
 GateUpLinear
-FusedAddRmsNorm
+kAddRmsNorm
 RoPE
 Attention
 KVCacheUpdate
@@ -2326,7 +2396,7 @@ MemoryPlanner
 
 ---
 
-# 57. 与现有 Graph Pass 的衔接
+## 57. 与现有 Graph Pass 的衔接（✅ 已落地：默认 pipeline 注册于 compiler 的 optimize_graph）
 
 当前已实现：
 
@@ -2370,7 +2440,7 @@ Graph Pass
 ```text
 QkvLinear
 GateUpLinear
-FusedAddRmsNorm
+kAddRmsNorm
 ```
 
 这些仍然是语义算子。
@@ -2384,13 +2454,13 @@ QkvLinear
 GateUpLinear
     → GateUpGemm
 
-FusedAddRmsNorm
+kAddRmsNorm
     → AddRmsNorm
 ```
 
 ---
 
-# 58. QKV 完整路径
+## 58. QKV 完整路径
 
 ```text
 Graph Builder
@@ -2488,7 +2558,7 @@ ExecutionPlan
 
 ---
 
-# 59. Attention 完整路径
+## 59. Attention 完整路径
 
 ```text
 Graph:
@@ -2527,7 +2597,7 @@ FlashAttention
 
 ---
 
-# 60. Reshape / Transpose 完整路径
+## 60. Reshape / Transpose 完整路径
 
 ## Reshape
 
@@ -2568,7 +2638,7 @@ next kernel requires dense
 
 ---
 
-# 61. Lowering 模块的最重要设计约束
+## 61. Lowering 模块的最重要设计约束（✅ 已落地）
 
 推荐正式固化以下四条：
 
@@ -2598,7 +2668,7 @@ next kernel requires dense
 
 ---
 
-# 62. 最终推荐架构
+## 62. 最终推荐架构
 
 ```text
                      Graph IR
@@ -2648,7 +2718,7 @@ next kernel requires dense
 
 ---
 
-# 63. 结论
+## 63. 结论
 
 AetherMind 的 Lowering 模块应当被定义为一个纯粹的 **Semantic Graph → Execution Primitive Graph** 转换层。
 
@@ -2703,3 +2773,113 @@ ExecutionPlan
 > 每个 Primitive 最终使用哪个 Kernel、什么物理布局以及哪些执行资源。
 
 这一设计能够最大程度降低 Graph IR、Kernel 实现、内存规划和 Runtime 之间的耦合，也最适合作为 AetherMind 后续支持 AVX2、AVX-512、AMX、量化 Kernel、CUDA 后端和多种执行策略的长期架构基础。
+
+---
+
+## 64. 实现特有机制（v1.1 新增，代码事实）
+
+本章描述当前实现中已落地、但 v1.0 设计未覆盖的核心机制，作为 §0 对照表的展开。
+
+### 64.1 LoweredGraph 产物结构
+
+```cpp
+// include/aethermind/compiler/lowered_graph.h
+struct LoweredStepSpec {        // 每步的执行规格（不携带 workspace_requirement）
+    OpType op_type;             // 语义 OpType 直沉，非 PrimitiveOpType
+    KernelSelector selector;    // base 层纯数据：device/isa/weight_format/phase/act_dtype/weight_dtype
+    std::vector<TensorSpec> input_specs;   // 完整 schema 端口序，含 state 端口
+    std::vector<TensorSpec> output_specs;
+    std::vector<ShapeConstraint> runtime_checks;  // 图构建期推导，透传不重推断
+    OpParams op_params;
+};
+struct LoweredStepBinding {     // 图值绑定：node + input_values/output_values（schema 端口序）
+    GraphNodeId node;
+    std::vector<GraphValueId> input_values;
+    std::vector<GraphValueId> output_values;
+};
+struct LoweredStep {            // 1:1 配对，类型级不变量
+    LoweredStepSpec spec;
+    LoweredStepBinding binding;
+};
+struct LoweredValueDesc {       // 按 GraphValueId 稠密索引的 value 元数据
+    TensorSpec spec;
+    GraphValuePayload payload;  // ModelInput/Activation/Weight/Constant/State
+    QuantizationSpec quantization;
+    std::string name;
+};
+
+class LoweredGraph {            // immutable：私有 storage + const span accessor
+public:
+    std::span<const LoweredStep> steps() const;
+    std::span<const LoweredValueDesc> values() const;
+    std::span<const GraphValueId> model_inputs() const;
+    std::span<const GraphValueId> model_outputs() const;
+    std::span<const LoweredStateAlias> state_aliases() const;
+    class Builder;              // 唯一构造路径 + 测试 seam（见 §64.2）
+};
+```
+
+契约要点：
+
+- **1:1 配对**：spec 与 binding 在同一 `LoweredStep` 中，平行向量漂移不可能；
+- **端口序**：input/output 向量按 `OperatorSchema` 端口顺序（M5 起端口 index 即向量位置，无独立 index 字段）；
+- **compact 视图**：运行时 tensor 绑定由 `MakeCompactInputSpecs` 按 `contributes_tensor_spec` 派生，state 端口不进入 kernel 输入；
+- **不变量**：不携带 workspace/kernel/layout/packed-weight——`LoweredStepSpec` 无 workspace 字段，selector 仅 base 层属性。
+
+### 64.2 LoweredGraph::Builder 构造模式
+
+实现采用嵌套 Builder（原独立 `LoweredGraphDraft` 折叠而来）：
+
+```cpp
+class LoweredGraph::Builder {   // 嵌套类天然可访问私有 storage，无需 friend
+public:
+    std::vector<LoweredStep> steps;
+    std::vector<LoweredValueDesc> values;
+    std::vector<GraphValueId> model_inputs;
+    std::vector<GraphValueId> model_outputs;
+    std::vector<LoweredStateAlias> state_aliases;
+
+    Status Validate() const;                 // 校验累积结构，不消费
+    StatusOr<LoweredGraph> Build() &&;       // 校验 + move 冻结，消费自身
+};
+```
+
+- `LowerModelGraph` 是唯一生产路径（build → validate → freeze 三段式）；
+- Builder 同时是畸形 artifact 注入的测试 seam（`LoweredGraphBuilder.*` 测试套件）。
+
+### 64.3 State Alias 机制（KV Cache 的 must-alias 建模）
+
+实现放弃 v1.0 的独立 Resource 图建模，改为「schema 声明 + 坐标记录 + 执行期校验」三段式：
+
+1. **声明**：算子在其 `OperatorSchema::state_alias_ports` 中声明（输入端口名, 输出端口名）对（如 kKVCacheUpdate 声明 k_cache_in→k_cache_out、v_cache_in→v_cache_out）。新增有状态算子仅需声明，lowering 与执行零改动；
+2. **记录**：`LowerModelGraph` 按拓扑序逐节点消费 schema 声明，以当时已知的 step 索引与端口位置生成 `LoweredStateAlias{step_index, input_port, output_port, input, output}`——不扫描不匹配；
+3. **校验与解析**：compiler 侧 `ValidateLoweredGraph` 校验（声明存在、端口 kind==kState、绑定值一致、payload 为 StateValue、state binding 同槽、无重复/冲突），失败为 Internal 错误；execution 侧 `ResolveStateAliasesForExecution`（execution-private）在 trust boundary 重查后按 (step_index, input_port, output_port) 确定性排序为 `StateAliasPlan`，`ForStep()` 二分查询。
+
+### 64.4 ValidateLoweredGraph 检查项（当前实现）
+
+对应 v1.0 §50，实际检查项：
+
+- **步骤结构**：schema 注册存在、GraphNodeId 无重复、input/output binding 与 spec 的 arity 均等于 schema 端口数；
+- **selector dtype**：act_dtype / weight_dtype 均非 Undefined；
+- **值一致性**：所有绑定 GraphValueId 合法，且 step spec 与 `LoweredValueDesc.spec` 逐位相等；
+- **模型 I/O**：model_inputs 均携带 `ModelInputValue` payload；model_outputs 值 id 合法；
+- **state alias**：见 §64.3 第 3 点。
+
+未实现（v1.0 §50.5/§50.6）：View 合法性、Resource 合法性（无对应概念）、DAG 环检测（拓扑序天然无环，且 `ValidateAndTopologicalOrder` 已在上游保证）。
+
+### 64.5 dtype 推导契约与配置
+
+`LowerModelGraph` 对每个 step 按以下契约推导 selector dtype：
+
+- **act_dtype**：首个 contributes_tensor_spec 的 activation 输入端口 → 无 activation 输入时回退首个 activation 输出端口；
+- **weight_dtype**：首个 contributes_tensor_spec 的 weight 输入端口 → 无 weight 输入时回退 act_dtype；
+- **schema 契约**：每个算子必须暴露至少一个 activation 输入或输出端口（`EveryOperatorSchemaExposesActivationPort` 测试守卫），否则 selector 将携带 Undefined dtype；
+- **配置**：`GraphLoweringConfig{KernelSelector}` 提供 device/isa/weight_format/phase 前缀（默认 CPU/Scalar/Plain/Both），dtype 由 lowering 推导覆盖——设计 v1.0 的 `LoweringContext{execution_mode, shape_env, model_context}` 未实现，后续需要模型级上下文时再扩展。
+
+### 64.6 未来演进触发条件
+
+- **Primitive 化**（§3/§8/§9）：出现跨算子重排、schedule 化、backend 差异化展开需求时引入 `PrimitiveOpType` + per-op lowering rule；
+- **View 体系**（§22/§43/§44）：需要 stride 级布局表达（如 strided kernel 复用）时引入 `LayoutConstraint`；
+- **Prefill/Decode 分裂图**（§31/§41）：单图 + phase selector 无法满足 kernel 差异时再分裂；
+- **LoweredGraph::Dump()**（§54）：诊断需求出现时按 v1.0 示例实现；
+- **P2 接线**：runtime tensor/state binding 与 graph-driven weight materialization 落地后，`LoweredStepBinding`/`LoweredValueDesc` 的消费面补齐。

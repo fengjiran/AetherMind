@@ -209,7 +209,7 @@ flowchart LR
 | 维度 | 说明 |
 |------|------|
 | **责任** | 暴露 kernel resolve 能力（供 `ExecutionPlanBuilder` 在 plan-build-time 调用）；注册与选择后端 kernel；在工作空间绑定和 shape 校验后执行逐步骤算子调用；提供 workspace 复用与 KV cache 物理访问契约 |
-| **当前模块** | `LayerRunner`、`KernelInvoker`、`CpuBackend`、`KernelRegistry`（全局 singleton + `AM_REGISTER_KERNEL` 静态注册）、`WorkspaceArena`、`ammalloc` |
+| **当前模块** | `LayerRunner`（执行私有）、`KernelInvoker`、`CpuBackend`、`KernelRegistry`（全局 singleton + `AM_REGISTER_KERNEL` 静态注册）、`ammalloc`；`WorkspaceArena`/`WorkspaceBinding` 为 base 层共享契约，backend 与 execution 均单向依赖 |
 | **主要输入** | `ExecutionPlan`（已 resolve 的 `ExecutionStep` 序列）、`RuntimeBindingContext`（workspace base、KV view 等动态绑定） |
 | **主要输出** | 各 step 计算结果的 tensor 写入（workspace + KV cache 位置）；Token IDs 仅在目标 Generate 循环经 Argmax 处理后产生 |
 | **目标缺口** | CPU backend/kernel dispatch 已通过 plan-build-time resolve 就位；更完整的 Llama layer 算子覆盖和 SIMD 优化 kernel 仍在推进 |
@@ -543,9 +543,9 @@ flowchart TB
 | [`include/aethermind/compiler/graph_lowering.h`](../../../include/aethermind/compiler/graph_lowering.h) / [`src/compiler/graph_lowering.cpp`](../../../src/compiler/graph_lowering.cpp) | `LowerModelGraph` / `ValidateLoweredGraph` |
 | [`include/aethermind/execution/execution_plan_builder.h`](../../../include/aethermind/execution/execution_plan_builder.h) / [`src/execution/execution_plan_builder.cpp`](../../../src/execution/execution_plan_builder.cpp) | `ExecutionPlanBuilder::Build` |
 | [`include/aethermind/execution/executor.h`](../../../include/aethermind/execution/executor.h) / [`src/execution/executor.cpp`](../../../src/execution/executor.cpp) | `Executor::Execute` |
-| [`include/aethermind/execution/layer_runner.h`](../../../include/aethermind/execution/layer_runner.h) / [`src/execution/layer_runner.cpp`](../../../src/execution/layer_runner.cpp) | `LayerRunner::Run` |
+| [`src/execution/layer_runner.h`](../../../src/execution/layer_runner.h) / [`src/execution/layer_runner.cpp`](../../../src/execution/layer_runner.cpp) | `LayerRunner::Run`（执行私有，公开入口为 `Executor::Execute`） |
 | [`include/aethermind/runtime/runtime_builder.h`](../../../include/aethermind/runtime/runtime_builder.h) / [`src/runtime/runtime_builder.cpp`](../../../src/runtime/runtime_builder.cpp) | `RuntimeBuilder::Build` |
-| [`include/aethermind/execution/kv_cache_manager.h`](../../../include/aethermind/execution/kv_cache_manager.h) / [`src/execution/kv_cache_manager.cpp`](../../../src/execution/kv_cache_manager.cpp) | `KVCacheManager` |
+| [`include/aethermind/runtime/kv_cache_manager.h`](../../../include/aethermind/runtime/kv_cache_manager.h) / [`src/runtime/kv_cache_manager.cpp`](../../../src/runtime/kv_cache_manager.cpp) | `KVCacheManager` |
 | [`include/aethermind/compiler/model_compiler.h`](../../../include/aethermind/compiler/model_compiler.h) / [`src/compiler/model_compiler.cpp`](../../../src/compiler/model_compiler.cpp) | `ModelCompiler::Compile` / `LoadAndCompile` |
 | [`include/aethermind/model/packed_weight_store.h`](../../../include/aethermind/model/packed_weight_store.h) / [`src/model/packed_weight_store.cpp`](../../../src/model/packed_weight_store.cpp) | `PackedWeightStore` |
 | [`include/aethermind/runtime/runtime_context.h`](../../../include/aethermind/runtime/runtime_context.h) | `RuntimeContext` |

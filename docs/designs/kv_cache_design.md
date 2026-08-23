@@ -70,7 +70,7 @@ Executor / PrefillPath / DecodePath
 - `KVCacheManager` 负责 Session 级生命周期与逻辑绑定
 - `KVCacheView` 是 Execution / Attention 的稳定访问边界
 - `KVCacheStorage` 持有底层物理存储
-- `KVLayoutContract` 冻结布局、stride、alignment 与 offset 规则
+- `KVLayoutContract` 冻结布局、stride、alignment 与 offset 规则；`Validate()` 强制 `token_stride` 为元素大小倍数且对齐 `alignment`，并要求 `head_stride`/`layer_stride` 覆盖全部 token/head（防重叠），`KVCacheView` 校验 layout 不超过 backing buffer
 
 ---
 
@@ -399,7 +399,7 @@ Phase 1 推荐在 Runtime / Model 初始化阶段固定 `max_tokens` 上限，�
 
 ### 5.3 head_dim_stride
 
-引入 `head_dim_stride`，即便初版令其等于 `head_dim`。这样做的原因是：
+引入 `head_dim_stride`；初版即按 `alignment` 对 token 行做对齐：`head_dim_stride = AlignUp(head_dim, alignment / element_bytes)`（`element_bytes > alignment` 时保持 `head_dim`），使 `token_stride` 为 alignment 倍数、每个 token 行起始对齐，`head_stride`/`layer_stride` 因其整数倍关系自动对齐。这样做的原因是：
 
 - 为 SIMD / cache line 对齐留空间
 - 为后续优化 kernel 保留 padding 能力

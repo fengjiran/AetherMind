@@ -78,6 +78,10 @@ StatusOr<const void*> ResolvePackedWeights(const PackedWeightStore* packed_weigh
     if (packed_weights == nullptr) {
         return Status::NotFound("Packed weights not found for ExecutionPlan node");
     }
+    if (packed_weights->storage().data() == nullptr) {
+        return Status::NotFound(
+                "Packed weights storage is empty for ExecutionPlan node");
+    }
     return packed_weights->storage().data();
 }
 
@@ -106,17 +110,12 @@ struct PreparedNode {
 
 // Validates caller-provided semantic metadata against the sole semantic
 // authority, InferOperator. Empty fields are not inferred on the caller's
-// behalf: they must match the explicit inference result exactly.
+// behalf: they must match the explicit inference result exactly. Typed
+// op_params are guaranteed by PrepareUntrustedNode before this runs.
 Status ValidateCallerMetadata(const ExecutionPlanNodeSpec& node,
                               std::span<const TensorSpec> compact_input_specs,
                               std::vector<TensorSpec>& outputs_out,
                               std::vector<ShapeConstraint>& checks_out) {
-    if (std::holds_alternative<std::monostate>(node.op_params)) {
-        return Status::InvalidArgument(
-                "Untrusted ExecutionPlanNodeSpec adapter requires typed op_params; "
-                "monostate is not accepted");
-    }
-
     auto analyzed = InferOperator(
             node.op_type, node.op_params, compact_input_specs);
     if (!analyzed.ok()) {

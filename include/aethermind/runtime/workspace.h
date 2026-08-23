@@ -1,5 +1,8 @@
-/// \file
-/// Shared runtime workspace planning and binding types.
+#ifndef AETHERMIND_RUNTIME_WORKSPACE_H
+#define AETHERMIND_RUNTIME_WORKSPACE_H
+
+/// @file workspace.h
+/// @brief Shared runtime workspace planning and binding types.
 ///
 /// Workspace provides temporary scratch memory for operator and kernel execution.
 /// Unlike model weights (long-lived) or activations (request-scoped), workspace
@@ -16,10 +19,7 @@
 /// The planning phase is done before execution. The binding phase happens when
 /// a runtime workspace arena provides the slice for one execution step.
 ///
-/// \see WorkspaceArena, RuntimeBindingContext, ExecutionPlanBuilder
-
-#ifndef AETHERMIND_RUNTIME_WORKSPACE_H
-#define AETHERMIND_RUNTIME_WORKSPACE_H
+/// @see WorkspaceArena, RuntimeBindingContext, ExecutionPlanBuilder
 
 #include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"
@@ -31,7 +31,7 @@
 
 namespace aethermind {
 
-/// Actual workspace slice bound to a kernel at execution time.
+/// @brief Actual workspace slice bound to a kernel at execution time.
 ///
 /// Produced by WorkspaceArena::Bind() using a WorkspaceRequirement's offset.
 /// Passed to kernel functions as the third parameter (WorkspaceBinding).
@@ -49,7 +49,7 @@ struct WorkspaceBinding {
     size_t size = 0;
 };
 
-/// Summary of a workspace plan's total memory needs.
+/// @brief Summary of a workspace plan's total memory needs.
 ///
 /// Returned by PlanWorkspaceRequirements() after computing all offsets.
 /// Used to allocate a WorkspaceArena of appropriate size and alignment.
@@ -64,33 +64,33 @@ struct WorkspacePlanLayout {
     size_t required_alignment = 1;
 };
 
-/// Checks if an alignment value is valid for workspace planning.
+/// @brief Checks if an alignment value is valid for workspace planning.
 ///
 /// Valid alignments are non-zero powers of two (1, 2, 4, 8, 16, ...).
 ///
-/// \param alignment The alignment value to validate.
-/// \return true if alignment is valid, false otherwise.
+/// @param alignment The alignment value to validate.
+/// @return True if alignment is valid, false otherwise.
 AM_NODISCARD constexpr bool IsValidWorkspaceAlignment(size_t alignment) noexcept {
     return alignment != 0 && (alignment & (alignment - 1)) == 0;
 }
 
-/// Aligns an offset up to the specified alignment boundary.
+/// @brief Aligns an offset up to the specified alignment boundary.
 ///
 /// Uses the classic bit-twiddling formula: `(offset + align - 1) & ~(align - 1)`.
 ///
-/// \param offset Current offset (typically end of previous allocation).
-/// \param alignment Target alignment (must be non-zero power of two).
-/// \return Aligned offset, or error if alignment is invalid or overflow occurs.
+/// @param offset Current offset (typically end of previous allocation).
+/// @param alignment Target alignment (must be non-zero power of two).
+/// @return Aligned offset, or error if alignment is invalid or overflow occurs.
 ///
-/// \pre IsValidWorkspaceAlignment(alignment) == true
-/// \post Result >= offset and (Result % alignment) == 0
+/// @pre IsValidWorkspaceAlignment(alignment) == true
+/// @post Result >= offset and (Result % alignment) == 0
 ///
 /// Overflow handling:
 /// - Checks `offset + alignment - 1` for overflow before masking.
 /// - Returns kOverflow status if overflow would occur.
 /// - In practice, workspace sizes (<100MB typical) never trigger this.
-AM_NODISCARD inline StatusOr<size_t> AlignWorkspaceOffset(size_t offset,
-                                                          size_t alignment) noexcept {
+inline StatusOr<size_t> AlignWorkspaceOffset(size_t offset,
+                                             size_t alignment) noexcept {
     if (!IsValidWorkspaceAlignment(alignment)) {
         return Status::InvalidArgument("Workspace alignment must be a non-zero power of two");
     }
@@ -103,7 +103,7 @@ AM_NODISCARD inline StatusOr<size_t> AlignWorkspaceOffset(size_t offset,
     return t & ~(alignment - 1);
 }
 
-/// Plans workspace offsets for a sequence of runtime requirements.
+/// @brief Plans workspace offsets for a sequence of runtime requirements.
 ///
 /// Given a list of WorkspaceRequirements, computes offsets so each workspace
 /// slice is properly aligned within a unified buffer. This allows allocating one
@@ -122,19 +122,19 @@ AM_NODISCARD inline StatusOr<size_t> AlignWorkspaceOffset(size_t offset,
 /// - If the function returns error, all offsets remain unchanged
 ///   (validation happens before any mutation)
 ///
-/// \param requirements List of workspace needs. `offset` field is filled.
-/// \return WorkspacePlanLayout with total size and alignment, or error.
+/// @param requirements List of workspace needs. `offset` field is filled.
+/// @return WorkspacePlanLayout with total size and alignment, or error.
 ///
-/// \pre All requirements.alignment must be valid powers of two
-/// \post On success: all offsets are assigned and total_bytes covers all steps
-/// \post On failure: requirements.offset unchanged
+/// @pre All requirements.alignment must be valid powers of two
+/// @post On success: all offsets are assigned and total_bytes covers all steps
+/// @post On failure: requirements.offset unchanged
 ///
 /// Zero-byte semantics:
 /// - `bytes == 0` steps receive `offset = total_bytes` but don't advance it.
 /// - This allows "position markers" for steps that conceptually participate
 ///   but don't consume scratch space (e.g., metadata-only operations).
 /// - Their alignment requirement is still tracked for `required_alignment`.
-AM_NODISCARD inline StatusOr<WorkspacePlanLayout> PlanWorkspaceRequirements(
+inline StatusOr<WorkspacePlanLayout> PlanWorkspaceRequirements(
         std::span<WorkspaceRequirement> requirements) noexcept {
     WorkspacePlanLayout layout;
 
@@ -146,7 +146,7 @@ AM_NODISCARD inline StatusOr<WorkspacePlanLayout> PlanWorkspaceRequirements(
         }
     }
 
-    for (WorkspaceRequirement& requirement: requirements) {
+    for (auto& requirement: requirements) {
         layout.required_alignment = std::max(layout.required_alignment, requirement.alignment);
 
         if (requirement.empty()) {
@@ -154,7 +154,8 @@ AM_NODISCARD inline StatusOr<WorkspacePlanLayout> PlanWorkspaceRequirements(
             continue;
         }
 
-        const StatusOr<size_t> aligned_offset = AlignWorkspaceOffset(layout.total_bytes, requirement.alignment);
+        const StatusOr<size_t> aligned_offset = AlignWorkspaceOffset(
+                layout.total_bytes, requirement.alignment);
         if (!aligned_offset.ok()) {
             return aligned_offset.status();
         }

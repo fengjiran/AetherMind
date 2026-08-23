@@ -7,9 +7,9 @@
 #include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor_view.h"
-#include "aethermind/execution/kv_cache_view.h"
+#include "aethermind/base/workspace_arena.h"
+#include "aethermind/runtime/kv_cache_view.h"
 #include "aethermind/runtime/workspace.h"
-#include "workspace_arena.h"
 
 #include <array>
 #include <vector>

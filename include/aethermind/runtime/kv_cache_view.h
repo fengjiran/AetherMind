@@ -1,5 +1,5 @@
-#ifndef AETHERMIND_EXECUTION_KV_CACHE_VIEW_H
-#define AETHERMIND_EXECUTION_KV_CACHE_VIEW_H
+#ifndef AETHERMIND_RUNTIME_KV_CACHE_VIEW_H
+#define AETHERMIND_RUNTIME_KV_CACHE_VIEW_H
 
 /// @file kv_cache_view.h
 /// @brief Borrowed views into KV cache storage with validation and offsets.

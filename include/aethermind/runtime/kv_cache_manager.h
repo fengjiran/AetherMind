@@ -1,10 +1,10 @@
-#ifndef AETHERMIND_EXECUTION_KV_CACHE_MANAGER_H
-#define AETHERMIND_EXECUTION_KV_CACHE_MANAGER_H
+#ifndef AETHERMIND_RUNTIME_KV_CACHE_MANAGER_H
+#define AETHERMIND_RUNTIME_KV_CACHE_MANAGER_H
 
 /// @file kv_cache_manager.h
 /// @brief Owner of the physical KV cache and the single session reservation.
 
-#include "aethermind/execution/kv_cache_view.h"
+#include "aethermind/runtime/kv_cache_view.h"
 
 namespace aethermind {
 

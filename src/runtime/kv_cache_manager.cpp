@@ -62,7 +62,6 @@ Status KVCacheManager::Init(size_t num_layers,
     layout_.num_kv_heads = num_kv_heads;
     layout_.max_tokens = max_tokens;
     layout_.head_dim = head_dim;
-    layout_.head_dim_stride = head_dim;
     layout_.kv_dtype = kv_dtype;
     layout_.alignment = alignment;
 
@@ -70,6 +69,19 @@ Status KVCacheManager::Init(size_t num_layers,
     if (element_bytes == 0) {
         return Status::InvalidArgument("KV dtype must have non-zero element bytes");
     }
+
+    // Pad head_dim_stride up so every token row starts at an alignment
+    // boundary; head/layer strides derived from token_stride then stay
+    // aligned too. alignment and element_bytes are powers of two, so
+    // alignment / element_bytes is exact whenever element_bytes <= alignment;
+    // otherwise the element size already guarantees token_stride alignment.
+    const size_t dims_per_alignment =
+            alignment > element_bytes ? alignment / element_bytes : 1;
+    layout_.head_dim_stride =
+            dims_per_alignment > 1
+                    ? ((head_dim + dims_per_alignment - 1) / dims_per_alignment) *
+                              dims_per_alignment
+                    : head_dim;
 
     if (CheckOverflowMul(layout_.head_dim_stride, element_bytes, &layout_.token_stride) ||
         CheckOverflowMul(layout_.max_tokens, layout_.token_stride, &layout_.head_stride) ||

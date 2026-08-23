@@ -1,14 +1,13 @@
-#include "aethermind/execution/layer_runner.h"
+#include "execution/layer_runner.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/kernel_invoker.h"
-#include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/shape_inference/shape_constraint_evaluator.h"
 
 namespace aethermind {
 namespace {
 
 KernelContext BuildKernelContext(const ExecutionStep& step,
-                                 RuntimeBindingContext& bindings) noexcept {
+                                 const RuntimeBindingContext& bindings) noexcept {
     return KernelContext{
             .device_type = step.selector.device_type,
             .stream = nullptr,
@@ -22,7 +21,7 @@ KernelContext BuildKernelContext(const ExecutionStep& step,
 }// namespace
 
 Status LayerRunner::Run(const ExecutionPlan& plan,
-                        RuntimeBindingContext& bindings) noexcept {
+                        const RuntimeBindingContext& bindings) noexcept {
     const auto& steps = plan.steps();
     const auto& alias_plan = plan.state_alias_plan();
     for (size_t i = 0; i < steps.size(); ++i) {
@@ -36,7 +35,7 @@ Status LayerRunner::Run(const ExecutionPlan& plan,
 
 Status LayerRunner::RunStep(size_t step_index,
                             const ExecutionStep& step,
-                            RuntimeBindingContext& bindings,
+                            const RuntimeBindingContext& bindings,
                             const StateAliasPlan& alias_plan) noexcept {
     AM_RETURN_IF_ERROR(ValidateStateAliasesForStep(
             step_index, step, alias_plan, bindings));
@@ -90,6 +89,10 @@ Status LayerRunner::ValidateStateAliasesForStep(
     // activation-port aliases are introduced, extend validation here with
     // StepTensorBinding pointer-comparison checks against aliases[i].
     // input_port/output_port. The `step` parameter is reserved for that path.
+    // Note: cross-checking the view geometry against the step's operator
+    // parameters (heads/head_dim) is not enforceable yet because
+    // ExecutionStep does not carry op_params; revisit once steps expose the
+    // typed parameters.
 
     return Status::Ok();
 }

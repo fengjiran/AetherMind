@@ -2,7 +2,10 @@
 #define AETHERMIND_EXECUTION_LAYER_RUNNER_H
 
 /// @file layer_runner.h
-/// @brief Sequential per-step execution of an ExecutionPlan.
+/// @brief Sequential per-step execution of an ExecutionPlan (execution-private).
+///
+/// Execution-private implementation detail: the public execution entry point
+/// is Executor::Execute; LayerRunner only backs it (and focused tests).
 
 #include "aethermind/base/status.h"
 #include "aethermind/execution/execution_plan.h"
@@ -23,7 +26,7 @@ public:
     /// @param bindings Runtime bindings for the steps.
     /// @return Status::Ok() on success, or the first failing step's error.
     static Status Run(const ExecutionPlan& plan,
-                      RuntimeBindingContext& bindings) noexcept;
+                      const RuntimeBindingContext& bindings) noexcept;
 
 private:
     /// @brief Executes a single step after alias and binding validation.
@@ -35,7 +38,7 @@ private:
     /// @return Status::Ok() on success.
     static Status RunStep(size_t step_index,
                           const ExecutionStep& step,
-                          RuntimeBindingContext& bindings,
+                          const RuntimeBindingContext& bindings,
                           const StateAliasPlan& alias_plan) noexcept;
 
     /// @brief Verifies that a step's state aliases have runtime backing.
@@ -54,4 +57,4 @@ private:
 
 }// namespace aethermind
 
-#endif
+#endif// AETHERMIND_EXECUTION_LAYER_RUNNER_H

@@ -32,6 +32,7 @@
 | **operators** | `include/aethermind/operators/` | `src/operators/` | 算子语义契约层：OpType 枚举、OperatorSchema（端口名顺序为语义 ABI）、OpParams（typed variant，禁止 std::any）、`Infer*` 自由函数（参数验证 + dtype 验证 + shape 推导 + deferred ShapeConstraints）、OpParams 序列化/反序列化。**不含执行层细节**：不得引用 ModelGraph/LoweredGraph/Backend/Kernel。 |
 | **compiler** | `include/aethermind/compiler/` | `src/compiler/` | 编译阶段编排：默认 semantic pipeline composition、`ModelCompiler`、`ModelCompileOptions`、`LowerModelGraph`、不可变且经结构验证的 `LoweredGraph`/`LoweredNodeSpec`/`LoweredModelArtifact`。可携带 base 层 `KernelSelector`，但**不得依赖 execution/backend/runtime**，不得查询 kernel registry。 |
 | **execution** | `include/aethermind/execution/` | `src/execution/` | 执行数据契约层：ExecutionPlan、供手工/低层调用的 untrusted `ExecutionPlanNodeSpec`、StateAliasPlan、LayerRunner、ExecutionPlanBuilder。Public headers 只前向声明 `LoweredGraph`；实现可依赖 compiler artifact，负责将其 state aliases 转为 runtime StateAliasPlan、workspace planning 与 kernel resolve。 |
+| **runtime** | `include/aethermind/runtime/` | `src/runtime/` | 执行期运行时资源层：RuntimeContext/RuntimeBuilder（backend/allocator/KV 资源聚合与创建）、KVCacheManager/KVCacheView（KV 物理存储与 session 生命周期，generation 机制使过期视图失效）、workspace 规划（`PlanWorkspaceRequirements`/`WorkspacePlanLayout`）。**不得依赖 execution/compiler/graph/model**；execution 单向依赖 runtime。 |
 | **model** | `include/aethermind/model/` | `src/model/` | 模型加载与前端适配：HfModelConfig/HfDirectoryReader/HfModelValidator、ResolvedModelWeights、**LoadedModel**（只持有 config + resolved raw weights/backing storage）、ModelLoader（仅 HF I/O/validation/resolution）、**ModelGraphBuilder**（HF → semantic graph 唯一转换权威；`BuildLlamaDense` 路径显式拒绝 HF-only RoPE scaling types，none/linear 映射到 `RoPEScalingType`）。ModelCompiler 归 compiler；ModelLoader 不调用 graph、backend 或 prepack。 |
 | **shape_inference** | `include/aethermind/shape_inference/` | `src/shape_inference/` | TensorSpec、ShapeSymbol、ShapeConstraint、InferenceResult 等通用形状推导基础设施。 |
 | **backend / kernels** | `include/aethermind/backend/` + per-ISA kernels | `src/backend/` | Backend 抽象、KernelRegistry、ExecutionStep 运行时执行（基于 base 层 `KernelSelector` 纯数据契约做内核匹配，见 `base/kernel_selector.h`）。不得依赖 Graph IR 或 OperatorSchema 的语义细节。 |
@@ -40,9 +41,10 @@
 - operators → shape_inference（+ dtypes/base 基础库）
 - graph → operators + shape_inference
 - compiler → model + graph + operators + shape_inference + base
-- execution → compiler + operators + shape_inference + base（public headers 不 include compiler）
+- execution → runtime + compiler + operators + shape_inference + base（public headers 不 include compiler）
+- runtime → base + backend（backend registry/factory）+ memory
 - model → graph + operators + formats/hf
-- backend/kernels → operators（仅 OpParams/OpType），不得反向依赖 graph/model
+- backend/kernels → operators（仅 OpParams/OpType）不得反向依赖 graph/model；执行期共享契约（`WorkspaceArena`/`WorkspaceBinding`/`KernelSelector`）统一放在 base 层
 
 ## 3. 构建命令
 ```bash

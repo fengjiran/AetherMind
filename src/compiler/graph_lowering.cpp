@@ -1,74 +1,13 @@
 #include "aethermind/compiler/graph_lowering.h"
 #include "aethermind/graph/graph.h"
+#include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_schema.h"
 
-#include <optional>
 #include <string>
 #include <utility>
 
 namespace aethermind {
 namespace {
-
-Status SetCandidateDType(const TensorSpec& spec,
-                         std::optional<DataType>& candidate,
-                         std::string_view role) {
-    if (spec.dtype.IsUndefined()) {
-        return Status::Internal(
-                "LowerModelGraph: undefined " + std::string(role) + " dtype");
-    }
-
-    if (candidate.has_value() && *candidate != spec.dtype) {
-        return Status::Internal(
-                "LowerModelGraph: inconsistent " + std::string(role) +
-                " dtypes in one operator");
-    }
-    candidate = spec.dtype;
-    return Status::Ok();
-}
-
-Status CollectInputSelectorDTypes(const OperatorInputPort& port,
-                                  const TensorSpec& spec,
-                                  std::optional<DataType>& act_dtype,
-                                  std::optional<DataType>& weight_dtype) {
-    if (!port.contributes_tensor_spec) {
-        return Status::Ok();
-    }
-
-    if (port.kind == OperatorPortKind::kActivation) {
-        return SetCandidateDType(spec, act_dtype, "activation");
-    }
-
-    if (port.kind == OperatorPortKind::kWeight) {
-        return SetCandidateDType(spec, weight_dtype, "weight");
-    }
-    return Status::Ok();
-}
-
-Status CollectOutputActivationDType(const OperatorSchema& schema,
-                                    const GraphNode& node,
-                                    std::span<const GraphValue> values,
-                                    std::optional<DataType>& act_dtype) {
-    if (act_dtype.has_value()) {
-        return Status::Ok();
-    }
-
-    bool found_activation_output = false;
-    for (size_t i = 0; i < schema.output_ports.size(); ++i) {
-        if (schema.output_ports[i].kind == OperatorPortKind::kActivation) {
-            found_activation_output = true;
-            AM_RETURN_IF_ERROR(SetCandidateDType(values[node.outputs[i].index].spec,
-                                                 act_dtype,
-                                                 "activation"));
-        }
-    }
-
-    if (!found_activation_output) {
-        return Status::Internal(
-                "LowerModelGraph: operator schema has no "
-                "contributing activation dtype source");
-    }
-    return Status::Ok();
-}
 
 Status AddLoweringStateAliases(const OperatorSchema& schema,
                                const GraphNode& node,
@@ -140,15 +79,11 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
         spec.input_specs.reserve(schema->input_ports.size());
         spec.output_specs.reserve(schema->output_ports.size());
 
-        std::optional<DataType> act_dtype;
-        std::optional<DataType> weight_dtype;
         for (size_t i = 0; i < schema->input_ports.size(); ++i) {
             const auto value_id = node.inputs[i];
             const auto& value = values[value_id.index];
             binding.input_values.push_back(value_id);
             spec.input_specs.push_back(value.spec);
-            AM_RETURN_IF_ERROR(CollectInputSelectorDTypes(
-                    schema->input_ports[i], value.spec, act_dtype, weight_dtype));
         }
 
         for (size_t i = 0; i < schema->output_ports.size(); ++i) {
@@ -158,14 +93,18 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
             spec.output_specs.push_back(value.spec);
         }
 
-        AM_RETURN_IF_ERROR(CollectOutputActivationDType(*schema, node, values, act_dtype));
-        if (!act_dtype.has_value()) {
+        // Selector dtypes come from the shared derivation rule so lowering and
+        // the untrusted execution path cannot drift; a failure here is an
+        // internal artifact inconsistency, not a caller error.
+        const auto selector_dtypes = DeriveSelectorDTypes(
+                *schema, spec.input_specs, spec.output_specs);
+        if (!selector_dtypes.ok()) {
             return Status::Internal(
-                    "LowerModelGraph: no activation dtype available for selector");
+                    "LowerModelGraph: cannot derive selector dtypes: " +
+                    selector_dtypes.status().message());
         }
-
-        spec.selector.act_dtype = *act_dtype;
-        spec.selector.weight_dtype = weight_dtype.value_or(*act_dtype);
+        spec.selector.act_dtype = selector_dtypes->act_dtype;
+        spec.selector.weight_dtype = selector_dtypes->weight_dtype;
         spec.runtime_checks = node.runtime_checks;
 
         AM_RETURN_IF_ERROR(AddLoweringStateAliases(

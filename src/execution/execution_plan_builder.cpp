@@ -34,6 +34,7 @@ Status ValidatePreparedWorkspaceRequirement(const ResolvedKernel& kernel) {
         return Status::Internal(
                 "Backend prepared a workspace requirement with a non-zero offset");
     }
+
     if (!IsValidWorkspaceAlignment(kernel.workspace_requirement.alignment)) {
         return Status::Internal(
                 "Backend prepared a workspace requirement with an invalid alignment");
@@ -68,6 +69,7 @@ StatusOr<const void*> ResolvePackedWeights(const PackedWeightStore* packed_weigh
     if (selector.weight_format != WeightFormat::kPacked) {
         return nullptr;
     }
+
     if (packed_weight_store == nullptr) {
         return Status::NotFound("Packed-weight node requires a PackedWeightStore");
     }
@@ -187,7 +189,8 @@ StatusOr<PreparedNode> PrepareUntrustedNode(const ExecutionPlanNodeSpec& node) {
 StatusOr<PreparedNode> PrepareTrustedNode(const LoweredStepSpec& node) {
     if (node.op_type == OpType::kUnknown ||
         std::holds_alternative<std::monostate>(node.op_params)) {
-        return Status::Internal("Finalized LoweredStepSpec is missing semantic metadata");
+        return Status::Internal(
+                "Finalized LoweredStepSpec is missing semantic metadata");
     }
 
     auto compact_input_specs = PrepareCompactInputSpecs(
@@ -216,7 +219,7 @@ StatusOr<ResolvedKernel> PrepareKernelChecked(
         OpType op_type,
         const KernelSelector& selector,
         const OpParams& op_params,
-        std::optional<WorkspaceRequirement> caller_assertion) {
+        const std::optional<WorkspaceRequirement>& caller_assertion) {
     auto kernel = backend.PrepareKernel(op_type, selector, op_params);
     if (!kernel.ok()) {
         return kernel.status();
@@ -302,8 +305,8 @@ StatusOr<std::vector<PreparedNode>> PrepareUntrustedNodes(
 StatusOr<std::vector<PreparedNode>> PrepareTrustedNodes(const LoweredGraph& lowered) {
     std::vector<PreparedNode> prepared;
     prepared.reserve(lowered.steps().size());
-    for (const LoweredStep& step: lowered.steps()) {
-        auto prepared_node = PrepareTrustedNode(step.spec);
+    for (const auto& [spec, _]: lowered.steps()) {
+        auto prepared_node = PrepareTrustedNode(spec);
         if (!prepared_node.ok()) {
             return prepared_node.status();
         }

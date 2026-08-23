@@ -2,7 +2,9 @@
 
 #include "utils/variant_utils.h"
 
+#include <algorithm>
 #include <string>
+#include <tuple>
 #include <utility>
 
 namespace aethermind {
@@ -93,13 +95,31 @@ StatusOr<ExecutionPlan> ExecutionPlan::Create(std::vector<ExecutionStep> steps,
                                               StateAliasPlan state_alias_plan,
                                               WorkspacePlanLayout workspace_layout) {
     ExecutionPlan plan;
-    plan.state_alias_plan_ = std::move(state_alias_plan);
     plan.workspace_layout_ = workspace_layout;
     plan.steps_.reserve(steps.size());
 
     for (ExecutionStep& step: steps) {
         AM_RETURN_IF_ERROR(plan.AddStep(std::move(step)));
     }
+
+    // StateAliasPlan is a public data struct; converge its invariants here:
+    // aliases must reference existing steps and be sorted by step_index so
+    // ForStep's binary search is well-defined.
+    for (const ResolvedStateAlias& alias: state_alias_plan.aliases) {
+        if (alias.step_index >= plan.steps_.size()) {
+            return Status::InvalidArgument(
+                    "State alias references step " +
+                    std::to_string(alias.step_index) +
+                    " beyond the plan's step count");
+        }
+    }
+    std::ranges::sort(state_alias_plan.aliases,
+                      [](const ResolvedStateAlias& lhs,
+                         const ResolvedStateAlias& rhs) noexcept {
+                          return std::tie(lhs.step_index, lhs.input_port, lhs.output_port) <
+                                 std::tie(rhs.step_index, rhs.input_port, rhs.output_port);
+                      });
+    plan.state_alias_plan_ = std::move(state_alias_plan);
 
     return plan;
 }

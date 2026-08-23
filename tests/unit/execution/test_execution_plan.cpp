@@ -224,4 +224,42 @@ TEST(ExecutionPlan, RejectsRuntimeCheckReferencingDimensionBeyondRank) {
     EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
 }
 
+TEST(ExecutionPlan, SortsStateAliasPlanForStepLookup) {
+    ResolvedKernel kernel{
+            .op_type = OpType::kSoftmax,
+            .fn = &FakeKernel,
+    };
+    // Deliberately unsorted: Create must converge the ForStep precondition.
+    const StatusOr<ExecutionPlan> plan = ExecutionPlan::Create(
+            {ExecutionStep{.kernel = kernel}},
+            StateAliasPlan{.aliases = {
+                                   ResolvedStateAlias{.step_index = 0, .input_port = 0, .output_port = 1},
+                                   ResolvedStateAlias{.step_index = 0, .input_port = 0, .output_port = 0},
+                           }});
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    const auto aliases = plan->state_alias_plan().ForStep(0);
+    ASSERT_EQ(aliases.size(), 2U);
+    EXPECT_EQ(aliases[0].output_port, 0U);
+    EXPECT_EQ(aliases[1].output_port, 1U);
+}
+
+TEST(ExecutionPlan, RejectsStateAliasBeyondStepCount) {
+    ResolvedKernel kernel{
+            .op_type = OpType::kSoftmax,
+            .fn = &FakeKernel,
+    };
+
+    const StatusOr<ExecutionPlan> plan = ExecutionPlan::Create(
+            {ExecutionStep{.kernel = kernel}},
+            StateAliasPlan{.aliases = {
+                                   ResolvedStateAlias{.step_index = 1},
+                           }});
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(plan.status().message().find("beyond the plan's step count"),
+              std::string::npos);
+}
+
 }// namespace

@@ -4,7 +4,8 @@ namespace aethermind {
 
 Status PackedWeightStore::Store(std::unique_ptr<PackedWeights> packed_weights) noexcept {
     if (packed_weights == nullptr) {
-        return Status::InvalidArgument("PackedWeightStore cannot store null packed weights");
+        return Status::InvalidArgument(
+                "PackedWeightStore cannot store null packed weights");
     }
 
     if (Find(packed_weights->op_type(), packed_weights->selector()) != nullptr) {
@@ -16,9 +17,8 @@ Status PackedWeightStore::Store(std::unique_ptr<PackedWeights> packed_weights) n
     return Status::Ok();
 }
 
-const PackedWeights* PackedWeightStore::Find(
-        OpType op_type,
-        const KernelSelector& selector) const noexcept {
+const PackedWeights* PackedWeightStore::Find(OpType op_type,
+                                             const KernelSelector& selector) const noexcept {
     for (const auto& packed_weights: packed_weights_) {
         if (packed_weights->op_type() == op_type && packed_weights->selector() == selector) {
             return packed_weights.get();

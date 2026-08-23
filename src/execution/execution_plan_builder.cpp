@@ -174,6 +174,41 @@ StatusOr<PreparedNode> PrepareUntrustedNode(const ExecutionPlanNodeSpec& node) {
     AM_RETURN_IF_ERROR(ValidateCallerMetadata(
             node, *compact_input_specs, output_specs, runtime_checks));
 
+    // Cross-check the selector dtypes against the operator's specs using the
+    // same derivation rule as graph lowering. The backend resolves kernels by
+    // selector only, so a mismatched or undefined selector dtype would run a
+    // kernel for a different dtype than the bound specs (type confusion).
+    const auto schema = GetOperatorSchema(node.op_type);
+    if (!schema.ok()) {
+        return schema.status();
+    }
+
+    const auto selector_dtypes = DeriveSelectorDTypes(
+            *schema, node.input_specs, node.output_specs);
+    if (!selector_dtypes.ok()) {
+        return Status::InvalidArgument(
+                "ExecutionPlanNodeSpec selector dtypes cannot be derived: " +
+                selector_dtypes.status().message());
+    }
+
+    if (node.selector.act_dtype != selector_dtypes->act_dtype) {
+        return Status::InvalidArgument(
+                "ExecutionPlanNodeSpec.selector.act_dtype " +
+                ToString(node.selector.act_dtype) +
+                " does not match the operator activation dtype " +
+                ToString(selector_dtypes->act_dtype) + " for " +
+                ToString(node.op_type));
+    }
+
+    if (node.selector.weight_dtype != selector_dtypes->weight_dtype) {
+        return Status::InvalidArgument(
+                "ExecutionPlanNodeSpec.selector.weight_dtype " +
+                ToString(node.selector.weight_dtype) +
+                " does not match the operator weight dtype " +
+                ToString(selector_dtypes->weight_dtype) + " for " +
+                ToString(node.op_type));
+    }
+
     return PreparedNode{
             .op_type = node.op_type,
             .selector = node.selector,

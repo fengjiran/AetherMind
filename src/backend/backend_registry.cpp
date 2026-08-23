@@ -19,8 +19,11 @@ void BackendRegistry::SetFactory(DeviceType type, std::unique_ptr<BackendFactory
 }
 
 StatusOr<Backend*> BackendRegistry::GetBackend(DeviceType type) noexcept {
-    // TODO: Enable mutex for thread-safe access once multi-threaded runtime is supported.
-    // std::lock_guard<std::mutex> lock(mutex_);
+    // Plan-build is currently single-threaded: factories are registered via
+    // RuntimeBuilder before any plan build, and each device's backend is
+    // created lazily at most once here. When multi-threaded plan-build lands,
+    // guard both maps with a mutex (must be movable, since BackendRegistry is
+    // moved into RuntimeContext).
     if (const auto it = backends_.find(type); it != backends_.end()) {
         return it->second.get();
     }

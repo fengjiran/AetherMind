@@ -14,6 +14,7 @@
 ///   (pure data type, defined in `base/workspace_types.h`)
 /// - `PlanWorkspaceRequirements()`: Plans offsets for all requirements into a unified layout
 /// - `WorkspaceBinding`: Actual slice handed to a kernel at execution time
+///   (defined in `base/workspace.h`)
 /// - `WorkspacePlanLayout`: Summary of the total workspace size and alignment needs
 ///
 /// The planning phase is done before execution. The binding phase happens when
@@ -23,6 +24,7 @@
 
 #include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"
+#include "aethermind/base/workspace.h"
 #include "aethermind/base/workspace_types.h"
 #include "utils/overflow_check.h"
 
@@ -30,24 +32,6 @@
 #include <span>
 
 namespace aethermind {
-
-/// @brief Actual workspace slice bound to a kernel at execution time.
-///
-/// Produced by WorkspaceArena::Bind() using a WorkspaceRequirement's offset.
-/// Passed to kernel functions as the third parameter (WorkspaceBinding).
-///
-/// Lifetime:
-/// - Borrowed from the underlying WorkspaceArena
-/// - Valid only during that step's execution
-/// - Do not store beyond a single kernel invocation
-struct WorkspaceBinding {
-    /// Pointer to the step's workspace slice.
-    /// Already aligned according to WorkspaceRequirement.alignment.
-    void* data = nullptr;
-
-    /// Size of the slice in bytes. Matches WorkspaceRequirement.bytes.
-    size_t size = 0;
-};
 
 /// @brief Summary of a workspace plan's total memory needs.
 ///

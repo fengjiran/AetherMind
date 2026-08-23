@@ -2,9 +2,9 @@
 #define AETHERMIND_BACKEND_KERNEL_CONTEXT_H
 
 #include "aethermind/backend/stream.h"
-#include "aethermind/execution/workspace_arena.h"
-#include "aethermind/runtime/workspace.h"
 #include "aethermind/base/device.h"
+#include "aethermind/base/workspace.h"
+#include "aethermind/base/workspace_arena.h"
 
 #include <cstddef>
 #include <span>

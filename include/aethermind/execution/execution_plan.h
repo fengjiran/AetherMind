@@ -43,10 +43,13 @@ public:
     /// @param steps Step descriptors; the plan takes ownership of the kernels
     ///              and of the borrowed packed-weight pointers' contract.
     /// @param state_alias_plan Runtime state aliases for the steps.
+    /// @param workspace_layout Total workspace size and base alignment needed
+    ///                         to allocate a WorkspaceArena for this plan.
     /// @return The validated plan, or an error if any step fails validation.
     static StatusOr<ExecutionPlan> Create(
             std::vector<ExecutionStep> steps,
-            StateAliasPlan state_alias_plan = {});
+            StateAliasPlan state_alias_plan = {},
+            WorkspacePlanLayout workspace_layout = {});
 
     /// @brief Returns the ordered list of execution steps.
     AM_NODISCARD const std::vector<ExecutionStep>& steps() const noexcept;
@@ -55,6 +58,11 @@ public:
 
     /// @brief Returns the state alias plan used to validate state updates.
     AM_NODISCARD const StateAliasPlan& state_alias_plan() const noexcept;
+
+    /// @brief Returns the total workspace bytes required across all steps.
+    AM_NODISCARD size_t total_workspace_bytes() const noexcept;
+    /// @brief Returns the maximum base alignment required by the workspace.
+    AM_NODISCARD size_t workspace_alignment() const noexcept;
 
 private:
     /// @brief Validates and appends one step.
@@ -65,6 +73,7 @@ private:
 
     std::vector<ExecutionStep> steps_{};
     StateAliasPlan state_alias_plan_{};
+    WorkspacePlanLayout workspace_layout_{};
 };
 
 }// namespace aethermind

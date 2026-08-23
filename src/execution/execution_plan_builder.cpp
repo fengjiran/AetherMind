@@ -263,9 +263,8 @@ StatusOr<ExecutionPlan> AssembleExecutionPlan(
         node.packed_weights = *packed_weights;
     }
 
-    if (const auto layout = PlanWorkspaceRequirements(
-                std::span(workspace_requirements));
-        !layout.ok()) {
+    const auto layout = PlanWorkspaceRequirements(std::span(workspace_requirements));
+    if (!layout.ok()) {
         return layout.status();
     }
 
@@ -285,7 +284,7 @@ StatusOr<ExecutionPlan> AssembleExecutionPlan(
                 .runtime_checks = std::move(node.runtime_checks),
         });
     }
-    return ExecutionPlan::Create(std::move(steps), std::move(state_alias_plan));
+    return ExecutionPlan::Create(std::move(steps), std::move(state_alias_plan), *layout);
 }
 
 StatusOr<std::vector<PreparedNode>> PrepareUntrustedNodes(

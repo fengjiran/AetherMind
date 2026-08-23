@@ -90,9 +90,11 @@ Status ValidateRuntimeCheckReferences(const ShapeConstraint& check,
 }// namespace
 
 StatusOr<ExecutionPlan> ExecutionPlan::Create(std::vector<ExecutionStep> steps,
-                                              StateAliasPlan state_alias_plan) {
+                                              StateAliasPlan state_alias_plan,
+                                              WorkspacePlanLayout workspace_layout) {
     ExecutionPlan plan;
     plan.state_alias_plan_ = std::move(state_alias_plan);
+    plan.workspace_layout_ = workspace_layout;
     plan.steps_.reserve(steps.size());
 
     for (ExecutionStep& step: steps) {
@@ -148,6 +150,14 @@ size_t ExecutionPlan::size() const noexcept {
 
 const StateAliasPlan& ExecutionPlan::state_alias_plan() const noexcept {
     return state_alias_plan_;
+}
+
+size_t ExecutionPlan::total_workspace_bytes() const noexcept {
+    return workspace_layout_.total_bytes;
+}
+
+size_t ExecutionPlan::workspace_alignment() const noexcept {
+    return workspace_layout_.required_alignment;
 }
 
 }// namespace aethermind

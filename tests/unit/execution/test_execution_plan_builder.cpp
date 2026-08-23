@@ -1,36 +1,41 @@
-#include "aethermind/execution/execution_plan_builder.h"
-
-#include "aethermind/backend/backend.h"
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/cpu_workspace_arena.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/compiler/graph_lowering.h"
+#include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
-#include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/graph/graph.h"
-#include "aethermind/memory/buffer.h"
 #include "aethermind/model/packed_weight_store.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/ops/embedding_op.h"
-#include "aethermind/operators/ops/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 
-#include <gtest/gtest.h>
-
-#include <array>
-#include <cstddef>
-#include <cstdlib>
 #include <cstring>
-#include <memory>
-#include <span>
-#include <variant>
-#include <vector>
+#include <gtest/gtest.h>
 
 namespace {
 
 using namespace aethermind;
+
+// Over-aligned scratch storage sized and aligned from a plan workspace layout.
+struct AlignedScratch {
+    explicit AlignedScratch(size_t bytes, size_t alignment)
+        : bytes(bytes),
+          alignment(alignment),
+          data(static_cast<std::byte*>(
+                  ::operator new(bytes, std::align_val_t{alignment}))) {}
+    ~AlignedScratch() {
+        ::operator delete(data, std::align_val_t{alignment});
+    }
+    AlignedScratch(const AlignedScratch&) = delete;
+    AlignedScratch& operator=(const AlignedScratch&) = delete;
+
+    size_t bytes = 0;
+    size_t alignment = 0;
+    std::byte* data = nullptr;
+};
 
 void FreeTestBuffer(void*, void* ptr) noexcept {
     std::free(ptr);
@@ -735,8 +740,12 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPropagatesPreparedKernelWorkspac
     EXPECT_EQ(plan->steps()[1].workspace_requirement.alignment, 64U);
     EXPECT_EQ(plan->steps()[1].workspace_requirement.offset, 64U);
 
-    alignas(64) std::array<std::byte, 128> workspace_storage{};
-    CpuWorkspaceArena workspace_arena(workspace_storage.data(), workspace_storage.size());
+    const size_t workspace_bytes = plan->total_workspace_bytes();
+    const size_t workspace_alignment = plan->workspace_alignment();
+    EXPECT_EQ(workspace_bytes, 104U);
+    EXPECT_EQ(workspace_alignment, 64U);
+    AlignedScratch scratch(workspace_bytes, workspace_alignment);
+    CpuWorkspaceArena workspace_arena(scratch.data, workspace_bytes);
     RuntimeBindingContext bindings(&workspace_arena);
     for (size_t index = 0; index < plan->size(); ++index) {
         bindings.SetStepTensorBinding(index, {
@@ -754,9 +763,9 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPropagatesPreparedKernelWorkspac
 
     ASSERT_TRUE(execution_status.ok()) << execution_status.ToString();
     ASSERT_EQ(recorded_bindings.size(), 2U);
-    EXPECT_EQ(recorded_bindings[0].data, workspace_storage.data());
+    EXPECT_EQ(recorded_bindings[0].data, scratch.data);
     EXPECT_EQ(recorded_bindings[0].size, 24U);
-    EXPECT_EQ(recorded_bindings[1].data, workspace_storage.data() + 64U);
+    EXPECT_EQ(recorded_bindings[1].data, scratch.data + 64U);
     EXPECT_EQ(recorded_bindings[1].size, 40U);
 }
 

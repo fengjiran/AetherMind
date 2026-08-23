@@ -1,28 +1,35 @@
-#include "aethermind/backend/backend.h"
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/cpu/cpu_workspace_arena.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/backend/packed_weights.h"
-#include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
-#include "aethermind/execution/runtime_binding_context.h"
-#include "aethermind/memory/buffer.h"
 #include "aethermind/model/packed_weight_store.h"
-#include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <cstdlib>
-#include <memory>
-#include <vector>
-
 namespace {
 
 using namespace aethermind;
+
+// Over-aligned scratch storage sized and aligned from a plan workspace layout.
+struct AlignedScratch {
+    explicit AlignedScratch(size_t bytes, size_t alignment)
+        : bytes(bytes),
+          alignment(alignment),
+          data(static_cast<std::byte*>(
+                  ::operator new(bytes, std::align_val_t{alignment}))) {}
+    ~AlignedScratch() {
+        ::operator delete(data, std::align_val_t{alignment});
+    }
+    AlignedScratch(const AlignedScratch&) = delete;
+    AlignedScratch& operator=(const AlignedScratch&) = delete;
+
+    size_t bytes = 0;
+    size_t alignment = 0;
+    std::byte* data = nullptr;
+};
 
 std::vector<int>* g_execution_order = nullptr;
 KernelContext g_last_kernel_context{};
@@ -222,9 +229,6 @@ RuntimeContext MakeRuntime() {
 TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     RuntimeContext runtime = MakeRuntime();
     std::vector<int> execution_order;
-    alignas(64) std::byte workspace[256]{};
-    CpuWorkspaceArena arena(workspace, sizeof(workspace));
-    RuntimeBindingContext bindings(&arena);
     g_execution_order = &execution_order;
     PackedWeightStore packed_weight_store;
 
@@ -313,6 +317,15 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, packed_weight_store, nodes);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 2U);
+
+    const size_t workspace_bytes = plan->total_workspace_bytes();
+    const size_t workspace_alignment = plan->workspace_alignment();
+    EXPECT_EQ(workspace_bytes, 192U);
+    EXPECT_EQ(workspace_alignment, 64U);
+    AlignedScratch scratch(workspace_bytes, workspace_alignment);
+    CpuWorkspaceArena arena(scratch.data, workspace_bytes);
+    RuntimeBindingContext bindings(&arena);
+
     bindings.SetStepTensorBinding(0, StepTensorBinding{
                                              .inputs = {TensorView{}},
                                              .outputs = {MutableTensorView{}},
@@ -330,7 +343,7 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
     EXPECT_EQ(g_last_kernel_context.workspace, &arena);
     EXPECT_EQ(g_last_kernel_context.workspace_binding.size, 128U);
     EXPECT_EQ(g_last_kernel_context.workspace_binding.data,
-              static_cast<void*>(workspace + 64));
+              static_cast<void*>(scratch.data + 64));
     EXPECT_EQ(g_last_kernel_context.device_type, DeviceType::kCPU);
     EXPECT_EQ(g_last_kernel_context.packed_weights, expected_packed_weights);
     EXPECT_EQ(g_last_kernel_context.kernel_params, nullptr);
@@ -338,9 +351,7 @@ TEST(ExecutorBackendPath, ExecuteRunsFrozenKernelsInPlanOrder) {
 
 TEST(ExecutorBackendPath, ExecutePropagatesKernelFailure) {
     RuntimeContext runtime = MakeRuntime();
-    alignas(32) std::byte workspace[64]{};
-    CpuWorkspaceArena arena(workspace, sizeof(workspace));
-    RuntimeBindingContext bindings(&arena);
+    RuntimeBindingContext bindings;
 
     // kArgmax is resolved directly from the test backend. InferArgmax expects
     // one float32 input and ArgmaxParams.
@@ -370,6 +381,15 @@ TEST(ExecutorBackendPath, ExecutePropagatesKernelFailure) {
             ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
+
+    const size_t workspace_bytes = plan->total_workspace_bytes();
+    const size_t workspace_alignment = plan->workspace_alignment();
+    EXPECT_EQ(workspace_bytes, 32U);
+    EXPECT_EQ(workspace_alignment, 32U);
+    AlignedScratch scratch(workspace_bytes, workspace_alignment);
+    CpuWorkspaceArena arena(scratch.data, workspace_bytes);
+    bindings.SetWorkspaceArena(&arena);
+
     bindings.SetStepTensorBinding(0, StepTensorBinding{
                                              .inputs = {TensorView{}},
                                              .outputs = {MutableTensorView{}},

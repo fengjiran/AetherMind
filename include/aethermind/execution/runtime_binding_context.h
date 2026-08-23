@@ -149,8 +149,8 @@ public:
     AM_NODISCARD StatusOr<const StepTensorBinding*> GetStepTensorBinding(
             size_t step_index) const noexcept;
 
-    /// @brief Resets workspace arena, KV cache view, temporary buffers, and
-    ///        sequence state to defaults.
+    /// @brief Resets workspace arena, KV cache view, temporary buffers,
+    ///        per-step tensor bindings, and sequence state to defaults.
     void Reset() noexcept;
 
 private:

@@ -117,6 +117,7 @@ void RuntimeBindingContext::Reset() noexcept {
     ClearKVCacheView();
     ClearAllTempBufferBindings();
     ResetSequenceState();
+    step_tensor_bindings_.clear();
 }
 
 }// namespace aethermind

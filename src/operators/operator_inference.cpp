@@ -1,7 +1,31 @@
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/op_params.h"
 
+#include <optional>
+#include <string>
+
 namespace aethermind {
+namespace {
+
+// Records a role candidate dtype, rejecting undefined dtypes and conflicting
+// dtypes across ports of the same role (activation/weight).
+Status SetSelectorDTypeCandidate(const TensorSpec& spec,
+                                 std::optional<DataType>& candidate,
+                                 std::string_view role) {
+    if (spec.dtype.IsUndefined()) {
+        return Status::InvalidArgument(
+                "undefined " + std::string(role) + " dtype");
+    }
+
+    if (candidate.has_value() && *candidate != spec.dtype) {
+        return Status::InvalidArgument(
+                "inconsistent " + std::string(role) + " dtypes in one operator");
+    }
+    candidate = spec.dtype;
+    return Status::Ok();
+}
+
+}// namespace
 
 StatusOr<InferenceResult> InferOperator(OpType op_type,
                                         const OpParams& params,
@@ -73,6 +97,52 @@ StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(const OperatorSchema& sc
         }
     }
     return compact;
+}
+
+StatusOr<SelectorDTypes> DeriveSelectorDTypes(const OperatorSchema& schema,
+                                              std::span<const TensorSpec> input_specs,
+                                              std::span<const TensorSpec> output_specs) {
+    if (input_specs.size() != schema.input_ports.size() ||
+        output_specs.size() != schema.output_ports.size()) {
+        return Status::InvalidArgument(
+                "DeriveSelectorDTypes: spec count does not match schema ports");
+    }
+
+    std::optional<DataType> act_dtype;
+    std::optional<DataType> weight_dtype;
+    for (size_t i = 0; i < schema.input_ports.size(); ++i) {
+        const auto& port = schema.input_ports[i];
+        if (!port.contributes_tensor_spec) {
+            continue;
+        }
+
+        if (port.kind == OperatorPortKind::kActivation) {
+            AM_RETURN_IF_ERROR(SetSelectorDTypeCandidate(
+                    input_specs[i], act_dtype, "activation"));
+        } else if (port.kind == OperatorPortKind::kWeight) {
+            AM_RETURN_IF_ERROR(SetSelectorDTypeCandidate(
+                    input_specs[i], weight_dtype, "weight"));
+        }
+    }
+
+    if (!act_dtype.has_value()) {
+        for (size_t i = 0; i < schema.output_ports.size(); ++i) {
+            if (schema.output_ports[i].kind == OperatorPortKind::kActivation) {
+                AM_RETURN_IF_ERROR(SetSelectorDTypeCandidate(
+                        output_specs[i], act_dtype, "activation"));
+            }
+        }
+    }
+
+    if (!act_dtype.has_value()) {
+        return Status::InvalidArgument(
+                "operator schema has no contributing activation dtype source");
+    }
+
+    return SelectorDTypes{
+            .act_dtype = *act_dtype,
+            .weight_dtype = weight_dtype.value_or(*act_dtype),
+    };
 }
 
 Status ValidateInferenceInputCount(OpType op_type,

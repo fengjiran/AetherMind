@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 
+#include <string>
+
 namespace {
 using namespace aethermind;
 
@@ -95,6 +97,152 @@ TEST(OperatorSemanticsMakeCompact, InputCountMismatch) {
     ASSERT_TRUE(schema.ok());
     std::vector<TensorSpec> inputs = {MakeSpec(DataType::Float32(), {2, 3})};
     EXPECT_FALSE(MakeCompactInputSpecs(*schema, inputs).ok());
+}
+
+// --- Selector dtype derivation (shared rule with graph lowering) ---
+
+TEST(OperatorSelectorDTypes, DerivesFromActivationAndWeightInputs) {
+    const auto schema = GetOperatorSchema(OpType::kRmsNorm);
+    ASSERT_TRUE(schema.ok());
+    const std::vector<TensorSpec> inputs{
+            MakeSpec(DataType::Float32(), {4, 8}),
+            MakeSpec(DataType::Float32(), {8}),
+    };
+    const std::vector<TensorSpec> outputs{
+            MakeSpec(DataType::Float32(), {4, 8}),
+    };
+
+    const auto derived = DeriveSelectorDTypes(*schema, inputs, outputs);
+
+    ASSERT_TRUE(derived.ok()) << derived.status().ToString();
+    EXPECT_EQ(derived->act_dtype, DataType::Float32());
+    EXPECT_EQ(derived->weight_dtype, DataType::Float32());
+}
+
+TEST(OperatorSelectorDTypes, FallsBackToActivationOutputWhenNoActivationInput) {
+    // Embedding has only a kModelInput and a kWeight input; act_dtype must
+    // come from the activation output port.
+    const auto schema = GetOperatorSchema(OpType::kEmbedding);
+    ASSERT_TRUE(schema.ok());
+    const std::vector<TensorSpec> inputs{
+            MakeSpec(DataType::Int(64), {2}),
+            MakeSpec(DataType::Float(16), {32, 8}),
+    };
+    const std::vector<TensorSpec> outputs{
+            MakeSpec(DataType::Float(16), {2, 8}),
+    };
+
+    const auto derived = DeriveSelectorDTypes(*schema, inputs, outputs);
+
+    ASSERT_TRUE(derived.ok()) << derived.status().ToString();
+    EXPECT_EQ(derived->act_dtype, DataType::Float(16));
+    EXPECT_EQ(derived->weight_dtype, DataType::Float(16));
+}
+
+TEST(OperatorSelectorDTypes, FallsBackWeightToActivationWhenNoWeightPort) {
+    // RoPE has activation inputs plus a kModelInput, but no weight port.
+    const auto schema = GetOperatorSchema(OpType::kRoPE);
+    ASSERT_TRUE(schema.ok());
+    const std::vector<TensorSpec> inputs{
+            MakeSpec(DataType::Float32(), {2, 8}),
+            MakeSpec(DataType::Float32(), {2, 8}),
+            MakeSpec(DataType::Int(64), {2}),
+    };
+    const std::vector<TensorSpec> outputs{
+            MakeSpec(DataType::Float32(), {2, 8}),
+            MakeSpec(DataType::Float32(), {2, 8}),
+    };
+
+    const auto derived = DeriveSelectorDTypes(*schema, inputs, outputs);
+
+    ASSERT_TRUE(derived.ok()) << derived.status().ToString();
+    EXPECT_EQ(derived->act_dtype, DataType::Float32());
+    EXPECT_EQ(derived->weight_dtype, DataType::Float32());
+}
+
+TEST(OperatorSelectorDTypes, IgnoresStatePorts) {
+    const auto schema = GetOperatorSchema(OpType::kKVCacheUpdate);
+    ASSERT_TRUE(schema.ok());
+    const std::vector<TensorSpec> inputs{
+            MakeSpec(DataType::Float32(), {1, 8, 1, 64}),
+            MakeSpec(DataType::Float32(), {1, 8, 1, 64}),
+            MakeSpec(DataType::Float(16), {1, 8, 1024, 64}),
+            MakeSpec(DataType::Float(16), {1, 8, 1024, 64}),
+    };
+    const std::vector<TensorSpec> outputs{
+            MakeSpec(DataType::Float(16), {1, 8, 1024, 64}),
+            MakeSpec(DataType::Float(16), {1, 8, 1024, 64}),
+    };
+
+    const auto derived = DeriveSelectorDTypes(*schema, inputs, outputs);
+
+    // State ports never contribute; only the activation inputs do.
+    ASSERT_TRUE(derived.ok()) << derived.status().ToString();
+    EXPECT_EQ(derived->act_dtype, DataType::Float32());
+    EXPECT_EQ(derived->weight_dtype, DataType::Float32());
+}
+
+TEST(OperatorSelectorDTypes, RejectsUndefinedActivationDType) {
+    const auto schema = GetOperatorSchema(OpType::kRmsNorm);
+    ASSERT_TRUE(schema.ok());
+    const std::vector<TensorSpec> inputs{
+            MakeSpec(DataType{}, {4, 8}),
+            MakeSpec(DataType::Float32(), {8}),
+    };
+    const std::vector<TensorSpec> outputs{
+            MakeSpec(DataType::Float32(), {4, 8}),
+    };
+
+    const auto derived = DeriveSelectorDTypes(*schema, inputs, outputs);
+
+    ASSERT_FALSE(derived.ok());
+    EXPECT_EQ(derived.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(derived.status().message().find("undefined"), std::string::npos);
+}
+
+TEST(OperatorSelectorDTypes, RejectsInconsistentActivationDTypes) {
+    const auto schema = GetOperatorSchema(OpType::kAdd);
+    ASSERT_TRUE(schema.ok());
+    const std::vector<TensorSpec> inputs{
+            MakeSpec(DataType::Float32(), {2, 3}),
+            MakeSpec(DataType::Float(16), {2, 3}),
+    };
+    const std::vector<TensorSpec> outputs{
+            MakeSpec(DataType::Float32(), {2, 3}),
+    };
+
+    const auto derived = DeriveSelectorDTypes(*schema, inputs, outputs);
+
+    ASSERT_FALSE(derived.ok());
+    EXPECT_EQ(derived.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(derived.status().message().find("inconsistent"), std::string::npos);
+}
+
+TEST(OperatorSelectorDTypes, RejectsSpecCountMismatch) {
+    const auto schema = GetOperatorSchema(OpType::kRmsNorm);
+    ASSERT_TRUE(schema.ok());
+    const std::vector<TensorSpec> inputs{
+            MakeSpec(DataType::Float32(), {4, 8}),
+    };
+    const std::vector<TensorSpec> outputs{
+            MakeSpec(DataType::Float32(), {4, 8}),
+    };
+
+    const auto derived = DeriveSelectorDTypes(*schema, inputs, outputs);
+
+    ASSERT_FALSE(derived.ok());
+    EXPECT_EQ(derived.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(OperatorSelectorDTypes, RejectsSchemaWithoutActivationSource) {
+    const OperatorSchema schema{.op_type = OpType::kUnknown};
+
+    const auto derived = DeriveSelectorDTypes(schema, {}, {});
+
+    ASSERT_FALSE(derived.ok());
+    EXPECT_EQ(derived.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(derived.status().message().find("activation dtype source"),
+              std::string::npos);
 }
 
 }// namespace

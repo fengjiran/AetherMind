@@ -53,6 +53,37 @@ StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(
         const OperatorSchema& schema,
         std::span<const TensorSpec> all_inputs);
 
+/// @brief Activation and weight dtypes that an operator's specs imply.
+///
+/// The sole source of selector dtype semantics: graph lowering derives the
+/// lowered selector from these, and the untrusted ExecutionPlanNodeSpec path
+/// cross-checks its caller-provided selector against them.
+struct SelectorDTypes {
+    DataType act_dtype{};
+    DataType weight_dtype{};
+};
+
+/// @brief Derives the selector dtypes an operator's specs imply.
+///
+/// Rule (identical to graph lowering's contract):
+/// - act_dtype comes from the contributing activation input ports (all must
+///   agree), falling back to the activation output ports when the operator
+///   has no activation input (e.g. Embedding).
+/// - weight_dtype comes from the contributing weight input ports (all must
+///   agree), falling back to act_dtype when the operator has no weight port.
+/// - kModelInput/kConstant/kState ports never contribute a dtype.
+///
+/// @param schema Operator schema defining port kinds and participation.
+/// @param input_specs Full schema-port-ordered input specs.
+/// @param output_specs Full schema-port-ordered output specs.
+/// @return The derived dtypes, or kInvalidArgument when specs are undefined,
+///         inconsistent within one role, missing, or no activation dtype
+///         source exists.
+StatusOr<SelectorDTypes> DeriveSelectorDTypes(
+        const OperatorSchema& schema,
+        std::span<const TensorSpec> input_specs,
+        std::span<const TensorSpec> output_specs);
+
 namespace detail {
 
 StatusOr<InferenceResult> InferEmbedding(const OpParams& params, std::span<const TensorSpec> inputs);

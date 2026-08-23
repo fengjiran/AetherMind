@@ -34,8 +34,8 @@
 - 重写事务：[graph_rewrite.cpp](../../src/graph/optimization/graph_rewrite.cpp:774) 的 `GraphRewriteSession::ValidateEdits` 与 [Commit](../../src/graph/optimization/graph_rewrite.cpp:1366)。
 - Pass 管线：[graph_pass_manager.cpp](../../src/graph/optimization/graph_pass_manager.cpp:40) 的 `GraphPassManager::Run`。
 - 图编译：[graph_lowering.cpp](../../src/compiler/graph_lowering.cpp) 的 `LowerModelGraph` / `ValidateLoweredGraph`，以及 execution-private [execution_plan_builder.cpp](../../src/execution/execution_plan_builder.cpp) 的 `ResolveStateAliasesForExecution`。
-- 执行计划：[execution_plan_builder.cpp](../../src/execution/execution_plan_builder.cpp:291) 与 [execution_plan.cpp](../../src/execution/execution_plan.cpp:7) 的 `ExecutionPlan::Create`。
-- 运行时：[layer_runner.cpp](../../src/execution/layer_runner.cpp:69) 的 `LayerRunner::ValidateStateAliasesForStep`，以及 [kv_cache_view.h](../../include/aethermind/execution/kv_cache_view.h:49) 的 `KVCacheView` 读写边界校验。
+- 执行计划：[execution_plan_builder.cpp](../../src/execution/execution_plan_builder.cpp:395) 与 [execution_plan.cpp](../../src/execution/execution_plan.cpp:94) 的 `ExecutionPlan::Create`。
+- 运行时：[layer_runner.cpp](../../src/execution/layer_runner.cpp:70) 的 `LayerRunner::ValidateStateAliasesForStep`，以及 [kv_cache_view.h](../../include/aethermind/runtime/kv_cache_view.h:84) 的 `KVCacheView` 读写边界校验。
 
 问题不在"校验少了"，而在"没有目录"。评审、修改、测试都缺少一张表回答：这条不变量归谁管、现在验没验、坏掉时谁先报。本文档补上这张表。
 
@@ -87,7 +87,7 @@ ModelGraph 是后端、设备、内存无关的纯图 IR。依据 [AGENTS.md](..
 - 节点输入引用的 value id 必须有效：[graph.cpp](../../src/graph/graph.cpp:801)。
 - 节点输出引用的 value id 必须有效：[graph.cpp](../../src/graph/graph.cpp:847)。
 - 拓扑序计算中 producer 必须指向合法节点：[graph.cpp](../../src/graph/graph.cpp:941)。
-- 运行期对应物：`KVCacheView` 的指针三件套与 generation 存活检查（[kv_cache_view.h](../../include/aethermind/execution/kv_cache_view.h:95)）。
+- 运行期对应物：`KVCacheView` 的指针三件套与 generation 存活检查（[kv_cache_view.h](../../include/aethermind/runtime/kv_cache_view.h:90)）。
 
 ### 4.3 生产者-消费者一致性
 
@@ -172,11 +172,11 @@ Commit 的顺序是：`ValidateEdits`、计算保留集（含 DCE 语义）、�
 
 must-alias 是语义契约：别名输入与输出共享物理存储，不是拷贝。图层的表达是绑定约束（§4.9），lowering 物化为别名（§4.9），运行期以 `StateAliasPlan` 消费（[state_alias_plan.h](../../include/aethermind/execution/state_alias_plan.h:25)）。
 
-现状边界：运行期只处理 KV 状态别名，`LayerRunner::ValidateStateAliasesForStep` 要求存在有效 `KVCacheView`（[layer_runner.cpp](../../src/execution/layer_runner.cpp:69)）。通用别名（非 KV 状态、activation 端口别名）的指针比较校验留有 TODO，未实现（[layer_runner.cpp](../../src/execution/layer_runner.cpp:87)）。本文不声称通用别名生命周期已被全面校验。
+现状边界：运行期只处理 KV 状态别名，`LayerRunner::ValidateStateAliasesForStep` 要求存在有效 `KVCacheView`（[layer_runner.cpp](../../src/execution/layer_runner.cpp:70)）。通用别名（非 KV 状态、activation 端口别名）的指针比较校验留有 TODO，未实现（[layer_runner.cpp](../../src/execution/layer_runner.cpp:93)）。本文不声称通用别名生命周期已被全面校验。
 
 ### 5.7 KV cache 池隔离
 
-`KVCacheManager` 独占静态 KV 存储：按层数、KV 头数、最大 token 数、head_dim、dtype 与对齐初始化（[kv_cache_manager.h](../../include/aethermind/execution/kv_cache_manager.h:10)），会话视图带 generation 与槽位存活语义。布局合法性由 `KVCacheLayout::Validate` 校验（[kv_cache_view.h](../../include/aethermind/execution/kv_cache_view.h:24)），读写越界由 `KVCacheView::ValidateWrite`/`ValidateRead` 拦截（[kv_cache_view.h](../../include/aethermind/execution/kv_cache_view.h:65)）。
+`KVCacheManager` 独占静态 KV 存储：按层数、KV 头数、最大 token 数、head_dim、dtype 与对齐初始化（[kv_cache_manager.h](../../include/aethermind/runtime/kv_cache_manager.h:16)），会话视图带 generation 与槽位存活语义。布局与 stride 合法性由 `KVCacheLayout::Validate` 校验（[kv_cache_view.h](../../include/aethermind/runtime/kv_cache_view.h:37)），读写越界由 `KVCacheView::ValidateWrite`/`ValidateRead` 拦截（[kv_cache_view.h](../../include/aethermind/runtime/kv_cache_view.h:121)）。
 
 KV 池隔离是构造性的：`KVCacheManager` 独占静态存储，所有权与架构层面保证 KV 存储独立于工作区 arena 与临时池，静态分配模型见 [kv_cache_design.md](kv_cache_design.md) §5，`KVCacheView` 的边界检查在视图层兜底。但不存在显式的内存计划跨池重叠校验器，KV 池与临时池的重叠规划校验未实现（§7.2 行 17），该维度是部分覆盖而非校验器强制。
 
@@ -198,8 +198,8 @@ KV 池隔离是构造性的：`KVCacheManager` 独占静态存储，所有权与
 | --- | --- | --- | --- |
 | DCE 可达性 | DCE pass | [ComputeRetainedNodes](../../src/graph/optimization/graph_rewrite.cpp:906) 内部计算 | 图不变量不要求"无死节点"，裁剪是 pass 行为 |
 | 静态形状解析 | 模型构建/规划 | `TensorSpec` + `ShapeConstraint` | 动态维度解析是阶段行为，非图校验职责 |
-| kernel 解析/预打包 | 执行计划构建 | [ResolveKernelForNode](../../src/execution/execution_plan_builder.cpp:273)、`WeightPrepackPlanner` | backend 域，graph 层不得涉及 |
-| workspace 对齐/偏移 | 执行计划构建 | [PlanWorkspaceRequirements](../../include/aethermind/runtime/workspace.h:178) | 顺序规划：对齐合法性 + 溢出检查，无生命周期复用 |
+| kernel 解析/预打包 | 执行计划构建 | [PrepareKernelChecked](../../src/execution/execution_plan_builder.cpp:251)、`WeightPrepackPlanner` | backend 域，graph 层不得涉及 |
+| workspace 对齐/偏移 | 执行计划构建 | [PlanWorkspaceRequirements](../../include/aethermind/runtime/workspace.h:121) | 顺序规划：对齐合法性 + 溢出检查，无生命周期复用 |
 | 内存计划 | 规划阶段 | 无全面校验器 | activation 池、临时池、KV 池的分配与复用规划，见 §7.2 行 16、17 |
 
 区分意义：这些条件不能作为 graph 校验的通用断言，否则会把 pass 内部策略误当图契约；但一旦进入对应阶段，各自必须有本地校验，不能因为"不是图不变量"就放任不验。
@@ -217,11 +217,11 @@ KV 池隔离是构造性的：`KVCacheManager` 独占静态存储，所有权与
 | `GraphPassManager::Run` | [graph_pass_manager.cpp](../../src/graph/optimization/graph_pass_manager.cpp:40) | 已实现 | 输入 `Validate()`，检查点与最终提交各一次完整 Commit；`checkpoint_every` 默认 0（[graph_pass_manager.h](../../include/aethermind/graph/optimization/graph_pass_manager.h:38)） |
 | `LowerModelGraph` / `ValidateLoweredGraph` | [compiler/graph_lowering.cpp](../../src/compiler/graph_lowering.cpp) | 已实现 | 前置 `ValidateAndTopologicalOrder`，finalization 验证拓扑步骤、binding/spec、selector、model I/O 与声明式 state aliases |
 | `ResolveStateAliasesForExecution` | [execution/execution_plan_builder.cpp](../../src/execution/execution_plan_builder.cpp) | 已实现 | execution trust boundary 重查 artifact 后，将 aliases 映射为 runtime step/port 并按完整坐标排序 |
-| `ExecutionPlanBuilder::Build` | [execution_plan_builder.cpp](../../src/execution/execution_plan_builder.cpp:291) | 已实现 | 信任路径不重推断；未信任路径 `ValidateCallerMetadata` 严格相等；拒绝 monostate `op_params` |
-| `ExecutionPlan::Create` | [execution_plan.cpp](../../src/execution/execution_plan.cpp:7) | 已实现 | 每步：op 非空、resolved kernel fn 非空、workspace 对齐为 2 的幂 |
-| `PlanWorkspaceRequirements` | [workspace.h](../../include/aethermind/runtime/workspace.h:178) | 已实现 | 对齐校验、偏移溢出检查；顺序分配，不做跨步骤生命周期复用 |
-| `LayerRunner::ValidateStateAliasesForStep` | [layer_runner.cpp](../../src/execution/layer_runner.cpp:69) | 部分覆盖 | 仅要求 KV 别名存在 `KVCacheView`；通用别名指针比较留 TODO（[layer_runner.cpp](../../src/execution/layer_runner.cpp:87)） |
-| `KVCacheManager` / `KVCacheView` | [kv_cache_manager.h](../../include/aethermind/execution/kv_cache_manager.h:10)、[kv_cache_view.h](../../include/aethermind/execution/kv_cache_view.h:49) | 已实现 | 静态存储独占、布局校验、读写边界、会话 generation；池隔离为构造性，见 §5.7 |
+| `ExecutionPlanBuilder::Build` | [execution_plan_builder.cpp](../../src/execution/execution_plan_builder.cpp:395) | 已实现 | 信任路径不重推断；未信任路径 `ValidateCallerMetadata` 严格相等、`DeriveSelectorDTypes` 交叉校验 selector dtype；拒绝 monostate `op_params` |
+| `ExecutionPlan::Create` | [execution_plan.cpp](../../src/execution/execution_plan.cpp:94) | 已实现 | 每步：op 非空、resolved kernel fn 非空、workspace 对齐为 2 的幂、kernel/step workspace 需求一致、runtime_checks 端口引用静态校验；`StateAliasPlan` 排序并拒绝越界 step 引用 |
+| `PlanWorkspaceRequirements` | [workspace.h](../../include/aethermind/runtime/workspace.h:121) | 已实现 | 对齐校验、偏移溢出检查；顺序分配，不做跨步骤生命周期复用 |
+| `LayerRunner::ValidateStateAliasesForStep` | [layer_runner.cpp](../../src/execution/layer_runner.cpp:70) | 部分覆盖 | 仅要求 KV 别名存在 `KVCacheView`；通用别名指针比较留 TODO（[layer_runner.cpp](../../src/execution/layer_runner.cpp:93)） |
+| `KVCacheManager` / `KVCacheView` | [kv_cache_manager.h](../../include/aethermind/runtime/kv_cache_manager.h:16)、[kv_cache_view.h](../../include/aethermind/runtime/kv_cache_view.h:84) | 已实现 | 静态存储独占、布局/stride 校验（token 对齐与覆盖关系）、buffer 尺寸校验、读写边界、会话 generation；池隔离为构造性，见 §5.7 |
 | 独立/外部 value spec 合法性（dtype/rank/维度初始化） | 无独立入口 | 部分覆盖 | 节点输出经重推断严格校验；外部 value 依赖各绑定校验，无全 value 遍历的通用校验器（§5.1） |
 | 常量 `inline_data` 字节数与 spec 匹配 | 无独立入口 | 部分覆盖 | 无通用校验器，依赖生产路径各自保证（§5.5） |
 | activation 生命周期/缓冲复用校验 | 无 | 未实现 | 任何 activation 池复用的引入必须先落地本校验器（§12 风险 3） |

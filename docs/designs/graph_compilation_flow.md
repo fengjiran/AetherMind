@@ -34,7 +34,7 @@ struct ExecutionPlanNodeSpec {
 };
 ```
 
-也就是说，`ExecutionPlanNodeSpec` 是给测试、手工构造和其他低层调用的 **untrusted execution request**；builder 会重跑 `InferOperator` 并严格比较其 metadata。compiler 的正式产物是 `LoweredStepSpec` 组成的 immutable `LoweredGraph`；`ModelGraph` 经 `LowerModelGraph()` 转换后，execution 内部先验证 artifact 并将 state aliases 转为 `StateAliasPlan`，再构建计划。`LoweredStepSpec` 不携带 `workspace_requirement`——workspace 大小是 kernel 实现细节，compiler 产物无法计算；只有 untrusted `ExecutionPlanNodeSpec` 由调用方显式预填。
+也就是说，`ExecutionPlanNodeSpec` 是给测试、手工构造和其他低层调用的 **untrusted execution request**；builder 会重跑 `InferOperator` 并严格比较其 metadata。compiler 的正式产物是 `LoweredStepSpec` 组成的 immutable `LoweredGraph`；`ModelGraph` 经 `LowerModelGraph()` 转换后，execution 内部先验证 artifact 并将 state aliases 转为 `StateAliasPlan`，再构建计划。`LoweredStepSpec` 不携带 `workspace_requirement`——workspace 大小是 kernel 实现细节，compiler 产物无法计算；`ExecutionPlanBuilder` 在 resolve 具体 kernel 后从 `ResolvedKernel` 收集需求并统一规划 offset；untrusted `ExecutionPlanNodeSpec` 中的 legacy 字段仅作为可选一致性断言，不能覆盖 backend 返回的需求。
 
 ## 2. 当前完整流程图
 
@@ -42,40 +42,34 @@ struct ExecutionPlanNodeSpec {
 调用方 / 测试 / ModelGraph Lowering
         │
         ▼
-std::vector<ExecutionPlanNodeSpec>
+std::vector<ExecutionPlanNodeSpec> / LoweredGraph
         │
         ▼
 ExecutionPlanBuilder::Build(...)
         │
         ▼
-BuildExecutionPlan(runtime, packed_weight_store?, nodes)
-        │
-        ├─ 收集 workspace_requirement
-        │
-        ├─ PlanWorkspaceRequirements(...)
-        │
-        ▼
-for each node:
-        │
-        ├─ runtime.GetBackend(node.device_type)
-        │
-        ├─ PrepareNodeMetadata(node, trusted)
+PrepareUntrustedNodes / PrepareTrustedNodes
         │      ├─ schema -> MakeCompactInputSpecs(...)
-        │      └─ raw node: InferOperator(...) 严格核对 metadata
-        │
-        ├─ backend.PrepareKernel(node.op_type, selector, node.op_params)
-        │      └─ 返回按值持有的 ResolvedKernel
-        │
-        │   // finalized LoweredGraph was validated by compiler; metadata is
-        │   // copied without a second semantic inference. Untrusted raw node
-        │   // specs are re-inferred and must match exactly.
-        │
-        ├─ ResolvePackedWeightsForNode(packed_weight_store?, node)
-        │
-        └─ plan.AddStep(ExecutionStep{...})
+        │      ├─ raw node: InferOperator(...) 严格核对 metadata
+        │      │    + DeriveSelectorDTypes 交叉校验 selector dtype
+        │      └─ trusted node: 透传 lowered 的 output_specs / runtime_checks
         │
         ▼
-ExecutionPlan
+AssembleExecutionPlan(runtime, packed_weight_store?, prepared, alias_plan)
+        │
+        ├─ for each prepared node:
+        │      ├─ runtime.GetBackend(node.selector.device_type)
+        │      ├─ PrepareKernelChecked(...)   // backend 是 workspace 需求唯一权威
+        │      │      └─ 返回按值持有的 ResolvedKernel（含 workspace_requirement）
+        │      ├─ ResolvePackedWeights(packed_weight_store?, op_type, selector)
+        │      └─ workspace_requirements.push_back(kernel->workspace_requirement)
+        │
+        ├─ PlanWorkspaceRequirements(...)   // 统一规划 offset
+        │
+        └─ for each index:
+               └─ 写回 offset 到 kernel/step
+                  → ExecutionPlan::Create（StateAliasPlan 排序/越界校验、
+                    runtime_checks 端口引用静态校验）
 ```
 
 ## 3. 关键函数调用序列
@@ -116,12 +110,15 @@ src/execution/execution_plan_builder.cpp
 
 核心步骤：
 
-1. 收集 workspace 需求：
+1. 收集 workspace 需求（第一遍 resolve kernel 时顺带收集）：
 
 ```cpp
 std::vector<WorkspaceRequirement> workspace_requirements;
-for (const auto& node : nodes) {
-    workspace_requirements.push_back(GetNodeWorkspaceRequirement(node));
+for (auto& node : nodes) {
+    // 先经 PrepareKernelChecked 解析 kernel：backend 是 workspace 需求的唯一权威
+    auto kernel = PrepareKernelChecked(backend, node.op_type, node.selector,
+                                       node.op_params, node.caller_workspace_assertion);
+    workspace_requirements.push_back(kernel->workspace_requirement);
 }
 ```
 
@@ -135,13 +132,7 @@ PlanWorkspaceRequirements(std::span(workspace_requirements))
 
 返回失败则直接返回 `Status`。
 
-3. 遍历每个 node：
-
-```cpp
-for (size_t index = 0; index < nodes.size(); ++index)
-```
-
-每个 node 依次执行 backend 获取、语义 metadata 准备、kernel prepare、packed weight 绑定、step 写入。
+3. 遍历每个 node（两遍：第一遍 resolve kernel 并收集 workspace 需求；offset 规划后第二遍组装 step）。每个 node 依次执行 backend 获取、kernel prepare（含可选调用方 workspace 断言比对）、packed weight 绑定、step 写入。
 
 ### C. Backend 获取
 
@@ -165,46 +156,33 @@ return backend.status();
 
 这个 backend 后续用于 kernel resolution。
 
-### D. Selector 构造
+### D. Selector
 
-每个 node 会通过 helper：
-
-```cpp
-MakeSelectorForNode(const ExecutionPlanNodeSpec& node)
-```
-
-生成：
-
-```cpp
-KernelSelector{
-    .device_type = node.device_type,
-    .activation_dtype = node.activation_dtype,
-    .weight_dtype = node.weight_dtype,
-    .weight_format = node.weight_format,
-    .isa = node.isa,
-    .phase = node.phase,
-}
-```
-
-这个 selector 是 backend/kernel registry 选择内核的关键输入。
+`KernelSelector` 是 `ExecutionPlanNodeSpec` / `LoweredStepSpec` 的整体字段，
+不需要构造 helper：调用方（或 lowering 按 dtype 推导契约）直接提供
+`device_type`/`act_dtype`/`weight_dtype`/`weight_format`/`isa`/`phase`，
+builder 原样携带。这个 selector 是 backend/kernel registry 选择内核的关键输入。
 
 ### E. 语义 metadata 准备
 
-`PrepareNodeMetadata(node, trusted)` 始终根据 `OperatorSchema` 调用
+`PrepareUntrustedNode` / `PrepareTrustedNode` 始终根据 `OperatorSchema` 调用
 `MakeCompactInputSpecs`，因此 state/resource port 不会进入 runtime tensor
 binding，也不会进入 `InferOperator` 的 compact 输入。
 
-- `trusted == true`（`LoweredGraph`）：graph construction 已执行
+- 受信路径（`LoweredGraph` → `PrepareTrustedNode`）：graph construction 已执行
   `InferOperator`，builder 直接保留 lowered 的 `output_specs` 与
   `runtime_checks`，不会创建第二个语义权威。
-- `trusted == false`（直接 node spec）：`op_params` 必须不是
+- 未受信路径（直接 node spec → `PrepareUntrustedNode`）：`op_params` 必须不是
   `std::monostate`；builder 调用 `InferOperator`，并要求调用方提供的
-  `output_specs` 和 `runtime_checks` 精确匹配推导结果。
+  `output_specs` 和 `runtime_checks` 精确匹配推导结果；随后用共享推导函数
+  `DeriveSelectorDTypes`（与 lowering 同一规则）交叉校验
+  `selector.act_dtype/weight_dtype` 与算子 activation/weight 端口 dtype 一致，
+  防止按错误 dtype 解析内核（类型混淆）。
 
 ### F. Kernel prepare
 
 ```cpp
-backend.PrepareKernel(node.op_type, MakeSelectorForNode(node), node.op_params)
+backend.PrepareKernel(node.op_type, node.selector, node.op_params)
 ```
 
 这是唯一的 plan-time kernel resolution API。backend 选择 descriptor，并将
@@ -215,8 +193,9 @@ backend.PrepareKernel(node.op_type, MakeSelectorForNode(node), node.op_params)
 ### G. Packed weight 绑定
 
 ```cpp
-ResolvePackedWeightsForNode(const PackedWeightStore* packed_weight_store,
-                            const ExecutionPlanNodeSpec& node)
+ResolvePackedWeights(const PackedWeightStore* packed_weight_store,
+                     OpType op_type,
+                     const KernelSelector& selector)
 ```
 
 规则：
@@ -224,7 +203,7 @@ ResolvePackedWeightsForNode(const PackedWeightStore* packed_weight_store,
 1. 如果：
 
 ```cpp
-node.weight_format != WeightFormat::kPacked
+selector.weight_format != WeightFormat::kPacked
 ```
 
 返回：
@@ -259,17 +238,17 @@ ExecutionStep::packed_weights
 
 ### H. 生成最终 step
 
-每个 node 最终变成一个：
+offset 规划后，每个 prepared node 最终变成一个：
 
 ```cpp
 ExecutionStep{
-    .selector = MakeSelectorForNode(node),
-    .kernel = std::move(kernel),
-    .packed_weights = *packed_weights,
+    .selector = node.selector,
+    .kernel = std::move(node.kernel),   // 含已写回的计划后 workspace_requirement
+    .packed_weights = node.packed_weights,
     .workspace_requirement = workspace_requirements[index],
-    .input_specs = std::move(metadata.compact_input_specs),
-    .output_specs = std::move(metadata.output_specs),
-    .runtime_checks = std::move(metadata.runtime_checks),
+    .input_specs = std::move(node.compact_input_specs),
+    .output_specs = std::move(node.output_specs),
+    .runtime_checks = std::move(node.runtime_checks),
 }
 ```
 

@@ -39,6 +39,7 @@ private:
     static Status RunStep(size_t step_index,
                           const ExecutionStep& step,
                           const RuntimeBindingContext& bindings,
+                          const BindingTable& binding_table,
                           const StateAliasPlan& alias_plan) noexcept;
 
     /// @brief Verifies that a step's state aliases have runtime backing.

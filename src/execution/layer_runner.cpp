@@ -1,7 +1,6 @@
 #include "execution/layer_runner.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/kernel_invoker.h"
-#include "aethermind/shape_inference/shape_constraint_evaluator.h"
 
 namespace aethermind {
 namespace {
@@ -24,8 +23,17 @@ Status LayerRunner::Run(const ExecutionPlan& plan,
                         const RuntimeBindingContext& bindings) noexcept {
     const auto& steps = plan.steps();
     const auto& alias_plan = plan.state_alias_plan();
+    const BindingTable* const binding_table = bindings.binding_table();
+    if (binding_table == nullptr) {
+        return Status::FailedPrecondition(
+                "RuntimeBindingContext requires a BindingTable before execution");
+    }
+    if (!binding_table->IsCompatible(plan)) {
+        return Status::InvalidArgument(
+                "RuntimeBindingContext BindingTable is not compatible with ExecutionPlan");
+    }
     for (size_t i = 0; i < steps.size(); ++i) {
-        if (const auto status = RunStep(i, steps[i], bindings, alias_plan);
+        if (const auto status = RunStep(i, steps[i], bindings, *binding_table, alias_plan);
             !status.ok()) {
             return status;
         }
@@ -36,6 +44,7 @@ Status LayerRunner::Run(const ExecutionPlan& plan,
 Status LayerRunner::RunStep(size_t step_index,
                             const ExecutionStep& step,
                             const RuntimeBindingContext& bindings,
+                            const BindingTable& binding_table,
                             const StateAliasPlan& alias_plan) noexcept {
     AM_RETURN_IF_ERROR(ValidateStateAliasesForStep(
             step_index, step, alias_plan, bindings));
@@ -48,31 +57,12 @@ Status LayerRunner::RunStep(size_t step_index,
     KernelContext ctx = BuildKernelContext(step, bindings);
     ctx.workspace_binding = workspace_binding.value();
 
-    const auto tensor_binding = bindings.GetStepTensorBinding(step_index);
-    if (!tensor_binding.ok()) {
-        return tensor_binding.status();
-    }
-    if ((*tensor_binding)->inputs.size() != step.input_specs.size() ||
-        (*tensor_binding)->outputs.size() != step.output_specs.size()) {
+    const StepTensorBinding& tensor_binding = binding_table.step(step_index);
+    if (tensor_binding.inputs.size() != step.input_specs.size() ||
+        tensor_binding.outputs.size() != step.output_specs.size()) {
         return Status::InvalidArgument("Runtime tensor binding arity does not match ExecutionStep specs");
     }
-    // Statically-proven shape constraints are pruned from runtime_checks, so
-    // verify the plan-time TensorSpec premises (dtype/rank/static dims/
-    // symbolic identity) the proof relied on before evaluating the deferred
-    // checks.
-    AM_RETURN_IF_ERROR(ValidateTensorBindingPremises(step.input_specs,
-                                                     step.output_specs,
-                                                     (*tensor_binding)->inputs,
-                                                     (*tensor_binding)->outputs));
-    if (!step.runtime_checks.empty()) {
-        AM_RETURN_IF_ERROR(ValidateShapeConstraints(step.runtime_checks,
-                                                    (*tensor_binding)->inputs,
-                                                    (*tensor_binding)->outputs));
-    }
-
-    return InvokeKernel(step.kernel, ctx,
-                        (*tensor_binding)->inputs,
-                        (*tensor_binding)->outputs);
+    return InvokeKernel(step.kernel, ctx, tensor_binding.inputs, tensor_binding.outputs);
 }
 
 Status LayerRunner::ValidateStateAliasesForStep(

@@ -1,7 +1,5 @@
 #include "aethermind/execution/runtime_binding_context.h"
 
-#include <string>
-
 namespace aethermind {
 
 void RuntimeBindingContext::SetWorkspaceArena(WorkspaceArena* workspace_arena) noexcept {
@@ -87,27 +85,12 @@ void RuntimeBindingContext::ResetSequenceState() noexcept {
     sequence_state_ = {};
 }
 
-void RuntimeBindingContext::SetStepTensorBinding(size_t step_index,
-                                                 StepTensorBinding binding) {
-    if (step_index >= step_tensor_bindings_.size()) {
-        step_tensor_bindings_.resize(step_index + 1);
-    }
-    step_tensor_bindings_[step_index] = std::move(binding);
+void RuntimeBindingContext::SetBindingTable(BindingTable binding_table) noexcept {
+    binding_table_ = std::move(binding_table);
 }
 
-StatusOr<const StepTensorBinding*> RuntimeBindingContext::GetStepTensorBinding(size_t step_index) const noexcept {
-    if (step_index >= step_tensor_bindings_.size()) {
-        return Status::InvalidArgument(
-                "RuntimeBindingContext has no tensor binding for step " +
-                std::to_string(step_index));
-    }
-    const auto& binding = step_tensor_bindings_[step_index];
-    if (binding.inputs.empty() && binding.outputs.empty()) {
-        return Status::InvalidArgument(
-                "RuntimeBindingContext tensor binding for step " +
-                std::to_string(step_index) + " is empty");
-    }
-    return &binding;
+const BindingTable* RuntimeBindingContext::binding_table() const noexcept {
+    return binding_table_.empty() ? nullptr : &binding_table_;
 }
 
 void RuntimeBindingContext::Reset() noexcept {
@@ -117,7 +100,7 @@ void RuntimeBindingContext::Reset() noexcept {
     ClearKVCacheView();
     ClearAllTempBufferBindings();
     ResetSequenceState();
-    step_tensor_bindings_.clear();
+    binding_table_ = {};
 }
 
 }// namespace aethermind

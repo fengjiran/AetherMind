@@ -8,11 +8,10 @@
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/base/workspace_arena.h"
+#include "aethermind/execution/execution_bindings.h"
 #include "aethermind/runtime/kv_cache_view.h"
-#include "aethermind/runtime/workspace.h"
 
 #include <array>
-#include <vector>
 
 namespace aethermind {
 
@@ -46,21 +45,12 @@ struct RuntimeSequenceState {
     size_t current_pos = 0;
 };
 
-/// @brief Per-step tensor binding passed to the executor before Execute().
-///
-/// @note TensorViews borrow data/stride pointers that must remain valid for
-///       the entire duration of the Execute() call.
-struct StepTensorBinding {
-    std::vector<TensorView> inputs;
-    std::vector<MutableTensorView> outputs;
-};
-
 /// @brief Aggregates the runtime inputs a plan execution needs.
 ///
 /// Owned by the caller and populated before Execute(). Holds a borrowed
 /// WorkspaceArena (must outlive execution), an optional KV cache view,
-/// caller-owned temporary buffers, sequence progress state, and per-step
-/// tensor bindings indexed by step number.
+/// caller-owned temporary buffers, sequence progress state, and a controlled
+/// BindingTable that caches per-value and per-step tensor bindings.
 class RuntimeBindingContext {
 public:
     RuntimeBindingContext() = default;
@@ -136,21 +126,14 @@ public:
     /// @brief Resets the sequence progress state.
     void ResetSequenceState() noexcept;
 
-    /// @brief Stores the tensor binding for one step.
-    ///
-    /// @param step_index Index in the plan.
-    /// @param binding Borrowed tensor views; must outlive execution.
-    void SetStepTensorBinding(size_t step_index, StepTensorBinding binding);
+    /// @brief Installs the cold-path binding cache for the current plan/session.
+    void SetBindingTable(BindingTable binding_table) noexcept;
 
-    /// @brief Returns the tensor binding for one step.
-    ///
-    /// @param step_index Index in the plan.
-    /// @return The step's binding, or an error if none was stored.
-    AM_NODISCARD StatusOr<const StepTensorBinding*> GetStepTensorBinding(
-            size_t step_index) const noexcept;
+    /// @brief Returns the binding cache, or nullptr when none is installed.
+    AM_NODISCARD const BindingTable* binding_table() const noexcept;
 
     /// @brief Resets workspace arena, KV cache view, temporary buffers,
-    ///        per-step tensor bindings, and sequence state to defaults.
+    ///        the binding table, and sequence state to defaults.
     void Reset() noexcept;
 
 private:
@@ -162,7 +145,7 @@ private:
     KVCacheView kv_cache_view_{};
     std::array<TempBufferBinding, static_cast<size_t>(TempBufferKind::kCount)> temp_buffers_{};
     RuntimeSequenceState sequence_state_{};
-    std::vector<StepTensorBinding> step_tensor_bindings_{};
+    BindingTable binding_table_{};
 };
 
 }// namespace aethermind

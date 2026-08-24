@@ -32,10 +32,13 @@ public:
             const Backend& backend,
             const ExecutionPlanNodeSpec& node);
 
-    /// @brief Builds an ExecutionPlan from untrusted node specs.
+    /// @brief Builds an ExecutionPlan from independent untrusted node specs.
     ///
     /// @param runtime Runtime context providing backends.
-    /// @param nodes Untrusted per-node metadata.
+    /// @param nodes Untrusted per-node metadata. This API has no edge
+    ///        representation: every node receives distinct external operands
+    ///        and produces distinct externally-visible results. Use
+    ///        Build(LoweredGraph) for graph dataflow.
     /// @return The built plan, or an error on validation or kernel failure.
     static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
@@ -61,11 +64,6 @@ public:
     /// @param runtime Runtime context providing backends.
     /// @param lowered_graph Finalized compiler artifact.
     /// @return The built plan, or an error if the artifact is invalid.
-    /// @note Consumption scope: this overload uses only `lowered.steps()` (their
-    ///       specs) and the resolved state aliases. The step bindings, value
-    ///       metadata, and model inputs/outputs are not yet wired into runtime
-    ///       tensor/state binding; an ExecutionPlan returned here must not be
-    ///       treated as having completed runtime binding.
     static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
             const LoweredGraph& lowered_graph);
@@ -77,8 +75,6 @@ public:
     /// @param packed_weight_store Storage for packed-format weights.
     /// @param lowered Finalized compiler artifact.
     /// @return The built plan, or an error if the artifact is invalid.
-    /// @note Same consumption-scope restriction as the Build(LoweredGraph)
-    ///       overload.
     static StatusOr<ExecutionPlan> Build(
             RuntimeContext& runtime,
             const PackedWeightStore& packed_weight_store,

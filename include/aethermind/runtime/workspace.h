@@ -24,7 +24,6 @@
 
 #include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"
-#include "aethermind/base/workspace.h"
 #include "aethermind/base/workspace_types.h"
 #include "utils/overflow_check.h"
 

@@ -118,6 +118,7 @@ StatusOr<ConcreteTensorMetadata> ResolveConcreteMetadata(
                     "Cannot allocate an activation with unconstrained dimensions");
         }
     }
+
     metadata.strides.assign(metadata.shape.size(), 1);
     for (size_t i = metadata.shape.size(); i > 1; --i) {
         size_t product = 0;
@@ -238,31 +239,31 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
         readable[value.index] = &tensor;
     }
 
-    for (const auto& binding: external.writable) {
-        if (binding.value.index >= plan.values().size()) {
+    for (const auto& [value, tensor]: external.writable) {
+        if (value.index >= plan.values().size()) {
             return Status::InvalidArgument(
                     "External writable binding references an invalid ExecutionValueId");
         }
 
-        if (writable[binding.value.index] != nullptr) {
+        if (writable[value.index] != nullptr) {
             return Status::InvalidArgument(
                     "External writable bindings contain a duplicate ExecutionValueId");
         }
 
-        if (plan.values()[binding.value.index].kind != ExecutionValueKind::kActivation) {
+        if (plan.values()[value.index].kind != ExecutionValueKind::kActivation) {
             return Status::InvalidArgument(
                     "Only activation values may use writable external bindings");
         }
 
         AM_RETURN_IF_ERROR(ValidateExternalView(
-                binding.tensor, plan.values()[binding.value.index].spec, symbol_values));
-        writable[binding.value.index] = &binding.tensor;
+                tensor, plan.values()[value.index].spec, symbol_values));
+        writable[value.index] = &tensor;
     }
 
     std::vector<size_t> activation_offsets(plan.values().size(), kUnassignedOffset);
     size_t activation_bytes = 0;
     for (size_t i = 0; i < plan.values().size(); ++i) {
-        const ExecutionValueDesc& value = plan.values()[i];
+        const auto& value = plan.values()[i];
         BoundValue& bound = storage->values[i];
         switch (value.kind) {
             case ExecutionValueKind::kModelInput:
@@ -294,17 +295,28 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
                     bound.has_writable = true;
                     break;
                 }
+
                 {
                     auto metadata = ResolveConcreteMetadata(value.spec, symbol_values);
-                    if (!metadata.ok()) return metadata.status();
+                    if (!metadata.ok()) {
+                        return metadata.status();
+                    }
+
                     auto bytes = ComputeByteSize(*metadata, value.spec.dtype);
-                    if (!bytes.ok()) return bytes.status();
+                    if (!bytes.ok()) {
+                        return bytes.status();
+                    }
+
                     const auto aligned_offset = AlignWorkspaceOffset(activation_bytes, kActivationAlignment);
-                    if (!aligned_offset.ok()) return aligned_offset.status();
+                    if (!aligned_offset.ok()) {
+                        return aligned_offset.status();
+                    }
+
                     size_t next = 0;
                     if (CheckOverflowAdd(*aligned_offset, *bytes, &next)) {
                         return Status::Overflow("Activation arena size overflowed size_t");
                     }
+
                     activation_offsets[i] = *aligned_offset;
                     activation_bytes = next;
                     storage->metadata[i] = std::move(*metadata);
@@ -315,8 +327,10 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
 
     storage->activation_storage = activation_allocator.Allocate(activation_bytes);
     if (!storage->activation_storage.is_initialized()) {
-        return Status::ResourceExhausted("Activation allocator returned an uninitialized Buffer");
+        return Status::ResourceExhausted(
+                "Activation allocator returned an uninitialized Buffer");
     }
+
     for (size_t i = 0; i < plan.values().size(); ++i) {
         if (activation_offsets[i] == kUnassignedOffset) continue;
         const ExecutionValueDesc& value = plan.values()[i];
@@ -337,14 +351,17 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
         for (const uint32_t port: step.kernel_input_ports) {
             const BoundValue& value = storage->values[step.inputs[port].index];
             if (!value.readable.is_valid()) {
-                return Status::FailedPrecondition("ExecutionPlan kernel input has no canonical TensorView binding");
+                return Status::FailedPrecondition(
+                        "ExecutionPlan kernel input has no canonical TensorView binding");
             }
             binding.inputs.push_back(value.readable);
         }
+
         for (const uint32_t port: step.kernel_output_ports) {
             const BoundValue& value = storage->values[step.outputs[port].index];
             if (!value.has_writable || !value.writable.is_valid()) {
-                return Status::FailedPrecondition("ExecutionPlan kernel output has no canonical writable TensorView binding");
+                return Status::FailedPrecondition(
+                        "ExecutionPlan kernel output has no canonical writable TensorView binding");
             }
             binding.outputs.push_back(value.writable);
         }

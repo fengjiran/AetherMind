@@ -5,6 +5,7 @@
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/shape_inference/shape_constraint.h"
 #include "aethermind/shape_inference/shape_symbol.h"
+#include "aethermind/shape_inference/tensor_spec.h"
 
 #include <span>
 
@@ -47,6 +48,33 @@ StatusOr<ShapeConstraintEvaluationResult> EvaluateShapeConstraint(
 ///         kDeferred.
 Status ValidateShapeConstraints(
         std::span<const ShapeConstraint> constraints,
+        std::span<const TensorView> inputs,
+        std::span<const MutableTensorView> outputs);
+
+/// @brief Validates that runtime tensor bindings preserve the plan-time
+///        TensorSpec premises that statically-proven shape constraints rely on.
+///
+/// Constraints proven satisfied at plan time (kSatisfied) are pruned from
+/// runtime_checks, so a plan bound to incompatible tensors would silently
+/// break them. This closes that gap by checking, per bound view, that:
+/// - dtype matches the plan spec;
+/// - rank matches the plan spec when the spec's rank is statically known;
+/// - static dimensions match their plan values;
+/// - dimensions sharing one ShapeSymbol (symbolic identity) still agree at
+///   runtime, across ports of the same step.
+///
+/// Invalid views (default-constructed test stubs) are skipped: they carry no
+/// shape premises to compare against.
+///
+/// @param input_specs  Compact input specs from the plan step.
+/// @param output_specs Output specs from the plan step.
+/// @param inputs       Concrete runtime input tensor views.
+/// @param outputs      Concrete runtime output tensor views.
+/// @return OkStatus when all premises hold; kInvalidArgument on the first
+///         drift, with a message identifying the port and dimension.
+Status ValidateTensorBindingPremises(
+        std::span<const TensorSpec> input_specs,
+        std::span<const TensorSpec> output_specs,
         std::span<const TensorView> inputs,
         std::span<const MutableTensorView> outputs);
 

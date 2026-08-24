@@ -5,6 +5,7 @@
 #include "utils/variant_utils.h"
 
 #include <string>
+#include <unordered_map>
 
 namespace aethermind {
 namespace {
@@ -472,6 +473,93 @@ Status ValidateShapeConstraints(const std::span<const ShapeConstraint> constrain
             return Status::Internal("Runtime shape constraint evaluation returned kDeferred; "
                                     "all dimensions are concrete at runtime, this indicates a bug");
         }
+    }
+    return Status::Ok();
+}
+
+namespace {
+
+// Symbol values (ShapeSymbol::value()) seen so far in this step's bindings,
+// mapped to the first runtime dimension value they instantiated to. Shared
+// across ports so symbolic identity drift is caught across tensors too.
+using SymbolValueMap = std::unordered_map<int64_t, int64_t>;
+
+// Checks one bound view against its plan spec. Views that are invalid
+// (default-constructed test stubs) carry no premises and are skipped.
+template<typename View>
+Status ValidateSpecAgainstView(const TensorSpec& spec,
+                               const View& view,
+                               std::string_view role,
+                               size_t port_index,
+                               SymbolValueMap& symbol_values) {
+    if (!view.is_valid()) {
+        return Status::Ok();
+    }
+
+    if (view.dtype() != spec.dtype) {
+        return Status::InvalidArgument(
+                "Runtime tensor binding for " + std::string(role) + " " +
+                std::to_string(port_index) + " dtype " +
+                ToString(view.dtype()) + " does not match plan spec dtype " +
+                ToString(spec.dtype));
+    }
+
+    const std::string port_label = std::string(role) + " " + std::to_string(port_index);
+    const auto spec_rank = spec.shape.rank();
+    const size_t runtime_rank = view.shape().size();
+    if (spec_rank.has_value() && *spec_rank != runtime_rank) {
+        return Status::InvalidArgument(
+                "Runtime tensor binding for " + port_label + " rank " +
+                std::to_string(runtime_rank) + " does not match plan spec rank " +
+                std::to_string(*spec_rank));
+    }
+
+    if (!spec.shape.IsRanked()) {
+        return Status::Ok();
+    }
+    for (size_t d = 0; d < runtime_rank; ++d) {
+        const ShapeSymbol& dim = spec.shape[d];
+        const int64_t runtime_dim = view.shape()[d];
+        if (dim.IsStatic()) {
+            if (runtime_dim != dim.GetStaticValue()) {
+                return Status::InvalidArgument(
+                        "Runtime tensor binding for " + port_label + " dimension " +
+                        std::to_string(d) + " (value " + std::to_string(runtime_dim) +
+                        ") does not match plan spec static dimension " +
+                        std::to_string(dim.GetStaticValue()));
+            }
+        } else if (dim.IsSymbolic()) {
+            const auto [it, inserted] =
+                    symbol_values.emplace(dim.value(), runtime_dim);
+            if (!inserted && it->second != runtime_dim) {
+                return Status::InvalidArgument(
+                        "Runtime tensor binding for " + port_label + " dimension " +
+                        std::to_string(d) + " (value " + std::to_string(runtime_dim) +
+                        ") conflicts with another binding of the same symbolic "
+                        "dimension (value " +
+                        std::to_string(it->second) + ")");
+            }
+        }
+        // Unknown dims (ShapeSymbol::kUnknown) carry no premise.
+    }
+    return Status::Ok();
+}
+
+}// namespace
+
+Status ValidateTensorBindingPremises(
+        const std::span<const TensorSpec> input_specs,
+        const std::span<const TensorSpec> output_specs,
+        const std::span<const TensorView> inputs,
+        const std::span<const MutableTensorView> outputs) {
+    SymbolValueMap symbol_values;
+    for (size_t i = 0; i < input_specs.size(); ++i) {
+        AM_RETURN_IF_ERROR(
+                ValidateSpecAgainstView(input_specs[i], inputs[i], "input", i, symbol_values));
+    }
+    for (size_t i = 0; i < output_specs.size(); ++i) {
+        AM_RETURN_IF_ERROR(
+                ValidateSpecAgainstView(output_specs[i], outputs[i], "output", i, symbol_values));
     }
     return Status::Ok();
 }

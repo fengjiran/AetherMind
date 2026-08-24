@@ -45,19 +45,28 @@ Status ValidateShapeAgainstSpec(const TensorSpec& spec,
     }
 
     if (shape.size() != *spec.shape.rank()) {
-        return Status::InvalidArgument("External tensor rank does not match ExecutionPlan value spec");
+        return Status::InvalidArgument(
+                "External tensor rank does not match ExecutionPlan value spec");
     }
+
     for (size_t dim = 0; dim < shape.size(); ++dim) {
-        if (shape[dim] < 0) return Status::InvalidArgument("External tensor dimensions must be non-negative");
-        const ShapeSymbol symbol = spec.shape[dim];
-        if (symbol.IsStatic()) {
+        if (shape[dim] < 0) {
+            return Status::InvalidArgument(
+                    "External tensor dimensions must be non-negative");
+        }
+
+        if (const ShapeSymbol symbol = spec.shape[dim]; symbol.IsStatic()) {
             if (shape[dim] != symbol.GetStaticValue()) {
-                return Status::InvalidArgument("External tensor static dimension does not match ExecutionPlan value spec");
+                return Status::InvalidArgument(
+                        "External tensor static dimension does not "
+                        "match ExecutionPlan value spec");
             }
         } else if (symbol.IsSymbolic()) {
-            const auto [it, inserted] = symbol_values.emplace(symbol.value(), shape[dim]);
-            if (!inserted && it->second != shape[dim]) {
-                return Status::InvalidArgument("External tensor bindings disagree on a shared ShapeSymbol");
+            if (const auto [it, inserted] =
+                        symbol_values.emplace(symbol.value(), shape[dim]);
+                !inserted && it->second != shape[dim]) {
+                return Status::InvalidArgument(
+                        "External tensor bindings disagree on a shared ShapeSymbol");
             }
         }
     }
@@ -67,14 +76,20 @@ Status ValidateShapeAgainstSpec(const TensorSpec& spec,
 Status ValidateExternalView(const TensorView& view,
                             const TensorSpec& spec,
                             std::unordered_map<int64_t, int64_t>& symbol_values) {
-    if (!view.is_valid()) return Status::InvalidArgument("External read-only tensor view is invalid");
+    if (!view.is_valid()) {
+        return Status::InvalidArgument(
+                "External read-only tensor view is invalid");
+    }
     return ValidateShapeAgainstSpec(spec, view.dtype(), view.shape(), symbol_values);
 }
 
 Status ValidateExternalView(const MutableTensorView& view,
                             const TensorSpec& spec,
                             std::unordered_map<int64_t, int64_t>& symbol_values) {
-    if (!view.is_valid()) return Status::InvalidArgument("External writable tensor view is invalid");
+    if (!view.is_valid()) {
+        return Status::InvalidArgument(
+                "External writable tensor view is invalid");
+    }
     return ValidateShapeAgainstSpec(spec, view.dtype(), view.shape(), symbol_values);
 }
 
@@ -82,8 +97,10 @@ StatusOr<ConcreteTensorMetadata> ResolveConcreteMetadata(
         const TensorSpec& spec,
         const std::unordered_map<int64_t, int64_t>& symbol_values) {
     if (!spec.shape.IsRanked()) {
-        return Status::FailedPrecondition("Cannot allocate an activation with unranked shape");
+        return Status::FailedPrecondition(
+                "Cannot allocate an activation with unranked shape");
     }
+
     ConcreteTensorMetadata metadata;
     metadata.shape.reserve(*spec.shape.rank());
     for (const ShapeSymbol symbol: spec.shape) {
@@ -92,11 +109,13 @@ StatusOr<ConcreteTensorMetadata> ResolveConcreteMetadata(
         } else if (symbol.IsSymbolic()) {
             const auto it = symbol_values.find(symbol.value());
             if (it == symbol_values.end()) {
-                return Status::FailedPrecondition("Cannot resolve an activation ShapeSymbol from external bindings");
+                return Status::FailedPrecondition(
+                        "Cannot resolve an activation ShapeSymbol from external bindings");
             }
             metadata.shape.push_back(it->second);
         } else {
-            return Status::FailedPrecondition("Cannot allocate an activation with unconstrained dimensions");
+            return Status::FailedPrecondition(
+                    "Cannot allocate an activation with unconstrained dimensions");
         }
     }
     metadata.strides.assign(metadata.shape.size(), 1);
@@ -104,7 +123,8 @@ StatusOr<ConcreteTensorMetadata> ResolveConcreteMetadata(
         size_t product = 0;
         if (CheckOverflowMul(static_cast<size_t>(metadata.strides[i - 1]),
                              static_cast<size_t>(metadata.shape[i - 1]), &product)) {
-            return Status::Overflow("Activation stride computation overflowed size_t");
+            return Status::Overflow(
+                    "Activation stride computation overflowed size_t");
         }
         metadata.strides[i - 2] = static_cast<int64_t>(product);
     }
@@ -113,17 +133,28 @@ StatusOr<ConcreteTensorMetadata> ResolveConcreteMetadata(
 
 StatusOr<size_t> ComputeByteSize(const ConcreteTensorMetadata& metadata,
                                  DataType dtype) {
-    if (dtype.IsUndefined()) return Status::InvalidArgument("Activation value has undefined dtype");
+    if (dtype.IsUndefined()) {
+        return Status::InvalidArgument(
+                "Activation value has undefined dtype");
+    }
+
     size_t elements = 1;
     for (const int64_t dimension: metadata.shape) {
-        if (dimension < 0) return Status::InvalidArgument("Activation dimension cannot be negative");
+        if (dimension < 0) {
+            return Status::InvalidArgument(
+                    "Activation dimension cannot be negative");
+        }
+
         if (CheckOverflowMul(elements, static_cast<size_t>(dimension), &elements)) {
-            return Status::Overflow("Activation element count overflowed size_t");
+            return Status::Overflow(
+                    "Activation element count overflowed size_t");
         }
     }
+
     size_t bytes = 0;
     if (CheckOverflowMul(elements, static_cast<size_t>(dtype.nbytes()), &bytes)) {
-        return Status::Overflow("Activation byte size overflowed size_t");
+        return Status::Overflow(
+                "Activation byte size overflowed size_t");
     }
     return bytes;
 }
@@ -148,7 +179,8 @@ BindingTable& BindingTable::operator=(BindingTable&&) noexcept = default;
 BindingTable::~BindingTable() = default;
 
 std::span<const BoundValue> BindingTable::values() const noexcept {
-    return storage_ == nullptr ? std::span<const BoundValue>{} : std::span<const BoundValue>{storage_->values};
+    return storage_ == nullptr ? std::span<const BoundValue>{}
+                               : std::span<const BoundValue>{storage_->values};
 }
 
 const StepTensorBinding& BindingTable::step(size_t step_index) const noexcept {
@@ -169,10 +201,9 @@ bool BindingTable::IsCompatible(const ExecutionPlan& plan) const noexcept {
            storage_->plan_key == plan.binding_key() && storage_->steps.size() == plan.size();
 }
 
-StatusOr<BindingTable> BuildExecutionBindings(
-        const ExecutionPlan& plan,
-        const ExternalValueBindings& external,
-        Allocator& activation_allocator) {
+StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
+                                              const ExternalValueBindings& external,
+                                              Allocator& activation_allocator) {
     auto storage = std::make_unique<BindingTableStorage>();
     storage->plan_key = plan.binding_key();
     storage->values.resize(plan.values().size());
@@ -181,31 +212,46 @@ StatusOr<BindingTable> BuildExecutionBindings(
     std::vector<const MutableTensorView*> writable(plan.values().size(), nullptr);
     std::unordered_map<int64_t, int64_t> symbol_values;
 
-    for (const auto& binding: external.readable) {
-        if (binding.value.index >= plan.values().size()) {
-            return Status::InvalidArgument("External readable binding references an invalid ExecutionValueId");
+    for (const auto& [value, tensor]: external.readable) {
+        if (value.index >= plan.values().size()) {
+            return Status::InvalidArgument(
+                    "External readable binding references an invalid ExecutionValueId");
         }
-        if (readable[binding.value.index] != nullptr) {
-            return Status::InvalidArgument("External readable bindings contain a duplicate ExecutionValueId");
+
+        if (readable[value.index] != nullptr) {
+            return Status::InvalidArgument(
+                    "External readable bindings contain a duplicate ExecutionValueId");
         }
-        if (plan.values()[binding.value.index].kind == ExecutionValueKind::kState ||
-            plan.values()[binding.value.index].kind == ExecutionValueKind::kActivation) {
-            return Status::InvalidArgument("State and activation values cannot use read-only external bindings");
+
+        if (plan.values()[value.index].kind == ExecutionValueKind::kState ||
+            plan.values()[value.index].kind == ExecutionValueKind::kActivation) {
+            return Status::InvalidArgument(
+                    "State and activation values cannot use read-only external bindings");
         }
-        AM_RETURN_IF_ERROR(ValidateExternalView(binding.tensor, plan.values()[binding.value.index].spec, symbol_values));
-        readable[binding.value.index] = &binding.tensor;
+
+        AM_RETURN_IF_ERROR(ValidateExternalView(tensor, plan.values()[value.index].spec,
+                                                symbol_values));
+        readable[value.index] = &tensor;
     }
+
     for (const auto& binding: external.writable) {
         if (binding.value.index >= plan.values().size()) {
-            return Status::InvalidArgument("External writable binding references an invalid ExecutionValueId");
+            return Status::InvalidArgument(
+                    "External writable binding references an invalid ExecutionValueId");
         }
+
         if (writable[binding.value.index] != nullptr) {
-            return Status::InvalidArgument("External writable bindings contain a duplicate ExecutionValueId");
+            return Status::InvalidArgument(
+                    "External writable bindings contain a duplicate ExecutionValueId");
         }
+
         if (plan.values()[binding.value.index].kind != ExecutionValueKind::kActivation) {
-            return Status::InvalidArgument("Only activation values may use writable external bindings");
+            return Status::InvalidArgument(
+                    "Only activation values may use writable external bindings");
         }
-        AM_RETURN_IF_ERROR(ValidateExternalView(binding.tensor, plan.values()[binding.value.index].spec, symbol_values));
+
+        AM_RETURN_IF_ERROR(ValidateExternalView(
+                binding.tensor, plan.values()[binding.value.index].spec, symbol_values));
         writable[binding.value.index] = &binding.tensor;
     }
 
@@ -219,8 +265,10 @@ StatusOr<BindingTable> BuildExecutionBindings(
             case ExecutionValueKind::kWeight:
             case ExecutionValueKind::kConstant:
                 if (readable[i] == nullptr) {
-                    return Status::FailedPrecondition("ExecutionPlan value requires an external read-only binding");
+                    return Status::FailedPrecondition(
+                            "ExecutionPlan value requires an external read-only binding");
                 }
+
                 SnapshotMetadata(storage->metadata[i], readable[i]->shape(), readable[i]->strides());
                 bound.readable = TensorView(readable[i]->data(), readable[i]->dtype(),
                                             storage->metadata[i].shape, storage->metadata[i].strides,
@@ -228,7 +276,8 @@ StatusOr<BindingTable> BuildExecutionBindings(
                 break;
             case ExecutionValueKind::kState:
                 if (readable[i] != nullptr || writable[i] != nullptr) {
-                    return Status::InvalidArgument("State values are bound through RuntimeBindingContext, not TensorView");
+                    return Status::InvalidArgument(
+                            "State values are bound through RuntimeBindingContext, not TensorView");
                 }
                 break;
             case ExecutionValueKind::kActivation:

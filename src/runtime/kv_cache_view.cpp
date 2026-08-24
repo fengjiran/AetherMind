@@ -168,6 +168,10 @@ size_t KVCacheView::head_dim() const noexcept {
     return layout_ != nullptr ? layout_->head_dim : 0;
 }
 
+DataType KVCacheView::kv_dtype() const noexcept {
+    return layout_ != nullptr ? layout_->kv_dtype : DataType{};
+}
+
 size_t KVCacheView::token_capacity() const noexcept {
     return valid() ? slot_->capacity_tokens : 0;
 }

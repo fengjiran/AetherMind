@@ -105,6 +105,8 @@ public:
     AM_NODISCARD size_t num_kv_heads() const noexcept;
     /// @brief Returns the head dimension.
     AM_NODISCARD size_t head_dim() const noexcept;
+    /// @brief Returns the KV cache element dtype.
+    AM_NODISCARD DataType kv_dtype() const noexcept;
     /// @brief Returns the reserved session token capacity.
     AM_NODISCARD size_t token_capacity() const noexcept;
     /// @brief Returns the number of committed tokens (== current_pos()).

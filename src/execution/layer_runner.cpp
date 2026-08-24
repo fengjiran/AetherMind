@@ -1,6 +1,7 @@
 #include "execution/layer_runner.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/kernel_invoker.h"
+#include "aethermind/runtime/kv_cache_view.h"
 
 namespace aethermind {
 namespace {
@@ -67,7 +68,7 @@ Status LayerRunner::RunStep(size_t step_index,
 
 Status LayerRunner::ValidateStateAliasesForStep(
         size_t step_index,
-        const ExecutionStep& /*step*/,
+        const ExecutionStep& step,
         const StateAliasPlan& alias_plan,
         const RuntimeBindingContext& bindings) noexcept {
     const auto aliases = alias_plan.ForStep(step_index);
@@ -83,14 +84,45 @@ Status LayerRunner::ValidateStateAliasesForStep(
                 "State alias requires a valid KVCacheView");
     }
 
+    // Cross-check each alias against the bound view: the update is must-alias,
+    // so input/output specs must agree, and the static geometry (dtype,
+    // kv_heads, head_dim) must match the KV cache backing it.
+    const KVCacheView& view = bindings.kv_cache_view();
+    for (const ResolvedStateAlias& alias: aliases) {
+        const TensorSpec& input_spec = step.semantic_input_specs[alias.input_port];
+        const TensorSpec& output_spec = step.semantic_output_specs[alias.output_port];
+        if (input_spec != output_spec) {
+            return Status::InvalidArgument(
+                    "State alias input and output specs must match for must-alias update");
+        }
+        if (input_spec.dtype != view.kv_dtype()) {
+            return Status::InvalidArgument(
+                    "State alias dtype does not match the KVCacheView element dtype");
+        }
+        const SymbolicShape& shape = input_spec.shape;
+        const auto rank = shape.rank();
+        if (!rank.has_value() || *rank != 3) {
+            return Status::InvalidArgument(
+                    "State alias value must be rank 3 [kv_heads, cache_len, head_dim]");
+        }
+        const ShapeSymbol& kv_heads = shape[0];
+        const ShapeSymbol& head_dim = shape[2];
+        if (kv_heads.IsStatic() &&
+            static_cast<size_t>(kv_heads.GetStaticValue()) != view.num_kv_heads()) {
+            return Status::InvalidArgument(
+                    "State alias kv_heads does not match the KVCacheView head count");
+        }
+        if (head_dim.IsStatic() &&
+            static_cast<size_t>(head_dim.GetStaticValue()) != view.head_dim()) {
+            return Status::InvalidArgument(
+                    "State alias head_dim does not match the KVCacheView head dimension");
+        }
+    }
+
     // TODO: when non-KV-cache state aliases land (decode/streaming state) or
     // activation-port aliases are introduced, extend validation here with
-    // StepTensorBinding pointer-comparison checks against aliases[i].
+    // StepTensorBinding pointer-comparison checks against aliases[i]
     // input_port/output_port. The `step` parameter is reserved for that path.
-    // Note: cross-checking the view geometry against the step's operator
-    // parameters (heads/head_dim) is not enforceable yet because
-    // ExecutionStep does not carry op_params; revisit once steps expose the
-    // typed parameters.
 
     return Status::Ok();
 }

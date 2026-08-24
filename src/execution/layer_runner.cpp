@@ -56,6 +56,14 @@ Status LayerRunner::RunStep(size_t step_index,
         (*tensor_binding)->outputs.size() != step.output_specs.size()) {
         return Status::InvalidArgument("Runtime tensor binding arity does not match ExecutionStep specs");
     }
+    // Statically-proven shape constraints are pruned from runtime_checks, so
+    // verify the plan-time TensorSpec premises (dtype/rank/static dims/
+    // symbolic identity) the proof relied on before evaluating the deferred
+    // checks.
+    AM_RETURN_IF_ERROR(ValidateTensorBindingPremises(step.input_specs,
+                                                     step.output_specs,
+                                                     (*tensor_binding)->inputs,
+                                                     (*tensor_binding)->outputs));
     if (!step.runtime_checks.empty()) {
         AM_RETURN_IF_ERROR(ValidateShapeConstraints(step.runtime_checks,
                                                     (*tensor_binding)->inputs,

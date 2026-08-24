@@ -1,10 +1,8 @@
 #include "aethermind/execution/execution_plan.h"
-
 #include "utils/variant_utils.h"
 
 #include <algorithm>
 #include <string>
-#include <tuple>
 #include <utility>
 
 namespace aethermind {
@@ -19,7 +17,7 @@ namespace {
 Status ValidateRuntimeCheckReferences(const ShapeConstraint& check,
                                       const std::vector<TensorSpec>& input_specs,
                                       const std::vector<TensorSpec>& output_specs) {
-    const auto validate_port = [&](const TensorPort& port) -> Status {
+    auto validate_port = [&](const TensorPort& port) -> Status {
         switch (port.direction) {
             case TensorPortType::kInput:
                 if (port.tensor_idx >= input_specs.size()) {
@@ -42,14 +40,14 @@ Status ValidateRuntimeCheckReferences(const ShapeConstraint& check,
                 "Runtime check references a tensor port with an invalid direction");
     };
 
-    const auto validate_dim = [&](const DimLocator& locator) -> Status {
+    auto validate_dim = [&](const DimLocator& locator) -> Status {
         AM_RETURN_IF_ERROR(validate_port(locator.tensor_port));
         const SymbolicShape& shape =
                 locator.tensor_port.direction == TensorPortType::kInput
                         ? input_specs[locator.tensor_port.tensor_idx].shape
                         : output_specs[locator.tensor_port.tensor_idx].shape;
-        const auto rank = shape.rank();
-        if (rank.has_value() && locator.dim_index >= *rank) {
+        if (const auto rank = shape.rank();
+            rank.has_value() && locator.dim_index >= *rank) {
             return Status::InvalidArgument(
                     "Runtime check references dimension " +
                     std::to_string(locator.dim_index) +
@@ -58,7 +56,7 @@ Status ValidateRuntimeCheckReferences(const ShapeConstraint& check,
         return Status::Ok();
     };
 
-    const auto visitor = overloaded{
+    auto visitor = overloaded{
             [&](const DimEqualConstraint& c) {
                 AM_RETURN_IF_ERROR(validate_dim(c.lhs));
                 return validate_dim(c.rhs);
@@ -84,8 +82,7 @@ Status ValidateRuntimeCheckReferences(const ShapeConstraint& check,
             },
             [&](const DimPositiveConstraint& c) {
                 return validate_dim(c.dim);
-            },
-    };
+            }};
     return std::visit(visitor, check.condition);
 }
 
@@ -98,14 +95,15 @@ StatusOr<ExecutionPlan> ExecutionPlan::Create(std::vector<ExecutionStep> steps,
     plan.workspace_layout_ = workspace_layout;
     plan.steps_.reserve(steps.size());
 
-    for (ExecutionStep& step: steps) {
+    for (auto& step: steps) {
         AM_RETURN_IF_ERROR(plan.AddStep(std::move(step)));
     }
 
     // StateAliasPlan is a public data struct; converge its invariants here:
     // aliases must reference existing steps and be sorted by step_index so
-    // ForStep's binary search is well-defined.
-    for (const ResolvedStateAlias& alias: state_alias_plan.aliases) {
+    // ForStep's binary search is well-defined. Stable sort keeps the caller's
+    // relative order among aliases of the same step.
+    for (const auto& alias: state_alias_plan.aliases) {
         if (alias.step_index >= plan.steps_.size()) {
             return Status::InvalidArgument(
                     "State alias references step " +
@@ -113,12 +111,12 @@ StatusOr<ExecutionPlan> ExecutionPlan::Create(std::vector<ExecutionStep> steps,
                     " beyond the plan's step count");
         }
     }
-    std::ranges::sort(state_alias_plan.aliases,
-                      [](const ResolvedStateAlias& lhs,
-                         const ResolvedStateAlias& rhs) noexcept {
-                          return std::tie(lhs.step_index, lhs.input_port, lhs.output_port) <
-                                 std::tie(rhs.step_index, rhs.input_port, rhs.output_port);
-                      });
+
+    std::ranges::stable_sort(state_alias_plan.aliases,
+                             [](const ResolvedStateAlias& lhs,
+                                const ResolvedStateAlias& rhs) noexcept {
+                                 return lhs.step_index < rhs.step_index;
+                             });
     plan.state_alias_plan_ = std::move(state_alias_plan);
 
     return plan;
@@ -126,22 +124,31 @@ StatusOr<ExecutionPlan> ExecutionPlan::Create(std::vector<ExecutionStep> steps,
 
 Status ExecutionPlan::AddStep(ExecutionStep step) {
     if (step.kernel.op_type == OpType::kUnknown) {
-        return Status::InvalidArgument("Execution step kernel op_type cannot be kUnknown");
+        return Status::InvalidArgument(
+                "Execution step kernel op_type cannot be kUnknown");
     }
+
     if (step.kernel.fn == nullptr) {
-        return Status::InvalidArgument("Execution step kernel function cannot be null");
+        return Status::InvalidArgument(
+                "Execution step kernel function cannot be null");
     }
+
     if (step.kernel.params_builder == nullptr && step.kernel.params_size != 0) {
         return Status::InvalidArgument(
                 "Execution step kernel params_size must be zero without a params builder");
     }
+
     if (step.kernel.params_builder != nullptr &&
         (step.kernel.params_size == 0 || step.kernel.params_size > kMaxKernelParamsSize)) {
-        return Status::InvalidArgument("Execution step kernel params_size is outside the supported range");
+        return Status::InvalidArgument(
+                "Execution step kernel params_size is outside the supported range");
     }
+
     if (!IsValidWorkspaceAlignment(step.workspace_requirement.alignment)) {
-        return Status::InvalidArgument("Execution step workspace alignment must be a non-zero power of two");
+        return Status::InvalidArgument(
+                "Execution step workspace alignment must be a non-zero power of two");
     }
+
     if (step.kernel.workspace_requirement.bytes != step.workspace_requirement.bytes ||
         step.kernel.workspace_requirement.alignment != step.workspace_requirement.alignment ||
         step.kernel.workspace_requirement.lifetime != step.workspace_requirement.lifetime ||
@@ -150,7 +157,8 @@ Status ExecutionPlan::AddStep(ExecutionStep step) {
         return Status::InvalidArgument(
                 "Execution step workspace requirement must match its prepared kernel");
     }
-    for (const ShapeConstraint& check: step.runtime_checks) {
+
+    for (const auto& check: step.runtime_checks) {
         AM_RETURN_IF_ERROR(ValidateRuntimeCheckReferences(check,
                                                           step.input_specs,
                                                           step.output_specs));

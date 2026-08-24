@@ -5,10 +5,8 @@
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_schema.h"
 
-#include <algorithm>
 #include <optional>
 #include <span>
-#include <tuple>
 
 namespace aethermind {
 namespace {
@@ -234,6 +232,7 @@ StatusOr<PreparedNode> PrepareTrustedNode(const LoweredStepSpec& node) {
                 "Finalized LoweredStepSpec has invalid compact input metadata: " +
                 compact_input_specs.status().message());
     }
+
     // LoweredGraph is validated by compiler and checked again at the
     // execution trust boundary. Re-running InferOperator here would create a
     // second semantic authority, so only the ExecutionPlan's owning copies
@@ -297,22 +296,23 @@ StatusOr<ExecutionPlan> AssembleExecutionPlan(
         node.packed_weights = *packed_weights;
     }
 
-    const auto layout = PlanWorkspaceRequirements(std::span(workspace_requirements));
+    const auto layout = PlanWorkspaceRequirements(
+            std::span(workspace_requirements));
     if (!layout.ok()) {
         return layout.status();
     }
 
     std::vector<ExecutionStep> steps;
     steps.reserve(nodes.size());
-    for (size_t index = 0; index < nodes.size(); ++index) {
-        auto& node = nodes[index];
-        node.kernel.workspace_requirement = workspace_requirements[index];
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        auto& node = nodes[i];
+        node.kernel.workspace_requirement = workspace_requirements[i];
 
         steps.push_back({
                 .selector = node.selector,
                 .kernel = std::move(node.kernel),
                 .packed_weights = node.packed_weights,
-                .workspace_requirement = workspace_requirements[index],
+                .workspace_requirement = workspace_requirements[i],
                 .input_specs = std::move(node.compact_input_specs),
                 .output_specs = std::move(node.output_specs),
                 .runtime_checks = std::move(node.runtime_checks),
@@ -365,14 +365,8 @@ StatusOr<StateAliasPlan> ResolveStateAliasesForExecution(const LoweredGraph& low
                 .output_port = alias.output_port,
         });
     }
-
-    std::ranges::sort(
-            plan.aliases,
-            [](const ResolvedStateAlias& lhs,
-               const ResolvedStateAlias& rhs) noexcept {
-                return std::tie(lhs.step_index, lhs.input_port, lhs.output_port) <
-                       std::tie(rhs.step_index, rhs.input_port, rhs.output_port);
-            });
+    // ExecutionPlan::Create converges the sorted-by-step_index invariant, so
+    // no sorting is needed here (keeps the ordering logic in one place).
     return plan;
 }
 

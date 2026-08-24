@@ -221,6 +221,7 @@ KV 池隔离是构造性的：`KVCacheManager` 独占静态存储，所有权与
 | `ExecutionPlan::Create` | [execution_plan.cpp](../../src/execution/execution_plan.cpp:94) | 已实现 | 每步：op 非空、resolved kernel fn 非空、workspace 对齐为 2 的幂、kernel/step workspace 需求一致、runtime_checks 端口引用静态校验；`StateAliasPlan` 排序并拒绝越界 step 引用 |
 | `PlanWorkspaceRequirements` | [workspace.h](../../include/aethermind/runtime/workspace.h:121) | 已实现 | 对齐校验、偏移溢出检查；顺序分配，不做跨步骤生命周期复用 |
 | `LayerRunner::ValidateStateAliasesForStep` | [layer_runner.cpp](../../src/execution/layer_runner.cpp:70) | 部分覆盖 | 仅要求 KV 别名存在 `KVCacheView`；通用别名指针比较留 TODO（[layer_runner.cpp](../../src/execution/layer_runner.cpp:93)） |
+| `LayerRunner::ValidateTensorBindingPremises` | [shape_constraint_evaluator.cpp](../../src/shape_inference/shape_constraint_evaluator.cpp:482) | 已实现 | 每步 kernel 调用前校验运行时绑定保持 plan-time TensorSpec 前提（dtype/rank/静态维度/符号 identity），防止 kSatisfied 约束被裁剪后证明前提漂移 |
 | `KVCacheManager` / `KVCacheView` | [kv_cache_manager.h](../../include/aethermind/runtime/kv_cache_manager.h:16)、[kv_cache_view.h](../../include/aethermind/runtime/kv_cache_view.h:84) | 已实现 | 静态存储独占、布局/stride 校验（token 对齐与覆盖关系）、buffer 尺寸校验、读写边界、会话 generation；池隔离为构造性，见 §5.7 |
 | 独立/外部 value spec 合法性（dtype/rank/维度初始化） | 无独立入口 | 部分覆盖 | 节点输出经重推断严格校验；外部 value 依赖各绑定校验，无全 value 遍历的通用校验器（§5.1） |
 | 常量 `inline_data` 字节数与 spec 匹配 | 无独立入口 | 部分覆盖 | 无通用校验器，依赖生产路径各自保证（§5.5） |

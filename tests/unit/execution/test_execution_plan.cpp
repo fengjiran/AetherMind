@@ -1,438 +1,515 @@
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/kernel_invoker.h"
 #include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/memory/cpu_allocator.h"
 
 #include <gtest/gtest.h>
 
-#include <span>
-#include <string>
 #include <vector>
 
 namespace {
 
 using namespace aethermind;
 
+int g_invocations = 0;
+int g_built_param = 0;
+
 Status FakeKernel(const KernelContext&) noexcept {
+    ++g_invocations;
     return Status::Ok();
 }
 
-int g_kernel_invocations = 0;
-int g_built_param = 0;
-
 Status CaptureBuiltParamKernel(const KernelContext& context) noexcept {
-    ++g_kernel_invocations;
-    if (context.kernel_params == nullptr) {
-        return Status::FailedPrecondition("Expected params from the builder");
-    }
+    ++g_invocations;
+    if (context.kernel_params == nullptr) return Status::FailedPrecondition("missing params");
     g_built_param = *static_cast<const int*>(context.kernel_params);
     return Status::Ok();
 }
 
 Status BuildKernelParam(std::span<const TensorView>,
                         std::span<const MutableTensorView>,
-                        void* params_buffer) noexcept {
-    *static_cast<int*>(params_buffer) = 17;
+                        void* params) noexcept {
+    *static_cast<int*>(params) = 17;
     return Status::Ok();
 }
 
 Status FailToBuildKernelParam(std::span<const TensorView>,
                               std::span<const MutableTensorView>,
                               void*) noexcept {
-    return Status::InvalidArgument("test params builder failure");
+    return Status::InvalidArgument("test builder failure");
+}
+
+class CountingAllocator final : public Allocator {
+public:
+    CountingAllocator() : allocator_(Device::CPU()) {}
+
+    Buffer Allocate(size_t bytes) override {
+        ++allocation_count_;
+        return allocator_.Allocate(bytes);
+    }
+
+    AM_NODISCARD Device device() const noexcept override {
+        return allocator_.device();
+    }
+
+    AM_NODISCARD size_t allocation_count() const noexcept {
+        return allocation_count_;
+    }
+
+private:
+    CPUAllocator allocator_;
+    size_t allocation_count_ = 0;
+};
+
+TensorSpec FloatVectorSpec(int64_t size) {
+    return {.dtype = DataType::Float32(),
+            .shape = SymbolicShape(IntArrayView{std::vector<int64_t>{size}})};
+}
+
+StatusOr<ExecutionPlan> MakeSingleSoftmaxPlan(
+        ResolvedKernel kernel = {.op_type = OpType::kSoftmax, .fn = &FakeKernel}) {
+    const TensorSpec spec = FloatVectorSpec(2);
+    return ExecutionPlan::Create(
+            {{.spec = spec, .kind = ExecutionValueKind::kModelInput, .name = "input"},
+             {.spec = spec, .kind = ExecutionValueKind::kActivation, .name = "output"}},
+            {{.index = 0}}, {{.index = 1}},
+            {{.selector = {.device_type = DeviceType::kCPU},
+              .kernel = std::move(kernel),
+              .inputs = {{.index = 0}},
+              .outputs = {{.index = 1}},
+              .kernel_input_ports = {0},
+              .kernel_output_ports = {0},
+              .semantic_input_specs = {spec},
+              .semantic_output_specs = {spec},
+              .input_specs = {spec},
+              .output_specs = {spec}}});
+}
+
+StatusOr<ExecutionPlan> MakeSingleSoftmaxPlanForSpec(const TensorSpec& spec) {
+    const ResolvedKernel kernel{.op_type = OpType::kSoftmax, .fn = &FakeKernel};
+    return ExecutionPlan::Create(
+            {{.spec = spec, .kind = ExecutionValueKind::kModelInput, .name = "input"},
+             {.spec = spec, .kind = ExecutionValueKind::kActivation, .name = "output"}},
+            {{.index = 0}}, {{.index = 1}},
+            {{.selector = {.device_type = DeviceType::kCPU},
+              .kernel = kernel,
+              .inputs = {{.index = 0}},
+              .outputs = {{.index = 1}},
+              .kernel_input_ports = {0},
+              .kernel_output_ports = {0},
+              .semantic_input_specs = {spec},
+              .semantic_output_specs = {spec},
+              .input_specs = {spec},
+              .output_specs = {spec}}});
+}
+
+StatusOr<ExecutionPlan> MakeRmsNormPlan(std::vector<ShapeConstraint> runtime_checks) {
+    const TensorSpec act_spec{.dtype = DataType::Float32(), .shape = SymbolicShape(IntArrayView{std::vector<int64_t>{2, 4}})};
+    const TensorSpec weight_spec{.dtype = DataType::Float32(), .shape = SymbolicShape(IntArrayView{std::vector<int64_t>{4}})};
+    return ExecutionPlan::Create(
+            {{.spec = act_spec, .kind = ExecutionValueKind::kModelInput},
+             {.spec = weight_spec, .kind = ExecutionValueKind::kWeight},
+             {.spec = act_spec, .kind = ExecutionValueKind::kActivation}},
+            {{.index = 0}}, {{.index = 2}},
+            {{.kernel = {.op_type = OpType::kRmsNorm, .fn = &FakeKernel},
+              .inputs = {{.index = 0}, {.index = 1}},
+              .outputs = {{.index = 2}},
+              .kernel_input_ports = {0, 1},
+              .kernel_output_ports = {0},
+              .semantic_input_specs = {act_spec, weight_spec},
+              .semantic_output_specs = {act_spec},
+              .input_specs = {act_spec, weight_spec},
+              .output_specs = {act_spec},
+              .runtime_checks = std::move(runtime_checks)}});
+}
+
+TEST(ExecutionPlan, OwnsLogicalDataflowAndModelIo) {
+    const auto plan = MakeSingleSoftmaxPlan();
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->values().size(), 2U);
+    ASSERT_EQ(plan->model_inputs().size(), 1U);
+    ASSERT_EQ(plan->model_outputs().size(), 1U);
+    ASSERT_EQ(plan->steps().size(), 1U);
+    EXPECT_EQ(plan->steps()[0].inputs[0].index, 0U);
+    EXPECT_EQ(plan->steps()[0].outputs[0].index, 1U);
+    EXPECT_EQ(plan->steps()[0].kernel_input_ports, std::vector<uint32_t>{0});
+    EXPECT_EQ(plan->steps()[0].kernel_output_ports, std::vector<uint32_t>{0});
 }
 
 TEST(ExecutionPlan, StoresResolvedKernelByValue) {
-    ResolvedKernel kernel{
-            .op_type = OpType::kSoftmax,
-            .fn = &FakeKernel,
-            .attrs = {std::byte{7}},
-            .debug_name = "test::fake_kernel",
-            .workspace_requirement = {.bytes = 128, .alignment = 64},
-    };
-
-    const StatusOr<ExecutionPlan> plan = ExecutionPlan::Create({
-            ExecutionStep{
-                    .selector = KernelSelector{.device_type = DeviceType::kCPU},
-                    .kernel = kernel,
-                    .workspace_requirement = {.bytes = 128, .alignment = 64},
-            },
-    });
-
+    ResolvedKernel kernel{.op_type = OpType::kSoftmax,
+                          .fn = &FakeKernel,
+                          .attrs = {std::byte{7}},
+                          .debug_name = "test::fake_kernel"};
+    const auto plan = MakeSingleSoftmaxPlan(kernel);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    ASSERT_EQ(plan->size(), 1U);
-    const ExecutionStep& step = plan->steps().front();
-    EXPECT_EQ(step.kernel.op_type, OpType::kSoftmax);
-    EXPECT_EQ(step.kernel.fn, &FakeKernel);
-    EXPECT_EQ(step.kernel.attrs, kernel.attrs);
-    EXPECT_NE(step.kernel.attrs.data(), kernel.attrs.data());
-    EXPECT_STREQ(step.kernel.debug_name, "test::fake_kernel");
-    EXPECT_EQ(step.workspace_requirement.bytes, 128U);
-    EXPECT_EQ(step.kernel.workspace_requirement.bytes, step.workspace_requirement.bytes);
-    EXPECT_EQ(step.kernel.workspace_requirement.alignment,
-              step.workspace_requirement.alignment);
-    EXPECT_EQ(step.kernel.workspace_requirement.offset, step.workspace_requirement.offset);
+    EXPECT_EQ(plan->steps()[0].kernel.fn, &FakeKernel);
+    EXPECT_EQ(plan->steps()[0].kernel.attrs, kernel.attrs);
+    EXPECT_NE(plan->steps()[0].kernel.attrs.data(), kernel.attrs.data());
 }
 
 TEST(ExecutionPlan, RejectsInvalidResolvedKernel) {
-    EXPECT_EQ(ExecutionPlan::Create({ExecutionStep{}}).status().code(),
+    EXPECT_EQ(ExecutionPlan::Create({}, {}, {}, {ExecutionStep{}}).status().code(),
               StatusCode::kInvalidArgument);
-
-    EXPECT_EQ(ExecutionPlan::Create({ExecutionStep{
-                                            .kernel = ResolvedKernel{
-                                                    .op_type = OpType::kSoftmax,
-                                                    .fn = &FakeKernel,
-                                                    .params_size = 1,
-                                            },
-                                    }})
+    EXPECT_EQ(ExecutionPlan::Create({}, {}, {},
+                                    {ExecutionStep{.kernel = {.op_type = OpType::kSoftmax,
+                                                              .fn = &FakeKernel,
+                                                              .params_size = 1}}})
                       .status()
                       .code(),
               StatusCode::kInvalidArgument);
 }
 
-TEST(KernelInvoker, BuildsParamsOnlyForTheKernelCall) {
-    g_kernel_invocations = 0;
-    g_built_param = 0;
-    KernelContext context{};
-    const Status status = InvokeKernel(
-            ResolvedKernel{
-                    .op_type = OpType::kAdd,
-                    .fn = &CaptureBuiltParamKernel,
-                    .params_builder = &BuildKernelParam,
-                    .params_size = sizeof(int),
-            },
-            context, {}, {});
-
-    ASSERT_TRUE(status.ok()) << status.ToString();
-    EXPECT_EQ(g_kernel_invocations, 1);
-    EXPECT_EQ(g_built_param, 17);
-}
-
-TEST(KernelInvoker, PropagatesBuilderFailureWithoutCallingKernel) {
-    g_kernel_invocations = 0;
-    KernelContext context{};
-    const Status status = InvokeKernel(
-            ResolvedKernel{
-                    .op_type = OpType::kAdd,
-                    .fn = &CaptureBuiltParamKernel,
-                    .params_builder = &FailToBuildKernelParam,
-                    .params_size = sizeof(int),
-            },
-            context, {}, {});
-
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(g_kernel_invocations, 0);
-}
-
-TEST(KernelInvoker, RejectsNullFunctionAndInvalidParamsContract) {
-    KernelContext context{};
-    EXPECT_EQ(InvokeKernel(ResolvedKernel{.op_type = OpType::kAdd}, context, {}, {})
-                      .code(),
-              StatusCode::kFailedPrecondition);
-    EXPECT_EQ(InvokeKernel(ResolvedKernel{
-                                   .op_type = OpType::kAdd,
-                                   .fn = &FakeKernel,
-                                   .params_size = 1,
-                           },
-                           context, {}, {})
-                      .code(),
-              StatusCode::kFailedPrecondition);
-}
-
 TEST(ExecutionPlan, AcceptsRuntimeCheckWithinCompactSpecRanges) {
-    ResolvedKernel kernel{
-            .op_type = OpType::kSoftmax,
-            .fn = &FakeKernel,
-    };
-    const std::vector<int64_t> act_dims{4, 8};
-    const std::vector<int64_t> weight_dims{8};
-    const ShapeConstraint valid_check{
-            .condition = DimEqualConstraint{
-                    .lhs = {.tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 0},
-                            .dim_index = 1},
-                    .rhs = {.tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 1},
-                            .dim_index = 0},
-            },
-            .error_context = "hidden size mismatch",
-    };
-
-    const StatusOr<ExecutionPlan> plan = ExecutionPlan::Create({
-            ExecutionStep{
-                    .kernel = kernel,
-                    .input_specs = {TensorSpec{.dtype = DataType::Float32(),
-                                               .shape = SymbolicShape(IntArrayView{act_dims})},
-                                    TensorSpec{.dtype = DataType::Float32(),
-                                               .shape = SymbolicShape(IntArrayView{weight_dims})}},
-                    .output_specs = {TensorSpec{}},
-                    .runtime_checks = {valid_check},
-            },
-    });
-
-    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    EXPECT_EQ(plan->size(), 1U);
+    const ShapeConstraint check{
+            .condition = DimEqualConstraint{.lhs = {.tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 0}, .dim_index = 1},
+                                            .rhs = {.tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 1}, .dim_index = 0}},
+            .error_context = "hidden mismatch"};
+    EXPECT_TRUE(MakeRmsNormPlan({check}).ok());
 }
 
 TEST(ExecutionPlan, RejectsRuntimeCheckReferencingMissingTensorPort) {
-    ResolvedKernel kernel{
-            .op_type = OpType::kSoftmax,
-            .fn = &FakeKernel,
-    };
-    const ShapeConstraint bad_check{
-            .condition = RankEqualConstraint{
-                    .port = {.direction = TensorPortType::kInput, .tensor_idx = 1},
-                    .target_rank = 2,
-            },
-            .error_context = "unused",
-    };
-
-    const StatusOr<ExecutionPlan> plan = ExecutionPlan::Create({
-            ExecutionStep{
-                    .kernel = kernel,
-                    .input_specs = {TensorSpec{}},
-                    .output_specs = {TensorSpec{}},
-                    .runtime_checks = {bad_check},
-            },
-    });
-
+    const ShapeConstraint check{
+            .condition = RankEqualConstraint{.port = {.direction = TensorPortType::kInput, .tensor_idx = 2}, .target_rank = 2},
+            .error_context = "unused"};
+    const auto plan = MakeRmsNormPlan({check});
     ASSERT_FALSE(plan.ok());
     EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlan, RejectsRuntimeCheckReferencingDimensionBeyondRank) {
-    ResolvedKernel kernel{
-            .op_type = OpType::kSoftmax,
-            .fn = &FakeKernel,
-    };
-    const std::vector<int64_t> input_dims{8};
-    const ShapeConstraint bad_check{
-            .condition = DimPositiveConstraint{
-                    .dim = {.tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 0},
-                            .dim_index = 1},
-            },
-            .error_context = "unused",
-    };
+    const ShapeConstraint check{
+            .condition = DimPositiveConstraint{.dim = {.tensor_port = {.direction = TensorPortType::kInput, .tensor_idx = 1}, .dim_index = 1}},
+            .error_context = "unused"};
+    const auto plan = MakeRmsNormPlan({check});
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+}
 
-    const StatusOr<ExecutionPlan> plan = ExecutionPlan::Create({
-            ExecutionStep{
-                    .kernel = kernel,
-                    .input_specs = {TensorSpec{.dtype = DataType::Float32(),
-                                               .shape = SymbolicShape(IntArrayView{input_dims})}},
-                    .output_specs = {TensorSpec{}},
-                    .runtime_checks = {bad_check},
-            },
-    });
+TEST(KernelInvoker, BuildsParamsOnlyForTheKernelCall) {
+    g_invocations = 0;
+    g_built_param = 0;
+    KernelContext context{};
+    ASSERT_TRUE(InvokeKernel({.op_type = OpType::kAdd,
+                              .fn = &CaptureBuiltParamKernel,
+                              .params_builder = &BuildKernelParam,
+                              .params_size = sizeof(int)},
+                             context, {}, {})
+                        .ok());
+    EXPECT_EQ(g_invocations, 1);
+    EXPECT_EQ(g_built_param, 17);
+}
+
+TEST(KernelInvoker, PropagatesBuilderFailureWithoutCallingKernel) {
+    g_invocations = 0;
+    KernelContext context{};
+    EXPECT_EQ(InvokeKernel({.op_type = OpType::kAdd,
+                            .fn = &CaptureBuiltParamKernel,
+                            .params_builder = &FailToBuildKernelParam,
+                            .params_size = sizeof(int)},
+                           context, {}, {})
+                      .code(),
+              StatusCode::kInvalidArgument);
+    EXPECT_EQ(g_invocations, 0);
+}
+
+TEST(KernelInvoker, RejectsNullFunctionAndInvalidParamsContract) {
+    KernelContext context{};
+    EXPECT_EQ(InvokeKernel({.op_type = OpType::kAdd}, context, {}, {}).code(),
+              StatusCode::kFailedPrecondition);
+    EXPECT_EQ(InvokeKernel({.op_type = OpType::kAdd, .fn = &FakeKernel, .params_size = 1}, context, {}, {}).code(),
+              StatusCode::kFailedPrecondition);
+}
+
+TEST(ExecutionPlan, RejectsActivationInputWithoutEarlierProducer) {
+    const TensorSpec spec = FloatVectorSpec(2);
+    const ResolvedKernel kernel{.op_type = OpType::kSoftmax, .fn = &FakeKernel};
+    const auto plan = ExecutionPlan::Create(
+            {{.spec = spec, .kind = ExecutionValueKind::kActivation}}, {}, {},
+            {{.kernel = kernel,
+              .inputs = {{.index = 0}},
+              .outputs = {{.index = 0}},
+              .kernel_input_ports = {0},
+              .kernel_output_ports = {0},
+              .semantic_input_specs = {spec},
+              .semantic_output_specs = {spec},
+              .input_specs = {spec},
+              .output_specs = {spec}}});
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ExecutionPlan, RejectsModelInputValueMissingFromModelInputs) {
+    const TensorSpec spec = FloatVectorSpec(2);
+    const auto plan = ExecutionPlan::Create(
+            {{.spec = spec, .kind = ExecutionValueKind::kModelInput}},
+            {}, {}, {});
 
     ASSERT_FALSE(plan.ok());
     EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ExecutionPlan, SortsStateAliasPlanForStepLookup) {
-    ResolvedKernel kernel{
-            .op_type = OpType::kSoftmax,
-            .fn = &FakeKernel,
-    };
-    // Deliberately unsorted: Create must converge the ForStep precondition.
-    // The stable sort preserves the caller's order among same-step aliases.
-    const StatusOr<ExecutionPlan> plan = ExecutionPlan::Create(
-            {ExecutionStep{.kernel = kernel}},
-            StateAliasPlan{.aliases = {
-                                   ResolvedStateAlias{.step_index = 0, .input_port = 0, .output_port = 1},
-                                   ResolvedStateAlias{.step_index = 0, .input_port = 0, .output_port = 0},
-                           }});
-
-    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    const auto aliases = plan->state_alias_plan().ForStep(0);
-    ASSERT_EQ(aliases.size(), 2U);
-    EXPECT_EQ(aliases[0].output_port, 1U);
-    EXPECT_EQ(aliases[1].output_port, 0U);
-}
-
-TEST(ExecutionPlan, RejectsStateAliasBeyondStepCount) {
-    ResolvedKernel kernel{
-            .op_type = OpType::kSoftmax,
-            .fn = &FakeKernel,
-    };
-
-    const StatusOr<ExecutionPlan> plan = ExecutionPlan::Create(
-            {ExecutionStep{.kernel = kernel}},
-            StateAliasPlan{.aliases = {
-                                   ResolvedStateAlias{.step_index = 1},
-                           }});
+TEST(ExecutionPlan, RejectsActivationWithoutProducer) {
+    const TensorSpec spec = FloatVectorSpec(2);
+    const auto plan = ExecutionPlan::Create(
+            {{.spec = spec, .kind = ExecutionValueKind::kActivation}},
+            {}, {{.index = 0}}, {});
 
     ASSERT_FALSE(plan.ok());
     EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
-    EXPECT_NE(plan.status().message().find("beyond the plan's step count"),
-              std::string::npos);
-}
-
-namespace {
-
-// Builds a single-step plan whose static specs are [4, 8] float32 in/out.
-StatusOr<ExecutionPlan> MakeStaticShapePlan(const ResolvedKernel& kernel) {
-    const std::vector<int64_t> dims{4, 8};
-    return ExecutionPlan::Create({
-            ExecutionStep{
-                    .kernel = kernel,
-                    .input_specs = {TensorSpec{.dtype = DataType::Float32(),
-                                               .shape = SymbolicShape(IntArrayView{dims})}},
-                    .output_specs = {TensorSpec{.dtype = DataType::Float32(),
-                                                .shape = SymbolicShape(IntArrayView{dims})}},
-            },
-    });
-}
-
-}// namespace
-
-TEST(ExecutionPlan, ExecuteAcceptsBindingsMatchingPlanSpecs) {
-    ResolvedKernel kernel{
-            .op_type = OpType::kSoftmax,
-            .fn = &FakeKernel,
-    };
-    const StatusOr<ExecutionPlan> plan = MakeStaticShapePlan(kernel);
-    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-
-    float input[32]{};
-    float output[32]{};
-    constexpr int64_t in_shape[2] = {4, 8};
-    constexpr int64_t strides[2] = {8, 1};
-    RuntimeBindingContext bindings;
-    bindings.SetStepTensorBinding(0, StepTensorBinding{
-                                             .inputs = {TensorView{input, DataType::Float32(), in_shape, strides}},
-                                             .outputs = {MutableTensorView{output, DataType::Float32(), in_shape, strides}},
-                                     });
-
-    EXPECT_TRUE(Executor::Execute(*plan, bindings).ok());
 }
 
 TEST(ExecutionPlan, ExecuteRejectsBindingDTypeDrift) {
-    ResolvedKernel kernel{
-            .op_type = OpType::kSoftmax,
-            .fn = &FakeKernel,
-    };
-    const StatusOr<ExecutionPlan> plan = MakeStaticShapePlan(kernel);
+    const auto plan = MakeSingleSoftmaxPlan();
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-
-    float input[32]{};
-    float output[32]{};
-    constexpr int64_t in_shape[2] = {4, 8};
-    constexpr int64_t strides[2] = {8, 1};
-    RuntimeBindingContext bindings;
-    bindings.SetStepTensorBinding(0, StepTensorBinding{
-                                             .inputs = {TensorView{input, DataType::Int(32), in_shape, strides}},
-                                             .outputs = {MutableTensorView{output, DataType::Float32(), in_shape, strides}},
-                                     });
-
-    const Status status = Executor::Execute(*plan, bindings);
-
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-    EXPECT_NE(status.message().find("dtype"), std::string::npos);
+    const float input[2]{};
+    const int64_t shape[1] = {2};
+    const int64_t strides[1] = {1};
+    CPUAllocator allocator(Device::CPU());
+    const auto bindings = BuildExecutionBindings(
+            *plan,
+            {.readable = {{.value = {.index = 0},
+                           .tensor = TensorView(input, DataType::Float(16), shape, strides)}}},
+            allocator);
+    ASSERT_FALSE(bindings.ok());
+    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlan, ExecuteRejectsBindingRankDrift) {
-    ResolvedKernel kernel{
-            .op_type = OpType::kSoftmax,
-            .fn = &FakeKernel,
-    };
-    const StatusOr<ExecutionPlan> plan = MakeStaticShapePlan(kernel);
+    const auto plan = MakeSingleSoftmaxPlan();
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-
-    float input[8]{};
-    float output[8]{};
-    constexpr int64_t flat_shape[1] = {8};
-    constexpr int64_t flat_strides[1] = {1};
-    RuntimeBindingContext bindings;
-    bindings.SetStepTensorBinding(0, StepTensorBinding{
-                                             .inputs = {TensorView{input, DataType::Float32(), flat_shape, flat_strides}},
-                                             .outputs = {MutableTensorView{output, DataType::Float32(), flat_shape, flat_strides}},
-                                     });
-
-    const Status status = Executor::Execute(*plan, bindings);
-
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-    EXPECT_NE(status.message().find("rank"), std::string::npos);
+    const float input[2]{};
+    const int64_t shape[2] = {1, 2};
+    const int64_t strides[2] = {2, 1};
+    CPUAllocator allocator(Device::CPU());
+    const auto bindings = BuildExecutionBindings(
+            *plan,
+            {.readable = {{.value = {.index = 0},
+                           .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
+            allocator);
+    ASSERT_FALSE(bindings.ok());
+    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlan, ExecuteRejectsBindingStaticDimDrift) {
-    ResolvedKernel kernel{
-            .op_type = OpType::kSoftmax,
-            .fn = &FakeKernel,
-    };
-    const StatusOr<ExecutionPlan> plan = MakeStaticShapePlan(kernel);
+    const auto plan = MakeSingleSoftmaxPlan();
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-
-    float input[24]{};
-    float output[24]{};
-    constexpr int64_t short_shape[2] = {3, 8};
-    constexpr int64_t strides[2] = {8, 1};
-    RuntimeBindingContext bindings;
-    bindings.SetStepTensorBinding(0, StepTensorBinding{
-                                             .inputs = {TensorView{input, DataType::Float32(), short_shape, strides}},
-                                             .outputs = {MutableTensorView{output, DataType::Float32(), short_shape, strides}},
-                                     });
-
-    const Status status = Executor::Execute(*plan, bindings);
-
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-    EXPECT_NE(status.message().find("static dimension"), std::string::npos);
+    const float input[3]{};
+    const int64_t shape[1] = {3};
+    const int64_t strides[1] = {1};
+    CPUAllocator allocator(Device::CPU());
+    const auto bindings = BuildExecutionBindings(
+            *plan,
+            {.readable = {{.value = {.index = 0},
+                           .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
+            allocator);
+    ASSERT_FALSE(bindings.ok());
+    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ExecutionPlan, ExecuteRejectsSymbolicIdentityDrift) {
-    // Two inputs share one ShapeSymbol at plan time; binding them to
-    // different runtime values violates the symbolic identity premise that
-    // statically-proven constraints relied on.
-    const ShapeSymbol shared = ShapeSymbol::Create();
-    const SymbolicShape sym_shape(std::vector<ShapeSymbol>{shared});
-    ResolvedKernel kernel{
-            .op_type = OpType::kSoftmax,
-            .fn = &FakeKernel,
-    };
-    const StatusOr<ExecutionPlan> plan = ExecutionPlan::Create({
-            ExecutionStep{
-                    .kernel = kernel,
-                    .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = sym_shape},
-                                    TensorSpec{.dtype = DataType::Float32(), .shape = sym_shape}},
-                    .output_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = sym_shape}},
-            },
-    });
+TEST(ExecutionPlan, ExecuteRejectsInvalidViewsWhenCheckingPremises) {
+    const auto plan = MakeSingleSoftmaxPlan();
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-
-    float input_a[4]{};
-    float input_b[8]{};
-    float output[4]{};
-    constexpr int64_t shape_a[1] = {4};
-    constexpr int64_t shape_b[1] = {8};
-    constexpr int64_t strides[1] = {1};
-    RuntimeBindingContext bindings;
-    bindings.SetStepTensorBinding(0, StepTensorBinding{
-                                             .inputs = {TensorView{input_a, DataType::Float32(), shape_a, strides},
-                                                        TensorView{input_b, DataType::Float32(), shape_b, strides}},
-                                             .outputs = {MutableTensorView{output, DataType::Float32(), shape_a, strides}},
-                                     });
-
-    const Status status = Executor::Execute(*plan, bindings);
-
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-    EXPECT_NE(status.message().find("same symbolic dimension"), std::string::npos);
+    CPUAllocator allocator(Device::CPU());
+    const auto bindings = BuildExecutionBindings(
+            *plan, ExternalValueBindings{.readable = {{.value = {.index = 0}, .tensor = TensorView{}}}}, allocator);
+    ASSERT_FALSE(bindings.ok());
+    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ExecutionPlan, ExecuteSkipsInvalidViewsWhenCheckingPremises) {
-    // Default-constructed views are test stubs without shape premises; the
-    // premise check must skip them (the kernel is a stub and reads nothing).
-    ResolvedKernel kernel{
-            .op_type = OpType::kSoftmax,
-            .fn = &FakeKernel,
-    };
-    const StatusOr<ExecutionPlan> plan = MakeStaticShapePlan(kernel);
+TEST(ExecutionPlan, SortsStateAliasPlanForStepLookup) {
+    const TensorSpec tensor_spec = FloatVectorSpec(2);
+    const ResolvedKernel kernel{.op_type = OpType::kKVCacheUpdate, .fn = &FakeKernel};
+    const auto plan = ExecutionPlan::Create(
+            {{.spec = tensor_spec, .kind = ExecutionValueKind::kModelInput},
+             {.spec = tensor_spec, .kind = ExecutionValueKind::kModelInput},
+             {.spec = tensor_spec, .kind = ExecutionValueKind::kState},
+             {.spec = tensor_spec, .kind = ExecutionValueKind::kState},
+             {.spec = tensor_spec, .kind = ExecutionValueKind::kState},
+             {.spec = tensor_spec, .kind = ExecutionValueKind::kState}},
+            {{.index = 0}, {.index = 1}}, {},
+            {{.kernel = kernel,
+              .inputs = {{.index = 0}, {.index = 1}, {.index = 2}, {.index = 3}},
+              .outputs = {{.index = 4}, {.index = 5}},
+              .kernel_input_ports = {0, 1},
+              .kernel_output_ports = {},
+              .semantic_input_specs = {tensor_spec, tensor_spec, tensor_spec, tensor_spec},
+              .semantic_output_specs = {tensor_spec, tensor_spec},
+              .input_specs = {tensor_spec, tensor_spec},
+              .output_specs = {}}},
+            {.aliases = {{.step_index = 0, .input_port = 3, .output_port = 1},
+                         {.step_index = 0, .input_port = 2, .output_port = 0}}});
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    const auto aliases = plan->state_alias_plan().ForStep(0);
+    ASSERT_EQ(aliases.size(), 2U);
+    EXPECT_EQ(aliases[0].input_port, 3U);
+    EXPECT_EQ(aliases[1].input_port, 2U);
+}
 
-    RuntimeBindingContext bindings;
-    bindings.SetStepTensorBinding(0, StepTensorBinding{
-                                             .inputs = {TensorView{}},
-                                             .outputs = {MutableTensorView{}},
-                                     });
+TEST(ExecutionPlan, RejectsStateAliasBeyondStepCount) {
+    const auto plan = MakeSingleSoftmaxPlan();
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    const TensorSpec spec = FloatVectorSpec(2);
+    const auto invalid = ExecutionPlan::Create(
+            {{.spec = spec, .kind = ExecutionValueKind::kModelInput},
+             {.spec = spec, .kind = ExecutionValueKind::kActivation}},
+            {{.index = 0}}, {{.index = 1}},
+            {{.kernel = {.op_type = OpType::kSoftmax, .fn = &FakeKernel},
+              .inputs = {{.index = 0}},
+              .outputs = {{.index = 1}},
+              .kernel_input_ports = {0},
+              .kernel_output_ports = {0},
+              .semantic_input_specs = {spec},
+              .semantic_output_specs = {spec},
+              .input_specs = {spec},
+              .output_specs = {spec}}},
+            {.aliases = {{.step_index = 1}}});
+    ASSERT_FALSE(invalid.ok());
+    EXPECT_EQ(invalid.status().code(), StatusCode::kInvalidArgument);
+}
 
-    EXPECT_TRUE(Executor::Execute(*plan, bindings).ok());
+TEST(ExecutionBindings, BuildsCanonicalActivationStorageAndSurvivesMove) {
+    const auto plan = MakeSingleSoftmaxPlan();
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    const float input[2] = {1.0F, 2.0F};
+    int64_t shape[1] = {2};
+    int64_t strides[1] = {1};
+    CountingAllocator allocator;
+    auto bindings = BuildExecutionBindings(
+            *plan,
+            {.readable = {{.value = plan->model_inputs()[0],
+                           .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
+            allocator);
+    ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
+    shape[0] = 1;
+    strides[0] = 0;
+    BindingTable moved = std::move(*bindings);
+    ASSERT_EQ(moved.step_count(), 1U);
+    ASSERT_EQ(moved.values().size(), 2U);
+    EXPECT_TRUE(moved.values()[1].readable.is_valid());
+    EXPECT_TRUE(moved.values()[1].writable.is_valid());
+    EXPECT_EQ(moved.step(0).inputs[0].data(), input);
+    EXPECT_EQ(moved.step(0).inputs[0].shape()[0], 2);
+    EXPECT_EQ(moved.step(0).inputs[0].strides()[0], 1);
+    RuntimeBindingContext context;
+    context.SetBindingTable(std::move(moved));
+    g_invocations = 0;
+    ASSERT_TRUE(Executor::Execute(*plan, context).ok());
+    EXPECT_EQ(g_invocations, 1);
+}
+
+TEST(ExecutionBindings, RejectsExternalDtypeAndSymbolIdentityDrift) {
+    const ShapeSymbol symbol = ShapeSymbol::Create();
+    const TensorSpec spec{.dtype = DataType::Float32(), .shape = SymbolicShape({symbol})};
+    const ResolvedKernel kernel{.op_type = OpType::kAdd, .fn = &FakeKernel};
+    const auto plan = ExecutionPlan::Create(
+            {{.spec = spec, .kind = ExecutionValueKind::kModelInput},
+             {.spec = spec, .kind = ExecutionValueKind::kModelInput},
+             {.spec = spec, .kind = ExecutionValueKind::kActivation}},
+            {{.index = 0}, {.index = 1}}, {{.index = 2}},
+            {{.kernel = kernel,
+              .inputs = {{.index = 0}, {.index = 1}},
+              .outputs = {{.index = 2}},
+              .kernel_input_ports = {0, 1},
+              .kernel_output_ports = {0},
+              .semantic_input_specs = {spec, spec},
+              .semantic_output_specs = {spec},
+              .input_specs = {spec, spec},
+              .output_specs = {spec}}});
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    const float lhs[2]{};
+    const float rhs[3]{};
+    const int64_t lhs_shape[1] = {2};
+    const int64_t rhs_shape[1] = {3};
+    const int64_t strides[1] = {1};
+    CPUAllocator allocator(Device::CPU());
+    const auto bindings = BuildExecutionBindings(
+            *plan,
+            {.readable = {{.value = {.index = 0}, .tensor = TensorView(lhs, DataType::Float32(), lhs_shape, strides)},
+                          {.value = {.index = 1}, .tensor = TensorView(rhs, DataType::Float32(), rhs_shape, strides)}}},
+            allocator);
+    ASSERT_FALSE(bindings.ok());
+    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(Executor, RunsCachedBindingTableWithoutPerStepBindingApi) {
+    const auto plan = MakeSingleSoftmaxPlan();
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    const float input[2]{};
+    const int64_t shape[1] = {2};
+    const int64_t strides[1] = {1};
+    CountingAllocator allocator;
+    auto table = BuildExecutionBindings(
+            *plan,
+            {.readable = {{.value = {.index = 0},
+                           .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
+            allocator);
+    ASSERT_TRUE(table.ok()) << table.status().ToString();
+    RuntimeBindingContext context;
+    context.SetBindingTable(std::move(*table));
+    const size_t allocations_before_execute = allocator.allocation_count();
+    g_invocations = 0;
+    const Status status = Executor::Execute(*plan, context);
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    EXPECT_EQ(g_invocations, 1);
+    EXPECT_EQ(allocator.allocation_count(), allocations_before_execute);
+}
+
+TEST(BindingTable, RejectsDifferentPlanWithMatchingStepCountAndAcceptsPlanCopy) {
+    const auto first_plan = MakeSingleSoftmaxPlan();
+    const auto second_plan = MakeSingleSoftmaxPlan();
+    ASSERT_TRUE(first_plan.ok()) << first_plan.status().ToString();
+    ASSERT_TRUE(second_plan.ok()) << second_plan.status().ToString();
+    ASSERT_NE(first_plan->binding_key().value, 0U);
+    ASSERT_NE(second_plan->binding_key().value, 0U);
+    ASSERT_NE(first_plan->binding_key(), second_plan->binding_key());
+    const ExecutionPlan copied_plan = *first_plan;
+
+    const float input[2]{};
+    const int64_t shape[1] = {2};
+    const int64_t strides[1] = {1};
+    CountingAllocator allocator;
+    auto table = BuildExecutionBindings(
+            *first_plan,
+            {.readable = {{.value = {.index = 0},
+                           .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
+            allocator);
+    ASSERT_TRUE(table.ok()) << table.status().ToString();
+    EXPECT_TRUE(table->IsCompatible(*first_plan));
+    EXPECT_TRUE(table->IsCompatible(copied_plan));
+    EXPECT_FALSE(table->IsCompatible(*second_plan));
+
+    RuntimeBindingContext context;
+    context.SetBindingTable(std::move(*table));
+    EXPECT_EQ(Executor::Execute(*second_plan, context).code(), StatusCode::kInvalidArgument);
+}
+
+TEST(RuntimeBindingContext, ResetAllowsReinstallingBindingTable) {
+    const auto plan = MakeSingleSoftmaxPlan();
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    const float input[2]{};
+    const int64_t shape[1] = {2};
+    const int64_t strides[1] = {1};
+    CountingAllocator allocator;
+    const ExternalValueBindings external{
+            .readable = {{.value = {.index = 0},
+                          .tensor = TensorView(input, DataType::Float32(), shape, strides)}}};
+    auto first_table = BuildExecutionBindings(*plan, external, allocator);
+    ASSERT_TRUE(first_table.ok()) << first_table.status().ToString();
+    RuntimeBindingContext context;
+    context.SetBindingTable(std::move(*first_table));
+    ASSERT_NE(context.binding_table(), nullptr);
+
+    context.Reset();
+    EXPECT_EQ(context.binding_table(), nullptr);
+
+    auto second_table = BuildExecutionBindings(*plan, external, allocator);
+    ASSERT_TRUE(second_table.ok()) << second_table.status().ToString();
+    context.SetBindingTable(std::move(*second_table));
+    EXPECT_NE(context.binding_table(), nullptr);
 }
 
 }// namespace

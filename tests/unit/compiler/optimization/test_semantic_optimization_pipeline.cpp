@@ -1,6 +1,7 @@
 #include "../../graph/optimization/test_optimization_helpers.h"
 #include "aethermind/compiler/graph_lowering.h"
 #include "aethermind/compiler/optimize_graph.h"
+#include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
@@ -955,21 +956,20 @@ TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure)
     EXPECT_EQ(plan->steps().front().runtime_checks, graph_checks)
             << "ExecutionPlanBuilder trusted path must carry runtime_checks verbatim";
 
-    // Layer 4: Executor::Execute with violating bindings. Must fail BEFORE
-    // the kernel runs. hidden=8 (act) vs weight_len=16 violates
+    // Layer 4: cold-path binding rejects the violating runtime shapes before
+    // a hot-path kernel invocation. hidden=8 (act) vs weight_len=16 violates
     // DimEqualConstraint(input[0].dim[1] == input[1].dim[0]).
-    RuntimeBindingContext bindings;
     RuntimeTensorStorage act_storage{std::vector<int64_t>{2, 8}};
     RuntimeTensorStorage weight_storage{std::vector<int64_t>{16}};
     RuntimeTensorStorage out_storage{std::vector<int64_t>{2, 8}};
-    bindings.SetStepTensorBinding(
-            0,
-            StepTensorBinding{
-                    .inputs = {act_storage.View(), weight_storage.View()},
-                    .outputs = {out_storage.MutableView()},
-            });
-
-    const Status status = Executor::Execute(*plan, bindings);
+    const ExecutionStep& step = plan->steps().front();
+    const auto bindings = BuildExecutionBindings(
+            *plan,
+            {.readable = {{.value = step.inputs[0], .tensor = act_storage.View()},
+                          {.value = step.inputs[1], .tensor = weight_storage.View()}},
+             .writable = {{.value = step.outputs[0], .tensor = out_storage.MutableView()}}},
+            runtime.GetAllocator(Device::CPU()));
+    const Status status = bindings.status();
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument)
             << "Runtime must reject bindings violating the symbolic constraint";
     EXPECT_NE(status.message().find("RmsNorm"), std::string::npos)

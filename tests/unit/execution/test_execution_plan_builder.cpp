@@ -221,6 +221,21 @@ public:
     }
 };
 
+class WrongOpTypeBackend final : public Backend {
+public:
+    DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
+    const BackendCapabilities& capabilities() const noexcept override { return capabilities_; }
+    StatusOr<ResolvedKernel> PrepareKernel(OpType,
+                                           const KernelSelector&,
+                                           const OpParams&) const override {
+        return ResolvedKernel{.op_type = OpType::kSoftmax, .fn = &SoftmaxTestKernel};
+    }
+    const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override { return nullptr; }
+
+private:
+    BackendCapabilities capabilities_{};
+};
+
 ExecutionPlanNodeSpec MakeRmsNormNodeSpec() {
     return ExecutionPlanNodeSpec{
             .op_type = OpType::kRmsNorm,
@@ -699,6 +714,28 @@ TEST(ExecutionPlanBuilder, PrepareKernelForNodeRejectsUnknownOpType) {
     EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
 }
 
+TEST(ExecutionPlanBuilder, PrepareKernelForNodeRejectsBackendOpTypeMismatch) {
+    WrongOpTypeBackend backend;
+    ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
+    node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
+    const auto kernel = ExecutionPlanBuilder::PrepareKernelForNode(backend, node);
+    ASSERT_FALSE(kernel.ok());
+    EXPECT_EQ(kernel.status().code(), StatusCode::kInternal);
+}
+
+TEST(ExecutionPlanBuilder, TrustedPathRejectsUnknownLoweredValuePayload) {
+    LoweredGraph::Builder builder;
+    builder.values.push_back({.spec = TensorSpec{.dtype = DataType::Float32(),
+                                                 .shape = StaticShape({1})},
+                              .payload = std::monostate{}});
+    const auto lowered = std::move(builder).Build();
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+    RuntimeContext runtime = RuntimeBuilder{}.Build();
+    const auto plan = ExecutionPlanBuilder::Build(runtime, *lowered);
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInternal);
+}
+
 TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPropagatesPreparedKernelWorkspace) {
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(
@@ -742,33 +779,8 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPropagatesPreparedKernelWorkspac
     EXPECT_EQ(plan->steps()[1].workspace_requirement.alignment, 64U);
     EXPECT_EQ(plan->steps()[1].workspace_requirement.offset, 64U);
 
-    const size_t workspace_bytes = plan->total_workspace_bytes();
-    const size_t workspace_alignment = plan->workspace_alignment();
-    EXPECT_EQ(workspace_bytes, 104U);
-    EXPECT_EQ(workspace_alignment, 64U);
-    AlignedScratch scratch(workspace_bytes, workspace_alignment);
-    CpuWorkspaceArena workspace_arena(scratch.data, workspace_bytes);
-    RuntimeBindingContext bindings(&workspace_arena);
-    for (size_t index = 0; index < plan->size(); ++index) {
-        bindings.SetStepTensorBinding(index, {
-                                                     .inputs = std::vector<TensorView>(
-                                                             plan->steps()[index].input_specs.size()),
-                                                     .outputs = std::vector<MutableTensorView>(
-                                                             plan->steps()[index].output_specs.size()),
-                                             });
-    }
-
-    std::vector<WorkspaceBinding> recorded_bindings;
-    g_recorded_workspace_bindings = &recorded_bindings;
-    const Status execution_status = Executor::Execute(*plan, bindings);
-    g_recorded_workspace_bindings = nullptr;
-
-    ASSERT_TRUE(execution_status.ok()) << execution_status.ToString();
-    ASSERT_EQ(recorded_bindings.size(), 2U);
-    EXPECT_EQ(recorded_bindings[0].data, scratch.data);
-    EXPECT_EQ(recorded_bindings[0].size, 24U);
-    EXPECT_EQ(recorded_bindings[1].data, scratch.data + 64U);
-    EXPECT_EQ(recorded_bindings[1].size, 40U);
+    EXPECT_EQ(plan->total_workspace_bytes(), 104U);
+    EXPECT_EQ(plan->workspace_alignment(), 64U);
 }
 
 TEST(ExecutionPlanBuilder, BuildFromNodesAloneHasEmptyStateAliasPlan) {
@@ -814,6 +826,43 @@ TEST(ExecutionPlanBuilder, BuildFromEmptyLoweredGraphHasEmptyStateAliasPlan) {
 
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     EXPECT_TRUE(plan->state_alias_plan().empty());
+}
+
+TEST(ExecutionPlanBuilder, TrustedPathCopiesValueDataflowAfterLoweredGraphLifetimeEnds) {
+    RuntimeContext runtime = RuntimeBuilder{}.Build();
+    StatusOr<ExecutionPlan> plan = Status::Internal("not built");
+    {
+        ModelGraph graph;
+        const GraphValueId tokens = graph.AddInput(
+                TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({2})});
+        const GraphValueId weight = graph.AddWeight(
+                TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 3})},
+                MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding));
+        const auto embedding = graph.AddNode(
+                OpType::kEmbedding, std::nullopt, {tokens, weight},
+                {NodeOutputDesc{.payload = ActivationValue{}}}, EmbeddingParams{});
+        ASSERT_TRUE(embedding.ok()) << embedding.status().ToString();
+        const auto add = graph.AddNode(
+                OpType::kAdd, std::nullopt, {embedding->outputs[0], embedding->outputs[0]},
+                {NodeOutputDesc{.payload = ActivationValue{}}}, AddParams{});
+        ASSERT_TRUE(add.ok()) << add.status().ToString();
+        graph.MarkOutput(add->outputs[0]);
+
+        const auto lowered = LowerModelGraph(graph);
+        ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+        plan = ExecutionPlanBuilder::Build(runtime, *lowered);
+        ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+        ASSERT_EQ(plan->values().size(), lowered->values().size());
+        ASSERT_EQ(plan->steps().size(), 2U);
+        EXPECT_EQ(plan->steps()[1].inputs[0].index, embedding->outputs[0].index);
+        EXPECT_EQ(plan->steps()[1].inputs[1].index, embedding->outputs[0].index);
+        EXPECT_EQ(plan->model_inputs()[0].index, tokens.index);
+        EXPECT_EQ(plan->model_outputs()[0].index, add->outputs[0].index);
+    }
+
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    EXPECT_EQ(plan->steps()[1].inputs[0], plan->steps()[0].outputs[0]);
+    EXPECT_EQ(plan->steps()[1].inputs[0], plan->steps()[1].inputs[1]);
 }
 
 TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMissingTypedParams) {

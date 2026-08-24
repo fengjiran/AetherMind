@@ -10,6 +10,7 @@
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
+#include "execution/test_execution_binding_helpers.h"
 
 #include <gtest/gtest.h>
 
@@ -382,15 +383,17 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
     constexpr int64_t w_strides[1] = {1};
 
     RuntimeBindingContext bindings;
-    bindings.SetStepTensorBinding(0, StepTensorBinding{
-                                             .inputs = {
-                                                     TensorView{input, DataType::Float32(), io_shape, io_strides},
-                                                     TensorView{weight, DataType::Float32(), w_shape, w_strides},
-                                             },
-                                             .outputs = {
-                                                     MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
-                                             },
-                                     });
+    test::ExecutionBindingCollector binding_collector(*plan, runtime.GetAllocator(Device::CPU()));
+    binding_collector.Set(0, StepTensorBinding{
+                                     .inputs = {
+                                             TensorView{input, DataType::Float32(), io_shape, io_strides},
+                                             TensorView{weight, DataType::Float32(), w_shape, w_strides},
+                                     },
+                                     .outputs = {
+                                             MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
+                                     },
+                             });
+    ASSERT_TRUE(binding_collector.Install(bindings).ok());
     const Status status = Executor::Execute(*plan, bindings);
 
     ASSERT_TRUE(status.ok());

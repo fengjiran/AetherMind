@@ -8,6 +8,7 @@
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/runtime/workspace.h"
+#include "execution/test_execution_binding_helpers.h"
 
 #include <gtest/gtest.h>
 
@@ -156,6 +157,7 @@ TEST(NoHotpathPrepare, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
     const std::array<int64_t, 1> strides_1d{1};
 
     RuntimeBindingContext bindings;
+    test::ExecutionBindingCollector binding_collector(*plan, runtime.GetAllocator(Device::CPU()));
     StepTensorBinding step0_binding;
     step0_binding.inputs = {
             TensorView(dummy_data, DataType::Float32(), shape_2d, strides_2d),
@@ -164,8 +166,9 @@ TEST(NoHotpathPrepare, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
     step0_binding.outputs = {
             MutableTensorView(dummy_data, DataType::Float32(), shape_2d, strides_2d),
     };
-    bindings.SetStepTensorBinding(0, std::move(step0_binding));
+    binding_collector.Set(0, std::move(step0_binding));
 
+    ASSERT_TRUE(binding_collector.Install(bindings).ok());
     const Status status = Executor::Execute(*plan, bindings);
 
     g_prepare_counters = nullptr;

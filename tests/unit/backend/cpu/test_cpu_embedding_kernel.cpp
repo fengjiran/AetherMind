@@ -9,6 +9,7 @@
 #include "aethermind/operators/ops/embedding_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "backend/cpu/kernels/embedding/embedding_internal.h"
+#include "execution/test_execution_binding_helpers.h"
 
 #include <gtest/gtest.h>
 
@@ -269,15 +270,17 @@ TEST(EmbeddingKernel, ExecutionPlanBuilderRunsResolvedKernel) {
     const int64_t output_shape[2] = {3, 3};
     const int64_t output_strides[2] = {3, 1};
     RuntimeBindingContext bindings;
-    bindings.SetStepTensorBinding(0, StepTensorBinding{
-                                             .inputs = {
-                                                     TensorView{token_ids, DataType::Int(64), token_shape, token_strides},
-                                                     TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
-                                             },
-                                             .outputs = {
-                                                     MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
-                                             },
-                                     });
+    test::ExecutionBindingCollector binding_collector(*plan, runtime.GetAllocator(Device::CPU()));
+    binding_collector.Set(0, StepTensorBinding{
+                                     .inputs = {
+                                             TensorView{token_ids, DataType::Int(64), token_shape, token_strides},
+                                             TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
+                                     },
+                                     .outputs = {
+                                             MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
+                                     },
+                             });
+    ASSERT_TRUE(binding_collector.Install(bindings).ok());
     const Status status = Executor::Execute(*plan, bindings);
 
     ASSERT_TRUE(status.ok()) << status.ToString();

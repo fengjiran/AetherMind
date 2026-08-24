@@ -103,7 +103,6 @@ TEST(RuntimeBindingContext, ResetDelegatesToArenaAndClearsTransientBindings) {
                                   TempBufferBinding{.data = scratch, .size = sizeof(scratch)});
     bindings.mutable_sequence_state().prepared = true;
     bindings.mutable_sequence_state().current_pos = 7;
-    bindings.SetStepTensorBinding(0, StepTensorBinding{.inputs = {TensorView{}}});
 
     bindings.Reset();
 
@@ -111,25 +110,7 @@ TEST(RuntimeBindingContext, ResetDelegatesToArenaAndClearsTransientBindings) {
     EXPECT_FALSE(bindings.HasTempBufferBinding(TempBufferKind::kScratch));
     EXPECT_FALSE(bindings.sequence_state().prepared);
     EXPECT_EQ(bindings.sequence_state().current_pos, 0U);
-    // Reset must drop per-step tensor bindings so a stale view cannot be
-    // reused with freed storage; the next lookup fails cleanly instead.
-    const auto missing_binding = bindings.GetStepTensorBinding(0);
-    ASSERT_FALSE(missing_binding.ok());
-    EXPECT_EQ(missing_binding.status().code(), StatusCode::kInvalidArgument);
-    EXPECT_NE(missing_binding.status().message().find("no tensor binding"),
-              std::string::npos);
-}
-
-TEST(RuntimeBindingContext, ResetAllowsRebindingStepTensors) {
-    RuntimeBindingContext bindings;
-    bindings.SetStepTensorBinding(0, StepTensorBinding{.inputs = {TensorView{}}});
-    ASSERT_TRUE(bindings.GetStepTensorBinding(0).ok());
-
-    bindings.Reset();
-
-    ASSERT_FALSE(bindings.GetStepTensorBinding(0).ok());
-    bindings.SetStepTensorBinding(0, StepTensorBinding{.inputs = {TensorView{}}});
-    ASSERT_TRUE(bindings.GetStepTensorBinding(0).ok());
+    EXPECT_EQ(bindings.binding_table(), nullptr);
 }
 
 TEST(RuntimeBindingContext, InvalidAlignmentIsRejectedBeforeArenaBinding) {

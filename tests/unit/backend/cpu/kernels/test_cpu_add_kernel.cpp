@@ -13,6 +13,7 @@
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/shape_inference/broadcast.h"
 #include "backend/cpu/kernels/add/add_internal.h"
+#include "execution/test_execution_binding_helpers.h"
 
 #include <gtest/gtest.h>
 
@@ -541,6 +542,7 @@ TEST(AddKernel, EndToEndThroughGraphLoweringAndExecutor) {
     ASSERT_EQ(plan->size(), 3U);
 
     RuntimeBindingContext bindings;
+    test::ExecutionBindingCollector binding_collector(*plan, runtime.GetAllocator(Device::CPU()));
 
     const int64_t emb0_tokens[2] = {0, 0};
     float emb0_weight[1] = {2.0F};
@@ -551,15 +553,15 @@ TEST(AddKernel, EndToEndThroughGraphLoweringAndExecutor) {
     const int64_t emb0_w_strides[2] = {1, 1};
     const int64_t emb0_out_shape[2] = {2, 1};
     const int64_t emb0_out_strides[2] = {1, 1};
-    bindings.SetStepTensorBinding(0, StepTensorBinding{
-                                             .inputs = {
-                                                     TensorView{emb0_tokens, DataType::Int(64), emb0_tok_shape, emb0_tok_strides},
-                                                     TensorView{emb0_weight, DataType::Float32(), emb0_w_shape, emb0_w_strides},
-                                             },
-                                             .outputs = {
-                                                     MutableTensorView{emb0_out, DataType::Float32(), emb0_out_shape, emb0_out_strides},
-                                             },
-                                     });
+    binding_collector.Set(0, StepTensorBinding{
+                                     .inputs = {
+                                             TensorView{emb0_tokens, DataType::Int(64), emb0_tok_shape, emb0_tok_strides},
+                                             TensorView{emb0_weight, DataType::Float32(), emb0_w_shape, emb0_w_strides},
+                                     },
+                                     .outputs = {
+                                             MutableTensorView{emb0_out, DataType::Float32(), emb0_out_shape, emb0_out_strides},
+                                     },
+                             });
 
     const int64_t emb1_tokens[1] = {0};
     float emb1_weight[2] = {3.0F, 5.0F};
@@ -570,15 +572,15 @@ TEST(AddKernel, EndToEndThroughGraphLoweringAndExecutor) {
     const int64_t emb1_w_strides[2] = {2, 1};
     const int64_t emb1_out_shape[2] = {1, 2};
     const int64_t emb1_out_strides[2] = {2, 1};
-    bindings.SetStepTensorBinding(1, StepTensorBinding{
-                                             .inputs = {
-                                                     TensorView{emb1_tokens, DataType::Int(64), emb1_tok_shape, emb1_tok_strides},
-                                                     TensorView{emb1_weight, DataType::Float32(), emb1_w_shape, emb1_w_strides},
-                                             },
-                                             .outputs = {
-                                                     MutableTensorView{emb1_out, DataType::Float32(), emb1_out_shape, emb1_out_strides},
-                                             },
-                                     });
+    binding_collector.Set(1, StepTensorBinding{
+                                     .inputs = {
+                                             TensorView{emb1_tokens, DataType::Int(64), emb1_tok_shape, emb1_tok_strides},
+                                             TensorView{emb1_weight, DataType::Float32(), emb1_w_shape, emb1_w_strides},
+                                     },
+                                     .outputs = {
+                                             MutableTensorView{emb1_out, DataType::Float32(), emb1_out_shape, emb1_out_strides},
+                                     },
+                             });
 
     float add_out[4] = {};
     const int64_t lhs_shape[2] = {2, 1};
@@ -587,16 +589,17 @@ TEST(AddKernel, EndToEndThroughGraphLoweringAndExecutor) {
     const int64_t rhs_strides[2] = {2, 1};
     const int64_t out_shape[2] = {2, 2};
     const int64_t out_strides[2] = {2, 1};
-    bindings.SetStepTensorBinding(2, StepTensorBinding{
-                                             .inputs = {
-                                                     TensorView{emb0_out, DataType::Float32(), lhs_shape, lhs_strides},
-                                                     TensorView{emb1_out, DataType::Float32(), rhs_shape, rhs_strides},
-                                             },
-                                             .outputs = {
-                                                     MutableTensorView{add_out, DataType::Float32(), out_shape, out_strides},
-                                             },
-                                     });
+    binding_collector.Set(2, StepTensorBinding{
+                                     .inputs = {
+                                             TensorView{emb0_out, DataType::Float32(), lhs_shape, lhs_strides},
+                                             TensorView{emb1_out, DataType::Float32(), rhs_shape, rhs_strides},
+                                     },
+                                     .outputs = {
+                                             MutableTensorView{add_out, DataType::Float32(), out_shape, out_strides},
+                                     },
+                             });
 
+    ASSERT_TRUE(binding_collector.Install(bindings).ok());
     const Status status = Executor::Execute(*plan, bindings);
     ASSERT_TRUE(status.ok()) << status.ToString();
 
@@ -639,16 +642,18 @@ TEST(AddKernel, Int64EndToEndThroughExecutionRequestAndExecutor) {
     const int64_t output_shape[2] = {2, 2};
     const int64_t output_strides[2] = {2, 1};
     RuntimeBindingContext bindings;
-    bindings.SetStepTensorBinding(0, StepTensorBinding{
-                                             .inputs = {
-                                                     MakeTensorView(lhs, lhs_shape, lhs_strides),
-                                                     MakeTensorView(rhs, rhs_shape, rhs_strides),
-                                             },
-                                             .outputs = {
-                                                     MakeMutableTensorView(output, output_shape, output_strides),
-                                             },
-                                     });
+    test::ExecutionBindingCollector binding_collector(*plan, runtime.GetAllocator(Device::CPU()));
+    binding_collector.Set(0, StepTensorBinding{
+                                     .inputs = {
+                                             MakeTensorView(lhs, lhs_shape, lhs_strides),
+                                             MakeTensorView(rhs, rhs_shape, rhs_strides),
+                                     },
+                                     .outputs = {
+                                             MakeMutableTensorView(output, output_shape, output_strides),
+                                     },
+                             });
 
+    ASSERT_TRUE(binding_collector.Install(bindings).ok());
     const Status status = Executor::Execute(*plan, bindings);
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_EQ(output[0], 11);
@@ -713,17 +718,18 @@ TEST(AddKernel, RejectsIncompatibleRuntimeBroadcastShapes) {
     const int64_t out_strides[2] = {3, 1};
 
     RuntimeBindingContext bindings;
-    bindings.SetStepTensorBinding(0, StepTensorBinding{
-                                             .inputs = {
-                                                     TensorView{lhs_data, DataType::Float32(), lhs_concrete_shape, lhs_strides},
-                                                     TensorView{rhs_data, DataType::Float32(), rhs_concrete_shape, rhs_strides},
-                                             },
-                                             .outputs = {
-                                                     MutableTensorView{out_data, DataType::Float32(), out_concrete_shape, out_strides},
-                                             },
-                                     });
+    test::ExecutionBindingCollector binding_collector(*plan, runtime.GetAllocator(Device::CPU()));
+    binding_collector.Set(0, StepTensorBinding{
+                                     .inputs = {
+                                             TensorView{lhs_data, DataType::Float32(), lhs_concrete_shape, lhs_strides},
+                                             TensorView{rhs_data, DataType::Float32(), rhs_concrete_shape, rhs_strides},
+                                     },
+                                     .outputs = {
+                                             MutableTensorView{out_data, DataType::Float32(), out_concrete_shape, out_strides},
+                                     },
+                             });
 
-    const Status status = Executor::Execute(*plan, bindings);
+    const Status status = binding_collector.Install(bindings);
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }

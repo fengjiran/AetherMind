@@ -126,6 +126,10 @@ StatusOr<ConcreteTensorMetadata> ResolveConcreteMetadata(
             return Status::Overflow(
                     "Activation stride computation overflowed size_t");
         }
+        if (product > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+            return Status::Overflow(
+                    "Activation stride exceeds int64_t range");
+        }
         metadata.strides[i - 2] = static_cast<int64_t>(product);
     }
     return metadata;

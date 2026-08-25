@@ -479,11 +479,6 @@ Status ValidateShapeConstraints(const std::span<const ShapeConstraint> constrain
 
 namespace {
 
-// Symbol values (ShapeSymbol::value()) seen so far in this step's bindings,
-// mapped to the first runtime dimension value they instantiated to. Shared
-// across ports so symbolic identity drift is caught across tensors too.
-using SymbolValueMap = std::unordered_map<int64_t, int64_t>;
-
 // Checks one bound view against its plan spec. Views that are invalid
 // (default-constructed test stubs) carry no premises and are skipped.
 template<typename View>
@@ -495,47 +490,61 @@ Status ValidateSpecAgainstView(const TensorSpec& spec,
     if (!view.is_valid()) {
         return Status::Ok();
     }
+    return ValidateConcreteShapeAgainstSpec(
+            spec, view.dtype(), view.shape(), role, port_index, symbol_values);
+}
 
-    if (view.dtype() != spec.dtype) {
-        return Status::InvalidArgument(
-                "Runtime tensor binding for " + std::string(role) + " " +
-                std::to_string(port_index) + " dtype " +
-                ToString(view.dtype()) + " does not match plan spec dtype " +
-                ToString(spec.dtype));
-    }
+}// namespace
 
+Status ValidateConcreteShapeAgainstSpec(const TensorSpec& spec,
+                                        DataType dtype,
+                                        IntArrayView shape,
+                                        std::string_view role,
+                                        size_t port_index,
+                                        SymbolValueMap& symbol_values) {
     const std::string port_label = std::string(role) + " " + std::to_string(port_index);
-    const auto spec_rank = spec.shape.rank();
-    const size_t runtime_rank = view.shape().size();
-    if (spec_rank.has_value() && *spec_rank != runtime_rank) {
+    if (dtype != spec.dtype) {
         return Status::InvalidArgument(
-                "Runtime tensor binding for " + port_label + " rank " +
-                std::to_string(runtime_rank) + " does not match plan spec rank " +
-                std::to_string(*spec_rank));
+                "Runtime tensor binding for " + port_label + " dtype " +
+                ToString(dtype) + " does not match plan spec dtype " +
+                ToString(spec.dtype));
     }
 
     if (!spec.shape.IsRanked()) {
         return Status::Ok();
     }
 
-    for (size_t d = 0; d < runtime_rank; ++d) {
-        const ShapeSymbol& dim = spec.shape[d];
-        const int64_t runtime_dim = view.shape()[d];
-        if (dim.IsStatic()) {
-            if (runtime_dim != dim.GetStaticValue()) {
+    if (const auto spec_rank = spec.shape.rank();
+        spec_rank.has_value() && shape.size() != *spec_rank) {
+        return Status::InvalidArgument(
+                "Runtime tensor binding for " + port_label + " rank " +
+                std::to_string(shape.size()) + " does not match plan spec rank " +
+                std::to_string(*spec_rank));
+    }
+
+    for (size_t d = 0; d < shape.size(); ++d) {
+        const int64_t concrete = shape[d];
+        if (concrete < 0) {
+            return Status::InvalidArgument(
+                    "Runtime tensor binding for " + port_label + " dimension " +
+                    std::to_string(d) + " is negative");
+        }
+
+        if (const ShapeSymbol& dim = spec.shape[d]; dim.IsStatic()) {
+            if (concrete != dim.GetStaticValue()) {
                 return Status::InvalidArgument(
                         "Runtime tensor binding for " + port_label + " dimension " +
-                        std::to_string(d) + " (value " + std::to_string(runtime_dim) +
+                        std::to_string(d) + " (value " + std::to_string(concrete) +
                         ") does not match plan spec static dimension " +
                         std::to_string(dim.GetStaticValue()));
             }
         } else if (dim.IsSymbolic()) {
-            const auto [it, inserted] =
-                    symbol_values.emplace(dim.value(), runtime_dim);
-            if (!inserted && it->second != runtime_dim) {
+            if (const auto [it, inserted] =
+                        symbol_values.emplace(dim.value(), concrete);
+                !inserted && it->second != concrete) {
                 return Status::InvalidArgument(
                         "Runtime tensor binding for " + port_label + " dimension " +
-                        std::to_string(d) + " (value " + std::to_string(runtime_dim) +
+                        std::to_string(d) + " (value " + std::to_string(concrete) +
                         ") conflicts with another binding of the same symbolic "
                         "dimension (value " +
                         std::to_string(it->second) + ")");
@@ -545,8 +554,6 @@ Status ValidateSpecAgainstView(const TensorSpec& spec,
     }
     return Status::Ok();
 }
-
-}// namespace
 
 Status ValidateTensorBindingPremises(const std::span<const TensorSpec> input_specs,
                                      const std::span<const TensorSpec> output_specs,

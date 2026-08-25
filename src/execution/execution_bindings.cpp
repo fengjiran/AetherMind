@@ -31,47 +31,6 @@ void SnapshotMetadata(ConcreteTensorMetadata& destination,
     destination.strides.assign(strides.begin(), strides.end());
 }
 
-Status ValidateShapeAgainstSpec(const TensorSpec& spec,
-                                DataType dtype,
-                                IntArrayView shape,
-                                std::unordered_map<int64_t, int64_t>& symbol_values) {
-    if (dtype != spec.dtype) {
-        return Status::InvalidArgument(
-                "External tensor dtype does not match ExecutionPlan value spec");
-    }
-
-    if (!spec.shape.IsRanked()) {
-        return Status::Ok();
-    }
-
-    if (shape.size() != *spec.shape.rank()) {
-        return Status::InvalidArgument(
-                "External tensor rank does not match ExecutionPlan value spec");
-    }
-
-    for (size_t dim = 0; dim < shape.size(); ++dim) {
-        if (shape[dim] < 0) {
-            return Status::InvalidArgument(
-                    "External tensor dimensions must be non-negative");
-        }
-
-        if (const ShapeSymbol symbol = spec.shape[dim]; symbol.IsStatic()) {
-            if (shape[dim] != symbol.GetStaticValue()) {
-                return Status::InvalidArgument(
-                        "External tensor static dimension does not "
-                        "match ExecutionPlan value spec");
-            }
-        } else if (symbol.IsSymbolic()) {
-            if (const auto [it, inserted] =
-                        symbol_values.emplace(symbol.value(), shape[dim]);
-                !inserted && it->second != shape[dim]) {
-                return Status::InvalidArgument(
-                        "External tensor bindings disagree on a shared ShapeSymbol");
-            }
-        }
-    }
-    return Status::Ok();
-}
 
 Status ValidateExternalView(const TensorView& view,
                             const TensorSpec& spec,
@@ -80,7 +39,8 @@ Status ValidateExternalView(const TensorView& view,
         return Status::InvalidArgument(
                 "External read-only tensor view is invalid");
     }
-    return ValidateShapeAgainstSpec(spec, view.dtype(), view.shape(), symbol_values);
+    return ValidateConcreteShapeAgainstSpec(
+            spec, view.dtype(), view.shape(), "external input", 0, symbol_values);
 }
 
 Status ValidateExternalView(const MutableTensorView& view,
@@ -90,7 +50,8 @@ Status ValidateExternalView(const MutableTensorView& view,
         return Status::InvalidArgument(
                 "External writable tensor view is invalid");
     }
-    return ValidateShapeAgainstSpec(spec, view.dtype(), view.shape(), symbol_values);
+    return ValidateConcreteShapeAgainstSpec(
+            spec, view.dtype(), view.shape(), "external output", 0, symbol_values);
 }
 
 StatusOr<ConcreteTensorMetadata> ResolveConcreteMetadata(

@@ -6,10 +6,42 @@
 #include "aethermind/shape_inference/shape_constraint.h"
 #include "aethermind/shape_inference/shape_symbol.h"
 #include "aethermind/shape_inference/tensor_spec.h"
+#include "container/array_view.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <span>
+#include <string_view>
+#include <unordered_map>
 
 namespace aethermind {
+
+/// @brief ShapeSymbol value mapped to the concrete runtime dimension value it
+///        instantiated to. Shared across ports so symbolic identity drift is
+///        caught across tensors too.
+using SymbolValueMap = std::unordered_map<int64_t, int64_t>;
+
+/// @brief Validates a concrete runtime dtype/shape against a plan-time spec.
+///
+/// Shared by external-binding validation (BuildExecutionBindings cold path)
+/// and per-step binding premises checks. On static dimensions the concrete
+/// value must equal the plan value; on symbolic dimensions the concrete value
+/// is recorded into `symbol_values` and a second binding of the same symbol
+/// to a different value is rejected. Unknown dims carry no premise.
+///
+/// @param spec   Plan-time spec the concrete tensor must satisfy.
+/// @param dtype  Concrete dtype.
+/// @param shape  Concrete shape.
+/// @param role   Human-readable label used in error messages (e.g. "input").
+/// @param port_index Port index used in error messages.
+/// @param symbol_values Shared symbol-to-value map (across ports of one step).
+/// @return OkStatus, or kInvalidArgument on the first drift.
+Status ValidateConcreteShapeAgainstSpec(const TensorSpec& spec,
+                                        DataType dtype,
+                                        IntArrayView shape,
+                                        std::string_view role,
+                                        size_t port_index,
+                                        SymbolValueMap& symbol_values);
 
 /// @brief Evaluates a shape constraint against symbolic tensor shapes.
 ///

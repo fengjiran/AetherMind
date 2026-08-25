@@ -2,6 +2,7 @@
 #include "aethermind/operators/operator_schema.h"
 
 #include <algorithm>
+#include <atomic>
 #include <set>
 #include <string>
 #include <tuple>
@@ -10,6 +11,16 @@
 
 namespace aethermind {
 namespace {
+
+std::atomic<uint64_t> g_next_artifact_id{1};
+
+uint64_t MakeArtifactId() noexcept {
+    uint64_t value = g_next_artifact_id.fetch_add(1, std::memory_order_relaxed);
+    if (value == 0) {
+        value = g_next_artifact_id.fetch_add(1, std::memory_order_relaxed);
+    }
+    return value;
+}
 
 Status ValidateValueId(const LoweredGraph& lowered,
                        GraphValueId id,
@@ -118,6 +129,7 @@ StatusOr<LoweredGraph> LoweredGraph::Builder::Build() && {
     lowered.model_outputs_ = std::move(model_outputs);
     lowered.state_aliases_ = std::move(state_aliases);
     AM_RETURN_IF_ERROR(ValidateLoweredGraph(lowered));
+    lowered.artifact_id_ = MakeArtifactId();
     return lowered;
 }
 

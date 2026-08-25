@@ -1,6 +1,55 @@
 #include "aethermind/model/packed_weight_store.h"
 
+#include <limits>
+
 namespace aethermind {
+namespace {
+
+// Expected byte payload of the logical weight an artifact claims to pack.
+// Undefined dtypes or empty shapes yield 0 (no size premise).
+StatusOr<size_t> LogicalByteSize(const PackedWeights& artifact) noexcept {
+    if (artifact.logical_dtype().IsUndefined() ||
+        artifact.logical_dtype().nbytes() == 0) {
+        return 0U;
+    }
+    size_t elements = 1;
+    for (const int64_t dimension: artifact.logical_shape()) {
+        if (dimension < 0) {
+            return Status::InvalidArgument(
+                    "Packed artifact logical shape contains a negative "
+                    "dimension");
+        }
+        if (elements > std::numeric_limits<size_t>::max() /
+                               static_cast<size_t>(dimension)) {
+            return Status::Overflow(
+                    "Packed artifact logical size overflowed size_t");
+        }
+        elements *= static_cast<size_t>(dimension);
+    }
+    if (elements > std::numeric_limits<size_t>::max() /
+                           static_cast<size_t>(artifact.logical_dtype().nbytes())) {
+        return Status::Overflow(
+                "Packed artifact logical size overflowed size_t");
+    }
+    return elements * static_cast<size_t>(artifact.logical_dtype().nbytes());
+}
+
+}// namespace
+
+Status PackedWeightStore::SetSourceId(uint64_t source_id) noexcept {
+    if (source_frozen_ && source_id != source_id_) {
+        return Status::InvalidArgument(
+                "PackedWeightStore is already frozen to a different source "
+                "artifact");
+    }
+    source_id_ = source_id;
+    source_frozen_ = true;
+    return Status::Ok();
+}
+
+uint64_t PackedWeightStore::source_id() const noexcept {
+    return source_id_;
+}
 
 Status PackedWeightStore::Store(const WeightArtifactKey& key,
                                 std::shared_ptr<const PackedWeights> artifact) noexcept {
@@ -14,9 +63,35 @@ Status PackedWeightStore::Store(const WeightArtifactKey& key,
                 "Packed weights already exist for the requested weight key");
     }
 
+    // The store is the trust boundary where a caller may pair an arbitrary
+    // artifact with a key. Reject any drift so execution never consumes a
+    // mismatched payload, regardless of which recipe/selector the plan asked
+    // for.
+    if (key.selector != artifact->selector()) {
+        return Status::InvalidArgument(
+                "Packed weight key selector does not match the artifact "
+                "selector");
+    }
     if (key.recipe != artifact->recipe()) {
         return Status::InvalidArgument(
                 "Packed weight key recipe does not match the artifact recipe");
+    }
+    if (artifact->storage().alignment() < key.recipe.alignment) {
+        return Status::InvalidArgument(
+                "Packed artifact storage alignment is below its recipe "
+                "alignment");
+    }
+    auto expected_bytes = LogicalByteSize(*artifact);
+    if (!expected_bytes.ok()) {
+        return expected_bytes.status();
+    }
+    if (artifact->storage().nbytes() < *expected_bytes) {
+        return Status::InvalidArgument(
+                "Packed artifact storage is smaller than its logical weight");
+    }
+
+    if (!source_frozen_) {
+        source_frozen_ = true;
     }
 
     entries_.emplace_back(key, std::move(artifact));

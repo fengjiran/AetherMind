@@ -3,6 +3,11 @@
 
 /// @file lowered_graph.h
 /// @brief Immutable compiler artifact between semantic graph and execution planning.
+///
+/// Type layout by responsibility domain:
+///   - step domain:  LoweredStepSpec / LoweredStepBinding / LoweredStep
+///   - graph domain: LoweredStateAlias / LoweredValueDesc
+///   - container:    LoweredGraph (+ nested Builder)
 
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/graph/graph_types.h"
@@ -17,29 +22,7 @@ namespace aethermind {
 struct GraphLoweringConfig;
 class ModelGraph;
 
-/// @brief Graph values bound to a lowered step in semantic schema-port order.
-///
-/// State ports remain in these vectors even when they are omitted from the
-/// compact tensor-spec view consumed by runtime kernels.
-struct LoweredStepBinding {
-    /// Originating semantic node; each node is lowered into at most one step.
-    GraphNodeId node{};
-    std::vector<GraphValueId> input_values{};
-    std::vector<GraphValueId> output_values{};
-};
-
-/// @brief Unresolved must-alias relation in semantic schema-port coordinates.
-///
-/// Execution converts verified records into StateAliasPlan; this compiler
-/// artifact never includes execution runtime types.
-struct LoweredStateAlias {
-    /// Index into LoweredGraph::steps().
-    size_t step_index = 0;
-    uint32_t input_port = 0;
-    uint32_t output_port = 0;
-    GraphValueId input{};
-    GraphValueId output{};
-};
+// ── Step execution spec ───────────────────────────────────────────
 
 /// @brief Semantic metadata emitted by graph lowering after ModelGraph
 /// validation.
@@ -48,6 +31,11 @@ struct LoweredStateAlias {
 /// latter is an untrusted raw execution request and is revalidated with
 /// InferOperator. LoweredStepSpec preserves the already-validated semantic
 /// result and is only reachable through a finalized LoweredGraph.
+///
+/// This is the sole consumption surface of ExecutionPlanBuilder (the trusted
+/// path projects it out of LoweredStep; the untrusted path uses the
+/// isomorphic ExecutionPlanNodeSpec), so it stays free of graph-coordinate
+/// types.
 struct LoweredStepSpec {
     OpType op_type = OpType::kUnknown;
     KernelSelector selector{};
@@ -62,22 +50,65 @@ struct LoweredStepSpec {
     OpParams op_params{};
 };
 
+// ── Step graph binding ────────────────────────────────────────────
+
+/// @brief Graph values bound to a lowered step in semantic schema-port order.
+///
+/// State ports remain in these vectors even when they are omitted from the
+/// compact tensor-spec view consumed by runtime kernels. Consumers: the P2
+/// runtime tensor/state binding wires the graph-value identity kept here;
+/// ValidateLoweredGraph checks these ids against the value table.
+struct LoweredStepBinding {
+    /// Originating semantic node; each node is lowered into at most one step.
+    GraphNodeId node{};
+    std::vector<GraphValueId> input_values{};
+    std::vector<GraphValueId> output_values{};
+};
+
+// ── Step pair ─────────────────────────────────────────────────────
+
 /// @brief A lowered step spec paired with the value binding of the same node.
+///
+/// The 1:1 pairing is a type-level invariant: spec and binding are moved and
+/// validated together and can never drift apart.
 struct LoweredStep {
     LoweredStepSpec spec{};
     LoweredStepBinding binding{};
 };
 
+// ── State aliases (parallel to steps) ─────────────────────────────
+
+/// @brief Unresolved must-alias relation in semantic schema-port coordinates.
+///
+/// Execution converts verified records into StateAliasPlan; this compiler
+/// artifact never includes execution runtime types. Records are declared by
+/// OperatorSchema::state_alias_ports, recorded by LowerModelGraph with
+/// known step/port coordinates, and validated by ValidateLoweredGraph.
+struct LoweredStateAlias {
+    /// Index into LoweredGraph::steps().
+    size_t step_index = 0;
+    uint32_t input_port = 0;
+    uint32_t output_port = 0;
+    GraphValueId input{};
+    GraphValueId output{};
+};
+
+// ── Value metadata table (parallel to steps) ──────────────────────
+
 /// @brief Value metadata owned by the compiler artifact after ModelGraph
 /// lifetime ends.
 ///
-/// The entry at index id.index describes GraphValueId id.
+/// The entry at index id.index describes GraphValueId id. Consumers: the P2
+/// binding wiring resolves payloads (weight/state/constant) by value id;
+/// debugging and dumps read spec/name here.
 struct LoweredValueDesc {
     TensorSpec spec{};
     GraphValuePayload payload{};
     QuantizationSpec quantization{};
     std::string name{};
 };
+
+// ── Immutable container ───────────────────────────────────────────
 
 /// @brief A finalized, structurally verified compiler artifact.
 ///
@@ -118,6 +149,14 @@ public:
         return steps_.size();
     }
 
+    /// @brief Instance identity of this compiler artifact.
+    ///
+    /// Assigned once at Build(); used to tie packed-weight artifacts and their
+    /// PackedWeightStore to the exact lowered graph they were produced for.
+    AM_NODISCARD uint64_t artifact_id() const noexcept {
+        return artifact_id_;
+    }
+
     /// @brief Mutable construction state for a LoweredGraph.
     ///
     /// The sole construction path is `LowerModelGraph`, which accumulates
@@ -132,6 +171,7 @@ private:
     std::vector<GraphValueId> model_inputs_{};
     std::vector<GraphValueId> model_outputs_{};
     std::vector<LoweredStateAlias> state_aliases_{};
+    uint64_t artifact_id_ = 0;
 };
 
 /// @brief Mutable construction state for a LoweredGraph (see
@@ -139,7 +179,9 @@ private:
 ///
 /// Nested in LoweredGraph so construction has direct access to the private
 /// storage without a friend declaration. Build() validates the complete
-/// structure before freezing it into the immutable artifact.
+/// structure before freezing it into the immutable artifact. Its fields
+/// mirror LoweredGraph's private storage one-to-one: Build() && moves them
+/// in, so the two field lists stay identical by construction.
 class LoweredGraph::Builder {
 public:
     std::vector<LoweredStep> steps{};

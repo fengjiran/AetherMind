@@ -57,11 +57,15 @@ public:
     TestPackedWeights(OpType op_type,
                       KernelSelector selector,
                       Buffer storage,
-                      PackingRecipe recipe = {}) noexcept
+                      PackingRecipe recipe = {},
+                      DataType logical_dtype = {},
+                      std::vector<int64_t> logical_shape = {}) noexcept
         : op_type_(op_type),
           selector_(selector),
           storage_(std::move(storage)),
-          recipe_(std::move(recipe)) {}
+          recipe_(std::move(recipe)),
+          logical_dtype_(logical_dtype),
+          logical_shape_(std::move(logical_shape)) {}
 
     OpType op_type() const noexcept override {
         return op_type_;
@@ -79,11 +83,21 @@ public:
         return recipe_;
     }
 
+    DataType logical_dtype() const noexcept override {
+        return logical_dtype_;
+    }
+
+    const std::vector<int64_t>& logical_shape() const noexcept override {
+        return logical_shape_;
+    }
+
 private:
     OpType op_type_ = OpType::kUnknown;
     KernelSelector selector_{};
     Buffer storage_{};
     PackingRecipe recipe_{};
+    DataType logical_dtype_{};
+    std::vector<int64_t> logical_shape_{};
 };
 
 Status PackedTestKernel(const KernelContext&) noexcept {
@@ -841,17 +855,26 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphBindsDistinctPackedWeightsByBind
     for (const auto& step: lowered->steps()) {
         EXPECT_EQ(step.spec.selector.weight_format, WeightFormat::kPacked);
     }
+    // Keys must carry the artifact identity and the exact (artifact-local)
+    // value id of each weight so cross-model stores can never collide.
+    const uint64_t source = lowered->artifact_id();
 
     const WeightArtifactKey embedding_key{
+            .source_id = source,
+            .value_index = embedding_weight.index,
             .binding = MakeTransformerWeightBinding(
                     std::nullopt, TransformerWeightRole::kTokenEmbedding),
             .selector = lowered->steps()[0].spec.selector,
             .recipe = kTestPackedRecipe};
     const WeightArtifactKey norm0_key{
+            .source_id = source,
+            .value_index = norm0_weight.index,
             .binding = MakeTransformerWeightBinding(0, TransformerWeightRole::kInputNorm),
             .selector = lowered->steps()[1].spec.selector,
             .recipe = kTestPackedRecipe};
     const WeightArtifactKey norm1_key{
+            .source_id = source,
+            .value_index = norm1_weight.index,
             .binding = MakeTransformerWeightBinding(1, TransformerWeightRole::kInputNorm),
             .selector = lowered->steps()[2].spec.selector,
             .recipe = kTestPackedRecipe};
@@ -859,13 +882,16 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphBindsDistinctPackedWeightsByBind
     EXPECT_EQ(lowered->steps()[1].spec.selector, lowered->steps()[2].spec.selector);
 
     PackedWeightStore packed_weight_store;
+    ASSERT_TRUE(packed_weight_store.SetSourceId(lowered->artifact_id()).ok());
     ASSERT_TRUE(packed_weight_store
                         .Store(embedding_key,
                                std::make_shared<TestPackedWeights>(
                                        OpType::kEmbedding,
                                        lowered->steps()[0].spec.selector,
-                                       MakeTestBuffer(64),
-                                       kTestPackedRecipe))
+                                       MakeTestBuffer(8 * 128),
+                                       kTestPackedRecipe,
+                                       DataType::Float32(),
+                                       std::vector<int64_t>{32, 8}))
                         .ok());
     ASSERT_TRUE(packed_weight_store
                         .Store(norm0_key,
@@ -873,7 +899,9 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphBindsDistinctPackedWeightsByBind
                                        OpType::kRmsNorm,
                                        lowered->steps()[1].spec.selector,
                                        MakeTestBuffer(64),
-                                       kTestPackedRecipe))
+                                       kTestPackedRecipe,
+                                       DataType::Float32(),
+                                       std::vector<int64_t>{8}))
                         .ok());
     ASSERT_TRUE(packed_weight_store
                         .Store(norm1_key,
@@ -881,7 +909,9 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphBindsDistinctPackedWeightsByBind
                                        OpType::kRmsNorm,
                                        lowered->steps()[2].spec.selector,
                                        MakeTestBuffer(64),
-                                       kTestPackedRecipe))
+                                       kTestPackedRecipe,
+                                       DataType::Float32(),
+                                       std::vector<int64_t>{8}))
                         .ok());
 
     RuntimeBuilder builder;
@@ -902,6 +932,52 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphBindsDistinctPackedWeightsByBind
     EXPECT_EQ(plan->steps()[1].packed_weights, packed_weight_store.Find(norm0_key));
     EXPECT_EQ(plan->steps()[2].packed_weights, packed_weight_store.Find(norm1_key));
     EXPECT_NE(plan->steps()[1].packed_weights, plan->steps()[2].packed_weights);
+}
+
+TEST(ExecutionPlanBuilder, TrustedPathRejectsStoreFromAnotherArtifact) {
+    // A store bound to a different model artifact must be refused even when
+    // every packed key would otherwise match: identity includes the source.
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(
+            TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({1})});
+    const GraphValueId embedding_weight = graph.AddWeight(
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({32, 8})},
+            MakeTransformerWeightBinding(std::nullopt,
+                                         TransformerWeightRole::kTokenEmbedding));
+    const auto embedding = graph.AddNode(
+            OpType::kEmbedding, std::nullopt, {tokens, embedding_weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}}, EmbeddingParams{});
+    ASSERT_TRUE(embedding.ok()) << embedding.status().ToString();
+    const GraphValueId norm_weight = graph.AddWeight(
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({8})},
+            MakeTransformerWeightBinding(0, TransformerWeightRole::kInputNorm));
+    const auto rms_norm = graph.AddNode(
+            OpType::kRmsNorm, 0U, {embedding->outputs[0], norm_weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}}, RmsNormParams{.eps = 1.0e-5F});
+    ASSERT_TRUE(rms_norm.ok()) << rms_norm.status().ToString();
+    graph.MarkOutput(rms_norm->outputs[0]);
+
+    GraphLoweringConfig config;
+    config.enable_packed_weights = true;
+    const auto lowered = LowerModelGraph(graph, config);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+    ASSERT_EQ(lowered->steps().size(), 2U);
+    for (const auto& step: lowered->steps()) {
+        EXPECT_EQ(step.spec.selector.weight_format, WeightFormat::kPacked);
+    }
+
+    PackedWeightStore foreign_store;
+    ASSERT_TRUE(foreign_store.SetSourceId(lowered->artifact_id() + 1000).ok());
+
+    RuntimeBuilder builder;
+    builder.RegisterBackendFactory(DeviceType::kCPU,
+                                   std::make_unique<PackedTestBackendFactory>());
+    RuntimeContext runtime = builder.Build();
+    const auto plan = ExecutionPlanBuilder::Build(runtime, foreign_store, *lowered);
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(plan.status().message().find("different model artifact"), std::string::npos);
 }
 
 TEST(ExecutionPlanBuilder, BuildFromNodesAloneHasEmptyStateAliasPlan) {

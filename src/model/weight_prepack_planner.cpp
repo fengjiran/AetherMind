@@ -76,6 +76,11 @@ Status WeightPrepackPlanner::PrepackAndStore(PackedWeightStore& packed_weight_st
                                              const std::vector<Request>& requests) {
     CpuWeightPrepacker prepacker;
 
+    if (!requests.empty()) {
+        AM_RETURN_IF_ERROR(
+                packed_weight_store.SetSourceId(requests.front().source_id));
+    }
+
     for (const auto& req: requests) {
         const auto& shape = req.raw_weight.shape;
         std::vector<int64_t> strides(shape.size());
@@ -97,7 +102,9 @@ Status WeightPrepackPlanner::PrepackAndStore(PackedWeightStore& packed_weight_st
             return packed.status();
         }
 
-        const WeightArtifactKey key{.binding = req.binding,
+        const WeightArtifactKey key{.source_id = req.source_id,
+                                    .value_index = req.value_index,
+                                    .binding = req.binding,
                                     .selector = req.selector,
                                     .recipe = CpuWeightPrepacker::RecipeFor(req.selector)};
         // A duplicate {binding, selector} is a planner bug: propagate as an

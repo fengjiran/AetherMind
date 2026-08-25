@@ -21,6 +21,13 @@ namespace aethermind {
 /// distinct weights no longer collide on the same selector; the recipe
 /// distinguishes packing variants of the same logical weight.
 struct WeightArtifactKey {
+    /// Instance id of the LoweredModelArtifact this artifact was packed for.
+    /// Zero means "unbound" (e.g. untrusted single-node requests).
+    uint64_t source_id = 0;
+    /// The lowered weight value (GraphValueId, artifact-local) this artifact
+    /// serves. Together with source_id it uniquely identifies one weight
+    /// instance across models.
+    uint32_t value_index = 0;
     WeightBinding binding{};
     KernelSelector selector{};
     PackingRecipe recipe{};
@@ -38,6 +45,18 @@ struct WeightArtifactKey {
 /// @note Not thread-safe; callers must serialize concurrent access.
 class PackedWeightStore {
 public:
+    /// @brief Sets the source artifact this store was packed for.
+    ///
+    /// May be called before the first Store(); once frozen (after the first
+    /// Store or a prior SetSourceId), a different source is rejected.
+    ///
+    /// @param source_id LoweredModelArtifact::artifact_id() value.
+    /// @return Ok, or InvalidArgument if already frozen to a different source.
+    Status SetSourceId(uint64_t source_id) noexcept;
+
+    /// @brief Returns the bound source artifact id (0 = unbound).
+    AM_NODISCARD uint64_t source_id() const noexcept;
+
     /// @brief Takes a shared reference to a packed-weights artifact.
     ///
     /// @param key Binding-aware artifact identity.
@@ -71,6 +90,8 @@ private:
     std::vector<std::pair<WeightArtifactKey,
                           std::shared_ptr<const PackedWeights>>>
             entries_{};
+    uint64_t source_id_ = 0;
+    bool source_frozen_ = false;
 };
 
 }// namespace aethermind

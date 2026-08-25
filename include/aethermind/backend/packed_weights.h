@@ -6,7 +6,9 @@
 #include "aethermind/operators/op_type.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace aethermind {
 
@@ -37,6 +39,11 @@ public:
     AM_NODISCARD virtual const Buffer& storage() const noexcept = 0;
     /// @brief Returns the packing recipe this artifact was produced with.
     AM_NODISCARD virtual const PackingRecipe& recipe() const noexcept = 0;
+
+    /// @brief Logical dtype of the weight this artifact packs.
+    AM_NODISCARD virtual DataType logical_dtype() const noexcept = 0;
+    /// @brief Logical shape (row-major dims) of the weight this artifact packs.
+    AM_NODISCARD virtual const std::vector<int64_t>& logical_shape() const noexcept = 0;
 };
 
 }// namespace aethermind

@@ -90,6 +90,26 @@ std::vector<uint32_t> MakeKernelOutputPorts(const OperatorSchema& schema) {
     return ports;
 }
 
+// Rank and static dims of a packed artifact's logical shape must match the
+// plan value spec; symbolic dims are resolved at binding time and skip here.
+bool ShapeMatchesSpec(const TensorSpec& spec,
+                      const std::vector<int64_t>& shape) {
+    const auto rank = spec.shape.rank();
+    if (!rank.has_value()) {
+        return true;
+    }
+    if (shape.size() != *rank) {
+        return false;
+    }
+    for (size_t d = 0; d < shape.size(); ++d) {
+        const ShapeSymbol& dimension = spec.shape[d];
+        if (dimension.IsStatic() && shape[d] != dimension.GetStaticValue()) {
+            return false;
+        }
+    }
+    return true;
+}
+
 std::vector<TensorSpec> GatherSpecs(const std::vector<TensorSpec>& semantic_specs,
                                     std::span<const uint32_t> ports) {
     std::vector<TensorSpec> compact;
@@ -417,10 +437,13 @@ StatusOr<PreparedExecutionGraph> PrepareUntrustedGraph(
         }
 
         if (selector.weight_format == WeightFormat::kPacked) {
-            // Untrusted nodes carry no WeightBinding, so the empty binding is
-            // the only identity available. Multiple kPacked untrusted nodes
-            // therefore collide on one key and are rejected at Store time.
-            prepared->packed_key = WeightArtifactKey{.binding = {},
+            // Untrusted nodes carry no WeightBinding and no artifact source,
+            // so the key stays unbound (source/value zero). Multiple kPacked
+            // untrusted nodes therefore collide on one key and are rejected at
+            // Store time.
+            prepared->packed_key = WeightArtifactKey{.source_id = 0,
+                                                     .value_index = 0,
+                                                     .binding = {},
                                                      .selector = selector};
         }
         graph.nodes.push_back(std::move(*prepared));
@@ -495,8 +518,12 @@ StatusOr<PreparedExecutionGraph> PrepareTrustedGraph(const LoweredGraph& lowered
                             "kWeight input value has no WeightValue payload");
                 }
 
-                packed_key = WeightArtifactKey{.binding = weight->binding,
-                                               .selector = spec.selector};
+                packed_key = WeightArtifactKey{
+                        .source_id = lowered.artifact_id(),
+                        .value_index = static_cast<uint32_t>(
+                                prepared->inputs[port].index),
+                        .binding = weight->binding,
+                        .selector = spec.selector};
                 break;
             }
 
@@ -559,7 +586,17 @@ StatusOr<ExecutionPlan> AssembleExecutionPlan(RuntimeContext& runtime,
                         "Packed-weight node requires a PackedWeightStore");
             }
 
+            if (packed_weight_store->source_id() != 0 &&
+                packed_weight_store->source_id() !=
+                        node.packed_key->source_id) {
+                return Status::InvalidArgument(
+                        "PackedWeightStore belongs to a different model "
+                        "artifact than the lowered graph");
+            }
+
             const WeightArtifactKey exact_key{
+                    .source_id = node.packed_key->source_id,
+                    .value_index = node.packed_key->value_index,
                     .binding = node.packed_key->binding,
                     .selector = node.packed_key->selector,
                     .recipe = kernel->expected_packing_recipe};
@@ -568,6 +605,22 @@ StatusOr<ExecutionPlan> AssembleExecutionPlan(RuntimeContext& runtime,
                 packed_weights->storage().data() == nullptr) {
                 return Status::NotFound(
                         "Packed weights not found for ExecutionPlan node");
+            }
+            if (node.packed_key->source_id != 0) {
+                const ExecutionValueDesc& desc =
+                        graph.values[node.packed_key->value_index];
+                if (packed_weights->op_type() != node.op_type) {
+                    return Status::InvalidArgument(
+                            "Packed artifact op type does not match the "
+                            "execution step");
+                }
+                if (packed_weights->logical_dtype() != desc.spec.dtype ||
+                    !ShapeMatchesSpec(desc.spec,
+                                      packed_weights->logical_shape())) {
+                    return Status::InvalidArgument(
+                            "Packed artifact logical metadata does not match "
+                            "the plan value");
+                }
             }
             node.packed_weights = std::move(packed_weights);
         }

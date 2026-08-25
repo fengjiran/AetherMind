@@ -103,12 +103,21 @@ public:
         return recipe_;
     }
 
+    DataType logical_dtype() const noexcept override {
+        return {};
+    }
+
+    const std::vector<int64_t>& logical_shape() const noexcept override {
+        return logical_shape_;
+    }
+
 private:
     OpType op_type_ = OpType::kUnknown;
     KernelSelector selector_{};
     Buffer storage_{};
     bool* destroyed_flag_ = nullptr;
     PackingRecipe recipe_{};
+    std::vector<int64_t> logical_shape_{};
 };
 
 class ImmutableTestBackend final : public Backend {

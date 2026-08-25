@@ -34,10 +34,14 @@ public:
     CpuPackedWeights(OpType op_type,
                      KernelSelector selector,
                      PackingRecipe recipe,
+                     DataType logical_dtype,
+                     std::vector<int64_t> logical_shape,
                      Buffer storage) noexcept
         : op_type_(op_type),
           selector_(selector),
           recipe_(std::move(recipe)),
+          logical_dtype_(logical_dtype),
+          logical_shape_(std::move(logical_shape)),
           storage_(std::move(storage)) {}
 
     AM_NODISCARD OpType op_type() const noexcept override {
@@ -56,10 +60,20 @@ public:
         return recipe_;
     }
 
+    AM_NODISCARD DataType logical_dtype() const noexcept override {
+        return logical_dtype_;
+    }
+
+    AM_NODISCARD const std::vector<int64_t>& logical_shape() const noexcept override {
+        return logical_shape_;
+    }
+
 private:
     OpType op_type_ = OpType::kUnknown;
     KernelSelector selector_{};
     PackingRecipe recipe_{};
+    DataType logical_dtype_{};
+    std::vector<int64_t> logical_shape_{};
     Buffer storage_{};
 };
 
@@ -122,8 +136,12 @@ StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
         std::memcpy(packed_storage.mutable_data(), logical_weight.data(), packed_nbytes);
     }
 
+    std::vector<int64_t> logical_shape(logical_weight.shape().begin(),
+                                       logical_weight.shape().end());
     return std::make_unique<CpuPackedWeights>(
-            op_type, selector, RecipeFor(selector), std::move(packed_storage));
+            op_type, selector, RecipeFor(selector),
+            logical_weight.dtype(), std::move(logical_shape),
+            std::move(packed_storage));
 }
 
 PackingRecipe CpuWeightPrepacker::RecipeFor(const KernelSelector& selector) noexcept {

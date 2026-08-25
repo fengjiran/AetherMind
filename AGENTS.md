@@ -41,10 +41,10 @@
 - operators → shape_inference（+ dtypes/base 基础库）
 - graph → operators + shape_inference
 - compiler → model + graph + operators + shape_inference + base
-- execution → runtime + compiler + operators + shape_inference + base（public headers 不 include compiler）；实现可依赖 model 的权重组装契约（`PackedWeightStore`/`WeightArtifactKey`）
+- execution → runtime + compiler + operators + shape_inference + base（public headers 不 include compiler）；实现可依赖 model 的权重组装契约（`PackedWeightStore`/`WeightArtifactKey`）；公共头可含 backend 的纯数据契约头（`ResolvedKernel`/`PackedWeights`/`KernelSelector`）
 - runtime → base + backend（backend registry/factory）+ memory
 - model → graph + operators + formats/hf；权重组装组件（`WeightPrepackPlanner`/`PackedWeightStore`）可依赖 backend 的打包契约（`PackedWeights`/`PackingRecipe`），不得依赖其余 backend/kernels 细节
-- backend/kernels → operators（仅 OpParams/OpType）不得反向依赖 graph/model；执行期共享契约（`WorkspaceArena`/`WorkspaceBinding`/`KernelSelector`）统一放在 base 层
+- backend/kernels → operators（仅 OpParams/OpType）不得反向依赖 graph/model；执行期共享契约（`WorkspaceArena`/`WorkspaceBinding`/`KernelSelector`）统一放在 base 层；`ResolvedKernel`/`PackedWeights`/`PackingRecipe` 等 backend 纯数据契约头供 execution/model 上层直接依赖，不再额外下沉
 
 ## 3. 构建命令
 ```bash

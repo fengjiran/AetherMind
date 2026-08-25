@@ -21,7 +21,9 @@
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/shape_inference/tensor_spec.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <cstring>
 #include <gtest/gtest.h>
 #include <memory>
 #include <vector>
@@ -451,6 +453,178 @@ TEST(WeightPrepackPlanner, LoweredDrivenPrepackAndResolve) {
     const Status status = Executor::Execute(*plan, context);
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_EQ(g_planner_packed_kernel_calls, 3);
+}
+
+TEST(WeightPrepackPlanner, LoweredDrivenPrepackResolvesCompositeBindings) {
+    auto storage = std::make_shared<TestStorage>(4096);
+    for (auto& b: storage->data) b = std::byte{0};
+
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(
+            TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({1})});
+    const GraphValueId embedding_weight = graph.AddWeight(
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({32, 8})},
+            MakeTransformerWeightBinding(std::nullopt,
+                                         TransformerWeightRole::kTokenEmbedding));
+    const auto embedding = graph.AddNode(
+            OpType::kEmbedding, std::nullopt, {tokens, embedding_weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}}, EmbeddingParams{});
+    ASSERT_TRUE(embedding.ok()) << embedding.status().ToString();
+
+    const GraphValueId qkv_weight = graph.AddWeight(
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({24, 8})},
+            MakeQkvWeightBinding(0U));
+    const auto qkv = graph.AddNode(
+            OpType::kQkvLinear, 0U, {embedding->outputs[0], qkv_weight},
+            {{.payload = ActivationValue{}},
+             {.payload = ActivationValue{}},
+             {.payload = ActivationValue{}}},
+            QkvLinearParams{.q_out_features = 8,
+                            .k_out_features = 8,
+                            .v_out_features = 8});
+    ASSERT_TRUE(qkv.ok()) << qkv.status().ToString();
+
+    const GraphValueId gate_up_weight = graph.AddWeight(
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({16, 8})},
+            MakeGateUpWeightBinding(0U));
+    const auto gate_up = graph.AddNode(
+            OpType::kGateUpLinear, 0U, {embedding->outputs[0], gate_up_weight},
+            {{.payload = ActivationValue{}}, {.payload = ActivationValue{}}},
+            GateUpLinearParams{.gate_out_features = 8, .up_out_features = 8});
+    ASSERT_TRUE(gate_up.ok()) << gate_up.status().ToString();
+    graph.MarkOutput(qkv->outputs[0]);
+    graph.MarkOutput(gate_up->outputs[0]);
+
+    // Backing raw weights: one direct embedding view plus both composite
+    // recipes, each component sized [8, 8] = 256 bytes.
+    ResolvedModelWeights resolved;
+    resolved.embed_tokens = MakeWeightView(storage, 0, 32 * 8 * sizeof(float),
+                                           DataType::Float32(), {32, 8});
+    resolved.layers.resize(1);
+    auto& attn = resolved.layers[0].attn;
+    attn.q_proj = MakeWeightView(storage, 1024, 8 * 8 * sizeof(float),
+                                 DataType::Float32(), {8, 8});
+    attn.k_proj = MakeWeightView(storage, 1280, 8 * 8 * sizeof(float),
+                                 DataType::Float32(), {8, 8});
+    attn.v_proj = MakeWeightView(storage, 1536, 8 * 8 * sizeof(float),
+                                 DataType::Float32(), {8, 8});
+    auto& mlp = resolved.layers[0].mlp;
+    mlp.gate_proj = MakeWeightView(storage, 1792, 8 * 8 * sizeof(float),
+                                   DataType::Float32(), {8, 8});
+    mlp.up_proj = MakeWeightView(storage, 2048, 8 * 8 * sizeof(float),
+                                 DataType::Float32(), {8, 8});
+    // Fill the component regions with a distinct byte pattern so the fused
+    // layout is verifiable byte-by-byte after prepack.
+    for (size_t i = 1024; i < 2304; ++i) {
+        storage->data[i] = static_cast<std::byte>(i);
+    }
+
+    GraphLoweringConfig config;
+    config.enable_packed_weights = true;
+    const auto lowered = LowerModelGraph(graph, config);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+
+    auto requests = BuildWeightPackingRequests(*lowered, resolved);
+    ASSERT_TRUE(requests.ok()) << requests.status().ToString();
+    // Embedding value + fused QKV weight + fused Gate-Up weight.
+    ASSERT_EQ(requests->size(), 3U);
+
+    auto qkv_request = std::find_if(
+            requests->begin(), requests->end(),
+            [](const WeightPrepackPlanner::Request& req) {
+                return req.op_type == OpType::kQkvLinear;
+            });
+    ASSERT_NE(qkv_request, requests->end());
+    EXPECT_TRUE(std::holds_alternative<QkvWeightBinding>(qkv_request->binding.spec));
+    ASSERT_EQ(qkv_request->components.size(), 3U);
+    EXPECT_EQ(qkv_request->components[0].data, attn.q_proj.data);
+    EXPECT_EQ(qkv_request->components[1].data, attn.k_proj.data);
+    EXPECT_EQ(qkv_request->components[2].data, attn.v_proj.data);
+    EXPECT_EQ(qkv_request->source_id, lowered->artifact_id());
+
+    auto gate_up_request = std::find_if(
+            requests->begin(), requests->end(),
+            [](const WeightPrepackPlanner::Request& req) {
+                return req.op_type == OpType::kGateUpLinear;
+            });
+    ASSERT_NE(gate_up_request, requests->end());
+    EXPECT_TRUE(std::holds_alternative<GateUpWeightBinding>(gate_up_request->binding.spec));
+    ASSERT_EQ(gate_up_request->components.size(), 2U);
+    EXPECT_EQ(gate_up_request->components[0].data, mlp.gate_proj.data);
+    EXPECT_EQ(gate_up_request->components[1].data, mlp.up_proj.data);
+
+    auto embedding_request = std::find_if(
+            requests->begin(), requests->end(),
+            [](const WeightPrepackPlanner::Request& req) {
+                return req.op_type == OpType::kEmbedding;
+            });
+    ASSERT_NE(embedding_request, requests->end());
+    EXPECT_TRUE(embedding_request->components.empty());
+    EXPECT_EQ(embedding_request->raw_weight.data, resolved.embed_tokens.data);
+
+    PackedWeightStore packed_weight_store;
+    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(
+                        packed_weight_store, *requests)
+                        .ok());
+    ASSERT_EQ(packed_weight_store.size(), 3U);
+    EXPECT_EQ(packed_weight_store.source_id(), lowered->artifact_id());
+
+    // Stored fused artifacts carry the fused logical shape and exactly the
+    // recipe-ordered concatenation of their components.
+    const auto expect_fused = [&](const WeightPrepackPlanner::Request& req) {
+        const WeightArtifactKey key{.source_id = req.source_id,
+                                    .value_index = req.value_index,
+                                    .binding = req.binding,
+                                    .selector = req.selector,
+                                    .recipe = CpuWeightPrepacker::RecipeFor(
+                                            req.selector)};
+        const auto found = packed_weight_store.Find(key);
+        ASSERT_NE(found, nullptr);
+        ASSERT_EQ(found->logical_shape().size(), 2U);
+        int64_t rows = 0;
+        size_t cursor = 0;
+        for (const auto& component: req.components) {
+            rows += component.shape[0];
+            ASSERT_LE(cursor + component.bytes, found->storage().nbytes());
+            EXPECT_EQ(std::memcmp(
+                              static_cast<const char*>(found->storage().data()) + cursor,
+                              component.data,
+                              component.bytes),
+                      0);
+            cursor += component.bytes;
+        }
+        EXPECT_EQ(found->logical_shape()[0], rows);
+        EXPECT_EQ(found->logical_shape()[1], req.components.front().shape[1]);
+    };
+    expect_fused(*qkv_request);
+    expect_fused(*gate_up_request);
+
+    // The bound plan resolves the two fused steps to their own artifacts.
+    RuntimeBuilder builder;
+    builder.RegisterBackendFactory(
+            DeviceType::kCPU, std::make_unique<PlannerPackedTestBackendFactory>());
+    RuntimeContext runtime = builder.Build();
+    const auto plan =
+            ExecutionPlanBuilder::Build(runtime, packed_weight_store, *lowered);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->size(), 3U);
+    bool saw_qkv = false;
+    bool saw_gate_up = false;
+    for (const auto& step: plan->steps()) {
+        if (step.kernel.op_type == OpType::kQkvLinear) {
+            EXPECT_NE(step.packed_weights, nullptr);
+            EXPECT_EQ(step.packed_weights->logical_shape(),
+                      std::vector<int64_t>({24, 8}));
+            saw_qkv = true;
+        } else if (step.kernel.op_type == OpType::kGateUpLinear) {
+            EXPECT_NE(step.packed_weights, nullptr);
+            EXPECT_EQ(step.packed_weights->logical_shape(),
+                      std::vector<int64_t>({16, 8}));
+            saw_gate_up = true;
+        }
+    }
+    EXPECT_TRUE(saw_qkv);
+    EXPECT_TRUE(saw_gate_up);
 }
 
 }// namespace

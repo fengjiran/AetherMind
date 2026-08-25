@@ -2,23 +2,80 @@
 
 #include "aethermind/operators/operator_schema.h"
 
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace aethermind {
 namespace {
 
-StatusOr<TransformerWeightRole> ResolveRole(const WeightBinding& binding) {
-    const auto* direct = std::get_if<DirectWeightBinding>(&binding.spec);
-    if (direct == nullptr) {
+const RawWeightView* FindRawWeightByRole(const ResolvedModelWeights& resolved,
+                                         std::optional<uint32_t> layer,
+                                         TransformerWeightRole role);
+
+StatusOr<std::vector<RawWeightView>> ResolveSingleWeight(
+        const ResolvedModelWeights& resolved,
+        std::optional<uint32_t> layer,
+        TransformerWeightRole role) {
+    const RawWeightView* raw = FindRawWeightByRole(resolved, layer, role);
+    if (raw == nullptr || !raw->IsValid()) {
         return Status::Internal(
-                "BuildWeightPackingRequests: composite weight bindings are not "
-                "supported yet");
+                "BuildWeightPackingRequests: resolved weights are "
+                "missing the raw weight for a binding");
     }
-    if (direct->semantic_role.index() == 0) {
+    return std::vector<RawWeightView>{*raw};
+}
+
+/// @brief Resolves the raw weights referenced by a logical weight binding.
+///
+/// Direct bindings map to their single Transformer-role weight; composite
+/// bindings map to their fixed recipe-ordered components (Q, K, V for QKV;
+/// Gate, Up for Gate-Up), which are concatenated during prepacking.
+StatusOr<std::vector<RawWeightView>> ResolveWeightComponents(
+        const ResolvedModelWeights& resolved,
+        const WeightBinding& binding) {
+    if (const auto* direct = std::get_if<DirectWeightBinding>(&binding.spec)) {
+        if (direct->semantic_role.index() == 0) {
+            return Status::Internal(
+                    "BuildWeightPackingRequests: weight value has no "
+                    "semantic role");
+        }
+        return ResolveSingleWeight(
+                resolved,
+                binding.decoder_layer_index,
+                std::get<TransformerWeightRole>(direct->semantic_role));
+    }
+
+    std::vector<TransformerWeightRole> roles;
+    if (std::holds_alternative<QkvWeightBinding>(binding.spec)) {
+        roles = {TransformerWeightRole::kAttentionQ,
+                 TransformerWeightRole::kAttentionK,
+                 TransformerWeightRole::kAttentionV};
+    } else if (std::holds_alternative<GateUpWeightBinding>(binding.spec)) {
+        roles = {TransformerWeightRole::kMlpGate,
+                 TransformerWeightRole::kMlpUp};
+    } else {
         return Status::Internal(
-                "BuildWeightPackingRequests: weight value has no semantic role");
+                "BuildWeightPackingRequests: unknown weight binding spec");
     }
-    return std::get<TransformerWeightRole>(direct->semantic_role);
+
+    if (!binding.decoder_layer_index.has_value()) {
+        return Status::Internal(
+                "BuildWeightPackingRequests: composite binding has no layer "
+                "index");
+    }
+    std::vector<RawWeightView> components;
+    components.reserve(roles.size());
+    for (const auto role: roles) {
+        auto single = ResolveSingleWeight(
+                resolved, binding.decoder_layer_index, role);
+        if (!single.ok()) {
+            return single.status();
+        }
+        components.push_back(std::move((*single).front()));
+    }
+    return components;
 }
 
 const RawWeightView* FindRawWeightByRole(const ResolvedModelWeights& resolved,
@@ -104,25 +161,23 @@ StatusOr<std::vector<WeightPrepackPlanner::Request>> BuildWeightPackingRequests(
                         "BuildWeightPackingRequests: kWeight value has no "
                         "WeightValue payload");
             }
-            auto role = ResolveRole(weight->binding);
-            if (!role.ok()) {
-                return role.status();
+            auto components = ResolveWeightComponents(resolved, weight->binding);
+            if (!components.ok()) {
+                return components.status();
             }
-            const RawWeightView* raw = FindRawWeightByRole(
-                    resolved, weight->binding.decoder_layer_index, *role);
-            if (raw == nullptr || !raw->IsValid()) {
-                return Status::Internal(
-                        "BuildWeightPackingRequests: resolved weights are "
-                        "missing the raw weight for a binding");
-            }
-            requests.push_back(WeightPrepackPlanner::Request{
+            WeightPrepackPlanner::Request request{
                     .op_type = step.spec.op_type,
                     .source_id = lowered.artifact_id(),
                     .value_index = value.index,
                     .binding = weight->binding,
-                    .raw_weight = *raw,
                     .selector = step.spec.selector,
-            });
+            };
+            if (IsCompositeWeightBinding(weight->binding)) {
+                request.components = std::move(*components);
+            } else {
+                request.raw_weight = std::move(components->front());
+            }
+            requests.push_back(std::move(request));
         }
     }
     return requests;

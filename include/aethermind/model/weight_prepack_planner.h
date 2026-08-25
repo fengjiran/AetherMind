@@ -27,7 +27,15 @@ public:
         /// Logical weight binding (layer index + role) used as artifact
         /// identity together with the selector.
         WeightBinding binding{};
+        /// Raw weight view for direct bindings. Composite bindings
+        /// (QkvWeightBinding / GateUpWeightBinding) leave this empty and carry
+        /// the recipe-ordered components instead; the planner materializes the
+        /// fused view from `components` during prepacking.
         RawWeightView raw_weight;
+        /// Recipe-ordered raw components of a composite binding: Q, K, V for
+        /// QkvWeightBinding; Gate, Up for GateUpWeightBinding. Empty for
+        /// direct bindings, whose single view lives in `raw_weight`.
+        std::vector<RawWeightView> components{};
         KernelSelector selector;
     };
 

@@ -172,7 +172,7 @@ public:
     std::vector<BoundValue> values{};
     std::vector<StepTensorBinding> steps{};
     std::vector<ConcreteTensorMetadata> metadata{};
-    Buffer activation_storage{};
+    Buffer act_storage{};
 };
 
 BindingTable::BindingTable(std::unique_ptr<BindingTableStorage> storage) noexcept
@@ -208,7 +208,7 @@ bool BindingTable::IsCompatible(const ExecutionPlan& plan) const noexcept {
 
 StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
                                               const ExternalValueBindings& external,
-                                              Allocator& activation_allocator) {
+                                              Allocator& act_allocator) {
     auto storage = std::make_unique<BindingTableStorage>();
     storage->plan_key = plan.binding_key();
     storage->values.resize(plan.values().size());
@@ -228,8 +228,8 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
                     "External readable bindings contain a duplicate ExecutionValueId");
         }
 
-        if (plan.values()[value.index].kind == ExecutionValueKind::kState ||
-            plan.values()[value.index].kind == ExecutionValueKind::kActivation) {
+        if (auto kind = plan.values()[value.index].kind;
+            kind == ExecutionValueKind::kState || kind == ExecutionValueKind::kActivation) {
             return Status::InvalidArgument(
                     "State and activation values cannot use read-only external bindings");
         }
@@ -260,8 +260,8 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
         writable[value.index] = &tensor;
     }
 
-    std::vector<size_t> activation_offsets(plan.values().size(), kUnassignedOffset);
-    size_t activation_bytes = 0;
+    std::vector<size_t> act_offsets(plan.values().size(), kUnassignedOffset);
+    size_t act_bytes = 0;
     for (size_t i = 0; i < plan.values().size(); ++i) {
         const auto& value = plan.values()[i];
         BoundValue& bound = storage->values[i];
@@ -270,34 +270,39 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
             case ExecutionValueKind::kWeight:
             case ExecutionValueKind::kConstant:
                 if (readable[i] == nullptr) {
-                    return Status::FailedPrecondition(
-                            "ExecutionPlan value requires an external read-only binding");
+                    return Status::FailedPrecondition("ExecutionPlan value requires "
+                                                      "an external read-only binding");
                 }
 
-                SnapshotMetadata(storage->metadata[i], readable[i]->shape(), readable[i]->strides());
-                bound.readable = TensorView(readable[i]->data(), readable[i]->dtype(),
-                                            storage->metadata[i].shape, storage->metadata[i].strides,
-                                            readable[i]->alignment());
+                SnapshotMetadata(storage->metadata[i], readable[i]->shape(),
+                                 readable[i]->strides());
+                bound.readable = TensorView(
+                        readable[i]->data(), readable[i]->dtype(),
+                        storage->metadata[i].shape, storage->metadata[i].strides,
+                        readable[i]->alignment());
                 break;
             case ExecutionValueKind::kState:
                 if (readable[i] != nullptr || writable[i] != nullptr) {
-                    return Status::InvalidArgument(
-                            "State values are bound through RuntimeBindingContext, not TensorView");
+                    return Status::InvalidArgument("State values are bound through "
+                                                   "RuntimeBindingContext, not TensorView");
                 }
                 break;
             case ExecutionValueKind::kActivation:
                 if (writable[i] != nullptr) {
-                    SnapshotMetadata(storage->metadata[i], writable[i]->shape(), writable[i]->strides());
-                    bound.writable = MutableTensorView(writable[i]->data(), writable[i]->dtype(),
-                                                       storage->metadata[i].shape, storage->metadata[i].strides,
-                                                       writable[i]->alignment());
+                    SnapshotMetadata(storage->metadata[i], writable[i]->shape(),
+                                     writable[i]->strides());
+                    bound.writable = MutableTensorView(
+                            writable[i]->data(), writable[i]->dtype(),
+                            storage->metadata[i].shape, storage->metadata[i].strides,
+                            writable[i]->alignment());
                     bound.readable = MakeReadOnlyView(bound.writable);
                     bound.has_writable = true;
                     break;
                 }
 
                 {
-                    auto metadata = ResolveConcreteMetadata(value.spec, symbol_values);
+                    auto metadata =
+                            ResolveConcreteMetadata(value.spec, symbol_values);
                     if (!metadata.ok()) {
                         return metadata.status();
                     }
@@ -307,49 +312,56 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
                         return bytes.status();
                     }
 
-                    const auto aligned_offset = AlignWorkspaceOffset(activation_bytes, kActivationAlignment);
+                    const auto aligned_offset =
+                            AlignWorkspaceOffset(act_bytes, kActivationAlignment);
                     if (!aligned_offset.ok()) {
                         return aligned_offset.status();
                     }
 
                     size_t next = 0;
                     if (CheckOverflowAdd(*aligned_offset, *bytes, &next)) {
-                        return Status::Overflow("Activation arena size overflowed size_t");
+                        return Status::Overflow(
+                                "Activation arena size overflowed size_t");
                     }
 
-                    activation_offsets[i] = *aligned_offset;
-                    activation_bytes = next;
+                    act_offsets[i] = *aligned_offset;
+                    act_bytes = next;
                     storage->metadata[i] = std::move(*metadata);
                 }
                 break;
         }
     }
 
-    storage->activation_storage = activation_allocator.Allocate(activation_bytes);
-    if (!storage->activation_storage.is_initialized()) {
+    storage->act_storage = act_allocator.Allocate(act_bytes);
+    if (!storage->act_storage.is_initialized()) {
         return Status::ResourceExhausted(
                 "Activation allocator returned an uninitialized Buffer");
     }
 
     for (size_t i = 0; i < plan.values().size(); ++i) {
-        if (activation_offsets[i] == kUnassignedOffset) continue;
-        const ExecutionValueDesc& value = plan.values()[i];
-        ConcreteTensorMetadata& metadata = storage->metadata[i];
-        std::byte* data = static_cast<std::byte*>(storage->activation_storage.mutable_data()) + activation_offsets[i];
-        storage->values[i].readable = TensorView(data, value.spec.dtype, metadata.shape, metadata.strides,
-                                                 storage->activation_storage.alignment());
-        storage->values[i].writable = MutableTensorView(data, value.spec.dtype, metadata.shape, metadata.strides,
-                                                        storage->activation_storage.alignment());
+        if (act_offsets[i] == kUnassignedOffset) {
+            continue;
+        }
+
+        const auto& value = plan.values()[i];
+        const auto& [shape, strides] = storage->metadata[i];
+        auto* data = static_cast<std::byte*>(
+                             storage->act_storage.mutable_data()) +
+                     act_offsets[i];
+        storage->values[i].readable = TensorView(data, value.spec.dtype, shape, strides,
+                                                 storage->act_storage.alignment());
+        storage->values[i].writable = MutableTensorView(data, value.spec.dtype, shape, strides,
+                                                        storage->act_storage.alignment());
         storage->values[i].has_writable = true;
     }
 
     storage->steps.reserve(plan.size());
-    for (const ExecutionStep& step: plan.steps()) {
+    for (const auto& step: plan.steps()) {
         StepTensorBinding binding;
         binding.inputs.reserve(step.kernel_input_ports.size());
         binding.outputs.reserve(step.kernel_output_ports.size());
         for (const uint32_t port: step.kernel_input_ports) {
-            const BoundValue& value = storage->values[step.inputs[port].index];
+            const auto& value = storage->values[step.inputs[port].index];
             if (!value.readable.is_valid()) {
                 return Status::FailedPrecondition(
                         "ExecutionPlan kernel input has no canonical TensorView binding");
@@ -358,16 +370,19 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
         }
 
         for (const uint32_t port: step.kernel_output_ports) {
-            const BoundValue& value = storage->values[step.outputs[port].index];
+            const auto& value = storage->values[step.outputs[port].index];
             if (!value.has_writable || !value.writable.is_valid()) {
                 return Status::FailedPrecondition(
-                        "ExecutionPlan kernel output has no canonical writable TensorView binding");
+                        "ExecutionPlan kernel output has no "
+                        "canonical writable TensorView binding");
             }
             binding.outputs.push_back(value.writable);
         }
-        AM_RETURN_IF_ERROR(ValidateTensorBindingPremises(step.input_specs, step.output_specs,
-                                                         binding.inputs, binding.outputs));
-        AM_RETURN_IF_ERROR(ValidateShapeConstraints(step.runtime_checks, binding.inputs, binding.outputs));
+
+        AM_RETURN_IF_ERROR(ValidateTensorBindingPremises(
+                step.input_specs, step.output_specs, binding.inputs, binding.outputs));
+        AM_RETURN_IF_ERROR(ValidateShapeConstraints(
+                step.runtime_checks, binding.inputs, binding.outputs));
         storage->steps.push_back(std::move(binding));
     }
     return BindingTable(std::move(storage));

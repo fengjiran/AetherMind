@@ -75,12 +75,14 @@ AM_NODISCARD constexpr bool IsValidWorkspaceAlignment(size_t alignment) noexcept
 inline StatusOr<size_t> AlignWorkspaceOffset(size_t offset,
                                              size_t alignment) noexcept {
     if (!IsValidWorkspaceAlignment(alignment)) {
-        return Status::InvalidArgument("Workspace alignment must be a non-zero power of two");
+        return Status::InvalidArgument(
+                "Workspace alignment must be a non-zero power of two");
     }
 
     size_t t = 0;
     if (CheckOverflowAdd(offset, alignment - 1, &t)) {
-        return Status::Overflow("Workspace offset alignment overflowed size_t");
+        return Status::Overflow(
+                "Workspace offset alignment overflowed size_t");
     }
 
     return t & ~(alignment - 1);

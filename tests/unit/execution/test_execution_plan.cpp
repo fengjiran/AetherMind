@@ -263,9 +263,9 @@ TEST(ExecutionPlan, RejectsActivationWithoutProducer) {
 TEST(ExecutionPlan, ExecuteRejectsBindingDTypeDrift) {
     const auto plan = MakeSingleSoftmaxPlan();
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    const float input[2]{};
-    const int64_t shape[1] = {2};
-    const int64_t strides[1] = {1};
+    constexpr float input[2]{};
+    constexpr int64_t shape[1] = {2};
+    constexpr int64_t strides[1] = {1};
     CPUAllocator allocator(Device::CPU());
     const auto bindings = BuildExecutionBindings(
             *plan,
@@ -279,9 +279,9 @@ TEST(ExecutionPlan, ExecuteRejectsBindingDTypeDrift) {
 TEST(ExecutionPlan, ExecuteRejectsBindingRankDrift) {
     const auto plan = MakeSingleSoftmaxPlan();
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    const float input[2]{};
-    const int64_t shape[2] = {1, 2};
-    const int64_t strides[2] = {2, 1};
+    constexpr float input[2]{};
+    constexpr int64_t shape[2] = {1, 2};
+    constexpr int64_t strides[2] = {2, 1};
     CPUAllocator allocator(Device::CPU());
     const auto bindings = BuildExecutionBindings(
             *plan,
@@ -295,9 +295,9 @@ TEST(ExecutionPlan, ExecuteRejectsBindingRankDrift) {
 TEST(ExecutionPlan, ExecuteRejectsBindingStaticDimDrift) {
     const auto plan = MakeSingleSoftmaxPlan();
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    const float input[3]{};
-    const int64_t shape[1] = {3};
-    const int64_t strides[1] = {1};
+    constexpr float input[3]{};
+    constexpr int64_t shape[1] = {3};
+    constexpr int64_t strides[1] = {1};
     CPUAllocator allocator(Device::CPU());
     const auto bindings = BuildExecutionBindings(
             *plan,

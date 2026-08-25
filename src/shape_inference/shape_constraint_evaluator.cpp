@@ -517,6 +517,7 @@ Status ValidateSpecAgainstView(const TensorSpec& spec,
     if (!spec.shape.IsRanked()) {
         return Status::Ok();
     }
+
     for (size_t d = 0; d < runtime_rank; ++d) {
         const ShapeSymbol& dim = spec.shape[d];
         const int64_t runtime_dim = view.shape()[d];
@@ -547,19 +548,19 @@ Status ValidateSpecAgainstView(const TensorSpec& spec,
 
 }// namespace
 
-Status ValidateTensorBindingPremises(
-        const std::span<const TensorSpec> input_specs,
-        const std::span<const TensorSpec> output_specs,
-        const std::span<const TensorView> inputs,
-        const std::span<const MutableTensorView> outputs) {
+Status ValidateTensorBindingPremises(const std::span<const TensorSpec> input_specs,
+                                     const std::span<const TensorSpec> output_specs,
+                                     const std::span<const TensorView> inputs,
+                                     const std::span<const MutableTensorView> outputs) {
     SymbolValueMap symbol_values;
     for (size_t i = 0; i < input_specs.size(); ++i) {
-        AM_RETURN_IF_ERROR(
-                ValidateSpecAgainstView(input_specs[i], inputs[i], "input", i, symbol_values));
+        AM_RETURN_IF_ERROR(ValidateSpecAgainstView(
+                input_specs[i], inputs[i], "input", i, symbol_values));
     }
+
     for (size_t i = 0; i < output_specs.size(); ++i) {
-        AM_RETURN_IF_ERROR(
-                ValidateSpecAgainstView(output_specs[i], outputs[i], "output", i, symbol_values));
+        AM_RETURN_IF_ERROR(ValidateSpecAgainstView(
+                output_specs[i], outputs[i], "output", i, symbol_values));
     }
     return Status::Ok();
 }

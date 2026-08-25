@@ -79,7 +79,7 @@ private:
     friend StatusOr<BindingTable> BuildExecutionBindings(
             const ExecutionPlan& plan,
             const ExternalValueBindings& external,
-            Allocator& activation_allocator);
+            Allocator& act_allocator);
 
     explicit BindingTable(std::unique_ptr<BindingTableStorage> storage) noexcept;
 
@@ -96,7 +96,7 @@ private:
 StatusOr<BindingTable> BuildExecutionBindings(
         const ExecutionPlan& plan,
         const ExternalValueBindings& external,
-        Allocator& activation_allocator);
+        Allocator& act_allocator);
 
 }// namespace aethermind
 

@@ -7,6 +7,7 @@
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/model/packed_weight_store.h"
 
+#include <memory>
 #include <vector>
 
 namespace aethermind {
@@ -38,26 +39,31 @@ StatusOr<std::vector<WeightPrepackPlanner::Request>> WeightPrepackPlanner::Build
     const size_t num_layers = resolved_weights.layers.size();
     requests.reserve(num_layers * 7 + (resolved_weights.lm_head.has_value() ? 1 : 0));
 
-    for (const auto& layer: resolved_weights.layers) {
-        const auto add = [&](const RawWeightView& weight) {
+    for (size_t layer_index = 0; layer_index < resolved_weights.layers.size();
+         ++layer_index) {
+        const auto& layer = resolved_weights.layers[layer_index];
+        const auto add = [&](const RawWeightView& weight, TransformerWeightRole role) {
             requests.push_back(Request{
                     .op_type = OpType::kLinear,
+                    .binding = MakeTransformerWeightBinding(layer_index, role),
                     .raw_weight = weight,
                     .selector = MakePackedSelector(backend, weight.dtype),
             });
         };
-        add(layer.attn.q_proj);
-        add(layer.attn.k_proj);
-        add(layer.attn.v_proj);
-        add(layer.attn.o_proj);
-        add(layer.mlp.gate_proj);
-        add(layer.mlp.up_proj);
-        add(layer.mlp.down_proj);
+        add(layer.attn.q_proj, TransformerWeightRole::kAttentionQ);
+        add(layer.attn.k_proj, TransformerWeightRole::kAttentionK);
+        add(layer.attn.v_proj, TransformerWeightRole::kAttentionV);
+        add(layer.attn.o_proj, TransformerWeightRole::kAttentionO);
+        add(layer.mlp.gate_proj, TransformerWeightRole::kMlpGate);
+        add(layer.mlp.up_proj, TransformerWeightRole::kMlpUp);
+        add(layer.mlp.down_proj, TransformerWeightRole::kMlpDown);
     }
 
     if (resolved_weights.lm_head.has_value()) {
         requests.push_back(Request{
                 .op_type = OpType::kLinear,
+                .binding = MakeTransformerWeightBinding(
+                        std::nullopt, TransformerWeightRole::kLmHead),
                 .raw_weight = *resolved_weights.lm_head,
                 .selector = MakePackedSelector(backend, resolved_weights.lm_head->dtype),
         });
@@ -70,24 +76,7 @@ Status WeightPrepackPlanner::PrepackAndStore(PackedWeightStore& packed_weight_st
                                              const std::vector<Request>& requests) {
     CpuWeightPrepacker prepacker;
 
-    struct PackKey {
-        OpType op_type;
-        KernelSelector selector;
-    };
-    std::vector<PackKey> stored;
-
     for (const auto& req: requests) {
-        bool duplicate = false;
-        for (const auto& key: stored) {
-            if (key.op_type == req.op_type && key.selector == req.selector) {
-                duplicate = true;
-                break;
-            }
-        }
-        if (duplicate) {
-            continue;
-        }
-
         const auto& shape = req.raw_weight.shape;
         std::vector<int64_t> strides(shape.size());
         if (!strides.empty()) {
@@ -108,8 +97,13 @@ Status WeightPrepackPlanner::PrepackAndStore(PackedWeightStore& packed_weight_st
             return packed.status();
         }
 
-        AM_RETURN_IF_ERROR(packed_weight_store.Store(std::move(*packed)));
-        stored.push_back({req.op_type, req.selector});
+        const WeightArtifactKey key{.binding = req.binding,
+                                    .selector = req.selector,
+                                    .recipe = CpuWeightPrepacker::RecipeFor(req.selector)};
+        // A duplicate {binding, selector} is a planner bug: propagate as an
+        // explicit error instead of silently skipping a weight.
+        AM_RETURN_IF_ERROR(packed_weight_store.Store(
+                key, std::shared_ptr<const PackedWeights>(std::move(*packed))));
     }
 
     return {};

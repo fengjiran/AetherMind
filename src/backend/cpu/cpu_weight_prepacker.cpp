@@ -33,9 +33,11 @@ class CpuPackedWeights final : public PackedWeights {
 public:
     CpuPackedWeights(OpType op_type,
                      KernelSelector selector,
+                     PackingRecipe recipe,
                      Buffer storage) noexcept
         : op_type_(op_type),
           selector_(selector),
+          recipe_(std::move(recipe)),
           storage_(std::move(storage)) {}
 
     AM_NODISCARD OpType op_type() const noexcept override {
@@ -50,9 +52,14 @@ public:
         return storage_;
     }
 
+    AM_NODISCARD const PackingRecipe& recipe() const noexcept override {
+        return recipe_;
+    }
+
 private:
     OpType op_type_ = OpType::kUnknown;
     KernelSelector selector_{};
+    PackingRecipe recipe_{};
     Buffer storage_{};
 };
 
@@ -115,7 +122,16 @@ StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
         std::memcpy(packed_storage.mutable_data(), logical_weight.data(), packed_nbytes);
     }
 
-    return std::make_unique<CpuPackedWeights>(op_type, selector, std::move(packed_storage));
+    return std::make_unique<CpuPackedWeights>(
+            op_type, selector, RecipeFor(selector), std::move(packed_storage));
+}
+
+PackingRecipe CpuWeightPrepacker::RecipeFor(const KernelSelector& selector) noexcept {
+    // Phase 1 packs by identity copy; the recipe records this canonical layout
+    // so distinct packing variants of the same {binding, selector} stay
+    // distinguishable once real tile-block layouts land.
+    (void) selector;
+    return PackingRecipe{.layout = "cpu_identity", .alignment = 64};
 }
 
 }// namespace aethermind

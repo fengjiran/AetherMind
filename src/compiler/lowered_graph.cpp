@@ -158,6 +158,18 @@ Status ValidateLoweredGraph(const LoweredGraph& lowered) {
                     " has undefined selector dtype");
         }
 
+        const auto weight_input_count = static_cast<size_t>(std::count_if(
+                schema->input_ports.begin(), schema->input_ports.end(),
+                [](const OperatorInputPort& port) {
+                    return port.kind == OperatorPortKind::kWeight;
+                }));
+        if (step.spec.selector.weight_format == WeightFormat::kPacked &&
+            weight_input_count != 1) {
+            return Status::Internal(
+                    "ValidateLoweredGraph: kPacked step " + std::to_string(i) +
+                    " must consume exactly one kWeight input");
+        }
+
         for (size_t j = 0; j < step.binding.input_values.size(); ++j) {
             const auto id = step.binding.input_values[j];
             AM_RETURN_IF_ERROR(ValidateValueId(lowered, id, "step input"));

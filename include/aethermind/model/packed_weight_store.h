@@ -2,58 +2,75 @@
 #define AETHERMIND_MODEL_PACKED_WEIGHT_STORE_H
 
 /// @file packed_weight_store.h
-/// @brief Ownership store for legacy packed-weight artifacts.
+/// @brief Ownership store for packed-weight artifacts.
 
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/base/status.h"
+#include "aethermind/graph/graph_types.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace aethermind {
 
-/// @brief Owns PackedWeights artifacts indexed by their legacy op/selector key.
+/// @brief Identity of one packed-weight artifact.
 ///
-/// This store remains a compatibility facility until graph-driven weight
-/// materialization provides per-binding artifact identity.
+/// Replaces the legacy (OpType, KernelSelector) key: the WeightBinding
+/// distinguishes Q/K/V/O, MLP gate/up/down, per-layer roles and lm_head, so
+/// distinct weights no longer collide on the same selector; the recipe
+/// distinguishes packing variants of the same logical weight.
+struct WeightArtifactKey {
+    WeightBinding binding{};
+    KernelSelector selector{};
+    PackingRecipe recipe{};
+
+    AM_NODISCARD friend bool operator==(const WeightArtifactKey& lhs,
+                                        const WeightArtifactKey& rhs) = default;
+};
+
+/// @brief Owns PackedWeights artifacts indexed by their binding-aware key.
+///
+/// The store shares artifact ownership with ExecutionPlan: plan steps hold a
+/// std::shared_ptr into these artifacts, so a plan stays executable after the
+/// store itself is destroyed.
 ///
 /// @note Not thread-safe; callers must serialize concurrent access.
 class PackedWeightStore {
 public:
-    /// @brief Takes ownership of a packed-weights artifact and stores it.
+    /// @brief Takes a shared reference to a packed-weights artifact.
     ///
-    /// The op/selector key is read from the artifact itself
-    /// (`packed_weights->op_type()` / `packed_weights->selector()`), so a
-    /// duplicate of an already-stored entry is rejected.
-    ///
-    /// @param packed_weights Artifact to store; ownership is transferred.
+    /// @param key Binding-aware artifact identity.
+    /// @param artifact Artifact referenced by `key` thereafter.
     /// @return Ok on success, InvalidArgument if null, or AlreadyExists if an
-    ///         entry with the same op/selector key is already present.
-    /// @note Errors are reported via the returned Status, not exceptions.
-    Status Store(std::unique_ptr<PackedWeights> packed_weights) noexcept;
+    ///         entry with the same key is already present.
+    Status Store(const WeightArtifactKey& key,
+                 std::shared_ptr<const PackedWeights> artifact) noexcept;
 
-    /// @brief Returns the stored artifact matching an op/selector key, if any.
+    /// @brief Returns the stored artifact matching a key, if any.
     ///
-    /// @param op_type Operator type of the artifact to find.
-    /// @param selector Kernel selector of the artifact to find.
-    /// @return Non-owning pointer to the stored artifact, or nullptr if no
+    /// @param key Binding-aware artifact identity.
+    /// @return Shared pointer to the stored artifact, or nullptr if no
     ///         matching entry exists.
-    /// @note The returned pointer is borrowed: it stays valid only while this
-    ///       store owns the artifact (until the store is destroyed).
-    AM_NODISCARD const PackedWeights* Find(
-            OpType op_type,
-            const KernelSelector& selector) const noexcept;
+    AM_NODISCARD std::shared_ptr<const PackedWeights> Find(
+            const WeightArtifactKey& key) const noexcept;
 
-    AM_NODISCARD size_t size() const noexcept {
-        return packed_weights_.size();
-    }
+    /// @brief Resolves the artifact for an execution step's weight value.
+    ///
+    /// Matches on {binding, selector} only: a plan step does not yet select a
+    /// packing recipe. Returns nullptr when no artifact is present, or
+    /// kFailedPrecondition when the pair maps to more than one recipe.
+    AM_NODISCARD StatusOr<std::shared_ptr<const PackedWeights>>
+    FindByBindingSelector(const WeightBinding& binding,
+                          const KernelSelector& selector) const noexcept;
 
-    AM_NODISCARD bool empty() const noexcept {
-        return packed_weights_.empty();
-    }
+    AM_NODISCARD size_t size() const noexcept;
+    AM_NODISCARD bool empty() const noexcept;
 
 private:
-    std::vector<std::unique_ptr<PackedWeights>> packed_weights_{};
+    std::vector<std::pair<WeightArtifactKey,
+                          std::shared_ptr<const PackedWeights>>>
+            entries_{};
 };
 
 }// namespace aethermind

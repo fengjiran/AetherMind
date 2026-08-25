@@ -3,6 +3,7 @@
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_schema.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
@@ -73,11 +74,12 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
                 .selector = config.selector,
                 .op_params = node.op_params,
         };
+        spec.input_specs.reserve(schema->input_ports.size());
+        spec.output_specs.reserve(schema->output_ports.size());
+
         LoweredStepBinding binding{.node = node_id};
         binding.input_values.reserve(node.inputs.size());
         binding.output_values.reserve(node.outputs.size());
-        spec.input_specs.reserve(schema->input_ports.size());
-        spec.output_specs.reserve(schema->output_ports.size());
 
         for (size_t i = 0; i < schema->input_ports.size(); ++i) {
             const auto value_id = node.inputs[i];
@@ -105,6 +107,19 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
         }
         spec.selector.act_dtype = selector_dtypes->act_dtype;
         spec.selector.weight_dtype = selector_dtypes->weight_dtype;
+        const bool has_weight_input = std::ranges::any_of(
+                schema->input_ports,
+                [](const OperatorInputPort& port) {
+                    return port.kind == OperatorPortKind::kWeight;
+                });
+        if (has_weight_input && config.enable_packed_weights) {
+            spec.selector.weight_format = WeightFormat::kPacked;
+        } else if (!has_weight_input) {
+            // Packing describes weight storage only; a weightless step must
+            // never claim kPacked (the validated invariant kPacked -> exactly
+            // one kWeight input would reject it downstream).
+            spec.selector.weight_format = WeightFormat::kPlain;
+        }
         spec.runtime_checks = node.runtime_checks;
 
         AM_RETURN_IF_ERROR(AddLoweringStateAliases(

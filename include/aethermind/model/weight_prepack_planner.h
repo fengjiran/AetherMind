@@ -3,6 +3,7 @@
 
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/base/status.h"
+#include "aethermind/graph/graph_types.h"
 #include "aethermind/model/formats/hf/hf_model_config.h"
 #include "aethermind/model/resolved_model_weights.h"
 #include "aethermind/operators/op_type.h"
@@ -19,6 +20,9 @@ class WeightPrepackPlanner {
 public:
     struct Request {
         OpType op_type{};
+        /// Logical weight binding (layer index + role) used as artifact
+        /// identity together with the selector.
+        WeightBinding binding{};
         RawWeightView raw_weight;
         KernelSelector selector;
     };
@@ -33,7 +37,8 @@ public:
             const KernelRegistry& registry);
 
     // Executes prepack for every request and stores the resulting
-    // PackedWeights artifacts into a PackedWeightStore.
+    // PackedWeights artifacts into a PackedWeightStore keyed by
+    // {binding, selector}. Distinct bindings never collide.
     // ModelLoader does not call this legacy planner; graph-driven artifact
     // materialization is the production integration point.
     static Status PrepackAndStore(

@@ -57,25 +57,6 @@ Status ValidateCallerWorkspaceRequirement(const WorkspaceRequirement& caller,
     return Status::Ok();
 }
 
-StatusOr<const void*> ResolvePackedWeights(const PackedWeightStore* packed_weight_store,
-                                           OpType op_type,
-                                           const KernelSelector& selector) noexcept {
-    if (selector.weight_format != WeightFormat::kPacked) {
-        return nullptr;
-    }
-
-    if (packed_weight_store == nullptr) {
-        return Status::NotFound(
-                "Packed-weight node requires a PackedWeightStore");
-    }
-
-    const auto* packed_weights = packed_weight_store->Find(op_type, selector);
-    if (packed_weights == nullptr || packed_weights->storage().data() == nullptr) {
-        return Status::NotFound("Packed weights not found for ExecutionPlan node");
-    }
-    return packed_weights->storage().data();
-}
-
 std::vector<uint32_t> MakeKernelInputPorts(const OperatorSchema& schema) {
     std::vector<uint32_t> ports;
     ports.reserve(schema.input_ports.size());
@@ -217,8 +198,12 @@ struct PreparedNode {
     std::vector<TensorSpec> compact_output_specs{};
     std::vector<ShapeConstraint> runtime_checks{};
     std::optional<WorkspaceRequirement> caller_workspace_assertion{};
+    // Filled by AssembleExecutionPlan after backend resolution.
     ResolvedKernel kernel{};
-    const void* packed_weights = nullptr;
+    // Populated during graph preparation when selector.weight_format is kPacked;
+    // resolved against the PackedWeightStore during assembly.
+    std::optional<WeightArtifactKey> packed_key{};
+    std::shared_ptr<const PackedWeights> packed_weights{};
 };
 
 struct PreparedExecutionGraph {
@@ -269,17 +254,16 @@ StatusOr<PreparedNode> PrepareNode(OpType op_type,
     const auto schema = GetOperatorSchema(op_type);
     if (!schema.ok()) {
         return untrusted ? schema.status()
-                         : Status::Internal(
-                                   "Finalized LoweredStepSpec has no registered schema");
+                         : Status::Internal("Finalized LoweredStepSpec has no registered schema");
     }
 
     if (semantic_inputs.size() != schema->input_ports.size() ||
         semantic_outputs.size() != schema->output_ports.size()) {
         return untrusted
-                       ? Status::InvalidArgument(
-                                 "ExecutionPlanNodeSpec semantic port arity differs from schema")
-                       : Status::Internal(
-                                 "Finalized LoweredStepSpec semantic port arity differs from schema");
+                       ? Status::InvalidArgument("ExecutionPlanNodeSpec semantic "
+                                                 "port arity differs from schema")
+                       : Status::Internal("Finalized LoweredStepSpec semantic port"
+                                          " arity differs from schema");
     }
 
     const auto inference_input_ports = MakeInferenceInputPorts(*schema);
@@ -289,8 +273,8 @@ StatusOr<PreparedNode> PrepareNode(OpType op_type,
     if (!inference_inputs.ok()) {
         return untrusted
                        ? inference_inputs.status()
-                       : Status::Internal(
-                                 "Finalized LoweredStepSpec has invalid inference input metadata");
+                       : Status::Internal("Finalized LoweredStepSpec has invalid"
+                                          " inference input metadata");
     }
 
     if (untrusted) {
@@ -320,18 +304,18 @@ StatusOr<PreparedNode> PrepareNode(OpType op_type,
 
     if (selector.act_dtype != selector_dtypes->act_dtype) {
         return untrusted
-                       ? Status::InvalidArgument(
-                                 "ExecutionPlanNodeSpec.selector.act_dtype does not match semantic specs")
-                       : Status::Internal(
-                                 "Finalized LoweredStepSpec.selector.act_dtype does not match semantic specs");
+                       ? Status::InvalidArgument("ExecutionPlanNodeSpec.selector.act_dtype "
+                                                 "does not match semantic specs")
+                       : Status::Internal("Finalized LoweredStepSpec.selector.act_dtype "
+                                          "does not match semantic specs");
     }
 
     if (selector.weight_dtype != selector_dtypes->weight_dtype) {
         return untrusted
-                       ? Status::InvalidArgument(
-                                 "ExecutionPlanNodeSpec.selector.weight_dtype does not match semantic specs")
-                       : Status::Internal(
-                                 "Finalized LoweredStepSpec.selector.weight_dtype does not match semantic specs");
+                       ? Status::InvalidArgument("ExecutionPlanNodeSpec.selector.weight_dtype"
+                                                 " does not match semantic specs")
+                       : Status::Internal("Finalized LoweredStepSpec.selector.weight_dtype"
+                                          " does not match semantic specs");
     }
 
     auto remapped_checks =
@@ -431,6 +415,14 @@ StatusOr<PreparedExecutionGraph> PrepareUntrustedGraph(
                 graph.model_outputs.push_back(id);
             }
         }
+
+        if (selector.weight_format == WeightFormat::kPacked) {
+            // Untrusted nodes carry no WeightBinding, so the empty binding is
+            // the only identity available. Multiple kPacked untrusted nodes
+            // therefore collide on one key and are rejected at Store time.
+            prepared->packed_key = WeightArtifactKey{.binding = {},
+                                                     .selector = selector};
+        }
         graph.nodes.push_back(std::move(*prepared));
     }
     return graph;
@@ -479,6 +471,41 @@ StatusOr<PreparedExecutionGraph> PrepareTrustedGraph(const LoweredGraph& lowered
         for (const GraphValueId id: binding.output_values) {
             prepared->outputs.push_back({.index = id.index});
         }
+
+        if (spec.selector.weight_format == WeightFormat::kPacked) {
+            // Derive the artifact key from the step's kWeight input value so
+            // layers/roles/qkv do not collide on one (op_type, selector).
+            const auto schema = GetOperatorSchema(spec.op_type);
+            if (!schema.ok()) {
+                return schema.status();
+            }
+
+            std::optional<WeightArtifactKey> packed_key;
+            for (size_t port = 0;
+                 port < schema->input_ports.size() && port < prepared->inputs.size();
+                 ++port) {
+                if (schema->input_ports[port].kind != OperatorPortKind::kWeight) {
+                    continue;
+                }
+                const GraphValuePayload& payload =
+                        lowered.values()[prepared->inputs[port].index].payload;
+                const WeightValue* weight = std::get_if<WeightValue>(&payload);
+                if (weight == nullptr) {
+                    return Status::Internal(
+                            "kWeight input value has no WeightValue payload");
+                }
+
+                packed_key = WeightArtifactKey{.binding = weight->binding,
+                                               .selector = spec.selector};
+                break;
+            }
+
+            if (!packed_key.has_value()) {
+                return Status::Internal(
+                        "kPacked execution step has no kWeight input value");
+            }
+            prepared->packed_key = std::move(packed_key);
+        }
         graph.nodes.push_back(std::move(*prepared));
     }
     return graph;
@@ -526,15 +553,27 @@ StatusOr<ExecutionPlan> AssembleExecutionPlan(RuntimeContext& runtime,
             return kernel.status();
         }
 
-        auto packed_weights = ResolvePackedWeights(
-                packed_weight_store, node.op_type, node.selector);
-        if (!packed_weights.ok()) {
-            return packed_weights.status();
+        if (node.packed_key.has_value()) {
+            if (packed_weight_store == nullptr) {
+                return Status::NotFound(
+                        "Packed-weight node requires a PackedWeightStore");
+            }
+
+            const WeightArtifactKey exact_key{
+                    .binding = node.packed_key->binding,
+                    .selector = node.packed_key->selector,
+                    .recipe = kernel->expected_packing_recipe};
+            auto packed_weights = packed_weight_store->Find(exact_key);
+            if (packed_weights == nullptr ||
+                packed_weights->storage().data() == nullptr) {
+                return Status::NotFound(
+                        "Packed weights not found for ExecutionPlan node");
+            }
+            node.packed_weights = std::move(packed_weights);
         }
 
         workspace_requirements.push_back(kernel->workspace_requirement);
         node.kernel = std::move(*kernel);
-        node.packed_weights = *packed_weights;
     }
 
     const auto layout = PlanWorkspaceRequirements(

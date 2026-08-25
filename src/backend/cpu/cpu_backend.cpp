@@ -1,4 +1,5 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 
 #include "utils/logging.h"
 
@@ -41,6 +42,11 @@ StatusOr<ResolvedKernel> CpuBackend::PrepareKernel(
             .params_size = (*descriptor)->params_size,
             .workspace_requirement = {},
     };
+    if (selector.weight_format == WeightFormat::kPacked) {
+        // The kernel consumes the same packing layout the prepacker produces;
+        // both derive from CpuWeightPrepacker so pack and consume stay in sync.
+        resolved.expected_packing_recipe = CpuWeightPrepacker::RecipeFor(selector);
+    }
 
     if ((*descriptor)->metadata_builder != nullptr) {
         AM_RETURN_IF_ERROR((*descriptor)->metadata_builder(params, resolved.attrs));

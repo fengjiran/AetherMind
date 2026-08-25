@@ -2,6 +2,7 @@
 #define AETHERMIND_BACKEND_RESOLVED_KERNEL_H
 
 #include "aethermind/backend/kernel_types.h"
+#include "aethermind/backend/packed_weights.h"
 #include "aethermind/base/workspace_types.h"
 #include "aethermind/operators/op_type.h"
 
@@ -29,6 +30,11 @@ struct ResolvedKernel {
     // compute it after selecting the concrete implementation; execution
     // planning assigns its offset before the kernel is frozen into a step.
     WorkspaceRequirement workspace_requirement{};
+
+    // Packing layout this kernel consumes from packed-weight artifacts. Empty
+    // (default) for non-packed selectors. Execution resolves artifacts by the
+    // exact {binding, selector, recipe} key built from this field.
+    PackingRecipe expected_packing_recipe{};
 };
 
 }// namespace aethermind

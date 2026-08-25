@@ -2,29 +2,60 @@
 
 namespace aethermind {
 
-Status PackedWeightStore::Store(std::unique_ptr<PackedWeights> packed_weights) noexcept {
-    if (packed_weights == nullptr) {
+Status PackedWeightStore::Store(const WeightArtifactKey& key,
+                                std::shared_ptr<const PackedWeights> artifact) noexcept {
+    if (artifact == nullptr) {
         return Status::InvalidArgument(
                 "PackedWeightStore cannot store null packed weights");
     }
 
-    if (Find(packed_weights->op_type(), packed_weights->selector()) != nullptr) {
+    if (Find(key) != nullptr) {
         return Status::AlreadyExists(
-                "Packed weights already exist for the requested op/selector");
+                "Packed weights already exist for the requested weight key");
     }
 
-    packed_weights_.push_back(std::move(packed_weights));
+    if (key.recipe != artifact->recipe()) {
+        return Status::InvalidArgument(
+                "Packed weight key recipe does not match the artifact recipe");
+    }
+
+    entries_.emplace_back(key, std::move(artifact));
     return Status::Ok();
 }
 
-const PackedWeights* PackedWeightStore::Find(OpType op_type,
-                                             const KernelSelector& selector) const noexcept {
-    for (const auto& packed_weights: packed_weights_) {
-        if (packed_weights->op_type() == op_type && packed_weights->selector() == selector) {
-            return packed_weights.get();
+std::shared_ptr<const PackedWeights> PackedWeightStore::Find(
+        const WeightArtifactKey& key) const noexcept {
+    for (const auto& [entry_key, artifact]: entries_) {
+        if (entry_key == key) {
+            return artifact;
         }
     }
     return nullptr;
+}
+
+StatusOr<std::shared_ptr<const PackedWeights>> PackedWeightStore::FindByBindingSelector(
+        const WeightBinding& binding,
+        const KernelSelector& selector) const noexcept {
+    std::shared_ptr<const PackedWeights> match;
+    for (const auto& [key, artifact]: entries_) {
+        if (key.binding == binding && key.selector == selector) {
+            if (match != nullptr) {
+                return Status::FailedPrecondition(
+                        "Multiple packing recipes exist for the same "
+                        "binding/selector; specify a recipe before resolution");
+            }
+            match = artifact;
+        }
+    }
+    return match;
+}
+
+size_t PackedWeightStore::size() const noexcept {
+    return entries_.size();
+}
+
+bool PackedWeightStore::empty() const noexcept {
+    return entries_.empty();
 }
 
 }// namespace aethermind

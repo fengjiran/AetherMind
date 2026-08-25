@@ -16,6 +16,7 @@
 
 #include <cstdlib>
 #include <memory>
+#include <optional>
 
 namespace {
 
@@ -64,16 +65,21 @@ Status ImmutableKernel(const KernelContext&) noexcept {
     return Status::Ok();
 }
 
+// Recipe the ImmutableTestBackend declares; packed test stores must match.
+const PackingRecipe kTestPackedRecipe{.layout = "test_packed", .alignment = 64};
+
 class ImmutablePackedWeights final : public PackedWeights {
 public:
     ImmutablePackedWeights(OpType op_type,
                            KernelSelector selector,
                            Buffer storage,
-                           bool* destroyed_flag) noexcept
+                           bool* destroyed_flag,
+                           PackingRecipe recipe = {}) noexcept
         : op_type_(op_type),
           selector_(selector),
           storage_(std::move(storage)),
-          destroyed_flag_(destroyed_flag) {}
+          destroyed_flag_(destroyed_flag),
+          recipe_(std::move(recipe)) {}
 
     ~ImmutablePackedWeights() override {
         if (destroyed_flag_ != nullptr) {
@@ -93,11 +99,16 @@ public:
         return storage_;
     }
 
+    const PackingRecipe& recipe() const noexcept override {
+        return recipe_;
+    }
+
 private:
     OpType op_type_ = OpType::kUnknown;
     KernelSelector selector_{};
     Buffer storage_{};
     bool* destroyed_flag_ = nullptr;
+    PackingRecipe recipe_{};
 };
 
 class ImmutableTestBackend final : public Backend {
@@ -119,6 +130,7 @@ public:
                 .fn = &ImmutableKernel,
                 .attrs = {},
                 .debug_name = "test::immutable_kernel",
+                .expected_packing_recipe = kTestPackedRecipe,
         };
     }
 
@@ -293,53 +305,59 @@ TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByPackedWeightStore)
             .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
     };
+    const WeightArtifactKey key{.binding = {},
+                                .selector = selector,
+                                .recipe = kTestPackedRecipe};
 
-    PackedWeightStore packed_weight_store;
-    ASSERT_TRUE(packed_weight_store.Store(std::make_unique<ImmutablePackedWeights>(
-                                                  OpType::kRmsNorm,
-                                                  selector,
-                                                  MakeTestBuffer(256),
-                                                  &packed_destroyed))
-                        .ok());
-
-    const SymbolicShape act_shape = StaticShape({1, 4});
-    const SymbolicShape weight_shape = StaticShape({4});
-    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
-    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
-
-    std::vector<ExecutionPlanNodeSpec> nodes;
-    nodes.push_back(ExecutionPlanNodeSpec{
-            .op_type = OpType::kRmsNorm,
-            .selector = {
-                    .device_type = DeviceType::kCPU,
-                    .act_dtype = DataType::Float32(),
-                    .weight_dtype = DataType::Float32(),
-                    .weight_format = WeightFormat::kPacked,
-            },
-            .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape}, TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
-            .output_specs = analyzed->outputs,
-            .runtime_checks = analyzed->runtime_checks,
-            .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
-    });
-
-    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, packed_weight_store, nodes);
-
-    ASSERT_TRUE(plan.ok());
-    ASSERT_EQ(plan->size(), 1U);
-
-    const ExecutionStep& step = plan->steps().front();
-    ASSERT_NE(step.packed_weights, nullptr);
-
-    const void* packed_ptr = step.packed_weights;
-    EXPECT_FALSE(packed_destroyed);
-
+    std::optional<ExecutionPlan> plan;
+    const void* planned_packed_ptr = nullptr;
     {
-        ExecutionPlan local_plan = plan.value();
-        const ExecutionStep& local_step = local_plan.steps().front();
-        EXPECT_EQ(local_step.packed_weights, packed_ptr);
-    }
+        PackedWeightStore packed_weight_store;
+        ASSERT_TRUE(packed_weight_store
+                            .Store(key, std::make_shared<ImmutablePackedWeights>(
+                                                OpType::kRmsNorm, selector,
+                                                MakeTestBuffer(256),
+                                                &packed_destroyed,
+                                                kTestPackedRecipe))
+                            .ok());
 
+        const SymbolicShape act_shape = StaticShape({1, 4});
+        const SymbolicShape weight_shape = StaticShape({4});
+        const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
+        ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
+        std::vector<ExecutionPlanNodeSpec> nodes;
+        nodes.push_back(ExecutionPlanNodeSpec{
+                .op_type = OpType::kRmsNorm,
+                .selector = {
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float32(),
+                        .weight_format = WeightFormat::kPacked,
+                },
+                .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape}, TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
+                .output_specs = analyzed->outputs,
+                .runtime_checks = analyzed->runtime_checks,
+                .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
+        });
+
+        const StatusOr<ExecutionPlan> built = ExecutionPlanBuilder::Build(runtime, packed_weight_store, nodes);
+
+        ASSERT_TRUE(built.ok());
+        ASSERT_EQ(built->size(), 1U);
+        const ExecutionStep& step = built->steps().front();
+        ASSERT_NE(step.packed_weights, nullptr);
+        planned_packed_ptr = step.packed_weights->storage().data();
+        EXPECT_FALSE(packed_destroyed);
+        plan = std::move(*built);
+    }// The PackedWeightStore is destroyed here.
+
+    // The plan holds its own shared reference into the artifact, so execution
+    // stays valid (and the artifact stays alive) after the store is gone.
+    ASSERT_TRUE(plan.has_value());
     EXPECT_FALSE(packed_destroyed);
+    ASSERT_NE(plan->steps().front().packed_weights, nullptr);
+    EXPECT_EQ(plan->steps().front().packed_weights->storage().data(), planned_packed_ptr);
 }
 
 TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {

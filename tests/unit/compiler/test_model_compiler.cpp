@@ -1,4 +1,5 @@
 #include "aethermind/compiler/model_compiler.h"
+#include "aethermind/operators/operator_schema.h"
 
 #include "aethermind/model/loaded_model.h"
 #include "aethermind/model/model_loader.h"
@@ -80,6 +81,7 @@ TEST(ModelCompiler, PropagatesLoweringTargetConfiguration) {
     options.lowering.selector.isa = IsaLevel::kAVX2;
     options.lowering.selector.weight_format = WeightFormat::kPacked;
     options.lowering.selector.phase = ExecPhase::kPrefill;
+    options.lowering.enable_packed_weights = true;
 
     const auto lowered = ModelCompiler::LoadAndCompile(
             TestModelDir(), options);
@@ -88,8 +90,19 @@ TEST(ModelCompiler, PropagatesLoweringTargetConfiguration) {
     for (const LoweredStep& step: lowered->graph.steps()) {
         EXPECT_EQ(step.spec.selector.device_type, DeviceType::kCUDA);
         EXPECT_EQ(step.spec.selector.isa, IsaLevel::kAVX2);
-        EXPECT_EQ(step.spec.selector.weight_format, WeightFormat::kPacked);
         EXPECT_EQ(step.spec.selector.phase, ExecPhase::kPrefill);
+        // Packed is scoped to weight-consuming steps; every other step stays
+        // kPlain even though the config selector requested kPacked.
+        const auto schema = GetOperatorSchema(step.spec.op_type);
+        ASSERT_TRUE(schema.ok()) << schema.status().ToString();
+        const bool consumes_weight = std::ranges::any_of(
+                schema->input_ports,
+                [](const OperatorInputPort& port) {
+                    return port.kind == OperatorPortKind::kWeight;
+                });
+        EXPECT_EQ(step.spec.selector.weight_format,
+                  consumes_weight ? WeightFormat::kPacked
+                                  : WeightFormat::kPlain);
     }
 }
 

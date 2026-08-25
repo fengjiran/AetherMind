@@ -64,6 +64,15 @@ TEST(CpuWeightPrepacker, PackBuildsPackedWeightsWithCpuStorageAndSelectorMetadat
     EXPECT_TRUE((*packed)->storage().is_initialized());
     EXPECT_TRUE((*packed)->storage().device().is_cpu());
     EXPECT_GT((*packed)->storage().nbytes(), 0U);
+    EXPECT_EQ((*packed)->recipe(), CpuWeightPrepacker::RecipeFor(selector));
+    EXPECT_FALSE((*packed)->recipe().layout.empty());
+}
+
+TEST(CpuWeightPrepacker, RecipeForIsDeterministicPerSelector) {
+    const KernelSelector selector = MakePackedCpuSelector();
+    EXPECT_EQ(CpuWeightPrepacker::RecipeFor(selector),
+              CpuWeightPrepacker::RecipeFor(selector));
+    EXPECT_FALSE(CpuWeightPrepacker::RecipeFor(selector).layout.empty());
 }
 
 TEST(CpuWeightPrepacker, PackRejectsNonPackedWeightFormatRequests) {

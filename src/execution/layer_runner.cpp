@@ -12,7 +12,9 @@ KernelContext BuildKernelContext(const ExecutionStep& step,
             .device_type = step.selector.device_type,
             .stream = nullptr,
             .workspace = bindings.GetWorkspaceArena(),
-            .packed_weights = step.packed_weights,
+            .packed_weights = step.packed_weights
+                                      ? step.packed_weights->storage().data()
+                                      : nullptr,
             .kernel_params = nullptr,
             .attrs = step.kernel.attrs,
     };

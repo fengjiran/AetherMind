@@ -1,6 +1,7 @@
 #include "aethermind/model/weight_prepack_planner.h"
 
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/model/loaded_model.h"
 #include "aethermind/model/packed_weight_store.h"
 
@@ -169,22 +170,26 @@ TEST(WeightPrepackPlanner, PrepackAndStoreMakesWeightsFindable) {
     ASSERT_TRUE(status.ok());
 
     const KernelSelector expected_selector = MakeExpectedSelector();
-    const PackedWeights* found = packed_weight_store.Find(
-            OpType::kLinear, expected_selector);
+    const WeightArtifactKey key{.binding = requests->front().binding,
+                                .selector = requests->front().selector,
+                                .recipe = CpuWeightPrepacker::RecipeFor(
+                                        requests->front().selector)};
+    const auto found = packed_weight_store.Find(key);
     ASSERT_NE(found, nullptr);
     EXPECT_EQ(found->op_type(), OpType::kLinear);
     EXPECT_EQ(found->selector(), expected_selector);
     EXPECT_TRUE(found->storage().is_initialized());
 }
 
-TEST(WeightPrepackPlanner, PrepackAndStoreSkipsDuplicateSelectorWithoutError) {
+TEST(WeightPrepackPlanner, PrepackAndStoreStoresAllLayerWeightsDistinctly) {
     auto storage = std::make_shared<TestStorage>(256);
     for (auto& b: storage->data) b = std::byte{0};
 
     ResolvedModelWeights index;
     index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
     index.final_norm = MakeWeightView(storage, 8, 8, DataType::Float32(), {2, 1});
-    // Two layers — all linear weights share the same (op_type, selector).
+    // Two layers — all linear weights share the same (op_type, selector) but
+    // distinct bindings. Every weight must be packed, not silently dropped.
     index.layers.push_back(MakeTestLayer(storage, 16));
     index.layers.push_back(MakeTestLayer(storage, 100));
 
@@ -198,15 +203,19 @@ TEST(WeightPrepackPlanner, PrepackAndStoreSkipsDuplicateSelectorWithoutError) {
     ASSERT_TRUE(requests.ok());
     EXPECT_EQ(requests->size(), 14);
 
-    // PrepackAndStore should succeed — duplicates are skipped, not rejected.
     Status status = WeightPrepackPlanner::PrepackAndStore(packed_weight_store, *requests);
     ASSERT_TRUE(status.ok());
 
-    // Only the first unique (op_type, selector) pair is stored.
-    const KernelSelector expected_selector = MakeExpectedSelector();
-    const PackedWeights* found = packed_weight_store.Find(
-            OpType::kLinear, expected_selector);
-    ASSERT_NE(found, nullptr);
+    // All 14 distinct keys are stored; the same role across layers differs by
+    // its layer index and every role is individually findable.
+    EXPECT_EQ(packed_weight_store.size(), 14U);
+    for (const auto& req: *requests) {
+        const WeightArtifactKey key{.binding = req.binding,
+                                    .selector = req.selector,
+                                    .recipe = CpuWeightPrepacker::RecipeFor(
+                                            req.selector)};
+        EXPECT_NE(packed_weight_store.Find(key), nullptr) << "missing key for layer";
+    }
 }
 
 TEST(WeightPrepackPlanner, RawViewsRemainAccessibleAfterPrepack) {

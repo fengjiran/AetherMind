@@ -4,7 +4,9 @@
 #include "aethermind/model/formats/hf/hf_safetensors_index.h"
 #include "aethermind/model/formats/hf/hf_utils.h"
 
+#include <algorithm>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -408,30 +410,23 @@ StatusOr<RawWeightTable> LoadShardedRawWeightTable(const HfDirectoryDescriptor& 
     }
 
     if (raw_weights.size() != weight_map.size()) {
-        std::vector<std::string> missing;
-        missing.reserve(weight_map.size() - raw_weights.size());
-        for (const auto& [tensor_name, shard_filename]: weight_map) {
-            if (!raw_weights.contains(tensor_name)) {
-                std::string entry = "'";
-                entry += tensor_name;
-                entry += "' (assigned to shard '";
-                entry += shard_filename;
-                entry += "')";
-                missing.push_back(std::move(entry));
-            }
-        }
-
-        std::string message = "Safetensors index contains " +
-                              std::to_string(missing.size()) +
+        auto is_missing = [&](const auto& kv) { return !raw_weights.contains(kv.first); };
+        const auto missing_count = std::ranges::count_if(weight_map, is_missing);
+        std::string message = "Safetensors index contains " + std::to_string(missing_count) +
                               " tensor(s) missing from their assigned shards: ";
-        for (size_t i = 0; i < missing.size(); ++i) {
-            if (i > 0) {
+        bool first = true;
+        for (const auto& kv: weight_map | std::views::filter(is_missing)) {
+            if (!first) {
                 message += ", ";
             }
-            message += missing[i];
+            first = false;
+            message += "'";
+            message += kv.first;
+            message += "' (assigned to shard '";
+            message += kv.second;
+            message += "')";
         }
-        return Status::NotFound(
-                hf::FormatPathMessage(message, dir_desc.model_dir));
+        return Status::NotFound(hf::FormatPathMessage(message, dir_desc.model_dir));
     }
     return raw_weights;
 }

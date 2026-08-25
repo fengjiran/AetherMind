@@ -4,8 +4,8 @@
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/base/status.h"
-#include "aethermind/base/tensor_view.h"
 #include "aethermind/base/tensor.h"
+#include "aethermind/base/tensor_view.h"
 #include "aethermind/operators/op_type.h"
 
 #include <memory>
@@ -23,6 +23,13 @@ public:
             OpType op_type,
             TensorView logical_weight,
             const KernelSelector& selector) const noexcept;
+
+    /// @brief Returns the packing recipe this prepacker produces.
+    ///
+    /// Deterministic per selector; the packed artifact carries the same recipe
+    /// so a PackedWeightStore can verify key/artifact consistency.
+    AM_NODISCARD static PackingRecipe RecipeFor(
+            const KernelSelector& selector) noexcept;
 };
 
 }// namespace aethermind

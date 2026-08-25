@@ -21,6 +21,13 @@ struct GraphLoweringConfig {
             .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
     };
+    /// When true, steps that consume a kWeight input are marked with
+    /// selector.weight_format = kPacked so the execution path resolves their
+    /// artifacts from a PackedWeightStore by binding-aware key. Steps without
+    /// a kWeight input are always kPlain: packing describes weight storage,
+    /// so weightless steps never claim kPacked regardless of this flag or
+    /// selector.weight_format.
+    bool enable_packed_weights = false;
 };
 
 /// @brief Lowers a validated semantic ModelGraph to a finalized compiler

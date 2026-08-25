@@ -72,8 +72,7 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
         LoweredStepSpec spec{
                 .op_type = node.op_type,
                 .selector = config.selector,
-                .op_params = node.op_params,
-        };
+                .op_params = node.op_params};
         spec.input_specs.reserve(schema->input_ports.size());
         spec.output_specs.reserve(schema->output_ports.size());
 

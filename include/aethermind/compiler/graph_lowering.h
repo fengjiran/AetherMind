@@ -15,12 +15,10 @@ namespace aethermind {
 /// dtypes from validated operator specs. It carries only base-layer data
 /// contracts, never Backend or KernelRegistry.
 struct GraphLoweringConfig {
-    KernelSelector selector{
-            .device_type = DeviceType::kCPU,
-            .weight_format = WeightFormat::kPlain,
-            .isa = IsaLevel::kScalar,
-            .phase = ExecPhase::kBoth,
-    };
+    KernelSelector selector{.device_type = DeviceType::kCPU,
+                            .weight_format = WeightFormat::kPlain,
+                            .isa = IsaLevel::kScalar,
+                            .phase = ExecPhase::kBoth};
     /// When true, steps that consume a kWeight input are marked with
     /// selector.weight_format = kPacked so the execution path resolves their
     /// artifacts from a PackedWeightStore by binding-aware key. Steps without

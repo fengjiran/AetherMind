@@ -38,7 +38,7 @@ struct AddArgs {
 /// kernel implementation. Assumes flat contiguous buffers; strided or
 /// broadcast data must go through the operator layer instead.
 /// noexcept: errors are reported only through the return value.
-AM_NODISCARD Status LaunchAdd(const AddArgs& args) noexcept;
+Status LaunchAdd(const AddArgs& args) noexcept;
 
 }// namespace aethermind
 

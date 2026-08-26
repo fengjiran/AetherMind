@@ -42,7 +42,7 @@ StatusOr<ResolvedKernel> PrepareAvx2RmsNormKernel(float epsilon) {
             OpParams{RmsNormParams{.eps = epsilon}});
 }
 
-Status RunRmsNormEntry(const cpu::detail::RmsNormParams& params, float epsilon) noexcept {
+Status RunRmsNormEntry(const cpu::detail::RmsNormKernelParams& params, float epsilon) noexcept {
     const StatusOr<ResolvedKernel> resolved = PrepareAvx2RmsNormKernel(epsilon);
     if (!resolved.ok()) {
         return resolved.status();
@@ -54,11 +54,11 @@ Status RunRmsNormEntry(const cpu::detail::RmsNormParams& params, float epsilon) 
     });
 }
 
-Status RunRmsNormEntry(const cpu::detail::RmsNormParams& params) noexcept {
+Status RunRmsNormEntry(const cpu::detail::RmsNormKernelParams& params) noexcept {
     return RunRmsNormEntry(params, 1.0e-5F);
 }
 
-void ExpectInvalidRmsNormEntry(const cpu::detail::RmsNormParams& params) {
+void ExpectInvalidRmsNormEntry(const cpu::detail::RmsNormKernelParams& params) {
     const Status status = RunRmsNormEntry(params);
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
 }
@@ -112,7 +112,7 @@ TEST(CPUKernelRmsNorm, CpuBackendPreparedKernelExecutesWithKernelParams) {
     constexpr int64_t io_strides[2] = {4, 1};
     constexpr int64_t w_shape[1] = {4};
     constexpr int64_t w_strides[1] = {1};
-    const cpu::detail::RmsNormParams params{
+    const cpu::detail::RmsNormKernelParams params{
             .input_tensor = TensorView{input, DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), w_shape, w_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
@@ -510,7 +510,7 @@ TEST(CPUKernelRmsNormEntry, Avx2RejectsNonUnitColumnStrides) {
     constexpr int64_t kWeightShape[1] = {3};
     constexpr int64_t kWeightStrides[1] = {2};
 
-    const Status status = RunRmsNormEntry(cpu::detail::RmsNormParams{
+    const Status status = RunRmsNormEntry(cpu::detail::RmsNormKernelParams{
             .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kInputStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kOutputStrides},
@@ -527,19 +527,19 @@ TEST(CPUKernelRmsNormEntry, RejectsNonFloat32Dtypes) {
     constexpr int64_t kWeightShape[1] = {4};
     constexpr int64_t kWeightStrides[1] = {1};
 
-    ExpectInvalidRmsNormEntry(cpu::detail::RmsNormParams{
+    ExpectInvalidRmsNormEntry(cpu::detail::RmsNormKernelParams{
             .input_tensor = TensorView{kInput, DataType::Double(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kIoStrides},
     });
 
-    ExpectInvalidRmsNormEntry(cpu::detail::RmsNormParams{
+    ExpectInvalidRmsNormEntry(cpu::detail::RmsNormKernelParams{
             .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{kWeight, DataType::Double(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kIoStrides},
     });
 
-    ExpectInvalidRmsNormEntry(cpu::detail::RmsNormParams{
+    ExpectInvalidRmsNormEntry(cpu::detail::RmsNormKernelParams{
             .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Double(), kIoShape, kIoStrides},
@@ -556,7 +556,7 @@ TEST(CPUKernelRmsNormEntry, AcceptsZeroSeqLen) {
     constexpr int64_t kWeightShape[1] = {4};
     constexpr int64_t kWeightStrides[1] = {1};
 
-    const Status status = RunRmsNormEntry(cpu::detail::RmsNormParams{
+    const Status status = RunRmsNormEntry(cpu::detail::RmsNormKernelParams{
             .input_tensor = TensorView{nullptr, DataType::Float32(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{nullptr, DataType::Float32(), kIoShape, kIoStrides},
@@ -574,7 +574,7 @@ TEST(CPUKernelRmsNormEntry, RejectsZeroHiddenSize) {
     constexpr int64_t kWeightShape[1] = {0};
     constexpr int64_t kWeightStrides[1] = {1};
 
-    ExpectInvalidRmsNormEntry(cpu::detail::RmsNormParams{
+    ExpectInvalidRmsNormEntry(cpu::detail::RmsNormKernelParams{
             .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kIoStrides},
@@ -590,7 +590,7 @@ TEST(CPUKernelRmsNormEntry, RejectsZeroStrides) {
     constexpr int64_t kWeightShape[1] = {1};
     constexpr int64_t kWeightStrides[1] = {0};
 
-    ExpectInvalidRmsNormEntry(cpu::detail::RmsNormParams{
+    ExpectInvalidRmsNormEntry(cpu::detail::RmsNormKernelParams{
             .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kIoStrides},
@@ -608,7 +608,7 @@ TEST(CPUKernelRmsNormEntry, RejectsMismatchedOutputShape) {
     constexpr int64_t kWeightShape[1] = {4};
     constexpr int64_t kWeightStrides[1] = {1};
 
-    ExpectInvalidRmsNormEntry(cpu::detail::RmsNormParams{
+    ExpectInvalidRmsNormEntry(cpu::detail::RmsNormKernelParams{
             .input_tensor = TensorView{kInput, DataType::Float32(), kInputShape, kInputStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kOutputShape, kOutputStrides},
@@ -623,7 +623,7 @@ TEST(CPUKernelRmsNormEntry, RejectsInvalidEpsilon) {
     constexpr int64_t kIoStrides[2] = {4, 1};
     constexpr int64_t kWeightShape[1] = {4};
     constexpr int64_t kWeightStrides[1] = {1};
-    const cpu::detail::RmsNormParams params{
+    const cpu::detail::RmsNormKernelParams params{
             .input_tensor = TensorView{kInput, DataType::Float32(), kIoShape, kIoStrides},
             .weight_tensor = TensorView{kWeight, DataType::Float32(), kWeightShape, kWeightStrides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), kIoShape, kIoStrides},

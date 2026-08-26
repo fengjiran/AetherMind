@@ -1,55 +1,64 @@
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_CPU_RMSNORM_KERNEL_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_CPU_RMSNORM_KERNEL_H
 
+/// @file cpu_rmsnorm_kernel.h
+/// @brief CPU RMSNorm kernel SDK launch interface.
+///
+/// Exposes a type-erased entry point for callers that do not depend on
+/// TensorView or other engine internals. The backend-internal params
+/// (RmsNormKernelParams) and validated args (RmsNormFp32KernelArgs) live in
+/// src/backend/cpu/kernels/rmsnorm/rmsnorm_internal.h and are never
+/// included by operator code.
+
 #include "aethermind/base/status.h"
 #include "aethermind/dtypes/data_type.h"
 
+#include <cstddef>
+#include <cstdint>
+
 namespace aethermind {
 
-/**
- * @brief RMSNorm 算子的对外公有参数结构体
- * @note 纯 POD 类型，保证 ABI 稳定。外部调用者(SDK 用户)必须填充此结构体。
- */
+/// @brief Type-erased arguments for the RMSNorm operation.
+///
+/// All data pointers are borrowed and must remain valid for the duration of
+/// the call. The caller must ensure the backing memory is correctly typed
+/// according to @p dtype and is large enough for the addressed elements
+/// implied by @p seq_len, @p hidden_size, and the row/column strides.
+/// Strides support non-contiguous slices; the default column stride of 1
+/// indicates innermost dimension is physically contiguous.
 struct RmsNormArgs {
-    // ==========================================
-    // 1. 数据指针 (Type-Erased Pointers)
-    // 必须是 void*，为了兼容 FP32, FP16, BF16 等所有可能的类型
-    // ==========================================
     const void* input = nullptr;
     const void* weight = nullptr;
     void* output = nullptr;
-
-    // ==========================================
-    // 2. 形状维度 (Shapes)
-    // ==========================================
     int64_t seq_len = 0;
     int64_t hidden_size = 0;
-
-    // ==========================================
-    // 3. 内存步长 (Strides)
-    // 保留了所有的 stride 设置，支持切片(Slice)张量的直接传入
-    // 默认列步长为 1，代表最内层物理连续
-    // ==========================================
     int64_t input_row_stride = 0;
     int64_t input_col_stride = 1;
     int64_t weight_stride = 1;
     int64_t output_row_stride = 0;
     int64_t output_col_stride = 1;
-
-    // ==========================================
-    // 4. 超参数与类型标记 (Hyperparameters & Meta)
-    // ==========================================
     float eps = 1.0e-5f;
-    DataType dtype;// 指示上面的 void* 到底是什么类型
-
-    // ==========================================
-    // 5. 临时工作区 (Workspace - 极其重要的面向未来设计)
-    // 即使你目前的 FP32 实现不需要临时内存，对外接口也必须预留
-    // ==========================================
+    DataType dtype;
     void* workspace = nullptr;
     size_t workspace_size = 0;
 };
 
+/// @brief Launches the CPU RMSNorm kernel with type-erased arguments.
+///
+/// Validates pointers, shapes, strides, and epsilon before dispatching to
+/// the scalar or AVX2 micro-kernel. The AVX2 path is selected only when the
+/// column strides are all 1 and the CPU reports AVX2 support via
+/// GetCpuFeatures(); otherwise the scalar path is used.
+///
+/// @param args Type-erased RMSNorm arguments. Pointers must be non-null,
+///             @p seq_len must be non-negative, @p hidden_size must be
+///             positive, @p eps must be finite and positive, and
+///             @p workspace / @p workspace_size must be nullptr / 0 in v1.
+/// @return OkStatus on success, InvalidArgument when preconditions are
+///         violated, or Unimplemented for unsupported @p dtype.
+/// @note This is an SDK thin wrapper and does not go through KernelRegistry;
+///       the performance path uses ExecutionPlan with CpuBackend::PrepareKernel.
+///       The function is noexcept and reports errors only via the return value.
 Status LaunchRmsNorm(const RmsNormArgs& args) noexcept;
 
 }// namespace aethermind

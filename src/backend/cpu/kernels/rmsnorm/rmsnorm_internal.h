@@ -6,12 +6,25 @@
 
 namespace aethermind::cpu::detail {
 
-struct RmsNormParams {
+/// Backend-internal params for the CPU RMSNorm kernel.
+///
+/// Placement-constructed into a stack buffer by BuildRmsNormKernelParams
+/// and consumed via KernelContext::kernel_params. Lifetime: the TensorView
+/// storage referenced by these views must outlive the subsequent kernel
+/// entry call. Operators never name this type directly.
+struct RmsNormKernelParams {
     TensorView input_tensor{};
     TensorView weight_tensor{};
     MutableTensorView output_tensor{};
 };
 
+// Deprecated alias for transitional test compatibility. New code must use RmsNormKernelParams.
+using RmsNormParams [[deprecated("Use RmsNormKernelParams")]] = RmsNormKernelParams;
+
+/// Pre-validated FP32 arguments for RMSNorm micro-kernels.
+///
+/// Produced by ValidateRmsNormEntry from TensorView + epsilon attrs and
+/// consumed by scalar/AVX2 implementations. Separates validation from compute.
 struct RmsNormFp32KernelArgs {
     const float* input{};
     const float* weight{};

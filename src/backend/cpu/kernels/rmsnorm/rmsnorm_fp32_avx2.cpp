@@ -1,7 +1,6 @@
-#include "aethermind/backend/cpu/kernels/common/cpu_simd_utils.h"
-#include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel.h"
-#include "aethermind/backend/kernel_static_registration.h"
 #include "rmsnorm_internal.h"
+
+#include "aethermind/backend/cpu/kernels/common/cpu_simd_utils.h"
 
 #include <cmath>
 

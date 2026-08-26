@@ -74,7 +74,7 @@ TEST(CpuPrepareKernel, PreparedKernelCanBeInvoked) {
     const int64_t io_strides[2] = {4, 1};
     const int64_t w_shape[1] = {4};
     const int64_t w_strides[1] = {1};
-    const cpu::detail::RmsNormParams params{
+    const cpu::detail::RmsNormKernelParams params{
             .input_tensor = TensorView{input, DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), w_shape, w_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},

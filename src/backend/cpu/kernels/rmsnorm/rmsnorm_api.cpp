@@ -1,6 +1,7 @@
 //
 // Created by richard on 6/5/26.
 //
+#include "aethermind/backend/cpu/cpu_info.h"
 #include "aethermind/backend/cpu/kernels/rmsnorm/cpu_rmsnorm_kernel.h"
 #include "rmsnorm_internal.h"
 
@@ -9,6 +10,9 @@ namespace aethermind {
 Status LaunchRmsNorm(const RmsNormArgs& args) noexcept {
     if (!args.input || !args.weight || !args.output) {
         return Status::InvalidArgument("Pointers cannot be null");
+    }
+    if (args.workspace != nullptr || args.workspace_size != 0) {
+        return Status::InvalidArgument("RmsNorm workspace must be null/0 in v1");
     }
 
     if (args.dtype.IsFloat32()) {
@@ -24,12 +28,12 @@ Status LaunchRmsNorm(const RmsNormArgs& args) noexcept {
         kernel_args.output_row_stride = args.output_row_stride;
         kernel_args.output_col_stride = args.output_col_stride;
         kernel_args.eps = args.eps;
-        // Prefer AVX2 when the SDK contract permits it (unit column strides,
-        // matching the entry-level selector constraint in
-        // RmsNormKernelEntry_FP32_AVX2). Fall back to the scalar path for
-        // arbitrary column strides — the scalar micro-kernel handles any
-        // stride correctly.
-        if (args.input_col_stride == 1 && args.weight_stride == 1 && args.output_col_stride == 1) {
+        // Select AVX2 only when both the API contract (unit strides) and
+        // the physical CPU capability allow it. Fall back to scalar for
+        // arbitrary strides or non-AVX2 hardware.
+        const bool can_avx2 = cpu::GetCpuFeatures().has_avx2 && args.input_col_stride == 1 &&
+                              args.weight_stride == 1 && args.output_col_stride == 1;
+        if (can_avx2) {
             return cpu::detail::RmsNormKernel_CPU_FP32_AVX2(kernel_args);
         }
         return cpu::detail::RmsNormKernel_CPU_FP32_Scalar(kernel_args);

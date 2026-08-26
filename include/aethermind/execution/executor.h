@@ -22,8 +22,8 @@ public:
     /// @param bindings Per-step tensor, workspace, and KV-cache bindings that
     ///                 must remain valid for the duration of the call.
     /// @return Status::Ok() on success, or the first failing step's error.
-    AM_NODISCARD static Status Execute(const ExecutionPlan& plan,
-                                       RuntimeBindingContext& bindings) noexcept;
+    static Status Execute(const ExecutionPlan& plan,
+                          RuntimeBindingContext& bindings) noexcept;
 };
 
 }// namespace aethermind

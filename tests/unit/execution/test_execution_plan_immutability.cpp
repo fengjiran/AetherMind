@@ -74,12 +74,16 @@ public:
                            KernelSelector selector,
                            Buffer storage,
                            bool* destroyed_flag,
-                           PackingRecipe recipe = {}) noexcept
+                           PackingRecipe recipe = {},
+                           DataType logical_dtype = {},
+                           std::vector<int64_t> logical_shape = {}) noexcept
         : op_type_(op_type),
           selector_(selector),
           storage_(std::move(storage)),
           destroyed_flag_(destroyed_flag),
-          recipe_(std::move(recipe)) {}
+          recipe_(std::move(recipe)),
+          logical_dtype_(logical_dtype),
+          logical_shape_(std::move(logical_shape)) {}
 
     ~ImmutablePackedWeights() override {
         if (destroyed_flag_ != nullptr) {
@@ -104,7 +108,7 @@ public:
     }
 
     DataType logical_dtype() const noexcept override {
-        return {};
+        return logical_dtype_;
     }
 
     const std::vector<int64_t>& logical_shape() const noexcept override {
@@ -117,6 +121,7 @@ private:
     Buffer storage_{};
     bool* destroyed_flag_ = nullptr;
     PackingRecipe recipe_{};
+    DataType logical_dtype_{};
     std::vector<int64_t> logical_shape_{};
 };
 
@@ -314,7 +319,10 @@ TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByPackedWeightStore)
             .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
     };
-    const WeightArtifactKey key{.binding = {},
+    // The node's kWeight operand is value id 1 (activation id 0 precedes it).
+    const WeightArtifactKey key{.source_id = 0,
+                                .value_index = 1,
+                                .binding = {},
                                 .selector = selector,
                                 .recipe = kTestPackedRecipe};
 
@@ -327,7 +335,9 @@ TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByPackedWeightStore)
                                                 OpType::kRmsNorm, selector,
                                                 MakeTestBuffer(256),
                                                 &packed_destroyed,
-                                                kTestPackedRecipe))
+                                                kTestPackedRecipe,
+                                                DataType::Float32(),
+                                                std::vector<int64_t>{4}))
                             .ok());
 
         const SymbolicShape act_shape = StaticShape({1, 4});

@@ -63,6 +63,9 @@ StatusOr<RawWeightView> MaterializeCompositeWeight(
     int64_t total_rows = 0;
     size_t total_bytes = 0;
     for (const auto& component: components) {
+        // Defense in depth: PrepackAndStore validates before materialization,
+        // but this helper is the layout authority for fused composites.
+        AM_RETURN_IF_ERROR(ValidateRawWeightView(component));
         if (!component.IsValid() || !component.is_contiguous) {
             return Status::InvalidArgument(
                     "composite weight component is not a valid contiguous view");
@@ -175,6 +178,17 @@ Status WeightPrepackPlanner::PrepackAndStore(PackedWeightStore& packed_weight_st
     }
 
     for (const auto& req: requests) {
+        // The prepacker copies shape-derived logical_nbytes() out of these
+        // views; validate byte sizes up front so a mismatch fails eagerly
+        // instead of reading out of bounds or fusing a corrupted layout.
+        if (req.components.empty()) {
+            AM_RETURN_IF_ERROR(ValidateRawWeightView(req.raw_weight));
+        } else {
+            for (const auto& component: req.components) {
+                AM_RETURN_IF_ERROR(ValidateRawWeightView(component));
+            }
+        }
+
         // Composite bindings carry recipe-ordered component views; the fused
         // buffer is materialized here and kept alive through pack + store.
         RawWeightView fused{};

@@ -649,8 +649,11 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightStore) {
             .phase = ExecPhase::kBoth,
     };
     // Untrusted nodes carry no WeightBinding, so the store key uses the empty
-    // binding and must match the key derived by the builder for untrusted nodes.
-    const WeightArtifactKey key{.binding = {},
+    // binding and the node's kWeight operand id (activation id 0, weight id 1)
+    // must match the key derived by the builder for untrusted nodes.
+    const WeightArtifactKey key{.source_id = 0,
+                                .value_index = 1,
+                                .binding = {},
                                 .selector = selector,
                                 .recipe = kTestPackedRecipe};
 
@@ -658,7 +661,9 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightStore) {
                         .Store(key, std::make_shared<TestPackedWeights>(
                                             OpType::kRmsNorm, selector,
                                             MakeTestBuffer(128),
-                                            kTestPackedRecipe))
+                                            kTestPackedRecipe,
+                                            DataType::Float32(),
+                                            std::vector<int64_t>{8}))
                         .ok());
 
     const SymbolicShape act_shape = StaticShape({4, 8});

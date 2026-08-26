@@ -4,6 +4,8 @@
 
 #include <optional>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -93,7 +95,10 @@ const RawWeightView* FindRawWeightByRole(const ResolvedModelWeights& resolved,
         case TransformerWeightRole::kFinalNorm:
             return &resolved.final_norm;
         case TransformerWeightRole::kLmHead:
-            return resolved.lm_head.has_value() ? &*resolved.lm_head : nullptr;
+            // Tied embeddings reuse embed_tokens when the checkpoint carries
+            // no independent lm_head, mirroring ModelGraphBuilder.
+            return resolved.lm_head.has_value() ? &*resolved.lm_head
+                                                : &resolved.embed_tokens;
         case TransformerWeightRole::kInputNorm:
             return layer.has_value() && *layer < resolved.layers.size()
                            ? &resolved.layers[*layer].norm.input_rmsnorm
@@ -135,8 +140,16 @@ StatusOr<std::vector<WeightPrepackPlanner::Request>> BuildWeightPackingRequests(
         const LoweredGraph& lowered,
         const ResolvedModelWeights& resolved) {
     std::vector<WeightPrepackPlanner::Request> requests;
+    // (value_index, selector) pairs already requested; one artifact serves
+    // every step consuming the same weight value with the same selector.
+    std::unordered_map<uint32_t, std::unordered_set<KernelSelector>> seen_requests;
 
     for (const LoweredStep& step: lowered.steps()) {
+        // Packing requests describe packed weight storage only; steps that
+        // consume plain or quantized weights must not enter the planner.
+        if (step.spec.selector.weight_format != WeightFormat::kPacked) {
+            continue;
+        }
         const auto schema = GetOperatorSchema(step.spec.op_type);
         if (!schema.ok()) {
             return schema.status();
@@ -160,6 +173,11 @@ StatusOr<std::vector<WeightPrepackPlanner::Request>> BuildWeightPackingRequests(
                 return Status::Internal(
                         "BuildWeightPackingRequests: kWeight value has no "
                         "WeightValue payload");
+            }
+            if (!seen_requests[value.index].insert(step.spec.selector).second) {
+                // A duplicate request would collide on the exact artifact key
+                // and fail with AlreadyExists during Store.
+                continue;
             }
             auto components = ResolveWeightComponents(resolved, weight->binding);
             if (!components.ok()) {

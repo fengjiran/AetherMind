@@ -31,10 +31,12 @@ Status LayerRunner::Run(const ExecutionPlan& plan,
         return Status::FailedPrecondition(
                 "RuntimeBindingContext requires a BindingTable before execution");
     }
+
     if (!binding_table->IsCompatible(plan)) {
         return Status::InvalidArgument(
                 "RuntimeBindingContext BindingTable is not compatible with ExecutionPlan");
     }
+
     for (size_t i = 0; i < steps.size(); ++i) {
         if (const auto status = RunStep(i, steps[i], bindings, *binding_table,
                                         alias_plan, plan.values());

@@ -415,13 +415,29 @@ StatusOr<PreparedExecutionGraph> PrepareUntrustedGraph(
 
         if (selector.weight_format == WeightFormat::kPacked) {
             // Untrusted nodes carry no WeightBinding and no artifact source,
-            // so the key stays unbound (source/value zero). Multiple kPacked
-            // untrusted nodes therefore collide on one key and are rejected at
-            // Store time.
-            prepared->packed_key = WeightArtifactKey{.source_id = 0,
-                                                     .value_index = 0,
-                                                     .binding = {},
-                                                     .selector = selector};
+            // so the key stays unbound (source zero) while the artifact-local
+            // weight operand id still distinguishes multiple packed nodes that
+            // resolve distinct artifacts.
+            std::optional<ExecutionValueId> weight_operand;
+            for (size_t i = 0;
+                 i < schema->input_ports.size() && i < prepared->inputs.size();
+                 ++i) {
+                if (schema->input_ports[i].kind != OperatorPortKind::kWeight) {
+                    continue;
+                }
+                weight_operand = prepared->inputs[i];
+                break;
+            }
+
+            if (!weight_operand.has_value()) {
+                return Status::InvalidArgument(
+                        "kPacked ExecutionPlanNodeSpec has no kWeight input");
+            }
+            prepared->packed_key = WeightArtifactKey{
+                    .source_id = 0,
+                    .value_index = weight_operand->index,
+                    .binding = {},
+                    .selector = selector};
         }
         graph.nodes.push_back(std::move(*prepared));
     }
@@ -580,20 +596,19 @@ StatusOr<ExecutionPlan> AssembleExecutionPlan(RuntimeContext& runtime,
                         "Packed weights not found for ExecutionPlan node");
             }
 
-            if (node.packed_key->source_id != 0) {
-                const ExecutionValueDesc& desc = graph.values[node.packed_key->value_index];
-                if (packed_weights->op_type() != node.op_type) {
-                    return Status::InvalidArgument(
-                            "Packed artifact op type does not match the "
-                            "execution step");
-                }
+            // Artifact metadata must match the step on both trust paths; the
+            // untrusted route derives its desc from the caller-provided
+            // weight operand spec, keyed by the actual kWeight operand id.
+            const ExecutionValueDesc& desc = graph.values[node.packed_key->value_index];
+            if (packed_weights->op_type() != node.op_type) {
+                return Status::InvalidArgument("Packed artifact op type does not"
+                                               " match the execution step");
+            }
 
-                if (packed_weights->logical_dtype() != desc.spec.dtype ||
-                    !ShapeMatchesSpec(desc.spec, packed_weights->logical_shape())) {
-                    return Status::InvalidArgument(
-                            "Packed artifact logical metadata does not match "
-                            "the plan value");
-                }
+            if (packed_weights->logical_dtype() != desc.spec.dtype ||
+                !ShapeMatchesSpec(desc.spec, packed_weights->logical_shape())) {
+                return Status::InvalidArgument("Packed artifact logical metadata "
+                                               "does not match the plan value");
             }
             node.packed_weights = std::move(packed_weights);
         }

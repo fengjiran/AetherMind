@@ -627,4 +627,361 @@ TEST(WeightPrepackPlanner, LoweredDrivenPrepackResolvesCompositeBindings) {
     EXPECT_TRUE(saw_gate_up);
 }
 
+Status PrepackSingleRequest(const WeightPrepackPlanner::Request& request) {
+    PackedWeightStore store;
+    return WeightPrepackPlanner::PrepackAndStore(store, {request});
+}
+
+// RawWeightView::bytes must exactly match shape × dtype byte size: the
+// prepacker copies the shape-derived logical size, so any mismatch would
+// read out of bounds or corrupt fused layouts. These cases must be rejected
+// eagerly at the PrepackAndStore boundary.
+TEST(WeightPrepackPlanner, PrepackAndStoreRejectsDirectWeightWithUndersizedBytes) {
+    auto storage = std::make_shared<TestStorage>(64);
+    for (auto& b: storage->data) b = std::byte{0};
+
+    const WeightPrepackPlanner::Request request{
+            .op_type = OpType::kLinear,
+            .source_id = 1,
+            .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
+            .raw_weight = MakeWeightView(storage, 0, 4, DataType::Float32(), {2, 1}),
+            .selector = MakeExpectedSelector(),
+    };
+
+    const Status status = PrepackSingleRequest(request);
+    EXPECT_FALSE(status.ok());
+    EXPECT_NE(status.message().find("does not match"), std::string::npos);
+}
+
+TEST(WeightPrepackPlanner, PrepackAndStoreRejectsDirectWeightWithOversizedBytes) {
+    auto storage = std::make_shared<TestStorage>(64);
+    for (auto& b: storage->data) b = std::byte{0};
+
+    const WeightPrepackPlanner::Request request{
+            .op_type = OpType::kLinear,
+            .source_id = 1,
+            .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
+            .raw_weight = MakeWeightView(storage, 0, 12, DataType::Float32(), {2, 1}),
+            .selector = MakeExpectedSelector(),
+    };
+
+    const Status status = PrepackSingleRequest(request);
+    EXPECT_FALSE(status.ok());
+    EXPECT_NE(status.message().find("does not match"), std::string::npos);
+}
+
+TEST(WeightPrepackPlanner, PrepackAndStoreRejectsCompositeComponentWithUndersizedBytes) {
+    auto storage = std::make_shared<TestStorage>(64);
+    for (auto& b: storage->data) b = std::byte{0};
+
+    const WeightPrepackPlanner::Request request{
+            .op_type = OpType::kQkvLinear,
+            .source_id = 1,
+            .binding = MakeQkvWeightBinding(0U),
+            .components = {
+                    MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1}),
+                    MakeWeightView(storage, 16, 4, DataType::Float32(), {2, 1}),
+                    MakeWeightView(storage, 24, 8, DataType::Float32(), {2, 1}),
+            },
+            .selector = MakeExpectedSelector(),
+    };
+
+    const Status status = PrepackSingleRequest(request);
+    EXPECT_FALSE(status.ok());
+    EXPECT_NE(status.message().find("does not match"), std::string::npos);
+}
+
+TEST(WeightPrepackPlanner, PrepackAndStoreRejectsNegativeWeightDimension) {
+    auto storage = std::make_shared<TestStorage>(64);
+    for (auto& b: storage->data) b = std::byte{0};
+
+    const WeightPrepackPlanner::Request request{
+            .op_type = OpType::kLinear,
+            .source_id = 1,
+            .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
+            .raw_weight = MakeWeightView(storage, 0, 0, DataType::Float32(), {-3}),
+            .selector = MakeExpectedSelector(),
+    };
+
+    const Status status = PrepackSingleRequest(request);
+    EXPECT_FALSE(status.ok());
+    EXPECT_NE(status.message().find("negative dimension"), std::string::npos);
+}
+
+TEST(WeightPrepackPlanner, PrepackAndStoreRejectsOverflowingWeightByteSize) {
+    auto storage = std::make_shared<TestStorage>(64);
+    for (auto& b: storage->data) b = std::byte{0};
+
+    const WeightPrepackPlanner::Request request{
+            .op_type = OpType::kLinear,
+            .source_id = 1,
+            .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
+            .raw_weight = RawWeightView{
+                    .data = storage->data.data(),
+                    .bytes = 64,
+                    .dtype = DataType::Float32(),
+                    .shape = {static_cast<int64_t>(1) << 30,
+                              static_cast<int64_t>(1) << 30,
+                              static_cast<int64_t>(1) << 30,
+                              static_cast<int64_t>(1) << 30},
+                    .storage = storage,
+            },
+            .selector = MakeExpectedSelector(),
+    };
+
+    const Status status = PrepackSingleRequest(request);
+    EXPECT_FALSE(status.ok());
+    EXPECT_NE(status.message().find("overflows"), std::string::npos);
+}
+
+// Tied embeddings: a checkpoint without an independent lm_head reuses
+// embed_tokens. The request builder must mirror ModelGraphBuilder and fall
+// back to embed_tokens for the kLmHead binding, or graph-driven
+// materialization fails for common tied models.
+TEST(WeightPrepackPlanner, BuildRequestsFallBackToEmbedTokensForTiedLmHead) {
+    auto storage = std::make_shared<TestStorage>(2048);
+    for (auto& b: storage->data) b = std::byte{0};
+
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(
+            TensorSpec{.dtype = DataType::Int(64), .shape = StaticShape({1})});
+    const GraphValueId embedding_weight = graph.AddWeight(
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({32, 8})},
+            MakeTransformerWeightBinding(std::nullopt,
+                                         TransformerWeightRole::kTokenEmbedding));
+    const auto embedding = graph.AddNode(
+            OpType::kEmbedding, std::nullopt, {tokens, embedding_weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}}, EmbeddingParams{});
+    ASSERT_TRUE(embedding.ok()) << embedding.status().ToString();
+    const GraphValueId lm_head_weight = graph.AddWeight(
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({32, 8})},
+            MakeTransformerWeightBinding(std::nullopt,
+                                         TransformerWeightRole::kLmHead));
+    const auto lm_head = graph.AddNode(
+            OpType::kLinear, std::nullopt, {embedding->outputs[0], lm_head_weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}}, LinearParams{});
+    ASSERT_TRUE(lm_head.ok()) << lm_head.status().ToString();
+    graph.MarkOutput(lm_head->outputs[0]);
+
+    // Tied checkpoint: no independent lm_head backing view.
+    ResolvedModelWeights resolved;
+    resolved.embed_tokens = MakeWeightView(storage, 0, 32 * 8 * sizeof(float),
+                                           DataType::Float32(), {32, 8});
+
+    GraphLoweringConfig config;
+    config.enable_packed_weights = true;
+    const auto lowered = LowerModelGraph(graph, config);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+
+    auto requests = BuildWeightPackingRequests(*lowered, resolved);
+    ASSERT_TRUE(requests.ok()) << requests.status().ToString();
+    ASSERT_EQ(requests->size(), 2U);
+
+    // Both values resolve to the same embed_tokens bytes: the embedding
+    // weight and the tied lm_head weight.
+    for (const auto& req: *requests) {
+        EXPECT_EQ(req.raw_weight.data, resolved.embed_tokens.data);
+        EXPECT_EQ(req.raw_weight.bytes, resolved.embed_tokens.bytes);
+    }
+    EXPECT_EQ((*requests)[0].op_type, OpType::kEmbedding);
+    EXPECT_EQ((*requests)[1].op_type, OpType::kLinear);
+    EXPECT_EQ(TryGetTransformerWeightRole((*requests)[0].binding),
+              TransformerWeightRole::kTokenEmbedding);
+    EXPECT_EQ(TryGetTransformerWeightRole((*requests)[1].binding),
+              TransformerWeightRole::kLmHead);
+}
+// Plain (non-packed) weight steps must not produce packing requests: the
+// planner packs only kPacked selectors, and feeding it plain steps would
+// fail inside CpuWeightPrepacker.
+TEST(WeightPrepackPlanner, BuildRequestsSkipsPlainWeightSteps) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({1, 8})},
+            ConstantBinding{}, "input");
+    const GraphValueId weight = graph.AddWeight(
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
+            MakeTransformerWeightBinding(0U, TransformerWeightRole::kMlpUp));
+    const auto linear = graph.AddNode(
+            OpType::kLinear, 0U, {input, weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}}, LinearParams{});
+    ASSERT_TRUE(linear.ok()) << linear.status().ToString();
+    graph.MarkOutput(linear->outputs[0]);
+
+    GraphLoweringConfig config;// enable_packed_weights defaults to false.
+    const auto lowered = LowerModelGraph(graph, config);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+
+    auto requests = BuildWeightPackingRequests(*lowered, ResolvedModelWeights{});
+    ASSERT_TRUE(requests.ok()) << requests.status().ToString();
+    EXPECT_TRUE(requests->empty());
+}
+
+// One weight value consumed by several steps with the same selector packs
+// exactly once; duplicate requests would collide on the exact artifact key
+// and fail with AlreadyExists during Store.
+TEST(WeightPrepackPlanner, BuildRequestsDeduplicatesSharedWeightValue) {
+    auto storage = std::make_shared<TestStorage>(512);
+    for (auto& b: storage->data) b = std::byte{0};
+
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({1, 8})},
+            ConstantBinding{}, "input");
+    const GraphValueId weight = graph.AddWeight(
+            TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({4, 8})},
+            MakeTransformerWeightBinding(0U, TransformerWeightRole::kMlpUp));
+    const auto linear0 = graph.AddNode(
+            OpType::kLinear, 0U, {input, weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}}, LinearParams{});
+    ASSERT_TRUE(linear0.ok()) << linear0.status().ToString();
+    const auto linear1 = graph.AddNode(
+            OpType::kLinear, 0U, {input, weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}}, LinearParams{});
+    ASSERT_TRUE(linear1.ok()) << linear1.status().ToString();
+    graph.MarkOutput(linear0->outputs[0]);
+    graph.MarkOutput(linear1->outputs[0]);
+
+    ResolvedModelWeights resolved;
+    resolved.layers.resize(1);
+    resolved.layers[0].mlp.up_proj = MakeWeightView(storage, 0, 4 * 8 * sizeof(float),
+                                                    DataType::Float32(), {4, 8});
+
+    GraphLoweringConfig config;
+    config.enable_packed_weights = true;
+    const auto lowered = LowerModelGraph(graph, config);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+
+    auto requests = BuildWeightPackingRequests(*lowered, resolved);
+    ASSERT_TRUE(requests.ok()) << requests.status().ToString();
+    ASSERT_EQ(requests->size(), 1U);
+    EXPECT_EQ((*requests)[0].value_index, weight.index);
+    EXPECT_EQ((*requests)[0].op_type, OpType::kLinear);
+
+    PackedWeightStore store;
+    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(store, *requests).ok());
+    EXPECT_EQ(store.size(), 1U);
+    EXPECT_EQ(store.source_id(), lowered->artifact_id());
+}
+// Packs a contiguous FP32 test weight via the CPU identity prepacker.
+std::shared_ptr<const PackedWeights> PackTestArtifact(OpType op_type,
+                                                      const KernelSelector& selector,
+                                                      std::vector<int64_t> shape) {
+    size_t numel = 1;
+    for (const int64_t dim: shape) numel *= static_cast<size_t>(dim);
+    std::vector<float> data(numel, 1.0F);
+    std::vector<int64_t> strides(shape.size());
+    if (!strides.empty()) {
+        strides.back() = 1;
+        for (int64_t i = static_cast<int64_t>(strides.size()) - 2; i >= 0; --i) {
+            strides[i] = strides[i + 1] * shape[i + 1];
+        }
+    }
+    CpuWeightPrepacker prepacker;
+    auto packed = prepacker.Pack(
+            op_type,
+            TensorView(data.data(), DataType::Float32(),
+                       IntArrayView(shape), IntArrayView(strides), 0),
+            selector);
+    EXPECT_TRUE(packed.ok());
+    if (!packed.ok()) return nullptr;
+    return std::shared_ptr<const PackedWeights>(std::move(*packed));
+}
+
+ExecutionPlanNodeSpec MakePackedLinearNode() {
+    return ExecutionPlanNodeSpec{
+            .op_type = OpType::kLinear,
+            .selector = MakeExpectedSelector(),
+            .input_specs = {TensorSpec{.dtype = DataType::Float32(),
+                                       .shape = StaticShape({1, 8})},
+                            TensorSpec{.dtype = DataType::Float32(),
+                                       .shape = StaticShape({4, 8})}},
+            .output_specs = {TensorSpec{.dtype = DataType::Float32(),
+                                        .shape = StaticShape({1, 4})}},
+            .op_params = LinearParams{},
+    };
+}
+
+// Untrusted packed nodes key their artifacts by the actual kWeight operand
+// id: two packed nodes resolve distinct artifacts instead of colliding on one
+// unbound key.
+TEST(WeightPrepackPlanner, UntrustedBuildBindsDistinctPackedArtifacts) {
+    const std::vector<ExecutionPlanNodeSpec> nodes{MakePackedLinearNode(),
+                                                   MakePackedLinearNode()};
+
+    // Each untrusted node appends its operands in schema-port order
+    // (activation id 0, weight id 1) before the next node's operands.
+    PackedWeightStore store;
+    const KernelSelector selector = MakeExpectedSelector();
+    const PackingRecipe recipe = CpuWeightPrepacker::RecipeFor(selector);
+    for (const uint32_t value_index: {1U, 4U}) {
+        auto artifact = PackTestArtifact(OpType::kLinear, selector, {4, 8});
+        ASSERT_NE(artifact, nullptr);
+        ASSERT_TRUE(store.Store({.source_id = 0,
+                                 .value_index = value_index,
+                                 .binding = {},
+                                 .selector = selector,
+                                 .recipe = recipe},
+                                std::move(artifact))
+                            .ok());
+    }
+
+    RuntimeBuilder builder;
+    builder.RegisterBackendFactory(
+            DeviceType::kCPU, std::make_unique<PlannerPackedTestBackendFactory>());
+    RuntimeContext runtime = builder.Build();
+    const auto plan = ExecutionPlanBuilder::Build(runtime, store, nodes);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    ASSERT_EQ(plan->size(), 2U);
+    ASSERT_NE(plan->steps()[0].packed_weights, nullptr);
+    ASSERT_NE(plan->steps()[1].packed_weights, nullptr);
+    EXPECT_NE(plan->steps()[0].packed_weights, plan->steps()[1].packed_weights);
+}
+
+TEST(WeightPrepackPlanner, UntrustedBuildRejectsArtifactOpTypeMismatch) {
+    const std::vector<ExecutionPlanNodeSpec> nodes{MakePackedLinearNode()};
+
+    PackedWeightStore store;
+    const KernelSelector selector = MakeExpectedSelector();
+    auto artifact = PackTestArtifact(OpType::kEmbedding, selector, {4, 8});
+    ASSERT_NE(artifact, nullptr);
+    ASSERT_TRUE(store.Store({.source_id = 0,
+                             .value_index = 1,
+                             .binding = {},
+                             .selector = selector,
+                             .recipe = CpuWeightPrepacker::RecipeFor(selector)},
+                            std::move(artifact))
+                        .ok());
+
+    RuntimeBuilder builder;
+    builder.RegisterBackendFactory(
+            DeviceType::kCPU, std::make_unique<PlannerPackedTestBackendFactory>());
+    RuntimeContext runtime = builder.Build();
+    const auto plan = ExecutionPlanBuilder::Build(runtime, store, nodes);
+    ASSERT_FALSE(plan.ok());
+    EXPECT_NE(plan.status().message().find("op type"), std::string::npos);
+}
+
+TEST(WeightPrepackPlanner, UntrustedBuildRejectsArtifactShapeMismatch) {
+    const std::vector<ExecutionPlanNodeSpec> nodes{MakePackedLinearNode()};
+
+    PackedWeightStore store;
+    const KernelSelector selector = MakeExpectedSelector();
+    auto artifact = PackTestArtifact(OpType::kLinear, selector, {3, 8});
+    ASSERT_NE(artifact, nullptr);
+    ASSERT_TRUE(store.Store({.source_id = 0,
+                             .value_index = 1,
+                             .binding = {},
+                             .selector = selector,
+                             .recipe = CpuWeightPrepacker::RecipeFor(selector)},
+                            std::move(artifact))
+                        .ok());
+
+    RuntimeBuilder builder;
+    builder.RegisterBackendFactory(
+            DeviceType::kCPU, std::make_unique<PlannerPackedTestBackendFactory>());
+    RuntimeContext runtime = builder.Build();
+    const auto plan = ExecutionPlanBuilder::Build(runtime, store, nodes);
+    ASSERT_FALSE(plan.ok());
+    EXPECT_NE(plan.status().message().find("logical metadata"), std::string::npos);
+}
 }// namespace

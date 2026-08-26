@@ -340,8 +340,18 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
             binding.outputs.push_back(value.writable);
         }
 
+        std::vector<TensorSpec> input_specs;
+        input_specs.reserve(step.kernel_input_ports.size());
+        for (uint32_t port: step.kernel_input_ports) {
+            input_specs.push_back(plan.values()[step.inputs[port].index].spec);
+        }
+        std::vector<TensorSpec> output_specs;
+        output_specs.reserve(step.kernel_output_ports.size());
+        for (uint32_t port: step.kernel_output_ports) {
+            output_specs.push_back(plan.values()[step.outputs[port].index].spec);
+        }
         AM_RETURN_IF_ERROR(ValidateTensorBindingPremises(
-                step.input_specs, step.output_specs, binding.inputs, binding.outputs));
+                input_specs, output_specs, binding.inputs, binding.outputs));
         AM_RETURN_IF_ERROR(ValidateShapeConstraints(
                 step.runtime_checks, binding.inputs, binding.outputs));
         storage->steps.push_back(std::move(binding));

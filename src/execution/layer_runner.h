@@ -40,7 +40,8 @@ private:
                           const ExecutionStep& step,
                           const RuntimeBindingContext& bindings,
                           const BindingTable& binding_table,
-                          const StateAliasPlan& alias_plan) noexcept;
+                          const StateAliasPlan& alias_plan,
+                          const std::vector<ExecutionValueDesc>& values) noexcept;
 
     /// @brief Verifies that a step's state aliases have runtime backing.
     ///
@@ -48,12 +49,14 @@ private:
     /// @param step Step descriptor.
     /// @param alias_plan State aliases for the whole plan.
     /// @param bindings Runtime bindings for the step.
+    /// @param values Global value table owning the specs for this step.
     /// @return Status::Ok() on success.
     static Status ValidateStateAliasesForStep(
             size_t step_index,
             const ExecutionStep& step,
             const StateAliasPlan& alias_plan,
-            const RuntimeBindingContext& bindings) noexcept;
+            const RuntimeBindingContext& bindings,
+            const std::vector<ExecutionValueDesc>& values) noexcept;
 };
 
 }// namespace aethermind

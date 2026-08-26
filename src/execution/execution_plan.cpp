@@ -313,11 +313,9 @@ Status ExecutionPlan::AddStep(ExecutionStep step) {
     }
 
     if (step.inputs.size() != schema->input_ports.size() ||
-        step.outputs.size() != schema->output_ports.size() ||
-        step.semantic_input_specs.size() != schema->input_ports.size() ||
-        step.semantic_output_specs.size() != schema->output_ports.size()) {
+        step.outputs.size() != schema->output_ports.size()) {
         return Status::InvalidArgument(
-                "Execution step semantic operand/spec arity differs from its operator schema");
+                "Execution step semantic operand arity differs from its operator schema");
     }
 
     const auto expected_input_ports =
@@ -325,50 +323,43 @@ Status ExecutionPlan::AddStep(ExecutionStep step) {
     const auto expected_output_ports =
             ExpectedKernelPorts<OperatorOutputPort>(schema->output_ports);
     if (step.kernel_input_ports != expected_input_ports ||
-        step.kernel_output_ports != expected_output_ports ||
-        step.input_specs.size() != step.kernel_input_ports.size() ||
-        step.output_specs.size() != step.kernel_output_ports.size()) {
+        step.kernel_output_ports != expected_output_ports) {
         return Status::InvalidArgument(
                 "Execution step kernel ports do not match its semantic schema");
     }
 
     for (size_t i = 0; i < step.inputs.size(); ++i) {
         AM_RETURN_IF_ERROR(ValidateValueId(values_, step.inputs[i], "step input"));
-        if (const ExecutionValueDesc& value = values_[step.inputs[i].index];
-            value.spec != step.semantic_input_specs[i] ||
-            !MatchesInputKind(value.kind, schema->input_ports[i].kind)) {
+        if (!MatchesInputKind(values_[step.inputs[i].index].kind,
+                              schema->input_ports[i].kind)) {
             return Status::InvalidArgument(
-                    "Execution step input value metadata does not match its semantic port");
+                    "Execution step input value kind does not match its semantic port");
         }
     }
 
     for (size_t i = 0; i < step.outputs.size(); ++i) {
         AM_RETURN_IF_ERROR(ValidateValueId(values_, step.outputs[i], "step output"));
-        if (const ExecutionValueDesc& value = values_[step.outputs[i].index];
-            value.spec != step.semantic_output_specs[i] ||
-            !MatchesOutputKind(value.kind, schema->output_ports[i].kind)) {
+        if (!MatchesOutputKind(values_[step.outputs[i].index].kind,
+                               schema->output_ports[i].kind)) {
             return Status::InvalidArgument(
-                    "Execution step output value metadata does not match its semantic port");
+                    "Execution step output value kind does not match its semantic port");
         }
     }
 
-    for (size_t i = 0; i < step.kernel_input_ports.size(); ++i) {
-        if (step.input_specs[i] != step.semantic_input_specs[step.kernel_input_ports[i]]) {
-            return Status::InvalidArgument(
-                    "Execution step compact input spec does not match its semantic port");
-        }
+    std::vector<TensorSpec> compact_input_specs;
+    compact_input_specs.reserve(step.kernel_input_ports.size());
+    for (uint32_t port: step.kernel_input_ports) {
+        compact_input_specs.push_back(values_[step.inputs[port].index].spec);
     }
-
-    for (size_t i = 0; i < step.kernel_output_ports.size(); ++i) {
-        if (step.output_specs[i] != step.semantic_output_specs[step.kernel_output_ports[i]]) {
-            return Status::InvalidArgument(
-                    "Execution step compact output spec does not match its semantic port");
-        }
+    std::vector<TensorSpec> compact_output_specs;
+    compact_output_specs.reserve(step.kernel_output_ports.size());
+    for (uint32_t port: step.kernel_output_ports) {
+        compact_output_specs.push_back(values_[step.outputs[port].index].spec);
     }
 
     for (const auto& check: step.runtime_checks) {
         AM_RETURN_IF_ERROR(ValidateRuntimeCheckReferences(
-                check, step.input_specs, step.output_specs));
+                check, compact_input_specs, compact_output_specs));
     }
 
     steps_.push_back(std::move(step));

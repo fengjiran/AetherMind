@@ -87,9 +87,7 @@ public:
     AM_NODISCARD bool empty() const noexcept;
 
 private:
-    std::vector<std::pair<WeightArtifactKey,
-                          std::shared_ptr<const PackedWeights>>>
-            entries_{};
+    std::vector<std::pair<WeightArtifactKey, std::shared_ptr<const PackedWeights>>> entries_{};
     uint64_t source_id_ = 0;
     bool source_frozen_ = false;
 };

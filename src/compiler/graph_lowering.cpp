@@ -104,6 +104,7 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
                     "LowerModelGraph: cannot derive selector dtypes: " +
                     selector_dtypes.status().message());
         }
+
         spec.selector.act_dtype = selector_dtypes->act_dtype;
         spec.selector.weight_dtype = selector_dtypes->weight_dtype;
         const bool has_weight_input = std::ranges::any_of(
@@ -111,6 +112,7 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
                 [](const OperatorInputPort& port) {
                     return port.kind == OperatorPortKind::kWeight;
                 });
+
         if (has_weight_input && config.enable_packed_weights) {
             spec.selector.weight_format = WeightFormat::kPacked;
         } else if (!has_weight_input) {

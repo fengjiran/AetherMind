@@ -98,9 +98,11 @@ bool ShapeMatchesSpec(const TensorSpec& spec,
     if (!rank.has_value()) {
         return true;
     }
+
     if (shape.size() != *rank) {
         return false;
     }
+
     for (size_t d = 0; d < shape.size(); ++d) {
         const ShapeSymbol& dimension = spec.shape[d];
         if (dimension.IsStatic() && shape[d] != dimension.GetStaticValue()) {
@@ -108,16 +110,6 @@ bool ShapeMatchesSpec(const TensorSpec& spec,
         }
     }
     return true;
-}
-
-std::vector<TensorSpec> GatherSpecs(const std::vector<TensorSpec>& semantic_specs,
-                                    std::span<const uint32_t> ports) {
-    std::vector<TensorSpec> compact;
-    compact.reserve(ports.size());
-    for (const uint32_t port: ports) {
-        compact.push_back(semantic_specs[port]);
-    }
-    return compact;
 }
 
 StatusOr<std::vector<ShapeConstraint>> RemapRuntimeChecks(
@@ -210,12 +202,8 @@ struct PreparedNode {
     OpParams op_params{};
     std::vector<ExecutionValueId> inputs{};
     std::vector<ExecutionValueId> outputs{};
-    std::vector<TensorSpec> semantic_input_specs{};
-    std::vector<TensorSpec> semantic_output_specs{};
     std::vector<uint32_t> kernel_input_ports{};
     std::vector<uint32_t> kernel_output_ports{};
-    std::vector<TensorSpec> compact_input_specs{};
-    std::vector<TensorSpec> compact_output_specs{};
     std::vector<ShapeConstraint> runtime_checks{};
     std::optional<WorkspaceRequirement> caller_workspace_assertion{};
     // Filled by AssembleExecutionPlan after backend resolution.
@@ -227,10 +215,10 @@ struct PreparedNode {
 };
 
 struct PreparedExecutionGraph {
+    std::vector<PreparedNode> nodes{};
     std::vector<ExecutionValueDesc> values{};
     std::vector<ExecutionValueId> model_inputs{};
     std::vector<ExecutionValueId> model_outputs{};
-    std::vector<PreparedNode> nodes{};
 };
 
 Status ValidateCallerMetadata(const ExecutionPlanNodeSpec& node,
@@ -264,26 +252,25 @@ StatusOr<PreparedNode> PrepareNode(OpType op_type,
                                    std::optional<WorkspaceRequirement> caller_assertion,
                                    bool untrusted) {
     if (op_type == OpType::kUnknown || std::holds_alternative<std::monostate>(op_params)) {
-        return untrusted
-                       ? Status::InvalidArgument(
-                                 "ExecutionPlanNodeSpec requires an op_type and typed op_params")
-                       : Status::Internal(
-                                 "Finalized LoweredStepSpec is missing semantic metadata");
+        return untrusted ? Status::InvalidArgument("ExecutionPlanNodeSpec requires "
+                                                   "an op_type and typed op_params")
+                         : Status::Internal("Finalized LoweredStepSpec is missing"
+                                            " semantic metadata");
     }
 
     const auto schema = GetOperatorSchema(op_type);
     if (!schema.ok()) {
         return untrusted ? schema.status()
-                         : Status::Internal("Finalized LoweredStepSpec has no registered schema");
+                         : Status::Internal("Finalized LoweredStepSpec has no"
+                                            " registered schema");
     }
 
     if (semantic_inputs.size() != schema->input_ports.size() ||
         semantic_outputs.size() != schema->output_ports.size()) {
-        return untrusted
-                       ? Status::InvalidArgument("ExecutionPlanNodeSpec semantic "
-                                                 "port arity differs from schema")
-                       : Status::Internal("Finalized LoweredStepSpec semantic port"
-                                          " arity differs from schema");
+        return untrusted ? Status::InvalidArgument("ExecutionPlanNodeSpec semantic "
+                                                   "port arity differs from schema")
+                         : Status::Internal("Finalized LoweredStepSpec semantic port"
+                                            " arity differs from schema");
     }
 
     const auto inference_input_ports = MakeInferenceInputPorts(*schema);
@@ -291,51 +278,46 @@ StatusOr<PreparedNode> PrepareNode(OpType op_type,
     const auto kernel_outputs = MakeKernelOutputPorts(*schema);
     auto inference_inputs = MakeCompactInputSpecs(*schema, semantic_inputs);
     if (!inference_inputs.ok()) {
-        return untrusted
-                       ? inference_inputs.status()
-                       : Status::Internal("Finalized LoweredStepSpec has invalid"
-                                          " inference input metadata");
+        return untrusted ? inference_inputs.status()
+                         : Status::Internal("Finalized LoweredStepSpec has invalid"
+                                            " inference input metadata");
     }
 
     if (untrusted) {
         std::vector<TensorSpec> inferred_outputs;
         std::vector<ShapeConstraint> inferred_checks;
         AM_RETURN_IF_ERROR(ValidateCallerMetadata(
-                ExecutionPlanNodeSpec{
-                        .op_type = op_type,
-                        .selector = selector,
-                        .workspace_requirement = caller_assertion.value_or(WorkspaceRequirement{}),
-                        .input_specs = semantic_inputs,
-                        .output_specs = semantic_outputs,
-                        .runtime_checks = runtime_checks,
-                        .op_params = op_params},
+                {.op_type = op_type,
+                 .selector = selector,
+                 .workspace_requirement = caller_assertion.value_or(WorkspaceRequirement{}),
+                 .input_specs = semantic_inputs,
+                 .output_specs = semantic_outputs,
+                 .runtime_checks = runtime_checks,
+                 .op_params = op_params},
                 *inference_inputs, inferred_outputs, inferred_checks));
     }
 
     const auto selector_dtypes =
             DeriveSelectorDTypes(*schema, semantic_inputs, semantic_outputs);
     if (!selector_dtypes.ok()) {
-        return untrusted
-                       ? Status::InvalidArgument(
-                                 "ExecutionPlanNodeSpec selector dtypes cannot be derived")
-                       : Status::Internal(
-                                 "Finalized LoweredStepSpec selector dtypes cannot be derived");
+        return untrusted ? Status::InvalidArgument("ExecutionPlanNodeSpec selector "
+                                                   "dtypes cannot be derived")
+                         : Status::Internal("Finalized LoweredStepSpec selector "
+                                            "dtypes cannot be derived");
     }
 
     if (selector.act_dtype != selector_dtypes->act_dtype) {
-        return untrusted
-                       ? Status::InvalidArgument("ExecutionPlanNodeSpec.selector.act_dtype "
-                                                 "does not match semantic specs")
-                       : Status::Internal("Finalized LoweredStepSpec.selector.act_dtype "
-                                          "does not match semantic specs");
+        return untrusted ? Status::InvalidArgument("ExecutionPlanNodeSpec.selector.act_dtype"
+                                                   " does not match semantic specs")
+                         : Status::Internal("Finalized LoweredStepSpec.selector.act_dtype "
+                                            "does not match semantic specs");
     }
 
     if (selector.weight_dtype != selector_dtypes->weight_dtype) {
-        return untrusted
-                       ? Status::InvalidArgument("ExecutionPlanNodeSpec.selector.weight_dtype"
-                                                 " does not match semantic specs")
-                       : Status::Internal("Finalized LoweredStepSpec.selector.weight_dtype"
-                                          " does not match semantic specs");
+        return untrusted ? Status::InvalidArgument("ExecutionPlanNodeSpec.selector.weight_dtype"
+                                                   " does not match semantic specs")
+                         : Status::Internal("Finalized LoweredStepSpec.selector.weight_dtype"
+                                            " does not match semantic specs");
     }
 
     auto remapped_checks =
@@ -352,15 +334,10 @@ StatusOr<PreparedNode> PrepareNode(OpType op_type,
             .op_type = op_type,
             .selector = selector,
             .op_params = std::move(op_params),
-            .semantic_input_specs = semantic_inputs,
-            .semantic_output_specs = semantic_outputs,
             .kernel_input_ports = kernel_inputs,
             .kernel_output_ports = kernel_outputs,
-            .compact_input_specs = GatherSpecs(semantic_inputs, kernel_inputs),
-            .compact_output_specs = GatherSpecs(semantic_outputs, kernel_outputs),
             .runtime_checks = std::move(*remapped_checks),
-            .caller_workspace_assertion = caller_assertion,
-    };
+            .caller_workspace_assertion = caller_assertion};
 }
 
 StatusOr<ExecutionValueKind> KindFromPayload(const GraphValuePayload& payload) {
@@ -466,13 +443,13 @@ StatusOr<PreparedExecutionGraph> PrepareTrustedGraph(const LoweredGraph& lowered
     }
 
     graph.model_inputs.reserve(lowered.model_inputs().size());
-    for (const auto id: lowered.model_inputs()) {
-        graph.model_inputs.push_back({.index = id.index});
+    for (const auto [index]: lowered.model_inputs()) {
+        graph.model_inputs.push_back({.index = index});
     }
 
     graph.model_outputs.reserve(lowered.model_outputs().size());
-    for (const auto id: lowered.model_outputs()) {
-        graph.model_outputs.push_back({.index = id.index});
+    for (const auto [index]: lowered.model_outputs()) {
+        graph.model_outputs.push_back({.index = index});
     }
 
     graph.nodes.reserve(lowered.steps().size());
@@ -486,13 +463,13 @@ StatusOr<PreparedExecutionGraph> PrepareTrustedGraph(const LoweredGraph& lowered
         }
 
         prepared->inputs.reserve(binding.input_values.size());
-        for (const GraphValueId id: binding.input_values) {
-            prepared->inputs.push_back({.index = id.index});
+        for (const auto [index]: binding.input_values) {
+            prepared->inputs.push_back({.index = index});
         }
 
         prepared->outputs.reserve(binding.output_values.size());
-        for (const GraphValueId id: binding.output_values) {
-            prepared->outputs.push_back({.index = id.index});
+        for (const auto [index]: binding.output_values) {
+            prepared->outputs.push_back({.index = index});
         }
 
         if (spec.selector.weight_format == WeightFormat::kPacked) {
@@ -504,15 +481,14 @@ StatusOr<PreparedExecutionGraph> PrepareTrustedGraph(const LoweredGraph& lowered
             }
 
             std::optional<WeightArtifactKey> packed_key;
-            for (size_t port = 0;
-                 port < schema->input_ports.size() && port < prepared->inputs.size();
-                 ++port) {
-                if (schema->input_ports[port].kind != OperatorPortKind::kWeight) {
+            for (size_t i = 0; i < schema->input_ports.size() && i < prepared->inputs.size(); ++i) {
+                if (schema->input_ports[i].kind != OperatorPortKind::kWeight) {
                     continue;
                 }
-                const GraphValuePayload& payload =
-                        lowered.values()[prepared->inputs[port].index].payload;
-                const WeightValue* weight = std::get_if<WeightValue>(&payload);
+
+                const auto& payload =
+                        lowered.values()[prepared->inputs[i].index].payload;
+                const auto* weight = std::get_if<WeightValue>(&payload);
                 if (weight == nullptr) {
                     return Status::Internal(
                             "kWeight input value has no WeightValue payload");
@@ -520,8 +496,7 @@ StatusOr<PreparedExecutionGraph> PrepareTrustedGraph(const LoweredGraph& lowered
 
                 packed_key = WeightArtifactKey{
                         .source_id = lowered.artifact_id(),
-                        .value_index = static_cast<uint32_t>(
-                                prepared->inputs[port].index),
+                        .value_index = prepared->inputs[i].index,
                         .binding = weight->binding,
                         .selector = spec.selector};
                 break;
@@ -587,8 +562,7 @@ StatusOr<ExecutionPlan> AssembleExecutionPlan(RuntimeContext& runtime,
             }
 
             if (packed_weight_store->source_id() != 0 &&
-                packed_weight_store->source_id() !=
-                        node.packed_key->source_id) {
+                packed_weight_store->source_id() != node.packed_key->source_id) {
                 return Status::InvalidArgument(
                         "PackedWeightStore belongs to a different model "
                         "artifact than the lowered graph");
@@ -601,22 +575,21 @@ StatusOr<ExecutionPlan> AssembleExecutionPlan(RuntimeContext& runtime,
                     .selector = node.packed_key->selector,
                     .recipe = kernel->expected_packing_recipe};
             auto packed_weights = packed_weight_store->Find(exact_key);
-            if (packed_weights == nullptr ||
-                packed_weights->storage().data() == nullptr) {
+            if (packed_weights == nullptr || packed_weights->storage().data() == nullptr) {
                 return Status::NotFound(
                         "Packed weights not found for ExecutionPlan node");
             }
+
             if (node.packed_key->source_id != 0) {
-                const ExecutionValueDesc& desc =
-                        graph.values[node.packed_key->value_index];
+                const ExecutionValueDesc& desc = graph.values[node.packed_key->value_index];
                 if (packed_weights->op_type() != node.op_type) {
                     return Status::InvalidArgument(
                             "Packed artifact op type does not match the "
                             "execution step");
                 }
+
                 if (packed_weights->logical_dtype() != desc.spec.dtype ||
-                    !ShapeMatchesSpec(desc.spec,
-                                      packed_weights->logical_shape())) {
+                    !ShapeMatchesSpec(desc.spec, packed_weights->logical_shape())) {
                     return Status::InvalidArgument(
                             "Packed artifact logical metadata does not match "
                             "the plan value");
@@ -648,10 +621,6 @@ StatusOr<ExecutionPlan> AssembleExecutionPlan(RuntimeContext& runtime,
                          .outputs = std::move(node.outputs),
                          .kernel_input_ports = std::move(node.kernel_input_ports),
                          .kernel_output_ports = std::move(node.kernel_output_ports),
-                         .semantic_input_specs = std::move(node.semantic_input_specs),
-                         .semantic_output_specs = std::move(node.semantic_output_specs),
-                         .input_specs = std::move(node.compact_input_specs),
-                         .output_specs = std::move(node.compact_output_specs),
                          .runtime_checks = std::move(node.runtime_checks)});
     }
     return ExecutionPlan::Create(std::move(graph.values), std::move(graph.model_inputs),

@@ -36,7 +36,8 @@ Status LayerRunner::Run(const ExecutionPlan& plan,
                 "RuntimeBindingContext BindingTable is not compatible with ExecutionPlan");
     }
     for (size_t i = 0; i < steps.size(); ++i) {
-        if (const auto status = RunStep(i, steps[i], bindings, *binding_table, alias_plan);
+        if (const auto status = RunStep(i, steps[i], bindings, *binding_table,
+                                        alias_plan, plan.values());
             !status.ok()) {
             return status;
         }
@@ -48,9 +49,10 @@ Status LayerRunner::RunStep(size_t step_index,
                             const ExecutionStep& step,
                             const RuntimeBindingContext& bindings,
                             const BindingTable& binding_table,
-                            const StateAliasPlan& alias_plan) noexcept {
+                            const StateAliasPlan& alias_plan,
+                            const std::vector<ExecutionValueDesc>& values) noexcept {
     AM_RETURN_IF_ERROR(ValidateStateAliasesForStep(
-            step_index, step, alias_plan, bindings));
+            step_index, step, alias_plan, bindings, values));
 
     const auto workspace_binding = bindings.BindWorkspace(step.workspace_requirement);
     if (!workspace_binding.ok()) {
@@ -61,9 +63,9 @@ Status LayerRunner::RunStep(size_t step_index,
     ctx.workspace_binding = workspace_binding.value();
 
     const StepTensorBinding& tensor_binding = binding_table.step(step_index);
-    if (tensor_binding.inputs.size() != step.input_specs.size() ||
-        tensor_binding.outputs.size() != step.output_specs.size()) {
-        return Status::InvalidArgument("Runtime tensor binding arity does not match ExecutionStep specs");
+    if (tensor_binding.inputs.size() != step.kernel_input_ports.size() ||
+        tensor_binding.outputs.size() != step.kernel_output_ports.size()) {
+        return Status::InvalidArgument("Runtime tensor binding arity does not match ExecutionStep ports");
     }
     return InvokeKernel(step.kernel, ctx, tensor_binding.inputs, tensor_binding.outputs);
 }
@@ -72,7 +74,8 @@ Status LayerRunner::ValidateStateAliasesForStep(
         size_t step_index,
         const ExecutionStep& step,
         const StateAliasPlan& alias_plan,
-        const RuntimeBindingContext& bindings) noexcept {
+        const RuntimeBindingContext& bindings,
+        const std::vector<ExecutionValueDesc>& values) noexcept {
     const auto aliases = alias_plan.ForStep(step_index);
     if (aliases.empty()) {
         return Status::Ok();
@@ -91,8 +94,8 @@ Status LayerRunner::ValidateStateAliasesForStep(
     // kv_heads, head_dim) must match the KV cache backing it.
     const KVCacheView& view = bindings.kv_cache_view();
     for (const ResolvedStateAlias& alias: aliases) {
-        const TensorSpec& input_spec = step.semantic_input_specs[alias.input_port];
-        const TensorSpec& output_spec = step.semantic_output_specs[alias.output_port];
+        const TensorSpec& input_spec = values[step.inputs[alias.input_port].index].spec;
+        const TensorSpec& output_spec = values[step.outputs[alias.output_port].index].spec;
         if (input_spec != output_spec) {
             return Status::InvalidArgument(
                     "State alias input and output specs must match for must-alias update");

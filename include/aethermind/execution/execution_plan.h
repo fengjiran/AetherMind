@@ -58,8 +58,9 @@ struct ExecutionValueDesc {
 /// @brief One resolved kernel invocation within an ExecutionPlan.
 ///
 /// `packed_weights` is a borrowed pointer into a PackedWeightStore's storage;
-/// the store must outlive this plan. Each step retains complete semantic port
-/// operands together with the compact kernel-facing TensorView projection.
+/// the store must outlive this plan. Each step retains semantic port operands
+/// and the compact kernel-facing port projection; tensor specs are owned once
+/// in ExecutionPlan::values and derived on demand via inputs/outputs.
 struct ExecutionStep {
     KernelSelector selector{};
     ResolvedKernel kernel{};
@@ -77,13 +78,6 @@ struct ExecutionStep {
     std::vector<uint32_t> kernel_input_ports{};
     /// Maps compact kernel-output indices to semantic output-port indices.
     std::vector<uint32_t> kernel_output_ports{};
-    /// Full schema-port-ordered specs. These are retained to validate that
-    /// operand IDs and plan values preserve compiler semantic contracts.
-    std::vector<TensorSpec> semantic_input_specs{};
-    std::vector<TensorSpec> semantic_output_specs{};
-    /// Kernel-facing compact specs, indexed by kernel_*_ports.
-    std::vector<TensorSpec> input_specs{};
-    std::vector<TensorSpec> output_specs{};
     std::vector<ShapeConstraint> runtime_checks{};
 };
 
@@ -167,11 +161,11 @@ private:
     // first validation failure.
     Status AddStep(ExecutionStep step);
 
+    std::vector<ExecutionStep> steps_{};
     std::vector<ExecutionValueDesc> values_{};
     std::vector<ExecutionValueId> model_inputs_{};
     std::vector<ExecutionValueId> model_outputs_{};
     ExecutionPlanBindingKey binding_key_{};
-    std::vector<ExecutionStep> steps_{};
     StateAliasPlan state_alias_plan_{};
     WorkspacePlanLayout workspace_layout_{};
 };

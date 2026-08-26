@@ -379,18 +379,22 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesValidatesInferredMetadata) {
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
     const ExecutionStep& step = plan->steps().front();
-    ASSERT_EQ(step.input_specs.size(), 2U);
-    EXPECT_EQ(step.input_specs[0], node.input_specs[0]);
-    EXPECT_EQ(step.input_specs[1], node.input_specs[1]);
-    ASSERT_EQ(step.output_specs.size(), 1U);
-    EXPECT_EQ(step.output_specs[0].dtype, DataType::Float32());
-    ASSERT_EQ(step.output_specs[0].shape.rank(), 2U);
-    // Spy: RmsNorm output shape echoes input[0] shape, so the inferred
-    // ShapeSymbol IDs in step.output_specs match the input ShapeSymbol IDs.
-    // This proves the untrusted path called InferOperator (which echoes
-    // input symbols) rather than skipping inference.
-    EXPECT_EQ(step.output_specs[0].shape[0], seq_len);
-    EXPECT_EQ(step.output_specs[0].shape[1], input_hidden);
+    // Specs are owned once in plan.values; derive via inputs/outputs.
+    ASSERT_EQ(step.inputs.size(), 2U);
+    ASSERT_EQ(step.outputs.size(), 1U);
+    EXPECT_EQ(plan->values()[step.inputs[0].index].spec, node.input_specs[0]);
+    EXPECT_EQ(plan->values()[step.inputs[1].index].spec, node.input_specs[1]);
+    {
+        const TensorSpec& out_spec = plan->values()[step.outputs[0].index].spec;
+        EXPECT_EQ(out_spec.dtype, DataType::Float32());
+        ASSERT_EQ(out_spec.shape.rank(), 2U);
+        // Spy: RmsNorm output shape echoes input[0] shape, so the inferred
+        // ShapeSymbol IDs in the output spec match the input ShapeSymbol IDs.
+        // This proves the untrusted path called InferOperator (which echoes
+        // input symbols) rather than skipping inference.
+        EXPECT_EQ(out_spec.shape[0], seq_len);
+        EXPECT_EQ(out_spec.shape[1], input_hidden);
+    }
 
     // Find the DimEqualConstraint without relying on constraint ordering.
     const DimEqualConstraint* equal = nullptr;
@@ -798,9 +802,13 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPropagatesPreparedKernelWorkspac
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->steps().size(), lowered->steps().size());
     for (size_t index = 0; index < plan->steps().size(); ++index) {
-        EXPECT_EQ(plan->steps()[index].output_specs,
-                  lowered->steps()[index].spec.output_specs);
-        EXPECT_EQ(plan->steps()[index].runtime_checks,
+        const auto& step = plan->steps()[index];
+        ASSERT_EQ(step.outputs.size(), lowered->steps()[index].spec.output_specs.size());
+        for (size_t o = 0; o < step.outputs.size(); ++o) {
+            EXPECT_EQ(plan->values()[step.outputs[o].index].spec,
+                      lowered->steps()[index].spec.output_specs[o]);
+        }
+        EXPECT_EQ(step.runtime_checks,
                   lowered->steps()[index].spec.runtime_checks);
     }
 
@@ -1125,9 +1133,9 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesInferredMetadata) {
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
     const auto& step = plan->steps().front();
-    // InferSoftmax echoed the input spec.
-    ASSERT_EQ(step.output_specs.size(), 1U);
-    EXPECT_EQ(step.output_specs[0], analyzed->outputs[0]);
+    // InferSoftmax echoed the input spec (owned in plan.values).
+    ASSERT_EQ(step.outputs.size(), 1U);
+    EXPECT_EQ(plan->values()[step.outputs[0].index].spec, analyzed->outputs[0]);
     EXPECT_EQ(step.runtime_checks, analyzed->runtime_checks);
 }
 

@@ -79,11 +79,7 @@ StatusOr<ExecutionPlan> MakeSingleSoftmaxPlan(
               .inputs = {{.index = 0}},
               .outputs = {{.index = 1}},
               .kernel_input_ports = {0},
-              .kernel_output_ports = {0},
-              .semantic_input_specs = {spec},
-              .semantic_output_specs = {spec},
-              .input_specs = {spec},
-              .output_specs = {spec}}});
+              .kernel_output_ports = {0}}});
 }
 
 StatusOr<ExecutionPlan> MakeSingleSoftmaxPlanForSpec(const TensorSpec& spec) {
@@ -97,11 +93,7 @@ StatusOr<ExecutionPlan> MakeSingleSoftmaxPlanForSpec(const TensorSpec& spec) {
               .inputs = {{.index = 0}},
               .outputs = {{.index = 1}},
               .kernel_input_ports = {0},
-              .kernel_output_ports = {0},
-              .semantic_input_specs = {spec},
-              .semantic_output_specs = {spec},
-              .input_specs = {spec},
-              .output_specs = {spec}}});
+              .kernel_output_ports = {0}}});
 }
 
 StatusOr<ExecutionPlan> MakeRmsNormPlan(std::vector<ShapeConstraint> runtime_checks) {
@@ -117,10 +109,6 @@ StatusOr<ExecutionPlan> MakeRmsNormPlan(std::vector<ShapeConstraint> runtime_che
               .outputs = {{.index = 2}},
               .kernel_input_ports = {0, 1},
               .kernel_output_ports = {0},
-              .semantic_input_specs = {act_spec, weight_spec},
-              .semantic_output_specs = {act_spec},
-              .input_specs = {act_spec, weight_spec},
-              .output_specs = {act_spec},
               .runtime_checks = std::move(runtime_checks)}});
 }
 
@@ -231,11 +219,7 @@ TEST(ExecutionPlan, RejectsActivationInputWithoutEarlierProducer) {
               .inputs = {{.index = 0}},
               .outputs = {{.index = 0}},
               .kernel_input_ports = {0},
-              .kernel_output_ports = {0},
-              .semantic_input_specs = {spec},
-              .semantic_output_specs = {spec},
-              .input_specs = {spec},
-              .output_specs = {spec}}});
+              .kernel_output_ports = {0}}});
     ASSERT_FALSE(plan.ok());
     EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
 }
@@ -333,11 +317,7 @@ TEST(ExecutionPlan, SortsStateAliasPlanForStepLookup) {
               .inputs = {{.index = 0}, {.index = 1}, {.index = 2}, {.index = 3}},
               .outputs = {{.index = 4}, {.index = 5}},
               .kernel_input_ports = {0, 1},
-              .kernel_output_ports = {},
-              .semantic_input_specs = {tensor_spec, tensor_spec, tensor_spec, tensor_spec},
-              .semantic_output_specs = {tensor_spec, tensor_spec},
-              .input_specs = {tensor_spec, tensor_spec},
-              .output_specs = {}}},
+              .kernel_output_ports = {}}},
             {.aliases = {{.step_index = 0, .input_port = 3, .output_port = 1},
                          {.step_index = 0, .input_port = 2, .output_port = 0}}});
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
@@ -359,11 +339,7 @@ TEST(ExecutionPlan, RejectsStateAliasBeyondStepCount) {
               .inputs = {{.index = 0}},
               .outputs = {{.index = 1}},
               .kernel_input_ports = {0},
-              .kernel_output_ports = {0},
-              .semantic_input_specs = {spec},
-              .semantic_output_specs = {spec},
-              .input_specs = {spec},
-              .output_specs = {spec}}},
+              .kernel_output_ports = {0}}},
             {.aliases = {{.step_index = 1}}});
     ASSERT_FALSE(invalid.ok());
     EXPECT_EQ(invalid.status().code(), StatusCode::kInvalidArgument);
@@ -412,11 +388,7 @@ TEST(ExecutionBindings, RejectsExternalDtypeAndSymbolIdentityDrift) {
               .inputs = {{.index = 0}, {.index = 1}},
               .outputs = {{.index = 2}},
               .kernel_input_ports = {0, 1},
-              .kernel_output_ports = {0},
-              .semantic_input_specs = {spec, spec},
-              .semantic_output_specs = {spec},
-              .input_specs = {spec, spec},
-              .output_specs = {spec}}});
+              .kernel_output_ports = {0}}});
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     const float lhs[2]{};
     const float rhs[3]{};

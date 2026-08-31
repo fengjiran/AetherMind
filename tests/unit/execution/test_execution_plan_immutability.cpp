@@ -316,7 +316,6 @@ TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByPackedWeightStore)
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
-            .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
     };
     // The node's kWeight operand is value id 1 (activation id 0 precedes it).

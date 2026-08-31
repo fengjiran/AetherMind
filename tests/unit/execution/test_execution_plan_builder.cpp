@@ -1,5 +1,6 @@
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/cpu/cpu_info.h"
 #include "aethermind/backend/cpu/cpu_workspace_arena.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/packed_weights.h"
@@ -270,7 +271,6 @@ ExecutionPlanNodeSpec MakeRmsNormNodeSpec() {
                     .act_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPlain,
-                    .isa = IsaLevel::kScalar,
                     .phase = ExecPhase::kBoth,
             },
     };
@@ -296,8 +296,20 @@ StatusOr<InferenceResult> InferRmsNorm(float eps,
                          inputs);
 }
 
+StatusOr<CpuFeaturePolicy> MakeScalarCpuFeaturePolicy() {
+    const auto capabilities = cpu::DetectCpuCapabilities();
+    if (!capabilities.ok()) {
+        return capabilities.status();
+    }
+    return CpuFeaturePolicy{
+            .disabled_features = capabilities->usable_features,
+    };
+}
+
 TEST(ExecutionPlanBuilder, PrepareKernelForNodeBuildsTypedMetadata) {
-    CpuBackend backend;
+    const auto policy = MakeScalarCpuFeaturePolicy();
+    ASSERT_TRUE(policy.ok()) << policy.status().ToString();
+    CpuBackend backend(*policy);
     ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
     node.op_params = OpParams{RmsNormParams{.eps = 42.0F}};
 
@@ -315,7 +327,12 @@ TEST(ExecutionPlanBuilder, PrepareKernelForNodeBuildsTypedMetadata) {
 }
 
 TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
+    const auto policy = MakeScalarCpuFeaturePolicy();
+    ASSERT_TRUE(policy.ok()) << policy.status().ToString();
+    RuntimeOptions options;
+    options.backend.cpu_feature_policy = *policy;
     RuntimeBuilder builder;
+    builder.WithOptions(options);
     RuntimeContext runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({4, 8});
@@ -573,7 +590,6 @@ TEST(ExecutionPlanBuilder, BuildUsesPreparedKernelWorkspaceRequirementsForRawNod
                         .act_dtype = DataType::Float32(),
                         .weight_dtype = DataType::Float32(),
                         .weight_format = WeightFormat::kPlain,
-                        .isa = IsaLevel::kScalar,
                         .phase = ExecPhase::kBoth,
                 },
         };
@@ -645,7 +661,6 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightStore) {
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
-            .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
     };
     // Untrusted nodes carry no WeightBinding, so the store key uses the empty
@@ -679,7 +694,6 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightStore) {
                     .act_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPacked,
-                    .isa = IsaLevel::kScalar,
                     .phase = ExecPhase::kBoth,
             },
     };
@@ -718,7 +732,6 @@ TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutPackedWeightStore)
                     .act_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPacked,
-                    .isa = IsaLevel::kScalar,
                     .phase = ExecPhase::kBoth,
             },
     };
@@ -1123,7 +1136,6 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesInferredMetadata) {
                     .act_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPlain,
-                    .isa = IsaLevel::kScalar,
                     .phase = ExecPhase::kBoth,
             },
     };
@@ -1225,7 +1237,6 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsSelectorWeightDTypeWithoutWei
                     .act_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float(16),
                     .weight_format = WeightFormat::kPlain,
-                    .isa = IsaLevel::kScalar,
                     .phase = ExecPhase::kBoth,
             },
     };

@@ -2021,13 +2021,13 @@ struct KernelSelector {
     DataType activation_dtype;
     DataType weight_dtype;
     WeightFormat weight_format;
-    IsaLevel isa;
     ExecPhase phase;
 };
 
 struct KernelDescriptor {
     OpType op_type;
     KernelSelector selector;
+    CpuKernelRequirements cpu_requirements;   // .all_of：指令集特征要求（如 {kAvx2, kFma}），置空表示任意机器可运行
     KernelFunc kernel_func;
     const char* name;
     int priority;
@@ -2037,10 +2037,13 @@ struct KernelDescriptor {
 选择逻辑：
 
 1. 根据 op type 找候选；
-2. 根据 dtype/layout/ISA/phase 过滤；
-3. 根据 priority 选择；
-4. shape 特化可在 kernel 内二次分发；
-5. fallback 必须存在。
+2. 根据 dtype/weight_format/phase 结构化过滤；
+3. CPU kernel 再按有效特征集过滤（`CpuCapabilities.effective_features` ⊇ `cpu_requirements.all_of`）；
+4. 根据 priority 选择；
+5. shape 特化可在 kernel 内二次分发；
+6. fallback 必须存在。
+
+指令集匹配的完整模型（`CpuFeature` / `CpuFeatureSet` / 三层 `CpuCapabilities` / `CpuFeaturePolicy`）见 `docs/designs/dispatch_design.md` 4.3 节。
 
 ---
 

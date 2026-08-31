@@ -4,8 +4,8 @@
 // Backend-independent execution attributes shared by graph lowering, execution
 // planning, and kernel selection.
 //
-// These are pure data enums: they describe how a step may be executed (ISA
-// level, execution phase, weight layout) without referencing any backend or
+// These are pure data enums: they describe how a step may be executed
+// (execution phase, weight layout) without referencing any backend or
 // kernel implementation. They live in the base layer so the graph module can
 // carry them through lowering without depending on backend or execution
 // headers.
@@ -18,14 +18,6 @@
 #include <cstdint>
 
 namespace aethermind {
-
-/// CPU instruction-set level a kernel may target.
-enum class IsaLevel : uint8_t {
-    kScalar = 0,
-    kAVX2,
-    kAVX512,
-    kAMX,
-};
 
 /// Execution phase in which a step runs.
 enum class ExecPhase : uint8_t {
@@ -42,7 +34,6 @@ enum class WeightFormat : uint8_t {
     kQuantizedInt4,
 };
 
-AM_NODISCARD const char* ToString(IsaLevel isa) noexcept;
 AM_NODISCARD const char* ToString(ExecPhase phase) noexcept;
 AM_NODISCARD const char* ToString(WeightFormat format) noexcept;
 

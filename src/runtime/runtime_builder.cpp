@@ -74,7 +74,9 @@ AllocatorRegistry RuntimeBuilder::BuildAllocatorRegistry() {
 BackendRegistry RuntimeBuilder::BuildBackendRegistry() {
     BackendRegistry registry;
     if (options_.backend.enable_cpu) {
-        registry.SetFactory(DeviceType::kCPU, std::make_unique<CpuBackendFactory>());
+        registry.SetFactory(DeviceType::kCPU,
+                            std::make_unique<CpuBackendFactory>(
+                                    options_.backend.cpu_feature_policy));
     }
 
     for (auto& [type, factory]: pending_backend_factories_) {

@@ -4,8 +4,8 @@
 /// @file kernel_selector.h
 /// @brief Cross-module execution request descriptor.
 ///
-/// A KernelSelector names the execution capabilities a step requires (device,
-/// dtypes, weight layout, ISA, phase). It is a pure data contract shared by
+/// A KernelSelector names the structural execution request (device, dtypes,
+/// weight layout, phase). It is a pure data contract shared by
 /// graph lowering (which records it on ExecutionPlanNodeSpec), execution
 /// planning (which resolves kernels against it), backend kernel registries
 /// (which describe kernel capabilities with it), and model weight prepacking.
@@ -23,14 +23,13 @@
 namespace aethermind {
 
 /// @brief Pure-data description of the execution capabilities a step
-/// requires: device, activation and weight dtypes, weight layout, ISA level,
-/// and execution phase.
+/// requires: device, activation and weight dtypes, weight layout, and
+/// execution phase.
 struct KernelSelector {
     DeviceType device_type = DeviceType::kUndefined;
     DataType act_dtype{};
     DataType weight_dtype{};
     WeightFormat weight_format = WeightFormat::kPlain;
-    IsaLevel isa = IsaLevel::kScalar;
     ExecPhase phase = ExecPhase::kBoth;
 
     friend bool operator==(const KernelSelector& lhs, const KernelSelector& rhs) noexcept {
@@ -38,7 +37,6 @@ struct KernelSelector {
                lhs.act_dtype == rhs.act_dtype &&
                lhs.weight_dtype == rhs.weight_dtype &&
                lhs.weight_format == rhs.weight_format &&
-               lhs.isa == rhs.isa &&
                lhs.phase == rhs.phase;
     }
 
@@ -50,11 +48,9 @@ struct KernelSelector {
 /// @brief Reports whether a kernel described by `candidate` can serve
 /// `request`.
 ///
-/// Unlike operator==, matching is intentionally asymmetric: device type,
-/// dtypes, and weight format must match exactly, but a kernel registered with
-/// ExecPhase::kBoth serves any requested phase, and a kernel's ISA
-/// requirement only has to be at or below the requested IsaLevel (a scalar
-/// kernel can serve an AVX2 request).
+/// CPU instruction requirements are deliberately not part of this contract;
+/// CpuBackend filters them against its immutable CpuCapabilities snapshot
+/// after structural matching.
 ///
 /// @param candidate Capabilities advertised by a registered kernel.
 /// @param request Capabilities the step requires.
@@ -65,8 +61,7 @@ AM_NODISCARD inline bool SelectorMatches(const KernelSelector& candidate,
            candidate.act_dtype == request.act_dtype &&
            candidate.weight_dtype == request.weight_dtype &&
            candidate.weight_format == request.weight_format &&
-           PhaseMatches(candidate.phase, request.phase) &&
-           candidate.isa <= request.isa;
+           PhaseMatches(candidate.phase, request.phase);
 }
 
 /// @brief Returns a human-readable description of all selector fields.
@@ -88,7 +83,6 @@ struct std::hash<aethermind::KernelSelector> {
         seed = aethermind::hash_combine(seed, std::hash<aethermind::DataType>{}(s.act_dtype));
         seed = aethermind::hash_combine(seed, std::hash<aethermind::DataType>{}(s.weight_dtype));
         seed = aethermind::hash_combine(seed, static_cast<std::size_t>(s.weight_format));
-        seed = aethermind::hash_combine(seed, static_cast<std::size_t>(s.isa));
         seed = aethermind::hash_combine(seed, static_cast<std::size_t>(s.phase));
         return seed;
     }

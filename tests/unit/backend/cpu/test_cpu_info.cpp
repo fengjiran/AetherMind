@@ -5,23 +5,81 @@
 namespace aethermind::cpu {
 namespace {
 
-TEST(CpuInfo, GetCpuFeaturesReturnsStableSingleton) {
-    const CpuFeatures& first = GetCpuFeatures();
-    const CpuFeatures& second = GetCpuFeatures();
+TEST(CpuInfo, DetectionReportsAConsistentSnapshot) {
+    const auto detected = DetectCpuCapabilities();
+    ASSERT_TRUE(detected.ok()) << detected.status().ToString();
 
-    EXPECT_EQ(&first, &second);
+    EXPECT_EQ(detected->base.device_type, DeviceType::kCPU);
+    EXPECT_TRUE(detected->hardware_features.ContainsAll(detected->usable_features));
+    EXPECT_TRUE(detected->usable_features.ContainsAll(detected->effective_features));
 
-    // Sanity-check detection against the architecture's baseline ISA, plus
-    // hardware-independent invariants. VNNI always requires its base ISA:
-    // AVX512-VNNI needs AVX-512F and AVX-VNNI needs AVX2. Concrete VNNI /
-    // AVX-512F expectations are hardware-dependent (no Intel Mac exposes
-    // either) and therefore not asserted.
 #if defined(__x86_64__) || defined(_M_X64)
-    EXPECT_TRUE(first.has_avx2);
-    EXPECT_FALSE(first.has_vnni && !first.has_avx512f && !first.has_avx2);
+    EXPECT_EQ(detected->architecture, CpuArchitecture::kX86_64);
 #elif defined(__aarch64__)
-    EXPECT_TRUE(first.has_neon);
+    EXPECT_EQ(detected->architecture, CpuArchitecture::kAArch64);
+    EXPECT_TRUE(detected->hardware_features.Contains(CpuFeature::kNeon));
 #endif
+}
+
+TEST(CpuInfo, PolicyOnlyRestrictsUsableFeatures) {
+    const CpuFeatureSet x86_features = CpuFeatureSet::From(
+            {CpuFeature::kAvx2, CpuFeature::kFma});
+    const CpuCapabilities snapshot{
+            .base = {.device_type = DeviceType::kCPU},
+            .architecture = CpuArchitecture::kX86_64,
+            .hardware_features = x86_features,
+            .usable_features = x86_features,
+    };
+    const auto applied = ApplyCpuFeaturePolicy(
+            snapshot,
+            CpuFeaturePolicy{
+                    .disabled_features = CpuFeatureSet::From({CpuFeature::kFma}),
+                    .required_features = CpuFeatureSet::From({CpuFeature::kAvx2}),
+            });
+
+    ASSERT_TRUE(applied.ok()) << applied.status().ToString();
+    EXPECT_TRUE(applied->effective_features.Contains(CpuFeature::kAvx2));
+    EXPECT_FALSE(applied->effective_features.Contains(CpuFeature::kFma));
+    EXPECT_TRUE(applied->hardware_features.Contains(CpuFeature::kFma));
+}
+
+TEST(CpuInfo, FeatureRequirementsPreserveIndependentConjunctions) {
+    const CpuFeatureSet available = CpuFeatureSet::From({CpuFeature::kAvx2});
+    const CpuFeatureSet requirements = CpuFeatureSet::From(
+            {CpuFeature::kAvx2, CpuFeature::kFma});
+
+    EXPECT_FALSE(available.ContainsAll(requirements));
+    EXPECT_TRUE(available.ContainsAll(CpuFeatureSet::From({CpuFeature::kAvx2})));
+}
+
+TEST(CpuInfo, PolicyRejectsDisabledRequiredFeature) {
+    const CpuFeatureSet features = CpuFeatureSet::From({CpuFeature::kAvx2});
+    const CpuCapabilities snapshot{
+            .base = {.device_type = DeviceType::kCPU},
+            .architecture = CpuArchitecture::kX86_64,
+            .hardware_features = features,
+            .usable_features = features,
+    };
+    const auto applied = ApplyCpuFeaturePolicy(
+            snapshot,
+            CpuFeaturePolicy{
+                    .disabled_features = features,
+                    .required_features = features,
+            });
+
+    EXPECT_EQ(applied.status().code(), StatusCode::kFailedPrecondition);
+}
+
+TEST(CpuInfo, PolicyRejectsInvalidSnapshot) {
+    const CpuCapabilities snapshot{
+            .base = {.device_type = DeviceType::kCPU},
+            .architecture = CpuArchitecture::kX86_64,
+            .usable_features = CpuFeatureSet::From({CpuFeature::kAvx2}),
+    };
+
+    const auto applied = ApplyCpuFeaturePolicy(snapshot, {});
+
+    EXPECT_EQ(applied.status().code(), StatusCode::kInvalidArgument);
 }
 
 }// namespace

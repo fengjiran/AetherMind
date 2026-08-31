@@ -135,7 +135,6 @@ TEST(NoHotpathPrepare, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
                     .act_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPlain,
-                    .isa = IsaLevel::kScalar,
                     .phase = ExecPhase::kBoth,
             },
             .input_specs = rmsnorm_inputs,

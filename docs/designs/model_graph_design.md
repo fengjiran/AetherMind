@@ -301,7 +301,6 @@ struct GraphNode {
 std::vector<WeightBinding> weights{};
 WorkspaceRequirement workspace_requirement{};
 DeviceType device_type{};
-IsaLevel isa{};
 WeightFormat weight_format{};
 KernelSelector selector{};
 ```
@@ -309,7 +308,7 @@ KernelSelector selector{};
 原因：
 
 - weight 已由 `WeightValue` payload 表达；
-- workspace 是 backend kernel preparation / execution planning 决策；`LoweredStepSpec` 不携带 workspace 需求，`ExecutionPlanBuilder` 在 resolve 具体 kernel 后从 `ResolvedKernel` 收集需求并规划 offset；device、ISA、weight format、kernel selector 是 lowering 决策；
+- workspace 是 backend kernel preparation / execution planning 决策；`LoweredStepSpec` 不携带 workspace 需求，`ExecutionPlanBuilder` 在 resolve 具体 kernel 后从 `ResolvedKernel` 收集需求并规划 offset；device、weight format、kernel selector 是 lowering 决策，指令集要求则是 backend 在 resolve 时按能力快照过滤的决策（见 dispatch_design 4.3 节）；
 - `decoder_layer_index` 只是 semantic/debug metadata，不是图结构依赖。真实依赖必须由 edges 表达。
 
 ### 7.1 Operator schema 输入顺序

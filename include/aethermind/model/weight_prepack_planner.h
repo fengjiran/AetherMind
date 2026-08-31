@@ -49,8 +49,9 @@ public:
             const KernelRegistry& registry);
 
     // Executes prepack for every request and stores the resulting
-    // PackedWeights artifacts into a PackedWeightStore keyed by
-    // {binding, selector}. Distinct bindings never collide.
+    // PackedWeights artifacts into a PackedWeightStore. Packing identity
+    // remains {source_id, value_index, binding, selector, recipe}; the exact
+    // PackingRecipe, not CPU feature detection, distinguishes layouts.
     // ModelLoader does not call this legacy planner; graph-driven artifact
     // materialization is the production integration point.
     static Status PrepackAndStore(

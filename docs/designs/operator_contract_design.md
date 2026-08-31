@@ -262,7 +262,7 @@ struct DispatchTable {
 - unsupported combination 在加载阶段显式失败
 - 不在热路径使用 map / string / registry 动态查找
 
-> **实现状态更新 (v2.0)**：实际实现已迁移到 KernelRegistry 全局单例 + AM_REGISTER_KERNEL 静态注册宏，并通过 KernelSelector 进行 device/dtype/ISA/phase 匹配。ExecutionPlanBuilder 是唯一正式 resolve 发起方，执行期只消费 ResolvedKernel 函数指针。详见 docs/designs/dispatch_design.md。
+> **实现状态更新 (v2.0)**：实际实现已迁移到 KernelRegistry 全局单例 + AM_REGISTER_KERNEL 静态注册宏，并通过 KernelSelector 进行 device/dtype/weight_format/phase 结构匹配；指令集要求经 `KernelDescriptor.cpu_requirements` + `CpuCapabilities.effective_features` 过滤。ExecutionPlanBuilder 是唯一正式 resolve 发起方，执行期只消费 ResolvedKernel 函数指针。详见 docs/designs/dispatch_design.md 4.3 节。
 
 
 ---

@@ -71,7 +71,6 @@ LoweredGraph::Builder MakeKVCacheUpdateBuilder() {
                             .act_dtype = DataType::Float32(),
                             .weight_dtype = DataType::Float32(),
                             .weight_format = WeightFormat::kPlain,
-                            .isa = IsaLevel::kScalar,
                             .phase = ExecPhase::kBoth,
                     },
                     .input_specs = {KVSpec(), KVSpec(), KVSpec(), KVSpec()},
@@ -345,7 +344,6 @@ TEST(GraphLowering, AppliesCustomConfigToSteps) {
 
     GraphLoweringConfig config;
     config.selector.device_type = DeviceType::kCUDA;
-    config.selector.isa = IsaLevel::kAVX2;
     config.selector.weight_format = WeightFormat::kPacked;
     config.selector.phase = ExecPhase::kPrefill;
 
@@ -355,7 +353,6 @@ TEST(GraphLowering, AppliesCustomConfigToSteps) {
     ASSERT_EQ(lowered->steps().size(), 1U);
     for (const LoweredStep& step: lowered->steps()) {
         EXPECT_EQ(step.spec.selector.device_type, DeviceType::kCUDA);
-        EXPECT_EQ(step.spec.selector.isa, IsaLevel::kAVX2);
         EXPECT_EQ(step.spec.selector.weight_format, WeightFormat::kPacked);
         EXPECT_EQ(step.spec.selector.phase, ExecPhase::kPrefill);
     }

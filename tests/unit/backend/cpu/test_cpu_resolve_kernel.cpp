@@ -10,14 +10,12 @@ namespace {
 
 using namespace aethermind;
 
-KernelSelector MakeCpuSelector(ExecPhase phase = ExecPhase::kBoth,
-                               IsaLevel isa = IsaLevel::kScalar) {
+KernelSelector MakeCpuSelector(ExecPhase phase = ExecPhase::kBoth) {
     return KernelSelector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
-            .isa = isa,
             .phase = phase,
     };
 }

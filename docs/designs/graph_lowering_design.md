@@ -28,7 +28,7 @@ ExecutionPlan（ExecutionStep[] + StateAliasPlan）
 | compiler | `OperatorSchema::state_alias_ports` | 有状态算子声明 must-alias 端口对，lowering 与 execution 零特判 |
 | execution | `ExecutionPlanBuilder::Build` / `ResolveStateAliasesForExecution` | 消费 LoweredGraph，验证 artifact、解析 state aliases、resolve kernel、规划 workspace |
 | execution | `ExecutionPlanNodeSpec` | untrusted 执行请求：测试/手工构造路径，经 InferOperator 重验证 |
-| base | `KernelSelector`（含 device/isa/weight_format/phase/dtype） | 跨模块执行请求描述符：lowering 记录，execution/backend 匹配 kernel |
+| base | `KernelSelector`（含 device/weight_format/phase/dtype） | 跨模块执行请求描述符：lowering 记录，execution/backend 结构化匹配 kernel；指令集要求不在 selector 内，由 backend 按 `KernelDescriptor.cpu_requirements` + 能力快照过滤 |
 
 ### 1.3 Lowering 的职责
 
@@ -90,7 +90,7 @@ ExecutionPlan
 另一方面，Execution Plan 需要解决的是更具体的执行问题，包括：
 
 - 选择具体 Kernel 实现；
-- 确定 ISA / Backend；
+- 确定 Backend，并按 CPU 能力快照过滤候选 Kernel；
 - 选择线程数和 Kernel tuning 参数；
 - 查询 Workspace Requirement；
 - 确定最终物理 Layout；
@@ -295,7 +295,7 @@ kRmsNorm      → kRmsNorm 步骤
 ...           → 同 OpType 步骤
 ```
 
-保证 `1 Semantic Op → 1 LoweredStep`。执行差异（device/ISA/weight format/phase/dtype）通过 `KernelSelector` 属性表达，不选择 AVX2、AVX-512、AMX、CUDA 等具体 Kernel。
+保证 `1 Semantic Op → 1 LoweredStep`。执行差异（device/weight format/phase/dtype）通过 `KernelSelector` 属性表达；指令集差异由 backend 在 resolve 时按能力快照过滤（`effective_features ⊇ cpu_requirements`），不选择 AVX2、AVX-512、AMX、CUDA 等具体 Kernel。
 
 ### 4.3 Execution Plan Generation
 
@@ -691,7 +691,6 @@ struct GraphLoweringConfig {
     KernelSelector selector{
         .device_type = DeviceType::kCPU,
         .weight_format = WeightFormat::kPlain,
-        .isa = IsaLevel::kScalar,
         .phase = ExecPhase::kBoth,
     };
 };
@@ -749,7 +748,6 @@ struct KernelSelector {
     DataType act_dtype;
     DataType weight_dtype;
     WeightFormat weight_format;
-    IsaLevel isa;
     ExecPhase phase;
 };
 ```
@@ -1000,7 +998,7 @@ public:
 - act_dtype：首个 contributes 的 activation 输入 → 无则回退首个 activation 输出；
 - weight_dtype：首个 contributes 的 weight 输入 → 无则回退 act_dtype；
 - 每个算子必须暴露至少一个 activation 端口（`EveryOperatorSchemaExposesActivationPort` 守卫）；
-- `GraphLoweringConfig{KernelSelector}` 提供 device/isa/weight_format/phase 前缀，dtype 由 lowering 推导覆盖。
+- `GraphLoweringConfig{KernelSelector}` 提供 device/weight_format/phase 前缀，dtype 由 lowering 推导覆盖；指令集要求不进入 selector（由 backend 能力模型过滤，见 dispatch_design 4.3 节）。
 
 ### A.6 后续演进
 

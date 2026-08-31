@@ -1,7 +1,7 @@
-#include "elementwise_mul_internal.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/base/shape_and_stride.h"
+#include "elementwise_mul_internal.h"
 #include "utils/overflow_check.h"
 
 #include <array>
@@ -221,8 +221,8 @@ Status cpu::detail::ElementwiseMulKernel(const KernelContext& ctx) noexcept {
 }
 
 Status BuildElementwiseMulParams(std::span<const TensorView> inputs,
-                                        std::span<const MutableTensorView> outputs,
-                                        void* params_buffer) noexcept {
+                                 std::span<const MutableTensorView> outputs,
+                                 void* params_buffer) noexcept {
     if (inputs.size() != 2 || outputs.size() != 1) {
         return Status::InvalidArgument("ElementwiseMul requires 2 inputs and 1 output");
     }
@@ -242,7 +242,6 @@ AM_REGISTER_KERNEL(ElementwiseMulFp32Scalar,
                                    .act_dtype = DataType::Float32(),
                                    .weight_dtype = DataType::Float32(),
                                    .weight_format = WeightFormat::kPlain,
-                                   .isa = IsaLevel::kScalar,
                                    .phase = ExecPhase::kBoth,
                            },
                            .kernel_func = &cpu::detail::ElementwiseMulKernel,

@@ -1,6 +1,7 @@
 #ifndef AETHERMIND_RUNTIME_RUNTIME_OPTIONS_H
 #define AETHERMIND_RUNTIME_RUNTIME_OPTIONS_H
 
+#include "aethermind/backend/cpu/cpu_capabilities.h"
 #include "aethermind/dtypes/data_type.h"
 
 #include <cstddef>
@@ -17,6 +18,7 @@ struct BackendRuntimeOptions {
     bool enable_cpu = true;
     bool enable_cuda = false;
     bool enable_cann = false;
+    CpuFeaturePolicy cpu_feature_policy{};
 };
 
 struct ExecutionRuntimeOptions {

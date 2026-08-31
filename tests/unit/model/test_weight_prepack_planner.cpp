@@ -91,7 +91,6 @@ KernelSelector MakeExpectedSelector() {
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
-            .isa = IsaLevel::kAVX2,
             .phase = ExecPhase::kBoth,
     };
 }

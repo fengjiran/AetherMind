@@ -78,7 +78,6 @@ TEST(ModelCompiler, SupportsO0AndO2) {
 TEST(ModelCompiler, PropagatesLoweringTargetConfiguration) {
     ModelCompileOptions options;
     options.lowering.selector.device_type = DeviceType::kCUDA;
-    options.lowering.selector.isa = IsaLevel::kAVX2;
     options.lowering.selector.weight_format = WeightFormat::kPacked;
     options.lowering.selector.phase = ExecPhase::kPrefill;
     options.lowering.enable_packed_weights = true;
@@ -89,7 +88,6 @@ TEST(ModelCompiler, PropagatesLoweringTargetConfiguration) {
 
     for (const LoweredStep& step: lowered->graph.steps()) {
         EXPECT_EQ(step.spec.selector.device_type, DeviceType::kCUDA);
-        EXPECT_EQ(step.spec.selector.isa, IsaLevel::kAVX2);
         EXPECT_EQ(step.spec.selector.phase, ExecPhase::kPrefill);
         // Packed is scoped to weight-consuming steps; every other step stays
         // kPlain even though the config selector requested kPacked.

@@ -5,21 +5,6 @@
 
 namespace aethermind {
 
-const char* ToString(IsaLevel isa) noexcept {
-    switch (isa) {
-        case IsaLevel::kScalar:
-            return "Scalar";
-        case IsaLevel::kAVX2:
-            return "AVX2";
-        case IsaLevel::kAVX512:
-            return "AVX512";
-        case IsaLevel::kAMX:
-            return "AMX";
-        default:
-            return "Unknown";
-    }
-}
-
 const char* ToString(ExecPhase phase) noexcept {
     switch (phase) {
         case ExecPhase::kPrefill:

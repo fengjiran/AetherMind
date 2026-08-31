@@ -105,7 +105,7 @@ CpuBackend::PrepareKernel
 
 - Scalar descriptor 始终注册，是当前 default-lowering 的执行路径。
 - AVX2+FMA translation unit 仅在编译器同时支持 `-mavx2` 和 `-mfma` 时编译并注册；否则 binary 中只有 scalar descriptor。
-- 当前 `KernelSelector::isa` 只能表达 `kAVX2`，不能表达 FMA。因而显式 AVX2 selector 在“支持 AVX2 但不支持 FMA”的 CPU 上仍是已知限制；本次不改变全局 capability model，也不将该路径设为生产默认。
+- AVX2+FMA descriptor 通过 `cpu_requirements = {.all_of = {kAvx2, kFma}}` 声明完整指令集要求；运行期由 backend 按 `CpuCapabilities.effective_features` 过滤，因此"支持 AVX2 但缺少 FMA"的机器会自动回退 scalar descriptor。能力模型见 `docs/designs/dispatch_design.md` 4.3 节。
 
 ## 7. 验证要求
 

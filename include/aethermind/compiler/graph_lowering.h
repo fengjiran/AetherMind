@@ -17,7 +17,6 @@ namespace aethermind {
 struct GraphLoweringConfig {
     KernelSelector selector{.device_type = DeviceType::kCPU,
                             .weight_format = WeightFormat::kPlain,
-                            .isa = IsaLevel::kScalar,
                             .phase = ExecPhase::kBoth};
     /// When true, steps that consume a kWeight input are marked with
     /// selector.weight_format = kPacked so the execution path resolves their
@@ -36,7 +35,7 @@ struct GraphLoweringConfig {
 ///
 /// @param graph Validated semantic graph to lower.
 /// @param config Target selection data; defaults select CPU, plain weights,
-///               scalar ISA, and both phases.
+///               and both phases.
 /// @return Structurally validated LoweredGraph. Errors are reported via the
 ///         returned Status, not exceptions.
 StatusOr<LoweredGraph> LowerModelGraph(

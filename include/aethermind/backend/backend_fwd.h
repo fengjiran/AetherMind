@@ -11,7 +11,6 @@ class BackendRegistry;
 class KernelRegistry;
 
 enum class OpType : uint8_t;
-enum class IsaLevel : uint8_t;
 enum class ExecPhase : uint8_t;
 enum class WeightFormat : uint8_t;
 

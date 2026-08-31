@@ -233,7 +233,6 @@ TEST(EmbeddingKernel, ExecutionPlanBuilderRunsResolvedKernel) {
                     .act_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPlain,
-                    .isa = IsaLevel::kScalar,
                     .phase = ExecPhase::kBoth,
             },
             .input_specs = embedding_inputs,

@@ -13,7 +13,8 @@
 //
 // New dispatch mainline uses KernelSelector for capability-based matching
 // instead of bitset-based DispatchKeySet. The selector-based approach:
-//   - Matches on DeviceType, DataType, WeightFormat, IsaLevel, ExecPhase
+//   - Matches structural DeviceType, DataType, WeightFormat, ExecPhase fields
+//     before backend-specific CPU feature eligibility
 //   - Supports priority-based selection among multiple implementations
 //   - Backend-owned, no global registry
 //

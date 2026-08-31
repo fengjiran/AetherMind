@@ -18,20 +18,30 @@ using namespace aethermind;
 
 constexpr double kRmsNormFlopsPerElement = 4.0;
 
-KernelSelector MakeRmsNormSelector(IsaLevel isa) {
+KernelSelector MakeRmsNormSelector() {
     return KernelSelector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
-            .isa = isa,
             .phase = ExecPhase::kBoth,
+    };
+}
+
+StatusOr<CpuFeaturePolicy> MakeScalarCpuFeaturePolicy() {
+    const auto capabilities = cpu::DetectCpuCapabilities();
+    if (!capabilities.ok()) {
+        return capabilities.status();
+    }
+    return CpuFeaturePolicy{
+            .disabled_features = capabilities->usable_features,
     };
 }
 
 bool IsAvx2FmaRmsNormKernel(const ResolvedKernel& kernel) noexcept {
     return kernel.debug_name != nullptr &&
-           std::string_view{kernel.debug_name} == std::string_view{"cpu::rmsnorm_f32_avx2_fma"};
+           std::string_view{kernel.debug_name} ==
+                   std::string_view{"cpu::rmsnorm_f32_avx2_fma"};
 }
 
 void SetRmsNormThroughputCounters(benchmark::State& state,
@@ -46,7 +56,7 @@ void SetRmsNormThroughputCounters(benchmark::State& state,
             flops, benchmark::Counter::kIsRate, benchmark::Counter::OneK::kIs1000);
 }
 
-void BenchmarkRmsNormFp32(benchmark::State& state, IsaLevel isa) {
+void BenchmarkRmsNormFp32(benchmark::State& state, bool require_avx2_fma) {
     const int64_t row_count = state.range(0);
     const int64_t hidden_size = state.range(1);
     const size_t element_count = static_cast<size_t>(row_count * hidden_size);
@@ -61,24 +71,30 @@ void BenchmarkRmsNormFp32(benchmark::State& state, IsaLevel isa) {
         value = 1.0F;
     }
 
-    CpuBackend backend;
-    const StatusOr<ResolvedKernel> resolved = backend.PrepareKernel(
-            OpType::kRmsNorm,
-            MakeRmsNormSelector(isa),
-            OpParams{RmsNormParams{.eps = 1.0e-5F}});
+    const auto prepare = [&]() -> StatusOr<ResolvedKernel> {
+        if (require_avx2_fma) {
+            CpuBackend backend;
+            return backend.PrepareKernel(
+                    OpType::kRmsNorm, MakeRmsNormSelector(),
+                    OpParams{RmsNormParams{.eps = 1.0e-5F}});
+        }
+        const auto policy = MakeScalarCpuFeaturePolicy();
+        if (!policy.ok()) {
+            return policy.status();
+        }
+        CpuBackend backend(*policy);
+        return backend.PrepareKernel(
+                OpType::kRmsNorm, MakeRmsNormSelector(),
+                OpParams{RmsNormParams{.eps = 1.0e-5F}});
+    };
+    const StatusOr<ResolvedKernel> resolved = prepare();
     if (!resolved.ok()) {
         state.SkipWithError(resolved.status().ToString().c_str());
         return;
     }
-    if (isa == IsaLevel::kAVX2) {
-        if (!IsAvx2FmaRmsNormKernel(*resolved)) {
-            state.SkipWithError("AVX2+FMA RMSNorm kernel was not compiled");
-            return;
-        }
-        if (!cpu::GetCpuFeatures().has_avx2) {
-            state.SkipWithError("AVX2 CPU support is unavailable");
-            return;
-        }
+    if (require_avx2_fma && !IsAvx2FmaRmsNormKernel(*resolved)) {
+        state.SkipWithError("AVX2+FMA RMSNorm kernel is unavailable");
+        return;
     }
 
     const int64_t io_shape[2] = {row_count, hidden_size};
@@ -109,11 +125,11 @@ void BenchmarkRmsNormFp32(benchmark::State& state, IsaLevel isa) {
 }
 
 void BM_RmsNormFp32Scalar(benchmark::State& state) {
-    BenchmarkRmsNormFp32(state, IsaLevel::kScalar);
+    BenchmarkRmsNormFp32(state, false);
 }
 
 void BM_RmsNormFp32Avx2Fma(benchmark::State& state) {
-    BenchmarkRmsNormFp32(state, IsaLevel::kAVX2);
+    BenchmarkRmsNormFp32(state, true);
 }
 
 BENCHMARK(BM_RmsNormFp32Scalar)

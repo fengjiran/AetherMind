@@ -31,23 +31,43 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     return SymbolicShape(IntArrayView{shape});
 }
 
-KernelSelector MakeRmsNormSelector(IsaLevel isa) {
+KernelSelector MakeRmsNormSelector() {
     return KernelSelector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
-            .isa = isa,
             .phase = ExecPhase::kBoth,
     };
 }
 
-StatusOr<ResolvedKernel> PrepareRmsNormKernel(IsaLevel isa,
-                                              float epsilon = kEpsilon) {
+StatusOr<CpuFeaturePolicy> MakeScalarCpuFeaturePolicy() {
+    const auto capabilities = cpu::DetectCpuCapabilities();
+    if (!capabilities.ok()) {
+        return capabilities.status();
+    }
+    return CpuFeaturePolicy{
+            .disabled_features = capabilities->usable_features,
+    };
+}
+
+StatusOr<ResolvedKernel> PrepareRmsNormKernel(float epsilon = kEpsilon) {
     CpuBackend backend;
     return backend.PrepareKernel(
             OpType::kRmsNorm,
-            MakeRmsNormSelector(isa),
+            MakeRmsNormSelector(),
+            OpParams{RmsNormParams{.eps = epsilon}});
+}
+
+StatusOr<ResolvedKernel> PrepareScalarRmsNormKernel(float epsilon = kEpsilon) {
+    const auto policy = MakeScalarCpuFeaturePolicy();
+    if (!policy.ok()) {
+        return policy.status();
+    }
+    CpuBackend backend(*policy);
+    return backend.PrepareKernel(
+            OpType::kRmsNorm,
+            MakeRmsNormSelector(),
             OpParams{RmsNormParams{.eps = epsilon}});
 }
 
@@ -60,7 +80,7 @@ Status RunRmsNormEntry(const ResolvedKernel& kernel,
 }
 
 Status RunScalarRmsNormEntry(const cpu::detail::RmsNormKernelParams& params) noexcept {
-    const StatusOr<ResolvedKernel> kernel = PrepareRmsNormKernel(IsaLevel::kScalar);
+    const StatusOr<ResolvedKernel> kernel = PrepareScalarRmsNormKernel();
     if (!kernel.ok()) {
         return kernel.status();
     }
@@ -234,10 +254,10 @@ TEST(CPUKernelRmsNorm, ScalarSupportsPositiveInnerStrides) {
 }
 
 TEST(CPUKernelRmsNorm, Avx2FmaPreparedKernelMatchesDoubleReferenceWithTail) {
-    const StatusOr<ResolvedKernel> kernel = PrepareRmsNormKernel(IsaLevel::kAVX2);
+    const StatusOr<ResolvedKernel> kernel = PrepareRmsNormKernel();
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
-    if (!IsAvx2FmaRmsNormKernel(*kernel) || !cpu::GetCpuFeatures().has_avx2) {
-        GTEST_SKIP() << "AVX2+FMA RMSNorm kernel or AVX2 CPU support is unavailable";
+    if (!IsAvx2FmaRmsNormKernel(*kernel)) {
+        GTEST_SKIP() << "AVX2+FMA RMSNorm kernel is unavailable";
     }
 
     constexpr int64_t row_count = 2;
@@ -429,13 +449,13 @@ TEST(CPUKernelRmsNormEntry, RejectsNonPositiveStridesForNonEmptyTensor) {
 }
 
 TEST(CPUKernelRmsNormEntry, PrepareRejectsInvalidEpsilon) {
-    const StatusOr<ResolvedKernel> kernel = PrepareRmsNormKernel(IsaLevel::kScalar, 0.0F);
+    const StatusOr<ResolvedKernel> kernel = PrepareScalarRmsNormKernel(0.0F);
     ASSERT_FALSE(kernel.ok());
     EXPECT_EQ(kernel.status().code(), StatusCode::kInvalidArgument) << kernel.status().ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, Avx2RejectsNonUnitColumnStridesWhenAvailable) {
-    const StatusOr<ResolvedKernel> kernel = PrepareRmsNormKernel(IsaLevel::kAVX2);
+    const StatusOr<ResolvedKernel> kernel = PrepareRmsNormKernel();
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     if (!IsAvx2FmaRmsNormKernel(*kernel)) {
         GTEST_SKIP() << "AVX2+FMA RMSNorm kernel was not compiled";
@@ -478,7 +498,7 @@ TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsResolvedKernel) {
     const std::vector<ExecutionPlanNodeSpec> nodes = {
             ExecutionPlanNodeSpec{
                     .op_type = OpType::kRmsNorm,
-                    .selector = MakeRmsNormSelector(IsaLevel::kScalar),
+                    .selector = MakeRmsNormSelector(),
                     .input_specs = inputs,
                     .output_specs = analyzed->outputs,
                     .runtime_checks = analyzed->runtime_checks,

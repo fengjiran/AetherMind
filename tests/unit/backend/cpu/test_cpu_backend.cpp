@@ -16,7 +16,6 @@ KernelSelector MakeCpuSelector(ExecPhase phase = ExecPhase::kBoth) {
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
-            .isa = IsaLevel::kScalar,
             .phase = phase,
     };
 }
@@ -30,6 +29,20 @@ TEST(CpuBackend, CapabilitiesExposeCPUType) {
     CpuBackend backend;
     const auto& caps = backend.capabilities();
     EXPECT_EQ(caps.device_type, DeviceType::kCPU);
+}
+
+TEST(CpuBackend, PolicyRestrictsKernelEligibility) {
+    CpuBackend backend(CpuFeaturePolicy{
+            .disabled_features = CpuFeatureSet::From({CpuFeature::kFma}),
+    });
+
+    const StatusOr<ResolvedKernel> resolved = backend.PrepareKernel(
+            OpType::kRmsNorm, MakeCpuSelector(),
+            OpParams{RmsNormParams{.eps = 1.0e-5F}});
+
+    ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
+    EXPECT_STREQ(resolved->debug_name, "cpu::rmsnorm_f32_scalar");
+    EXPECT_FALSE(backend.cpu_capabilities().effective_features.Contains(CpuFeature::kFma));
 }
 
 TEST(CpuBackend, PrepareKernelRejectsMissingDescriptor) {
@@ -62,6 +75,23 @@ TEST(CpuBackend, RuntimeBuilderDefaultProvidesCpuBackend) {
     ASSERT_TRUE(backend_or.ok());
     ASSERT_NE(backend_or.value(), nullptr);
     EXPECT_EQ(backend_or.value()->device_type(), DeviceType::kCPU);
+}
+
+TEST(CpuBackend, RuntimeBuilderAppliesCpuFeaturePolicy) {
+    RuntimeOptions options;
+    options.backend.cpu_feature_policy.disabled_features =
+            CpuFeatureSet::From({CpuFeature::kAvx2});
+
+    RuntimeBuilder builder;
+    builder.WithOptions(options);
+    RuntimeContext context = builder.Build();
+
+    const auto backend_or = context.GetBackend(DeviceType::kCPU);
+    ASSERT_TRUE(backend_or.ok());
+    const auto* backend = dynamic_cast<const CpuBackend*>(backend_or.value());
+    ASSERT_NE(backend, nullptr);
+    EXPECT_FALSE(backend->cpu_capabilities().effective_features.Contains(
+            CpuFeature::kAvx2));
 }
 
 }// namespace

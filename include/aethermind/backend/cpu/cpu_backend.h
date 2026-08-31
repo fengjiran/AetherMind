@@ -12,6 +12,7 @@ namespace aethermind {
 class CpuBackend final : public Backend {
 public:
     CpuBackend();
+    explicit CpuBackend(CpuFeaturePolicy policy);
 
     AM_NODISCARD DeviceType device_type() const noexcept override;
 
@@ -24,14 +25,21 @@ public:
 
     AM_NODISCARD const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override;
 
+    AM_NODISCARD const CpuCapabilities& cpu_capabilities() const noexcept;
+
 private:
-    CpuCapabilities capabilities_{};
+    const CpuCapabilities capabilities_;
 };
 
 class CpuBackendFactory final : public BackendFactory {
 public:
+    explicit CpuBackendFactory(CpuFeaturePolicy policy = {});
+
     AM_NODISCARD DeviceType device_type() const noexcept override;
     AM_NODISCARD std::unique_ptr<Backend> Create() const override;
+
+private:
+    CpuFeaturePolicy policy_{};
 };
 
 }// namespace aethermind

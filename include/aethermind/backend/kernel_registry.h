@@ -22,9 +22,12 @@ namespace aethermind {
 struct RegistrationKey {
     OpType op_type = OpType::kUnknown;
     KernelSelector selector{};
+    CpuKernelRequirements cpu_requirements{};
 
     friend bool operator==(const RegistrationKey& lhs, const RegistrationKey& rhs) noexcept {
-        return lhs.op_type == rhs.op_type && lhs.selector == rhs.selector;
+        return lhs.op_type == rhs.op_type &&
+               lhs.selector == rhs.selector &&
+               lhs.cpu_requirements == rhs.cpu_requirements;
     }
 };
 
@@ -33,6 +36,7 @@ struct RegistrationKeyHash {
         std::size_t seed = 0;
         seed = hash_combine(seed, std::hash<OpType>{}(key.op_type));
         seed = hash_combine(seed, std::hash<KernelSelector>{}(key.selector));
+        seed = hash_combine(seed, key.cpu_requirements.all_of.Hash());
         return seed;
     }
 };
@@ -43,8 +47,12 @@ public:
 
     Status Register(const KernelDescriptor& descriptor);
 
-    AM_NODISCARD StatusOr<const KernelDescriptor*> Resolve(OpType op_type,
-                                                           const KernelSelector& selector) const;
+    /// Returns every descriptor whose structural selector can serve `selector`.
+    /// Callers must apply backend-specific execution requirements before they
+    /// choose a concrete kernel.
+    AM_NODISCARD StatusOr<std::vector<const KernelDescriptor*>> FindCandidates(
+            OpType op_type,
+            const KernelSelector& selector) const;
 
     AM_NODISCARD Status Freeze();
 
@@ -62,6 +70,8 @@ public:
         return frozen_.load(std::memory_order_acquire);
     }
 
+    /// Debug inspection API; unlike FindCandidates, this does not apply a
+    /// structural selector filter.
     AM_NODISCARD StatusOr<std::vector<const KernelDescriptor*>> FindByOpType(OpType op_type) const;
 
     AM_NODISCARD std::string DebugDump() const;

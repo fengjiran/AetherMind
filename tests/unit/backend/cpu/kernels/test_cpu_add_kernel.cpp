@@ -459,7 +459,6 @@ TEST(AddKernel, ResolvesThroughCpuBackend) {
                 .act_dtype = dtype,
                 .weight_dtype = dtype,
                 .weight_format = WeightFormat::kPlain,
-                .isa = IsaLevel::kScalar,
                 .phase = ExecPhase::kBoth,
         };
         const auto resolved = backend.PrepareKernel(
@@ -620,7 +619,6 @@ TEST(AddKernel, Int64EndToEndThroughExecutionRequestAndExecutor) {
                     .act_dtype = DataType::Int(64),
                     .weight_dtype = DataType::Int(64),
                     .weight_format = WeightFormat::kPlain,
-                    .isa = IsaLevel::kScalar,
                     .phase = ExecPhase::kBoth,
             },
             .input_specs = {lhs_spec, rhs_spec},
@@ -691,7 +689,6 @@ TEST(AddKernel, RejectsIncompatibleRuntimeBroadcastShapes) {
                     .act_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPlain,
-                    .isa = IsaLevel::kScalar,
                     .phase = ExecPhase::kBoth,
             },
             .input_specs = add_inputs,
@@ -786,7 +783,6 @@ TEST(AddKernel, ResolveAddWithUndefinedWeightDtypeReturnsNotFound) {
             .act_dtype = DataType::Float32(),
             .weight_dtype = DataType{},
             .weight_format = WeightFormat::kPlain,
-            .isa = IsaLevel::kScalar,
             .phase = ExecPhase::kBoth,
     };
     const auto resolved = backend.PrepareKernel(

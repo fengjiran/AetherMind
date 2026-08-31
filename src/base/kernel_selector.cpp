@@ -15,8 +15,6 @@ std::string ToString(const KernelSelector& selector) {
            "bit" +
            ", weight_format=" +
            ToString(selector.weight_format) +
-           ", isa=" +
-           ToString(selector.isa) +
            ", phase=" +
            ToString(selector.phase) +
            "}";

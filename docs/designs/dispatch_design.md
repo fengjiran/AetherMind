@@ -6,6 +6,7 @@
 |------|------|------|
 | v1.0 | 2026-04-15 | 初始设计冻结：backend-owned KernelRegistry |
 | v1.1 | 2026-06-04 | **设计偏离**：实际实现采用全局 singleton KernelRegistry + `AM_REGISTER_KERNEL` 静态注册宏。原因见第 7、9、16.11 节。本文档其余部分保持原始设计论证，但在冲突处已标注实际实现。 |
+| v1.2 | 2026-08-31 | **设计偏离**：`IsaLevel` 与 `KernelSelector.isa` 从实现中移除；CPU 指令集要求改由 `KernelDescriptor.cpu_requirements`（特征集）声明，`CpuBackend` 在 resolve 时按 `CpuCapabilities.effective_features` 做子集过滤。详见 4.3 节 CPU 能力模型。 |
 
 ---
 
@@ -111,13 +112,6 @@ StatusOr<OpType> ToOpType(const OperatorName& op_name) noexcept;
 `KernelSelector` 描述选择 kernel 所需的条件。
 
 ```cpp
-enum class IsaLevel : uint8_t {
-    kScalar,
-    kAVX2,
-    kAVX512,
-    kAMX,
-};
-
 enum class ExecPhase : uint8_t {
     kPrefill,
     kDecode,
@@ -136,10 +130,11 @@ struct KernelSelector {
     DataType activation_dtype;
     DataType weight_dtype;
     WeightFormat weight_format;
-    IsaLevel isa;
     ExecPhase phase;
 };
 ```
+
+> **v1.2 偏离**：`IsaLevel` 枚举与 `KernelSelector.isa` 字段已从实现中删除。指令集要求不再是 selector 维度，而是 `KernelDescriptor.cpu_requirements`（见 4.3 节）。
 
 ## 4.1 为什么不做 DispatchKeySet
 
@@ -157,8 +152,9 @@ struct KernelSelector {
 * `activation_dtype`
 * `weight_dtype`
 * `weight_format`
-* `isa`
 * `phase`
+
+> **v1.2 偏离**：`isa` 维度已从 selector 中移除，指令集要求改走 4.3 节的能力模型。
 
 像 `layout` 这样的维度，在当前 tensor/layout 约束尚未完全稳定前，不建议过早放进主选择器主线。
 
@@ -174,6 +170,27 @@ Quantized packed weight
 因此建议明确：
 
 > **Phase 1 不以 `layout` 作为通用 selector 维度，但允许特定 op 通过 `weight_format` 或 attrs 表达内部布局约束。**
+
+## 4.3 CPU 能力模型（v1.2 设计偏离：取代 IsaLevel）
+
+实际实现用**特征集合**取代 `IsaLevel`，原因是指令集之间不是全序关系（AVX512F / AMX / VNNI / FMA 相互正交，无法用 `candidate.isa <= request.isa` 表达）。
+
+类型位于 `include/aethermind/backend/cpu/cpu_capabilities.h`：
+
+* `CpuFeature`：扁平、append-only 特征枚举（x86 与 AArch64 共用一个命名空间，`kCount` 哨兵）。
+* `CpuFeatureSet`：128 位定长 bitmask，constexpr、可哈希、无堆分配。
+* `CpuCapabilities`：三层快照——
+  * `hardware_features`（原始硬件能力，仅供诊断）；
+  * `usable_features`（硬件 + OS 状态门控后可用：XCR0、AMX `arch_prctl` 权限、`PR_SVE_GET_VL` 等）；
+  * `effective_features`（应用 `CpuFeaturePolicy` 后，**kernel 选择的唯一依据**）。
+* `CpuFeaturePolicy{disabled_features, required_features}`：运行时策略只能**削减**特征；`required` 不满足时检测返回 `FailedPrecondition`。通过 `CpuBackendFactory(policy)` / `RuntimeOptions.backend.cpu_feature_policy` 注入——测试可停用 AVX2/FMA 强制回退到 scalar kernel，无需全局可变 override。
+* `KernelDescriptor.cpu_requirements = {.all_of: CpuFeatureSet}`：CPU kernel 声明其全部指令集要求（置空表示任意机器可运行）；非 CPU device 的 descriptor 禁止携带该字段（注册期校验）。
+* resolve 流程（`CpuBackend::PrepareKernel`）：`KernelRegistry::FindCandidates`（纯结构匹配）→ 过滤 `effective_features ⊇ requirements` → 按 `priority` 取优；无候选命中时返回 `NotFound` 并携带 selector 与特征集诊断。
+
+两条已记录的设计权衡：
+
+1. **打包布局对指令集规范化**：`selector` 不含特征维度，`CpuWeightPrepacker::RecipeFor(selector)` 只由结构字段导出——一份 packed 权重服务所有特征等级，`WeightArtifactKey` 因此机器无关。若未来引入 ISA 特有排布（如 VNNI 专用 layout），需扩展 recipe 或 selector 维度，届时需重新评估此权衡。
+2. **检测失败路径**：能力检测失败（当前仅未知平台可能）会在 `CpuBackend` 构造时 `AM_CHECK` 终止进程，因为 `BackendFactory::Create()` 返回 `unique_ptr<Backend>`、无 Status 通道；x86-64 / AArch64 不触发。另注意检测过程可能发起 `arch_prctl(ARCH_REQ_XCOMP_PERM)` 进程级权限申请。
 
 # 5. Kernel 函数签名
 
@@ -239,8 +256,8 @@ Packed weight kernel > Plain weight kernel
 但 `priority` 不应承担“万能排序”语义。推荐将规则明确为：
 
 ```text
-先硬匹配 device / dtype / weight_format / phase
-再按 ISA 兼容性过滤
+先硬匹配 device / dtype / weight_format / phase（registry 层 FindCandidates）
+再按 CPU 有效特征集过滤（backend 层：effective_features ⊇ kernel 声明特征集）
 最后才按 priority 选择最优实现
 ```
 
@@ -292,7 +309,8 @@ Kernel .cpp 文件中通过该宏自注册：
 AM_REGISTER_KERNEL(g_rmsnorm_avx2_registration, {
     .op_type = OpType::kRmsNorm,
     .selector = { DeviceType::kCPU, DataType::Float32(), DataType::Float32(),
-                  WeightFormat::kPlain, IsaLevel::kAVX2, ExecPhase::kBoth },
+                  WeightFormat::kPlain, ExecPhase::kBoth },
+    .cpu_requirements = {.all_of = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma})},
     .fn = &CpuRmsNormKernelEntry_FP32_AVX2,
     .name = "cpu::rmsnorm_f32_avx2",
     .priority = 20,
@@ -327,15 +345,11 @@ bool Match(const KernelSelector& candidate,
         && candidate.activation_dtype == request.activation_dtype
         && candidate.weight_dtype == request.weight_dtype
         && candidate.weight_format == request.weight_format
-        && PhaseMatch(candidate.phase, request.phase)
-        && candidate.isa <= request.isa;
+        && PhaseMatch(candidate.phase, request.phase);
 }
 ```
 
-其中 `candidate.isa <= request.isa` 表示：
-
-* 当前机器支持 AVX512 时，可以选择 AVX2；
-* 当前机器支持 AVX2 时，不能选择 AVX512。
+> **v1.2 偏离**：`candidate.isa <= request.isa` 这条 ISA 上限规则已删除——指令集要求不再参与 selector 匹配，改由 `CpuBackend` 在 resolve 时按 `KernelDescriptor.cpu_requirements` 与 `CpuCapabilities.effective_features` 的子集关系过滤（指令集之间不是全序关系，无法用 `<=` 表达，见 4.3 节）。语义等价推论仍然成立：机器支持 AVX512 时可选中 AVX2 kernel；机器不支持 AVX2 时 AVX512 kernel 会被特征过滤淘汰。
 
 而 `candidate.phase == ExecPhase::kBoth` 时，应能同时匹配 `kPrefill` 和 `kDecode` 请求，否则 `kBoth` 没有实际意义。
 
@@ -360,7 +374,6 @@ AM_REGISTER_KERNEL(g_rmsnorm_scalar_registration, {
         .activation_dtype = DataType::Float32(),
         .weight_dtype = DataType::Float32(),
         .weight_format = WeightFormat::kPlain,
-        .isa = IsaLevel::kScalar,
         .phase = ExecPhase::kBoth,
     },
     .fn = &CpuRmsNormKernelEntry_FP32_Scalar,
@@ -499,7 +512,7 @@ private:
 
 * 模型 dtype；
 * 权重格式；
-* 当前 CPU ISA；
+* 当前 CPU 能力快照（`CpuCapabilities.effective_features`，由 backend 持有并过滤）；
 * prefill/decode 阶段；
 * backend 能力；
 
@@ -539,7 +552,7 @@ KernelResolver（或等价的 plan-build resolve 逻辑）
 Device: CPU
 DType: FP32
 WeightFormat: Plain
-ISA: Scalar / AVX2 可选
+CPU 能力：scalar 必选；AVX2/FMA 等按有效特征集自动选择（4.3 节能力模型）
 Phase: Prefill / Decode / Both
 ```
 
@@ -731,12 +744,12 @@ Resolve(OpType, KernelSelector, const KernelDescriptor**)
 * `weight_dtype` 硬匹配
 * `weight_format` 硬匹配
 * `PhaseMatch(candidate, request)`
-* `candidate.isa <= request.isa`
+* CPU kernel 额外要求 `effective_features` ⊇ `cpu_requirements.all_of`（backend 层过滤，非 registry 职责）
 * 最后按 `priority` 选择最优实现
 
 过渡期可以保留旧接口，内部桥接到新结构，避免一次性重写全部测试。
 
-**设计偏离说明**：实际实现中 `KernelRegistry` 为全局 singleton（非 backend-owned），kernel 通过 `AM_REGISTER_KERNEL` 宏自注册（见 7.1 节）。匹配规则和 resolve 逻辑与原始设计一致。
+**设计偏离说明**：实际实现中 `KernelRegistry` 为全局 singleton（非 backend-owned），kernel 通过 `AM_REGISTER_KERNEL` 宏自注册（见 7.1 节）。结构化匹配规则与原始设计一致；原 ISA 维度已由 capability 过滤取代（v1.2，见 4.3 节）。
 
 ### 完成标准
 
@@ -896,7 +909,7 @@ Executor direct call + 旧体系冻结
 
 * 硬匹配
 * `kBoth` 匹配
-* ISA 兼容
+* 有效特征集过滤（capability-aware resolve）
 * `priority` 选择
 
 ### Phase D

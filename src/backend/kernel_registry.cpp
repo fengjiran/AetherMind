@@ -39,7 +39,8 @@ Status KernelRegistry::Register(const KernelDescriptor& descriptor) {
         return status;
     }
 
-    if (const RegistrationKey key{descriptor.op_type, descriptor.selector};
+    if (const RegistrationKey key{
+                descriptor.op_type, descriptor.selector, descriptor.cpu_requirements};
         !registration_keys_.insert(key).second) {
         return Status::AlreadyExists("Duplicate kernel registration");
     }
@@ -75,40 +76,32 @@ Status KernelRegistry::BuildBucketIndex() {
     return Status::Ok();
 }
 
-StatusOr<const KernelDescriptor*> KernelRegistry::Resolve(OpType op_type,
-                                                          const KernelSelector& selector) const {
+StatusOr<std::vector<const KernelDescriptor*>> KernelRegistry::FindCandidates(
+        OpType op_type,
+        const KernelSelector& selector) const {
     // Register/Freeze use mutex + release-store on frozen_; the acquire-load here
     // synchronizes-with that release, guaranteeing we see a fully-constructed buckets_.
     if (!frozen_.load(std::memory_order_acquire)) {
         return Status::FailedPrecondition(
-                "Cannot resolve kernel before registry has been frozen");
+                "Cannot find kernel candidates before registry has been frozen");
     }
 
     if (auto status = ValidateResolveArgs(op_type, selector); !status.ok()) {
         return status;
     }
 
-    const KernelDescriptor* best = nullptr;
+    std::vector<const KernelDescriptor*> candidates;
     if (const auto it = buckets_.find(op_type); it != buckets_.end()) {
+        candidates.reserve(it->second.size());
         for (size_t idx: it->second) {
             const KernelDescriptor& descriptor = kernels_[idx];
             if (!SelectorMatches(descriptor.selector, selector)) {
                 continue;
             }
-
-            if (best == nullptr || descriptor.priority > best->priority) {
-                best = &descriptor;
-            }
+            candidates.push_back(&descriptor);
         }
     }
-
-    if (best == nullptr) {
-        return Status::NotFound("No matching kernel registered for op_type=" +
-                                std::string(ToString(op_type)) +
-                                ", selector=" + ToString(selector));
-    }
-
-    return best;
+    return candidates;
 }
 
 StatusOr<std::vector<const KernelDescriptor*>> KernelRegistry::FindByOpType(OpType op_type) const {
@@ -135,7 +128,8 @@ std::string KernelRegistry::DebugDump() const {
         if (i > 0) out += '\n';
         out += std::string(ToString(d.op_type)) + " | " +
                d.name + " | " +
-               ToString(d.selector) + " | priority=" +
+               ToString(d.selector) + " | cpu_features=" +
+               ToString(d.cpu_requirements.all_of) + " | priority=" +
                std::to_string(d.priority);
     }
     return out;

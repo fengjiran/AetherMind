@@ -2,19 +2,17 @@
 
 #include <cmath>
 
-#include <cmath>
-
 namespace aethermind::cpu::detail {
 namespace {
 
-AM_ALWAYS_INLINE void micro_kernel_fp32_scalar(float* __restrict__ output,
-                                               const float* __restrict__ input,
-                                               const float* __restrict__ weight,
-                                               int64_t hidden_size,
-                                               int64_t input_stride,
-                                               int64_t weight_stride,
-                                               int64_t output_stride,
-                                               float epsilon) {
+AM_ALWAYS_INLINE void RmsNormRowFp32Scalar(float* output,
+                                           const float* input,
+                                           const float* weight,
+                                           int64_t hidden_size,
+                                           int64_t input_stride,
+                                           int64_t weight_stride,
+                                           int64_t output_stride,
+                                           float epsilon) {
     double sum_sq = 0.0;
     for (int64_t j = 0; j < hidden_size; ++j) {
         const auto x = static_cast<double>(input[j * input_stride]);
@@ -33,30 +31,16 @@ AM_ALWAYS_INLINE void micro_kernel_fp32_scalar(float* __restrict__ output,
 }// namespace
 
 
-Status RmsNormKernel_CPU_FP32_Scalar(const RmsNormFp32KernelArgs& args) noexcept {
-    if (constexpr int64_t kOmpParallelThreshold = 16; args.seq_len <= kOmpParallelThreshold) {
-        for (int64_t i = 0; i < args.seq_len; ++i) {
-            micro_kernel_fp32_scalar(args.output + i * args.output_row_stride,
-                                     args.input + i * args.input_row_stride,
-                                     args.weight,
-                                     args.hidden_size,
-                                     args.input_col_stride,
-                                     args.weight_stride,
-                                     args.output_col_stride,
-                                     args.eps);
-        }
-    } else {
-#pragma omp parallel for schedule(static)
-        for (int64_t i = 0; i < args.seq_len; ++i) {
-            micro_kernel_fp32_scalar(args.output + i * args.output_row_stride,
-                                     args.input + i * args.input_row_stride,
-                                     args.weight,
-                                     args.hidden_size,
-                                     args.input_col_stride,
-                                     args.weight_stride,
-                                     args.output_col_stride,
-                                     args.eps);
-        }
+Status RunRmsNormFp32Scalar(const RmsNormFp32KernelArgs& args) noexcept {
+    for (int64_t row = 0; row < args.row_count; ++row) {
+        RmsNormRowFp32Scalar(args.output + row * args.output_row_stride,
+                             args.input + row * args.input_row_stride,
+                             args.weight,
+                             args.hidden_size,
+                             args.input_col_stride,
+                             args.weight_stride,
+                             args.output_col_stride,
+                             args.eps);
     }
 
     return Status::Ok();

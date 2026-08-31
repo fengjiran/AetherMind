@@ -18,18 +18,17 @@ struct RmsNormKernelParams {
     MutableTensorView output_tensor{};
 };
 
-// Deprecated alias for transitional test compatibility. New code must use RmsNormKernelParams.
-using RmsNormParams [[deprecated("Use RmsNormKernelParams")]] = RmsNormKernelParams;
-
 /// Pre-validated FP32 arguments for RMSNorm micro-kernels.
 ///
-/// Produced by ValidateRmsNormEntry from TensorView + epsilon attrs and
-/// consumed by scalar/AVX2 implementations. Separates validation from compute.
+/// Produced by ValidateAndBuildRmsNormFp32Args from TensorView + epsilon attrs
+/// and consumed by scalar/AVX2 implementations. Separates validation from
+/// compute. `row_count` is the product of every input dimension except the
+/// last, so rank-1 input is represented by one row.
 struct RmsNormFp32KernelArgs {
     const float* input{};
     const float* weight{};
     float* output{};
-    int64_t seq_len{};
+    int64_t row_count{};
     int64_t hidden_size{};
     int64_t input_row_stride{};
     int64_t input_col_stride{1};
@@ -39,8 +38,11 @@ struct RmsNormFp32KernelArgs {
     float eps{1.0e-5f};
 };
 
-Status RmsNormKernel_CPU_FP32_Scalar(const RmsNormFp32KernelArgs& args) noexcept;
-Status RmsNormKernel_CPU_FP32_AVX2(const RmsNormFp32KernelArgs& args) noexcept;
+Status RunRmsNormFp32Scalar(const RmsNormFp32KernelArgs& args) noexcept;
+
+#if defined(AETHERMIND_HAS_RMSNORM_AVX2_FMA_KERNEL)
+Status RunRmsNormFp32Avx2Fma(const RmsNormFp32KernelArgs& args) noexcept;
+#endif
 
 }// namespace aethermind::cpu::detail
 

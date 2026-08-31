@@ -1,21 +1,20 @@
-#include "rmsnorm_internal.h"
-
 #include "aethermind/backend/cpu/kernels/common/cpu_simd_utils.h"
+#include "rmsnorm_internal.h"
 
 #include <cmath>
 
-#if defined(__AVX2__) && defined(__FMA__)
+#if defined(AETHERMIND_HAS_RMSNORM_AVX2_FMA_KERNEL)
 #include <immintrin.h>
 #endif
 
 namespace aethermind::cpu::detail {
 
-#if defined(__AVX2__) && defined(__FMA__)
-AM_ALWAYS_INLINE void micro_kernel_fp32_avx2(float* __restrict__ output,
-                                             const float* __restrict__ input,
-                                             const float* __restrict__ weight,
-                                             int64_t hidden_size,
-                                             float eps) {
+#if defined(AETHERMIND_HAS_RMSNORM_AVX2_FMA_KERNEL)
+AM_ALWAYS_INLINE void RmsNormRowFp32Avx2Fma(float* output,
+                                            const float* input,
+                                            const float* weight,
+                                            int64_t hidden_size,
+                                            float eps) {
     __m256 vsum0 = _mm256_setzero_ps();
     __m256 vsum1 = _mm256_setzero_ps();
     __m256 vsum2 = _mm256_setzero_ps();
@@ -88,36 +87,26 @@ AM_ALWAYS_INLINE void micro_kernel_fp32_avx2(float* __restrict__ output,
         output[j] = input[j] * inv_rms * weight[j];
     }
 }
-#endif
 
 /// Executes RMSNorm on already-validated low-level arguments.
 ///
 /// Callers must guarantee non-null data pointers, positive dimensions, positive
-/// strides, unit column strides (input_col_stride_, weight_stride_,
-/// output_col_stride_ all equal 1), finite positive epsilon, and sufficient
+/// strides, unit column strides (input_col_stride, weight_stride, and
+/// output_col_stride all equal 1), finite positive epsilon, and sufficient
 /// backing storage for every addressed element. Runtime validation belongs in
-/// RmsNormKernelEntry.
-Status RmsNormKernel_CPU_FP32_AVX2(const RmsNormFp32KernelArgs& args) noexcept {
-    if (constexpr int64_t kOmpParallelThreshold = 16; args.seq_len <= kOmpParallelThreshold) {
-        for (int64_t i = 0; i < args.seq_len; ++i) {
-            micro_kernel_fp32_avx2(args.output + i * args.output_row_stride,
-                                   args.input + i * args.input_row_stride,
-                                   args.weight,
-                                   args.hidden_size,
-                                   args.eps);
-        }
-    } else {
-#pragma omp parallel for schedule(static)
-        for (int64_t i = 0; i < args.seq_len; ++i) {
-            micro_kernel_fp32_avx2(args.output + i * args.output_row_stride,
-                                   args.input + i * args.input_row_stride,
-                                   args.weight,
-                                   args.hidden_size,
-                                   args.eps);
-        }
+/// the RMSNorm entry.
+Status RunRmsNormFp32Avx2Fma(const RmsNormFp32KernelArgs& args) noexcept {
+    for (int64_t row = 0; row < args.row_count; ++row) {
+        RmsNormRowFp32Avx2Fma(args.output + row * args.output_row_stride,
+                              args.input + row * args.input_row_stride,
+                              args.weight,
+                              args.hidden_size,
+                              args.eps);
     }
 
     return Status::Ok();
 }
+
+#endif
 
 }// namespace aethermind::cpu::detail

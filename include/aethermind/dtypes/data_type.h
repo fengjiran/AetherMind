@@ -15,6 +15,7 @@
 #include "aethermind/dtypes/float8_e5m2.h"
 #include "aethermind/dtypes/half.h"
 #include "utils/bits.h"
+#include "utils/logging.h"
 
 #include <cstdint>
 #include <iosfwd>

@@ -8,6 +8,7 @@
 #include "aethermind/base/device.h"
 #include "aethermind/base/object.h"
 #include "aethermind/dtypes/data_type.h"
+#include "container/string.h"
 
 #include <cxxabi.h>
 #include <map>

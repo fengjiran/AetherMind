@@ -7,16 +7,9 @@
 /// The AetherMind hash functor dispatches to user-provided `T::hash`, enum
 /// underlying values, or `std::hash`, and provides consistent support for
 /// common aggregate types.
-
-#include "container/string.h"
-#include "utils/xxh3.h"
-
 #include <complex>
 #include <cstddef>
-#include <functional>
-#include <tuple>
-#include <type_traits>
-#include <utility>
+#include <cstdint>
 #include <vector>
 
 namespace aethermind {
@@ -59,7 +52,7 @@ template<typename T>
 #else
 template<typename T, std::enable_if_t<std::is_convertible_v<T, size_t>>* = nullptr>
 #endif
-size_t hash_combine(size_t seed, const T& hash_value) {
+constexpr size_t hash_combine(size_t seed, const T& hash_value) noexcept {
     return seed ^ (hash_value + 0x9e3779b9 + (seed << 6u) + (seed >> 2u));
 }
 

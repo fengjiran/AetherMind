@@ -18,6 +18,7 @@
 #include "aethermind/base/macros.h"
 #include "utils/hash.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <initializer_list>
 #include <iterator>

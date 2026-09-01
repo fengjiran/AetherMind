@@ -57,24 +57,24 @@ enum class StatusCode : uint8_t {
     kUnauthenticated
 };
 
-static_assert(static_cast<uint8_t>(StatusCode::kOk) == AM_STATUS_OK, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kCancelled) == AM_STATUS_CANCELLED, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kUnknown) == AM_STATUS_UNKNOWN, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kInvalidArgument) == AM_STATUS_INVALID_ARGUMENT, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kDeadlineExceeded) == AM_STATUS_DEADLINE_EXCEEDED, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kNotFound) == AM_STATUS_NOT_FOUND, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kAlreadyExists) == AM_STATUS_ALREADY_EXISTS, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kPermissionDenied) == AM_STATUS_PERMISSION_DENIED, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kResourceExhausted) == AM_STATUS_RESOURCE_EXHAUSTED, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kFailedPrecondition) == AM_STATUS_FAILED_PRECONDITION, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kAborted) == AM_STATUS_ABORTED, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kOutOfRange) == AM_STATUS_OUT_OF_RANGE, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kUnimplemented) == AM_STATUS_UNIMPLEMENTED, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kInternal) == AM_STATUS_INTERNAL, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kUnavailable) == AM_STATUS_UNAVAILABLE, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kDataLoss) == AM_STATUS_DATA_LOSS, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kUnauthenticated) == AM_STATUS_UNAUTHENTICATED, "Status code mismatch!");
-static_assert(static_cast<uint8_t>(StatusCode::kOverflow) == AM_STATUS_OVERFLOW, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kOk) == AM_STATUS_OK, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kCancelled) == AM_STATUS_CANCELLED, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kUnknown) == AM_STATUS_UNKNOWN, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kInvalidArgument) == AM_STATUS_INVALID_ARGUMENT, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kDeadlineExceeded) == AM_STATUS_DEADLINE_EXCEEDED, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kNotFound) == AM_STATUS_NOT_FOUND, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kAlreadyExists) == AM_STATUS_ALREADY_EXISTS, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kPermissionDenied) == AM_STATUS_PERMISSION_DENIED, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kResourceExhausted) == AM_STATUS_RESOURCE_EXHAUSTED, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kFailedPrecondition) == AM_STATUS_FAILED_PRECONDITION, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kAborted) == AM_STATUS_ABORTED, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kOutOfRange) == AM_STATUS_OUT_OF_RANGE, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kUnimplemented) == AM_STATUS_UNIMPLEMENTED, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kInternal) == AM_STATUS_INTERNAL, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kUnavailable) == AM_STATUS_UNAVAILABLE, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kDataLoss) == AM_STATUS_DATA_LOSS, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kUnauthenticated) == AM_STATUS_UNAUTHENTICATED, "Status code mismatch!");
+static_assert(static_cast<am_status_code>(StatusCode::kOverflow) == AM_STATUS_OVERFLOW, "Status code mismatch!");
 
 /// @brief Returns the human-readable name for a status code.
 ///

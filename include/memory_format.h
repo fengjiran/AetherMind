@@ -6,6 +6,7 @@
 #define AETHERMIND_MEMORY_FORMAT_H
 
 #include "container/array_view.h"
+#include "utils/logging.h"
 
 #include <cstdint>
 #include <ostream>

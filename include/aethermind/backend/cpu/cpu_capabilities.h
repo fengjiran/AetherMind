@@ -74,7 +74,7 @@ public:
     ///
     /// @param features Features to include.
     /// @return Set containing exactly the listed features.
-    static CpuFeatureSet From(std::initializer_list<CpuFeature> features) noexcept {
+    static constexpr CpuFeatureSet From(std::initializer_list<CpuFeature> features) noexcept {
         CpuFeatureSet result;
         for (const CpuFeature feature: features) {
             result.Enable(feature);

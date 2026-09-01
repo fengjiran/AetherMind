@@ -1,6 +1,0 @@
-#ifndef AETHERMIND_BACKEND_KERNEL_SELECTOR_H
-#define AETHERMIND_BACKEND_KERNEL_SELECTOR_H
-
-#include "aethermind/base/kernel_selector.h"
-
-#endif // AETHERMIND_BACKEND_KERNEL_SELECTOR_H

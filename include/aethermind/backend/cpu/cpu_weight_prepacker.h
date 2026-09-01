@@ -1,8 +1,8 @@
 #ifndef AETHERMIND_BACKEND_CPU_CPU_WEIGHT_PREPACKER_H
 #define AETHERMIND_BACKEND_CPU_CPU_WEIGHT_PREPACKER_H
 
-#include "aethermind/backend/kernel_selector.h"
 #include "aethermind/backend/packed_weights.h"
+#include "aethermind/base/kernel_selector.h"
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor.h"
 #include "aethermind/base/tensor_view.h"

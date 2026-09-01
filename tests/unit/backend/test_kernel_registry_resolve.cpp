@@ -36,8 +36,8 @@ TEST(KernelRegistryCandidates, BothPhaseMatchesDecodeRequest) {
                                           .op_type = OpType::kRmsNorm,
                                           .selector = MakeSelector(ExecPhase::kBoth),
                                           .kernel_func = &ScalarKernel,
-                                          .name = "scalar",
                                           .priority = 1,
+                                          .name = "scalar",
                                   })
                         .ok());
     ASSERT_TRUE(registry.Freeze().ok());
@@ -56,8 +56,8 @@ TEST(KernelRegistryCandidates, ReturnsAllStructuralVariantsRegardlessOfRequireme
                                           .op_type = OpType::kRmsNorm,
                                           .selector = MakeSelector(),
                                           .kernel_func = &ScalarKernel,
-                                          .name = "scalar",
                                           .priority = 1,
+                                          .name = "scalar",
                                   })
                         .ok());
     ASSERT_TRUE(registry.Register(KernelDescriptor{
@@ -66,8 +66,8 @@ TEST(KernelRegistryCandidates, ReturnsAllStructuralVariantsRegardlessOfRequireme
                                           .cpu_requirements = CpuFeatureSet::From(
                                                   {CpuFeature::kAvx2}),
                                           .kernel_func = &FeatureKernel,
-                                          .name = "avx2",
                                           .priority = 10,
+                                          .name = "avx2",
                                   })
                         .ok());
     ASSERT_TRUE(registry.Freeze().ok());
@@ -87,8 +87,8 @@ TEST(KernelRegistryCandidates, IncompatiblePhaseReturnsNoCandidates) {
                                           .op_type = OpType::kRmsNorm,
                                           .selector = MakeSelector(ExecPhase::kDecode),
                                           .kernel_func = &DecodeOnlyKernel,
-                                          .name = "decode-only",
                                           .priority = 5,
+                                          .name = "decode-only",
                                   })
                         .ok());
     ASSERT_TRUE(registry.Freeze().ok());

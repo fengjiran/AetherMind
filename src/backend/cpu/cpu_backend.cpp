@@ -7,9 +7,10 @@
 namespace aethermind {
 namespace {
 
-// 能力检测失败（当前仅在无 CPU 探测器的平台上可能发生）会导致进程中止：
-// BackendFactory::Create() 返回 unique_ptr<Backend>，没有 Status 通道可传播错误。
-// x86-64 / AArch64 等受支持平台不会走到该分支。
+// Capability detection failure (only possible on platforms without a CPU
+// detector) aborts the process. CpuBackend constructors have no Status
+// channel to propagate the error, unlike CpuBackendFactory::Create().
+// Supported platforms (x86-64 / AArch64) never take this path.
 CpuCapabilities DetectCapabilitiesOrDie(const CpuFeaturePolicy& policy) {
     auto capabilities = cpu::DetectCpuCapabilities(policy);
     AM_CHECK(capabilities.ok(),
@@ -48,13 +49,16 @@ StatusOr<const KernelDescriptor*> ResolveEligibleDescriptor(
 
 } // namespace
 
-CpuBackend::CpuBackend() : CpuBackend(CpuFeaturePolicy{}) {}
-
-CpuBackend::CpuBackend(CpuFeaturePolicy policy)
-    : capabilities_(DetectCapabilitiesOrDie(policy)) {
+CpuBackend::CpuBackend(const CpuCapabilities& capabilities)
+    : capabilities_(capabilities) {
     const Status status = KernelRegistry::Global().Freeze();
     AM_CHECK(status.ok(), "Failed to freeze CPU kernel registry: {}", status.ToString().c_str());
 }
+
+CpuBackend::CpuBackend() : CpuBackend(CpuFeaturePolicy{}) {}
+
+CpuBackend::CpuBackend(const CpuFeaturePolicy& policy)
+    : CpuBackend(DetectCapabilitiesOrDie(policy)) {}
 
 DeviceType CpuBackend::device_type() const noexcept {
     return DeviceType::kCPU;
@@ -105,15 +109,19 @@ const CpuCapabilities& CpuBackend::cpu_capabilities() const noexcept {
     return capabilities_;
 }
 
-CpuBackendFactory::CpuBackendFactory(CpuFeaturePolicy policy)
-    : policy_(std::move(policy)) {}
+CpuBackendFactory::CpuBackendFactory(const CpuFeaturePolicy& policy)
+    : policy_(policy) {}
 
 DeviceType CpuBackendFactory::device_type() const noexcept {
     return DeviceType::kCPU;
 }
 
-std::unique_ptr<Backend> CpuBackendFactory::Create() const {
-    return std::make_unique<CpuBackend>(policy_);
+StatusOr<std::unique_ptr<Backend>> CpuBackendFactory::Create() const {
+    auto capabilities = cpu::DetectCpuCapabilities(policy_);
+    if (!capabilities.ok()) {
+        return capabilities.status();
+    }
+    return std::make_unique<CpuBackend>(std::move(capabilities).value());
 }
 
 } // namespace aethermind

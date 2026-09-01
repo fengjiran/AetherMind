@@ -150,10 +150,10 @@ AM_REGISTER_KERNEL(EmbeddingFp32Scalar,
                                    .phase = ExecPhase::kBoth,
                            },
                            .kernel_func = &cpu::detail::EmbeddingKernel,
-                           .name = "cpu::embedding_f32_scalar",
                            .priority = 10,
-                           .params_builder = &BuildEmbeddingParams,
                            .params_size = sizeof(cpu::detail::EmbeddingParams),
+                           .params_builder = &BuildEmbeddingParams,
+                           .name = "cpu::embedding_f32_scalar",
                    })
 
 } // namespace aethermind

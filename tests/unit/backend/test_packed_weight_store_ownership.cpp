@@ -1,8 +1,8 @@
 #include "aethermind/model/packed_weight_store.h"
 
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/kernel_selector.h"
 #include "aethermind/backend/packed_weights.h"
+#include "aethermind/base/kernel_selector.h"
 #include "aethermind/base/status.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/operators/op_type.h"

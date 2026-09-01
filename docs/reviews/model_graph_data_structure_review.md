@@ -11,7 +11,7 @@
 - `include/aethermind/model/model_instance.h` — 权重查找接口
 - `include/aethermind/operators/op_type.h` — 算子类型枚举
 - `include/aethermind/shape_inference/shape_symbol.h` — 形状表达
-- `include/aethermind/backend/kernel_selector.h` — kernel 选择器
+- `include/aethermind/base/kernel_selector.h` — kernel 选择器
 - `include/aethermind/runtime/workspace.h` — workspace 需求
 - `include/aethermind/model/formats/hf/hf_model_config.h` — 模型配置
 - `include/aethermind/model/resolved_model_weights.h` — 解析后权重

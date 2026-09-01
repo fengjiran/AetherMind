@@ -1,8 +1,7 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/backend/kernel_invocation.h"
-#include "aethermind/backend/kernel_selector.h"
 #include "aethermind/base/device.h"
+#include "aethermind/base/kernel_selector.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/runtime/kv_cache_manager.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -86,7 +85,7 @@ public:
 class MockBackendFactory : public BackendFactory {
 public:
     DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
-    std::unique_ptr<Backend> Create() const override {
+    StatusOr<std::unique_ptr<Backend>> Create() const override {
         return std::make_unique<MockBackend>();
     }
 };

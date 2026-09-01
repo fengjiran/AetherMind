@@ -306,11 +306,11 @@ AM_REGISTER_KERNEL(RmsNormFp32Scalar,
                                    .phase = ExecPhase::kBoth,
                            },
                            .kernel_func = &RmsNormKernelEntryFp32Scalar,
-                           .name = "cpu::rmsnorm_f32_scalar",
                            .priority = 10,
-                           .params_builder = &BuildRmsNormKernelParams,
                            .params_size = sizeof(RmsNormKernelParams),
+                           .params_builder = &BuildRmsNormKernelParams,
                            .metadata_builder = &BuildRmsNormMetadata,
+                           .name = "cpu::rmsnorm_f32_scalar",
                    });
 
 #if defined(AETHERMIND_HAS_RMSNORM_AVX2_FMA_KERNEL)
@@ -326,11 +326,11 @@ AM_REGISTER_KERNEL(RmsNormFp32Avx2Fma,
                            },
                            .cpu_requirements = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
                            .kernel_func = &RmsNormKernelEntryFp32Avx2Fma,
-                           .name = "cpu::rmsnorm_f32_avx2_fma",
                            .priority = 20,
-                           .params_builder = &BuildRmsNormKernelParams,
                            .params_size = sizeof(RmsNormKernelParams),
+                           .params_builder = &BuildRmsNormKernelParams,
                            .metadata_builder = &BuildRmsNormMetadata,
+                           .name = "cpu::rmsnorm_f32_avx2_fma",
                    });
 #endif
 

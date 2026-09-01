@@ -56,9 +56,9 @@ TEST(CpuBackendFactory, CreatesValidBackend) {
     CpuBackendFactory factory;
     EXPECT_EQ(factory.device_type(), DeviceType::kCPU);
 
-    auto backend = factory.Create();
-    ASSERT_NE(backend, nullptr);
-    EXPECT_EQ(backend->device_type(), DeviceType::kCPU);
+    const auto backend_or = factory.Create();
+    ASSERT_TRUE(backend_or.ok()) << backend_or.status().ToString();
+    EXPECT_EQ(backend_or.value()->device_type(), DeviceType::kCPU);
 }
 
 TEST(CpuBackend, RuntimeBuilderDefaultProvidesCpuBackend) {

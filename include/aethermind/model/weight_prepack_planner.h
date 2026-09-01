@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_MODEL_WEIGHT_PREPACK_PLANNER_H
 #define AETHERMIND_MODEL_WEIGHT_PREPACK_PLANNER_H
 
-#include "aethermind/backend/kernel_selector.h"
+#include "aethermind/base/kernel_selector.h"
 #include "aethermind/base/status.h"
 #include "aethermind/graph/graph_types.h"
 #include "aethermind/model/formats/hf/hf_model_config.h"

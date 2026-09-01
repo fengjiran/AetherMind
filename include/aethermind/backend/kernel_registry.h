@@ -6,7 +6,7 @@
 #define AETHERMIND_BACKEND_KERNEL_REGISTRY_H
 
 #include "aethermind/backend/kernel_descriptor.h"
-#include "aethermind/backend/kernel_selector.h"
+#include "aethermind/base/kernel_selector.h"
 #include "aethermind/base/status.h"
 #include "utils/hash.h"
 

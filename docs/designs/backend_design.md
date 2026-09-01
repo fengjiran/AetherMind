@@ -1,7 +1,7 @@
 # AetherMind Backend 层设计文档
 
-**版本**: v1.1  
-**日期**: 2026-04-13  
+**版本**: v1.2  
+**日期**: 2026-09-01  
 **作者**: AetherMind Team
 
 ---
@@ -14,7 +14,7 @@
 4. [分层定位与核心关系](#4-分层定位与核心关系)
 5. [核心对象与所有权模型](#5-核心对象与所有权模型)
 6. [三阶段执行模型：注册、构建与执行](#6-三阶段执行模型注册构建与执行)
-7. [ExecutionPlan 与 OpExec 设计](#7-executionplan-与-opexec-设计)
+7. [ExecutionPlan 与 ResolvedKernel 设计](#7-executionplan-与-resolvedkernel-设计)
 8. [Backend 核心接口设计](#8-backend-核心接口设计)
 9. [CPU Backend 内部组成](#9-cpu-backend-内部组成)
 10. [Workspace、Stream 与 KV 契约](#10-workspace-stream-与-kv-契约)
@@ -32,7 +32,7 @@
 - Backend 层在整体架构中的职责边界
 - Runtime 与 Backend 的所有权关系
 - **三阶段执行模型**（注册、计划构建、执行）
-- **ExecutionPlan / OpExec** 核心抽象
+- **ExecutionPlan / ResolvedKernel** 核心抽象
 - **CPU Backend** 落地组成与权重预打包模型
 - Workspace、Stream、KV Cache 物理契约
 
@@ -78,7 +78,7 @@ Phase 1 优先支持 CPU Backend。Workspace 接口必须支持预分配切片�
 Kernel 的最终执行形态必须是 plan-build time resolve 后的函数指针，执行阶段严禁查表。
 
 #### 3.1.4 窄执行上下文
-不把整个 `RuntimeServices` 下放到 Kernel。单次调用只携带执行所需的窄资源（Stream, Workspace Slice, Tracing Sink）。
+不把整个 `RuntimeServices` 下放到 Kernel。单次调用只携带执行所需的窄资源（Stream、Workspace 切片、params/attrs）。
 
 ### 3.2 核心原则
 - **Runtime owns registries**
@@ -98,7 +98,7 @@ Kernel 的最终执行形态必须是 plan-build time resolve 后的函数指针
 3. `BackendRegistry` 延迟创建并缓存各 `DeviceType` 的 `Backend` 实例。
 4. `ExecutionPlanBuilder`（或等价初始化组件）基于 `RuntimeContext` 查询 `Backend`，完成 kernel resolve 与 packed params 绑定。
 5. `Executor` 只消费已经冻结的 `ExecutionPlan`，不在热路径重新解析 kernel。
-6. `Backend` 通过受控服务视图使用 allocator / workspace / tracing 等运行时服务。
+6. `Backend` 通过受控服务视图使用 allocator / workspace 等运行时服务。
 
 ---
 
@@ -110,10 +110,10 @@ Kernel 的最终执行形态必须是 plan-build time resolve 后的函数指针
 | ----------------------- | ---------------------------------- | ------------------------ | --------------------------------------------------------- |
 | `BackendFactory`        | `BackendRegistry`                  | 随 `RuntimeContext` 销毁 | 按 `DeviceType` 注册                                      |
 | `Backend`               | `BackendRegistry`                  | 随 `RuntimeContext` 销毁 | 延迟实例化并缓存，表示设备族执行能力                      |
-| `ExecutionPlan`         | 调用方/模型管理侧                  | 模型级、只读             | 保存解析后的 `OpExec` 与静态执行元数据                    |
+| `ExecutionPlan`         | 调用方/模型管理侧                  | 模型级、只读             | 保存解析后的 `ExecutionStep` 与静态执行元数据                    |
 | `PackedWeights`         | `PackedWeightStore`                | 与模型级 artifact 一致   | 由 Backend 定义格式并构建，但不由 Backend 持有            |
 | `RuntimeBindingContext` | `Session` / `Request`              | 会话级                   | 保存 workspace base、KV views、临时输出缓冲等动态绑定信息 |
-| `OpKernelContext`       | 执行栈帧                           | 短生命周期               | 单次调用的窄执行上下文                                    |
+| `KernelContext`        | 执行栈帧                           | 短生命周期               | 单次调用的窄执行上下文                                    |
 
 #### 5.1.1 所有权约束
 
@@ -130,27 +130,27 @@ Kernel 的最终执行形态必须是 plan-build time resolve 后的函数指针
 为了确保热路径的高性能，Backend 参与的执行逻辑必须划分为三个阶段：
 
 ### 6.1 注册期 (Registration Time)
-- Backend 在初始化时通过内部 `KernelRegistry` 安装本设备族支持的 kernels。
-- `Dispatcher` 记录 operator 到 dispatch metadata 的静态注册关系，而不是直接承担最终设备族内解析。
+- Backend 在初始化时通过内部 `KernelRegistry` 安装本设备族支持的 kernels：各内核 TU 通过 `AM_REGISTER_KERNEL` 静态注册 `KernelDescriptor`，首次 `CpuBackend` 实例化时冻结注册表（`Freeze()`）并构建按 `OpType` 分桶的索引。
+- `BackendRegistry` 由 `RuntimeContext` 持有（无全局单例）；`KernelRegistry` 是 backend 模块内部的 kernel 描述符注册设施。
 
 ### 6.2 计划构建期 (Plan-Build Time)
 
 - `ExecutionPlanBuilder` 基于模型结构、设备信息、数据类型和 layout trait，通过 backend 完成 Kernel 解析。
 - `ExecutionPlanBuilder` 通过 `Backend::PrepareKernel(...)` 获得 `ResolvedKernel`，而不是直接操作 `KernelRegistry`。
 - CPU backend 使用自身持有的 immutable `CpuCapabilities` snapshot 完成 feature eligibility 检查；通用 `Backend` 接口不暴露无消费者的统一 capability view。
-- 将解析结果冻结为 `OpExec`：包含 `KernelFn`、指向 `PackedWeights` 的指针、`WorkspaceRequirement`、以及用于调试/Tracing 的 `OpKind`。
+- 将解析结果冻结为 `ExecutionStep`：内置 `ResolvedKernel`（函数指针、attrs、params builder、workspace 要求）以及指向 `PackedWeights` 的指针、预期 packing recipe。
 - 此阶段完成所有 fallback 决策、能力适配与静态 workspace 规划。
 
 ### 6.3 执行期 (Execution Time)
 
-- `Executor` 仅遍历 `ExecutionPlan` 中的 `OpExec` 序列。
+- `Executor` 仅遍历 `ExecutionPlan` 中的 `ExecutionStep` 序列。
 - 执行期不做 registry 查表，不做 capability 判断，不做 fallback 决策。
 - 执行期基于 `RuntimeBindingContext` 将 `WorkspaceRequirement` 绑定为本次运行可用的 `WorkspaceBinding`。
-- 每个算子通过 `OpKernelContext` + 已绑定的 workspace 直接调用 `KernelFn`。
+- 每个算子通过 `KernelContext` + 已绑定的 workspace 直接调用 `KernelFunc`。
 
 ---
 
-## 7. ExecutionPlan 与 OpExec 设计
+## 7. ExecutionPlan 与 ResolvedKernel 设计
 
 ### 7.1 WorkspaceRequirement 与 WorkspaceBinding
 
@@ -167,18 +167,21 @@ struct WorkspaceBinding {
 };
 ```
 
-### 7.2 OpExec
+### 7.2 ResolvedKernel 与 ExecutionStep
 
 ```cpp
-using KernelFn = Status (*)(const KernelInvocation&,
-                            const OpKernelContext&,
-                            const WorkspaceBinding&) noexcept;
+// 类型擦除的内核入口；一次调用携带 KernelContext，从 kernel_params / attrs 读取输入与参数
+using KernelFunc = Status (*)(const KernelContext&) noexcept;
 
-struct OpExec {
-    KernelFn fn = nullptr;
-    const void* packed_params = nullptr;          // 指向 PackedWeightStore 中的 packed 数据
-    WorkspaceRequirement workspace_req{};         // 规划期冻结的信息，而非具体地址
-    OpKind op_kind{};                             // 调试与 tracing 用
+struct ResolvedKernel {
+    OpType op_type = OpType::kUnknown;
+    KernelFunc fn = nullptr;
+    std::vector<std::byte> attrs{};               // 规划期由语义参数构建的不变元数据
+    const char* debug_name = nullptr;
+    KernelParamsBuilder params_builder = nullptr; // 执行期由 tensor 绑定构建 kernel 专属 params
+    size_t params_size = 0;
+    WorkspaceRequirement workspace_requirement{}; // 规划期冻结的 scratch 要求
+    PackingRecipe expected_packing_recipe{};      // packed 权重所需的打包布局；非 packed 为空
 };
 ```
 
@@ -187,7 +190,10 @@ struct OpExec {
 ```cpp
 class ExecutionPlan {
 public:
-    std::span<const OpExec> ops_for_layer(size_t layer_idx) const noexcept;
+    const std::vector<ExecutionStep>& steps() const noexcept;  // 已冻结的执行步序列
+    const std::vector<ExecutionValueDesc>& values() const noexcept;
+    size_t total_workspace_bytes() const noexcept;             // 规划期 workspace 总量
+    size_t workspace_alignment() const noexcept;
     // ... 其他只读视图接口
 };
 ```
@@ -228,28 +234,25 @@ public:
 - `ExecutionPlanBuilder` 不得绕过 `Backend` 直接访问 `KernelRegistry`。
 - `KernelRegistry` 作为 backend 内部设施存在，`TryGetKernelRegistryForDebug()` 仅用于调试、自省或测试。
 
-### 8.2 BackendExecutionResources 与 OpKernelContext
+### 8.2 KernelContext
 
 ```cpp
-struct BackendExecutionResources {
-    void* opaque_backend_resources = nullptr;
-};
-
-struct OpKernelContext {
-    Device device{};
-    Stream* stream = nullptr;                    // Phase 1 可为 CpuInlineStream
+struct KernelContext {
+    DeviceType device_type = DeviceType::kUndefined;
+    Stream* stream = nullptr;                    // Phase 1 为 CpuInlineStream 占位
     WorkspaceArena* workspace = nullptr;        // 提供切片借用与绑定支持
-    TracingSink* tracing = nullptr;
-    BackendExecutionResources backend_resources{};
+    WorkspaceBinding workspace_binding{};        // 本次调用绑定的 workspace 切片
+    const void* packed_weights = nullptr;        // packed 权重数据起始指针
+    const void* kernel_params = nullptr;         // kernel 专属 params（执行期构建）
+    std::span<const std::byte> attrs{};          // 规划期冻结的不变元数据
 };
 ```
 
 #### 8.2.1 说明
 
-- `OpKernelContext` 不直接暴露 `CpuThreadPool*` 等后端专属类型。
-- CPU backend 可约定 `opaque_backend_resources` 指向 `CpuExecutionResources`，其中再包含 `CpuThreadPool*`、NUMA/ISA 辅助信息等。
-- 后续 CUDA / CANN backend 可复用同一通用接口，而无需继续向 `OpKernelContext` 追加后端专属字段。
-- `opaque_backend_resources` 只用于传递 backend-private execution resources，不得借此回传整个 runtime、model、registry 等宽对象指针，也不得成为绕过窄接口约束的逃逸口。
+- `KernelContext` 只携带窄执行资源；stream、workspace、params/attrs、packed weights 均为执行所需的窄句柄。
+- 后端专属执行资源（线程池、NUMA/ISA 辅助等）为后续扩展预留接缝；当前 `CpuBackend` 仅持有能力快照。
+- 后续 CUDA / CANN backend 可复用同一通用接口，而无需向 `KernelContext` 追加后端专属字段（必要时再引入细分的执行资源传递通道）。
 
 ---
 
@@ -259,7 +262,7 @@ Phase 1 CPU Backend 需实现以下关键组件以支持高性能推理：
 
 
 - **CpuCapabilities / CpuFeaturePolicy**：负责检测 AVX2、AVX512、AMX 等指令集支持，并生成三层 capability 快照（hardware/usable/effective）。模型详见 `docs/designs/cpu_capability_design.md`。
-- **CpuThreadPool**：专为推理优化的线程池，由 `CpuExecutionResources` 持有并通过 `opaque_backend_resources` 暴露给 CPU kernels。
+- **执行资源接缝（预留）**：线程池 / NUMA / ISA 辅助信息等后端专属执行资源为后续扩展预留；当前 CPU kernels 直接消费 `KernelContext` 中的窄资源。
 - **CpuWeightPrepacker**：负责将逻辑权重转换为符合 CPU 指令集与缓存友好布局的 packed 格式。
 - **PackedWeights**：预打包权重的存储实体，**由 `PackedWeightStore` 持有**；CPU backend 只定义 packed 格式与构建逻辑。
 - **CpuWorkspaceArena**：实现基于预分配 buffer 的切片借用与按 offset 绑定逻辑。
@@ -322,12 +325,12 @@ Phase 1 中 `Stream` 为最小占位接口。CPU 提供 `CpuInlineStream` 实现
 
 #### 阶段 B：CpuBackend 执行核心
 - `CpuCapabilities` 与指令集探测（`cpu_info.cpp`）
-- `CpuThreadPool`
+- 执行资源接缝（线程池 / NUMA / ISA 辅助，预留）
 - `CpuWorkspaceArena`
 - `CpuWeightPrepacker`
 
 #### 阶段 C：ExecutionPlan 冻结
-- `ExecutionPlan` 与 `OpExec` 定义
+- `ExecutionPlan` 与 `ResolvedKernel`/`ExecutionStep` 定义
 - 计划构建阶段的 Resolve 逻辑
 - `WorkspaceRequirement` 静态规划与 `WorkspaceBinding` 运行期绑定
 
@@ -347,7 +350,7 @@ Phase 1 中 `Stream` 为最小占位接口。CPU 提供 `CpuInlineStream` 实现
 - `PackedWeights` 由 `PackedWeightStore` 持有。
 - `ExecutionPlan` 只保存静态执行信息；workspace、KV view、临时输出缓冲等动态绑定信息由 `RuntimeBindingContext` 持有。
 - `Workspace` 采用 arena 借用语义；计划期冻结 requirement/offset，执行期完成地址绑定。
-- `OpKernelContext` 不直接暴露后端专属类型；后端专属执行资源通过 `opaque_backend_resources` 下传。
+- `KernelContext` 只携带窄执行资源（stream、workspace 切片、packed weights、params/attrs），不暴露后端专属类型。
 - `KVCacheManager` 仅负责逻辑索引与视图组织，物理契约由 backend 定义。
 
 ---

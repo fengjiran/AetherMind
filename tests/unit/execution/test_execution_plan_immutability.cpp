@@ -155,7 +155,7 @@ public:
         return DeviceType::kCPU;
     }
 
-    std::unique_ptr<Backend> Create() const override {
+    StatusOr<std::unique_ptr<Backend>> Create() const override {
         return std::make_unique<ImmutableTestBackend>();
     }
 };
@@ -194,7 +194,7 @@ public:
         return DeviceType::kCPU;
     }
 
-    std::unique_ptr<Backend> Create() const override {
+    StatusOr<std::unique_ptr<Backend>> Create() const override {
         return std::make_unique<WorkspaceImmutableTestBackend>();
     }
 };

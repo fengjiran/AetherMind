@@ -29,8 +29,8 @@ KernelDescriptor MakeTestKernelDescriptor() {
                     .phase = ExecPhase::kBoth,
             },
             .kernel_func = &FakeKernel,
-            .name = "test::op",
             .priority = 1,
+            .name = "test::op",
     };
 }
 

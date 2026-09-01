@@ -1,7 +1,7 @@
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 
-#include "aethermind/backend/kernel_selector.h"
 #include "aethermind/backend/packed_weights.h"
+#include "aethermind/base/kernel_selector.h"
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor.h"
 #include "aethermind/memory/buffer.h"

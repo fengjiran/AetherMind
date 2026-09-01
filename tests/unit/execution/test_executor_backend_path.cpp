@@ -51,7 +51,7 @@ public:
 class ExecutorTestBackendFactory final : public BackendFactory {
 public:
     AM_NODISCARD DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
-    AM_NODISCARD std::unique_ptr<Backend> Create() const override {
+    AM_NODISCARD StatusOr<std::unique_ptr<Backend>> Create() const override {
         return std::make_unique<ExecutorTestBackend>();
     }
 };

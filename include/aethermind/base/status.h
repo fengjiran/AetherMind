@@ -138,16 +138,53 @@ AM_NODISCARD constexpr am_status_code ToAMStatusCode(StatusCode code) noexcept {
 
 /// @brief Converts a C ABI status code back to StatusCode.
 ///
-/// Out-of-range values (outside [AM_STATUS_OK, AM_STATUS_UNAUTHENTICATED]) are
-/// mapped to StatusCode::kUnknown. This prevents undefined behavior from
-/// casting an invalid integer to the StatusCode enum.
+/// Unknown or out-of-range values are mapped to StatusCode::kUnknown. This
+/// prevents undefined behavior from casting an invalid integer to the
+/// StatusCode enum. The mapping is exhaustive — adding a new am_status_code
+/// requires extending both this switch and the static_asserts above in lockstep.
 /// @param code The C ABI status code.
-/// @return The corresponding StatusCode, or kUnknown for out-of-range values.
+/// @return The corresponding StatusCode, or kUnknown for unknown values.
 AM_NODISCARD constexpr StatusCode FromAMStatusCode(am_status_code code) noexcept {
-    if (code < AM_STATUS_OK || code > AM_STATUS_UNAUTHENTICATED) {
-        return StatusCode::kUnknown;
+    switch (code) {
+        case AM_STATUS_OK:
+            return StatusCode::kOk;
+        case AM_STATUS_CANCELLED:
+            return StatusCode::kCancelled;
+        case AM_STATUS_UNKNOWN:
+            return StatusCode::kUnknown;
+        case AM_STATUS_INVALID_ARGUMENT:
+            return StatusCode::kInvalidArgument;
+        case AM_STATUS_DEADLINE_EXCEEDED:
+            return StatusCode::kDeadlineExceeded;
+        case AM_STATUS_NOT_FOUND:
+            return StatusCode::kNotFound;
+        case AM_STATUS_ALREADY_EXISTS:
+            return StatusCode::kAlreadyExists;
+        case AM_STATUS_PERMISSION_DENIED:
+            return StatusCode::kPermissionDenied;
+        case AM_STATUS_RESOURCE_EXHAUSTED:
+            return StatusCode::kResourceExhausted;
+        case AM_STATUS_FAILED_PRECONDITION:
+            return StatusCode::kFailedPrecondition;
+        case AM_STATUS_ABORTED:
+            return StatusCode::kAborted;
+        case AM_STATUS_OUT_OF_RANGE:
+            return StatusCode::kOutOfRange;
+        case AM_STATUS_UNIMPLEMENTED:
+            return StatusCode::kUnimplemented;
+        case AM_STATUS_INTERNAL:
+            return StatusCode::kInternal;
+        case AM_STATUS_UNAVAILABLE:
+            return StatusCode::kUnavailable;
+        case AM_STATUS_DATA_LOSS:
+            return StatusCode::kDataLoss;
+        case AM_STATUS_OVERFLOW:
+            return StatusCode::kOverflow;
+        case AM_STATUS_UNAUTHENTICATED:
+            return StatusCode::kUnauthenticated;
+        default:
+            return StatusCode::kUnknown;
     }
-    return static_cast<StatusCode>(code);
 }
 
 /// @brief Represents the result of an operation that may fail.

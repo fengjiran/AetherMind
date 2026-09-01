@@ -245,10 +245,10 @@ AM_REGISTER_KERNEL(ElementwiseMulFp32Scalar,
                                    .phase = ExecPhase::kBoth,
                            },
                            .kernel_func = &cpu::detail::ElementwiseMulKernel,
-                           .name = "cpu::elementwise_mul_f32_scalar",
                            .priority = 10,
-                           .params_builder = &BuildElementwiseMulParams,
                            .params_size = sizeof(cpu::detail::ElementwiseMulParams),
+                           .params_builder = &BuildElementwiseMulParams,
+                           .name = "cpu::elementwise_mul_f32_scalar",
                    })
 
 } // namespace aethermind

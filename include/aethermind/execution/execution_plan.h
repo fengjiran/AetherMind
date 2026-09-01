@@ -4,9 +4,9 @@
 /// @file execution_plan.h
 /// @brief Validated execution steps and the plan that owns them.
 
-#include "aethermind/backend/kernel_selector.h"
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/backend/resolved_kernel.h"
+#include "aethermind/base/kernel_selector.h"
 #include "aethermind/execution/state_alias_plan.h"
 #include "aethermind/runtime/workspace.h"
 #include "aethermind/shape_inference/shape_constraint.h"

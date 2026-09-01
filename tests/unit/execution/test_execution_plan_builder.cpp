@@ -142,7 +142,7 @@ public:
         return DeviceType::kCPU;
     }
 
-    std::unique_ptr<Backend> Create() const override {
+    StatusOr<std::unique_ptr<Backend>> Create() const override {
         return std::make_unique<PackedTestBackend>();
     }
 };
@@ -206,7 +206,7 @@ class WorkspaceTestBackendFactory final : public BackendFactory {
 public:
     DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
 
-    std::unique_ptr<Backend> Create() const override {
+    StatusOr<std::unique_ptr<Backend>> Create() const override {
         return std::make_unique<WorkspaceTestBackend>();
     }
 };
@@ -228,7 +228,7 @@ public:
 class SoftmaxTestBackendFactory final : public BackendFactory {
 public:
     DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
-    std::unique_ptr<Backend> Create() const override {
+    StatusOr<std::unique_ptr<Backend>> Create() const override {
         return std::make_unique<SoftmaxTestBackend>();
     }
 };

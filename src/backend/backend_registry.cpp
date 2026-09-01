@@ -3,13 +3,6 @@
 
 namespace aethermind {
 
-void BackendRegistry::RegisterFactory(DeviceType type, std::unique_ptr<BackendFactory> factory) {
-    AM_CHECK(type != DeviceType::kUndefined, "Cannot register factory for kUndefined device type");
-    AM_CHECK(factory != nullptr, "Backend factory cannot be null");
-    AM_CHECK(!factories_.contains(type), "Backend factory already registered for device type: {}", DeviceType2Str(type).c_str());
-    factories_[type] = std::move(factory);
-}
-
 void BackendRegistry::SetFactory(DeviceType type, std::unique_ptr<BackendFactory> factory) {
     AM_CHECK(type != DeviceType::kUndefined, "Cannot register factory for kUndefined device type");
     AM_CHECK(factory != nullptr, "Backend factory cannot be null");
@@ -35,7 +28,12 @@ StatusOr<Backend*> BackendRegistry::GetBackend(DeviceType type) noexcept {
                             DeviceType2Str(type).c_str()));
     }
 
-    auto backend = factory_it->second->Create();
+    auto backend_or = factory_it->second->Create();
+    if (!backend_or.ok()) {
+        return backend_or.status();
+    }
+
+    auto backend = std::move(backend_or).value();
     if (!backend) {
         return Status::Internal("Failed to create backend for device type: " +
                                 std::string(DeviceType2Str(type).c_str()));

@@ -1,4 +1,4 @@
-#include "aethermind/backend/kernel_selector.h"
+#include "aethermind/base/kernel_selector.h"
 
 #include "aethermind/dtypes/data_type.h"
 

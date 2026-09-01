@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_BACKEND_PACKED_WEIGHTS_H
 #define AETHERMIND_BACKEND_PACKED_WEIGHTS_H
 
-#include "aethermind/backend/kernel_selector.h"
+#include "aethermind/base/kernel_selector.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/operators/op_type.h"
 

@@ -20,7 +20,10 @@ public:
     BackendRegistry& operator=(BackendRegistry&&) noexcept = default;
     ~BackendRegistry() = default;
 
-    void RegisterFactory(DeviceType type, std::unique_ptr<BackendFactory> factory);
+    /// @brief Registers or replaces the factory for a device type.
+    ///
+    /// Calling again for the same type evicts any cached backend instance so
+    /// the next GetBackend() re-creates it from the new factory.
     void SetFactory(DeviceType type, std::unique_ptr<BackendFactory> factory);
     StatusOr<Backend*> GetBackend(DeviceType type) noexcept;
 

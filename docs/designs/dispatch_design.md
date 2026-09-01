@@ -40,7 +40,7 @@ CpuBackend 通过 KernelRegistry::Global() 查询
    ↓
 ExecutionPlanBuilder
    ↓ asks Backend to resolve
-ResolvedKernel / OpExec
+ResolvedKernel / ExecutionStep
    ↓
 Executor direct call
 ```
@@ -458,12 +458,12 @@ kernel 不允许修改 attrs；
 
 其中 `attrs_size` 主要用于 debug、校验和 plan dump，而不是让 kernel 在执行期做动态内存解释。
 
-然后 `ExecutionPlan` / `OpExec` 中保存的是**已冻结**的结果，而不是执行期再 resolve。
+然后 `ExecutionPlan` / `ExecutionStep` 中保存的是**已冻结**的结果，而不是执行期再 resolve。
 
 例如：
 
 ```cpp
-struct ExecutionNode {
+struct ExecutionStep {
     ResolvedKernel kernel;
     Tensor* inputs;
     size_t input_count;
@@ -543,7 +543,7 @@ private:
 
 # 12. 与现有旧 dispatch 体系的关系
 
-当前代码库中已经存在：
+代码库中曾存在以下旧分发文件（均已从代码库移除）：
 
 * `dispatcher.h`
 
@@ -559,7 +559,7 @@ private:
 
 * Phase 1/Phase 2 的新 dispatch 主线应基于 `OpType + KernelSelector + KernelDescriptor + ResolvedKernel`；
 
-* 旧的 `Dispatcher / DispatchKeySet` 可以在迁移期保留，但应视为待冻结/待退场模块，而不是新设计基础。
+* 旧的 `Dispatcher / DispatchKeySet` 相关文件已从代码库移除，不再是新设计基础。
 
 # 13. 对 Phase 1 的建议收敛
 
@@ -744,9 +744,7 @@ OpType + KernelSelector + KernelDescriptor + 全局 KernelRegistry
 
 短期保留并兼容：
 
-* `kernel_key.h`
-
-* `dispatcher_bridge.h`
+* `kernel_key.h` / `dispatcher_bridge.h`（均已从代码库移除）
 
 * `operator_name.h`
 
@@ -889,7 +887,7 @@ StatusOr<const KernelDescriptor*> CpuBackend::ResolveKernel(
 
 ### 主要工作
 
-1. `ExecutionNode` / `OpExec` 接入 `ResolvedKernel`；
+1. `ExecutionStep` 接入 `ResolvedKernel`；
 2. `Executor` 改为 direct call；
 3. 明确禁止热路径中的：
 
@@ -915,15 +913,11 @@ StatusOr<const KernelDescriptor*> CpuBackend::ResolveKernel(
 
 ### 主要工作
 
-冻结以下模块：
+以下旧分发文件已从代码库移除：
 
-* `include/dispatcher.h`
+* `include/dispatcher.h` / `src/dispatcher.cpp`
 
-* `src/dispatcher.cpp`
-
-* `include/dispatch_key.h`
-
-* `include/dispatch_key_set.h`
+* `include/dispatch_key.h` / `include/dispatch_key_set.h`
 
 要求：
 
@@ -933,7 +927,7 @@ StatusOr<const KernelDescriptor*> CpuBackend::ResolveKernel(
 
 * 不把新 kernel resolve 逻辑塞回旧路径。
 
-短期先冻结，后面视迁移完成度再决定是否物理删除。
+上述文件已物理删除；新算子一律走 `OpType + KernelSelector + KernelDescriptor + ResolvedKernel` 主线。
 
 ### 完成标准
 

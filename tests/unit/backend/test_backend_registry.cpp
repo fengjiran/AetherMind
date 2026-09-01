@@ -12,12 +12,9 @@ using namespace aethermind;
 
 class FakeBackend : public Backend {
 public:
-    explicit FakeBackend(DeviceType type) : type_(type) {
-        caps_.device_type = type;
-    }
+    explicit FakeBackend(DeviceType type) : type_(type) {}
 
     DeviceType device_type() const noexcept override { return type_; }
-    const BackendCapabilities& capabilities() const noexcept override { return caps_; }
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override { return nullptr; }
     StatusOr<ResolvedKernel> PrepareKernel(OpType,
                                            const KernelSelector&,
@@ -27,7 +24,6 @@ public:
 
 private:
     DeviceType type_;
-    BackendCapabilities caps_;
 };
 
 class FakeBackendFactory : public BackendFactory {

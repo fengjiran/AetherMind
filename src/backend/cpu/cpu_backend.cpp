@@ -30,7 +30,7 @@ StatusOr<const KernelDescriptor*> ResolveEligibleDescriptor(
 
     const KernelDescriptor* best = nullptr;
     for (const KernelDescriptor* descriptor: *candidates) {
-        if (!effective_features.ContainsAll(descriptor->cpu_requirements.all_of)) {
+        if (!effective_features.ContainsAll(descriptor->cpu_requirements)) {
             continue;
         }
         if (best == nullptr || descriptor->priority > best->priority) {
@@ -58,10 +58,6 @@ CpuBackend::CpuBackend(CpuFeaturePolicy policy)
 
 DeviceType CpuBackend::device_type() const noexcept {
     return DeviceType::kCPU;
-}
-
-const BackendCapabilities& CpuBackend::capabilities() const noexcept {
-    return capabilities_.base;
 }
 
 StatusOr<ResolvedKernel> CpuBackend::PrepareKernel(

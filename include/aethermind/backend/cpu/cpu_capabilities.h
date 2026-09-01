@@ -7,11 +7,15 @@
 /// Defines `CpuArchitecture`, `CpuFeature`, the allocation-free
 /// `CpuFeatureSet` bitset, kernel requirements, feature policy, and the
 /// immutable `CpuCapabilities` snapshot used by CPU kernel selection.
-#include "aethermind/backend/backend_capabilities.h"
 #include "aethermind/base/macros.h"
 #include "utils/hash.h"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
+#include <string>
 
 namespace aethermind {
 
@@ -161,17 +165,6 @@ private:
     std::array<uint64_t, kWordCount> words_{};
 };
 
-/// @brief Required CPU features for a kernel.
-///
-/// All features in `all_of` must be present in the effective feature set
-/// for the kernel to be eligible.
-struct CpuKernelRequirements {
-    CpuFeatureSet all_of{};
-
-    friend constexpr bool operator==(const CpuKernelRequirements& lhs,
-                                     const CpuKernelRequirements& rhs) noexcept = default;
-};
-
 /// @brief Runtime policy that can only reduce usable features.
 ///
 /// `disabled_features` are removed from the usable set; `required_features`
@@ -208,10 +201,6 @@ AM_NODISCARD std::string ToString(const CpuFeatureSet& features);
 /// produced by `DetectCpuCapabilities`; kernel selection must use
 /// `effective_features` exclusively.
 struct CpuCapabilities {
-    BackendCapabilities base{
-            .device_type = DeviceType::kCPU};
-    bool supports_inline_execution = true;
-
     CpuArchitecture architecture = CpuArchitecture::kUnknown;
     /// Raw hardware capabilities, retained only for diagnostics.
     CpuFeatureSet hardware_features{};

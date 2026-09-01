@@ -31,7 +31,6 @@ Status FailingKernel(const KernelContext&) noexcept {
 class ExecutorTestBackend final : public Backend {
 public:
     AM_NODISCARD DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
-    AM_NODISCARD const BackendCapabilities& capabilities() const noexcept override { return capabilities_; }
 
     StatusOr<ResolvedKernel> PrepareKernel(OpType op_type,
                                            const KernelSelector&,
@@ -47,9 +46,6 @@ public:
     }
 
     AM_NODISCARD const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override { return nullptr; }
-
-private:
-    BackendCapabilities capabilities_{};
 };
 
 class ExecutorTestBackendFactory final : public BackendFactory {

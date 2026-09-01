@@ -63,10 +63,8 @@ TEST(KernelRegistryCandidates, ReturnsAllStructuralVariantsRegardlessOfRequireme
     ASSERT_TRUE(registry.Register(KernelDescriptor{
                                           .op_type = OpType::kRmsNorm,
                                           .selector = MakeSelector(),
-                                          .cpu_requirements = {
-                                                  .all_of = CpuFeatureSet::From(
-                                                          {CpuFeature::kAvx2}),
-                                          },
+                                          .cpu_requirements = CpuFeatureSet::From(
+                                                  {CpuFeature::kAvx2}),
                                           .kernel_func = &FeatureKernel,
                                           .name = "avx2",
                                           .priority = 10,

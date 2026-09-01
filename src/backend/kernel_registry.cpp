@@ -129,7 +129,7 @@ std::string KernelRegistry::DebugDump() const {
         out += std::string(ToString(d.op_type)) + " | " +
                d.name + " | " +
                ToString(d.selector) + " | cpu_features=" +
-               ToString(d.cpu_requirements.all_of) + " | priority=" +
+               ToString(d.cpu_requirements) + " | priority=" +
                std::to_string(d.priority);
     }
     return out;

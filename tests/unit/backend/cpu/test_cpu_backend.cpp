@@ -25,12 +25,6 @@ TEST(CpuBackend, DeviceTypeIsCPU) {
     EXPECT_EQ(backend.device_type(), DeviceType::kCPU);
 }
 
-TEST(CpuBackend, CapabilitiesExposeCPUType) {
-    CpuBackend backend;
-    const auto& caps = backend.capabilities();
-    EXPECT_EQ(caps.device_type, DeviceType::kCPU);
-}
-
 TEST(CpuBackend, PolicyRestrictsKernelEligibility) {
     CpuBackend backend(CpuFeaturePolicy{
             .disabled_features = CpuFeatureSet::From({CpuFeature::kFma}),

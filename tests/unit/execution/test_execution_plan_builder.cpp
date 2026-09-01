@@ -115,10 +115,6 @@ public:
         return DeviceType::kCPU;
     }
 
-    const BackendCapabilities& capabilities() const noexcept override {
-        return capabilities_;
-    }
-
     StatusOr<ResolvedKernel> PrepareKernel(
             OpType op_type,
             const KernelSelector& selector,
@@ -138,9 +134,6 @@ public:
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override {
         return nullptr;
     }
-
-private:
-    BackendCapabilities capabilities_{};
 };
 
 class PackedTestBackendFactory final : public BackendFactory {
@@ -170,7 +163,6 @@ Status WorkspaceRecordingKernel(const KernelContext& context) noexcept {
 class WorkspaceTestBackend final : public Backend {
 public:
     DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
-    const BackendCapabilities& capabilities() const noexcept override { return capabilities_; }
 
     StatusOr<ResolvedKernel> PrepareKernel(OpType op_type,
                                            const KernelSelector&,
@@ -208,9 +200,6 @@ public:
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override {
         return nullptr;
     }
-
-private:
-    BackendCapabilities capabilities_{};
 };
 
 class WorkspaceTestBackendFactory final : public BackendFactory {
@@ -225,7 +214,6 @@ public:
 class SoftmaxTestBackend final : public Backend {
 public:
     DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
-    const BackendCapabilities& capabilities() const noexcept override { return caps_; }
     StatusOr<ResolvedKernel> PrepareKernel(OpType op_type,
                                            const KernelSelector&,
                                            const OpParams&) const override {
@@ -235,9 +223,6 @@ public:
         return ResolvedKernel{.op_type = op_type, .fn = &SoftmaxTestKernel, .attrs = {}, .debug_name = "test::softmax_kernel"};
     }
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override { return nullptr; }
-
-private:
-    BackendCapabilities caps_{};
 };
 
 class SoftmaxTestBackendFactory final : public BackendFactory {
@@ -251,16 +236,12 @@ public:
 class WrongOpTypeBackend final : public Backend {
 public:
     DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
-    const BackendCapabilities& capabilities() const noexcept override { return capabilities_; }
     StatusOr<ResolvedKernel> PrepareKernel(OpType,
                                            const KernelSelector&,
                                            const OpParams&) const override {
         return ResolvedKernel{.op_type = OpType::kSoftmax, .fn = &SoftmaxTestKernel};
     }
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override { return nullptr; }
-
-private:
-    BackendCapabilities capabilities_{};
 };
 
 ExecutionPlanNodeSpec MakeRmsNormNodeSpec() {

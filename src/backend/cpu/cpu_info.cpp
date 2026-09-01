@@ -64,7 +64,7 @@ const char* ToString(CpuArchitecture architecture) noexcept {
 }
 
 const char* ToString(CpuFeature feature) noexcept {
-    const size_t index = static_cast<size_t>(feature);
+    const auto index = static_cast<size_t>(feature);
     if (index >= kCpuFeatureNames.size()) {
         return "Unknown";
     }
@@ -79,6 +79,7 @@ std::string ToString(const CpuFeatureSet& features) {
         if (!features.Contains(feature)) {
             continue;
         }
+
         if (!first) {
             result += ", ";
         }
@@ -382,9 +383,6 @@ CpuCapabilities DetectUsableCapabilities() noexcept {
 StatusOr<CpuCapabilities> ApplyCpuFeaturePolicy(
         CpuCapabilities capabilities,
         const CpuFeaturePolicy& policy) noexcept {
-    if (capabilities.base.device_type != DeviceType::kCPU) {
-        return Status::InvalidArgument("CpuCapabilities must describe a CPU device");
-    }
     if (!capabilities.hardware_features.ContainsAll(capabilities.usable_features)) {
         return Status::InvalidArgument(
                 "CpuCapabilities usable_features must be a hardware feature subset");

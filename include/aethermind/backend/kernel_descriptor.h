@@ -15,7 +15,7 @@ struct KernelDescriptor {
     KernelSelector selector{};
     /// CPU execution requirements. They are intentionally separate from the
     /// selector because an instruction set is not a total ordering.
-    CpuKernelRequirements cpu_requirements{};
+    CpuFeatureSet cpu_requirements{};
     KernelFunc kernel_func = nullptr;
     std::string name{};
     int priority = 0; // Higher value wins; first-registered wins on tie.
@@ -44,7 +44,7 @@ AM_NODISCARD inline Status ValidateKernelDescriptor(const KernelDescriptor& desc
     }
 
     if (descriptor.selector.device_type != DeviceType::kCPU &&
-        !descriptor.cpu_requirements.all_of.empty()) {
+        !descriptor.cpu_requirements.empty()) {
         return Status::InvalidArgument(
                 "Only CPU kernel descriptors may declare CPU feature requirements");
     }

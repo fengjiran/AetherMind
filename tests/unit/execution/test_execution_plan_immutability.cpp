@@ -131,10 +131,6 @@ public:
         return DeviceType::kCPU;
     }
 
-    const BackendCapabilities& capabilities() const noexcept override {
-        return capabilities_;
-    }
-
     StatusOr<ResolvedKernel> PrepareKernel(
             OpType op_type,
             const KernelSelector&,
@@ -151,9 +147,6 @@ public:
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override {
         return nullptr;
     }
-
-private:
-    BackendCapabilities capabilities_{};
 };
 
 class ImmutableTestBackendFactory final : public BackendFactory {
@@ -171,10 +164,6 @@ class WorkspaceImmutableTestBackend final : public Backend {
 public:
     DeviceType device_type() const noexcept override {
         return DeviceType::kCPU;
-    }
-
-    const BackendCapabilities& capabilities() const noexcept override {
-        return capabilities_;
     }
 
     StatusOr<ResolvedKernel> PrepareKernel(
@@ -197,9 +186,6 @@ public:
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override {
         return nullptr;
     }
-
-private:
-    BackendCapabilities capabilities_{};
 };
 
 class WorkspaceImmutableTestBackendFactory final : public BackendFactory {

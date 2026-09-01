@@ -205,7 +205,6 @@ Phase 1 建议统一成一个 C 风格函数指针，避免模板和虚函数进
 ```cpp
 struct KernelContext {
     Device device{};
-    const BackendCapabilities* caps = nullptr;
     WorkspaceBinding workspace{};
     BackendExecutionResources backend_resources{};
 };

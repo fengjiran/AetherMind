@@ -134,9 +134,7 @@ TEST(KernelRegistry, RegisterRejectsCpuRequirementsForNonCpuKernel) {
     KernelRegistry registry;
     KernelDescriptor descriptor = MakeTestKernelDescriptor();
     descriptor.selector.device_type = DeviceType::kCUDA;
-    descriptor.cpu_requirements = {
-            .all_of = CpuFeatureSet::From({CpuFeature::kAvx2}),
-    };
+    descriptor.cpu_requirements = CpuFeatureSet::From({CpuFeature::kAvx2});
 
     const Status status = registry.Register(descriptor);
 

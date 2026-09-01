@@ -75,10 +75,6 @@ TEST(RuntimeBackendIntegration, GetBackendForUnregisteredDeviceFails) {
 class MockBackend : public Backend {
 public:
     DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
-    const BackendCapabilities& capabilities() const noexcept override {
-        static BackendCapabilities caps;
-        return caps;
-    }
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override { return nullptr; }
     StatusOr<ResolvedKernel> PrepareKernel(OpType,
                                            const KernelSelector&,

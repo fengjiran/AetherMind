@@ -1,7 +1,6 @@
 #ifndef AETHERMIND_BACKEND_BACKEND_H
 #define AETHERMIND_BACKEND_BACKEND_H
 
-#include "aethermind/backend/backend_capabilities.h"
 #include "aethermind/backend/backend_fwd.h"
 #include "aethermind/backend/kernel_selector.h"
 #include "aethermind/backend/kernel_types.h"
@@ -15,7 +14,6 @@ class Backend {
 public:
     virtual ~Backend() = default;
     AM_NODISCARD virtual DeviceType device_type() const noexcept = 0;
-    AM_NODISCARD virtual const BackendCapabilities& capabilities() const noexcept = 0;
 
     /// Resolves a kernel and freezes metadata derived from typed semantic
     /// parameters into the returned value, including its scratch-space

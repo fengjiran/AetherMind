@@ -22,7 +22,7 @@ namespace aethermind {
 struct RegistrationKey {
     OpType op_type = OpType::kUnknown;
     KernelSelector selector{};
-    CpuKernelRequirements cpu_requirements{};
+    CpuFeatureSet cpu_requirements{};
 
     friend bool operator==(const RegistrationKey& lhs, const RegistrationKey& rhs) noexcept {
         return lhs.op_type == rhs.op_type &&
@@ -36,7 +36,7 @@ struct RegistrationKeyHash {
         std::size_t seed = 0;
         seed = hash_combine(seed, std::hash<OpType>{}(key.op_type));
         seed = hash_combine(seed, std::hash<KernelSelector>{}(key.selector));
-        seed = hash_combine(seed, key.cpu_requirements.all_of.Hash());
+        seed = hash_combine(seed, key.cpu_requirements.Hash());
         return seed;
     }
 };

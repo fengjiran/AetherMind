@@ -9,7 +9,6 @@ TEST(CpuInfo, DetectionReportsAConsistentSnapshot) {
     const auto detected = DetectCpuCapabilities();
     ASSERT_TRUE(detected.ok()) << detected.status().ToString();
 
-    EXPECT_EQ(detected->base.device_type, DeviceType::kCPU);
     EXPECT_TRUE(detected->hardware_features.ContainsAll(detected->usable_features));
     EXPECT_TRUE(detected->usable_features.ContainsAll(detected->effective_features));
 
@@ -25,7 +24,6 @@ TEST(CpuInfo, PolicyOnlyRestrictsUsableFeatures) {
     const CpuFeatureSet x86_features = CpuFeatureSet::From(
             {CpuFeature::kAvx2, CpuFeature::kFma});
     const CpuCapabilities snapshot{
-            .base = {.device_type = DeviceType::kCPU},
             .architecture = CpuArchitecture::kX86_64,
             .hardware_features = x86_features,
             .usable_features = x86_features,
@@ -55,7 +53,6 @@ TEST(CpuInfo, FeatureRequirementsPreserveIndependentConjunctions) {
 TEST(CpuInfo, PolicyRejectsDisabledRequiredFeature) {
     const CpuFeatureSet features = CpuFeatureSet::From({CpuFeature::kAvx2});
     const CpuCapabilities snapshot{
-            .base = {.device_type = DeviceType::kCPU},
             .architecture = CpuArchitecture::kX86_64,
             .hardware_features = features,
             .usable_features = features,
@@ -72,7 +69,6 @@ TEST(CpuInfo, PolicyRejectsDisabledRequiredFeature) {
 
 TEST(CpuInfo, PolicyRejectsInvalidSnapshot) {
     const CpuCapabilities snapshot{
-            .base = {.device_type = DeviceType::kCPU},
             .architecture = CpuArchitecture::kX86_64,
             .usable_features = CpuFeatureSet::From({CpuFeature::kAvx2}),
     };

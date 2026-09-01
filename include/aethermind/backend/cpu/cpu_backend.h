@@ -16,8 +16,6 @@ public:
 
     AM_NODISCARD DeviceType device_type() const noexcept override;
 
-    AM_NODISCARD const BackendCapabilities& capabilities() const noexcept override;
-
     AM_NODISCARD StatusOr<ResolvedKernel> PrepareKernel(
             OpType op_type,
             const KernelSelector& selector,

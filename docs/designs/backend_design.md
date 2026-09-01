@@ -135,9 +135,9 @@ Kernel 的最终执行形态必须是 plan-build time resolve 后的函数指针
 
 ### 6.2 计划构建期 (Plan-Build Time)
 
-- `ExecutionPlanBuilder` 基于模型结构、设备信息、数据类型、layout trait 及 `BackendCapabilities` 完成 Kernel 解析。
-- `ExecutionPlanBuilder` 通过 `Backend::ResolveKernel(...)` 获得 `KernelFn`，而不是直接操作 `KernelRegistry`。
-- `Backend::ResolveKernel(...)` 基于 `Dispatcher` 提供的静态 dispatch metadata 与 backend capability 完成最终设备族内解析。
+- `ExecutionPlanBuilder` 基于模型结构、设备信息、数据类型和 layout trait，通过 backend 完成 Kernel 解析。
+- `ExecutionPlanBuilder` 通过 `Backend::PrepareKernel(...)` 获得 `ResolvedKernel`，而不是直接操作 `KernelRegistry`。
+- CPU backend 使用自身持有的 immutable `CpuCapabilities` snapshot 完成 feature eligibility 检查；通用 `Backend` 接口不暴露无消费者的统一 capability view。
 - 将解析结果冻结为 `OpExec`：包含 `KernelFn`、指向 `PackedWeights` 的指针、`WorkspaceRequirement`、以及用于调试/Tracing 的 `OpKind`。
 - 此阶段完成所有 fallback 决策、能力适配与静态 workspace 规划。
 
@@ -210,10 +210,12 @@ public:
     virtual ~Backend() = default;
 
     virtual DeviceType device_type() const noexcept = 0;
-    virtual const BackendCapabilities& capabilities() const noexcept = 0;
 
     // 唯一正式的 Kernel 解析入口，供 ExecutionPlanBuilder 使用
-    virtual KernelFn ResolveKernel(const KernelKey& key) const noexcept = 0;
+    virtual StatusOr<ResolvedKernel> PrepareKernel(
+        OpType op_type,
+        const KernelSelector& selector,
+        const OpParams& params) const = 0;
 
     // 仅用于调试/自省，不作为执行构建主入口
     virtual const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept = 0;
@@ -222,7 +224,7 @@ public:
 
 #### 8.1.1 说明
 
-- `ResolveKernel(...)` 是唯一正式的 kernel 解析入口。
+- `PrepareKernel(...)` 是唯一正式的 kernel 解析入口。
 - `ExecutionPlanBuilder` 不得绕过 `Backend` 直接访问 `KernelRegistry`。
 - `KernelRegistry` 作为 backend 内部设施存在，`TryGetKernelRegistryForDebug()` 仅用于调试、自省或测试。
 
@@ -238,7 +240,6 @@ struct OpKernelContext {
     Stream* stream = nullptr;                    // Phase 1 可为 CpuInlineStream
     WorkspaceArena* workspace = nullptr;        // 提供切片借用与绑定支持
     TracingSink* tracing = nullptr;
-    const BackendCapabilities* caps = nullptr;  // 只读能力视图
     BackendExecutionResources backend_resources{};
 };
 ```
@@ -357,7 +358,7 @@ Phase 1 中 `Stream` 为最小占位接口。CPU 提供 `CpuInlineStream` 实现
 - [ ] `RuntimeContext` 持有 `BackendRegistry`
 - [ ] 执行热路径不存在 `std::unordered_map::find` 或虚函数查表
 - [ ] Workspace 内存地址在稳态推理（Decode）阶段保持不变
-- [ ] CPU 指令集特征能正确通过 `capabilities()` 传递给 Kernel
+- [ ] CPU 指令集特征在 `CpuBackend::PrepareKernel()` 中完成 eligibility 检查，执行期 kernel 不再读取 capability
 
 ### 12.2 回归关注点
 - 避免 Runtime / Backend 循环引用。

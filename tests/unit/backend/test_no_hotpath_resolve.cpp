@@ -64,10 +64,6 @@ public:
         return DeviceType::kCPU;
     }
 
-    const BackendCapabilities& capabilities() const noexcept override {
-        return capabilities_;
-    }
-
     StatusOr<ResolvedKernel> PrepareKernel(
             OpType op_type,
             const KernelSelector&,
@@ -87,7 +83,6 @@ public:
 
 private:
     std::shared_ptr<PrepareCounters> counters_;
-    BackendCapabilities capabilities_{};
 };
 
 class CountingBackendFactory final : public BackendFactory {

@@ -118,4 +118,4 @@ Status CheckFoldingBudget(const FoldingCost& cost, const ConstEvalPolicy& policy
     return Status::Ok();
 }
 
-}// namespace aethermind
+} // namespace aethermind

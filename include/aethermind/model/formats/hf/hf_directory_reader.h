@@ -104,6 +104,6 @@ private:
     HfDirectoryDescriptor dir_desc_{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

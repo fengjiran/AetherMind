@@ -44,6 +44,6 @@ Status RunRmsNormFp32Scalar(const RmsNormFp32KernelArgs& args) noexcept;
 Status RunRmsNormFp32Avx2Fma(const RmsNormFp32KernelArgs& args) noexcept;
 #endif
 
-}// namespace aethermind::cpu::detail
+} // namespace aethermind::cpu::detail
 
-#endif// AETHERMIND_BACKEND_CPU_KERNELS_RMSNORM_CPU_RMSNORM_INTERNAL_H
+#endif // AETHERMIND_BACKEND_CPU_KERNELS_RMSNORM_CPU_RMSNORM_INTERNAL_H

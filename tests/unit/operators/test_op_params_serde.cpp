@@ -365,4 +365,4 @@ TEST(OpParamsSerde, PermuteRejectsMalformedPermutations) {
     }
 }
 
-}// namespace
+} // namespace

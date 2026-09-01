@@ -10,7 +10,7 @@ inline Status RegisterKernel(const KernelDescriptor& descriptor) {
     return KernelRegistry::Global().Register(descriptor);
 }
 
-}// namespace aethermind::kernel_registration_detail
+} // namespace aethermind::kernel_registration_detail
 
 #define AM_REGISTER_KERNEL(unique_name, ...)                                                                       \
     namespace {                                                                                                    \

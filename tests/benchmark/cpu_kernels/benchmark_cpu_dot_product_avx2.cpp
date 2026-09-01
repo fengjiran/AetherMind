@@ -35,4 +35,4 @@ BENCHMARK(BM_CPUKernel_DotProductAvx2Unroll)
         ->Arg(1 << 20)
         ->ArgName("N");
 
-}// namespace
+} // namespace

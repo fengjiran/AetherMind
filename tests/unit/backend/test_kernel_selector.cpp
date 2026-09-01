@@ -96,4 +96,4 @@ TEST(KernelSelectorToString, ContainsAllFieldNames) {
     EXPECT_TRUE(str.find("phase=") != std::string::npos);
 }
 
-}// namespace
+} // namespace

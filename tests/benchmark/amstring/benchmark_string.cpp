@@ -26,4 +26,4 @@ void BM_StringCopy(benchmark::State& state) {
 BENCHMARK(BM_StringCreation);
 BENCHMARK(BM_StringCopy);
 
-}// namespace
+} // namespace

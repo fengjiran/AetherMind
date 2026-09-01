@@ -123,6 +123,6 @@ struct ShapeConstraint {
     }
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_SHAPE_INFERENCE_SHAPE_CONSTRAINT_H
+#endif // AETHERMIND_SHAPE_INFERENCE_SHAPE_CONSTRAINT_H

@@ -120,7 +120,7 @@ TEST(Array, MoveConstructor) {
     Array<int> moved(std::move(original));
 
     EXPECT_EQ(moved.size(), original_size);
-    EXPECT_TRUE(original.empty());// 原对象应该为空
+    EXPECT_TRUE(original.empty()); // 原对象应该为空
 
     // 验证移动后的数据
     if (moved.size() >= 3) {
@@ -352,9 +352,9 @@ TEST(Array, CopyOnWriteSemantics) {
 
     // Modifying arr2 should trigger copy-on-write
     arr2.push_back(4);
-    EXPECT_EQ(arr1.size(), 3); // arr1 unchanged
-    EXPECT_EQ(arr2.size(), 4); // arr2 modified
-    EXPECT_TRUE(arr1.unique());// Now they have separate data
+    EXPECT_EQ(arr1.size(), 3);  // arr1 unchanged
+    EXPECT_EQ(arr2.size(), 4);  // arr2 modified
+    EXPECT_TRUE(arr1.unique()); // Now they have separate data
     EXPECT_TRUE(arr2.unique());
 }
 
@@ -367,7 +367,7 @@ TEST(Array, ClearMethod) {
     arr.clear();
     EXPECT_TRUE(arr.empty());
     EXPECT_EQ(arr.size(), 0);
-    EXPECT_EQ(arr.capacity(), 5);// Capacity should remain unchanged
+    EXPECT_EQ(arr.capacity(), 5); // Capacity should remain unchanged
 
     // Test that elements are actually removed
     EXPECT_THROW({
@@ -397,7 +397,7 @@ TEST(Array, ClearEmptyArray) {
     Array<int> arr;
     EXPECT_TRUE(arr.empty());
 
-    arr.clear();// Should not throw any exception
+    arr.clear(); // Should not throw any exception
     EXPECT_TRUE(arr.empty());
     EXPECT_EQ(arr.size(), 0);
 }
@@ -433,7 +433,7 @@ TEST(Array, ClearAfterModifications) {
 TEST(Array, ClearWithSharedData) {
     // Test clear behavior with shared data (copy-on-write)
     Array<int> arr1 = {1, 2, 3};
-    Array<int> arr2 = arr1;// Shared data
+    Array<int> arr2 = arr1; // Shared data
 
     EXPECT_EQ(arr1.use_count(), 2);
     EXPECT_EQ(arr2.use_count(), 2);
@@ -441,7 +441,7 @@ TEST(Array, ClearWithSharedData) {
     // Clearing one array should not affect the other
     arr1.clear();
     EXPECT_TRUE(arr1.empty());
-    EXPECT_EQ(arr2.size(), 3);// arr2 should remain unchanged
+    EXPECT_EQ(arr2.size(), 3); // arr2 should remain unchanged
     EXPECT_EQ(arr2[0], 1);
     EXPECT_EQ(arr2[1], 2);
     EXPECT_EQ(arr2[2], 3);
@@ -466,7 +466,7 @@ TEST(Array, ClearPreservesCapacity) {
     arr.clear();
     EXPECT_TRUE(arr.empty());
     EXPECT_EQ(arr.size(), 0);
-    EXPECT_EQ(arr.capacity(), original_capacity);// Capacity should be preserved
+    EXPECT_EQ(arr.capacity(), original_capacity); // Capacity should be preserved
 
     // Adding elements again should use existing capacity
     arr.push_back(42);
@@ -529,7 +529,7 @@ TEST(Array, PopBackEmptyArrayException) {
 TEST(Array, PopBackWithCopyOnWrite) {
     // Test pop_back behavior with shared data (copy-on-write)
     Array<int> arr1 = {1, 2, 3, 4, 5};
-    Array<int> arr2 = arr1;// Shared data
+    Array<int> arr2 = arr1; // Shared data
 
     EXPECT_EQ(arr1.use_count(), 2);
     EXPECT_EQ(arr2.use_count(), 2);
@@ -541,10 +541,10 @@ TEST(Array, PopBackWithCopyOnWrite) {
     EXPECT_TRUE(arr1.unique());
     EXPECT_TRUE(arr2.unique());
 
-    EXPECT_EQ(arr1.size(), 4);// arr1 modified
+    EXPECT_EQ(arr1.size(), 4); // arr1 modified
     EXPECT_EQ(arr1.back(), 4);
 
-    EXPECT_EQ(arr2.size(), 5);// arr2 unchanged
+    EXPECT_EQ(arr2.size(), 5); // arr2 unchanged
     EXPECT_EQ(arr2.back(), 5);
     EXPECT_EQ(arr2[4], 5);
 }
@@ -567,7 +567,7 @@ TEST(Array, PopBackPreservesCapacity) {
     arr.pop_back();
 
     EXPECT_EQ(arr.size(), 7);
-    EXPECT_EQ(arr.capacity(), original_capacity);// Capacity should be preserved
+    EXPECT_EQ(arr.capacity(), original_capacity); // Capacity should be preserved
 
     // Pop all elements
     while (!arr.empty()) {
@@ -576,7 +576,7 @@ TEST(Array, PopBackPreservesCapacity) {
 
     EXPECT_TRUE(arr.empty());
     EXPECT_EQ(arr.size(), 0);
-    EXPECT_EQ(arr.capacity(), original_capacity);// Capacity should still be preserved
+    EXPECT_EQ(arr.capacity(), original_capacity); // Capacity should still be preserved
 }
 
 TEST(Array, PopBackWithComplexTypes) {
@@ -693,7 +693,7 @@ TEST(Array, ResizeNegativeSizeException) {
 TEST(Array, ResizeWithCopyOnWrite) {
     // Test resize behavior with shared data (copy-on-write)
     Array<int> arr1 = {1, 2, 3, 4, 5};
-    Array<int> arr2 = arr1;// Shared data
+    Array<int> arr2 = arr1; // Shared data
 
     EXPECT_EQ(arr1.use_count(), 2);
     EXPECT_EQ(arr2.use_count(), 2);
@@ -705,8 +705,8 @@ TEST(Array, ResizeWithCopyOnWrite) {
     EXPECT_TRUE(arr1.unique());
     EXPECT_TRUE(arr2.unique());
 
-    EXPECT_EQ(arr1.size(), 3);// arr1 resized
-    EXPECT_EQ(arr2.size(), 5);// arr2 unchanged
+    EXPECT_EQ(arr1.size(), 3); // arr1 resized
+    EXPECT_EQ(arr2.size(), 5); // arr2 unchanged
 
     // Verify arr1 elements
     EXPECT_EQ(arr1[0], 1);
@@ -806,7 +806,7 @@ TEST(Array, ReserveSmallerCapacity) {
 
     size_t current_capacity = arr.capacity();
     arr.reserve(5);
-    EXPECT_EQ(arr.capacity(), current_capacity);// Capacity should remain unchanged
+    EXPECT_EQ(arr.capacity(), current_capacity); // Capacity should remain unchanged
     EXPECT_TRUE(arr.empty());
 }
 
@@ -829,7 +829,7 @@ TEST(Array, ReserveSameCapacity) {
 TEST(Array, ReserveWithCopyOnWrite) {
     // Test reserve behavior with shared data (copy-on-write)
     Array<int> arr1 = {1, 2, 3};
-    Array<int> arr2 = arr1;// Shared data
+    Array<int> arr2 = arr1; // Shared data
 
     EXPECT_EQ(arr1.use_count(), 2);
     EXPECT_EQ(arr2.use_count(), 2);
@@ -842,7 +842,7 @@ TEST(Array, ReserveWithCopyOnWrite) {
     EXPECT_TRUE(arr2.unique());
 
     EXPECT_EQ(arr1.capacity(), 20);
-    EXPECT_EQ(arr2.capacity(), 3);// arr2 capacity unchanged
+    EXPECT_EQ(arr2.capacity(), 3); // arr2 capacity unchanged
 
     // Both arrays should have the same elements
     EXPECT_EQ(arr1.size(), 3);
@@ -907,7 +907,7 @@ TEST(Array, ReserveZeroCapacity) {
     size_t original_capacity = arr.capacity();
 
     arr.reserve(0);
-    EXPECT_EQ(arr.capacity(), original_capacity);// Should remain unchanged
+    EXPECT_EQ(arr.capacity(), original_capacity); // Should remain unchanged
     EXPECT_EQ(arr.size(), 3);
 
     // Test with empty array
@@ -929,7 +929,7 @@ TEST(Array, ReserveAndThenAddElements) {
     // Add elements - should not trigger reallocation
     for (int i = 0; i < 100; ++i) {
         arr.push_back(i);
-        EXPECT_EQ(arr.capacity(), 100);// Capacity should remain constant
+        EXPECT_EQ(arr.capacity(), 100); // Capacity should remain constant
     }
 
     EXPECT_EQ(arr.size(), 100);
@@ -937,7 +937,7 @@ TEST(Array, ReserveAndThenAddElements) {
 
     // Adding one more element should trigger reallocation
     arr.push_back(100);
-    EXPECT_GT(arr.capacity(), 100);// Capacity should increase
+    EXPECT_GT(arr.capacity(), 100); // Capacity should increase
     EXPECT_EQ(arr.size(), 101);
 }
 
@@ -1036,7 +1036,7 @@ TEST(Array, InsertIntoEmptyArray) {
 TEST(Array, InsertWithCopyOnWrite) {
     // Test insert behavior with shared data (copy-on-write)
     Array<int> arr1 = {1, 2, 3};
-    Array<int> arr2 = arr1;// Shared data
+    Array<int> arr2 = arr1; // Shared data
 
     EXPECT_EQ(arr1.use_count(), 2);
     EXPECT_EQ(arr2.use_count(), 2);
@@ -1138,7 +1138,7 @@ TEST(Array, EraseSingleElement) {
     Array<int> arr = {1, 2, 3, 4, 5};
 
     // 删除中间元素
-    auto it = arr.begin() + 2;// 指向元素3
+    auto it = arr.begin() + 2; // 指向元素3
     arr.erase(it);
 
     EXPECT_EQ(arr.size(), 4);
@@ -1179,8 +1179,8 @@ TEST(Array, EraseRange) {
     Array<int> arr = {1, 2, 3, 4, 5, 6, 7};
 
     // 删除中间范围的元素 [2, 3, 4, 5]
-    auto first = arr.begin() + 1;// 指向元素2
-    auto last = arr.begin() + 5; // 指向元素6
+    auto first = arr.begin() + 1; // 指向元素2
+    auto last = arr.begin() + 5;  // 指向元素6
     arr.erase(first, last);
 
     EXPECT_EQ(arr.size(), 3);
@@ -1220,7 +1220,7 @@ TEST(Array, EraseStringElements) {
     Array<std::string> arr = {"apple", "banana", "cherry", "date", "elderberry"};
 
     // 删除中间元素
-    arr.erase(arr.begin() + 2);// 删除"cherry"
+    arr.erase(arr.begin() + 2); // 删除"cherry"
 
     EXPECT_EQ(arr.size(), 4);
     EXPECT_EQ(arr[0], "apple");
@@ -1253,11 +1253,11 @@ TEST(Array, EraseWithComplexTypes) {
 TEST(Array, IteratorValidityAfterErase) {
     Array<int> arr = {1, 2, 3, 4, 5};
 
-    auto it = arr.begin() + 2;// 指向元素3
+    auto it = arr.begin() + 2; // 指向元素3
     arr.erase(it);
 
     // 迭代器应该仍然有效，但指向被删除元素后的位置
-    EXPECT_EQ(*it, 4);// 现在指向元素4
+    EXPECT_EQ(*it, 4); // 现在指向元素4
 
     // 继续遍历剩余元素
     int expected = 4;
@@ -1316,7 +1316,7 @@ TEST(Array, SetWithComplexTypes) {
 TEST(Array, SetCopyOnWriteBehavior) {
     // 测试Set操作的写时复制行为
     Array<int> arr1 = {1, 2, 3, 4, 5};
-    Array<int> arr2 = arr1;// 共享数据
+    Array<int> arr2 = arr1; // 共享数据
 
     EXPECT_FALSE(arr1.unique());
     EXPECT_FALSE(arr2.unique());
@@ -1329,8 +1329,8 @@ TEST(Array, SetCopyOnWriteBehavior) {
     EXPECT_TRUE(arr2.unique());
 
     // 验证数据正确性
-    EXPECT_EQ(arr1[2], 3);  // 原始数据未改变
-    EXPECT_EQ(arr2[2], 999);// 新数据已设置
+    EXPECT_EQ(arr1[2], 3);   // 原始数据未改变
+    EXPECT_EQ(arr2[2], 999); // 新数据已设置
 
     // 验证其他元素未被修改
     for (int i = 0; i < 5; ++i) {
@@ -1386,7 +1386,7 @@ TEST(Array, SetPreservesCapacity) {
     // 测试Set操作不会改变容量
     Array<int> arr;
     arr.reserve(10);
-    arr = {1, 2, 3, 4, 5};// 填充一些数据
+    arr = {1, 2, 3, 4, 5}; // 填充一些数据
 
     size_t original_capacity = arr.capacity();
 
@@ -1413,4 +1413,4 @@ TEST(Array, SetWithMoveSemantics) {
     // static_assert(std::is_same_v<decltype((a)), int&>);
 }
 
-}// namespace
+} // namespace

@@ -216,4 +216,4 @@ TEST(PermuteInference, RepeatedInferenceProducesIdenticalOutputAndChecks) {
     }
 }
 
-}// namespace
+} // namespace

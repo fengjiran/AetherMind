@@ -26,4 +26,4 @@ TEST(AMError, NullHandleFallbacks) {
     am_error_destroy(nullptr);
 }
 
-}// namespace
+} // namespace

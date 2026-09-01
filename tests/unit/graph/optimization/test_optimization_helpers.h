@@ -187,6 +187,6 @@ inline ModelGraph BuildGraphWithForgedOutputSpec() {
              .output = Spec(DataType::Float(16), {4, 8})});
 }
 
-}// namespace aethermind::test_utils
+} // namespace aethermind::test_utils
 
-#endif// AETHERMIND_TESTS_UNIT_GRAPH_OPTIMIZATION_TEST_OPTIMIZATION_HELPERS_H_
+#endif // AETHERMIND_TESTS_UNIT_GRAPH_OPTIMIZATION_TEST_OPTIMIZATION_HELPERS_H_

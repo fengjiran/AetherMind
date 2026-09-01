@@ -111,4 +111,4 @@ TEST(CPUAllocator, DefaultRegistration) {
     EXPECT_NO_THROW(ctx.GetAllocator(cpu_dev));
 }
 
-}// namespace
+} // namespace

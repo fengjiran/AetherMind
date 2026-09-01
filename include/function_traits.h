@@ -5,9 +5,9 @@
 #ifndef AETHERMIND_FUNCTION_TRAITS_H
 #define AETHERMIND_FUNCTION_TRAITS_H
 
+#include "aethermind/base/error.h"
 #include "any.h"
 #include "container/string.h"
-#include "aethermind/base/error.h"
 
 #include <functional>
 #include <tuple>
@@ -26,7 +26,6 @@ struct is_tuple<std::tuple<Args...>> : std::true_type {};
 
 template<typename T>
 concept is_tuple_v = is_tuple<T>::value;
-
 
 
 #else
@@ -131,7 +130,7 @@ public:
         : args_(args), idx_(idx), opt_name_(opt_name), f_schema_(f_schema) {}
 
     template<typename T>
-    operator T() {//NOLINT
+    operator T() { // NOLINT
         using U = std::remove_const_t<std::remove_reference_t<T>>;
         if constexpr (std::is_same_v<U, Any>) {
             return args_[idx_];
@@ -139,10 +138,10 @@ public:
             std::optional<U> opt = args_[idx_].try_cast<U>();
             if (!opt.has_value()) {
                 AM_THROW(TypeError) << "Mismatched type on argument #" << idx_
-                                            << " when calling: `"
-                                            << (opt_name_ == nullptr ? "" : *opt_name_)
-                                            << (f_schema_ == nullptr ? "" : (*f_schema_)()) << "`. Expected `"
-                                            << Type2Str<U>::value();
+                                    << " when calling: `"
+                                    << (opt_name_ == nullptr ? "" : *opt_name_)
+                                    << (f_schema_ == nullptr ? "" : (*f_schema_)()) << "`. Expected `"
+                                    << Type2Str<U>::value();
             }
             return opt.value();
         }
@@ -172,8 +171,8 @@ struct make_offset_index_sequence_impl : make_offset_index_sequence_impl<start, 
     static_assert(static_cast<int>(N) >= 0);
 };
 
-}// namespace details
+} // namespace details
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif//AETHERMIND_FUNCTION_TRAITS_H
+#endif // AETHERMIND_FUNCTION_TRAITS_H

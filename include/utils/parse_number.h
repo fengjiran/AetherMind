@@ -26,6 +26,6 @@ bool ParseFloat(std::string_view text, float& out) noexcept;
 /// @return True if `text` is a complete, valid floating-point literal.
 bool ParseDouble(std::string_view text, double& out) noexcept;
 
-}// namespace aethermind::utils
+} // namespace aethermind::utils
 
-#endif// AETHERMIND_UTILS_PARSE_NUMBER_H
+#endif // AETHERMIND_UTILS_PARSE_NUMBER_H

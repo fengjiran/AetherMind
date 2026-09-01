@@ -855,4 +855,4 @@ TYPED_TEST(BasicStringSkeletonTest, SamePublicOperationBehavesSameAcrossStorageS
     EXPECT_EQ(external.data()[external.size()], CharT{});
 }
 
-}// namespace
+} // namespace

@@ -26,7 +26,7 @@ StatusOr<Buffer> AllocateAlignedCpuBuffer(size_t nbytes, size_t alignment) noexc
                   MemoryHandle(ptr, nullptr, &FreeAlignedMemory, Device::CPU(), alignment)};
 }
 
-}// namespace
+} // namespace
 
 Status KVCacheManager::AllocateStorage(size_t bytes_per_plane, size_t alignment) {
     const StatusOr<Buffer> key_buffer = AllocateAlignedCpuBuffer(bytes_per_plane, alignment);
@@ -171,4 +171,4 @@ size_t KVCacheManager::capacity_tokens() const noexcept { return layout_.max_tok
 size_t KVCacheManager::total_bytes() const noexcept { return total_bytes_; }
 bool KVCacheManager::is_initialized() const noexcept { return initialized_; }
 
-}// namespace aethermind
+} // namespace aethermind

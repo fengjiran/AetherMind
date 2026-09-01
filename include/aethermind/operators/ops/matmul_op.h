@@ -61,6 +61,6 @@ inline std::string MakeMatMulUnsupportedDTypeMessage(std::string_view context) {
 /// Output shape: `broadcast(lhs_batch, rhs_batch) + [M, N]` where
 /// `M = lhs.shape[-2]` and `N = effective_rhs.shape[-1]`.
 ///
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_OPERATORS_OPS_MATMUL_OP_H
+#endif // AETHERMIND_OPERATORS_OPS_MATMUL_OP_H

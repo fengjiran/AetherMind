@@ -6,9 +6,9 @@
 #ifndef AETHERMIND_AMSTRING_CHAR_LAYOUT_POLICY_HPP
 #define AETHERMIND_AMSTRING_CHAR_LAYOUT_POLICY_HPP
 
+#include "aethermind/base/macros.h"
 #include "config.hpp"
 #include "invariant.hpp"
-#include "aethermind/base/macros.h"
 #include "utils/logging.h"
 
 #include <cstddef>
@@ -38,15 +38,15 @@ struct CharLayoutPolicy {
     using SizeType = std::size_t;
 
     struct ExternalRep {
-        char* data;                // Borrowed; caller owns allocation and deallocation.
-        SizeType size;             // Current length, excluding null terminator.
-        SizeType capacity_with_tag;// Packed capacity plus 2-bit category marker.
+        char* data;                 // Borrowed; caller owns allocation and deallocation.
+        SizeType size;              // Current length, excluding null terminator.
+        SizeType capacity_with_tag; // Packed capacity plus 2-bit category marker.
     };
 
     union Storage {
-        char small[sizeof(ExternalRep)];     // Inline buffer for Small state.
-        ExternalRep external;                // Heap representation for External state.
-        std::byte raw[sizeof(ExternalRep)]{};// Raw bytes for probe access.
+        char small[sizeof(ExternalRep)];      // Inline buffer for Small state.
+        ExternalRep external;                 // Heap representation for External state.
+        std::byte raw[sizeof(ExternalRep)]{}; // Raw bytes for probe access.
     };
 
     enum class Category : std::uint8_t {
@@ -68,7 +68,7 @@ struct CharLayoutPolicy {
     static constexpr SizeType kSmallSlots = kStorageBytes;
     static constexpr SizeType kSmallCapacity = kSmallSlots - 1;
     static constexpr SizeType kCategoryBits = 2;
-    static constexpr SizeType kSizeTypeBits = sizeof(SizeType) * 8;// 64
+    static constexpr SizeType kSizeTypeBits = sizeof(SizeType) * 8; // 64
     static constexpr SizeType kPayloadBits = kSizeTypeBits - kCategoryBits;
     static constexpr SizeType kProbeByteOffset = kStorageBytes - 1;
     static constexpr SizeType kTagBitShift = (sizeof(SizeType) - 1) * 8;
@@ -375,6 +375,6 @@ private:
     }
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_AMSTRING_CHAR_LAYOUT_POLICY_HPP
+#endif // AETHERMIND_AMSTRING_CHAR_LAYOUT_POLICY_HPP

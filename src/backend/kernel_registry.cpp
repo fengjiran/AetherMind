@@ -20,7 +20,7 @@ AM_NODISCARD Status ValidateResolveArgs(OpType op_type,
     return Status::Ok();
 }
 
-}// namespace
+} // namespace
 
 KernelRegistry& KernelRegistry::Global() noexcept {
     static KernelRegistry registry;
@@ -135,4 +135,4 @@ std::string KernelRegistry::DebugDump() const {
     return out;
 }
 
-}// namespace aethermind
+} // namespace aethermind

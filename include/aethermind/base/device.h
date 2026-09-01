@@ -166,7 +166,7 @@ std::ostream& operator<<(std::ostream& os, DeviceType device_type);
 /// @brief Stream output for Device.
 std::ostream& operator<<(std::ostream& os, const Device& device);
 
-}// namespace aethermind
+} // namespace aethermind
 
 template<>
 struct std::hash<aethermind::DeviceType> {
@@ -185,4 +185,4 @@ struct std::hash<aethermind::Device> {
     }
 };
 
-#endif// AETHERMIND_BASE_DEVICE_H
+#endif // AETHERMIND_BASE_DEVICE_H

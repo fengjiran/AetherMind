@@ -68,7 +68,7 @@ backtrace_state* AllocTracker::bt_state_ = nullptr;
 #endif
 
 
-}// namespace aethermind
+} // namespace aethermind
 
 int IncObjectRef(ObjectHandle obj_ptr) {
     aethermind::details::ObjectUnsafe::IncRefObjectHandle(obj_ptr);

@@ -31,4 +31,4 @@ std::string ToString(const OperatorName& opName) {
     return result;
 }
 
-}// namespace aethermind
+} // namespace aethermind

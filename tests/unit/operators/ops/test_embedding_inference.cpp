@@ -222,4 +222,4 @@ TEST(EmbeddingInference, RejectsWrongWeightDtype) {
     EXPECT_FALSE(InferOperator(OpType::kEmbedding, EmbeddingParams{}, inputs).ok());
 }
 
-}// namespace
+} // namespace

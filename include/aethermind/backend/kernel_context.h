@@ -21,6 +21,6 @@ struct KernelContext {
     std::span<const std::byte> attrs{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

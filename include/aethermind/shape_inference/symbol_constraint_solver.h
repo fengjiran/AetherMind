@@ -106,6 +106,6 @@ private:
     std::vector<std::optional<int64_t>> static_bindings_;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_SHAPE_INFERENCE_SYMBOL_CONSTRAINT_SOLVER_H
+#endif // AETHERMIND_SHAPE_INFERENCE_SYMBOL_CONSTRAINT_SOLVER_H

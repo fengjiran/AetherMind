@@ -59,6 +59,6 @@ public:
             const std::vector<Request>& requests);
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

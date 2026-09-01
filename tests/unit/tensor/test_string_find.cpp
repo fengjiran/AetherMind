@@ -28,8 +28,8 @@ TEST(StringFindTest, EmptyNeedle) {
     // 当n=0时，只要pos有效就返回pos
     EXPECT_EQ(0U, str.find("anything", 0, 0));
     EXPECT_EQ(2U, str.find("anything", 2, 0));
-    EXPECT_EQ(5U, str.find("anything", 5, 0));          // pos等于size()
-    EXPECT_EQ(String::npos, str.find("anything", 6, 0));// pos越界
+    EXPECT_EQ(5U, str.find("anything", 5, 0));           // pos等于size()
+    EXPECT_EQ(String::npos, str.find("anything", 6, 0)); // pos越界
 }
 
 // pos参数测试
@@ -53,14 +53,14 @@ TEST(StringFindTest, PartialMatch) {
     String str("abcdefg");
     // 查找子串的一部分
     EXPECT_EQ(2U, str.find("cde", 0, 3));
-    EXPECT_EQ(2U, str.find("cdefxyz", 0, 3));// 只比较前3个字符
+    EXPECT_EQ(2U, str.find("cdefxyz", 0, 3)); // 只比较前3个字符
 }
 
 // 边界情况测试
 TEST(StringFindTest, BoundaryCases) {
     // 空字符串
     String empty;
-    EXPECT_EQ(0U, empty.find("", 0, 0));// n=0特殊情况
+    EXPECT_EQ(0U, empty.find("", 0, 0)); // n=0特殊情况
     EXPECT_EQ(String::npos, empty.find("a", 0, 1));
 
     // 子串位于字符串开头
@@ -107,7 +107,7 @@ TEST(StringFindTest, RepeatedPatterns) {
 // COW机制测试
 TEST(StringFindTest, CopyOnWrite) {
     String original("test string for COW");
-    String copy = original;// 应该共享数据
+    String copy = original; // 应该共享数据
 
     // 验证find操作不会触发COW
     EXPECT_EQ(5U, copy.find("string", 0, 6));
@@ -120,14 +120,14 @@ TEST(StringFindTest, CopyOnWrite) {
 // 本地缓冲区切换测试
 TEST(StringFindTest, LocalBufferSwitching) {
     // 创建一个超过本地缓冲区大小的字符串
-    String large(100, 'x');// 假设本地缓冲区大小小于100
+    String large(100, 'x'); // 假设本地缓冲区大小小于100
 
     // 在不同位置查找
     EXPECT_EQ(0U, large.find("x", 0, 1));
     EXPECT_EQ(50U, large.find("x", 50, 1));
 
     // 缩小字符串并验证本地缓冲区切换
-    large.resize(10);// 假设这会切换回本地缓冲区
+    large.resize(10); // 假设这会切换回本地缓冲区
     EXPECT_EQ(5U, large.find("x", 5, 1));
 }
 
@@ -142,11 +142,11 @@ TEST(StringFindTest, ExceptionHandling) {
 
 // 多字节字符边界测试
 TEST(StringFindTest, MultiByteCharacterBoundaries) {
-    String utf8("Hello, 世界！");// 包含ASCII和UTF-8字符
+    String utf8("Hello, 世界！"); // 包含ASCII和UTF-8字符
 
     // 确保在多字节字符边界上正确查找
-    EXPECT_EQ(7U, utf8.find("世", 0, 3)); // UTF-8中"世"占3字节
-    EXPECT_EQ(10U, utf8.find("界", 0, 3));// UTF-8中"界"占3字节
+    EXPECT_EQ(7U, utf8.find("世", 0, 3));  // UTF-8中"世"占3字节
+    EXPECT_EQ(10U, utf8.find("界", 0, 3)); // UTF-8中"界"占3字节
 }
 
 // 组合操作测试
@@ -189,7 +189,7 @@ TEST(StringFindTest, FindStringOverload) {
 
     // 空字符串参数
     String empty;
-    EXPECT_EQ(0U, str.find(empty, 0));// 查找空字符串应该返回pos
+    EXPECT_EQ(0U, str.find(empty, 0)); // 查找空字符串应该返回pos
     EXPECT_EQ(5U, str.find(empty, 5));
 
     // 字符串等于自身
@@ -215,11 +215,11 @@ TEST(StringFindTest, FindConstPointerOverload) {
     EXPECT_EQ(String::npos, str.find("hello", str.size()));
 
     // 空字符串参数
-    EXPECT_EQ(0U, str.find("", 0));// 查找空字符串应该返回pos
+    EXPECT_EQ(0U, str.find("", 0)); // 查找空字符串应该返回pos
     EXPECT_EQ(5U, str.find("", 5));
 
     // 部分匹配测试
-    EXPECT_EQ(String::npos, str.find("hello123", 0));// 前缀匹配
+    EXPECT_EQ(String::npos, str.find("hello123", 0)); // 前缀匹配
 }
 
 // 测试 find(value_type c, size_type pos = 0)
@@ -233,8 +233,8 @@ TEST(StringFindTest, FindCharOverload) {
     EXPECT_EQ(String::npos, str.find('x', 0));
 
     // pos参数测试
-    EXPECT_EQ(7U, str.find('o', 5));          // 找到第二个'o'
-    EXPECT_EQ(String::npos, str.find('h', 1));// 从位置1开始找不到'h'
+    EXPECT_EQ(7U, str.find('o', 5));           // 找到第二个'o'
+    EXPECT_EQ(String::npos, str.find('h', 1)); // 从位置1开始找不到'h'
 
     // pos等于size()
     EXPECT_EQ(String::npos, str.find('h', str.size()));
@@ -315,7 +315,7 @@ TEST(StringFindTest, ExceptionHandlingOverloadSet) {
 // COW机制测试
 TEST(StringFindTest, CopyOnWriteOverloadSet) {
     String original("test string for COW");
-    String copy = original;// 应该共享数据
+    String copy = original; // 应该共享数据
 
     // 验证find操作不会触发COW
     EXPECT_EQ(5U, copy.find(String("string"), 0));
@@ -376,4 +376,4 @@ TEST(StringFindTest, CombinedOperationsOverloadSet) {
     EXPECT_EQ(pos, str.find("XYZ", 0));
 }
 
-}  // namespace
+} // namespace

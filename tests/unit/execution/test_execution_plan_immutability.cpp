@@ -368,7 +368,7 @@ TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByPackedWeightStore)
         planned_packed_ptr = step.packed_weights->storage().data();
         EXPECT_FALSE(packed_destroyed);
         plan = std::move(*built);
-    }// The PackedWeightStore is destroyed here.
+    } // The PackedWeightStore is destroyed here.
 
     // The plan holds its own shared reference into the artifact, so execution
     // stays valid (and the artifact stays alive) after the store is gone.
@@ -477,4 +477,4 @@ TEST(ExecutionPlanImmutability, PlanDoesNotContainRuntimeBindings) {
                  (step.workspace_requirement.alignment - 1)) == 0);
 }
 
-}// namespace
+} // namespace

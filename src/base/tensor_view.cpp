@@ -73,7 +73,7 @@ bool HasValidMetadata(const DataType& dtype,
 // the power-of-two alignment mask.
 bool HasValidAlignment(const void* data, size_t alignment) noexcept {
     if (alignment == 0) {
-        return true;// unknown / unspecified
+        return true; // unknown / unspecified
     }
 
     if (!std::has_single_bit(alignment)) {
@@ -102,7 +102,7 @@ bool HasAnyElement(const IntArrayView shape) noexcept {
         return true;
     }
 
-    for (long i : shape) {
+    for (long i: shape) {
         if (i == 0) {
             return false;
         }
@@ -178,7 +178,7 @@ bool IsContiguous(const IntArrayView shape, const IntArrayView strides) noexcept
     return true;
 }
 
-}// namespace
+} // namespace
 
 // Constructs an immutable view borrowing data, dtype, and metadata from the
 // caller. The caller is responsible for keeping the referenced storage alive
@@ -293,4 +293,4 @@ bool MutableTensorView::is_contiguous() const noexcept {
     return IsContiguous(shape_, strides_);
 }
 
-}// namespace aethermind
+} // namespace aethermind

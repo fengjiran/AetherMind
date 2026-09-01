@@ -37,4 +37,4 @@ TEST(Operators_OpType, ResultIsNotNull) {
     EXPECT_NE(ToString(OpType::kRmsNorm), nullptr);
 }
 
-}// namespace
+} // namespace

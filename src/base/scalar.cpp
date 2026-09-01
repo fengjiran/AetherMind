@@ -173,4 +173,4 @@ std::ostream& operator<<(std::ostream& os, const Scalar& s) {
 // String toString(const Scalar& s) {
 //     return std::format("{}", s);
 // }
-}// namespace aethermind
+} // namespace aethermind

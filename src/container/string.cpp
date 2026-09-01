@@ -285,7 +285,7 @@ String& String::replace_aux(size_type pos, size_type n1, size_type n2) {
     }
 
     size_ += delta;
-    if (!IsLocal()) {// shrink to local buffer
+    if (!IsLocal()) { // shrink to local buffer
         if (size() <= static_cast<size_type>(local_capacity_)) {
             InitLocalBuffer();
             std::memcpy(local_buffer_, data(), size() + 1);
@@ -478,7 +478,7 @@ std::pair<std::vector<int64_t>, std::vector<bool>> String::CreateGoodSuffixRule(
     const auto m = static_cast<int64_t>(traits_type::length(pat));
     std::vector<int64_t> suffix(m, -1);
     std::vector<bool> prefix(m);
-    suffix[0] = m;// for length 0 good suffix
+    suffix[0] = m; // for length 0 good suffix
 
     for (int64_t i = 0; i <= m - 2; ++i) {
         auto j = i;
@@ -982,7 +982,7 @@ void String::SwitchContainer(size_type new_cap) {
 }
 
 void String::COW(int64_t delta) {
-    if (delta > 0) {// expand
+    if (delta > 0) { // expand
         const size_type new_size = static_cast<size_t>(delta) + size();
         if (IsLocal()) {
             if (new_size > capacity()) {
@@ -1001,7 +1001,7 @@ void String::COW(int64_t delta) {
                 SwitchContainer(new_cap);
             }
         }
-    } else {// inplace or shrink
+    } else { // inplace or shrink
         if (!IsLocal() && !unique()) {
             SwitchContainer(capacity());
         }
@@ -1189,4 +1189,4 @@ String to_string(unsigned long long val) noexcept {
 }
 
 
-}// namespace aethermind
+} // namespace aethermind

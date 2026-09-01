@@ -67,4 +67,4 @@ bool memoryProfilingEnabled() {
 }
 
 
-}// namespace aethermind
+} // namespace aethermind

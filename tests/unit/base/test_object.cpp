@@ -549,7 +549,7 @@ TEST(weak_object_ptr, move_construction) {
     // 移动构造
     WeakObjectPtr<NumberObj> weak2(std::move(weak1));
     EXPECT_TRUE(weak2.defined());
-    EXPECT_FALSE(weak1.defined());// 原指针应该被置空
+    EXPECT_FALSE(weak1.defined()); // 原指针应该被置空
     EXPECT_EQ(weak2.use_count(), 1);
     EXPECT_EQ(weak2.weak_use_count(), 2);
 }
@@ -581,7 +581,7 @@ TEST(weak_object_ptr, lock_operation) {
     // lock应该返回有效的ObjectPtr
     auto locked = weak.lock();
     EXPECT_TRUE(locked.defined());
-    EXPECT_EQ(locked.use_count(), 2);// obj + locked
+    EXPECT_EQ(locked.use_count(), 2); // obj + locked
 
     // 释放原始对象后lock应该返回nullptr
     obj.reset();
@@ -649,8 +649,8 @@ TEST(weak_object_ptr, comparison_operators) {
     auto obj2 = make_object<NumberObj>();
 
     WeakObjectPtr<NumberObj> weak1(obj1);
-    WeakObjectPtr<NumberObj> weak2(obj1);// 指向同一个对象
-    WeakObjectPtr<NumberObj> weak3(obj2);// 指向不同对象
+    WeakObjectPtr<NumberObj> weak2(obj1); // 指向同一个对象
+    WeakObjectPtr<NumberObj> weak3(obj2); // 指向不同对象
 
     EXPECT_EQ(weak1, weak2);
     EXPECT_NE(weak1, weak3);
@@ -694,4 +694,4 @@ TEST(weak_object_ptr, reclaim_operation) {
     EXPECT_EQ(reclaimed.weak_use_count(), 2);
 }
 
-}// namespace
+} // namespace

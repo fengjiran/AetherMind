@@ -137,7 +137,7 @@ Status ValidateKVCacheUpdateShapes(std::span<const TensorSpec> inputs) {
     return Status::Ok();
 }
 
-}// namespace
+} // namespace
 
 StatusOr<InferenceResult> InferKVCacheUpdate(const OpParams& params,
                                              std::span<const TensorSpec> inputs) {
@@ -157,4 +157,4 @@ StatusOr<InferenceResult> InferKVCacheUpdate(const OpParams& params,
     };
 }
 
-}// namespace aethermind::detail
+} // namespace aethermind::detail

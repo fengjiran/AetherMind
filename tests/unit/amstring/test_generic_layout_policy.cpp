@@ -252,4 +252,4 @@ TYPED_TEST(GenericLayoutPolicyTest, CheckInvariantsRejectsExternalSizeBeyondCapa
 #endif
 }
 
-}// namespace
+} // namespace

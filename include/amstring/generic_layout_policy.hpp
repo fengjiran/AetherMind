@@ -6,9 +6,9 @@
 #ifndef AETHERMIND_AMSTRING_GENERIC_LAYOUT_POLICY_HPP
 #define AETHERMIND_AMSTRING_GENERIC_LAYOUT_POLICY_HPP
 
+#include "aethermind/base/macros.h"
 #include "config.hpp"
 #include "invariant.hpp"
-#include "aethermind/base/macros.h"
 #include "utils/logging.h"
 
 #include <cstddef>
@@ -83,23 +83,23 @@ struct GenericLayoutPolicy {
     // capacity_with_tag packs the tag (probe value) with capacity to avoid extra discriminator field.
     // Layout depends on endianness: little-endian puts tag in high bits, big-endian in low bits.
     struct ExternalRep {
-        CharT* data;               // Borrowed; caller owns allocation and deallocation.
-        SizeType size;             // Current length, excluding null terminator.
-        SizeType capacity_with_tag;// Packed (capacity | tag) encoding.
+        CharT* data;                // Borrowed; caller owns allocation and deallocation.
+        SizeType size;              // Current length, excluding null terminator.
+        SizeType capacity_with_tag; // Packed (capacity | tag) encoding.
     };
 
     // 24-byte storage union. Small uses inline array; External uses heap pointer.
     union Storage {
-        CharT small[sizeof(ExternalRep) / sizeof(CharT)];// Inline buffer for Small state.
-        ExternalRep external;                            // Heap representation for External state.
-        std::byte raw[sizeof(ExternalRep)]{};            // Raw bytes for probe access.
+        CharT small[sizeof(ExternalRep) / sizeof(CharT)]; // Inline buffer for Small state.
+        ExternalRep external;                             // Heap representation for External state.
+        std::byte raw[sizeof(ExternalRep)]{};             // Raw bytes for probe access.
     };
 
     // Category determined by probe byte at kProbeByteOffset.
     enum class Category : std::uint8_t {
-        kSmall,   // probe ∈ [0, kSmallCapacity]; inline storage.
-        kExternal,// probe == kExternalTag; heap storage.
-        kInvalid, // probe outside valid range; indicates corruption.
+        kSmall,    // probe ∈ [0, kSmallCapacity]; inline storage.
+        kExternal, // probe == kExternalTag; heap storage.
+        kInvalid,  // probe outside valid range; indicates corruption.
     };
 
     struct DecodedProbe {
@@ -114,7 +114,7 @@ struct GenericLayoutPolicy {
     static constexpr SizeType kSmallSlots = kStorageBytes / sizeof(CharT);
     static constexpr SizeType kSmallCapacity = kSmallSlots - 1;
     static constexpr SizeType kProbeBits = sizeof(CharT) * 8;
-    static constexpr SizeType kSizeTypeBits = sizeof(SizeType) * 8;// 64
+    static constexpr SizeType kSizeTypeBits = sizeof(SizeType) * 8; // 64
     static constexpr SizeType kPayloadBits = kSizeTypeBits - kProbeBits;
     static constexpr SizeType kProbeByteOffset = kStorageBytes - sizeof(CharT);
     static constexpr ProbeWordType kExternalTag = static_cast<ProbeWordType>(kSmallCapacity + 1);
@@ -474,6 +474,6 @@ private:
     }
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_AMSTRING_GENERIC_LAYOUT_POLICY_HPP
+#endif // AETHERMIND_AMSTRING_GENERIC_LAYOUT_POLICY_HPP

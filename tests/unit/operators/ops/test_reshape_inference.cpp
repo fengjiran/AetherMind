@@ -233,4 +233,4 @@ TEST(ReshapeInference, PreservesInputDtype) {
     EXPECT_EQ(result->outputs[0].dtype, DataType::Int(32));
 }
 
-}// namespace
+} // namespace

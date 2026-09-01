@@ -25,11 +25,11 @@ namespace aethermind {
 /// @param key Value to mix.
 /// @return The mixed 32-bit value.
 inline uint32_t twang_mix32(uint32_t key) noexcept {
-    key = ~key + (key << 15);// key = (key << 15) - key - 1;
+    key = ~key + (key << 15); // key = (key << 15) - key - 1;
     key = key ^ (key >> 12);
     key = key + (key << 2);
     key = key ^ (key >> 4);
-    key = key * 2057;// key = (key + (key << 3)) + (key << 11);
+    key = key * 2057; // key = (key + (key << 3)) + (key << 11);
     key = key ^ (key >> 16);
     return key;
 }
@@ -38,13 +38,13 @@ inline uint32_t twang_mix32(uint32_t key) noexcept {
 /// @param key Value to mix.
 /// @return The mixed 64-bit value.
 inline uint64_t twang_mix64(uint64_t key) noexcept {
-    key = (~key) + (key << 21);// key *= (1 << 21) - 1; key -= 1;
+    key = (~key) + (key << 21); // key *= (1 << 21) - 1; key -= 1;
     key = key ^ (key >> 24);
-    key = key + (key << 3) + (key << 8);// key *= 1 + (1 << 3) + (1 << 8)
+    key = key + (key << 3) + (key << 8); // key *= 1 + (1 << 3) + (1 << 8)
     key = key ^ (key >> 14);
-    key = key + (key << 2) + (key << 4);// key *= 1 + (1 << 2) + (1 << 4)
+    key = key + (key << 2) + (key << 4); // key *= 1 + (1 << 2) + (1 << 4)
     key = key ^ (key >> 28);
-    key = key + (key << 31);// key *= 1 + (1 << 31)
+    key = key + (key << 31); // key *= 1 + (1 << 31)
     return key;
 }
 
@@ -124,7 +124,7 @@ auto dispatch_hash(const T& o) -> decltype(T::hash(o), size_t()) {
 
 #endif
 
-}// namespace details
+} // namespace details
 
 /// @brief Computes hashes using AetherMind's type-specific dispatch rules.
 /// @tparam T Type to hash.
@@ -225,7 +225,7 @@ inline size_t FibonacciHash(size_t hash_value, uint32_t fib_shift) {
     return (coeff * hash_value) >> fib_shift;
 }
 
-}// namespace details
+} // namespace details
 
 /// @brief Hashes multiple values as one composite key.
 ///
@@ -251,7 +251,7 @@ struct hash<std::complex<T>> {
         return get_hash(c.real(), c.imag());
     }
 };
-}// namespace aethermind
+} // namespace aethermind
 
 /// @brief Standard-library hash specializations backed by `aethermind::hash`.
 namespace std {
@@ -284,6 +284,6 @@ struct hash<std::complex<T>> {
     }
 };
 
-}// namespace std
+} // namespace std
 
-#endif// AETHERMIND_UTILS_HASH_H
+#endif // AETHERMIND_UTILS_HASH_H

@@ -383,7 +383,7 @@ GraphValueId AddRankZeroConstantFloat(ModelGraph& graph, float value, const std:
             name);
 }
 
-}// namespace
+} // namespace
 
 TEST(DeadCodeEliminationPass, RemovesDeadRankZeroAdd) {
     ModelGraph graph;
@@ -471,4 +471,4 @@ TEST(DeadCodeEliminationPass, DeadReorderIsRemoved) {
     EXPECT_EQ(result->FindNodesByOpType(OpType::kReorder).size(), 0U);
 }
 
-}// namespace
+} // namespace

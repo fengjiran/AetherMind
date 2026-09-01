@@ -309,7 +309,7 @@ StatusOr<std::vector<uint32_t>> ParsePermutation(std::string_view value) {
     return permutation;
 }
 
-}// namespace
+} // namespace
 
 // Serializes a Reshape target_shape to its canonical textual form, e.g.
 // `[@0,@1,32,*]`. Tokens are joined with commas and no interior whitespace.
@@ -625,4 +625,4 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
     return Status::InvalidArgument("ParseOpParams: unknown parameter kind");
 }
 
-}// namespace aethermind
+} // namespace aethermind

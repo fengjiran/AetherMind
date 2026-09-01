@@ -81,6 +81,6 @@ void HandleCheckFailed(std::string_view condition,
 #define AM_DCHECK(condition, ...) AM_CHECK(condition __VA_OPT__(, ) __VA_ARGS__)
 #endif
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_UTILS_LOGGING_H
+#endif // AETHERMIND_UTILS_LOGGING_H

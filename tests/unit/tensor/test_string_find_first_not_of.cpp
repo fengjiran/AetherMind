@@ -151,4 +151,4 @@ TEST(StringFindFirstNotOf, EdgeCases) {
     EXPECT_EQ(s5.find_first_not_of('b'), 0);
 }
 
-}  // namespace
+} // namespace

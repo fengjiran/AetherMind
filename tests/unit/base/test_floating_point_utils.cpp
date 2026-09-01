@@ -60,4 +60,4 @@ TEST(FloatingPointUtilsTest, Fp32FromBitsRandomValues) {
     EXPECT_FLOAT_EQ(fp32_from_bits(0x00012345), 1.0449e-40f);
 }
 
-}// namespace
+} // namespace

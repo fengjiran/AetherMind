@@ -6,4 +6,4 @@ size_t ResolvedModelWeights::NumLayers() const noexcept {
     return layers.size();
 }
 
-}
+} // namespace aethermind

@@ -263,4 +263,4 @@ TEST(GraphDump, DumpsEveryOpParamsVariant) {
     EXPECT_NE(dump.find("AddRmsNormParams{eps=1e-05}"), std::string::npos);
 }
 
-}// namespace
+} // namespace

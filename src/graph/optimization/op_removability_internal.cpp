@@ -11,4 +11,4 @@ bool IsDceRemovableOp(OpType op_type) noexcept {
     return !schema->traits.has_side_effects && !HasStatefulOutput(*schema);
 }
 
-}// namespace aethermind::detail
+} // namespace aethermind::detail

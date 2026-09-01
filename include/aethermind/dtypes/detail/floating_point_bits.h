@@ -42,4 +42,4 @@ inline uint32_t fp32_to_bits(float value) {
 } // namespace aethermind::detail
 
 
-#endif// AETHERMIND_DTYPES_DETAIL_FLOATING_POINT_BITS_H
+#endif // AETHERMIND_DTYPES_DETAIL_FLOATING_POINT_BITS_H

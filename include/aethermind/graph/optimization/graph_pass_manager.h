@@ -124,6 +124,6 @@ private:
     PassContext ctx_{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

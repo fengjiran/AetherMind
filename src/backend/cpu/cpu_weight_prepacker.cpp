@@ -77,7 +77,7 @@ private:
     Buffer storage_{};
 };
 
-}// namespace
+} // namespace
 
 StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
         OpType op_type,
@@ -152,4 +152,4 @@ PackingRecipe CpuWeightPrepacker::RecipeFor(const KernelSelector& selector) noex
     return PackingRecipe{.layout = "cpu_identity", .alignment = 64};
 }
 
-}// namespace aethermind
+} // namespace aethermind

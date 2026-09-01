@@ -29,6 +29,6 @@ private:
     ResolvedModelWeights resolved_weights_{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

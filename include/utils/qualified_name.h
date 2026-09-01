@@ -23,7 +23,7 @@ public:
     /// @param name Non-empty dotted name, such as `foo.bar.baz`, or a bare name.
     /// @note Every component must be non-empty. Invalid input triggers
     ///       `AM_CHECK` and terminates the process.
-    QualifiedName(const String& name) {// NOLINT
+    QualifiedName(const String& name) { // NOLINT
         AM_CHECK(!name.empty());
 
         // Split the name into components so all cached views share one form.
@@ -47,7 +47,7 @@ public:
     /// @param name Non-empty name accepted by the `String` constructor.
     /// @note Every component must be non-empty. Invalid input triggers
     ///       `AM_CHECK` and terminates the process.
-    QualifiedName(const char* name) : QualifiedName(String(name)) {}// NOLINT
+    QualifiedName(const char* name) : QualifiedName(String(name)) {} // NOLINT
 
     /// @brief Constructs a qualified name from individual components.
     /// @param atoms Non-empty components. Components must not contain `.`.
@@ -172,7 +172,7 @@ private:
     String prefix_;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 /// @brief Provides a standard-library hash for `aethermind::QualifiedName`.
 namespace std {
@@ -182,6 +182,6 @@ struct hash<aethermind::QualifiedName> {
         return std::hash<aethermind::String>()(name.GetQualifiedName());
     }
 };
-}// namespace std
+} // namespace std
 
-#endif// AETHERMIND_UTILS_QUALIFIED_NAME_H
+#endif // AETHERMIND_UTILS_QUALIFIED_NAME_H

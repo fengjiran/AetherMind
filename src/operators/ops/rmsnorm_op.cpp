@@ -90,6 +90,6 @@ StatusOr<InferenceResult> InferRmsNorm(const OpParams& params,
     return res;
 }
 
-}// namespace detail
+} // namespace detail
 
-}// namespace aethermind
+} // namespace aethermind

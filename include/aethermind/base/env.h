@@ -38,6 +38,6 @@ private:
     std::vector<String> names_;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_BASE_ENV_H
+#endif // AETHERMIND_BASE_ENV_H

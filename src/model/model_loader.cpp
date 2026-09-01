@@ -40,4 +40,4 @@ StatusOr<std::unique_ptr<LoadedModel>> ModelLoader::Load(
     return std::make_unique<LoadedModel>(std::move(*config), std::move(*resolved_weights));
 }
 
-}// namespace aethermind
+} // namespace aethermind

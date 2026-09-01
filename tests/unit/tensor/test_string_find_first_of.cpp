@@ -17,13 +17,13 @@ TEST(StringFindFirstOfTest, FindFirstOfConstPointerWithSize) {
     String str("hello world");
 
     // 基本功能测试
-    EXPECT_EQ(1U, str.find_first_of("aeiou", 0, 5));        // 第一个元音字母'e'在位置1
-    EXPECT_EQ(4U, str.find_first_of("od", 0, 2));           // 'o'在位置4，但'd'在位置3
-    EXPECT_EQ(String::npos, str.find_first_of("xyz", 0, 3));// 没有匹配，返回npos
+    EXPECT_EQ(1U, str.find_first_of("aeiou", 0, 5));         // 第一个元音字母'e'在位置1
+    EXPECT_EQ(4U, str.find_first_of("od", 0, 2));            // 'o'在位置4，但'd'在位置3
+    EXPECT_EQ(String::npos, str.find_first_of("xyz", 0, 3)); // 没有匹配，返回npos
 
     // pos参数测试
-    EXPECT_EQ(4U, str.find_first_of("aeiou", 2, 5));// 从位置2开始查找，找到'o'在位置4
-    EXPECT_EQ(7U, str.find_first_of("aeiou", 6, 5));// 从位置6开始查找，没有找到元音
+    EXPECT_EQ(4U, str.find_first_of("aeiou", 2, 5)); // 从位置2开始查找，找到'o'在位置4
+    EXPECT_EQ(7U, str.find_first_of("aeiou", 6, 5)); // 从位置6开始查找，没有找到元音
 
     // n=0的特殊情况
     EXPECT_EQ(String::npos, str.find_first_of("any", 0, 0));
@@ -32,7 +32,7 @@ TEST(StringFindFirstOfTest, FindFirstOfConstPointerWithSize) {
     EXPECT_EQ(String::npos, str.find_first_of("a", str.size(), 1));
 
     // 多个匹配字符，应该返回第一个出现的位置
-    EXPECT_EQ(1U, str.find_first_of("elo", 0, 3));// 'e'在位置1，是第一个匹配
+    EXPECT_EQ(1U, str.find_first_of("elo", 0, 3)); // 'e'在位置1，是第一个匹配
 
     // 重复字符测试
     String repeats("aaaaa");
@@ -48,16 +48,16 @@ TEST(StringFindFirstOfTest, FindFirstOfStringOverload) {
     String chars3("xyz");
 
     // 基本功能测试
-    EXPECT_EQ(1U, str.find_first_of(chars1, 0));          // 第一个元音字母'e'在位置1
-    EXPECT_EQ(4U, str.find_first_of(chars2, 0));          // 'o'在位置4，但'd'在位置3
-    EXPECT_EQ(String::npos, str.find_first_of(chars3, 0));// 没有匹配，返回npos
+    EXPECT_EQ(1U, str.find_first_of(chars1, 0));           // 第一个元音字母'e'在位置1
+    EXPECT_EQ(4U, str.find_first_of(chars2, 0));           // 'o'在位置4，但'd'在位置3
+    EXPECT_EQ(String::npos, str.find_first_of(chars3, 0)); // 没有匹配，返回npos
 
     // pos参数测试
-    EXPECT_EQ(4U, str.find_first_of(chars1, 2));// 从位置2开始查找，找到'o'在位置4
-    EXPECT_EQ(7U, str.find_first_of(chars1, 6));// 从位置6开始查找，没有找到元音
+    EXPECT_EQ(4U, str.find_first_of(chars1, 2)); // 从位置2开始查找，找到'o'在位置4
+    EXPECT_EQ(7U, str.find_first_of(chars1, 6)); // 从位置6开始查找，没有找到元音
 
     // 默认pos参数
-    EXPECT_EQ(1U, str.find_first_of(chars1));// 使用默认pos=0
+    EXPECT_EQ(1U, str.find_first_of(chars1)); // 使用默认pos=0
 
     // 空字符串参数
     String empty;
@@ -72,22 +72,22 @@ TEST(StringFindFirstOfTest, FindFirstOfConstPointerOverload) {
     String str("hello world");
 
     // 基本功能测试
-    EXPECT_EQ(1U, str.find_first_of("aeiou", 0));        // 第一个元音字母'e'在位置1
-    EXPECT_EQ(4U, str.find_first_of("od", 0));           // 'o'在位置4，但'd'在位置3
-    EXPECT_EQ(String::npos, str.find_first_of("xyz", 0));// 没有匹配，返回npos
+    EXPECT_EQ(1U, str.find_first_of("aeiou", 0));         // 第一个元音字母'e'在位置1
+    EXPECT_EQ(4U, str.find_first_of("od", 0));            // 'o'在位置4，但'd'在位置3
+    EXPECT_EQ(String::npos, str.find_first_of("xyz", 0)); // 没有匹配，返回npos
 
     // pos参数测试
-    EXPECT_EQ(4U, str.find_first_of("aeiou", 2));// 从位置2开始查找，找到'o'在位置4
-    EXPECT_EQ(7U, str.find_first_of("aeiou", 6));// 从位置6开始查找，没有找到元音
+    EXPECT_EQ(4U, str.find_first_of("aeiou", 2)); // 从位置2开始查找，找到'o'在位置4
+    EXPECT_EQ(7U, str.find_first_of("aeiou", 6)); // 从位置6开始查找，没有找到元音
 
     // 默认pos参数
-    EXPECT_EQ(1U, str.find_first_of("aeiou"));// 使用默认pos=0
+    EXPECT_EQ(1U, str.find_first_of("aeiou")); // 使用默认pos=0
 
     // 空字符串参数
     EXPECT_EQ(String::npos, str.find_first_of("", 0));
 
     // 部分匹配测试
-    EXPECT_EQ(1U, str.find_first_of("aeiouxyz", 0));// 只要有一个字符匹配即可
+    EXPECT_EQ(1U, str.find_first_of("aeiouxyz", 0)); // 只要有一个字符匹配即可
 }
 
 // 测试 find_first_of(value_type c, size_type pos = 0) const noexcept
@@ -95,16 +95,16 @@ TEST(StringFindFirstOfTest, FindFirstOfCharOverload) {
     String str("hello world");
 
     // 基本功能测试
-    EXPECT_EQ(1U, str.find_first_of('e', 0));          // 'e'在位置1
-    EXPECT_EQ(4U, str.find_first_of('o', 0));          // 'o'在位置4
-    EXPECT_EQ(String::npos, str.find_first_of('x', 0));// 没有匹配，返回npos
+    EXPECT_EQ(1U, str.find_first_of('e', 0));           // 'e'在位置1
+    EXPECT_EQ(4U, str.find_first_of('o', 0));           // 'o'在位置4
+    EXPECT_EQ(String::npos, str.find_first_of('x', 0)); // 没有匹配，返回npos
 
     // pos参数测试
-    EXPECT_EQ(7U, str.find_first_of('o', 5));          // 从位置5开始查找，找到第二个'o'在位置7
-    EXPECT_EQ(String::npos, str.find_first_of('h', 1));// 从位置1开始查找，找不到'h'
+    EXPECT_EQ(7U, str.find_first_of('o', 5));           // 从位置5开始查找，找到第二个'o'在位置7
+    EXPECT_EQ(String::npos, str.find_first_of('h', 1)); // 从位置1开始查找，找不到'h'
 
     // 默认pos参数
-    EXPECT_EQ(1U, str.find_first_of('e'));// 使用默认pos=0
+    EXPECT_EQ(1U, str.find_first_of('e')); // 使用默认pos=0
 
     // 查找重复字符
     String repeats("aaaaa");
@@ -139,7 +139,7 @@ TEST(StringFindFirstOfTest, SpecialCharacters) {
     // 包含空格、制表符、换行符
     String str("space\ttab\nnewline");
 
-    EXPECT_EQ(5U, str.find_first_of(" \t\n", 0, 3));// 空格在位置5
+    EXPECT_EQ(5U, str.find_first_of(" \t\n", 0, 3)); // 空格在位置5
     EXPECT_EQ(5U, str.find_first_of(String(" \t\n"), 0));
     EXPECT_EQ(5U, str.find_first_of(" \t\n", 0));
     EXPECT_EQ(String::npos, str.find_first_of(' ', 0));
@@ -214,13 +214,13 @@ TEST(StringFindFirstOfTest, MultiCharSet) {
     String str("The quick brown fox jumps over the lazy dog");
 
     // 查找任何元音字母
-    EXPECT_EQ(2U, str.find_first_of("aeiouAEIOU", 0, 10));// 'e'在位置2
+    EXPECT_EQ(2U, str.find_first_of("aeiouAEIOU", 0, 10)); // 'e'在位置2
 
     // 查找任何标点符号或空格
-    EXPECT_EQ(3U, str.find_first_of(" .,;!", 0, 5));// 空格在位置3
+    EXPECT_EQ(3U, str.find_first_of(" .,;!", 0, 5)); // 空格在位置3
 
     // 查找任何数字（应该找不到）
     EXPECT_EQ(String::npos, str.find_first_of("0123456789", 0, 10));
 }
 
-}  // namespace
+} // namespace

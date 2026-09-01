@@ -2010,4 +2010,4 @@ TEST(ModelGraphSemanticValidation, RawConstructorAcceptsExactDerivedMetadata) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-}// namespace
+} // namespace

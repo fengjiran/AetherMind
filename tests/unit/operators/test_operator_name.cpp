@@ -57,7 +57,7 @@ TEST(Operators_OperatorName, GetNamespace_MultiLevelNamespace) {
     OperatorName op("aethermind::nn::linear", "Tensor");
     auto ns = op.GetNamespace();
     ASSERT_TRUE(ns.has_value());
-    EXPECT_EQ(ns.value(), "aethermind");// Only returns first namespace
+    EXPECT_EQ(ns.value(), "aethermind"); // Only returns first namespace
 }
 
 TEST(Operators_OperatorName, GetNamespace_NoNamespace) {
@@ -72,12 +72,12 @@ TEST(Operators_OperatorName, GetNamespace_EmptyName) {
 
 TEST(Operators_OperatorName, GetNamespace_OnlyDoubleColon) {
     OperatorName op("::", "Tensor");
-    EXPECT_FALSE(op.GetNamespace().has_value());// Leading :: denotes global namespace
+    EXPECT_FALSE(op.GetNamespace().has_value()); // Leading :: denotes global namespace
 }
 
 TEST(Operators_OperatorName, GetNamespace_LeadingGlobalQualifier) {
     OperatorName op("::add", "Tensor");
-    EXPECT_FALSE(op.GetNamespace().has_value());// Leading :: denotes global namespace
+    EXPECT_FALSE(op.GetNamespace().has_value()); // Leading :: denotes global namespace
 }
 
 TEST(Operators_OperatorName, GetNamespace_TrailingDoubleColon) {
@@ -183,7 +183,7 @@ TEST(Operators_OperatorName, LessThan_EmptyHandling) {
     OperatorName op1("", "");
     OperatorName op2("a", "");
 
-    EXPECT_TRUE(op1 < op2);// Empty < non-empty
+    EXPECT_TRUE(op1 < op2); // Empty < non-empty
     EXPECT_FALSE(op2 < op1);
 }
 
@@ -217,14 +217,14 @@ TEST(Operators_OperatorName, SetUsage) {
     ops.emplace("aethermind::add", "Tensor");
     ops.emplace("aethermind::add", "Scalar");
     ops.emplace("aethermind::mul", "Tensor");
-    ops.emplace("aethermind::add", "Tensor");// Duplicate
+    ops.emplace("aethermind::add", "Tensor"); // Duplicate
 
-    EXPECT_EQ(ops.size(), 3);// Duplicate not inserted
+    EXPECT_EQ(ops.size(), 3); // Duplicate not inserted
 
     // Verify ordering
     auto it = ops.begin();
     EXPECT_EQ(it->name(), "aethermind::add");
-    EXPECT_EQ(it->overload_name(), "Scalar");// A < T
+    EXPECT_EQ(it->overload_name(), "Scalar"); // A < T
     ++it;
     EXPECT_EQ(it->name(), "aethermind::add");
     EXPECT_EQ(it->overload_name(), "Tensor");
@@ -309,7 +309,7 @@ TEST(Operators_OperatorName, UnorderedSetUsage) {
 
     set.emplace("aethermind::add", "Tensor");
     set.emplace("aethermind::mul", "Tensor");
-    set.emplace("aethermind::add", "Tensor");// Duplicate
+    set.emplace("aethermind::add", "Tensor"); // Duplicate
 
     EXPECT_EQ(set.size(), 2);
 
@@ -402,4 +402,4 @@ TEST(Operators_OperatorName, Assignment) {
     EXPECT_TRUE(op2 == op1);
 }
 
-}// namespace
+} // namespace

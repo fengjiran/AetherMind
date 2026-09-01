@@ -25,14 +25,14 @@ namespace aethermind {
 /// The underlying type is fixed to uint8_t to keep the config struct compact
 /// and its serialization stable.
 enum class HfRopeScalingType : uint8_t {
-    kNone = 0,    // No rope_scaling entry; standard RoPE applies.
-    kLinear,      // HF string: "linear"
-    kDynamicNtk,  // HF string: "dynamic"; Dynamic NTK scaling
-    kYarn,        // HF string: "yarn"
-    kLlama3,      // HF string: "llama3"; LLaMA 3.x piecewise scaling
-    kLongRope,    // HF string: "longrope"
-    kSu,          // HF string: "su"; legacy/extended HF scaling type
-    kUnknown = 255// Parsed but not recognized by this engine.
+    kNone = 0,     // No rope_scaling entry; standard RoPE applies.
+    kLinear,       // HF string: "linear"
+    kDynamicNtk,   // HF string: "dynamic"; Dynamic NTK scaling
+    kYarn,         // HF string: "yarn"
+    kLlama3,       // HF string: "llama3"; LLaMA 3.x piecewise scaling
+    kLongRope,     // HF string: "longrope"
+    kSu,           // HF string: "su"; legacy/extended HF scaling type
+    kUnknown = 255 // Parsed but not recognized by this engine.
 };
 
 /// @brief Maps an HF config.json rope_scaling.type string to its enum value.
@@ -108,7 +108,7 @@ inline std::string_view ToString(HfRopeScalingType scaling_type) noexcept {
 /// theta and scaling_type are unconditional; scaling_factor is present only
 /// when config.json provides it.
 struct HfRopeConfig {
-    double theta = 10000.0;// Standard RoPE base frequency.
+    double theta = 10000.0; // Standard RoPE base frequency.
     std::optional<double> scaling_factor{};
     HfRopeScalingType scaling_type = HfRopeScalingType::kNone;
 };
@@ -129,7 +129,7 @@ struct HfModelConfig {
     int64_t num_key_value_heads = 0;
     int64_t vocab_size = 0;
     int64_t max_position_embeddings = 0;
-    int64_t head_dim = 0;// 0 = derive from hidden_size / num_attention_heads.
+    int64_t head_dim = 0; // 0 = derive from hidden_size / num_attention_heads.
 
     double rms_norm_eps = 0.0;
     std::string hidden_act = "silu";
@@ -138,12 +138,12 @@ struct HfModelConfig {
     bool attention_bias = false;
     bool mlp_bias = false;
 
-    std::string weight_dtype_hint_name{};// Raw config.json "torch_dtype" string.
-    DataType weight_dtype_hint{};        // Parsed hint; undefined → Float32 fallback.
+    std::string weight_dtype_hint_name{}; // Raw config.json "torch_dtype" string.
+    DataType weight_dtype_hint{};         // Parsed hint; undefined → Float32 fallback.
     HfRopeConfig rope{};
 };
 // NOLINTEND(readability-identifier-naming)
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_MODEL_FORMATS_HF_HF_MODEL_CONFIG_H
+#endif // AETHERMIND_MODEL_FORMATS_HF_HF_MODEL_CONFIG_H

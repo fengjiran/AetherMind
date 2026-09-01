@@ -46,4 +46,4 @@ StatusOr<Backend*> BackendRegistry::GetBackend(DeviceType type) noexcept {
     return backend_ptr;
 }
 
-}// namespace aethermind
+} // namespace aethermind

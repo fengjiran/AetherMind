@@ -1071,12 +1071,12 @@ TEST(ConstantFoldingPass, FoldsRankZeroAddBFloat16) {
     ModelGraph graph;
     const GraphValueId lhs = AddTypedConstant(graph,
                                               DataType::BFloat(16),
-                                              BFloat16Values({0x4000U}),// 2.0
+                                              BFloat16Values({0x4000U}), // 2.0
                                               {},
                                               "lhs");
     const GraphValueId rhs = AddTypedConstant(graph,
                                               DataType::BFloat(16),
-                                              BFloat16Values({0x4080U}),// 4.0
+                                              BFloat16Values({0x4080U}), // 4.0
                                               {},
                                               "rhs");
     auto sum_or = AddElementwiseAdd(graph, 0U, lhs, rhs, "sum");
@@ -1091,7 +1091,7 @@ TEST(ConstantFoldingPass, FoldsRankZeroAddBFloat16) {
     ASSERT_TRUE(std::holds_alternative<ConstantValue>(output.payload));
     EXPECT_TRUE(output.spec.IsRankZero());
     EXPECT_EQ(BFloat16Bits(ReadTypedConstant<BFloat16>(output)),
-              (std::vector<uint16_t>{0x40C0U}));// 6.0
+              (std::vector<uint16_t>{0x40C0U})); // 6.0
 }
 
 TEST(ConstantFoldingPass, FoldsRankZeroElementwiseMul) {
@@ -1385,4 +1385,4 @@ TEST(ConstantFoldingPass, SkipsOverflowShapeConstantInput) {
     EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 1U);
 }
 
-}// namespace
+} // namespace

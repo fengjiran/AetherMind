@@ -328,5 +328,5 @@ Status HfJsonReader::SkipValueInternal(uint32_t depth) {
     return Status::InvalidArgument("Unsupported JSON value while skipping");
 }
 
-}// namespace hf
-}// namespace aethermind
+} // namespace hf
+} // namespace aethermind

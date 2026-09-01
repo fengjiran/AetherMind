@@ -1,8 +1,8 @@
 #ifndef AETHERMIND_CONTAINER_AMSTRING_H
 #define AETHERMIND_CONTAINER_AMSTRING_H
 
-#include "any_utils.h"
 #include "aethermind/base/macros.h"
+#include "any_utils.h"
 #include "utils/logging.h"
 
 #include <bit>
@@ -84,7 +84,7 @@ void PodFill(std::span<Pod> storage, const T& c) noexcept {
     std::ranges::fill(storage, static_cast<Pod>(c));
 }
 
-}// namespace details
+} // namespace details
 
 
 /// Platform-specific constants for AMStringCore layout optimization.
@@ -115,7 +115,7 @@ public:
 
     const Char* c_str() const {
         const auto* ptr = ml_.data_;
-        ptr = category() == Category::isSmall ? small_ : ptr;// CMOV optimization
+        ptr = category() == Category::isSmall ? small_ : ptr; // CMOV optimization
         return ptr;
     }
 
@@ -124,7 +124,7 @@ public:
         if constexpr (MagicConstants::kIsLittleEndian) {
             using UChar = std::make_unsigned_t<Char>;
             auto small_size = maxSmallSize - static_cast<size_t>(static_cast<UChar>(small_[maxSmallSize]));
-            res = static_cast<std::ptrdiff_t>(small_size) >= 0 ? small_size : res;// gcc will generate a CMOV instead of a branch
+            res = static_cast<std::ptrdiff_t>(small_size) >= 0 ? small_size : res; // gcc will generate a CMOV instead of a branch
         } else {
             res = category() == Category::isSmall ? SmallSize() : res;
         }
@@ -134,7 +134,7 @@ public:
 private:
     Char* c_str() {
         auto* ptr = ml_.data_;
-        ptr = category() == Category::isSmall ? small_ : ptr;// CMOV optimization
+        ptr = category() == Category::isSmall ? small_ : ptr; // CMOV optimization
         return ptr;
     }
 
@@ -236,6 +236,6 @@ void AMStringCore<Char>::InitMedium(std::span<const Char> src) {
     // TODO: Implement medium string allocation
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_CONTAINER_AMSTRING_H
+#endif // AETHERMIND_CONTAINER_AMSTRING_H

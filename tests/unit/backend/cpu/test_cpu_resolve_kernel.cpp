@@ -87,4 +87,4 @@ TEST(CpuPrepareKernel, PreparedKernelCanBeInvoked) {
     EXPECT_NEAR(output[0], 0.365148, 1e-5);
 }
 
-}// namespace
+} // namespace

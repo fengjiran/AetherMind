@@ -9,9 +9,9 @@
 /// data types (identifiers, payload kinds, node/value structs) live in
 /// graph_types.h.
 
+#include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"
 #include "aethermind/graph/graph_types.h"
-#include "aethermind/base/macros.h"
 #include "utils/logging.h"
 
 #include <cstdint>
@@ -237,6 +237,6 @@ AM_NODISCARD std::span<const GraphNodeId> GetConsumers(
         const std::vector<std::vector<GraphNodeId>>& index,
         GraphValueId value);
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

@@ -101,4 +101,4 @@ TEST(WorkspaceRequirementPlanning, DetectsOffsetOverflowDuringPlanning) {
     EXPECT_EQ(layout.status().code(), StatusCode::kOverflow);
 }
 
-}// namespace
+} // namespace

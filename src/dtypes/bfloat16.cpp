@@ -32,7 +32,7 @@ uint16_t bf16_from_fp32_value(float value) {
     return static_cast<uint16_t>((x + rounding_bias) >> 16);
 }
 
-}// namespace detail
+} // namespace detail
 
 BFloat16::BFloat16(float value) : x(detail::bf16_from_fp32_value(value)) {}
 
@@ -255,4 +255,4 @@ bool operator<(BFloat16& lhs, BFloat16& rhs) {
     return static_cast<float>(lhs) < static_cast<float>(rhs);
 }
 
-}// namespace aethermind
+} // namespace aethermind

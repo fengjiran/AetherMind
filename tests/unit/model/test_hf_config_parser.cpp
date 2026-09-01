@@ -440,4 +440,4 @@ TEST(ModelLoader_HfConfigTest, SkipsUnknownFloatingJsonValue) {
     ASSERT_TRUE(config.ok()) << config.status().ToString();
 }
 
-}// namespace
+} // namespace

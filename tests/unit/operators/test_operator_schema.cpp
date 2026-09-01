@@ -369,4 +369,4 @@ TEST(OperatorSchema, ReorderSchemaUsesActivationInputAndOutput) {
     EXPECT_FALSE(HasStatefulOutput(*schema));
 }
 
-}// namespace
+} // namespace

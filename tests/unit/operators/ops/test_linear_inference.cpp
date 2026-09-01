@@ -314,4 +314,4 @@ TEST(LinearInference, RejectsWrongWeightDtype) {
     EXPECT_FALSE(InferOperator(OpType::kLinear, LinearParams{}, inputs).ok());
 }
 
-}// namespace
+} // namespace

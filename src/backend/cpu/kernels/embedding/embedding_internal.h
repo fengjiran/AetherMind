@@ -29,6 +29,6 @@ struct EmbeddingParams {
 /// Kernel entry point registered via KernelDescriptor::kernel_func.
 AM_NODISCARD Status EmbeddingKernel(const KernelContext& ctx) noexcept;
 
-}// namespace aethermind::cpu::detail
+} // namespace aethermind::cpu::detail
 
-#endif// AETHERMIND_BACKEND_CPU_KERNELS_EMBEDDING_INTERNAL_H
+#endif // AETHERMIND_BACKEND_CPU_KERNELS_EMBEDDING_INTERNAL_H

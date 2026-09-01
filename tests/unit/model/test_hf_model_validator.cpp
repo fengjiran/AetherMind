@@ -702,7 +702,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsWeightWithMismatchedByteSize) {
     weights.emplace("model.embed_tokens.weight",
                     RawWeightView{
                             .data = storage->data.data(),
-                            .bytes = 8,// shape [1] × Float32 = 4, not 8
+                            .bytes = 8, // shape [1] × Float32 = 4, not 8
                             .dtype = DataType::Float32(),
                             .shape = {1},
                             .storage = storage,
@@ -744,7 +744,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsWeightWithNonPositiveShapeDimensio
                             .data = storage->data.data(),
                             .bytes = 0,
                             .dtype = DataType::Float32(),
-                            .shape = {0},// non-positive
+                            .shape = {0}, // non-positive
                             .storage = storage,
                     });
     weights.emplace("model.norm.weight",
@@ -1310,4 +1310,4 @@ TEST(ModelLoader_HfModelValidatorTest, AcceptsEmbedTokensDTypeMatchWithLinear) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-}// namespace
+} // namespace

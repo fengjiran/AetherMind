@@ -40,7 +40,7 @@ public:
         std::filesystem::remove_all(path_, error);
     }
 
-    AM_NODISCARD const std::filesystem::path& path() const noexcept {// NOLINT(readability-identifier-naming)
+    AM_NODISCARD const std::filesystem::path& path() const noexcept { // NOLINT(readability-identifier-naming)
         return path_;
     }
 
@@ -112,12 +112,12 @@ inline void WriteSafetensorsFile(const std::filesystem::path& path,
 
 template<size_t N>
 void WriteSafetensorsFileWithFloats(const std::filesystem::path& path,
-                                           std::string_view header_json,
-                                           const std::array<float, N>& values) {
+                                    std::string_view header_json,
+                                    const std::array<float, N>& values) {
     const auto raw_bytes = FloatArrayToBytes(values);
     WriteSafetensorsFile(path, header_json, raw_bytes);
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

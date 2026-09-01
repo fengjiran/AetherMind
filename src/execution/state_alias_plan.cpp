@@ -38,4 +38,4 @@ std::span<const ResolvedStateAlias> StateAliasPlan::ForStep(size_t step_index) c
     return {&*lower, count};
 }
 
-}// namespace aethermind
+} // namespace aethermind

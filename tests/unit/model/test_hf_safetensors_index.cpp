@@ -281,4 +281,4 @@ TEST(ModelLoader_HfSafetensorsIndexTest, RejectsDuplicateTensorName) {
               std::string::npos);
 }
 
-}// namespace
+} // namespace

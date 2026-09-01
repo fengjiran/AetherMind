@@ -9,8 +9,8 @@
 
 #include <cstdint>
 #include <iterator>
-#include <optional>
 #include <numeric>
+#include <optional>
 
 namespace aethermind {
 
@@ -56,7 +56,7 @@ concept is_valid_array_type = std::default_initializable<T>;
 
 template<typename Iter, typename T>
 concept is_valid_iterator_v = std::convertible_to<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag> &&
-                              (requires(Iter it) { requires std::same_as<std::remove_cv_t<std::remove_reference_t<decltype(*it)>>, T>; } ||//
+                              (requires(Iter it) { requires std::same_as<std::remove_cv_t<std::remove_reference_t<decltype(*it)>>, T>; } || //
                                requires(Iter it) { requires std::derived_from<std::remove_cv_t<std::remove_reference_t<decltype(*it)>>, T>; });
 
 
@@ -174,7 +174,7 @@ public:
     template<typename Iter1,
              typename = std::enable_if_t<std::is_convertible_v<Iter1, Iter>>>
 #endif
-    IteratorAdapter(const IteratorAdapter<Iter1, Container>& other) : ptr_(other.ptr_), iter_(other.iter_) {//NOLINT
+    IteratorAdapter(const IteratorAdapter<Iter1, Container>& other) : ptr_(other.ptr_), iter_(other.iter_) { // NOLINT
     }
 
     IteratorAdapter(const IteratorAdapter& other) : ptr_(other.ptr_), iter_(other.iter_) {}
@@ -523,7 +523,7 @@ ReverseIteratorAdapter<Iter, Container> operator+(typename ReverseIteratorAdapte
     return rhs + n;
 }
 
-}// namespace details
-}// namespace aethermind
+} // namespace details
+} // namespace aethermind
 
-#endif//AETHERMIND_CONTAINER_UTILS_H
+#endif // AETHERMIND_CONTAINER_UTILS_H

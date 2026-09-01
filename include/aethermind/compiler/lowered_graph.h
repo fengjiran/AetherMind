@@ -210,6 +210,6 @@ public:
 ///         first violated invariant.
 Status ValidateLoweredGraph(const LoweredGraph& lowered);
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

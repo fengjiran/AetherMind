@@ -34,7 +34,7 @@ StatusOr<size_t> LogicalByteSize(const PackedWeights& artifact) noexcept {
     return elements * static_cast<size_t>(artifact.logical_dtype().nbytes());
 }
 
-}// namespace
+} // namespace
 
 Status PackedWeightStore::SetSourceId(uint64_t source_id) noexcept {
     if (source_frozen_ && source_id != source_id_) {
@@ -133,4 +133,4 @@ bool PackedWeightStore::empty() const noexcept {
     return entries_.empty();
 }
 
-}// namespace aethermind
+} // namespace aethermind

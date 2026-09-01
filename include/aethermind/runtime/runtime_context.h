@@ -33,5 +33,5 @@ private:
 };
 
 
-}// namespace aethermind
+} // namespace aethermind
 #endif

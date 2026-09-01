@@ -81,6 +81,6 @@ AM_NODISCARD inline Status ValidateRawWeightView(const RawWeightView& view) noex
 
 using RawWeightTable = std::unordered_map<std::string, RawWeightView>;
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

@@ -26,4 +26,4 @@ const KVCacheManager* RuntimeContext::GetKVCacheManager() const noexcept {
     return kv_cache_manager_.is_initialized() ? &kv_cache_manager_ : nullptr;
 }
 
-}// namespace aethermind
+} // namespace aethermind

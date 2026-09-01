@@ -120,7 +120,7 @@ StatusOr<RawWeightView> MaterializeCompositeWeight(
     };
 }
 
-}// namespace
+} // namespace
 
 StatusOr<std::vector<WeightPrepackPlanner::Request>> WeightPrepackPlanner::BuildRequests(
         const HfModelConfig& config,
@@ -235,4 +235,4 @@ Status WeightPrepackPlanner::PrepackAndStore(PackedWeightStore& packed_weight_st
     return {};
 }
 
-}// namespace aethermind
+} // namespace aethermind

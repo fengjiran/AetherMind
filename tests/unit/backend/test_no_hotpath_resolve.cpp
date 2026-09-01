@@ -176,4 +176,4 @@ TEST(NoHotpathPrepare, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
     EXPECT_EQ(counters->kernel_invocations(), 1);
 }
 
-}// namespace
+} // namespace

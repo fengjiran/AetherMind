@@ -51,6 +51,6 @@ inline std::vector<BFloat16> BFloat16Values(std::vector<uint16_t> bits) {
     return values;
 }
 
-}// namespace aethermind::test_utils
+} // namespace aethermind::test_utils
 
-#endif// AETHERMIND_TESTS_UNIT_GRAPH_OPTIMIZATION_TEST_CONST_EVAL_HELPERS_H_
+#endif // AETHERMIND_TESTS_UNIT_GRAPH_OPTIMIZATION_TEST_CONST_EVAL_HELPERS_H_

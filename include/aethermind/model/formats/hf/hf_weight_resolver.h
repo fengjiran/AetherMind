@@ -23,8 +23,8 @@ namespace hf {
 StatusOr<ResolvedModelWeights> ResolveWeights(const HfModelConfig& config,
                                               const RawWeightTable& weights);
 
-}// namespace hf
+} // namespace hf
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

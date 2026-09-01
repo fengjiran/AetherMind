@@ -18,6 +18,6 @@ constexpr size_t gAlignment = 64;
 constexpr size_t gPagesize = 4096;
 constexpr size_t gAlloc_threshold_thp = static_cast<size_t>(2) * 1024 * 1024;
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_ALIGNMENT_H
+#endif // AETHERMIND_ALIGNMENT_H

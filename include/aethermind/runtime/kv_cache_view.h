@@ -213,6 +213,6 @@ private:
     uint64_t generation_ = 0;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

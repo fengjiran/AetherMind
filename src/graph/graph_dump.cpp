@@ -122,7 +122,7 @@ void DumpEmptyParams(std::string_view name, std::ostream& os) {
     os << name << "{}";
 }
 
-}// namespace
+} // namespace
 
 const char* ToString(ParameterSlot slot) noexcept {
     switch (slot) {
@@ -371,4 +371,4 @@ void DumpGraph(const ModelGraph& graph, std::ostream& os) {
     }
 }
 
-}// namespace aethermind
+} // namespace aethermind

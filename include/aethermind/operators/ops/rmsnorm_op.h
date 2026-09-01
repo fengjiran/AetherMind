@@ -48,6 +48,6 @@ inline std::string MakeRmsNormUnsupportedDTypeMessage(std::string_view context) 
     return msg;
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

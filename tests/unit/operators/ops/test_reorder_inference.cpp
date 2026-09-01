@@ -123,4 +123,4 @@ TEST(ReorderInference, RepeatedInferenceIsDeterministic) {
     EXPECT_EQ(r1->outputs[0].shape, r2->outputs[0].shape);
 }
 
-}// namespace
+} // namespace

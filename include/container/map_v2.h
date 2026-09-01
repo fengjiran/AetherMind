@@ -5,9 +5,9 @@
 #ifndef AETHERMIND_CONTAINER_MAP_V2_H
 #define AETHERMIND_CONTAINER_MAP_V2_H
 
-#include "any_utils.h"
 #include "aethermind/base/error.h"
 #include "aethermind/base/object.h"
+#include "any_utils.h"
 #include "utils/hash.h"
 
 #include <concepts>
@@ -83,7 +83,7 @@ private:
     std::array<std::byte, TOTAL_SIZE> storage_{};
 
     AM_NODISCARD static std::pair<size_t, size_t> GetFlagIdx(size_t slot_idx) noexcept {
-        return {slot_idx / 8, slot_idx & 7};// slot_idx % 8
+        return {slot_idx / 8, slot_idx & 7}; // slot_idx % 8
     }
 
     // test the slot is constructed
@@ -370,12 +370,12 @@ private:
     }
 
     /*!
-   * \brief Replace node src by dst in the iter list
-   * \param src The source node
-   * \param dst The destination node, must be empty
-   * \note This function does not change data content of the nodes,
-   *       which needs to be updated by the caller.
-   */
+     * \brief Replace node src by dst in the iter list
+     * \param src The source node
+     * \param dst The destination node, must be empty
+     * \note This function does not change data content of the nodes,
+     *       which needs to be updated by the caller.
+     */
     void IterListReplace(size_type src, size_type dst) {
         auto& src_slot = slot_infos_[src];
         auto& dst_slot = slot_infos_[dst];
@@ -605,7 +605,7 @@ public:
     // iterator can convert to const_iterator
     template<bool AlwaysFalse>
         requires(IsConst && !AlwaysFalse)
-    Iterator(const Iterator<AlwaysFalse>& other) : index_(other.index()), version_(other.version()), ptr_(other.ptr()) {}//NOLINT
+    Iterator(const Iterator<AlwaysFalse>& other) : index_(other.index()), version_(other.version()), ptr_(other.ptr()) {} // NOLINT
 
     AM_NODISCARD size_type index() const noexcept {
         return index_;
@@ -872,7 +872,7 @@ MapImplV2<K, V, Hasher>::iterator MapImplV2<K, V, Hasher>::erase(const_iterator 
         cur.ConstructData(last.GetData());
         last.MarkSlotAsTombStone();
         prev.SetNextSlotOffsetIndex(0);
-    } else {// the last node
+    } else { // the last node
         if (!cur.IsSlotHead()) {
             // cut the link if there is any
             cur.FindPrevSlot().SetNextSlotOffsetIndex(0);
@@ -960,6 +960,6 @@ MapImplV2<K, V, Hasher>::iterator MapImplV2<K, V, Hasher>::find(const key_type& 
 }
 
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif//AETHERMIND_CONTAINER_MAP_V2_H
+#endif // AETHERMIND_CONTAINER_MAP_V2_H

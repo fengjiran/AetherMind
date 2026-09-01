@@ -9,7 +9,7 @@ struct AMErrorObject {
     std::string message;
 };
 
-}// namespace
+} // namespace
 
 am_error_handle am_error_create(am_status_code code, const char* message) {
     try {

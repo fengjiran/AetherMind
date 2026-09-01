@@ -329,4 +329,4 @@ TEST(QkvLinearInference, RejectsWrongWeightDtype) {
     EXPECT_FALSE(InferOperator(OpType::kQkvLinear, MakeParams(), inputs).ok());
 }
 
-}// namespace
+} // namespace

@@ -151,4 +151,4 @@ std::ostream& operator<<(std::ostream& os, const Device& device) {
     return os;
 }
 
-}// namespace aethermind
+} // namespace aethermind

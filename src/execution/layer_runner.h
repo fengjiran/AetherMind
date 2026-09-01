@@ -59,6 +59,6 @@ private:
             const std::vector<ExecutionValueDesc>& values) noexcept;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_EXECUTION_LAYER_RUNNER_H
+#endif // AETHERMIND_EXECUTION_LAYER_RUNNER_H

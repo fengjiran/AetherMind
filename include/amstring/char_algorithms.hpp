@@ -65,6 +65,6 @@ struct CharAlgorithm {
     }
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_AMSTRING_CHAR_TRAITS_HPP
+#endif // AETHERMIND_AMSTRING_CHAR_TRAITS_HPP

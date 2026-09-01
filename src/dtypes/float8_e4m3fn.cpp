@@ -117,7 +117,7 @@ uint8_t fp8e4m3fn_from_fp32_value(float f) {
 
     return static_cast<uint8_t>(res);
 }
-}// namespace detail
+} // namespace detail
 
 Float8_e4m3fn::Float8_e4m3fn(float value) : x(detail::fp8e4m3fn_from_fp32_value(value)) {}
 
@@ -325,4 +325,4 @@ Float8_e4m3fn operator/(int64_t lhs, Float8_e4m3fn rhs) {
 }
 
 
-}// namespace aethermind
+} // namespace aethermind

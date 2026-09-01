@@ -3,11 +3,11 @@
 //
 #include "../test_utils/tensor_factory.h"
 #include "../test_utils/tensor_random.h"
+#include "aethermind/base/device.h"
 #include "aethermind/base/tensor.h"
 #include "any.h"
 #include "container/array_view.h"
 #include "container/string.h"
-#include "aethermind/base/device.h"
 
 #include <gtest/gtest.h>
 #include <ranges>
@@ -480,4 +480,4 @@ TEST(AnyPrintTest, TestCustomType) {
     }
 }
 
-}// namespace
+} // namespace

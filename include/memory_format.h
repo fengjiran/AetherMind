@@ -40,7 +40,7 @@ enum class MemoryFormat : uint8_t {
     // NHWC, dense, no overlap
     // strides[0] > strides[2] > strides[3] > strides[1] == 1
     kChannelsLast,
-    kChannelsLast3d,// NDHWC
+    kChannelsLast3d, // NDHWC
     NumOptions
 };
 
@@ -53,7 +53,7 @@ inline MemoryFormat GetContiguousMemoryFormat() {
 template<typename T>
 std::vector<T> GetChannelsLastStrides2d(ArrayView<T> shape) {
     auto n = shape.size();
-    std::vector<T> strides(n);// (stride_n, stride_c, stride_h, stride_w)
+    std::vector<T> strides(n); // (stride_n, stride_c, stride_h, stride_w)
     switch (n) {
         case 4: {
             strides[1] = 1;
@@ -86,7 +86,7 @@ inline std::vector<int64_t> GetChannelsLastStrides2d(IntArrayView shape) {
 template<typename T>
 std::vector<T> GetChannelsLastStrides3d(ArrayView<T> shape) {
     auto n = shape.size();
-    std::vector<T> strides(n);// NCDHW
+    std::vector<T> strides(n); // NCDHW
     switch (n) {
         case 5: {
             strides[1] = 1;
@@ -235,6 +235,6 @@ inline std::ostream& operator<<(std::ostream& os, MemoryFormat format) {
     return os;
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif//AETHERMIND_MEMORY_FORMAT_H
+#endif // AETHERMIND_MEMORY_FORMAT_H

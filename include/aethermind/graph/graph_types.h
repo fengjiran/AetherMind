@@ -230,7 +230,7 @@ struct ConstantBinding {
     AM_NODISCARD friend bool operator==(const ConstantBinding& lhs,
                                         const ConstantBinding& rhs) noexcept {
         if (lhs.name != rhs.name) return false;
-        if (lhs.inline_data == rhs.inline_data) return true;// same pointer or both null
+        if (lhs.inline_data == rhs.inline_data) return true; // same pointer or both null
         if (!lhs.inline_data || !rhs.inline_data) return false;
         return *lhs.inline_data == *rhs.inline_data;
     }
@@ -437,6 +437,6 @@ struct GraphOutput {
     GraphValueId value{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

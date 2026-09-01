@@ -73,6 +73,6 @@ inline constexpr size_t kMaxKernelParamsSize = 512;
 using KernelMetadataBuilder = Status (*)(const OpParams& params,
                                          std::vector<std::byte>& attrs);
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

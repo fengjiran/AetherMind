@@ -49,7 +49,7 @@ constexpr std::array<const char*, static_cast<size_t>(CpuFeature::kCount)> kCpuF
         "SVE2",
 };
 
-}// namespace
+} // namespace
 
 const char* ToString(CpuArchitecture architecture) noexcept {
     switch (architecture) {
@@ -377,7 +377,7 @@ CpuCapabilities DetectUsableCapabilities() noexcept {
 #endif
 }
 
-}// namespace
+} // namespace
 
 StatusOr<CpuCapabilities> ApplyCpuFeaturePolicy(
         CpuCapabilities capabilities,
@@ -406,5 +406,5 @@ StatusOr<CpuCapabilities> DetectCpuCapabilities(
     return ApplyCpuFeaturePolicy(DetectUsableCapabilities(), policy);
 }
 
-}// namespace cpu
-}// namespace aethermind
+} // namespace cpu
+} // namespace aethermind

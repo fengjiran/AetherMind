@@ -20,6 +20,6 @@ struct TensorSpec {
     }
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

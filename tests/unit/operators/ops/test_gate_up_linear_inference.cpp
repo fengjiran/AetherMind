@@ -100,4 +100,4 @@ TEST(GateUpLinearInference, AcceptsQuantizedWeightAndRankOneInput) {
     EXPECT_EQ(result->outputs[1], MakeSpec(DataType::BFloat(16), {8}));
 }
 
-}// namespace
+} // namespace

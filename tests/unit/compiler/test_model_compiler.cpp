@@ -140,4 +140,4 @@ TEST(ModelCompiler, RejectsNullLoadedModel) {
     EXPECT_EQ(lowered.status().code(), StatusCode::kInvalidArgument);
 }
 
-}// namespace
+} // namespace

@@ -106,9 +106,9 @@ void AVX2FMAdd(const float* a, const float* b, const float* c, float* out, std::
     }
 }
 
-}// namespace
-}// namespace aethermind
-#endif// __AVX2__
+} // namespace
+} // namespace aethermind
+#endif // __AVX2__
 
 // =========================================================================
 // 1. Load / Store — 加载 8 个 float，做向量加法，再写回
@@ -209,7 +209,7 @@ TEST(CPUKernelAvxLearning, DotProductLargeVectorAligned32) {
 }
 
 TEST(CPUKernelAvxLearning, DotProductVeryLargeVector) {
-    constexpr size_t kSize = 1 << 20;// 1,048,576 elements
+    constexpr size_t kSize = 1 << 20; // 1,048,576 elements
     std::vector<float> a(kSize);
     std::vector<float> b(kSize);
     for (size_t i = 0; i < kSize; ++i) {
@@ -265,9 +265,9 @@ TEST(CPUKernelAvxLearning, HorizontalSum) {
     // 高 128 位 + 低 128 位
     __m128 hi = _mm256_extractf128_ps(v, 1);
     __m128 lo = _mm256_castps256_ps128(v);
-    __m128 sum128 = _mm_add_ps(lo, hi);  // [a0+a4, a1+a5, a2+a6, a3+a7]
-    sum128 = _mm_hadd_ps(sum128, sum128);// [a0+a4+a1+a5, a2+a6+a3+a7, ...]
-    sum128 = _mm_hadd_ps(sum128, sum128);// [total, total, total, total]
+    __m128 sum128 = _mm_add_ps(lo, hi);   // [a0+a4, a1+a5, a2+a6, a3+a7]
+    sum128 = _mm_hadd_ps(sum128, sum128); // [a0+a4+a1+a5, a2+a6+a3+a7, ...]
+    sum128 = _mm_hadd_ps(sum128, sum128); // [total, total, total, total]
     float simd_sum = _mm_cvtss_f32(sum128);
 
     // 标量 reference
@@ -296,7 +296,7 @@ TEST(CPUKernelAvxLearning, HorizontalMax) {
     __m256 v = _mm256_loadu_ps(data);
     __m128 hi = _mm256_extractf128_ps(v, 1);
     __m128 lo = _mm256_castps256_ps128(v);
-    __m128 mx128 = _mm_max_ps(lo, hi);// per-lane max of low/high halves
+    __m128 mx128 = _mm_max_ps(lo, hi); // per-lane max of low/high halves
     mx128 = _mm_max_ps(mx128, _mm_shuffle_ps(mx128, mx128, _MM_SHUFFLE(2, 3, 0, 1)));
     mx128 = _mm_max_ps(mx128, _mm_shuffle_ps(mx128, mx128, _MM_SHUFFLE(1, 0, 3, 2)));
     float simd_max = _mm_cvtss_f32(mx128);
@@ -336,14 +336,14 @@ TEST(CPUKernelAvxLearning, ShuffleWithinLane) {
     __m256 vshuf = _mm256_shuffle_ps(v, v, _MM_SHUFFLE(2, 3, 0, 1));
     _mm256_storeu_ps(simd_out, vshuf);
 
-    EXPECT_FLOAT_EQ(simd_out[0], 1.0F);// dst[0] = v[1]
-    EXPECT_FLOAT_EQ(simd_out[1], 0.0F);// dst[1] = v[0]
-    EXPECT_FLOAT_EQ(simd_out[2], 3.0F);// dst[2] = v[3]
-    EXPECT_FLOAT_EQ(simd_out[3], 2.0F);// dst[3] = v[2]
-    EXPECT_FLOAT_EQ(simd_out[4], 5.0F);// lane 1: dst[0] = v[5]
-    EXPECT_FLOAT_EQ(simd_out[5], 4.0F);// dst[1] = v[4]
-    EXPECT_FLOAT_EQ(simd_out[6], 7.0F);// dst[2] = v[7]
-    EXPECT_FLOAT_EQ(simd_out[7], 6.0F);// dst[3] = v[6]
+    EXPECT_FLOAT_EQ(simd_out[0], 1.0F); // dst[0] = v[1]
+    EXPECT_FLOAT_EQ(simd_out[1], 0.0F); // dst[1] = v[0]
+    EXPECT_FLOAT_EQ(simd_out[2], 3.0F); // dst[2] = v[3]
+    EXPECT_FLOAT_EQ(simd_out[3], 2.0F); // dst[3] = v[2]
+    EXPECT_FLOAT_EQ(simd_out[4], 5.0F); // lane 1: dst[0] = v[5]
+    EXPECT_FLOAT_EQ(simd_out[5], 4.0F); // dst[1] = v[4]
+    EXPECT_FLOAT_EQ(simd_out[6], 7.0F); // dst[2] = v[7]
+    EXPECT_FLOAT_EQ(simd_out[7], 6.0F); // dst[3] = v[6]
 }
 #else
 TEST(CPUKernelAvxLearning, ShuffleWithinLane) {
@@ -391,8 +391,8 @@ TEST(CPUKernelAvxLearning, CompareBlend) {
     __m256 v = _mm256_loadu_ps(data);
     __m256 vzero = _mm256_setzero_ps();
     // _CMP_LT_OS: less-than, ordered (quiet), signaling
-    __m256 mask = _mm256_cmp_ps(v, vzero, _CMP_LT_OS); // v[i] < 0 时全 1
-    __m256 vclamped = _mm256_blendv_ps(v, vzero, mask);// mask bit=1 时取 vzero
+    __m256 mask = _mm256_cmp_ps(v, vzero, _CMP_LT_OS);  // v[i] < 0 时全 1
+    __m256 vclamped = _mm256_blendv_ps(v, vzero, mask); // mask bit=1 时取 vzero
     _mm256_storeu_ps(simd_out, vclamped);
 
     // 标量 reference
@@ -421,7 +421,7 @@ TEST(CPUKernelAvxLearning, RmsNormSumSq) {
 
     // SIMD: row[i]² 向量化，再 horizontal sum
     __m256 v = _mm256_loadu_ps(row);
-    __m256 vsq = _mm256_mul_ps(v, v);// 平方，8 路并行
+    __m256 vsq = _mm256_mul_ps(v, v); // 平方，8 路并行
     __m128 hi = _mm256_extractf128_ps(vsq, 1);
     __m128 lo = _mm256_castps256_ps128(vsq);
     __m128 sum128 = _mm_add_ps(lo, hi);
@@ -454,14 +454,14 @@ TEST(CPUKernelAvxLearning, RmsNormScale) {
     alignas(32) const float weight[8] = {1.0F, 0.5F, 1.5F, 2.0F, 1.0F, 0.5F, 1.5F, 2.0F};
     alignas(32) float simd_out[8] = {};
     alignas(32) float ref_out[8] = {};
-    constexpr float inv_rms = 0.730297F;// 假设值，来自 row {1,2,3,4} 的 rms_norm
+    constexpr float inv_rms = 0.730297F; // 假设值，来自 row {1,2,3,4} 的 rms_norm
 
     // SIMD: inv_rms → broadcast, 然后 load weight → mul → store
     __m256 vrow = _mm256_loadu_ps(row);
     __m256 vweight = _mm256_loadu_ps(weight);
     __m256 vinv_rms = _mm256_set1_ps(inv_rms);
-    __m256 vscaled = _mm256_mul_ps(vrow, vinv_rms);// row[i] * inv_rms
-    __m256 vout = _mm256_mul_ps(vscaled, vweight); // * weight[i]
+    __m256 vscaled = _mm256_mul_ps(vrow, vinv_rms); // row[i] * inv_rms
+    __m256 vout = _mm256_mul_ps(vscaled, vweight);  // * weight[i]
     _mm256_storeu_ps(simd_out, vout);
 
     // 标量 reference
@@ -540,23 +540,23 @@ TEST(CPUKernelAvxLearning, TailHandling) {
     // 假设 hidden_size = 10, 需要 8 + 2 两段处理
     alignas(32) const float data[10] = {0.0F, 1.0F, 2.0F, 3.0F, 4.0F,
                                         5.0F, 6.0F, 7.0F, 8.0F, 9.0F};
-    float sum_simd[10] = {};// 初始化为 0
+    float sum_simd[10] = {}; // 初始化为 0
     float sum_ref[10] = {};
 
     // --- 方案 A: 8 路 SIMD + 标量尾部 ---
-    __m256 vmain = _mm256_loadu_ps(data);// data[0..7]
+    __m256 vmain = _mm256_loadu_ps(data); // data[0..7]
     __m256 vsq = _mm256_mul_ps(vmain, vmain);
-    _mm256_storeu_ps(sum_simd, vsq);// simd_out[0..7] = data²
-    for (int i = 8; i < 10; ++i) {  // 标量尾部
+    _mm256_storeu_ps(sum_simd, vsq); // simd_out[0..7] = data²
+    for (int i = 8; i < 10; ++i) {   // 标量尾部
         sum_simd[i] = data[i] * data[i];
     }
 
     // --- 方案 B: maskload (不依赖 AVX-512) ---
     // mask 高位为 1 = 读取; 高位为 0 = 填 0
     // 注意: maskload 用符号位，不是 bool
-    alignas(16) const int32_t mask_data[4] = {-1, -1, 0, 0};// 只读前 2 个
+    alignas(16) const int32_t mask_data[4] = {-1, -1, 0, 0}; // 只读前 2 个
     __m128i vmask = _mm_loadu_si128(reinterpret_cast<const __m128i*>(mask_data));
-    __m128 vtail = _mm_maskload_ps(data + 8, vmask);// 读 2 个，其余 2 个填 0
+    __m128 vtail = _mm_maskload_ps(data + 8, vmask); // 读 2 个，其余 2 个填 0
     alignas(16) float tail_buf[4] = {};
     _mm_storeu_ps(tail_buf, vtail);
     // tail_buf[0] = data[8]², tail_buf[1] = data[9]², tail_buf[2..3] = 0

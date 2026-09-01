@@ -5,9 +5,9 @@
 #ifndef AETHERMIND_CONTAINER_MAP_V1_H
 #define AETHERMIND_CONTAINER_MAP_V1_H
 
-#include "any_utils.h"
 #include "aethermind/base/error.h"
 #include "aethermind/base/object.h"
+#include "any_utils.h"
 #include "utils/hash.h"
 
 #include <concepts>
@@ -19,13 +19,13 @@ template<typename T, uint8_t BlockSize>
 struct MapBlock : Object {
     std::array<std::byte, BlockSize + BlockSize * sizeof(T)> storage_;
 
-    MapBlock() {// NOLINT
+    MapBlock() { // NOLINT
         for (uint8_t i = 0; i < BlockSize; ++i) {
             storage_[i] = MapMagicConstants::kEmptySlot;
         }
     }
 
-    MapBlock(const MapBlock& other) {// NOLINT
+    MapBlock(const MapBlock& other) { // NOLINT
         for (uint8_t i = 0; i < BlockSize; ++i) {
             if (other.storage_[i] != MapMagicConstants::kEmptySlot) {
                 storage_[i] = other.storage_[i];
@@ -243,23 +243,23 @@ private:
     void IterListRemove(Cursor node);
 
     /*!
-   * \brief Replace node src by dst in the iter list
-   * \param src The source node
-   * \param dst The destination node, must be empty
-   * \note This function does not change data content of the nodes,
-   *       which needs to be updated by the caller.
-   */
+     * \brief Replace node src by dst in the iter list
+     * \param src The source node
+     * \param dst The destination node, must be empty
+     * \note This function does not change data content of the nodes,
+     *       which needs to be updated by the caller.
+     */
     void IterListReplace(Cursor src, Cursor dst);
 
     /*!
-   * \brief Spare an entry to be the head of a linked list.
-   * As described in B3, during insertion, it is possible that the entire linked list does not
-   * exist, but the slot of its head has been occupied by other linked lists. In this case, we need
-   * to spare the slot by moving away the elements to another valid empty one to make insertion
-   * possible.
-   * \param target The given entry to be spared
-   * \return The linked-list entry constructed as the head, if actual insertion happens
-   */
+     * \brief Spare an entry to be the head of a linked list.
+     * As described in B3, during insertion, it is possible that the entire linked list does not
+     * exist, but the slot of its head has been occupied by other linked lists. In this case, we need
+     * to spare the slot by moving away the elements to another valid empty one to make insertion
+     * possible.
+     * \param target The given entry to be spared
+     * \return The linked-list entry constructed as the head, if actual insertion happens
+     */
     std::optional<Cursor> TryAllocateListHead(Cursor target);
 
     /*!
@@ -650,7 +650,7 @@ MapImpl<K, V, Hasher>::iterator MapImpl<K, V, Hasher>::erase(const_iterator pos)
         cur.GetSlotMetadata() = cur_meta;
         last.DestroyEntry();
         prev.SetNextSlotOffsetIndex(0);
-    } else {// the last node
+    } else { // the last node
         if (!cur.IsHead()) {
             // cut the link if there is any
             cur.FindPrevSlot().SetNextSlotOffsetIndex(0);
@@ -760,7 +760,7 @@ std::optional<typename MapImpl<K, V, Hasher>::Cursor> MapImpl<K, V, Hasher>::Try
         // link `prev` to `empty`, and move forward
         prev.SetNextSlotOffsetIndex(offset_idx);
         prev = empty;
-    } while (r.MoveToNextSlot(r_meta));// move `r` forward as well
+    } while (r.MoveToNextSlot(r_meta)); // move `r` forward as well
 
     return target;
 }
@@ -912,7 +912,7 @@ public:
     // iterator can convert to const_iterator
     template<bool AlwaysFalse>
         requires(IsConst && !AlwaysFalse)
-    IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : index_(other.index()), ptr_(other.ptr()) {}//NOLINT
+    IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : index_(other.index()), ptr_(other.ptr()) {} // NOLINT
 
     AM_NODISCARD size_type index() const noexcept {
         return index_;
@@ -1325,7 +1325,7 @@ public:
     // iterator can convert to const_iterator
     template<bool AlwaysFalse>
         requires(IsConst && !AlwaysFalse)
-    IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : iter_(other.iter_) {}//NOLINT
+    IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : iter_(other.iter_) {} // NOLINT
 
     AM_NODISCARD size_type index() const noexcept {
         return iter_.index();
@@ -1406,6 +1406,6 @@ private:
     friend class IteratorImpl;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif//AETHERMIND_CONTAINER_MAP_V1_H
+#endif // AETHERMIND_CONTAINER_MAP_V1_H

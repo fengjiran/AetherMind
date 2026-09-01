@@ -331,7 +331,7 @@ Status ReturnIfErrorWithMsgAugmentsMessage(bool fail) {
 // AM_ASSIGN_OR_RETURN: declaration lhs (auto x)
 StatusOr<int> AssignOrReturnToDeclaration(bool fail) {
     AM_ASSIGN_OR_RETURN(auto value, GetValueOrError(fail));
-    return value * 2;// 42 * 2 = 84 on success
+    return value * 2; // 42 * 2 = 84 on success
 }
 
 // AM_ASSIGN_OR_RETURN: existing variable lhs
@@ -529,4 +529,4 @@ static_assert(ConstLvalueStatus<StatusOr<int>>::value, "const lvalue StatusOr::s
 static_assert(LvalueValue<StatusOr<int>>::value, "lvalue StatusOr::value() must be accepted");
 static_assert(ConstLvalueValue<StatusOr<int>>::value, "const lvalue StatusOr::value() must be accepted");
 
-}// namespace
+} // namespace

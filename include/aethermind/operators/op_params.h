@@ -31,8 +31,8 @@ struct LinearParams {};
 /// longrope, su, unknown) are rejected by `ModelGraphBuilder::BuildLlamaDense`
 /// before any graph mutation, so they can never reach `RoPEParams`.
 enum class RoPEScalingType : uint8_t {
-    kNone = 0,///< Standard RoPE; `scaling_factor` must be absent.
-    kLinear,  ///< Linear scaling; requires a finite positive `scaling_factor`.
+    kNone = 0, ///< Standard RoPE; `scaling_factor` must be absent.
+    kLinear,   ///< Linear scaling; requires a finite positive `scaling_factor`.
 };
 
 /// @brief Returns the canonical string name of a RoPE scaling type.
@@ -259,6 +259,6 @@ using OpParams = std::variant<std::monostate,
                               AddRmsNormParams,
                               GateUpLinearParams>;
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

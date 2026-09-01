@@ -40,4 +40,4 @@ size_t CpuWorkspaceArena::size() const noexcept {
     return size_;
 }
 
-}// namespace aethermind
+} // namespace aethermind

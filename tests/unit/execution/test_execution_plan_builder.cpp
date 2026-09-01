@@ -1280,4 +1280,4 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsUndefinedSelectorActDType) {
     EXPECT_NE(plan.status().message().find("act_dtype"), std::string::npos);
 }
 
-}// namespace
+} // namespace

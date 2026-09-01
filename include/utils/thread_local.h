@@ -88,6 +88,6 @@ private:
                 return &var;                       \
             })
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_UTILS_THREAD_LOCAL_H
+#endif // AETHERMIND_UTILS_THREAD_LOCAL_H

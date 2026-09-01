@@ -126,4 +126,4 @@ TEST(AddRmsNormInference, DefersExactShapeAndWeightChecksForDistinctSymbols) {
     EXPECT_EQ(weight_check->rhs.tensor_port.tensor_idx, 2U);
 }
 
-}// namespace
+} // namespace

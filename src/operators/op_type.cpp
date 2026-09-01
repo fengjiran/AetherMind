@@ -51,4 +51,4 @@ const char* ToString(OpType op_type) noexcept {
     }
 }
 
-}// namespace aethermind
+} // namespace aethermind

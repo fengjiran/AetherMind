@@ -19,6 +19,6 @@ using u16string = BasicString<char16_t>;
 using u32string = BasicString<char32_t>;
 using wstring = BasicString<wchar_t>;
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_AMSTRING_STRING_HPP
+#endif // AETHERMIND_AMSTRING_STRING_HPP

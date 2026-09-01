@@ -16,4 +16,4 @@ const ResolvedModelWeights& LoadedModel::GetResolvedWeights() const noexcept {
     return resolved_weights_;
 }
 
-}// namespace aethermind
+} // namespace aethermind

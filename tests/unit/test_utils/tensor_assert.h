@@ -137,7 +137,7 @@ template<typename T>
            << report.str();
 }
 
-}// namespace detail
+} // namespace detail
 
 inline ::testing::AssertionResult ExpectTensorAllClose(const Tensor& actual,
                                                        const Tensor& expected,
@@ -297,6 +297,6 @@ inline ::testing::AssertionResult ExpectTensorEqual(const Tensor& actual,
            << "ExpectTensorEqual unsupported dtype: " << actual.dtype();
 }
 
-}// namespace aethermind::test_utils
+} // namespace aethermind::test_utils
 
 #endif

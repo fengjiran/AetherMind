@@ -1,9 +1,9 @@
 #ifndef AETHERMIND_SHAPE_INFERENCE_SHAPE_SYMBOL_H
 #define AETHERMIND_SHAPE_INFERENCE_SHAPE_SYMBOL_H
 
+#include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"
 #include "container/array_view.h"
-#include "aethermind/base/macros.h"
 #include "utils/logging.h"
 
 #include <atomic>
@@ -198,6 +198,6 @@ AM_NODISCARD inline bool AreProvablyEqual(const ShapeSymbol& lhs,
 
 std::ostream& operator<<(std::ostream& os, const SymbolicShape& s);
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_SHAPE_INFERENCE_SHAPE_SYMBOL_H
+#endif // AETHERMIND_SHAPE_INFERENCE_SHAPE_SYMBOL_H

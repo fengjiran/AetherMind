@@ -225,7 +225,7 @@ const std::array<OperatorSchema, 19> kOperatorSchemas{
         },
 };
 
-}// namespace
+} // namespace
 
 StatusOr<OperatorSchema> GetOperatorSchema(OpType op_type) {
     for (const OperatorSchema& schema: kOperatorSchemas) {
@@ -275,4 +275,4 @@ bool IsCompileTimeEvaluable(const OperatorSchema& schema) noexcept {
     return IsPureOperator(schema) && schema.traits.compile_time_evaluable;
 }
 
-}// namespace aethermind
+} // namespace aethermind

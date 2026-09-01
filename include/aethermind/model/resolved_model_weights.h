@@ -41,6 +41,6 @@ struct ResolvedModelWeights {
     AM_NODISCARD size_t NumLayers() const noexcept;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

@@ -28,6 +28,6 @@ Status InvokeKernel(const ResolvedKernel& kernel,
                     std::span<const TensorView> inputs,
                     std::span<const MutableTensorView> outputs) noexcept;
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

@@ -397,7 +397,7 @@ StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeRankAtLeastConstraint(
                                         : ShapeConstraintEvaluationResult::kViolated;
 }
 
-}// namespace
+} // namespace
 
 ShapeConstraintEvaluationResult EvaluateShapeConstraint(
         const ShapeConstraint& constraint,
@@ -494,7 +494,7 @@ Status ValidateSpecAgainstView(const TensorSpec& spec,
             spec, view.dtype(), view.shape(), role, port_index, symbol_values);
 }
 
-}// namespace
+} // namespace
 
 Status ValidateConcreteShapeAgainstSpec(const TensorSpec& spec,
                                         DataType dtype,
@@ -572,4 +572,4 @@ Status ValidateTensorBindingPremises(const std::span<const TensorSpec> input_spe
     return Status::Ok();
 }
 
-}// namespace aethermind
+} // namespace aethermind

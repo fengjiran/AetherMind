@@ -9,5 +9,5 @@ struct BackendCapabilities {
     DeviceType device_type = DeviceType::kUndefined;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 #endif

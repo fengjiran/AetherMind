@@ -140,11 +140,11 @@ public:
     }
 };
 
-}// namespace
+} // namespace
 
 const ConstEvaluator& detail::GetAddConstEvaluator() noexcept {
     static const AddConstEvaluator kEvaluator;
     return kEvaluator;
 }
 
-}// namespace aethermind
+} // namespace aethermind

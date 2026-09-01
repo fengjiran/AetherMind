@@ -628,7 +628,7 @@ static_assert(std::is_nothrow_move_assignable_v<GraphNode>);
 static_assert(std::is_nothrow_move_constructible_v<AddedNode>);
 static_assert(std::is_nothrow_move_assignable_v<AddedNode>);
 
-}// namespace
+} // namespace
 
 ModelGraph::ModelGraph(std::vector<GraphNode> nodes,
                        std::vector<GraphValue> values) noexcept
@@ -1106,4 +1106,4 @@ std::span<const GraphNodeId> GetConsumers(const std::vector<std::vector<GraphNod
     return index[value.index];
 }
 
-}// namespace aethermind
+} // namespace aethermind

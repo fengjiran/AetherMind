@@ -47,7 +47,7 @@ Status ValidateExactInputShapes(const TensorSpec& input_spec,
     return Status::Ok();
 }
 
-}// namespace
+} // namespace
 
 StatusOr<InferenceResult> InferAddRmsNorm(const OpParams& params,
                                           std::span<const TensorSpec> inputs) {
@@ -129,6 +129,6 @@ StatusOr<InferenceResult> InferAddRmsNorm(const OpParams& params,
     return result;
 }
 
-}// namespace detail
+} // namespace detail
 
-}// namespace aethermind
+} // namespace aethermind

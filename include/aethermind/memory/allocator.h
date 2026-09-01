@@ -14,8 +14,8 @@
 #ifndef AETHERMIND_MEMORY_ALLOCATOR_H
 #define AETHERMIND_MEMORY_ALLOCATOR_H
 
-#include "buffer.h"
 #include "aethermind/base/device.h"
+#include "buffer.h"
 #include "utils/thread_local_debug_info.h"
 
 #include <memory>
@@ -147,6 +147,6 @@ public:
 
 bool memoryProfilingEnabled();
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_MEMORY_ALLOCATOR_H
+#endif // AETHERMIND_MEMORY_ALLOCATOR_H

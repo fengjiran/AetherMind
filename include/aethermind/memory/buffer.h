@@ -5,9 +5,9 @@
 #define AETHERMIND_MEMORY_BUFFER_H
 
 #include "aethermind/base/macros.h"
-#include "memory_handle.h"
 #include "aethermind/base/object.h"
 #include "aethermind/base/object_allocator.h"
+#include "memory_handle.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -110,6 +110,6 @@ private:
     ObjectPtr<BufferImpl> impl_;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_MEMORY_BUFFER_H
+#endif // AETHERMIND_MEMORY_BUFFER_H

@@ -303,4 +303,4 @@ TEST(ModelLoader_HfJsonReaderTest, RejectsExcessiveNestingWhileSkipping) {
               std::string::npos);
 }
 
-}// namespace
+} // namespace

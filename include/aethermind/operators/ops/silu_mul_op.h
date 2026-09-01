@@ -47,6 +47,6 @@ inline std::string MakeSiluMulUnsupportedDTypeMessage(std::string_view context) 
     return msg;
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

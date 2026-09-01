@@ -390,4 +390,4 @@ TEST(GateUpLinearFusionPass, HonorsFlagRunsAtO2AndRemainsIdempotentAfterDce) {
     EXPECT_EQ(o2_result->FindNodesByOpType(OpType::kGateUpLinear).size(), 1U);
 }
 
-}// namespace
+} // namespace

@@ -366,4 +366,4 @@ TEST(SiluMulFusionPass, DoesNotReintroduceFoldedSiluAsFusedKernel) {
     EXPECT_EQ(constant_count, 2U);
 }
 
-}// namespace
+} // namespace

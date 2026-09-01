@@ -21,7 +21,7 @@ NodeOutputDesc ActivationOutput() {
     return {.payload = ActivationValue{}};
 }
 
-}// namespace
+} // namespace
 
 GraphValueId AddInput(ModelGraph& graph, TensorSpec spec, std::string name) {
     return graph.AddInput(std::move(spec), std::move(name));
@@ -202,14 +202,14 @@ StatusOr<KVCachePair> AddKVCacheUpdate(ModelGraph& graph,
     if (k_cache_state == nullptr) {
         return Status::InvalidArgument("K cache input must be a StateValue");
     }
-    StateBinding k_binding = k_cache_state->binding;// NOLINT
+    StateBinding k_binding = k_cache_state->binding; // NOLINT
 
     const GraphValue& v_cache_value = graph.GetValue(v_cache);
     const auto* v_cache_state = std::get_if<StateValue>(&v_cache_value.payload);
     if (v_cache_state == nullptr) {
         return Status::InvalidArgument("V cache input must be a StateValue");
     }
-    StateBinding v_binding = v_cache_state->binding;// NOLINT
+    StateBinding v_binding = v_cache_state->binding; // NOLINT
 
     AM_ASSIGN_OR_RETURN(AddedNode node,
                         graph.AddNode(
@@ -442,4 +442,4 @@ StatusOr<GraphValueId> AddReorder(ModelGraph& graph,
     return OnlyOneOutput(node);
 }
 
-}// namespace aethermind
+} // namespace aethermind

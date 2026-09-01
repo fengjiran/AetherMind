@@ -208,7 +208,7 @@ Status ValidateAndExecute(const cpu::detail::ElementwiseMulParams* params) noexc
     return Status::Ok();
 }
 
-}// namespace
+} // namespace
 
 Status cpu::detail::ElementwiseMulKernel(const KernelContext& ctx) noexcept {
     const cpu::detail::ElementwiseMulParams* params = GetParams(ctx.kernel_params);
@@ -251,4 +251,4 @@ AM_REGISTER_KERNEL(ElementwiseMulFp32Scalar,
                            .params_size = sizeof(cpu::detail::ElementwiseMulParams),
                    })
 
-}// namespace aethermind
+} // namespace aethermind

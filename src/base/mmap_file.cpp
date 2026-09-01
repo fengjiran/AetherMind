@@ -72,7 +72,7 @@ int ToPosixAdvice(MemoryMappedFile::Advice advice) noexcept {
     return POSIX_MADV_NORMAL;
 }
 
-}// namespace
+} // namespace
 
 MemoryMappedFile::~MemoryMappedFile() {
     if (data_ != nullptr) {
@@ -166,4 +166,4 @@ StatusOr<MemoryMappedFile> MemoryMappedFile::Map(const std::filesystem::path& pa
     return MemoryMappedFile(data, size);
 }
 
-}// namespace aethermind
+} // namespace aethermind

@@ -161,5 +161,5 @@ struct CpuCapabilities {
     uint32_t sve_vector_bytes = 0;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 #endif

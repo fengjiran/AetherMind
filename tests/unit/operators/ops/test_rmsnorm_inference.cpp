@@ -251,4 +251,4 @@ TEST(RmsNormInference, RejectsUnsupportedInputDType) {
     EXPECT_FALSE(InferOperator(OpType::kRmsNorm, RmsNormParams{1e-5f}, inputs).ok());
 }
 
-}// namespace
+} // namespace

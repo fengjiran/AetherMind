@@ -32,11 +32,11 @@ TEST(CastOverflowsTest, IntegerType) {
     EXPECT_FALSE((is_cast_overflow<uint32_t, uint64_t>(100)));
 
     // 会溢出的情况 - 大于目标类型最大值
-    EXPECT_TRUE((is_cast_overflow<int32_t, int8_t>(1000))); // 1000 > INT8_MAX (127)
-    EXPECT_TRUE((is_cast_overflow<uint32_t, uint8_t>(300)));// 300 > UINT8_MAX (255)
+    EXPECT_TRUE((is_cast_overflow<int32_t, int8_t>(1000)));  // 1000 > INT8_MAX (127)
+    EXPECT_TRUE((is_cast_overflow<uint32_t, uint8_t>(300))); // 300 > UINT8_MAX (255)
 
     // 会溢出的情况 - 小于目标类型最小值
-    EXPECT_TRUE((is_cast_overflow<int32_t, int8_t>(-1000)));// -1000 < INT8_MIN (-128)
+    EXPECT_TRUE((is_cast_overflow<int32_t, int8_t>(-1000))); // -1000 < INT8_MIN (-128)
 
     // 测试有符号到无符号的转换（strict_unsigned = false）
     // 负数转换为无符号类型不会溢出，但值会被解释为大的正数
@@ -80,7 +80,7 @@ TEST(CastOverflowsTest, FloatingPointType) {
     // 当目标类型不支持NaN时，NaN应被视为溢出
     // 注意：标准浮点数类型都支持NaN，这里只是展示逻辑
     float nan_value = std::numeric_limits<float>::quiet_NaN();
-    EXPECT_FALSE((is_cast_overflow<float, float>(nan_value)));// float支持NaN
+    EXPECT_FALSE((is_cast_overflow<float, float>(nan_value))); // float支持NaN
 
     // 边界情况测试
     EXPECT_FALSE((is_cast_overflow<float, float>(std::numeric_limits<float>::max())));
@@ -150,7 +150,7 @@ TEST(CastOverflowsTest, MixedTypesAndEdgeCases) {
 
     // 测试特殊浮点值
     EXPECT_FALSE((is_cast_overflow<float, double>(-std::numeric_limits<float>::infinity())));
-    EXPECT_FALSE((is_cast_overflow<double, float>(0.0 / 0.0)));// NaN
+    EXPECT_FALSE((is_cast_overflow<double, float>(0.0 / 0.0))); // NaN
 }
 
 // 测试 maybe_real 结构体
@@ -604,8 +604,8 @@ TEST(ScalarTest, EqualMethod) {
 
     // 跨类型相等性测试
     Scalar int_42(42);
-    EXPECT_TRUE(int_42.equal(42.0)); // 整数和浮点数相等
-    EXPECT_FALSE(int_42.equal(true));// 整数和布尔值不等
+    EXPECT_TRUE(int_42.equal(42.0));  // 整数和浮点数相等
+    EXPECT_FALSE(int_42.equal(true)); // 整数和布尔值不等
     EXPECT_TRUE(int_42 == 42.0);
     EXPECT_TRUE(42.0 == int_42);
 }
@@ -701,7 +701,7 @@ TEST(ScalarTest, EdgeCases) {
     // 浮点边界值
     Scalar zero(0.0);
     Scalar neg_zero(-0.0);
-    EXPECT_TRUE(zero.equal(neg_zero.toDouble()));// -0.0 和 0.0 在浮点数中被视为相等
+    EXPECT_TRUE(zero.equal(neg_zero.toDouble())); // -0.0 和 0.0 在浮点数中被视为相等
 
     Scalar inf(std::numeric_limits<double>::infinity());
     Scalar neg_inf(-std::numeric_limits<double>::infinity());
@@ -710,4 +710,4 @@ TEST(ScalarTest, EdgeCases) {
     // NaN不等于任何值，包括它自己
     EXPECT_FALSE(nan.equal(nan.toDouble()));
 }
-}// namespace
+} // namespace

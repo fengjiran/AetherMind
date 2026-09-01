@@ -10,6 +10,6 @@ public:
     std::unique_ptr<Allocator> CreateAllocator(Device device) override;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_CANN_ALLOCATOR_H
+#endif // AETHERMIND_CANN_ALLOCATOR_H

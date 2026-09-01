@@ -20,11 +20,11 @@ TEST(BFloat16Test, DefaultConstructor) {
 
 TEST(BFloat16Test, FromBitsConstructor) {
     // 测试通过位构造函数
-    BFloat16 val1(0x3F80, BFloat16::from_bits());// 1.0
+    BFloat16 val1(0x3F80, BFloat16::from_bits()); // 1.0
     EXPECT_EQ(val1.x, 0x3F80);
     EXPECT_FLOAT_EQ(val1, 1.0f);
 
-    BFloat16 val2(0xBF80, BFloat16::from_bits());// -1.0
+    BFloat16 val2(0xBF80, BFloat16::from_bits()); // -1.0
     EXPECT_EQ(val2.x, 0xBF80);
     EXPECT_FLOAT_EQ(val2, -1.0f);
 }
@@ -34,8 +34,8 @@ TEST(BFloat16Test, FloatConversion) {
     constexpr float test_values[] = {
             0.0f, 1.0f, -1.0f, 2.0f, 0.5f,
             0.3333333333f, 100.0f, -100.0f,
-            std::numeric_limits<float>::max() / 2,// 大值但不会溢出BFloat16
-            std::numeric_limits<float>::min() * 2 // 小值但不会下溢BFloat16
+            std::numeric_limits<float>::max() / 2, // 大值但不会溢出BFloat16
+            std::numeric_limits<float>::min() * 2  // 小值但不会下溢BFloat16
     };
 
     for (float f: test_values) {
@@ -187,20 +187,20 @@ TEST(BFloat16Test, ComparisonOperators) {
 
 TEST(BFloat16Test, BitwiseOperations) {
     // 测试位运算
-    BFloat16 a(2.0f);// 0x4000 in bfloat16
-    BFloat16 b(3.0f);// 0x4040 in bfloat16
+    BFloat16 a(2.0f); // 0x4000 in bfloat16
+    BFloat16 b(3.0f); // 0x4040 in bfloat16
 
     BFloat16 result = a;
     result = result | b;
-    EXPECT_EQ(result.x, 0x4040);// 0x4000 | 0x4040 = 0x4040
+    EXPECT_EQ(result.x, 0x4040); // 0x4000 | 0x4040 = 0x4040
 
     result = a;
     result = result & b;
-    EXPECT_EQ(result.x, 0x4000);// 0x4000 & 0x4040 = 0x4000
+    EXPECT_EQ(result.x, 0x4000); // 0x4000 & 0x4040 = 0x4000
 
     result = a;
     result = result ^ b;
-    EXPECT_EQ(result.x, 0x0040);// 0x4000 ^ 0x4040 = 0x0040
+    EXPECT_EQ(result.x, 0x0040); // 0x4000 ^ 0x4040 = 0x0040
 }
 
 TEST(BFloat16Test, NumericLimits) {
@@ -263,7 +263,7 @@ TEST(BFloat16Test, RoundTripAccuracy) {
 
     for (float f: test_values) {
         if (std::isnan(f) || std::isinf(f)) {
-            continue;// 跳过NaN和无穷大，因为它们无法精确比较
+            continue; // 跳过NaN和无穷大，因为它们无法精确比较
         }
 
         BFloat16 bf16 = f;
@@ -618,7 +618,7 @@ TEST(BFloat16MathTest, Fmod) {
             {7.0f, 3.0f}};
 
     for (const auto& [x, y]: test_pairs) {
-        if (y == 0.0f) continue;// 跳过除以零的情况
+        if (y == 0.0f) continue; // 跳过除以零的情况
 
         BFloat16 x_bf16 = x;
         BFloat16 y_bf16 = y;
@@ -647,4 +647,4 @@ TEST(BFloat16MathTest, Fmod) {
     }
 }
 
-}// namespace
+} // namespace

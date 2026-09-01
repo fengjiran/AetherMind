@@ -47,6 +47,6 @@ inline std::string MakeElementwiseMulUnsupportedDTypeMessage(
     return msg;
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

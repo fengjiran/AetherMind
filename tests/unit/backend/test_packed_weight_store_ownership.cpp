@@ -246,4 +246,4 @@ TEST(PackedWeightStoreOwnership, DistinctBindingsShareSelectorWithoutCollision) 
     EXPECT_NE(packed_weight_store.Find(q_key), packed_weight_store.Find(v_key));
 }
 
-}// namespace
+} // namespace

@@ -211,7 +211,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphWithSingleReplacement) {
     EXPECT_EQ(committed->GetNodes().size(), 2U);
     EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).op_type, OpType::kEmbedding);
     EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).inputs[0],
-              committed->GetInputs()[1].value);// tokens_b
+              committed->GetInputs()[1].value); // tokens_b
     EXPECT_TRUE(committed->Validate().ok());
 }
 
@@ -433,7 +433,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphWithMultipleReplacements) {
 
     const StatusOr<ModelGraph> committed = session.Commit();
     ASSERT_TRUE(committed.ok()) << committed.status().ToString();
-    EXPECT_EQ(committed->GetNodes().size(), 3U);// r1 + r2 + n1
+    EXPECT_EQ(committed->GetNodes().size(), 3U); // r1 + r2 + n1
     EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 0}).name, "r1");
     EXPECT_EQ(committed->GetNode(GraphNodeId{.index = 1}).name, "r2");
     EXPECT_TRUE(committed->Validate().ok());
@@ -939,7 +939,7 @@ TEST(GraphRewriteSession, ReplaceSubgraphRejectsInvalidInputId) {
 
     ReplacementNode replacement{
             .op_type = OpType::kEmbedding,
-            .inputs = {GraphValueId{.index = 999}},// invalid
+            .inputs = {GraphValueId{.index = 999}}, // invalid
             .outputs = {ReplacesHidden(GraphValueId{.index = 3}, "hidden_a")},
             .op_params = EmbeddingParams{},
             .name = "invalid_replacement",
@@ -978,7 +978,7 @@ TEST(GraphRewriteSession, ApplyBatchOfMixedMutations) {
     // n0's first input was redirected from tokens_a(v0) to tokens_b(v1)
     const GraphNode& node = committed->GetNode(GraphNodeId{.index = 0});
     ASSERT_EQ(node.inputs.size(), 2U);
-    EXPECT_EQ(node.inputs[0], committed->GetInputs()[1].value);// tokens_b
+    EXPECT_EQ(node.inputs[0], committed->GetInputs()[1].value); // tokens_b
 
     EXPECT_TRUE(committed->Validate().ok());
 }
@@ -1061,7 +1061,7 @@ TEST(GraphRewriteSession, CommitsGraphPreservingDecoderLayerIndex) {
             "embed.weight");
     auto embed_or = graph.AddNode(
             OpType::kEmbedding,
-            3U,// decoder_layer_index = 3
+            3U, // decoder_layer_index = 3
             {tokens, weight},
             {NodeOutputDesc{.payload = ActivationValue{},
                             .name = "hidden"}},
@@ -3323,4 +3323,4 @@ TEST(SubgraphBuilder, ResetAfterFailedCommitRetriesCleanly) {
     EXPECT_TRUE(committed->Validate().ok());
 }
 
-}// namespace
+} // namespace

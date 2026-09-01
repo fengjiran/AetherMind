@@ -154,7 +154,7 @@ std::vector<uint32_t> ExpectedKernelPorts(std::span<const Port> ports) {
     return indices;
 }
 
-}// namespace
+} // namespace
 
 StatusOr<ExecutionPlan> ExecutionPlan::Create(std::vector<ExecutionValueDesc> values,
                                               std::vector<ExecutionValueId> model_inputs,
@@ -365,4 +365,4 @@ Status ExecutionPlan::AddStep(ExecutionStep step) {
     steps_.push_back(std::move(step));
     return Status::Ok();
 }
-}// namespace aethermind
+} // namespace aethermind

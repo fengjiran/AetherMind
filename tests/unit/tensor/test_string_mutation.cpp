@@ -36,7 +36,7 @@ TEST(StringPushBack, WithinLocalBuffer) {
     s.push_back('y');
     EXPECT_EQ(s.size(), 6);
     EXPECT_STREQ(s.c_str(), "xxxxxy");
-    EXPECT_TRUE(s.IsLocal());// 应该仍然使用本地缓冲区
+    EXPECT_TRUE(s.IsLocal()); // 应该仍然使用本地缓冲区
 }
 
 // 测试添加字符达到本地缓冲区容量上限
@@ -44,7 +44,7 @@ TEST(StringPushBack, LocalBufferBoundary) {
     // 创建一个正好达到本地缓冲区容量的字符串
     String s(15, 'a');
     EXPECT_EQ(s.size(), 15);
-    EXPECT_TRUE(s.IsLocal());// 确认使用本地缓冲区
+    EXPECT_TRUE(s.IsLocal()); // 确认使用本地缓冲区
 
     // 添加一个字符，应该仍然可以容纳在本地缓冲区中（包括结束符）
     s.push_back('b');
@@ -82,7 +82,7 @@ TEST(StringPushBack, ExceedLocalBuffer) {
 TEST(StringPushBack, DynamicAllocation) {
     // 创建一个肯定会动态分配的大字符串
     String s(100, 'x');
-    EXPECT_FALSE(s.IsLocal());// 应该使用动态分配
+    EXPECT_FALSE(s.IsLocal()); // 应该使用动态分配
 
     // 添加字符到动态分配的字符串
     s.push_back('y');
@@ -211,12 +211,12 @@ TEST(StringReplace, PositionBasedSubstring) {
     // 测试 replace(pos1, n1, src, pos2, n2)
     String s1("Hello, world!");
     String src("beautiful code");
-    s1.replace(7, 5, src, 0, 9);// 用 "beautiful" 替换 "world"
+    s1.replace(7, 5, src, 0, 9); // 用 "beautiful" 替换 "world"
     EXPECT_TRUE(s1 == "Hello, beautiful!");
 
     // 测试默认 n2 = npos
     String s2("Hello, world!");
-    s2.replace(7, 5, src, 10);// 用 "code" 替换 "world"
+    s2.replace(7, 5, src, 10); // 用 "code" 替换 "world"
     EXPECT_TRUE(s2 == "Hello, code!");
 }
 
@@ -315,7 +315,7 @@ TEST(StringReplace, EdgeCaseLengthVariation) {
 
     // 替换为更短的内容
     s.replace(2, 3, "x");
-    EXPECT_TRUE(s == "abxf");// 注意：f 前有空格，因为我们替换了 'cde' 为 'x'
+    EXPECT_TRUE(s == "abxf"); // 注意：f 前有空格，因为我们替换了 'cde' 为 'x'
     EXPECT_EQ(s.size(), 4);
 
     // 替换为更长的内容
@@ -416,9 +416,9 @@ TEST(StringAppend, AppendPointerAndCount) {
     // 测试追加包含空字符的字符串
     const char mixed[] = "abc\0def";
     String s4("prefix");
-    s4.append(mixed, 7);// 包括空字符在内的7个字符
+    s4.append(mixed, 7); // 包括空字符在内的7个字符
     EXPECT_EQ(s4.size(), 13);
-    EXPECT_EQ(s4[6], 'a');// 验证空字符被正确添加
+    EXPECT_EQ(s4[6], 'a'); // 验证空字符被正确添加
 
     // 测试追加大量字符
     const size_t large_size = 1000;
@@ -458,7 +458,7 @@ TEST(StringAppend, AppendString) {
     target.append(shared);
     EXPECT_EQ(target.size(), 7 + 6);
     EXPECT_STREQ(target, "prefix_shared");
-    EXPECT_EQ(original.use_count(), 1);// 共享引用不应被修改
+    EXPECT_EQ(original.use_count(), 1); // 共享引用不应被修改
 }
 
 // 测试 append(const String& str, size_type pos, size_type n = npos)
@@ -466,13 +466,13 @@ TEST(StringAppend, AppendSubstring) {
     // 基本子字符串追加
     String s1("Hello");
     String s2("Beautiful World");
-    s1.append(s2, 10, 5);// 从位置9开始追加5个字符("World")
+    s1.append(s2, 10, 5); // 从位置9开始追加5个字符("World")
     EXPECT_EQ(s1.size(), 5 + 5);
     EXPECT_STREQ(s1, "HelloWorld");
 
     // 测试默认参数n=npos
     String s3("Hi");
-    s3.append(s2, 10);// 从位置10开始追加到末尾
+    s3.append(s2, 10); // 从位置10开始追加到末尾
     EXPECT_STREQ(s3, "HiWorld");
 
     // 测试pos超出范围（应该抛出异常或安全处理）
@@ -482,7 +482,7 @@ TEST(StringAppend, AppendSubstring) {
     // 测试n大于可用字符数
     String s5("Start");
     String s6("End");
-    s5.append(s6, 1, 10);// 请求10个字符，但只有2个可用
+    s5.append(s6, 1, 10); // 请求10个字符，但只有2个可用
     EXPECT_STREQ(s5, "Startnd");
 
     // 测试pos为0的情况
@@ -597,12 +597,12 @@ TEST(StringAppend, AppendIterators) {
     // 使用子范围迭代器
     std::vector<char> long_vec = {'a', 'b', 'c', 'd', 'e', 'f'};
     String s4("Part: ");
-    s4.append(long_vec.begin() + 2, long_vec.begin() + 5);// 追加 "cde"
+    s4.append(long_vec.begin() + 2, long_vec.begin() + 5); // 追加 "cde"
     EXPECT_STREQ(s4, "Part: cde");
 
     // 使用空范围迭代器
     String s5("Empty: ");
-    s5.append(vec.begin(), vec.begin());// 空范围
+    s5.append(vec.begin(), vec.begin()); // 空范围
     EXPECT_STREQ(s5, "Empty: ");
 }
 
@@ -622,15 +622,15 @@ TEST(StringAppend, ChainedAppend) {
 // 测试append方法在小字符串优化边界的行为
 TEST(StringAppend, AppendAtLocalBufferBoundary) {
     // 创建一个接近本地缓冲区大小的字符串（local_capacity_ = 15）
-    String s(12, 'a');// "aaaaaaaaaaaa"
+    String s(12, 'a'); // "aaaaaaaaaaaa"
     EXPECT_TRUE(s.IsLocal());
 
     // 追加刚好填满本地缓冲区的字符
-    s.append(3, 'b');        // 现在长度为15
-    EXPECT_TRUE(s.IsLocal());// 应该仍然使用本地缓冲区
+    s.append(3, 'b');         // 现在长度为15
+    EXPECT_TRUE(s.IsLocal()); // 应该仍然使用本地缓冲区
 
     // 追加一个字符，可能触发动态分配
-    s.append(1, 'c');// 现在长度为16
+    s.append(1, 'c'); // 现在长度为16
     EXPECT_STREQ(s.c_str(), "aaaaaaaaaaaabbbc");
 
     // 继续追加更多字符
@@ -768,23 +768,23 @@ TEST(StringOperatorPlusEqual, InitializerListAddition) {
     String s4 = "special: ";
     s4 += {'!', '@', '#', '$', '%'};
     EXPECT_EQ(s4.size(), 14);
-    EXPECT_STREQ(s4, "special: !@#$%");// 注意：size()应该是13，因为添加了5个字符
+    EXPECT_STREQ(s4, "special: !@#$%"); // 注意：size()应该是13，因为添加了5个字符
 }
 
 // 测试引用计数和复制时修改
 TEST(StringOperatorPlusEqual, ReferenceCounting) {
     // 测试写时复制
     String s1 = "shared";
-    String s2 = s1;// 共享数据
+    String s2 = s1; // 共享数据
     EXPECT_TRUE(s1.unique());
     EXPECT_TRUE(s2.unique());
 
     // 修改s1应该触发复制
     s1 += "_modified";
     EXPECT_TRUE(s1.unique());
-    EXPECT_TRUE(s2.unique());// s2现在应该有自己的副本
+    EXPECT_TRUE(s2.unique()); // s2现在应该有自己的副本
     EXPECT_STREQ(s1.c_str(), "shared_modified");
     EXPECT_STREQ(s2.c_str(), "shared");
 }
 
-}  // namespace
+} // namespace

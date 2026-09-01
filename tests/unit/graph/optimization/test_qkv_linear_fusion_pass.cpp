@@ -491,4 +491,4 @@ TEST(QkvLinearFusionPass, DefaultPipelineSkipsQkvAtOptLevelOne) {
     EXPECT_EQ(result->FindNodesByOpType(OpType::kLinear).size(), 3U);
 }
 
-}// namespace
+} // namespace

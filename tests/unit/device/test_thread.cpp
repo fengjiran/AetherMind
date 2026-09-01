@@ -32,8 +32,8 @@ TEST(ThreadBasicTest, LambdaExecution) {
     t.join();
 
     // 3. 验证结果
-    EXPECT_FALSE(t.joinable());// join 之后变为不可 join
-    EXPECT_TRUE(is_executed);  // 线程任务已完成
+    EXPECT_FALSE(t.joinable()); // join 之后变为不可 join
+    EXPECT_TRUE(is_executed);   // 线程任务已完成
 }
 
 // =========================================================================
@@ -41,13 +41,13 @@ TEST(ThreadBasicTest, LambdaExecution) {
 // =========================================================================
 // 辅助函数：按值接收
 void thread_by_value(int val, std::atomic<int>& output) {
-    val += 100;// 修改的是副本
+    val += 100; // 修改的是副本
     output = val;
 }
 
 // 辅助函数：按引用接收
 void thread_by_ref(int& val) {
-    val = 100;// 修改的是本体
+    val = 100; // 修改的是本体
 }
 
 TEST(ThreadParamTest, PassByValue) {
@@ -59,7 +59,7 @@ TEST(ThreadParamTest, PassByValue) {
     t.join();
 
     EXPECT_EQ(result, 110);
-    EXPECT_EQ(input, 10);// input 保持不变，证明是拷贝传递
+    EXPECT_EQ(input, 10); // input 保持不变，证明是拷贝传递
 }
 
 TEST(ThreadParamTest, PassByRef) {
@@ -105,8 +105,8 @@ TEST(ThreadMoveTest, MoveOwnership) {
     std::thread t2 = std::move(t1);
 
     // 3. 验证状态
-    EXPECT_FALSE(t1.joinable());// t1 变为空对象
-    EXPECT_TRUE(t2.joinable()); // t2 接管了线程
+    EXPECT_FALSE(t1.joinable()); // t1 变为空对象
+    EXPECT_TRUE(t2.joinable());  // t2 接管了线程
 
     // 4. 只需 join t2
     t2.join();
@@ -129,7 +129,7 @@ TEST(ThreadDetachTest, DetachExecution) {
         // 分离线程：让它在后台跑
         t.detach();
 
-        EXPECT_FALSE(t.joinable());// detach 后不可再 join
+        EXPECT_FALSE(t.joinable()); // detach 后不可再 join
         // t 在这里析构，但不会导致 terminate，因为已经 detach 了
     }
 
@@ -188,7 +188,7 @@ TEST(JThreadStopTest, ExplicitStopRequest) {
     std::this_thread::sleep_for(20ms);
 
     // 主线程显式请求停止
-    EXPECT_FALSE(stopped_gracefully);// 此时应该还在跑
+    EXPECT_FALSE(stopped_gracefully); // 此时应该还在跑
     t.request_stop();
 
     // 等待线程结束
@@ -197,4 +197,4 @@ TEST(JThreadStopTest, ExplicitStopRequest) {
     EXPECT_TRUE(stopped_gracefully);
 }
 
-}// namespace
+} // namespace

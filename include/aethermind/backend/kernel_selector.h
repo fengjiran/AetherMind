@@ -3,4 +3,4 @@
 
 #include "aethermind/base/kernel_selector.h"
 
-#endif// AETHERMIND_BACKEND_KERNEL_SELECTOR_H
+#endif // AETHERMIND_BACKEND_KERNEL_SELECTOR_H

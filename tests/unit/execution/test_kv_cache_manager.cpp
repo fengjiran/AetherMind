@@ -222,4 +222,4 @@ TEST(KVCacheManager, ReserveRejectsRequestsBeyondPhysicalCapacity) {
     EXPECT_EQ(view.status().code(), StatusCode::kOutOfRange);
 }
 
-}// namespace
+} // namespace

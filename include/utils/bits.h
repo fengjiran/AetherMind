@@ -84,6 +84,6 @@ struct alignas(2) bits16 {
     explicit bits16(underlying value) : value_(value) {}
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_UTILS_BITS_H
+#endif // AETHERMIND_UTILS_BITS_H

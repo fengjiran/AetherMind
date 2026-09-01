@@ -26,6 +26,6 @@ namespace aethermind::detail {
 /// @return True when nodes of `op_type` may be removed.
 AM_NODISCARD bool IsDceRemovableOp(OpType op_type) noexcept;
 
-}// namespace aethermind::detail
+} // namespace aethermind::detail
 
-#endif// AETHERMIND_GRAPH_OPTIMIZATION_OP_REMOVABILITY_INTERNAL_H
+#endif // AETHERMIND_GRAPH_OPTIMIZATION_OP_REMOVABILITY_INTERNAL_H

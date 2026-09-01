@@ -99,4 +99,4 @@ TEST(CpuWorkspaceArena, ZeroAlignmentReturnsEmptyBinding) {
     EXPECT_EQ(arena.Bind(req).data, nullptr);
 }
 
-}// namespace
+} // namespace

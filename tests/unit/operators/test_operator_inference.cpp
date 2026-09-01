@@ -245,4 +245,4 @@ TEST(OperatorSelectorDTypes, RejectsSchemaWithoutActivationSource) {
               std::string::npos);
 }
 
-}// namespace
+} // namespace

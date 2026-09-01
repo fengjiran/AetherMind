@@ -38,6 +38,6 @@ private:
     uint64_t repr_ = 0;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_DISPATCH_KEY_SET_H
+#endif // AETHERMIND_DISPATCH_KEY_SET_H

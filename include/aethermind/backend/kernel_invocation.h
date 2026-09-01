@@ -15,5 +15,5 @@ struct KernelInvocation {
     KernelSelector selector{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 #endif

@@ -28,4 +28,4 @@ Status InvokeKernel(const ResolvedKernel& kernel,
     return kernel.fn(context);
 }
 
-}// namespace aethermind
+} // namespace aethermind

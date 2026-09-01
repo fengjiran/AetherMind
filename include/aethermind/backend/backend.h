@@ -32,5 +32,5 @@ public:
     AM_NODISCARD virtual const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept = 0;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 #endif

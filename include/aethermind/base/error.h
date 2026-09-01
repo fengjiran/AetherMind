@@ -169,6 +169,6 @@ private:
 /// Like AM_THROW but suppresses stderr logging before throwing.
 #define AM_THROW_SILENT(ErrorKind) ErrorBuilder(#ErrorKind, TRACEBACK_HERE, false).stream()
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_BASE_ERROR_H
+#endif // AETHERMIND_BASE_ERROR_H

@@ -46,7 +46,7 @@ StatusOr<const KernelDescriptor*> ResolveEligibleDescriptor(
     return best;
 }
 
-}// namespace
+} // namespace
 
 CpuBackend::CpuBackend() : CpuBackend(CpuFeaturePolicy{}) {}
 
@@ -120,4 +120,4 @@ std::unique_ptr<Backend> CpuBackendFactory::Create() const {
     return std::make_unique<CpuBackend>(policy_);
 }
 
-}// namespace aethermind
+} // namespace aethermind

@@ -686,4 +686,4 @@ TEST(CommitPruningFailure, RemovedProducerConsumedByRetainedNode) {
               std::string::npos);
 }
 
-}// namespace
+} // namespace

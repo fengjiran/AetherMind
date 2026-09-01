@@ -18,7 +18,7 @@ constexpr EvaluatorEntry kEvaluators[] = {
         {.op_type = OpType::kSiluMul, .accessor = &detail::GetSiluMulConstEvaluator},
 };
 
-}// namespace
+} // namespace
 
 const ConstEvaluator* FindConstEvaluator(OpType op_type) noexcept {
     auto pred = [op_type](const EvaluatorEntry& entry) {
@@ -32,4 +32,4 @@ const ConstEvaluator* FindConstEvaluator(OpType op_type) noexcept {
     return &it->accessor();
 }
 
-}// namespace aethermind
+} // namespace aethermind

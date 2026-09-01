@@ -90,6 +90,6 @@ public:
 StatusOr<StateAliasPlan> ResolveStateAliasesForExecution(
         const LoweredGraph& lowered);
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

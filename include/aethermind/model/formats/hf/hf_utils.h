@@ -42,6 +42,6 @@ Status RejectExistingPathIfSymlink(const std::filesystem::path& path,
 /// @return File contents, or an error when the file cannot be read.
 StatusOr<std::string> ReadFileText(const std::filesystem::path& path);
 
-}// namespace aethermind::hf
+} // namespace aethermind::hf
 
 #endif

@@ -110,6 +110,6 @@ Status ValidateTensorBindingPremises(
         std::span<const TensorView> inputs,
         std::span<const MutableTensorView> outputs);
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_SHAPE_INFERENCE_SHAPE_CONSTRAINT_EVALUATOR_H
+#endif // AETHERMIND_SHAPE_INFERENCE_SHAPE_CONSTRAINT_EVALUATOR_H

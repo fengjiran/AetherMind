@@ -16,7 +16,7 @@ Status AddStageContext(const Status& status, std::string_view stage) {
     return status.WithMessage(std::string(stage) + ": " + status.message());
 }
 
-}// namespace
+} // namespace
 
 StatusOr<LoweredModelArtifact> ModelCompiler::Compile(
         std::unique_ptr<LoadedModel> model,
@@ -58,4 +58,4 @@ StatusOr<LoweredModelArtifact> ModelCompiler::LoadAndCompile(
     return Compile(std::move(*model), compile_options);
 }
 
-}// namespace aethermind
+} // namespace aethermind

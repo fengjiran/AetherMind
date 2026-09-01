@@ -140,4 +140,4 @@ TEST(ModelLoader_HfWeightResolverTest, TreatsLmHeadAsOptional) {
     EXPECT_FALSE(resolved->lm_head.has_value());
 }
 
-}// namespace
+} // namespace

@@ -676,7 +676,7 @@ void TestComplexFunctionEdgeCases() {
     Complex zero(0.0, 0.0);
     Complex log_zero = std::log(zero);
     EXPECT_TRUE(std::isinf(log_zero.real()));
-    EXPECT_TRUE(log_zero.real() < 0);// log(0) 应该是负无穷
+    EXPECT_TRUE(log_zero.real() < 0); // log(0) 应该是负无穷
 }
 
 TEST(ComplexTest, FunctionEdgeCases) {
@@ -710,4 +710,4 @@ TEST(ComplexTest, CrossTypeFunctions) {
     TestCrossTypeComplexFunctions<double, float>();
 }
 
-}// namespace
+} // namespace

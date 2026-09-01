@@ -31,7 +31,7 @@ constexpr size_t kLargeGrowthFactorDenominator = 4;
 constexpr size_t kLargeThresholdBytes = 4096;
 constexpr size_t kPageSizeBytes = 4096;
 
-}// namespace config
-}// namespace aethermind
+} // namespace config
+} // namespace aethermind
 
-#endif// AETHERMIND_AMSTRING_CONFIG_HPP
+#endif // AETHERMIND_AMSTRING_CONFIG_HPP

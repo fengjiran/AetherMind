@@ -170,6 +170,6 @@ bool SafeMultiplyU64(const Container& c, uint64_t* out) noexcept {
     return SafeMultiplyU64(c.begin(), c.end(), out);
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_UTILS_OVERFLOW_CHECK_H
+#endif // AETHERMIND_UTILS_OVERFLOW_CHECK_H

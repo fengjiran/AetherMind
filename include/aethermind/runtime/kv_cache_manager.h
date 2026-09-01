@@ -77,6 +77,6 @@ private:
     bool initialized_ = false;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

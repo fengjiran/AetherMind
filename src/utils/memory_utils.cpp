@@ -24,4 +24,4 @@ void FillMemoryJunk(void* data, size_t nbytes) {
     }
 }
 
-}// namespace aethermind
+} // namespace aethermind

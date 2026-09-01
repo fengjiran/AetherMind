@@ -120,4 +120,4 @@ std::ostream& operator<<(std::ostream& os, const DataType& dtype) {
 }
 
 
-}// namespace aethermind
+} // namespace aethermind

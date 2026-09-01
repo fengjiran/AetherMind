@@ -469,4 +469,4 @@ TEST(ConstEvaluator, EvaluatesSiluRankZeroBFloat16) {
             BFloat16(expected));
 }
 
-}// namespace
+} // namespace

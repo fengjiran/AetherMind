@@ -102,4 +102,4 @@ TEST(KernelRegistryCandidates, IncompatiblePhaseReturnsNoCandidates) {
     EXPECT_TRUE(candidates->empty());
 }
 
-}// namespace
+} // namespace

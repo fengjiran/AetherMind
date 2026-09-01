@@ -86,6 +86,6 @@ inline std::string MakeLinearUnsupportedWeightDTypeMessage(std::string_view cont
 }
 
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_OPERATORS_OPS_LINEAR_OP_H
+#endif // AETHERMIND_OPERATORS_OPS_LINEAR_OP_H

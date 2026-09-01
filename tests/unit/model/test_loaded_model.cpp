@@ -180,4 +180,4 @@ TEST(LoadedModel, StoresResolvedWeightsFromHfResolver) {
     EXPECT_TRUE(resolved_weights.layers[0].norm.input_rmsnorm.IsValid());
 }
 
-}// namespace
+} // namespace

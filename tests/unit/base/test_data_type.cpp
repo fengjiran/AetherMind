@@ -74,7 +74,7 @@ TEST(DataTypeTest, TypeChecks) {
     DataType boolean = DataType::Bool();
     EXPECT_TRUE(boolean.IsBool());
     EXPECT_FALSE(boolean.IsInt());
-    EXPECT_TRUE(boolean.IsUint(true));// Bool is implemented as UInt(1)
+    EXPECT_TRUE(boolean.IsUint(true)); // Bool is implemented as UInt(1)
 
     // 浮点类型
     DataType float32 = DataType::Float(32);
@@ -156,25 +156,25 @@ TEST(DataTypeTest, VectorChecks) {
 // 测试DataType的辅助方法
 TEST(DataTypeTest, HelperMethods) {
     DataType float32 = DataType::Float(32);
-    EXPECT_EQ(float32.nbytes(), 4);// scalar: 32 bits = 4 bytes
+    EXPECT_EQ(float32.nbytes(), 4); // scalar: 32 bits = 4 bytes
 
     DataType float32_vec = DataType::Float(32, 4);
-    EXPECT_EQ(float32_vec.nbytes(), 16);// vector: 4 × 32 bits = 16 bytes
+    EXPECT_EQ(float32_vec.nbytes(), 16); // vector: 4 × 32 bits = 16 bytes
 
     DataType int8 = DataType::Int(8);
-    EXPECT_EQ(int8.nbytes(), 1);// scalar: 8 bits = 1 byte
+    EXPECT_EQ(int8.nbytes(), 1); // scalar: 8 bits = 1 byte
 
     DataType bool_type = DataType::Bool();
-    EXPECT_EQ(bool_type.nbytes(), 1);// scalar bool: 1 bit → 1 byte
+    EXPECT_EQ(bool_type.nbytes(), 1); // scalar bool: 1 bit → 1 byte
 
     DataType boolx4 = DataType::Bool(4);
-    EXPECT_EQ(boolx4.nbytes(), 1);// packed sub-byte: 4 × 1 bit = 1 byte
+    EXPECT_EQ(boolx4.nbytes(), 1); // packed sub-byte: 4 × 1 bit = 1 byte
 
     DataType f6x2 = DataType::Float6E2M3FN(2);
-    EXPECT_EQ(f6x2.nbytes(), 2);// packed sub-byte: 2 × 6 bits = 2 bytes
+    EXPECT_EQ(f6x2.nbytes(), 2); // packed sub-byte: 2 × 6 bits = 2 bytes
 
     DataType f4x2 = DataType::Float4E2M1FN(2);
-    EXPECT_EQ(f4x2.nbytes(), 1);// packed sub-byte: 2 × 4 bits = 1 byte
+    EXPECT_EQ(f4x2.nbytes(), 1); // packed sub-byte: 2 × 4 bits = 1 byte
 
     DataType scalable_float32 = DataType::ScalableFloat(32, 4);
     EXPECT_DEATH(static_cast<void>(scalable_float32.nbytes()), "Scalable vector DataType");
@@ -426,4 +426,4 @@ TEST(ToStringDataTypeValueTest, CombinedWithOtherMethods) {
     EXPECT_EQ(ToString(float16), "Half");
 }
 
-}// namespace
+} // namespace

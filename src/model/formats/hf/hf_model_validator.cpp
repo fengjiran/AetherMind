@@ -505,7 +505,7 @@ Status ValidateResolvedModelDTypes(const HfModelConfig& config,
     return Status::Ok();
 }
 
-}// namespace
+} // namespace
 
 Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const ModelValidationOptions& options) {
     if (config.model_type.empty()) {
@@ -720,4 +720,4 @@ Status HfModelValidator::ValidateResolvedModel(const HfModelConfig& config,
     return Status::Ok();
 }
 
-}// namespace aethermind
+} // namespace aethermind

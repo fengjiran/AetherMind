@@ -30,7 +30,7 @@ Status AddLoweringStateAliases(const OperatorSchema& schema,
     return Status::Ok();
 }
 
-}// namespace
+} // namespace
 
 StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
                                        const GraphLoweringConfig& config) {
@@ -131,4 +131,4 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
     return std::move(lowered).Build();
 }
 
-}// namespace aethermind
+} // namespace aethermind

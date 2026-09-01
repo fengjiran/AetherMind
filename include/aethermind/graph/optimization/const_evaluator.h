@@ -184,6 +184,6 @@ StatusOr<FoldingCost> EstimateCost(const TensorSpec& spec,
 /// @return Ok() when within budget, or Unimplemented when any limit is exceeded.
 Status CheckFoldingBudget(const FoldingCost& cost,
                           const ConstEvalPolicy& policy) noexcept;
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

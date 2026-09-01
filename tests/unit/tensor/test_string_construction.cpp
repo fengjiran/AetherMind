@@ -66,7 +66,7 @@ TEST(StringConstructorFill, SpecialCharacters) {
 // 测试非ASCII字符
 TEST(StringConstructorFill, NonAsciiCharacters) {
     // 测试扩展ASCII字符
-    String extended_ascii(2, static_cast<char>(169));// © 符号
+    String extended_ascii(2, static_cast<char>(169)); // © 符号
     EXPECT_EQ(extended_ascii.size(), 2);
     EXPECT_EQ(extended_ascii.data()[0], static_cast<char>(169));
     EXPECT_EQ(extended_ascii.data()[1], static_cast<char>(169));
@@ -209,7 +209,7 @@ TEST(StringIteratorConstructor, SpecialCharacters) {
 
     // 包含空字符的范围
     std::string null_char_str = "ab\0cd";
-    String s2(null_char_str.begin(), null_char_str.begin() + 5);// 包含空字符和后续字符
+    String s2(null_char_str.begin(), null_char_str.begin() + 5); // 包含空字符和后续字符
     EXPECT_EQ(s2.size(), 5);
     EXPECT_EQ(s2[0], 'a');
     EXPECT_EQ(s2[1], 'b');
@@ -549,4 +549,4 @@ TEST(String, AnyFromStringLiteral) {
     EXPECT_EQ(c.try_cast<std::string>().value(), "long string very long");
 }
 
-}  // namespace
+} // namespace

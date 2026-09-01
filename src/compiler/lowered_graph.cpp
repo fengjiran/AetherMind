@@ -109,7 +109,7 @@ Status ValidateStateAlias(const LoweredGraph& lowered,
     return Status::Ok();
 }
 
-}// namespace
+} // namespace
 
 Status LoweredGraph::Builder::Validate() const {
     LoweredGraph lowered;
@@ -223,4 +223,4 @@ Status ValidateLoweredGraph(const LoweredGraph& lowered) {
     return Status::Ok();
 }
 
-}// namespace aethermind
+} // namespace aethermind

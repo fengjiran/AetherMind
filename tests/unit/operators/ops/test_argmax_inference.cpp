@@ -59,4 +59,4 @@ TEST(ArgmaxInference, RejectsFloat8E4M3FN) {
     EXPECT_FALSE(InferOperator(OpType::kArgmax, ArgmaxParams{-1}, inputs).ok());
 }
 
-}// namespace
+} // namespace

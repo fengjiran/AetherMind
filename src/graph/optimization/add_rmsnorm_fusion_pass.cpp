@@ -218,7 +218,7 @@ Status TryFuseAddRmsNorm(GraphRewriteSession& session,
     return builder.Commit();
 }
 
-}// namespace
+} // namespace
 
 std::string_view AddRmsNormFusionPass::Name() const noexcept {
     return "AddRmsNormFusionPass";
@@ -239,4 +239,4 @@ Status AddRmsNormFusionPass::Run(GraphRewriteSession& session,
     return Status::Ok();
 }
 
-}// namespace aethermind
+} // namespace aethermind

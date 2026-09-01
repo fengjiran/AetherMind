@@ -296,4 +296,4 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsHeaderExceedingMaxSize) {
               std::string::npos);
 }
 
-}// namespace
+} // namespace

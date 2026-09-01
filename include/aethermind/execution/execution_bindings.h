@@ -98,6 +98,6 @@ StatusOr<BindingTable> BuildExecutionBindings(
         const ExternalValueBindings& external,
         Allocator& act_allocator);
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

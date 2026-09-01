@@ -46,6 +46,6 @@ struct ExecutionPlanNodeSpec {
     OpParams op_params{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

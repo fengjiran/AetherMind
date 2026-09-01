@@ -44,6 +44,6 @@ struct StateAliasPlan {
             size_t step_index) const noexcept;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

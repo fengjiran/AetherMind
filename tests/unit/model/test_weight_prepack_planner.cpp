@@ -806,7 +806,7 @@ TEST(WeightPrepackPlanner, BuildRequestsSkipsPlainWeightSteps) {
     ASSERT_TRUE(linear.ok()) << linear.status().ToString();
     graph.MarkOutput(linear->outputs[0]);
 
-    GraphLoweringConfig config;// enable_packed_weights defaults to false.
+    GraphLoweringConfig config; // enable_packed_weights defaults to false.
     const auto lowered = LowerModelGraph(graph, config);
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
 
@@ -983,4 +983,4 @@ TEST(WeightPrepackPlanner, UntrustedBuildRejectsArtifactShapeMismatch) {
     ASSERT_FALSE(plan.ok());
     EXPECT_NE(plan.status().message().find("logical metadata"), std::string::npos);
 }
-}// namespace
+} // namespace

@@ -18,8 +18,8 @@
 /// for concurrent mutation.
 ///
 /// Dependencies: c_api.h for am_status_code, macros.h for AM_NODISCARD
-#include "c_api.h"
 #include "aethermind/base/macros.h"
+#include "c_api.h"
 
 #include <concepts>
 #include <stdexcept>
@@ -377,7 +377,7 @@ inline Status ExtractStatus(Status&& status) noexcept;
 template<typename T>
 Status ExtractStatus(StatusOr<T>&& result) noexcept;
 
-}// namespace detail
+} // namespace detail
 
 /// @brief Evaluates expr and returns its status if not OK.
 ///
@@ -511,13 +511,13 @@ public:
                 (!std::same_as<std::decay_t<U>, StatusOr>) &&
                 std::convertible_to<U, T>
     StatusOr(U&& value) noexcept(std::is_nothrow_constructible_v<T, U&&>)
-        : storage_(std::in_place_type<T>, std::forward<U>(value)) {}// NOLINT(google-explicit-constructor)
+        : storage_(std::in_place_type<T>, std::forward<U>(value)) {} // NOLINT(google-explicit-constructor)
 
     /// @brief Constructs a StatusOr by constructing T in-place.
     /// @tparam Args Constructor argument types for T.
     /// @param args Arguments forwarded to T's constructor.
     template<typename... Args>
-    StatusOr(std::in_place_t, Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>)// NOLINT(google-explicit-constructor)
+    StatusOr(std::in_place_t, Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...>) // NOLINT(google-explicit-constructor)
         : storage_(std::in_place_type<T>, std::forward<Args>(args)...) {}
 
     /// @brief Constructs from an error status.
@@ -532,7 +532,7 @@ public:
     /// @brief Constructs from a moved error status.
     /// @param status A non-OK error status.
     /// @throws std::invalid_argument if status is OK.
-    StatusOr(Status&& status) : storage_(std::move(status)) {// NOLINT(google-explicit-constructor)
+    StatusOr(Status&& status) : storage_(std::move(status)) { // NOLINT(google-explicit-constructor)
         if (std::get<Status>(storage_).ok()) {
             throw std::invalid_argument("StatusOr error constructor requires non-OK status");
         }
@@ -700,8 +700,8 @@ Status ExtractStatus(StatusOr<T>&& result) noexcept {
     return std::move(result).status();
 }
 
-}// namespace detail
+} // namespace detail
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

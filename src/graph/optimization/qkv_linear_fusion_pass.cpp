@@ -310,7 +310,7 @@ Status FuseQkvLinear(GraphRewriteSession& session, const QkvLinearPattern& patte
     return builder.Commit();
 }
 
-}// namespace
+} // namespace
 
 std::string_view QkvLinearFusionPass::Name() const noexcept {
     return "QkvLinearFusionPass";
@@ -342,4 +342,4 @@ Status QkvLinearFusionPass::Run(GraphRewriteSession& session, const PassContext&
     return Status::Ok();
 }
 
-}// namespace aethermind
+} // namespace aethermind

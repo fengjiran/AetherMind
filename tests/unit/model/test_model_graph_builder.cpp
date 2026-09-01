@@ -778,4 +778,4 @@ TEST(ModelGraphBuilder, RejectsUnsupportedRoPEUnknownScaling) {
               std::string::npos);
 }
 
-}// namespace
+} // namespace

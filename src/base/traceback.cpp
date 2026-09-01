@@ -201,7 +201,7 @@ int BacktraceFullCallback(void* data, uintptr_t pc, const char* filename, int li
     return 0;
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 #if BACKTRACE_ON_SEGFAULT
 void backtrace_handler(int sig) {
@@ -260,7 +260,7 @@ const char* AetherMindTraceback(AM_MAYBE_UNUSED const char* filename,
 
 #else
 
-}// namespace aethermind
+} // namespace aethermind
 
 // Stubs for declarations in traceback.h. The non-libbacktrace build does not
 // perform backtrace collection, so these are never exercised at runtime, but

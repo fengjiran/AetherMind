@@ -28,7 +28,7 @@ AM_ALWAYS_INLINE void RmsNormRowFp32Scalar(float* output,
     }
 }
 
-}// namespace
+} // namespace
 
 
 Status RunRmsNormFp32Scalar(const RmsNormFp32KernelArgs& args) noexcept {
@@ -46,4 +46,4 @@ Status RunRmsNormFp32Scalar(const RmsNormFp32KernelArgs& args) noexcept {
     return Status::Ok();
 }
 
-}// namespace aethermind::cpu::detail
+} // namespace aethermind::cpu::detail

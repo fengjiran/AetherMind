@@ -63,6 +63,6 @@ struct WorkspaceRequirement {
     }
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_BASE_WORKSPACE_TYPES_H
+#endif // AETHERMIND_BASE_WORKSPACE_TYPES_H

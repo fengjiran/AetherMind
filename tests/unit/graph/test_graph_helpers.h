@@ -14,6 +14,6 @@ inline TensorSpec Spec(DataType dtype, std::vector<int64_t> shape) {
     return {.dtype = dtype, .shape = SymbolicShape(IntArrayView(shape))};
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_GRAPH_TEST_GRAPH_HELPERS_H
+#endif // AETHERMIND_GRAPH_TEST_GRAPH_HELPERS_H

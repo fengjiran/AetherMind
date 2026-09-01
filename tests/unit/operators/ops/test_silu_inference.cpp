@@ -179,4 +179,4 @@ TEST(SiluInference, AcceptsFloat8E5M2) {
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float8E5M2());
 }
 
-}// namespace
+} // namespace

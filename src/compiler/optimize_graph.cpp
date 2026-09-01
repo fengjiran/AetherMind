@@ -30,11 +30,11 @@ GraphPassManager BuildDefaultOptPipeline(PassContext context) {
     return pipeline;
 }
 
-}// namespace
+} // namespace
 
 StatusOr<ModelGraph> OptimizeModelGraph(const ModelGraph& graph,
                                         PassContext context) {
     return BuildDefaultOptPipeline(context).Run(graph);
 }
 
-}// namespace aethermind
+} // namespace aethermind

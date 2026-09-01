@@ -20,7 +20,7 @@ struct ObjectUnsafe;
 template<typename Derived>
 class ObjectAllocatorBase;
 
-}// namespace details
+} // namespace details
 
 /// Flags to indicate the type of pointer that decremented the reference count.
 enum DeleterFlag : uint8_t {
@@ -167,7 +167,7 @@ class ObjectPtr final {
 public:
     ObjectPtr() noexcept : ObjectPtr(empty_sentinel_type::singleton(), DoNotIncRefCountTag()) {}
 
-    ObjectPtr(std::nullptr_t) noexcept : ObjectPtr(empty_sentinel_type::singleton(), DoNotIncRefCountTag()) {}// NOLINT
+    ObjectPtr(std::nullptr_t) noexcept : ObjectPtr(empty_sentinel_type::singleton(), DoNotIncRefCountTag()) {} // NOLINT
 
     ObjectPtr(T* ptr, DoNotIncRefCountTag) noexcept : ptr_(ptr) {}
 
@@ -180,14 +180,14 @@ public:
     }
 
     template<typename Derived>
-    ObjectPtr(const ObjectPtr<Derived>& other)// NOLINT
+    ObjectPtr(const ObjectPtr<Derived>& other) // NOLINT
         : ptr_(RemapEmptyObjectSentinel(other.ptr_)) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
         retain();
     }
 
     template<typename Derived>
-    ObjectPtr(ObjectPtr<Derived>&& other) noexcept// NOLINT
+    ObjectPtr(ObjectPtr<Derived>&& other) noexcept // NOLINT
         : ptr_(RemapEmptyObjectSentinel(other.ptr_)) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
         other.ptr_ = EmptyObjectSentinel<Derived>::singleton();
@@ -264,7 +264,7 @@ public:
         return ptr_;
     }
 
-    operator bool() const noexcept {// NOLINT
+    operator bool() const noexcept { // NOLINT
         return defined();
     }
 
@@ -382,14 +382,14 @@ public:
     }
 
     template<typename Derived>
-    WeakObjectPtr(const WeakObjectPtr<Derived>& other)// NOLINT
+    WeakObjectPtr(const WeakObjectPtr<Derived>& other) // NOLINT
         : ptr_(RemapEmptyObjectSentinel(other.ptr_)) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
         retain();
     }
 
     template<typename Derived>
-    WeakObjectPtr(WeakObjectPtr<Derived>&& other) noexcept// NOLINT
+    WeakObjectPtr(WeakObjectPtr<Derived>&& other) noexcept // NOLINT
         : ptr_(RemapEmptyObjectSentinel(other.ptr_)) {
         static_assert(std::is_base_of_v<T, Derived>, "Type mismatch, Derived must be derived from T");
         other.ptr_ = EmptyObjectSentinel<Derived>::singleton();
@@ -564,7 +564,7 @@ struct ObjectUnsafe {
     }
 };
 
-}// namespace details
+} // namespace details
 
 template<typename T>
 void swap(ObjectPtr<T>& lhs, ObjectPtr<T>& rhs) noexcept {
@@ -626,7 +626,7 @@ bool operator!=(const WeakObjectPtr<T1>& lhs, const WeakObjectPtr<T2>& rhs) noex
     return !(lhs == rhs);
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 namespace std {
 template<typename T>
@@ -642,6 +642,6 @@ struct hash<aethermind::WeakObjectPtr<T>> {
         return std::hash<T*>()(ptr.unsafe_get());
     }
 };
-}// namespace std
+} // namespace std
 
-#endif// AETHERMIND_BASE_OBJECT_H
+#endif // AETHERMIND_BASE_OBJECT_H

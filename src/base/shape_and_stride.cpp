@@ -168,4 +168,4 @@ int64_t ShapeAndStride::max_element_offset() const {
     return offset;
 }
 
-}// namespace aethermind
+} // namespace aethermind

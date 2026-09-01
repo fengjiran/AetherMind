@@ -88,7 +88,7 @@ AM_NODISCARD bool operator!=(ArrayView<T> a, ArrayView<T> b) noexcept {
     return !(a == b);
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 /// Stream formatting for IntArrayView (global scope for ADL).
 inline std::ostream& operator<<(std::ostream& os, aethermind::IntArrayView array) {
@@ -122,7 +122,7 @@ public:
 
     ArrayView() : data_(nullptr), size_(0) {}
 
-    explicit ArrayView(const T& e) : ArrayView(&e, 1) {}// NOLINT
+    explicit ArrayView(const T& e) : ArrayView(&e, 1) {} // NOLINT
 
     ArrayView(const T* begin, const T* end) : ArrayView(begin, end - begin) {}
 
@@ -138,17 +138,17 @@ public:
              typename = std::enable_if_t<std::is_same_v<U, T*> || std::is_same_v<U, const T*>>>
 #endif
     ArrayView(const Container& container) : ArrayView(container.data(), container.size()) {
-    }// NOLINT
+    } // NOLINT
 
-    ArrayView(const std::vector<T>& vec) : ArrayView(vec.data(), vec.size()) {// NOLINT
+    ArrayView(const std::vector<T>& vec) : ArrayView(vec.data(), vec.size()) { // NOLINT
         static_assert(!std::is_same_v<T, bool>, "ArrayView<bool> cannot be constructed from a std::vector<bool> bitfield.");
     }
 
     template<size_type N>
-    ArrayView(const std::array<T, N>& arr) : ArrayView(arr.data(), N) {}// NOLINT
+    ArrayView(const std::array<T, N>& arr) : ArrayView(arr.data(), N) {} // NOLINT
 
     template<size_type N>
-    ArrayView(const T (&arr)[N]) : ArrayView(arr, N) {}// NOLINT
+    ArrayView(const T (&arr)[N]) : ArrayView(arr, N) {} // NOLINT
 
     ArrayView(const std::initializer_list<T>& list)
         : ArrayView(list.begin() == list.end() ? static_cast<T*>(nullptr) : list.begin(), list.size()) {}
@@ -349,7 +349,7 @@ bool operator!=(ArrayView<T> a, const std::vector<T>& b) {
     return !a.equals(ArrayView<T>(b));
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 namespace std {
 
@@ -365,8 +365,8 @@ struct hash<aethermind::ArrayView<T>> {
     }
 };
 
-}// namespace std
+} // namespace std
 
 #endif
 
-#endif// AETHERMIND_ARRAY_REF_H
+#endif // AETHERMIND_ARRAY_REF_H

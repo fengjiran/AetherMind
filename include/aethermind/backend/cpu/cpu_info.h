@@ -27,7 +27,7 @@ AM_NODISCARD StatusOr<CpuCapabilities> ApplyCpuFeaturePolicy(
         CpuCapabilities capabilities,
         const CpuFeaturePolicy& policy) noexcept;
 
-}// namespace cpu
-}// namespace aethermind
+} // namespace cpu
+} // namespace aethermind
 
-#endif// AETHERMIND_CPU_INFO_H
+#endif // AETHERMIND_CPU_INFO_H

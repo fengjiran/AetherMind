@@ -9,6 +9,6 @@ namespace aethermind {
 
 AM_NODISCARD float DotProductAvx2Unroll(const float* a, const float* b, std::size_t n) noexcept;
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

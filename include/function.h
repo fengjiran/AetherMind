@@ -77,9 +77,9 @@ void unpack_call(const F& callable, std::index_sequence<Is...>, const String* op
     constexpr size_t nargs = sizeof...(Is);
     if (nargs != num_args) {
         AM_THROW(TypeError) << "Mismatched number of arguments when calling: `"
-                                    << (opt_name == nullptr ? "" : *opt_name)
-                                    << (f_schema == nullptr ? "" : (*f_schema)()) << "`. Expected " << nargs
-                                    << " but got " << num_args << " arguments";
+                            << (opt_name == nullptr ? "" : *opt_name)
+                            << (f_schema == nullptr ? "" : (*f_schema)()) << "`. Expected " << nargs
+                            << " but got " << num_args << " arguments";
     }
 
     if constexpr (std::is_same_v<R, void>) {
@@ -89,7 +89,7 @@ void unpack_call(const F& callable, std::index_sequence<Is...>, const String* op
     }
 }
 
-}// namespace details
+} // namespace details
 
 class FunctionImpl : public Object {
 public:
@@ -239,9 +239,9 @@ public:
 
     TypedFunction() = default;
 
-    TypedFunction(std::nullopt_t) {}// NOLINT
+    TypedFunction(std::nullopt_t) {} // NOLINT
 
-    TypedFunction(Function packed_func) : packed_func_(std::move(packed_func)) {}//NOLINT
+    TypedFunction(Function packed_func) : packed_func_(std::move(packed_func)) {} // NOLINT
 
     template<typename FLambda,
              typename = std::enable_if_t<std::is_convertible_v<FLambda, std::function<R(Args...)>>>>
@@ -260,7 +260,7 @@ public:
         return *this;
     }
 
-    operator Function() const {//NOLINT
+    operator Function() const { // NOLINT
         return packed();
     }
 
@@ -294,6 +294,6 @@ private:
     Function packed_func_;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif//AETHERMIND_FUNCTION_H
+#endif // AETHERMIND_FUNCTION_H

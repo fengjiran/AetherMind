@@ -27,6 +27,6 @@ public:
     Status Run(GraphRewriteSession& session, const PassContext& ctx) const noexcept override;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

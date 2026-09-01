@@ -42,5 +42,5 @@ private:
     CpuFeaturePolicy policy_{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 #endif

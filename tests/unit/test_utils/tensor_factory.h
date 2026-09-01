@@ -55,7 +55,7 @@ inline size_t ComputeRequiredBytes(IntArrayView shape,
     return required;
 }
 
-}// namespace detail
+} // namespace detail
 
 inline Tensor MakeEmptyTensor(const DataType& dtype = DataType::Float32()) {
     static constexpr std::array<int64_t, 1> kShape{0};
@@ -98,6 +98,6 @@ inline Tensor MakeTensor(IntArrayView shape,
     return {detail::MakeBuffer(required_bytes), byte_offset, dtype, shape, strides};
 }
 
-}// namespace aethermind::test_utils
+} // namespace aethermind::test_utils
 
 #endif

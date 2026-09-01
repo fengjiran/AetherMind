@@ -94,4 +94,4 @@ TEST(CpuBackend, RuntimeBuilderAppliesCpuFeaturePolicy) {
             CpuFeature::kAvx2));
 }
 
-}// namespace
+} // namespace

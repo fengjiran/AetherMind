@@ -3,8 +3,8 @@
 //
 
 #include "aethermind/memory/cpu_allocator.h"
-#include "alignment.h"
 #include "aethermind/base/env.h"
+#include "alignment.h"
 #include "utils/memory_utils.h"
 
 #include <spdlog/spdlog.h>
@@ -34,7 +34,7 @@ bool is_thp_alloc(size_t nbytes) {
     return is_thp_alloc_enabled() && nbytes >= gAlloc_threshold_thp;
 }
 
-}// namespace
+} // namespace
 
 size_t get_alignment(size_t nbytes) {
     static const auto pagesize = sysconf(_SC_PAGESIZE);
@@ -87,4 +87,4 @@ std::unique_ptr<Allocator> CPUAllocatorProvider::CreateAllocator(Device device) 
     return std::make_unique<CPUAllocator>(device);
 }
 
-}// namespace aethermind
+} // namespace aethermind

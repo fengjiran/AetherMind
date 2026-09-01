@@ -66,6 +66,6 @@ inline std::string MakeEmbeddingUnsupportedWeightDTypeMessage(std::string_view c
     return msg;
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

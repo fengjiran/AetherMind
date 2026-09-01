@@ -5,8 +5,8 @@
 #ifndef AETHERMIND_ANY_H
 #define AETHERMIND_ANY_H
 
-#include "any_utils.h"
 #include "aethermind/base/object.h"
+#include "any_utils.h"
 
 #include <cstring>
 #include <optional>
@@ -135,7 +135,7 @@ public:
              typename U = std::decay_t<T>,
              typename TargetType = std::conditional_t<details::is_plain_type<U>, select_plain_type<U>, U>>
         requires(!std::is_same_v<U, Any>)
-    Any(T&& value) : type_info_cache_(std::type_index(typeid(TargetType))) {// NOLINT
+    Any(T&& value) : type_info_cache_(std::type_index(typeid(TargetType))) { // NOLINT
         if constexpr (details::is_plain_type<U>) {
             if constexpr (sizeof(Holder<TargetType>) <= kSmallObjectSize) {
                 // small object, construct at local buffer
@@ -223,11 +223,11 @@ public:
             return *this;
         } else {
             switch (data_.index()) {
-                case 0:// std::monostate
+                case 0: // std::monostate
                     return std::nullopt;
-                case 1:// small object
+                case 1: // small object
                     return Caster<T>()(std::get<SmallObject>(data_));
-                case 2:// large object
+                case 2: // large object
                     return Caster<T>()(std::get<std::unique_ptr<HolderBase>>(data_));
                 default:
                     return std::nullopt;
@@ -241,11 +241,11 @@ public:
             return std::move(*this);
         } else {
             switch (data_.index()) {
-                case 0:// std::monostate
+                case 0: // std::monostate
                     return std::nullopt;
-                case 1:// small object
+                case 1: // small object
                     return Caster<T>()(std::move(std::get<SmallObject>(data_)));
-                case 2:// large object
+                case 2: // large object
                     return Caster<T>()(std::move(std::get<std::unique_ptr<HolderBase>>(data_)));
                 default:
                     return std::nullopt;
@@ -286,7 +286,7 @@ public:
     }
 
     template<typename T>
-    operator T() {// NOLINT
+    operator T() { // NOLINT
         return cast<T>();
     }
 
@@ -594,9 +594,9 @@ public:
 };
 
 enum class AnyPrintFormat {
-    Default,// default format
-    Debug,  // debug format, include type info
-    Compact // compact format, only value
+    Default, // default format
+    Debug,   // debug format, include type info
+    Compact  // compact format, only value
 };
 
 std::ostream& operator<<(std::ostream& os, const Any& any);
@@ -613,7 +613,7 @@ inline void PrintAny(std::ostream& os, const Any& any, AnyPrintFormat format = A
     }
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 namespace std {
 template<>
@@ -622,6 +622,6 @@ struct hash<aethermind::Any> {
         return aethermind::AnyHash()(v);
     }
 };
-}// namespace std
+} // namespace std
 
-#endif// AETHERMIND_ANY_H
+#endif // AETHERMIND_ANY_H

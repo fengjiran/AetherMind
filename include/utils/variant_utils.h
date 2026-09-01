@@ -20,6 +20,6 @@ struct overloaded : Ts... {
 template<typename... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_UTILS_VARIANT_UTILS_H
+#endif // AETHERMIND_UTILS_VARIANT_UTILS_H

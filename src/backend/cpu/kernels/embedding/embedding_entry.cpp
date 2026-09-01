@@ -27,7 +27,7 @@ int64_t ReadTokenId(const TensorView& token_ids, size_t index) noexcept {
     return token_ids.data<int64_t>()[index];
 }
 
-}// namespace
+} // namespace
 
 Status cpu::detail::EmbeddingKernel(const KernelContext& ctx) noexcept {
     const cpu::detail::EmbeddingParams* params = GetParams(ctx.kernel_params);
@@ -156,4 +156,4 @@ AM_REGISTER_KERNEL(EmbeddingFp32Scalar,
                            .params_size = sizeof(cpu::detail::EmbeddingParams),
                    })
 
-}// namespace aethermind
+} // namespace aethermind

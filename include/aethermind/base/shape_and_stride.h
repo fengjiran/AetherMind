@@ -11,8 +11,8 @@
 ///
 /// This container is intended for owning Tensor metadata. For hot-path TensorView,
 /// consider a non-owning view type instead.
-#include "container/array_view.h"
 #include "aethermind/base/macros.h"
+#include "container/array_view.h"
 #include "utils/logging.h"
 
 #include <algorithm>
@@ -161,7 +161,7 @@ private:
     std::array<int64_t, kMaxRank> strides_{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 
-#endif// AETHERMIND_BASE_SHAPE_AND_STRIDE_H
+#endif // AETHERMIND_BASE_SHAPE_AND_STRIDE_H

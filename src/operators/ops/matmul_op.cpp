@@ -28,7 +28,7 @@ SymbolicShape MakeBatchShape(const SymbolicShape& shape, size_t rank) {
     return SymbolicShape(std::move(batch_dims));
 }
 
-}// namespace
+} // namespace
 
 StatusOr<InferenceResult> InferMatMul(const OpParams& params,
                                       std::span<const TensorSpec> inputs) {
@@ -115,6 +115,6 @@ StatusOr<InferenceResult> InferMatMul(const OpParams& params,
     return res;
 }
 
-}// namespace detail
+} // namespace detail
 
-}// namespace aethermind
+} // namespace aethermind

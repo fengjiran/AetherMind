@@ -17,20 +17,20 @@ TEST(StringRFindTest, RFindConstPointerWithSize) {
     String str("hello world hello");
 
     // 基本功能测试
-    EXPECT_EQ(12U, str.rfind("hello", String::npos, 5));        // 找到第二个"hello"
-    EXPECT_EQ(0U, str.rfind("hello", 5, 5));                    // 从位置5向前查找，找到第一个"hello"
-    EXPECT_EQ(6U, str.rfind("world", String::npos, 5));         // 找到"world"
-    EXPECT_EQ(String::npos, str.rfind("test", String::npos, 4));// 找不到
+    EXPECT_EQ(12U, str.rfind("hello", String::npos, 5));         // 找到第二个"hello"
+    EXPECT_EQ(0U, str.rfind("hello", 5, 5));                     // 从位置5向前查找，找到第一个"hello"
+    EXPECT_EQ(6U, str.rfind("world", String::npos, 5));          // 找到"world"
+    EXPECT_EQ(String::npos, str.rfind("test", String::npos, 4)); // 找不到
 
     // pos参数测试
-    EXPECT_EQ(0U, str.rfind("hello", 10, 5)); // 从位置10向前查找，找到第一个"hello"
-    EXPECT_EQ(12U, str.rfind("hello", 15, 5));// 从位置15向前查找，找到第二个"hello"
+    EXPECT_EQ(0U, str.rfind("hello", 10, 5));  // 从位置10向前查找，找到第一个"hello"
+    EXPECT_EQ(12U, str.rfind("hello", 15, 5)); // 从位置15向前查找，找到第二个"hello"
 
     // n参数测试
-    EXPECT_EQ(12U, str.rfind("helloworld", String::npos, 5));// 只比较前5个字符
+    EXPECT_EQ(12U, str.rfind("helloworld", String::npos, 5)); // 只比较前5个字符
 
     // n大于字符串长度
-    EXPECT_EQ(String::npos, str.rfind("hello", String::npos, 10));// n=10大于字符串长度
+    EXPECT_EQ(String::npos, str.rfind("hello", String::npos, 10)); // n=10大于字符串长度
 
     // 空字符串参数(n=0)
     EXPECT_EQ(17, str.rfind("", String::npos, 0));
@@ -50,20 +50,20 @@ TEST(StringRFindTest, RFindStringOverload) {
     String substr3("test");
 
     // 基本功能测试
-    EXPECT_EQ(12U, str.rfind(substr1, String::npos));         // 找到第二个"hello"
-    EXPECT_EQ(0U, str.rfind(substr1, 5));                     // 从位置5向前查找，找到第一个"hello"
-    EXPECT_EQ(6U, str.rfind(substr2, String::npos));          // 找到"world"
-    EXPECT_EQ(String::npos, str.rfind(substr3, String::npos));// 找不到
+    EXPECT_EQ(12U, str.rfind(substr1, String::npos));          // 找到第二个"hello"
+    EXPECT_EQ(0U, str.rfind(substr1, 5));                      // 从位置5向前查找，找到第一个"hello"
+    EXPECT_EQ(6U, str.rfind(substr2, String::npos));           // 找到"world"
+    EXPECT_EQ(String::npos, str.rfind(substr3, String::npos)); // 找不到
 
     // 默认pos参数
-    EXPECT_EQ(12U, str.rfind(substr1));// 使用默认pos=npos
+    EXPECT_EQ(12U, str.rfind(substr1)); // 使用默认pos=npos
 
     // 空字符串参数
     String empty;
     EXPECT_EQ(17, str.rfind(empty, String::npos));
 
     // 字符串等于自身
-    EXPECT_EQ(0U, str.rfind(str, String::npos));// 完整匹配，应该返回0
+    EXPECT_EQ(0U, str.rfind(str, String::npos)); // 完整匹配，应该返回0
 }
 
 // 测试 rfind(const_pointer str, size_type pos = npos) const noexcept
@@ -71,19 +71,19 @@ TEST(StringRFindTest, RFindConstPointerOverload) {
     String str("hello world hello");
 
     // 基本功能测试
-    EXPECT_EQ(12U, str.rfind("hello", String::npos));        // 找到第二个"hello"
-    EXPECT_EQ(0U, str.rfind("hello", 5));                    // 从位置5向前查找，找到第一个"hello"
-    EXPECT_EQ(6U, str.rfind("world", String::npos));         // 找到"world"
-    EXPECT_EQ(String::npos, str.rfind("test", String::npos));// 找不到
+    EXPECT_EQ(12U, str.rfind("hello", String::npos));         // 找到第二个"hello"
+    EXPECT_EQ(0U, str.rfind("hello", 5));                     // 从位置5向前查找，找到第一个"hello"
+    EXPECT_EQ(6U, str.rfind("world", String::npos));          // 找到"world"
+    EXPECT_EQ(String::npos, str.rfind("test", String::npos)); // 找不到
 
     // 默认pos参数
-    EXPECT_EQ(12U, str.rfind("hello"));// 使用默认pos=npos
+    EXPECT_EQ(12U, str.rfind("hello")); // 使用默认pos=npos
 
     // 空字符串参数
     EXPECT_EQ(17, str.rfind("", String::npos));
 
     // 部分匹配测试
-    EXPECT_EQ(String::npos, str.rfind("hello123", String::npos));// 前缀匹配
+    EXPECT_EQ(String::npos, str.rfind("hello123", String::npos)); // 前缀匹配
 }
 
 // 测试 rfind(value_type c, size_type pos = npos) const noexcept
@@ -91,13 +91,13 @@ TEST(StringRFindTest, RFindCharOverload) {
     String str("hello world hello");
 
     // 基本功能测试
-    EXPECT_EQ(12U, str.rfind('h', String::npos));         // 找到第二个'h'
-    EXPECT_EQ(7U, str.rfind('o', 10));                    // 从位置10向前查找，找到第一个'o'
-    EXPECT_EQ(16U, str.rfind('o', String::npos));         // 找到最后一个'o'
-    EXPECT_EQ(String::npos, str.rfind('x', String::npos));// 找不到
+    EXPECT_EQ(12U, str.rfind('h', String::npos));          // 找到第二个'h'
+    EXPECT_EQ(7U, str.rfind('o', 10));                     // 从位置10向前查找，找到第一个'o'
+    EXPECT_EQ(16U, str.rfind('o', String::npos));          // 找到最后一个'o'
+    EXPECT_EQ(String::npos, str.rfind('x', String::npos)); // 找不到
 
     // 默认pos参数
-    EXPECT_EQ(12U, str.rfind('h'));// 使用默认pos=npos
+    EXPECT_EQ(12U, str.rfind('h')); // 使用默认pos=npos
 
     // 查找重复字符
     String repeats("aaaaa");
@@ -140,7 +140,7 @@ TEST(StringRFindTest, SpecialCharacters) {
     // 包含空格、制表符、换行符
     String str("space\ttab\nnewline");
 
-    EXPECT_EQ(String::npos, str.rfind(" \t\n", String::npos, 3));// 换行符在位置9
+    EXPECT_EQ(String::npos, str.rfind(" \t\n", String::npos, 3)); // 换行符在位置9
     EXPECT_EQ(String::npos, str.rfind(String(" \t\n"), String::npos));
     EXPECT_EQ(String::npos, str.rfind(" \t\n", String::npos));
     EXPECT_EQ(9U, str.rfind('\n', String::npos));
@@ -215,13 +215,13 @@ TEST(StringRFindTest, MultipleOccurrences) {
     String str("ababababab");
 
     // 查找重复子串
-    EXPECT_EQ(8U, str.rfind("ab", String::npos, 2));// 最后一个"ab"
-    EXPECT_EQ(6U, str.rfind("ab", 7, 2));           // 从位置7向前查找
-    EXPECT_EQ(4U, str.rfind("ab", 5, 2));           // 从位置5向前查找
+    EXPECT_EQ(8U, str.rfind("ab", String::npos, 2)); // 最后一个"ab"
+    EXPECT_EQ(6U, str.rfind("ab", 7, 2));            // 从位置7向前查找
+    EXPECT_EQ(4U, str.rfind("ab", 5, 2));            // 从位置5向前查找
 
     // 查找更长的重复子串
-    EXPECT_EQ(6U, str.rfind("aba", String::npos, 3));// 最后一个"aba"
-    EXPECT_EQ(4U, str.rfind("aba", 5, 3));           // 从位置5向前查找
+    EXPECT_EQ(6U, str.rfind("aba", String::npos, 3)); // 最后一个"aba"
+    EXPECT_EQ(4U, str.rfind("aba", 5, 3));            // 从位置5向前查找
 }
 
-}  // namespace
+} // namespace

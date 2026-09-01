@@ -82,5 +82,5 @@ TEST(CpuInfo, PolicyRejectsInvalidSnapshot) {
     EXPECT_EQ(applied.status().code(), StatusCode::kInvalidArgument);
 }
 
-}// namespace
-}// namespace aethermind::cpu
+} // namespace
+} // namespace aethermind::cpu

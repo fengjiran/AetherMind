@@ -1,6 +1,6 @@
+#include "aethermind/base/scalar.h"
 #include "aethermind/base/tensor.h"
 #include "aethermind/memory/cpu_allocator.h"
-#include "aethermind/base/scalar.h"
 
 #include "../test_utils/tensor_factory.h"
 
@@ -389,4 +389,4 @@ TEST(TensorScalarBridge, MoveAssignmentLeavesMovedFromUninitialized) {
     EXPECT_FALSE(t1.is_initialized());
 }
 
-}// namespace
+} // namespace

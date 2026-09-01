@@ -148,4 +148,4 @@ TEST(ShapeAndStrideRankZero, RankZeroStrideDeath) {
 #endif
 }
 
-}// namespace
+} // namespace

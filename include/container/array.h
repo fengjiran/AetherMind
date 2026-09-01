@@ -150,12 +150,12 @@ public:
         pimpl_->ConstructAtEnd(n, value);
     }
 
-    Array(const std::vector<T>& other) : pimpl_(Create(other.size())) {//NOLINT
-        pimpl_->ConstructAtEnd<>(other.begin(), other.end());          // NOLINT
+    Array(const std::vector<T>& other) : pimpl_(Create(other.size())) { // NOLINT
+        pimpl_->ConstructAtEnd<>(other.begin(), other.end());           // NOLINT
     }
 
     Array(std::initializer_list<T> other) : pimpl_(Create(other.size())) {
-        pimpl_->ConstructAtEnd<>(other.begin(), other.end());// NOLINT
+        pimpl_->ConstructAtEnd<>(other.begin(), other.end()); // NOLINT
     }
 
     explicit Array(ObjectPtr<ArrayImpl> pimpl) : pimpl_(std::move(pimpl)) {}
@@ -517,7 +517,7 @@ template<typename T>
     requires details::is_valid_array_type<T>
 #endif
 void Array<T>::COW(int64_t delta, bool single_elem_inplace_change) {
-    if (delta == 0) {// inplace
+    if (delta == 0) { // inplace
         if (single_elem_inplace_change) {
             if (!defined()) {
                 AM_THROW(RuntimeError) << "Cannot change an empty array.";
@@ -527,7 +527,7 @@ void Array<T>::COW(int64_t delta, bool single_elem_inplace_change) {
                 SwitchContainer(capacity());
             }
         }
-    } else if (delta < 0) {// shrink the array
+    } else if (delta < 0) { // shrink the array
         if (!defined()) {
             AM_THROW(RuntimeError) << "Cannot shrink an empty array.";
         }
@@ -539,7 +539,7 @@ void Array<T>::COW(int64_t delta, bool single_elem_inplace_change) {
         if (!unique()) {
             SwitchContainer(capacity());
         }
-    } else {// expand the array
+    } else { // expand the array
         const size_t new_size = static_cast<size_t>(delta) + size();
         if (!defined()) {
             size_t new_cap = std::max(new_size, ArrayImpl::kInitSize);
@@ -648,7 +648,7 @@ public:
     }
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 namespace std {
 
@@ -663,6 +663,6 @@ struct hash<aethermind::Array<T>> {
     }
 };
 
-}// namespace std
+} // namespace std
 
-#endif//AETHERMIND_CONTAINER_ARRAY_IMPL_H
+#endif // AETHERMIND_CONTAINER_ARRAY_IMPL_H

@@ -20,4 +20,4 @@ std::string ToString(const KernelSelector& selector) {
            "}";
 }
 
-}// namespace aethermind
+} // namespace aethermind

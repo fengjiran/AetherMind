@@ -889,4 +889,4 @@ TEST(MemoryMappedFile, MmapPointerIsPageAligned) {
             << "mmap returned non-page-aligned address: " << addr;
 }
 
-}// namespace
+} // namespace

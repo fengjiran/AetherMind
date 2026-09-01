@@ -184,11 +184,11 @@ public:
     }
 };
 
-}// namespace
+} // namespace
 
 const ConstEvaluator& detail::GetSiluMulConstEvaluator() noexcept {
     static const SiluMulConstEvaluator kEvaluator;
     return kEvaluator;
 }
 
-}// namespace aethermind
+} // namespace aethermind

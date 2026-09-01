@@ -1124,4 +1124,4 @@ TYPED_TEST(BasicStringCoreLifecycleTest, PopBackOnEmptyIsNoop) {
     EXPECT_EQ(core.data()[0], CharT{});
 }
 
-}// namespace
+} // namespace

@@ -49,8 +49,8 @@ TEST(StringFrontBack, NonConstVersion) {
     // 使用front()和back()修改字符串的首尾字符
     // 注意：由于CharProxy的具体实现细节不明确，这里使用operator[]代替
     // 如果CharProxy支持直接赋值，可以使用s.front() = 'M'和s.back() = 'G'
-    s[0] = 'M';           // 等价于s.front()
-    s[s.size() - 1] = 'G';// 等价于s.back()
+    s[0] = 'M';            // 等价于s.front()
+    s[s.size() - 1] = 'G'; // 等价于s.back()
 
     EXPECT_EQ(s.front(), 'M');
     EXPECT_EQ(s.back(), 'G');
@@ -164,7 +164,7 @@ TEST(StringSubstr, BoundaryConditions) {
     const size_t len = s.size();
 
     // 测试截取到字符串末尾
-    String sub1 = s.substr(4, 100);// 100超过剩余字符数
+    String sub1 = s.substr(4, 100); // 100超过剩余字符数
     EXPECT_EQ(sub1.size(), len - 4);
     EXPECT_STREQ(sub1, "dary");
 
@@ -272,18 +272,18 @@ TEST(StringCompareTest, CompareWithPosAndLength) {
     String s4("hello beautiful world");
 
     // 测试从指定位置开始比较
-    EXPECT_EQ(s1.compare(6, 5, s2), 0);// 比较 "world" 和 "world"
-    EXPECT_EQ(s1.compare(0, 5, s3), 0);// 比较 "hello" 和 "hello"
+    EXPECT_EQ(s1.compare(6, 5, s2), 0); // 比较 "world" 和 "world"
+    EXPECT_EQ(s1.compare(0, 5, s3), 0); // 比较 "hello" 和 "hello"
 
     // 测试长度限制
-    EXPECT_EQ(s1.compare(0, 5, s4, 0, 5), 0);// 比较 "hello" 和 "hello"
+    EXPECT_EQ(s1.compare(0, 5, s4, 0, 5), 0); // 比较 "hello" 和 "hello"
 
     // 测试不同子串的比较
-    EXPECT_LT(s1.compare(0, 5, s2), 0);// "hello" < "world"
-    EXPECT_GT(s1.compare(6, 5, s3), 0);// "world" > "hello"
+    EXPECT_LT(s1.compare(0, 5, s2), 0); // "hello" < "world"
+    EXPECT_GT(s1.compare(6, 5, s3), 0); // "world" > "hello"
 
     // 测试默认长度参数
-    EXPECT_EQ(s1.compare(0, 5, s4, 0), -1);// 使用默认n2 = npos
+    EXPECT_EQ(s1.compare(0, 5, s4, 0), -1); // 使用默认n2 = npos
 }
 
 // 测试与std::string比较
@@ -298,11 +298,11 @@ TEST(StringCompareTest, CompareWithStdString) {
 
     // 测试不等字符串
     EXPECT_LT(s1.compare(std_s2), 0);
-    EXPECT_GT(s1.compare(std_s1.substr(0, 4)), 0);// "hello" > "hell"
+    EXPECT_GT(s1.compare(std_s1.substr(0, 4)), 0); // "hello" > "hell"
 
     // 测试带位置和长度参数的比较
-    EXPECT_EQ(s1.compare(0, 5, std_s3), -1);     // 比较 "hello" 和 "hello world"
-    EXPECT_EQ(s1.compare(0, 5, std_s3, 0, 5), 0);// 比较 "hello" 和 "hello"
+    EXPECT_EQ(s1.compare(0, 5, std_s3), -1);      // 比较 "hello" 和 "hello world"
+    EXPECT_EQ(s1.compare(0, 5, std_s3, 0, 5), 0); // 比较 "hello" 和 "hello"
 
     // 测试位置超出范围
     EXPECT_THROW(UNUSED(s1.compare(0, 5, std_s3, 100, 5)), Error);
@@ -320,14 +320,14 @@ TEST(StringCompareTest, CompareWithConstCharPtr) {
 
     // 测试不等字符串
     EXPECT_LT(s1.compare(cstr2), 0);
-    EXPECT_GT(s1.compare("hell"), 0);// "hello" > "hell"
+    EXPECT_GT(s1.compare("hell"), 0); // "hello" > "hell"
 
     // 测试带位置和长度参数的比较
-    EXPECT_EQ(s1.compare(0, 5, cstr3), -1);  // 比较 "hello" 和 "hello world"
-    EXPECT_EQ(s1.compare(0, 5, cstr3, 5), 0);// 比较 "hello" 和 "hello"
+    EXPECT_EQ(s1.compare(0, 5, cstr3), -1);   // 比较 "hello" 和 "hello world"
+    EXPECT_EQ(s1.compare(0, 5, cstr3, 5), 0); // 比较 "hello" 和 "hello"
 
     // 测试长度限制（如果n2大于实际字符串长度，应该使用实际长度）
-    EXPECT_NE(s1.compare(0, 5, cstr1, 10), 0);// n2=10大于实际长度
+    EXPECT_NE(s1.compare(0, 5, cstr1, 10), 0); // n2=10大于实际长度
 
     // std::string s2 = "hello";
     // EXPECT_TRUE(s2.compare(0, 5, cstr1, 10) == 0);
@@ -367,9 +367,9 @@ TEST(StringCompareTest, SpecialCharacters) {
     String s2("a\tb");
     String s3("a\nb");
 
-    EXPECT_GT(s1.compare(s2), 0);// 空格的ASCII值小于制表符
-    EXPECT_GT(s1.compare(s3), 0);// 空格的ASCII值小于换行符
-    EXPECT_LT(s2.compare(s3), 0);// 制表符的ASCII值小于换行符
+    EXPECT_GT(s1.compare(s2), 0); // 空格的ASCII值小于制表符
+    EXPECT_GT(s1.compare(s3), 0); // 空格的ASCII值小于换行符
+    EXPECT_LT(s2.compare(s3), 0); // 制表符的ASCII值小于换行符
 
     // 测试非ASCII字符
     // String extended_ascii1("a\x7Fb");// DEL字符
@@ -378,9 +378,9 @@ TEST(StringCompareTest, SpecialCharacters) {
 
     // 测试空字符
     const char* with_null = "test";
-    String s4(with_null, 11);// 包含null字符的字符串
+    String s4(with_null, 11); // 包含null字符的字符串
     String s5("test");
-    EXPECT_EQ(s4.compare(s5), 0);// 包含null的字符串比前缀长，所以更大
+    EXPECT_EQ(s4.compare(s5), 0); // 包含null的字符串比前缀长，所以更大
 }
 
 // 测试异常情况
@@ -411,8 +411,8 @@ TEST(StringCompareTest, SameMemoryRegion) {
     EXPECT_EQ(s.compare(s), 0);
 
     // 比较自身的不同子串
-    EXPECT_LT(s.compare(0, 5, s, 6, 5), 0);// "hello" < "world"
-    EXPECT_GT(s.compare(6, 5, s, 0, 5), 0);// "world" > "hello"
+    EXPECT_LT(s.compare(0, 5, s, 6, 5), 0); // "hello" < "world"
+    EXPECT_GT(s.compare(6, 5, s, 0, 5), 0); // "world" > "hello"
 }
 
 // 测试compare与==操作符的一致性
@@ -435,4 +435,4 @@ TEST(StringCompareTest, ConsistencyWithEqualityOperator) {
     EXPECT_TRUE((s1.compare("world") != 0) == (s1 != "world"));
 }
 
-}  // namespace
+} // namespace

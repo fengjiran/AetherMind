@@ -117,8 +117,8 @@ StatusOr<InferenceResult> InferReshape(const OpParams& params, std::span<const T
 StatusOr<InferenceResult> InferPermute(const OpParams& params, std::span<const TensorSpec> inputs);
 StatusOr<InferenceResult> InferReorder(const OpParams& params, std::span<const TensorSpec> inputs);
 
-}// namespace detail
+} // namespace detail
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_OPERATORS_OPERATOR_INFERENCE_H
+#endif // AETHERMIND_OPERATORS_OPERATOR_INFERENCE_H

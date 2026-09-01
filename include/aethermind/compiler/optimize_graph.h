@@ -15,6 +15,6 @@ StatusOr<ModelGraph> OptimizeModelGraph(
         const ModelGraph& graph,
         PassContext context = {});
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

@@ -251,4 +251,4 @@ TEST(ExecutorBackendPath, ExecuteRunsWhenRuntimeShapeConstraintIsSatisfied) {
     ASSERT_TRUE(Executor::Execute(*plan, bindings).ok());
 }
 
-}// namespace
+} // namespace

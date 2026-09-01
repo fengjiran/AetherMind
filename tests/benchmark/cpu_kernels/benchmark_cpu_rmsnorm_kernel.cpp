@@ -150,4 +150,4 @@ BENCHMARK(BM_RmsNormFp32Avx2Fma)
         ->Args({128, 8192})
         ->ArgNames({"row_count", "hidden_size"});
 
-}// namespace
+} // namespace

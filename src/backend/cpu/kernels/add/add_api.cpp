@@ -37,4 +37,4 @@ Status LaunchAdd(const AddArgs& args) noexcept {
     return cpu::detail::AddKernel_Scalar(kernel_args);
 }
 
-}// namespace aethermind
+} // namespace aethermind

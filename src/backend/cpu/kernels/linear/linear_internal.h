@@ -13,6 +13,6 @@ struct LinearParams {
     MutableTensorView output_tensor{};
 };
 
-}// namespace aethermind::cpu::detail
+} // namespace aethermind::cpu::detail
 
-#endif// AETHERMIND_BACKEND_CPU_KERNELS_LINEAR_LINEAR_INTERNAL_H
+#endif // AETHERMIND_BACKEND_CPU_KERNELS_LINEAR_LINEAR_INTERNAL_H

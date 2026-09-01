@@ -68,4 +68,4 @@ DebugInfoGuard::~DebugInfoGuard() {
     }
 }
 
-}// namespace aethermind
+} // namespace aethermind

@@ -91,4 +91,4 @@ TEST(TensorView, RejectsScalableVectorDataType) {
                  "TensorView must borrow a valid Tensor-like state");
 }
 
-}// namespace
+} // namespace

@@ -67,6 +67,6 @@ private:
     std::optional<uint64_t> total_size_{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_MODEL_FORMATS_HF_HF_SAFETENSORS_INDEX_H
+#endif // AETHERMIND_MODEL_FORMATS_HF_HF_SAFETENSORS_INDEX_H

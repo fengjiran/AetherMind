@@ -55,6 +55,6 @@ struct RuntimeOptions {
     KVCacheRuntimeOptions kv_cache;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

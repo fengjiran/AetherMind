@@ -62,6 +62,6 @@ private:
     }
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif//AETHERMIND_REGISTRY_H
+#endif // AETHERMIND_REGISTRY_H

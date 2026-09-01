@@ -170,4 +170,4 @@ StatusOr<SymbolicBroadcastResult> InferBroadcastShape(const SymbolicShape& lhs,
     };
 }
 
-}// namespace aethermind
+} // namespace aethermind

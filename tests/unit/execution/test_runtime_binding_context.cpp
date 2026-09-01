@@ -200,4 +200,4 @@ TEST(RuntimeBindingContext, SequenceStateCanTrackSessionExecutionProgress) {
     EXPECT_EQ(bindings.sequence_state().current_pos, 0U);
 }
 
-}// namespace
+} // namespace

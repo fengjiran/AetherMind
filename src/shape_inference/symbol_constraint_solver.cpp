@@ -17,7 +17,7 @@ AM_NODISCARD ShapeConstraintEvaluationResult CompareStaticValues(
                       : ShapeConstraintEvaluationResult::kViolated;
 }
 
-}// namespace
+} // namespace
 
 Status SymbolConstraintSolver::AddEqual(ShapeSymbol lhs, ShapeSymbol rhs) {
     if (lhs.IsStatic() && rhs.IsStatic()) {
@@ -219,4 +219,4 @@ Status SymbolConstraintSolver::BindRoot(int64_t root, int64_t static_value) {
     return Status::Ok();
 }
 
-}// namespace aethermind
+} // namespace aethermind

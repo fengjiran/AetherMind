@@ -19,4 +19,4 @@ StatusOr<InferenceResult> InferReorder(const OpParams& params,
     return result;
 }
 
-}// namespace aethermind::detail
+} // namespace aethermind::detail

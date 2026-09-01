@@ -61,6 +61,6 @@ private:
     std::vector<StepTensorBinding> step_bindings_;
 };
 
-}// namespace aethermind::test
+} // namespace aethermind::test
 
 #endif

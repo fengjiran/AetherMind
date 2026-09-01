@@ -77,6 +77,6 @@ Status AddKernel(const KernelContext& ctx) noexcept;
 /// Templates are TU-local in add_scalar_impl.h, instantiated in add_scalar.cpp.
 Status AddKernel_Scalar(const AddKernelArgs& args) noexcept;
 
-}// namespace aethermind::cpu::detail
+} // namespace aethermind::cpu::detail
 
-#endif// AETHERMIND_BACKEND_CPU_KERNELS_ADD_ADD_INTERNAL_H
+#endif // AETHERMIND_BACKEND_CPU_KERNELS_ADD_ADD_INTERNAL_H

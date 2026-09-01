@@ -150,4 +150,4 @@
     static void FuncName()
 
 #define DEFINE_STATIC_FUNCTION() DEFINE_STATIC_FUNCTION_(AM_STR_CONCAT(_static_func_tid_, __COUNTER__))
-#endif// AETHERMIND_BASE_MACROS_H
+#endif // AETHERMIND_BASE_MACROS_H

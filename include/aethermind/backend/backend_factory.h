@@ -16,5 +16,5 @@ public:
     AM_NODISCARD virtual std::unique_ptr<Backend> Create() const = 0;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 #endif

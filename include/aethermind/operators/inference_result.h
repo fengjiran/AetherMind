@@ -21,6 +21,6 @@ struct InferenceResult {
     std::vector<ShapeConstraint> runtime_checks{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_OPERATORS_INFERENCE_RESULT_H
+#endif // AETHERMIND_OPERATORS_INFERENCE_RESULT_H

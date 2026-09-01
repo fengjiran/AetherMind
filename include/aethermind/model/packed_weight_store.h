@@ -92,6 +92,6 @@ private:
     bool source_frozen_ = false;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

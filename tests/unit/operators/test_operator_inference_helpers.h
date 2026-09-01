@@ -32,6 +32,6 @@ inline TensorSpec MakeSymbolicSpec(DataType dtype, size_t rank) {
     return {dtype, SymbolicShape(symbols)};
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_OPERATORS_TEST_OPERATOR_SEMANTICS_HELPERS_H
+#endif // AETHERMIND_OPERATORS_TEST_OPERATOR_SEMANTICS_HELPERS_H

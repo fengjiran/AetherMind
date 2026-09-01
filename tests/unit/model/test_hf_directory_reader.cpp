@@ -376,4 +376,4 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsShardSymlinkEscape) {
     EXPECT_EQ(raw_weights.status().code(), StatusCode::kInvalidArgument);
 }
 
-}// namespace
+} // namespace

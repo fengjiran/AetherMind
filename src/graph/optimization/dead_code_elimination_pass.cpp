@@ -65,7 +65,7 @@ Status RemoveDeadNodesOnce(GraphRewriteSession& session,
     return Status::Ok();
 }
 
-}// namespace
+} // namespace
 
 std::string_view DeadCodeEliminationPass::Name() const noexcept {
     return "DeadCodeEliminationPass";
@@ -89,4 +89,4 @@ Status DeadCodeEliminationPass::Run(GraphRewriteSession& session, const PassCont
     return Status::Ok();
 }
 
-}// namespace aethermind
+} // namespace aethermind

@@ -142,7 +142,7 @@ String Registry::GetRegisteredLocation(const String& name) {
     return GlobalFunctionTable::Global()->GetRegisteredLocation(name);
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 DEFINE_STATIC_FUNCTION() {
     aethermind::Registry()

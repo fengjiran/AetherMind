@@ -36,6 +36,6 @@ struct AllocatorTraitsHelper {
     }
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_AMSTRING_ALLOCATOR_SUPPORT_HPP
+#endif // AETHERMIND_AMSTRING_ALLOCATOR_SUPPORT_HPP

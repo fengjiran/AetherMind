@@ -3,9 +3,9 @@
 //
 #include "aethermind/base/tensor.h"
 
-#include <format>
 #include <cmath>
 #include <cstdint>
+#include <format>
 #include <iostream>
 #include <iterator>
 #include <string>
@@ -14,9 +14,9 @@
 namespace aethermind {
 
 enum class FormatType {
-    Default,   // 'g' format (defaultfloat equivalent)
-    Scientific,// 'e' format with precision 4
-    Fixed      // 'f' format with precision 4
+    Default,    // 'g' format (defaultfloat equivalent)
+    Scientific, // 'e' format with precision 4
+    Fixed       // 'f' format with precision 4
 };
 
 struct PrintFormat {
@@ -133,4 +133,4 @@ static void print_value(std::ostream& stream, double v, const PrintFormat& pf) {
     }
 }
 
-}// namespace aethermind
+} // namespace aethermind

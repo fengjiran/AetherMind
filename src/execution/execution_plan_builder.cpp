@@ -643,7 +643,7 @@ StatusOr<ExecutionPlan> AssembleExecutionPlan(RuntimeContext& runtime,
                                  std::move(state_alias_plan), *layout);
 }
 
-}// namespace
+} // namespace
 
 StatusOr<StateAliasPlan> ResolveStateAliasesForExecution(const LoweredGraph& lowered) {
     AM_RETURN_IF_ERROR(ValidateLoweredGraph(lowered));
@@ -725,4 +725,4 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
                                  std::move(*graph), std::move(*aliases));
 }
 
-}// namespace aethermind
+} // namespace aethermind

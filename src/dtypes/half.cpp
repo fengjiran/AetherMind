@@ -5,8 +5,8 @@
 /// conversion. When `X86_F16` is defined, these are replaced by hardware
 /// intrinsics at the call site.
 #include "aethermind/dtypes/half.h"
-#include "aethermind/dtypes/detail/floating_point_bits.h"
 #include "aethermind/base/macros.h"
+#include "aethermind/dtypes/detail/floating_point_bits.h"
 
 namespace aethermind {
 namespace {
@@ -123,7 +123,7 @@ float fp16_to_fp32_value(uint16_t h) {
     return detail::fp32_from_bits(fp16_to_fp32_bits(h));
 }
 
-}// namespace
+} // namespace
 
 namespace detail {
 
@@ -139,7 +139,7 @@ uint16_t fp16_from_fp32_value_for_testing(float f) {
     return fp16_from_fp32_value(f);
 }
 
-}// namespace detail
+} // namespace detail
 
 Half::Half(float value) : x(fp16_from_fp32_value(value)) {}
 
@@ -339,4 +339,4 @@ float operator/(int64_t lhs, Half rhs) {
     return static_cast<float>(lhs) / static_cast<float>(rhs);
 }
 
-}// namespace aethermind
+} // namespace aethermind

@@ -137,7 +137,7 @@ Status TryFuseSilu(GraphRewriteSession& session, GraphNodeId silu_node) {
     return builder.Commit();
 }
 
-}// namespace
+} // namespace
 
 std::string_view SiluMulFusionPass::Name() const noexcept {
     return "SiluMulFusionPass";
@@ -155,4 +155,4 @@ Status SiluMulFusionPass::Run(GraphRewriteSession& session, const PassContext& c
     return Status::Ok();
 }
 
-}// namespace aethermind
+} // namespace aethermind

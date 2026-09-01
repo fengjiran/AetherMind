@@ -391,4 +391,4 @@ TYPED_TEST(BasicStringDifferentialTest, RandomOperationSequenceMatchesStdBasicSt
     }
 }
 
-}// namespace
+} // namespace

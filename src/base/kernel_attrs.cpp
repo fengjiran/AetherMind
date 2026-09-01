@@ -33,4 +33,4 @@ const char* ToString(WeightFormat format) noexcept {
     }
 }
 
-}// namespace aethermind
+} // namespace aethermind

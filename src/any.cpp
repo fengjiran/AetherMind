@@ -57,38 +57,38 @@ void* Any::GetDataPtr() {
 
 Any::Any(const Any& other) : type_info_cache_(other.type_info_cache_) {
     switch (other.data_.index()) {
-        case 0:// std::monostate
+        case 0: // std::monostate
             data_ = std::monostate{};
             break;
-        case 1:// small object
+        case 1: // small object
             data_ = std::get<SmallObject>(other.data_);
             break;
-        case 2:// large object
+        case 2: // large object
             data_ = std::get<std::unique_ptr<HolderBase>>(other.data_)->Clone();
             break;
-        default:// monostate
+        default: // monostate
             break;
     }
 }
 
 const HolderBase* Any::GetHolderPtr() const {
     switch (data_.index()) {
-        case 0:// std::monostate
+        case 0: // std::monostate
             return nullptr;
-        case 1:// small object
+        case 1: // small object
             return reinterpret_cast<const HolderBase*>(std::get<SmallObject>(data_).local_buffer);
-        case 2:// large object
+        case 2: // large object
             return std::get<std::unique_ptr<HolderBase>>(data_).get();
-        default:// monostate
+        default: // monostate
             return nullptr;
     }
 }
 
 void* Any::GetDataPtr() {
     switch (data_.index()) {
-        case 0:// std::monostate
+        case 0: // std::monostate
             return nullptr;
-        case 1:// small object
+        case 1: // small object
             return std::get<SmallObject>(data_).GetDataPtr();
         case 2:
             return std::get<std::unique_ptr<HolderBase>>(data_)->GetDataPtr();
@@ -212,4 +212,4 @@ std::ostream& operator<<(std::ostream& os, const Any& any) {
 }
 
 
-}// namespace aethermind
+} // namespace aethermind

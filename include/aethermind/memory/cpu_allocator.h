@@ -32,6 +32,6 @@ public:
     std::unique_ptr<Allocator> CreateAllocator(Device device) override;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_CPU_ALLOCATOR_H
+#endif // AETHERMIND_CPU_ALLOCATOR_H

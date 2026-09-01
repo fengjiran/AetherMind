@@ -63,13 +63,13 @@ private:
 std::ostream& operator<<(std::ostream& os, const OperatorName& opName);
 std::string ToString(const OperatorName& opName);
 
-}// namespace aethermind
+} // namespace aethermind
 
 template<>
 struct std::hash<aethermind::OperatorName> {
     size_t operator()(const aethermind::OperatorName& x) const noexcept {
         return aethermind::get_hash(x.name(), x.overload_name());
     }
-};// std::hash<OperatorName>
+}; // std::hash<OperatorName>
 
-#endif// AETHERMIND_OPERATOR_NAME_H
+#endif // AETHERMIND_OPERATOR_NAME_H

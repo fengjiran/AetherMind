@@ -227,4 +227,4 @@ TEST(KernelRegistry, ConcurrentFreezeIsIdempotent) {
     EXPECT_EQ((*candidates)[0]->kernel_func, &FakeKernel);
 }
 
-}// namespace
+} // namespace

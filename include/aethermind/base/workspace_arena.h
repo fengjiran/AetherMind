@@ -26,5 +26,5 @@ public:
     virtual void Reset() noexcept = 0;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 #endif

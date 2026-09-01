@@ -45,6 +45,6 @@ inline std::string MakeArgmaxUnsupportedDTypeMessage(std::string_view context) {
     return msg;
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

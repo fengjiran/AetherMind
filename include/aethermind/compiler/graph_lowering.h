@@ -42,6 +42,6 @@ StatusOr<LoweredGraph> LowerModelGraph(
         const ModelGraph& graph,
         const GraphLoweringConfig& config = {});
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

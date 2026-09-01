@@ -206,4 +206,4 @@ TEST(KVCacheUpdateInference, AcceptsSymbolicSequenceLengthWithStaticCache) {
     EXPECT_TRUE(InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, inputs).ok());
 }
 
-}// namespace
+} // namespace

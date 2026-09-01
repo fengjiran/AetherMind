@@ -88,7 +88,7 @@ am_status_code am_error_code(am_error_handle error);
 const char* am_error_message(am_error_handle error);
 
 #ifdef __cplusplus
-}// TVM_FFI_EXTERN_C
+} // TVM_FFI_EXTERN_C
 #endif
 
 #ifdef __cplusplus
@@ -99,4 +99,4 @@ const char* AetherMindTraceback(const char* filename, int lineno, const char* fu
                                 int cross_aethermind_boundary);
 #endif
 
-#endif// AETHERMIND_C_API_H
+#endif // AETHERMIND_C_API_H

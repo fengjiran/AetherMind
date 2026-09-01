@@ -55,6 +55,6 @@ inline std::ostream& operator<<(std::ostream& os, Layout layout) {
     return os;
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif//AETHERMIND_LAYOUT_H
+#endif // AETHERMIND_LAYOUT_H

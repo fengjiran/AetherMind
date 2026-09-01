@@ -140,4 +140,4 @@ TEST(RuntimeBackendIntegration, KVCacheManagerCanBeBuiltFromRuntimeOptions) {
     EXPECT_EQ(view->token_capacity(), 16U);
 }
 
-}// namespace
+} // namespace

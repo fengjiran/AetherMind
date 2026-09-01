@@ -119,6 +119,6 @@ inline Tensor RandomIntTensor(const std::vector<int64_t>& shape,
     return tensor;
 }
 
-}// namespace aethermind::test_utils
+} // namespace aethermind::test_utils
 
 #endif

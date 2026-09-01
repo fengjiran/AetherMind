@@ -40,6 +40,6 @@ struct AddArgs {
 /// noexcept: errors are reported only through the return value.
 Status LaunchAdd(const AddArgs& args) noexcept;
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

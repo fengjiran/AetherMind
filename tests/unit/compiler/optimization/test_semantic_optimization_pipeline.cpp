@@ -690,7 +690,7 @@ ResolvedModelWeights MakeLlamaWeights(const HfModelConfig& config) {
     return weights;
 }
 
-}// namespace
+} // namespace
 
 TEST(OptimizeModelGraph, LowersFullLlamaDenseGraph) {
     const HfModelConfig config = MakeLlamaConfig2Layer();
@@ -975,4 +975,4 @@ TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure)
     EXPECT_NE(status.message().find("RmsNorm"), std::string::npos)
             << "Failure message must preserve op semantic context";
 }
-}// namespace
+} // namespace

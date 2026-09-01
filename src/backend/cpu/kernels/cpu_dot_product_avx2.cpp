@@ -39,4 +39,4 @@ float DotProductAvx2Unroll(const float* a, const float* b, std::size_t n) noexce
 #endif
 }
 
-}// namespace aethermind
+} // namespace aethermind

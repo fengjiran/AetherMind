@@ -401,4 +401,4 @@ TEST(MutableTensorViewRankZero, NullDataShapeZeroAccepted) {
     EXPECT_FALSE(view.is_rank_zero());
 }
 
-}// namespace
+} // namespace

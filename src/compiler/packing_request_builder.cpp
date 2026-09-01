@@ -134,7 +134,7 @@ const RawWeightView* FindRawWeightByRole(const ResolvedModelWeights& resolved,
     return nullptr;
 }
 
-}// namespace
+} // namespace
 
 StatusOr<std::vector<WeightPrepackPlanner::Request>> BuildWeightPackingRequests(
         const LoweredGraph& lowered,
@@ -201,4 +201,4 @@ StatusOr<std::vector<WeightPrepackPlanner::Request>> BuildWeightPackingRequests(
     return requests;
 }
 
-}// namespace aethermind
+} // namespace aethermind

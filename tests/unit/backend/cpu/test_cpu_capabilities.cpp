@@ -20,4 +20,4 @@ TEST(CpuCapabilities, ExplicitInitialization) {
     EXPECT_FALSE(caps.supports_inline_execution);
 }
 
-}// namespace
+} // namespace

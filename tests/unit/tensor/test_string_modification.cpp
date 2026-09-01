@@ -18,19 +18,19 @@ TEST(StringInsert, IteratorVersion) {
     String s1("hello");
     auto it1 = s1.insert(s1.begin() + 2, 3, 'a');
     EXPECT_STREQ(s1, "heaaallo");
-    EXPECT_EQ(it1, s1.begin() + 2);// 验证迭代器指向插入位置
+    EXPECT_EQ(it1, s1.begin() + 2); // 验证迭代器指向插入位置
 
     // 测试在字符串开头插入单个字符
     String s2("world");
     auto it2 = s2.insert(s2.begin(), 'H');
     EXPECT_STREQ(s2, "Hworld");
-    EXPECT_EQ(it2, s2.begin());// 验证迭代器指向插入位置
+    EXPECT_EQ(it2, s2.begin()); // 验证迭代器指向插入位置
 
     // 测试在字符串结尾插入单个字符
     String s3("hello");
     auto it3 = s3.insert(s3.end(), '!');
     EXPECT_STREQ(s3, "hello!");
-    EXPECT_EQ(it3, s3.end() - 1);// 验证迭代器指向插入位置
+    EXPECT_EQ(it3, s3.end() - 1); // 验证迭代器指向插入位置
 }
 
 // 测试迭代器范围插入
@@ -78,7 +78,7 @@ TEST(StringInsert, PositionString) {
     // 在指定位置插入String的子串
     String s3("hello");
     String s4("123456789");
-    s3.insert(2, s4, 3, 4);// 从s4的位置3开始插入4个字符
+    s3.insert(2, s4, 3, 4); // 从s4的位置3开始插入4个字符
     EXPECT_STREQ(s3, "he4567llo");
 }
 
@@ -98,7 +98,7 @@ TEST(StringInsert, PositionCString) {
     // 插入空C字符串
     String s3("test");
     s3.insert(2, "");
-    EXPECT_STREQ(s3, "test");// 应该保持不变
+    EXPECT_STREQ(s3, "test"); // 应该保持不变
 }
 
 // 测试位置版本的insert方法 - 插入多个相同字符
@@ -123,7 +123,7 @@ TEST(StringInsert, PositionMultipleChars) {
     // 插入0个字符
     String s4("test");
     s4.insert(2, 0, 'x');
-    EXPECT_STREQ(s4.c_str(), "test");// 应该保持不变
+    EXPECT_STREQ(s4.c_str(), "test"); // 应该保持不变
 }
 
 // 测试边界情况
@@ -275,8 +275,8 @@ TEST(StringMemoryManagementTest, Reserve) {
     // 测试reserve减小容量（应该不影响）
     String s2("hello");
     const size_t original_cap = s2.capacity();
-    s2.reserve(2);                             // 小于当前容量
-    EXPECT_TRUE(s2.capacity() >= original_cap);// 容量不应减小
+    s2.reserve(2);                              // 小于当前容量
+    EXPECT_TRUE(s2.capacity() >= original_cap); // 容量不应减小
     EXPECT_STREQ(s2.c_str(), "hello");
 
     // 测试reserve相同容量
@@ -297,7 +297,7 @@ TEST(StringMemoryManagementTest, Reserve) {
 TEST(StringMemoryManagementTest, ShrinkToFit) {
     // 测试缩小容量到实际大小
     String s1("hello world");
-    s1.reserve(100);// 先增加容量
+    s1.reserve(100); // 先增加容量
     const size_t large_cap = s1.capacity();
     EXPECT_TRUE(large_cap > s1.size());
 
@@ -326,7 +326,7 @@ TEST(StringMemoryManagementTest, ShrinkToFit) {
 
     // 测试调整大小后再shrink_to_fit
     String s4("hello world");
-    s4.resize(5);// 缩短字符串
+    s4.resize(5); // 缩短字符串
     s4.shrink_to_fit();
     EXPECT_TRUE(s4 == "hello");
     EXPECT_EQ(s4.size(), 5);
@@ -371,9 +371,9 @@ TEST(StringMemoryManagementTest, MemorySharingAndCopyOnWrite) {
 
     // 修改copy，触发写时复制
     copy.resize(15, '!');
-    EXPECT_NE(copy.data(), original.data());      // 内存应该不再共享
-    EXPECT_STREQ(original.c_str(), "hello world");// original保持不变
-    EXPECT_STREQ(copy.c_str(), "hello world!!!!");// copy被修改
+    EXPECT_NE(copy.data(), original.data());       // 内存应该不再共享
+    EXPECT_STREQ(original.c_str(), "hello world"); // original保持不变
+    EXPECT_STREQ(copy.c_str(), "hello world!!!!"); // copy被修改
 
     // 测试reserve时的写时复制
     String original2("test");
@@ -384,15 +384,15 @@ TEST(StringMemoryManagementTest, MemorySharingAndCopyOnWrite) {
     EXPECT_NE(original2_data, copy2_data);
 
     copy2.reserve(100);
-    EXPECT_NE(copy2.data(), original2.data());// 内存应该不再共享
-    EXPECT_STREQ(original2.c_str(), "test");  // original2保持不变
-    EXPECT_STREQ(copy2.c_str(), "test");      // copy2内容保持不变
+    EXPECT_NE(copy2.data(), original2.data()); // 内存应该不再共享
+    EXPECT_STREQ(original2.c_str(), "test");   // original2保持不变
+    EXPECT_STREQ(copy2.c_str(), "test");       // copy2内容保持不变
 }
 
 // 测试本地缓冲区和动态分配之间的切换
 TEST(StringMemoryManagementTest, LocalBufferSwitching) {
     // 假设local_capacity_是一个足够小的值，我们可以创建一个超过它的字符串
-    const size_t large_size = 100;// 假设这大于local_capacity_
+    const size_t large_size = 100; // 假设这大于local_capacity_
     String s1(large_size, 'a');
 
     // 验证它使用了动态分配（不是本地缓冲区）
@@ -401,12 +401,12 @@ TEST(StringMemoryManagementTest, LocalBufferSwitching) {
     // 缩小到local_capacity_以下，应该切换回本地缓冲区
     s1.resize(5);
     s1.shrink_to_fit();
-    EXPECT_TRUE(s1.IsLocal());// 应该使用本地缓冲区
+    EXPECT_TRUE(s1.IsLocal()); // 应该使用本地缓冲区
     EXPECT_TRUE(s1 == "aaaaa");
 
     // 再次扩大超过local_capacity_
     s1.resize(large_size, 'b');
-    EXPECT_FALSE(s1.IsLocal());// 应该切换到动态分配
+    EXPECT_FALSE(s1.IsLocal()); // 应该切换到动态分配
     EXPECT_EQ(s1.size(), large_size);
 }
 
@@ -432,7 +432,7 @@ TEST(StringMemoryManagementTest, IndexAccessAfterResize) {
     EXPECT_EQ(s[0], 'h');
     EXPECT_EQ(s[1], 'e');
     EXPECT_EQ(s[2], 'l');
-    EXPECT_THROW(s.at(3), std::exception);// 越界应该抛出异常
+    EXPECT_THROW(s.at(3), std::exception); // 越界应该抛出异常
 }
 
 // 测试多个操作的组合
@@ -440,22 +440,22 @@ TEST(StringMemoryManagementTest, CombinedOperations) {
     String s;
 
     // 组合操作序列
-    s.resize(5, 'a');// "aaaaa"
+    s.resize(5, 'a'); // "aaaaa"
     EXPECT_TRUE(s == "aaaaa");
 
     s.reserve(20);
     EXPECT_TRUE(s == "aaaaa");
 
-    s.resize(10, 'b');// "aaaaabbbbb"
+    s.resize(10, 'b'); // "aaaaabbbbb"
     EXPECT_TRUE(s == "aaaaabbbbb");
 
-    s.resize(7);// "aaaaabb"
+    s.resize(7); // "aaaaabb"
     EXPECT_TRUE(s == "aaaaabb");
 
     s.shrink_to_fit();
     EXPECT_TRUE(s == "aaaaabb");
 
-    s.resize(3, 'c');// "aaa"
+    s.resize(3, 'c'); // "aaa"
     EXPECT_TRUE(s == "aaa");
 }
 
@@ -463,25 +463,25 @@ TEST(StringMemoryManagementTest, CombinedOperations) {
 TEST(StringErase, BasicFunctionality) {
     // 删除字符串中间的字符
     String s1 = "Hello, World!";
-    s1.erase(7, 5);// 删除"World"
+    s1.erase(7, 5); // 删除"World"
     EXPECT_TRUE(s1 == "Hello, !");
     EXPECT_EQ(s1.size(), 8);
 
     // 删除字符串开头的字符
     String s2 = "Programming";
-    s2.erase(0, 3);// 删除"Pro"
+    s2.erase(0, 3); // 删除"Pro"
     EXPECT_TRUE(s2 == "gramming");
     EXPECT_EQ(s2.size(), 8);
 
     // 删除字符串结尾的字符
     String s3 = "Testing";
-    s3.erase(4, 3);// 删除"ing"
+    s3.erase(4, 3); // 删除"ing"
     EXPECT_TRUE(s3 == "Test");
     EXPECT_EQ(s3.size(), 4);
 
     // 删除单个字符
     String s4 = "DeleteMe";
-    s4.erase(6, 1);// 删除"e"
+    s4.erase(6, 1); // 删除"e"
     EXPECT_TRUE(s4 == "Deletee");
     EXPECT_EQ(s4.size(), 7);
 
@@ -500,17 +500,17 @@ TEST(StringErase, BasicFunctionality) {
 TEST(StringErase, DefaultParameters) {
     // 使用默认pos=0
     String s1 = "DefaultPos";
-    s1.erase(0, 3);// 删除开头3个字符
+    s1.erase(0, 3); // 删除开头3个字符
     EXPECT_TRUE(s1 == "aultPos");
 
     String s2 = "DefaultPos";
-    s2.erase();// 默认删除从0开始的所有字符
+    s2.erase(); // 默认删除从0开始的所有字符
     EXPECT_TRUE(s2.empty());
     EXPECT_EQ(s2.size(), 0);
 
     // 使用默认n=npos（删除到字符串末尾）
     String s3 = "DefaultN";
-    s3.erase(4);// 从位置4开始删除到末尾
+    s3.erase(4); // 从位置4开始删除到末尾
     EXPECT_TRUE(s3 == "Defa");
     EXPECT_EQ(s3.size(), 4);
 
@@ -542,7 +542,7 @@ TEST(StringErase, OverLimit) {
     const size_t original_size = s.size();
 
     // 请求删除的字符数超出剩余字符数
-    s.erase(7, 100);// 从位置7开始，请求删除100个字符，但实际上只有6个字符
+    s.erase(7, 100); // 从位置7开始，请求删除100个字符，但实际上只有6个字符
     EXPECT_TRUE(s == "Limited");
     EXPECT_EQ(s.size(), 7);
 
@@ -572,13 +572,13 @@ TEST(StringErase, OutOfRangeException) {
 TEST(StringErase, SpecialCharacters) {
     // 测试包含空格的字符串
     String spaces = "   Spaces   ";
-    spaces.erase(0, 3);                // 删除开头的空格
-    spaces.erase(spaces.size() - 3, 3);// 删除结尾的空格
+    spaces.erase(0, 3);                 // 删除开头的空格
+    spaces.erase(spaces.size() - 3, 3); // 删除结尾的空格
     EXPECT_TRUE(spaces == "Spaces");
 
     // 测试包含控制字符的字符串
     String controls = "Line\nBreak\tTab";
-    controls.erase(4, 6);// 删除"\nBreak\t"
+    controls.erase(4, 6); // 删除"\nBreak\t"
     EXPECT_TRUE(controls == "Line\tTab");
 
     // 测试包含非ASCII字符的字符串
@@ -613,15 +613,15 @@ TEST(StringErase, CopyOnWrite) {
 TEST(StringErase, LocalBufferSwitch) {
     // 创建一个足够小的字符串，使其使用局部缓冲区
     String small = "Small";
-    EXPECT_TRUE(small.IsLocal());// 假设IsLocal()是可访问的，否则需要通过其他方式验证
+    EXPECT_TRUE(small.IsLocal()); // 假设IsLocal()是可访问的，否则需要通过其他方式验证
 
     // 执行erase操作
-    small.erase(2, 2);// 删除"al"
+    small.erase(2, 2); // 删除"al"
     EXPECT_TRUE(small == "Sml");
 
     // 创建一个大字符串，使其使用堆内存
     String large(100, 'x');
-    EXPECT_FALSE(large.IsLocal());// 假设IsLocal()是可访问的
+    EXPECT_FALSE(large.IsLocal()); // 假设IsLocal()是可访问的
 
     // 大幅缩小字符串，使其可能切换回局部缓冲区
     large.erase(5, 90);
@@ -639,16 +639,16 @@ TEST(StringErase, MultipleOperations) {
     String s = "MultipleOperations";
 
     // 连续执行多个erase操作
-    s.erase(0, 8);// 删除"Multiple"
+    s.erase(0, 8); // 删除"Multiple"
     EXPECT_TRUE(s == "Operations");
 
-    s.erase(5, 5);// 删除"ions"
+    s.erase(5, 5); // 删除"ions"
     EXPECT_TRUE(s == "Opera");
 
-    s.erase(3, 1);// 删除"r"
+    s.erase(3, 1); // 删除"r"
     EXPECT_TRUE(s == "Opea");
 
-    s.erase();// 删除所有字符
+    s.erase(); // 删除所有字符
     EXPECT_TRUE(s.empty());
 }
 
@@ -657,7 +657,7 @@ TEST(StringErase, CombinedOperations) {
     String s = "StartMiddleEnd";
 
     // erase后append
-    s.erase(5, 6);// 删除"Middle"
+    s.erase(5, 6); // 删除"Middle"
     EXPECT_TRUE(s == "StartEnd");
 
     s.append("Modified");
@@ -668,7 +668,7 @@ TEST(StringErase, CombinedOperations) {
     s2.replace(7, 3, "Then");
     EXPECT_TRUE(s2 == "ReplaceThenErase");
 
-    s2.erase(12, 6);// 删除"Erase"
+    s2.erase(12, 6); // 删除"Erase"
     EXPECT_TRUE(s2 == "ReplaceThenE");
 }
 
@@ -775,4 +775,4 @@ TEST(StringErase, Consistency) {
     EXPECT_TRUE(s3 == "AnoTest");
 }
 
-}  // namespace
+} // namespace

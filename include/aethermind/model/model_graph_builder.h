@@ -15,6 +15,6 @@ public:
             const ResolvedModelWeights& weights);
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

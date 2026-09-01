@@ -10,4 +10,4 @@ std::unique_ptr<Allocator> CUDAAllocatorProvider::CreateAllocator(Device device)
     return nullptr;
 }
 
-}// namespace aethermind
+} // namespace aethermind

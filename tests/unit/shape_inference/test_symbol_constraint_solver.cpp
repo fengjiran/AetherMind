@@ -80,4 +80,4 @@ TEST(SymbolConstraintSolver, DefersUnrelatedSymbols) {
     EXPECT_EQ(solver.EvaluateEqual(a, ShapeSymbol::CreateFromValue(8)), ShapeConstraintEvaluationResult::kDeferred);
 }
 
-}// namespace
+} // namespace

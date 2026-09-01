@@ -3,8 +3,8 @@
 
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/backend_factory.h"
-#include "aethermind/base/status.h"
 #include "aethermind/base/device.h"
+#include "aethermind/base/status.h"
 
 #include <memory>
 #include <unordered_map>
@@ -29,5 +29,5 @@ private:
     std::unordered_map<DeviceType, std::unique_ptr<Backend>> backends_;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 #endif

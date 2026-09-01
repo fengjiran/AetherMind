@@ -535,4 +535,4 @@ TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsResolvedKernel) {
     ExpectRowsNear(input, weight, output, 1, 4, 4, 1, 1, 4, 1);
 }
 
-}// namespace
+} // namespace

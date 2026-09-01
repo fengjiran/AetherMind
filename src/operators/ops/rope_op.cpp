@@ -198,7 +198,7 @@ Status ValidateRoPEShapes(const RoPEParams& params,
     return Status::Ok();
 }
 
-}// namespace
+} // namespace
 StatusOr<InferenceResult> InferRoPE(const OpParams& params,
                                     std::span<const TensorSpec> inputs) {
     const auto* rope_params = std::get_if<RoPEParams>(&params);
@@ -222,4 +222,4 @@ StatusOr<InferenceResult> InferRoPE(const OpParams& params,
     };
 }
 
-}// namespace aethermind::detail
+} // namespace aethermind::detail

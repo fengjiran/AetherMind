@@ -177,4 +177,4 @@ TEST(ModelLoader_HfUtilsTest, RejectExistingPathIfSymlinkRejectsDirectorySymlink
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-}// namespace
+} // namespace

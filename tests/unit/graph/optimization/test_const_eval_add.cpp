@@ -604,4 +604,4 @@ TEST(ConstEvaluator, SkipsAddRankZeroInt32Overflow) {
     EXPECT_EQ(status.code(), StatusCode::kOverflow);
 }
 
-}// namespace
+} // namespace

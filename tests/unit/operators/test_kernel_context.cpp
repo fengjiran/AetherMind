@@ -40,4 +40,4 @@ TEST(KernelContext, CanCarryMinimalExecutionHandles) {
     EXPECT_EQ(ctx.attrs.size(), sizeof(attrs_storage));
 }
 
-}  // namespace
+} // namespace

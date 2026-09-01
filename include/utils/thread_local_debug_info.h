@@ -129,6 +129,6 @@ private:
     std::shared_ptr<ThreadLocalDebugInfo> prev_info_ = nullptr;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_UTILS_THREAD_LOCAL_DEBUG_INFO_H
+#endif // AETHERMIND_UTILS_THREAD_LOCAL_DEBUG_INFO_H

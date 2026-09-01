@@ -20,6 +20,6 @@ AM_NODISCARD AM_ALWAYS_INLINE float HorizontalSumAvx2(__m256 v) noexcept {
 }
 #endif
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

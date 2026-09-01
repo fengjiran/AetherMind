@@ -32,6 +32,6 @@ public:
             const KernelSelector& selector) noexcept;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

@@ -118,6 +118,6 @@ inline bool operator!=(std::nullptr_t, const MemoryHandle& h) noexcept {
     return static_cast<bool>(h);
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_MEMORY_HANDLE_H
+#endif // AETHERMIND_MEMORY_HANDLE_H

@@ -132,4 +132,4 @@ TEST(BackendRegistry, OverrideFactoryAfterInstantiationClearsCachedInstance) {
     EXPECT_EQ(count2, 1);
 }
 
-}// namespace
+} // namespace

@@ -20,7 +20,7 @@ KernelContext BuildKernelContext(const ExecutionStep& step,
     };
 }
 
-}// namespace
+} // namespace
 
 Status LayerRunner::Run(const ExecutionPlan& plan,
                         const RuntimeBindingContext& bindings) noexcept {
@@ -134,4 +134,4 @@ Status LayerRunner::ValidateStateAliasesForStep(
     return Status::Ok();
 }
 
-}// namespace aethermind
+} // namespace aethermind

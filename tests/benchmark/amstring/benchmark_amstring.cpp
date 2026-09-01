@@ -523,7 +523,7 @@ void BM_StdString_ShrinkToFitLargePage(benchmark::State& state) {
     state.SetBytesProcessed(state.iterations() * static_cast<int64_t>(payload.size()));
 }
 
-}// namespace
+} // namespace
 
 BENCHMARK(BM_AmString_Construct)
         ->Arg(8)

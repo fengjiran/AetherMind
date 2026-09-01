@@ -61,4 +61,4 @@ void ArrayImpl::MoveElemsLeft(size_t dst, size_t src, size_t n) {
     }
 }
 
-}// namespace aethermind
+} // namespace aethermind

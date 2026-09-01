@@ -7,5 +7,5 @@ struct CpuExecutionResources {
     // Batch B: placeholder for future CPU thread pool / NUMA / ISA helpers.
 };
 
-}// namespace aethermind
+} // namespace aethermind
 #endif

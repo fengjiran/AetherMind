@@ -126,11 +126,11 @@ public:
     }
 };
 
-}// namespace
+} // namespace
 
 const ConstEvaluator& detail::GetMulConstEvaluator() noexcept {
     static const ElementwiseMulConstEvaluator kEvaluator;
     return kEvaluator;
 }
 
-}// namespace aethermind
+} // namespace aethermind

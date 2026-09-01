@@ -29,6 +29,6 @@ AM_NODISCARD StatusOr<std::vector<WeightPrepackPlanner::Request>>
 BuildWeightPackingRequests(const LoweredGraph& lowered,
                            const ResolvedModelWeights& resolved);
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

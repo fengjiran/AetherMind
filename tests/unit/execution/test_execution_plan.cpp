@@ -482,4 +482,4 @@ TEST(RuntimeBindingContext, ResetAllowsReinstallingBindingTable) {
     EXPECT_NE(context.binding_table(), nullptr);
 }
 
-}// namespace
+} // namespace

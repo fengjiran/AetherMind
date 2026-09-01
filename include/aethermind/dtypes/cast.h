@@ -7,12 +7,12 @@
 #ifndef AETHERMIND_DTYPES_CAST_H
 #define AETHERMIND_DTYPES_CAST_H
 
+#include "aethermind/base/error.h"
+#include "aethermind/base/macros.h"
 #include "aethermind/dtypes/bfloat16.h"
 #include "aethermind/dtypes/complex.h"
 #include "aethermind/dtypes/float8_e4m3fn.h"
 #include "aethermind/dtypes/float8_e5m2.h"
-#include "aethermind/base/error.h"
-#include "aethermind/base/macros.h"
 
 namespace aethermind {
 
@@ -289,6 +289,6 @@ To check_and_cast(From src, const char* name) {
     return cast<From, To>::apply(src);
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_DTYPES_CAST_H
+#endif // AETHERMIND_DTYPES_CAST_H

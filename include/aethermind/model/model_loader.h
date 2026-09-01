@@ -33,6 +33,6 @@ public:
             const std::filesystem::path& model_dir);
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

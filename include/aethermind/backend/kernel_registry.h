@@ -86,5 +86,5 @@ private:
     std::unordered_set<RegistrationKey, RegistrationKeyHash> registration_keys_{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 #endif

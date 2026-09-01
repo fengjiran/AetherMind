@@ -275,4 +275,4 @@ TEST(AddRmsNormFusionPass, HonorsFlagCheckpointsAndIsIdempotent) {
     EXPECT_EQ(second->FindNodesByOpType(OpType::kAddRmsNorm).size(), 1U);
 }
 
-}// namespace
+} // namespace

@@ -431,7 +431,7 @@ StatusOr<RawWeightTable> LoadShardedRawWeightTable(const HfDirectoryDescriptor& 
     return raw_weights;
 }
 
-}// namespace
+} // namespace
 
 StatusOr<HfDirectoryReader> HfDirectoryReader::Open(const std::filesystem::path& model_dir) {
     auto dir_desc = InspectDirectory(model_dir);
@@ -600,4 +600,4 @@ StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::f
             model_dir));
 }
 
-}// namespace aethermind
+} // namespace aethermind

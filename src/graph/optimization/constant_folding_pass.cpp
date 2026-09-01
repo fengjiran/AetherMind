@@ -152,7 +152,7 @@ StatusOr<OutputStorage> AllocateOutputViews(const ConstEvalPlan& plan) {
     return result;
 }
 
-}// namespace
+} // namespace
 
 std::string_view ConstantFoldingPass::Name() const noexcept {
     return "ConstantFoldingPass";
@@ -295,4 +295,4 @@ Status ConstantFoldingPass::Run(GraphRewriteSession& session, const PassContext&
     return Status::Ok();
 }
 
-}// namespace aethermind
+} // namespace aethermind

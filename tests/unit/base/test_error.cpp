@@ -54,4 +54,4 @@ TEST(AETHERMIND_THROW, EmptyErrorMessage) {
     }
 }
 
-}// namespace
+} // namespace

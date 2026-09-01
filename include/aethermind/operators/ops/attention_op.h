@@ -49,6 +49,6 @@ inline std::string MakeAttentionUnsupportedDTypeMessage(
     return msg;
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

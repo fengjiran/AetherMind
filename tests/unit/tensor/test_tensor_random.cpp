@@ -80,4 +80,4 @@ TEST(TensorAllCloseNew, SupportsExactIntComparisonTensor) {
     EXPECT_FALSE(ExpectTensorEqual(a, c));
 }
 
-}// namespace
+} // namespace

@@ -51,7 +51,7 @@ bool ParseDoubleFallback(std::string_view text, double& out) noexcept {
     return true;
 }
 
-}// namespace
+} // namespace
 
 bool ParseFloat(std::string_view text, float& out) noexcept {
     return ParseFloatFallback(text, out);
@@ -75,6 +75,6 @@ bool ParseDouble(std::string_view text, double& out) noexcept {
 
 #endif
 
-}// namespace aethermind::utils
+} // namespace aethermind::utils
 
 #undef AETHERMIND_FP_FROM_CHARS_FALLBACK

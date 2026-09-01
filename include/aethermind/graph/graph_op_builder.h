@@ -314,6 +314,6 @@ StatusOr<GraphValueId> AddReorder(ModelGraph& graph,
                                   GraphValueId input,
                                   std::string name = {});
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

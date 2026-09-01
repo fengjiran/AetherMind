@@ -65,4 +65,4 @@ TEST(SoftmaxInference, RejectsFloat8E4M3FN) {
     EXPECT_FALSE(InferOperator(OpType::kSoftmax, SoftmaxParams{-1}, inputs).ok());
 }
 
-}// namespace
+} // namespace

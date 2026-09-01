@@ -390,4 +390,4 @@ TEST(ConstEvaluator, SkipsMulRankZeroUnsupportedDType) {
     EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
 }
 
-}// namespace
+} // namespace

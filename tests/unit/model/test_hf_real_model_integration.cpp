@@ -152,4 +152,4 @@ TEST(ModelLoader_HfRealModelIntegrationTest, ResolvesAndValidatesResolvedModelWe
     EXPECT_TRUE(resolved_status.ok()) << resolved_status.ToString();
 }
 
-}// namespace
+} // namespace

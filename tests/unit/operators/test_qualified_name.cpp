@@ -139,4 +139,4 @@ TEST(QualifiedName, EdgeCases) {
     EXPECT_TRUE(qn_from_empty.GetPrefix().empty());
 }
 
-}// namespace
+} // namespace

@@ -630,6 +630,6 @@ private:
     }
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_AMSTRING_BASIC_STRING_HPP
+#endif // AETHERMIND_AMSTRING_BASIC_STRING_HPP

@@ -12,7 +12,7 @@ Status ValidateIndexRange(size_t index, size_t upper_bound, const char* label) n
     return Status::Ok();
 }
 
-}// namespace
+} // namespace
 
 size_t KVCacheLayout::ElementBytes() const noexcept {
     return static_cast<size_t>(kv_dtype.nbytes());
@@ -328,4 +328,4 @@ void KVCacheView::Invalidate() noexcept {
     generation_ = 0;
 }
 
-}// namespace aethermind
+} // namespace aethermind

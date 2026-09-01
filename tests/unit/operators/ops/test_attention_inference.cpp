@@ -368,4 +368,4 @@ TEST(AttentionInference, EmitsNoConstraintsWhenAllStatic) {
     EXPECT_TRUE(result->runtime_checks.empty());
 }
 
-}// namespace
+} // namespace

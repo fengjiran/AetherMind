@@ -77,6 +77,6 @@ private:
     size_t size_ = 0;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_BASE_MMAP_FILE_H
+#endif // AETHERMIND_BASE_MMAP_FILE_H

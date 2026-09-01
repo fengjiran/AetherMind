@@ -8,6 +8,6 @@ public:
     virtual ~TracingSink() = default;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

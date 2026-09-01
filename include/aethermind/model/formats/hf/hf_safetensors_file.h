@@ -77,6 +77,6 @@ private:
     std::unordered_map<std::string, size_t> name_index_{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

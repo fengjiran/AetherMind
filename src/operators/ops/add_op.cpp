@@ -44,6 +44,6 @@ StatusOr<InferenceResult> InferAdd(const OpParams& params,
     return result;
 }
 
-}// namespace detail
+} // namespace detail
 
-}// namespace aethermind
+} // namespace aethermind

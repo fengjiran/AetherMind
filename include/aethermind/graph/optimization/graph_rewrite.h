@@ -504,9 +504,9 @@ private:
     /// from source/session spaces into the committed graph's id space.
     using ValueMap = std::vector<std::optional<GraphValueId>>;
     struct CommitValueMaps {
-        ValueMap& source_values;          // Source value -> committed value
-        ValueMap& session_external_values;// Session external -> committed value
-        ValueMap& virtual_values;         // Virtual value -> committed output
+        ValueMap& source_values;           // Source value -> committed value
+        ValueMap& session_external_values; // Session external -> committed value
+        ValueMap& virtual_values;          // Virtual value -> committed output
     };
 
     struct RetainedNodes {
@@ -783,6 +783,6 @@ private:
     void NormalizeInputs(GraphValueId from, GraphValueId to) noexcept;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

@@ -100,4 +100,4 @@ TEST(CpuWeightPrepacker, PackAcceptsLogicalWeightTensorView) {
     EXPECT_EQ((*packed)->storage().nbytes(), logical_weight.logical_nbytes());
 }
 
-}// namespace
+} // namespace

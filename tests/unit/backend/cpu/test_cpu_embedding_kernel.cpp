@@ -294,4 +294,4 @@ TEST(EmbeddingKernel, ExecutionPlanBuilderRunsResolvedKernel) {
     EXPECT_FLOAT_EQ(output[8], 3.0F);
 }
 
-}// namespace
+} // namespace

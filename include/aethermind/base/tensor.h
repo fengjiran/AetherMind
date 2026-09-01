@@ -3,11 +3,11 @@
 
 /// @file tensor.h
 /// @brief Owning dense tensor backed by a Buffer.
+#include "aethermind/base/device.h"
+#include "aethermind/base/macros.h"
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/memory/buffer.h"
 #include "container/array_view.h"
-#include "aethermind/base/device.h"
-#include "aethermind/base/macros.h"
 #include "shape_and_stride.h"
 #include "utils/logging.h"
 
@@ -247,7 +247,7 @@ private:
     void validate() const;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 
-#endif// AETHERMIND_BASE_TENSOR_H
+#endif // AETHERMIND_BASE_TENSOR_H

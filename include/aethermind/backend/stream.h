@@ -13,6 +13,6 @@ public:
     ~CpuInlineStream() override = default;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

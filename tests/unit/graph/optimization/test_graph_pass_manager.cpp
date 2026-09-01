@@ -179,7 +179,7 @@ TEST(GraphPassManager, CheckpointCommitsIntermediateSnapshot) {
 TEST(GraphPassManager, DisabledCheckpointStillProducesCorrectResult) {
     const ModelGraph graph = BuildTwoEmbeddingGraph();
     GraphPassManager pipeline;
-    pipeline.SetCheckpointEvery(0)// explicitly disable checkpointing
+    pipeline.SetCheckpointEvery(0) // explicitly disable checkpointing
             .AddSequential(MakePasses(
                     std::make_unique<RedirectFirstNodeInputPass>(),
                     std::make_unique<RemoveUnusedSecondNodePass>()));
@@ -348,4 +348,4 @@ TEST(GraphPassManager, RejectsForgedOutputSpecBeforeAnyPass) {
             << "Precondition violation: pass ran on an unvalidated graph";
     EXPECT_NE(result.status().message().find("RmsNorm"), std::string::npos);
 }
-}// namespace
+} // namespace

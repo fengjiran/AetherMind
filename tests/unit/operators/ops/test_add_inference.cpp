@@ -136,4 +136,4 @@ TEST(AddInference, EmitsDeferredBroadcastConstraint) {
     EXPECT_EQ(constraint->rhs.dim_index, 0U);
 }
 
-}// namespace
+} // namespace

@@ -51,4 +51,4 @@ static auto& env = RegisterEnvs::Global()
                            .SetEnv("THP_MEM_ALLOC_ENABLE", "1", false)
                            .SetEnv("TRACEBACK_LIMIT", "512", false);
 
-}// namespace aethermind
+} // namespace aethermind

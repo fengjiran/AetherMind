@@ -18,7 +18,7 @@ struct KernelDescriptor {
     CpuKernelRequirements cpu_requirements{};
     KernelFunc kernel_func = nullptr;
     std::string name{};
-    int priority = 0;// Higher value wins; first-registered wins on tie.
+    int priority = 0; // Higher value wins; first-registered wins on tie.
 
     KernelParamsBuilder params_builder = nullptr;
     size_t params_size = 0;
@@ -68,6 +68,6 @@ AM_NODISCARD inline Status ValidateKernelDescriptor(const KernelDescriptor& desc
     return Status::Ok();
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

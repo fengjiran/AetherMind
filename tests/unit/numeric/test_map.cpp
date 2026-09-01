@@ -24,7 +24,7 @@ struct hash<HashCollisionKey> {
         return 42;
     }
 };
-}// namespace std
+} // namespace std
 
 namespace {
 using namespace aethermind;
@@ -143,8 +143,8 @@ TEST(MapTest, create_from_range) {
     std::vector<std::pair<int, int>> duplicate_vec = {{1, 10}, {1, 20}, {2, 30}, {2, 40}};
     MapV1<int, int> duplicate_map(duplicate_vec.begin(), duplicate_vec.end());
     EXPECT_EQ(duplicate_map.size(), 2);
-    EXPECT_EQ(duplicate_map[1], 10);// 应该保留第一个值
-    EXPECT_EQ(duplicate_map[2], 30);// 应该保留第一个值
+    EXPECT_EQ(duplicate_map[1], 10); // 应该保留第一个值
+    EXPECT_EQ(duplicate_map[2], 30); // 应该保留第一个值
 
     // 测试从不同类型的容器创建
     std::list<std::pair<String, int>> list_data = {{"apple", 1}, {"banana", 2}, {"cherry", 3}};
@@ -438,8 +438,8 @@ TEST(MapInsertTest, all_insert_methods) {
         auto [it2, success2] = map.insert(custom_pair);
         EXPECT_EQ(it2->first, 4);
         EXPECT_EQ(it2->second, 40);
-        EXPECT_FALSE(success2);  // 应该插入失败，因为键4已经存在
-        EXPECT_EQ(map.size(), 4);// 大小应该保持不变
+        EXPECT_FALSE(success2);   // 应该插入失败，因为键4已经存在
+        EXPECT_EQ(map.size(), 4); // 大小应该保持不变
     }
 
     // 5. 测试范围插入 insert(Iter first, Iter last)
@@ -475,7 +475,7 @@ TEST(MapInsertTest, insert_duplicate_keys) {
     auto [it2, success2] = map.insert(1, 20);
     EXPECT_FALSE(success2);
     EXPECT_EQ(map.size(), 1);
-    EXPECT_EQ(it2->second, 10);// 应该返回已存在的元素
+    EXPECT_EQ(it2->second, 10); // 应该返回已存在的元素
 
     // 使用不同的insert方法测试重复键
     auto [it3, success3] = map.insert(MapV1<int, int>::value_type(1, 30));
@@ -502,7 +502,7 @@ TEST(MapInsertTest, insert_with_COW) {
     auto [it, success] = map2.insert(3, 30);
     EXPECT_TRUE(success);
     EXPECT_EQ(map2.size(), 3);
-    EXPECT_EQ(map1.size(), 2);// 原map应该保持不变
+    EXPECT_EQ(map1.size(), 2); // 原map应该保持不变
     EXPECT_EQ(map1.use_count(), 1);
     EXPECT_EQ(map2.use_count(), 1);
 }
@@ -603,8 +603,8 @@ TEST(MapInsertTest, insert_edge_cases) {
 
     // 插入包含重复键的初始化列表
     map.insert({{1, 20}, {2, 30}, {3, 40}});
-    EXPECT_EQ(map.size(), 3);// 只有两个新元素被插入
-    EXPECT_EQ(map[1], 10);   // 原元素保持不变
+    EXPECT_EQ(map.size(), 3); // 只有两个新元素被插入
+    EXPECT_EQ(map[1], 10);    // 原元素保持不变
     EXPECT_EQ(map[2], 30);
     EXPECT_EQ(map[3], 40);
 }
@@ -639,7 +639,7 @@ TEST(MapInsertOrAssignTest, basic_functionality) {
         EXPECT_FALSE(success);
         EXPECT_EQ(it->first, 1);
         EXPECT_EQ(it->second, 100);
-        EXPECT_EQ(map.size(), 2);// 大小保持不变
+        EXPECT_EQ(map.size(), 2); // 大小保持不变
     }
 
     // 4. 更新已存在元素（左值引用版本）
@@ -650,7 +650,7 @@ TEST(MapInsertOrAssignTest, basic_functionality) {
         EXPECT_FALSE(success);
         EXPECT_EQ(it->first, 2);
         EXPECT_EQ(it->second, 200);
-        EXPECT_EQ(map.size(), 2);// 大小保持不变
+        EXPECT_EQ(map.size(), 2); // 大小保持不变
     }
 }
 
@@ -707,9 +707,9 @@ TEST(MapInsertOrAssignTest, cow_mechanism) {
     auto [it, success] = map2.insert_or_assign(1, 100);
     EXPECT_FALSE(success);
     EXPECT_EQ(map2.size(), 2);
-    EXPECT_EQ(map1.size(), 2);// 原map应该保持不变
-    EXPECT_EQ(map1[1], 10);   // 原map的元素保持不变
-    EXPECT_EQ(map2[1], 100);  // 副本的元素被更新
+    EXPECT_EQ(map1.size(), 2); // 原map应该保持不变
+    EXPECT_EQ(map1[1], 10);    // 原map的元素保持不变
+    EXPECT_EQ(map2[1], 100);   // 副本的元素被更新
     EXPECT_EQ(map1.use_count(), 1);
     EXPECT_EQ(map2.use_count(), 1);
 
@@ -717,7 +717,7 @@ TEST(MapInsertOrAssignTest, cow_mechanism) {
     auto [it2, success2] = map2.insert_or_assign(3, 30);
     EXPECT_TRUE(success2);
     EXPECT_EQ(map2.size(), 3);
-    EXPECT_EQ(map1.size(), 2);// 原map应该保持不变
+    EXPECT_EQ(map1.size(), 2); // 原map应该保持不变
 }
 
 // 测试小地图到大地图转换时的insert_or_assign
@@ -868,8 +868,8 @@ TEST(MapEraseTest, erase_by_iterator) {
 
     // // 删除中间元素
     it = dense_map.begin();
-    ++it;// 指向键2
-    ++it;// 指向键3
+    ++it; // 指向键2
+    ++it; // 指向键3
     next_it = dense_map.erase(it);
 
     for (const auto& [fst, snd]: dense_map) {
@@ -927,7 +927,7 @@ TEST(MapEraseTest, erase_range) {
     EXPECT_EQ(small_map.size(), 3);
 
     it = small_map.begin();
-    ++it;// 指向键2
+    ++it; // 指向键2
     result = small_map.erase(small_map.begin(), it);
     EXPECT_EQ(small_map.size(), 2);
     EXPECT_EQ(result->first, 2);
@@ -942,10 +942,10 @@ TEST(MapEraseTest, erase_range) {
 
     // 删除中间范围
     it = dense_map.begin();
-    ++it;// 指向键2
+    ++it; // 指向键2
     auto mid_it = it;
-    ++mid_it;// 指向键3
-    ++mid_it;// 指向键4
+    ++mid_it; // 指向键3
+    ++mid_it; // 指向键4
     result = dense_map.erase(it, mid_it);
     EXPECT_EQ(dense_map.size(), 3);
     EXPECT_EQ(result->first, 4);
@@ -1050,7 +1050,7 @@ TEST(MapEraseTest, erase_edge_cases) {
 TEST(MapEraseTest, erase_with_cow) {
     // 测试引用计数和COW
     MapV1<int, int> map1 = {{1, 10}, {2, 20}, {3, 30}};
-    MapV1<int, int> map2 = map1;// 共享数据
+    MapV1<int, int> map2 = map1; // 共享数据
 
     EXPECT_EQ(map1.use_count(), 2);
     EXPECT_EQ(map2.use_count(), 2);
@@ -1058,9 +1058,9 @@ TEST(MapEraseTest, erase_with_cow) {
     // map1执行删除操作，应该触发COW
     map1.erase(1);
     EXPECT_EQ(map1.size(), 2);
-    EXPECT_EQ(map1.use_count(), 1);// 现在应该是唯一的
-    EXPECT_EQ(map2.size(), 3);     // map2应该不受影响
-    EXPECT_EQ(map2.use_count(), 1);// map2现在也是唯一的
+    EXPECT_EQ(map1.use_count(), 1); // 现在应该是唯一的
+    EXPECT_EQ(map2.size(), 3);      // map2应该不受影响
+    EXPECT_EQ(map2.use_count(), 1); // map2现在也是唯一的
 
     // 验证map1和map2现在是独立的
     map2.erase(2);
@@ -1116,7 +1116,7 @@ TEST(MapEraseTest, erase_and_iterate_safety) {
     // 安全的迭代和删除方式
     for (auto it = map.begin(); it != map.end();) {
         if (it->first % 2 == 0) {
-            it = map.erase(it);// 正确的方式：使用erase返回的迭代器
+            it = map.erase(it); // 正确的方式：使用erase返回的迭代器
         } else {
             ++it;
         }
@@ -1207,10 +1207,10 @@ TEST(MapTest, operator_subscript_lvalue_rvalue) {
     for (int i = 0; i < 20; ++i) {
         // 混合使用左值和右值键
         if (i % 2 == 0) {
-            large_map[i] = i * 10;// 左值键
+            large_map[i] = i * 10; // 左值键
         } else {
             int key = i;
-            large_map[std::move(key)] = i * 10;// 右值键
+            large_map[std::move(key)] = i * 10; // 右值键
         }
     }
 
@@ -1222,7 +1222,7 @@ TEST(MapTest, operator_subscript_lvalue_rvalue) {
     }
 }
 
-}// namespace
+} // namespace
 
 #ifdef TEST_MAP
 

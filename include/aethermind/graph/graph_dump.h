@@ -75,6 +75,6 @@ void DumpOpParams(const OpParams& params, std::ostream& os);
 /// @param os Output stream to write to.
 void DumpGraph(const ModelGraph& graph, std::ostream& os);
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

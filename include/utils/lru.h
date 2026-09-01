@@ -73,6 +73,6 @@ private:
     std::unordered_map<Key, typename std::list<std::pair<Key, Value>>::iterator> cache_map_;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_LRU_H
+#endif // AETHERMIND_LRU_H

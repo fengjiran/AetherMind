@@ -69,6 +69,6 @@ struct TraceBackStorage {
     bool stop_at_boundary_ = true;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_BASE_TRACEBACK_H
+#endif // AETHERMIND_BASE_TRACEBACK_H

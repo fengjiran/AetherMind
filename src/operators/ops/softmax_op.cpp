@@ -20,4 +20,4 @@ StatusOr<InferenceResult> InferSoftmax(const OpParams& params,
     return result;
 }
 
-}// namespace aethermind::detail
+} // namespace aethermind::detail

@@ -124,7 +124,7 @@ StatusOr<std::string> ReadFileText(const std::filesystem::path& path) {
 }
 
 Status RejectExistingPathIfSymlink(const std::filesystem::path& path,
-                                std::string_view file_role) {
+                                   std::string_view file_role) {
     std::error_code error;
     const auto status = std::filesystem::symlink_status(path, error);
     if (error) {
@@ -147,4 +147,4 @@ Status RejectExistingPathIfSymlink(const std::filesystem::path& path,
     return Status::Ok();
 }
 
-}// namespace aethermind::hf
+} // namespace aethermind::hf

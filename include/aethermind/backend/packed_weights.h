@@ -46,6 +46,6 @@ public:
     AM_NODISCARD virtual const std::vector<int64_t>& logical_shape() const noexcept = 0;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

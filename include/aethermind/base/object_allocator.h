@@ -18,11 +18,11 @@ namespace details {
 #ifdef AETHERMIND_ALLOCATOR_DEBUG
 
 struct AllocRecord {
-    size_t size;          // allocate size
-    size_t align;         // alignment
-    const char* type_name;// type name
-    void* call_stack[16]; // call stack
-    int stack_frames;     // actual stack frames
+    size_t size;           // allocate size
+    size_t align;          // alignment
+    const char* type_name; // type name
+    void* call_stack[16];  // call stack
+    int stack_frames;      // actual stack frames
 };
 
 class AllocTracker {
@@ -125,11 +125,11 @@ public:
         static void deleter(void* ptr, uint8_t flag) {
             auto* p = static_cast<T*>(ptr);
             if (flag & kStrongPtrMask) {
-                p->T::~T();// release source
+                p->T::~T(); // release source
             }
 
             if (flag & kWeakPtrMask) {
-                FreeObject(static_cast<void*>(p));// free memory
+                FreeObject(static_cast<void*>(p)); // free memory
             }
         }
     };
@@ -160,7 +160,7 @@ public:
             }
 
             if (flag & kWeakPtrMask) {
-                FreeObject(static_cast<void*>(p));// free memory
+                FreeObject(static_cast<void*>(p)); // free memory
             }
         }
     };
@@ -173,7 +173,7 @@ public:
 private:
     ObjectAllocator() = default;
 };
-}// namespace details
+} // namespace details
 
 
 template<typename T, typename... Args>
@@ -186,6 +186,6 @@ ObjectPtr<T> make_array_object(size_t num_elems, Args&&... args) {
     return details::ObjectAllocator::GetInstance().make_array_object<T, ElemType>(num_elems, std::forward<Args>(args)...);
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_BASE_OBJECT_ALLOCATOR_H
+#endif // AETHERMIND_BASE_OBJECT_ALLOCATOR_H

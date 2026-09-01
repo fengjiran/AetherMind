@@ -16,4 +16,4 @@ TEST(MapImplV2Test, basic) {
     map_impl.erase(it);
 }
 
-}// namespace
+} // namespace

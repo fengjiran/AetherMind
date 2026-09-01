@@ -401,4 +401,4 @@ TEST(ConstEvaluator, EvaluatesSiluMulNegativeGate) {
     }
 }
 
-}// namespace
+} // namespace

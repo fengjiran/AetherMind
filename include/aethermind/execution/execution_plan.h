@@ -170,6 +170,6 @@ private:
     WorkspacePlanLayout workspace_layout_{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

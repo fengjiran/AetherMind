@@ -42,6 +42,6 @@ AM_NODISCARD inline bool PhaseMatches(ExecPhase candidate,
     return candidate == request || candidate == ExecPhase::kBoth;
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_BASE_KERNEL_ATTRS_H
+#endif // AETHERMIND_BASE_KERNEL_ATTRS_H

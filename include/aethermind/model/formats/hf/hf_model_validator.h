@@ -52,6 +52,6 @@ public:
                                         const ModelValidationOptions& options = {});
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_MODEL_FORMATS_HF_HF_MODEL_VALIDATOR_H
+#endif // AETHERMIND_MODEL_FORMATS_HF_HF_MODEL_VALIDATOR_H

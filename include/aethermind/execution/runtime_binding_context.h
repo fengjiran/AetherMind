@@ -148,6 +148,6 @@ private:
     BindingTable binding_table_{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

@@ -791,4 +791,4 @@ TEST(AddKernel, ResolveAddWithUndefinedWeightDtypeReturnsNotFound) {
     EXPECT_EQ(resolved.status().code(), StatusCode::kNotFound);
 }
 
-}// namespace
+} // namespace

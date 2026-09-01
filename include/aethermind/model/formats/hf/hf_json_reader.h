@@ -54,7 +54,7 @@ private:
     Status SkipValueInternal(uint32_t depth);
 };
 
-}// namespace hf
-}// namespace aethermind
+} // namespace hf
+} // namespace aethermind
 
 #endif

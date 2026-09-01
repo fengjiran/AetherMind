@@ -48,6 +48,6 @@ inline std::string MakeKVCacheUpdateUnsupportedDTypeMessage(
     return msg;
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

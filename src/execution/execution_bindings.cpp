@@ -125,7 +125,7 @@ StatusOr<size_t> ComputeByteSize(const ConcreteTensorMetadata& metadata,
     return bytes;
 }
 
-}// namespace
+} // namespace
 
 class BindingTableStorage {
 public:
@@ -359,4 +359,4 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
     return BindingTable(std::move(storage));
 }
 
-}// namespace aethermind
+} // namespace aethermind

@@ -47,6 +47,6 @@ StatusOr<InferenceResult> InferSiluMul(const OpParams& params,
     return result;
 }
 
-}// namespace detail
+} // namespace detail
 
-}// namespace aethermind
+} // namespace aethermind

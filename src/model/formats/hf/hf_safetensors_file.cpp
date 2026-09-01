@@ -66,7 +66,7 @@ StatusOr<uint64_t> CheckedMultiply(uint64_t lhs, uint64_t rhs, std::string_view 
     return product;
 }
 
-}// namespace
+} // namespace
 
 namespace hf {
 
@@ -306,7 +306,7 @@ private:
     size_t data_size_ = 0;
 };
 
-}// namespace hf
+} // namespace hf
 
 StatusOr<HfSafetensorsFile> HfSafetensorsFile::Open(const std::filesystem::path& safetensors_path) {
     AM_RETURN_IF_ERROR(hf::RejectExistingPathIfSymlink(safetensors_path, "HF safetensors file"));
@@ -379,4 +379,4 @@ const HfSafetensorsEntry* HfSafetensorsFile::Find(std::string_view tensor_name) 
     return nullptr;
 }
 
-}// namespace aethermind
+} // namespace aethermind

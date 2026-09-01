@@ -38,6 +38,6 @@ constexpr int64_t GetJunkPattern64() noexcept {
     return static_cast<int64_t>(GetJunkPattern32()) << 32 | GetJunkPattern32();
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_UTILS_MEMORY_UTILS_H
+#endif // AETHERMIND_UTILS_MEMORY_UTILS_H

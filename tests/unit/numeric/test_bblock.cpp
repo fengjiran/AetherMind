@@ -97,8 +97,8 @@ TEST(BBlockTest, CopyConstructor_DeepCopy) {
     // // 测试3：深拷贝-内存独立（修改拷贝对象，源对象不受影响）
     block_copy.destroy(slot1);
     block_copy.emplace(slot1, std::make_pair(99, std::vector<int>{9, 9, 9}));
-    EXPECT_EQ(block.GetDataPtr(slot1)->first, 10);     // 源对象不变
-    EXPECT_EQ(block_copy.GetDataPtr(slot1)->first, 99);// 拷贝对象已修改
+    EXPECT_EQ(block.GetDataPtr(slot1)->first, 10);      // 源对象不变
+    EXPECT_EQ(block_copy.GetDataPtr(slot1)->first, 99); // 拷贝对象已修改
 }
 
 // ========== 测试套件5：边界条件测试（槽位越界/最大槽位/0槽位） ==========
@@ -152,4 +152,4 @@ TEST(BBlockTest, ConstCorrectness) {
     // const_block.destroy(1); // ❌ compile error
 }
 
-}// namespace
+} // namespace

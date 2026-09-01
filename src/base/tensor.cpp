@@ -208,7 +208,7 @@ Scalar ReadScalarFromBuffer(const DataType& dtype, const void* data) {
     AM_UNREACHABLE();
 }
 
-}// namespace
+} // namespace
 
 Tensor Tensor::FromScalar(const Scalar& scalar, Allocator& allocator) {
     AM_CHECK(allocator.device().is_cpu(), "FromScalar requires a CPU allocator.");
@@ -252,4 +252,4 @@ void Tensor::set_item(const Scalar& scalar) {
     WriteScalarToBuffer(dtype_, scalar, mutable_data());
 }
 
-}// namespace aethermind
+} // namespace aethermind

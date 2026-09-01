@@ -86,4 +86,4 @@ TYPED_TEST(DefaultLayoutPolicyTest, PublicStringDefaultConstructsWithHiddenLayou
     EXPECT_EQ(string.data()[0], CharT{});
 }
 
-}// namespace
+} // namespace

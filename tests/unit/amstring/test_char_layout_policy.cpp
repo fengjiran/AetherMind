@@ -292,4 +292,4 @@ TEST(CharLayoutPolicyTest, CheckInvariantsRejectsExternalSizeBeyondCapacity) {
 #endif
 }
 
-}// namespace
+} // namespace

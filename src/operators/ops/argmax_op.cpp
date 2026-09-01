@@ -44,4 +44,4 @@ StatusOr<InferenceResult> InferArgmax(const OpParams& params,
     return result;
 }
 
-}// namespace aethermind::detail
+} // namespace aethermind::detail

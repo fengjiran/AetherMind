@@ -6,13 +6,13 @@
 #ifndef AETHERMIND_AMSTRING_CORE_HPP
 #define AETHERMIND_AMSTRING_CORE_HPP
 
+#include "aethermind/base/error.h"
+#include "aethermind/base/macros.h"
 #include "allocator_support.hpp"
 #include "char_algorithms.hpp"
 #include "config.hpp"
-#include "aethermind/base/error.h"
 #include "growth_policy.hpp"
 #include "layout_policy.hpp"
-#include "aethermind/base/macros.h"
 #include "utils/overflow_check.h"
 
 #include <algorithm>
@@ -863,6 +863,6 @@ private:
     [[no_unique_address]] AllocType alloc_;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_AMSTRING_CORE_HPP
+#endif // AETHERMIND_AMSTRING_CORE_HPP

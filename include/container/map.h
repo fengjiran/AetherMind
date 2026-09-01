@@ -5,9 +5,9 @@
 #ifndef AETHERMIND_CONTAINER_MAP_OBJ_H
 #define AETHERMIND_CONTAINER_MAP_OBJ_H
 
-#include "any_utils.h"
 #include "aethermind/base/error.h"
 #include "aethermind/base/object.h"
+#include "any_utils.h"
 #include "utils/hash.h"
 
 #include <concepts>
@@ -110,8 +110,8 @@ protected:
     size_type size_;
     size_type slots_;
 
-    static constexpr size_type kInitSize = 2; // Init map size
-    static constexpr size_type kThreshold = 4;// The threshold of the small and dense map
+    static constexpr size_type kInitSize = 2;  // Init map size
+    static constexpr size_type kThreshold = 4; // The threshold of the small and dense map
     static constexpr size_type kIncFactor = 2;
 
     AM_NODISCARD Derived* GetDerivedPtr() noexcept {
@@ -429,10 +429,10 @@ private:
     void reset();
 
     /*!
-   * \brief Search for the given key, throw exception if not exists
-   * \param key The key
-   * \return ListNode that associated with the key
-   */
+     * \brief Search for the given key, throw exception if not exists
+     * \param key The key
+     * \return ListNode that associated with the key
+     */
     AM_NODISCARD Cursor Search(const key_type& key) const;
 
     AM_NODISCARD size_type Search_debug(const key_type& key) const;
@@ -462,23 +462,23 @@ private:
     void IterListRemove(Cursor node);
 
     /*!
-   * \brief Replace node src by dst in the iter list
-   * \param src The source node
-   * \param dst The destination node, must be empty
-   * \note This function does not change data content of the nodes,
-   *       which needs to be updated by the caller.
-   */
+     * \brief Replace node src by dst in the iter list
+     * \param src The source node
+     * \param dst The destination node, must be empty
+     * \note This function does not change data content of the nodes,
+     *       which needs to be updated by the caller.
+     */
     void IterListReplace(Cursor src, Cursor dst);
 
     /*!
-   * \brief Spare an entry to be the head of a linked list.
-   * As described in B3, during insertion, it is possible that the entire linked list does not
-   * exist, but the slot of its head has been occupied by other linked lists. In this case, we need
-   * to spare the slot by moving away the elements to another valid empty one to make insertion
-   * possible.
-   * \param target The given entry to be spared
-   * \return The linked-list entry constructed as the head, if actual insertion happens
-   */
+     * \brief Spare an entry to be the head of a linked list.
+     * As described in B3, during insertion, it is possible that the entire linked list does not
+     * exist, but the slot of its head has been occupied by other linked lists. In this case, we need
+     * to spare the slot by moving away the elements to another valid empty one to make insertion
+     * possible.
+     * \param target The given entry to be spared
+     * \return The linked-list entry constructed as the head, if actual insertion happens
+     */
     std::optional<Cursor> TryAllocateListHead(Cursor target);
 
     /*!
@@ -530,13 +530,13 @@ template<typename K, typename V, typename Hasher>
 struct DenseMapObj<K, V, Hasher>::Block {
     std::array<std::byte, kEntriesPerBlock + kEntriesPerBlock * sizeof(Entry)> storage_;
 
-    Block() {// NOLINT
+    Block() { // NOLINT
         for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
             storage_[i] = MagicConstants::kEmptySlot;
         }
     }
 
-    Block(const Block& other) {// NOLINT
+    Block(const Block& other) { // NOLINT
         for (uint8_t i = 0; i < kEntriesPerBlock; ++i) {
             if (other.storage_[i] != MagicConstants::kEmptySlot) {
                 storage_[i] = other.storage_[i];
@@ -775,7 +775,7 @@ DenseMapObj<K, V, Hasher>::iterator DenseMapObj<K, V, Hasher>::EraseImpl(iterato
         cur.GetSlotMetadata() = cur_meta;
         last.DestroyEntry();
         prev.SetNextSlotOffsetIndex(0);
-    } else {// the last node
+    } else { // the last node
         if (!cur.IsHead()) {
             // cut the link if there is any
             cur.FindPrevSlot().SetNextSlotOffsetIndex(0);
@@ -999,7 +999,7 @@ DenseMapObj<K, V, Hasher>::TryAllocateListHead(Cursor target) {
         // link `prev` to `empty`, and move forward
         prev.SetNextSlotOffsetIndex(offset_idx);
         prev = empty;
-    } while (r.MoveToNextSlot(r_meta));// move `r` forward as well
+    } while (r.MoveToNextSlot(r_meta)); // move `r` forward as well
 
     return target;
 }
@@ -1080,7 +1080,7 @@ DenseMapObj<K, V, Hasher>::TryInsertOrUpdate(value_type&& kv, bool assign) {
 template<typename K, typename V, typename Hasher>
 std::tuple<ObjectPtr<Object>, typename DenseMapObj<K, V, Hasher>::iterator, bool>
 DenseMapObj<K, V, Hasher>::InsertImpl(value_type&& kv, const ObjectPtr<Object>& old_impl, bool assign) {
-    auto* map = static_cast<DenseMapObj*>(old_impl.get());// NOLINT
+    auto* map = static_cast<DenseMapObj*>(old_impl.get()); // NOLINT
     if (auto [it, is_success] = map->TryInsertOrUpdate(std::move(kv), assign); it != map->EndImpl()) {
         return {old_impl, it, is_success};
     }
@@ -1144,7 +1144,7 @@ MapObj<Derived, K, V, Hasher>::insert(value_type&& kv, const ObjectPtr<Object>& 
     using SmallMapType = SmallMapObj<K, V, Hasher>;
     using DenseMapType = DenseMapObj<K, V, Hasher>;
     if constexpr (std::is_same_v<Derived, SmallMapType>) {
-        auto* p = static_cast<SmallMapType*>(old_impl.get());//NOLINT
+        auto* p = static_cast<SmallMapType*>(old_impl.get()); // NOLINT
         const auto size = p->size();
         if (size < kThreshold) {
             auto [iter, is_success] = p->InsertImpl(std::move(kv), assign);
@@ -1230,17 +1230,17 @@ public:
 
     Map(const Map& other) = default;
 
-    Map(Map&& other) noexcept : obj_(std::move(other.obj_)) {//NOLINT
+    Map(Map&& other) noexcept : obj_(std::move(other.obj_)) { // NOLINT
         // other.clear();
     }
 
     template<typename KU, typename VU>
         requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
-    Map(const Map<KU, VU>& other) : obj_(other.obj_) {}//NOLINT
+    Map(const Map<KU, VU>& other) : obj_(other.obj_) {} // NOLINT
 
     template<typename KU, typename VU>
         requires std::is_base_of_v<key_type, KU> && std::is_base_of_v<mapped_type, VU>
-    Map(Map<KU, VU>&& other) noexcept : obj_(other.obj_) {//NOLINT
+    Map(Map<KU, VU>&& other) noexcept : obj_(other.obj_) { // NOLINT
         other.clear();
     }
 
@@ -1583,7 +1583,7 @@ public:
     // iterator can convert to const_iterator
     template<bool AlwaysFalse>
         requires(IsConst && !AlwaysFalse)
-    IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : index_(other.index()), ptr_(other.ptr()) {}//NOLINT
+    IteratorImpl(const IteratorImpl<AlwaysFalse>& other) : index_(other.index()), ptr_(other.ptr()) {} // NOLINT
 
     AM_NODISCARD size_t index() const noexcept {
         return index_;
@@ -1727,7 +1727,7 @@ public:
     // iterator can convert to const_iterator
     template<bool AlwaysFalse>
         requires(IsConst && !AlwaysFalse)
-    IteratorImpl(const IteratorImpl<AlwaysFalse>& other) {//NOLINT
+    IteratorImpl(const IteratorImpl<AlwaysFalse>& other) { // NOLINT
         std::visit([&](const auto& iter) { iter_ = iter; }, other.iter_);
     }
 
@@ -1799,20 +1799,20 @@ public:
         return !(*this == other);
     }
 
-    operator SmallIterType() const {//NOLINT
+    operator SmallIterType() const { // NOLINT
         return std::get<SmallIterType>(iter_);
     }
 
-    operator DenseIterType() const {//NOLINT
+    operator DenseIterType() const { // NOLINT
         return std::get<DenseIterType>(iter_);
     }
 
 private:
     std::variant<SmallIterType, DenseIterType> iter_;
 
-    IteratorImpl(const SmallIterType& iter) : iter_(iter) {}// NOLINT
+    IteratorImpl(const SmallIterType& iter) : iter_(iter) {} // NOLINT
 
-    IteratorImpl(const DenseIterType& iter) : iter_(iter) {}//NOLINT
+    IteratorImpl(const DenseIterType& iter) : iter_(iter) {} // NOLINT
 
     template<typename, typename, typename>
     friend class Map;
@@ -1859,11 +1859,11 @@ public:
         return get()[i];
     }
 
-    operator const mapped_type&() const noexcept {//NOLINT
+    operator const mapped_type&() const noexcept { // NOLINT
         return GetDataPtr()->second;
     }
 
-    operator mapped_type&() noexcept {//NOLINT
+    operator mapped_type&() noexcept { // NOLINT
         return GetDataPtr()->second;
     }
 
@@ -1894,6 +1894,6 @@ private:
                           map_.obj_);
     }
 };
-}// namespace aethermind
+} // namespace aethermind
 
-#endif//AETHERMIND_CONTAINER_MAP_OBJ_H
+#endif // AETHERMIND_CONTAINER_MAP_OBJ_H

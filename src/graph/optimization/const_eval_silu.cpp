@@ -175,11 +175,11 @@ public:
     }
 };
 
-}// namespace
+} // namespace
 
 const ConstEvaluator& detail::GetSiluConstEvaluator() noexcept {
     static const SiluConstEvaluator kEvaluator;
     return kEvaluator;
 }
 
-}// namespace aethermind
+} // namespace aethermind

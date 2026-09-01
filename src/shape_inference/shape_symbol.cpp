@@ -200,4 +200,4 @@ std::ostream& operator<<(std::ostream& os, const SymbolicShape& s) {
     os << "]";
     return os;
 }
-}// namespace aethermind
+} // namespace aethermind

@@ -48,7 +48,7 @@ Copyright (C) 2012-2020 Yann Collet
 
 #include <cstddef>
 #include <cstdint>
-#include <iterator>// for std::data, std::size
+#include <iterator> // for std::data, std::size
 #include <type_traits>
 #include <utility>
 
@@ -415,8 +415,8 @@ consteval uint64_t XXH3_64bits_withSeed_const(const Bytes& input,
 
 /// @}
 
-}// namespace xxh3
+} // namespace xxh3
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_XXH3_H
+#endif // AETHERMIND_XXH3_H

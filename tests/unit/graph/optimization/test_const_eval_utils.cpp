@@ -102,4 +102,4 @@ TEST(ConstEvaluator, EstimateCostOverflow) {
     EXPECT_EQ(result.status().code(), StatusCode::kOverflow);
 }
 
-}// namespace
+} // namespace

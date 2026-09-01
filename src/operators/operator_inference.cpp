@@ -25,7 +25,7 @@ Status SetSelectorDTypeCandidate(const TensorSpec& spec,
     return Status::Ok();
 }
 
-}// namespace
+} // namespace
 
 StatusOr<InferenceResult> InferOperator(OpType op_type,
                                         const OpParams& params,
@@ -158,4 +158,4 @@ Status ValidateInferenceInputCount(OpType op_type,
     }
     return Status::Ok();
 }
-}// namespace aethermind
+} // namespace aethermind

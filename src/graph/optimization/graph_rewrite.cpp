@@ -66,7 +66,7 @@ ReplacementNode BuildMirrorReplacement(const ModelGraph& graph, GraphNodeId node
     return rn;
 }
 
-}// namespace
+} // namespace
 
 // Constructs a session over a source graph.
 //
@@ -2296,4 +2296,4 @@ void SubgraphBuilder::Reset() noexcept {
     aliases_.clear();
 }
 
-}// namespace aethermind
+} // namespace aethermind

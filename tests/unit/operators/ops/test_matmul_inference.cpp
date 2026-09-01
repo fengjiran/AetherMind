@@ -86,7 +86,7 @@ TEST(MatMulInference, RejectsRank1Rhs) {
 }
 
 TEST(MatMulInference, RejectsStaticInnerMismatch) {
-    constexpr MatMulParams params;// transpose_rhs=false
+    constexpr MatMulParams params; // transpose_rhs=false
     const TensorSpec inputs[2] = {
             MakeSpec(DataType::Float32(), {2, 3}),
             MakeSpec(DataType::Float32(), {4, 5}),
@@ -97,10 +97,10 @@ TEST(MatMulInference, RejectsStaticInnerMismatch) {
 }
 
 TEST(MatMulInference, RejectsStaticInnerMismatchWithTransposeRhs) {
-    const MatMulParams params{.transpose_rhs = true};// rhs layout [..., N, K]
+    const MatMulParams params{.transpose_rhs = true}; // rhs layout [..., N, K]
     const TensorSpec inputs[2] = {
-            MakeSpec(DataType::Float32(), {2, 3}),// K=3
-            MakeSpec(DataType::Float32(), {4, 5}),// K=5 -> mismatch
+            MakeSpec(DataType::Float32(), {2, 3}), // K=3
+            MakeSpec(DataType::Float32(), {4, 5}), // K=5 -> mismatch
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
@@ -149,7 +149,7 @@ TEST(MatMulInference, AcceptsTransposeRhs) {
     const MatMulParams params{.transpose_rhs = true};
     const TensorSpec inputs[2] = {
             MakeSpec(DataType::Float32(), {2, 3}),
-            MakeSpec(DataType::Float32(), {4, 3}),// [N, K] = [4, 3]
+            MakeSpec(DataType::Float32(), {4, 3}), // [N, K] = [4, 3]
     };
     EXPECT_TRUE(InferOperator(OpType::kMatMul, params, inputs).status().ok());
 }
@@ -226,16 +226,16 @@ TEST(MatMulInference, InfersRank2Output) {
 TEST(MatMulInference, InfersRank2OutputWithTransposeRhs) {
     const MatMulParams params{.transpose_rhs = true};
     const TensorSpec inputs[2] = {
-            MakeSpec(DataType::Float32(), {2, 3}),// [M, K]
-            MakeSpec(DataType::Float32(), {4, 3}),// [N, K]
+            MakeSpec(DataType::Float32(), {2, 3}), // [M, K]
+            MakeSpec(DataType::Float32(), {4, 3}), // [N, K]
     };
     const StatusOr<InferenceResult> inference = InferOperator(OpType::kMatMul, params, inputs);
     ASSERT_TRUE(inference.ok()) << inference.status().ToString();
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
     ASSERT_EQ(inference->outputs[0].shape.rank(), 2U);
-    EXPECT_EQ(inference->outputs[0].shape[0].GetStaticValue(), 2);// M
-    EXPECT_EQ(inference->outputs[0].shape[1].GetStaticValue(), 4);// N
+    EXPECT_EQ(inference->outputs[0].shape[0].GetStaticValue(), 2); // M
+    EXPECT_EQ(inference->outputs[0].shape[1].GetStaticValue(), 4); // N
 }
 
 TEST(MatMulInference, InfersBatchedOutput) {
@@ -265,7 +265,7 @@ TEST(MatMulInference, InfersBroadcastBatchOutput) {
     EXPECT_TRUE(inference->runtime_checks.empty());
     ASSERT_EQ(inference->outputs.size(), 1U);
     ASSERT_EQ(inference->outputs[0].shape.rank(), 3U);
-    EXPECT_EQ(inference->outputs[0].shape[0].GetStaticValue(), 4);// broadcast batch
+    EXPECT_EQ(inference->outputs[0].shape[0].GetStaticValue(), 4); // broadcast batch
     EXPECT_EQ(inference->outputs[0].shape[1].GetStaticValue(), 2);
     EXPECT_EQ(inference->outputs[0].shape[2].GetStaticValue(), 5);
 }
@@ -307,10 +307,10 @@ TEST(MatMulInference, EmitsInnerDimEqualConstraintForSymbolicInner) {
     const auto& eq = std::get<DimEqualConstraint>(constraint.condition);
     EXPECT_EQ(eq.lhs.tensor_port.direction, TensorPortType::kInput);
     EXPECT_EQ(eq.lhs.tensor_port.tensor_idx, 0U);
-    EXPECT_EQ(eq.lhs.dim_index, 1U);// lhs_inner at axis 1
+    EXPECT_EQ(eq.lhs.dim_index, 1U); // lhs_inner at axis 1
     EXPECT_EQ(eq.rhs.tensor_port.direction, TensorPortType::kInput);
     EXPECT_EQ(eq.rhs.tensor_port.tensor_idx, 1U);
-    EXPECT_EQ(eq.rhs.dim_index, 0U);// rhs_inner (K) at axis 0 (transpose_rhs=false)
+    EXPECT_EQ(eq.rhs.dim_index, 0U); // rhs_inner (K) at axis 0 (transpose_rhs=false)
 }
 
 TEST(MatMulInference, EmitsInnerDimEqualConstraintForTransposeRhs) {
@@ -358,9 +358,9 @@ TEST(MatMulInference, EmitsBatchBroadcastableConstraintForSymbolicBatch) {
     ASSERT_TRUE(std::holds_alternative<DimBroadcastableConstraint>(constraint.condition));
     const auto& bc = std::get<DimBroadcastableConstraint>(constraint.condition);
     EXPECT_EQ(bc.lhs.tensor_port.tensor_idx, 0U);
-    EXPECT_EQ(bc.lhs.dim_index, 0U);// batch axis 0 on lhs
+    EXPECT_EQ(bc.lhs.dim_index, 0U); // batch axis 0 on lhs
     EXPECT_EQ(bc.rhs.tensor_port.tensor_idx, 1U);
-    EXPECT_EQ(bc.rhs.dim_index, 0U);// batch axis 0 on rhs
+    EXPECT_EQ(bc.rhs.dim_index, 0U); // batch axis 0 on rhs
 }
 
 // --- Semantics ---
@@ -466,4 +466,4 @@ TEST(MatMulInference, RejectsWrongRhsDtype) {
     EXPECT_FALSE(InferOperator(OpType::kMatMul, MatMulParams{}, inputs).ok());
 }
 
-}// namespace
+} // namespace

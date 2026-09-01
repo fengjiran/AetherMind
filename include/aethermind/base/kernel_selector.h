@@ -71,7 +71,7 @@ AM_NODISCARD inline bool SelectorMatches(const KernelSelector& candidate,
 ///         messages.
 std::string ToString(const KernelSelector& selector);
 
-}// namespace aethermind
+} // namespace aethermind
 
 // Must hash exactly the fields compared by operator== so equal selectors
 // produce equal hashes.
@@ -88,4 +88,4 @@ struct std::hash<aethermind::KernelSelector> {
     }
 };
 
-#endif// AETHERMIND_BASE_KERNEL_SELECTOR_H
+#endif // AETHERMIND_BASE_KERNEL_SELECTOR_H

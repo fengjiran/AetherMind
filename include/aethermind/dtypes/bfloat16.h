@@ -34,7 +34,7 @@ float bf16_to_fp32_value(uint16_t input);
 /// are canonicalized to the quiet NaN bit pattern `0x7FC0`.
 uint16_t bf16_from_fp32_value(float);
 
-}// namespace detail
+} // namespace detail
 
 /// @brief Brain floating-point (bfloat16) value.
 ///
@@ -57,8 +57,8 @@ struct alignas(2) BFloat16 {
     BFloat16() : x(0) {}
     /// Constructs from raw bfloat16 bits; no floating-point conversion.
     constexpr BFloat16(uint16_t bits, from_bits_t) : x(bits) {}
-    BFloat16(float);       // NOLINT
-    operator float() const;// NOLINT
+    BFloat16(float);        // NOLINT
+    operator float() const; // NOLINT
 };
 
 std::ostream& operator<<(std::ostream& os, const BFloat16& value);
@@ -139,7 +139,7 @@ struct is_reduced_floating_point<BFloat16> : std::true_type {};
 template<typename T>
 constexpr bool is_reduced_floating_point_v = is_reduced_floating_point<T>::value;
 
-}// namespace aethermind
+} // namespace aethermind
 
 namespace std {
 
@@ -352,6 +352,6 @@ T fmod(T a, T b) {
     return std::fmod(static_cast<float>(a), static_cast<float>(b));
 }
 
-}// namespace std
+} // namespace std
 
-#endif// AETHERMIND_DTYPES_BFLOAT16_H
+#endif // AETHERMIND_DTYPES_BFLOAT16_H

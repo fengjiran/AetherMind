@@ -37,6 +37,6 @@ struct DefaultGrowthPolicy {
     }
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_AMSTRING_GROWTH_POLICY_HPP
+#endif // AETHERMIND_AMSTRING_GROWTH_POLICY_HPP

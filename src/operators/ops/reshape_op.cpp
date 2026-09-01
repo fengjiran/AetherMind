@@ -106,7 +106,7 @@ Status TryResolveInferDim(const SymbolicShape& input_shape,
     return Status::Ok();
 }
 
-}// namespace
+} // namespace
 
 StatusOr<InferenceResult> InferReshape(const OpParams& params,
                                        std::span<const TensorSpec> inputs) {
@@ -221,4 +221,4 @@ StatusOr<InferenceResult> InferReshape(const OpParams& params,
     return result;
 }
 
-}// namespace aethermind::detail
+} // namespace aethermind::detail

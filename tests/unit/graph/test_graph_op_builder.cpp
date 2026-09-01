@@ -1263,7 +1263,7 @@ TEST(GraphOpBuilder, AddNodeReorderWrongParamsAtomicallyAborts) {
                                 std::nullopt,
                                 {input},
                                 {std::move(output_desc)},
-                                AddParams{},// wrong variant
+                                AddParams{}, // wrong variant
                                 {},
                                 "bad_reorder");
     ASSERT_FALSE(result.ok());
@@ -1299,4 +1299,4 @@ TEST(GraphOpBuilder, AddNodeReorderWrongArityAtomicallyAborts) {
     EXPECT_EQ(graph.GetValues().size(), values_before);
 }
 
-}// namespace
+} // namespace

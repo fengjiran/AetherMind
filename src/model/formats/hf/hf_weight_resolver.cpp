@@ -20,12 +20,12 @@ std::string LayerWeightName(int64_t layer_index, std::string_view suffix) {
     return "model.layers." + std::to_string(layer_index) + std::string(suffix);
 }
 
-}// namespace
+} // namespace
 
 namespace hf {
 
 StatusOr<ResolvedModelWeights> ResolveWeights(const HfModelConfig& config,
-                                          const RawWeightTable& weights) {
+                                              const RawWeightTable& weights) {
     if (config.num_hidden_layers <= 0) {
         return Status::InvalidArgument("Model config field 'num_hidden_layers' must be positive");
     }
@@ -111,6 +111,6 @@ StatusOr<ResolvedModelWeights> ResolveWeights(const HfModelConfig& config,
     return index;
 }
 
-}// namespace hf
+} // namespace hf
 
-}// namespace aethermind
+} // namespace aethermind

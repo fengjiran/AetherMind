@@ -103,4 +103,4 @@ void RuntimeBindingContext::Reset() noexcept {
     binding_table_ = {};
 }
 
-}// namespace aethermind
+} // namespace aethermind

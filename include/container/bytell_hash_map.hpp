@@ -816,7 +816,7 @@ private:
 
     size_t calculate_memory_requirement(size_t num_blocks) {
         size_t memory_required = sizeof(BlockType) * num_blocks;
-        memory_required += BlockSize;// for metadata of past-the-end pointer
+        memory_required += BlockSize; // for metadata of past-the-end pointer
         return memory_required;
     }
 
@@ -891,7 +891,7 @@ template<>
 struct CalculateBytellBlockSize<> {
     static constexpr size_t value = 8;
 };
-}// namespace detailv8
+} // namespace detailv8
 
 template<typename K, typename V, typename H = std::hash<K>, typename E = std::equal_to<K>, typename A = std::allocator<std::pair<K, V>>>
 class bytell_hash_map
@@ -1055,4 +1055,4 @@ public:
     }
 };
 
-}// end namespace ska
+} // end namespace ska

@@ -359,7 +359,7 @@ TEST(InferBroadcastShape, MultiAxisStaticSymbolMix) {
 }
 
 TEST(InferBroadcastShape, UnrankedLhsRejected) {
-    SymbolicShape lhs;// unranked
+    SymbolicShape lhs; // unranked
     auto rhs = Sym({ShapeSymbol::CreateFromValue(2)});
     auto result = InferBroadcastShape(lhs, rhs);
     EXPECT_FALSE(result.ok());
@@ -367,7 +367,7 @@ TEST(InferBroadcastShape, UnrankedLhsRejected) {
 
 TEST(InferBroadcastShape, UnrankedRhsRejected) {
     auto lhs = Sym({ShapeSymbol::CreateFromValue(2)});
-    SymbolicShape rhs;// unranked
+    SymbolicShape rhs; // unranked
     auto result = InferBroadcastShape(lhs, rhs);
     EXPECT_FALSE(result.ok());
 }
@@ -478,4 +478,4 @@ TEST(BroadcastRoundTrip, ConcreteBroadcastThenStrides) {
     EXPECT_EQ(*rhs_eff, (std::vector<int64_t>{0, 4, 1}));
 }
 
-}// namespace
+} // namespace

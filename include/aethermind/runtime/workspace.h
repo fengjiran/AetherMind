@@ -159,6 +159,6 @@ inline StatusOr<WorkspacePlanLayout> PlanWorkspaceRequirements(
     return layout;
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

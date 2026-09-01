@@ -20,5 +20,5 @@ struct KernelInvocation;
 struct KernelSelector;
 struct ResolvedKernel;
 
-}// namespace aethermind
+} // namespace aethermind
 #endif

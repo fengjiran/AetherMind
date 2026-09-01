@@ -34,6 +34,6 @@ struct WorkspaceBinding {
     size_t size = 0;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_BASE_WORKSPACE_H
+#endif // AETHERMIND_BASE_WORKSPACE_H

@@ -146,7 +146,7 @@ Status ValidateAttentionShapes(const AttentionParams& params,
     return Status::Ok();
 }
 
-}// namespace
+} // namespace
 
 StatusOr<InferenceResult> InferAttention(const OpParams& params,
                                          std::span<const TensorSpec> inputs) {
@@ -168,4 +168,4 @@ StatusOr<InferenceResult> InferAttention(const OpParams& params,
     };
 }
 
-}// namespace aethermind::detail
+} // namespace aethermind::detail

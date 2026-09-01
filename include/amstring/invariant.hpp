@@ -32,6 +32,6 @@ void CheckDataInvariants(const CharT* data,
         AM_DCHECK(expr);                \
     } while (false)
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_AMSTRING_INVARIANT_HPP
+#endif // AETHERMIND_AMSTRING_INVARIANT_HPP

@@ -25,11 +25,11 @@ namespace aethermind {
 /// Used by schema validation to
 /// distinguish value kinds that have different producer/spec rules.
 enum class OperatorPortKind : uint8_t {
-    kModelInput,///< Provided by the model entry point (e.g. token ids, position ids).
-    kActivation,///< Produced and consumed within the graph as a tensor activation.
-    kWeight,    ///< Static weight tensor bound at model load time.
-    kConstant,  ///< Compile-time-foldable constant value.
-    kState,     ///< Persistent state carried across steps (e.g. KV cache).
+    kModelInput, ///< Provided by the model entry point (e.g. token ids, position ids).
+    kActivation, ///< Produced and consumed within the graph as a tensor activation.
+    kWeight,     ///< Static weight tensor bound at model load time.
+    kConstant,   ///< Compile-time-foldable constant value.
+    kState,      ///< Persistent state carried across steps (e.g. KV cache).
 };
 
 /// @brief Describes one input position in an operator's semantic ABI.
@@ -113,7 +113,7 @@ inline constexpr std::string_view kCacheOut = "k_cache_out";
 inline constexpr std::string_view vCacheOut = "v_cache_out";
 inline constexpr std::string_view kCache = "k_cache";
 inline constexpr std::string_view vCache = "v_cache";
-}// namespace kv_cache_ports
+} // namespace kv_cache_ports
 
 /// @brief Finds an input port index by name.
 ///
@@ -160,6 +160,6 @@ StatusOr<OperatorSchema> GetOperatorSchema(OpType op_type);
 /// @return Borrowed view backed by immutable static storage.
 AM_NODISCARD std::span<const OperatorSchema> GetOperatorSchemas() noexcept;
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

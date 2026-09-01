@@ -5,9 +5,9 @@
 #ifndef AETHERMIND_ANY_UTILS_H
 #define AETHERMIND_ANY_UTILS_H
 
-#include "aethermind/dtypes/data_type.h"
 #include "aethermind/base/device.h"
 #include "aethermind/base/object.h"
+#include "aethermind/dtypes/data_type.h"
 
 #include <cxxabi.h>
 #include <map>
@@ -199,8 +199,8 @@ struct Type2Str {
     }
 };
 
-}// namespace details
+} // namespace details
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif//AETHERMIND_ANY_UTILS_H
+#endif // AETHERMIND_ANY_UTILS_H

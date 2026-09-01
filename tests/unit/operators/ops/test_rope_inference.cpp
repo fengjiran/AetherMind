@@ -584,4 +584,4 @@ TEST(RoPEInference, EmitsEqualityCheckForStaticSymbolicMixQK) {
     EXPECT_EQ(eq.rhs.dim_index, std::size_t{0});
 }
 
-}// namespace
+} // namespace

@@ -264,4 +264,4 @@ TEST(ModelLoader_PipelineTest, RejectsIncompleteWeightSet) {
     EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
 }
 
-}// namespace
+} // namespace

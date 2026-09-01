@@ -55,6 +55,6 @@ void SerializeReshapeShape(const std::vector<ReshapeDim>& target_shape, std::ost
 /// @param os Output stream to write to.
 void SerializePermutation(const std::vector<uint32_t>& permutation, std::ostream& os);
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_OPERATORS_OP_PARAMS_SERDE_H
+#endif // AETHERMIND_OPERATORS_OP_PARAMS_SERDE_H

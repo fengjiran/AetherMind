@@ -58,4 +58,4 @@ StatusOr<InferenceResult> InferPermute(const OpParams& params,
     return result;
 }
 
-}// namespace aethermind::detail
+} // namespace aethermind::detail

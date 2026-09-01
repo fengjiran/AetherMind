@@ -92,6 +92,6 @@ struct SymbolicBroadcastResult {
 StatusOr<SymbolicBroadcastResult> InferBroadcastShape(const SymbolicShape& lhs,
                                                       const SymbolicShape& rhs);
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_SHAPE_INFERENCE_BROADCAST_H
+#endif // AETHERMIND_SHAPE_INFERENCE_BROADCAST_H

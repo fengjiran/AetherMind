@@ -280,7 +280,7 @@ Status FuseGateUpLinear(GraphRewriteSession& session, const GateUpLinearPattern&
     return builder.Commit();
 }
 
-}// namespace
+} // namespace
 
 std::string_view GateUpLinearFusionPass::Name() const noexcept {
     return "GateUpLinearFusionPass";
@@ -312,4 +312,4 @@ Status GateUpLinearFusionPass::Run(GraphRewriteSession& session,
     return Status::Ok();
 }
 
-}// namespace aethermind
+} // namespace aethermind

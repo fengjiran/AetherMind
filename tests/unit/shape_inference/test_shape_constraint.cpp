@@ -439,4 +439,4 @@ TEST(ShapeConstraint, SetDeduplicatesByConditionOnly) {
     EXPECT_EQ(s.size(), 2U);
 }
 
-}// namespace
+} // namespace

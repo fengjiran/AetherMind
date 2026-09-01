@@ -293,7 +293,7 @@ Status RmsNormKernelEntryFp32Avx2Fma(const KernelContext& ctx) noexcept {
 }
 #endif
 
-}// namespace
+} // namespace
 
 AM_REGISTER_KERNEL(RmsNormFp32Scalar,
                    KernelDescriptor{
@@ -336,4 +336,4 @@ AM_REGISTER_KERNEL(RmsNormFp32Avx2Fma,
                    });
 #endif
 
-}// namespace aethermind::cpu::detail
+} // namespace aethermind::cpu::detail

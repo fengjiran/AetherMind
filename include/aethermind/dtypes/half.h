@@ -35,10 +35,10 @@
           defined(__HIP_DEVICE_COMPILE__))
 #define X86_F16 1
 #include <immintrin.h>
-#endif// defined(__F16C__) && !(defined(__CUDA_ARCH__) || defined(__CUDACC__) \
+#endif // defined(__F16C__) && !(defined(__CUDA_ARCH__) || defined(__CUDACC__) \
       // || defined(__HIP_DEVICE_COMPILE__))
-#endif// __x86_64__ || _M_X64 || __i386 || _M_IX86
-#endif// __GNUC__ || __clang__
+#endif // __x86_64__ || _M_X64 || __i386 || _M_IX86
+#endif // __GNUC__ || __clang__
 
 namespace aethermind {
 
@@ -73,7 +73,7 @@ struct alignas(2) Half {
     /// formatting) with minimal friction. NOLINT suppresses the implicit
     /// conversion warning; callers should still be explicit when ambiguity
     /// matters.
-    Half(float value);// NOLINT
+    Half(float value); // NOLINT
 
     /// Converts to binary32 `float` for arithmetic and comparisons.
     ///
@@ -81,7 +81,7 @@ struct alignas(2) Half {
     /// float expressions and with the standard library without wrapping
     /// every use site in `static_cast`. NOLINT suppresses the implicit
     /// conversion warning.
-    operator float() const;// NOLINT
+    operator float() const; // NOLINT
 
     /// Returns the raw IEEE 754 binary16 bit pattern.
     AM_NODISCARD constexpr uint16_t bits() const {
@@ -172,7 +172,7 @@ AM_NODISCARD bool operator==(T&& lhs, U&& rhs) {
     return static_cast<float>(lhs) == static_cast<float>(rhs);
 }
 
-}// namespace aethermind
+} // namespace aethermind
 
 /// @brief std::numeric_limits specialization for IEEE 754 binary16.
 ///
@@ -234,6 +234,6 @@ struct std::numeric_limits<aethermind::Half> {
     static constexpr aethermind::Half denorm_min() {
         return {0x0001, aethermind::Half::from_bits()};
     }
-};// namespace std
+}; // namespace std
 
-#endif// AETHERMIND_DTYPES_HALF_H
+#endif // AETHERMIND_DTYPES_HALF_H

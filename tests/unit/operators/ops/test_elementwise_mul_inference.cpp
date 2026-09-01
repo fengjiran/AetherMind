@@ -241,4 +241,4 @@ TEST(ElementwiseMulInference, RejectsFloat8E4M3FN) {
     EXPECT_FALSE(InferOperator(OpType::kElementwiseMul, ElementwiseMulParams{}, inputs).ok());
 }
 
-}// namespace
+} // namespace

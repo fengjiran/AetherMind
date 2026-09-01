@@ -81,6 +81,6 @@ struct DefaultLayoutPolicy<char> {
     using type = CharLayoutPolicy;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_AMSTRING_LAYOUT_POLICY_HPP
+#endif // AETHERMIND_AMSTRING_LAYOUT_POLICY_HPP

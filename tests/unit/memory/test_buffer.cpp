@@ -27,7 +27,7 @@ inline Buffer make_test_buffer(size_t nbytes, size_t alignment = 64) {
     return {nbytes, MemoryHandle(ptr, nullptr, &free_buffer, Device::CPU(), alignment)};
 }
 
-}// namespace detail
+} // namespace detail
 
 TEST(Buffer, EmptyBuffer) {
     Buffer b;
@@ -110,4 +110,4 @@ TEST(Buffer, DifferentSizes) {
     }
 }
 
-}// namespace
+} // namespace

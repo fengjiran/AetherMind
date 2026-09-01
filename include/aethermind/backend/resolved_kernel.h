@@ -37,6 +37,6 @@ struct ResolvedKernel {
     PackingRecipe expected_packing_recipe{};
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

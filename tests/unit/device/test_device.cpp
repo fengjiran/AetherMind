@@ -113,4 +113,4 @@ TEST(Device, EqualityAndHash) {
     EXPECT_NE(a, *concrete);
 }
 
-}// namespace
+} // namespace

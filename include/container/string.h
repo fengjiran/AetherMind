@@ -5,8 +5,8 @@
 #ifndef AETHERMIND_CONTAINER_STRING_H
 #define AETHERMIND_CONTAINER_STRING_H
 
-#include "container/container_utils.h"
 #include "aethermind/base/object_allocator.h"
+#include "container/container_utils.h"
 #include "utils/logging.h"
 
 #include <unordered_map>
@@ -71,7 +71,7 @@ public:
     };
 
     String() = default;
-    String(std::nullopt_t) = delete;// NOLINT
+    String(std::nullopt_t) = delete; // NOLINT
 
     /*!
      * \brief constructor from raw string
@@ -86,7 +86,7 @@ public:
      *
      * \param other a char array.
      */
-    String(const_pointer other);//NOLINT
+    String(const_pointer other); // NOLINT
     String(size_type size, value_type c);
     template<typename Iter>
     String(Iter first, Iter last) {
@@ -97,8 +97,8 @@ public:
      * \brief Construct a new string object
      * \param other The std::string object to be copied
      */
-    String(const std::string& other) : String(other.begin(), other.end()) {}//NOLINT
-    String(std::string_view other) : String(other.begin(), other.end()) {}  //NOLINT
+    String(const std::string& other) : String(other.begin(), other.end()) {} // NOLINT
+    String(std::string_view other) : String(other.begin(), other.end()) {}   // NOLINT
     String(const String& other);
     String(String&& other) noexcept;
     String(const String& other, size_type pos);
@@ -151,8 +151,8 @@ public:
     AM_NODISCARD const_reference back() const noexcept;
 
     AM_NODISCARD String substr(size_type pos = 0, size_type n = npos) const;
-    operator std::string() const;  // NOLINT
-    operator const_pointer() const;//NOLINT
+    operator std::string() const;   // NOLINT
+    operator const_pointer() const; // NOLINT
 
     String& replace(size_type pos, size_type n1, const_pointer str, size_type n2);
     String& replace(size_type pos, size_type n1, const_pointer src);
@@ -230,18 +230,18 @@ public:
     String& insert(size_type pos, size_type n, value_type c);
 
     /**
-       *  @brief  Find position of a C substring.
-       *  @param s  C string to locate.
-       *  @param pos  Index of character to search from.
-       *  @param n  Number of characters from @a s to search for.
-       *  @param method search method.
-       *  @return  Index of start of first occurrence.
-       *
-       *  Starting from @a pos, searches forward for the first @a n
-       *  characters in @a s within this string. If found,
-       *  returns the index where it begins.
-       *  If not found, returns npos.
-      */
+     *  @brief  Find position of a C substring.
+     *  @param s  C string to locate.
+     *  @param pos  Index of character to search from.
+     *  @param n  Number of characters from @a s to search for.
+     *  @param method search method.
+     *  @return  Index of start of first occurrence.
+     *
+     *  Starting from @a pos, searches forward for the first @a n
+     *  characters in @a s within this string. If found,
+     *  returns the index where it begins.
+     *  If not found, returns npos.
+     */
     AM_NODISCARD size_type find(const_pointer s, size_type pos, size_type n, FindMethod method = FindMethod::kBoyerMoore) const noexcept;
     AM_NODISCARD size_type find(const String& str, size_type pos = 0) const noexcept;
     AM_NODISCARD size_type find(const_pointer str, size_type pos = 0) const noexcept;
@@ -291,7 +291,7 @@ public:
     AM_NODISCARD int compare(const String& other) const;
     AM_NODISCARD int compare(size_type pos, size_type n, const String& other) const;
     AM_NODISCARD int compare(size_type pos1, size_type n1,
-                          const String& other, size_type pos2, size_type n2 = npos) const;
+                             const String& other, size_type pos2, size_type n2 = npos) const;
 
     /*!
      * \brief Compares this String object to other
@@ -304,7 +304,7 @@ public:
     AM_NODISCARD int compare(const std::string& other) const;
     AM_NODISCARD int compare(size_type pos, size_type n, const std::string& other) const;
     AM_NODISCARD int compare(size_type pos1, size_type n1,
-                          const std::string& other, size_type pos2, size_type n2 = npos) const;
+                             const std::string& other, size_type pos2, size_type n2 = npos) const;
 
     /*!
      * \brief Compares this to other
@@ -538,7 +538,7 @@ String to_string(unsigned long val) noexcept;
 String to_string(long long val) noexcept;
 String to_string(unsigned long long val) noexcept;
 
-}// namespace aethermind
+} // namespace aethermind
 
 namespace std {
 template<>
@@ -547,6 +547,6 @@ struct hash<aethermind::String> {
         return std::hash<std::string_view>()(std::string_view(str.data(), str.size()));
     }
 };
-}// namespace std
+} // namespace std
 
-#endif//AETHERMIND_CONTAINER_STRING_H
+#endif // AETHERMIND_CONTAINER_STRING_H

@@ -7,13 +7,13 @@
 #ifndef AETHERMIND_DTYPES_DATA_TYPE_H
 #define AETHERMIND_DTYPES_DATA_TYPE_H
 
+#include "aethermind/base/error.h"
+#include "aethermind/base/macros.h"
 #include "aethermind/dtypes/bfloat16.h"
 #include "aethermind/dtypes/complex.h"
 #include "aethermind/dtypes/float8_e4m3fn.h"
 #include "aethermind/dtypes/float8_e5m2.h"
 #include "aethermind/dtypes/half.h"
-#include "aethermind/base/error.h"
-#include "aethermind/base/macros.h"
 #include "utils/bits.h"
 
 #include <cstdint>
@@ -88,7 +88,7 @@ public:
     /// @param is_scalable True if lanes encodes a scalable-vector vscale factor.
     DataType(DLDataTypeCode code, int bits, int lanes, bool is_scalable = false);
 
-    operator DLDataType() const {// NOLINT
+    operator DLDataType() const { // NOLINT
         return dtype_;
     }
 
@@ -472,7 +472,7 @@ std::ostream& operator<<(std::ostream& os, const DataType& dtype);
     f(DLDataTypeCode::kComplex, 128, 1, complex<double>, ComplexDouble);
 
 
-}// namespace aethermind
+} // namespace aethermind
 
 template<>
 struct std::hash<aethermind::DataType> {
@@ -488,6 +488,6 @@ struct std::hash<aethermind::DataType> {
         h |= static_cast<std::size_t>(dtype.raw_lanes()) << 16;
         return h;
     }
-};// namespace std
+}; // namespace std
 
-#endif// AETHERMIND_DTYPES_DATA_TYPE_H
+#endif // AETHERMIND_DTYPES_DATA_TYPE_H

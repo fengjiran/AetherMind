@@ -198,11 +198,11 @@ const ConstEvaluator& GetSiluMulConstEvaluator() noexcept;
 // compute_ops = traversal_numel × ops_per_element formula; these constants
 // are the per-op coefficients the evaluators pass to it.
 // Per-element operation coefficients (conservative op-count upper bounds).
-constexpr uint64_t kAddOpsPerElement = 1U;    // 1 arithmetic op
-constexpr uint64_t kMulOpsPerElement = 1U;    // 1 arithmetic op
-constexpr uint64_t kSiluOpsPerElement = 3U;   // exp + div + add
-constexpr uint64_t kSiluMulOpsPerElement = 4U;// exp + div + add + mul
+constexpr uint64_t kAddOpsPerElement = 1U;     // 1 arithmetic op
+constexpr uint64_t kMulOpsPerElement = 1U;     // 1 arithmetic op
+constexpr uint64_t kSiluOpsPerElement = 3U;    // exp + div + add
+constexpr uint64_t kSiluMulOpsPerElement = 4U; // exp + div + add + mul
 
-}// namespace aethermind::detail
+} // namespace aethermind::detail
 
 #endif

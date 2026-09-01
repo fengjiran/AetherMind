@@ -45,8 +45,8 @@ public:
         : HfJsonReader(input) {}
 
     struct Result {
-        std::unordered_map<std::string, std::string> weight_map{};// NOLINT(readability-identifier-naming)
-        std::optional<uint64_t> total_size{};                     // NOLINT(readability-identifier-naming)
+        std::unordered_map<std::string, std::string> weight_map{}; // NOLINT(readability-identifier-naming)
+        std::optional<uint64_t> total_size{};                      // NOLINT(readability-identifier-naming)
     };
 
     StatusOr<Result> Parse() {
@@ -203,7 +203,7 @@ private:
     }
 };
 
-}// namespace
+} // namespace
 
 StatusOr<HfSafetensorsIndex> HfSafetensorsIndex::Load(const std::filesystem::path& index_path) {
     auto text = hf::ReadFileText(index_path);
@@ -232,4 +232,4 @@ std::vector<std::string> HfSafetensorsIndex::UniqueShardFilenames() const {
     return shards;
 }
 
-}// namespace aethermind
+} // namespace aethermind

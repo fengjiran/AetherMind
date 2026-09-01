@@ -26,6 +26,6 @@ public:
                           RuntimeBindingContext& bindings) noexcept;
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

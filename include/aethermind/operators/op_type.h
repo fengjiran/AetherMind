@@ -51,7 +51,7 @@ enum class OpType : uint8_t {
 /// @return Null-terminated static string naming the operator type.
 AM_NODISCARD const char* ToString(OpType op_type) noexcept;
 
-}// namespace aethermind
+} // namespace aethermind
 
 template<>
 struct std::hash<aethermind::OpType> {

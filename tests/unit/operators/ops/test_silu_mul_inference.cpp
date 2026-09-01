@@ -261,4 +261,4 @@ TEST(SiluMulInference, RejectsInt32Input) {
     EXPECT_FALSE(InferOperator(OpType::kSiluMul, SiluMulParams{}, inputs).ok());
 }
 
-}// namespace
+} // namespace

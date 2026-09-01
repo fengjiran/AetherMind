@@ -57,6 +57,6 @@ public:
             const ModelCompileOptions& compile_options = {});
 };
 
-}// namespace aethermind
+} // namespace aethermind
 
 #endif

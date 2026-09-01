@@ -1,8 +1,8 @@
 /// @file
 /// Implementation of `Float8_e5m2` and E5M2 ↔ binary32 conversion.
 #include "aethermind/dtypes/float8_e5m2.h"
-#include "aethermind/dtypes/detail/floating_point_bits.h"
 #include "aethermind/base/macros.h"
+#include "aethermind/dtypes/detail/floating_point_bits.h"
 
 #include <bit>
 
@@ -44,7 +44,7 @@ uint32_t fp8e5m2_to_fp32_bits(uint8_t input) {
     return sign | ((nonsign << renorm_shift >> 3) + ((0x70 - renorm_shift) << 23));
 }
 
-}// namespace
+} // namespace
 
 namespace detail {
 
@@ -122,7 +122,7 @@ uint8_t fp8e5m2_from_fp32_value(float f) {
     return static_cast<uint8_t>(res);
 }
 
-}// namespace detail
+} // namespace detail
 
 Float8_e5m2::Float8_e5m2(float value) : x(detail::fp8e5m2_from_fp32_value(value)) {}
 
@@ -333,4 +333,4 @@ Float8_e5m2 operator*(int64_t lhs, Float8_e5m2 rhs) {
 Float8_e5m2 operator/(int64_t lhs, Float8_e5m2 rhs) {
     return static_cast<Float8_e5m2>(lhs) / rhs;
 }
-}// namespace aethermind
+} // namespace aethermind

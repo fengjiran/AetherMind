@@ -42,7 +42,7 @@ public:
     using value_type = T;
 
     constexpr complex() = default;
-    constexpr complex(const T& real, const T& imag = T()) : real_(real), imag_(imag) {}// NOLINT
+    constexpr complex(const T& real, const T& imag = T()) : real_(real), imag_(imag) {} // NOLINT
 
     template<typename U>
     explicit constexpr complex(const std::complex<U>& other) : complex(other.real(), other.imag()) {}
@@ -56,7 +56,7 @@ public:
 
     template<typename U = T,
              typename = std::enable_if_t<std::is_same_v<U, double>>>
-    constexpr complex(const complex<float>& other) : real_(other.real_), imag_(other.imag_) {}//NOLINT
+    constexpr complex(const complex<float>& other) : real_(other.real_), imag_(other.imag_) {} // NOLINT
 
     AM_NODISCARD constexpr T real() const {
         return real_;
@@ -375,9 +375,9 @@ class alignas(4) complex<Half> {
 public:
     complex() = default;
     complex(const Half& real, const Half& imag) : real_(real), imag_(imag) {}
-    complex(const complex<float>& value) : real_(value.real()), imag_(value.imag()) {}//NOLINT
+    complex(const complex<float>& value) : real_(value.real()), imag_(value.imag()) {} // NOLINT
 
-    operator complex<float>() const {//NOLINT
+    operator complex<float>() const { // NOLINT
         return {real_, imag_};
     }
 
@@ -581,9 +581,9 @@ complex<T> atanh(const complex<T>& x) {
     return complex<T>(std::atanh(std::complex<T>(x)));
 }
 
-}// namespace complex_math
+} // namespace complex_math
 
-}// namespace aethermind
+} // namespace aethermind
 
 namespace std {
 template<typename T>
@@ -658,6 +658,6 @@ struct hash<aethermind::complex<T>> {
 };
 
 
-}// namespace std
+} // namespace std
 
-#endif// AETHERMIND_DTYPES_COMPLEX_H
+#endif // AETHERMIND_DTYPES_COMPLEX_H

@@ -27,4 +27,4 @@ TEST(ShapeInferenceIncludes, ExposePublicTypes) {
     EXPECT_EQ(result, ShapeConstraintEvaluationResult::kSatisfied);
 }
 
-}// namespace
+} // namespace

@@ -109,4 +109,4 @@ Status RunRmsNormFp32Avx2Fma(const RmsNormFp32KernelArgs& args) noexcept {
 
 #endif
 
-}// namespace aethermind::cpu::detail
+} // namespace aethermind::cpu::detail

@@ -37,7 +37,7 @@ float fp8e5m2_to_fp32_value(uint8_t input);
 /// canonicalized to a single quiet-NaN bit pattern.
 uint8_t fp8e5m2_from_fp32_value(float f);
 
-}// namespace detail
+} // namespace detail
 
 /// @brief E5M2 8-bit floating-point value.
 ///
@@ -61,8 +61,8 @@ struct alignas(1) Float8_e5m2 {
     Float8_e5m2() : x(0) {}
     /// Constructs from raw E5M2 bits; no floating-point conversion.
     constexpr Float8_e5m2(uint8_t bits, from_bits_t) : x(bits) {}
-    Float8_e5m2(float value);// NOLINT
-    operator float() const;  // NOLINT
+    Float8_e5m2(float value); // NOLINT
+    operator float() const;   // NOLINT
 
     /// Returns true if the value is positive or negative infinity.
     /// Inf is encoded as exponent=11111 with mantissa=00.
@@ -130,7 +130,7 @@ Float8_e5m2 operator-(int64_t lhs, Float8_e5m2 rhs);
 Float8_e5m2 operator*(int64_t lhs, Float8_e5m2 rhs);
 Float8_e5m2 operator/(int64_t lhs, Float8_e5m2 rhs);
 
-}// namespace aethermind
+} // namespace aethermind
 
 namespace std {
 
@@ -202,6 +202,6 @@ public:
     }
 };
 
-}// namespace std
+} // namespace std
 
-#endif// AETHERMIND_DTYPES_FLOAT8_E5M2_H
+#endif // AETHERMIND_DTYPES_FLOAT8_E5M2_H

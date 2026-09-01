@@ -108,7 +108,7 @@ Status ExecuteTyped(const AddKernelArgs& args) noexcept {
     return ExecuteTypedStrided<T>(args);
 }
 
-}// namespace
+} // namespace
 
 Status AddKernel_Scalar(const AddKernelArgs& args) noexcept {
     const DataType dtype = args.dtype;
@@ -135,4 +135,4 @@ Status AddKernel_Scalar(const AddKernelArgs& args) noexcept {
             "AddKernel scalar dispatch received unsupported dtype");
 }
 
-}// namespace aethermind::cpu::detail
+} // namespace aethermind::cpu::detail

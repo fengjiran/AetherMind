@@ -95,29 +95,29 @@ TEST(FP8E4M3FNFromFP32Test, InfinityAndNaN) {
     // NaN -> 转换为NaN表示
     float quiet_nan = std::numeric_limits<float>::quiet_NaN();
     uint8_t result = fp8e4m3fn_from_fp32_value(quiet_nan);
-    EXPECT_EQ(result, 0x7F);// 正NaN
+    EXPECT_EQ(result, 0x7F); // 正NaN
 
     float signaling_nan = std::numeric_limits<float>::signaling_NaN();
     result = fp8e4m3fn_from_fp32_value(signaling_nan);
-    EXPECT_EQ(result, 0x7F);// 正NaN
+    EXPECT_EQ(result, 0x7F); // 正NaN
 
     // 负NaN
     result = fp8e4m3fn_from_fp32_value(-quiet_nan);
-    EXPECT_EQ(result, 0xFF);// 负NaN
+    EXPECT_EQ(result, 0xFF); // 负NaN
 }
 
 TEST(FP8E4M3FNFromFP32Test, NormalizedNumbers) {
     // 1.0
-    EXPECT_EQ(fp8e4m3fn_from_fp32_value(1.0f), 0x38);// 符号0, 指数7+0=7, 尾数0
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(1.0f), 0x38); // 符号0, 指数7+0=7, 尾数0
 
     // 2.0
-    EXPECT_EQ(fp8e4m3fn_from_fp32_value(2.0f), 0x40);// 指数7+1=8
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(2.0f), 0x40); // 指数7+1=8
 
     // 0.5
-    EXPECT_EQ(fp8e4m3fn_from_fp32_value(0.5f), 0x30);// 指数7-1=6
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(0.5f), 0x30); // 指数7-1=6
 
     // -1.0
-    EXPECT_EQ(fp8e4m3fn_from_fp32_value(-1.0f), 0xB8);// 符号1, 指数7+0=7, 尾数0
+    EXPECT_EQ(fp8e4m3fn_from_fp32_value(-1.0f), 0xB8); // 符号1, 指数7+0=7, 尾数0
 
     // 最小正规格化数 (2^-6 = 0.015625)
     EXPECT_EQ(fp8e4m3fn_from_fp32_value(0.015625f), 0x08);
@@ -154,7 +154,7 @@ TEST(FP8E4M3FNFromFP32Test, Overflow) {
 TEST(FP8E4M3FNFromFP32Test, Rounding) {
     // 测试舍入到最近偶数
     // 值刚好在中间时，向偶数舍入
-    float value1 = 1.125f;// 二进制: 1.001000...
+    float value1 = 1.125f; // 二进制: 1.001000...
     EXPECT_EQ(fp8e4m3fn_from_fp32_value(value1), 0x39);
 
     // 超过中间值，向上舍入
@@ -271,8 +271,8 @@ TEST(Float8_e4m3fnTest, MixedTypeOperations) {
 
 TEST(Float8_e4m3fnTest, EdgeCases) {
     // Overflow/underflow
-    Float8_e4m3fn max_val(6.0e4f); // Assuming this is near max representable value
-    Float8_e4m3fn min_val(-6.0e4f);// Assuming this is near min representable value
+    Float8_e4m3fn max_val(6.0e4f);  // Assuming this is near max representable value
+    Float8_e4m3fn min_val(-6.0e4f); // Assuming this is near min representable value
 
     EXPECT_TRUE(std::isnan(max_val * max_val));
     EXPECT_TRUE(std::isnan(min_val * min_val));
@@ -294,4 +294,4 @@ TEST(Float8_e4m3fnTest, OutputOperator) {
     EXPECT_FALSE(oss.str().empty());
 }
 
-}// namespace
+} // namespace

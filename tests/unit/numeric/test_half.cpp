@@ -14,15 +14,15 @@ namespace aethermind::detail {
 uint32_t fp16_to_fp32_bits_for_testing(uint16_t h);
 float fp16_to_fp32_value_for_testing(uint16_t h);
 uint16_t fp16_from_fp32_value_for_testing(float f);
-}// namespace aethermind::detail
+} // namespace aethermind::detail
 
 namespace {
 using namespace aethermind;
 using namespace aethermind::detail;
 
 TEST(HalfToFP32Test, HalfToFp32Bits_Zero) {
-    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x0000), 0x00000000);// +0
-    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x8000), 0x80000000);// -0
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x0000), 0x00000000); // +0
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x8000), 0x80000000); // -0
 }
 
 TEST(HalfToFP32Test, HalfToFp32Bits_Denormalized) {
@@ -46,14 +46,14 @@ TEST(HalfToFP32Test, HalfToFp32Bits_Normalized) {
     // 0.5 in half: 0x3800 -> 0.5 in float: 0x3F000000
     EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x3800), 0x3F000000);
 
-    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x3555), 0x3EAAA000);// ~0.33325
-    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x48CD), 0x4119A000);// ~9.6016
-    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x4D12), 0x41A24000);// ~20.28125
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x3555), 0x3EAAA000); // ~0.33325
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x48CD), 0x4119A000); // ~9.6016
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x4D12), 0x41A24000); // ~20.28125
 }
 
 TEST(HalfToFP32Test, HalfToFp32Bits_Infinity) {
-    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x7C00), 0x7F800000);// +inf
-    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0xFC00), 0xFF800000);// -inf
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x7C00), 0x7F800000); // +inf
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0xFC00), 0xFF800000); // -inf
 }
 
 TEST(HalfToFP32Test, HalfToFp32Bits_NaN) {
@@ -111,8 +111,8 @@ TEST(HalfToFP32Test, HalfToFp32Bits_ExhaustiveSmallValues) {
 }
 
 TEST(HalfToFP32Test, HalfToFp32Value_Zero) {
-    EXPECT_EQ(fp16_to_fp32_value_for_testing(0x0000), 0.0f); // +0
-    EXPECT_EQ(fp16_to_fp32_value_for_testing(0x8000), -0.0f);// -0
+    EXPECT_EQ(fp16_to_fp32_value_for_testing(0x0000), 0.0f);  // +0
+    EXPECT_EQ(fp16_to_fp32_value_for_testing(0x8000), -0.0f); // -0
 
     // Sign bit must be preserved for zero.
     EXPECT_TRUE(std::signbit(fp16_to_fp32_value_for_testing(0x8000)));
@@ -150,23 +150,23 @@ TEST(HalfToFP32Test, HalfToFp32Value_Normalized) {
     // 0.5
     EXPECT_FLOAT_EQ(fp16_to_fp32_value_for_testing(0x3800), 0.5f);
 
-    EXPECT_NEAR(fp16_to_fp32_value_for_testing(0x3555), 0.33325f, 1e-5f);// ~1/3
-    EXPECT_NEAR(fp16_to_fp32_value_for_testing(0x48CD), 9.6016f, 1e-3f); // ~9.6
+    EXPECT_NEAR(fp16_to_fp32_value_for_testing(0x3555), 0.33325f, 1e-5f); // ~1/3
+    EXPECT_NEAR(fp16_to_fp32_value_for_testing(0x48CD), 9.6016f, 1e-3f);  // ~9.6
 }
 
 TEST(HalfToFP32Test, HalfToFp32Value_Infinity) {
-    EXPECT_TRUE(std::isinf(fp16_to_fp32_value_for_testing(0x7C00)));// +inf
+    EXPECT_TRUE(std::isinf(fp16_to_fp32_value_for_testing(0x7C00))); // +inf
     EXPECT_GT(fp16_to_fp32_value_for_testing(0x7C00), 0);
 
-    EXPECT_TRUE(std::isinf(fp16_to_fp32_value_for_testing(0xFC00)));// -inf
+    EXPECT_TRUE(std::isinf(fp16_to_fp32_value_for_testing(0xFC00))); // -inf
     EXPECT_LT(fp16_to_fp32_value_for_testing(0xFC00), 0);
 }
 
 TEST(HalfToFP32Test, HalfToFp32Value_NaN) {
-    float nan1 = fp16_to_fp32_value_for_testing(0x7C01);// quiet NaN
-    float nan2 = fp16_to_fp32_value_for_testing(0x7FFF);// quiet NaN
-    float nan3 = fp16_to_fp32_value_for_testing(0x7E00);// signaling NaN
-    float nan4 = fp16_to_fp32_value_for_testing(0xFC01);// negative quiet NaN
+    float nan1 = fp16_to_fp32_value_for_testing(0x7C01); // quiet NaN
+    float nan2 = fp16_to_fp32_value_for_testing(0x7FFF); // quiet NaN
+    float nan3 = fp16_to_fp32_value_for_testing(0x7E00); // signaling NaN
+    float nan4 = fp16_to_fp32_value_for_testing(0xFC01); // negative quiet NaN
 
     EXPECT_TRUE(std::isnan(nan1));
     EXPECT_TRUE(std::isnan(nan2));
@@ -228,10 +228,10 @@ TEST(HalfToFP32Test, HalfToFp32Value_RoundTripConsistency) {
 TEST(HalfToFP32Test, HalfToFp32Value_FiniteRange) {
     for (int exp = -14; exp <= 15; ++exp) {
         for (int mantissa = 0; mantissa < 1024; mantissa += 128) {
-            uint16_t exponent = (exp + 15) << 10;// biased exponent
+            uint16_t exponent = (exp + 15) << 10; // biased exponent
             uint16_t half_val = exponent | mantissa;
 
-            if ((half_val & 0x7C00) != 0x7C00) {// skip inf/nan
+            if ((half_val & 0x7C00) != 0x7C00) { // skip inf/nan
                 float value = fp16_to_fp32_value_for_testing(half_val);
 
                 if (!std::isinf(value) && !std::isnan(value)) {
@@ -244,8 +244,8 @@ TEST(HalfToFP32Test, HalfToFp32Value_FiniteRange) {
 
 
 TEST(HalfFromFP32Test, ZeroValues) {
-    EXPECT_EQ(fp16_from_fp32_value_for_testing(0.0f), 0x0000); // +0
-    EXPECT_EQ(fp16_from_fp32_value_for_testing(-0.0f), 0x8000);// -0
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(0.0f), 0x0000);  // +0
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(-0.0f), 0x8000); // -0
 }
 
 TEST(HalfFromFP32Test, DenormalizedNumbers) {
@@ -253,7 +253,7 @@ TEST(HalfFromFP32Test, DenormalizedNumbers) {
     float smallest_denormal = std::numeric_limits<float>::denorm_min();
     EXPECT_EQ(fp16_from_fp32_value_for_testing(smallest_denormal), 0x0000);
 
-    float max_denormal = 1.1754942e-38f;// ~2^-126 * (1 - 2^-23)
+    float max_denormal = 1.1754942e-38f; // ~2^-126 * (1 - 2^-23)
     EXPECT_EQ(fp16_from_fp32_value_for_testing(max_denormal), 0x0000);
 }
 
@@ -264,7 +264,7 @@ TEST(HalfFromFP32Test, NormalizedNumbers) {
     EXPECT_EQ(fp16_from_fp32_value_for_testing(-1.0f), 0xBC00);
 
     // Float denormals flush to zero in half.
-    float smallest_normal = 1.17549435e-38f;// 2^-126
+    float smallest_normal = 1.17549435e-38f; // 2^-126
     EXPECT_EQ(fp16_from_fp32_value_for_testing(smallest_normal), 0);
 
     // Max half-precision normal.
@@ -292,7 +292,7 @@ TEST(HalfFromFP32Test, NaN) {
 
 TEST(HalfFromFP32Test, NaNPayloadPreserved) {
     // Construct a quiet NaN with a deterministic payload in the top 10 mantissa bits.
-    constexpr uint32_t qnan_payload = 0x2AAU << 13;// bits 22-13
+    constexpr uint32_t qnan_payload = 0x2AAU << 13; // bits 22-13
     constexpr uint32_t qnan_bits = 0x7FC00000U | qnan_payload;
     const float qnan = std::bit_cast<float>(qnan_bits);
     const uint16_t half_nan = fp16_from_fp32_value_for_testing(qnan);
@@ -330,9 +330,9 @@ TEST(HalfFromFP32Test, Rounding) {
 }
 
 TEST(HalfFromFP32Test, SpecialValues) {
-    EXPECT_EQ(fp16_from_fp32_value_for_testing(3.141592653589793f), 0x4248);// PI
-    EXPECT_EQ(fp16_from_fp32_value_for_testing(2.718281828459045f), 0x4170);// E
-    EXPECT_EQ(fp16_from_fp32_value_for_testing(1.618033988749895f), 0x3E79);// Golden ratio
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(3.141592653589793f), 0x4248); // PI
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(2.718281828459045f), 0x4170); // E
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(1.618033988749895f), 0x3E79); // Golden ratio
 }
 
 TEST(HalfFromFP32Test, RoundTrip) {
@@ -349,7 +349,7 @@ TEST(HalfTest, ConstructorAndConversion) {
     EXPECT_EQ(h1.bits(), 0);
 
     // from_bits constructor: raw bit pattern, no conversion.
-    Half h2(0x3C00, Half::from_bits());// 1.0 in half precision
+    Half h2(0x3C00, Half::from_bits()); // 1.0 in half precision
     EXPECT_EQ(h2.bits(), 0x3C00);
 
     // Float constructor and conversion.
@@ -677,4 +677,4 @@ TEST(HalfTest, SpaceshipOperator) {
     EXPECT_TRUE(b >= a);
 }
 
-}// namespace
+} // namespace

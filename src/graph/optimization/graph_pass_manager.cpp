@@ -90,4 +90,4 @@ StatusOr<ModelGraph> GraphPassManager::Run(const ModelGraph& graph) const {
     return last_was_checkpoint ? std::move(*checkpointed) : session->Commit();
 }
 
-}// namespace aethermind
+} // namespace aethermind

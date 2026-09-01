@@ -765,4 +765,4 @@ TEST(GraphLowering, CompactInputSpecsOrderMatchesRuntimeBindings) {
     EXPECT_EQ(compact_idx, compact->size());
 }
 
-}// namespace
+} // namespace

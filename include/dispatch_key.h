@@ -74,6 +74,6 @@ static_assert(
         " into a 64-bit bitmask; you must have less than 64 total entries between them");
 
 
-}// namespace aethermind
+} // namespace aethermind
 
-#endif// AETHERMIND_DISPATCH_KEY_H
+#endif // AETHERMIND_DISPATCH_KEY_H

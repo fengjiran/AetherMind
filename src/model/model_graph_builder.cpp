@@ -310,7 +310,7 @@ Status ValidateInputs(const HfModelConfig& config, const ResolvedModelWeights& w
     return HfModelValidator::ValidateResolvedModel(config, weights);
 }
 
-}// namespace
+} // namespace
 
 StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& config,
                                                         const ResolvedModelWeights& weights) {
@@ -409,4 +409,4 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
     return graph;
 }
 
-}// namespace aethermind
+} // namespace aethermind

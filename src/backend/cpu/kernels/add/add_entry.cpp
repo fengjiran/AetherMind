@@ -242,7 +242,7 @@ Status BuildAddParams(std::span<const TensorView> inputs,
     return Status::Ok();
 }
 
-}// namespace
+} // namespace
 
 // KernelFunc registered with every AM_REGISTER_KERNEL block below. Expects
 // ctx.kernel_params to point at an AddParams populated by the generic kernel
@@ -355,4 +355,4 @@ AM_REGISTER_KERNEL(CpuAddI64Scalar,
                            .params_size = sizeof(cpu::detail::AddParams),
                    })
 
-}// namespace aethermind
+} // namespace aethermind

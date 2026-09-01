@@ -25,7 +25,7 @@ TEST(Float8E5M2Test, SpecialValues) {
     EXPECT_TRUE(std::isinf(fp8e5m2_to_fp32_value(0xFC)));
 
     // Test NaN
-    EXPECT_EQ(fp8e5m2_from_fp32_value(NAN), 0x7E);// Canonical NaN
+    EXPECT_EQ(fp8e5m2_from_fp32_value(NAN), 0x7E); // Canonical NaN
     EXPECT_TRUE(std::isnan(fp8e5m2_to_fp32_value(0x7F)));
 }
 
@@ -46,29 +46,29 @@ TEST(Float8E5M2Test, NormalRange) {
     // EXPECT_FLOAT_EQ(fp8e5m2_to_fp32_value(0x01), 1.0f / 8388608);
 
     // Test rounding
-    EXPECT_EQ(fp8e5m2_from_fp32_value(1.1f), 0x3C);// should round to 1.0 or 1.25
+    EXPECT_EQ(fp8e5m2_from_fp32_value(1.1f), 0x3C); // should round to 1.0 or 1.25
 }
 
 TEST(Float8E5M2Test, OverflowAndUnderflow) {
     // Test overflow (clamp to infinity)
-    EXPECT_EQ(fp8e5m2_from_fp32_value(65504.0f), 0x7C); // max normal fp8e5m2
-    EXPECT_EQ(fp8e5m2_from_fp32_value(100000.0f), 0x7C);// should clamp to infinity
+    EXPECT_EQ(fp8e5m2_from_fp32_value(65504.0f), 0x7C);  // max normal fp8e5m2
+    EXPECT_EQ(fp8e5m2_from_fp32_value(100000.0f), 0x7C); // should clamp to infinity
 
     // Test underflow (flush to zero)
-    EXPECT_EQ(fp8e5m2_from_fp32_value(1.0e-10f), 0x00);// should flush to zero
+    EXPECT_EQ(fp8e5m2_from_fp32_value(1.0e-10f), 0x00); // should flush to zero
 }
 
 TEST(Float8E5M2Test, DenormalHandling) {
     // Test denormal inputs
-    EXPECT_EQ(fp8e5m2_from_fp32_value(1.0f / 65536), 0x01); // should be represented as normal
-    EXPECT_EQ(fp8e5m2_from_fp32_value(1.0f / 131072), 0x00);// should flush to zero
+    EXPECT_EQ(fp8e5m2_from_fp32_value(1.0f / 65536), 0x01);  // should be represented as normal
+    EXPECT_EQ(fp8e5m2_from_fp32_value(1.0f / 131072), 0x00); // should flush to zero
 }
 
 TEST(Float8E5M2Test, RoundingModes) {
     // Test rounding to nearest even
-    EXPECT_EQ(fp8e5m2_from_fp32_value(1.5f), 0x3E);  // 1.5 should round to 1.5
-    EXPECT_EQ(fp8e5m2_from_fp32_value(1.25f), 0x3D); // 1.25 should round to 1.25
-    EXPECT_EQ(fp8e5m2_from_fp32_value(1.375f), 0x3E);// 1.375 should round to 1.25 (nearest even)
+    EXPECT_EQ(fp8e5m2_from_fp32_value(1.5f), 0x3E);   // 1.5 should round to 1.5
+    EXPECT_EQ(fp8e5m2_from_fp32_value(1.25f), 0x3D);  // 1.25 should round to 1.25
+    EXPECT_EQ(fp8e5m2_from_fp32_value(1.375f), 0x3E); // 1.375 should round to 1.25 (nearest even)
 }
 
 TEST(Float8E5M2Test, ConstructorAndBasicProperties) {
@@ -239,19 +239,19 @@ TEST(Float8E5M2Test, MixedTypeArithmetic) {
 
 TEST(Float8E5M2Test, EdgeCasesAndRounding) {
     // 边界值测试
-    Float8_e5m2 max_val(57344.0f);// E5M2最大规格化数
+    Float8_e5m2 max_val(57344.0f); // E5M2最大规格化数
     EXPECT_EQ(max_val.x, 0x7B);
 
-    Float8_e5m2 min_val(0.00006103515625f);// E5M2最小规格化数
+    Float8_e5m2 min_val(0.00006103515625f); // E5M2最小规格化数
     EXPECT_EQ(min_val.x, 0x04);
 
     // 下溢测试
     Float8_e5m2 tiny(1e-10f);
-    EXPECT_EQ(tiny.x, 0x00);// 下溢到零
+    EXPECT_EQ(tiny.x, 0x00); // 下溢到零
 
     // 溢出测试
     Float8_e5m2 huge(1e6f);
-    EXPECT_EQ(huge.x, 0x7C);// 溢出到无穷大
+    EXPECT_EQ(huge.x, 0x7C); // 溢出到无穷大
 }
 
 TEST(Float8E5M2Test, OutputOperator) {
@@ -303,4 +303,4 @@ TEST(Float8E5M2Test, FloatAssignmentOperators) {
     EXPECT_FLOAT_EQ(f, 2.5f);
 }
 
-}// namespace
+} // namespace

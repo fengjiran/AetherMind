@@ -2027,7 +2027,7 @@ struct KernelSelector {
 struct KernelDescriptor {
     OpType op_type;
     KernelSelector selector;
-    CpuKernelRequirements cpu_requirements;   // .all_of：指令集特征要求（如 {kAvx2, kFma}），置空表示任意机器可运行
+    CpuFeatureSet cpu_requirements;   // 指令集特征要求（如 {kAvx2, kFma}），空 = 任意机器可运行
     KernelFunc kernel_func;
     const char* name;
     int priority;
@@ -2038,7 +2038,7 @@ struct KernelDescriptor {
 
 1. 根据 op type 找候选；
 2. 根据 dtype/weight_format/phase 结构化过滤；
-3. CPU kernel 再按有效特征集过滤（`CpuCapabilities.effective_features` ⊇ `cpu_requirements.all_of`）；
+3. CPU kernel 再按有效特征集过滤（`CpuCapabilities.effective_features` ⊇ `cpu_requirements`）；
 4. 根据 priority 选择；
 5. shape 特化可在 kernel 内二次分发；
 6. fallback 必须存在。

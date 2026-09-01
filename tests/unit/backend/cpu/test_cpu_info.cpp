@@ -78,5 +78,21 @@ TEST(CpuInfo, PolicyRejectsInvalidSnapshot) {
     EXPECT_EQ(applied.status().code(), StatusCode::kInvalidArgument);
 }
 
+TEST(CpuInfo, EmptyPolicyIsIdentity) {
+    const CpuFeatureSet features = CpuFeatureSet::From(
+            {CpuFeature::kAvx2, CpuFeature::kFma});
+    const CpuCapabilities snapshot{
+            .architecture = CpuArchitecture::kX86_64,
+            .hardware_features = features,
+            .usable_features = features,
+    };
+
+    const auto applied = ApplyCpuFeaturePolicy(snapshot, {});
+
+    ASSERT_TRUE(applied.ok()) << applied.status().ToString();
+    EXPECT_EQ(applied->effective_features, features);
+    EXPECT_EQ(applied->hardware_features, features);
+}
+
 } // namespace
 } // namespace aethermind::cpu

@@ -258,7 +258,7 @@ struct OpKernelContext {
 Phase 1 CPU Backend 需实现以下关键组件以支持高性能推理：
 
 
-- **CpuCapabilities / CpuIsaDetector**：负责检测 AVX2、AVX512、AMX 等指令集支持，并生成 capability 视图。
+- **CpuCapabilities / CpuFeaturePolicy**：负责检测 AVX2、AVX512、AMX 等指令集支持，并生成三层 capability 快照（hardware/usable/effective）。模型详见 `docs/designs/cpu_capability_design.md`。
 - **CpuThreadPool**：专为推理优化的线程池，由 `CpuExecutionResources` 持有并通过 `opaque_backend_resources` 暴露给 CPU kernels。
 - **CpuWeightPrepacker**：负责将逻辑权重转换为符合 CPU 指令集与缓存友好布局的 packed 格式。
 - **PackedWeights**：预打包权重的存储实体，**由 `PackedWeightStore` 持有**；CPU backend 只定义 packed 格式与构建逻辑。
@@ -321,7 +321,7 @@ Phase 1 中 `Stream` 为最小占位接口。CPU 提供 `CpuInlineStream` 实现
 - `RuntimeContext::GetBackend()`
 
 #### 阶段 B：CpuBackend 执行核心
-- `CpuCapabilities` 与指令集探测
+- `CpuCapabilities` 与指令集探测（`cpu_info.cpp`）
 - `CpuThreadPool`
 - `CpuWorkspaceArena`
 - `CpuWeightPrepacker`

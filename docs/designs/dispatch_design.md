@@ -2,19 +2,19 @@
 
 # 0. 变更记录
 
-| 版本 | 日期 | 变更 |
-|------|------|------|
-| v1.0 | 2026-04-15 | 初始设计冻结：backend-owned KernelRegistry |
-| v1.1 | 2026-06-04 | **设计偏离**：实际实现采用全局 singleton KernelRegistry + `AM_REGISTER_KERNEL` 静态注册宏。原因见第 7、9、16.11 节。本文档其余部分保持原始设计论证，但在冲突处已标注实际实现。 |
+| 版本   | 日期         | 变更                                                                                                                                                                                               |
+| ---- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| v1.0 | 2026-04-15 | 初始设计冻结：backend-owned KernelRegistry                                                                                                                                                              |
+| v1.1 | 2026-06-04 | **设计偏离**：实际实现采用全局 singleton KernelRegistry + `AM_REGISTER_KERNEL` 静态注册宏。原因见第 7、9、16.11 节。本文档其余部分保持原始设计论证，但在冲突处已标注实际实现。                                                                           |
 | v1.2 | 2026-08-31 | **设计偏离**：`IsaLevel` 与 `KernelSelector.isa` 从实现中移除；CPU 指令集要求改由 `KernelDescriptor.cpu_requirements`（特征集）声明，`CpuBackend` 在 resolve 时按 `CpuCapabilities.effective_features` 做子集过滤。详见 4.3 节 CPU 能力模型。 |
 
----
+***
 
 # 1. 设计目标
 
 当前引擎不需要 PyTorch 那种完整动态 dispatcher，而是需要一个：
 
-> **由全局 KernelRegistry 持有、kernel 通过 `AM_REGISTER_KERNEL` 静态自注册、在执行计划构建期完成 kernel 选择、在执行期只做函数指针 direct call 的推理专用 dispatch 机制。**
+> **由全局 KernelRegistry 持有、kernel 通过** **`AM_REGISTER_KERNEL`** **静态自注册、在执行计划构建期完成 kernel 选择、在执行期只做函数指针 direct call 的推理专用 dispatch 机制。**
 
 核心目标：
 
@@ -48,11 +48,17 @@ Executor direct call
 关键约束：
 
 * **KernelRegistry::Global()** 是唯一的 kernel 注册中心，不是 per-backend 实例；
+
 * **Kernel** 通过 `AM_REGISTER_KERNEL` 宏自注册，不依赖 Backend 初始化顺序；
+
 * **ExecutionPlanBuilder** 是唯一正式 resolve 发起方；
+
 * **Executor** 只执行已经选好的 kernel；
+
 * **Runtime** 负责资源、线程、内存、上下文，不负责算子选择；
+
 * 全局 singleton 通过 `std::mutex` 保证并发安全（`Register`、`Freeze`、`Resolve` 均加锁）；
+
 * `CpuBackend::CpuBackend()` 构造函数调用 `KernelRegistry::Global().Freeze()`，之后 registry 进入只读态。
 
 ## 2.1 明确不采用的方向
@@ -60,10 +66,15 @@ Executor direct call
 当前推理引擎 **不采用** 以下模式：
 
 * PyTorch 式全局 `Dispatcher`
+
 * `DispatchKeySet` / backend bitmask 多重分发
+
 * 运行期字符串查找
+
 * 运行期 hash dispatch
+
 * 运行期 boxed fallback
+
 * 把整个 `RuntimeContext` 宽对象直接下放给 kernel
 
 # 3. 核心抽象
@@ -95,8 +106,10 @@ Phase 1 不建议引入复杂 `OpSchema`。因为当前项目不是通用动态�
 
 推荐做法是：
 
-* **新 dispatch 主线内部以 `OpType` 为核心语义；**
+* **新 dispatch 主线内部以** **`OpType`** **为核心语义；**
+
 * 在过渡期允许通过一层映射把 `OperatorName` 转成 `OpType`；
+
 * 不再继续扩展基于 `OperatorName + overload_name` 的通用 dispatcher 体系。
 
 例如：
@@ -141,7 +154,9 @@ struct KernelSelector {
 这里不要搞成 PyTorch 那种 `DispatchKeySet`，否则：
 
 * 维度会快速膨胀；
+
 * 很容易把 inference engine 变成“通用框架式 dispatcher”；
+
 * 最终又回到运行期多重分发与热路径复杂化。
 
 ## 4.2 Phase 1 收敛说明
@@ -149,9 +164,13 @@ struct KernelSelector {
 `KernelSelector` 在未来可以扩展更多维度，但 Phase 1 建议先只保留：
 
 * `device`
+
 * `activation_dtype`
+
 * `weight_dtype`
+
 * `weight_format`
+
 * `phase`
 
 > **v1.2 偏离**：`isa` 维度已从 selector 中移除，指令集要求改走 4.3 节的能力模型。
@@ -169,28 +188,23 @@ Quantized packed weight
 
 因此建议明确：
 
-> **Phase 1 不以 `layout` 作为通用 selector 维度，但允许特定 op 通过 `weight_format` 或 attrs 表达内部布局约束。**
+> **Phase 1 不以** **`layout`** **作为通用 selector 维度，但允许特定 op 通过** **`weight_format`** **或 attrs 表达内部布局约束。**
 
 ## 4.3 CPU 能力模型（v1.2 设计偏离：取代 IsaLevel）
 
 实际实现用**特征集合**取代 `IsaLevel`，原因是指令集之间不是全序关系（AVX512F / AMX / VNNI / FMA 相互正交，无法用 `candidate.isa <= request.isa` 表达）。
 
-类型位于 `include/aethermind/backend/cpu/cpu_capabilities.h`：
+模型要点：
 
-* `CpuFeature`：扁平、append-only 特征枚举（x86 与 AArch64 共用一个命名空间，`kCount` 哨兵）。
-* `CpuFeatureSet`：128 位定长 bitmask，constexpr、可哈希、无堆分配。
-* `CpuCapabilities`：三层快照——
-  * `hardware_features`（原始硬件能力，仅供诊断）；
-  * `usable_features`（硬件 + OS 状态门控后可用：XCR0、AMX `arch_prctl` 权限、`PR_SVE_GET_VL` 等）；
-  * `effective_features`（应用 `CpuFeaturePolicy` 后，**kernel 选择的唯一依据**）。
-* `CpuFeaturePolicy{disabled_features, required_features}`：运行时策略只能**削减**特征；`required` 不满足时检测返回 `FailedPrecondition`。通过 `CpuBackendFactory(policy)` / `RuntimeOptions.backend.cpu_feature_policy` 注入——测试可停用 AVX2/FMA 强制回退到 scalar kernel，无需全局可变 override。
-* `KernelDescriptor.cpu_requirements = {.all_of: CpuFeatureSet}`：CPU kernel 声明其全部指令集要求（置空表示任意机器可运行）；非 CPU device 的 descriptor 禁止携带该字段（注册期校验）。
-* resolve 流程（`CpuBackend::PrepareKernel`）：`KernelRegistry::FindCandidates`（纯结构匹配）→ 过滤 `effective_features ⊇ requirements` → 按 `priority` 取优；无候选命中时返回 `NotFound` 并携带 selector 与特征集诊断。
+* 类型位于 `include/aethermind/backend/cpu/cpu_capabilities.h`：扁平 `CpuFeature` 枚举、128 位 `CpuFeatureSet` bitmask、`CpuCapabilities` 三层快照（`hardware ⊇ usable ⊇ effective`）、只能削减的 `CpuFeaturePolicy`。
 
-两条已记录的设计权衡：
+* kernel 通过 `KernelDescriptor.cpu_requirements`（`CpuFeatureSet`，空 = 任意机器）声明指令集要求；注册期校验非 CPU device 禁带。
 
-1. **打包布局对指令集规范化**：`selector` 不含特征维度，`CpuWeightPrepacker::RecipeFor(selector)` 只由结构字段导出——一份 packed 权重服务所有特征等级，`WeightArtifactKey` 因此机器无关。若未来引入 ISA 特有排布（如 VNNI 专用 layout），需扩展 recipe 或 selector 维度，届时需重新评估此权衡。
-2. **检测失败路径**：能力检测失败（当前仅未知平台可能）会在 `CpuBackend` 构造时 `AM_CHECK` 终止进程，因为 `BackendFactory::Create()` 返回 `unique_ptr<Backend>`、无 Status 通道；x86-64 / AArch64 不触发。另注意检测过程可能发起 `arch_prctl(ARCH_REQ_XCOMP_PERM)` 进程级权限申请。
+* resolve 流程：`KernelRegistry::FindCandidates`（纯结构匹配）→ `CpuBackend` 按 `effective_features.ContainsAll(cpu_requirements)` 过滤 → 按 `priority` 取优；无命中返回 `NotFound` 并携带 selector 与特征集诊断。
+
+* 注入：`CpuBackendFactory(policy)` / `RuntimeOptions.backend.cpu_feature_policy`；测试可停用 AVX2/FMA 强制 scalar 回退。
+
+**完整设计见** **`docs/designs/cpu_capability_design.md`**（检测矩阵、policy 语义、平台差异与取舍）。
 
 # 5. Kernel 函数签名
 
@@ -198,7 +212,7 @@ Phase 1 建议统一成一个 C 风格函数指针，避免模板和虚函数进
 
 但是：
 
-> **不要把整个 `RuntimeContext*` 直接下放给 kernel。**
+> **不要把整个** **`RuntimeContext*`** **直接下放给 kernel。**
 
 当前 Backend 设计已经要求 kernel 使用窄执行上下文，因此这里建议使用一个最小 `KernelContext`，只携带单次调用所需的只读能力与窄资源。
 
@@ -220,9 +234,13 @@ using KernelFn = Status (*)(KernelContext& ctx,
 说明：
 
 * `inputs/outputs` 使用数组，避免动态容器；
+
 * `attrs` 指向算子属性，例如 RMSNorm epsilon、RoPE 参数；
+
 * `noexcept` 保持推理热路径稳定；
+
 * 返回 `Status`，不抛异常；
+
 * `KernelContext` 只保留窄资源，不允许把 `RuntimeContext`、registry、builder 等宽对象直接传给 kernel。
 
 另外建议进一步收紧约束：
@@ -309,7 +327,7 @@ AM_REGISTER_KERNEL(g_rmsnorm_avx2_registration, {
     .op_type = OpType::kRmsNorm,
     .selector = { DeviceType::kCPU, DataType::Float32(), DataType::Float32(),
                   WeightFormat::kPlain, ExecPhase::kBoth },
-    .cpu_requirements = {.all_of = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma})},
+    .cpu_requirements = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
     .fn = &CpuRmsNormKernelEntry_FP32_AVX2,
     .name = "cpu::rmsnorm_f32_avx2",
     .priority = 20,
@@ -326,7 +344,9 @@ AM_REGISTER_KERNEL(g_rmsnorm_avx2_registration, {
 ### 代价与风险
 
 * 失去了 per-backend registry 的模块隔离（CUDA kernel 不会注册到 CPU 路径；实际通过 `KernelSelector.device` 硬匹配过滤）；
+
 * 依赖静态初始化顺序（function-local static 无顺序问题，但 `AM_REGISTER_KERNEL` 与 `CpuBackend` 构造之间的时序需要保证 `Freeze` 不提前执行）；
+
 * 当前未使用 `__attribute__((used))`，存在被链接器 GC 的风险。
 
 # 8. 匹配规则
@@ -358,7 +378,7 @@ bool Match(const KernelSelector& candidate,
 
 原始设计推荐由 backend 在构造阶段显式注册。**实际实现完全偏离了该方案**。
 
-## 9.1 实际注册方式：AM_REGISTER_KERNEL 宏
+## 9.1 实际注册方式：AM\_REGISTER\_KERNEL 宏
 
 参见 7.1 节。每个 kernel 在其 .cpp 文件中通过 `AM_REGISTER_KERNEL` 宏自注册到 `KernelRegistry::Global()`，无需修改任何 Backend 代码。
 
@@ -403,14 +423,14 @@ StatusOr<const KernelDescriptor*> CpuBackend::ResolveKernel(
 
 ### 关键差异总结
 
-| 维度 | 原始设计 | 实际实现 |
-|------|---------|---------|
-| Registry 所有权 | Backend 持有 | 全局 singleton |
-| 注册时机 | Backend 初始化 | 静态初始化（加载时） |
-| 注册方式 | 显式调用 `Register()` | `AM_REGISTER_KERNEL` 宏 |
-| 添加新 kernel 需修改 | Backend 代码 | 仅 kernel 自身 .cpp |
-| 线程安全 | 未考虑 | `std::mutex` 保护 |
-| 冻结入口 | Backend 内部管理 | `KernelRegistry::Global().Freeze()` |
+| 维度             | 原始设计              | 实际实现                                |
+| -------------- | ----------------- | ----------------------------------- |
+| Registry 所有权   | Backend 持有        | 全局 singleton                        |
+| 注册时机           | Backend 初始化       | 静态初始化（加载时）                          |
+| 注册方式           | 显式调用 `Register()` | `AM_REGISTER_KERNEL` 宏              |
+| 添加新 kernel 需修改 | Backend 代码        | 仅 kernel 自身 .cpp                    |
+| 线程安全           | 未考虑               | `std::mutex` 保护                     |
+| 冻结入口           | Backend 内部管理      | `KernelRegistry::Global().Freeze()` |
 
 # 10. ResolvedKernel
 
@@ -510,9 +530,13 @@ private:
 无论采用哪种形式，resolve 都应基于：
 
 * 模型 dtype；
+
 * 权重格式；
+
 * 当前 CPU 能力快照（`CpuCapabilities.effective_features`，由 backend 持有并过滤）；
+
 * prefill/decode 阶段；
+
 * backend 能力；
 
 构造 `KernelSelector`，然后通过 backend 内部 registry resolve。
@@ -522,14 +546,19 @@ private:
 当前代码库中已经存在：
 
 * `dispatcher.h`
+
 * `dispatch_key.h`
+
 * `dispatch_key_set.h`
+
 * 基于 `OperatorName` 的早期分发设施
 
 这套草案的建议是：
 
 * **不要继续扩展这套旧体系作为未来主线；**
+
 * Phase 1/Phase 2 的新 dispatch 主线应基于 `OpType + KernelSelector + KernelDescriptor + ResolvedKernel`；
+
 * 旧的 `Dispatcher / DispatchKeySet` 可以在迁移期保留，但应视为待冻结/待退场模块，而不是新设计基础。
 
 # 13. 对 Phase 1 的建议收敛
@@ -631,8 +660,11 @@ ResolvedKernel
 其真正语义：
 
 * registry 为全局 singleton，kernel 通过 `AM_REGISTER_KERNEL` 自注册；
+
 * resolve 发生在 `ExecutionPlanBuilder`；
+
 * executor 只消费冻结后的 kernel 函数指针；
+
 * 不回到全局 dispatcher / DispatchKeySet 路线。
 
 这套设计足够支撑 Phase 1，也不会堵死后续 CPU 优化、量化、多 backend 扩展。
@@ -661,9 +693,13 @@ OpType + KernelSelector + KernelDescriptor + 全局 KernelRegistry
 并且保证：
 
 * 执行期不做 registry/hash/string lookup；
+
 * 旧 `Dispatcher / DispatchKeySet` 冻结，不再扩展；
+
 * `ExecutionPlanBuilder` 是唯一正式 resolve 发起方；
+
 * `Executor` 只做函数指针 direct call；
+
 * Kernel 通过 `AM_REGISTER_KERNEL` 自注册到 `KernelRegistry::Global()`（注：与原始设计的 "backend-owned" 不同）。
 
 ## 16.2 Phase A：冻结边界
@@ -674,15 +710,20 @@ OpType + KernelSelector + KernelDescriptor + 全局 KernelRegistry
 
 1. 冻结本文档作为 dispatch 主线基线；
 2. 明确以下约束为唯一主线：
-   - ~~Backend owns kernel registry~~ **（设计偏离：实际为全局 singleton + AM_REGISTER_KERNEL，见 7.1 节）**
-   - `ExecutionPlanBuilder` 是唯一 resolve 发起方
-   - `Executor` 只消费 `ResolvedKernel`
-   - 旧 `Dispatcher / DispatchKeySet` 不再扩展
+
+   * ~~Backend owns kernel registry~~ **（设计偏离：实际为全局 singleton + AM\_REGISTER\_KERNEL，见 7.1 节）**
+
+   * `ExecutionPlanBuilder` 是唯一 resolve 发起方
+
+   * `Executor` 只消费 `ResolvedKernel`
+
+   * 旧 `Dispatcher / DispatchKeySet` 不再扩展
 3. 明确过渡策略：短期保留 `OperatorName`、`KernelKey`、`dispatcher_bridge`，但仅作为迁移辅助，不再作为未来主线。
 
 ### 完成标准
 
 * 设计文档全部对齐；
+
 * 团队对“旧 dispatch 冻结、新 dispatch 主线”无歧义。
 
 ## 16.3 Phase B：落最小新类型
@@ -694,14 +735,19 @@ OpType + KernelSelector + KernelDescriptor + 全局 KernelRegistry
 新增核心类型：
 
 * `OpType`
+
 * `KernelSelector`
+
 * `KernelDescriptor`
+
 * `ResolvedKernel`
 
 短期保留并兼容：
 
 * `kernel_key.h`
+
 * `dispatcher_bridge.h`
+
 * `operator_name.h`
 
 同时增加一个过渡入口，例如：
@@ -713,7 +759,9 @@ StatusOr<OpType> ToOpType(const OperatorName& op_name) noexcept;
 ### 完成标准
 
 * 新类型定义完成；
+
 * 不破坏现有编译；
+
 * 旧代码仍可工作。
 
 ## 16.4 Phase C：重构 KernelRegistry
@@ -739,11 +787,17 @@ Resolve(OpType, KernelSelector, const KernelDescriptor**)
 实现最小匹配规则：
 
 * `device` 硬匹配
+
 * `activation_dtype` 硬匹配
+
 * `weight_dtype` 硬匹配
+
 * `weight_format` 硬匹配
+
 * `PhaseMatch(candidate, request)`
-* CPU kernel 额外要求 `effective_features` ⊇ `cpu_requirements.all_of`（backend 层过滤，非 registry 职责）
+
+* CPU kernel 额外要求 `effective_features` ⊇ `cpu_requirements`（backend 层过滤，非 registry 职责）
+
 * 最后按 `priority` 选择最优实现
 
 过渡期可以保留旧接口，内部桥接到新结构，避免一次性重写全部测试。
@@ -753,8 +807,11 @@ Resolve(OpType, KernelSelector, const KernelDescriptor**)
 ### 完成标准
 
 * ~~backend-owned~~ `KernelRegistry` 支持 descriptor 注册（实际为全局 singleton，见 7.1 节）；
+
 * selector-based resolve 可用；
+
 * `kBoth` 匹配正确；
+
 * `priority` 仅用于“可用实现中的最优选择”。
 
 ## 16.5 Phase D：收敛 CpuBackend（实际实现）
@@ -788,17 +845,19 @@ StatusOr<const KernelDescriptor*> CpuBackend::ResolveKernel(
 ### 完成标准（已满足）
 
 * CPU kernel 通过 `AM_REGISTER_KERNEL` 自注册到全局 registry；
+
 * `CpuBackend` 通过 `KernelRegistry::Global()` 查询，不影响 `KernelSelector.device` 硬匹配过滤；
+
 * 不再新增旧 `KernelKey` 主线逻辑。
 
 ### 与原始设计的关键差异
 
-| 维度 | 原始设计 | 实际实现 |
-|------|---------|---------|
-| Registry 所有权 | `CpuBackend` 持有 | `KernelRegistry::Global()` |
-| 注册方式 | `RegisterBuiltinKernels()` 显式注册 | `AM_REGISTER_KERNEL` 静态宏 |
-| 冻结时机 | `CpuBackend` 内部 | `KernelRegistry::Global().Freeze()` |
-| Resolve 入口 | `backed_registry_.Resolve(...)` | `KernelRegistry::Global().Resolve(...)` + CPU guard |
+| 维度           | 原始设计                            | 实际实现                                                |
+| ------------ | ------------------------------- | --------------------------------------------------- |
+| Registry 所有权 | `CpuBackend` 持有                 | `KernelRegistry::Global()`                          |
+| 注册方式         | `RegisterBuiltinKernels()` 显式注册 | `AM_REGISTER_KERNEL` 静态宏                            |
+| 冻结时机         | `CpuBackend` 内部                 | `KernelRegistry::Global().Freeze()`                 |
+| Resolve 入口   | `backed_registry_.Resolve(...)` | `KernelRegistry::Global().Resolve(...)` + CPU guard |
 
 ## 16.6 Phase E：把 resolve 拉进计划构建期
 
@@ -809,14 +868,19 @@ StatusOr<const KernelDescriptor*> CpuBackend::ResolveKernel(
 1. 引入 `ResolvedKernel`；
 2. 在 `ExecutionPlanBuilder` 中实现 `ResolveKernelForNode(...)`，或提供等价的 `KernelResolver`；
 3. 明确 attrs 生命周期：
-   - attrs 由 plan/model graph 持有
-   - 生命周期覆盖整个 execution plan
-   - 执行期不分配 attrs
+
+   * attrs 由 plan/model graph 持有
+
+   * 生命周期覆盖整个 execution plan
+
+   * 执行期不分配 attrs
 
 ### 完成标准
 
 * 计划构建期可为节点生成 `ResolvedKernel`；
+
 * 执行节点不再依赖 runtime lookup；
+
 * attrs 生命周期规则落地。
 
 ## 16.7 Phase F：接 Executor direct call
@@ -828,15 +892,21 @@ StatusOr<const KernelDescriptor*> CpuBackend::ResolveKernel(
 1. `ExecutionNode` / `OpExec` 接入 `ResolvedKernel`；
 2. `Executor` 改为 direct call；
 3. 明确禁止热路径中的：
-   - registry lookup
-   - dispatcher lookup
-   - hash dispatch
-   - string dispatch
+
+   * registry lookup
+
+   * dispatcher lookup
+
+   * hash dispatch
+
+   * string dispatch
 
 ### 完成标准
 
 * executor 热路径 direct call；
+
 * 无 runtime resolve；
+
 * 无 hot-path registry access。
 
 ## 16.8 Phase G：冻结旧体系
@@ -848,14 +918,19 @@ StatusOr<const KernelDescriptor*> CpuBackend::ResolveKernel(
 冻结以下模块：
 
 * `include/dispatcher.h`
+
 * `src/dispatcher.cpp`
+
 * `include/dispatch_key.h`
+
 * `include/dispatch_key_set.h`
 
 要求：
 
 * 不再新增新算子接入到旧 dispatcher；
+
 * 不再继续扩 `DispatchKeySet`；
+
 * 不把新 kernel resolve 逻辑塞回旧路径。
 
 短期先冻结，后面视迁移完成度再决定是否物理删除。
@@ -863,6 +938,7 @@ StatusOr<const KernelDescriptor*> CpuBackend::ResolveKernel(
 ### 完成标准
 
 * 旧模块不再增长；
+
 * 新功能全部走新主线。
 
 ## 16.9 推荐批次
@@ -902,13 +978,17 @@ Executor direct call + 旧体系冻结
 建议新增：
 
 * `test_kernel_selector.cpp`
+
 * `test_kernel_registry_resolve.cpp`
 
 覆盖：
 
 * 硬匹配
+
 * `kBoth` 匹配
+
 * 有效特征集过滤（capability-aware resolve）
+
 * `priority` 选择
 
 ### Phase D
@@ -920,7 +1000,9 @@ Executor direct call + 旧体系冻结
 覆盖：
 
 * builtin kernel 注册
+
 * CPU selector resolve
+
 * capability-aware 路径
 
 ### Phase E / F
@@ -928,13 +1010,17 @@ Executor direct call + 旧体系冻结
 建议新增：
 
 * `test_execution_plan_builder.cpp`
+
 * `test_executor_backend_path.cpp`
 
 覆盖：
 
 * plan-build resolve
+
 * `ResolvedKernel` 冻结
+
 * executor direct call
+
 * no hot-path lookup
 
 ### Phase G
@@ -948,16 +1034,23 @@ Executor direct call + 旧体系冻结
 ### 不要做的事（已遵守）
 
 * 不要一次性删除 `OperatorName` — `ToOpType` 仍保留过渡映射
+
 * 不要先删旧 dispatcher 再补新主线 — Batch 1-3 先立新主线，Batch 4 再冻结删除
+
 * ~~不要把全局 singleton registry 引回来~~ **（已偏离：实际采用了全局 singleton，详见 7.1 节；但通过 device 硬匹配保证隔离，未出现预期风险）**
+
 * 不要把 `RuntimeContext*` 直接传给 kernel — `KernelFunc` 保持窄签名
+
 * 不要让 executor 在迁移期继续做 hash/string lookup — Executor 只消费冻结 kernel
 
 ### 要优先守住的事
 
-* ~~backend-owned ownership~~ **（已偏离：实际为全局 singleton；通过 `KernelSelector.device` 硬匹配保证跨 backend 隔离）**
+* ~~backend-owned ownership~~ **（已偏离：实际为全局 singleton；通过** **`KernelSelector.device`** **硬匹配保证跨 backend 隔离）**
+
 * narrow `KernelContext`
+
 * attrs 生命周期明确
+
 * resolve 只发生在 plan-build time
 
 ## 16.12 一句话落地策略
@@ -970,4 +1063,5 @@ Executor direct call + 旧体系冻结
 
 按文件拆解的 implementation task list 见：
 
-- `docs/designs/dispatch_implementation_task_list.md`
+* `docs/designs/dispatch_implementation_task_list.md`
+

@@ -98,20 +98,25 @@ CpuCapabilities DetectX86Capabilities() noexcept {
         capabilities.hardware_features.Enable(CpuFeature::kSse41);
         capabilities.usable_features.Enable(CpuFeature::kSse41);
     }
+
     if (has_avx) {
         capabilities.hardware_features.Enable(CpuFeature::kAvx);
     }
+
     if (has_fma) {
         capabilities.hardware_features.Enable(CpuFeature::kFma);
     }
+
     if (has_f16c) {
         capabilities.hardware_features.Enable(CpuFeature::kF16c);
     }
+
     if (has_avx && has_avx_state) {
         capabilities.usable_features.Enable(CpuFeature::kAvx);
         if (has_fma) {
             capabilities.usable_features.Enable(CpuFeature::kFma);
         }
+
         if (has_f16c) {
             capabilities.usable_features.Enable(CpuFeature::kF16c);
         }
@@ -133,11 +138,12 @@ CpuCapabilities DetectX86Capabilities() noexcept {
     const bool has_amx_int8 = HasBit(leaf7.edx, 25);
     const bool has_amx_bf16 = HasBit(leaf7.edx, 22);
 
-    const auto record_hardware = [&](bool present, CpuFeature feature) {
+    auto record_hardware = [&](bool present, CpuFeature feature) {
         if (present) {
             capabilities.hardware_features.Enable(feature);
         }
     };
+
     record_hardware(has_avx2, CpuFeature::kAvx2);
     record_hardware(has_avx512f, CpuFeature::kAvx512F);
     record_hardware(has_avx512bw, CpuFeature::kAvx512Bw);
@@ -152,6 +158,7 @@ CpuCapabilities DetectX86Capabilities() noexcept {
         if (has_avx2) {
             capabilities.usable_features.Enable(CpuFeature::kAvx2);
         }
+
         if (has_avxvnni) {
             capabilities.usable_features.Enable(CpuFeature::kAvxVnni);
         }
@@ -160,15 +167,17 @@ CpuCapabilities DetectX86Capabilities() noexcept {
     // AVX-512 and AMX state require separate XSAVE components. AMX also
     // needs Linux to grant XTILEDATA permission to this execution context.
     const uint64_t xcr0 = has_osxsave ? ReadXcr0() : 0;
-    const bool has_avx512_state = (xcr0 & 0xE6U) == 0xE6U;
-    if (has_avx && has_avx512_state && has_avx512f) {
+    if (const bool has_avx512_state = (xcr0 & 0xE6U) == 0xE6U;
+        has_avx && has_avx512_state && has_avx512f) {
         capabilities.usable_features.Enable(CpuFeature::kAvx512F);
         if (has_avx512bw) {
             capabilities.usable_features.Enable(CpuFeature::kAvx512Bw);
         }
+
         if (has_avx512vnni) {
             capabilities.usable_features.Enable(CpuFeature::kAvx512Vnni);
         }
+
         if (has_avx512bf16) {
             capabilities.usable_features.Enable(CpuFeature::kAvx512Bf16);
         }
@@ -183,6 +192,7 @@ CpuCapabilities DetectX86Capabilities() noexcept {
         if (has_amx_int8) {
             capabilities.usable_features.Enable(CpuFeature::kAmxInt8);
         }
+
         if (has_amx_bf16) {
             capabilities.usable_features.Enable(CpuFeature::kAmxBf16);
         }
@@ -191,9 +201,7 @@ CpuCapabilities DetectX86Capabilities() noexcept {
     return capabilities;
 }
 
-#endif
-
-#if defined(__aarch64__)
+#elif defined(__aarch64__)
 
 void RecordAArch64Feature(CpuCapabilities& capabilities,
                           bool present,
@@ -316,16 +324,14 @@ CpuCapabilities DetectUsableCapabilities() noexcept {
 
 } // namespace
 
-StatusOr<CpuCapabilities> ApplyCpuFeaturePolicy(
-        CpuCapabilities capabilities,
-        const CpuFeaturePolicy& policy) noexcept {
+StatusOr<CpuCapabilities> ApplyCpuFeaturePolicy(CpuCapabilities capabilities,
+                                                const CpuFeaturePolicy& policy) noexcept {
     if (!capabilities.hardware_features.ContainsAll(capabilities.usable_features)) {
         return Status::InvalidArgument(
                 "CpuCapabilities usable_features must be a hardware feature subset");
     }
 
-    capabilities.effective_features =
-            capabilities.usable_features.Difference(policy.disabled_features);
+    capabilities.effective_features = capabilities.usable_features.Difference(policy.disabled_features);
     if (!capabilities.effective_features.ContainsAll(policy.required_features)) {
         return Status::FailedPrecondition(
                 "CPU feature policy requires unsupported effective features: " +
@@ -335,8 +341,7 @@ StatusOr<CpuCapabilities> ApplyCpuFeaturePolicy(
     return capabilities;
 }
 
-StatusOr<CpuCapabilities> DetectCpuCapabilities(
-        const CpuFeaturePolicy& policy) noexcept {
+StatusOr<CpuCapabilities> DetectCpuCapabilities(const CpuFeaturePolicy& policy) noexcept {
     return ApplyCpuFeaturePolicy(DetectUsableCapabilities(), policy);
 }
 

@@ -24,6 +24,7 @@ option(USE_LIBBACKTRACE "Enable libbacktrace" ON)
 option(BACKTRACE_ON_SEGFAULT "Set signal handler to print traceback on segfault" ON)
 option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
 option(USE_ALLOC_ALIGNMENT "Enable alloc alignment" ON)
+option(BUILD_DOCS "Build Doxygen documentation (requires doxygen)" OFF)
 
 find_package(Threads REQUIRED)
 
@@ -65,4 +66,17 @@ endif ()
 if (BUILD_BENCHMARKS)
     message(STATUS "Enable Benchmarks")
     add_subdirectory(tests/benchmark)
+endif ()
+
+if (BUILD_DOCS)
+    find_package(Doxygen REQUIRED dot)
+    set(DOXYGEN_OUTPUT_DIR "${CMAKE_BINARY_DIR}/docs")
+    file(MAKE_DIRECTORY "${DOXYGEN_OUTPUT_DIR}")
+    add_custom_target(aethermind_docs
+        COMMAND ${DOXYGEN_EXECUTABLE} "${CMAKE_SOURCE_DIR}/Doxyfile"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        COMMENT "Generating Doxygen docs; warnings -> ${DOXYGEN_OUTPUT_DIR}/doxygen_warnings.log"
+        VERBATIM
+    )
+    message(STATUS "Docs target enabled: cmake --build build --target aethermind_docs")
 endif ()

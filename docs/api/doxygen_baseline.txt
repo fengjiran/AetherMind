@@ -1,0 +1,19 @@
+# Doxygen warning baseline for AetherMind
+
+This file records the doxygen warning count produced by `Doxyfile` against
+`include/aethermind/`. Update it after each comment-remediation batch so
+regressions are caught.
+
+## How to refresh
+
+```bash
+cmake -S . -B build -DBUILD_DOCS=ON
+cmake --build build --target aethermind_docs
+wc -l < build/docs/doxygen_warnings.log   # new baseline
+```
+
+## History
+
+| Date       | Commit  | Warnings | Notes                                      |
+|------------|---------|----------|--------------------------------------------|
+| (pending)  | —       | —        | Initial capture; doxygen not yet installed |

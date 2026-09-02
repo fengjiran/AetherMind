@@ -1,14 +1,14 @@
-/// Internal declarations for the CPU Add kernel.
-///
-/// Declares the backend-internal kernel entry point (AddKernel), its params
-/// struct (AddParams), and the scalar implementation layer (AddKernelArgs +
-/// AddKernel_Scalar). Operator code never includes this header; the
-/// KernelParamsBuilder indirection keeps operators free of backend internals.
-
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_ADD_ADD_INTERNAL_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_ADD_ADD_INTERNAL_H
 
-#include "aethermind/backend/kernel_types.h"
+/// @file add_internal.h
+/// @brief Backend-internal Add kernel params and scalar micro-kernel.
+///
+/// Defines the placement-constructed `AddKernelParams`, the pre-validated
+/// `AddKernelArgs`, and the dtype-generic scalar Add micro-kernel. The
+/// kernel entry itself is TU-local to `add_entry.cpp`; operators never
+/// include this header.
+
 #include "aethermind/base/shape_and_stride.h"
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor_view.h"
@@ -20,28 +20,24 @@ namespace aethermind::cpu::detail {
 
 constexpr uint32_t kMaxRank = ShapeAndStride::kMaxRank;
 
-/// Backend-internal params struct for the CPU Add kernel.
+/// @brief Backend-internal params for the CPU Add kernel.
 ///
-/// Placement-constructed into a stack-allocated buffer by the
-/// KernelParamsBuilder registered with this kernel (BuildAddParams in
-/// add_entry.cpp) and consumed by the subsequent AddKernel call via
-/// KernelContext::kernel_params. Operator code never names this type
-/// directly; the builder indirection is what keeps operators free of
-/// backend headers.
-///
-/// Lifetime invariant: the TensorView storage referenced by these views
-/// must outlive the subsequent AddKernel call that reads them.
-struct AddParams {
+/// Placement-constructed into a stack buffer by `BuildAddParams` and
+/// consumed via `KernelContext::kernel_params`. Lifetime: the `TensorView`
+/// storage referenced by these views must outlive the subsequent kernel
+/// entry call. Operators never name this type directly.
+struct AddKernelParams {
     TensorView lhs_tensor{};
     TensorView rhs_tensor{};
     MutableTensorView output_tensor{};
 };
 
-/// Pre-validated, type-erased kernel arguments for the Add implementation.
+/// @brief Pre-validated, type-erased arguments for Add micro-kernels.
 ///
-/// Produced by the entry layer (ValidateAndBuildArgs) and consumed by the
-/// implementation layer (AddKernel_Scalar). Separates the "what to validate"
-/// concern from the "how to compute" concern.
+/// Produced by the kernel entry from `AddKernelParams` and consumed by the
+/// scalar implementation, separating validation from compute. `numel` is
+/// the broadcast output element count; a zero count means the entry returns
+/// before dispatch.
 struct AddKernelArgs {
     const void* lhs_data = nullptr;
     const void* rhs_data = nullptr;
@@ -50,7 +46,8 @@ struct AddKernelArgs {
     int64_t numel = 0;
     bool is_flat = false;
 
-    // Broadcast / strided path fields (only used when !is_flat).
+    // Broadcast path metadata, read only when !is_flat. Coordinates are
+    // decomposed over output_rank and bounded by kMaxRank.
     int32_t lhs_rank = 0;
     int32_t rhs_rank = 0;
     int32_t output_rank = 0;
@@ -62,20 +59,17 @@ struct AddKernelArgs {
     std::array<int64_t, kMaxRank> output_strides{};
 };
 
-/// Kernel entry point registered via KernelDescriptor::kernel_func.
+/// @brief Runs the scalar Add micro-kernel for every supported dtype.
 ///
-/// Reads an AddParams from ctx.kernel_params, validates dtypes/shapes/
-/// broadcast/numel/pointers without dynamic allocation, then dispatches to
-/// AddKernel_Scalar. noexcept: errors are reported only through the return
-/// value.
-Status AddKernel(const KernelContext& ctx) noexcept;
-
-/// Executes element-wise add via scalar loops for all supported dtypes.
+/// Dispatches on `args.dtype`, then selects a flat loop when `args.is_flat`
+/// and a stride-aware broadcast loop otherwise.
 ///
-/// Selects between a flat loop (when is_flat is true) and a stride-aware
-/// scalar loop (for general broadcasts including non-contiguous output).
-/// Templates are TU-local in add_scalar_impl.h, instantiated in add_scalar.cpp.
-Status AddKernel_Scalar(const AddKernelArgs& args) noexcept;
+/// @param args Pre-validated kernel arguments. Data pointers must be
+///        non-null, `numel` positive, and `dtype` one of
+///        `kAddSupportedDTypes`.
+/// @return Ok on success, `kOverflow` when integer addition overflows, or
+///         `kInvalidArgument` for an unsupported dtype.
+Status RunAddScalar(const AddKernelArgs& args) noexcept;
 
 } // namespace aethermind::cpu::detail
 

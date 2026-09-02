@@ -15,11 +15,10 @@
 #include "backend/cpu/kernels/add/add_internal.h"
 #include "execution/test_execution_binding_helpers.h"
 
-#include <gtest/gtest.h>
-
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <gtest/gtest.h>
 #include <limits>
 #include <string>
 #include <type_traits>
@@ -31,6 +30,38 @@ using namespace aethermind;
 SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     const std::vector<int64_t> shape(dims);
     return SymbolicShape(IntArrayView{shape});
+}
+
+KernelSelector MakeAddSelector(const DataType& dtype) {
+    return KernelSelector{
+            .device_type = DeviceType::kCPU,
+            .act_dtype = dtype,
+            .weight_dtype = dtype,
+            .weight_format = WeightFormat::kPlain,
+            .phase = ExecPhase::kBoth,
+    };
+}
+
+StatusOr<ResolvedKernel> PrepareAddKernel(const DataType& dtype = DataType::Float32()) {
+    CpuBackend backend;
+    return backend.PrepareKernel(OpType::kAdd, MakeAddSelector(dtype), OpParams{AddParams{}});
+}
+
+Status RunAddEntry(const ResolvedKernel& kernel,
+                   const cpu::detail::AddKernelParams& params) noexcept {
+    return kernel.fn(KernelContext{
+            .kernel_params = &params,
+            .attrs = kernel.attrs,
+    });
+}
+
+Status RunAdd(const cpu::detail::AddKernelParams& params,
+              const DataType& dtype = DataType::Float32()) {
+    const StatusOr<ResolvedKernel> kernel = PrepareAddKernel(dtype);
+    if (!kernel.ok()) {
+        return kernel.status();
+    }
+    return RunAddEntry(*kernel, params);
 }
 
 template<size_t DataN, size_t Rank>
@@ -68,14 +99,13 @@ void RunSameShapeAddAndExpect(const T (&lhs)[N],
     T output[N]{};
     const int64_t shape[1] = {static_cast<int64_t>(N)};
     const int64_t strides[1] = {1};
-    cpu::detail::AddParams params{
+    const cpu::detail::AddKernelParams params{
             .lhs_tensor = MakeTensorView(lhs, shape, strides),
             .rhs_tensor = MakeTensorView(rhs, shape, strides),
             .output_tensor = MakeMutableTensorView(output, shape, strides),
     };
-    KernelContext ctx{.kernel_params = &params};
 
-    const Status status = cpu::detail::AddKernel(ctx);
+    const Status status = RunAdd(params, DataType::Make<T>());
     ASSERT_TRUE(status.ok()) << status.ToString();
     for (size_t i = 0; i < N; ++i) {
         if constexpr (std::is_same_v<T, float>) {
@@ -94,62 +124,61 @@ void RunSameShapeAddAndExpect(const T (&lhs)[N],
 // --- Direct kernel tests ---
 
 TEST(AddKernel, RejectsNullParams) {
-    KernelContext ctx{};
-    ctx.kernel_params = nullptr;
-    const Status status = cpu::detail::AddKernel(ctx);
+    const StatusOr<ResolvedKernel> kernel = PrepareAddKernel();
+    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+
+    const Status status = kernel->fn(KernelContext{
+            .kernel_params = nullptr,
+            .attrs = kernel->attrs,
+    });
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(AddKernel, RejectsInvalidViews) {
-    KernelContext ctx{};
-    cpu::detail::AddParams params{};
-    ctx.kernel_params = &params;
-    const Status status = cpu::detail::AddKernel(ctx);
+    const cpu::detail::AddKernelParams params{};
+    const Status status = RunAdd(params);
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(AddKernel, RejectsMismatchedDTypes) {
-    KernelContext ctx{};
     const int32_t lhs[6] = {1, 2, 3, 4, 5, 6};
     const float rhs[6] = {10, 20, 30, 40, 50, 60};
     float out[6] = {};
     const int64_t shape[2] = {2, 3};
     const int64_t strides[2] = {3, 1};
 
-    cpu::detail::AddParams params{
+    const cpu::detail::AddKernelParams params{
             .lhs_tensor = TensorView{lhs, DataType::Int(32), shape, strides},
             .rhs_tensor = MakeFloatTensorView(rhs, shape, strides),
             .output_tensor = MakeMutableFloatTensorView(out, shape, strides),
     };
-    ctx.kernel_params = &params;
-    const Status status = cpu::detail::AddKernel(ctx);
+    const Status status = RunAdd(params, DataType::Int(32));
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(AddKernel, RejectsUnsupportedDType) {
-    KernelContext ctx{};
     const Half lhs[1] = {Half{1.0F}};
     const Half rhs[1] = {Half{2.0F}};
     Half out[1]{};
     const int64_t shape[1] = {1};
     const int64_t strides[1] = {1};
 
-    cpu::detail::AddParams params{
+    const cpu::detail::AddKernelParams params{
             .lhs_tensor = MakeTensorView(lhs, shape, strides),
             .rhs_tensor = MakeTensorView(rhs, shape, strides),
             .output_tensor = MakeMutableTensorView(out, shape, strides),
     };
-    ctx.kernel_params = &params;
-    const Status status = cpu::detail::AddKernel(ctx);
+    // Resolve via Float32: no Half descriptor exists, so a Half selector would
+    // fail in PrepareKernel with kNotFound and never reach the entry check.
+    const Status status = RunAdd(params);
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(AddKernel, RejectsIncompatibleBroadcast) {
-    KernelContext ctx{};
     const float lhs[6] = {1, 2, 3, 4, 5, 6};
     const float rhs[12] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
     float out[6] = {};
@@ -160,19 +189,17 @@ TEST(AddKernel, RejectsIncompatibleBroadcast) {
     const int64_t out_shape[2] = {2, 3};
     const int64_t out_strides[2] = {3, 1};
 
-    cpu::detail::AddParams params{
+    const cpu::detail::AddKernelParams params{
             .lhs_tensor = MakeFloatTensorView(lhs, lhs_shape, lhs_strides),
             .rhs_tensor = MakeFloatTensorView(rhs, rhs_shape, rhs_strides),
             .output_tensor = MakeMutableFloatTensorView(out, out_shape, out_strides),
     };
-    ctx.kernel_params = &params;
-    const Status status = cpu::detail::AddKernel(ctx);
+    const Status status = RunAdd(params);
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(AddKernel, RejectsWrongOutputShape) {
-    KernelContext ctx{};
     const float lhs[6] = {1, 2, 3, 4, 5, 6};
     const float rhs[6] = {10, 20, 30, 40, 50, 60};
     float out[6] = {};
@@ -183,100 +210,90 @@ TEST(AddKernel, RejectsWrongOutputShape) {
     const int64_t out_shape[2] = {3, 2};
     const int64_t out_strides[2] = {2, 1};
 
-    cpu::detail::AddParams params{
+    const cpu::detail::AddKernelParams params{
             .lhs_tensor = MakeFloatTensorView(lhs, lhs_shape, lhs_strides),
             .rhs_tensor = MakeFloatTensorView(rhs, rhs_shape, rhs_strides),
             .output_tensor = MakeMutableFloatTensorView(out, out_shape, out_strides),
     };
-    ctx.kernel_params = &params;
-    const Status status = cpu::detail::AddKernel(ctx);
+    const Status status = RunAdd(params);
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(AddKernel, ZeroElementOutputReturnsOk) {
-    KernelContext ctx{};
     const int64_t shape[2] = {2, 0};
     const int64_t strides[2] = {0, 1};
 
-    cpu::detail::AddParams params{
+    const cpu::detail::AddKernelParams params{
             .lhs_tensor = TensorView{static_cast<const float*>(nullptr), DataType::Float32(), shape, strides},
             .rhs_tensor = TensorView{static_cast<const float*>(nullptr), DataType::Float32(), shape, strides},
             .output_tensor = MutableTensorView{static_cast<float*>(nullptr), DataType::Float32(), shape, strides},
     };
-    ctx.kernel_params = &params;
-    const Status status = cpu::detail::AddKernel(ctx);
+    const Status status = RunAdd(params);
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
 TEST(AddKernel, ZeroPlusOneYieldsZero) {
-    KernelContext ctx{};
     const float rhs[3] = {1, 2, 3};
     const int64_t zero_shape[2] = {0, 3};
     const int64_t zero_strides[2] = {3, 1};
     const int64_t rhs_shape[2] = {1, 3};
     const int64_t rhs_strides[2] = {3, 1};
 
-    cpu::detail::AddParams params{
+    const cpu::detail::AddKernelParams params{
             .lhs_tensor = TensorView{static_cast<const float*>(nullptr), DataType::Float32(), zero_shape, zero_strides},
             .rhs_tensor = MakeFloatTensorView(rhs, rhs_shape, rhs_strides),
             .output_tensor = MutableTensorView{static_cast<float*>(nullptr), DataType::Float32(), zero_shape, zero_strides},
     };
-    ctx.kernel_params = &params;
-    const Status status = cpu::detail::AddKernel(ctx);
+    const Status status = RunAdd(params);
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
 TEST(AddKernel, OnePlusZeroYieldsZero) {
-    KernelContext ctx{};
     const float lhs[3] = {1, 2, 3};
     const int64_t zero_shape[2] = {0, 3};
     const int64_t zero_strides[2] = {3, 1};
     const int64_t lhs_shape[2] = {1, 3};
     const int64_t lhs_strides[2] = {3, 1};
 
-    cpu::detail::AddParams params{
+    const cpu::detail::AddKernelParams params{
             .lhs_tensor = MakeFloatTensorView(lhs, lhs_shape, lhs_strides),
             .rhs_tensor = TensorView{static_cast<const float*>(nullptr), DataType::Float32(), zero_shape, zero_strides},
             .output_tensor = MutableTensorView{static_cast<float*>(nullptr), DataType::Float32(), zero_shape, zero_strides},
     };
-    ctx.kernel_params = &params;
-    const Status status = cpu::detail::AddKernel(ctx);
+    const Status status = RunAdd(params);
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
 TEST(AddKernel, RankZeroAdd) {
-    KernelContext ctx{};
     const float lhs[1] = {3.0F};
     const float rhs[1] = {5.0F};
     float out[1] = {0.0F};
 
-    cpu::detail::AddParams params{
+    const cpu::detail::AddKernelParams params{
             .lhs_tensor = TensorView{lhs, DataType::Float32(), IntArrayView{}, IntArrayView{}},
             .rhs_tensor = TensorView{rhs, DataType::Float32(), IntArrayView{}, IntArrayView{}},
             .output_tensor = MutableTensorView{out, DataType::Float32(), IntArrayView{}, IntArrayView{}},
     };
-    ctx.kernel_params = &params;
-    const Status status = cpu::detail::AddKernel(ctx);
+    const Status status = RunAdd(params);
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_FLOAT_EQ(out[0], 8.0F);
 }
 
 TEST(AddKernel, SameShapeContiguous) {
-    KernelContext ctx{};
     const float lhs[6] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F};
     const float rhs[6] = {10.0F, 20.0F, 30.0F, 40.0F, 50.0F, 60.0F};
     float out[6] = {};
     const int64_t shape[2] = {2, 3};
     const int64_t strides[2] = {3, 1};
 
-    cpu::detail::AddParams params{
+    const cpu::detail::AddKernelParams params{
             .lhs_tensor = MakeFloatTensorView(lhs, shape, strides),
             .rhs_tensor = MakeFloatTensorView(rhs, shape, strides),
             .output_tensor = MakeMutableFloatTensorView(out, shape, strides),
     };
-    ctx.kernel_params = &params;
-    ASSERT_TRUE(cpu::detail::AddKernel(ctx).ok());
+    const Status status = RunAdd(params);
+    ASSERT_TRUE(status.ok()) << status.ToString();
 
     EXPECT_FLOAT_EQ(out[0], 11.0F);
     EXPECT_FLOAT_EQ(out[1], 22.0F);
@@ -319,20 +336,18 @@ TEST(AddKernel, ReportsIntegerOverflow) {
     int32_t output[1]{};
     const int64_t shape[1] = {1};
     const int64_t strides[1] = {1};
-    cpu::detail::AddParams params{
+    const cpu::detail::AddKernelParams params{
             .lhs_tensor = MakeTensorView(lhs, shape, strides),
             .rhs_tensor = MakeTensorView(rhs, shape, strides),
             .output_tensor = MakeMutableTensorView(output, shape, strides),
     };
-    KernelContext ctx{.kernel_params = &params};
 
-    const Status status = cpu::detail::AddKernel(ctx);
+    const Status status = RunAdd(params, DataType::Int(32));
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kOverflow);
 }
 
 TEST(AddKernel, ScalarBroadcast) {
-    KernelContext ctx{};
     const float lhs[6] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F};
     const float rhs[1] = {10.0F};
     float out[6] = {};
@@ -341,13 +356,13 @@ TEST(AddKernel, ScalarBroadcast) {
     const int64_t out_shape[2] = {2, 3};
     const int64_t out_strides[2] = {3, 1};
 
-    cpu::detail::AddParams params{
+    const cpu::detail::AddKernelParams params{
             .lhs_tensor = MakeFloatTensorView(lhs, lhs_shape, lhs_strides),
             .rhs_tensor = TensorView{rhs, DataType::Float32(), IntArrayView{}, IntArrayView{}},
             .output_tensor = MakeMutableFloatTensorView(out, out_shape, out_strides),
     };
-    ctx.kernel_params = &params;
-    ASSERT_TRUE(cpu::detail::AddKernel(ctx).ok());
+    const Status status = RunAdd(params);
+    ASSERT_TRUE(status.ok()) << status.ToString();
 
     EXPECT_FLOAT_EQ(out[0], 11.0F);
     EXPECT_FLOAT_EQ(out[1], 12.0F);
@@ -358,7 +373,6 @@ TEST(AddKernel, ScalarBroadcast) {
 }
 
 TEST(AddKernel, TrailingBroadcast) {
-    KernelContext ctx{};
     const float lhs[2] = {10.0F, 20.0F};
     const float rhs[3] = {1.0F, 2.0F, 3.0F};
     float out[6] = {};
@@ -369,13 +383,13 @@ TEST(AddKernel, TrailingBroadcast) {
     const int64_t out_shape[2] = {2, 3};
     const int64_t out_strides[2] = {3, 1};
 
-    cpu::detail::AddParams params{
+    const cpu::detail::AddKernelParams params{
             .lhs_tensor = MakeFloatTensorView(lhs, lhs_shape, lhs_strides),
             .rhs_tensor = MakeFloatTensorView(rhs, rhs_shape, rhs_strides),
             .output_tensor = MakeMutableFloatTensorView(out, out_shape, out_strides),
     };
-    ctx.kernel_params = &params;
-    ASSERT_TRUE(cpu::detail::AddKernel(ctx).ok());
+    const Status status = RunAdd(params);
+    ASSERT_TRUE(status.ok()) << status.ToString();
 
     EXPECT_FLOAT_EQ(out[0], 11.0F);
     EXPECT_FLOAT_EQ(out[1], 12.0F);
@@ -386,7 +400,6 @@ TEST(AddKernel, TrailingBroadcast) {
 }
 
 TEST(AddKernel, HandlesStridedInput) {
-    KernelContext ctx{};
     const float big[16] = {0.0F, 1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F,
                            8.0F, 9.0F, 10.0F, 11.0F, 12.0F, 13.0F, 14.0F, 15.0F};
     const float rhs[4] = {100.0F, 200.0F, 300.0F, 400.0F};
@@ -398,13 +411,13 @@ TEST(AddKernel, HandlesStridedInput) {
     const int64_t out_shape[2] = {2, 2};
     const int64_t out_strides[2] = {2, 1};
 
-    cpu::detail::AddParams params{
+    const cpu::detail::AddKernelParams params{
             .lhs_tensor = TensorView{big + 1, DataType::Float32(), lhs_shape, lhs_strides},
             .rhs_tensor = MakeFloatTensorView(rhs, rhs_shape, rhs_strides),
             .output_tensor = MakeMutableFloatTensorView(out, out_shape, out_strides),
     };
-    ctx.kernel_params = &params;
-    ASSERT_TRUE(cpu::detail::AddKernel(ctx).ok());
+    const Status status = RunAdd(params);
+    ASSERT_TRUE(status.ok()) << status.ToString();
 
     EXPECT_FLOAT_EQ(out[0], 101.0F);
     EXPECT_FLOAT_EQ(out[1], 203.0F);
@@ -413,7 +426,6 @@ TEST(AddKernel, HandlesStridedInput) {
 }
 
 TEST(AddKernel, HandlesStridedOutput) {
-    KernelContext ctx{};
     const float lhs[4] = {1.0F, 2.0F, 3.0F, 4.0F};
     const float rhs[4] = {10.0F, 20.0F, 30.0F, 40.0F};
     float big_out[16] = {};
@@ -422,13 +434,13 @@ TEST(AddKernel, HandlesStridedOutput) {
     const int64_t out_shape[2] = {2, 2};
     const int64_t out_strides[2] = {8, 2};
 
-    cpu::detail::AddParams params{
+    const cpu::detail::AddKernelParams params{
             .lhs_tensor = MakeFloatTensorView(lhs, shape, contig_strides),
             .rhs_tensor = MakeFloatTensorView(rhs, shape, contig_strides),
             .output_tensor = MutableTensorView{big_out + 1, DataType::Float32(), out_shape, out_strides},
     };
-    ctx.kernel_params = &params;
-    ASSERT_TRUE(cpu::detail::AddKernel(ctx).ok());
+    const Status status = RunAdd(params);
+    ASSERT_TRUE(status.ok()) << status.ToString();
 
     EXPECT_FLOAT_EQ(big_out[1], 11.0F);
     EXPECT_FLOAT_EQ(big_out[3], 22.0F);

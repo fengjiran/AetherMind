@@ -17,8 +17,8 @@ namespace aethermind {
 ///
 /// All Add-related validation (op params, CPU kernel dispatch, constant
 /// folding) must reference these definitions instead of maintaining private
-/// copies. Add kernel registrations (see add_entry.cpp) statically assert
-/// that their entry count matches kAddSupportedDTypes.size().
+/// copies. The CPU Add registrations in add_entry.cpp must cover exactly
+/// these dtypes; test_cpu_add_kernel.cpp asserts the count at compile time.
 inline const std::array<DataType, 5> kAddSupportedDTypes = {
         DataType::Float32(),
         DataType::Double(),
@@ -39,8 +39,8 @@ inline bool IsAddSupportedDType(const DataType& dtype) noexcept {
 
 /// @brief Builds a consistent unsupported-dtype message for Add.
 ///
-/// validation points. `context` is the caller name (e.g. "Add", "CpuAddKernel",
-/// "LaunchAdd") prepended to a fixed list of supported dtypes, so every
+/// `context` is the caller name (e.g. "Add", "AddKernel", "Add constant
+/// evaluator") prepended to a fixed list of supported dtypes, so every
 /// validation site reports the same set.
 ///
 /// @param context Caller name prepended to the supported-dtype description.

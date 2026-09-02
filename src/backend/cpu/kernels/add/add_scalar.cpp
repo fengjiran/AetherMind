@@ -1,29 +1,14 @@
-// Scalar dispatch for the CPU Add kernel.
-//
-// Implements AddKernel_Scalar by dispatching on the dtype stored in
-// AddKernelArgs and forwarding to the TU-local template helpers below.
-// Each template is instantiated for all five supported dtypes. When AVX2
-// support is added, a separate add_avx2.cpp will provide hand-vectorized
-// specializations while this file remains the scalar fallback.
-//
-// Integer addition uses CheckOverflowAdd; overflow returns kOverflow.
-// The coordinate buffer is bounded by ShapeAndStride::kMaxRank.
-
 #include "add_internal.h"
 #include "utils/overflow_check.h"
 
 #include <array>
 #include <cstdint>
-#include <span>
-#include <type_traits>
 
 namespace aethermind::cpu::detail {
 namespace {
 
-// Maps an output coordinate to an input element offset using broadcast
-// semantics. For input axes where input_shape[axis] == 1, the coordinate is
-// forced to 0 so the single element is reused. Leading axes missing from
-// the input (lower input rank) are skipped via axis_offset.
+// Broadcast axes (extent 1) pin their coordinate to 0 so the single element is
+// reused; leading axes absent from a lower-rank input are skipped via axis_offset.
 int64_t MapCoordToOffset(std::span<const int64_t> input_shape,
                          int32_t output_rank,
                          std::span<const int64_t> input_strides,
@@ -52,7 +37,6 @@ Status AddScalar(T lhs, T rhs, T& output) noexcept {
     return Status::Ok();
 }
 
-// Flat contiguous same-shape path for a typed buffer pair.
 template<typename T>
 Status ExecuteTypedFlat(const AddKernelArgs& args) noexcept {
     const auto* lhs_data = static_cast<const T*>(args.lhs_data);
@@ -64,7 +48,6 @@ Status ExecuteTypedFlat(const AddKernelArgs& args) noexcept {
     return Status::Ok();
 }
 
-// Stride-aware path for arbitrary shapes/strides including non-contiguous output.
 template<typename T>
 Status ExecuteTypedStrided(const AddKernelArgs& args) noexcept {
     const auto* lhs_data = static_cast<const T*>(args.lhs_data);
@@ -110,7 +93,7 @@ Status ExecuteTyped(const AddKernelArgs& args) noexcept {
 
 } // namespace
 
-Status AddKernel_Scalar(const AddKernelArgs& args) noexcept {
+Status RunAddScalar(const AddKernelArgs& args) noexcept {
     const DataType dtype = args.dtype;
     if (dtype == DataType::Float32()) {
         return ExecuteTyped<float>(args);

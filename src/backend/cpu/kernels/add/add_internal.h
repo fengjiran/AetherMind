@@ -2,16 +2,14 @@
 #define AETHERMIND_BACKEND_CPU_KERNELS_ADD_ADD_INTERNAL_H
 
 /// @file add_internal.h
-/// @brief Backend-internal Add kernel params and scalar micro-kernel.
+/// @brief Backend-internal Add compute-ready params and scalar micro-kernel.
 ///
-/// Defines the placement-constructed `AddKernelParams`, the pre-validated
-/// `AddKernelArgs`, and the dtype-generic scalar Add micro-kernel. The
-/// kernel entry itself is TU-local to `add_entry.cpp`; operators never
-/// include this header.
+/// Defines the pre-validated `AddKernelArgs` and the dtype-generic scalar Add
+/// micro-kernel. The kernel entry itself is TU-local to `add_entry.cpp`;
+/// operators never include this header.
 
 #include "aethermind/base/shape_and_stride.h"
 #include "aethermind/base/status.h"
-#include "aethermind/base/tensor_view.h"
 #include "aethermind/dtypes/data_type.h"
 
 #include <array>
@@ -20,24 +18,12 @@ namespace aethermind::cpu::detail {
 
 constexpr uint32_t kMaxRank = ShapeAndStride::kMaxRank;
 
-/// @brief Backend-internal params for the CPU Add kernel.
-///
-/// Placement-constructed into a stack buffer by `BuildAddParams` and
-/// consumed via `KernelContext::kernel_params`. Lifetime: the `TensorView`
-/// storage referenced by these views must outlive the subsequent kernel
-/// entry call. Operators never name this type directly.
-struct AddKernelParams {
-    TensorView lhs_tensor{};
-    TensorView rhs_tensor{};
-    MutableTensorView output_tensor{};
-};
-
 /// @brief Pre-validated, type-erased arguments for Add micro-kernels.
 ///
-/// Produced by the kernel entry from `AddKernelParams` and consumed by the
-/// scalar implementation, separating validation from compute. `numel` is
-/// the broadcast output element count; a zero count means the entry returns
-/// before dispatch.
+/// Produced by `ValidateAndBuildCommonAddArgs` from the binding-time
+/// `KernelParamsBuildContext` and consumed by the scalar implementation,
+/// separating validation from compute. `numel` is the broadcast output element
+/// count; a zero count means the entry returns before dispatch.
 struct AddKernelArgs {
     const void* lhs_data = nullptr;
     const void* rhs_data = nullptr;

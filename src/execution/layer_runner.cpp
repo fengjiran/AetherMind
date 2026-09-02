@@ -69,7 +69,8 @@ Status LayerRunner::RunStep(size_t step_index,
         tensor_binding.outputs.size() != step.kernel_output_ports.size()) {
         return Status::InvalidArgument("Runtime tensor binding arity does not match ExecutionStep ports");
     }
-    return InvokeKernel(step.kernel, ctx, tensor_binding.inputs, tensor_binding.outputs);
+    return InvokePreparedKernel(
+            step.kernel, ctx, binding_table.kernel_params(step_index));
 }
 
 Status LayerRunner::ValidateStateAliasesForStep(

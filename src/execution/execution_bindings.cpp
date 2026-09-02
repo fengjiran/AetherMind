@@ -1,9 +1,11 @@
 #include "aethermind/execution/execution_bindings.h"
+#include "aethermind/backend/kernel_types.h"
 #include "aethermind/memory/allocator.h"
 #include "aethermind/runtime/workspace.h"
 #include "aethermind/shape_inference/shape_constraint_evaluator.h"
 #include "utils/overflow_check.h"
 
+#include <cstddef>
 #include <limits>
 #include <string>
 #include <unordered_map>
@@ -14,6 +16,22 @@ namespace {
 
 constexpr size_t kActivationAlignment = 64;
 constexpr size_t kUnassignedOffset = std::numeric_limits<size_t>::max();
+constexpr size_t kNoKernelParams = std::numeric_limits<size_t>::max();
+constexpr size_t kKernelParamsAlignment = alignof(std::max_align_t);
+
+StatusOr<size_t> AlignKernelParamsOffset(size_t offset) noexcept {
+    const size_t remainder = offset % kKernelParamsAlignment;
+    if (remainder == 0) {
+        return offset;
+    }
+
+    size_t aligned = 0;
+    if (CheckOverflowAdd(offset, kKernelParamsAlignment - remainder, &aligned)) {
+        return Status::Overflow(
+                "Kernel params arena alignment overflowed size_t");
+    }
+    return aligned;
+}
 
 struct ConcreteTensorMetadata {
     std::vector<int64_t> shape{};
@@ -134,7 +152,28 @@ public:
     std::vector<StepTensorBinding> steps{};
     std::vector<ConcreteTensorMetadata> metadata{};
     Buffer act_storage{};
+    /// Type-erased per-step prepared kernel params plus their offsets into
+    /// `kernel_params_storage_`. The arena is finalized (resized) before any
+    /// params builder runs, so placement-constructed params keep stable
+    /// addresses for the table lifetime. Steps without a builder keep the
+    /// `kNoKernelParams` sentinel.
+    std::vector<std::max_align_t> kernel_params_storage{};
+    std::vector<size_t> kernel_params_offsets{};
 };
+
+namespace {
+
+void* MutableKernelParamsPointer(BindingTableStorage& storage,
+                                 size_t step_index) noexcept {
+    AM_DCHECK(step_index < storage.kernel_params_offsets.size());
+    const size_t offset = storage.kernel_params_offsets[step_index];
+    AM_DCHECK(offset != kNoKernelParams);
+    auto* base = reinterpret_cast<std::byte*>(
+            storage.kernel_params_storage.data());
+    return base + offset;
+}
+
+} // namespace
 
 BindingTable::BindingTable(std::unique_ptr<BindingTableStorage> storage) noexcept
     : storage_(std::move(storage)) {}
@@ -152,6 +191,20 @@ std::span<const BoundValue> BindingTable::values() const noexcept {
 const StepTensorBinding& BindingTable::step(size_t step_index) const noexcept {
     AM_DCHECK(storage_ != nullptr && step_index < storage_->steps.size());
     return storage_->steps[step_index];
+}
+
+const void* BindingTable::kernel_params(size_t step_index) const noexcept {
+    AM_DCHECK(storage_ != nullptr);
+    AM_DCHECK(step_index < storage_->kernel_params_offsets.size());
+
+    const size_t offset = storage_->kernel_params_offsets[step_index];
+    if (offset == kNoKernelParams) {
+        return nullptr;
+    }
+
+    const auto* base = reinterpret_cast<const std::byte*>(
+            storage_->kernel_params_storage.data());
+    return base + offset;
 }
 
 size_t BindingTable::step_count() const noexcept {
@@ -316,8 +369,38 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
         storage->values[i].has_writable = true;
     }
 
+    // Plan the kernel params arena before building any step: align every
+    // builder-owned slot to max_align_t and size the arena exactly once. The
+    // storage must not be resized after builders placement-construct into it,
+    // otherwise prepared params would be invalidated.
+    storage->kernel_params_offsets.resize(plan.size(), kNoKernelParams);
+
+    size_t params_bytes = 0;
+    for (size_t i = 0; i < plan.size(); ++i) {
+        const auto& kernel = plan.steps()[i].kernel;
+        if (kernel.params_builder == nullptr) {
+            continue;
+        }
+
+        const auto aligned = AlignKernelParamsOffset(params_bytes);
+        if (!aligned.ok()) {
+            return aligned.status();
+        }
+        params_bytes = *aligned;
+        storage->kernel_params_offsets[i] = params_bytes;
+
+        if (CheckOverflowAdd(params_bytes, kernel.params_size, &params_bytes)) {
+            return Status::Overflow("Kernel params arena size overflowed size_t");
+        }
+    }
+
+    const size_t word_size = sizeof(std::max_align_t);
+    storage->kernel_params_storage.resize(
+            (params_bytes + word_size - 1) / word_size);
+
     storage->steps.reserve(plan.size());
-    for (const auto& step: plan.steps()) {
+    for (size_t step_index = 0; step_index < plan.size(); ++step_index) {
+        const auto& step = plan.steps()[step_index];
         StepTensorBinding binding;
         binding.inputs.reserve(step.kernel_input_ports.size());
         binding.outputs.reserve(step.kernel_output_ports.size());
@@ -354,6 +437,16 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
                 input_specs, output_specs, binding.inputs, binding.outputs));
         AM_RETURN_IF_ERROR(ValidateShapeConstraints(
                 step.runtime_checks, binding.inputs, binding.outputs));
+        if (step.kernel.params_builder != nullptr) {
+            void* params_buffer = MutableKernelParamsPointer(*storage, step_index);
+            AM_RETURN_IF_ERROR(step.kernel.params_builder(
+                    KernelParamsBuildContext{
+                            .inputs = binding.inputs,
+                            .outputs = binding.outputs,
+                            .attrs = step.kernel.attrs,
+                    },
+                    params_buffer));
+        }
         storage->steps.push_back(std::move(binding));
     }
     return BindingTable(std::move(storage));

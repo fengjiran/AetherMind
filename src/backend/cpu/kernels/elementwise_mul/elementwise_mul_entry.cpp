@@ -1,22 +1,21 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
+#include "aethermind/backend/kernel_types.h"
 #include "aethermind/base/shape_and_stride.h"
 #include "elementwise_mul_internal.h"
 #include "utils/overflow_check.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <span>
 #include <string>
+#include <type_traits>
 
 namespace aethermind {
 namespace {
 
-constexpr uint32_t kMaxRank = ShapeAndStride::kMaxRank;
-
-auto GetParams(const void* kernel_params) noexcept {
-    return static_cast<const cpu::detail::ElementwiseMulParams*>(kernel_params);
-}
+using cpu::detail::kMaxRank;
 
 bool ValidateBroadcastCompatible(std::span<const int64_t> lhs_shape,
                                  std::span<const int64_t> rhs_shape,
@@ -104,10 +103,19 @@ StatusOr<int64_t> CheckedOutputNumel(int32_t rank,
     return count;
 }
 
-Status ValidateAndExecute(const cpu::detail::ElementwiseMulParams* params) noexcept {
-    const TensorView& lhs = params->lhs_tensor;
-    const TensorView& rhs = params->rhs_tensor;
-    const MutableTensorView& output = params->output_tensor;
+Status ValidateAndBuildCommonElementwiseMulArgs(
+        const KernelParamsBuildContext& context,
+        cpu::detail::ElementwiseMulKernelArgs& args) noexcept {
+    const auto inputs = context.inputs;
+    const auto outputs = context.outputs;
+    if (inputs.size() != 2 || outputs.size() != 1) {
+        return Status::InvalidArgument(
+                "ElementwiseMul requires 2 inputs and 1 output");
+    }
+
+    const TensorView& lhs = inputs[0];
+    const TensorView& rhs = inputs[1];
+    const MutableTensorView& output = outputs[0];
 
     if (!lhs.is_valid()) {
         return Status::InvalidArgument("ElementwiseMulKernel requires a valid lhs TensorView");
@@ -148,6 +156,7 @@ Status ValidateAndExecute(const cpu::detail::ElementwiseMulParams* params) noexc
     if (!numel_or.ok()) return numel_or.status();
     const int64_t numel = numel_or.value();
     if (numel == 0) {
+        args = cpu::detail::ElementwiseMulKernelArgs{};
         return Status::Ok();
     }
 
@@ -170,39 +179,27 @@ Status ValidateAndExecute(const cpu::detail::ElementwiseMulParams* params) noexc
         if (!status.ok()) return status;
     }
 
-    const auto* const lhs_data = lhs.data<float>();
-    const auto* const rhs_data = rhs.data<float>();
-    auto* const output_data = output.data<float>();
+    args.lhs_data = lhs.data<float>();
+    args.rhs_data = rhs.data<float>();
+    args.output_data = output.data<float>();
+    args.numel = numel;
+    args.lhs_rank = lhs.rank();
+    args.rhs_rank = rhs.rank();
+    args.output_rank = output_rank;
 
-    const auto lhs_shape = lhs.shape();
-    const auto lhs_strides = lhs.strides();
-    const auto rhs_shape = rhs.shape();
-    const auto rhs_strides = rhs.strides();
-    const auto out_shape = output.shape();
-    const auto out_strides = output.strides();
-
-    if (output_rank == 0) {
-        output_data[0] = lhs_data[0] * rhs_data[0];
-        return Status::Ok();
+    for (int32_t i = 0; i < lhs.rank(); ++i) {
+        args.lhs_shape[i] = lhs.shape()[i];
+        args.lhs_strides[i] = lhs.strides()[i];
     }
 
-    std::array<int64_t, kMaxRank> coord{};
-    for (int64_t flat = 0; flat < numel; ++flat) {
-        int64_t remaining = flat;
-        for (int32_t axis = output_rank - 1; axis >= 0; --axis) {
-            coord[axis] = remaining % out_shape[axis];
-            remaining /= out_shape[axis];
-        }
+    for (int32_t i = 0; i < rhs.rank(); ++i) {
+        args.rhs_shape[i] = rhs.shape()[i];
+        args.rhs_strides[i] = rhs.strides()[i];
+    }
 
-        const int64_t lhs_offset = MapCoordToOffset(lhs_shape, output_rank, lhs_strides, coord);
-        const int64_t rhs_offset = MapCoordToOffset(rhs_shape, output_rank, rhs_strides, coord);
-
-        int64_t out_offset = 0;
-        for (int32_t axis = 0; axis < output_rank; ++axis) {
-            out_offset += coord[axis] * out_strides[axis];
-        }
-
-        output_data[out_offset] = lhs_data[lhs_offset] * rhs_data[rhs_offset];
+    for (int32_t i = 0; i < output_rank; ++i) {
+        args.output_shape[i] = output.shape()[i];
+        args.output_strides[i] = output.strides()[i];
     }
 
     return Status::Ok();
@@ -210,29 +207,70 @@ Status ValidateAndExecute(const cpu::detail::ElementwiseMulParams* params) noexc
 
 } // namespace
 
-Status cpu::detail::ElementwiseMulKernel(const KernelContext& ctx) noexcept {
-    const cpu::detail::ElementwiseMulParams* params = GetParams(ctx.kernel_params);
-    if (params == nullptr) {
-        return Status::InvalidArgument(
-                "ElementwiseMulKernel requires cpu::detail::ElementwiseMulParams in KernelContext.kernel_params");
+Status cpu::detail::RunElementwiseMulScalar(
+        const cpu::detail::ElementwiseMulKernelArgs& args) noexcept {
+    if (args.numel == 0) {
+        return Status::Ok();
     }
 
-    return ValidateAndExecute(params);
-}
-
-Status BuildElementwiseMulParams(std::span<const TensorView> inputs,
-                                 std::span<const MutableTensorView> outputs,
-                                 void* params_buffer) noexcept {
-    if (inputs.size() != 2 || outputs.size() != 1) {
-        return Status::InvalidArgument("ElementwiseMul requires 2 inputs and 1 output");
+    if (args.output_rank == 0) {
+        args.output_data[0] = args.lhs_data[0] * args.rhs_data[0];
+        return Status::Ok();
     }
-    ::new (params_buffer) cpu::detail::ElementwiseMulParams{
-            .lhs_tensor = inputs[0],
-            .rhs_tensor = inputs[1],
-            .output_tensor = outputs[0],
-    };
+
+    std::array<int64_t, kMaxRank> coord{};
+    for (int64_t flat = 0; flat < args.numel; ++flat) {
+        int64_t remaining = flat;
+        for (int32_t axis = args.output_rank - 1; axis >= 0; --axis) {
+            coord[axis] = remaining % args.output_shape[axis];
+            remaining /= args.output_shape[axis];
+        }
+
+        const int64_t lhs_offset = MapCoordToOffset(
+                std::span<const int64_t>(args.lhs_shape.data(),
+                                         static_cast<size_t>(args.lhs_rank)),
+                args.output_rank,
+                std::span<const int64_t>(args.lhs_strides.data(),
+                                         static_cast<size_t>(args.lhs_rank)),
+                coord);
+        const int64_t rhs_offset = MapCoordToOffset(
+                std::span<const int64_t>(args.rhs_shape.data(),
+                                         static_cast<size_t>(args.rhs_rank)),
+                args.output_rank,
+                std::span<const int64_t>(args.rhs_strides.data(),
+                                         static_cast<size_t>(args.rhs_rank)),
+                coord);
+
+        int64_t out_offset = 0;
+        for (int32_t axis = 0; axis < args.output_rank; ++axis) {
+            out_offset += coord[axis] * args.output_strides[axis];
+        }
+
+        args.output_data[out_offset] = args.lhs_data[lhs_offset] * args.rhs_data[rhs_offset];
+    }
+
     return Status::Ok();
 }
+
+Status cpu::detail::ElementwiseMulKernel(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const cpu::detail::ElementwiseMulKernelArgs*>(
+            ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return cpu::detail::RunElementwiseMulScalar(*args);
+}
+
+Status BuildElementwiseMulArgs(const KernelParamsBuildContext& context,
+                               void* params_buffer) noexcept {
+    cpu::detail::ElementwiseMulKernelArgs args;
+    AM_RETURN_IF_ERROR(
+            ValidateAndBuildCommonElementwiseMulArgs(context, args));
+    ::new (params_buffer) cpu::detail::ElementwiseMulKernelArgs(args);
+    return Status::Ok();
+}
+
+// The prepared args must satisfy the BindingTable params arena contract.
+static_assert(std::is_trivially_destructible_v<cpu::detail::ElementwiseMulKernelArgs>);
+static_assert(alignof(cpu::detail::ElementwiseMulKernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(ElementwiseMulFp32Scalar,
                    KernelDescriptor{
@@ -246,8 +284,8 @@ AM_REGISTER_KERNEL(ElementwiseMulFp32Scalar,
                            },
                            .kernel_func = &cpu::detail::ElementwiseMulKernel,
                            .priority = 10,
-                           .params_size = sizeof(cpu::detail::ElementwiseMulParams),
-                           .params_builder = &BuildElementwiseMulParams,
+                           .params_size = sizeof(cpu::detail::ElementwiseMulKernelArgs),
+                           .params_builder = &BuildElementwiseMulArgs,
                            .name = "cpu::elementwise_mul_f32_scalar",
                    })
 

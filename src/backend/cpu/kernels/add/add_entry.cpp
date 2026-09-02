@@ -1,19 +1,17 @@
 #include "add_internal.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
+#include "aethermind/backend/kernel_types.h"
 #include "aethermind/operators/ops/add_op.h"
 #include "utils/overflow_check.h"
 
 #include <algorithm>
 #include <span>
 #include <string>
+#include <type_traits>
 
 namespace aethermind::cpu::detail {
 namespace {
-
-const AddKernelParams* GetParams(const void* kernel_params) noexcept {
-    return static_cast<const AddKernelParams*>(kernel_params);
-}
 
 bool ValidateBroadcastCompatible(std::span<const int64_t> lhs_shape,
                                  std::span<const int64_t> rhs_shape,
@@ -92,10 +90,18 @@ StatusOr<int64_t> CheckedOutputNumel(int32_t rank, std::span<const int64_t> shap
     return count;
 }
 
-StatusOr<AddKernelArgs> ValidateAndBuildArgs(const AddKernelParams* params) noexcept {
-    const TensorView& lhs = params->lhs_tensor;
-    const TensorView& rhs = params->rhs_tensor;
-    const MutableTensorView& output = params->output_tensor;
+Status ValidateAndBuildCommonAddArgs(
+        const KernelParamsBuildContext& context,
+        AddKernelArgs& args) noexcept {
+    const auto inputs = context.inputs;
+    const auto outputs = context.outputs;
+    if (inputs.size() != 2 || outputs.size() != 1) {
+        return Status::InvalidArgument("Add requires 2 inputs and 1 output");
+    }
+
+    const TensorView& lhs = inputs[0];
+    const TensorView& rhs = inputs[1];
+    const MutableTensorView& output = outputs[0];
 
     if (!lhs.is_valid()) {
         return Status::InvalidArgument("AddKernel requires a valid lhs TensorView");
@@ -142,7 +148,8 @@ StatusOr<AddKernelArgs> ValidateAndBuildArgs(const AddKernelParams* params) noex
 
     const int64_t numel = numel_or.value();
     if (numel == 0) {
-        return AddKernelArgs{};
+        args = AddKernelArgs{};
+        return Status::Ok();
     }
 
     if (lhs.data() == nullptr) {
@@ -174,7 +181,6 @@ StatusOr<AddKernelArgs> ValidateAndBuildArgs(const AddKernelParams* params) noex
         }
     }
 
-    AddKernelArgs args{};
     args.lhs_data = lhs.data();
     args.rhs_data = rhs.data();
     args.output_data = output.data();
@@ -204,45 +210,31 @@ StatusOr<AddKernelArgs> ValidateAndBuildArgs(const AddKernelParams* params) noex
         args.output_strides[i] = output.strides()[i];
     }
 
-    return args;
+    return Status::Ok();
 }
 
-Status BuildAddParams(std::span<const TensorView> inputs,
-                      std::span<const MutableTensorView> outputs,
-                      void* params_buffer) noexcept {
-    if (inputs.size() != 2 || outputs.size() != 1) {
-        return Status::InvalidArgument("Add requires 2 inputs and 1 output");
-    }
-
-    ::new (params_buffer) AddKernelParams{
-            .lhs_tensor = inputs[0],
-            .rhs_tensor = inputs[1],
-            .output_tensor = outputs[0],
-    };
+Status BuildAddArgs(const KernelParamsBuildContext& context,
+                    void* params_buffer) noexcept {
+    AddKernelArgs args;
+    AM_RETURN_IF_ERROR(ValidateAndBuildCommonAddArgs(context, args));
+    ::new (params_buffer) AddKernelArgs(args);
     return Status::Ok();
 }
 
 Status AddKernelEntry(const KernelContext& ctx) noexcept {
-    const auto* params = GetParams(ctx.kernel_params);
-    if (params == nullptr) {
-        return Status::InvalidArgument(
-                "AddKernel requires AddKernelParams in KernelContext.kernel_params");
-    }
-
-    const auto args_or = ValidateAndBuildArgs(params);
-    if (!args_or.ok()) {
-        return args_or.status();
-    }
-
-    const auto& args = args_or.value();
-    if (args.numel == 0) {
+    const auto* args =
+            static_cast<const AddKernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    if (args->numel == 0) {
         return Status::Ok();
     }
-
-    return RunAddScalar(args);
+    return RunAddScalar(*args);
 }
 
 } // namespace
+
+static_assert(std::is_trivially_destructible_v<AddKernelArgs>);
+static_assert(alignof(AddKernelArgs) <= alignof(std::max_align_t));
 
 // The five registrations below must cover exactly the dtypes in
 // kAddSupportedDTypes; see the static_assert in test_cpu_add_kernel.cpp
@@ -259,8 +251,8 @@ AM_REGISTER_KERNEL(CpuAddFp32Scalar,
                            },
                            .kernel_func = &AddKernelEntry,
                            .priority = 10,
-                           .params_size = sizeof(AddKernelParams),
-                           .params_builder = &BuildAddParams,
+                           .params_size = sizeof(AddKernelArgs),
+                           .params_builder = &BuildAddArgs,
                            .name = "cpu::add_f32_scalar",
                    });
 
@@ -276,8 +268,8 @@ AM_REGISTER_KERNEL(CpuAddFp64Scalar,
                            },
                            .kernel_func = &AddKernelEntry,
                            .priority = 10,
-                           .params_size = sizeof(AddKernelParams),
-                           .params_builder = &BuildAddParams,
+                           .params_size = sizeof(AddKernelArgs),
+                           .params_builder = &BuildAddArgs,
                            .name = "cpu::add_f64_scalar",
                    });
 
@@ -293,8 +285,8 @@ AM_REGISTER_KERNEL(CpuAddBf16Scalar,
                            },
                            .kernel_func = &AddKernelEntry,
                            .priority = 10,
-                           .params_size = sizeof(AddKernelParams),
-                           .params_builder = &BuildAddParams,
+                           .params_size = sizeof(AddKernelArgs),
+                           .params_builder = &BuildAddArgs,
                            .name = "cpu::add_bf16_scalar",
                    });
 
@@ -310,8 +302,8 @@ AM_REGISTER_KERNEL(CpuAddI32Scalar,
                            },
                            .kernel_func = &AddKernelEntry,
                            .priority = 10,
-                           .params_size = sizeof(AddKernelParams),
-                           .params_builder = &BuildAddParams,
+                           .params_size = sizeof(AddKernelArgs),
+                           .params_builder = &BuildAddArgs,
                            .name = "cpu::add_i32_scalar",
                    });
 
@@ -327,8 +319,8 @@ AM_REGISTER_KERNEL(CpuAddI64Scalar,
                            },
                            .kernel_func = &AddKernelEntry,
                            .priority = 10,
-                           .params_size = sizeof(AddKernelParams),
-                           .params_builder = &BuildAddParams,
+                           .params_size = sizeof(AddKernelArgs),
+                           .params_builder = &BuildAddArgs,
                            .name = "cpu::add_i64_scalar",
                    });
 

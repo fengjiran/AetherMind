@@ -1,30 +1,52 @@
 /// Internal declarations for the CPU ElementwiseMul kernel.
 ///
-/// Declares the backend-internal kernel entry point (ElementwiseMulKernel)
-/// and its params struct (ElementwiseMulParams). Operator code never
-/// includes this header; the KernelParamsBuilder indirection keeps
-/// operators free of backend internals.
+/// Declares the backend-internal kernel entry point (ElementwiseMulKernel),
+/// its compute-ready args struct (ElementwiseMulKernelArgs), and the scalar
+/// broadcast micro-kernel. Operator code never includes this header; the
+/// KernelParamsBuilder indirection keeps operators free of backend
+/// internals.
 
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_ELEMENTWISE_MUL_INTERNAL_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_ELEMENTWISE_MUL_INTERNAL_H
 
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/backend/kernel_types.h"
-#include "aethermind/base/tensor_view.h"
+#include "aethermind/base/shape_and_stride.h"
+
+#include <array>
 
 namespace aethermind::cpu::detail {
 
-/// Backend-internal params struct for the CPU ElementwiseMul kernel.
+constexpr uint32_t kMaxRank = ShapeAndStride::kMaxRank;
+
+/// Compute-ready args for the CPU ElementwiseMul kernel.
 ///
-/// Placement-constructed into a stack-allocated buffer by the
-/// KernelParamsBuilder registered with this kernel (BuildElementwiseMulParams
-/// in elementwise_mul_entry.cpp) and consumed by the subsequent
-/// ElementwiseMulKernel call via KernelContext::kernel_params.
-struct ElementwiseMulParams {
-    TensorView lhs_tensor{};
-    TensorView rhs_tensor{};
-    MutableTensorView output_tensor{};
+/// Produced by the `KernelParamsBuilder` registered with this kernel
+/// (BuildElementwiseMulArgs in elementwise_mul_entry.cpp) and consumed by
+/// the scalar broadcast micro-kernel. `numel` is the broadcast output
+/// element count; a zero count means the kernel returns before dispatch.
+struct ElementwiseMulKernelArgs {
+    const float* lhs_data{};
+    const float* rhs_data{};
+    float* output_data{};
+    int64_t numel{};
+    int32_t lhs_rank{};
+    int32_t rhs_rank{};
+    int32_t output_rank{};
+    std::array<int64_t, kMaxRank> lhs_shape{};
+    std::array<int64_t, kMaxRank> lhs_strides{};
+    std::array<int64_t, kMaxRank> rhs_shape{};
+    std::array<int64_t, kMaxRank> rhs_strides{};
+    std::array<int64_t, kMaxRank> output_shape{};
+    std::array<int64_t, kMaxRank> output_strides{};
 };
+
+/// Runs the scalar FP32 ElementwiseMul broadcast micro-kernel.
+///
+/// @param args Pre-validated kernel arguments. Data pointers must be
+///        non-null when `numel` is positive.
+/// @return Ok on success.
+AM_NODISCARD Status RunElementwiseMulScalar(
+        const ElementwiseMulKernelArgs& args) noexcept;
 
 /// Kernel entry point registered via KernelDescriptor::kernel_func.
 AM_NODISCARD Status ElementwiseMulKernel(const KernelContext& ctx) noexcept;

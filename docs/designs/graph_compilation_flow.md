@@ -381,11 +381,15 @@ ValidateShapeConstraints(...)
 ```
 
 4. 从 `RuntimeBindingContext` 取得当前 step 的 tensor binding，校验 compact
-   input/output arity。
+   input/output arity，并读取 `BindingTable::kernel_params(step_index)` 中缓存的
+   prepared params。
 
-5. 由通用 `InvokeKernel(step.kernel, ctx, inputs, outputs)` 执行：若 descriptor
-   注册了 params builder，它在栈上构造 backend-specific params 并临时写入
-   `ctx.kernel_params`，然后调用冻结的 `step.kernel.fn`。
+5. 由通用 `InvokePreparedKernel(step.kernel, ctx, prepared_params)` 执行：
+   params 已在 `BuildExecutionBindings` 构建 BindingTable 时由 descriptor
+   注册的 params builder 一次性构造（binding-time 冷路径，含 kernel-specific
+   layout/alias 验证）；Execute 热路径只把缓存写入 `ctx.kernel_params` 并调用
+   冻结的 `step.kernel.fn`。带 params builder 的 kernel 不会在每次执行时重新
+   构造 params；`BuildAndInvokeKernelForTesting` 仅为测试/诊断保留。
 
 ## 6. 当前 Graph Compile 阶段边界
 

@@ -71,6 +71,15 @@ public:
 
     AM_NODISCARD std::span<const BoundValue> values() const noexcept;
     AM_NODISCARD const StepTensorBinding& step(size_t step_index) const noexcept;
+
+    /// @brief Prepared kernel params for one step, or nullptr when the step's
+    /// kernel registered no params builder.
+    ///
+    /// The pointer is owned by this table and stays valid across BindingTable
+    /// moves. Content is immutable for the table lifetime; per-execution
+    /// state is never baked into it.
+    AM_NODISCARD const void* kernel_params(size_t step_index) const noexcept;
+
     AM_NODISCARD size_t step_count() const noexcept;
     AM_NODISCARD bool empty() const noexcept;
     AM_NODISCARD bool IsCompatible(const ExecutionPlan& plan) const noexcept;

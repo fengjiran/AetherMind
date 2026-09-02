@@ -1,10 +1,14 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/backend/kernel_types.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/operators/op_params.h"
 #include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
 
 #include <gtest/gtest.h>
+
+#include <array>
+#include <cstddef>
 
 namespace {
 
@@ -72,15 +76,29 @@ TEST(CpuPrepareKernel, PreparedKernelCanBeInvoked) {
     const int64_t io_strides[2] = {4, 1};
     const int64_t w_shape[1] = {4};
     const int64_t w_strides[1] = {1};
-    const cpu::detail::RmsNormKernelParams params{
-            .input_tensor = TensorView{input, DataType::Float32(), io_shape, io_strides},
-            .weight_tensor = TensorView{weight, DataType::Float32(), w_shape, w_strides},
-            .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
+
+    // The params builder prepares compute-ready args once, mirroring what
+    // BuildExecutionBindings does for a BindingTable-owned arena slot.
+    alignas(std::max_align_t) std::array<std::byte, kMaxKernelParamsSize> storage{};
+    const std::array<TensorView, 2> inputs{
+            TensorView{input, DataType::Float32(), io_shape, io_strides},
+            TensorView{weight, DataType::Float32(), w_shape, w_strides},
     };
+    const std::array<MutableTensorView, 1> outputs{
+            MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
+    };
+    const Status build_status = resolved->params_builder(
+            KernelParamsBuildContext{
+                    .inputs = inputs,
+                    .outputs = outputs,
+                    .attrs = resolved->attrs,
+            },
+            storage.data());
+    ASSERT_TRUE(build_status.ok()) << build_status.ToString();
 
     const Status status = resolved->fn(KernelContext{
             .workspace_binding = {},
-            .kernel_params = &params,
+            .kernel_params = storage.data(),
             .attrs = resolved->attrs,
     });
     EXPECT_TRUE(status.ok()) << status.ToString();

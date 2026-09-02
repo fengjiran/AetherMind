@@ -8,6 +8,9 @@
 
 #include <gtest/gtest.h>
 
+#include <cstddef>
+#include <cstdint>
+
 namespace {
 
 using namespace aethermind;
@@ -27,17 +30,34 @@ Status CaptureBuiltParamKernel(const KernelContext& context) noexcept {
     return Status::Ok();
 }
 
-Status BuildKernelParam(std::span<const TensorView>,
-                        std::span<const MutableTensorView>,
+Status BuildKernelParam(const KernelParamsBuildContext&,
                         void* params) noexcept {
     *static_cast<int*>(params) = 17;
     return Status::Ok();
 }
 
-Status FailToBuildKernelParam(std::span<const TensorView>,
-                              std::span<const MutableTensorView>,
+Status FailToBuildKernelParam(const KernelParamsBuildContext&,
                               void*) noexcept {
     return Status::InvalidArgument("test builder failure");
+}
+
+struct BuilderCounters {
+    size_t build_count = 0;
+    size_t invoke_count = 0;
+};
+BuilderCounters g_builder_counters{};
+
+Status CountingBuilder(const KernelParamsBuildContext&, void* params) noexcept {
+    ++g_builder_counters.build_count;
+    *static_cast<int*>(params) = 42;
+    return Status::Ok();
+}
+
+Status CountingInvokeKernel(const KernelContext& context) noexcept {
+    ++g_builder_counters.invoke_count;
+    return context.kernel_params == nullptr
+                   ? Status::FailedPrecondition("missing prepared params")
+                   : Status::Ok();
 }
 
 class CountingAllocator final : public Allocator {
@@ -147,6 +167,14 @@ TEST(ExecutionPlan, RejectsInvalidResolvedKernel) {
                       .status()
                       .code(),
               StatusCode::kInvalidArgument);
+    EXPECT_EQ(ExecutionPlan::Create({}, {}, {},
+                                    {ExecutionStep{.kernel = {.op_type = OpType::kSoftmax,
+                                                              .fn = &FakeKernel,
+                                                              .params_builder = &BuildKernelParam,
+                                                              .params_size = kMaxKernelParamsSize + 1}}})
+                      .status()
+                      .code(),
+              StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlan, AcceptsRuntimeCheckWithinCompactSpecRanges) {
@@ -179,11 +207,11 @@ TEST(KernelInvoker, BuildsParamsOnlyForTheKernelCall) {
     g_invocations = 0;
     g_built_param = 0;
     KernelContext context{};
-    ASSERT_TRUE(InvokeKernel({.op_type = OpType::kAdd,
-                              .fn = &CaptureBuiltParamKernel,
-                              .params_builder = &BuildKernelParam,
-                              .params_size = sizeof(int)},
-                             context, {}, {})
+    ASSERT_TRUE(BuildAndInvokeKernelForTesting({.op_type = OpType::kAdd,
+                                                .fn = &CaptureBuiltParamKernel,
+                                                .params_builder = &BuildKernelParam,
+                                                .params_size = sizeof(int)},
+                                               context, {}, {})
                         .ok());
     EXPECT_EQ(g_invocations, 1);
     EXPECT_EQ(g_built_param, 17);
@@ -192,11 +220,11 @@ TEST(KernelInvoker, BuildsParamsOnlyForTheKernelCall) {
 TEST(KernelInvoker, PropagatesBuilderFailureWithoutCallingKernel) {
     g_invocations = 0;
     KernelContext context{};
-    EXPECT_EQ(InvokeKernel({.op_type = OpType::kAdd,
-                            .fn = &CaptureBuiltParamKernel,
-                            .params_builder = &FailToBuildKernelParam,
-                            .params_size = sizeof(int)},
-                           context, {}, {})
+    EXPECT_EQ(BuildAndInvokeKernelForTesting({.op_type = OpType::kAdd,
+                                              .fn = &CaptureBuiltParamKernel,
+                                              .params_builder = &FailToBuildKernelParam,
+                                              .params_size = sizeof(int)},
+                                             context, {}, {})
                       .code(),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(g_invocations, 0);
@@ -204,10 +232,35 @@ TEST(KernelInvoker, PropagatesBuilderFailureWithoutCallingKernel) {
 
 TEST(KernelInvoker, RejectsNullFunctionAndInvalidParamsContract) {
     KernelContext context{};
-    EXPECT_EQ(InvokeKernel({.op_type = OpType::kAdd}, context, {}, {}).code(),
+    EXPECT_EQ(BuildAndInvokeKernelForTesting({.op_type = OpType::kAdd}, context, {}, {}).code(),
               StatusCode::kFailedPrecondition);
-    EXPECT_EQ(InvokeKernel({.op_type = OpType::kAdd, .fn = &FakeKernel, .params_size = 1}, context, {}, {}).code(),
+    EXPECT_EQ(BuildAndInvokeKernelForTesting({.op_type = OpType::kAdd, .fn = &FakeKernel, .params_size = 1}, context, {}, {}).code(),
               StatusCode::kFailedPrecondition);
+}
+
+TEST(KernelInvoker, InvokesPreparedParamsWithoutCallingBuilder) {
+    g_invocations = 0;
+    g_built_param = 0;
+    alignas(std::max_align_t) int prepared = 23;
+    KernelContext context{};
+    ASSERT_TRUE(InvokePreparedKernel({.op_type = OpType::kAdd,
+                                      .fn = &CaptureBuiltParamKernel,
+                                      .params_builder = &BuildKernelParam,
+                                      .params_size = sizeof(int)},
+                                     context, &prepared)
+                        .ok());
+    EXPECT_EQ(g_invocations, 1);
+    EXPECT_EQ(g_built_param, 23);
+}
+
+TEST(KernelInvoker, InvokesPreparedParamlessKernelWithNullParams) {
+    g_invocations = 0;
+    KernelContext context{};
+    ASSERT_TRUE(InvokePreparedKernel(
+                        {.op_type = OpType::kAdd, .fn = &FakeKernel},
+                        context, nullptr)
+                        .ok());
+    EXPECT_EQ(g_invocations, 1);
 }
 
 TEST(ExecutionPlan, RejectsActivationInputWithoutEarlierProducer) {
@@ -428,6 +481,41 @@ TEST(Executor, RunsCachedBindingTableWithoutPerStepBindingApi) {
     EXPECT_EQ(allocator.allocation_count(), allocations_before_execute);
 }
 
+TEST(Executor, PreparedParamsAreBuiltOncePerBindingAndReusedAcrossExecutes) {
+    const ResolvedKernel kernel{.op_type = OpType::kSoftmax,
+                                .fn = &CountingInvokeKernel,
+                                .params_builder = &CountingBuilder,
+                                .params_size = sizeof(int)};
+    const auto plan = MakeSingleSoftmaxPlan(kernel);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    const float input[2]{};
+    const int64_t shape[1] = {2};
+    const int64_t strides[1] = {1};
+    CPUAllocator allocator(Device::CPU());
+    const ExternalValueBindings external{
+            .readable = {{.value = {.index = 0},
+                          .tensor = TensorView(input, DataType::Float32(), shape, strides)}}};
+
+    g_builder_counters = {};
+    auto table = BuildExecutionBindings(*plan, external, allocator);
+    ASSERT_TRUE(table.ok()) << table.status().ToString();
+    EXPECT_EQ(g_builder_counters.build_count, 1U);
+    ASSERT_NE(table->kernel_params(0), nullptr);
+    EXPECT_EQ(*static_cast<const int*>(table->kernel_params(0)), 42);
+
+    RuntimeBindingContext context;
+    context.SetBindingTable(std::move(*table));
+    for (int i = 0; i < 10; ++i) {
+        ASSERT_TRUE(Executor::Execute(*plan, context).ok());
+    }
+    EXPECT_EQ(g_builder_counters.invoke_count, 10U);
+    EXPECT_EQ(g_builder_counters.build_count, 1U);
+
+    auto rebuilt = BuildExecutionBindings(*plan, external, allocator);
+    ASSERT_TRUE(rebuilt.ok()) << rebuilt.status().ToString();
+    EXPECT_EQ(g_builder_counters.build_count, 2U);
+}
+
 TEST(BindingTable, RejectsDifferentPlanWithMatchingStepCountAndAcceptsPlanCopy) {
     const auto first_plan = MakeSingleSoftmaxPlan();
     const auto second_plan = MakeSingleSoftmaxPlan();
@@ -480,6 +568,107 @@ TEST(RuntimeBindingContext, ResetAllowsReinstallingBindingTable) {
     ASSERT_TRUE(second_table.ok()) << second_table.status().ToString();
     context.SetBindingTable(std::move(*second_table));
     EXPECT_NE(context.binding_table(), nullptr);
+}
+
+TEST(BindingTable, PreparedParamsStayStableAcrossMoveAndParameterlessStepsYieldNull) {
+    const ResolvedKernel kernel{.op_type = OpType::kSoftmax,
+                                .fn = &FakeKernel,
+                                .params_builder = &BuildKernelParam,
+                                .params_size = sizeof(int)};
+    const auto plan = MakeSingleSoftmaxPlan(kernel);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    const float input[2]{};
+    const int64_t shape[1] = {2};
+    const int64_t strides[1] = {1};
+    CPUAllocator allocator(Device::CPU());
+    auto table = BuildExecutionBindings(
+            *plan,
+            {.readable = {{.value = {.index = 0},
+                           .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
+            allocator);
+    ASSERT_TRUE(table.ok()) << table.status().ToString();
+    const void* const prepared = table->kernel_params(0);
+    ASSERT_NE(prepared, nullptr);
+    EXPECT_EQ(*static_cast<const int*>(prepared), 17);
+
+    BindingTable moved = std::move(*table);
+    const void* const moved_params = moved.kernel_params(0);
+    EXPECT_EQ(moved_params, prepared);
+    ASSERT_NE(moved_params, nullptr);
+    EXPECT_EQ(*static_cast<const int*>(moved_params), 17);
+
+    const auto paramless_plan = MakeSingleSoftmaxPlan();
+    ASSERT_TRUE(paramless_plan.ok()) << paramless_plan.status().ToString();
+    auto paramless_table = BuildExecutionBindings(
+            *paramless_plan,
+            {.readable = {{.value = {.index = 0},
+                           .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
+            allocator);
+    ASSERT_TRUE(paramless_table.ok()) << paramless_table.status().ToString();
+    EXPECT_EQ(paramless_table->kernel_params(0), nullptr);
+}
+
+TEST(BindingTable, KernelParamsSlotsSatisfyMaxAlignInSharedArena) {
+    const TensorSpec spec = FloatVectorSpec(2);
+    const ResolvedKernel kernel{.op_type = OpType::kSoftmax,
+                                .fn = &FakeKernel,
+                                .params_builder = &BuildKernelParam,
+                                .params_size = sizeof(int)};
+    const auto plan = ExecutionPlan::Create(
+            {{.spec = spec, .kind = ExecutionValueKind::kModelInput},
+             {.spec = spec, .kind = ExecutionValueKind::kActivation},
+             {.spec = spec, .kind = ExecutionValueKind::kActivation}},
+            {{.index = 0}}, {{.index = 2}},
+            {{.kernel = kernel,
+              .inputs = {{.index = 0}},
+              .outputs = {{.index = 1}},
+              .kernel_input_ports = {0},
+              .kernel_output_ports = {0}},
+             {.kernel = kernel,
+              .inputs = {{.index = 1}},
+              .outputs = {{.index = 2}},
+              .kernel_input_ports = {0},
+              .kernel_output_ports = {0}}});
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    const float input[2]{};
+    const int64_t shape[1] = {2};
+    const int64_t strides[1] = {1};
+    CPUAllocator allocator(Device::CPU());
+    auto table = BuildExecutionBindings(
+            *plan,
+            {.readable = {{.value = {.index = 0},
+                           .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
+            allocator);
+    ASSERT_TRUE(table.ok()) << table.status().ToString();
+    const void* const first_params = table->kernel_params(0);
+    const void* const second_params = table->kernel_params(1);
+    ASSERT_NE(first_params, nullptr);
+    ASSERT_NE(second_params, nullptr);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(first_params) % alignof(std::max_align_t), 0U);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(second_params) % alignof(std::max_align_t), 0U);
+    EXPECT_NE(second_params, first_params);
+}
+
+TEST(ExecutionBindings, RejectsWhenKernelParamsBuilderFails) {
+    const ResolvedKernel kernel{.op_type = OpType::kSoftmax,
+                                .fn = &FakeKernel,
+                                .params_builder = &FailToBuildKernelParam,
+                                .params_size = sizeof(int)};
+    const auto plan = MakeSingleSoftmaxPlan(kernel);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+    const float input[2]{};
+    const int64_t shape[1] = {2};
+    const int64_t strides[1] = {1};
+    CPUAllocator allocator(Device::CPU());
+    g_invocations = 0;
+    const auto bindings = BuildExecutionBindings(
+            *plan,
+            {.readable = {{.value = {.index = 0},
+                           .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
+            allocator);
+    ASSERT_FALSE(bindings.ok());
+    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(g_invocations, 0);
 }
 
 } // namespace

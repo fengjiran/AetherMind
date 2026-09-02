@@ -1,4 +1,6 @@
+#include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/backend/kernel_types.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
@@ -12,6 +14,9 @@
 #include "execution/test_execution_binding_helpers.h"
 
 #include <gtest/gtest.h>
+
+#include <array>
+#include <cstddef>
 
 namespace {
 
@@ -43,20 +48,67 @@ MutableTensorView MakeMutableFloatTensorView(float (&data)[N],
     return MutableTensorView{data, DataType::Float32(), shape, strides};
 }
 
-cpu::detail::EmbeddingParams MakeEmbeddingParams(const int64_t (&token_ids)[3],
-                                                 const float (&weight)[12],
-                                                 float (&output)[9],
-                                                 const int64_t (&token_shape)[1],
-                                                 const int64_t (&token_strides)[1],
-                                                 const int64_t (&weight_shape)[2],
-                                                 const int64_t (&weight_strides)[2],
-                                                 const int64_t (&output_shape)[2],
-                                                 const int64_t (&output_strides)[2]) {
-    return cpu::detail::EmbeddingParams{
+/// Test-side alias of the removed backend params struct: it mirrors the three
+/// TensorView slots that the Embedding builder validates at binding time.
+struct EmbeddingTestViews {
+    TensorView token_ids{};
+    TensorView weight{};
+    MutableTensorView output{};
+};
+
+EmbeddingTestViews MakeEmbeddingParams(const int64_t (&token_ids)[3],
+                                       const float (&weight)[12],
+                                       float (&output)[9],
+                                       const int64_t (&token_shape)[1],
+                                       const int64_t (&token_strides)[1],
+                                       const int64_t (&weight_shape)[2],
+                                       const int64_t (&weight_strides)[2],
+                                       const int64_t (&output_shape)[2],
+                                       const int64_t (&output_strides)[2]) {
+    return EmbeddingTestViews{
             .token_ids = MakeInt64TensorView(token_ids, token_shape, token_strides),
             .weight = MakeFloatTensorView(weight, weight_shape, weight_strides),
             .output = MakeMutableFloatTensorView(output, output_shape, output_strides),
     };
+}
+
+StatusOr<ResolvedKernel> PrepareEmbeddingKernel() {
+    CpuBackend backend;
+    return backend.PrepareKernel(
+            OpType::kEmbedding,
+            KernelSelector{
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+                    .weight_format = WeightFormat::kPlain,
+                    .phase = ExecPhase::kBoth,
+            },
+            OpParams{EmbeddingParams{}});
+}
+
+Status RunEmbedding(const EmbeddingTestViews& views) noexcept {
+    const StatusOr<ResolvedKernel> kernel = PrepareEmbeddingKernel();
+    if (!kernel.ok()) {
+        return kernel.status();
+    }
+
+    alignas(std::max_align_t) std::array<std::byte, kMaxKernelParamsSize> storage{};
+    const std::array<TensorView, 2> inputs{views.token_ids, views.weight};
+    const std::array<MutableTensorView, 1> outputs{views.output};
+    const Status build_status = kernel->params_builder(
+            KernelParamsBuildContext{
+                    .inputs = inputs,
+                    .outputs = outputs,
+                    .attrs = kernel->attrs,
+            },
+            storage.data());
+    if (!build_status.ok()) {
+        return build_status;
+    }
+    return kernel->fn(KernelContext{
+            .kernel_params = storage.data(),
+            .attrs = kernel->attrs,
+    });
 }
 
 TEST(EmbeddingKernel, ComputesExpectedRows) {
@@ -82,14 +134,11 @@ TEST(EmbeddingKernel, ComputesExpectedRows) {
     const int64_t weight_strides[2] = {3, 1};
     const int64_t output_shape[2] = {3, 3};
     const int64_t output_strides[2] = {3, 1};
-    const cpu::detail::EmbeddingParams params = MakeEmbeddingParams(
+    const EmbeddingTestViews params = MakeEmbeddingParams(
             token_ids, weight, output, token_shape, token_strides, weight_shape, weight_strides,
             output_shape, output_strides);
 
-    const Status status = cpu::detail::EmbeddingKernel(KernelContext{
-            .workspace_binding = {},
-            .kernel_params = &params,
-    });
+    const Status status = RunEmbedding(params);
 
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_FLOAT_EQ(output[0], 7.0F);
@@ -126,16 +175,13 @@ TEST(EmbeddingKernel, ComputesExpectedRowsWithUint32Tokens) {
     const int64_t weight_strides[2] = {3, 1};
     const int64_t output_shape[2] = {3, 3};
     const int64_t output_strides[2] = {3, 1};
-    const cpu::detail::EmbeddingParams params{
+    const EmbeddingTestViews params{
             .token_ids = TensorView{token_ids, DataType::UInt(32), token_shape, token_strides},
             .weight = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output = MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
     };
 
-    const Status status = cpu::detail::EmbeddingKernel(KernelContext{
-            .workspace_binding = {},
-            .kernel_params = &params,
-    });
+    const Status status = RunEmbedding(params);
 
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_FLOAT_EQ(output[0], 7.0F);
@@ -160,16 +206,13 @@ TEST(EmbeddingKernel, AcceptsZeroTokenCount) {
     const int64_t weight_strides[2] = {3, 1};
     const int64_t output_shape[2] = {0, 3};
     const int64_t output_strides[2] = {3, 1};
-    const cpu::detail::EmbeddingParams params{
+    const EmbeddingTestViews params{
             .token_ids = TensorView{nullptr, DataType::Int(64), token_shape, token_strides},
             .weight = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output = MutableTensorView{nullptr, DataType::Float32(), output_shape, output_strides},
     };
 
-    const Status status = cpu::detail::EmbeddingKernel(KernelContext{
-            .workspace_binding = {},
-            .kernel_params = &params,
-    });
+    const Status status = RunEmbedding(params);
 
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
@@ -197,14 +240,11 @@ TEST(EmbeddingKernel, RejectsOutOfRangeTokenId) {
     const int64_t weight_strides[2] = {3, 1};
     const int64_t output_shape[2] = {3, 3};
     const int64_t output_strides[2] = {3, 1};
-    const cpu::detail::EmbeddingParams params = MakeEmbeddingParams(
+    const EmbeddingTestViews params = MakeEmbeddingParams(
             token_ids, weight, output, token_shape, token_strides, weight_shape, weight_strides,
             output_shape, output_strides);
 
-    const Status status = cpu::detail::EmbeddingKernel(KernelContext{
-            .workspace_binding = {},
-            .kernel_params = &params,
-    });
+    const Status status = RunEmbedding(params);
 
     ASSERT_FALSE(status.ok());
     EXPECT_EQ(status.code(), StatusCode::kOutOfRange);

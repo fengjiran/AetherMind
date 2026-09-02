@@ -31,37 +31,57 @@ struct KernelContext;
 /// registered `KernelParamsBuilder`.
 using KernelFunc = Status (*)(const KernelContext&) noexcept;
 
-/// @brief Backend-registered function that constructs a kernel-specific params
-/// struct from the current step's tensor bindings.
+/// @brief Binding-time context handed to a `KernelParamsBuilder`.
 ///
-/// `inputs` and `outputs` come from the current step's runtime bindings. On
-/// success the builder placement-constructs its params
-/// struct into `params_buffer`, which is caller-owned, stack-allocated, aligned
-/// to `std::max_align_t`, and has capacity `kMaxKernelParamsSize` bytes.
+/// `inputs` and `outputs` are the per-step TensorViews cached in the caller's
+/// `BindingTable`; their data pointers, shape, stride, and dtype are immutable
+/// for the table lifetime. `attrs` is the frozen per-kernel metadata owned by
+/// the `ResolvedKernel`.
+struct KernelParamsBuildContext {
+    std::span<const TensorView> inputs{};
+    std::span<const MutableTensorView> outputs{};
+    std::span<const std::byte> attrs{};
+};
+
+/// @brief Cold-path binding specializer constructing a kernel-specific params
+/// struct for one step.
 ///
-/// Lifetime invariant: the constructed params must remain valid for the
-/// duration of the subsequent `KernelFunc` call that consumes
-/// `KernelContext::kernel_params`. The params type must be trivially
-/// destructible because the generic invoker does not retain type-erased
-/// destruction metadata for its stack storage.
+/// Invoked exactly once per step while `BuildExecutionBindings` prepares a
+/// `BindingTable`, after generic shape and constraint validation. On success
+/// the builder placement-constructs its params struct into `params_buffer`,
+/// which is owned by the `BindingTable` params arena, aligned to
+/// `std::max_align_t`, and sized `KernelDescriptor::params_size` (at most
+/// `kMaxKernelParamsSize`).
 ///
-/// Registered via `KernelDescriptor::{params_builder, params_size}` and invoked
-/// by execution's generic kernel invoker. This indirection keeps execution
-/// independent of backend-specific parameter structs.
+/// Contract:
+/// - The builder must not retain the `context` object itself. It may copy
+///   context data (including TensorView data pointers) into the prepared
+///   params because those views are stable for the whole `BindingTable`
+///   lifetime.
+/// - The prepared params live exactly as long as the owning `BindingTable`
+///   and are consumed via `KernelContext::kernel_params` on every subsequent
+///   execution of the step. They must not depend on any per-execution state
+///   (sequence position, KV state, workspace); that data flows through
+///   `KernelContext`.
+/// - The params type must be trivially destructible: the arena is released as
+///   a whole with the `BindingTable` and keeps no per-step destruction
+///   metadata.
+/// - On failure the builder must not have constructed anything into
+///   `params_buffer`.
 ///
-/// Returns `Status::InvalidArgument` on input/output arity mismatch. `noexcept`:
-/// errors are reported only through the return value.
-using KernelParamsBuilder = Status (*)(std::span<const TensorView> inputs,
-                                       std::span<const MutableTensorView> outputs,
+/// Registered via `KernelDescriptor::{params_builder, params_size}`. This
+/// indirection keeps execution independent of backend-specific parameter
+/// structs. `noexcept`: errors are reported only through the return value.
+using KernelParamsBuilder = Status (*)(const KernelParamsBuildContext& context,
                                        void* params_buffer) noexcept;
 
 /// @brief Upper bound on the byte size of any params struct passed to
 /// `KernelParamsBuilder`.
 ///
-/// The generic kernel invoker stack-allocates a buffer of this size before
-/// calling the builder. `KernelDescriptor` validation rejects kernels whose
-/// `params_size` exceeds this constant. Raising the value increases per-call
-/// stack usage for every kernel step.
+/// Each step's params slot is carved from the `BindingTable` params arena
+/// with at most this many bytes. `KernelDescriptor` validation rejects
+/// kernels whose `params_size` exceeds this constant. Raising the value
+/// increases per-step binding memory.
 inline constexpr size_t kMaxKernelParamsSize = 512;
 
 /// @brief Builds immutable backend-specific metadata from typed semantic

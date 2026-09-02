@@ -1,12 +1,15 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/cpu_info.h"
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/backend/kernel_types.h"
 #include "aethermind/base/tensor_view.h"
+#include "aethermind/execution/kernel_invoker.h"
 #include "aethermind/operators/op_params.h"
 #include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
 
 #include <benchmark/benchmark.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
@@ -56,7 +59,18 @@ void SetRmsNormThroughputCounters(benchmark::State& state,
             flops, benchmark::Counter::kIsRate, benchmark::Counter::OneK::kIs1000);
 }
 
-void BenchmarkRmsNormFp32(benchmark::State& state, bool require_avx2_fma) {
+enum class RmsNormBenchmarkMode {
+    /// Params prepared once outside the loop; the loop runs only kernel.fn.
+    kPrepared,
+    /// Legacy per-call path: stack params + builder + kernel each iteration.
+    kLegacyBuildAndInvoke,
+    /// Measures binding specialization cost: builder + validation per call.
+    kBindingSpecialization,
+};
+
+void BenchmarkRmsNormFp32(benchmark::State& state,
+                          RmsNormBenchmarkMode mode,
+                          bool require_avx2_fma) {
     const int64_t row_count = state.range(0);
     const int64_t hidden_size = state.range(1);
     const size_t element_count = static_cast<size_t>(row_count * hidden_size);
@@ -101,19 +115,50 @@ void BenchmarkRmsNormFp32(benchmark::State& state, bool require_avx2_fma) {
     const int64_t io_strides[2] = {hidden_size, 1};
     const int64_t weight_shape[1] = {hidden_size};
     const int64_t weight_strides[1] = {1};
-    const cpu::detail::RmsNormKernelParams params{
-            .input_tensor = TensorView{input.data(), DataType::Float32(), io_shape, io_strides},
-            .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
-            .output_tensor = MutableTensorView{output.data(), DataType::Float32(), io_shape, io_strides},
+    const std::array<TensorView, 2> inputs{
+            TensorView{input.data(), DataType::Float32(), io_shape, io_strides},
+            TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
     };
-    const KernelContext context{
-            .kernel_params = &params,
+    const std::array<MutableTensorView, 1> outputs{
+            MutableTensorView{output.data(), DataType::Float32(), io_shape, io_strides},
+    };
+
+    // Buffer matching the BindingTable params arena slot.
+    alignas(std::max_align_t) std::array<std::byte, kMaxKernelParamsSize> params_storage{};
+    const KernelParamsBuildContext build_context{
+            .inputs = inputs,
+            .outputs = outputs,
+            .attrs = resolved->attrs,
+    };
+    if (mode == RmsNormBenchmarkMode::kPrepared) {
+        const Status build_status =
+                resolved->params_builder(build_context, params_storage.data());
+        if (!build_status.ok()) {
+            state.SkipWithError(build_status.ToString().c_str());
+            return;
+        }
+    }
+
+    KernelContext context{
+            .kernel_params = params_storage.data(),
             .attrs = resolved->attrs,
     };
     state.SetLabel(resolved->name);
 
     for (auto _: state) {
-        const Status status = resolved->fn(context);
+        Status status = Status::Ok();
+        switch (mode) {
+            case RmsNormBenchmarkMode::kPrepared:
+                status = resolved->fn(context);
+                break;
+            case RmsNormBenchmarkMode::kLegacyBuildAndInvoke:
+                status = BuildAndInvokeKernelForTesting(*resolved, context, inputs, outputs);
+                break;
+            case RmsNormBenchmarkMode::kBindingSpecialization:
+                status = resolved->params_builder(build_context,
+                                                  params_storage.data());
+                break;
+        }
         if (!status.ok()) {
             state.SkipWithError(status.ToString().c_str());
             break;
@@ -124,15 +169,23 @@ void BenchmarkRmsNormFp32(benchmark::State& state, bool require_avx2_fma) {
     SetRmsNormThroughputCounters(state, row_count, hidden_size);
 }
 
-void BM_RmsNormFp32Scalar(benchmark::State& state) {
-    BenchmarkRmsNormFp32(state, false);
+void BM_RmsNormPreparedScalar(benchmark::State& state) {
+    BenchmarkRmsNormFp32(state, RmsNormBenchmarkMode::kPrepared, false);
 }
 
-void BM_RmsNormFp32Avx2Fma(benchmark::State& state) {
-    BenchmarkRmsNormFp32(state, true);
+void BM_RmsNormPreparedAvx2Fma(benchmark::State& state) {
+    BenchmarkRmsNormFp32(state, RmsNormBenchmarkMode::kPrepared, true);
 }
 
-BENCHMARK(BM_RmsNormFp32Scalar)
+void BM_RmsNormLegacyBuildAndInvoke(benchmark::State& state) {
+    BenchmarkRmsNormFp32(state, RmsNormBenchmarkMode::kLegacyBuildAndInvoke, false);
+}
+
+void BM_RmsNormBindingSpecialization(benchmark::State& state) {
+    BenchmarkRmsNormFp32(state, RmsNormBenchmarkMode::kBindingSpecialization, false);
+}
+
+BENCHMARK(BM_RmsNormPreparedScalar)
         ->Args({1, 4096})
         ->Args({1, 8192})
         ->Args({1, 11008})
@@ -141,13 +194,25 @@ BENCHMARK(BM_RmsNormFp32Scalar)
         ->Args({128, 8192})
         ->ArgNames({"row_count", "hidden_size"});
 
-BENCHMARK(BM_RmsNormFp32Avx2Fma)
+BENCHMARK(BM_RmsNormPreparedAvx2Fma)
         ->Args({1, 4096})
         ->Args({1, 8192})
         ->Args({1, 11008})
         ->Args({16, 4096})
         ->Args({128, 4096})
         ->Args({128, 8192})
+        ->ArgNames({"row_count", "hidden_size"});
+
+BENCHMARK(BM_RmsNormLegacyBuildAndInvoke)
+        ->Args({1, 4096})
+        ->Args({1, 8192})
+        ->Args({128, 4096})
+        ->ArgNames({"row_count", "hidden_size"});
+
+BENCHMARK(BM_RmsNormBindingSpecialization)
+        ->Args({1, 4096})
+        ->Args({1, 8192})
+        ->Args({128, 4096})
         ->ArgNames({"row_count", "hidden_size"});
 
 } // namespace

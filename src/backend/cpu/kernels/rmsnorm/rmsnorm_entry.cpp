@@ -1,18 +1,16 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
+#include "aethermind/backend/kernel_types.h"
 #include "aethermind/operators/op_params.h"
 #include "rmsnorm_internal.h"
 #include "utils/overflow_check.h"
 
 #include <cmath>
 #include <cstring>
+#include <type_traits>
 
 namespace aethermind::cpu::detail {
 namespace {
-
-const RmsNormKernelParams* GetParams(const void* kernel_params) noexcept {
-    return static_cast<const RmsNormKernelParams*>(kernel_params);
-}
 
 bool HasUnitColumnStrides(const RmsNormFp32KernelArgs& args) noexcept {
     return args.input_col_stride == 1 && args.weight_stride == 1 && args.output_col_stride == 1;
@@ -142,29 +140,30 @@ Status ValidateNonOverlappingOutputRows(int64_t row_count,
     return Status::Ok();
 }
 
-Status ValidateAndBuildRmsNormFp32Args(const KernelContext& ctx,
-                                       RmsNormFp32KernelArgs& args) noexcept {
+Status ValidateAndBuildCommonRmsNormFp32Args(
+        const KernelParamsBuildContext& context,
+        RmsNormFp32KernelArgs& args) noexcept {
     float eps = 0.0f;
-    if (ctx.attrs.size() != sizeof(float)) {
+    if (context.attrs.size() != sizeof(float)) {
         return Status::InvalidArgument(
                 "RmsNormKernelEntry requires epsilon in KernelContext.attrs");
     }
 
-    std::memcpy(&eps, ctx.attrs.data(), sizeof(float));
+    std::memcpy(&eps, context.attrs.data(), sizeof(float));
     if (!std::isfinite(eps) || eps <= 0.0F) {
         return Status::InvalidArgument(
                 "RmsNormKernelEntry requires finite positive epsilon");
     }
 
-    const RmsNormKernelParams* params = GetParams(ctx.kernel_params);
-    if (params == nullptr) {
-        return Status::InvalidArgument("RmsNormKernelEntry requires RmsNormKernelParams "
-                                       "in KernelContext.kernel_params");
+    const auto inputs = context.inputs;
+    const auto outputs = context.outputs;
+    if (inputs.size() != 2 || outputs.size() != 1) {
+        return Status::InvalidArgument("RmsNorm requires 2 inputs and 1 output");
     }
 
-    const TensorView& input = params->input_tensor;
-    const TensorView& weight = params->weight_tensor;
-    const MutableTensorView& output = params->output_tensor;
+    const TensorView& input = inputs[0];
+    const TensorView& weight = inputs[1];
+    const MutableTensorView& output = outputs[0];
     if (!input.is_valid()) {
         return Status::InvalidArgument(
                 "RmsNormKernelEntry requires a valid input TensorView");
@@ -305,18 +304,29 @@ Status ValidateAndBuildRmsNormFp32Args(const KernelContext& ctx,
     return Status::Ok();
 }
 
-Status BuildRmsNormKernelParams(std::span<const TensorView> inputs,
-                                std::span<const MutableTensorView> outputs,
-                                void* params_buffer) noexcept {
-    if (inputs.size() != 2 || outputs.size() != 1) {
-        return Status::InvalidArgument("RmsNorm requires 2 inputs and 1 output");
+Status BuildRmsNormFp32ScalarArgs(
+        const KernelParamsBuildContext& context,
+        void* params_buffer) noexcept {
+    RmsNormFp32KernelArgs args;
+    AM_RETURN_IF_ERROR(
+            ValidateAndBuildCommonRmsNormFp32Args(context, args));
+    ::new (params_buffer) RmsNormFp32KernelArgs(args);
+    return Status::Ok();
+}
+
+Status BuildRmsNormFp32Avx2FmaArgs(
+        const KernelParamsBuildContext& context,
+        void* params_buffer) noexcept {
+    RmsNormFp32KernelArgs args;
+    AM_RETURN_IF_ERROR(
+            ValidateAndBuildCommonRmsNormFp32Args(context, args));
+
+    if (args.row_count != 0 && !HasUnitColumnStrides(args)) {
+        return Status::InvalidArgument(
+                "RmsNormKernelEntry AVX2 requires unit column strides");
     }
 
-    ::new (params_buffer) RmsNormKernelParams{
-            .input_tensor = inputs[0],
-            .weight_tensor = inputs[1],
-            .output_tensor = outputs[0],
-    };
+    ::new (params_buffer) RmsNormFp32KernelArgs(args);
     return Status::Ok();
 }
 
@@ -337,31 +347,25 @@ Status BuildRmsNormMetadata(const OpParams& params,
 }
 
 Status RmsNormKernelEntryFp32Scalar(const KernelContext& ctx) noexcept {
-    RmsNormFp32KernelArgs args;
-    AM_RETURN_IF_ERROR(ValidateAndBuildRmsNormFp32Args(ctx, args));
-    if (args.row_count == 0) {
-        return Status::Ok();
-    }
-    return RunRmsNormFp32Scalar(args);
+    const auto* args =
+            static_cast<const RmsNormFp32KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunRmsNormFp32Scalar(*args);
 }
 
 #if defined(AETHERMIND_HAS_RMSNORM_AVX2_FMA_KERNEL)
 Status RmsNormKernelEntryFp32Avx2Fma(const KernelContext& ctx) noexcept {
-    RmsNormFp32KernelArgs args;
-    AM_RETURN_IF_ERROR(ValidateAndBuildRmsNormFp32Args(ctx, args));
-    if (args.row_count == 0) {
-        return Status::Ok();
-    }
-
-    if (!HasUnitColumnStrides(args)) {
-        return Status::InvalidArgument(
-                "RmsNormKernelEntry AVX2 requires unit column strides");
-    }
-    return RunRmsNormFp32Avx2Fma(args);
+    const auto* args =
+            static_cast<const RmsNormFp32KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunRmsNormFp32Avx2Fma(*args);
 }
 #endif
 
 } // namespace
+
+static_assert(std::is_trivially_destructible_v<RmsNormFp32KernelArgs>);
+static_assert(alignof(RmsNormFp32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(RmsNormFp32Scalar,
                    KernelDescriptor{
@@ -375,8 +379,8 @@ AM_REGISTER_KERNEL(RmsNormFp32Scalar,
                            },
                            .kernel_func = &RmsNormKernelEntryFp32Scalar,
                            .priority = 10,
-                           .params_size = sizeof(RmsNormKernelParams),
-                           .params_builder = &BuildRmsNormKernelParams,
+                           .params_size = sizeof(RmsNormFp32KernelArgs),
+                           .params_builder = &BuildRmsNormFp32ScalarArgs,
                            .metadata_builder = &BuildRmsNormMetadata,
                            .name = "cpu::rmsnorm_f32_scalar",
                    });
@@ -395,8 +399,8 @@ AM_REGISTER_KERNEL(RmsNormFp32Avx2Fma,
                            .cpu_requirements = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
                            .kernel_func = &RmsNormKernelEntryFp32Avx2Fma,
                            .priority = 20,
-                           .params_size = sizeof(RmsNormKernelParams),
-                           .params_builder = &BuildRmsNormKernelParams,
+                           .params_size = sizeof(RmsNormFp32KernelArgs),
+                           .params_builder = &BuildRmsNormFp32Avx2FmaArgs,
                            .metadata_builder = &BuildRmsNormMetadata,
                            .name = "cpu::rmsnorm_f32_avx2_fma",
                    });

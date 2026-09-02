@@ -4,10 +4,28 @@
 
 namespace aethermind {
 
-Status InvokeKernel(const ResolvedKernel& kernel,
-                    KernelContext& context,
-                    std::span<const TensorView> inputs,
-                    std::span<const MutableTensorView> outputs) noexcept {
+Status InvokePreparedKernel(const ResolvedKernel& kernel,
+                            KernelContext& context,
+                            const void* prepared_params) noexcept {
+    AM_DCHECK(kernel.fn != nullptr);
+
+    if (kernel.params_builder == nullptr) {
+        AM_DCHECK(kernel.params_size == 0);
+        AM_DCHECK(prepared_params == nullptr);
+    } else {
+        AM_DCHECK(kernel.params_size != 0);
+        AM_DCHECK(prepared_params != nullptr);
+    }
+
+    context.kernel_params = prepared_params;
+    return kernel.fn(context);
+}
+
+Status BuildAndInvokeKernelForTesting(
+        const ResolvedKernel& kernel,
+        KernelContext& context,
+        std::span<const TensorView> inputs,
+        std::span<const MutableTensorView> outputs) noexcept {
     if (kernel.fn == nullptr) {
         return Status::FailedPrecondition("Cannot invoke a null kernel function");
     }
@@ -23,7 +41,13 @@ Status InvokeKernel(const ResolvedKernel& kernel,
     }
 
     alignas(std::max_align_t) std::byte params_storage[kMaxKernelParamsSize];
-    AM_RETURN_IF_ERROR(kernel.params_builder(inputs, outputs, params_storage));
+    AM_RETURN_IF_ERROR(kernel.params_builder(
+            KernelParamsBuildContext{
+                    .inputs = inputs,
+                    .outputs = outputs,
+                    .attrs = context.attrs,
+            },
+            params_storage));
     context.kernel_params = params_storage;
     return kernel.fn(context);
 }

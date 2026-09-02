@@ -92,6 +92,56 @@ Status ValidateCollapsibleLeadingDimensions(const TensorLike& tensor) noexcept {
     return Status::Ok();
 }
 
+bool HasIdenticalMapping(const TensorView& input,
+                         const MutableTensorView& output) noexcept {
+    if (input.data() != output.data() || input.dtype() != output.dtype() ||
+        input.rank() != output.rank()) {
+        return false;
+    }
+
+    for (int32_t i = 0; i < input.rank(); ++i) {
+        if (input.dim(i) != output.dim(i) || input.stride(i) != output.stride(i)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+StatusOr<int64_t> ComputeRowSpan(int64_t hidden_size,
+                                 int64_t column_stride) noexcept {
+    int64_t last_column_offset = 0;
+    if (CheckOverflowMul(hidden_size - 1, column_stride, &last_column_offset)) {
+        return Status::InvalidArgument(
+                "RmsNorm output row span overflow");
+    }
+
+    int64_t row_span = 0;
+    if (CheckOverflowAdd(last_column_offset, int64_t{1}, &row_span)) {
+        return Status::InvalidArgument(
+                "RmsNorm output row span overflow");
+    }
+
+    return row_span;
+}
+
+Status ValidateNonOverlappingOutputRows(int64_t row_count,
+                                        int64_t hidden_size,
+                                        int64_t row_stride,
+                                        int64_t column_stride) noexcept {
+    if (row_count <= 1) {
+        return Status::Ok();
+    }
+
+    AM_ASSIGN_OR_RETURN(const int64_t row_span, ComputeRowSpan(hidden_size, column_stride));
+
+    if (row_stride < row_span) {
+        return Status::InvalidArgument("CPU RmsNorm output rows must not overlap");
+    }
+
+    return Status::Ok();
+}
+
 Status ValidateAndBuildRmsNormFp32Args(const KernelContext& ctx,
                                        RmsNormFp32KernelArgs& args) noexcept {
     float eps = 0.0f;
@@ -220,6 +270,24 @@ Status ValidateAndBuildRmsNormFp32Args(const KernelContext& ctx,
             output_row_stride,
             output.stride(rank - 1),
             "RmsNormKernelEntry output offset overflow"));
+
+    AM_RETURN_IF_ERROR(ValidateNonOverlappingOutputRows(
+            row_count.value(),
+            hidden_size,
+            output_row_stride,
+            output.stride(rank - 1)));
+
+    if (const bool shares_base_pointer = input.data() == output.data();
+        shares_base_pointer && !HasIdenticalMapping(input, output)) {
+        return Status::InvalidArgument(
+                "CPU RmsNorm in-place execution requires identical "
+                "input and output shape/strides");
+    }
+
+    if (weight.data() == output.data()) {
+        return Status::InvalidArgument(
+                "CPU RmsNorm output must not alias weight");
+    }
 
     args = RmsNormFp32KernelArgs{
             .input = input.data<float>(),

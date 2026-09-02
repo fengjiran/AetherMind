@@ -1,24 +1,15 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/cpu_info.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/base/tensor_view.h"
-#include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/runtime_binding_context.h"
-#include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
 #include "execution/test_execution_binding_helpers.h"
 
-#include <array>
-#include <cmath>
-#include <cstdint>
 #include <gtest/gtest.h>
-#include <limits>
-#include <string_view>
-#include <vector>
 
 namespace {
 
@@ -232,6 +223,133 @@ TEST(CPUKernelRmsNorm, ScalarSupportsExactInPlace) {
     ExpectRowsNear(original.data(), weight, storage.data(), 4, 4, 4, 1, 1, 4, 1);
 }
 
+TEST(CPUKernelRmsNorm, ScalarExactInPlaceRankOne) {
+    constexpr int64_t io_shape[1] = {33};
+    constexpr int64_t io_strides[1] = {1};
+    constexpr int64_t weight_shape[1] = {33};
+    constexpr int64_t weight_strides[1] = {1};
+    std::array<float, 33> storage{};
+    std::array<float, 33> weight{};
+    for (int64_t index = 0; index < 33; ++index) {
+        storage[static_cast<size_t>(index)] = static_cast<float>(index - 16) * 0.125F;
+        weight[static_cast<size_t>(index)] = 0.75F + static_cast<float>(index % 5) * 0.125F;
+    }
+    const std::array<float, 33> original = storage;
+
+    const Status status = RunScalarRmsNormEntry(cpu::detail::RmsNormKernelParams{
+            .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
+            .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
+    });
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    ExpectRowsNear(original.data(), weight.data(), storage.data(), 1, 33, 0, 1, 1, 0, 1);
+}
+
+TEST(CPUKernelRmsNorm, ScalarExactInPlaceRankTwoContiguous) {
+    constexpr int64_t io_shape[2] = {2, 33};
+    constexpr int64_t io_strides[2] = {33, 1};
+    constexpr int64_t weight_shape[1] = {33};
+    constexpr int64_t weight_strides[1] = {1};
+    std::array<float, 66> storage{};
+    std::array<float, 33> weight{};
+    for (int64_t index = 0; index < 66; ++index) {
+        storage[static_cast<size_t>(index)] = static_cast<float>(index - 32) * 0.0625F;
+    }
+    for (int64_t index = 0; index < 33; ++index) {
+        weight[static_cast<size_t>(index)] = 0.5F + static_cast<float>(index % 6) * 0.125F;
+    }
+    const std::array<float, 66> original = storage;
+
+    const Status status = RunScalarRmsNormEntry(cpu::detail::RmsNormKernelParams{
+            .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
+            .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
+    });
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    ExpectRowsNear(original.data(), weight.data(), storage.data(), 2, 33, 33, 1, 1, 33, 1);
+}
+
+TEST(CPUKernelRmsNorm, ScalarExactInPlaceRankThreeCollapsible) {
+    constexpr int64_t io_shape[3] = {2, 3, 33};
+    constexpr int64_t io_strides[3] = {99, 33, 1};
+    constexpr int64_t weight_shape[1] = {33};
+    constexpr int64_t weight_strides[1] = {1};
+    std::array<float, 198> storage{};
+    std::array<float, 33> weight{};
+    for (int64_t index = 0; index < 198; ++index) {
+        storage[static_cast<size_t>(index)] = static_cast<float>(index - 99) * 0.03125F;
+    }
+    for (int64_t index = 0; index < 33; ++index) {
+        weight[static_cast<size_t>(index)] = 0.25F + static_cast<float>(index % 4) * 0.25F;
+    }
+    const std::array<float, 198> original = storage;
+
+    const Status status = RunScalarRmsNormEntry(cpu::detail::RmsNormKernelParams{
+            .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
+            .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
+    });
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    ExpectRowsNear(original.data(), weight.data(), storage.data(), 6, 33, 33, 1, 1, 33, 1);
+}
+
+TEST(CPUKernelRmsNorm, ScalarExactInPlacePaddedRows) {
+    constexpr int64_t io_shape[3] = {2, 3, 33};
+    constexpr int64_t io_strides[3] = {120, 40, 1};
+    constexpr int64_t weight_shape[1] = {33};
+    constexpr int64_t weight_strides[1] = {1};
+    std::array<float, 233> storage{};
+    std::array<float, 33> weight{};
+    for (int64_t row = 0; row < 6; ++row) {
+        for (int64_t col = 0; col < 33; ++col) {
+            storage[static_cast<size_t>(row * 40 + col)] =
+                    static_cast<float>(row * 33 + col - 99) * 0.0625F;
+        }
+    }
+    for (int64_t index = 0; index < 33; ++index) {
+        weight[static_cast<size_t>(index)] = 0.25F + static_cast<float>(index % 4) * 0.25F;
+    }
+    const std::array<float, 233> original = storage;
+
+    const Status status = RunScalarRmsNormEntry(cpu::detail::RmsNormKernelParams{
+            .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
+            .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
+    });
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    ExpectRowsNear(original.data(), weight.data(), storage.data(), 6, 33, 40, 1, 1, 40, 1);
+}
+
+TEST(CPUKernelRmsNorm, ScalarExactInPlaceStridedColumns) {
+    constexpr int64_t io_shape[2] = {2, 3};
+    constexpr int64_t io_strides[2] = {8, 2};
+    constexpr int64_t weight_shape[1] = {3};
+    constexpr int64_t weight_strides[1] = {1};
+    std::array<float, 13> storage{};
+    constexpr float weight[3] = {1.0F, 0.5F, 1.5F};
+    constexpr int64_t row_offsets[2] = {0, 8};
+    for (int64_t row = 0; row < 2; ++row) {
+        for (int64_t col = 0; col < 3; ++col) {
+            storage[static_cast<size_t>(row_offsets[row] + col * 2)] =
+                    static_cast<float>(row * 3 + col - 2) * 0.25F;
+        }
+    }
+    const std::array<float, 13> original = storage;
+
+    const Status status = RunScalarRmsNormEntry(cpu::detail::RmsNormKernelParams{
+            .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
+            .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
+    });
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    ExpectRowsNear(original.data(), weight, storage.data(), 2, 3, 8, 2, 1, 8, 2);
+}
+
 TEST(CPUKernelRmsNorm, ScalarSupportsPositiveInnerStrides) {
     constexpr int64_t io_shape[2] = {2, 3};
     constexpr int64_t input_strides[2] = {7, 2};
@@ -286,6 +404,39 @@ TEST(CPUKernelRmsNorm, Avx2FmaPreparedKernelMatchesDoubleReferenceWithTail) {
     ExpectRowsNear(input.data(), weight.data(), output.data(), row_count, hidden_size, hidden_size, 1, 1, hidden_size, 1, 1.0e-5F);
 }
 
+TEST(CPUKernelRmsNorm, Avx2FmaExactInPlaceWithTail) {
+    const StatusOr<ResolvedKernel> kernel = PrepareRmsNormKernel();
+    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+    if (!IsAvx2FmaRmsNormKernel(*kernel)) {
+        GTEST_SKIP() << "AVX2+FMA RMSNorm kernel is unavailable";
+    }
+
+    constexpr int64_t row_count = 2;
+    constexpr int64_t hidden_size = 33;
+    constexpr int64_t io_shape[2] = {row_count, hidden_size};
+    constexpr int64_t io_strides[2] = {hidden_size, 1};
+    constexpr int64_t weight_shape[1] = {hidden_size};
+    constexpr int64_t weight_strides[1] = {1};
+    std::array<float, row_count * hidden_size> storage{};
+    std::array<float, hidden_size> weight{};
+    for (int64_t index = 0; index < row_count * hidden_size; ++index) {
+        storage[static_cast<size_t>(index)] = static_cast<float>(index - 31) * 0.03125F;
+    }
+    for (int64_t index = 0; index < hidden_size; ++index) {
+        weight[static_cast<size_t>(index)] = 0.75F + static_cast<float>(index % 7) * 0.125F;
+    }
+    const std::array<float, row_count * hidden_size> original = storage;
+
+    const Status status = RunRmsNormEntry(*kernel, cpu::detail::RmsNormKernelParams{
+                                                           .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
+                                                           .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
+                                                           .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
+                                                   });
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    ExpectRowsNear(original.data(), weight.data(), storage.data(), row_count, hidden_size, hidden_size, 1, 1, hidden_size, 1, 1.0e-5F);
+}
+
 TEST(CPUKernelRmsNormEntry, ZeroLeadingDimensionIsSuccessfulNoOp) {
     constexpr int64_t io_shape[3] = {2, 0, 4};
     constexpr int64_t io_strides[3] = {0, 4, 1};
@@ -297,6 +448,23 @@ TEST(CPUKernelRmsNormEntry, ZeroLeadingDimensionIsSuccessfulNoOp) {
             .input_tensor = TensorView{nullptr, DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{nullptr, DataType::Float32(), io_shape, io_strides},
+    });
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(CPUKernelRmsNormEntry, ZeroRowWithSharedBasePointerStillSucceeds) {
+    constexpr int64_t io_shape[2] = {0, 4};
+    constexpr int64_t io_strides[2] = {4, 1};
+    constexpr int64_t weight_shape[1] = {4};
+    constexpr int64_t weight_strides[1] = {1};
+    constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
+    float storage = 0.0F;
+
+    const Status status = RunScalarRmsNormEntry(cpu::detail::RmsNormKernelParams{
+            .input_tensor = TensorView{&storage, DataType::Float32(), io_shape, io_strides},
+            .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{&storage, DataType::Float32(), io_shape, io_strides},
     });
 
     EXPECT_TRUE(status.ok()) << status.ToString();
@@ -407,6 +575,84 @@ TEST(CPUKernelRmsNormEntry, RejectsMismatchedOutputShape) {
             .input_tensor = TensorView{input, DataType::Float32(), input_shape, input_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(CPUKernelRmsNormEntry, RejectsSameBasePointerWithDifferentStrides) {
+    constexpr int64_t io_shape[2] = {2, 4};
+    constexpr int64_t input_strides[2] = {4, 1};
+    constexpr int64_t output_strides[2] = {5, 1};
+    constexpr int64_t weight_shape[1] = {4};
+    constexpr int64_t weight_strides[1] = {1};
+    std::array<float, 9> storage{};
+    constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
+
+    const Status status = RunScalarRmsNormEntry(cpu::detail::RmsNormKernelParams{
+            .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, input_strides},
+            .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), io_shape, output_strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(CPUKernelRmsNormEntry, RejectsOverlappingOutputRows) {
+    constexpr int64_t io_shape[2] = {2, 4};
+    constexpr int64_t io_strides[2] = {1, 1};
+    constexpr int64_t weight_shape[1] = {4};
+    constexpr int64_t weight_strides[1] = {1};
+    constexpr float input[8] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F, 8.0F};
+    float output[8] = {};
+    constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
+
+    const Status status = RunScalarRmsNormEntry(cpu::detail::RmsNormKernelParams{
+            .input_tensor = TensorView{input, DataType::Float32(), io_shape, io_strides},
+            .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(CPUKernelRmsNormEntry, RejectsStridedColumnsWithOverlappingRows) {
+    constexpr int64_t io_shape[2] = {2, 3};
+    constexpr int64_t io_strides[2] = {4, 2};
+    constexpr int64_t weight_shape[1] = {3};
+    constexpr int64_t weight_strides[1] = {1};
+    constexpr float input[9] = {
+            1.0F, 0.0F, 2.0F, 0.0F, 3.0F, 0.0F, 0.0F, -1.0F, 0.0F};
+    float output[9] = {};
+    constexpr float weight[3] = {1.0F, 1.0F, 1.0F};
+
+    const Status status = RunScalarRmsNormEntry(cpu::detail::RmsNormKernelParams{
+            .input_tensor = TensorView{input, DataType::Float32(), io_shape, io_strides},
+            .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(CPUKernelRmsNormEntry, RejectsOutputAliasingWeight) {
+    constexpr int64_t io_shape[2] = {2, 4};
+    constexpr int64_t io_strides[2] = {4, 1};
+    constexpr int64_t weight_shape[1] = {4};
+    constexpr int64_t weight_strides[1] = {1};
+    std::array<float, 8> input{};
+    std::array<float, 4> weight_storage{};
+    for (int64_t index = 0; index < 8; ++index) {
+        input[static_cast<size_t>(index)] = static_cast<float>(index);
+    }
+    for (int64_t index = 0; index < 4; ++index) {
+        weight_storage[static_cast<size_t>(index)] = 1.0F;
+    }
+
+    const Status status = RunScalarRmsNormEntry(cpu::detail::RmsNormKernelParams{
+            .input_tensor = TensorView{input.data(), DataType::Float32(), io_shape, io_strides},
+            .weight_tensor = TensorView{weight_storage.data(), DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{weight_storage.data(), DataType::Float32(), io_shape, io_strides},
     });
 
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();

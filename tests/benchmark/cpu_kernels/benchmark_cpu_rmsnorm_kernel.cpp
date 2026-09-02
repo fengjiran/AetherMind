@@ -39,8 +39,8 @@ StatusOr<CpuFeaturePolicy> MakeScalarCpuFeaturePolicy() {
 }
 
 bool IsAvx2FmaRmsNormKernel(const ResolvedKernel& kernel) noexcept {
-    return kernel.debug_name != nullptr &&
-           std::string_view{kernel.debug_name} ==
+    return kernel.name != nullptr &&
+           std::string_view{kernel.name} ==
                    std::string_view{"cpu::rmsnorm_f32_avx2_fma"};
 }
 
@@ -110,7 +110,7 @@ void BenchmarkRmsNormFp32(benchmark::State& state, bool require_avx2_fma) {
             .kernel_params = &params,
             .attrs = resolved->attrs,
     };
-    state.SetLabel(resolved->debug_name);
+    state.SetLabel(resolved->name);
 
     for (auto _: state) {
         const Status status = resolved->fn(context);

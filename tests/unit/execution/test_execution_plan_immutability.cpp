@@ -139,7 +139,7 @@ public:
                 .op_type = op_type,
                 .fn = &ImmutableKernel,
                 .attrs = {},
-                .debug_name = "test::immutable_kernel",
+                .name = "test::immutable_kernel",
                 .expected_packing_recipe = kTestPackedRecipe,
         };
     }
@@ -178,7 +178,7 @@ public:
                 .op_type = op_type,
                 .fn = &ImmutableKernel,
                 .attrs = {},
-                .debug_name = "test::immutable_workspace_kernel",
+                .name = "test::immutable_workspace_kernel",
                 .workspace_requirement = workspace_requirement,
         };
     }

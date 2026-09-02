@@ -126,7 +126,7 @@ public:
                 .op_type = op_type,
                 .fn = &PackedTestKernel,
                 .attrs = {},
-                .debug_name = "test::packed_kernel",
+                .name = "test::packed_kernel",
                 .expected_packing_recipe = kTestPackedRecipe,
         };
     }
@@ -173,7 +173,7 @@ public:
                         .op_type = op_type,
                         .fn = &WorkspaceRecordingKernel,
                         .attrs = {},
-                        .debug_name = "test::embedding_workspace_kernel",
+                        .name = "test::embedding_workspace_kernel",
                         .workspace_requirement = {
                                 .bytes = 24,
                                 .alignment = 16,
@@ -185,7 +185,7 @@ public:
                         .op_type = op_type,
                         .fn = &WorkspaceRecordingKernel,
                         .attrs = {},
-                        .debug_name = "test::rmsnorm_workspace_kernel",
+                        .name = "test::rmsnorm_workspace_kernel",
                         .workspace_requirement = {
                                 .bytes = 40,
                                 .alignment = 64,
@@ -220,7 +220,7 @@ public:
         if (op_type != OpType::kSoftmax) {
             return Status::NotFound("SoftmaxTestBackend only resolves kSoftmax");
         }
-        return ResolvedKernel{.op_type = op_type, .fn = &SoftmaxTestKernel, .attrs = {}, .debug_name = "test::softmax_kernel"};
+        return ResolvedKernel{.op_type = op_type, .fn = &SoftmaxTestKernel, .attrs = {}, .name = "test::softmax_kernel"};
     }
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override { return nullptr; }
 };
@@ -304,7 +304,7 @@ TEST(ExecutionPlanBuilder, PrepareKernelForNodeBuildsTypedMetadata) {
     float epsilon = 0.0F;
     std::memcpy(&epsilon, resolved->attrs.data(), sizeof(epsilon));
     EXPECT_FLOAT_EQ(epsilon, 42.0F);
-    EXPECT_STREQ(resolved->debug_name, "cpu::rmsnorm_f32_scalar");
+    EXPECT_STREQ(resolved->name, "cpu::rmsnorm_f32_scalar");
 }
 
 TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
@@ -348,7 +348,7 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
     EXPECT_EQ(step.workspace_requirement.alignment, 64U);
     EXPECT_EQ(step.workspace_requirement.offset, 0U);
     EXPECT_FLOAT_EQ(stored_epsilon, 11.0F);
-    EXPECT_STREQ(step_kernel.debug_name, "cpu::rmsnorm_f32_scalar");
+    EXPECT_STREQ(step_kernel.name, "cpu::rmsnorm_f32_scalar");
 }
 
 TEST(ExecutionPlanBuilder, BuildFromRawNodesValidatesInferredMetadata) {

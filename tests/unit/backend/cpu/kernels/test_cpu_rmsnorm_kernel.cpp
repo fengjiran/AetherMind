@@ -88,8 +88,8 @@ Status RunScalarRmsNormEntry(const cpu::detail::RmsNormKernelParams& params) noe
 }
 
 bool IsAvx2FmaRmsNormKernel(const ResolvedKernel& kernel) noexcept {
-    return kernel.debug_name != nullptr &&
-           std::string_view{kernel.debug_name} == std::string_view{"cpu::rmsnorm_f32_avx2_fma"};
+    return kernel.name != nullptr &&
+           std::string_view{kernel.name} == std::string_view{"cpu::rmsnorm_f32_avx2_fma"};
 }
 
 void ExpectRowsNear(const float* input,

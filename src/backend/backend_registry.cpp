@@ -25,7 +25,7 @@ StatusOr<Backend*> BackendRegistry::GetBackend(DeviceType type) noexcept {
     if (factory_it == factories_.end()) {
         return Status::NotFound(
                 std::format("No backend factory registered for device type: {}",
-                            DeviceType2Str(type).c_str()));
+                            DeviceType2Str(type)));
     }
 
     auto backend_or = factory_it->second->Create();
@@ -36,7 +36,7 @@ StatusOr<Backend*> BackendRegistry::GetBackend(DeviceType type) noexcept {
     auto backend = std::move(backend_or).value();
     if (!backend) {
         return Status::Internal("Failed to create backend for device type: " +
-                                std::string(DeviceType2Str(type).c_str()));
+                                std::string(DeviceType2Str(type)));
     }
 
     Backend* backend_ptr = backend.get();

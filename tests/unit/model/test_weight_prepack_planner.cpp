@@ -294,7 +294,7 @@ public:
                 .op_type = op_type,
                 .fn = &PlannerPackedKernel,
                 .attrs = {},
-                .debug_name = "test::planner_packed_kernel",
+                .name = "test::planner_packed_kernel",
                 .expected_packing_recipe = CpuWeightPrepacker::RecipeFor(selector),
         };
     }

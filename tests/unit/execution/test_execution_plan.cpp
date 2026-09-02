@@ -129,7 +129,7 @@ TEST(ExecutionPlan, StoresResolvedKernelByValue) {
     ResolvedKernel kernel{.op_type = OpType::kSoftmax,
                           .fn = &FakeKernel,
                           .attrs = {std::byte{7}},
-                          .debug_name = "test::fake_kernel"};
+                          .name = "test::fake_kernel"};
     const auto plan = MakeSingleSoftmaxPlan(kernel);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     EXPECT_EQ(plan->steps()[0].kernel.fn, &FakeKernel);

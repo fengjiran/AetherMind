@@ -73,7 +73,7 @@ public:
                 .op_type = op_type,
                 .fn = &CountingKernel,
                 .attrs = {},
-                .debug_name = "test::counting_kernel",
+                .name = "test::counting_kernel",
         };
     }
 

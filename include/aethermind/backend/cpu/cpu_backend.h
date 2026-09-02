@@ -22,6 +22,9 @@ namespace aethermind {
 /// priority, then freezes the selected kernel into a `ResolvedKernel`.
 class CpuBackend final : public Backend {
 public:
+    /// @brief Constructs a backend with the default feature policy.
+    CpuBackend();
+
     /// @brief Constructs a backend from an already-detected capability snapshot.
     ///
     /// @param capabilities Immutable snapshot to use for kernel selection.
@@ -37,13 +40,12 @@ public:
     /// @param policy Feature policy that may only restrict usable features.
     explicit CpuBackend(const CpuFeaturePolicy& policy);
 
-    /// @brief Constructs a backend with the default feature policy.
-    CpuBackend();
-
     /// @brief Returns the device type handled by this backend.
     ///
     /// @return `DeviceType::kCPU`.
-    AM_NODISCARD DeviceType device_type() const noexcept override;
+    AM_NODISCARD DeviceType device_type() const noexcept override {
+        return DeviceType::kCPU;
+    }
 
     /// @brief Resolves a CPU kernel for the given operator and selector.
     ///
@@ -64,12 +66,16 @@ public:
     /// @brief Returns the global kernel registry for debug inspection.
     ///
     /// @return Non-null pointer to the global `KernelRegistry`.
-    AM_NODISCARD const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override;
+    AM_NODISCARD const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override {
+        return &KernelRegistry::Global();
+    }
 
     /// @brief Returns the capability snapshot used for kernel selection.
     ///
     /// @return Reference to the immutable `CpuCapabilities` held by this backend.
-    AM_NODISCARD const CpuCapabilities& cpu_capabilities() const noexcept;
+    AM_NODISCARD const CpuCapabilities& cpu_capabilities() const noexcept {
+        return capabilities_;
+    }
 
 private:
     const CpuCapabilities capabilities_;
@@ -86,12 +92,15 @@ public:
     ///
     /// @param policy Feature policy forwarded to `DetectCpuCapabilities` on
     ///        each `Create` call. An empty policy exposes the full usable set.
-    explicit CpuBackendFactory(const CpuFeaturePolicy& policy = {});
+    explicit CpuBackendFactory(const CpuFeaturePolicy& policy = {})
+        : policy_(policy) {}
 
     /// @brief Returns the device type handled by this factory.
     ///
     /// @return `DeviceType::kCPU`.
-    AM_NODISCARD DeviceType device_type() const noexcept override;
+    AM_NODISCARD DeviceType device_type() const noexcept override {
+        return DeviceType::kCPU;
+    }
 
     /// @brief Creates a CPU backend instance.
     ///

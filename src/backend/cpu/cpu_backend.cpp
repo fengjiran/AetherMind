@@ -1,7 +1,6 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/cpu_info.h"
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
-
 #include "utils/logging.h"
 
 namespace aethermind {
@@ -30,14 +29,16 @@ StatusOr<const KernelDescriptor*> ResolveEligibleDescriptor(
     }
 
     const KernelDescriptor* best = nullptr;
-    for (const KernelDescriptor* descriptor: *candidates) {
+    for (const auto* descriptor: *candidates) {
         if (!effective_features.ContainsAll(descriptor->cpu_requirements)) {
             continue;
         }
+
         if (best == nullptr || descriptor->priority > best->priority) {
             best = descriptor;
         }
     }
+
     if (best == nullptr) {
         return Status::NotFound(
                 "No eligible CPU kernel registered for op_type=" +
@@ -49,8 +50,7 @@ StatusOr<const KernelDescriptor*> ResolveEligibleDescriptor(
 
 } // namespace
 
-CpuBackend::CpuBackend(const CpuCapabilities& capabilities)
-    : capabilities_(capabilities) {
+CpuBackend::CpuBackend(const CpuCapabilities& capabilities) : capabilities_(capabilities) {
     const Status status = KernelRegistry::Global().Freeze();
     AM_CHECK(status.ok(), "Failed to freeze CPU kernel registry: {}", status.ToString().c_str());
 }
@@ -60,14 +60,9 @@ CpuBackend::CpuBackend() : CpuBackend(CpuFeaturePolicy{}) {}
 CpuBackend::CpuBackend(const CpuFeaturePolicy& policy)
     : CpuBackend(DetectCapabilitiesOrDie(policy)) {}
 
-DeviceType CpuBackend::device_type() const noexcept {
-    return DeviceType::kCPU;
-}
-
-StatusOr<ResolvedKernel> CpuBackend::PrepareKernel(
-        OpType op_type,
-        const KernelSelector& selector,
-        const OpParams& params) const {
+StatusOr<ResolvedKernel> CpuBackend::PrepareKernel(OpType op_type,
+                                                   const KernelSelector& selector,
+                                                   const OpParams& params) const {
     if (selector.device_type != DeviceType::kCPU) {
         return Status::InvalidArgument(
                 "CpuBackend cannot prepare non-CPU kernel selector");
@@ -84,11 +79,12 @@ StatusOr<ResolvedKernel> CpuBackend::PrepareKernel(
             .op_type = op_type,
             .fn = (*descriptor)->kernel_func,
             .attrs = {},
-            .debug_name = (*descriptor)->name.c_str(),
+            .name = (*descriptor)->name.c_str(),
             .params_builder = (*descriptor)->params_builder,
             .params_size = (*descriptor)->params_size,
             .workspace_requirement = {},
     };
+
     if (selector.weight_format == WeightFormat::kPacked) {
         // The kernel consumes the same packing layout the prepacker produces;
         // both derive from CpuWeightPrepacker so pack and consume stay in sync.
@@ -99,21 +95,6 @@ StatusOr<ResolvedKernel> CpuBackend::PrepareKernel(
         AM_RETURN_IF_ERROR((*descriptor)->metadata_builder(params, resolved.attrs));
     }
     return resolved;
-}
-
-const KernelRegistry* CpuBackend::TryGetKernelRegistryForDebug() const noexcept {
-    return &KernelRegistry::Global();
-}
-
-const CpuCapabilities& CpuBackend::cpu_capabilities() const noexcept {
-    return capabilities_;
-}
-
-CpuBackendFactory::CpuBackendFactory(const CpuFeaturePolicy& policy)
-    : policy_(policy) {}
-
-DeviceType CpuBackendFactory::device_type() const noexcept {
-    return DeviceType::kCPU;
 }
 
 StatusOr<std::unique_ptr<Backend>> CpuBackendFactory::Create() const {

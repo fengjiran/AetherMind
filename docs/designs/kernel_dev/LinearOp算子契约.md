@@ -214,10 +214,10 @@ Phase 1 correctness 以 double reference 为基准。Linear 的累加误差随 `
 
 执行期参数绑定：
 
-- `ExecutionPlanBuilder::Build` 产生 `LinearOp` 并完成 `Prepare`（kernel 解析，不写 attrs），但不绑定 tensor view。
-- 调用方通过 `RuntimeBindingContext::SetStepTensorBinding` 注册 per-step 的输入/输出 tensor views。
-- `LayerRunner::RunStep` 检查 `OpType::kLinear`，从 `RuntimeBindingContext` 取出 tensor binding，构造 `CpuLinearParams` 并写入 `KernelContext.kernel_params`。
-- `CpuLinearParams` 的生命周期由 `RunStep` 栈帧保证，覆盖同步 `Operator::Run` 的完整调用。
+- `ExecutionPlanBuilder::Build` 解析并冻结 kernel，但不绑定 concrete TensorView。
+- 调用方以 `ExternalTensorBindings` 提供 model input、weight/constant 和 writable output；`PrepareExecutionBindings` 生成 per-value/per-step TensorViews，并在 cold path 调用 `params_builder`。
+- `ExecutionContext::Create` 按值持有 `PreparedExecutionBindings`；`LayerRunner::RunStep` 只读取已经准备的 params 写入 `KernelContext.kernel_params`，不再按 step 构造 `CpuLinearParams`。
+- 因此未来 Linear 的 params 必须由 `PreparedExecutionBindings` 的 arena 持有，且 external data pointer、shape、stride、dtype 或 alias 变化时必须重新 prepare。
 
 `CpuLinearKernelEntry` 负责：
 

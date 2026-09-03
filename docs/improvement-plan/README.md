@@ -9,8 +9,8 @@
 
 | 编号 | 专题 | 状态 | 最后更新 |
 |---|---|---|---|
-| （待建立） | 存量计划类文档（phase1_*、backend_phase1_*、路线图等）迁移完成后在此登记 | — | — |
+| 01 | [InferenceSession / Generate 前置闭环计划](01-inference-session-generate-readiness.md) | Draft | 2026-09-03 |
 
 ## 推荐阅读路径
 
-- 文档系统落地后，按专题编号顺序阅读。
+- [01-inference-session-generate-readiness.md](01-inference-session-generate-readiness.md)：从 execution state/resource contract、ExecutableModel、reference kernel 到 public Generate 的实施门禁。

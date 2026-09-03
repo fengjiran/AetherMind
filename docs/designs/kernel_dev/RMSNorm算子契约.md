@@ -106,26 +106,26 @@ CPU entry 将 `input.shape[0 : rank - 1]` 的乘积转换为 `row_count`，并�
 生产路径为：
 
 ```text
-BuildExecutionBindings（BindingTable 构建，cold path）
-    -> step.kernel.params_builder（每 step 每 BindingTable 恰好一次）
+PrepareExecutionBindings（PreparedExecutionBindings 构建，cold path）
+    -> step.kernel.params_builder（每 step 每 PreparedExecutionBindings 恰好一次）
     -> BuildRmsNormFp32ScalarArgs / BuildRmsNormFp32Avx2FmaArgs
     -> ValidateAndBuildCommonRmsNormFp32Args
-    -> BindingTable 持有 compute-ready RmsNormFp32KernelArgs
+    -> PreparedExecutionBindings 持有 compute-ready RmsNormFp32KernelArgs
 
 每次 Execute（hot path）
     -> RmsNormKernelEntryFp32Scalar / RmsNormKernelEntryFp32Avx2Fma
     -> RunRmsNormFp32Scalar / RunRmsNormFp32Avx2Fma
 ```
 
-- prepared params（`RmsNormFp32KernelArgs`）由 `BindingTable` 的 params arena 持有，生命周期等于 BindingTable；BindingTable 内存续期内 data pointer / shape / stride / dtype 不变，任何变化都必须重建 BindingTable。
+- prepared params（`RmsNormFp32KernelArgs`）由 `PreparedExecutionBindings` 的 params arena 持有，生命周期等于 PreparedExecutionBindings；PreparedExecutionBindings 内存续期内 data pointer / shape / stride / dtype 不变，任何变化都必须重建 PreparedExecutionBindings。
 
-- `ValidateAndBuildCommonRmsNormFp32Args` 是 FP32 的唯一 binding-time 验证路径，负责 epsilon、dtype、rank、shape、row count、layout、pointer 和 stride 检查。它在 `BuildExecutionBindings` 阶段执行，非法 binding 在该阶段返回错误，而不是在 Execute 时失败。
+- `ValidateAndBuildCommonRmsNormFp32Args` 是 FP32 的唯一 binding-time 验证路径，负责 epsilon、dtype、rank、shape、row count、layout、pointer 和 stride 检查。它在 `PrepareExecutionBindings` 阶段执行，非法 binding 在该阶段返回错误，而不是在 Execute 时失败。
 
 - AVX2+FMA 的 unit inner-stride 要求在它的 `KernelParamsBuilder` 中检查（zero-row 豁免）。
 
 - entry 是 thin wrapper：只做一次 pointer 转换并调用 compute，不再解析 attrs、读取 TensorView 或重复 shape/stride/alias 校验。
 
-- `RmsNormFp32KernelArgs` 是只供已验证 compute primitive 使用的内部类型；compute 不重复验证，也不拥有内存。其 alignment 不超过 `max_align_t` 且 trivially destructible，满足 BindingTable params arena 的类型约束。
+- `RmsNormFp32KernelArgs` 是只供已验证 compute primitive 使用的内部类型；compute 不重复验证，也不拥有内存。其 alignment 不超过 `max_align_t` 且 trivially destructible，满足 PreparedExecutionBindings params arena 的类型约束。
 
 - 不提供 public `LaunchRmsNorm` / `RmsNormArgs` SDK。benchmark 和测试均通过 prepared `ResolvedKernel` 调用 production entry。
 
@@ -153,7 +153,7 @@ BuildExecutionBindings（BindingTable 构建，cold path）
 
 - inference：rank-0 拒绝，rank-1 及 higher-rank `[..., H]` 保持语义，zero leading dimension 成功，hidden / weight / epsilon 约束正确。
 
-- binding / entry：rank-1、rank-2、可折叠 rank-3 / rank-4、zero-row、不可折叠 layout、row-count / address-offset / row-span overflow、scalar strided layout、AVX2 inner-stride 拒绝、output row overlap 拒绝、same-pointer 异 mapping 拒绝、output/weight alias 拒绝以及 exact in-place（scalar 与 AVX2+FMA 路径）。上述非法 binding 现在都在 `BuildExecutionBindings` / params builder 阶段拒绝；binding 成功后 entry 可重复执行。
+- binding / entry：rank-1、rank-2、可折叠 rank-3 / rank-4、zero-row、不可折叠 layout、row-count / address-offset / row-span overflow、scalar strided layout、AVX2 inner-stride 拒绝、output row overlap 拒绝、same-pointer 异 mapping 拒绝、output/weight alias 拒绝以及 exact in-place（scalar 与 AVX2+FMA 路径）。上述非法 binding 现在都在 `PrepareExecutionBindings` / params builder 阶段拒绝；binding 成功后 entry 可重复执行。
 
 - correctness：使用 double reference 覆盖 SIMD tail、非 2 的幂 / 质数 hidden 和常见 Llama hidden size。
 

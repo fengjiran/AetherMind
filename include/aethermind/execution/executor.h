@@ -5,12 +5,12 @@
 /// @brief Synchronous entry point for running an ExecutionPlan.
 
 #include "aethermind/base/status.h"
+#include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan.h"
-#include "aethermind/execution/runtime_binding_context.h"
 
 namespace aethermind {
 
-/// @brief Runs an ExecutionPlan against a RuntimeBindingContext.
+/// @brief Runs an ExecutionPlan against an ExecutionContext.
 ///
 /// Execution is synchronous and single-threaded; the executor delegates to
 /// LayerRunner.
@@ -19,11 +19,11 @@ public:
     /// @brief Executes every step of the plan in order.
     ///
     /// @param plan Plan to execute.
-    /// @param bindings Per-step tensor, workspace, and KV-cache bindings that
-    ///                 must remain valid for the duration of the call.
+    /// @param context Prepared tensor bindings and borrowed execution
+    ///                resources that must remain valid for the call.
     /// @return Status::Ok() on success, or the first failing step's error.
     static Status Execute(const ExecutionPlan& plan,
-                          RuntimeBindingContext& bindings) noexcept;
+                          ExecutionContext& context) noexcept;
 };
 
 } // namespace aethermind

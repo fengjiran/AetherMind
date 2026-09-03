@@ -7,11 +7,11 @@ namespace aethermind {
 namespace {
 
 KernelContext BuildKernelContext(const ExecutionStep& step,
-                                 const RuntimeBindingContext& bindings) noexcept {
+                                 const ExecutionContext& context) noexcept {
     return KernelContext{
             .device_type = step.selector.device_type,
             .stream = nullptr,
-            .workspace = bindings.GetWorkspaceArena(),
+            .workspace = context.workspace_arena(),
             .packed_weights = step.packed_weights
                                       ? step.packed_weights->storage().data()
                                       : nullptr,
@@ -23,22 +23,22 @@ KernelContext BuildKernelContext(const ExecutionStep& step,
 } // namespace
 
 Status LayerRunner::Run(const ExecutionPlan& plan,
-                        const RuntimeBindingContext& bindings) noexcept {
+                        const ExecutionContext& context) noexcept {
     const auto& steps = plan.steps();
     const auto& alias_plan = plan.state_alias_plan();
-    const BindingTable* const binding_table = bindings.binding_table();
-    if (binding_table == nullptr) {
+    const PreparedExecutionBindings* const prepared_bindings = context.prepared_bindings();
+    if (prepared_bindings == nullptr) {
         return Status::FailedPrecondition(
-                "RuntimeBindingContext requires a BindingTable before execution");
+                "ExecutionContext requires a PreparedExecutionBindings before execution");
     }
 
-    if (!binding_table->IsCompatible(plan)) {
+    if (!prepared_bindings->IsCompatible(plan)) {
         return Status::InvalidArgument(
-                "RuntimeBindingContext BindingTable is not compatible with ExecutionPlan");
+                "ExecutionContext PreparedExecutionBindings is not compatible with ExecutionPlan");
     }
 
     for (size_t i = 0; i < steps.size(); ++i) {
-        if (const auto status = RunStep(i, steps[i], bindings, *binding_table,
+        if (const auto status = RunStep(i, steps[i], context, *prepared_bindings,
                                         alias_plan, plan.values());
             !status.ok()) {
             return status;
@@ -49,35 +49,35 @@ Status LayerRunner::Run(const ExecutionPlan& plan,
 
 Status LayerRunner::RunStep(size_t step_index,
                             const ExecutionStep& step,
-                            const RuntimeBindingContext& bindings,
-                            const BindingTable& binding_table,
+                            const ExecutionContext& context,
+                            const PreparedExecutionBindings& prepared_bindings,
                             const StateAliasPlan& alias_plan,
                             const std::vector<ExecutionValueDesc>& values) noexcept {
     AM_RETURN_IF_ERROR(ValidateStateAliasesForStep(
-            step_index, step, alias_plan, bindings, values));
+            step_index, step, alias_plan, context, values));
 
-    const auto workspace_binding = bindings.BindWorkspace(step.workspace_requirement);
+    const auto workspace_binding = context.BindWorkspace(step.workspace_requirement);
     if (!workspace_binding.ok()) {
         return workspace_binding.status();
     }
 
-    KernelContext ctx = BuildKernelContext(step, bindings);
+    KernelContext ctx = BuildKernelContext(step, context);
     ctx.workspace_binding = workspace_binding.value();
 
-    const StepTensorBinding& tensor_binding = binding_table.step(step_index);
+    const StepTensorBinding& tensor_binding = prepared_bindings.step(step_index);
     if (tensor_binding.inputs.size() != step.kernel_input_ports.size() ||
         tensor_binding.outputs.size() != step.kernel_output_ports.size()) {
         return Status::InvalidArgument("Runtime tensor binding arity does not match ExecutionStep ports");
     }
     return InvokePreparedKernel(
-            step.kernel, ctx, binding_table.kernel_params(step_index));
+            step.kernel, ctx, prepared_bindings.kernel_params(step_index));
 }
 
 Status LayerRunner::ValidateStateAliasesForStep(
         size_t step_index,
         const ExecutionStep& step,
         const StateAliasPlan& alias_plan,
-        const RuntimeBindingContext& bindings,
+        const ExecutionContext& context,
         const std::vector<ExecutionValueDesc>& values) noexcept {
     const auto aliases = alias_plan.ForStep(step_index);
     if (aliases.empty()) {
@@ -87,7 +87,7 @@ Status LayerRunner::ValidateStateAliasesForStep(
     // Phase 1: all state aliases are KV cache updates. The KVCacheView is the
     // shared physical storage that the operator reads and writes in place, so
     // its presence is the runtime invariant for must-alias state updates.
-    if (!bindings.HasKVCacheView()) {
+    if (!context.HasKVCacheView()) {
         return Status::InvalidArgument(
                 "State alias requires a valid KVCacheView");
     }
@@ -95,7 +95,7 @@ Status LayerRunner::ValidateStateAliasesForStep(
     // Cross-check each alias against the bound view: the update is must-alias,
     // so input/output specs must agree, and the static geometry (dtype,
     // kv_heads, head_dim) must match the KV cache backing it.
-    const KVCacheView& view = bindings.kv_cache_view();
+    const KVCacheView& view = context.kv_cache_view();
     for (const ResolvedStateAlias& alias: aliases) {
         const TensorSpec& input_spec = values[step.inputs[alias.input_port].index].spec;
         const TensorSpec& output_spec = values[step.outputs[alias.output_port].index].spec;

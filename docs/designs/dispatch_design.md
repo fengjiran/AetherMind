@@ -75,7 +75,7 @@ Executor direct call
 
 * 运行期 boxed fallback
 
-* 把整个 `RuntimeContext` 宽对象直接下放给 kernel
+* 把整个 `Runtime` 宽对象直接下放给 kernel
 
 # 3. 核心抽象
 
@@ -212,7 +212,7 @@ Phase 1 建议统一成一个 C 风格函数指针，避免模板和虚函数进
 
 但是：
 
-> **不要把整个** **`RuntimeContext*`** **直接下放给 kernel。**
+> **不要把整个** **`Runtime*`** **直接下放给 kernel。**
 
 当前 Backend 设计已经要求 kernel 使用窄执行上下文，因此这里建议使用一个最小 `KernelContext`，只携带单次调用所需的只读能力与窄资源。
 
@@ -241,7 +241,7 @@ using KernelFn = Status (*)(KernelContext& ctx,
 
 * 返回 `Status`，不抛异常；
 
-* `KernelContext` 只保留窄资源，不允许把 `RuntimeContext`、registry、builder 等宽对象直接传给 kernel。
+* `KernelContext` 只保留窄资源，不允许把 `Runtime`、registry、builder 等宽对象直接传给 kernel。
 
 另外建议进一步收紧约束：
 
@@ -1033,7 +1033,7 @@ Executor direct call + 旧体系冻结
 
 * ~~不要把全局 singleton registry 引回来~~ **（已偏离：实际采用了全局 singleton，详见 7.1 节；但通过 device 硬匹配保证隔离，未出现预期风险）**
 
-* 不要把 `RuntimeContext*` 直接传给 kernel — `KernelFunc` 保持窄签名
+* 不要把 `Runtime*` 直接传给 kernel — `KernelFunc` 保持窄签名
 
 * 不要让 executor 在迁移期继续做 hash/string lookup — Executor 只消费冻结 kernel
 

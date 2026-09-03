@@ -143,7 +143,7 @@ Reference / Optimized 的差异应通过 init-time resolve 的函数指针表体
 
 `ExecutorContext` 表示执行期不变的只读上下文，典型内容包括：
 
-- `RuntimeContext* runtime`
+- `Runtime* runtime`
 - `LoadedModel* model`
 - `DispatchTable* dispatch`
 - `ThreadingPolicy* threading`

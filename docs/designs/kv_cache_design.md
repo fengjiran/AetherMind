@@ -198,7 +198,7 @@ Phase 1 中的统一入口，职责包括：
 class KVCacheManager {
 public:
     Status Init(const LoadedModel& model,
-                const RuntimeContext& runtime,
+                const Runtime& runtime,
                 std::size_t max_tokens,
                 DataType kv_dtype,
                 std::size_t alignment = 64);

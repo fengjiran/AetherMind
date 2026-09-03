@@ -27,7 +27,7 @@
 
 ### 1.1 文档目的
 
-本文档定义 AetherMind 在 `RuntimeContext`、`AllocatorRegistry`、`Buffer`、`Tensor` 之后的 Backend 层设计，用于冻结以下内容：
+本文档定义 AetherMind 在 `Runtime`、`AllocatorRegistry`、`Buffer`、`Tensor` 之后的 Backend 层设计，用于冻结以下内容：
 
 - Backend 层在整体架构中的职责边界
 - Runtime 与 Backend 的所有权关系
@@ -69,7 +69,7 @@
 ### 3.1 设计目标
 
 #### 3.1.1 Runtime 持有，显式装配
-Backend 层必须由 `RuntimeBuilder` 显式装配，并由 `RuntimeContext` 持有，禁止退回到全局注册表模式。
+Backend 层必须由 `RuntimeBuilder` 显式装配，并由 `Runtime` 持有 `BackendRegistry`。当前 `KernelRegistry::Global()` 是冻结后的 process-wide descriptor catalog；它只在 backend 的 resolve 路径使用，不能被混同为 Runtime 的资源 owner 或进入执行热路径。
 
 #### 3.1.2 CPU First，稳态零分配
 Phase 1 优先支持 CPU Backend。Workspace 接口必须支持预分配切片借用语义，以兼容 decode 阶段稳态零分配约束。
@@ -94,9 +94,9 @@ Kernel 的最终执行形态必须是 plan-build time resolve 后的函数指针
 ### 4.1 关键关系
 
 1. `RuntimeBuilder` 注册 `BackendFactory`。
-2. `RuntimeContext` 持有 `BackendRegistry`。
+2. `Runtime` 持有 `BackendRegistry`。
 3. `BackendRegistry` 延迟创建并缓存各 `DeviceType` 的 `Backend` 实例。
-4. `ExecutionPlanBuilder`（或等价初始化组件）基于 `RuntimeContext` 查询 `Backend`，完成 kernel resolve 与 packed params 绑定。
+4. `ExecutionPlanBuilder`（或等价初始化组件）基于 `Runtime` 查询 `Backend`，完成 kernel resolve 与 packed params 绑定。
 5. `Executor` 只消费已经冻结的 `ExecutionPlan`，不在热路径重新解析 kernel。
 6. `Backend` 通过受控服务视图使用 allocator / workspace 等运行时服务。
 
@@ -108,19 +108,21 @@ Kernel 的最终执行形态必须是 plan-build time resolve 后的函数指针
 
 | 对象                    | 持有者                             | 生命周期                 | 说明                                                      |
 | ----------------------- | ---------------------------------- | ------------------------ | --------------------------------------------------------- |
-| `BackendFactory`        | `BackendRegistry`                  | 随 `RuntimeContext` 销毁 | 按 `DeviceType` 注册                                      |
-| `Backend`               | `BackendRegistry`                  | 随 `RuntimeContext` 销毁 | 延迟实例化并缓存，表示设备族执行能力                      |
-| `ExecutionPlan`         | 调用方/模型管理侧                  | 模型级、只读             | 保存解析后的 `ExecutionStep` 与静态执行元数据                    |
-| `PackedWeights`         | `PackedWeightStore`                | 与模型级 artifact 一致   | 由 Backend 定义格式并构建，但不由 Backend 持有            |
-| `RuntimeBindingContext` | `Session` / `Request`              | 会话级                   | 保存 workspace base、KV views、临时输出缓冲等动态绑定信息 |
-| `KernelContext`        | 执行栈帧                           | 短生命周期               | 单次调用的窄执行上下文                                    |
+| `BackendFactory`        | `BackendRegistry`                  | 随 `Runtime` 销毁 | 按 `DeviceType` 注册                                      |
+| `Backend`               | `BackendRegistry`                  | 随 `Runtime` 销毁 | 延迟实例化并缓存，表示设备族执行能力                      |
+| `ExecutionPlan`                 | 调用方/模型管理侧       | 模型级、只读       | 保存解析后的 `ExecutionStep` 与静态执行元数据；其 resolve Runtime/backend 必须仍存活 |
+| `PackedWeights`                 | `PackedWeightStore`     | 与模型级 artifact 一致 | 由 Backend 定义格式并构建，但不由 Backend 持有 |
+| `PreparedExecutionBindings`     | `ExecutionContext`      | plan specialization | 拥有 activation、metadata 与 prepared params；借用 external tensor backing |
+| `ExecutionContext`              | `Session` / `Request`  | 会话级             | 按值拥有 prepared bindings，借用 workspace arena，保存 KVCacheView；不保存临时输出 buffer 或 sequence state |
+| `KernelContext`                 | 执行栈帧                | 短生命周期          | 单次调用的窄执行上下文 |
 
 #### 5.1.1 所有权约束
 
 - `Backend` 表示设备族执行能力，不拥有模型权重数据本身。
 - `PackedWeights` 必须由 `PackedWeightStore` 持有，禁止写成 “`Backend` 或 store 二选一”。
 - `ExecutionPlan` 是只读的静态执行计划，不承载 request/session 相关的动态地址绑定。
-- 与某次运行相关的动态地址、KV 视图、workspace base 等信息，统一放入 `RuntimeBindingContext`。
+- `PrepareExecutionBindings` 在冷路径将 external TensorViews specialize 为 `PreparedExecutionBindings`；其 external data backing 必须比 bindings 活得久。
+- `ExecutionContext::Create` 按值接收 prepared bindings、借用 workspace arena 并保存 KV view。`Clear()` 只清除自身 owned/borrowed handles，不 reset arena 或 release KV reservation。
 - Phase 1 默认 `ExecutionPlan` 为模型级不可变计划；若未来出现 request-specific specialization，也只能在其上派生轻量 binding 或 session 级附加对象，不得回写主计划。
 
 ---
@@ -131,7 +133,7 @@ Kernel 的最终执行形态必须是 plan-build time resolve 后的函数指针
 
 ### 6.1 注册期 (Registration Time)
 - Backend 在初始化时通过内部 `KernelRegistry` 安装本设备族支持的 kernels：各内核 TU 通过 `AM_REGISTER_KERNEL` 静态注册 `KernelDescriptor`，首次 `CpuBackend` 实例化时冻结注册表（`Freeze()`）并构建按 `OpType` 分桶的索引。
-- `BackendRegistry` 由 `RuntimeContext` 持有（无全局单例）；`KernelRegistry` 是 backend 模块内部的 kernel 描述符注册设施。
+- `BackendRegistry` 由 `Runtime` 持有（无全局单例）；`KernelRegistry::Global()` 是 backend 模块内部、freeze 后只读的 process-wide descriptor catalog。
 
 ### 6.2 计划构建期 (Plan-Build Time)
 
@@ -145,7 +147,7 @@ Kernel 的最终执行形态必须是 plan-build time resolve 后的函数指针
 
 - `Executor` 仅遍历 `ExecutionPlan` 中的 `ExecutionStep` 序列。
 - 执行期不做 registry 查表，不做 capability 判断，不做 fallback 决策。
-- 执行期基于 `RuntimeBindingContext` 将 `WorkspaceRequirement` 绑定为本次运行可用的 `WorkspaceBinding`。
+- 执行期基于 `ExecutionContext` 将 `WorkspaceRequirement` 绑定为本次运行可用的 `WorkspaceBinding`。
 - 每个算子通过 `KernelContext` + 已绑定的 workspace 直接调用 `KernelFunc`。
 
 ---
@@ -201,7 +203,7 @@ public:
 ### 7.4 ExecutionPlan 推荐归属口径
 
 Phase 1 推荐将 `ExecutionPlan` 视为**模型级不可变计划**。
-其与 session/request 相关的动态绑定信息，例如 workspace base、KV views、临时输出缓冲等，不放入 `ExecutionPlan`，而由 `RuntimeBindingContext` 单独持有。
+其与 session/request 相关的动态绑定信息不放入 `ExecutionPlan`：external tensors、activation storage 和 prepared params 属于 `PreparedExecutionBindings`；workspace arena 与 KV view 由 `ExecutionContext` 聚合。模型 I/O 仍必须经 `ExternalTensorBindings` 显式绑定，而非另设临时输出缓冲通道。
 
 
 ---
@@ -321,7 +323,7 @@ Phase 1 中 `Stream` 为最小占位接口。CPU 提供 `CpuInlineStream` 实现
 #### 阶段 A：Backend 骨架与 Runtime 装配
 - `BackendFactory` / `BackendRegistry`
 - `RuntimeBuilder` 扩展注册入口
-- `RuntimeContext::GetBackend()`
+- `Runtime::GetBackend()`
 
 #### 阶段 B：CpuBackend 执行核心
 - `CpuCapabilities` 与指令集探测（`cpu_info.cpp`）
@@ -341,14 +343,14 @@ Phase 1 中 `Stream` 为最小占位接口。CPU 提供 `CpuInlineStream` 实现
 ### 11.2 Phase 1 边界
 - **CPU-first**: 同步阻塞执行为主，Stream 仅占位。
 - **Static Resolution**: 不支持执行期的动态算子替换。
-- **No Global Registry**: 严格遵循 Runtime 所有权。
+- **No Hot-path Global Resolution**: `KernelRegistry::Global()` 仅服务 registration/resolve；Runtime 仍拥有 backend instance registry，执行期不查询任一 registry。
 
 ### 11.3 Phase 1 冻结合同
 
 - `ExecutionPlanBuilder` 是唯一的 kernel resolve 发起方。
 - `Executor` 不做 kernel resolve，不直接访问 `KernelRegistry`。
 - `PackedWeights` 由 `PackedWeightStore` 持有。
-- `ExecutionPlan` 只保存静态执行信息；workspace、KV view、临时输出缓冲等动态绑定信息由 `RuntimeBindingContext` 持有。
+- `ExecutionPlan` 只保存静态执行信息；`PreparedExecutionBindings` 保存 tensor specialization，`ExecutionContext` 保存 workspace 与 KV view。
 - `Workspace` 采用 arena 借用语义；计划期冻结 requirement/offset，执行期完成地址绑定。
 - `KernelContext` 只携带窄执行资源（stream、workspace 切片、packed weights、params/attrs），不暴露后端专属类型。
 - `KVCacheManager` 仅负责逻辑索引与视图组织，物理契约由 backend 定义。
@@ -358,7 +360,7 @@ Phase 1 中 `Stream` 为最小占位接口。CPU 提供 `CpuInlineStream` 实现
 ## 12. 验证与测试建议
 
 ### 12.1 验收点
-- [ ] `RuntimeContext` 持有 `BackendRegistry`
+- [ ] `Runtime` 持有 `BackendRegistry`
 - [ ] 执行热路径不存在 `std::unordered_map::find` 或虚函数查表
 - [ ] Workspace 内存地址在稳态推理（Decode）阶段保持不变
 - [ ] CPU 指令集特征在 `CpuBackend::PrepareKernel()` 中完成 eligibility 检查，执行期 kernel 不再读取 capability

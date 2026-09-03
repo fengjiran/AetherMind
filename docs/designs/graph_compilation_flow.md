@@ -5,10 +5,10 @@
 ## 1. 当前实际入口
 
 ```cpp
-ExecutionPlanBuilder::Build(RuntimeContext& runtime,
+ExecutionPlanBuilder::Build(Runtime& runtime,
                             const std::vector<ExecutionPlanNodeSpec>& nodes)
 
-ExecutionPlanBuilder::Build(RuntimeContext& runtime,
+ExecutionPlanBuilder::Build(Runtime& runtime,
                             const PackedWeightStore& packed_weight_store,
                             const std::vector<ExecutionPlanNodeSpec>& nodes)
 ```
@@ -380,12 +380,12 @@ KernelContext{
 ValidateShapeConstraints(...)
 ```
 
-4. 从 `RuntimeBindingContext` 取得当前 step 的 tensor binding，校验 compact
-   input/output arity，并读取 `BindingTable::kernel_params(step_index)` 中缓存的
+4. 从 `ExecutionContext` 取得 `PreparedExecutionBindings`，校验 compact
+   input/output arity，并读取 `PreparedExecutionBindings::kernel_params(step_index)` 中缓存的
    prepared params。
 
 5. 由通用 `InvokePreparedKernel(step.kernel, ctx, prepared_params)` 执行：
-   params 已在 `BuildExecutionBindings` 构建 BindingTable 时由 descriptor
+   params 已在 `PrepareExecutionBindings` 构建 `PreparedExecutionBindings` 时由 descriptor
    注册的 params builder 一次性构造（binding-time 冷路径，含 kernel-specific
    layout/alias 验证）；Execute 热路径只把缓存写入 `ctx.kernel_params` 并调用
    冻结的 `step.kernel.fn`。带 params builder 的 kernel 不会在每次执行时重新
@@ -487,7 +487,7 @@ LoweredGraph (compiler-owned, immutable after finalization)
                      recorded at lowering time)
       │
       ▼
-ExecutionPlanBuilder::Build(RuntimeContext&, LoweredGraph const&)
+ExecutionPlanBuilder::Build(Runtime&, LoweredGraph const&)
       │
       ├─ ValidateLoweredGraph(lowered)
       ├─ ResolveStateAliasesForExecution(lowered)

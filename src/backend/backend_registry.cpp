@@ -16,7 +16,7 @@ StatusOr<Backend*> BackendRegistry::GetBackend(DeviceType type) noexcept {
     // RuntimeBuilder before any plan build, and each device's backend is
     // created lazily at most once here. When multi-threaded plan-build lands,
     // guard both maps with a mutex (must be movable, since BackendRegistry is
-    // moved into RuntimeContext).
+    // moved into Runtime).
     if (const auto it = backends_.find(type); it != backends_.end()) {
         return it->second.get();
     }

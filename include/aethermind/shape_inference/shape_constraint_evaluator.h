@@ -23,7 +23,7 @@ using SymbolValueMap = std::unordered_map<int64_t, int64_t>;
 
 /// @brief Validates a concrete runtime dtype/shape against a plan-time spec.
 ///
-/// Shared by external-binding validation (BuildExecutionBindings cold path)
+/// Shared by external-binding validation (PrepareExecutionBindings cold path)
 /// and per-step binding premises checks. On static dimensions the concrete
 /// value must equal the plan value; on symbolic dimensions the concrete value
 /// is recorded into `symbol_values` and a second binding of the same symbol

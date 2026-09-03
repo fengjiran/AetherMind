@@ -145,7 +145,7 @@ StatusOr<size_t> ComputeByteSize(const ConcreteTensorMetadata& metadata,
 
 } // namespace
 
-class BindingTableStorage {
+class PreparedExecutionBindingsStorage {
 public:
     ExecutionPlanBindingKey plan_key{};
     std::vector<BoundValue> values{};
@@ -155,7 +155,7 @@ public:
     /// Type-erased per-step prepared kernel params plus their offsets into
     /// `kernel_params_storage_`. The arena is finalized (resized) before any
     /// params builder runs, so placement-constructed params keep stable
-    /// addresses for the table lifetime. Steps without a builder keep the
+    /// addresses for the prepared bindings' lifetime. Steps without a builder keep the
     /// `kNoKernelParams` sentinel.
     std::vector<std::max_align_t> kernel_params_storage{};
     std::vector<size_t> kernel_params_offsets{};
@@ -163,7 +163,7 @@ public:
 
 namespace {
 
-void* MutableKernelParamsPointer(BindingTableStorage& storage,
+void* MutableKernelParamsPointer(PreparedExecutionBindingsStorage& storage,
                                  size_t step_index) noexcept {
     AM_DCHECK(step_index < storage.kernel_params_offsets.size());
     const size_t offset = storage.kernel_params_offsets[step_index];
@@ -174,25 +174,26 @@ void* MutableKernelParamsPointer(BindingTableStorage& storage,
 
 } // namespace
 
-BindingTable::BindingTable(std::unique_ptr<BindingTableStorage> storage) noexcept
+PreparedExecutionBindings::PreparedExecutionBindings(
+        std::unique_ptr<PreparedExecutionBindingsStorage> storage) noexcept
     : storage_(std::move(storage)) {}
 
-BindingTable::BindingTable() noexcept = default;
-BindingTable::BindingTable(BindingTable&&) noexcept = default;
-BindingTable& BindingTable::operator=(BindingTable&&) noexcept = default;
-BindingTable::~BindingTable() = default;
+PreparedExecutionBindings::PreparedExecutionBindings() noexcept = default;
+PreparedExecutionBindings::PreparedExecutionBindings(PreparedExecutionBindings&&) noexcept = default;
+PreparedExecutionBindings& PreparedExecutionBindings::operator=(PreparedExecutionBindings&&) noexcept = default;
+PreparedExecutionBindings::~PreparedExecutionBindings() = default;
 
-std::span<const BoundValue> BindingTable::values() const noexcept {
+std::span<const BoundValue> PreparedExecutionBindings::values() const noexcept {
     return storage_ == nullptr ? std::span<const BoundValue>{}
                                : std::span<const BoundValue>{storage_->values};
 }
 
-const StepTensorBinding& BindingTable::step(size_t step_index) const noexcept {
+const StepTensorBinding& PreparedExecutionBindings::step(size_t step_index) const noexcept {
     AM_DCHECK(storage_ != nullptr && step_index < storage_->steps.size());
     return storage_->steps[step_index];
 }
 
-const void* BindingTable::kernel_params(size_t step_index) const noexcept {
+const void* PreparedExecutionBindings::kernel_params(size_t step_index) const noexcept {
     AM_DCHECK(storage_ != nullptr);
     AM_DCHECK(step_index < storage_->kernel_params_offsets.size());
 
@@ -206,23 +207,23 @@ const void* BindingTable::kernel_params(size_t step_index) const noexcept {
     return base + offset;
 }
 
-size_t BindingTable::step_count() const noexcept {
+size_t PreparedExecutionBindings::step_count() const noexcept {
     return storage_ == nullptr ? 0 : storage_->steps.size();
 }
 
-bool BindingTable::empty() const noexcept {
+bool PreparedExecutionBindings::empty() const noexcept {
     return storage_ == nullptr;
 }
 
-bool BindingTable::IsCompatible(const ExecutionPlan& plan) const noexcept {
+bool PreparedExecutionBindings::IsCompatible(const ExecutionPlan& plan) const noexcept {
     return storage_ != nullptr && storage_->plan_key.value != 0 &&
            storage_->plan_key == plan.binding_key() && storage_->steps.size() == plan.size();
 }
 
-StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
-                                              const ExternalValueBindings& external,
-                                              Allocator& act_allocator) {
-    auto storage = std::make_unique<BindingTableStorage>();
+StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(const ExecutionPlan& plan,
+                                                             const ExternalTensorBindings& external,
+                                                             Allocator& act_allocator) {
+    auto storage = std::make_unique<PreparedExecutionBindingsStorage>();
     storage->plan_key = plan.binding_key();
     storage->values.resize(plan.values().size());
     storage->metadata.resize(plan.values().size());
@@ -297,7 +298,7 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
             case ExecutionValueKind::kState:
                 if (readable[i] != nullptr || writable[i] != nullptr) {
                     return Status::InvalidArgument("State values are bound through "
-                                                   "RuntimeBindingContext, not TensorView");
+                                                   "ExecutionContext, not TensorView");
                 }
                 break;
             case ExecutionValueKind::kActivation:
@@ -358,9 +359,7 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
 
         const auto& value = plan.values()[i];
         const auto& [shape, strides] = storage->metadata[i];
-        auto* data = static_cast<std::byte*>(
-                             storage->act_storage.mutable_data()) +
-                     act_offsets[i];
+        auto* data = static_cast<std::byte*>(storage->act_storage.mutable_data()) + act_offsets[i];
         storage->values[i].readable = TensorView(data, value.spec.dtype, shape, strides,
                                                  storage->act_storage.alignment());
         storage->values[i].writable = MutableTensorView(data, value.spec.dtype, shape, strides,
@@ -393,9 +392,8 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
         }
     }
 
-    const size_t word_size = sizeof(std::max_align_t);
-    storage->kernel_params_storage.resize(
-            (params_bytes + word_size - 1) / word_size);
+    constexpr size_t word_size = sizeof(std::max_align_t);
+    storage->kernel_params_storage.resize((params_bytes + word_size - 1) / word_size);
 
     storage->steps.reserve(plan.size());
     for (size_t step_index = 0; step_index < plan.size(); ++step_index) {
@@ -427,11 +425,13 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
         for (uint32_t port: step.kernel_input_ports) {
             input_specs.push_back(plan.values()[step.inputs[port].index].spec);
         }
+
         std::vector<TensorSpec> output_specs;
         output_specs.reserve(step.kernel_output_ports.size());
         for (uint32_t port: step.kernel_output_ports) {
             output_specs.push_back(plan.values()[step.outputs[port].index].spec);
         }
+
         AM_RETURN_IF_ERROR(ValidateTensorBindingPremises(
                 input_specs, output_specs, binding.inputs, binding.outputs));
         AM_RETURN_IF_ERROR(ValidateShapeConstraints(
@@ -448,7 +448,7 @@ StatusOr<BindingTable> BuildExecutionBindings(const ExecutionPlan& plan,
         }
         storage->steps.push_back(std::move(binding));
     }
-    return BindingTable(std::move(storage));
+    return PreparedExecutionBindings(std::move(storage));
 }
 
 } // namespace aethermind

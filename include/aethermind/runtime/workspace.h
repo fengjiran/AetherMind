@@ -20,7 +20,7 @@
 /// The planning phase is done before execution. The binding phase happens when
 /// a runtime workspace arena provides the slice for one execution step.
 ///
-/// @see WorkspaceArena, RuntimeBindingContext, ExecutionPlanBuilder
+/// @see WorkspaceArena, ExecutionContext, ExecutionPlanBuilder
 
 #include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"

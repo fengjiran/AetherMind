@@ -34,8 +34,8 @@ using KernelFunc = Status (*)(const KernelContext&) noexcept;
 /// @brief Binding-time context handed to a `KernelParamsBuilder`.
 ///
 /// `inputs` and `outputs` are the per-step TensorViews cached in the caller's
-/// `BindingTable`; their data pointers, shape, stride, and dtype are immutable
-/// for the table lifetime. `attrs` is the frozen per-kernel metadata owned by
+/// `PreparedExecutionBindings`; their data pointers, shape, stride, and dtype are immutable
+/// for the bindings' lifetime. `attrs` is the frozen per-kernel metadata owned by
 /// the `ResolvedKernel`.
 struct KernelParamsBuildContext {
     std::span<const TensorView> inputs{};
@@ -46,25 +46,25 @@ struct KernelParamsBuildContext {
 /// @brief Cold-path binding specializer constructing a kernel-specific params
 /// struct for one step.
 ///
-/// Invoked exactly once per step while `BuildExecutionBindings` prepares a
-/// `BindingTable`, after generic shape and constraint validation. On success
+/// Invoked exactly once per step while `PrepareExecutionBindings` prepares a
+/// `PreparedExecutionBindings`, after generic shape and constraint validation. On success
 /// the builder placement-constructs its params struct into `params_buffer`,
-/// which is owned by the `BindingTable` params arena, aligned to
+/// which is owned by the `PreparedExecutionBindings` params arena, aligned to
 /// `std::max_align_t`, and sized `KernelDescriptor::params_size` (at most
 /// `kMaxKernelParamsSize`).
 ///
 /// Contract:
 /// - The builder must not retain the `context` object itself. It may copy
 ///   context data (including TensorView data pointers) into the prepared
-///   params because those views are stable for the whole `BindingTable`
+///   params because those views are stable for the whole `PreparedExecutionBindings`
 ///   lifetime.
-/// - The prepared params live exactly as long as the owning `BindingTable`
+/// - The prepared params live exactly as long as the owning `PreparedExecutionBindings`
 ///   and are consumed via `KernelContext::kernel_params` on every subsequent
 ///   execution of the step. They must not depend on any per-execution state
 ///   (sequence position, KV state, workspace); that data flows through
 ///   `KernelContext`.
 /// - The params type must be trivially destructible: the arena is released as
-///   a whole with the `BindingTable` and keeps no per-step destruction
+///   a whole with the `PreparedExecutionBindings` and keeps no per-step destruction
 ///   metadata.
 /// - On failure the builder must not have constructed anything into
 ///   `params_buffer`.
@@ -78,7 +78,7 @@ using KernelParamsBuilder = Status (*)(const KernelParamsBuildContext& context,
 /// @brief Upper bound on the byte size of any params struct passed to
 /// `KernelParamsBuilder`.
 ///
-/// Each step's params slot is carved from the `BindingTable` params arena
+/// Each step's params slot is carved from the `PreparedExecutionBindings` params arena
 /// with at most this many bytes. `KernelDescriptor` validation rejects
 /// kernels whose `params_size` exceeds this constant. Raising the value
 /// increases per-step binding memory.

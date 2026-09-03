@@ -31,17 +31,17 @@ struct ExternalWritableValueBinding {
 /// @brief Caller-provided tensors needed to specialize an ExecutionPlan.
 ///
 /// State values intentionally are not represented here: KV and other opaque
-/// runtime state remain owned by RuntimeBindingContext.
-struct ExternalValueBindings {
+/// runtime state remain owned by ExecutionContext.
+struct ExternalTensorBindings {
     std::vector<ExternalReadOnlyValueBinding> readable{};
     std::vector<ExternalWritableValueBinding> writable{};
 };
 
 /// @brief Canonical physical binding for one ExecutionValueId.
 ///
-/// The views borrow either caller-owned storage or BindingTable-owned
-/// activation storage and concrete metadata. They remain valid for the table
-/// lifetime.
+/// The views borrow either caller-owned storage or PreparedExecutionBindings-owned
+/// activation storage. Concrete shape and stride metadata are owned by the
+/// prepared bindings, but caller-owned tensor storage must outlive them.
 struct BoundValue {
     TensorView readable{};
     MutableTensorView writable{};
@@ -54,20 +54,22 @@ struct StepTensorBinding {
     std::vector<MutableTensorView> outputs{};
 };
 
-class BindingTableStorage;
+class PreparedExecutionBindingsStorage;
 
 /// @brief Controlled result of specializing one ExecutionPlan for a call/session.
 ///
 /// The type owns activation storage and concrete metadata. Its heap-stable
-/// storage keeps cached TensorView metadata valid across moves.
-class BindingTable {
+/// storage keeps cached TensorView metadata valid across moves. It borrows the
+/// external tensor data pointers supplied during preparation, so those backing
+/// allocations must remain valid and unchanged until the bindings are rebuilt.
+class PreparedExecutionBindings {
 public:
-    BindingTable() noexcept;
-    BindingTable(BindingTable&&) noexcept;
-    BindingTable& operator=(BindingTable&&) noexcept;
-    BindingTable(const BindingTable&) = delete;
-    BindingTable& operator=(const BindingTable&) = delete;
-    ~BindingTable();
+    PreparedExecutionBindings() noexcept;
+    PreparedExecutionBindings(PreparedExecutionBindings&&) noexcept;
+    PreparedExecutionBindings& operator=(PreparedExecutionBindings&&) noexcept;
+    PreparedExecutionBindings(const PreparedExecutionBindings&) = delete;
+    PreparedExecutionBindings& operator=(const PreparedExecutionBindings&) = delete;
+    ~PreparedExecutionBindings();
 
     AM_NODISCARD std::span<const BoundValue> values() const noexcept;
     AM_NODISCARD const StepTensorBinding& step(size_t step_index) const noexcept;
@@ -75,9 +77,9 @@ public:
     /// @brief Prepared kernel params for one step, or nullptr when the step's
     /// kernel registered no params builder.
     ///
-    /// The pointer is owned by this table and stays valid across BindingTable
-    /// moves. Content is immutable for the table lifetime; per-execution
-    /// state is never baked into it.
+    /// The pointer is owned by these bindings and stays valid across
+    /// PreparedExecutionBindings moves. Content is immutable for the bindings'
+    /// lifetime; per-execution state is never baked into it.
     AM_NODISCARD const void* kernel_params(size_t step_index) const noexcept;
 
     AM_NODISCARD size_t step_count() const noexcept;
@@ -85,14 +87,15 @@ public:
     AM_NODISCARD bool IsCompatible(const ExecutionPlan& plan) const noexcept;
 
 private:
-    friend StatusOr<BindingTable> BuildExecutionBindings(
+    friend StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
             const ExecutionPlan& plan,
-            const ExternalValueBindings& external,
+            const ExternalTensorBindings& external,
             Allocator& act_allocator);
 
-    explicit BindingTable(std::unique_ptr<BindingTableStorage> storage) noexcept;
+    explicit PreparedExecutionBindings(
+            std::unique_ptr<PreparedExecutionBindingsStorage> storage) noexcept;
 
-    std::unique_ptr<BindingTableStorage> storage_{};
+    std::unique_ptr<PreparedExecutionBindingsStorage> storage_{};
 };
 
 /// @brief Resolves external tensors and allocates internal activations.
@@ -101,10 +104,11 @@ private:
 /// dimensions and symbolic identity, assigns each logical value exactly one
 /// canonical storage location, allocates the activation arena, and caches all
 /// compact per-step TensorViews. The allocator must outlive this call; the
-/// returned BindingTable owns its resulting Buffer.
-StatusOr<BindingTable> BuildExecutionBindings(
+/// returned PreparedExecutionBindings owns its resulting Buffer. External
+/// tensor backing storage is borrowed and must outlive the returned bindings.
+StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
         const ExecutionPlan& plan,
-        const ExternalValueBindings& external,
+        const ExternalTensorBindings& external,
         Allocator& act_allocator);
 
 } // namespace aethermind

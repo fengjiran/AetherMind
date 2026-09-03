@@ -552,7 +552,7 @@ StatusOr<ResolvedKernel> PrepareKernelChecked(
     return kernel;
 }
 
-StatusOr<ExecutionPlan> AssembleExecutionPlan(RuntimeContext& runtime,
+StatusOr<ExecutionPlan> AssembleExecutionPlan(Runtime& runtime,
                                               const PackedWeightStore* packed_weight_store,
                                               PreparedExecutionGraph graph,
                                               StateAliasPlan state_alias_plan) {
@@ -670,7 +670,7 @@ StatusOr<ResolvedKernel> ExecutionPlanBuilder::PrepareKernelForNode(
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
-        RuntimeContext& runtime,
+        Runtime& runtime,
         const std::vector<ExecutionPlanNodeSpec>& nodes) {
     auto graph = PrepareUntrustedGraph(nodes);
     if (!graph.ok()) {
@@ -681,7 +681,7 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
-        RuntimeContext& runtime,
+        Runtime& runtime,
         const PackedWeightStore& packed_weight_store,
         const std::vector<ExecutionPlanNodeSpec>& nodes) {
     auto graph = PrepareUntrustedGraph(nodes);
@@ -693,7 +693,7 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
-        RuntimeContext& runtime,
+        Runtime& runtime,
         const LoweredGraph& lowered_graph) {
     auto aliases = ResolveStateAliasesForExecution(lowered_graph);
     if (!aliases.ok()) {
@@ -709,7 +709,7 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
 }
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
-        RuntimeContext& runtime,
+        Runtime& runtime,
         const PackedWeightStore& packed_weight_store,
         const LoweredGraph& lowered) {
     auto aliases = ResolveStateAliasesForExecution(lowered);

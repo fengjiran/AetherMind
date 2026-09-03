@@ -31,7 +31,7 @@ struct ExecutionValueId {
             ExecutionValueId lhs, ExecutionValueId rhs) noexcept = default;
 };
 
-/// @brief Stable identity shared by an ExecutionPlan and its BindingTable.
+/// @brief Stable identity shared by an ExecutionPlan and its PreparedExecutionBindings.
 struct ExecutionPlanBindingKey {
     uint64_t value = 0;
 
@@ -126,7 +126,7 @@ public:
         return model_outputs_;
     }
 
-    /// @brief Returns the immutable identity used to validate BindingTables.
+    /// @brief Returns the immutable identity used to validate prepared bindings.
     AM_NODISCARD ExecutionPlanBindingKey binding_key() const noexcept {
         return binding_key_;
     }

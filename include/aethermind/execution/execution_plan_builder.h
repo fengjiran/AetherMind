@@ -6,7 +6,7 @@
 
 #include "aethermind/execution/execution_node_spec.h"
 #include "aethermind/execution/execution_plan.h"
-#include "aethermind/runtime/runtime_context.h"
+#include "aethermind/runtime/runtime.h"
 
 #include <vector>
 
@@ -20,7 +20,7 @@ class PackedWeightStore;
 /// Untrusted ExecutionPlanNodeSpec metadata is validated against
 /// InferOperator; compiler-produced LoweredGraph artifacts are re-checked at
 /// the execution trust boundary. Kernels are resolved through the
-/// RuntimeContext's registered backends.
+/// Runtime's registered backends.
 class ExecutionPlanBuilder {
 public:
     /// @brief Resolves and prepares the kernel for a single node.
@@ -41,7 +41,7 @@ public:
     ///        Build(LoweredGraph) for graph dataflow.
     /// @return The built plan, or an error on validation or kernel failure.
     static StatusOr<ExecutionPlan> Build(
-            RuntimeContext& runtime,
+            Runtime& runtime,
             const std::vector<ExecutionPlanNodeSpec>& nodes);
 
     /// @brief Builds an ExecutionPlan from untrusted node specs with packed
@@ -52,7 +52,7 @@ public:
     /// @param nodes Untrusted per-node metadata.
     /// @return The built plan, or an error on validation or kernel failure.
     static StatusOr<ExecutionPlan> Build(
-            RuntimeContext& runtime,
+            Runtime& runtime,
             const PackedWeightStore& packed_weight_store,
             const std::vector<ExecutionPlanNodeSpec>& nodes);
 
@@ -65,7 +65,7 @@ public:
     /// @param lowered_graph Finalized compiler artifact.
     /// @return The built plan, or an error if the artifact is invalid.
     static StatusOr<ExecutionPlan> Build(
-            RuntimeContext& runtime,
+            Runtime& runtime,
             const LoweredGraph& lowered_graph);
 
     /// @brief Builds an ExecutionPlan from a compiler artifact with packed
@@ -76,7 +76,7 @@ public:
     /// @param lowered Finalized compiler artifact.
     /// @return The built plan, or an error if the artifact is invalid.
     static StatusOr<ExecutionPlan> Build(
-            RuntimeContext& runtime,
+            Runtime& runtime,
             const PackedWeightStore& packed_weight_store,
             const LoweredGraph& lowered);
 };

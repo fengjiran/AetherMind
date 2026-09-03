@@ -12,13 +12,8 @@ RuntimeBuilder& RuntimeBuilder::WithOptions(const RuntimeOptions& options) {
     return *this;
 }
 
-RuntimeContext RuntimeBuilder::Build() {
-    auto allocator_registry = BuildAllocatorRegistry();
-    auto backend_registry = BuildBackendRegistry();
-    auto kv_cache_manager = BuildKVCacheManager();
-    return RuntimeContext(std::move(allocator_registry),
-                          std::move(backend_registry),
-                          std::move(kv_cache_manager));
+Runtime RuntimeBuilder::Build() {
+    return {BuildAllocatorRegistry(), BuildBackendRegistry(), BuildKVCacheManager()};
 }
 
 RuntimeBuilder& RuntimeBuilder::RegisterCustomAllocatorProvider(
@@ -27,10 +22,8 @@ RuntimeBuilder& RuntimeBuilder::RegisterCustomAllocatorProvider(
     AM_CHECK(provider != nullptr, "Allocator provider cannot be null");
     AM_CHECK(type != DeviceType::kUndefined,
              "Cannot register allocator provider for undefined device type");
-    pending_custom_allocator_providers_.push_back(
-            PendingCustomAllocatorProvider{
-                    .type = type,
-                    .provider = std::move(provider)});
+    pending_custom_allocator_providers_.push_back({.type = type,
+                                                   .provider = std::move(provider)});
     return *this;
 }
 
@@ -40,10 +33,8 @@ RuntimeBuilder& RuntimeBuilder::RegisterBackendFactory(
     AM_CHECK(factory != nullptr, "Backend factory cannot be null");
     AM_CHECK(type != DeviceType::kUndefined,
              "Cannot register backend factory for undefined device type");
-    pending_backend_factories_.push_back(
-            PendingBackendFactory{
-                    .type = type,
-                    .factory = std::move(factory)});
+    pending_backend_factories_.push_back({.type = type,
+                                          .factory = std::move(factory)});
     return *this;
 }
 

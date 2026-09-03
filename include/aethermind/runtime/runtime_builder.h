@@ -3,7 +3,7 @@
 
 #include "aethermind/base/device.h"
 #include "aethermind/runtime/kv_cache_manager.h"
-#include "runtime_context.h"
+#include "runtime.h"
 #include "runtime_options.h"
 
 #include <memory>
@@ -23,7 +23,7 @@ public:
             DeviceType type,
             std::unique_ptr<BackendFactory> factory);
 
-    RuntimeContext Build();
+    Runtime Build();
 
 private:
     struct PendingCustomAllocatorProvider {

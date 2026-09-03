@@ -2,9 +2,9 @@
 #include "aethermind/compiler/graph_lowering.h"
 #include "aethermind/compiler/optimize_graph.h"
 #include "aethermind/execution/execution_bindings.h"
+#include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
-#include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/graph/graph_dump.h"
 #include "aethermind/graph/graph_op_builder.h"
 #include "aethermind/model/model_graph_builder.h"
@@ -948,7 +948,7 @@ TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure)
 
     // Layer 3: ExecutionPlanBuilder::Build (trusted path). No re-inference.
     RuntimeBuilder runtime_builder;
-    RuntimeContext runtime = runtime_builder.Build();
+    Runtime runtime = runtime_builder.Build();
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1u)
@@ -963,7 +963,7 @@ TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure)
     RuntimeTensorStorage weight_storage{std::vector<int64_t>{16}};
     RuntimeTensorStorage out_storage{std::vector<int64_t>{2, 8}};
     const ExecutionStep& step = plan->steps().front();
-    const auto bindings = BuildExecutionBindings(
+    const auto bindings = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = step.inputs[0], .tensor = act_storage.View()},
                           {.value = step.inputs[1], .tensor = weight_storage.View()}},

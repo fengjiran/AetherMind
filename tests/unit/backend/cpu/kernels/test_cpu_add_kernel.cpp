@@ -3,10 +3,10 @@
 #include "aethermind/backend/kernel_registry.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/compiler/graph_lowering.h"
+#include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
-#include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/graph/graph.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
@@ -558,12 +558,11 @@ TEST(AddKernel, EndToEndThroughGraphLoweringAndExecutor) {
     EXPECT_EQ(lowered->steps()[2].spec.selector.weight_dtype, DataType::Float32());
 
     RuntimeBuilder runtime_builder;
-    RuntimeContext runtime = runtime_builder.Build();
+    Runtime runtime = runtime_builder.Build();
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 3U);
 
-    RuntimeBindingContext bindings;
     test::ExecutionBindingCollector binding_collector(*plan, runtime.GetAllocator(Device::CPU()));
 
     const int64_t emb0_tokens[2] = {0, 0};
@@ -621,8 +620,9 @@ TEST(AddKernel, EndToEndThroughGraphLoweringAndExecutor) {
                                      },
                              });
 
-    ASSERT_TRUE(binding_collector.Install(bindings).ok());
-    const Status status = Executor::Execute(*plan, bindings);
+    auto bindings = binding_collector.CreateContext();
+    ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
+    const Status status = Executor::Execute(*plan, *bindings);
     ASSERT_TRUE(status.ok()) << status.ToString();
 
     EXPECT_FLOAT_EQ(add_out[0], 5.0F);
@@ -649,7 +649,7 @@ TEST(AddKernel, Int64EndToEndThroughExecutionRequestAndExecutor) {
             .op_params = OpParams(AddParams{}),
     }};
 
-    RuntimeContext runtime = RuntimeBuilder{}.Build();
+    Runtime runtime = RuntimeBuilder{}.Build();
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
 
@@ -662,7 +662,6 @@ TEST(AddKernel, Int64EndToEndThroughExecutionRequestAndExecutor) {
     const int64_t rhs_strides[2] = {2, 1};
     const int64_t output_shape[2] = {2, 2};
     const int64_t output_strides[2] = {2, 1};
-    RuntimeBindingContext bindings;
     test::ExecutionBindingCollector binding_collector(*plan, runtime.GetAllocator(Device::CPU()));
     binding_collector.Set(0, StepTensorBinding{
                                      .inputs = {
@@ -674,8 +673,9 @@ TEST(AddKernel, Int64EndToEndThroughExecutionRequestAndExecutor) {
                                      },
                              });
 
-    ASSERT_TRUE(binding_collector.Install(bindings).ok());
-    const Status status = Executor::Execute(*plan, bindings);
+    auto bindings = binding_collector.CreateContext();
+    ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
+    const Status status = Executor::Execute(*plan, *bindings);
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_EQ(output[0], 11);
     EXPECT_EQ(output[1], 12);
@@ -702,7 +702,7 @@ TEST(AddKernel, RejectsIncompatibleRuntimeBroadcastShapes) {
     ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
 
     RuntimeBuilder runtime_builder;
-    RuntimeContext runtime = runtime_builder.Build();
+    Runtime runtime = runtime_builder.Build();
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(ExecutionPlanNodeSpec{
@@ -737,7 +737,6 @@ TEST(AddKernel, RejectsIncompatibleRuntimeBroadcastShapes) {
     const int64_t out_concrete_shape[2] = {2, 3};
     const int64_t out_strides[2] = {3, 1};
 
-    RuntimeBindingContext bindings;
     test::ExecutionBindingCollector binding_collector(*plan, runtime.GetAllocator(Device::CPU()));
     binding_collector.Set(0, StepTensorBinding{
                                      .inputs = {
@@ -749,9 +748,9 @@ TEST(AddKernel, RejectsIncompatibleRuntimeBroadcastShapes) {
                                      },
                              });
 
-    const Status status = binding_collector.Install(bindings);
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    const auto bindings = binding_collector.CreateContext();
+    EXPECT_FALSE(bindings.ok());
+    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
 }
 
 // TDD red-proof: after consolidation, the frozen registry must contain exactly

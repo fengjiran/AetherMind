@@ -63,7 +63,7 @@ TEST(CpuBackendFactory, CreatesValidBackend) {
 
 TEST(CpuBackend, RuntimeBuilderDefaultProvidesCpuBackend) {
     RuntimeBuilder builder;
-    RuntimeContext context = builder.Build();
+    Runtime context = builder.Build();
 
     auto backend_or = context.GetBackend(DeviceType::kCPU);
     ASSERT_TRUE(backend_or.ok());
@@ -78,7 +78,7 @@ TEST(CpuBackend, RuntimeBuilderAppliesCpuFeaturePolicy) {
 
     RuntimeBuilder builder;
     builder.WithOptions(options);
-    RuntimeContext context = builder.Build();
+    Runtime context = builder.Build();
 
     const auto backend_or = context.GetBackend(DeviceType::kCPU);
     ASSERT_TRUE(backend_or.ok());

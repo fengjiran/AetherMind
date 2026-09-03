@@ -1,8 +1,8 @@
 #include "aethermind/memory/allocator.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/memory/cpu_allocator.h"
+#include "aethermind/runtime/runtime.h"
 #include "aethermind/runtime/runtime_builder.h"
-#include "aethermind/runtime/runtime_context.h"
 
 #include <gtest/gtest.h>
 

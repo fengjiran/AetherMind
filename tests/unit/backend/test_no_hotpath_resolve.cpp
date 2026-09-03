@@ -1,9 +1,9 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
-#include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -109,7 +109,7 @@ TEST(NoHotpathPrepare, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<CountingBackendFactory>(counters));
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({1, 2});
     const SymbolicShape weight_shape = StaticShape({2});
@@ -150,7 +150,6 @@ TEST(NoHotpathPrepare, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
     const std::array<int64_t, 1> shape_1d{2};
     const std::array<int64_t, 1> strides_1d{1};
 
-    RuntimeBindingContext bindings;
     test::ExecutionBindingCollector binding_collector(*plan, runtime.GetAllocator(Device::CPU()));
     StepTensorBinding step0_binding;
     step0_binding.inputs = {
@@ -162,8 +161,9 @@ TEST(NoHotpathPrepare, ExecutorConsumesFrozenKernelWithoutBackendLookup) {
     };
     binding_collector.Set(0, std::move(step0_binding));
 
-    ASSERT_TRUE(binding_collector.Install(bindings).ok());
-    const Status status = Executor::Execute(*plan, bindings);
+    auto bindings = binding_collector.CreateContext();
+    ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
+    const Status status = Executor::Execute(*plan, *bindings);
 
     g_prepare_counters = nullptr;
     ASSERT_TRUE(status.ok());

@@ -268,7 +268,7 @@ Status BuildElementwiseMulArgs(const KernelParamsBuildContext& context,
     return Status::Ok();
 }
 
-// The prepared args must satisfy the BindingTable params arena contract.
+// The prepared args must satisfy the PreparedExecutionBindings params arena contract.
 static_assert(std::is_trivially_destructible_v<cpu::detail::ElementwiseMulKernelArgs>);
 static_assert(alignof(cpu::detail::ElementwiseMulKernelArgs) <= alignof(std::max_align_t));
 

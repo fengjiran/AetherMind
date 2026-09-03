@@ -2,10 +2,10 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/base/tensor_view.h"
+#include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
-#include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/ops/embedding_op.h"
@@ -252,7 +252,7 @@ TEST(EmbeddingKernel, RejectsOutOfRangeTokenId) {
 
 TEST(EmbeddingKernel, ExecutionPlanBuilderRunsResolvedKernel) {
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape tokens_spec_shape = StaticShape({3});
     const SymbolicShape weight_spec_shape = StaticShape({4, 3});
@@ -308,7 +308,6 @@ TEST(EmbeddingKernel, ExecutionPlanBuilderRunsResolvedKernel) {
     const int64_t weight_strides[2] = {3, 1};
     const int64_t output_shape[2] = {3, 3};
     const int64_t output_strides[2] = {3, 1};
-    RuntimeBindingContext bindings;
     test::ExecutionBindingCollector binding_collector(*plan, runtime.GetAllocator(Device::CPU()));
     binding_collector.Set(0, StepTensorBinding{
                                      .inputs = {
@@ -319,8 +318,9 @@ TEST(EmbeddingKernel, ExecutionPlanBuilderRunsResolvedKernel) {
                                              MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
                                      },
                              });
-    ASSERT_TRUE(binding_collector.Install(bindings).ok());
-    const Status status = Executor::Execute(*plan, bindings);
+    auto bindings = binding_collector.CreateContext();
+    ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
+    const Status status = Executor::Execute(*plan, *bindings);
 
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_FLOAT_EQ(output[0], 4.0F);

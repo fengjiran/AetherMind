@@ -78,7 +78,7 @@ TEST(CpuPrepareKernel, PreparedKernelCanBeInvoked) {
     const int64_t w_strides[1] = {1};
 
     // The params builder prepares compute-ready args once, mirroring what
-    // BuildExecutionBindings does for a BindingTable-owned arena slot.
+    // PrepareExecutionBindings does for a PreparedExecutionBindings-owned arena slot.
     alignas(std::max_align_t) std::array<std::byte, kMaxKernelParamsSize> storage{};
     const std::array<TensorView, 2> inputs{
             TensorView{input, DataType::Float32(), io_shape, io_strides},

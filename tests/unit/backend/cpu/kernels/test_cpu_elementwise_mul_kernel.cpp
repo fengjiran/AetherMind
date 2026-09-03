@@ -38,7 +38,7 @@ struct ElementwiseMulTestViews {
 };
 
 /// Builds the prepared args through the registered builder (the cold path
-/// BuildExecutionBindings uses) and then runs the thin entry.
+/// PrepareExecutionBindings uses) and then runs the thin entry.
 Status RunElementwiseMul(const ElementwiseMulTestViews& views) noexcept {
     const StatusOr<ResolvedKernel> kernel = PrepareKernel();
     if (!kernel.ok()) {

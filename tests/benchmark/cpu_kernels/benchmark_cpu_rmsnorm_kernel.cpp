@@ -123,7 +123,7 @@ void BenchmarkRmsNormFp32(benchmark::State& state,
             MutableTensorView{output.data(), DataType::Float32(), io_shape, io_strides},
     };
 
-    // Buffer matching the BindingTable params arena slot.
+    // Buffer matching the PreparedExecutionBindings params arena slot.
     alignas(std::max_align_t) std::array<std::byte, kMaxKernelParamsSize> params_storage{};
     const KernelParamsBuildContext build_context{
             .inputs = inputs,

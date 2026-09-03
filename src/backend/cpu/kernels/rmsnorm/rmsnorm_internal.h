@@ -5,7 +5,7 @@
 /// @brief Backend-internal RMSNorm compute-ready params and FP32 micro-kernels.
 ///
 /// Defines the pre-validated `RmsNormFp32KernelArgs` consumed by the scalar
-/// and AVX2 RMSNorm micro-kernels. Args are prepared once per BindingTable by
+/// and AVX2 RMSNorm micro-kernels. Args are prepared once per PreparedExecutionBindings by
 /// the registered `KernelParamsBuilder` and passed through
 /// `KernelContext::kernel_params` on every execution.
 

@@ -10,9 +10,9 @@
 #include "aethermind/compiler/graph_lowering.h"
 #include "aethermind/compiler/packing_request_builder.h"
 #include "aethermind/execution/execution_bindings.h"
+#include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
-#include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/graph/graph.h"
 #include "aethermind/model/loaded_model.h"
 #include "aethermind/model/packed_weight_store.h"
@@ -388,7 +388,7 @@ TEST(WeightPrepackPlanner, LoweredDrivenPrepackAndResolve) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(
             DeviceType::kCPU, std::make_unique<PlannerPackedTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
     const auto plan =
             ExecutionPlanBuilder::Build(runtime, packed_weight_store, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
@@ -434,15 +434,15 @@ TEST(WeightPrepackPlanner, LoweredDrivenPrepackAndResolve) {
     }
     ASSERT_EQ(readable.size(), 4U);
 
-    auto table = BuildExecutionBindings(
+    auto table = PrepareExecutionBindings(
             *plan,
-            ExternalValueBindings{.readable = std::move(readable)},
+            ExternalTensorBindings{.readable = std::move(readable)},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_TRUE(table.ok()) << table.status().ToString();
-    RuntimeBindingContext context;
-    context.SetBindingTable(std::move(*table));
+    auto context = ExecutionContext::Create(*plan, std::move(*table), nullptr);
+    ASSERT_TRUE(context.ok()) << context.status().ToString();
     g_planner_packed_kernel_calls = 0;
-    const Status status = Executor::Execute(*plan, context);
+    const Status status = Executor::Execute(*plan, *context);
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_EQ(g_planner_packed_kernel_calls, 3);
 }
@@ -595,7 +595,7 @@ TEST(WeightPrepackPlanner, LoweredDrivenPrepackResolvesCompositeBindings) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(
             DeviceType::kCPU, std::make_unique<PlannerPackedTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
     const auto plan =
             ExecutionPlanBuilder::Build(runtime, packed_weight_store, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
@@ -920,7 +920,7 @@ TEST(WeightPrepackPlanner, UntrustedBuildBindsDistinctPackedArtifacts) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(
             DeviceType::kCPU, std::make_unique<PlannerPackedTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
     const auto plan = ExecutionPlanBuilder::Build(runtime, store, nodes);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 2U);
@@ -947,7 +947,7 @@ TEST(WeightPrepackPlanner, UntrustedBuildRejectsArtifactOpTypeMismatch) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(
             DeviceType::kCPU, std::make_unique<PlannerPackedTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
     const auto plan = ExecutionPlanBuilder::Build(runtime, store, nodes);
     ASSERT_FALSE(plan.ok());
     EXPECT_NE(plan.status().message().find("op type"), std::string::npos);
@@ -971,7 +971,7 @@ TEST(WeightPrepackPlanner, UntrustedBuildRejectsArtifactShapeMismatch) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(
             DeviceType::kCPU, std::make_unique<PlannerPackedTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
     const auto plan = ExecutionPlanBuilder::Build(runtime, store, nodes);
     ASSERT_FALSE(plan.ok());
     EXPECT_NE(plan.status().message().find("logical metadata"), std::string::npos);

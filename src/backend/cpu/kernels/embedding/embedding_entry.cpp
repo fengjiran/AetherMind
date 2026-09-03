@@ -175,7 +175,7 @@ Status BuildEmbeddingArgs(const KernelParamsBuildContext& context,
     return Status::Ok();
 }
 
-// The prepared args must satisfy the BindingTable params arena contract.
+// The prepared args must satisfy the PreparedExecutionBindings params arena contract.
 static_assert(std::is_trivially_destructible_v<cpu::detail::EmbeddingKernelArgs>);
 static_assert(alignof(cpu::detail::EmbeddingKernelArgs) <= alignof(std::max_align_t));
 

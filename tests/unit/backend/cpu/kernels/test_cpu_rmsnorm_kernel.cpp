@@ -3,9 +3,9 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/execution/execution_bindings.h"
+#include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
-#include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
@@ -76,7 +76,7 @@ struct RmsNormTestViews {
     MutableTensorView output_tensor{};
 };
 
-/// Buffer that plays the role of the BindingTable params arena slot.
+/// Buffer that plays the role of the PreparedExecutionBindings params arena slot.
 struct PreparedKernelParams {
     alignas(std::max_align_t) std::array<std::byte, kMaxKernelParamsSize> storage{};
 };
@@ -775,7 +775,7 @@ TEST(CPUKernelRmsNormEntry, Avx2RejectsNonUnitColumnStridesWhenAvailable) {
 
 TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsResolvedKernel) {
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape activation_shape = StaticShape({1, 4});
     const SymbolicShape weight_shape = StaticShape({4});
@@ -810,7 +810,6 @@ TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsResolvedKernel) {
     constexpr int64_t raw_weight_shape[1] = {4};
     constexpr int64_t raw_weight_strides[1] = {1};
 
-    RuntimeBindingContext bindings;
     test::ExecutionBindingCollector collector(*plan, runtime.GetAllocator(Device::CPU()));
     collector.Set(0, StepTensorBinding{
                              .inputs = {
@@ -821,16 +820,17 @@ TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsResolvedKernel) {
                                      MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
                              },
                      });
-    ASSERT_TRUE(collector.Install(bindings).ok());
+    auto bindings = collector.CreateContext();
+    ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
 
-    const Status status = Executor::Execute(*plan, bindings);
+    const Status status = Executor::Execute(*plan, *bindings);
     ASSERT_TRUE(status.ok()) << status.ToString();
     ExpectRowsNear(input, weight, output, 1, 4, 4, 1, 1, 4, 1);
 }
 
-TEST(CPUKernelRmsNormEntry, OverlappingOutputRowsFailAtBuildExecutionBindings) {
+TEST(CPUKernelRmsNormEntry, OverlappingOutputRowsFailAtPrepareExecutionBindings) {
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape activation_shape = StaticShape({2, 4});
     const SymbolicShape weight_shape = StaticShape({4});
@@ -866,9 +866,9 @@ TEST(CPUKernelRmsNormEntry, OverlappingOutputRowsFailAtBuildExecutionBindings) {
     constexpr int64_t raw_weight_strides[1] = {1};
     const ExecutionStep& step = plan->steps().front();
 
-    // The params builder runs inside BuildExecutionBindings: the overlapping
+    // The params builder runs inside PrepareExecutionBindings: the overlapping
     // output rows must be rejected here, before any kernel execution.
-    const auto table = BuildExecutionBindings(
+    const auto table = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = step.inputs[0],
                            .tensor = TensorView(input, DataType::Float32(), io_shape, io_strides)},
@@ -894,7 +894,7 @@ TEST(CPUKernelRmsNorm, PreparedParamsExecuteRepeatedlyWithoutRevalidation) {
     float input[4] = {};
     float output[4] = {};
 
-    // Build the compute-ready params once, as BuildExecutionBindings would.
+    // Build the compute-ready params once, as PrepareExecutionBindings would.
     const auto prepared = BuildRmsNormPreparedParams(
             *kernel,
             RmsNormTestViews{

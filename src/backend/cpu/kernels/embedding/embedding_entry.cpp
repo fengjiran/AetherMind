@@ -1,6 +1,7 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/backend/kernel_types.h"
+#include "aethermind/operators/ops/embedding_op.h"
 #include "embedding_internal.h"
 #include "utils/overflow_check.h"
 
@@ -10,14 +11,12 @@
 namespace aethermind::cpu::detail {
 namespace {
 
-bool IsSupportedTokenIdDType(const DataType& dtype) noexcept {
-    return dtype == DataType::Int(32) || dtype == DataType::Int(64) ||
-           dtype == DataType::UInt(32);
-}
-
 int64_t ReadTokenId(const void* token_ids_data,
                     const DataType& dtype,
                     size_t index) noexcept {
+    // BuildEmbeddingArgs validates dtype against the semantic contract first,
+    // keeping the read path tied to kEmbeddingSupportedTokenIdDTypes.
+    AM_DCHECK(aethermind::IsSupportedTokenIdDType(dtype));
     if (dtype == DataType::Int(32)) {
         return *(static_cast<const int32_t*>(token_ids_data) + index);
     }
@@ -25,14 +24,20 @@ int64_t ReadTokenId(const void* token_ids_data,
     if (dtype == DataType::UInt(32)) {
         return *(static_cast<const uint32_t*>(token_ids_data) + index);
     }
-    return *(static_cast<const int64_t*>(token_ids_data) + index);
+
+    if (dtype == DataType::Int(64)) {
+        return *(static_cast<const int64_t*>(token_ids_data) + index);
+    }
+    // Unreachable after BuildEmbeddingArgs validation; fall back without reading.
+    return 0;
 }
 
 Status BuildEmbeddingArgs(const KernelParamsBuildContext& context, void* params_buffer) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
-        return Status::InvalidArgument("Embedding requires 2 inputs and 1 output");
+        return Status::InvalidArgument(
+                "EmbeddingKernel requires 2 inputs and 1 output");
     }
 
     const TensorView& token_ids = inputs[0];
@@ -69,19 +74,14 @@ Status BuildEmbeddingArgs(const KernelParamsBuildContext& context, void* params_
                 "EmbeddingKernel requires float32 output MutableTensorView");
     }
 
-    if (token_ids.rank() != 1 || !token_ids.is_contiguous()) {
+    if (token_ids.rank() < 1 || !token_ids.is_contiguous()) {
         return Status::InvalidArgument(
-                "EmbeddingKernel requires contiguous 1D token ids");
+                "EmbeddingKernel requires contiguous token ids with rank >= 1");
     }
 
     if (weight.rank() != 2 || !weight.is_contiguous()) {
         return Status::InvalidArgument(
                 "EmbeddingKernel requires contiguous 2D weight");
-    }
-
-    if (output.rank() != 2 || !output.is_contiguous()) {
-        return Status::InvalidArgument(
-                "EmbeddingKernel requires contiguous 2D output");
     }
 
     const int64_t token_count = token_ids.numel();
@@ -92,9 +92,24 @@ Status BuildEmbeddingArgs(const KernelParamsBuildContext& context, void* params_
                 "EmbeddingKernel requires positive vocab and hidden sizes");
     }
 
-    if (output.dim(0) != token_count || output.dim(1) != hidden_size) {
+    // Output preserves all token-id axes and appends the hidden axis, matching
+    // the semantic output shape [token_ids..., hidden_size]. The gather itself
+    // is linear over the flattened token ids, so any contiguous rank works.
+    if (output.rank() != token_ids.rank() + 1 || !output.is_contiguous()) {
         return Status::InvalidArgument(
-                "EmbeddingKernel output shape must be [token_count, hidden_size]");
+                "EmbeddingKernel requires contiguous output with rank = token ids rank + 1");
+    }
+
+    for (int32_t i = 0; i < token_ids.rank(); ++i) {
+        if (output.dim(i) != token_ids.dim(i)) {
+            return Status::InvalidArgument(
+                    "EmbeddingKernel output shape must be [token ids..., hidden_size]");
+        }
+    }
+
+    if (output.dim(token_ids.rank()) != hidden_size) {
+        return Status::InvalidArgument(
+                "EmbeddingKernel output shape must be [token ids..., hidden_size]");
     }
 
     // Empty output: no token ids to gather, nothing to write. Null data is

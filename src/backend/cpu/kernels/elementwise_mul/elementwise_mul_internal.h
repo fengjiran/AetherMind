@@ -45,11 +45,10 @@ struct ElementwiseMulKernelArgs {
 /// @param args Pre-validated kernel arguments. Data pointers must be
 ///        non-null when `numel` is positive.
 /// @return Ok on success.
-AM_NODISCARD Status RunElementwiseMulScalar(
-        const ElementwiseMulKernelArgs& args) noexcept;
+Status RunElementwiseMulScalar(const ElementwiseMulKernelArgs& args) noexcept;
 
 /// Kernel entry point registered via KernelDescriptor::kernel_func.
-AM_NODISCARD Status ElementwiseMulKernel(const KernelContext& ctx) noexcept;
+Status ElementwiseMulKernel(const KernelContext& ctx) noexcept;
 
 } // namespace aethermind::cpu::detail
 

@@ -35,7 +35,7 @@
 | **runtime** | `include/aethermind/runtime/` | `src/runtime/` | 执行期运行时资源层：Runtime/RuntimeBuilder（backend/allocator/KV 资源聚合与创建）、KVCacheManager/KVCacheView（KV 物理存储与 session 生命周期，generation 机制使过期视图失效）、workspace 规划（`PlanWorkspaceRequirements`/`WorkspacePlanLayout`）。**不得依赖 execution/compiler/graph/model**；execution 单向依赖 runtime。 |
 | **model** | `include/aethermind/model/` | `src/model/` | 模型加载与前端适配：HfModelConfig/HfDirectoryReader/HfModelValidator、ResolvedModelWeights、**LoadedModel**（只持有 config + resolved raw weights/backing storage）、ModelLoader（仅 HF I/O/validation/resolution）、**ModelGraphBuilder**（HF → semantic graph 唯一转换权威；`BuildLlamaDense` 路径显式拒绝 HF-only RoPE scaling types，none/linear 映射到 `RoPEScalingType`）。ModelCompiler 归 compiler；ModelLoader 不调用 graph、backend 或 prepack。 |
 | **shape_inference** | `include/aethermind/shape_inference/` | `src/shape_inference/` | TensorSpec、ShapeSymbol、ShapeConstraint、InferenceResult 等通用形状推导基础设施。 |
-| **backend / kernels** | `include/aethermind/backend/` + per-ISA kernels | `src/backend/` | Backend 抽象、KernelRegistry、ExecutionStep 运行时执行（基于 base 层 `KernelSelector` 纯数据契约做内核匹配，见 `base/kernel_selector.h`）。不得依赖 Graph IR 或 OperatorSchema 的语义细节。 |
+| **backend / kernels** | `include/aethermind/backend/` + per-ISA kernels | `src/backend/` | Backend 抽象、KernelRegistry、ExecutionStep 运行时执行（基于 base 层 `KernelSelector` 纯数据契约做内核匹配，见 `base/kernel_selector.h`）。不得依赖 Graph IR 或 OperatorSchema 的语义细节；可 include operators 的纯数据 dtype 契约头（`kXxxSupportedDTypes`/`IsXxxSupportedDType`）。 |
 
 **跨模块依赖规则**：
 - operators → shape_inference（+ dtypes/base 基础库）
@@ -44,7 +44,7 @@
 - execution → runtime + compiler + operators + shape_inference + base（public headers 不 include compiler）；实现可依赖 model 的权重组装契约（`PackedWeightStore`/`WeightArtifactKey`）；公共头可含 backend 的纯数据契约头（`ResolvedKernel`/`PackedWeights`/`KernelSelector`）
 - runtime → base + backend（backend registry/factory）+ memory
 - model → graph + operators + formats/hf；权重组装组件（`WeightPrepackPlanner`/`PackedWeightStore`）可依赖 backend 的打包契约（`PackedWeights`/`PackingRecipe`），不得依赖其余 backend/kernels 细节
-- backend/kernels → operators（仅 OpParams/OpType）不得反向依赖 graph/model；执行期共享契约（`WorkspaceArena`/`WorkspaceBinding`/`KernelSelector`）统一放在 base 层；`ResolvedKernel`/`PackedWeights`/`PackingRecipe` 等 backend 纯数据契约头供 execution/model 上层直接依赖，不再额外下沉
+- backend/kernels → operators（OpParams/OpType，及 `kXxxSupportedDTypes`/`IsXxxSupportedDType` 等纯数据 dtype 契约头；不得依赖其余语义细节）不得反向依赖 graph/model；执行期共享契约（`WorkspaceArena`/`WorkspaceBinding`/`KernelSelector`）统一放在 base 层；`ResolvedKernel`/`PackedWeights`/`PackingRecipe` 等 backend 纯数据契约头供 execution/model 上层直接依赖，不再额外下沉
 
 ## 3. 构建命令
 ```bash

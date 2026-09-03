@@ -56,13 +56,38 @@ inline bool IsEmbeddingSupportedWeightDType(const DataType& dtype) noexcept {
                                });
 }
 
+/// @brief Lowercase display name for an Embedding weight dtype in messages.
+inline std::string EmbeddingWeightDTypeDisplayName(const DataType& dtype) {
+    if (dtype == DataType::Float32()) {
+        return "float32";
+    }
+    if (dtype == DataType::Float(16)) {
+        return "float16";
+    }
+    if (dtype == DataType::BFloat(16)) {
+        return "bfloat16";
+    }
+    return ToString(dtype);
+}
+
 /// @brief Builds a consistent unsupported-weight-dtype message for Embedding.
+///
+/// The dtype list is generated from `kEmbeddingSupportedWeightDTypes` so the
+/// message stays in sync with the declared contract.
 ///
 /// @param context Caller name prepended to the supported-dtype description.
 /// @return Error message containing `context` and the accepted weight dtypes.
 inline std::string MakeEmbeddingUnsupportedWeightDTypeMessage(std::string_view context) {
     std::string msg{context};
-    msg += " weight only supports float32, float16, and bfloat16 dtypes";
+    msg += " weight only supports ";
+    for (size_t i = 0; i < kEmbeddingSupportedWeightDTypes.size(); ++i) {
+        if (i > 0) {
+            const bool is_last = i + 1 == kEmbeddingSupportedWeightDTypes.size();
+            msg += is_last ? ", and " : ", ";
+        }
+        msg += EmbeddingWeightDTypeDisplayName(kEmbeddingSupportedWeightDTypes[i]);
+    }
+    msg += " dtypes";
     return msg;
 }
 

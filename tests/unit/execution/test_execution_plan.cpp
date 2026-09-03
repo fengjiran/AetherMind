@@ -1,9 +1,9 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/execution_bindings.h"
+#include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/kernel_invoker.h"
-#include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/memory/cpu_allocator.h"
 
 #include <cstddef>
@@ -303,7 +303,7 @@ TEST(ExecutionPlan, ExecuteRejectsBindingDTypeDrift) {
     constexpr int64_t shape[1] = {2};
     constexpr int64_t strides[1] = {1};
     CPUAllocator allocator(Device::CPU());
-    const auto bindings = BuildExecutionBindings(
+    const auto bindings = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = {.index = 0},
                            .tensor = TensorView(input, DataType::Float(16), shape, strides)}}},
@@ -319,7 +319,7 @@ TEST(ExecutionPlan, ExecuteRejectsBindingRankDrift) {
     constexpr int64_t shape[2] = {1, 2};
     constexpr int64_t strides[2] = {2, 1};
     CPUAllocator allocator(Device::CPU());
-    const auto bindings = BuildExecutionBindings(
+    const auto bindings = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = {.index = 0},
                            .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
@@ -335,7 +335,7 @@ TEST(ExecutionPlan, ExecuteRejectsBindingStaticDimDrift) {
     constexpr int64_t shape[1] = {3};
     constexpr int64_t strides[1] = {1};
     CPUAllocator allocator(Device::CPU());
-    const auto bindings = BuildExecutionBindings(
+    const auto bindings = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = {.index = 0},
                            .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
@@ -348,8 +348,8 @@ TEST(ExecutionPlan, ExecuteRejectsInvalidViewsWhenCheckingPremises) {
     const auto plan = MakeSingleSoftmaxPlan();
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     CPUAllocator allocator(Device::CPU());
-    const auto bindings = BuildExecutionBindings(
-            *plan, ExternalValueBindings{.readable = {{.value = {.index = 0}, .tensor = TensorView{}}}}, allocator);
+    const auto bindings = PrepareExecutionBindings(
+            *plan, ExternalTensorBindings{.readable = {{.value = {.index = 0}, .tensor = TensorView{}}}}, allocator);
     ASSERT_FALSE(bindings.ok());
     EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
 }
@@ -404,7 +404,7 @@ TEST(ExecutionBindings, BuildsCanonicalActivationStorageAndSurvivesMove) {
     int64_t shape[1] = {2};
     int64_t strides[1] = {1};
     CountingAllocator allocator;
-    auto bindings = BuildExecutionBindings(
+    auto bindings = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = plan->model_inputs()[0],
                            .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
@@ -412,7 +412,7 @@ TEST(ExecutionBindings, BuildsCanonicalActivationStorageAndSurvivesMove) {
     ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
     shape[0] = 1;
     strides[0] = 0;
-    BindingTable moved = std::move(*bindings);
+    PreparedExecutionBindings moved = std::move(*bindings);
     ASSERT_EQ(moved.step_count(), 1U);
     ASSERT_EQ(moved.values().size(), 2U);
     EXPECT_TRUE(moved.values()[1].readable.is_valid());
@@ -420,10 +420,10 @@ TEST(ExecutionBindings, BuildsCanonicalActivationStorageAndSurvivesMove) {
     EXPECT_EQ(moved.step(0).inputs[0].data(), input);
     EXPECT_EQ(moved.step(0).inputs[0].shape()[0], 2);
     EXPECT_EQ(moved.step(0).inputs[0].strides()[0], 1);
-    RuntimeBindingContext context;
-    context.SetBindingTable(std::move(moved));
+    auto context = ExecutionContext::Create(*plan, std::move(moved), nullptr);
+    ASSERT_TRUE(context.ok()) << context.status().ToString();
     g_invocations = 0;
-    ASSERT_TRUE(Executor::Execute(*plan, context).ok());
+    ASSERT_TRUE(Executor::Execute(*plan, *context).ok());
     EXPECT_EQ(g_invocations, 1);
 }
 
@@ -448,7 +448,7 @@ TEST(ExecutionBindings, RejectsExternalDtypeAndSymbolIdentityDrift) {
     const int64_t rhs_shape[1] = {3};
     const int64_t strides[1] = {1};
     CPUAllocator allocator(Device::CPU());
-    const auto bindings = BuildExecutionBindings(
+    const auto bindings = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = {.index = 0}, .tensor = TensorView(lhs, DataType::Float32(), lhs_shape, strides)},
                           {.value = {.index = 1}, .tensor = TensorView(rhs, DataType::Float32(), rhs_shape, strides)}}},
@@ -457,24 +457,24 @@ TEST(ExecutionBindings, RejectsExternalDtypeAndSymbolIdentityDrift) {
     EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(Executor, RunsCachedBindingTableWithoutPerStepBindingApi) {
+TEST(Executor, RunsCachedPreparedExecutionBindingsWithoutPerStepBindingApi) {
     const auto plan = MakeSingleSoftmaxPlan();
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     const float input[2]{};
     const int64_t shape[1] = {2};
     const int64_t strides[1] = {1};
     CountingAllocator allocator;
-    auto table = BuildExecutionBindings(
+    auto table = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = {.index = 0},
                            .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
             allocator);
     ASSERT_TRUE(table.ok()) << table.status().ToString();
-    RuntimeBindingContext context;
-    context.SetBindingTable(std::move(*table));
+    auto context = ExecutionContext::Create(*plan, std::move(*table), nullptr);
+    ASSERT_TRUE(context.ok()) << context.status().ToString();
     const size_t allocations_before_execute = allocator.allocation_count();
     g_invocations = 0;
-    const Status status = Executor::Execute(*plan, context);
+    const Status status = Executor::Execute(*plan, *context);
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_EQ(g_invocations, 1);
     EXPECT_EQ(allocator.allocation_count(), allocations_before_execute);
@@ -491,31 +491,31 @@ TEST(Executor, PreparedParamsAreBuiltOncePerBindingAndReusedAcrossExecutes) {
     const int64_t shape[1] = {2};
     const int64_t strides[1] = {1};
     CPUAllocator allocator(Device::CPU());
-    const ExternalValueBindings external{
+    const ExternalTensorBindings external{
             .readable = {{.value = {.index = 0},
                           .tensor = TensorView(input, DataType::Float32(), shape, strides)}}};
 
     g_builder_counters = {};
-    auto table = BuildExecutionBindings(*plan, external, allocator);
+    auto table = PrepareExecutionBindings(*plan, external, allocator);
     ASSERT_TRUE(table.ok()) << table.status().ToString();
     EXPECT_EQ(g_builder_counters.build_count, 1U);
     ASSERT_NE(table->kernel_params(0), nullptr);
     EXPECT_EQ(*static_cast<const int*>(table->kernel_params(0)), 42);
 
-    RuntimeBindingContext context;
-    context.SetBindingTable(std::move(*table));
+    auto context = ExecutionContext::Create(*plan, std::move(*table), nullptr);
+    ASSERT_TRUE(context.ok()) << context.status().ToString();
     for (int i = 0; i < 10; ++i) {
-        ASSERT_TRUE(Executor::Execute(*plan, context).ok());
+        ASSERT_TRUE(Executor::Execute(*plan, *context).ok());
     }
     EXPECT_EQ(g_builder_counters.invoke_count, 10U);
     EXPECT_EQ(g_builder_counters.build_count, 1U);
 
-    auto rebuilt = BuildExecutionBindings(*plan, external, allocator);
+    auto rebuilt = PrepareExecutionBindings(*plan, external, allocator);
     ASSERT_TRUE(rebuilt.ok()) << rebuilt.status().ToString();
     EXPECT_EQ(g_builder_counters.build_count, 2U);
 }
 
-TEST(BindingTable, RejectsDifferentPlanWithMatchingStepCountAndAcceptsPlanCopy) {
+TEST(PreparedExecutionBindings, CreateRejectsDifferentPlanWithMatchingStepCountAndAcceptsPlanCopy) {
     const auto first_plan = MakeSingleSoftmaxPlan();
     const auto second_plan = MakeSingleSoftmaxPlan();
     ASSERT_TRUE(first_plan.ok()) << first_plan.status().ToString();
@@ -529,7 +529,7 @@ TEST(BindingTable, RejectsDifferentPlanWithMatchingStepCountAndAcceptsPlanCopy) 
     const int64_t shape[1] = {2};
     const int64_t strides[1] = {1};
     CountingAllocator allocator;
-    auto table = BuildExecutionBindings(
+    auto table = PrepareExecutionBindings(
             *first_plan,
             {.readable = {{.value = {.index = 0},
                            .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
@@ -539,37 +539,45 @@ TEST(BindingTable, RejectsDifferentPlanWithMatchingStepCountAndAcceptsPlanCopy) 
     EXPECT_TRUE(table->IsCompatible(copied_plan));
     EXPECT_FALSE(table->IsCompatible(*second_plan));
 
-    RuntimeBindingContext context;
-    context.SetBindingTable(std::move(*table));
-    EXPECT_EQ(Executor::Execute(*second_plan, context).code(), StatusCode::kInvalidArgument);
+    const auto mismatched_context = ExecutionContext::Create(
+            *second_plan, std::move(*table), nullptr);
+    EXPECT_FALSE(mismatched_context.ok());
+    EXPECT_EQ(mismatched_context.status().code(), StatusCode::kInvalidArgument);
+
+    auto copied_table = PrepareExecutionBindings(
+            *first_plan,
+            {.readable = {{.value = {.index = 0},
+                           .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
+            allocator);
+    ASSERT_TRUE(copied_table.ok()) << copied_table.status().ToString();
+    const auto copied_context = ExecutionContext::Create(
+            copied_plan, std::move(*copied_table), nullptr);
+    ASSERT_TRUE(copied_context.ok()) << copied_context.status().ToString();
 }
 
-TEST(RuntimeBindingContext, ResetAllowsReinstallingBindingTable) {
+TEST(ExecutionContext, ClearInvalidatesPreparedBindingsWithoutResettingBorrowedResources) {
     const auto plan = MakeSingleSoftmaxPlan();
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     const float input[2]{};
     const int64_t shape[1] = {2};
     const int64_t strides[1] = {1};
     CountingAllocator allocator;
-    const ExternalValueBindings external{
+    const ExternalTensorBindings external{
             .readable = {{.value = {.index = 0},
                           .tensor = TensorView(input, DataType::Float32(), shape, strides)}}};
-    auto first_table = BuildExecutionBindings(*plan, external, allocator);
-    ASSERT_TRUE(first_table.ok()) << first_table.status().ToString();
-    RuntimeBindingContext context;
-    context.SetBindingTable(std::move(*first_table));
-    ASSERT_NE(context.binding_table(), nullptr);
+    auto table = PrepareExecutionBindings(*plan, external, allocator);
+    ASSERT_TRUE(table.ok()) << table.status().ToString();
+    auto context = ExecutionContext::Create(*plan, std::move(*table), nullptr);
+    ASSERT_TRUE(context.ok()) << context.status().ToString();
+    ASSERT_NE(context->prepared_bindings(), nullptr);
 
-    context.Reset();
-    EXPECT_EQ(context.binding_table(), nullptr);
+    context->Clear();
 
-    auto second_table = BuildExecutionBindings(*plan, external, allocator);
-    ASSERT_TRUE(second_table.ok()) << second_table.status().ToString();
-    context.SetBindingTable(std::move(*second_table));
-    EXPECT_NE(context.binding_table(), nullptr);
+    EXPECT_EQ(context->prepared_bindings(), nullptr);
+    EXPECT_EQ(Executor::Execute(*plan, *context).code(), StatusCode::kFailedPrecondition);
 }
 
-TEST(BindingTable, PreparedParamsStayStableAcrossMoveAndParameterlessStepsYieldNull) {
+TEST(PreparedExecutionBindings, PreparedParamsStayStableAcrossMoveAndParameterlessStepsYieldNull) {
     const ResolvedKernel kernel{.op_type = OpType::kSoftmax,
                                 .fn = &FakeKernel,
                                 .params_builder = &BuildKernelParam,
@@ -580,7 +588,7 @@ TEST(BindingTable, PreparedParamsStayStableAcrossMoveAndParameterlessStepsYieldN
     const int64_t shape[1] = {2};
     const int64_t strides[1] = {1};
     CPUAllocator allocator(Device::CPU());
-    auto table = BuildExecutionBindings(
+    auto table = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = {.index = 0},
                            .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
@@ -590,7 +598,7 @@ TEST(BindingTable, PreparedParamsStayStableAcrossMoveAndParameterlessStepsYieldN
     ASSERT_NE(prepared, nullptr);
     EXPECT_EQ(*static_cast<const int*>(prepared), 17);
 
-    BindingTable moved = std::move(*table);
+    PreparedExecutionBindings moved = std::move(*table);
     const void* const moved_params = moved.kernel_params(0);
     EXPECT_EQ(moved_params, prepared);
     ASSERT_NE(moved_params, nullptr);
@@ -598,7 +606,7 @@ TEST(BindingTable, PreparedParamsStayStableAcrossMoveAndParameterlessStepsYieldN
 
     const auto paramless_plan = MakeSingleSoftmaxPlan();
     ASSERT_TRUE(paramless_plan.ok()) << paramless_plan.status().ToString();
-    auto paramless_table = BuildExecutionBindings(
+    auto paramless_table = PrepareExecutionBindings(
             *paramless_plan,
             {.readable = {{.value = {.index = 0},
                            .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
@@ -607,7 +615,7 @@ TEST(BindingTable, PreparedParamsStayStableAcrossMoveAndParameterlessStepsYieldN
     EXPECT_EQ(paramless_table->kernel_params(0), nullptr);
 }
 
-TEST(BindingTable, KernelParamsSlotsSatisfyMaxAlignInSharedArena) {
+TEST(PreparedExecutionBindings, KernelParamsSlotsSatisfyMaxAlignInSharedArena) {
     const TensorSpec spec = FloatVectorSpec(2);
     const ResolvedKernel kernel{.op_type = OpType::kSoftmax,
                                 .fn = &FakeKernel,
@@ -633,7 +641,7 @@ TEST(BindingTable, KernelParamsSlotsSatisfyMaxAlignInSharedArena) {
     const int64_t shape[1] = {2};
     const int64_t strides[1] = {1};
     CPUAllocator allocator(Device::CPU());
-    auto table = BuildExecutionBindings(
+    auto table = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = {.index = 0},
                            .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
@@ -660,7 +668,7 @@ TEST(ExecutionBindings, RejectsWhenKernelParamsBuilderFails) {
     const int64_t strides[1] = {1};
     CPUAllocator allocator(Device::CPU());
     g_invocations = 0;
-    const auto bindings = BuildExecutionBindings(
+    const auto bindings = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = {.index = 0},
                            .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},

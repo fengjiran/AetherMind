@@ -56,7 +56,7 @@ public:
     }
 };
 
-RuntimeContext MakeRuntime() {
+Runtime MakeRuntime() {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU, std::make_unique<ExecutorTestBackendFactory>());
     return builder.Build();
@@ -83,7 +83,7 @@ ExecutionPlanNodeSpec MakeSoftmaxNode() {
 }
 
 TEST(ExecutorBackendPath, ExecutesFrozenKernelWithCachedValueBindings) {
-    RuntimeContext runtime = MakeRuntime();
+    Runtime runtime = MakeRuntime();
     const auto plan = ExecutionPlanBuilder::Build(runtime, std::vector{MakeSoftmaxNode()});
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     alignas(64) std::byte workspace[64]{};
@@ -93,24 +93,24 @@ TEST(ExecutorBackendPath, ExecutesFrozenKernelWithCachedValueBindings) {
     const int64_t shape[2] = {2, 4};
     const int64_t strides[2] = {4, 1};
     const ExecutionStep& step = plan->steps().front();
-    auto table = BuildExecutionBindings(
+    auto table = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = step.inputs[0], .tensor = TensorView(input, DataType::Float32(), shape, strides)}},
              .writable = {{.value = step.outputs[0], .tensor = MutableTensorView(output, DataType::Float32(), shape, strides)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_TRUE(table.ok()) << table.status().ToString();
-    RuntimeBindingContext bindings(&arena);
-    bindings.SetBindingTable(std::move(*table));
+    auto bindings = ExecutionContext::Create(*plan, std::move(*table), &arena);
+    ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
     g_kernel_calls = 0;
     g_workspace = {};
-    ASSERT_TRUE(Executor::Execute(*plan, bindings).ok());
+    ASSERT_TRUE(Executor::Execute(*plan, *bindings).ok());
     EXPECT_EQ(g_kernel_calls, 1);
     EXPECT_EQ(g_workspace.data, workspace);
     EXPECT_EQ(g_workspace.size, sizeof(workspace));
 }
 
 TEST(ExecutorBackendPath, PropagatesFrozenKernelFailure) {
-    RuntimeContext runtime = MakeRuntime();
+    Runtime runtime = MakeRuntime();
     const TensorSpec input_spec{.dtype = DataType::Float32(), .shape = StaticShape({2, 4})};
     const std::vector<TensorSpec> inputs{input_spec};
     const auto analyzed = InferOperator(OpType::kArgmax, OpParams{ArgmaxParams{.axis = -1}}, inputs);
@@ -133,37 +133,37 @@ TEST(ExecutorBackendPath, PropagatesFrozenKernelFailure) {
     const int64_t output_shape[1] = {2};
     const int64_t output_strides[1] = {1};
     const ExecutionStep& step = plan->steps().front();
-    auto table = BuildExecutionBindings(
+    auto table = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = step.inputs[0], .tensor = TensorView(input, DataType::Float32(), input_shape, input_strides)}},
              .writable = {{.value = step.outputs[0], .tensor = MutableTensorView(output, DataType::Int(64), output_shape, output_strides)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_TRUE(table.ok()) << table.status().ToString();
-    RuntimeBindingContext bindings;
-    bindings.SetBindingTable(std::move(*table));
-    EXPECT_EQ(Executor::Execute(*plan, bindings).code(), StatusCode::kInvalidArgument);
+    auto bindings = ExecutionContext::Create(*plan, std::move(*table), nullptr);
+    ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
+    EXPECT_EQ(Executor::Execute(*plan, *bindings).code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ExecutorBackendPath, ExecuteFailsWhenWorkspaceRequirementCannotBeBound) {
-    RuntimeContext runtime = MakeRuntime();
+TEST(ExecutorBackendPath, CreateRequiresWorkspaceForNonZeroPlanRequirement) {
+    Runtime runtime = MakeRuntime();
     const auto plan = ExecutionPlanBuilder::Build(runtime, std::vector{MakeSoftmaxNode()});
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     float input[8]{};
     const int64_t shape[2] = {2, 4};
     const int64_t strides[2] = {4, 1};
-    auto table = BuildExecutionBindings(
+    auto table = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = plan->steps()[0].inputs[0],
                            .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_TRUE(table.ok()) << table.status().ToString();
-    RuntimeBindingContext bindings;
-    bindings.SetBindingTable(std::move(*table));
-    EXPECT_EQ(Executor::Execute(*plan, bindings).code(), StatusCode::kFailedPrecondition);
+    const auto bindings = ExecutionContext::Create(*plan, std::move(*table), nullptr);
+    EXPECT_FALSE(bindings.ok());
+    EXPECT_EQ(bindings.status().code(), StatusCode::kFailedPrecondition);
 }
 
-TEST(ExecutorBackendPath, ExecuteRejectsViolatedRuntimeShapeConstraintBeforeRun) {
-    RuntimeContext runtime = MakeRuntime();
+TEST(ExecutorBackendPath, PrepareRejectsViolatedRuntimeShapeConstraintBeforeRun) {
+    Runtime runtime = MakeRuntime();
     const ShapeSymbol sequence = ShapeSymbol::Create();
     const ShapeSymbol hidden = ShapeSymbol::Create();
     const ShapeSymbol weight_length = ShapeSymbol::Create();
@@ -191,7 +191,7 @@ TEST(ExecutorBackendPath, ExecuteRejectsViolatedRuntimeShapeConstraintBeforeRun)
     const int64_t input_strides[2] = {8, 1};
     const int64_t weight_shape[1] = {16};
     const int64_t weight_strides[1] = {1};
-    auto table = BuildExecutionBindings(
+    auto table = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = plan->steps()[0].inputs[0],
                            .tensor = TensorView(input, DataType::Float32(), input_shape, input_strides)},
@@ -203,7 +203,7 @@ TEST(ExecutorBackendPath, ExecuteRejectsViolatedRuntimeShapeConstraintBeforeRun)
 }
 
 TEST(ExecutorBackendPath, ExecuteRunsWhenRuntimeShapeConstraintIsSatisfied) {
-    RuntimeContext runtime = MakeRuntime();
+    Runtime runtime = MakeRuntime();
     const ShapeSymbol sequence = ShapeSymbol::Create();
     const ShapeSymbol hidden = ShapeSymbol::Create();
     const ShapeSymbol weight_length = ShapeSymbol::Create();
@@ -232,7 +232,7 @@ TEST(ExecutorBackendPath, ExecuteRunsWhenRuntimeShapeConstraintIsSatisfied) {
     const int64_t input_strides[2] = {8, 1};
     const int64_t weight_shape[1] = {8};
     const int64_t weight_strides[1] = {1};
-    auto table = BuildExecutionBindings(
+    auto table = PrepareExecutionBindings(
             *plan,
             {.readable = {{.value = plan->steps()[0].inputs[0],
                            .tensor = TensorView(input, DataType::Float32(), input_shape, input_strides)},
@@ -242,9 +242,9 @@ TEST(ExecutorBackendPath, ExecuteRunsWhenRuntimeShapeConstraintIsSatisfied) {
                            .tensor = MutableTensorView(output, DataType::Float32(), input_shape, input_strides)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_TRUE(table.ok()) << table.status().ToString();
-    RuntimeBindingContext bindings;
-    bindings.SetBindingTable(std::move(*table));
-    ASSERT_TRUE(Executor::Execute(*plan, bindings).ok());
+    auto bindings = ExecutionContext::Create(*plan, std::move(*table), nullptr);
+    ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
+    ASSERT_TRUE(Executor::Execute(*plan, *bindings).ok());
 }
 
 } // namespace

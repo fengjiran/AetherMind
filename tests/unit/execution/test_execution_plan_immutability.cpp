@@ -1,10 +1,10 @@
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/packed_weights.h"
+#include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
-#include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/model/packed_weight_store.h"
 #include "aethermind/operators/op_params.h"
@@ -203,7 +203,7 @@ TEST(ExecutionPlanImmutability, StepsReturnsConstViewAfterConstruction) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<ImmutableTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({1, 4});
     const SymbolicShape weight_shape = StaticShape({4});
@@ -238,7 +238,7 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<WorkspaceImmutableTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({1, 4});
     const SymbolicShape weight_shape = StaticShape({4});
@@ -294,7 +294,7 @@ TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByPackedWeightStore)
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<ImmutableTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     bool packed_destroyed = false;
     KernelSelector selector{
@@ -368,7 +368,7 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<ImmutableTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({1, 4});
     const SymbolicShape weight_shape = StaticShape({4});
@@ -404,7 +404,6 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
     constexpr int64_t w_shape[1] = {4};
     constexpr int64_t w_strides[1] = {1};
 
-    RuntimeBindingContext bindings;
     test::ExecutionBindingCollector binding_collector(*plan, runtime.GetAllocator(Device::CPU()));
     binding_collector.Set(0, StepTensorBinding{
                                      .inputs = {
@@ -415,8 +414,9 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
                                              MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
                                      },
                              });
-    ASSERT_TRUE(binding_collector.Install(bindings).ok());
-    const Status status = Executor::Execute(*plan, bindings);
+    auto bindings = binding_collector.CreateContext();
+    ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
+    const Status status = Executor::Execute(*plan, *bindings);
 
     ASSERT_TRUE(status.ok());
 
@@ -429,7 +429,7 @@ TEST(ExecutionPlanImmutability, PlanDoesNotContainRuntimeBindings) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<ImmutableTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({1, 4});
     const SymbolicShape weight_shape = StaticShape({4});

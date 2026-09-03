@@ -4,8 +4,8 @@
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/runtime/kv_cache_manager.h"
+#include "aethermind/runtime/runtime.h"
 #include "aethermind/runtime/runtime_builder.h"
-#include "aethermind/runtime/runtime_context.h"
 #include "aethermind/runtime/workspace.h"
 #include <gtest/gtest.h>
 
@@ -15,7 +15,7 @@ using namespace aethermind;
 
 TEST(RuntimeBackendIntegration, BuildCreatesBackendRegistry) {
     RuntimeBuilder builder;
-    RuntimeContext context = builder.Build();
+    Runtime context = builder.Build();
 
     auto backend_or = context.GetBackend(DeviceType::kCPU);
     EXPECT_TRUE(backend_or.ok());
@@ -23,7 +23,7 @@ TEST(RuntimeBackendIntegration, BuildCreatesBackendRegistry) {
 
 TEST(RuntimeBackendIntegration, GetBackendCPUWorks) {
     RuntimeBuilder builder;
-    RuntimeContext context = builder.Build();
+    Runtime context = builder.Build();
 
     auto backend_or = context.GetBackend(DeviceType::kCPU);
     ASSERT_TRUE(backend_or.ok());
@@ -34,7 +34,7 @@ TEST(RuntimeBackendIntegration, GetBackendCPUWorks) {
 
 TEST(RuntimeBackendIntegration, GetBackendReturnsCachedInstance) {
     RuntimeBuilder builder;
-    RuntimeContext context = builder.Build();
+    Runtime context = builder.Build();
 
     auto backend1_or = context.GetBackend(DeviceType::kCPU);
     auto backend2_or = context.GetBackend(DeviceType::kCPU);
@@ -46,7 +46,7 @@ TEST(RuntimeBackendIntegration, GetBackendReturnsCachedInstance) {
 
 TEST(RuntimeBackendIntegration, DefaultCpuFactoryIsRegistered) {
     RuntimeBuilder builder;
-    RuntimeContext context = builder.Build();
+    Runtime context = builder.Build();
 
     auto backend_or = context.GetBackend(DeviceType::kCPU);
 
@@ -63,7 +63,7 @@ TEST(RuntimeBackendIntegration, GetBackendForUnregisteredDeviceFails) {
 
     RuntimeBuilder builder;
     builder.WithOptions(options);
-    RuntimeContext context = builder.Build();
+    Runtime context = builder.Build();
 
     auto backend_or = context.GetBackend(DeviceType::kCUDA);
 
@@ -94,7 +94,7 @@ TEST(RuntimeBackendIntegration, CustomCpuFactoryOverridesDefault) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU, std::make_unique<MockBackendFactory>());
 
-    RuntimeContext context = builder.Build();
+    Runtime context = builder.Build();
     auto backend_or = context.GetBackend(DeviceType::kCPU);
 
     ASSERT_TRUE(backend_or.ok());
@@ -105,7 +105,7 @@ TEST(RuntimeBackendIntegration, CustomCpuFactoryOverridesDefault) {
 
 TEST(RuntimeBackendIntegration, KVCacheManagerIsAbsentByDefault) {
     RuntimeBuilder builder;
-    RuntimeContext context = builder.Build();
+    Runtime context = builder.Build();
 
     EXPECT_EQ(context.GetKVCacheManager(), nullptr);
 }
@@ -122,7 +122,7 @@ TEST(RuntimeBackendIntegration, KVCacheManagerCanBeBuiltFromRuntimeOptions) {
 
     RuntimeBuilder builder;
     builder.WithOptions(options);
-    RuntimeContext context = builder.Build();
+    Runtime context = builder.Build();
 
     KVCacheManager* manager = context.GetKVCacheManager();
     ASSERT_NE(manager, nullptr);

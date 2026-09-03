@@ -314,7 +314,7 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
     options.backend.cpu_feature_policy = *policy;
     RuntimeBuilder builder;
     builder.WithOptions(options);
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
@@ -353,7 +353,7 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
 
 TEST(ExecutionPlanBuilder, BuildFromRawNodesValidatesInferredMetadata) {
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const ShapeSymbol seq_len = ShapeSymbol::Create();
     const ShapeSymbol input_hidden = ShapeSymbol::Create();
@@ -413,7 +413,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesValidatesInferredMetadata) {
 
 TEST(ExecutionPlanBuilder, BuildRejectsMismatchedOutputSpecs) {
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
@@ -440,7 +440,7 @@ TEST(ExecutionPlanBuilder, BuildRejectsMismatchedOutputSpecs) {
 
 TEST(ExecutionPlanBuilder, BuildRejectsInvalidInputSpecsBeforePrepare) {
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     // Semantically invalid: activation last dim (8) != weight length (16).
     // InferRmsNorm will fail, and Build rejects with that error's code.
@@ -462,7 +462,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsWrongInputDtype) {
     // RmsNorm only accepts floating-point dtypes; supplying Int32 for input[0]
     // must fail at the semantic authority layer (not at kernel resolution or Prepare).
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
@@ -498,7 +498,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMismatchedRuntimeChecks) {
     // a DimEqualConstraint; supplying an empty runtime_checks vector must
     // fail the strict-equality check in ValidateCallerMetadata.
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const ShapeSymbol seq_len = ShapeSymbol::Create();
     const ShapeSymbol input_hidden = ShapeSymbol::Create();
@@ -540,7 +540,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMismatchedRuntimeChecks) {
 
 TEST(ExecutionPlanBuilder, BuildRejectsMissingTypedParams) {
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     std::vector<ExecutionPlanNodeSpec> nodes;
     nodes.push_back(MakeRmsNormNodeSpec());
@@ -555,7 +555,7 @@ TEST(ExecutionPlanBuilder, BuildUsesPreparedKernelWorkspaceRequirementsForRawNod
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<WorkspaceTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
@@ -606,7 +606,7 @@ TEST(ExecutionPlanBuilder, BuildRejectsRawWorkspaceRequirementThatDisagreesWithK
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<WorkspaceTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
@@ -635,7 +635,7 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightStore) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<PackedTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
     PackedWeightStore packed_weight_store;
     KernelSelector selector{
             .device_type = DeviceType::kCPU,
@@ -698,7 +698,7 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightStore) {
 
 TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutPackedWeightStore) {
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
@@ -765,7 +765,7 @@ TEST(ExecutionPlanBuilder, TrustedPathRejectsUnknownLoweredValuePayload) {
                               .payload = std::monostate{}});
     const auto lowered = std::move(builder).Build();
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
-    RuntimeContext runtime = RuntimeBuilder{}.Build();
+    Runtime runtime = RuntimeBuilder{}.Build();
     const auto plan = ExecutionPlanBuilder::Build(runtime, *lowered);
     ASSERT_FALSE(plan.ok());
     EXPECT_EQ(plan.status().code(), StatusCode::kInternal);
@@ -796,7 +796,7 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPropagatesPreparedKernelWorkspac
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<WorkspaceTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
     const auto plan = ExecutionPlanBuilder::Build(runtime, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->steps().size(), lowered->steps().size());
@@ -924,7 +924,7 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphBindsDistinctPackedWeightsByBind
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<PackedTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
     const auto plan =
             ExecutionPlanBuilder::Build(runtime, packed_weight_store, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
@@ -979,7 +979,7 @@ TEST(ExecutionPlanBuilder, TrustedPathRejectsStoreFromAnotherArtifact) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<PackedTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
     const auto plan = ExecutionPlanBuilder::Build(runtime, foreign_store, *lowered);
 
     ASSERT_FALSE(plan.ok());
@@ -989,7 +989,7 @@ TEST(ExecutionPlanBuilder, TrustedPathRejectsStoreFromAnotherArtifact) {
 
 TEST(ExecutionPlanBuilder, BuildFromNodesAloneHasEmptyStateAliasPlan) {
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
@@ -1023,7 +1023,7 @@ TEST(ExecutionPlanBuilder, BuildFromEmptyLoweredGraphHasEmptyStateAliasPlan) {
     EXPECT_TRUE(lowered->steps().empty());
 
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(
             runtime, *lowered);
@@ -1033,7 +1033,7 @@ TEST(ExecutionPlanBuilder, BuildFromEmptyLoweredGraphHasEmptyStateAliasPlan) {
 }
 
 TEST(ExecutionPlanBuilder, TrustedPathCopiesValueDataflowAfterLoweredGraphLifetimeEnds) {
-    RuntimeContext runtime = RuntimeBuilder{}.Build();
+    Runtime runtime = RuntimeBuilder{}.Build();
     StatusOr<ExecutionPlan> plan = Status::Internal("not built");
     {
         ModelGraph graph;
@@ -1071,7 +1071,7 @@ TEST(ExecutionPlanBuilder, TrustedPathCopiesValueDataflowAfterLoweredGraphLifeti
 
 TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMissingTypedParams) {
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
@@ -1099,7 +1099,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesInferredMetadata) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<SoftmaxTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     std::vector<TensorSpec> inputs = {
@@ -1139,7 +1139,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesInferredMetadata) {
 
 TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsSelectorActDTypeMismatch) {
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
@@ -1168,7 +1168,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsSelectorActDTypeMismatch) {
 
 TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsSelectorWeightDTypeMismatch) {
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});
@@ -1200,7 +1200,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsSelectorWeightDTypeWithoutWei
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<SoftmaxTestBackendFactory>());
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     std::vector<TensorSpec> inputs = {
@@ -1236,7 +1236,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsSelectorWeightDTypeWithoutWei
 
 TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsUndefinedSelectorActDType) {
     RuntimeBuilder builder;
-    RuntimeContext runtime = builder.Build();
+    Runtime runtime = builder.Build();
 
     const SymbolicShape act_shape = StaticShape({4, 8});
     const SymbolicShape weight_shape = StaticShape({8});

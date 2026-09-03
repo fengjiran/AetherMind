@@ -2,7 +2,7 @@
 #define AETHERMIND_TEST_EXECUTION_BINDING_HELPERS_H
 
 #include "aethermind/execution/execution_bindings.h"
-#include "aethermind/execution/runtime_binding_context.h"
+#include "aethermind/execution/execution_context.h"
 
 #include <utility>
 #include <vector>
@@ -22,8 +22,10 @@ public:
         step_bindings_.at(step_index) = std::move(binding);
     }
 
-    Status Install(RuntimeBindingContext& context) const {
-        ExternalValueBindings external;
+    StatusOr<ExecutionContext> CreateContext(
+            WorkspaceArena* workspace_arena = nullptr,
+            KVCacheView kv_cache_view = {}) const {
+        ExternalTensorBindings external;
         std::vector<bool> readable_seen(plan_.values().size());
         std::vector<bool> writable_seen(plan_.values().size());
         for (size_t step_index = 0; step_index < plan_.size(); ++step_index) {
@@ -49,10 +51,10 @@ public:
                 }
             }
         }
-        auto table = BuildExecutionBindings(plan_, external, allocator_);
-        if (!table.ok()) return table.status();
-        context.SetBindingTable(std::move(*table));
-        return Status::Ok();
+        auto table = PrepareExecutionBindings(plan_, external, allocator_);
+        if (!table.ok()) return std::move(table).status();
+        return ExecutionContext::Create(
+                plan_, std::move(*table), workspace_arena, kv_cache_view);
     }
 
 private:

@@ -12,10 +12,8 @@
 #include <string>
 #include <type_traits>
 
-namespace aethermind {
+namespace aethermind::cpu::detail {
 namespace {
-
-using cpu::detail::kMaxRank;
 
 bool ValidateBroadcastCompatible(std::span<const int64_t> lhs_shape,
                                  std::span<const int64_t> rhs_shape,
@@ -105,12 +103,12 @@ StatusOr<int64_t> CheckedOutputNumel(int32_t rank,
 
 Status ValidateAndBuildCommonElementwiseMulArgs(
         const KernelParamsBuildContext& context,
-        cpu::detail::ElementwiseMulKernelArgs& args) noexcept {
+        ElementwiseMulKernelArgs& args) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
         return Status::InvalidArgument(
-                "ElementwiseMul requires 2 inputs and 1 output");
+                "ElementwiseMulKernel requires 2 inputs and 1 output");
     }
 
     const TensorView& lhs = inputs[0];
@@ -156,7 +154,7 @@ Status ValidateAndBuildCommonElementwiseMulArgs(
     if (!numel_or.ok()) return numel_or.status();
     const int64_t numel = numel_or.value();
     if (numel == 0) {
-        args = cpu::detail::ElementwiseMulKernelArgs{};
+        args = ElementwiseMulKernelArgs{};
         return Status::Ok();
     }
 
@@ -207,8 +205,8 @@ Status ValidateAndBuildCommonElementwiseMulArgs(
 
 } // namespace
 
-Status cpu::detail::RunElementwiseMulScalar(
-        const cpu::detail::ElementwiseMulKernelArgs& args) noexcept {
+Status RunElementwiseMulScalar(
+        const ElementwiseMulKernelArgs& args) noexcept {
     if (args.numel == 0) {
         return Status::Ok();
     }
@@ -252,25 +250,25 @@ Status cpu::detail::RunElementwiseMulScalar(
     return Status::Ok();
 }
 
-Status cpu::detail::ElementwiseMulKernel(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const cpu::detail::ElementwiseMulKernelArgs*>(
+Status ElementwiseMulKernel(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const ElementwiseMulKernelArgs*>(
             ctx.kernel_params);
     AM_DCHECK(args != nullptr);
-    return cpu::detail::RunElementwiseMulScalar(*args);
+    return RunElementwiseMulScalar(*args);
 }
 
 Status BuildElementwiseMulArgs(const KernelParamsBuildContext& context,
                                void* params_buffer) noexcept {
-    cpu::detail::ElementwiseMulKernelArgs args;
+    ElementwiseMulKernelArgs args;
     AM_RETURN_IF_ERROR(
             ValidateAndBuildCommonElementwiseMulArgs(context, args));
-    ::new (params_buffer) cpu::detail::ElementwiseMulKernelArgs(args);
+    ::new (params_buffer) ElementwiseMulKernelArgs(args);
     return Status::Ok();
 }
 
 // The prepared args must satisfy the PreparedExecutionBindings params arena contract.
-static_assert(std::is_trivially_destructible_v<cpu::detail::ElementwiseMulKernelArgs>);
-static_assert(alignof(cpu::detail::ElementwiseMulKernelArgs) <= alignof(std::max_align_t));
+static_assert(std::is_trivially_destructible_v<ElementwiseMulKernelArgs>);
+static_assert(alignof(ElementwiseMulKernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(ElementwiseMulFp32Scalar,
                    KernelDescriptor{
@@ -282,11 +280,11 @@ AM_REGISTER_KERNEL(ElementwiseMulFp32Scalar,
                                    .weight_format = WeightFormat::kPlain,
                                    .phase = ExecPhase::kBoth,
                            },
-                           .kernel_func = &cpu::detail::ElementwiseMulKernel,
+                           .kernel_func = &ElementwiseMulKernel,
                            .priority = 10,
-                           .params_size = sizeof(cpu::detail::ElementwiseMulKernelArgs),
+                           .params_size = sizeof(ElementwiseMulKernelArgs),
                            .params_builder = &BuildElementwiseMulArgs,
                            .name = "cpu::elementwise_mul_f32_scalar",
                    })
 
-} // namespace aethermind
+} // namespace aethermind::cpu::detail

@@ -69,8 +69,7 @@ StatusOr<ResolvedKernel> CpuBackend::PrepareKernel(OpType op_type,
     }
 
     const StatusOr<const KernelDescriptor*> descriptor = ResolveEligibleDescriptor(
-            KernelRegistry::Global(), op_type, selector,
-            capabilities_.effective_features);
+            KernelRegistry::Global(), op_type, selector, capabilities_.effective_features);
     if (!descriptor.ok()) {
         return descriptor.status();
     }

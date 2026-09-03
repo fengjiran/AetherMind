@@ -6,10 +6,9 @@
 #include "aethermind/execution/runtime_binding_context.h"
 #include "aethermind/memory/cpu_allocator.h"
 
-#include <gtest/gtest.h>
-
 #include <cstddef>
 #include <cstdint>
+#include <gtest/gtest.h>
 
 namespace {
 

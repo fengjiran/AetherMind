@@ -168,8 +168,7 @@ void* MutableKernelParamsPointer(BindingTableStorage& storage,
     AM_DCHECK(step_index < storage.kernel_params_offsets.size());
     const size_t offset = storage.kernel_params_offsets[step_index];
     AM_DCHECK(offset != kNoKernelParams);
-    auto* base = reinterpret_cast<std::byte*>(
-            storage.kernel_params_storage.data());
+    auto* base = reinterpret_cast<std::byte*>(storage.kernel_params_storage.data());
     return base + offset;
 }
 

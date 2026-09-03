@@ -308,18 +308,15 @@ Status BuildRmsNormFp32ScalarArgs(
         const KernelParamsBuildContext& context,
         void* params_buffer) noexcept {
     RmsNormFp32KernelArgs args;
-    AM_RETURN_IF_ERROR(
-            ValidateAndBuildCommonRmsNormFp32Args(context, args));
+    AM_RETURN_IF_ERROR(ValidateAndBuildCommonRmsNormFp32Args(context, args));
     ::new (params_buffer) RmsNormFp32KernelArgs(args);
     return Status::Ok();
 }
 
-Status BuildRmsNormFp32Avx2FmaArgs(
-        const KernelParamsBuildContext& context,
-        void* params_buffer) noexcept {
+Status BuildRmsNormFp32Avx2FmaArgs(const KernelParamsBuildContext& context,
+                                   void* params_buffer) noexcept {
     RmsNormFp32KernelArgs args;
-    AM_RETURN_IF_ERROR(
-            ValidateAndBuildCommonRmsNormFp32Args(context, args));
+    AM_RETURN_IF_ERROR(ValidateAndBuildCommonRmsNormFp32Args(context, args));
 
     if (args.row_count != 0 && !HasUnitColumnStrides(args)) {
         return Status::InvalidArgument(
@@ -347,16 +344,14 @@ Status BuildRmsNormMetadata(const OpParams& params,
 }
 
 Status RmsNormKernelEntryFp32Scalar(const KernelContext& ctx) noexcept {
-    const auto* args =
-            static_cast<const RmsNormFp32KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const RmsNormFp32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunRmsNormFp32Scalar(*args);
 }
 
 #if defined(AETHERMIND_HAS_RMSNORM_AVX2_FMA_KERNEL)
 Status RmsNormKernelEntryFp32Avx2Fma(const KernelContext& ctx) noexcept {
-    const auto* args =
-            static_cast<const RmsNormFp32KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const RmsNormFp32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunRmsNormFp32Avx2Fma(*args);
 }

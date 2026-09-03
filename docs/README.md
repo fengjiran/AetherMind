@@ -70,7 +70,9 @@
 
 ### 演进提案（docs/improvement-plan/）
 
-待建立。存量计划类文档（phase1_*、backend_phase1_*、路线图等）迁移后在此登记。
+| 文档 | 定位 | 状态 |
+|---|---|---|
+| [01-inference-session-generate-readiness.md](improvement-plan/01-inference-session-generate-readiness.md) | InferenceSession/Generate 前置模块、实施顺序与 public API 准入门禁 | Draft |
 
 ### 开发指南（docs/guides/）
 
@@ -148,6 +150,8 @@
 | OpType / OperatorSchema / OpParams | 算子语义契约层：端口顺序为语义 ABI；OpParams 为 typed variant |
 | TensorSpec / ShapeSymbol / ShapeConstraint | 形状推导基础设施（shape_inference 模块） |
 | PackedWeightStore | packed weights 存储（legacy backend artifact，调用方持有） |
-| RuntimeBuilder / RuntimeContext | 运行时装配与上下文（AllocatorRegistry + BackendRegistry + KVCacheManager） |
+| RuntimeBuilder / Runtime | 运行时装配与上下文（AllocatorRegistry + BackendRegistry + KVCacheManager） |
+| PreparedExecutionBindings | `ExecutionPlan` 的 cold-path tensor specialization：拥有 activation/metadata/prepared params，借用 external backing |
+| ExecutionContext | 单 plan 的窄执行资源：拥有 prepared bindings，借用 WorkspaceArena，保存 KVCacheView |
 | ammalloc | 自研用户态分配器（ThreadCache/CentralCache/PageCache） |
 | Argmax | 贪婪采样（Phase 1 唯一采样策略） |

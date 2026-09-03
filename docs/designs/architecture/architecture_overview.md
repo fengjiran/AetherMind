@@ -25,7 +25,7 @@ flowchart TB
     subgraph L2["2. 调度控制层<br/>同步单请求生命周期与执行编排"]
         direction LR
         EXEC["Executor<br/>(已实现: Execute)"]
-        RTB["RuntimeBuilder / RuntimeContext<br/>AllocatorRegistry + BackendRegistry<br/>+ KVCacheManager (已实现)"]
+        RTB["RuntimeBuilder / Runtime<br/>AllocatorRegistry + BackendRegistry<br/>+ KVCacheManager (已实现)"]
         ML["ModelLoader<br/>(已实现: Load)"]
     end
 
@@ -132,14 +132,14 @@ API 服务层是 AetherMind **进程内**集成/服务边界。它不是 HTTP/gR
 
 | 维度 | 说明 |
 |------|------|
-| **责任** | 管理 Runtime 资源（Allocator、Backend、KVCacheManager）的装配；维护执行期间上下文绑定；协调 Prefill→Decode→Finish 状态机；驱动 KV Cache 与 Workspace 的绑定与释放 |
-| **当前模块** | `RuntimeBuilder`、`RuntimeContext`、`Executor`、`KVCacheManager`、`RuntimeBindingContext`、`ModelLoader` |
+| **责任** | 装配 Runtime 资源（Allocator、Backend、KVCacheManager）；在冷路径将 `ExecutionPlan` specialize 为 `PreparedExecutionBindings`，并以 `ExecutionContext` 聚合 bindings、borrowed workspace 和 KV view |
+| **当前模块** | `RuntimeBuilder`、`Runtime`、`Executor`、`KVCacheManager`、`PreparedExecutionBindings`、`ExecutionContext`、`ModelLoader` |
 | **主要输入** | 已编译的 `ExecutionPlan`、其对应的模型 artifact（必要时含 `PackedWeightStore`）、Prompt Token 序列、`GenerationConfig` |
 | **主要输出** | 执行步骤结果（tensor 写入 workspace / KV cache 位置）；Token IDs 需由目标 Generate 循环在 Argmax/stop handling 后产生 |
-| **目标缺口** | `PrefillPath`/`DecodePath` 类未实现；`Executor::Generate` 完整状态机未实现；当前 `Executor::Execute` 为单计划一次性执行，不具备跨步骤状态管理和 Prefill/Decode 阶段区分能力 |
+| **目标缺口** | `InferenceSession`/`PrefillPath`/`DecodePath` 未实现；同步 Generate 状态机尚未闭环。当前 `Executor::Execute` 只执行一个已 specialize 的 plan，不承担跨步骤状态管理或 Prefill/Decode 阶段切换。前置模块与准入门禁见 [InferenceSession / Generate 前置闭环计划](../../improvement-plan/01-inference-session-generate-readiness.md) |
 | **禁止责任泄漏** | 不得承担请求排队/批处理、不得处理网络 IO、不得承担算子级 dispatch 决策（仅为调用方） |
 
-> 当前 `Executor::Execute` 的实现是单一 plan 遍历执行：调用 `LayerRunner::Run` 按序执行每个 `ExecutionStep`，每步经 workspace 绑定、KernelContext 构造、shape 约束校验后由通用 kernel invoker 调用按值冻结的 `step.kernel.fn`。整个 Generate 状态机（PrepareSession → Prefill → Decode loop → Argmax/stop）属于 Phase 1 目标。
+> 当前生命周期为 `RuntimeBuilder::Build → Runtime`、`ExecutionPlanBuilder::Build → ExecutionPlan`、`PrepareExecutionBindings → PreparedExecutionBindings`、`ExecutionContext::Create → Executor::Execute`。shape/layout/aliasing premise、deferred shape constraints 和 kernel params 均在 `PrepareExecutionBindings` 冷路径验证；`LayerRunner` 只读取已准备的 bindings，绑定 step workspace 并调用冻结的 `step.kernel.fn`。整个 Generate 状态机（session reservation → Prefill → Decode loop → Argmax/stop）仍是 Phase 1 目标。
 
 ---
 
@@ -210,10 +210,10 @@ flowchart LR
 |------|------|
 | **责任** | 暴露 kernel resolve 能力（供 `ExecutionPlanBuilder` 在 plan-build-time 调用）；注册与选择后端 kernel；在工作空间绑定和 shape 校验后执行逐步骤算子调用；提供 workspace 复用与 KV cache 物理访问契约 |
 | **当前模块** | `LayerRunner`（执行私有）、`KernelInvoker`、`CpuBackend`、`KernelRegistry`（全局 singleton + `AM_REGISTER_KERNEL` 静态注册）、`ammalloc`；`WorkspaceArena`/`WorkspaceBinding` 为 base 层共享契约，backend 与 execution 均单向依赖 |
-| **主要输入** | `ExecutionPlan`（已 resolve 的 `ExecutionStep` 序列）、`RuntimeBindingContext`（workspace base、KV view 等动态绑定） |
+| **主要输入** | `ExecutionPlan`（已 resolve 的 `ExecutionStep` 序列）、`ExecutionContext`（workspace base、KV view 等动态绑定） |
 | **主要输出** | 各 step 计算结果的 tensor 写入（workspace + KV cache 位置）；Token IDs 仅在目标 Generate 循环经 Argmax 处理后产生 |
 | **目标缺口** | CPU backend/kernel dispatch 已通过 plan-build-time resolve 就位；更完整的 Llama layer 算子覆盖和 SIMD 优化 kernel 仍在推进 |
-| **禁止责任泄漏** | 不得感知模型拓扑、不得承担请求编排、不得在热路径做 registry/hash/string lookup 或对象虚调用、不得将宽对象（`RuntimeContext*`）下放给 kernel |
+| **禁止责任泄漏** | 不得感知模型拓扑、不得承担请求编排、不得在热路径做 registry/hash/string lookup 或对象虚调用、不得将宽对象（`Runtime*`）下放给 kernel |
 
 > kernel prepare 能力由硬件执行层通过 `Backend::PrepareKernel` 暴露，但 prepare 的发起方是执行数据契约层的 `ExecutionPlanBuilder`；它将 selector 与 typed OpParams 交给 backend，并将返回的 `ResolvedKernel` 冻结在计划中。
 
@@ -324,10 +324,11 @@ flowchart LR
 |------|----------|--------|--------|
 | `LoadedModel` (config + resolved raw weights) | 模型生命周期（长） | 构造后只读 | `LoweredModelArtifact` 按值持有其 `unique_ptr`，负责 RawWeightView backing storage |
 | `PackedWeightStore` (legacy packed-weight store) | 过渡性 backend artifact 生命周期 | 准备阶段可写，执行阶段按只读使用 | 调用方持有；不由 `ModelLoader` 创建 |
-| `ExecutionPlan`（`ExecutionStep[]`） | 模型生命周期（长） | 构建后不可变 | Movable 值对象，由调用方/模型管理方持有；模型级生命周期所有权是目标架构关切 |
-| `RuntimeContext`（AllocatorRegistry + BackendRegistry + KVCacheManager） | Runtime 生命周期（长） | 装配后基本不可变 | 调用方持有 `RuntimeBuilder::Build()` 返回的值对象 |
-| Workspace arena | Session 生命周期（中） | 可变（reset 后复用） | 调用方或后端资源对象持有；`RuntimeBindingContext` 仅借用指针 |
-| `KVCacheView` | Session 生命周期（中） | 视图可复制，底层 KV 状态可变 | `RuntimeBindingContext` 保存视图；存储由 `KVCacheManager` 持有 |
+| `ExecutionPlan`（`ExecutionStep[]`） | 模型生命周期（长） | 构建后不可变 | 模型管理侧持有；必须比使用它的 `ExecutionContext` 和 `Executor::Execute` 活得久 |
+| `Runtime`（AllocatorRegistry + BackendRegistry + KVCacheManager） | Runtime 生命周期（最长） | 装配后基本不可变 | 调用方持有 `RuntimeBuilder::Build()` 返回的值对象；必须比由其 backend resolve 的 plan 活得久，因为 `ResolvedKernel::name` 借用 backend-owned storage |
+| `PreparedExecutionBindings` | plan specialization 生命周期（中） | 构建后只读 | `ExecutionContext` 按值拥有 activation storage、metadata 与 prepared params；external TensorView 的 data backing 由调用方借出且必须保持有效 |
+| Workspace arena | Session 生命周期（中） | 可变（session 显式 reset 后复用） | Session/调用方持有；`ExecutionContext` 仅借用，`Clear()` 不得 reset |
+| `KVCacheView` | Session 生命周期（中） | 视图可复制，底层 KV 状态可变 | `ExecutionContext` 保存 view；存储由 `Runtime` 的 `KVCacheManager` 持有，`Clear()` 不得 release reservation |
 | 单次 kernel 调用的 tensor view / binding | step 执行期间（短） | 可变（不拥有存储） | 栈帧 / `KernelContext` |
 
 ---
@@ -345,7 +346,7 @@ flowchart TB
     end
 
     subgraph CONTROL["调度控制层"]
-        B["Executor / RuntimeBuilder<br/>RuntimeContext / KVCacheManager"]
+        B["Executor / RuntimeBuilder<br/>Runtime / KVCacheManager"]
     end
 
     subgraph MODEL["model：前端与模型 I/O"]
@@ -396,7 +397,7 @@ flowchart TB
 3. **graph 仅依赖 operators、shape_inference 与 base**，禁止依赖 compiler、execution、backend、model；`ModelGraphBuilder` 位于 model，graph 只拥有语义 IR、rewrite framework 与 backend-independent semantic passes。
 4. **compiler 可依赖 model、graph 与 semantic base**，负责优化 pipeline composition、lowering 和 `LoweredGraph`；禁止依赖 execution、backend、runtime 或查询 kernel registry。
 5. **execution 实现消费 compiler artifact，并负责 StateAliasPlan、workspace 与 kernel planning**；execution 不得依赖 graph，public headers 只前向声明 `LoweredGraph`。
-6. **backend/runtime 禁止依赖 graph、compiler、model**。Kernel 函数不允许持有 `RuntimeContext*`、`SessionState*` 等宽对象指针。
+6. **backend/runtime 禁止依赖 graph、compiler、model**。Kernel 函数不允许持有 `Runtime*`、`SessionState*` 等宽对象指针。
 7. **不可变产物的所有权由上游持有**：`LoweredModelArtifact` 持有 `LoadedModel` 与 `LoweredGraph`，`ExecutionPlan` 由调用方或模型管理侧持有；execution/backend 只消费引用或按值冻结的 plan 数据。
 
 **软规则（设计原则）**：
@@ -409,7 +410,7 @@ flowchart TB
 | 关注点 | 收益 |
 |--------|------|
 | **可测试性** | 每层可独立测试：`ExecutionPlanBuilder` 不依赖 `Executor`；`LayerRunner` 不依赖模型加载；Kernel 函数不依赖 Runtime 上下文 |
-| **热路径效率** | kernel 执行通过 plan-build-time prepare 的 `ResolvedKernel::fn` 函数指针完成；`LayerRunner` 经通用 invoker 构造短生命周期 kernel params 后直接调用，不发生 backend 查找或对象虚调用 |
+| **热路径效率** | kernel 执行通过 plan-build-time prepare 的 `ResolvedKernel::fn` 函数指针完成；`LayerRunner` 从 `PreparedExecutionBindings` 读取已构造的 kernel params 后直接调用，不发生 backend 查找、shape inference、params construction 或对象虚调用 |
 | **可替换性** | 后端感知的差异通过 `KernelSelector`、Backend 与 `KernelRegistry` 收敛在计划构建和硬件执行边界，避免向 API 泄漏；这只是隔离能力，不代表 Phase 1 支持非 CPU 后端 |
 | **演进边界** | 后续阶段若引入批处理、PagedAttention 或非 CPU 后端，需要重新评估相应层内模块；semantic graph、compiler、execution 与 backend 的边界用于局部化变化，不构成兼容性或交付承诺 |
 
@@ -425,7 +426,8 @@ flowchart TB
 | **图构建** | `LoadedModel` → `ModelGraph`（语义 DAG） | `ModelGraphBuilder::BuildLlamaDense` 构建 dense decoder 的算子 DAG |
 | **图编译** | `LoadedModel` → `LoweredModelArtifact` | compiler `ModelCompiler` 串联 `BuildLlamaDense` → `OptimizeModelGraph` → `LowerModelGraph`；immutable `LoweredGraph` 保留 `LoweredStepSpec[]` 和 dense value metadata |
 | **计划构建** | `LoweredGraph` → 不可变 `ExecutionPlan` | `ExecutionPlanBuilder` 向硬件层发起 kernel resolve，绑定 packed weight 指针，冻结 workspace requirement |
-| **执行** | `ExecutionPlan` → tensor/KV 状态 | `Executor::Execute` → `LayerRunner::Run` 按步执行；每步经 workspace 绑定、shape 校验后调用算子。Token IDs 由目标 Generate 循环经 Argmax 处理后产生 |
+| **绑定准备** | `ExecutionPlan` + external TensorViews → `PreparedExecutionBindings` | `PrepareExecutionBindings` snapshot metadata、校验 shape/layout/aliasing/constraints 并分配 activation、构造 prepared params；任一 address、shape、stride、dtype 或 alias 变化都必须重建 |
+| **执行** | `ExecutionPlan` + `ExecutionContext` → tensor/KV 状态 | `Executor::Execute` → `LayerRunner::Run` 按步绑定 workspace 并调用已准备 kernel。Token IDs 由目标 Generate 循环经 Argmax 处理后产生 |
 
 ---
 
@@ -472,14 +474,14 @@ flowchart TB
 
 - 控制流：单请求、同步阻塞；不提供 request scheduler，不支持多请求批处理。
 - 算子层：允许 intra-op parallelism（GEMM/GEMV 并行、Attention 局部并行），由统一线程配置驱动。
-- 线程实施指南：Phase 1 默认采用算子内部（intra-op）并行；若依赖 OpenMP 或第三方并行数学库，必须通过 `RuntimeContext` 提供统一线程数配置，避免多层嵌套并行导致 oversubscription。
+- 线程实施指南：Phase 1 默认采用算子内部（intra-op）并行；若依赖 OpenMP 或第三方并行数学库，必须通过 `Runtime` 提供统一线程数配置，避免多层嵌套并行导致 oversubscription。
 
 ### 10.2 并发边界
 
 | 允许 | 不允许 |
 |---|---|
 | 算子级 intra-op 并行 | 改变 API 的同步语义 |
-| RuntimeContext 统一线程数配置 | 引入 request-level 并发调度 |
+| Runtime 统一线程数配置 | 引入 request-level 并发调度 |
 | 单一主导的 intra-op threading runtime | 多会话共享调度器 / request-level 与 intra-op 混用 |
 
 > 当前已实现部分为单线程逐计划执行（`Executor::Execute` → `LayerRunner::Run`）；intra-op 并行属 Phase 1 目标/推进中。
@@ -542,13 +544,15 @@ flowchart TB
 | [`include/aethermind/compiler/optimize_graph.h`](../../../include/aethermind/compiler/optimize_graph.h) / [`src/compiler/optimize_graph.cpp`](../../../src/compiler/optimize_graph.cpp) | `OptimizeModelGraph` |
 | [`include/aethermind/compiler/graph_lowering.h`](../../../include/aethermind/compiler/graph_lowering.h) / [`src/compiler/graph_lowering.cpp`](../../../src/compiler/graph_lowering.cpp) | `LowerModelGraph` / `ValidateLoweredGraph` |
 | [`include/aethermind/execution/execution_plan_builder.h`](../../../include/aethermind/execution/execution_plan_builder.h) / [`src/execution/execution_plan_builder.cpp`](../../../src/execution/execution_plan_builder.cpp) | `ExecutionPlanBuilder::Build` |
+| [`include/aethermind/execution/execution_bindings.h`](../../../include/aethermind/execution/execution_bindings.h) / [`src/execution/execution_bindings.cpp`](../../../src/execution/execution_bindings.cpp) | `PrepareExecutionBindings` / `PreparedExecutionBindings` |
+| [`include/aethermind/execution/execution_context.h`](../../../include/aethermind/execution/execution_context.h) / [`src/execution/execution_context.cpp`](../../../src/execution/execution_context.cpp) | `ExecutionContext::Create` |
 | [`include/aethermind/execution/executor.h`](../../../include/aethermind/execution/executor.h) / [`src/execution/executor.cpp`](../../../src/execution/executor.cpp) | `Executor::Execute` |
 | [`src/execution/layer_runner.h`](../../../src/execution/layer_runner.h) / [`src/execution/layer_runner.cpp`](../../../src/execution/layer_runner.cpp) | `LayerRunner::Run`（执行私有，公开入口为 `Executor::Execute`） |
 | [`include/aethermind/runtime/runtime_builder.h`](../../../include/aethermind/runtime/runtime_builder.h) / [`src/runtime/runtime_builder.cpp`](../../../src/runtime/runtime_builder.cpp) | `RuntimeBuilder::Build` |
 | [`include/aethermind/runtime/kv_cache_manager.h`](../../../include/aethermind/runtime/kv_cache_manager.h) / [`src/runtime/kv_cache_manager.cpp`](../../../src/runtime/kv_cache_manager.cpp) | `KVCacheManager` |
 | [`include/aethermind/compiler/model_compiler.h`](../../../include/aethermind/compiler/model_compiler.h) / [`src/compiler/model_compiler.cpp`](../../../src/compiler/model_compiler.cpp) | `ModelCompiler::Compile` / `LoadAndCompile` |
 | [`include/aethermind/model/packed_weight_store.h`](../../../include/aethermind/model/packed_weight_store.h) / [`src/model/packed_weight_store.cpp`](../../../src/model/packed_weight_store.cpp) | `PackedWeightStore` |
-| [`include/aethermind/runtime/runtime_context.h`](../../../include/aethermind/runtime/runtime_context.h) | `RuntimeContext` |
+| [`include/aethermind/runtime/runtime.h`](../../../include/aethermind/runtime/runtime.h) | `Runtime` |
 
 ### 关键设计文档
 

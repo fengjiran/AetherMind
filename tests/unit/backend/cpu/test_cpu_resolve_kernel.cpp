@@ -38,14 +38,14 @@ TEST(CpuPrepareKernel, RegisteredKeyReturnsPreparedKernel) {
     EXPECT_EQ(resolved->workspace_requirement.alignment, 64U);
 }
 
-TEST(CpuPrepareKernel, MissingKeyReturnsNotFound) {
+TEST(CpuPrepareKernel, LinearReferenceKeyReturnsPreparedKernel) {
     CpuBackend backend;
 
     const StatusOr<ResolvedKernel> resolved = backend.PrepareKernel(
             OpType::kLinear, MakeCpuSelector(), OpParams{LinearParams{}});
 
-    EXPECT_FALSE(resolved.ok());
-    EXPECT_EQ(resolved.status().code(), StatusCode::kNotFound);
+    ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
+    EXPECT_STREQ(resolved->name, "cpu::linear_f32_reference");
 }
 
 TEST(CpuPrepareKernel, RejectsInvalidKernelMetadata) {

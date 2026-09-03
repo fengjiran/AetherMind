@@ -39,12 +39,12 @@ TEST(CpuBackend, PolicyRestrictsKernelEligibility) {
     EXPECT_FALSE(backend.cpu_capabilities().effective_features.Contains(CpuFeature::kFma));
 }
 
-TEST(CpuBackend, PrepareKernelRejectsMissingDescriptor) {
+TEST(CpuBackend, PrepareKernelFindsLinearReferenceDescriptor) {
     CpuBackend backend;
     const StatusOr<ResolvedKernel> resolved = backend.PrepareKernel(
             OpType::kLinear, MakeCpuSelector(), OpParams{LinearParams{}});
-    EXPECT_FALSE(resolved.ok());
-    EXPECT_EQ(resolved.status().code(), StatusCode::kNotFound);
+    ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
+    EXPECT_STREQ(resolved->name, "cpu::linear_f32_reference");
 }
 
 TEST(CpuBackend, TryGetKernelRegistryForDebugReturnsRegistry) {

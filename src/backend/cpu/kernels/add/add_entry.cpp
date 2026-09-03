@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <span>
 #include <string>
-#include <type_traits>
 
 namespace aethermind::cpu::detail {
 namespace {
@@ -222,8 +221,7 @@ Status BuildAddArgs(const KernelParamsBuildContext& context,
 }
 
 Status AddKernelEntry(const KernelContext& ctx) noexcept {
-    const auto* args =
-            static_cast<const AddKernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const AddKernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     if (args->numel == 0) {
         return Status::Ok();
@@ -239,39 +237,41 @@ static_assert(alignof(AddKernelArgs) <= alignof(std::max_align_t));
 // The five registrations below must cover exactly the dtypes in
 // kAddSupportedDTypes; see the static_assert in test_cpu_add_kernel.cpp
 // ResolvesThroughCpuBackend for the compile-time check.
-AM_REGISTER_KERNEL(CpuAddFp32Scalar,
-                   KernelDescriptor{
-                           .op_type = OpType::kAdd,
-                           .selector = KernelSelector{
-                                   .device_type = DeviceType::kCPU,
-                                   .act_dtype = DataType::Float32(),
-                                   .weight_dtype = DataType::Float32(),
-                                   .weight_format = WeightFormat::kPlain,
-                                   .phase = ExecPhase::kBoth,
-                           },
-                           .kernel_func = &AddKernelEntry,
-                           .priority = 10,
-                           .params_size = sizeof(AddKernelArgs),
-                           .params_builder = &BuildAddArgs,
-                           .name = "cpu::add_f32_scalar",
-                   });
+AM_REGISTER_KERNEL(
+        CpuAddFp32Scalar,
+        KernelDescriptor{
+                .op_type = OpType::kAdd,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float32(),
+                        .weight_format = WeightFormat::kPlain,
+                        .phase = ExecPhase::kBoth,
+                },
+                .kernel_func = &AddKernelEntry,
+                .priority = 10,
+                .params_size = sizeof(AddKernelArgs),
+                .params_builder = &BuildAddArgs,
+                .name = "cpu::add_f32_scalar",
+        });
 
-AM_REGISTER_KERNEL(CpuAddFp64Scalar,
-                   KernelDescriptor{
-                           .op_type = OpType::kAdd,
-                           .selector = KernelSelector{
-                                   .device_type = DeviceType::kCPU,
-                                   .act_dtype = DataType::Double(),
-                                   .weight_dtype = DataType::Double(),
-                                   .weight_format = WeightFormat::kPlain,
-                                   .phase = ExecPhase::kBoth,
-                           },
-                           .kernel_func = &AddKernelEntry,
-                           .priority = 10,
-                           .params_size = sizeof(AddKernelArgs),
-                           .params_builder = &BuildAddArgs,
-                           .name = "cpu::add_f64_scalar",
-                   });
+AM_REGISTER_KERNEL(
+        CpuAddFp64Scalar,
+        KernelDescriptor{
+                .op_type = OpType::kAdd,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Double(),
+                        .weight_dtype = DataType::Double(),
+                        .weight_format = WeightFormat::kPlain,
+                        .phase = ExecPhase::kBoth,
+                },
+                .kernel_func = &AddKernelEntry,
+                .priority = 10,
+                .params_size = sizeof(AddKernelArgs),
+                .params_builder = &BuildAddArgs,
+                .name = "cpu::add_f64_scalar",
+        });
 
 AM_REGISTER_KERNEL(CpuAddBf16Scalar,
                    KernelDescriptor{

@@ -8,7 +8,6 @@
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_EMBEDDING_INTERNAL_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_EMBEDDING_INTERNAL_H
 
-#include "aethermind/backend/kernel_context.h"
 #include "aethermind/dtypes/data_type.h"
 
 namespace aethermind::cpu::detail {
@@ -29,7 +28,7 @@ struct EmbeddingKernelArgs {
 };
 
 /// Kernel entry point registered via KernelDescriptor::kernel_func.
-AM_NODISCARD Status EmbeddingKernel(const KernelContext& ctx) noexcept;
+Status EmbeddingKernel(const KernelContext& ctx) noexcept;
 
 } // namespace aethermind::cpu::detail
 

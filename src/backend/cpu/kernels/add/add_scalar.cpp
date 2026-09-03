@@ -78,7 +78,8 @@ Status ExecuteTypedStrided(const AddKernelArgs& args) noexcept {
             out_offset += coord[axis] * out_strides[axis];
         }
 
-        AM_RETURN_IF_ERROR(AddScalar(lhs_data[lhs_offset], rhs_data[rhs_offset], output_data[out_offset]));
+        AM_RETURN_IF_ERROR(AddScalar(lhs_data[lhs_offset], rhs_data[rhs_offset],
+                                     output_data[out_offset]));
     }
     return Status::Ok();
 }

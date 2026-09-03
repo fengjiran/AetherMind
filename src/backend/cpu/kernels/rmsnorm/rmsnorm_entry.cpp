@@ -362,43 +362,43 @@ Status RmsNormKernelEntryFp32Avx2Fma(const KernelContext& ctx) noexcept {
 static_assert(std::is_trivially_destructible_v<RmsNormFp32KernelArgs>);
 static_assert(alignof(RmsNormFp32KernelArgs) <= alignof(std::max_align_t));
 
-AM_REGISTER_KERNEL(RmsNormFp32Scalar,
-                   KernelDescriptor{
-                           .op_type = OpType::kRmsNorm,
-                           .selector = KernelSelector{
-                                   .device_type = DeviceType::kCPU,
-                                   .act_dtype = DataType::Float32(),
-                                   .weight_dtype = DataType::Float32(),
-                                   .weight_format = WeightFormat::kPlain,
-                                   .phase = ExecPhase::kBoth,
-                           },
-                           .kernel_func = &RmsNormKernelEntryFp32Scalar,
-                           .priority = 10,
-                           .params_size = sizeof(RmsNormFp32KernelArgs),
-                           .params_builder = &BuildRmsNormFp32ScalarArgs,
-                           .metadata_builder = &BuildRmsNormMetadata,
-                           .name = "cpu::rmsnorm_f32_scalar",
-                   });
+AM_REGISTER_KERNEL(
+        RmsNormFp32Scalar,
+        KernelDescriptor{
+                .op_type = OpType::kRmsNorm,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float32(),
+                        .weight_format = WeightFormat::kPlain,
+                        .phase = ExecPhase::kBoth,
+                },
+                .kernel_func = &RmsNormKernelEntryFp32Scalar,
+                .priority = 10,
+                .params_size = sizeof(RmsNormFp32KernelArgs),
+                .params_builder = &BuildRmsNormFp32ScalarArgs,
+                .metadata_builder = &BuildRmsNormMetadata,
+                .name = "cpu::rmsnorm_f32_scalar"});
 
 #if defined(AETHERMIND_HAS_RMSNORM_AVX2_FMA_KERNEL)
-AM_REGISTER_KERNEL(RmsNormFp32Avx2Fma,
-                   KernelDescriptor{
-                           .op_type = OpType::kRmsNorm,
-                           .selector = KernelSelector{
-                                   .device_type = DeviceType::kCPU,
-                                   .act_dtype = DataType::Float32(),
-                                   .weight_dtype = DataType::Float32(),
-                                   .weight_format = WeightFormat::kPlain,
-                                   .phase = ExecPhase::kBoth,
-                           },
-                           .cpu_requirements = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
-                           .kernel_func = &RmsNormKernelEntryFp32Avx2Fma,
-                           .priority = 20,
-                           .params_size = sizeof(RmsNormFp32KernelArgs),
-                           .params_builder = &BuildRmsNormFp32Avx2FmaArgs,
-                           .metadata_builder = &BuildRmsNormMetadata,
-                           .name = "cpu::rmsnorm_f32_avx2_fma",
-                   });
+AM_REGISTER_KERNEL(
+        RmsNormFp32Avx2Fma,
+        KernelDescriptor{
+                .op_type = OpType::kRmsNorm,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float32(),
+                        .weight_format = WeightFormat::kPlain,
+                        .phase = ExecPhase::kBoth,
+                },
+                .cpu_requirements = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
+                .kernel_func = &RmsNormKernelEntryFp32Avx2Fma,
+                .priority = 20,
+                .params_size = sizeof(RmsNormFp32KernelArgs),
+                .params_builder = &BuildRmsNormFp32Avx2FmaArgs,
+                .metadata_builder = &BuildRmsNormMetadata,
+                .name = "cpu::rmsnorm_f32_avx2_fma"});
 #endif
 
 } // namespace aethermind::cpu::detail

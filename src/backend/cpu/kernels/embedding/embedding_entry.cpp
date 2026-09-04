@@ -16,7 +16,7 @@ int64_t ReadTokenId(const void* token_ids_data,
                     size_t index) noexcept {
     // BuildEmbeddingF32ReferenceArgs validates dtype against the semantic contract first,
     // keeping the read path tied to kEmbeddingSupportedTokenIdDTypes.
-    AM_DCHECK(aethermind::IsSupportedTokenIdDType(dtype));
+    AM_DCHECK(IsSupportedTokenIdDType(dtype));
     if (dtype == DataType::Int(32)) {
         return *(static_cast<const int32_t*>(token_ids_data) + index);
     }

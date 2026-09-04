@@ -34,7 +34,7 @@ struct GemmF32Args {
 ///
 /// A zero `m` or `n` is a no-op. A zero `k` writes `+0.0F` to every output
 /// element without reading `lhs` or `rhs`.
-AM_NODISCARD Status RunGemmF32Reference(const GemmF32Args& args) noexcept;
+Status RunGemmF32Reference(const GemmF32Args& args) noexcept;
 
 } // namespace aethermind::cpu::detail
 

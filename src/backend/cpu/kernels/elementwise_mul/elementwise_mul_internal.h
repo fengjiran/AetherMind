@@ -9,6 +9,7 @@
 #define AETHERMIND_BACKEND_CPU_KERNELS_ELEMENTWISE_MUL_INTERNAL_H
 
 #include "aethermind/base/shape_and_stride.h"
+#include "aethermind/base/status.h"
 
 #include <array>
 

@@ -133,6 +133,12 @@ struct AttentionParams {
     int64_t head_dim = 0;
 };
 
+/// @brief Parameters and value-selection semantics for ArgMax.
+///
+/// `axis` may be negative and is normalized against the input rank. The
+/// reduction axis must be non-empty. Equal maxima select the lowest index; if
+/// a reduction slice contains NaNs, its first NaN selects the result. These
+/// rules are backend-independent and must be preserved by every ArgMax kernel.
 struct ArgmaxParams {
     int64_t axis = -1;
 };

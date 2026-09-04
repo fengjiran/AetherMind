@@ -33,6 +33,14 @@ StatusOr<InferenceResult> InferArgmax(const OpParams& params,
         return Status::InvalidArgument("Argmax axis is out of range");
     }
 
+    // An empty reduction axis has no legal index to return. Only a statically
+    // known zero extent is rejected here; dynamic extents are left to the
+    // binding-time kernel params builder, which sees the real shape.
+    const auto& reduction_dim = input_spec.shape[static_cast<size_t>(axis)];
+    if (reduction_dim.IsStatic() && reduction_dim.GetStaticValue() == 0) {
+        return Status::InvalidArgument("Argmax reduction dimension must be non-empty");
+    }
+
     std::vector<ShapeSymbol> output_dims;
     for (size_t i = 0; i < rank; ++i) {
         if (static_cast<int64_t>(i) != axis) {

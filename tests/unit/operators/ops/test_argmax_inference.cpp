@@ -29,6 +29,35 @@ TEST(ArgmaxInference, RejectsAxisOutOfRange) {
     EXPECT_FALSE(InferOperator(OpType::kArgmax, ArgmaxParams{5}, inputs).ok());
 }
 
+TEST(ArgmaxInference, RejectsStaticallyEmptyReductionAxis) {
+    auto input = MakeSpec(DataType::Float32(), {4, 0});
+    std::vector<TensorSpec> inputs = {input};
+    auto result = InferOperator(OpType::kArgmax, ArgmaxParams{-1}, inputs);
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument)
+            << result.status().ToString();
+}
+
+TEST(ArgmaxInference, RejectsStaticallyEmptyLeadingReductionAxis) {
+    auto input = MakeSpec(DataType::Float32(), {0, 256});
+    std::vector<TensorSpec> inputs = {input};
+    auto result = InferOperator(OpType::kArgmax, ArgmaxParams{0}, inputs);
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument)
+            << result.status().ToString();
+}
+
+TEST(ArgmaxInference, AcceptsSymbolicReductionExtent) {
+    // Only the binding-time kernel params builder sees the runtime extent, so a
+    // symbolic reduction axis stays legal during semantic inference.
+    auto input = MakeSymbolicSpec(DataType::Float32(), 2);
+    std::vector<TensorSpec> inputs = {input};
+    auto result = InferOperator(OpType::kArgmax, ArgmaxParams{-1}, inputs);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->outputs[0].dtype, DataType::Int(64));
+    EXPECT_EQ(result->outputs[0].shape.rank().value(), 1);
+}
+
 TEST(ArgmaxInference, AcceptsFloat16) {
     auto input = MakeSpec(DataType::Float(16), {4, 256});
     std::vector<TensorSpec> inputs = {input};

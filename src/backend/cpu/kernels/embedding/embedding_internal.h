@@ -16,7 +16,7 @@ namespace aethermind::cpu::detail {
 ///
 /// Produced by the `KernelParamsBuilder` registered with this kernel
 /// (BuildEmbeddingArgs in embedding_entry.cpp) and consumed by the
-/// subsequent EmbeddingKernel call via KernelContext::kernel_params.
+/// subsequent kernel entry via KernelContext::kernel_params.
 struct EmbeddingKernelArgs {
     const void* token_ids_data{};
     DataType token_dtype{};
@@ -26,9 +26,6 @@ struct EmbeddingKernelArgs {
     int64_t vocab_size{};
     int64_t hidden_size{};
 };
-
-/// Kernel entry point registered via KernelDescriptor::kernel_func.
-Status EmbeddingKernel(const KernelContext& ctx) noexcept;
 
 } // namespace aethermind::cpu::detail
 

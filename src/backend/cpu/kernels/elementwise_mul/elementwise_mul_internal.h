@@ -1,7 +1,7 @@
 /// Internal declarations for the CPU ElementwiseMul kernel.
 ///
 /// Declares the backend-internal kernel entry point (ElementwiseMulKernel),
-/// its compute-ready args struct (ElementwiseMulKernelArgs), and the scalar
+/// its compute-ready args struct (ElementwiseMulKernelArgs), and the reference
 /// broadcast micro-kernel. Operator code never includes this header; the
 /// KernelParamsBuilder indirection keeps operators free of backend
 /// internals.
@@ -22,7 +22,7 @@ constexpr uint32_t kMaxRank = ShapeAndStride::kMaxRank;
 ///
 /// Produced by the `KernelParamsBuilder` registered with this kernel
 /// (BuildElementwiseMulArgs in elementwise_mul_entry.cpp) and consumed by
-/// the scalar broadcast micro-kernel. `numel` is the broadcast output
+/// the reference broadcast micro-kernel. `numel` is the broadcast output
 /// element count; a zero count means the kernel returns before dispatch.
 struct ElementwiseMulKernelArgs {
     const float* lhs_data{};
@@ -40,12 +40,12 @@ struct ElementwiseMulKernelArgs {
     std::array<int64_t, kMaxRank> output_strides{};
 };
 
-/// Runs the scalar FP32 ElementwiseMul broadcast micro-kernel.
+/// Runs the reference FP32 ElementwiseMul broadcast micro-kernel.
 ///
 /// @param args Pre-validated kernel arguments. Data pointers must be
 ///        non-null when `numel` is positive.
 /// @return Ok on success.
-Status RunElementwiseMulScalar(const ElementwiseMulKernelArgs& args) noexcept;
+Status RunElementwiseMulReference(const ElementwiseMulKernelArgs& args) noexcept;
 
 /// Kernel entry point registered via KernelDescriptor::kernel_func.
 Status ElementwiseMulKernel(const KernelContext& ctx) noexcept;

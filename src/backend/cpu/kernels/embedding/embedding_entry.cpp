@@ -167,8 +167,6 @@ Status BuildEmbeddingArgs(const KernelParamsBuildContext& context, void* params_
     return Status::Ok();
 }
 
-} // namespace
-
 Status EmbeddingKernel(const KernelContext& ctx) noexcept {
     const auto* args = static_cast<const EmbeddingKernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
@@ -197,11 +195,13 @@ Status EmbeddingKernel(const KernelContext& ctx) noexcept {
     return Status::Ok();
 }
 
+} // namespace
+
 // The prepared args must satisfy the PreparedExecutionBindings params arena contract.
 static_assert(std::is_trivially_destructible_v<EmbeddingKernelArgs>);
 static_assert(alignof(EmbeddingKernelArgs) <= alignof(std::max_align_t));
 
-AM_REGISTER_KERNEL(EmbeddingFp32Scalar,
+AM_REGISTER_KERNEL(EmbeddingFp32Reference,
                    KernelDescriptor{
                            .op_type = OpType::kEmbedding,
                            .selector = KernelSelector{
@@ -215,7 +215,7 @@ AM_REGISTER_KERNEL(EmbeddingFp32Scalar,
                            .priority = 10,
                            .params_size = sizeof(EmbeddingKernelArgs),
                            .params_builder = &BuildEmbeddingArgs,
-                           .name = "cpu::embedding_f32_scalar",
+                           .name = "cpu::embedding_f32_reference",
                    })
 
 } // namespace aethermind::cpu::detail

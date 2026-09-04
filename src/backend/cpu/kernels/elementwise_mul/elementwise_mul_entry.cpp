@@ -203,10 +203,17 @@ Status ValidateAndBuildCommonElementwiseMulArgs(
     return Status::Ok();
 }
 
+Status BuildElementwiseMulArgs(const KernelParamsBuildContext& context,
+                               void* params_buffer) noexcept {
+    ElementwiseMulKernelArgs args;
+    AM_RETURN_IF_ERROR(ValidateAndBuildCommonElementwiseMulArgs(context, args));
+    ::new (params_buffer) ElementwiseMulKernelArgs(args);
+    return Status::Ok();
+}
+
 } // namespace
 
-Status RunElementwiseMulScalar(
-        const ElementwiseMulKernelArgs& args) noexcept {
+Status RunElementwiseMulReference(const ElementwiseMulKernelArgs& args) noexcept {
     if (args.numel == 0) {
         return Status::Ok();
     }
@@ -254,23 +261,14 @@ Status ElementwiseMulKernel(const KernelContext& ctx) noexcept {
     const auto* args = static_cast<const ElementwiseMulKernelArgs*>(
             ctx.kernel_params);
     AM_DCHECK(args != nullptr);
-    return RunElementwiseMulScalar(*args);
-}
-
-Status BuildElementwiseMulArgs(const KernelParamsBuildContext& context,
-                               void* params_buffer) noexcept {
-    ElementwiseMulKernelArgs args;
-    AM_RETURN_IF_ERROR(
-            ValidateAndBuildCommonElementwiseMulArgs(context, args));
-    ::new (params_buffer) ElementwiseMulKernelArgs(args);
-    return Status::Ok();
+    return RunElementwiseMulReference(*args);
 }
 
 // The prepared args must satisfy the PreparedExecutionBindings params arena contract.
 static_assert(std::is_trivially_destructible_v<ElementwiseMulKernelArgs>);
 static_assert(alignof(ElementwiseMulKernelArgs) <= alignof(std::max_align_t));
 
-AM_REGISTER_KERNEL(ElementwiseMulFp32Scalar,
+AM_REGISTER_KERNEL(ElementwiseMulFp32Reference,
                    KernelDescriptor{
                            .op_type = OpType::kElementwiseMul,
                            .selector = KernelSelector{
@@ -284,7 +282,7 @@ AM_REGISTER_KERNEL(ElementwiseMulFp32Scalar,
                            .priority = 10,
                            .params_size = sizeof(ElementwiseMulKernelArgs),
                            .params_builder = &BuildElementwiseMulArgs,
-                           .name = "cpu::elementwise_mul_f32_scalar",
+                           .name = "cpu::elementwise_mul_f32_reference",
                    })
 
 } // namespace aethermind::cpu::detail

@@ -185,7 +185,7 @@ Phase 1 correctness 以 double reference 为基准。Linear 的累加误差随 `
 - CPU backend 必须提供可运行 fallback 路径；高级 ISA 路径不能成为唯一 correctness 路径。
 - Phase 1 第一版只注册 1 个 kernel：`kPlain + kBoth + kScalar`（reference naive triple-loop）。
 - 后续扩展优先级：
-  1. `kScalar + kDecode`：GEMV 优化（复用 `DotProductAvx2Unroll` 风格的内积 kernel，但注册为 `kScalar` 不强制 AVX2）。
+  1. `kScalar + kDecode`：GEMV 优化（复用 `DotProductF32Avx2Unroll` 风格的内积 kernel，但注册为 `kScalar` 不强制 AVX2）。
   2. `kAVX2 + kPrefill`：blocked GEMM。
   3. `kAVX512 + kPrefill` / `kAMX + kPrefill`：高级向量化路径。
   4. `kPacked` selector 系列：消费 `WeightPrepacker` 输出。
@@ -224,11 +224,11 @@ Phase 1 correctness 以 double reference 为基准。Linear 的累加误差随 `
 - 校验 `ctx.kernel_params` 非空。
 - 校验 `TensorView` / `MutableTensorView` 有效、dtype 正确、rank 正确、contiguous。
 - 校验 `M`、`N`、`K`、shape、data pointer 和 stride 满足 CPU kernel 的低层参数前置条件。
-- 构造 `LinearFp32KernelArgs` 并调用 `CpuLinearKernel`。
+- 构造 `LinearF32KernelArgs` 并调用 `CpuLinearKernel`。
 
 `CpuLinearKernel` 是已验证参数上的 typed compute primitive：
 
-- 调用方必须保证 `LinearFp32KernelArgs` 中的指针非空、维度为正、stride 为正，并且 backing storage 覆盖所有访问元素。
+- 调用方必须保证 `LinearF32KernelArgs` 中的指针非空、维度为正、stride 为正，并且 backing storage 覆盖所有访问元素。
 - 执行数值计算并写入预分配 output。
 - 不拥有输入、权重、输出内存；不延长任何指针生命周期。
 

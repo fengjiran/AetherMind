@@ -108,24 +108,24 @@ CPU entry 将 `input.shape[0 : rank - 1]` 的乘积转换为 `row_count`，并�
 ```text
 PrepareExecutionBindings（PreparedExecutionBindings 构建，cold path）
     -> step.kernel.params_builder（每 step 每 PreparedExecutionBindings 恰好一次）
-    -> BuildRmsNormFp32ReferenceArgs / BuildRmsNormFp32Avx2FmaArgs
-    -> ValidateAndBuildCommonRmsNormFp32Args
-    -> PreparedExecutionBindings 持有 compute-ready RmsNormFp32KernelArgs
+    -> BuildRmsNormF32ReferenceArgs / BuildRmsNormF32Avx2FmaArgs
+    -> ValidateAndBuildCommonRmsNormF32Args
+    -> PreparedExecutionBindings 持有 compute-ready RmsNormF32KernelArgs
 
 每次 Execute（hot path）
-    -> RmsNormKernelEntryFp32Reference / RmsNormKernelEntryFp32Avx2Fma
-    -> RunRmsNormFp32Reference / RunRmsNormFp32Avx2Fma
+    -> RmsNormF32ReferenceEntry / RmsNormF32Avx2FmaEntry
+    -> RunRmsNormF32Reference / RunRmsNormF32Avx2Fma
 ```
 
-- prepared params（`RmsNormFp32KernelArgs`）由 `PreparedExecutionBindings` 的 params arena 持有，生命周期等于 PreparedExecutionBindings；PreparedExecutionBindings 内存续期内 data pointer / shape / stride / dtype 不变，任何变化都必须重建 PreparedExecutionBindings。
+- prepared params（`RmsNormF32KernelArgs`）由 `PreparedExecutionBindings` 的 params arena 持有，生命周期等于 PreparedExecutionBindings；PreparedExecutionBindings 内存续期内 data pointer / shape / stride / dtype 不变，任何变化都必须重建 PreparedExecutionBindings。
 
-- `ValidateAndBuildCommonRmsNormFp32Args` 是 FP32 的唯一 binding-time 验证路径，负责 epsilon、dtype、rank、shape、row count、layout、pointer 和 stride 检查。它在 `PrepareExecutionBindings` 阶段执行，非法 binding 在该阶段返回错误，而不是在 Execute 时失败。
+- `ValidateAndBuildCommonRmsNormF32Args` 是 FP32 的唯一 binding-time 验证路径，负责 epsilon、dtype、rank、shape、row count、layout、pointer 和 stride 检查。它在 `PrepareExecutionBindings` 阶段执行，非法 binding 在该阶段返回错误，而不是在 Execute 时失败。
 
 - AVX2+FMA 的 unit inner-stride 要求在它的 `KernelParamsBuilder` 中检查（zero-row 豁免）。
 
 - entry 是 thin wrapper：只做一次 pointer 转换并调用 compute，不再解析 attrs、读取 TensorView 或重复 shape/stride/alias 校验。
 
-- `RmsNormFp32KernelArgs` 是只供已验证 compute primitive 使用的内部类型；compute 不重复验证，也不拥有内存。其 alignment 不超过 `max_align_t` 且 trivially destructible，满足 PreparedExecutionBindings params arena 的类型约束。
+- `RmsNormF32KernelArgs` 是只供已验证 compute primitive 使用的内部类型；compute 不重复验证，也不拥有内存。其 alignment 不超过 `max_align_t` 且 trivially destructible，满足 PreparedExecutionBindings params arena 的类型约束。
 
 - 不提供 public `LaunchRmsNorm` / `RmsNormArgs` SDK。benchmark 和测试均通过 prepared `ResolvedKernel` 调用 production entry。
 

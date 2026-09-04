@@ -4,7 +4,7 @@
 /// @file rmsnorm_internal.h
 /// @brief Backend-internal RMSNorm compute-ready params and FP32 micro-kernels.
 ///
-/// Defines the pre-validated `RmsNormFp32KernelArgs` consumed by the reference
+/// Defines the pre-validated `RmsNormF32KernelArgs` consumed by the reference
 /// and AVX2 RMSNorm micro-kernels. Args are prepared once per PreparedExecutionBindings by
 /// the registered `KernelParamsBuilder` and passed through
 /// `KernelContext::kernel_params` on every execution.
@@ -16,12 +16,12 @@ namespace aethermind::cpu::detail {
 
 /// @brief Pre-validated FP32 arguments for RMSNorm micro-kernels.
 ///
-/// Produced by `ValidateAndBuildCommonRmsNormFp32Args` from the binding-time
+/// Produced by `ValidateAndBuildCommonRmsNormF32Args` from the binding-time
 /// `KernelParamsBuildContext` and epsilon attrs and consumed by reference/AVX2
 /// implementations. Separates validation from compute. `row_count` is the
 /// product of every input dimension except the last, so rank-1 input is
 /// represented by one row.
-struct RmsNormFp32KernelArgs {
+struct RmsNormF32KernelArgs {
     const float* input{};
     const float* weight{};
     float* output{};
@@ -40,9 +40,9 @@ struct RmsNormFp32KernelArgs {
 /// @param args Pre-validated kernel arguments. All pointers must be non-null
 ///        and strides must be consistent with `row_count` and `hidden_size`.
 /// @return Ok on success, or an error when arguments are invalid.
-Status RunRmsNormFp32Reference(const RmsNormFp32KernelArgs& args) noexcept;
+Status RunRmsNormF32Reference(const RmsNormF32KernelArgs& args) noexcept;
 
-#if defined(AETHERMIND_HAS_RMSNORM_AVX2_FMA_KERNEL)
+#if defined(RMSNORM_HAS_AVX2_FMA_KERNEL)
 /// @brief Runs the AVX2/FMA FP32 RMSNorm micro-kernel.
 ///
 /// Requires `FMA` and `AVX2` at runtime; the caller must have validated
@@ -52,7 +52,7 @@ Status RunRmsNormFp32Reference(const RmsNormFp32KernelArgs& args) noexcept;
 ///        reference entry point. The `hidden_size` tail is handled by scalar
 ///        fallback.
 /// @return Ok on success, or an error when arguments are invalid.
-Status RunRmsNormFp32Avx2Fma(const RmsNormFp32KernelArgs& args) noexcept;
+Status RunRmsNormF32Avx2Fma(const RmsNormF32KernelArgs& args) noexcept;
 #endif
 
 } // namespace aethermind::cpu::detail

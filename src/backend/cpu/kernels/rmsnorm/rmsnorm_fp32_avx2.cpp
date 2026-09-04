@@ -1,20 +1,20 @@
-#include "aethermind/backend/cpu/kernels/common/cpu_simd_utils.h"
+#include "aethermind/backend/cpu/kernels/common/simd_utils.h"
 #include "rmsnorm_internal.h"
 
 #include <cmath>
 
-#if defined(AETHERMIND_HAS_RMSNORM_AVX2_FMA_KERNEL)
+#if defined(RMSNORM_HAS_AVX2_FMA_KERNEL)
 #include <immintrin.h>
 #endif
 
 namespace aethermind::cpu::detail {
-
-#if defined(AETHERMIND_HAS_RMSNORM_AVX2_FMA_KERNEL)
-AM_ALWAYS_INLINE void RmsNormRowFp32Avx2Fma(float* output,
-                                            const float* input,
-                                            const float* weight,
-                                            int64_t hidden_size,
-                                            float eps) {
+namespace {
+#if defined(RMSNORM_HAS_AVX2_FMA_KERNEL)
+AM_ALWAYS_INLINE void RmsNormF32RowAvx2Fma(float* output,
+                                           const float* input,
+                                           const float* weight,
+                                           int64_t hidden_size,
+                                           float eps) {
     __m256 vsum0 = _mm256_setzero_ps();
     __m256 vsum1 = _mm256_setzero_ps();
     __m256 vsum2 = _mm256_setzero_ps();
@@ -88,6 +88,8 @@ AM_ALWAYS_INLINE void RmsNormRowFp32Avx2Fma(float* output,
     }
 }
 
+} // namespace
+
 /// Executes RMSNorm on already-validated low-level arguments.
 ///
 /// Callers must guarantee non-null data pointers, positive dimensions, positive
@@ -95,13 +97,13 @@ AM_ALWAYS_INLINE void RmsNormRowFp32Avx2Fma(float* output,
 /// output_col_stride all equal 1), finite positive epsilon, and sufficient
 /// backing storage for every addressed element. Runtime validation belongs in
 /// the RMSNorm entry.
-Status RunRmsNormFp32Avx2Fma(const RmsNormFp32KernelArgs& args) noexcept {
+Status RunRmsNormF32Avx2Fma(const RmsNormF32KernelArgs& args) noexcept {
     for (int64_t row = 0; row < args.row_count; ++row) {
-        RmsNormRowFp32Avx2Fma(args.output + row * args.output_row_stride,
-                              args.input + row * args.input_row_stride,
-                              args.weight,
-                              args.hidden_size,
-                              args.eps);
+        RmsNormF32RowAvx2Fma(args.output + row * args.output_row_stride,
+                             args.input + row * args.input_row_stride,
+                             args.weight,
+                             args.hidden_size,
+                             args.eps);
     }
 
     return Status::Ok();

@@ -68,9 +68,9 @@ enum class RmsNormBenchmarkMode {
     kBindingSpecialization,
 };
 
-void BenchmarkRmsNormFp32(benchmark::State& state,
-                          RmsNormBenchmarkMode mode,
-                          bool require_avx2_fma) {
+void BenchmarkRmsNormF32(benchmark::State& state,
+                         RmsNormBenchmarkMode mode,
+                         bool require_avx2_fma) {
     const int64_t row_count = state.range(0);
     const int64_t hidden_size = state.range(1);
     const size_t element_count = static_cast<size_t>(row_count * hidden_size);
@@ -170,19 +170,19 @@ void BenchmarkRmsNormFp32(benchmark::State& state,
 }
 
 void BM_RmsNormPreparedReference(benchmark::State& state) {
-    BenchmarkRmsNormFp32(state, RmsNormBenchmarkMode::kPrepared, false);
+    BenchmarkRmsNormF32(state, RmsNormBenchmarkMode::kPrepared, false);
 }
 
 void BM_RmsNormPreparedAvx2Fma(benchmark::State& state) {
-    BenchmarkRmsNormFp32(state, RmsNormBenchmarkMode::kPrepared, true);
+    BenchmarkRmsNormF32(state, RmsNormBenchmarkMode::kPrepared, true);
 }
 
 void BM_RmsNormLegacyBuildAndInvoke(benchmark::State& state) {
-    BenchmarkRmsNormFp32(state, RmsNormBenchmarkMode::kLegacyBuildAndInvoke, false);
+    BenchmarkRmsNormF32(state, RmsNormBenchmarkMode::kLegacyBuildAndInvoke, false);
 }
 
 void BM_RmsNormBindingSpecialization(benchmark::State& state) {
-    BenchmarkRmsNormFp32(state, RmsNormBenchmarkMode::kBindingSpecialization, false);
+    BenchmarkRmsNormF32(state, RmsNormBenchmarkMode::kBindingSpecialization, false);
 }
 
 BENCHMARK(BM_RmsNormPreparedReference)

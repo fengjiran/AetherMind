@@ -1,9 +1,8 @@
 /// Internal declarations for the CPU Embedding kernel.
 ///
-/// Declares the backend-internal kernel entry point (EmbeddingKernel) and
-/// its compute-ready args struct (EmbeddingKernelArgs). Operator code never
-/// includes this header; the KernelParamsBuilder indirection keeps
-/// operators free of backend internals.
+/// Defines the pre-validated FP32 compute-ready args struct
+/// (EmbeddingF32KernelArgs). The kernel entry itself is TU-local to
+/// embedding_entry.cpp; operators never include this header.
 
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_EMBEDDING_INTERNAL_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_EMBEDDING_INTERNAL_H
@@ -15,9 +14,9 @@ namespace aethermind::cpu::detail {
 /// Compute-ready args for the CPU Embedding kernel.
 ///
 /// Produced by the `KernelParamsBuilder` registered with this kernel
-/// (BuildEmbeddingArgs in embedding_entry.cpp) and consumed by the
-/// subsequent kernel entry via KernelContext::kernel_params.
-struct EmbeddingKernelArgs {
+/// (BuildEmbeddingF32ReferenceArgs in embedding_entry.cpp) and consumed by
+/// the registered kernel entry via KernelContext::kernel_params.
+struct EmbeddingF32KernelArgs {
     const void* token_ids_data{};
     DataType token_dtype{};
     const float* weight_data{};

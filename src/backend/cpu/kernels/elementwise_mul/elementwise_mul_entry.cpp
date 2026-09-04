@@ -103,7 +103,7 @@ StatusOr<int64_t> CheckedOutputNumel(int32_t rank,
 
 Status ValidateAndBuildCommonElementwiseMulArgs(
         const KernelParamsBuildContext& context,
-        ElementwiseMulKernelArgs& args) noexcept {
+        ElementwiseMulF32KernelArgs& args) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
@@ -154,7 +154,7 @@ Status ValidateAndBuildCommonElementwiseMulArgs(
     if (!numel_or.ok()) return numel_or.status();
     const int64_t numel = numel_or.value();
     if (numel == 0) {
-        args = ElementwiseMulKernelArgs{};
+        args = ElementwiseMulF32KernelArgs{};
         return Status::Ok();
     }
 
@@ -203,17 +203,17 @@ Status ValidateAndBuildCommonElementwiseMulArgs(
     return Status::Ok();
 }
 
-Status BuildElementwiseMulArgs(const KernelParamsBuildContext& context,
-                               void* params_buffer) noexcept {
-    ElementwiseMulKernelArgs args;
+Status BuildElementwiseMulF32ReferenceArgs(const KernelParamsBuildContext& context,
+                                           void* params_buffer) noexcept {
+    ElementwiseMulF32KernelArgs args;
     AM_RETURN_IF_ERROR(ValidateAndBuildCommonElementwiseMulArgs(context, args));
-    ::new (params_buffer) ElementwiseMulKernelArgs(args);
+    ::new (params_buffer) ElementwiseMulF32KernelArgs(args);
     return Status::Ok();
 }
 
 } // namespace
 
-Status RunElementwiseMulReference(const ElementwiseMulKernelArgs& args) noexcept {
+Status RunElementwiseMulF32Reference(const ElementwiseMulF32KernelArgs& args) noexcept {
     if (args.numel == 0) {
         return Status::Ok();
     }
@@ -257,18 +257,22 @@ Status RunElementwiseMulReference(const ElementwiseMulKernelArgs& args) noexcept
     return Status::Ok();
 }
 
-Status ElementwiseMulKernel(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const ElementwiseMulKernelArgs*>(
+namespace {
+
+Status ElementwiseMulF32ReferenceEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const ElementwiseMulF32KernelArgs*>(
             ctx.kernel_params);
     AM_DCHECK(args != nullptr);
-    return RunElementwiseMulReference(*args);
+    return RunElementwiseMulF32Reference(*args);
 }
 
-// The prepared args must satisfy the PreparedExecutionBindings params arena contract.
-static_assert(std::is_trivially_destructible_v<ElementwiseMulKernelArgs>);
-static_assert(alignof(ElementwiseMulKernelArgs) <= alignof(std::max_align_t));
+} // namespace
 
-AM_REGISTER_KERNEL(ElementwiseMulFp32Reference,
+// The prepared args must satisfy the PreparedExecutionBindings params arena contract.
+static_assert(std::is_trivially_destructible_v<ElementwiseMulF32KernelArgs>);
+static_assert(alignof(ElementwiseMulF32KernelArgs) <= alignof(std::max_align_t));
+
+AM_REGISTER_KERNEL(CpuElementwiseMulF32Reference,
                    KernelDescriptor{
                            .op_type = OpType::kElementwiseMul,
                            .selector = KernelSelector{
@@ -278,10 +282,10 @@ AM_REGISTER_KERNEL(ElementwiseMulFp32Reference,
                                    .weight_format = WeightFormat::kPlain,
                                    .phase = ExecPhase::kBoth,
                            },
-                           .kernel_func = &ElementwiseMulKernel,
+                           .kernel_func = &ElementwiseMulF32ReferenceEntry,
                            .priority = 10,
-                           .params_size = sizeof(ElementwiseMulKernelArgs),
-                           .params_builder = &BuildElementwiseMulArgs,
+                           .params_size = sizeof(ElementwiseMulF32KernelArgs),
+                           .params_builder = &BuildElementwiseMulF32ReferenceArgs,
                            .name = "cpu::elementwise_mul_f32_reference",
                    })
 

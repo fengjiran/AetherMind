@@ -1,15 +1,13 @@
 /// Internal declarations for the CPU ElementwiseMul kernel.
 ///
-/// Declares the backend-internal kernel entry point (ElementwiseMulKernel),
-/// its compute-ready args struct (ElementwiseMulKernelArgs), and the reference
-/// broadcast micro-kernel. Operator code never includes this header; the
-/// KernelParamsBuilder indirection keeps operators free of backend
-/// internals.
+/// Defines the pre-validated FP32 compute-ready args struct
+/// (ElementwiseMulF32KernelArgs) and the reference broadcast micro-kernel.
+/// The kernel entry itself is TU-local to elementwise_mul_entry.cpp;
+/// operators never include this header.
 
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_ELEMENTWISE_MUL_INTERNAL_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_ELEMENTWISE_MUL_INTERNAL_H
 
-#include "aethermind/backend/kernel_context.h"
 #include "aethermind/base/shape_and_stride.h"
 
 #include <array>
@@ -21,10 +19,10 @@ constexpr uint32_t kMaxRank = ShapeAndStride::kMaxRank;
 /// Compute-ready args for the CPU ElementwiseMul kernel.
 ///
 /// Produced by the `KernelParamsBuilder` registered with this kernel
-/// (BuildElementwiseMulArgs in elementwise_mul_entry.cpp) and consumed by
+/// (BuildElementwiseMulF32ReferenceArgs in elementwise_mul_entry.cpp) and consumed by
 /// the reference broadcast micro-kernel. `numel` is the broadcast output
 /// element count; a zero count means the kernel returns before dispatch.
-struct ElementwiseMulKernelArgs {
+struct ElementwiseMulF32KernelArgs {
     const float* lhs_data{};
     const float* rhs_data{};
     float* output_data{};
@@ -45,10 +43,7 @@ struct ElementwiseMulKernelArgs {
 /// @param args Pre-validated kernel arguments. Data pointers must be
 ///        non-null when `numel` is positive.
 /// @return Ok on success.
-Status RunElementwiseMulReference(const ElementwiseMulKernelArgs& args) noexcept;
-
-/// Kernel entry point registered via KernelDescriptor::kernel_func.
-Status ElementwiseMulKernel(const KernelContext& ctx) noexcept;
+Status RunElementwiseMulF32Reference(const ElementwiseMulF32KernelArgs& args) noexcept;
 
 } // namespace aethermind::cpu::detail
 

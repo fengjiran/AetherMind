@@ -14,7 +14,7 @@ namespace {
 int64_t ReadTokenId(const void* token_ids_data,
                     const DataType& dtype,
                     size_t index) noexcept {
-    // BuildEmbeddingArgs validates dtype against the semantic contract first,
+    // BuildEmbeddingF32ReferenceArgs validates dtype against the semantic contract first,
     // keeping the read path tied to kEmbeddingSupportedTokenIdDTypes.
     AM_DCHECK(aethermind::IsSupportedTokenIdDType(dtype));
     if (dtype == DataType::Int(32)) {
@@ -28,11 +28,11 @@ int64_t ReadTokenId(const void* token_ids_data,
     if (dtype == DataType::Int(64)) {
         return *(static_cast<const int64_t*>(token_ids_data) + index);
     }
-    // Unreachable after BuildEmbeddingArgs validation; fall back without reading.
+    // Unreachable after BuildEmbeddingF32ReferenceArgs validation; fall back without reading.
     return 0;
 }
 
-Status BuildEmbeddingArgs(const KernelParamsBuildContext& context, void* params_buffer) noexcept {
+Status BuildEmbeddingF32ReferenceArgs(const KernelParamsBuildContext& context, void* params_buffer) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
@@ -115,7 +115,7 @@ Status BuildEmbeddingArgs(const KernelParamsBuildContext& context, void* params_
     // Empty output: no token ids to gather, nothing to write. Null data is
     // permitted for zero-element tensors (see TensorView [0] semantics).
     if (token_count == 0) {
-        ::new (params_buffer) EmbeddingKernelArgs{
+        ::new (params_buffer) EmbeddingF32KernelArgs{
                 .token_dtype = token_ids.dtype(),
                 .token_count = 0,
                 .vocab_size = vocab_size,
@@ -155,7 +155,7 @@ Status BuildEmbeddingArgs(const KernelParamsBuildContext& context, void* params_
                 "EmbeddingKernel output dimensions overflow");
     }
 
-    ::new (params_buffer) EmbeddingKernelArgs{
+    ::new (params_buffer) EmbeddingF32KernelArgs{
             .token_ids_data = token_ids.data(),
             .token_dtype = token_ids.dtype(),
             .weight_data = weight.data<float>(),
@@ -167,8 +167,8 @@ Status BuildEmbeddingArgs(const KernelParamsBuildContext& context, void* params_
     return Status::Ok();
 }
 
-Status EmbeddingKernel(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const EmbeddingKernelArgs*>(ctx.kernel_params);
+Status EmbeddingF32ReferenceEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const EmbeddingF32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
 
     if (args->token_count == 0) {
@@ -198,10 +198,10 @@ Status EmbeddingKernel(const KernelContext& ctx) noexcept {
 } // namespace
 
 // The prepared args must satisfy the PreparedExecutionBindings params arena contract.
-static_assert(std::is_trivially_destructible_v<EmbeddingKernelArgs>);
-static_assert(alignof(EmbeddingKernelArgs) <= alignof(std::max_align_t));
+static_assert(std::is_trivially_destructible_v<EmbeddingF32KernelArgs>);
+static_assert(alignof(EmbeddingF32KernelArgs) <= alignof(std::max_align_t));
 
-AM_REGISTER_KERNEL(EmbeddingFp32Reference,
+AM_REGISTER_KERNEL(CpuEmbeddingF32Reference,
                    KernelDescriptor{
                            .op_type = OpType::kEmbedding,
                            .selector = KernelSelector{
@@ -211,10 +211,10 @@ AM_REGISTER_KERNEL(EmbeddingFp32Reference,
                                    .weight_format = WeightFormat::kPlain,
                                    .phase = ExecPhase::kBoth,
                            },
-                           .kernel_func = &EmbeddingKernel,
+                           .kernel_func = &EmbeddingF32ReferenceEntry,
                            .priority = 10,
-                           .params_size = sizeof(EmbeddingKernelArgs),
-                           .params_builder = &BuildEmbeddingArgs,
+                           .params_size = sizeof(EmbeddingF32KernelArgs),
+                           .params_builder = &BuildEmbeddingF32ReferenceArgs,
                            .name = "cpu::embedding_f32_reference",
                    })
 

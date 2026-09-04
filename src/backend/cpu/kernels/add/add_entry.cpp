@@ -220,7 +220,7 @@ Status BuildAddArgs(const KernelParamsBuildContext& context,
     return Status::Ok();
 }
 
-Status AddKernelEntry(const KernelContext& ctx) noexcept {
+Status AddEntry(const KernelContext& ctx) noexcept {
     const auto* args = static_cast<const AddKernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     if (args->numel == 0) {
@@ -238,7 +238,7 @@ static_assert(alignof(AddKernelArgs) <= alignof(std::max_align_t));
 // kAddSupportedDTypes; see the static_assert in test_cpu_add_kernel.cpp
 // ResolvesThroughCpuBackend for the compile-time check.
 AM_REGISTER_KERNEL(
-        CpuAddFp32Reference,
+        CpuAddF32Reference,
         KernelDescriptor{
                 .op_type = OpType::kAdd,
                 .selector = KernelSelector{
@@ -248,7 +248,7 @@ AM_REGISTER_KERNEL(
                         .weight_format = WeightFormat::kPlain,
                         .phase = ExecPhase::kBoth,
                 },
-                .kernel_func = &AddKernelEntry,
+                .kernel_func = &AddEntry,
                 .priority = 10,
                 .params_size = sizeof(AddKernelArgs),
                 .params_builder = &BuildAddArgs,
@@ -266,7 +266,7 @@ AM_REGISTER_KERNEL(
                         .weight_format = WeightFormat::kPlain,
                         .phase = ExecPhase::kBoth,
                 },
-                .kernel_func = &AddKernelEntry,
+                .kernel_func = &AddEntry,
                 .priority = 10,
                 .params_size = sizeof(AddKernelArgs),
                 .params_builder = &BuildAddArgs,
@@ -283,7 +283,7 @@ AM_REGISTER_KERNEL(CpuAddBf16Reference,
                                    .weight_format = WeightFormat::kPlain,
                                    .phase = ExecPhase::kBoth,
                            },
-                           .kernel_func = &AddKernelEntry,
+                           .kernel_func = &AddEntry,
                            .priority = 10,
                            .params_size = sizeof(AddKernelArgs),
                            .params_builder = &BuildAddArgs,
@@ -300,7 +300,7 @@ AM_REGISTER_KERNEL(CpuAddI32Reference,
                                    .weight_format = WeightFormat::kPlain,
                                    .phase = ExecPhase::kBoth,
                            },
-                           .kernel_func = &AddKernelEntry,
+                           .kernel_func = &AddEntry,
                            .priority = 10,
                            .params_size = sizeof(AddKernelArgs),
                            .params_builder = &BuildAddArgs,
@@ -317,7 +317,7 @@ AM_REGISTER_KERNEL(CpuAddI64Reference,
                                    .weight_format = WeightFormat::kPlain,
                                    .phase = ExecPhase::kBoth,
                            },
-                           .kernel_func = &AddKernelEntry,
+                           .kernel_func = &AddEntry,
                            .priority = 10,
                            .params_size = sizeof(AddKernelArgs),
                            .params_builder = &BuildAddArgs,

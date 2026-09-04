@@ -2,21 +2,23 @@
 #define AETHERMIND_BACKEND_CPU_KERNELS_RMSNORM_CPU_RMSNORM_INTERNAL_H
 
 /// @file rmsnorm_internal.h
-/// @brief Backend-internal RMSNorm compute-ready params and FP32 micro-kernels.
+/// Internal declarations for the CPU RMSNorm kernel.
 ///
-/// Defines the pre-validated `RmsNormF32KernelArgs` consumed by the reference
-/// and AVX2 RMSNorm micro-kernels. Args are prepared once per PreparedExecutionBindings by
+/// Defines the pre-validated FP32 compute-ready args (`RmsNormF32KernelArgs`)
+/// and the FP32 reference/AVX2 micro-kernels. The shared templated
+/// `ValidateAndBuildCommonArgs` validation core is TU-local to
+/// rmsnorm_entry.cpp. Args are prepared once per PreparedExecutionBindings by
 /// the registered `KernelParamsBuilder` and passed through
 /// `KernelContext::kernel_params` on every execution.
 
 #include "aethermind/base/status.h"
-#include "aethermind/base/tensor_view.h"
 
 namespace aethermind::cpu::detail {
 
 /// @brief Pre-validated FP32 arguments for RMSNorm micro-kernels.
 ///
-/// Produced by `ValidateAndBuildCommonRmsNormF32Args` from the binding-time
+/// Produced by `ValidateAndBuildF32Args` (the F32 shell over the shared
+/// `ValidateAndBuildCommonArgs` core) from the binding-time
 /// `KernelParamsBuildContext` and epsilon attrs and consumed by reference/AVX2
 /// implementations. Separates validation from compute. `row_count` is the
 /// product of every input dimension except the last, so rank-1 input is

@@ -140,8 +140,9 @@ Status ValidateNonOverlappingOutputRows(int64_t row_count,
     return Status::Ok();
 }
 
-Status ValidateAndBuildCommonRmsNormF32Args(const KernelParamsBuildContext& context,
-                                            RmsNormF32KernelArgs& args) noexcept {
+template<typename KernelArgs>
+Status ValidateAndBuildCommonArgs(const KernelParamsBuildContext& context,
+                                  KernelArgs& args) noexcept {
     float eps = 0.0f;
     if (context.attrs.size() != sizeof(float)) {
         return Status::InvalidArgument(
@@ -176,13 +177,6 @@ Status ValidateAndBuildCommonRmsNormF32Args(const KernelParamsBuildContext& cont
     if (!output.is_valid()) {
         return Status::InvalidArgument(
                 "RmsNormKernelEntry requires a valid output MutableTensorView");
-    }
-
-    if (auto expect_dtype = DataType::Float32();
-        input.dtype() != expect_dtype || weight.dtype() != expect_dtype ||
-        output.dtype() != expect_dtype) {
-        return Status::InvalidArgument(
-                "RmsNormKernelEntry requires float32 input, weight, and output TensorViews");
     }
 
     const int32_t rank = input.rank();
@@ -224,11 +218,10 @@ Status ValidateAndBuildCommonRmsNormF32Args(const KernelParamsBuildContext& cont
     }
 
     if (row_count.value() == 0) {
-        args = RmsNormF32KernelArgs{
-                .row_count = 0,
-                .hidden_size = hidden_size,
-                .eps = eps,
-        };
+        args = KernelArgs{};
+        args.row_count = 0;
+        args.hidden_size = hidden_size;
+        args.eps = eps;
         return Status::Ok();
     }
 
@@ -288,26 +281,41 @@ Status ValidateAndBuildCommonRmsNormF32Args(const KernelParamsBuildContext& cont
                 "CPU RmsNorm output must not alias weight");
     }
 
-    args = RmsNormF32KernelArgs{
-            .input = input.data<float>(),
-            .weight = weight.data<float>(),
-            .output = output.data<float>(),
-            .row_count = row_count.value(),
-            .hidden_size = hidden_size,
-            .input_row_stride = input_row_stride,
-            .input_col_stride = input.stride(rank - 1),
-            .weight_stride = weight.stride(0),
-            .output_row_stride = output_row_stride,
-            .output_col_stride = output.stride(rank - 1),
-            .eps = eps,
-    };
+    args.input = static_cast<decltype(args.input)>(input.data());
+    args.weight = static_cast<decltype(args.weight)>(weight.data());
+    args.output = static_cast<decltype(args.output)>(output.data());
+    args.row_count = row_count.value();
+    args.hidden_size = hidden_size;
+    args.input_row_stride = input_row_stride;
+    args.input_col_stride = input.stride(rank - 1);
+    args.weight_stride = weight.stride(0);
+    args.output_row_stride = output_row_stride;
+    args.output_col_stride = output.stride(rank - 1);
+    args.eps = eps;
     return Status::Ok();
+}
+
+Status ValidateAndBuildF32Args(const KernelParamsBuildContext& context,
+                               RmsNormF32KernelArgs& args) noexcept {
+    const auto inputs = context.inputs;
+    const auto outputs = context.outputs;
+    if (inputs.size() != 2 || outputs.size() != 1) {
+        return Status::InvalidArgument("RmsNorm requires 2 inputs and 1 output");
+    }
+
+    if (inputs[0].dtype() != DataType::Float32() || inputs[1].dtype() != DataType::Float32() ||
+        outputs[0].dtype() != DataType::Float32()) {
+        return Status::InvalidArgument(
+                "RmsNormKernelEntry requires float32 input, weight, and output TensorViews");
+    }
+
+    return ValidateAndBuildCommonArgs(context, args);
 }
 
 Status BuildRmsNormF32ReferenceArgs(const KernelParamsBuildContext& context,
                                     void* params_buffer) noexcept {
     RmsNormF32KernelArgs args;
-    AM_RETURN_IF_ERROR(ValidateAndBuildCommonRmsNormF32Args(context, args));
+    AM_RETURN_IF_ERROR(ValidateAndBuildF32Args(context, args));
     ::new (params_buffer) RmsNormF32KernelArgs(args);
     return Status::Ok();
 }
@@ -315,7 +323,7 @@ Status BuildRmsNormF32ReferenceArgs(const KernelParamsBuildContext& context,
 Status BuildRmsNormF32Avx2FmaArgs(const KernelParamsBuildContext& context,
                                   void* params_buffer) noexcept {
     RmsNormF32KernelArgs args;
-    AM_RETURN_IF_ERROR(ValidateAndBuildCommonRmsNormF32Args(context, args));
+    AM_RETURN_IF_ERROR(ValidateAndBuildF32Args(context, args));
 
     if (args.row_count != 0 && !HasUnitColumnStrides(args)) {
         return Status::InvalidArgument(

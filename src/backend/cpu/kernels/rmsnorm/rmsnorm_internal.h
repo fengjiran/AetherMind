@@ -6,7 +6,7 @@
 ///
 /// Defines the pre-validated FP32 compute-ready args (`RmsNormF32KernelArgs`)
 /// and the FP32 reference/AVX2 micro-kernels. The shared templated
-/// `ValidateAndBuildCommonArgs` validation core is TU-local to
+/// `ValidateAndBuildRmsNormArgs` validation core is TU-local to
 /// rmsnorm_entry.cpp. Args are prepared once per PreparedExecutionBindings by
 /// the registered `KernelParamsBuilder` and passed through
 /// `KernelContext::kernel_params` on every execution.
@@ -18,7 +18,7 @@ namespace aethermind::cpu::detail {
 /// @brief Pre-validated FP32 arguments for RMSNorm micro-kernels.
 ///
 /// Produced by `ValidateAndBuildF32Args` (the F32 shell over the shared
-/// `ValidateAndBuildCommonArgs` core) from the binding-time
+/// `ValidateAndBuildRmsNormArgs` core) from the binding-time
 /// `KernelParamsBuildContext` and epsilon attrs and consumed by reference/AVX2
 /// implementations. Separates validation from compute. `row_count` is the
 /// product of every input dimension except the last, so rank-1 input is

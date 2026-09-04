@@ -8,14 +8,12 @@
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_ELEMENTWISE_MUL_INTERNAL_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_ELEMENTWISE_MUL_INTERNAL_H
 
-#include "aethermind/base/shape_and_stride.h"
+#include "aethermind/backend/cpu/kernels/common/broadcast_utils.h"
 #include "aethermind/base/status.h"
 
 #include <array>
 
 namespace aethermind::cpu::detail {
-
-constexpr uint32_t kMaxRank = ShapeAndStride::kMaxRank;
 
 /// Compute-ready args for the CPU ElementwiseMul kernel.
 ///

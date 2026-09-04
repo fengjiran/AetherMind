@@ -8,7 +8,7 @@
 /// micro-kernel. The kernel entry itself is TU-local to `add_entry.cpp`;
 /// operators never include this header.
 
-#include "aethermind/base/shape_and_stride.h"
+#include "aethermind/backend/cpu/kernels/common/broadcast_utils.h"
 #include "aethermind/base/status.h"
 #include "aethermind/dtypes/data_type.h"
 
@@ -16,12 +16,10 @@
 
 namespace aethermind::cpu::detail {
 
-constexpr uint32_t kMaxRank = ShapeAndStride::kMaxRank;
-
 /// @brief Pre-validated, type-erased arguments for Add micro-kernels.
 ///
 /// Produced by `ValidateAndBuildArgs` (the dtype-agnostic Add shell over the
-/// shared `ValidateAndBuildCommonArgs` template) from the binding-time
+/// shared `ValidateAndBuildElementwiseArgs` template) from the binding-time
 /// `KernelParamsBuildContext` and consumed by the reference implementation,
 /// separating validation from compute. `numel` is the broadcast output element
 /// count; a zero count means the entry returns before dispatch.

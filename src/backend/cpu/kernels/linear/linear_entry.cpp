@@ -1,8 +1,8 @@
+#include "aethermind/backend/cpu/kernels/common/layout_utils.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/backend/kernel_types.h"
 #include "linear_internal.h"
-#include "utils/overflow_check.h"
 
 #include <cstddef>
 #include <new>
@@ -10,109 +10,6 @@
 
 namespace aethermind::cpu::detail {
 namespace {
-
-StatusOr<int64_t> ComputeRowCount(const TensorView& input) noexcept {
-    int64_t row_count = 1;
-    for (int32_t dim = 0; dim < input.rank() - 1; ++dim) {
-        const int64_t extent = input.dim(dim);
-        if (extent == 0) {
-            return int64_t{0};
-        }
-
-        int64_t next_row_count = 0;
-        if (CheckOverflowMul(row_count, extent, &next_row_count)) {
-            return Status::InvalidArgument("LinearKernelEntry row count overflow");
-        }
-        row_count = next_row_count;
-    }
-    return row_count;
-}
-
-Status ValidatePositiveStrides(const TensorView& tensor, const char* message) noexcept {
-    for (int32_t dim = 0; dim < tensor.rank(); ++dim) {
-        if (tensor.stride(dim) <= 0) {
-            return Status::InvalidArgument(message);
-        }
-    }
-    return Status::Ok();
-}
-
-Status ValidatePositiveStrides(const MutableTensorView& tensor, const char* message) noexcept {
-    for (int32_t dim = 0; dim < tensor.rank(); ++dim) {
-        if (tensor.stride(dim) <= 0) {
-            return Status::InvalidArgument(message);
-        }
-    }
-    return Status::Ok();
-}
-
-template<typename TensorLike>
-Status ValidateCollapsibleLeadingDimensions(const TensorLike& tensor) noexcept {
-    for (int32_t dim = 0; dim < tensor.rank() - 2; ++dim) {
-        int64_t expected_stride = 0;
-        if (CheckOverflowMul(tensor.dim(dim + 1), tensor.stride(dim + 1), &expected_stride)) {
-            return Status::InvalidArgument(
-                    "LinearKernelEntry leading-dimension stride product overflow");
-        }
-        if (tensor.stride(dim) != expected_stride) {
-            return Status::Unimplemented(
-                    "CPU Linear requires collapsible leading dimensions for rank > 2");
-        }
-    }
-    return Status::Ok();
-}
-
-Status ValidateMaxOffset(int64_t row_count,
-                         int64_t column_count,
-                         int64_t row_stride,
-                         int64_t column_stride,
-                         const char* message) noexcept {
-    int64_t row_offset = 0;
-    if (CheckOverflowMul(row_count - 1, row_stride, &row_offset)) {
-        return Status::InvalidArgument(message);
-    }
-
-    int64_t column_offset = 0;
-    if (CheckOverflowMul(column_count - 1, column_stride, &column_offset)) {
-        return Status::InvalidArgument(message);
-    }
-
-    int64_t max_offset = 0;
-    if (CheckOverflowAdd(row_offset, column_offset, &max_offset)) {
-        return Status::InvalidArgument(message);
-    }
-    return Status::Ok();
-}
-
-StatusOr<int64_t> ComputeRowSpan(int64_t column_count,
-                                 int64_t column_stride) noexcept {
-    int64_t last_column_offset = 0;
-    if (CheckOverflowMul(column_count - 1, column_stride, &last_column_offset)) {
-        return Status::InvalidArgument("LinearKernelEntry output row span overflow");
-    }
-
-    int64_t row_span = 0;
-    if (CheckOverflowAdd(last_column_offset, int64_t{1}, &row_span)) {
-        return Status::InvalidArgument("LinearKernelEntry output row span overflow");
-    }
-    return row_span;
-}
-
-Status ValidateNonOverlappingOutputRows(int64_t row_count,
-                                        int64_t out_features,
-                                        int64_t output_row_stride,
-                                        int64_t output_col_stride) noexcept {
-    if (row_count <= 1) {
-        return Status::Ok();
-    }
-
-    AM_ASSIGN_OR_RETURN(const int64_t row_span,
-                        ComputeRowSpan(out_features, output_col_stride));
-    if (output_row_stride < row_span) {
-        return Status::InvalidArgument("CPU Linear output rows must not overlap");
-    }
-    return Status::Ok();
-}
 
 Status BuildLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
                                    void* params_buffer) noexcept {
@@ -172,7 +69,7 @@ Status BuildLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
                 "LinearKernelEntry requires output last dimension to match weight output dimension");
     }
 
-    const auto row_count = ComputeRowCount(input);
+    const auto row_count = ComputeRowCount(input, "LinearKernelEntry");
     if (!row_count.ok()) {
         return row_count.status();
     }
@@ -189,14 +86,15 @@ Status BuildLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
     AM_RETURN_IF_ERROR(ValidatePositiveStrides(
             output, "LinearKernelEntry requires positive output strides"));
     if (rank > 2) {
-        AM_RETURN_IF_ERROR(ValidateCollapsibleLeadingDimensions(output));
+        AM_RETURN_IF_ERROR(ValidateCollapsibleLeadingDimensions(output, "LinearKernelEntry"));
     }
     const int64_t output_row_stride = rank == 1 ? 0 : output.stride(rank - 2);
-    AM_RETURN_IF_ERROR(ValidateMaxOffset(row_count.value(), out_features,
-                                         output_row_stride, output.stride(rank - 1),
-                                         "LinearKernelEntry output offset overflow"));
+    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+            "LinearKernelEntry", row_count.value(), out_features,
+            output_row_stride, output.stride(rank - 1), "output"));
     AM_RETURN_IF_ERROR(ValidateNonOverlappingOutputRows(
-            row_count.value(), out_features, output_row_stride, output.stride(rank - 1)));
+            "LinearKernelEntry", row_count.value(), out_features,
+            output_row_stride, output.stride(rank - 1)));
 
     if (in_features == 0) {
         ::new (params_buffer) LinearF32KernelArgs{
@@ -220,16 +118,16 @@ Status BuildLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
     AM_RETURN_IF_ERROR(ValidatePositiveStrides(
             weight, "LinearKernelEntry requires positive weight strides"));
     if (rank > 2) {
-        AM_RETURN_IF_ERROR(ValidateCollapsibleLeadingDimensions(input));
+        AM_RETURN_IF_ERROR(ValidateCollapsibleLeadingDimensions(input, "LinearKernelEntry"));
     }
 
     const int64_t input_row_stride = rank == 1 ? 0 : input.stride(rank - 2);
-    AM_RETURN_IF_ERROR(ValidateMaxOffset(row_count.value(), in_features,
-                                         input_row_stride, input.stride(rank - 1),
-                                         "LinearKernelEntry input offset overflow"));
-    AM_RETURN_IF_ERROR(ValidateMaxOffset(out_features, in_features,
-                                         weight.stride(0), weight.stride(1),
-                                         "LinearKernelEntry weight offset overflow"));
+    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+            "LinearKernelEntry", row_count.value(), in_features,
+            input_row_stride, input.stride(rank - 1), "input"));
+    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+            "LinearKernelEntry", out_features, in_features,
+            weight.stride(0), weight.stride(1), "weight"));
 
     if (output.data() == input.data() || output.data() == weight.data()) {
         return Status::InvalidArgument("CPU Linear output must not alias input or weight");

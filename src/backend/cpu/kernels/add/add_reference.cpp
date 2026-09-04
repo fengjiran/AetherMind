@@ -1,29 +1,11 @@
 #include "add_internal.h"
+#include "aethermind/backend/cpu/kernels/common/broadcast_utils.h"
 #include "utils/overflow_check.h"
 
 #include <array>
-#include <cstdint>
 
 namespace aethermind::cpu::detail {
 namespace {
-
-// Broadcast axes (extent 1) pin their coordinate to 0 so the single element is
-// reused; leading axes absent from a lower-rank input are skipped via axis_offset.
-int64_t MapCoordToOffset(std::span<const int64_t> input_shape,
-                         int32_t output_rank,
-                         std::span<const int64_t> input_strides,
-                         const std::array<int64_t, kMaxRank>& out_coord) noexcept {
-    const auto input_rank = static_cast<int32_t>(input_shape.size());
-    const int32_t axis_offset = output_rank - input_rank;
-    int64_t offset = 0;
-    for (int32_t axis = axis_offset; axis < output_rank; ++axis) {
-        const int32_t input_axis = axis - axis_offset;
-        const int64_t dim = input_shape[input_axis];
-        const int64_t coord = (dim == 1) ? int64_t{0} : out_coord[axis];
-        offset += coord * input_strides[input_axis];
-    }
-    return offset;
-}
 
 template<typename T>
 Status AddScalar(T lhs, T rhs, T& output) noexcept {

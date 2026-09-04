@@ -1,9 +1,9 @@
+#include "aethermind/backend/cpu/kernels/common/layout_utils.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/operators/op_params.h"
 #include "rmsnorm_internal.h"
-#include "utils/overflow_check.h"
 
 #include <cmath>
 #include <cstring>
@@ -14,80 +14,6 @@ namespace {
 
 bool HasUnitColumnStrides(const RmsNormF32KernelArgs& args) noexcept {
     return args.input_col_stride == 1 && args.weight_stride == 1 && args.output_col_stride == 1;
-}
-
-StatusOr<int64_t> ComputeRowCount(const TensorView& input) noexcept {
-    int64_t row_count = 1;
-    for (int32_t i = 0; i < input.rank() - 1; ++i) {
-        const int64_t extent = input.dim(i);
-        if (extent == 0) {
-            return int64_t{0};
-        }
-
-        int64_t next_row_count = 0;
-        if (CheckOverflowMul(row_count, extent, &next_row_count)) {
-            return Status::InvalidArgument("RmsNormKernelEntry row count overflow");
-        }
-        row_count = next_row_count;
-    }
-    return row_count;
-}
-
-Status ValidatePositiveStrides(const TensorView& tensor, const char* message) noexcept {
-    for (int32_t dim = 0; dim < tensor.rank(); ++dim) {
-        if (tensor.stride(dim) <= 0) {
-            return Status::InvalidArgument(message);
-        }
-    }
-    return Status::Ok();
-}
-
-Status ValidatePositiveStrides(const MutableTensorView& tensor, const char* message) noexcept {
-    for (int32_t i = 0; i < tensor.rank(); ++i) {
-        if (tensor.stride(i) <= 0) {
-            return Status::InvalidArgument(message);
-        }
-    }
-    return Status::Ok();
-}
-
-Status ValidateMaxOffset(int64_t row_count,
-                         int64_t hidden_size,
-                         int64_t row_stride,
-                         int64_t column_stride,
-                         const char* message) noexcept {
-    int64_t row_offset = 0;
-    if (CheckOverflowMul(row_count - 1, row_stride, &row_offset)) {
-        return Status::InvalidArgument(message);
-    }
-
-    int64_t column_offset = 0;
-    if (CheckOverflowMul(hidden_size - 1, column_stride, &column_offset)) {
-        return Status::InvalidArgument(message);
-    }
-
-    int64_t max_offset = 0;
-    if (CheckOverflowAdd(row_offset, column_offset, &max_offset)) {
-        return Status::InvalidArgument(message);
-    }
-    return Status::Ok();
-}
-
-template<typename TensorLike>
-Status ValidateCollapsibleLeadingDimensions(const TensorLike& tensor) noexcept {
-    for (int32_t i = 0; i < tensor.rank() - 2; ++i) {
-        int64_t expected_stride = 0;
-        if (CheckOverflowMul(tensor.dim(i + 1), tensor.stride(i + 1), &expected_stride)) {
-            return Status::InvalidArgument(
-                    "RmsNormKernelEntry leading-dimension stride product overflow");
-        }
-
-        if (tensor.stride(i) != expected_stride) {
-            return Status::Unimplemented(
-                    "CPU RmsNorm requires collapsible leading dimensions for rank > 2");
-        }
-    }
-    return Status::Ok();
 }
 
 bool HasIdenticalMapping(const TensorView& input,
@@ -106,43 +32,9 @@ bool HasIdenticalMapping(const TensorView& input,
     return true;
 }
 
-StatusOr<int64_t> ComputeRowSpan(int64_t hidden_size,
-                                 int64_t column_stride) noexcept {
-    int64_t last_column_offset = 0;
-    if (CheckOverflowMul(hidden_size - 1, column_stride, &last_column_offset)) {
-        return Status::InvalidArgument(
-                "RmsNorm output row span overflow");
-    }
-
-    int64_t row_span = 0;
-    if (CheckOverflowAdd(last_column_offset, int64_t{1}, &row_span)) {
-        return Status::InvalidArgument(
-                "RmsNorm output row span overflow");
-    }
-
-    return row_span;
-}
-
-Status ValidateNonOverlappingOutputRows(int64_t row_count,
-                                        int64_t hidden_size,
-                                        int64_t row_stride,
-                                        int64_t column_stride) noexcept {
-    if (row_count <= 1) {
-        return Status::Ok();
-    }
-
-    AM_ASSIGN_OR_RETURN(const int64_t row_span, ComputeRowSpan(hidden_size, column_stride));
-
-    if (row_stride < row_span) {
-        return Status::InvalidArgument("CPU RmsNorm output rows must not overlap");
-    }
-
-    return Status::Ok();
-}
-
 template<typename KernelArgs>
-Status ValidateAndBuildCommonArgs(const KernelParamsBuildContext& context,
-                                  KernelArgs& args) noexcept {
+Status ValidateAndBuildRmsNormArgs(const KernelParamsBuildContext& context,
+                                   KernelArgs& args) noexcept {
     float eps = 0.0f;
     if (context.attrs.size() != sizeof(float)) {
         return Status::InvalidArgument(
@@ -212,7 +104,7 @@ Status ValidateAndBuildCommonArgs(const KernelParamsBuildContext& context,
                 "RmsNormKernelEntry requires weight length to match hidden_size");
     }
 
-    const StatusOr<int64_t> row_count = ComputeRowCount(input);
+    const StatusOr<int64_t> row_count = ComputeRowCount(input, "RmsNormKernelEntry");
     if (!row_count.ok()) {
         return row_count.status();
     }
@@ -238,32 +130,36 @@ Status ValidateAndBuildCommonArgs(const KernelParamsBuildContext& context,
             output, "RmsNormKernelEntry requires positive output strides"));
 
     if (rank > 2) {
-        AM_RETURN_IF_ERROR(ValidateCollapsibleLeadingDimensions(input));
-        AM_RETURN_IF_ERROR(ValidateCollapsibleLeadingDimensions(output));
+        AM_RETURN_IF_ERROR(ValidateCollapsibleLeadingDimensions(input, "RmsNormKernelEntry"));
+        AM_RETURN_IF_ERROR(ValidateCollapsibleLeadingDimensions(output, "RmsNormKernelEntry"));
     }
 
     const int64_t input_row_stride = rank == 1 ? 0 : input.stride(rank - 2);
     const int64_t output_row_stride = rank == 1 ? 0 : output.stride(rank - 2);
-    AM_RETURN_IF_ERROR(ValidateMaxOffset(
+    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+            "RmsNormKernelEntry",
             row_count.value(),
             hidden_size,
             input_row_stride,
             input.stride(rank - 1),
-            "RmsNormKernelEntry input offset overflow"));
-    AM_RETURN_IF_ERROR(ValidateMaxOffset(
+            "input"));
+    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+            "RmsNormKernelEntry",
             1,
             hidden_size,
             0,
             weight.stride(0),
-            "RmsNormKernelEntry weight offset overflow"));
-    AM_RETURN_IF_ERROR(ValidateMaxOffset(
+            "weight"));
+    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+            "RmsNormKernelEntry",
             row_count.value(),
             hidden_size,
             output_row_stride,
             output.stride(rank - 1),
-            "RmsNormKernelEntry output offset overflow"));
+            "output"));
 
     AM_RETURN_IF_ERROR(ValidateNonOverlappingOutputRows(
+            "RmsNormKernelEntry",
             row_count.value(),
             hidden_size,
             output_row_stride,
@@ -309,7 +205,7 @@ Status ValidateAndBuildF32Args(const KernelParamsBuildContext& context,
                 "RmsNormKernelEntry requires float32 input, weight, and output TensorViews");
     }
 
-    return ValidateAndBuildCommonArgs(context, args);
+    return ValidateAndBuildRmsNormArgs(context, args);
 }
 
 Status BuildRmsNormF32ReferenceArgs(const KernelParamsBuildContext& context,

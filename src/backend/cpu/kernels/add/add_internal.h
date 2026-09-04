@@ -20,7 +20,8 @@ constexpr uint32_t kMaxRank = ShapeAndStride::kMaxRank;
 
 /// @brief Pre-validated, type-erased arguments for Add micro-kernels.
 ///
-/// Produced by `ValidateAndBuildCommonAddArgs` from the binding-time
+/// Produced by `ValidateAndBuildArgs` (the dtype-agnostic Add shell over the
+/// shared `ValidateAndBuildCommonArgs` template) from the binding-time
 /// `KernelParamsBuildContext` and consumed by the reference implementation,
 /// separating validation from compute. `numel` is the broadcast output element
 /// count; a zero count means the entry returns before dispatch.

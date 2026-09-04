@@ -89,9 +89,9 @@ StatusOr<int64_t> CheckedOutputNumel(int32_t rank, std::span<const int64_t> shap
     return count;
 }
 
-Status ValidateAndBuildCommonAddArgs(
-        const KernelParamsBuildContext& context,
-        AddKernelArgs& args) noexcept {
+template<typename KernelArgs>
+Status ValidateAndBuildCommonArgs(const KernelParamsBuildContext& context,
+                                  KernelArgs& args) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
@@ -112,17 +112,6 @@ Status ValidateAndBuildCommonAddArgs(
 
     if (!output.is_valid()) {
         return Status::InvalidArgument("AddKernel requires a valid output MutableTensorView");
-    }
-
-    const DataType dtype = lhs.dtype();
-    if (rhs.dtype() != dtype || output.dtype() != dtype) {
-        return Status::InvalidArgument(
-                "AddKernel requires matching lhs, rhs, and output dtypes");
-    }
-
-    if (!IsAddSupportedDType(dtype)) {
-        return Status::InvalidArgument(
-                MakeAddUnsupportedDTypeMessage("AddKernel"));
     }
 
     const int32_t output_rank = output.rank();
@@ -147,7 +136,7 @@ Status ValidateAndBuildCommonAddArgs(
 
     const int64_t numel = numel_or.value();
     if (numel == 0) {
-        args = AddKernelArgs{};
+        args = KernelArgs{};
         return Status::Ok();
     }
 
@@ -180,10 +169,9 @@ Status ValidateAndBuildCommonAddArgs(
         }
     }
 
-    args.lhs_data = lhs.data();
-    args.rhs_data = rhs.data();
-    args.output_data = output.data();
-    args.dtype = dtype;
+    args.lhs_data = static_cast<decltype(args.lhs_data)>(lhs.data());
+    args.rhs_data = static_cast<decltype(args.rhs_data)>(rhs.data());
+    args.output_data = static_cast<decltype(args.output_data)>(output.data());
     args.numel = numel;
 
     // Determine flat-path eligibility.
@@ -212,10 +200,34 @@ Status ValidateAndBuildCommonAddArgs(
     return Status::Ok();
 }
 
+Status ValidateAndBuildArgs(const KernelParamsBuildContext& context,
+                            AddKernelArgs& args) noexcept {
+    const auto inputs = context.inputs;
+    const auto outputs = context.outputs;
+    if (inputs.size() != 2 || outputs.size() != 1) {
+        return Status::InvalidArgument("Add requires 2 inputs and 1 output");
+    }
+
+    const DataType dtype = inputs[0].dtype();
+    if (inputs[1].dtype() != dtype || outputs[0].dtype() != dtype) {
+        return Status::InvalidArgument(
+                "AddKernel requires matching lhs, rhs, and output dtypes");
+    }
+
+    if (!IsAddSupportedDType(dtype)) {
+        return Status::InvalidArgument(
+                MakeAddUnsupportedDTypeMessage("AddKernel"));
+    }
+
+    AM_RETURN_IF_ERROR(ValidateAndBuildCommonArgs(context, args));
+    args.dtype = dtype;
+    return Status::Ok();
+}
+
 Status BuildAddArgs(const KernelParamsBuildContext& context,
                     void* params_buffer) noexcept {
     AddKernelArgs args;
-    AM_RETURN_IF_ERROR(ValidateAndBuildCommonAddArgs(context, args));
+    AM_RETURN_IF_ERROR(ValidateAndBuildArgs(context, args));
     ::new (params_buffer) AddKernelArgs(args);
     return Status::Ok();
 }

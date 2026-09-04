@@ -1,11 +1,11 @@
-#include "aethermind/backend/cpu/kernels/cpu_dot_product_avx2.h"
-#include "aethermind/backend/cpu/kernels/common/cpu_simd_utils.h"
+#include "aethermind/backend/cpu/kernels/common/dot_product_f32_avx2.h"
+#include "aethermind/backend/cpu/kernels/common/simd_utils.h"
 
 #include <immintrin.h>
 
 namespace aethermind {
 
-float DotProductAvx2Unroll(const float* a, const float* b, std::size_t n) noexcept {
+float DotProductF32Avx2Unroll(const float* a, const float* b, std::size_t n) noexcept {
 #if defined(__AVX2__) && defined(__FMA__)
     __m256 vsum0 = _mm256_setzero_ps();
     __m256 vsum1 = _mm256_setzero_ps();

@@ -22,7 +22,7 @@
 #include <limits>
 #include <vector>
 
-#include "aethermind/backend/cpu/kernels/cpu_dot_product_avx2.h"
+#include "aethermind/backend/cpu/kernels/common/dot_product_f32_avx2.h"
 
 // ---- SIMD 概念 1: Load / Store ─────────────────────────────────────────
 // _mm256_loadu_ps / _mm256_storeu_ps: 从内存加载 / 写回 8 个 float。
@@ -188,7 +188,7 @@ TEST(CPUKernelAvxLearning, DotProduct) {
     alignas(32) constexpr float a[10] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F, 8.0F, 9.0F, 10.0F};
     alignas(32) constexpr float b[10] = {10.0F, 9.0F, 8.0F, 7.0F, 6.0F, 5.0F, 4.0F, 3.0F, 2.0F, 1.0F};
 
-    const float actual = aethermind::DotProductAvx2Unroll(a, b, 10);
+    const float actual = aethermind::DotProductF32Avx2Unroll(a, b, 10);
     const float expected = aethermind::ReferenceDotProduct(a, b, 10);
 
     EXPECT_FLOAT_EQ(actual, expected);
@@ -203,7 +203,7 @@ TEST(CPUKernelAvxLearning, DotProductLargeVectorAligned32) {
         b[i] = i * 0.25F;
     }
 
-    const float actual = aethermind::DotProductAvx2Unroll(a.data(), b.data(), kSize);
+    const float actual = aethermind::DotProductF32Avx2Unroll(a.data(), b.data(), kSize);
     const float expected = aethermind::ReferenceDotProduct(a.data(), b.data(), kSize);
     aethermind::ExpectClose(actual, expected);
 }
@@ -217,7 +217,7 @@ TEST(CPUKernelAvxLearning, DotProductVeryLargeVector) {
         b[i] = static_cast<float>(255 - (i & 0xFF)) * 0.1F;
     }
 
-    const float actual = aethermind::DotProductAvx2Unroll(a.data(), b.data(), kSize);
+    const float actual = aethermind::DotProductF32Avx2Unroll(a.data(), b.data(), kSize);
     const float expected = aethermind::ReferenceDotProduct(a.data(), b.data(), kSize);
     aethermind::ExpectClose(actual, expected);
 }

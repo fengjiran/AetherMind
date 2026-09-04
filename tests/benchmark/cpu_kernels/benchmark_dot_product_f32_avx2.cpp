@@ -1,6 +1,6 @@
 #include <benchmark/benchmark.h>
 
-#include "aethermind/backend/cpu/kernels/cpu_dot_product_avx2.h"
+#include "aethermind/backend/cpu/kernels/common/dot_product_f32_avx2.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -8,7 +8,7 @@
 
 namespace {
 
-void BM_CPUKernel_DotProductAvx2Unroll(benchmark::State& state) {
+void BM_CPUKernel_DotProductF32Avx2Unroll(benchmark::State& state) {
     const auto n = static_cast<std::size_t>(state.range(0));
     std::vector<float> a(n);
     std::vector<float> b(n);
@@ -19,7 +19,7 @@ void BM_CPUKernel_DotProductAvx2Unroll(benchmark::State& state) {
     }
 
     for (auto _: state) {
-        float result = aethermind::DotProductAvx2Unroll(a.data(), b.data(), n);
+        float result = aethermind::DotProductF32Avx2Unroll(a.data(), b.data(), n);
         benchmark::DoNotOptimize(result);
     }
 
@@ -27,7 +27,7 @@ void BM_CPUKernel_DotProductAvx2Unroll(benchmark::State& state) {
     state.SetBytesProcessed(state.iterations() * static_cast<std::int64_t>(n) * static_cast<std::int64_t>(sizeof(float) * 2));
 }
 
-BENCHMARK(BM_CPUKernel_DotProductAvx2Unroll)
+BENCHMARK(BM_CPUKernel_DotProductF32Avx2Unroll)
         ->Arg(128)
         ->Arg(1024)
         ->Arg(8192)

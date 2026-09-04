@@ -53,11 +53,11 @@ check_cxx_compiler_flag("-mavx2" CXX_SUPPORTS_AVX2)
 check_cxx_compiler_flag("-mfma" CXX_SUPPORTS_FMA)
 if (CXX_SUPPORTS_AVX2 AND CXX_SUPPORTS_FMA)
     set_source_files_properties(
-            ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/cpu_dot_product_avx2.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/common/dot_product_f32_avx2.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_fp32_avx2.cpp
             PROPERTIES COMPILE_FLAGS "-mavx2 -mfma"
     )
-    target_compile_definitions(${PROJECT_NAME} PRIVATE AETHERMIND_HAS_RMSNORM_AVX2_FMA_KERNEL=1)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE RMSNORM_HAS_AVX2_FMA_KERNEL=1)
     message(STATUS "AVX2/FMA enabled")
 else ()
     message(STATUS "AVX2/FMA not supported by compiler")

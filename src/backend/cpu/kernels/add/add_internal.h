@@ -2,9 +2,9 @@
 #define AETHERMIND_BACKEND_CPU_KERNELS_ADD_ADD_INTERNAL_H
 
 /// @file add_internal.h
-/// @brief Backend-internal Add compute-ready params and scalar micro-kernel.
+/// @brief Backend-internal Add compute-ready params and reference micro-kernel.
 ///
-/// Defines the pre-validated `AddKernelArgs` and the dtype-generic scalar Add
+/// Defines the pre-validated `AddKernelArgs` and the dtype-generic reference Add
 /// micro-kernel. The kernel entry itself is TU-local to `add_entry.cpp`;
 /// operators never include this header.
 
@@ -21,7 +21,7 @@ constexpr uint32_t kMaxRank = ShapeAndStride::kMaxRank;
 /// @brief Pre-validated, type-erased arguments for Add micro-kernels.
 ///
 /// Produced by `ValidateAndBuildCommonAddArgs` from the binding-time
-/// `KernelParamsBuildContext` and consumed by the scalar implementation,
+/// `KernelParamsBuildContext` and consumed by the reference implementation,
 /// separating validation from compute. `numel` is the broadcast output element
 /// count; a zero count means the entry returns before dispatch.
 struct AddKernelArgs {
@@ -45,7 +45,7 @@ struct AddKernelArgs {
     std::array<int64_t, kMaxRank> output_strides{};
 };
 
-/// @brief Runs the scalar Add micro-kernel for every supported dtype.
+/// @brief Runs the reference Add micro-kernel for every supported dtype.
 ///
 /// Dispatches on `args.dtype`, then selects a flat loop when `args.is_flat`
 /// and a stride-aware broadcast loop otherwise.
@@ -55,7 +55,7 @@ struct AddKernelArgs {
 ///        `kAddSupportedDTypes`.
 /// @return Ok on success, `kOverflow` when integer addition overflows, or
 ///         `kInvalidArgument` for an unsupported dtype.
-Status RunAddScalar(const AddKernelArgs& args) noexcept;
+Status RunAddReference(const AddKernelArgs& args) noexcept;
 
 } // namespace aethermind::cpu::detail
 

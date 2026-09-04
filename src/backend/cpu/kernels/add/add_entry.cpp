@@ -226,7 +226,7 @@ Status AddKernelEntry(const KernelContext& ctx) noexcept {
     if (args->numel == 0) {
         return Status::Ok();
     }
-    return RunAddScalar(*args);
+    return RunAddReference(*args);
 }
 
 } // namespace
@@ -238,7 +238,7 @@ static_assert(alignof(AddKernelArgs) <= alignof(std::max_align_t));
 // kAddSupportedDTypes; see the static_assert in test_cpu_add_kernel.cpp
 // ResolvesThroughCpuBackend for the compile-time check.
 AM_REGISTER_KERNEL(
-        CpuAddFp32Scalar,
+        CpuAddFp32Reference,
         KernelDescriptor{
                 .op_type = OpType::kAdd,
                 .selector = KernelSelector{
@@ -252,11 +252,11 @@ AM_REGISTER_KERNEL(
                 .priority = 10,
                 .params_size = sizeof(AddKernelArgs),
                 .params_builder = &BuildAddArgs,
-                .name = "cpu::add_f32_scalar",
+                .name = "cpu::add_f32_reference",
         });
 
 AM_REGISTER_KERNEL(
-        CpuAddFp64Scalar,
+        CpuAddFp64Reference,
         KernelDescriptor{
                 .op_type = OpType::kAdd,
                 .selector = KernelSelector{
@@ -270,10 +270,10 @@ AM_REGISTER_KERNEL(
                 .priority = 10,
                 .params_size = sizeof(AddKernelArgs),
                 .params_builder = &BuildAddArgs,
-                .name = "cpu::add_f64_scalar",
+                .name = "cpu::add_f64_reference",
         });
 
-AM_REGISTER_KERNEL(CpuAddBf16Scalar,
+AM_REGISTER_KERNEL(CpuAddBf16Reference,
                    KernelDescriptor{
                            .op_type = OpType::kAdd,
                            .selector = KernelSelector{
@@ -287,10 +287,10 @@ AM_REGISTER_KERNEL(CpuAddBf16Scalar,
                            .priority = 10,
                            .params_size = sizeof(AddKernelArgs),
                            .params_builder = &BuildAddArgs,
-                           .name = "cpu::add_bf16_scalar",
+                           .name = "cpu::add_bf16_reference",
                    });
 
-AM_REGISTER_KERNEL(CpuAddI32Scalar,
+AM_REGISTER_KERNEL(CpuAddI32Reference,
                    KernelDescriptor{
                            .op_type = OpType::kAdd,
                            .selector = KernelSelector{
@@ -304,10 +304,10 @@ AM_REGISTER_KERNEL(CpuAddI32Scalar,
                            .priority = 10,
                            .params_size = sizeof(AddKernelArgs),
                            .params_builder = &BuildAddArgs,
-                           .name = "cpu::add_i32_scalar",
+                           .name = "cpu::add_i32_reference",
                    });
 
-AM_REGISTER_KERNEL(CpuAddI64Scalar,
+AM_REGISTER_KERNEL(CpuAddI64Reference,
                    KernelDescriptor{
                            .op_type = OpType::kAdd,
                            .selector = KernelSelector{
@@ -321,7 +321,7 @@ AM_REGISTER_KERNEL(CpuAddI64Scalar,
                            .priority = 10,
                            .params_size = sizeof(AddKernelArgs),
                            .params_builder = &BuildAddArgs,
-                           .name = "cpu::add_i64_scalar",
+                           .name = "cpu::add_i64_reference",
                    });
 
 } // namespace aethermind::cpu::detail

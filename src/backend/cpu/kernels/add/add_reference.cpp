@@ -94,7 +94,7 @@ Status ExecuteTyped(const AddKernelArgs& args) noexcept {
 
 } // namespace
 
-Status RunAddScalar(const AddKernelArgs& args) noexcept {
+Status RunAddReference(const AddKernelArgs& args) noexcept {
     const DataType dtype = args.dtype;
     if (dtype == DataType::Float32()) {
         return ExecuteTyped<float>(args);
@@ -116,7 +116,7 @@ Status RunAddScalar(const AddKernelArgs& args) noexcept {
         return ExecuteTyped<int64_t>(args);
     }
     return Status::InvalidArgument(
-            "AddKernel scalar dispatch received unsupported dtype");
+            "AddKernel reference dispatch received unsupported dtype");
 }
 
 } // namespace aethermind::cpu::detail

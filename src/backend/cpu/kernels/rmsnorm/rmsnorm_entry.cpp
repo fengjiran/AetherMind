@@ -304,7 +304,7 @@ Status ValidateAndBuildCommonRmsNormFp32Args(
     return Status::Ok();
 }
 
-Status BuildRmsNormFp32ScalarArgs(
+Status BuildRmsNormFp32ReferenceArgs(
         const KernelParamsBuildContext& context,
         void* params_buffer) noexcept {
     RmsNormFp32KernelArgs args;
@@ -343,10 +343,10 @@ Status BuildRmsNormMetadata(const OpParams& params,
     return Status::Ok();
 }
 
-Status RmsNormKernelEntryFp32Scalar(const KernelContext& ctx) noexcept {
+Status RmsNormKernelEntryFp32Reference(const KernelContext& ctx) noexcept {
     const auto* args = static_cast<const RmsNormFp32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
-    return RunRmsNormFp32Scalar(*args);
+    return RunRmsNormFp32Reference(*args);
 }
 
 #if defined(AETHERMIND_HAS_RMSNORM_AVX2_FMA_KERNEL)
@@ -363,7 +363,7 @@ static_assert(std::is_trivially_destructible_v<RmsNormFp32KernelArgs>);
 static_assert(alignof(RmsNormFp32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
-        RmsNormFp32Scalar,
+        RmsNormFp32Reference,
         KernelDescriptor{
                 .op_type = OpType::kRmsNorm,
                 .selector = KernelSelector{
@@ -373,12 +373,12 @@ AM_REGISTER_KERNEL(
                         .weight_format = WeightFormat::kPlain,
                         .phase = ExecPhase::kBoth,
                 },
-                .kernel_func = &RmsNormKernelEntryFp32Scalar,
+                .kernel_func = &RmsNormKernelEntryFp32Reference,
                 .priority = 10,
                 .params_size = sizeof(RmsNormFp32KernelArgs),
-                .params_builder = &BuildRmsNormFp32ScalarArgs,
+                .params_builder = &BuildRmsNormFp32ReferenceArgs,
                 .metadata_builder = &BuildRmsNormMetadata,
-                .name = "cpu::rmsnorm_f32_scalar"});
+                .name = "cpu::rmsnorm_f32_reference"});
 
 #if defined(AETHERMIND_HAS_RMSNORM_AVX2_FMA_KERNEL)
 AM_REGISTER_KERNEL(

@@ -85,6 +85,18 @@ inline std::string_view ToString(RoPEScalingType scaling_type) noexcept {
 ///       semantic acceptance does not imply current end-to-end kernel support.
 ///       HF-specific RoPE variants are filtered by the model frontend
 ///       (`ModelGraphBuilder::BuildLlamaDense`), not by InferRoPE.
+///
+/// @note Phase-1 rotation layout is the Llama/HuggingFace split-half layout.
+///       For one head with `half = head_dim / 2`, pair `i` rotates
+///       `x[i]` and `x[half + i]`; it does not rotate adjacent even/odd
+///       elements. With `freq_i = theta^(-2*i/head_dim)` and
+///       `effective_position = position_id` for kNone or
+///       `position_id / scaling_factor` for kLinear, executable kernels use
+///       `y[i] = x[i] * cos(angle) - x[half+i] * sin(angle)` and
+///       `y[half+i] = x[half+i] * cos(angle) + x[i] * sin(angle)`, where
+///       `angle = effective_position * freq_i`. Other layouts require an
+///       explicit future semantic extension rather than an implementation-only
+///       kernel choice.
 struct RoPEParams {
     int64_t head_dim = 0;
     int64_t num_attention_heads = 0;

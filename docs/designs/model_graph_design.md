@@ -935,7 +935,7 @@ Phase-1 Attention 算子在 graph 层面表达以下语义契约，物理 layout
 
 ### 12.2 RoPE 语义与执行边界
 
-Phase-1 RoPE 算子在 graph 层面表达以下语义契约（rank-2、无 batch 轴）。sin/cos table 生成、数值计算、kernel dispatch 归 lowering / runtime。
+Phase-1 RoPE 算子在 graph 层面表达以下语义契约（rank-2、无 batch 轴）。数值计算与 kernel dispatch 归 lowering / runtime；实现可直接计算 sin/cos，也可在未来选择共享的派生 table。
 
 **逻辑签名（Phase 1）：**
 
@@ -948,6 +948,22 @@ Phase-1 RoPE 算子在 graph 层面表达以下语义契约（rank-2、无 batch
 | k_rope (output 1) | Activation | 2 | 与 k spec 完全一致 | 输出保持输入 TensorSpec |
 
 **Dtype 契约：** q、k dtype 必须一致，取值 ∈ {Float32, Float16, BFloat16}。position_ids 必须为 Int64。输出 dtype 分别跟随 q、k。禁止隐式类型转换。
+
+**Phase-1 rotation layout（冻结）：** 使用 Llama/HuggingFace 的 **split-half** 约定，而非相邻 even/odd pair。令 `half = head_dim / 2`；对每个 token、每个 q 或 k head、以及 `i ∈ [0, half)`：
+
+```text
+freq_i = theta ^ (-2 * i / head_dim)
+effective_position = position_id                     // kNone
+effective_position = position_id / scaling_factor    // kLinear
+angle = effective_position * freq_i
+
+a = x[i]
+b = x[half + i]
+y[i]        = a * cos(angle) - b * sin(angle)
+y[half + i] = b * cos(angle) + a * sin(angle)
+```
+
+同一 token/pair 的 `sin(angle)` / `cos(angle)` 可复用于全部 q heads 和 kv heads。当前 semantic surface 不表达 interleaved、GPT-J 或其他 rotation layout；若要支持，必须先扩展 `RoPEParams`，不能仅在 backend kernel 中更换解释。
 
 **参数校验：**
 - `head_dim`、`num_attention_heads`、`num_key_value_heads`、`max_position_embeddings` 均为正
@@ -972,10 +988,10 @@ Phase-1 RoPE 算子在 graph 层面表达以下语义契约（rank-2、无 batch
 - 静态 q seq_len `<= 0` 拒绝
 
 **执行边界（不属于 graph 语义层）：**
-- 本语义层**不**检查 position tensor 内容。未来 executable RoPE path 必须校验非负 position ID、scaling 契约定义的 effective-position 上界、以及 symbolic q/k 宽度与 params 的一致性后才能计算
+- 本语义层**不**检查 position tensor 内容。executable RoPE path 必须校验非负 position ID 与 symbolic q/k 宽度和 params 的一致性；只有 future scaling contract 明确 effective-position 上界后，才可额外施加该检查
 - 不声称 `position_ids < max_position_embeddings`——该 coordinate/bound 策略未在本语义任务中冻结
 - Loader `allow_rope_scaling` 仍是独立策略；语义接受不等于当前 end-to-end kernel 支持
-- sin/cos table 属于派生常量（可从 `RoPEParams` 完全确定），应在 lowering 阶段生成
+- sin/cos table 是可选的派生资源；reference kernel 可直接计算，若后续引入 table，必须作为 compiler/runtime 管理的共享资源，不能在每个 RoPE step 的 attrs 中重复持有
 ## 13. Validation 规则
 
 `Validate()` 至少检查：

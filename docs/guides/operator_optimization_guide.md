@@ -1757,18 +1757,18 @@ C[mr x nr] += A[mr x kc] * B[kc x nr]
 
 ### 算子特点
 
-RoPE 对 Q/K 的相邻维度进行旋转：
+本项目 Phase-1 的 Llama/HuggingFace RoPE 使用 split-half layout，而非相邻维度。对一个 `head_dim = 2 * half` 的 head，`i` 与 `half + i` 组成一对：
 
 ```text
-x_even' = x_even * cos - x_odd * sin
-x_odd'  = x_even * sin + x_odd * cos
+x[i]'        = x[i] * cos - x[half + i] * sin
+x[half + i]' = x[half + i] * cos + x[i] * sin
 ```
 
 ### 优化方向
 
 1. sin/cos 预计算；
 2. 连续读取 Q/K；
-3. SIMD 处理相邻 pair；
+3. SIMD 处理 split-half pair；
 4. 减少 shuffle；
 5. 针对 head_dim 固定值优化；
 6. 与 Q/K projection 后处理融合；

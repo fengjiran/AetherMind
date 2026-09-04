@@ -385,7 +385,7 @@ bool Match(const KernelSelector& candidate,
 ### 示例：RMSNorm reference 注册
 
 ```cpp
-// src/backend/cpu/kernels/rmsnorm/rmsnorm_fp32_reference.cpp
+// src/backend/cpu/kernels/rmsnorm/rmsnorm_f32_reference.cpp
 AM_REGISTER_KERNEL(g_rmsnorm_reference_registration, {
     .op_type = OpType::kRmsNorm,
     .selector = {

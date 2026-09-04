@@ -54,7 +54,7 @@ check_cxx_compiler_flag("-mfma" CXX_SUPPORTS_FMA)
 if (CXX_SUPPORTS_AVX2 AND CXX_SUPPORTS_FMA)
     set_source_files_properties(
             ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/common/dot_product_f32_avx2.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_fp32_avx2.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_f32_avx2.cpp
             PROPERTIES COMPILE_FLAGS "-mavx2 -mfma"
     )
     target_compile_definitions(${PROJECT_NAME} PRIVATE RMSNORM_HAS_AVX2_FMA_KERNEL=1)

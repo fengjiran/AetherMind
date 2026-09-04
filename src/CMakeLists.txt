@@ -47,7 +47,7 @@ endif (BACKTRACE_ON_SEGFAULT)
 
 # AVX2+FMA flags for SIMD-optimized translation units. RMSNorm registers its
 # AVX2+FMA descriptor only when this binary contains the corresponding
-# translation unit implementation; scalar RMSNorm remains available otherwise.
+# translation unit implementation; reference RMSNorm remains available otherwise.
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag("-mavx2" CXX_SUPPORTS_AVX2)
 check_cxx_compiler_flag("-mfma" CXX_SUPPORTS_FMA)

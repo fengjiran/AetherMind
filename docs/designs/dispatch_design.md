@@ -266,7 +266,7 @@ struct KernelDescriptor {
 `priority` 用来解决多个 kernel 都匹配时的优先级问题。例如：
 
 ```text
-AVX512 kernel > AVX2 kernel > Scalar reference kernel
+AVX512 kernel > AVX2 kernel > Reference kernel
 Packed weight kernel > Plain weight kernel
 ```
 
@@ -382,11 +382,11 @@ bool Match(const KernelSelector& candidate,
 
 参见 7.1 节。每个 kernel 在其 .cpp 文件中通过 `AM_REGISTER_KERNEL` 宏自注册到 `KernelRegistry::Global()`，无需修改任何 Backend 代码。
 
-### 示例：RMSNorm scalar 注册
+### 示例：RMSNorm reference 注册
 
 ```cpp
-// src/backend/cpu/kernels/rmsnorm/rmsnorm_fp32_scalar.cpp
-AM_REGISTER_KERNEL(g_rmsnorm_scalar_registration, {
+// src/backend/cpu/kernels/rmsnorm/rmsnorm_fp32_reference.cpp
+AM_REGISTER_KERNEL(g_rmsnorm_reference_registration, {
     .op_type = OpType::kRmsNorm,
     .selector = {
         .device = DeviceType::kCPU,
@@ -395,8 +395,8 @@ AM_REGISTER_KERNEL(g_rmsnorm_scalar_registration, {
         .weight_format = WeightFormat::kPlain,
         .phase = ExecPhase::kBoth,
     },
-    .fn = &CpuRmsNormKernelEntry_FP32_Scalar,
-    .name = "cpu::rmsnorm_f32_scalar",
+    .fn = &CpuRmsNormKernelEntry_FP32_Reference,
+    .name = "cpu::rmsnorm_f32_reference",
     .priority = 10,
 });
 ```

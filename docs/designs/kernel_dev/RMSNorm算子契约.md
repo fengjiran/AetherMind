@@ -72,7 +72,7 @@ CPU entry 将 `input.shape[0 : rank - 1]` 的乘积转换为 `row_count`，并�
 
 - 不可折叠的 higher-rank view 在语义上仍合法，但当前 CPU kernel 返回 `Unimplemented`；不应把它误报为 operator shape error。
 
-- Scalar kernel 支持任意正的 input / weight / output inner stride。
+- Reference kernel 支持任意正的 input / weight / output inner stride。
 
 - AVX2+FMA kernel 要求三者的 inner stride 都为 `1`。
 
@@ -108,13 +108,13 @@ CPU entry 将 `input.shape[0 : rank - 1]` 的乘积转换为 `row_count`，并�
 ```text
 PrepareExecutionBindings（PreparedExecutionBindings 构建，cold path）
     -> step.kernel.params_builder（每 step 每 PreparedExecutionBindings 恰好一次）
-    -> BuildRmsNormFp32ScalarArgs / BuildRmsNormFp32Avx2FmaArgs
+    -> BuildRmsNormFp32ReferenceArgs / BuildRmsNormFp32Avx2FmaArgs
     -> ValidateAndBuildCommonRmsNormFp32Args
     -> PreparedExecutionBindings 持有 compute-ready RmsNormFp32KernelArgs
 
 每次 Execute（hot path）
-    -> RmsNormKernelEntryFp32Scalar / RmsNormKernelEntryFp32Avx2Fma
-    -> RunRmsNormFp32Scalar / RunRmsNormFp32Avx2Fma
+    -> RmsNormKernelEntryFp32Reference / RmsNormKernelEntryFp32Avx2Fma
+    -> RunRmsNormFp32Reference / RunRmsNormFp32Avx2Fma
 ```
 
 - prepared params（`RmsNormFp32KernelArgs`）由 `PreparedExecutionBindings` 的 params arena 持有，生命周期等于 PreparedExecutionBindings；PreparedExecutionBindings 内存续期内 data pointer / shape / stride / dtype 不变，任何变化都必须重建 PreparedExecutionBindings。
@@ -135,7 +135,7 @@ PrepareExecutionBindings（PreparedExecutionBindings 构建，cold path）
 
 - `epsilon` 必须 finite 且大于零，默认值为 `1.0e-5F`。
 
-- Scalar reference 使用 double 累加。AVX2+FMA 路径允许 FP32 reduction 和不同 reduction order，因此只要求 tolerance equal，不要求 bitwise equal。
+- Reference kernel 使用 double 累加。AVX2+FMA 路径允许 FP32 reduction 和不同 reduction order，因此只要求 tolerance equal，不要求 bitwise equal。
 
 - kernel 不分配 heap memory，workspace requirement 为空。
 
@@ -143,17 +143,17 @@ PrepareExecutionBindings（PreparedExecutionBindings 构建，cold path）
 
 ## 6. ISA 与可移植性
 
-- Scalar descriptor 始终注册，是当前 default-lowering 的执行路径。
+- Reference descriptor 始终注册，是当前 default-lowering 的执行路径。
 
-- AVX2+FMA translation unit 仅在编译器同时支持 `-mavx2` 和 `-mfma` 时编译并注册；否则 binary 中只有 scalar descriptor。
+- AVX2+FMA translation unit 仅在编译器同时支持 `-mavx2` 和 `-mfma` 时编译并注册；否则 binary 中只有 reference descriptor。
 
-- AVX2+FMA descriptor 通过 `cpu_requirements = CpuFeatureSet::From({kAvx2, kFma})` 声明完整指令集要求；运行期由 backend 按 `CpuCapabilities.effective_features` 过滤，因此"支持 AVX2 但缺少 FMA"的机器会自动回退 scalar descriptor。能力模型见 `docs/designs/cpu_capability_design.md`。
+- AVX2+FMA descriptor 通过 `cpu_requirements = CpuFeatureSet::From({kAvx2, kFma})` 声明完整指令集要求；运行期由 backend 按 `CpuCapabilities.effective_features` 过滤，因此"支持 AVX2 但缺少 FMA"的机器会自动回退 reference descriptor。能力模型见 `docs/designs/cpu_capability_design.md`。
 
 ## 7. 验证要求
 
 - inference：rank-0 拒绝，rank-1 及 higher-rank `[..., H]` 保持语义，zero leading dimension 成功，hidden / weight / epsilon 约束正确。
 
-- binding / entry：rank-1、rank-2、可折叠 rank-3 / rank-4、zero-row、不可折叠 layout、row-count / address-offset / row-span overflow、scalar strided layout、AVX2 inner-stride 拒绝、output row overlap 拒绝、same-pointer 异 mapping 拒绝、output/weight alias 拒绝以及 exact in-place（scalar 与 AVX2+FMA 路径）。上述非法 binding 现在都在 `PrepareExecutionBindings` / params builder 阶段拒绝；binding 成功后 entry 可重复执行。
+- binding / entry：rank-1、rank-2、可折叠 rank-3 / rank-4、zero-row、不可折叠 layout、row-count / address-offset / row-span overflow、reference strided layout、AVX2 inner-stride 拒绝、output row overlap 拒绝、same-pointer 异 mapping 拒绝、output/weight alias 拒绝以及 exact in-place（reference 与 AVX2+FMA 路径）。上述非法 binding 现在都在 `PrepareExecutionBindings` / params builder 阶段拒绝；binding 成功后 entry 可重复执行。
 
 - correctness：使用 double reference 覆盖 SIMD tail、非 2 的幂 / 质数 hidden 和常见 Llama hidden size。
 

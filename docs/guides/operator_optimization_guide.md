@@ -1328,7 +1328,7 @@ KernelFunc select_rmsnorm_kernel(CpuFeatures f, DataType dtype, int hidden_size)
         if (f.avx2) {
             return rmsnorm_fp32_avx2;
         }
-        return rmsnorm_fp32_scalar;
+        return rmsnorm_fp32_reference;
     }
     return nullptr;
 }

@@ -25,7 +25,7 @@ TEST(CPUKernelGemmReference, ComputesStridedMatrices) {
     rhs[10] = -2.0F;
     rhs[13] = 1.0F;
 
-    const Status status = cpu::detail::RunGemmFp32Reference(cpu::detail::GemmFp32Args{
+    const Status status = cpu::detail::RunGemmF32Reference(cpu::detail::GemmF32Args{
             .lhs = lhs.data(),
             .rhs = rhs.data(),
             .output = output.data(),
@@ -51,7 +51,7 @@ TEST(CPUKernelGemmReference, ZeroInnerDimensionWritesZeroWithoutInputPointers) {
     std::array<float, 10> output;
     output.fill(3.0F);
 
-    const Status status = cpu::detail::RunGemmFp32Reference(cpu::detail::GemmFp32Args{
+    const Status status = cpu::detail::RunGemmF32Reference(cpu::detail::GemmF32Args{
             .output = output.data(),
             .m = 2,
             .n = 3,
@@ -70,7 +70,7 @@ TEST(CPUKernelGemmReference, ZeroInnerDimensionWritesZeroWithoutInputPointers) {
 }
 
 TEST(CPUKernelGemmReference, EmptyOutputIsSuccessfulNoOp) {
-    const Status status = cpu::detail::RunGemmFp32Reference(cpu::detail::GemmFp32Args{
+    const Status status = cpu::detail::RunGemmF32Reference(cpu::detail::GemmF32Args{
             .m = 0,
             .n = 3,
             .k = 2,

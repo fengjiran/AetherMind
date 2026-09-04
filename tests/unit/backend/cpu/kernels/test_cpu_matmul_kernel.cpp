@@ -98,14 +98,14 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     return SymbolicShape(IntArrayView{shape});
 }
 
-TEST(CPUKernelMatMul, CpuBackendPreparesPlainFp32ReferenceKernel) {
+TEST(CPUKernelMatMul, CpuBackendPreparesPlainF32ReferenceKernel) {
     const auto kernel = PrepareMatMulKernel(true);
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     EXPECT_EQ(kernel->op_type, OpType::kMatMul);
     EXPECT_EQ(std::string_view{kernel->name}, "cpu::matmul_f32_reference");
     EXPECT_NE(kernel->fn, nullptr);
     EXPECT_NE(kernel->params_builder, nullptr);
-    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::MatMulFp32KernelArgs));
+    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::MatMulF32KernelArgs));
     ASSERT_EQ(kernel->attrs.size(), 1U);
     EXPECT_EQ(std::to_integer<uint8_t>(kernel->attrs[0]), 1U);
 }

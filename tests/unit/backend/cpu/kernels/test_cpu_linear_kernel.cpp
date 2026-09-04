@@ -125,17 +125,17 @@ void ExpectLinearRowsNear(const float* input,
     }
 }
 
-TEST(CPUKernelLinear, CpuBackendPreparesPlainFp32ReferenceKernel) {
+TEST(CPUKernelLinear, CpuBackendPreparesPlainF32ReferenceKernel) {
     const auto kernel = PrepareLinearKernel();
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     EXPECT_EQ(kernel->op_type, OpType::kLinear);
     EXPECT_EQ(std::string_view{kernel->name}, "cpu::linear_f32_reference");
     EXPECT_NE(kernel->fn, nullptr);
     EXPECT_NE(kernel->params_builder, nullptr);
-    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::LinearFp32KernelArgs));
+    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::LinearF32KernelArgs));
 }
 
-TEST(CPUKernelLinear, RejectsSelectorsWithoutPlainFp32ReferenceSupport) {
+TEST(CPUKernelLinear, RejectsSelectorsWithoutPlainF32ReferenceSupport) {
     CpuBackend backend;
     KernelSelector selector = MakeLinearSelector();
     selector.act_dtype = DataType::Float(16);

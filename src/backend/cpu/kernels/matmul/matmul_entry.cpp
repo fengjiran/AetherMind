@@ -110,7 +110,7 @@ Status ValidateInjectiveOutputMapping(const TensorLike& output) noexcept {
     return Status::Ok();
 }
 
-Status BuildMatMulMetadata(const OpParams& params, std::vector<std::byte>& attrs) {
+Status BuildMatMulF32Metadata(const OpParams& params, std::vector<std::byte>& attrs) {
     const auto* matmul_params = std::get_if<MatMulParams>(&params);
     if (matmul_params == nullptr) {
         return Status::InvalidArgument("MatMul kernel requires MatMulParams");
@@ -120,8 +120,8 @@ Status BuildMatMulMetadata(const OpParams& params, std::vector<std::byte>& attrs
     return Status::Ok();
 }
 
-Status ValidateAndBuildMatMulFp32Args(const KernelParamsBuildContext& context,
-                                      MatMulFp32KernelArgs& args) noexcept {
+Status ValidateAndBuildMatMulF32Args(const KernelParamsBuildContext& context,
+                                     MatMulF32KernelArgs& args) noexcept {
     if (context.attrs.size() != 1) {
         return Status::InvalidArgument("MatMulKernelEntry requires transpose_rhs metadata");
     }
@@ -172,7 +172,7 @@ Status ValidateAndBuildMatMulFp32Args(const KernelParamsBuildContext& context,
         return Status::InvalidArgument("MatMulKernelEntry output matrix shape is incorrect");
     }
 
-    MatMulFp32KernelArgs built_args{
+    MatMulF32KernelArgs built_args{
             .lhs = lhs.data<float>(),
             .rhs = rhs.data<float>(),
             .output = output.data<float>(),
@@ -242,28 +242,28 @@ Status ValidateAndBuildMatMulFp32Args(const KernelParamsBuildContext& context,
     return Status::Ok();
 }
 
-Status BuildMatMulFp32ReferenceArgs(const KernelParamsBuildContext& context,
-                                    void* params_buffer) noexcept {
-    MatMulFp32KernelArgs args;
-    AM_RETURN_IF_ERROR(ValidateAndBuildMatMulFp32Args(context, args));
-    ::new (params_buffer) MatMulFp32KernelArgs(args);
+Status BuildMatMulF32ReferenceArgs(const KernelParamsBuildContext& context,
+                                   void* params_buffer) noexcept {
+    MatMulF32KernelArgs args;
+    AM_RETURN_IF_ERROR(ValidateAndBuildMatMulF32Args(context, args));
+    ::new (params_buffer) MatMulF32KernelArgs(args);
     return Status::Ok();
 }
 
-Status MatMulKernelEntryFp32Reference(const KernelContext& context) noexcept {
-    const auto* args = static_cast<const MatMulFp32KernelArgs*>(context.kernel_params);
+Status MatMulF32ReferenceEntry(const KernelContext& context) noexcept {
+    const auto* args = static_cast<const MatMulF32KernelArgs*>(context.kernel_params);
     AM_DCHECK(args != nullptr);
-    return RunMatMulFp32Reference(*args);
+    return RunMatMulF32Reference(*args);
 }
 
 } // namespace
 
-static_assert(std::is_trivially_destructible_v<MatMulFp32KernelArgs>);
-static_assert(sizeof(MatMulFp32KernelArgs) <= kMaxKernelParamsSize);
-static_assert(alignof(MatMulFp32KernelArgs) <= alignof(std::max_align_t));
+static_assert(std::is_trivially_destructible_v<MatMulF32KernelArgs>);
+static_assert(sizeof(MatMulF32KernelArgs) <= kMaxKernelParamsSize);
+static_assert(alignof(MatMulF32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
-        MatMulFp32Reference,
+        CpuMatMulF32Reference,
         KernelDescriptor{
                 .op_type = OpType::kMatMul,
                 .selector = KernelSelector{
@@ -273,11 +273,11 @@ AM_REGISTER_KERNEL(
                         .weight_format = WeightFormat::kPlain,
                         .phase = ExecPhase::kBoth,
                 },
-                .kernel_func = &MatMulKernelEntryFp32Reference,
+                .kernel_func = &MatMulF32ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(MatMulFp32KernelArgs),
-                .params_builder = &BuildMatMulFp32ReferenceArgs,
-                .metadata_builder = &BuildMatMulMetadata,
+                .params_size = sizeof(MatMulF32KernelArgs),
+                .params_builder = &BuildMatMulF32ReferenceArgs,
+                .metadata_builder = &BuildMatMulF32Metadata,
                 .name = "cpu::matmul_f32_reference"});
 
 } // namespace aethermind::cpu::detail

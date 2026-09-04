@@ -21,7 +21,7 @@ inline constexpr int32_t kMaxMatMulBatchRank =
 /// normalized. A normalized zero input stride denotes a broadcast dimension.
 /// Matrix strides describe the effective `[M, K] x [K, N]` operation, so
 /// `transpose_rhs` is intentionally absent from this hot-path representation.
-struct MatMulFp32KernelArgs {
+struct MatMulF32KernelArgs {
     const float* lhs{};
     const float* rhs{};
     float* output{};
@@ -43,7 +43,7 @@ struct MatMulFp32KernelArgs {
 };
 
 /// @brief Executes a binding-specialized batched FP32 MatMul reference kernel.
-AM_NODISCARD Status RunMatMulFp32Reference(const MatMulFp32KernelArgs& args) noexcept;
+AM_NODISCARD Status RunMatMulF32Reference(const MatMulF32KernelArgs& args) noexcept;
 
 } // namespace aethermind::cpu::detail
 

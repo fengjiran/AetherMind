@@ -4,7 +4,7 @@
 
 namespace aethermind::cpu::detail {
 
-Status RunMatMulFp32Reference(const MatMulFp32KernelArgs& args) noexcept {
+Status RunMatMulF32Reference(const MatMulF32KernelArgs& args) noexcept {
     if (args.batch_count == 0 || args.m == 0 || args.n == 0) {
         return Status::Ok();
     }
@@ -22,7 +22,7 @@ Status RunMatMulFp32Reference(const MatMulFp32KernelArgs& args) noexcept {
             output_offset += coordinate * args.output_batch_strides[axis];
         }
 
-        AM_RETURN_IF_ERROR(RunGemmFp32Reference(GemmFp32Args{
+        AM_RETURN_IF_ERROR(RunGemmF32Reference(GemmF32Args{
                 .lhs = args.k == 0 ? nullptr : args.lhs + lhs_offset,
                 .rhs = args.k == 0 ? nullptr : args.rhs + rhs_offset,
                 .output = args.output + output_offset,

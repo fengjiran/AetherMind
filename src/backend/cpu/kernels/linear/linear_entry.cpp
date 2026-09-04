@@ -114,8 +114,8 @@ Status ValidateNonOverlappingOutputRows(int64_t row_count,
     return Status::Ok();
 }
 
-Status BuildLinearFp32ReferenceArgs(const KernelParamsBuildContext& context,
-                                    void* params_buffer) noexcept {
+Status BuildLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
+                                   void* params_buffer) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
@@ -178,7 +178,7 @@ Status BuildLinearFp32ReferenceArgs(const KernelParamsBuildContext& context,
     }
 
     if (row_count.value() == 0 || out_features == 0) {
-        ::new (params_buffer) LinearFp32KernelArgs{
+        ::new (params_buffer) LinearF32KernelArgs{
                 .row_count = row_count.value(),
                 .in_features = in_features,
                 .out_features = out_features,
@@ -199,7 +199,7 @@ Status BuildLinearFp32ReferenceArgs(const KernelParamsBuildContext& context,
             row_count.value(), out_features, output_row_stride, output.stride(rank - 1)));
 
     if (in_features == 0) {
-        ::new (params_buffer) LinearFp32KernelArgs{
+        ::new (params_buffer) LinearF32KernelArgs{
                 .output = output.data<float>(),
                 .row_count = row_count.value(),
                 .in_features = 0,
@@ -235,7 +235,7 @@ Status BuildLinearFp32ReferenceArgs(const KernelParamsBuildContext& context,
         return Status::InvalidArgument("CPU Linear output must not alias input or weight");
     }
 
-    ::new (params_buffer) LinearFp32KernelArgs{
+    ::new (params_buffer) LinearF32KernelArgs{
             .input = input.data<float>(),
             .weight = weight.data<float>(),
             .output = output.data<float>(),
@@ -252,19 +252,19 @@ Status BuildLinearFp32ReferenceArgs(const KernelParamsBuildContext& context,
     return Status::Ok();
 }
 
-Status LinearKernelEntryFp32Reference(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const LinearFp32KernelArgs*>(ctx.kernel_params);
+Status LinearF32ReferenceEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const LinearF32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
-    return RunLinearFp32Reference(*args);
+    return RunLinearF32Reference(*args);
 }
 
 } // namespace
 
-static_assert(std::is_trivially_destructible_v<LinearFp32KernelArgs>);
-static_assert(alignof(LinearFp32KernelArgs) <= alignof(std::max_align_t));
+static_assert(std::is_trivially_destructible_v<LinearF32KernelArgs>);
+static_assert(alignof(LinearF32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
-        LinearFp32Reference,
+        CpuLinearF32Reference,
         KernelDescriptor{
                 .op_type = OpType::kLinear,
                 .selector = KernelSelector{
@@ -274,10 +274,10 @@ AM_REGISTER_KERNEL(
                         .weight_format = WeightFormat::kPlain,
                         .phase = ExecPhase::kBoth,
                 },
-                .kernel_func = &LinearKernelEntryFp32Reference,
+                .kernel_func = &LinearF32ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearFp32KernelArgs),
-                .params_builder = &BuildLinearFp32ReferenceArgs,
+                .params_size = sizeof(LinearF32KernelArgs),
+                .params_builder = &BuildLinearF32ReferenceArgs,
                 .name = "cpu::linear_f32_reference"})
 
 } // namespace aethermind::cpu::detail

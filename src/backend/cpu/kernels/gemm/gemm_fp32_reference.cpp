@@ -2,7 +2,7 @@
 
 namespace aethermind::cpu::detail {
 
-Status RunGemmFp32Reference(const GemmFp32Args& args) noexcept {
+Status RunGemmF32Reference(const GemmF32Args& args) noexcept {
     if (args.m == 0 || args.n == 0) {
         return Status::Ok();
     }

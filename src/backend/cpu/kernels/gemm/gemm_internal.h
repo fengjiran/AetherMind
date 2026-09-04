@@ -15,7 +15,7 @@ namespace aethermind::cpu::detail {
 /// The logical mapping is `output[m, n] = sum(lhs[m, k] * rhs[k, n])`.
 /// Callers own shape, stride, alias, and pointer validation; this primitive
 /// only performs the compute-ready two-dimensional operation.
-struct GemmFp32Args {
+struct GemmF32Args {
     const float* lhs{};
     const float* rhs{};
     float* output{};
@@ -34,7 +34,7 @@ struct GemmFp32Args {
 ///
 /// A zero `m` or `n` is a no-op. A zero `k` writes `+0.0F` to every output
 /// element without reading `lhs` or `rhs`.
-AM_NODISCARD Status RunGemmFp32Reference(const GemmFp32Args& args) noexcept;
+AM_NODISCARD Status RunGemmF32Reference(const GemmF32Args& args) noexcept;
 
 } // namespace aethermind::cpu::detail
 

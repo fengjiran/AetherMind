@@ -13,7 +13,7 @@ namespace aethermind::cpu::detail {
 /// execution. `row_count` flattens input leading dimensions; rank-1 input is
 /// represented by one row. The logical mapping is
 /// `output[row, out] = sum(input[row, in] * weight[out, in])`.
-struct LinearFp32KernelArgs {
+struct LinearF32KernelArgs {
     const float* input{};
     const float* weight{};
     float* output{};
@@ -33,7 +33,7 @@ struct LinearFp32KernelArgs {
 /// `args` must have been produced by the binding-time params builder. A zero
 /// `row_count` or `out_features` is a no-op. With zero `in_features`, the
 /// kernel writes zero to every output element without reading input or weight.
-AM_NODISCARD Status RunLinearFp32Reference(const LinearFp32KernelArgs& args) noexcept;
+AM_NODISCARD Status RunLinearF32Reference(const LinearF32KernelArgs& args) noexcept;
 
 } // namespace aethermind::cpu::detail
 

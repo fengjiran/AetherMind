@@ -466,11 +466,11 @@ TEST(AddKernel, HandlesStridedOutput) {
 TEST(AddKernel, ResolvesThroughCpuBackend) {
     CpuBackend backend;
     const std::array cases{
-            std::pair{DataType::Float32(), "cpu::add_f32_scalar"},
-            std::pair{DataType::Double(), "cpu::add_f64_scalar"},
-            std::pair{DataType::BFloat(16), "cpu::add_bf16_scalar"},
-            std::pair{DataType::Int(32), "cpu::add_i32_scalar"},
-            std::pair{DataType::Int(64), "cpu::add_i64_scalar"},
+            std::pair{DataType::Float32(), "cpu::add_f32_reference"},
+            std::pair{DataType::Double(), "cpu::add_f64_reference"},
+            std::pair{DataType::BFloat(16), "cpu::add_bf16_reference"},
+            std::pair{DataType::Int(32), "cpu::add_i32_reference"},
+            std::pair{DataType::Int(64), "cpu::add_i64_reference"},
     };
     static_assert(cases.size() == kAddSupportedDTypes.size(),
                   "ResolvesThroughCpuBackend test cases must cover the same number of dtypes as kAddSupportedDTypes");
@@ -768,11 +768,11 @@ TEST(AddKernel, CanonicalAddRegistryHasExactlyFiveDescriptors) {
 
     // Canonical descriptor names (order-independent).
     const std::array<const char*, 5> canonical_names = {
-            "cpu::add_f32_scalar",
-            "cpu::add_f64_scalar",
-            "cpu::add_bf16_scalar",
-            "cpu::add_i32_scalar",
-            "cpu::add_i64_scalar",
+            "cpu::add_f32_reference",
+            "cpu::add_f64_reference",
+            "cpu::add_bf16_reference",
+            "cpu::add_i32_reference",
+            "cpu::add_i64_reference",
     };
 
     for (const auto& name: canonical_names) {

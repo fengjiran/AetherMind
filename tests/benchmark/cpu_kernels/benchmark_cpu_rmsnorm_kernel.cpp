@@ -169,7 +169,7 @@ void BenchmarkRmsNormFp32(benchmark::State& state,
     SetRmsNormThroughputCounters(state, row_count, hidden_size);
 }
 
-void BM_RmsNormPreparedScalar(benchmark::State& state) {
+void BM_RmsNormPreparedReference(benchmark::State& state) {
     BenchmarkRmsNormFp32(state, RmsNormBenchmarkMode::kPrepared, false);
 }
 
@@ -185,7 +185,7 @@ void BM_RmsNormBindingSpecialization(benchmark::State& state) {
     BenchmarkRmsNormFp32(state, RmsNormBenchmarkMode::kBindingSpecialization, false);
 }
 
-BENCHMARK(BM_RmsNormPreparedScalar)
+BENCHMARK(BM_RmsNormPreparedReference)
         ->Args({1, 4096})
         ->Args({1, 8192})
         ->Args({1, 11008})

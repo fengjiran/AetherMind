@@ -56,7 +56,7 @@ StatusOr<ResolvedKernel> PrepareRmsNormKernel(float epsilon = kEpsilon) {
             OpParams{RmsNormParams{.eps = epsilon}});
 }
 
-StatusOr<ResolvedKernel> PrepareScalarRmsNormKernel(float epsilon = kEpsilon) {
+StatusOr<ResolvedKernel> PrepareReferenceRmsNormKernel(float epsilon = kEpsilon) {
     const auto policy = MakeScalarCpuFeaturePolicy();
     if (!policy.ok()) {
         return policy.status();
@@ -117,8 +117,8 @@ Status RunRmsNormEntryWith(const ResolvedKernel& kernel,
     return RunRmsNormEntry(kernel, *prepared);
 }
 
-Status RunScalarRmsNormEntry(const RmsNormTestViews& views) noexcept {
-    const StatusOr<ResolvedKernel> kernel = PrepareScalarRmsNormKernel();
+Status RunReferenceRmsNormEntry(const RmsNormTestViews& views) noexcept {
+    const StatusOr<ResolvedKernel> kernel = PrepareReferenceRmsNormKernel();
     if (!kernel.ok()) {
         return kernel.status();
     }
@@ -172,7 +172,7 @@ TEST(CPUKernelRmsNorm, CpuBackendPreparedKernelExecutesRankTwoInput) {
     constexpr int64_t weight_shape[1] = {4};
     constexpr int64_t weight_strides[1] = {1};
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{input, DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
@@ -182,7 +182,7 @@ TEST(CPUKernelRmsNorm, CpuBackendPreparedKernelExecutesRankTwoInput) {
     ExpectRowsNear(input, weight, output, 1, 4, 4, 1, 1, 4, 1);
 }
 
-TEST(CPUKernelRmsNorm, ScalarSupportsRankOneInput) {
+TEST(CPUKernelRmsNorm, ReferenceSupportsRankOneInput) {
     constexpr float input[4] = {1.0F, -2.0F, 3.0F, -4.0F};
     constexpr float weight[4] = {1.0F, 0.5F, 1.5F, 2.0F};
     float output[4] = {};
@@ -191,7 +191,7 @@ TEST(CPUKernelRmsNorm, ScalarSupportsRankOneInput) {
     constexpr int64_t weight_shape[1] = {4};
     constexpr int64_t weight_strides[1] = {1};
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{input, DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
@@ -201,7 +201,7 @@ TEST(CPUKernelRmsNorm, ScalarSupportsRankOneInput) {
     ExpectRowsNear(input, weight, output, 1, 4, 0, 1, 1, 0, 1);
 }
 
-TEST(CPUKernelRmsNorm, ScalarSupportsCollapsibleRankThreeInput) {
+TEST(CPUKernelRmsNorm, ReferenceSupportsCollapsibleRankThreeInput) {
     constexpr int64_t io_shape[3] = {2, 3, 4};
     constexpr int64_t io_strides[3] = {12, 4, 1};
     constexpr int64_t weight_shape[1] = {4};
@@ -213,7 +213,7 @@ TEST(CPUKernelRmsNorm, ScalarSupportsCollapsibleRankThreeInput) {
         input[static_cast<size_t>(index)] = static_cast<float>(index - 9) * 0.25F;
     }
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{input.data(), DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output.data(), DataType::Float32(), io_shape, io_strides},
@@ -223,7 +223,7 @@ TEST(CPUKernelRmsNorm, ScalarSupportsCollapsibleRankThreeInput) {
     ExpectRowsNear(input.data(), weight, output.data(), 6, 4, 4, 1, 1, 4, 1);
 }
 
-TEST(CPUKernelRmsNorm, ScalarSupportsCollapsibleRankFourPaddedRows) {
+TEST(CPUKernelRmsNorm, ReferenceSupportsCollapsibleRankFourPaddedRows) {
     constexpr int64_t io_shape[4] = {2, 2, 3, 4};
     constexpr int64_t io_strides[4] = {30, 15, 5, 1};
     constexpr int64_t weight_shape[1] = {4};
@@ -238,7 +238,7 @@ TEST(CPUKernelRmsNorm, ScalarSupportsCollapsibleRankFourPaddedRows) {
         }
     }
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{input.data(), DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output.data(), DataType::Float32(), io_shape, io_strides},
@@ -248,7 +248,7 @@ TEST(CPUKernelRmsNorm, ScalarSupportsCollapsibleRankFourPaddedRows) {
     ExpectRowsNear(input.data(), weight, output.data(), 12, 4, 5, 1, 1, 5, 1);
 }
 
-TEST(CPUKernelRmsNorm, ScalarSupportsExactInPlace) {
+TEST(CPUKernelRmsNorm, ReferenceSupportsExactInPlace) {
     constexpr int64_t io_shape[3] = {2, 2, 4};
     constexpr int64_t io_strides[3] = {8, 4, 1};
     constexpr int64_t weight_shape[1] = {4};
@@ -260,7 +260,7 @@ TEST(CPUKernelRmsNorm, ScalarSupportsExactInPlace) {
     }
     const std::array<float, 16> original = storage;
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
@@ -270,7 +270,7 @@ TEST(CPUKernelRmsNorm, ScalarSupportsExactInPlace) {
     ExpectRowsNear(original.data(), weight, storage.data(), 4, 4, 4, 1, 1, 4, 1);
 }
 
-TEST(CPUKernelRmsNorm, ScalarExactInPlaceRankOne) {
+TEST(CPUKernelRmsNorm, ReferenceExactInPlaceRankOne) {
     constexpr int64_t io_shape[1] = {33};
     constexpr int64_t io_strides[1] = {1};
     constexpr int64_t weight_shape[1] = {33};
@@ -283,7 +283,7 @@ TEST(CPUKernelRmsNorm, ScalarExactInPlaceRankOne) {
     }
     const std::array<float, 33> original = storage;
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
@@ -293,7 +293,7 @@ TEST(CPUKernelRmsNorm, ScalarExactInPlaceRankOne) {
     ExpectRowsNear(original.data(), weight.data(), storage.data(), 1, 33, 0, 1, 1, 0, 1);
 }
 
-TEST(CPUKernelRmsNorm, ScalarExactInPlaceRankTwoContiguous) {
+TEST(CPUKernelRmsNorm, ReferenceExactInPlaceRankTwoContiguous) {
     constexpr int64_t io_shape[2] = {2, 33};
     constexpr int64_t io_strides[2] = {33, 1};
     constexpr int64_t weight_shape[1] = {33};
@@ -308,7 +308,7 @@ TEST(CPUKernelRmsNorm, ScalarExactInPlaceRankTwoContiguous) {
     }
     const std::array<float, 66> original = storage;
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
@@ -318,7 +318,7 @@ TEST(CPUKernelRmsNorm, ScalarExactInPlaceRankTwoContiguous) {
     ExpectRowsNear(original.data(), weight.data(), storage.data(), 2, 33, 33, 1, 1, 33, 1);
 }
 
-TEST(CPUKernelRmsNorm, ScalarExactInPlaceRankThreeCollapsible) {
+TEST(CPUKernelRmsNorm, ReferenceExactInPlaceRankThreeCollapsible) {
     constexpr int64_t io_shape[3] = {2, 3, 33};
     constexpr int64_t io_strides[3] = {99, 33, 1};
     constexpr int64_t weight_shape[1] = {33};
@@ -333,7 +333,7 @@ TEST(CPUKernelRmsNorm, ScalarExactInPlaceRankThreeCollapsible) {
     }
     const std::array<float, 198> original = storage;
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
@@ -343,7 +343,7 @@ TEST(CPUKernelRmsNorm, ScalarExactInPlaceRankThreeCollapsible) {
     ExpectRowsNear(original.data(), weight.data(), storage.data(), 6, 33, 33, 1, 1, 33, 1);
 }
 
-TEST(CPUKernelRmsNorm, ScalarExactInPlacePaddedRows) {
+TEST(CPUKernelRmsNorm, ReferenceExactInPlacePaddedRows) {
     constexpr int64_t io_shape[3] = {2, 3, 33};
     constexpr int64_t io_strides[3] = {120, 40, 1};
     constexpr int64_t weight_shape[1] = {33};
@@ -361,7 +361,7 @@ TEST(CPUKernelRmsNorm, ScalarExactInPlacePaddedRows) {
     }
     const std::array<float, 233> original = storage;
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
@@ -371,7 +371,7 @@ TEST(CPUKernelRmsNorm, ScalarExactInPlacePaddedRows) {
     ExpectRowsNear(original.data(), weight.data(), storage.data(), 6, 33, 40, 1, 1, 40, 1);
 }
 
-TEST(CPUKernelRmsNorm, ScalarExactInPlaceStridedColumns) {
+TEST(CPUKernelRmsNorm, ReferenceExactInPlaceStridedColumns) {
     constexpr int64_t io_shape[2] = {2, 3};
     constexpr int64_t io_strides[2] = {8, 2};
     constexpr int64_t weight_shape[1] = {3};
@@ -387,7 +387,7 @@ TEST(CPUKernelRmsNorm, ScalarExactInPlaceStridedColumns) {
     }
     const std::array<float, 13> original = storage;
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
@@ -397,7 +397,7 @@ TEST(CPUKernelRmsNorm, ScalarExactInPlaceStridedColumns) {
     ExpectRowsNear(original.data(), weight, storage.data(), 2, 3, 8, 2, 1, 8, 2);
 }
 
-TEST(CPUKernelRmsNorm, ScalarSupportsPositiveInnerStrides) {
+TEST(CPUKernelRmsNorm, ReferenceSupportsPositiveInnerStrides) {
     constexpr int64_t io_shape[2] = {2, 3};
     constexpr int64_t input_strides[2] = {7, 2};
     constexpr int64_t output_strides[2] = {8, 2};
@@ -408,7 +408,7 @@ TEST(CPUKernelRmsNorm, ScalarSupportsPositiveInnerStrides) {
     constexpr float weight[5] = {1.0F, 0.0F, 0.5F, 0.0F, 1.5F};
     std::array<float, 14> output{};
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{input, DataType::Float32(), io_shape, input_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output.data(), DataType::Float32(), io_shape, output_strides},
@@ -491,7 +491,7 @@ TEST(CPUKernelRmsNormEntry, ZeroLeadingDimensionIsSuccessfulNoOp) {
     constexpr int64_t weight_strides[1] = {1};
     constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{nullptr, DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{nullptr, DataType::Float32(), io_shape, io_strides},
@@ -508,7 +508,7 @@ TEST(CPUKernelRmsNormEntry, ZeroRowWithSharedBasePointerStillSucceeds) {
     constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
     float storage = 0.0F;
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{&storage, DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{&storage, DataType::Float32(), io_shape, io_strides},
@@ -527,7 +527,7 @@ TEST(CPUKernelRmsNormEntry, RejectsNonCollapsibleLeadingDimensions) {
     std::array<float, 24> output{};
     constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{input.data(), DataType::Float32(), io_shape, input_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output.data(), DataType::Float32(), io_shape, output_strides},
@@ -545,7 +545,7 @@ TEST(CPUKernelRmsNormEntry, RejectsRowCountOverflow) {
     constexpr float weight = 1.0F;
     float output = 0.0F;
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{&input, DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{&weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{&output, DataType::Float32(), io_shape, io_strides},
@@ -564,7 +564,7 @@ TEST(CPUKernelRmsNormEntry, RejectsAddressOffsetOverflow) {
     constexpr float weight[2] = {1.0F, 1.0F};
     float output[4] = {};
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{&input, DataType::Float32(), io_shape, input_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, output_strides},
@@ -580,7 +580,7 @@ TEST(CPUKernelRmsNormEntry, RejectsRankZeroInput) {
     constexpr int64_t weight_shape[1] = {1};
     constexpr int64_t weight_strides[1] = {1};
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{&input, DataType::Float32(), {}, {}},
             .weight_tensor = TensorView{&weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{&output, DataType::Float32(), {}, {}},
@@ -598,7 +598,7 @@ TEST(CPUKernelRmsNormEntry, RejectsZeroHiddenSize) {
     constexpr float weight = 1.0F;
     float output = 0.0F;
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{&input, DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{&weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{&output, DataType::Float32(), io_shape, io_strides},
@@ -618,7 +618,7 @@ TEST(CPUKernelRmsNormEntry, RejectsMismatchedOutputShape) {
     constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
     float output[8] = {};
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{input, DataType::Float32(), input_shape, input_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
@@ -636,7 +636,7 @@ TEST(CPUKernelRmsNormEntry, RejectsSameBasePointerWithDifferentStrides) {
     std::array<float, 9> storage{};
     constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, input_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), io_shape, output_strides},
@@ -654,7 +654,7 @@ TEST(CPUKernelRmsNormEntry, RejectsOverlappingOutputRows) {
     float output[8] = {};
     constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{input, DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
@@ -673,7 +673,7 @@ TEST(CPUKernelRmsNormEntry, RejectsStridedColumnsWithOverlappingRows) {
     float output[9] = {};
     constexpr float weight[3] = {1.0F, 1.0F, 1.0F};
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{input, DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
@@ -696,7 +696,7 @@ TEST(CPUKernelRmsNormEntry, RejectsOutputAliasingWeight) {
         weight_storage[static_cast<size_t>(index)] = 1.0F;
     }
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{input.data(), DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{weight_storage.data(), DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{weight_storage.data(), DataType::Float32(), io_shape, io_strides},
@@ -714,7 +714,7 @@ TEST(CPUKernelRmsNormEntry, RejectsNonFloat32Tensors) {
     constexpr float weight[2] = {1.0F, 1.0F};
     float output[2] = {};
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{input, DataType::Double(), io_shape, io_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
@@ -732,7 +732,7 @@ TEST(CPUKernelRmsNormEntry, RejectsNonPositiveStridesForNonEmptyTensor) {
     constexpr float weight = 1.0F;
     float output = 0.0F;
 
-    const Status status = RunScalarRmsNormEntry(RmsNormTestViews{
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
             .input_tensor = TensorView{&input, DataType::Float32(), io_shape, io_strides},
             .weight_tensor = TensorView{&weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{&output, DataType::Float32(), io_shape, io_strides},
@@ -742,7 +742,7 @@ TEST(CPUKernelRmsNormEntry, RejectsNonPositiveStridesForNonEmptyTensor) {
 }
 
 TEST(CPUKernelRmsNormEntry, PrepareRejectsInvalidEpsilon) {
-    const StatusOr<ResolvedKernel> kernel = PrepareScalarRmsNormKernel(0.0F);
+    const StatusOr<ResolvedKernel> kernel = PrepareReferenceRmsNormKernel(0.0F);
     ASSERT_FALSE(kernel.ok());
     EXPECT_EQ(kernel.status().code(), StatusCode::kInvalidArgument) << kernel.status().ToString();
 }
@@ -883,7 +883,7 @@ TEST(CPUKernelRmsNormEntry, OverlappingOutputRowsFailAtPrepareExecutionBindings)
 }
 
 TEST(CPUKernelRmsNorm, PreparedParamsExecuteRepeatedlyWithoutRevalidation) {
-    const StatusOr<ResolvedKernel> kernel = PrepareScalarRmsNormKernel();
+    const StatusOr<ResolvedKernel> kernel = PrepareReferenceRmsNormKernel();
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
 
     constexpr int64_t io_shape[2] = {1, 4};

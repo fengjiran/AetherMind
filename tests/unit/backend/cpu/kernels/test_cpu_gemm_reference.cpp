@@ -1,8 +1,7 @@
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
 
-#include <gtest/gtest.h>
-
 #include <array>
+#include <gtest/gtest.h>
 
 namespace {
 
@@ -48,7 +47,7 @@ TEST(CPUKernelGemmReference, ComputesStridedMatrices) {
 }
 
 TEST(CPUKernelGemmReference, ZeroInnerDimensionWritesZeroWithoutInputPointers) {
-    std::array<float, 10> output;
+    std::array<float, 10> output{};
     output.fill(3.0F);
 
     const Status status = cpu::detail::RunGemmF32Reference(cpu::detail::GemmF32Args{

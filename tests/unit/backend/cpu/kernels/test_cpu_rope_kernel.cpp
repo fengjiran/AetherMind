@@ -151,6 +151,36 @@ void ExpectRoPENear(const float* input,
     }
 }
 
+void ExpectPairSquaredNormPreserved(const float* input,
+                                    const float* output,
+                                    int64_t seq_len,
+                                    int64_t num_heads,
+                                    int64_t head_dim,
+                                    int64_t input_row_stride,
+                                    int64_t output_row_stride) {
+    const int64_t half = head_dim / 2;
+    for (int64_t token = 0; token < seq_len; ++token) {
+        for (int64_t head = 0; head < num_heads; ++head) {
+            const int64_t head_offset = head * head_dim;
+            for (int64_t pair = 0; pair < half; ++pair) {
+                const int64_t first_offset = head_offset + pair;
+                const int64_t second_offset = head_offset + half + pair;
+                const double input_squared_norm =
+                        static_cast<double>(input[token * input_row_stride + first_offset]) *
+                                input[token * input_row_stride + first_offset] +
+                        static_cast<double>(input[token * input_row_stride + second_offset]) *
+                                input[token * input_row_stride + second_offset];
+                const double output_squared_norm =
+                        static_cast<double>(output[token * output_row_stride + first_offset]) *
+                                output[token * output_row_stride + first_offset] +
+                        static_cast<double>(output[token * output_row_stride + second_offset]) *
+                                output[token * output_row_stride + second_offset];
+                EXPECT_NEAR(output_squared_norm, input_squared_norm, 2.0e-5);
+            }
+        }
+    }
+}
+
 SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     const std::vector<int64_t> shape(dims);
     return SymbolicShape(IntArrayView{shape});
@@ -290,6 +320,206 @@ TEST(CPUKernelRoPE, ReferenceSupportsExactInPlaceOutputs) {
     ExpectRoPENear(original_k.data(), k.data(), 2, 1, 4, 6, 1, 6, 1, position_ids, 1, 4.0, 1.0);
 }
 
+TEST(CPUKernelRoPE, ReferenceRejectsPartialAndCrossTensorAliases) {
+    constexpr int64_t shape[2] = {1, 4};
+    constexpr int64_t strides[2] = {4, 1};
+    constexpr int64_t position_shape[1] = {1};
+    constexpr int64_t position_strides[1] = {1};
+    constexpr int64_t positions[1] = {0};
+    std::array<float, 8> q{};
+    std::array<float, 8> k{};
+    std::array<float, 8> q_output{};
+    std::array<float, 8> k_output{};
+    const auto make_views = [&] {
+        return RoPETestViews{
+                .q = TensorView{q.data(), DataType::Float32(), shape, strides},
+                .k = TensorView{k.data(), DataType::Float32(), shape, strides},
+                .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+                .q_output = MutableTensorView{q_output.data(), DataType::Float32(), shape, strides},
+                .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, strides},
+        };
+    };
+    const auto expect_invalid = [&](RoPETestViews views) {
+        EXPECT_EQ(RunRoPEEntry(MakeRoPEParams(4, 1, 1), views).code(),
+                  StatusCode::kInvalidArgument);
+    };
+
+    auto views = make_views();
+    views.q_output = MutableTensorView{q.data() + 1, DataType::Float32(), shape, strides};
+    expect_invalid(views);
+    views = make_views();
+    views.q = TensorView{q.data() + 1, DataType::Float32(), shape, strides};
+    views.q_output = MutableTensorView{q.data(), DataType::Float32(), shape, strides};
+    expect_invalid(views);
+    views = make_views();
+    views.q_output = MutableTensorView{k.data() + 1, DataType::Float32(), shape, strides};
+    expect_invalid(views);
+    views = make_views();
+    views.k_output = MutableTensorView{q.data() + 1, DataType::Float32(), shape, strides};
+    expect_invalid(views);
+    views = make_views();
+    views.k_output = MutableTensorView{q_output.data() + 1, DataType::Float32(), shape, strides};
+    expect_invalid(views);
+
+    std::array<int64_t, 4> position_storage{};
+    views = make_views();
+    views.position_ids = TensorView{position_storage.data() + 1, DataType::Int(64), position_shape, position_strides};
+    views.q_output = MutableTensorView{reinterpret_cast<float*>(position_storage.data()),
+                                       DataType::Float32(), shape, strides};
+    expect_invalid(views);
+}
+
+TEST(CPUKernelRoPE, ReferenceAllowsSameAllocationWithRowSeparatedViews) {
+    constexpr int64_t shape[2] = {2, 4};
+    constexpr int64_t strides[2] = {8, 1};
+    constexpr int64_t contiguous_strides[2] = {4, 1};
+    constexpr int64_t position_shape[1] = {2};
+    constexpr int64_t position_strides[1] = {1};
+    constexpr int64_t positions[2] = {0, 1};
+    std::array<float, 16> q_and_q_output{};
+    std::array<float, 8> k{};
+    std::array<float, 8> k_output{};
+    for (int64_t token = 0; token < 2; ++token) {
+        for (int64_t column = 0; column < 4; ++column) {
+            q_and_q_output[token * strides[0] + column] =
+                    static_cast<float>(token * 4 + column - 2);
+            k[token * contiguous_strides[0] + column] =
+                    static_cast<float>(token * 4 + column + 1);
+        }
+    }
+
+    ASSERT_TRUE(RunRoPEEntry(MakeRoPEParams(4, 1, 1), RoPETestViews{
+                                                              .q = TensorView{q_and_q_output.data(), DataType::Float32(), shape, strides},
+                                                              .k = TensorView{k.data(), DataType::Float32(), shape, contiguous_strides},
+                                                              .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+                                                              .q_output = MutableTensorView{q_and_q_output.data() + 4, DataType::Float32(), shape, strides},
+                                                              .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, contiguous_strides},
+                                                      })
+                        .ok());
+    ExpectRoPENear(q_and_q_output.data(), q_and_q_output.data() + 4, 2, 1, 4,
+                   8, 1, 8, 1, positions, 1, 4.0, 1.0);
+    ExpectRoPENear(k.data(), k_output.data(), 2, 1, 4, 4, 1, 4, 1,
+                   positions, 1, 4.0, 1.0);
+}
+
+TEST(CPUKernelRoPE, ReferenceSupportsSubunitLinearScaling) {
+    constexpr int64_t shape[2] = {1, 4};
+    constexpr int64_t strides[2] = {4, 1};
+    constexpr int64_t position_shape[1] = {1};
+    constexpr int64_t position_strides[1] = {1};
+    constexpr float q[4] = {1.0F, -2.0F, 3.0F, -4.0F};
+    constexpr float k[4] = {-0.5F, 1.5F, -2.5F, 3.5F};
+    constexpr int64_t positions[1] = {3};
+    std::array<float, 4> q_output{};
+    std::array<float, 4> k_output{};
+    auto params = MakeRoPEParams(4, 1, 1);
+    params.scaling_type = RoPEScalingType::kLinear;
+    params.scaling_factor = 0.5;
+
+    ASSERT_TRUE(RunRoPEEntry(params, RoPETestViews{
+                                             .q = TensorView{q, DataType::Float32(), shape, strides},
+                                             .k = TensorView{k, DataType::Float32(), shape, strides},
+                                             .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+                                             .q_output = MutableTensorView{q_output.data(), DataType::Float32(), shape, strides},
+                                             .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, strides},
+                                     })
+                        .ok());
+    ExpectRoPENear(q, q_output.data(), 1, 1, 4, 4, 1, 4, 1,
+                   positions, 1, 4.0, 0.5);
+    ExpectRoPENear(k, k_output.data(), 1, 1, 4, 4, 1, 4, 1,
+                   positions, 1, 4.0, 0.5);
+}
+
+TEST(CPUKernelRoPE, ReferencePreservesPairSquaredNorm) {
+    constexpr int64_t q_shape[2] = {3, 128};
+    constexpr int64_t q_strides[2] = {128, 1};
+    constexpr int64_t k_shape[2] = {3, 64};
+    constexpr int64_t k_strides[2] = {64, 1};
+    constexpr int64_t position_shape[1] = {3};
+    constexpr int64_t position_strides[1] = {1};
+    constexpr int64_t positions[3] = {0, 17, 4096};
+    std::array<float, 384> q{};
+    std::array<float, 192> k{};
+    std::array<float, 384> q_output{};
+    std::array<float, 192> k_output{};
+    for (size_t index = 0; index < q.size(); ++index) {
+        q[index] = static_cast<float>(static_cast<int64_t>(index % 17U) - 8) * 0.25F;
+    }
+    for (size_t index = 0; index < k.size(); ++index) {
+        k[index] = static_cast<float>(static_cast<int64_t>(index % 13U) - 6) * -0.5F;
+    }
+
+    ASSERT_TRUE(RunRoPEEntry(MakeRoPEParams(64, 2, 1), RoPETestViews{
+                                                               .q = TensorView{q.data(), DataType::Float32(), q_shape, q_strides},
+                                                               .k = TensorView{k.data(), DataType::Float32(), k_shape, k_strides},
+                                                               .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+                                                               .q_output = MutableTensorView{q_output.data(), DataType::Float32(), q_shape, q_strides},
+                                                               .k_output = MutableTensorView{k_output.data(), DataType::Float32(), k_shape, k_strides},
+                                                       })
+                        .ok());
+    ExpectPairSquaredNormPreserved(q.data(), q_output.data(), 3, 2, 64, 128, 128);
+    ExpectPairSquaredNormPreserved(k.data(), k_output.data(), 3, 1, 64, 64, 64);
+}
+
+TEST(CPUKernelRoPEEntry, RejectsByteAndAddressRangeOverflow) {
+    constexpr int64_t shape[2] = {2, 4};
+    constexpr int64_t strides[2] = {4, 1};
+    constexpr int64_t position_shape[1] = {2};
+    constexpr int64_t position_strides[1] = {1};
+    constexpr int64_t byte_overflow_strides[2] = {
+            std::numeric_limits<int64_t>::max() / 2 + 1, 1};
+    constexpr int64_t positions[2] = {0, 1};
+    std::array<float, 8> q{};
+    std::array<float, 8> k{};
+    std::array<float, 8> q_output{};
+    std::array<float, 8> k_output{};
+    const auto make_views = [&] {
+        return RoPETestViews{
+                .q = TensorView{q.data(), DataType::Float32(), shape, strides},
+                .k = TensorView{k.data(), DataType::Float32(), shape, strides},
+                .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+                .q_output = MutableTensorView{q_output.data(), DataType::Float32(), shape, strides},
+                .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, strides},
+        };
+    };
+
+    auto views = make_views();
+    views.q = TensorView{q.data(), DataType::Float32(), shape, byte_overflow_strides};
+    EXPECT_EQ(RunRoPEEntry(MakeRoPEParams(4, 1, 1), views).code(),
+              StatusCode::kInvalidArgument);
+
+    const auto near_address_limit = reinterpret_cast<const float*>(
+            std::numeric_limits<std::uintptr_t>::max() - std::uintptr_t{3});
+    views = make_views();
+    views.q = TensorView{near_address_limit, DataType::Float32(), shape, strides};
+    EXPECT_EQ(RunRoPEEntry(MakeRoPEParams(4, 1, 1), views).code(),
+              StatusCode::kInvalidArgument);
+}
+
+TEST(CPUKernelRoPE, PreparedParamsRejectUnrepresentableInverseFrequency) {
+    constexpr int64_t shape[2] = {1, 64};
+    constexpr int64_t strides[2] = {64, 1};
+    constexpr int64_t position_shape[1] = {1};
+    constexpr int64_t position_strides[1] = {1};
+    constexpr int64_t positions[1] = {0};
+    std::array<float, 64> q{};
+    std::array<float, 64> k{};
+    std::array<float, 64> q_output{};
+    std::array<float, 64> k_output{};
+    const auto params = MakeRoPEParams(64, 1, 1,
+                                       std::numeric_limits<double>::denorm_min());
+
+    EXPECT_EQ(RunRoPEEntry(params, RoPETestViews{
+                                           .q = TensorView{q.data(), DataType::Float32(), shape, strides},
+                                           .k = TensorView{k.data(), DataType::Float32(), shape, strides},
+                                           .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+                                           .q_output = MutableTensorView{q_output.data(), DataType::Float32(), shape, strides},
+                                           .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, strides},
+                                   })
+                      .code(),
+              StatusCode::kOverflow);
+}
+
 TEST(CPUKernelRoPEEntry, RejectsInvalidParamsLayoutsAndAliases) {
     CpuBackend backend;
     EXPECT_EQ(backend.PrepareKernel(OpType::kRoPE, MakeRoPESelector(), OpParams{RmsNormParams{}})
@@ -362,15 +592,17 @@ TEST(CPUKernelRoPEEntry, RejectsInvalidParamsLayoutsAndAliases) {
 }
 
 TEST(CPUKernelRoPE, PreparedParamsRevalidateMutablePositionContentsBeforeWrites) {
-    constexpr int64_t shape[2] = {1, 4};
+    constexpr int64_t shape[2] = {2, 4};
     constexpr int64_t strides[2] = {4, 1};
-    constexpr int64_t position_shape[1] = {1};
+    constexpr int64_t position_shape[1] = {2};
     constexpr int64_t position_strides[1] = {1};
-    constexpr float q[4] = {1.0F, 2.0F, 3.0F, 4.0F};
-    constexpr float k[4] = {-1.0F, 0.5F, 2.0F, -3.0F};
-    int64_t positions[1] = {0};
-    std::array<float, 4> q_output{};
-    std::array<float, 4> k_output{};
+    constexpr float q[8] = {1.0F, 2.0F, 3.0F, 4.0F,
+                            -0.5F, 1.5F, -2.5F, 3.5F};
+    constexpr float k[8] = {-1.0F, 0.5F, 2.0F, -3.0F,
+                            4.0F, -4.0F, 0.25F, -0.25F};
+    int64_t positions[2] = {0, 1};
+    std::array<float, 8> q_output{};
+    std::array<float, 8> k_output{};
     const auto kernel = PrepareRoPEKernel(MakeRoPEParams(4, 1, 1));
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     const auto prepared = BuildRoPEPreparedParams(*kernel, RoPETestViews{
@@ -384,15 +616,82 @@ TEST(CPUKernelRoPE, PreparedParamsRevalidateMutablePositionContentsBeforeWrites)
     ASSERT_TRUE(RunRoPEEntry(*kernel, *prepared).ok());
     EXPECT_EQ(q_output[0], q[0]);
     // max_position_embeddings is not a coordinate upper bound.
-    positions[0] = 999;
+    positions[1] = 999;
     ASSERT_TRUE(RunRoPEEntry(*kernel, *prepared).ok());
-    ExpectRoPENear(q, q_output.data(), 1, 1, 4, 4, 1, 4, 1, positions, 1, 4.0, 1.0);
+    ExpectRoPENear(q, q_output.data(), 2, 1, 4, 4, 1, 4, 1, positions, 1, 4.0, 1.0);
     q_output.fill(11.0F);
     k_output.fill(13.0F);
-    positions[0] = -1;
+    positions[1] = -1;
     EXPECT_EQ(RunRoPEEntry(*kernel, *prepared).code(), StatusCode::kInvalidArgument);
     for (float value: q_output) EXPECT_EQ(value, 11.0F);
     for (float value: k_output) EXPECT_EQ(value, 13.0F);
+}
+
+TEST(CPUKernelRoPE, PreparedParamsRevalidateDynamicAngleRangeBeforeWrites) {
+    constexpr int64_t shape[2] = {1, 4};
+    constexpr int64_t strides[2] = {4, 1};
+    constexpr int64_t position_shape[1] = {1};
+    constexpr int64_t position_strides[1] = {1};
+    constexpr float q[4] = {1.0F, 2.0F, 3.0F, 4.0F};
+    constexpr float k[4] = {-1.0F, 0.5F, 2.0F, -3.0F};
+    int64_t positions[1] = {0};
+    std::array<float, 4> q_output{};
+    std::array<float, 4> k_output{};
+    auto params = MakeRoPEParams(4, 1, 1);
+    params.scaling_type = RoPEScalingType::kLinear;
+    params.scaling_factor = std::numeric_limits<double>::denorm_min();
+    const auto kernel = PrepareRoPEKernel(params);
+    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+    const auto prepared = BuildRoPEPreparedParams(*kernel, RoPETestViews{
+                                                                   .q = TensorView{q, DataType::Float32(), shape, strides},
+                                                                   .k = TensorView{k, DataType::Float32(), shape, strides},
+                                                                   .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+                                                                   .q_output = MutableTensorView{q_output.data(), DataType::Float32(), shape, strides},
+                                                                   .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, strides},
+                                                           });
+    ASSERT_TRUE(prepared.ok()) << prepared.status().ToString();
+    ASSERT_TRUE(RunRoPEEntry(*kernel, *prepared).ok());
+    q_output.fill(17.0F);
+    k_output.fill(19.0F);
+    positions[0] = 1;
+    EXPECT_EQ(RunRoPEEntry(*kernel, *prepared).code(), StatusCode::kOverflow);
+    for (float value: q_output) EXPECT_EQ(value, 17.0F);
+    for (float value: k_output) EXPECT_EQ(value, 19.0F);
+}
+
+TEST(CPUKernelRoPE, PreparedParamsRejectFinitePositionAngleOverflowBeforeInPlaceWrites) {
+    constexpr int64_t shape[2] = {2, 4};
+    constexpr int64_t strides[2] = {4, 1};
+    constexpr int64_t position_shape[1] = {2};
+    constexpr int64_t position_strides[1] = {1};
+    std::array<float, 8> q = {1.0F, 2.0F, 3.0F, 4.0F,
+                              -1.0F, -2.0F, -3.0F, -4.0F};
+    std::array<float, 8> k = {-0.5F, 0.5F, -1.5F, 1.5F,
+                              -2.5F, 2.5F, -3.5F, 3.5F};
+    const auto original_q = q;
+    const auto original_k = k;
+    int64_t positions[2] = {0, 1};
+    auto params = MakeRoPEParams(4, 1, 1, 1.0 / 16.0);
+    params.scaling_type = RoPEScalingType::kLinear;
+    params.scaling_factor = std::numeric_limits<double>::min();
+    const auto kernel = PrepareRoPEKernel(params);
+    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+    const auto prepared = BuildRoPEPreparedParams(*kernel, RoPETestViews{
+                                                                   .q = TensorView{q.data(), DataType::Float32(), shape, strides},
+                                                                   .k = TensorView{k.data(), DataType::Float32(), shape, strides},
+                                                                   .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+                                                                   .q_output = MutableTensorView{q.data(), DataType::Float32(), shape, strides},
+                                                                   .k_output = MutableTensorView{k.data(), DataType::Float32(), shape, strides},
+                                                           });
+    ASSERT_TRUE(prepared.ok()) << prepared.status().ToString();
+    EXPECT_EQ(RunRoPEEntry(*kernel, *prepared).code(), StatusCode::kOverflow);
+    EXPECT_EQ(q, original_q);
+    EXPECT_EQ(k, original_k);
+
+    positions[1] = 0;
+    ASSERT_TRUE(RunRoPEEntry(*kernel, *prepared).ok());
+    EXPECT_EQ(q, original_q);
+    EXPECT_EQ(k, original_k);
 }
 
 TEST(CPUKernelRoPE, ExecutionPlanBuilderRunsPreparedReferenceKernelWithTwoOutputs) {

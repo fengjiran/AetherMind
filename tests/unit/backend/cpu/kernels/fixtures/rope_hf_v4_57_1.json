@@ -1,0 +1,123 @@
+{
+  "torch": "2.9.0+cpu",
+  "transformers": "4.57.1",
+  "python": "3.12.3",
+  "machine": "x86_64",
+  "torch_cpu_capability": "AVX2",
+  "device": "cpu",
+  "dtype": "float32",
+  "threads": 1,
+  "seed": 20260907,
+  "hf_source_sha256": {
+    "modeling_llama.py": "31bf660a663259134324bc65da4e155951dc89c5ca46471d2325a9938e859e26",
+    "modeling_rope_utils.py": "55cc0c8cb76f592ab178b4662adcbdf4ad5012bb0b4249c0a96603141f18e9ac"
+  },
+  "header_sha256": "7d57a01b4cb4feec3c576cca20949339f3ee365e39bffcaae7e96a59d46aa9fa",
+  "cases": [
+    {
+      "name": "SplitHalfMha",
+      "head_dim": 4,
+      "q_heads": 2,
+      "kv_heads": 2,
+      "theta": 4.0,
+      "linear_factor": null,
+      "positions": [
+        0,
+        1,
+        7,
+        8
+      ],
+      "input_sha256": "e1d6a3e8bce2b89f11972b82f87b2c23caf86786bcf91b2d35c2e8d6501d4889"
+    },
+    {
+      "name": "DefaultGqa",
+      "head_dim": 64,
+      "q_heads": 4,
+      "kv_heads": 2,
+      "theta": 10000.0,
+      "linear_factor": null,
+      "positions": [
+        0,
+        1,
+        2047,
+        2048
+      ],
+      "input_sha256": "75523fe4f2d8914ea39c7bc46f2291b080bbbc4979dad5bd4e8629e3b873b767"
+    },
+    {
+      "name": "LongPositionMqa",
+      "head_dim": 128,
+      "q_heads": 4,
+      "kv_heads": 1,
+      "theta": 10000.0,
+      "linear_factor": null,
+      "positions": [
+        0,
+        4095,
+        8191,
+        32768
+      ],
+      "input_sha256": "84737d1c13476219c232328bc5f2d16ad339425f4331b10f79666d6f412371d2"
+    },
+    {
+      "name": "LargeTheta",
+      "head_dim": 128,
+      "q_heads": 2,
+      "kv_heads": 2,
+      "theta": 500000.0,
+      "linear_factor": null,
+      "positions": [
+        0,
+        17,
+        8192,
+        32768
+      ],
+      "input_sha256": "0ed150ce326ba8bdb88580cbf4db05dce66e2b056cedf8c8396dc574b6b5e53e"
+    },
+    {
+      "name": "LinearIdentity",
+      "head_dim": 64,
+      "q_heads": 2,
+      "kv_heads": 1,
+      "theta": 10000.0,
+      "linear_factor": 1.0,
+      "positions": [
+        0,
+        1,
+        4096,
+        8192
+      ],
+      "input_sha256": "86132c19c38d4e6af5e4537b58c7eeaced4dfd563edeeb047227c2357b4b3c5b"
+    },
+    {
+      "name": "LinearFractional",
+      "head_dim": 128,
+      "q_heads": 4,
+      "kv_heads": 2,
+      "theta": 10000.0,
+      "linear_factor": 2.5,
+      "positions": [
+        0,
+        17,
+        8192,
+        32768
+      ],
+      "input_sha256": "8a9d51313ace1757530a8f2d299425ac332b88d8cf0c95e4e04e2cb782bfad69"
+    },
+    {
+      "name": "LinearBelowOne",
+      "head_dim": 64,
+      "q_heads": 2,
+      "kv_heads": 1,
+      "theta": 10000.0,
+      "linear_factor": 0.75,
+      "positions": [
+        0,
+        3,
+        1024,
+        8192
+      ],
+      "input_sha256": "c46d0c1f782b16103fa25a2454738a72b649c22a3829bd8ed328d0148ce4bba7"
+    }
+  ]
+}

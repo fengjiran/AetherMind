@@ -111,3 +111,13 @@ TMPDIR=/tmp ./build/tests/unit/aethermind_unit_tests \
 上游源码：
 [HF Llama 实现](https://github.com/huggingface/transformers/blob/v4.57.1/src/transformers/models/llama/modeling_llama.py)、
 [HF RoPE 参数实现](https://github.com/huggingface/transformers/blob/v4.57.1/src/transformers/modeling_rope_utils.py)。
+
+### 本次验证记录（2026-09-07）
+
+- 默认构建与上述 filter 的 87 个测试通过，包含 21 个 HF fixture/layout 对照。
+- 同一 filter 在 ASan/UBSan 构建下通过（`ASAN_OPTIONS=detect_leaks=0:halt_on_error=1`、
+  `UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1`）。
+- 单独开启 LSan 时退出检查未通过：`src/function.cpp` 的 `GlobalFunctionTable::Register`
+  静态初始化路径报告 1384 字节、17 次分配；同一测试程序使用 `--gtest_filter=-*`
+  运行零测试时也复现该报告。因此不能声称完整泄漏检查已通过，该问题不在 RoPE 修复范围内。
+- HF fixture `--check` 与格式检查通过。未据默认配置微基准作 Release 性能结论。

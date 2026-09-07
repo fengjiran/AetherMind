@@ -430,6 +430,38 @@ TEST(CPUKernelRoPE, ReferenceSupportsSubunitLinearScaling) {
                    positions, 1, 4.0, 0.5);
 }
 
+TEST(CPUKernelRoPE, ReferenceSupportsSharedQkvStorageInPlace) {
+    constexpr int64_t shape[2] = {2, 4};
+    constexpr int64_t strides[2] = {12, 1};
+    constexpr int64_t position_shape[1] = {2};
+    constexpr int64_t position_strides[1] = {1};
+    constexpr int64_t positions[2] = {1, 17};
+    // Each row holds Q, K, then V. Q/K envelopes overlap, but accessed rows
+    // do not; V must remain untouched while both rotated outputs alias inputs.
+    std::array<float, 24> qkv{};
+    for (size_t index = 0; index < qkv.size(); ++index) {
+        qkv[index] = static_cast<float>(static_cast<int>(index) - 9) * 0.25F;
+    }
+    const auto original = qkv;
+
+    ASSERT_TRUE(RunRoPEEntry(MakeRoPEParams(4, 1, 1), RoPETestViews{
+                                                              .q = TensorView{qkv.data(), DataType::Float32(), shape, strides},
+                                                              .k = TensorView{qkv.data() + 4, DataType::Float32(), shape, strides},
+                                                              .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+                                                              .q_output = MutableTensorView{qkv.data(), DataType::Float32(), shape, strides},
+                                                              .k_output = MutableTensorView{qkv.data() + 4, DataType::Float32(), shape, strides},
+                                                      })
+                        .ok());
+
+    ExpectRoPENear(original.data(), qkv.data(), 2, 1, 4, 12, 1, 12, 1, positions, 1, 4.0, 1.0);
+    ExpectRoPENear(original.data() + 4, qkv.data() + 4, 2, 1, 4, 12, 1, 12, 1, positions, 1, 4.0, 1.0);
+    for (size_t row = 0; row < 2; ++row) {
+        for (size_t column = 8; column < 12; ++column) {
+            EXPECT_EQ(qkv[row * 12 + column], original[row * 12 + column]);
+        }
+    }
+}
+
 TEST(CPUKernelRoPE, ReferencePreservesPairSquaredNorm) {
     constexpr int64_t q_shape[2] = {3, 128};
     constexpr int64_t q_strides[2] = {128, 1};

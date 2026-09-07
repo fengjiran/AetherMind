@@ -12,9 +12,22 @@
 
 #include "aethermind/base/status.h"
 
+#include <cmath>
 #include <cstdint>
 
 namespace aethermind::cpu::detail {
+
+/// @brief Computes the inverse frequency for one Llama split-half RoPE pair.
+///
+/// Callers validate that `theta` is finite and positive, `head_dim` is positive
+/// and even, and `pair` is in `[0, head_dim / 2)`.
+inline double ComputeRoPEInverseFrequency(double theta,
+                                          int64_t head_dim,
+                                          int64_t pair) noexcept {
+    const double exponent =
+            -2.0 * static_cast<double>(pair) / static_cast<double>(head_dim);
+    return std::pow(theta, exponent);
+}
 
 /// @brief Pre-validated FP32 arguments for Llama split-half RoPE.
 ///
@@ -46,14 +59,15 @@ struct RoPEF32KernelArgs {
 
     double theta{10000.0};
     double position_divisor{1.0};
+    double max_inverse_frequency{1.0};
 };
 
 /// @brief Runs the scalar FP32 Llama split-half RoPE reference kernel.
 ///
 /// @param args Pre-validated tensor layout and frozen RoPE parameters.
-/// @return InvalidArgument when a runtime position id is negative; otherwise
-///         Ok after rotating both outputs. A position failure occurs before
-///         any output write.
+/// @return InvalidArgument when a runtime position id is negative, Overflow
+///         when its derived angle is not finite, or Ok after rotating both
+///         outputs. A position failure occurs before any output write.
 Status RunRoPEF32Reference(const RoPEF32KernelArgs& args) noexcept;
 
 } // namespace aethermind::cpu::detail

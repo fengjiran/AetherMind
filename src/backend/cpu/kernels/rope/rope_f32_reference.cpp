@@ -1,17 +1,32 @@
-#include "rope_internal.h"
-
 #include "aethermind/base/macros.h"
+#include "rope_internal.h"
 
 #include <cmath>
 
 namespace aethermind::cpu::detail {
 namespace {
 
-Status ValidatePositionIds(const RoPEF32KernelArgs& args) noexcept {
+Status ValidatePositionIdsAndAngleRange(const RoPEF32KernelArgs& args) noexcept {
+    int64_t max_position = 0;
     for (int64_t token = 0; token < args.seq_len; ++token) {
-        if (args.position_ids[token * args.position_stride] < 0) {
+        const int64_t position = args.position_ids[token * args.position_stride];
+        if (position < 0) {
             return Status::InvalidArgument("CPU RoPE requires non-negative position_ids");
         }
+
+        if (position > max_position) {
+            max_position = position;
+        }
+    }
+
+    const double max_effective_position = static_cast<double>(max_position) / args.position_divisor;
+    if (!std::isfinite(max_effective_position)) {
+        return Status::Overflow("CPU RoPE effective position is not finite");
+    }
+
+    if (const double max_angle = max_effective_position * args.max_inverse_frequency;
+        !std::isfinite(max_angle)) {
+        return Status::Overflow("CPU RoPE angle is not finite");
     }
     return Status::Ok();
 }
@@ -42,13 +57,12 @@ void RotateHeads(const float* input,
 Status RunRoPEF32Reference(const RoPEF32KernelArgs& args) noexcept {
     // This pass intentionally precedes all stores. position_ids is mutable
     // runtime data even when the prepared tensor bindings are reused.
-    AM_RETURN_IF_ERROR(ValidatePositionIds(args));
+    AM_RETURN_IF_ERROR(ValidatePositionIdsAndAngleRange(args));
 
     const int64_t half = args.head_dim / 2;
     for (int64_t pair = 0; pair < half; ++pair) {
-        const double exponent = -2.0 * static_cast<double>(pair) /
-                                static_cast<double>(args.head_dim);
-        const double inv_frequency = std::pow(args.theta, exponent);
+        const double inv_frequency =
+                ComputeRoPEInverseFrequency(args.theta, args.head_dim, pair);
         for (int64_t token = 0; token < args.seq_len; ++token) {
             const double effective_position =
                     static_cast<double>(args.position_ids[token * args.position_stride]) /

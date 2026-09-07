@@ -272,7 +272,7 @@ Output Tokens
 #### [P0] 算子分发
 - **静态分发**：编译期确定 `op_id + cpu_feature + quant_scheme → kernel_ptr`
 - **无运行时查找**：通过模板特化/函数指针缓存避免虚函数
-- **参考内核**：Float32 累积，数值稳定实现作为正确性基准
+- **参考内核**：默认 Float32 累积，数值稳定实现作为正确性基准。CPU FP32 RoPE 使用 double 计算频率、角度、三角函数和旋转乘加，最终写回 Float32；与固定版本 HF 的 FP32 路径按误差门禁对照，不要求逐位一致，见 [RoPE 算子契约](../designs/kernel_dev/RoPE算子契约.md)。
 
 #### [P0] 内核列表（最小集）
 

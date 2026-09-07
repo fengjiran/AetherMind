@@ -992,6 +992,9 @@ y[half + i] = b * cos(angle) + a * sin(angle)
 - 不声称 `position_ids < max_position_embeddings`——该 coordinate/bound 策略未在本语义任务中冻结
 - Loader `allow_rope_scaling` 仍是独立策略；语义接受不等于当前 end-to-end kernel 支持
 - sin/cos table 是可选的派生资源；reference kernel 可直接计算，若后续引入 table，必须作为 compiler/runtime 管理的共享资源，不能在每个 RoPE step 的 attrs 中重复持有
+
+CPU FP32 reference 的 alias、派生角度范围、失败原子性和 HF 数值验收见
+[RoPE 执行契约](kernel_dev/RoPE算子契约.md)。这些是 backend 执行约束，不扩展 graph 的端口或参数语义。
 ## 13. Validation 规则
 
 `Validate()` 至少检查：

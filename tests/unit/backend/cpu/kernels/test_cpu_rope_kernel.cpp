@@ -5,6 +5,7 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/operators/operator_inference.h"
+#include "aethermind/operators/rope_frequency_resolver.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "backend/cpu/kernels/rope/rope_internal.h"
 #include "execution/test_execution_binding_helpers.h"
@@ -33,8 +34,7 @@ RoPEParams MakeRoPEParams(int64_t head_dim = 4,
             .num_key_value_heads = num_kv_heads,
             .max_position_embeddings = 8,
             .theta = theta,
-            .scaling_factor = std::nullopt,
-            .scaling_type = RoPEScalingType::kNone,
+            .algorithm = StandardRoPE{},
     };
 }
 
@@ -271,8 +271,7 @@ TEST(CPUKernelRoPE, ReferenceSupportsLinearScalingAndStridedPaddedLayouts) {
     positions[0] = 0;
     positions[2] = 2;
     auto params = MakeRoPEParams(4, 1, 1);
-    params.scaling_type = RoPEScalingType::kLinear;
-    params.scaling_factor = 2.0;
+    params.algorithm = LinearRoPE{.factor = 2.0};
 
     ASSERT_TRUE(RunRoPEEntry(params, RoPETestViews{
                                              .q = TensorView{q.data(), DataType::Float32(), shape, q_strides},
@@ -413,8 +412,7 @@ TEST(CPUKernelRoPE, ReferenceSupportsSubunitLinearScaling) {
     std::array<float, 4> q_output{};
     std::array<float, 4> k_output{};
     auto params = MakeRoPEParams(4, 1, 1);
-    params.scaling_type = RoPEScalingType::kLinear;
-    params.scaling_factor = 0.5;
+    params.algorithm = LinearRoPE{.factor = 0.5};
 
     ASSERT_TRUE(RunRoPEEntry(params, RoPETestViews{
                                              .q = TensorView{q, DataType::Float32(), shape, strides},
@@ -565,7 +563,7 @@ TEST(CPUKernelRoPEEntry, RejectsInvalidParamsLayoutsAndAliases) {
                       .code(),
               StatusCode::kInvalidArgument);
     invalid = MakeRoPEParams();
-    invalid.scaling_type = static_cast<RoPEScalingType>(0xff);
+    invalid.rotary_dim = 3;
     EXPECT_EQ(backend.PrepareKernel(OpType::kRoPE, MakeRoPESelector(), OpParams{invalid})
                       .status()
                       .code(),
@@ -670,8 +668,7 @@ TEST(CPUKernelRoPE, PreparedParamsRevalidateDynamicAngleRangeBeforeWrites) {
     std::array<float, 4> q_output{};
     std::array<float, 4> k_output{};
     auto params = MakeRoPEParams(4, 1, 1);
-    params.scaling_type = RoPEScalingType::kLinear;
-    params.scaling_factor = std::numeric_limits<double>::denorm_min();
+    params.algorithm = LinearRoPE{.factor = std::numeric_limits<double>::denorm_min()};
     const auto kernel = PrepareRoPEKernel(params);
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     const auto prepared = BuildRoPEPreparedParams(*kernel, RoPETestViews{
@@ -704,8 +701,7 @@ TEST(CPUKernelRoPE, PreparedParamsRejectFinitePositionAngleOverflowBeforeInPlace
     const auto original_k = k;
     int64_t positions[2] = {0, 1};
     auto params = MakeRoPEParams(4, 1, 1, 1.0 / 16.0);
-    params.scaling_type = RoPEScalingType::kLinear;
-    params.scaling_factor = std::numeric_limits<double>::min();
+    params.algorithm = LinearRoPE{.factor = std::numeric_limits<double>::min()};
     const auto kernel = PrepareRoPEKernel(params);
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     const auto prepared = BuildRoPEPreparedParams(*kernel, RoPETestViews{
@@ -724,6 +720,143 @@ TEST(CPUKernelRoPE, PreparedParamsRejectFinitePositionAngleOverflowBeforeInPlace
     ASSERT_TRUE(RunRoPEEntry(*kernel, *prepared).ok());
     EXPECT_EQ(q, original_q);
     EXPECT_EQ(k, original_k);
+}
+
+TEST(CPUKernelRoPE, ReferenceSupportsInterleavedPairingAndPartialRotaryTail) {
+    constexpr int64_t shape[2] = {1, 6};
+    constexpr int64_t strides[2] = {6, 1};
+    constexpr int64_t position_shape[1] = {1};
+    constexpr int64_t position_strides[1] = {1};
+    constexpr int64_t positions[1] = {1};
+    constexpr float q[6] = {1.0F, 2.0F, 3.0F, 4.0F, 9.0F, -5.0F};
+    constexpr float k[6] = {-1.0F, 0.5F, 2.0F, -3.0F, 7.0F, 11.0F};
+    std::array<float, 6> q_output{};
+    std::array<float, 6> k_output{};
+    auto params = MakeRoPEParams(6, 1, 1);
+    params.rotary_dim = 4;
+    params.pairing = RoPEPairing::kInterleaved;
+    ASSERT_TRUE(RunRoPEEntry(params, RoPETestViews{
+                                             .q = TensorView{q, DataType::Float32(), shape, strides},
+                                             .k = TensorView{k, DataType::Float32(), shape, strides},
+                                             .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+                                             .q_output = MutableTensorView{q_output.data(), DataType::Float32(), shape, strides},
+                                             .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, strides},
+                                     })
+                        .ok());
+    const double c0 = std::cos(1.0);
+    const double s0 = std::sin(1.0);
+    const double c1 = std::cos(0.5);
+    const double s1 = std::sin(0.5);
+    EXPECT_NEAR(q_output[0], q[0] * c0 - q[1] * s0, 1.0e-6F);
+    EXPECT_NEAR(q_output[1], q[1] * c0 + q[0] * s0, 1.0e-6F);
+    EXPECT_NEAR(q_output[2], q[2] * c1 - q[3] * s1, 1.0e-6F);
+    EXPECT_NEAR(q_output[3], q[3] * c1 + q[2] * s1, 1.0e-6F);
+    EXPECT_EQ(q_output[4], q[4]);
+    EXPECT_EQ(q_output[5], q[5]);
+    EXPECT_EQ(k_output[4], k[4]);
+    EXPECT_EQ(k_output[5], k[5]);
+}
+
+TEST(CPUKernelRoPE, DynamicNtkReuseAndLongRopeContextSwitchUseRuntimePositions) {
+    constexpr int64_t shape[2] = {1, 4};
+    constexpr int64_t strides[2] = {4, 1};
+    constexpr int64_t position_shape[1] = {1};
+    constexpr int64_t position_strides[1] = {1};
+    constexpr float q[4] = {1.0F, 2.0F, 3.0F, 4.0F};
+    constexpr float k[4] = {-1.0F, 0.5F, 2.0F, -3.0F};
+    int64_t positions[1] = {3};
+    std::array<float, 4> q_output{};
+    std::array<float, 4> k_output{};
+    const auto views = RoPETestViews{
+            .q = TensorView{q, DataType::Float32(), shape, strides},
+            .k = TensorView{k, DataType::Float32(), shape, strides},
+            .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+            .q_output = MutableTensorView{q_output.data(), DataType::Float32(), shape, strides},
+            .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, strides},
+    };
+    auto dynamic = MakeRoPEParams(4, 1, 1);
+    dynamic.algorithm = DynamicNtkRoPE{.factor = 2.0, .original_context_length = 4};
+    const auto dynamic_kernel = PrepareRoPEKernel(dynamic);
+    ASSERT_TRUE(dynamic_kernel.ok()) << dynamic_kernel.status().ToString();
+    const auto dynamic_prepared = BuildRoPEPreparedParams(*dynamic_kernel, views);
+    ASSERT_TRUE(dynamic_prepared.ok()) << dynamic_prepared.status().ToString();
+    ASSERT_TRUE(RunRoPEEntry(*dynamic_kernel, *dynamic_prepared).ok());
+    const float before_threshold = q_output[1];
+    positions[0] = 7;
+    ASSERT_TRUE(RunRoPEEntry(*dynamic_kernel, *dynamic_prepared).ok());
+    EXPECT_NE(before_threshold, q_output[1]);
+    const double dynamic_angle = 7.0 / 6.0;
+    EXPECT_NEAR(q_output[1], q[1] * std::cos(dynamic_angle) - q[3] * std::sin(dynamic_angle),
+                1.0e-6F);
+
+    auto long_rope = MakeRoPEParams(4, 1, 1);
+    long_rope.algorithm = LongRoPE{.short_factors = {1.0, 1.0},
+                                   .long_factors = {2.0, 4.0},
+                                   .original_context_length = 4,
+                                   .attention_scale = 1.5};
+    const auto long_kernel = PrepareRoPEKernel(long_rope);
+    ASSERT_TRUE(long_kernel.ok()) << long_kernel.status().ToString();
+    positions[0] = 3;
+    const auto long_prepared = BuildRoPEPreparedParams(*long_kernel, views);
+    ASSERT_TRUE(long_prepared.ok()) << long_prepared.status().ToString();
+    ASSERT_TRUE(RunRoPEEntry(*long_kernel, *long_prepared).ok());
+    const float short_value = q_output[1];
+    positions[0] = 4;
+    ASSERT_TRUE(RunRoPEEntry(*long_kernel, *long_prepared).ok());
+    EXPECT_NE(short_value, q_output[1]);
+    const double long_angle = 4.0 * 0.125;
+    EXPECT_NEAR(q_output[1],
+                1.5 * (q[1] * std::cos(long_angle) - q[3] * std::sin(long_angle)),
+                1.0e-6F);
+}
+
+TEST(CPUKernelRoPE, ReferenceConsumesYarnAndLlama3StaticFrequencyTables) {
+    constexpr int64_t shape[2] = {1, 4};
+    constexpr int64_t strides[2] = {4, 1};
+    constexpr int64_t position_shape[1] = {1};
+    constexpr int64_t position_strides[1] = {1};
+    constexpr int64_t positions[1] = {3};
+    constexpr float values[4] = {1.0F, 2.0F, 3.0F, 4.0F};
+
+    auto params = MakeRoPEParams(4, 1, 1, 4.0);
+    const auto run_and_check = [&](RoPEAlgorithmParams algorithm) {
+        params.algorithm = std::move(algorithm);
+        const auto frequencies = ResolveStaticRoPEFrequencies(params);
+        ASSERT_TRUE(frequencies.ok()) << frequencies.status().ToString();
+        std::array<float, 4> q_output{};
+        std::array<float, 4> k_output{};
+        ASSERT_TRUE(RunRoPEEntry(params, RoPETestViews{
+                                                 .q = TensorView{values, DataType::Float32(), shape, strides},
+                                                 .k = TensorView{values, DataType::Float32(), shape, strides},
+                                                 .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+                                                 .q_output = MutableTensorView{q_output.data(), DataType::Float32(), shape, strides},
+                                                 .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, strides},
+                                         })
+                            .ok());
+        for (int64_t pair = 0; pair < 2; ++pair) {
+            const double angle = 3.0 * frequencies->inverse_frequencies[static_cast<size_t>(pair)];
+            const double cosine = std::cos(angle) * frequencies->attention_scale;
+            const double sine = std::sin(angle) * frequencies->attention_scale;
+            const int64_t second = pair + 2;
+            const float expected_first = static_cast<float>(values[pair] * cosine - values[second] * sine);
+            const float expected_second = static_cast<float>(values[second] * cosine + values[pair] * sine);
+            EXPECT_NEAR(q_output[pair], expected_first, 1.0e-6F);
+            EXPECT_NEAR(q_output[second], expected_second, 1.0e-6F);
+            EXPECT_EQ(k_output[pair], q_output[pair]);
+            EXPECT_EQ(k_output[second], q_output[second]);
+        }
+    };
+
+    run_and_check(YarnRoPE{.factor = 2.0,
+                           .original_context_length = 8,
+                           .beta_fast = 32.0,
+                           .beta_slow = 1.0,
+                           .attention_scale = 1.5,
+                           .truncate_correction_range = false});
+    run_and_check(Llama3RoPE{.factor = 2.0,
+                             .low_frequency_factor = 1.0,
+                             .high_frequency_factor = 4.0,
+                             .original_context_length = 16});
 }
 
 TEST(CPUKernelRoPE, ExecutionPlanBuilderRunsPreparedReferenceKernelWithTwoOutputs) {

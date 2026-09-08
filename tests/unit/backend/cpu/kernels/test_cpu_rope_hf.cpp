@@ -113,8 +113,7 @@ TEST_P(CPUKernelRoPEHf, MatchesPinnedCpuFloat32Golden) {
             .theta = fixture.theta,
     };
     if (fixture.linear) {
-        params.scaling_type = RoPEScalingType::kLinear;
-        params.scaling_factor = fixture.factor;
+        params.algorithm = LinearRoPE{.factor = fixture.factor};
     }
     const auto kernel = backend.PrepareKernel(
             OpType::kRoPE,

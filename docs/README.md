@@ -127,7 +127,7 @@
 |---|---|
 | ModelLoader | 模型加载前端：仅负责 HF I/O、校验与权重 resolve，返回 `LoadedModel` |
 | LoadedModel | 模型加载产物：config + resolved raw weights + backing storage，构造后只读，由 `LoweredModelArtifact` 持有 |
-| ModelGraphBuilder | HF → 语义图唯一转换权威（`BuildLlamaDense`）；显式拒绝 HF-only RoPE scaling types |
+| ModelGraphBuilder | HF → 语义图唯一转换权威（`BuildLlamaDense`）；规范化受支持的 RoPE algorithms，拒绝 unknown type |
 | ModelGraph | backend-independent 语义 DAG（graph 模块产物） |
 | ModelCompiler | 编译阶段编排：`BuildLlamaDense` → `OptimizeModelGraph` → `LowerModelGraph` |
 | OptimizeModelGraph | 语义优化入口（O0/O1/O2+ passes） |

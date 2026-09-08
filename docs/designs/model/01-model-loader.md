@@ -84,7 +84,7 @@ ModelLoader::Load(model_dir)
 - **目录不存在/无 config.json**：`Open`/`Inspect` 失败。
 - **非法 config 语义**（非 Llama-family、配置不一致）：`ValidateConfig` 返回 `InvalidArgument`。
 - **schema 不匹配**（缺 tensor、多余 tensor、dtype 不一致）：`ValidateWeightSet` / `ValidateResolved` 按 `ModelValidationOptions` 策略判定（默认允许 extra tensors 与 tied lm_head 缺失，拒绝 bias/量化/适配器）。
-- **RoPE scaling**：结构合法性由 `ValidateConfig`（`allow_rope_scaling` 默认 true）校验；none/linear 到 `RoPEScalingType` 的映射与 unsupported type 拒绝由 `ModelGraphBuilder::BuildLlamaDense` 独占（`LoadedModel` 不决策）。
+- **RoPE scaling**：结构合法性由 `ValidateConfig`（`allow_rope_scaling` 默认 true）校验；原始 HF 字段到 typed `RoPEAlgorithmParams` 的规范化与 unknown type 拒绝由 `ModelGraphBuilder::BuildLlamaDense` 独占（`LoadedModel` 不决策）。
 - **所有权**：所有返回的 `StatusOr` 失败值不含部分构造产物，无资源泄漏路径（RAII）。
 
 ## 8. 风险与权衡

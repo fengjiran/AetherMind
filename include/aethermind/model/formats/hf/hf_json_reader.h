@@ -39,6 +39,7 @@ public:
     StatusOr<bool> ParseBool();
     StatusOr<std::vector<std::string>> ParseStringArray();
     StatusOr<std::vector<int64_t>> ParseInt64Array();
+    StatusOr<std::vector<double>> ParseDoubleArray();
     Status SkipValue();
 
     /// Depth cap for nested values during SkipValue, bounding stack usage on

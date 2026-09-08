@@ -21,6 +21,19 @@ namespace {
 
 struct ParsedRopeConfig {
     std::optional<double> scaling_factor{};
+    std::optional<int64_t> original_context_length{};
+    std::optional<double> beta_fast{};
+    std::optional<double> beta_slow{};
+    std::optional<double> attention_factor{};
+    std::optional<double> low_frequency_factor{};
+    std::optional<double> high_frequency_factor{};
+    std::optional<double> mscale{};
+    std::optional<double> mscale_all_dim{};
+    std::optional<double> partial_rotary_factor{};
+    std::optional<int64_t> rotary_dim{};
+    std::optional<bool> truncate_correction_range{};
+    std::vector<double> short_factors{};
+    std::vector<double> long_factors{};
     HfRopeScalingType scaling_type = HfRopeScalingType::kNone;
     std::optional<double> theta{};
 };
@@ -160,12 +173,45 @@ private:
                               config.rope.theta);
         }
 
+        if (key == "partial_rotary_factor") {
+            return parse_into([&] { return ParseDouble(); },
+                              config.rope.partial_rotary_factor);
+        }
+
+        if (key == "rotary_dim") {
+            return parse_into([&] { return ParseInt64(); }, config.rope.rotary_dim);
+        }
+
+        if (key == "original_max_position_embeddings") {
+            return parse_into([&] { return ParseInt64(); },
+                              config.rope.original_context_length);
+        }
+
         if (key == "rope_scaling" || key == "rope_parameters") {
             auto value = ParseRopeConfig();
             if (!value.ok()) {
                 return FieldParseError(key, value.status());
             }
             config.rope.scaling_factor = value->scaling_factor;
+            if (value->original_context_length.has_value()) {
+                config.rope.original_context_length = value->original_context_length;
+            }
+            config.rope.beta_fast = value->beta_fast;
+            config.rope.beta_slow = value->beta_slow;
+            config.rope.attention_factor = value->attention_factor;
+            config.rope.low_frequency_factor = value->low_frequency_factor;
+            config.rope.high_frequency_factor = value->high_frequency_factor;
+            config.rope.mscale = value->mscale;
+            config.rope.mscale_all_dim = value->mscale_all_dim;
+            config.rope.truncate_correction_range = value->truncate_correction_range;
+            config.rope.short_factors = std::move(value->short_factors);
+            config.rope.long_factors = std::move(value->long_factors);
+            if (value->partial_rotary_factor.has_value()) {
+                config.rope.partial_rotary_factor = value->partial_rotary_factor;
+            }
+            if (value->rotary_dim.has_value()) {
+                config.rope.rotary_dim = value->rotary_dim;
+            }
             config.rope.scaling_type = value->scaling_type;
             if (value->theta.has_value()) {
                 config.rope.theta = *value->theta;
@@ -210,6 +256,59 @@ private:
                         return factor.status();
                     }
                     rope_config.scaling_factor = *factor;
+                } else if (*key == "original_max_position_embeddings" ||
+                           *key == "original_context_length") {
+                    auto value = ParseInt64();
+                    if (!value.ok()) return value.status();
+                    rope_config.original_context_length = *value;
+                } else if (*key == "beta_fast") {
+                    auto value = ParseDouble();
+                    if (!value.ok()) return value.status();
+                    rope_config.beta_fast = *value;
+                } else if (*key == "beta_slow") {
+                    auto value = ParseDouble();
+                    if (!value.ok()) return value.status();
+                    rope_config.beta_slow = *value;
+                } else if (*key == "attention_factor") {
+                    auto value = ParseDouble();
+                    if (!value.ok()) return value.status();
+                    rope_config.attention_factor = *value;
+                } else if (*key == "low_freq_factor" || *key == "low_frequency_factor") {
+                    auto value = ParseDouble();
+                    if (!value.ok()) return value.status();
+                    rope_config.low_frequency_factor = *value;
+                } else if (*key == "high_freq_factor" || *key == "high_frequency_factor") {
+                    auto value = ParseDouble();
+                    if (!value.ok()) return value.status();
+                    rope_config.high_frequency_factor = *value;
+                } else if (*key == "short_factor") {
+                    auto value = ParseDoubleArray();
+                    if (!value.ok()) return value.status();
+                    rope_config.short_factors = std::move(*value);
+                } else if (*key == "long_factor") {
+                    auto value = ParseDoubleArray();
+                    if (!value.ok()) return value.status();
+                    rope_config.long_factors = std::move(*value);
+                } else if (*key == "mscale") {
+                    auto value = ParseDouble();
+                    if (!value.ok()) return value.status();
+                    rope_config.mscale = *value;
+                } else if (*key == "mscale_all_dim") {
+                    auto value = ParseDouble();
+                    if (!value.ok()) return value.status();
+                    rope_config.mscale_all_dim = *value;
+                } else if (*key == "partial_rotary_factor") {
+                    auto value = ParseDouble();
+                    if (!value.ok()) return value.status();
+                    rope_config.partial_rotary_factor = *value;
+                } else if (*key == "rotary_dim") {
+                    auto value = ParseInt64();
+                    if (!value.ok()) return value.status();
+                    rope_config.rotary_dim = *value;
+                } else if (*key == "truncate" || *key == "truncate_correction_range") {
+                    auto value = ParseBool();
+                    if (!value.ok()) return value.status();
+                    rope_config.truncate_correction_range = *value;
                 } else if (*key == "type" || *key == "rope_type") {
                     auto type = ParseString();
                     if (!type.ok()) {

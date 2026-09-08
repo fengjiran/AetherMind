@@ -367,6 +367,29 @@ TEST(ModelLoader_HfModelValidatorTest, AcceptsPositiveRopeScalingWhenAllowed) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
+TEST(ModelLoader_HfModelValidatorTest, AcceptsStructurallyCompleteLongRopeWithoutScalarFactor) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.rope.scaling_type = HfRopeScalingType::kLongRope;
+    config.rope.original_context_length = 128;
+    config.rope.short_factors = {1.0};
+    config.rope.long_factors = {2.0};
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+TEST(ModelLoader_HfModelValidatorTest, RejectsLongRopeWithoutOriginalContext) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.rope.scaling_type = HfRopeScalingType::kLongRope;
+    config.rope.short_factors = {1.0};
+    config.rope.long_factors = {2.0};
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
 TEST(ModelLoader_HfModelValidatorTest, DefersRopeScalingTypeValueValidationToBuilder) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.rope.scaling_factor = 2.0;

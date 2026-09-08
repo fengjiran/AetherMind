@@ -249,6 +249,27 @@ StatusOr<std::vector<int64_t>> HfJsonReader::ParseInt64Array() {
     return values;
 }
 
+StatusOr<std::vector<double>> HfJsonReader::ParseDoubleArray() {
+    if (!TryConsume('[')) {
+        return Status::InvalidArgument("Expected JSON array");
+    }
+    std::vector<double> values;
+    SkipWhitespace();
+    if (TryConsume(']')) {
+        return values;
+    }
+    while (true) {
+        AM_ASSIGN_OR_RETURN(double value, ParseDouble());
+        values.push_back(value);
+        SkipWhitespace();
+        if (TryConsume(']')) {
+            break;
+        }
+        AM_RETURN_IF_ERROR(Expect(',', "between JSON array values"));
+    }
+    return values;
+}
+
 Status HfJsonReader::SkipValue() {
     return SkipValueInternal(0);
 }

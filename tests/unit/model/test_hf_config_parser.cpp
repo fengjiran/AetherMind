@@ -366,6 +366,46 @@ TEST(ModelLoader_HfConfigTest, ParsesNestedRopeThetaFromRopeScaling) {
     EXPECT_EQ(config->rope.scaling_type, HfRopeScalingType::kLlama3);
 }
 
+TEST(ModelLoader_HfConfigTest, ParsesExtendedRopeAlgorithmFields) {
+    TempDirectory temp_dir;
+    WriteConfig(temp_dir.Path(), R"({
+        "model_type": "llama",
+        "hidden_size": 4096,
+        "intermediate_size": 11008,
+        "num_hidden_layers": 32,
+        "num_attention_heads": 32,
+        "vocab_size": 32000,
+        "max_position_embeddings": 4096,
+        "original_max_position_embeddings": 2048,
+        "rms_norm_eps": 1e-6,
+        "partial_rotary_factor": 0.5,
+        "rope_scaling": {
+            "rope_type": "longrope",
+            "factor": 8.0,
+            "attention_factor": 1.25,
+            "short_factor": [1.0, 2.0],
+            "long_factor": [4.0, 8.0],
+            "truncate": false
+        }
+    })");
+    WriteMinimalSafetensors(temp_dir.Path());
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
+    ASSERT_TRUE(config.ok()) << config.status().ToString();
+    EXPECT_EQ(config->rope.scaling_type, HfRopeScalingType::kLongRope);
+    ASSERT_TRUE(config->rope.partial_rotary_factor.has_value());
+    EXPECT_DOUBLE_EQ(*config->rope.partial_rotary_factor, 0.5);
+    ASSERT_TRUE(config->rope.original_context_length.has_value());
+    EXPECT_EQ(*config->rope.original_context_length, 2048);
+    ASSERT_TRUE(config->rope.attention_factor.has_value());
+    EXPECT_DOUBLE_EQ(*config->rope.attention_factor, 1.25);
+    EXPECT_EQ(config->rope.short_factors, (std::vector<double>{1.0, 2.0}));
+    EXPECT_EQ(config->rope.long_factors, (std::vector<double>{4.0, 8.0}));
+    ASSERT_TRUE(config->rope.truncate_correction_range.has_value());
+    EXPECT_FALSE(*config->rope.truncate_correction_range);
+}
+
 TEST(ModelLoader_HfConfigTest, ParsesRopeScalingTypeNames) {
     EXPECT_EQ(ParseRopeScalingType(""), HfRopeScalingType::kNone);
     EXPECT_EQ(ParseRopeScalingType("default"), HfRopeScalingType::kNone);

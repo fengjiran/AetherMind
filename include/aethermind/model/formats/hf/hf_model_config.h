@@ -105,11 +105,24 @@ inline std::string_view ToString(HfRopeScalingType scaling_type) noexcept {
 
 /// @brief RoPE configuration for the model.
 ///
-/// theta and scaling_type are unconditional; scaling_factor is present only
-/// when config.json provides it.
+/// Raw HuggingFace RoPE fields. ModelGraphBuilder is responsible for turning
+/// these format-specific optional fields into one typed semantic alternative.
 struct HfRopeConfig {
     double theta = 10000.0; // Standard RoPE base frequency.
     std::optional<double> scaling_factor{};
+    std::optional<int64_t> original_context_length{};
+    std::optional<double> beta_fast{};
+    std::optional<double> beta_slow{};
+    std::optional<double> attention_factor{};
+    std::optional<double> low_frequency_factor{};
+    std::optional<double> high_frequency_factor{};
+    std::optional<double> mscale{};
+    std::optional<double> mscale_all_dim{};
+    std::optional<bool> truncate_correction_range{};
+    std::optional<double> partial_rotary_factor{};
+    std::optional<int64_t> rotary_dim{};
+    std::vector<double> short_factors{};
+    std::vector<double> long_factors{};
     HfRopeScalingType scaling_type = HfRopeScalingType::kNone;
 };
 

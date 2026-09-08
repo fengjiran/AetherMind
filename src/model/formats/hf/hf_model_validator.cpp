@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -48,7 +49,13 @@ bool IsSupportedActivation(std::string_view act) {
 }
 
 bool HasRopeScaling(const HfRopeConfig& rope) {
-    return rope.scaling_factor.has_value() || rope.scaling_type != HfRopeScalingType::kNone;
+    return rope.scaling_type != HfRopeScalingType::kNone ||
+           rope.scaling_factor.has_value() || rope.original_context_length.has_value() ||
+           rope.beta_fast.has_value() || rope.beta_slow.has_value() ||
+           rope.attention_factor.has_value() || rope.low_frequency_factor.has_value() ||
+           rope.high_frequency_factor.has_value() || rope.mscale.has_value() ||
+           rope.mscale_all_dim.has_value() || rope.truncate_correction_range.has_value() ||
+           !rope.short_factors.empty() || !rope.long_factors.empty();
 }
 
 std::string ShapeToString(const std::vector<int64_t>& shape) {
@@ -528,8 +535,8 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
         return Status::InvalidArgument("Model config field 'rms_norm_eps' must be positive");
     }
 
-    if (config.rope.theta <= 0.0) {
-        return Status::InvalidArgument("Model config field 'rope.theta' must be positive");
+    if (!std::isfinite(config.rope.theta) || config.rope.theta <= 0.0) {
+        return Status::InvalidArgument("Model config field 'rope.theta' must be finite and positive");
     }
 
     if (config.hidden_size % config.num_attention_heads != 0) {
@@ -573,18 +580,42 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
                     "Model config field 'rope.scaling_type' must be provided when RoPE scaling is configured");
         }
 
-        // Scaling type value validation is deferred to ModelGraphBuilder::MakeRoPEParams,
-        // which is the single authority for HF→semantic RoPE conversion and rejection.
-        // Unsupported variants (kDynamicNtk/kYarn/kLlama3/kLongRope/kSu/kUnknown) are
-        // rejected there with a representability error before graph mutation.
-
-        if (!config.rope.scaling_factor.has_value()) {
+        // ModelGraphBuilder remains the authority for algorithm-specific
+        // normalization. The loader only rejects structurally incomplete HF
+        // tuples before model construction.
+        const bool requires_scalar_factor =
+                config.rope.scaling_type == HfRopeScalingType::kLinear ||
+                config.rope.scaling_type == HfRopeScalingType::kDynamicNtk ||
+                config.rope.scaling_type == HfRopeScalingType::kYarn ||
+                config.rope.scaling_type == HfRopeScalingType::kLlama3;
+        if (requires_scalar_factor && !config.rope.scaling_factor.has_value()) {
             return Status::InvalidArgument(
                     "Model config field 'rope.scaling_factor' must be provided when RoPE scaling is configured");
         }
 
-        if (*config.rope.scaling_factor <= 0.0) {
+        if (config.rope.scaling_factor.has_value() &&
+            (!std::isfinite(*config.rope.scaling_factor) ||
+             *config.rope.scaling_factor <= 0.0)) {
             return Status::InvalidArgument("Model config field 'rope.scaling_factor' must be positive");
+        }
+
+        if ((config.rope.scaling_type == HfRopeScalingType::kLongRope ||
+             config.rope.scaling_type == HfRopeScalingType::kSu) &&
+            (config.rope.short_factors.empty() || config.rope.long_factors.empty())) {
+            return Status::InvalidArgument(
+                    "LongRoPE requires non-empty short_factor and long_factor arrays");
+        }
+
+        const bool requires_original_context =
+                config.rope.scaling_type == HfRopeScalingType::kYarn ||
+                config.rope.scaling_type == HfRopeScalingType::kLlama3 ||
+                config.rope.scaling_type == HfRopeScalingType::kLongRope ||
+                config.rope.scaling_type == HfRopeScalingType::kSu;
+        if (requires_original_context &&
+            (!config.rope.original_context_length.has_value() ||
+             *config.rope.original_context_length <= 0)) {
+            return Status::InvalidArgument(
+                    "Scaled RoPE requires positive original_max_position_embeddings");
         }
     }
 

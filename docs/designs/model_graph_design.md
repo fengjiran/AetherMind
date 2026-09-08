@@ -949,12 +949,11 @@ Phase-1 RoPE 算子在 graph 层面表达以下语义契约（rank-2、无 batch
 
 **Dtype 契约：** q、k dtype 必须一致，取值 ∈ {Float32, Float16, BFloat16}。position_ids 必须为 Int64。输出 dtype 分别跟随 q、k。禁止隐式类型转换。
 
-**Phase-1 rotation layout（冻结）：** 使用 Llama/HuggingFace 的 **split-half** 约定，而非相邻 even/odd pair。令 `half = head_dim / 2`；对每个 token、每个 q 或 k head、以及 `i ∈ [0, half)`：
+**Rotation layout：** `RoPEPairing` 显式区分 Llama/HuggingFace 的 **split-half** 与相邻 even/odd 的 **interleaved**。令 `rotary_dim` 为每个 head 实际旋转的正偶数前缀；必须满足 `rotary_dim <= head_dim`，尾部维度原样复制。split-half 下对 `i ∈ [0, rotary_dim/2)`：
 
 ```text
-freq_i = theta ^ (-2 * i / head_dim)
-effective_position = position_id                     // kNone
-effective_position = position_id / scaling_factor    // kLinear
+freq_i = ResolveRoPEFrequency(algorithm, i, effective_sequence_length)
+effective_position = position_id
 angle = effective_position * freq_i
 
 a = x[i]
@@ -963,18 +962,15 @@ y[i]        = a * cos(angle) - b * sin(angle)
 y[half + i] = b * cos(angle) + a * sin(angle)
 ```
 
-同一 token/pair 的 `sin(angle)` / `cos(angle)` 可复用于全部 q heads 和 kv heads。当前 semantic surface 不表达 interleaved、GPT-J 或其他 rotation layout；若要支持，必须先扩展 `RoPEParams`，不能仅在 backend kernel 中更换解释。
+interleaved 下配对 `(2*i, 2*i+1)`。同一 token/pair 的 `sin(angle)` / `cos(angle)` 可复用于全部 q heads 和 kv heads。pairing 是算子语义，不能由 backend 自行推断。
 
 **参数校验：**
 - `head_dim`、`num_attention_heads`、`num_key_value_heads`、`max_position_embeddings` 均为正
-- `head_dim` 必须为偶数
+- `rotary_dim` 必须为正偶数且不大于 `head_dim`
 - `theta` 有限且为正
 - `num_attention_heads * head_dim`、`num_key_value_heads * head_dim` 独立进行溢出检查
 
-**Scaling 契约：**
-- `scaling_type == kNone`：标准 RoPE，`scaling_factor` 必须缺席
-- `scaling_type == kLinear`：`scaling_factor` 必须存在、有限且 `> 0`；`1.0` 合法且不做归一化改写
-- 其余 `HfRopeScalingType`（Dynamic NTK、YaRN、Llama3、LongRope、Su、Unknown）因当前 `RoPEParams` 无法表达而被拒绝（capability-oriented 诊断），并非 Phase-1 策略性 blanket 拒绝
+**算法契约：** `RoPEAlgorithmParams` 是唯一 tag/payload 来源，包含 `StandardRoPE`、`LinearRoPE`、`DynamicNtkRoPE`、`YarnRoPE`、`Llama3RoPE` 与 `LongRoPE`。各 alternative 只携带其公式所需参数，消除 enum 与 optional 字段不一致的状态。Dynamic NTK 按本次执行的 `max(position_ids)+1` 解析动态 base；LongRoPE 以该长度选择 short/long 频率表。HF `su` 仅作为 model 前端 legacy spelling，在参数完整时规范化为 `LongRoPE`；unknown type 拒绝。
 
 **静态等式校验（仅静态维度）：**
 - `q.shape[1] == num_attention_heads * head_dim`（静态时强制；symbolic 宽度合法，不发 product 约束）

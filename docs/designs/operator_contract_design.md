@@ -46,7 +46,7 @@ Phase 1 的 Operator Contract 面向：
 | **graph（图 IR 与 semantic transform 层）** | `include/aethermind/graph/` + `src/graph/` | **operators 的消费者**。在图构建期通过 `Infer*` 自由函数进行算子语义验证与 shape 推导；设备/ISA 独立，禁止包含 compiler/execution/backend/model。 |
 | **compiler（编译 artifact 层）** | `include/aethermind/compiler/` + `src/compiler/` | 组装默认 `OptimizeModelGraph` pipeline，拥有 `LowerModelGraph`、`LoweredStepSpec` 与 finalized `LoweredGraph`；携带 base `KernelSelector`，不得查询 Backend 或 KernelRegistry。 |
 | **execution（执行数据契约层）** | `include/aethermind/execution/` + `src/execution/` | **operators 的消费者**。untrusted `ExecutionPlanNodeSpec` 经 re-inference 验证；compiler artifact 在实现内部适配后调用 `Backend::PrepareKernel`，并将完整 ResolvedKernel 按值写入 ExecutionStep。Public headers 不依赖 compiler。 |
-| **model（前端适配层）** | `include/aethermind/model/` + `src/model/` | **ModelGraphBuilder 是前端→语义图的唯一转换权威**。HF-only RoPE scaling types（DynamicNtk/Yarn/Llama3/LongRope/Su/Unknown）在 `BuildLlamaDense` 路径通过 `MakeRoPEParams` 返回 StatusOr 显式拒绝，仅 kNone/kLinear 映射到 `RoPEScalingType`。ModelCompiler 归 compiler。 |
+| **model（前端适配层）** | `include/aethermind/model/` + `src/model/` | **ModelGraphBuilder 是前端→语义图的唯一转换权威**。HF RoPE 配置在 `BuildLlamaDense` 中规范化为 typed `RoPEAlgorithmParams`；legacy `su` 在参数完整时映射为 `LongRoPE`，unknown type 显式拒绝。ModelCompiler 归 compiler。 |
 | **backend / kernels（执行层）** | `include/aethermind/backend/` + `src/backend/` + ISA-specific kernels | **operators 的执行者**。通过 OpParams/OpType 及纯数据 dtype 契约头（`kXxxSupportedDTypes`/`IsXxxSupportedDType`）访问算子语义，不得反向依赖 graph/model。kernel 选择通过 KernelSelector::Select，注册通过 `AM_REGISTER_KERNEL`。 |
 
 **跨模块依赖方向**（禁止反向）：

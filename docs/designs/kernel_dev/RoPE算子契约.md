@@ -2,15 +2,33 @@
 
 本文描述当前 reference kernel 的执行约束。算子端口、shape、dtype 与 split-half
 公式以 [ModelGraph 设计 §12.2](../model_graph_design.md#122-rope-语义与执行边界) 为准。
-当前仅实现 FP32、kPlain、kBoth；不新增 interleaved 语义、持久化 table 或 SIMD 路径。
+当前实现 FP32、kPlain、kBoth reference，支持 split-half/interleaved、partial rotary，
+以及 Standard、Linear、Dynamic NTK、YaRN、Llama3 和 LongRoPE。SIMD 路径仍未实现。
 
 ## 参数与生命周期
 
-- `RoPEParams` 保存语义参数；metadata builder 将固定参数冻结到 `ResolvedKernel::attrs`。
+- `RoPEParams` 以 typed `RoPEAlgorithmParams` 保存唯一算法 payload，并将 pairing 与
+  `rotary_dim` 正交表达；metadata builder 将固定参数冻结到 `ResolvedKernel::attrs`。
 - params builder 在 binding 阶段验证具体 shape、正 strides、偏移及 alias，并构造 POD args。
 - args 借用 tensor data 指针；shape/address/stride 改变后必须重建 bindings。
 - `position_ids` 的内容是运行时数据，每次执行重新读取。调用方不能在执行期间并发修改
   输入、位置或输出存储；kernel 不含共享可变 cache，也不为这些外部访问加锁。
+
+## 算法解析
+
+backend-independent frequency resolver 负责算法公式，CPU kernel 只处理 tensor layout、
+pairing 和旋转。Standard、Linear、YaRN、Llama3 在 kernel preparation 阶段生成一张
+immutable inverse-frequency table；LongRoPE 生成 short/long 两张表。这些 table 只存于
+`ResolvedKernel::attrs`，不会复制进每次执行的 prepared args。
+
+Dynamic NTK 不把首次 position 固化进 `PreparedExecutionBindings`。每次执行先取得
+`effective_sequence_length = max(position_ids) + 1`，据此计算 dynamic base，再按 pair
+即时计算频率。LongRoPE 同样以该长度选择 short 或 long table。kernel invocation 路径
+不分配 heap，也不维护跨 session 的可变频率 cache。
+
+`rotary_dim` 是每个 head 被旋转的前缀，必须为正偶数且不大于 `head_dim`；剩余尾部
+在 out-of-place 路径原样复制。split-half 配对 `i` 与 `rotary_dim/2+i`，interleaved
+配对 `2*i` 与 `2*i+1`。算法与 pairing 互不推断。
 
 ## Alias 与地址范围
 
@@ -35,14 +53,14 @@ backing storage 以及元素自然对齐仍由调用方保证。
 
 ## 派生数值范围与失败原子性
 
-binding 阶段逐一计算 `theta^(-2*i/head_dim)`，检查每个 inverse frequency 正且有限，
-将其最大值保存在内部 args 中。准备与执行复用同一个频率函数。
+静态算法在 metadata build 阶段检查全部 inverse frequencies；Dynamic NTK 在执行前检查
+本次 dynamic base 及每个 pair 的频率。所有算法都在写输出前检查最大角度可表示。
 
 每次执行先扫描全部 position IDs；负值返回 `InvalidArgument`。之后检查：
 
 ```text
-max_effective_position = double(max_position_id) / position_divisor
-max_angle = max_effective_position * max_inverse_frequency
+effective_sequence_length = max_position_id + 1
+max_angle = double(max_position_id) * max_inverse_frequency
 ```
 
 非有限的 inverse frequency、effective position 或 angle 返回 `Overflow`。
@@ -50,12 +68,13 @@ max_angle = max_effective_position * max_inverse_frequency
 才开始写 Q/K，因而这些失败保持两个输出原值，包含 exact in-place 的输入。
 
 该保证不承诺扫描或拒绝 Q/K 数据中的 NaN/Inf，也不承诺任意幅值输入的旋转结果都可用
-Float32 表示。`0 < scaling_factor < 1` 仍合法；不 clamp position，也不新增
+Float32 表示。Linear 的 `0 < factor < 1` 仍合法；不 clamp position，也不新增
 `position_ids < max_position_embeddings` 限制。有限巨大角度只保证可执行，不代表已完成
 对应上下文范围的 HF 兼容性验收。
 
-成功执行不分配 heap 或 workspace。新增频率校验在 binding 阶段为 O(head_dim)；
-每次执行的位置预检查为 O(seq_len)。按行 alias 检查也只发生在 binding 阶段。
+成功执行不分配 heap 或 workspace。静态频率解析属于 cold path；每次执行的位置预检查
+为 O(seq_len)，Dynamic NTK 另有 O(rotary_dim) 的无分配频率计算。按行 alias 检查只
+发生在 binding 阶段。
 
 ## 精度与独立验收
 
@@ -66,7 +85,7 @@ Float32 表示。`0 < scaling_factor < 1` 仍合法；不 clamp position，也�
 2. 固定 Transformers **4.57.1**、PyTorch **2.9.0+cpu**，直接调用
    `LlamaRotaryEmbedding` 与 `apply_rotary_pos_emb` 导出的独立 CPU Float32 golden。
 
-HF fixture 覆盖 head_dim 4/64/128、MHA/GQA/MQA、theta 4/10000/500000、none/linear
+既有 HF fixture 覆盖 head_dim 4/64/128、MHA/GQA/MQA、theta 4/10000/500000、Standard/Linear
 scaling（factor 1/2.5/0.75），非连续 position 含 0、1、8192 和 32768，输入幅值不超过 1
 并包含零值及较小幅值。同一逻辑 fixture 在 contiguous、strided/padded 和 exact in-place
 三种布局上运行，检查 Q/K 输出、padding 及 position 数据。
@@ -114,7 +133,9 @@ TMPDIR=/tmp ./build/tests/unit/aethermind_unit_tests \
 
 ### 本次验证记录（2026-09-07）
 
-- 默认构建与上述 filter 的 87 个测试通过，包含 21 个 HF fixture/layout 对照。
+- 2026-09-07 的基础实现验证为 87 个测试，包含 21 个 HF fixture/layout 对照。本次
+  多算法扩展另覆盖 frequency resolver、HF 前端规范化、serde 迁移、dynamic binding
+  reuse、pairing 与 partial rotary；以本次最终测试输出为准。
 - 同一 filter 在 ASan/UBSan 构建下通过（`ASAN_OPTIONS=detect_leaks=0:halt_on_error=1`、
   `UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1`）。
 - 单独开启 LSan 时退出检查未通过：`src/function.cpp` 的 `GlobalFunctionTable::Register`

@@ -6,6 +6,7 @@
 #include <charconv>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -92,7 +93,31 @@ StatusOr<FieldMap> ParseFields(std::istringstream& input) {
     return fields;
 }
 
-StatusOr<RoPEScalingType> ParseRopeScalingField(const FieldMap& fields) {
+StatusOr<RoPEAlgorithm> ParseRoPEAlgorithmField(const FieldMap& fields) {
+    const auto it = fields.find("algorithm");
+    if (it == fields.end()) {
+        return Status::InvalidArgument("ParseOpParams: missing RoPE algorithm field");
+    }
+    if (it->second == "standard") return RoPEAlgorithm::kStandard;
+    if (it->second == "linear") return RoPEAlgorithm::kLinear;
+    if (it->second == "dynamic_ntk") return RoPEAlgorithm::kDynamicNtk;
+    if (it->second == "yarn") return RoPEAlgorithm::kYarn;
+    if (it->second == "llama3") return RoPEAlgorithm::kLlama3;
+    if (it->second == "longrope") return RoPEAlgorithm::kLongRope;
+    return Status::InvalidArgument("ParseOpParams: invalid RoPE algorithm field");
+}
+
+StatusOr<RoPEPairing> ParseRoPEPairingField(const FieldMap& fields) {
+    const auto it = fields.find("pairing");
+    if (it == fields.end()) {
+        return Status::InvalidArgument("ParseOpParams: missing RoPE pairing field");
+    }
+    if (it->second == "split_half") return RoPEPairing::kSplitHalf;
+    if (it->second == "interleaved") return RoPEPairing::kInterleaved;
+    return Status::InvalidArgument("ParseOpParams: invalid RoPE pairing field");
+}
+
+StatusOr<RoPEAlgorithm> ParseLegacyRopeScalingField(const FieldMap& fields) {
     const auto it = fields.find("scaling_type");
     if (it == fields.end()) {
         return Status::InvalidArgument("ParseOpParams: missing scaling_type field");
@@ -100,12 +125,40 @@ StatusOr<RoPEScalingType> ParseRopeScalingField(const FieldMap& fields) {
 
     const std::string_view value = it->second;
     if (value == "none") {
-        return RoPEScalingType::kNone;
+        return RoPEAlgorithm::kStandard;
     }
     if (value == "linear") {
-        return RoPEScalingType::kLinear;
+        return RoPEAlgorithm::kLinear;
     }
     return Status::InvalidArgument("ParseOpParams: invalid scaling_type field");
+}
+
+StatusOr<std::vector<double>> ParseDoubleList(const FieldMap& fields, std::string_view name) {
+    const auto it = fields.find(std::string(name));
+    if (it == fields.end() || it->second.empty()) {
+        return Status::InvalidArgument("ParseOpParams: missing double list field");
+    }
+    std::vector<double> values;
+    std::string_view input = it->second;
+    while (!input.empty()) {
+        const size_t comma = input.find(',');
+        const std::string_view token = input.substr(0, comma);
+        double value = 0.0;
+        if (token.empty() || !utils::ParseDouble(token, value)) {
+            return Status::InvalidArgument("ParseOpParams: invalid double list field");
+        }
+        values.push_back(value);
+        if (comma == std::string_view::npos) break;
+        input.remove_prefix(comma + 1);
+    }
+    return values;
+}
+
+void SerializeDoubleList(const std::vector<double>& values, std::ostream& os) {
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (i != 0) os << ',';
+        os << values[i];
+    }
 }
 
 StatusOr<std::optional<double>> ParseOptionalDouble(const FieldMap& fields,
@@ -386,18 +439,45 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
             [&](const RmsNormParams& p) { os << "RmsNorm eps=" << p.eps; },
             [&](const LinearParams&) { os << "Linear"; },
             [&](const RoPEParams& p) {
-                os << "RoPE head_dim=" << p.head_dim
+                os << "RoPE version=2 head_dim=" << p.head_dim
+                   << " rotary_dim=" << EffectiveRoPERotaryDim(p)
                    << " num_attention_heads=" << p.num_attention_heads
                    << " num_key_value_heads=" << p.num_key_value_heads
                    << " max_position_embeddings=" << p.max_position_embeddings
                    << " theta=" << p.theta
-                   << " scaling_factor=";
-                if (p.scaling_factor.has_value()) {
-                    os << *p.scaling_factor;
-                } else {
-                    os << "none";
-                }
-                os << " scaling_type=" << ToString(p.scaling_type);
+                   << " pairing=" << ToString(p.pairing)
+                   << " algorithm=" << ToString(GetRoPEAlgorithm(p.algorithm));
+                std::visit(
+                        [&](const auto& algorithm) {
+                            using T = std::decay_t<decltype(algorithm)>;
+                            if constexpr (std::is_same_v<T, LinearRoPE>) {
+                                os << " factor=" << algorithm.factor;
+                            } else if constexpr (std::is_same_v<T, DynamicNtkRoPE>) {
+                                os << " factor=" << algorithm.factor
+                                   << " original_context_length=" << algorithm.original_context_length;
+                            } else if constexpr (std::is_same_v<T, YarnRoPE>) {
+                                os << " factor=" << algorithm.factor
+                                   << " original_context_length=" << algorithm.original_context_length
+                                   << " beta_fast=" << algorithm.beta_fast
+                                   << " beta_slow=" << algorithm.beta_slow
+                                   << " attention_scale=" << algorithm.attention_scale
+                                   << " truncate_correction_range="
+                                   << (algorithm.truncate_correction_range ? "true" : "false");
+                            } else if constexpr (std::is_same_v<T, Llama3RoPE>) {
+                                os << " factor=" << algorithm.factor
+                                   << " low_frequency_factor=" << algorithm.low_frequency_factor
+                                   << " high_frequency_factor=" << algorithm.high_frequency_factor
+                                   << " original_context_length=" << algorithm.original_context_length;
+                            } else if constexpr (std::is_same_v<T, LongRoPE>) {
+                                os << " original_context_length=" << algorithm.original_context_length
+                                   << " attention_scale=" << algorithm.attention_scale
+                                   << " short_factors=";
+                                SerializeDoubleList(algorithm.short_factors, os);
+                                os << " long_factors=";
+                                SerializeDoubleList(algorithm.long_factors, os);
+                            }
+                        },
+                        p.algorithm);
             },
             [&](const MatMulParams& p) {
                 os << "MatMul transpose_rhs=" << (p.transpose_rhs ? "true" : "false");
@@ -475,9 +555,69 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
     }
 
     if (kind == "RoPE") {
-        AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 7));
+        const bool legacy = !fields.contains("version");
+        if (legacy) {
+            AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 7));
+            StatusOr<int64_t> head_dim = ParseInt64(fields, "head_dim");
+            AM_RETURN_IF_ERROR(head_dim.status());
+            StatusOr<int64_t> num_attention_heads = ParseInt64(fields, "num_attention_heads");
+            AM_RETURN_IF_ERROR(num_attention_heads.status());
+            StatusOr<int64_t> num_key_value_heads = ParseInt64(fields, "num_key_value_heads");
+            AM_RETURN_IF_ERROR(num_key_value_heads.status());
+            StatusOr<int64_t> max_position_embeddings = ParseInt64(fields, "max_position_embeddings");
+            AM_RETURN_IF_ERROR(max_position_embeddings.status());
+            StatusOr<double> theta = ParseDouble(fields, "theta");
+            AM_RETURN_IF_ERROR(theta.status());
+            StatusOr<std::optional<double>> scaling_factor = ParseOptionalDouble(fields, "scaling_factor");
+            AM_RETURN_IF_ERROR(scaling_factor.status());
+            StatusOr<RoPEAlgorithm> algorithm = ParseLegacyRopeScalingField(fields);
+            AM_RETURN_IF_ERROR(algorithm.status());
+            RoPEAlgorithmParams params = StandardRoPE{};
+            if (*algorithm == RoPEAlgorithm::kLinear) {
+                if (!scaling_factor->has_value()) {
+                    return Status::InvalidArgument("ParseOpParams: linear legacy RoPE lacks scaling_factor");
+                }
+                params = LinearRoPE{.factor = **scaling_factor};
+            } else if (scaling_factor->has_value()) {
+                return Status::InvalidArgument("ParseOpParams: standard legacy RoPE has scaling_factor");
+            }
+            return OpParams{RoPEParams{.head_dim = *head_dim,
+                                       .rotary_dim = *head_dim,
+                                       .num_attention_heads = *num_attention_heads,
+                                       .num_key_value_heads = *num_key_value_heads,
+                                       .max_position_embeddings = *max_position_embeddings,
+                                       .theta = *theta,
+                                       .algorithm = std::move(params)}};
+        }
+
+        AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, [&] {
+            StatusOr<int64_t> version = ParseInt64(fields, "version");
+            if (!version.ok() || *version != 2) return size_t{0};
+            StatusOr<RoPEAlgorithm> algorithm = ParseRoPEAlgorithmField(fields);
+            if (!algorithm.ok()) return size_t{0};
+            switch (*algorithm) {
+                case RoPEAlgorithm::kStandard:
+                    return size_t{9};
+                case RoPEAlgorithm::kLinear:
+                    return size_t{10};
+                case RoPEAlgorithm::kDynamicNtk:
+                    return size_t{11};
+                case RoPEAlgorithm::kYarn:
+                    return size_t{15};
+                case RoPEAlgorithm::kLlama3:
+                    return size_t{13};
+                case RoPEAlgorithm::kLongRope:
+                    return size_t{13};
+            }
+            return size_t{0};
+        }()));
+        StatusOr<int64_t> version = ParseInt64(fields, "version");
+        AM_RETURN_IF_ERROR(version.status());
+        if (*version != 2) return Status::InvalidArgument("ParseOpParams: unsupported RoPE version");
         StatusOr<int64_t> head_dim = ParseInt64(fields, "head_dim");
         AM_RETURN_IF_ERROR(head_dim.status());
+        StatusOr<int64_t> rotary_dim = ParseInt64(fields, "rotary_dim");
+        AM_RETURN_IF_ERROR(rotary_dim.status());
         StatusOr<int64_t> num_attention_heads = ParseInt64(fields, "num_attention_heads");
         AM_RETURN_IF_ERROR(num_attention_heads.status());
         StatusOr<int64_t> num_key_value_heads = ParseInt64(fields, "num_key_value_heads");
@@ -486,17 +626,83 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
         AM_RETURN_IF_ERROR(max_position_embeddings.status());
         StatusOr<double> theta = ParseDouble(fields, "theta");
         AM_RETURN_IF_ERROR(theta.status());
-        StatusOr<std::optional<double>> scaling_factor = ParseOptionalDouble(fields, "scaling_factor");
-        AM_RETURN_IF_ERROR(scaling_factor.status());
-        StatusOr<RoPEScalingType> scaling_type = ParseRopeScalingField(fields);
-        AM_RETURN_IF_ERROR(scaling_type.status());
+        StatusOr<RoPEPairing> pairing = ParseRoPEPairingField(fields);
+        AM_RETURN_IF_ERROR(pairing.status());
+        StatusOr<RoPEAlgorithm> algorithm = ParseRoPEAlgorithmField(fields);
+        AM_RETURN_IF_ERROR(algorithm.status());
+        RoPEAlgorithmParams algorithm_params = StandardRoPE{};
+        switch (*algorithm) {
+            case RoPEAlgorithm::kStandard:
+                break;
+            case RoPEAlgorithm::kLinear: {
+                AM_ASSIGN_OR_RETURN(const double factor, ParseDouble(fields, "factor"));
+                algorithm_params = LinearRoPE{.factor = factor};
+                break;
+            }
+            case RoPEAlgorithm::kDynamicNtk: {
+                AM_ASSIGN_OR_RETURN(const double factor, ParseDouble(fields, "factor"));
+                AM_ASSIGN_OR_RETURN(const int64_t original,
+                                    ParseInt64(fields, "original_context_length"));
+                algorithm_params = DynamicNtkRoPE{.factor = factor,
+                                                  .original_context_length = original};
+                break;
+            }
+            case RoPEAlgorithm::kYarn: {
+                AM_ASSIGN_OR_RETURN(const double factor, ParseDouble(fields, "factor"));
+                AM_ASSIGN_OR_RETURN(const int64_t original,
+                                    ParseInt64(fields, "original_context_length"));
+                AM_ASSIGN_OR_RETURN(const double beta_fast, ParseDouble(fields, "beta_fast"));
+                AM_ASSIGN_OR_RETURN(const double beta_slow, ParseDouble(fields, "beta_slow"));
+                AM_ASSIGN_OR_RETURN(const double attention_scale,
+                                    ParseDouble(fields, "attention_scale"));
+                AM_ASSIGN_OR_RETURN(const bool truncate,
+                                    ParseBool(fields, "truncate_correction_range"));
+                algorithm_params = YarnRoPE{.factor = factor,
+                                            .original_context_length = original,
+                                            .beta_fast = beta_fast,
+                                            .beta_slow = beta_slow,
+                                            .attention_scale = attention_scale,
+                                            .truncate_correction_range = truncate};
+                break;
+            }
+            case RoPEAlgorithm::kLlama3: {
+                AM_ASSIGN_OR_RETURN(const double factor, ParseDouble(fields, "factor"));
+                AM_ASSIGN_OR_RETURN(const double low,
+                                    ParseDouble(fields, "low_frequency_factor"));
+                AM_ASSIGN_OR_RETURN(const double high,
+                                    ParseDouble(fields, "high_frequency_factor"));
+                AM_ASSIGN_OR_RETURN(const int64_t original,
+                                    ParseInt64(fields, "original_context_length"));
+                algorithm_params = Llama3RoPE{.factor = factor,
+                                              .low_frequency_factor = low,
+                                              .high_frequency_factor = high,
+                                              .original_context_length = original};
+                break;
+            }
+            case RoPEAlgorithm::kLongRope: {
+                AM_ASSIGN_OR_RETURN(const int64_t original,
+                                    ParseInt64(fields, "original_context_length"));
+                AM_ASSIGN_OR_RETURN(const double attention_scale,
+                                    ParseDouble(fields, "attention_scale"));
+                AM_ASSIGN_OR_RETURN(auto short_factors,
+                                    ParseDoubleList(fields, "short_factors"));
+                AM_ASSIGN_OR_RETURN(auto long_factors,
+                                    ParseDoubleList(fields, "long_factors"));
+                algorithm_params = LongRoPE{.short_factors = std::move(short_factors),
+                                            .long_factors = std::move(long_factors),
+                                            .original_context_length = original,
+                                            .attention_scale = attention_scale};
+                break;
+            }
+        }
         return OpParams{RoPEParams{.head_dim = *head_dim,
+                                   .rotary_dim = *rotary_dim,
                                    .num_attention_heads = *num_attention_heads,
                                    .num_key_value_heads = *num_key_value_heads,
                                    .max_position_embeddings = *max_position_embeddings,
                                    .theta = *theta,
-                                   .scaling_factor = *scaling_factor,
-                                   .scaling_type = *scaling_type}};
+                                   .pairing = *pairing,
+                                   .algorithm = std::move(algorithm_params)}};
     }
 
     if (kind == "MatMul") {

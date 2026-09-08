@@ -24,15 +24,53 @@ TEST(OpParamsSerde, RoundTripsEveryVariant) {
                        .num_key_value_heads = 2,
                        .max_position_embeddings = 128,
                        .theta = 10000.0,
-                       .scaling_factor = 2.5,
-                       .scaling_type = RoPEScalingType::kLinear},
+                       .algorithm = LinearRoPE{.factor = 2.5}},
             RoPEParams{.head_dim = 16,
                        .num_attention_heads = 8,
                        .num_key_value_heads = 2,
                        .max_position_embeddings = 4096,
                        .theta = 500000.0,
-                       .scaling_factor = std::nullopt,
-                       .scaling_type = RoPEScalingType::kNone},
+                       .algorithm = StandardRoPE{}},
+            RoPEParams{.head_dim = 8,
+                       .rotary_dim = 4,
+                       .num_attention_heads = 2,
+                       .num_key_value_heads = 1,
+                       .max_position_embeddings = 128,
+                       .theta = 10000.0,
+                       .pairing = RoPEPairing::kInterleaved,
+                       .algorithm = DynamicNtkRoPE{.factor = 2.0, .original_context_length = 64}},
+            RoPEParams{.head_dim = 8,
+                       .rotary_dim = 8,
+                       .num_attention_heads = 2,
+                       .num_key_value_heads = 1,
+                       .max_position_embeddings = 256,
+                       .theta = 10000.0,
+                       .algorithm = YarnRoPE{.factor = 4.0,
+                                             .original_context_length = 64,
+                                             .beta_fast = 32.0,
+                                             .beta_slow = 1.0,
+                                             .attention_scale = 1.125,
+                                             .truncate_correction_range = false}},
+            RoPEParams{.head_dim = 8,
+                       .rotary_dim = 8,
+                       .num_attention_heads = 2,
+                       .num_key_value_heads = 1,
+                       .max_position_embeddings = 512,
+                       .theta = 500000.0,
+                       .algorithm = Llama3RoPE{.factor = 8.0,
+                                               .low_frequency_factor = 1.0,
+                                               .high_frequency_factor = 4.0,
+                                               .original_context_length = 64}},
+            RoPEParams{.head_dim = 8,
+                       .rotary_dim = 4,
+                       .num_attention_heads = 2,
+                       .num_key_value_heads = 1,
+                       .max_position_embeddings = 512,
+                       .theta = 10000.0,
+                       .algorithm = LongRoPE{.short_factors = {1.0, 2.0},
+                                             .long_factors = {4.0, 8.0},
+                                             .original_context_length = 64,
+                                             .attention_scale = 1.25}},
             MatMulParams{.transpose_rhs = true},
             SoftmaxParams{.axis = -1},
             AddParams{},
@@ -75,6 +113,35 @@ TEST(OpParamsSerde, RoundTripsEveryVariant) {
         ASSERT_TRUE(parsed.ok()) << serialized << " -> " << parsed.status().ToString();
         EXPECT_EQ(SerializeToString(*parsed), serialized);
     }
+}
+
+TEST(OpParamsSerde, MigratesLegacyRoPEAndRejectsUnknownVersionedTags) {
+    const auto standard = ParseOpParams(
+            "RoPE head_dim=8 num_attention_heads=2 num_key_value_heads=1 "
+            "max_position_embeddings=128 theta=10000 scaling_factor=none scaling_type=none");
+    ASSERT_TRUE(standard.ok()) << standard.status().ToString();
+    const auto& standard_params = std::get<RoPEParams>(*standard);
+    EXPECT_EQ(standard_params.rotary_dim, 8);
+    EXPECT_EQ(standard_params.pairing, RoPEPairing::kSplitHalf);
+    EXPECT_TRUE(std::holds_alternative<StandardRoPE>(standard_params.algorithm));
+    EXPECT_NE(SerializeToString(*standard).find("version=2"), std::string::npos);
+
+    const auto linear = ParseOpParams(
+            "RoPE head_dim=8 num_attention_heads=2 num_key_value_heads=1 "
+            "max_position_embeddings=128 theta=10000 scaling_factor=2.5 scaling_type=linear");
+    ASSERT_TRUE(linear.ok()) << linear.status().ToString();
+    EXPECT_DOUBLE_EQ(std::get<LinearRoPE>(std::get<RoPEParams>(*linear).algorithm).factor, 2.5);
+
+    EXPECT_FALSE(ParseOpParams(
+                         "RoPE version=3 head_dim=8 rotary_dim=8 num_attention_heads=2 "
+                         "num_key_value_heads=1 max_position_embeddings=128 theta=10000 "
+                         "pairing=split_half algorithm=standard")
+                         .ok());
+    EXPECT_FALSE(ParseOpParams(
+                         "RoPE version=2 head_dim=8 rotary_dim=8 num_attention_heads=2 "
+                         "num_key_value_heads=1 max_position_embeddings=128 theta=10000 "
+                         "pairing=split_half algorithm=unknown")
+                         .ok());
 }
 
 TEST(OpParamsSerde, RejectsUnknownKind) {

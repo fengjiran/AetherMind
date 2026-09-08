@@ -234,17 +234,13 @@ void DumpOpParams(const OpParams& params, std::ostream& os) {
             },
             [&](const RoPEParams& p) {
                 os << "RoPEParams{head_dim=" << p.head_dim
+                   << ", rotary_dim=" << EffectiveRoPERotaryDim(p)
                    << ", num_attention_heads=" << p.num_attention_heads
                    << ", num_key_value_heads=" << p.num_key_value_heads
                    << ", max_position_embeddings=" << p.max_position_embeddings
                    << ", theta=" << p.theta
-                   << ", scaling_factor=";
-                if (p.scaling_factor.has_value()) {
-                    os << *p.scaling_factor;
-                } else {
-                    os << "<none>";
-                }
-                os << ", scaling_type=" << ToString(p.scaling_type) << '}';
+                   << ", pairing=" << ToString(p.pairing)
+                   << ", algorithm=" << ToString(GetRoPEAlgorithm(p.algorithm)) << '}';
             },
             [&](const MatMulParams& p) {
                 os << "MatMulParams{transpose_rhs=" << (p.transpose_rhs ? "true" : "false") << '}';

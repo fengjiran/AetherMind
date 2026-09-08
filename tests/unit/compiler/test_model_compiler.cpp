@@ -104,7 +104,7 @@ TEST(ModelCompiler, PropagatesLoweringTargetConfiguration) {
     }
 }
 
-TEST(ModelCompiler, SupportsLinearRopeScalingAndRejectsUnsupportedSemanticVariants) {
+TEST(ModelCompiler, SupportsLinearAndDynamicNtkRopeScaling) {
     const auto loaded = ModelLoader::Load(TestModelDir());
     ASSERT_TRUE(loaded.ok()) << loaded.status().ToString();
 
@@ -125,12 +125,8 @@ TEST(ModelCompiler, SupportsLinearRopeScalingAndRejectsUnsupportedSemanticVarian
     auto unsupported_model = std::make_unique<LoadedModel>(
             std::move(unsupported_config), (*loaded)->GetResolvedWeights());
 
-    const auto unsupported = ModelCompiler::Compile(std::move(unsupported_model), o0);
-    ASSERT_FALSE(unsupported.ok());
-    EXPECT_EQ(unsupported.status().code(), StatusCode::kInvalidArgument);
-    EXPECT_NE(unsupported.status().message().find("Model graph construction failed"),
-              std::string::npos);
-    EXPECT_NE(unsupported.status().message().find("not representable"), std::string::npos);
+    const auto dynamic = ModelCompiler::Compile(std::move(unsupported_model), o0);
+    ASSERT_TRUE(dynamic.ok()) << dynamic.status().ToString();
 }
 
 TEST(ModelCompiler, RejectsNullLoadedModel) {

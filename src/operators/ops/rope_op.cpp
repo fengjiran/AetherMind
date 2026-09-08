@@ -1,5 +1,6 @@
 #include "aethermind/operators/ops/rope_op.h"
 #include "aethermind/operators/operator_inference.h"
+#include "aethermind/operators/rope_frequency_resolver.h"
 #include "utils/overflow_check.h"
 
 namespace aethermind::detail {
@@ -28,8 +29,15 @@ Status ValidateRoPEParams(const RoPEParams& p) {
                 "RoPE max_position_embeddings must be positive");
     }
 
-    if (p.head_dim % 2 != 0) {
-        return Status::InvalidArgument("RoPE head_dim must be even");
+    const int64_t rotary_dim = EffectiveRoPERotaryDim(p);
+    if (rotary_dim <= 0 || rotary_dim > p.head_dim || rotary_dim % 2 != 0) {
+        return Status::InvalidArgument(
+                "RoPE rotary_dim must be positive, even, and no greater than head_dim");
+    }
+
+    if (p.pairing != RoPEPairing::kSplitHalf &&
+        p.pairing != RoPEPairing::kInterleaved) {
+        return Status::InvalidArgument("RoPE pairing is invalid");
     }
 
     if (!std::isfinite(p.theta) || p.theta <= 0.0) {
@@ -46,37 +54,6 @@ Status ValidateRoPEParams(const RoPEParams& p) {
                 "RoPE num_key_value_heads * head_dim overflows int64_t");
     }
     return Status::Ok();
-}
-
-// Validates the RoPE scaling tuple. kNone requires an absent factor; kLinear
-// requires a present finite factor > 0. The RoPEScalingType enum is exhaustive
-// over the representable surface; HF-only variants are filtered by the model
-// frontend before RoPEParams is constructed, so no `default` branch is needed.
-Status ValidateRoPEScaling(const RoPEParams& p) {
-    switch (p.scaling_type) {
-        case RoPEScalingType::kNone:
-            if (p.scaling_factor.has_value()) {
-                return Status::InvalidArgument(
-                        "RoPE scaling_type kNone must not carry a scaling_factor");
-            }
-            return Status::Ok();
-        case RoPEScalingType::kLinear:
-            if (!p.scaling_factor.has_value()) {
-                return Status::InvalidArgument(
-                        "RoPE scaling_type kLinear requires a finite positive "
-                        "scaling_factor");
-            }
-            if (!std::isfinite(*p.scaling_factor)) {
-                return Status::InvalidArgument(
-                        "RoPE scaling_type kLinear scaling_factor must be finite");
-            }
-            if (*p.scaling_factor <= 0.0) {
-                return Status::InvalidArgument(
-                        "RoPE scaling_type kLinear scaling_factor must be positive");
-            }
-            return Status::Ok();
-    }
-    AM_UNREACHABLE();
 }
 
 // Validates that q and k share the same dtype from the supported set and that
@@ -207,7 +184,7 @@ StatusOr<InferenceResult> InferRoPE(const OpParams& params,
     }
 
     AM_RETURN_IF_ERROR(ValidateRoPEParams(*rope_params));
-    AM_RETURN_IF_ERROR(ValidateRoPEScaling(*rope_params));
+    AM_RETURN_IF_ERROR(ValidateRoPEFrequencyParameters(*rope_params));
     AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kRoPE, inputs));
     AM_RETURN_IF_ERROR(ValidateRoPEDTypes(inputs));
 

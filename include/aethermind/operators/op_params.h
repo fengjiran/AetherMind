@@ -9,8 +9,8 @@
 /// no std::any or stringly-typed fields are used.
 
 #include <cstdint>
-#include <optional>
 #include <string_view>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -24,29 +24,127 @@ struct RmsNormParams {
 
 struct LinearParams {};
 
-/// @brief Format-agnostic RoPE scaling strategy.
+/// @brief Element pairing used by a rotary embedding.
 ///
-/// Only `kNone` (standard RoPE) and `kLinear` are representable on the
-/// semantic graph surface. HF-only variants (dynamic NTK, YaRN, llama3,
-/// longrope, su, unknown) are rejected by `ModelGraphBuilder::BuildLlamaDense`
-/// before any graph mutation, so they can never reach `RoPEParams`.
-enum class RoPEScalingType : uint8_t {
-    kNone = 0, ///< Standard RoPE; `scaling_factor` must be absent.
-    kLinear,   ///< Linear scaling; requires a finite positive `scaling_factor`.
+/// This is independent of the frequency algorithm. `kSplitHalf` is the
+/// Llama/HuggingFace convention, whereas `kInterleaved` rotates adjacent
+/// even/odd elements.
+enum class RoPEPairing : uint8_t {
+    kSplitHalf = 0,
+    kInterleaved,
 };
 
-/// @brief Returns the canonical string name of a RoPE scaling type.
-///
-/// @param scaling_type Scaling type to stringify.
-/// @return String view of the scaling type name ("none" or "linear").
-inline std::string_view ToString(RoPEScalingType scaling_type) noexcept {
-    switch (scaling_type) {
-        case RoPEScalingType::kNone:
-            return "none";
-        case RoPEScalingType::kLinear:
-            return "linear";
+inline std::string_view ToString(RoPEPairing pairing) noexcept {
+    switch (pairing) {
+        case RoPEPairing::kSplitHalf:
+            return "split_half";
+        case RoPEPairing::kInterleaved:
+            return "interleaved";
     }
-    return "none";
+    return "unknown";
+}
+
+/// @brief Query tag for the concrete RoPE frequency parameter alternative.
+///
+/// RoPEParams deliberately does not store this alongside its variant: the
+/// variant is the only source of truth, so a tag and payload cannot diverge.
+enum class RoPEAlgorithm : uint8_t {
+    kStandard = 0,
+    kLinear,
+    kDynamicNtk,
+    kYarn,
+    kLlama3,
+    kLongRope,
+};
+
+inline std::string_view ToString(RoPEAlgorithm algorithm) noexcept {
+    switch (algorithm) {
+        case RoPEAlgorithm::kStandard:
+            return "standard";
+        case RoPEAlgorithm::kLinear:
+            return "linear";
+        case RoPEAlgorithm::kDynamicNtk:
+            return "dynamic_ntk";
+        case RoPEAlgorithm::kYarn:
+            return "yarn";
+        case RoPEAlgorithm::kLlama3:
+            return "llama3";
+        case RoPEAlgorithm::kLongRope:
+            return "longrope";
+    }
+    return "unknown";
+}
+
+struct StandardRoPE {
+    friend bool operator==(const StandardRoPE&, const StandardRoPE&) = default;
+};
+
+struct LinearRoPE {
+    double factor = 1.0;
+    friend bool operator==(const LinearRoPE&, const LinearRoPE&) = default;
+};
+
+struct DynamicNtkRoPE {
+    double factor = 1.0;
+    int64_t original_context_length = 0;
+    friend bool operator==(const DynamicNtkRoPE&, const DynamicNtkRoPE&) = default;
+};
+
+struct YarnRoPE {
+    double factor = 1.0;
+    int64_t original_context_length = 0;
+    double beta_fast = 32.0;
+    double beta_slow = 1.0;
+    /// Final, front-end-normalized amplitude multiplier.
+    double attention_scale = 1.0;
+    bool truncate_correction_range = true;
+    friend bool operator==(const YarnRoPE&, const YarnRoPE&) = default;
+};
+
+struct Llama3RoPE {
+    double factor = 1.0;
+    double low_frequency_factor = 1.0;
+    double high_frequency_factor = 4.0;
+    int64_t original_context_length = 0;
+    friend bool operator==(const Llama3RoPE&, const Llama3RoPE&) = default;
+};
+
+struct LongRoPE {
+    /// One positive factor per rotary pair, not per head element.
+    std::vector<double> short_factors;
+    std::vector<double> long_factors;
+    int64_t original_context_length = 0;
+    /// Final, front-end-normalized amplitude multiplier.
+    double attention_scale = 1.0;
+    friend bool operator==(const LongRoPE&, const LongRoPE&) = default;
+};
+
+using RoPEAlgorithmParams = std::variant<StandardRoPE,
+                                         LinearRoPE,
+                                         DynamicNtkRoPE,
+                                         YarnRoPE,
+                                         Llama3RoPE,
+                                         LongRoPE>;
+
+inline RoPEAlgorithm GetRoPEAlgorithm(const RoPEAlgorithmParams& params) noexcept {
+    return std::visit(
+            [](const auto& algorithm) noexcept -> RoPEAlgorithm {
+                using T = std::decay_t<decltype(algorithm)>;
+                if constexpr (std::is_same_v<T, StandardRoPE>) {
+                    return RoPEAlgorithm::kStandard;
+                } else if constexpr (std::is_same_v<T, LinearRoPE>) {
+                    return RoPEAlgorithm::kLinear;
+                } else if constexpr (std::is_same_v<T, DynamicNtkRoPE>) {
+                    return RoPEAlgorithm::kDynamicNtk;
+                } else if constexpr (std::is_same_v<T, YarnRoPE>) {
+                    return RoPEAlgorithm::kYarn;
+                } else if constexpr (std::is_same_v<T, Llama3RoPE>) {
+                    return RoPEAlgorithm::kLlama3;
+                } else {
+                    return RoPEAlgorithm::kLongRope;
+                }
+            },
+            params);
 }
 
 /// @brief Semantic parameters for OpType::kRoPE (Rotary Position Embedding).
@@ -56,15 +154,13 @@ inline std::string_view ToString(RoPEScalingType scaling_type) noexcept {
 /// does not inspect position tensor contents or execute the rotation.
 ///
 /// @pre Graph-time invariants enforced by InferRoPE:
-///      - scalar params: `head_dim` positive and even; `num_attention_heads`,
+///      - scalar params: `head_dim` positive; `rotary_dim` is positive, even,
+///        and at most `head_dim`; `num_attention_heads`,
 ///        `num_key_value_heads`, `max_position_embeddings` positive; `theta`
 ///        finite and positive; `num_attention_heads * head_dim` and
 ///        `num_key_value_heads * head_dim` do not overflow int64_t
-///      - scaling tuple: `scaling_type == kNone` requires `scaling_factor`
-///        absent (standard RoPE); `scaling_type == kLinear` requires a
-///        present finite `scaling_factor > 0` (factor 1.0 is accepted
-///        without normalization); no other scaling types are representable
-///        on the RoPEParams surface
+///      - the active `algorithm` alternative contains every parameter needed
+///        by its formula; no tag-plus-optional-field combinations exist
 ///      - input shapes: q and k rank 2 with widths equal to
 ///        `num_attention_heads * head_dim` and `num_key_value_heads * head_dim`
 ///        respectively when static (symbolic widths remain legal);
@@ -83,31 +179,27 @@ inline std::string_view ToString(RoPEScalingType scaling_type) noexcept {
 ///       the scaling contract, and symbolic q/k widths against params before
 ///       computation. Loader `allow_rope_scaling` remains a separate policy;
 ///       semantic acceptance does not imply current end-to-end kernel support.
-///       HF-specific RoPE variants are filtered by the model frontend
-///       (`ModelGraphBuilder::BuildLlamaDense`), not by InferRoPE.
+///       ModelGraphBuilder normalizes HuggingFace configuration into this
+///       format, but this semantic layer also supports programmatic graphs.
 ///
-/// @note Phase-1 rotation layout is the Llama/HuggingFace split-half layout.
-///       For one head with `half = head_dim / 2`, pair `i` rotates
-///       `x[i]` and `x[half + i]`; it does not rotate adjacent even/odd
-///       elements. With `freq_i = theta^(-2*i/head_dim)` and
-///       `effective_position = position_id` for kNone or
-///       `position_id / scaling_factor` for kLinear, executable kernels use
-///       `y[i] = x[i] * cos(angle) - x[half+i] * sin(angle)` and
-///       `y[half+i] = x[half+i] * cos(angle) + x[i] * sin(angle)`, where
-///       `angle = effective_position * freq_i`. Other layouts require an
-///       explicit future semantic extension rather than an implementation-only
-///       kernel choice.
 struct RoPEParams {
     int64_t head_dim = 0;
+    /// Rotated prefix per head. Zero is a legacy input spelling for head_dim;
+    /// semantic producers must write the normalized positive value.
+    int64_t rotary_dim = 0;
     int64_t num_attention_heads = 0;
     int64_t num_key_value_heads = 0;
     int64_t max_position_embeddings = 0;
     double theta = 10000.0;
-    /// @brief Linear scaling factor, present exactly when `scaling_type == kLinear`.
-    std::optional<double> scaling_factor{};
-    /// @brief Format-agnostic scaling strategy accepted by semantic inference.
-    RoPEScalingType scaling_type = RoPEScalingType::kNone;
+    RoPEPairing pairing = RoPEPairing::kSplitHalf;
+    RoPEAlgorithmParams algorithm = StandardRoPE{};
 };
+
+/// Resolves a legacy zero rotary_dim to its full-head equivalent. New semantic
+/// producers must store the normalized positive value in RoPEParams.
+inline int64_t EffectiveRoPERotaryDim(const RoPEParams& params) noexcept {
+    return params.rotary_dim == 0 ? params.head_dim : params.rotary_dim;
+}
 
 struct MatMulParams {
     bool transpose_rhs = false;

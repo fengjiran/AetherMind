@@ -377,7 +377,7 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
     double max_inverse_frequency = 0.0;
     for (int64_t pair = 0; pair < metadata.head_dim / 2; ++pair) {
         const double inverse_frequency =
-                ComputeRoPEInverseFrequency(metadata.theta, metadata.head_dim, pair);
+                ComputeRoPEInvFreqs(metadata.theta, metadata.head_dim, pair);
         if (!std::isfinite(inverse_frequency) || inverse_frequency <= 0.0) {
             return Status::Overflow("CPU RoPE inverse frequency is not finite");
         }
@@ -389,7 +389,7 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
     ::new (params_buffer) RoPEF32KernelArgs{
             .q = q.data<float>(),
             .k = k.data<float>(),
-            .position_ids = position_ids.data<int64_t>(),
+            .pos_ids = position_ids.data<int64_t>(),
             .q_output = q_output.data<float>(),
             .k_output = k_output.data<float>(),
             .seq_len = seq_len,
@@ -400,13 +400,13 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
             .q_col_stride = q.stride(1),
             .k_row_stride = k.stride(0),
             .k_col_stride = k.stride(1),
-            .position_stride = position_ids.stride(0),
+            .pos_stride = position_ids.stride(0),
             .q_output_row_stride = q_output.stride(0),
             .q_output_col_stride = q_output.stride(1),
             .k_output_row_stride = k_output.stride(0),
             .k_output_col_stride = k_output.stride(1),
             .theta = metadata.theta,
-            .position_divisor = metadata.position_divisor,
+            .pos_divisor = metadata.position_divisor,
             .max_inverse_frequency = max_inverse_frequency,
     };
     return Status::Ok();

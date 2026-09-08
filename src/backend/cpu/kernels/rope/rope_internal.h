@@ -21,12 +21,11 @@ namespace aethermind::cpu::detail {
 ///
 /// Callers validate that `theta` is finite and positive, `head_dim` is positive
 /// and even, and `pair` is in `[0, head_dim / 2)`.
-inline double ComputeRoPEInverseFrequency(double theta,
-                                          int64_t head_dim,
-                                          int64_t pair) noexcept {
-    const double exponent =
-            -2.0 * static_cast<double>(pair) / static_cast<double>(head_dim);
-    return std::pow(theta, exponent);
+inline double ComputeRoPEInvFreqs(double theta,
+                                  int64_t head_dim,
+                                  int64_t pair) noexcept {
+    const double exp = -2.0 * static_cast<double>(pair) / static_cast<double>(head_dim);
+    return std::pow(theta, exp);
 }
 
 /// @brief Pre-validated FP32 arguments for Llama split-half RoPE.
@@ -38,7 +37,7 @@ inline double ComputeRoPEInverseFrequency(double theta,
 struct RoPEF32KernelArgs {
     const float* q{};
     const float* k{};
-    const int64_t* position_ids{};
+    const int64_t* pos_ids{};
     float* q_output{};
     float* k_output{};
 
@@ -51,14 +50,14 @@ struct RoPEF32KernelArgs {
     int64_t q_col_stride{1};
     int64_t k_row_stride{};
     int64_t k_col_stride{1};
-    int64_t position_stride{1};
+    int64_t pos_stride{1};
     int64_t q_output_row_stride{};
     int64_t q_output_col_stride{1};
     int64_t k_output_row_stride{};
     int64_t k_output_col_stride{1};
 
     double theta{10000.0};
-    double position_divisor{1.0};
+    double pos_divisor{1.0};
     double max_inverse_frequency{1.0};
 };
 

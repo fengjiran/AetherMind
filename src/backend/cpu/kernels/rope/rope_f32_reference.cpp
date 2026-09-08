@@ -7,24 +7,24 @@ namespace aethermind::cpu::detail {
 namespace {
 
 Status ValidatePositionIdsAndAngleRange(const RoPEF32KernelArgs& args) noexcept {
-    int64_t max_position = 0;
+    int64_t max_pos = 0;
     for (int64_t token = 0; token < args.seq_len; ++token) {
-        const int64_t position = args.position_ids[token * args.position_stride];
+        const int64_t position = args.pos_ids[token * args.pos_stride];
         if (position < 0) {
             return Status::InvalidArgument("CPU RoPE requires non-negative position_ids");
         }
 
-        if (position > max_position) {
-            max_position = position;
+        if (position > max_pos) {
+            max_pos = position;
         }
     }
 
-    const double max_effective_position = static_cast<double>(max_position) / args.position_divisor;
-    if (!std::isfinite(max_effective_position)) {
+    const double max_effective_pos = static_cast<double>(max_pos) / args.pos_divisor;
+    if (!std::isfinite(max_effective_pos)) {
         return Status::Overflow("CPU RoPE effective position is not finite");
     }
 
-    if (const double max_angle = max_effective_position * args.max_inverse_frequency;
+    if (const double max_angle = max_effective_pos * args.max_inverse_frequency;
         !std::isfinite(max_angle)) {
         return Status::Overflow("CPU RoPE angle is not finite");
     }
@@ -62,11 +62,11 @@ Status RunRoPEF32Reference(const RoPEF32KernelArgs& args) noexcept {
     const int64_t half = args.head_dim / 2;
     for (int64_t pair = 0; pair < half; ++pair) {
         const double inv_frequency =
-                ComputeRoPEInverseFrequency(args.theta, args.head_dim, pair);
+                ComputeRoPEInvFreqs(args.theta, args.head_dim, pair);
         for (int64_t token = 0; token < args.seq_len; ++token) {
             const double effective_position =
-                    static_cast<double>(args.position_ids[token * args.position_stride]) /
-                    args.position_divisor;
+                    static_cast<double>(args.pos_ids[token * args.pos_stride]) /
+                    args.pos_divisor;
             const double angle = effective_position * inv_frequency;
             const double cosine = std::cos(angle);
             const double sine = std::sin(angle);

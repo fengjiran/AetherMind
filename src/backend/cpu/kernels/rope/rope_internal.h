@@ -11,29 +11,44 @@
 /// builder.
 
 #include "aethermind/base/status.h"
+#include "aethermind/operators/op_params.h"
 
-#include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <span>
 
 namespace aethermind::cpu::detail {
 
-/// @brief Computes the inverse frequency for one Llama split-half RoPE pair.
-///
-/// Callers validate that `theta` is finite and positive, `head_dim` is positive
-/// and even, and `pair` is in `[0, head_dim / 2)`.
-inline double ComputeRoPEInvFreqs(double theta,
-                                  int64_t head_dim,
-                                  int64_t pair) noexcept {
-    const double exp = -2.0 * static_cast<double>(pair) / static_cast<double>(head_dim);
-    return std::pow(theta, exp);
-}
+/// Binary attrs prefix. Resolved inverse-frequency tables immediately follow
+/// this POD header. Static algorithms have one table, LongRoPE has short then
+/// long tables, and Dynamic NTK derives frequencies at invocation time.
+struct RoPEF32KernelMetadata {
+    int64_t head_dim{};
+    int64_t rotary_dim{};
+    int64_t num_q_heads{};
+    int64_t num_kv_heads{};
+    int64_t original_context_length{};
+    double theta{};
+    double factor{};
+    double beta_fast{};
+    double beta_slow{};
+    double attention_scale{};
+    double low_frequency_factor{};
+    double high_frequency_factor{};
+    uint32_t frequency_count{};
+    RoPEPairing pairing{RoPEPairing::kSplitHalf};
+    RoPEAlgorithm algorithm{RoPEAlgorithm::kStandard};
+    bool truncate_correction_range{};
+    uint8_t frequency_table_count{};
+};
 
-/// @brief Pre-validated FP32 arguments for Llama split-half RoPE.
+/// @brief Pre-validated FP32 arguments for all supported RoPE algorithms.
 ///
 /// All pointers and geometry are prepared once for a binding. `position_ids`
 /// is read on each execution; its values are validated before the kernel
-/// writes either output. `position_divisor` is 1 for standard RoPE and the
-/// semantic linear-scaling factor for kLinear.
+/// writes either output. Algorithm parameters and precomputed static frequency
+/// tables are immutable attrs owned by the resolved kernel; the args retain no
+/// borrowed vector pointers into those attrs.
 struct RoPEF32KernelArgs {
     const float* q{};
     const float* k{};
@@ -43,6 +58,7 @@ struct RoPEF32KernelArgs {
 
     int64_t seq_len{};
     int64_t head_dim{};
+    int64_t rotary_dim{};
     int64_t num_q_heads{};
     int64_t num_kv_heads{};
 
@@ -56,18 +72,18 @@ struct RoPEF32KernelArgs {
     int64_t k_output_row_stride{};
     int64_t k_output_col_stride{1};
 
-    double theta{10000.0};
-    double pos_divisor{1.0};
-    double max_inverse_frequency{1.0};
+    RoPEPairing pairing{RoPEPairing::kSplitHalf};
 };
 
-/// @brief Runs the scalar FP32 Llama split-half RoPE reference kernel.
+/// @brief Runs the scalar FP32 RoPE reference kernel.
 ///
 /// @param args Pre-validated tensor layout and frozen RoPE parameters.
 /// @return InvalidArgument when a runtime position id is negative, Overflow
 ///         when its derived angle is not finite, or Ok after rotating both
 ///         outputs. A position failure occurs before any output write.
-Status RunRoPEF32Reference(const RoPEF32KernelArgs& args) noexcept;
+Status RunRoPEF32Reference(const RoPEF32KernelArgs& args,
+                           std::span<const std::byte> attrs) noexcept;
+
 
 } // namespace aethermind::cpu::detail
 

@@ -24,13 +24,13 @@ Status ValidateRoPEParams(const RoPEParams& p) {
                 "RoPE num_key_value_heads must be positive");
     }
 
-    if (p.max_position_embeddings <= 0) {
+    if (p.max_pos_embeddings <= 0) {
         return Status::InvalidArgument(
                 "RoPE max_position_embeddings must be positive");
     }
 
-    const int64_t rotary_dim = EffectiveRoPERotaryDim(p);
-    if (rotary_dim <= 0 || rotary_dim > p.head_dim || rotary_dim % 2 != 0) {
+    if (const int64_t rotary_dim = EffectiveRoPERotaryDim(p);
+        rotary_dim <= 0 || rotary_dim > p.head_dim || rotary_dim % 2 != 0) {
         return Status::InvalidArgument(
                 "RoPE rotary_dim must be positive, even, and no greater than head_dim");
     }

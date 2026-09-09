@@ -8,9 +8,10 @@
 /// by operator schema inference. Parameter structs are typed value objects;
 /// no std::any or stringly-typed fields are used.
 
+#include "utils/variant_utils.h"
+
 #include <cstdint>
 #include <string_view>
-#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -31,7 +32,7 @@ struct LinearParams {};
 /// even/odd elements.
 enum class RoPEPairing : uint8_t {
     kSplitHalf = 0,
-    kInterleaved,
+    kInterleaved
 };
 
 inline std::string_view ToString(RoPEPairing pairing) noexcept {
@@ -54,7 +55,7 @@ enum class RoPEAlgorithm : uint8_t {
     kDynamicNtk,
     kYarn,
     kLlama3,
-    kLongRope,
+    kLongRope
 };
 
 inline std::string_view ToString(RoPEAlgorithm algorithm) noexcept {
@@ -96,7 +97,7 @@ struct YarnRoPE {
     double beta_fast = 32.0;
     double beta_slow = 1.0;
     /// Final, front-end-normalized amplitude multiplier.
-    double attention_scale = 1.0;
+    double rotary_output_scale = 1.0;
     bool truncate_correction_range = true;
     friend bool operator==(const YarnRoPE&, const YarnRoPE&) = default;
 };
@@ -115,7 +116,7 @@ struct LongRoPE {
     std::vector<double> long_factors;
     int64_t original_context_length = 0;
     /// Final, front-end-normalized amplitude multiplier.
-    double attention_scale = 1.0;
+    double rotary_output_scale = 1.0;
     friend bool operator==(const LongRoPE&, const LongRoPE&) = default;
 };
 
@@ -127,24 +128,14 @@ using RoPEAlgorithmParams = std::variant<StandardRoPE,
                                          LongRoPE>;
 
 inline RoPEAlgorithm GetRoPEAlgorithm(const RoPEAlgorithmParams& params) noexcept {
-    return std::visit(
-            [](const auto& algorithm) noexcept -> RoPEAlgorithm {
-                using T = std::decay_t<decltype(algorithm)>;
-                if constexpr (std::is_same_v<T, StandardRoPE>) {
-                    return RoPEAlgorithm::kStandard;
-                } else if constexpr (std::is_same_v<T, LinearRoPE>) {
-                    return RoPEAlgorithm::kLinear;
-                } else if constexpr (std::is_same_v<T, DynamicNtkRoPE>) {
-                    return RoPEAlgorithm::kDynamicNtk;
-                } else if constexpr (std::is_same_v<T, YarnRoPE>) {
-                    return RoPEAlgorithm::kYarn;
-                } else if constexpr (std::is_same_v<T, Llama3RoPE>) {
-                    return RoPEAlgorithm::kLlama3;
-                } else {
-                    return RoPEAlgorithm::kLongRope;
-                }
-            },
-            params);
+    auto visitor = overloaded{
+            [](const StandardRoPE&) noexcept { return RoPEAlgorithm::kStandard; },
+            [](const LinearRoPE&) noexcept { return RoPEAlgorithm::kLinear; },
+            [](const DynamicNtkRoPE&) noexcept { return RoPEAlgorithm::kDynamicNtk; },
+            [](const YarnRoPE&) noexcept { return RoPEAlgorithm::kYarn; },
+            [](const Llama3RoPE&) noexcept { return RoPEAlgorithm::kLlama3; },
+            [](const LongRoPE&) noexcept { return RoPEAlgorithm::kLongRope; }};
+    return std::visit(visitor, params);
 }
 
 /// @brief Semantic parameters for OpType::kRoPE (Rotary Position Embedding).
@@ -189,7 +180,7 @@ struct RoPEParams {
     int64_t rotary_dim = 0;
     int64_t num_attention_heads = 0;
     int64_t num_key_value_heads = 0;
-    int64_t max_position_embeddings = 0;
+    int64_t max_pos_embeddings = 0;
     double theta = 10000.0;
     RoPEPairing pairing = RoPEPairing::kSplitHalf;
     RoPEAlgorithmParams algorithm = StandardRoPE{};

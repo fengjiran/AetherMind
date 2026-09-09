@@ -15,34 +15,64 @@
 
 namespace aethermind {
 
-struct ResolvedRoPEFrequencies {
-    std::vector<double> inverse_frequencies;
-    double attention_scale = 1.0;
+/// @brief Resolved inverse frequencies for one RoPE execution.
+///
+/// Owns the per-pair frequency table consumed by kernels. The table length is
+/// half the effective rotary dimension; kernels derive per-pair angles from it.
+struct ResolvedRoPEFreqs {
+    // One inverse frequency per rotary pair; size equals rotary_dim / 2.
+    std::vector<double> inv_freqs;
+    // Amplitude multiplier applied to the rotated output; 1.0 unless the
+    // active YaRN or LongRoPE algorithm carries a front-end-normalized scale.
+    double rotary_output_scale = 1.0;
 };
 
-/// Validates the algorithm-specific payload in addition to the scalar RoPE
-/// geometry validated by InferRoPE.
+/// @brief Validates the algorithm-specific payload of RoPE parameters.
+///
+/// @param params Semantic RoPE parameters, including the active frequency algorithm.
+/// @return Ok when the algorithm payload satisfies its contract; InvalidArgument otherwise.
+/// @note Scalar geometry is validated by InferRoPE; this function adds only the
+///       per-algorithm checks (for example, finite positive factors and matching
+///       LongRoPE factor-table lengths).
 Status ValidateRoPEFrequencyParameters(const RoPEParams& params);
 
-/// Dynamic NTK and LongRoPE require an execution-time effective sequence
-/// length. The remaining algorithms have a fixed frequency table.
+/// @brief Reports whether an algorithm needs an execution-time sequence length.
+///
+/// @param params Active frequency algorithm variant.
+/// @return True for Dynamic NTK and LongRoPE, false for the remaining algorithms.
 bool IsDynamicRoPE(const RoPEAlgorithmParams& params) noexcept;
 
-/// Computes the Dynamic NTK base without allocating a frequency table. This
-/// supports backend reference kernels that derive one pair at a time.
+/// @brief Computes the Dynamic NTK base without allocating a frequency table.
+///
+/// @param theta Base frequency from the semantic RoPE parameters.
+/// @param rotary_dim Effective rotary dimension; must exceed 2.
+/// @param factor Dynamic NTK scaling factor; must be finite and positive.
+/// @param original_context_length Training context length; must be positive.
+/// @param effective_sequence_length Execution-time length, normally max(position_ids) + 1.
+/// @return Scaled theta base, or InvalidArgument for contract violations and Overflow
+///         when the derived base is not finite.
+/// @note Supports backend reference kernels that derive one pair at a time.
 StatusOr<double> ComputeDynamicNtkBase(double theta,
                                        int64_t rotary_dim,
                                        double factor,
                                        int64_t original_context_length,
                                        int64_t effective_sequence_length);
 
-/// Resolves algorithms whose result is independent of position_ids.
-/// Returns InvalidArgument for Dynamic NTK and LongRoPE.
-StatusOr<ResolvedRoPEFrequencies> ResolveStaticRoPEFrequencies(const RoPEParams& params);
+/// @brief Resolves frequencies for algorithms with a position-independent table.
+///
+/// @param params Semantic RoPE parameters carrying a static algorithm.
+/// @return Owned frequency table, or InvalidArgument for Dynamic NTK and LongRoPE
+///         which require an execution-time sequence length.
+StatusOr<ResolvedRoPEFreqs> ResolveStaticRoPEFrequencies(const RoPEParams& params);
 
-/// Resolves the frequency table for one execution. `effective_sequence_length`
-/// is normally max(position_ids) + 1 and must be positive.
-StatusOr<ResolvedRoPEFrequencies> ResolveDynamicRoPEFrequencies(
+/// @brief Resolves the frequency table for one execution.
+///
+/// @param params Semantic RoPE parameters carrying any supported algorithm.
+/// @param effective_sequence_length Execution-time length, normally max(position_ids) + 1;
+///        must be positive.
+/// @return Owned frequency table; static algorithms ignore the sequence length and
+///         resolve as in ResolveStaticRoPEFrequencies.
+StatusOr<ResolvedRoPEFreqs> ResolveDynamicRoPEFrequencies(
         const RoPEParams& params,
         int64_t effective_sequence_length);
 

@@ -30,6 +30,13 @@ Dynamic NTK 不把首次 position 固化进 `PreparedExecutionBindings`。每次
 在 out-of-place 路径原样复制。split-half 配对 `i` 与 `rotary_dim/2+i`，interleaved
 配对 `2*i` 与 `2*i+1`。算法与 pairing 互不推断。
 
+YaRN/LongRoPE 的 `rotary_output_scale` 对应 HF `attention_factor`：它乘到 cos/sin，
+因而同时缩放旋转后的 Q 和 K。full rotary 时可由经验证的 lowering/fusion 等价改写为
+`attention_softmax_scale *= rotary_output_scale²`；不能直接乘一次原值。partial rotary 时
+logit 等于 `scale² * dot(rotary_prefix) + dot(unrotated_tail)`，不存在单个全局 logit
+系数，因此 reference 保留 RoPE 端缩放。该字段名称刻意避免把输出振幅与 logits scale
+混为一谈。
+
 ## Alias 与地址范围
 
 | 关系 | 允许条件 |

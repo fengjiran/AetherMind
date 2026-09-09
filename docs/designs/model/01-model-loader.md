@@ -32,7 +32,7 @@ ModelLoader 是模型加载链路的前端唯一入口：把 HuggingFace 模型�
 | 成员 | 含义 | 同步机制 / 备注 |
 |---|---|---|
 | `HfModelConfig` | `config.json` 解析产物（模型类型、隐藏维度、层数、RoPE 配置等） | 构造后只读，无同步 |
-| `HfRopeConfig` / `HfRopeScalingType` | RoPE 配置与 HF scaling 类型枚举（uint8_t 底层，保持结构紧凑） | 构造后只读 |
+| `HfRopeConfig` / `HfRoPEAlgorithm` | RoPE 原始配置与 HF 算法枚举；公共六种算法值与 semantic `RoPEAlgorithm` 显式对齐，另保留 legacy `kSu` 和 `kUnknown` | 构造后只读 |
 | `HfDirectoryDescriptor` | 目录布局描述（单文件/分片、safetensors 路径） | 构造后只读 |
 | `ResolvedModelWeights` | 逻辑权重视图集合（`DecoderLayerRawWeights[]`：attn/mlp/norm） | 构造后只读 |
 | `RawWeightView` / `RawStorage` | 权重借用视图与共享 backing storage | 视图不拥有数据；`IsValid()`/`IsAligned()` 校验辅助 |

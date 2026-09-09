@@ -443,7 +443,7 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
                    << " rotary_dim=" << EffectiveRoPERotaryDim(p)
                    << " num_attention_heads=" << p.num_attention_heads
                    << " num_key_value_heads=" << p.num_key_value_heads
-                   << " max_position_embeddings=" << p.max_position_embeddings
+                   << " max_position_embeddings=" << p.max_pos_embeddings
                    << " theta=" << p.theta
                    << " pairing=" << ToString(p.pairing)
                    << " algorithm=" << ToString(GetRoPEAlgorithm(p.algorithm));
@@ -460,7 +460,7 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
                                    << " original_context_length=" << algorithm.original_context_length
                                    << " beta_fast=" << algorithm.beta_fast
                                    << " beta_slow=" << algorithm.beta_slow
-                                   << " attention_scale=" << algorithm.attention_scale
+                                   << " rotary_output_scale=" << algorithm.rotary_output_scale
                                    << " truncate_correction_range="
                                    << (algorithm.truncate_correction_range ? "true" : "false");
                             } else if constexpr (std::is_same_v<T, Llama3RoPE>) {
@@ -470,7 +470,7 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
                                    << " original_context_length=" << algorithm.original_context_length;
                             } else if constexpr (std::is_same_v<T, LongRoPE>) {
                                 os << " original_context_length=" << algorithm.original_context_length
-                                   << " attention_scale=" << algorithm.attention_scale
+                                   << " rotary_output_scale=" << algorithm.rotary_output_scale
                                    << " short_factors=";
                                 SerializeDoubleList(algorithm.short_factors, os);
                                 os << " long_factors=";
@@ -585,7 +585,7 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
                                        .rotary_dim = *head_dim,
                                        .num_attention_heads = *num_attention_heads,
                                        .num_key_value_heads = *num_key_value_heads,
-                                       .max_position_embeddings = *max_position_embeddings,
+                                       .max_pos_embeddings = *max_position_embeddings,
                                        .theta = *theta,
                                        .algorithm = std::move(params)}};
         }
@@ -653,15 +653,15 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
                                     ParseInt64(fields, "original_context_length"));
                 AM_ASSIGN_OR_RETURN(const double beta_fast, ParseDouble(fields, "beta_fast"));
                 AM_ASSIGN_OR_RETURN(const double beta_slow, ParseDouble(fields, "beta_slow"));
-                AM_ASSIGN_OR_RETURN(const double attention_scale,
-                                    ParseDouble(fields, "attention_scale"));
+                AM_ASSIGN_OR_RETURN(const double rotary_output_scale,
+                                    ParseDouble(fields, "rotary_output_scale"));
                 AM_ASSIGN_OR_RETURN(const bool truncate,
                                     ParseBool(fields, "truncate_correction_range"));
                 algorithm_params = YarnRoPE{.factor = factor,
                                             .original_context_length = original,
                                             .beta_fast = beta_fast,
                                             .beta_slow = beta_slow,
-                                            .attention_scale = attention_scale,
+                                            .rotary_output_scale = rotary_output_scale,
                                             .truncate_correction_range = truncate};
                 break;
             }
@@ -682,8 +682,8 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
             case RoPEAlgorithm::kLongRope: {
                 AM_ASSIGN_OR_RETURN(const int64_t original,
                                     ParseInt64(fields, "original_context_length"));
-                AM_ASSIGN_OR_RETURN(const double attention_scale,
-                                    ParseDouble(fields, "attention_scale"));
+                AM_ASSIGN_OR_RETURN(const double rotary_output_scale,
+                                    ParseDouble(fields, "rotary_output_scale"));
                 AM_ASSIGN_OR_RETURN(auto short_factors,
                                     ParseDoubleList(fields, "short_factors"));
                 AM_ASSIGN_OR_RETURN(auto long_factors,
@@ -691,7 +691,7 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
                 algorithm_params = LongRoPE{.short_factors = std::move(short_factors),
                                             .long_factors = std::move(long_factors),
                                             .original_context_length = original,
-                                            .attention_scale = attention_scale};
+                                            .rotary_output_scale = rotary_output_scale};
                 break;
             }
         }
@@ -699,7 +699,7 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
                                    .rotary_dim = *rotary_dim,
                                    .num_attention_heads = *num_attention_heads,
                                    .num_key_value_heads = *num_key_value_heads,
-                                   .max_position_embeddings = *max_position_embeddings,
+                                   .max_pos_embeddings = *max_position_embeddings,
                                    .theta = *theta,
                                    .pairing = *pairing,
                                    .algorithm = std::move(algorithm_params)}};

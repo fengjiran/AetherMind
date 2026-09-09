@@ -237,7 +237,7 @@ void DumpOpParams(const OpParams& params, std::ostream& os) {
                    << ", rotary_dim=" << EffectiveRoPERotaryDim(p)
                    << ", num_attention_heads=" << p.num_attention_heads
                    << ", num_key_value_heads=" << p.num_key_value_heads
-                   << ", max_position_embeddings=" << p.max_position_embeddings
+                   << ", max_position_embeddings=" << p.max_pos_embeddings
                    << ", theta=" << p.theta
                    << ", pairing=" << ToString(p.pairing)
                    << ", algorithm=" << ToString(GetRoPEAlgorithm(p.algorithm)) << '}';

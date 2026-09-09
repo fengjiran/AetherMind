@@ -32,7 +32,7 @@ struct RoPEF32KernelMetadata {
     double factor{};
     double beta_fast{};
     double beta_slow{};
-    double attention_scale{};
+    double rotary_output_scale{};
     double low_frequency_factor{};
     double high_frequency_factor{};
     uint32_t frequency_count{};

@@ -205,7 +205,7 @@ Status ValidateMetadataLayout(const RoPEF32KernelMetadata& metadata,
 Status ValidateRoPEParamsForKernel(const RoPEParams& params,
                                    RoPEF32KernelMetadata& metadata) noexcept {
     if (params.head_dim <= 0 || params.num_attention_heads <= 0 ||
-        params.num_key_value_heads <= 0 || params.max_position_embeddings <= 0) {
+        params.num_key_value_heads <= 0 || params.max_pos_embeddings <= 0) {
         return Status::InvalidArgument(
                 "CPU RoPE requires positive dimensions and head counts");
     }
@@ -251,7 +251,7 @@ Status ValidateRoPEParamsForKernel(const RoPEParams& params,
                     metadata.original_context_length = algorithm.original_context_length;
                     metadata.beta_fast = algorithm.beta_fast;
                     metadata.beta_slow = algorithm.beta_slow;
-                    metadata.attention_scale = algorithm.attention_scale;
+                    metadata.rotary_output_scale = algorithm.rotary_output_scale;
                     metadata.truncate_correction_range = algorithm.truncate_correction_range;
                 } else if constexpr (std::is_same_v<T, Llama3RoPE>) {
                     metadata.factor = algorithm.factor;
@@ -260,7 +260,7 @@ Status ValidateRoPEParamsForKernel(const RoPEParams& params,
                     metadata.original_context_length = algorithm.original_context_length;
                 } else if constexpr (std::is_same_v<T, LongRoPE>) {
                     metadata.original_context_length = algorithm.original_context_length;
-                    metadata.attention_scale = algorithm.attention_scale;
+                    metadata.rotary_output_scale = algorithm.rotary_output_scale;
                 }
             },
             params.algorithm);
@@ -439,8 +439,8 @@ Status BuildRoPEF32Metadata(const OpParams& params,
 
     RoPEF32KernelMetadata metadata{};
     AM_RETURN_IF_ERROR(ValidateRoPEParamsForKernel(*rope_params, metadata));
-    metadata.attention_scale = 1.0;
-    std::vector<ResolvedRoPEFrequencies> tables;
+    metadata.rotary_output_scale = 1.0;
+    std::vector<ResolvedRoPEFreqs> tables;
     if (const auto* long_rope = std::get_if<LongRoPE>(&rope_params->algorithm)) {
         if (long_rope->original_context_length == std::numeric_limits<int64_t>::max()) {
             return Status::InvalidArgument("CPU RoPE LongRoPE original context is too large");
@@ -451,7 +451,7 @@ Status BuildRoPEF32Metadata(const OpParams& params,
         AM_ASSIGN_OR_RETURN(auto long_table,
                             ResolveDynamicRoPEFrequencies(*rope_params,
                                                           long_rope->original_context_length + 1));
-        metadata.attention_scale = short_table.attention_scale;
+        metadata.rotary_output_scale = short_table.rotary_output_scale;
         tables.push_back(std::move(short_table));
         tables.push_back(std::move(long_table));
     } else if (!std::holds_alternative<DynamicNtkRoPE>(rope_params->algorithm)) {
@@ -463,7 +463,7 @@ Status BuildRoPEF32Metadata(const OpParams& params,
             static_params.algorithm = StandardRoPE{};
         }
         AM_ASSIGN_OR_RETURN(auto table, ResolveStaticRoPEFrequencies(static_params));
-        metadata.attention_scale = table.attention_scale;
+        metadata.rotary_output_scale = table.rotary_output_scale;
         tables.push_back(std::move(table));
     }
     if (tables.size() != metadata.frequency_table_count) {
@@ -471,15 +471,15 @@ Status BuildRoPEF32Metadata(const OpParams& params,
     }
     const auto bytes = std::as_bytes(std::span{&metadata, size_t{1}});
     attrs.assign(bytes.begin(), bytes.end());
-    for (const ResolvedRoPEFrequencies& table: tables) {
-        if (table.inverse_frequencies.size() != metadata.frequency_count) {
+    for (const ResolvedRoPEFreqs& table: tables) {
+        if (table.inv_freqs.size() != metadata.frequency_count) {
             return Status::Internal("CPU RoPE resolver returned invalid frequency count");
         }
         const auto append = [&](const std::vector<double>& frequencies) {
             const auto factor_bytes = std::as_bytes(std::span{frequencies});
             attrs.insert(attrs.end(), factor_bytes.begin(), factor_bytes.end());
         };
-        append(table.inverse_frequencies);
+        append(table.inv_freqs);
     }
     return Status::Ok();
 }

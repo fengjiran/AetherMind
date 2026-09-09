@@ -36,7 +36,7 @@ StatusOr<RoPEF32KernelMetadata> ReadAndValidateMetadata(
     if (metadata.rotary_dim <= 0 || metadata.rotary_dim % 2 != 0 ||
         metadata.frequency_count != static_cast<uint32_t>(metadata.rotary_dim / 2) ||
         metadata.frequency_table_count != ExpectedFrequencyTableCount(metadata.algorithm) ||
-        !std::isfinite(metadata.attention_scale)) {
+        !std::isfinite(metadata.rotary_output_scale)) {
         return Status::InvalidArgument("CPU RoPE metadata attrs are invalid");
     }
     size_t table_bytes = 0;
@@ -216,8 +216,8 @@ Status RunRoPEF32Reference(const RoPEF32KernelArgs& args,
                                 EffectivePosition(metadata,
                                                   args.pos_ids[token * args.pos_stride]));
             const double angle = position * inverse_frequency;
-            const double cosine = std::cos(angle) * metadata.attention_scale;
-            const double sine = std::sin(angle) * metadata.attention_scale;
+            const double cosine = std::cos(angle) * metadata.rotary_output_scale;
+            const double sine = std::sin(angle) * metadata.rotary_output_scale;
             RotateHeads(args.q + token * args.q_row_stride,
                         args.q_output + token * args.q_output_row_stride,
                         args.num_q_heads, args.head_dim, args.rotary_dim, args.pairing,

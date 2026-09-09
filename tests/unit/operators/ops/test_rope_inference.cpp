@@ -20,7 +20,7 @@ RoPEParams MakeStandardParams() {
             .head_dim = kHeadDim,
             .num_attention_heads = kNumAttentionHeads,
             .num_key_value_heads = kNumKeyValueHeads,
-            .max_position_embeddings = kMaxPositionEmbeddings,
+            .max_pos_embeddings = kMaxPositionEmbeddings,
             .theta = 10000.0,
             .algorithm = StandardRoPE{},
     };
@@ -76,7 +76,7 @@ TEST(RoPEInference, RejectsZeroNumKeyValueHeads) {
 
 TEST(RoPEInference, RejectsZeroMaxPositionEmbeddings) {
     auto p = MakeStandardParams();
-    p.max_position_embeddings = 0;
+    p.max_pos_embeddings = 0;
     EXPECT_FALSE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
 }
 

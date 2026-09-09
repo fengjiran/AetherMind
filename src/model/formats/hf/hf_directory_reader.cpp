@@ -20,7 +20,7 @@ namespace aethermind {
 namespace {
 
 struct ParsedRopeConfig {
-    std::optional<double> scaling_factor{};
+    std::optional<double> factor{};
     std::optional<int64_t> original_context_length{};
     std::optional<double> beta_fast{};
     std::optional<double> beta_slow{};
@@ -34,7 +34,7 @@ struct ParsedRopeConfig {
     std::optional<bool> truncate_correction_range{};
     std::vector<double> short_factors{};
     std::vector<double> long_factors{};
-    HfRopeScalingType scaling_type = HfRopeScalingType::kNone;
+    HfRoPEAlgorithm algorithm = HfRoPEAlgorithm::kStandard;
     std::optional<double> theta{};
 };
 
@@ -179,7 +179,8 @@ private:
         }
 
         if (key == "rotary_dim") {
-            return parse_into([&] { return ParseInt64(); }, config.rope.rotary_dim);
+            return parse_into([&] { return ParseInt64(); },
+                              config.rope.rotary_dim);
         }
 
         if (key == "original_max_position_embeddings") {
@@ -192,10 +193,12 @@ private:
             if (!value.ok()) {
                 return FieldParseError(key, value.status());
             }
-            config.rope.scaling_factor = value->scaling_factor;
+
+            config.rope.factor = value->factor;
             if (value->original_context_length.has_value()) {
                 config.rope.original_context_length = value->original_context_length;
             }
+
             config.rope.beta_fast = value->beta_fast;
             config.rope.beta_slow = value->beta_slow;
             config.rope.attention_factor = value->attention_factor;
@@ -209,10 +212,12 @@ private:
             if (value->partial_rotary_factor.has_value()) {
                 config.rope.partial_rotary_factor = value->partial_rotary_factor;
             }
+
             if (value->rotary_dim.has_value()) {
                 config.rope.rotary_dim = value->rotary_dim;
             }
-            config.rope.scaling_type = value->scaling_type;
+
+            config.rope.algorithm = value->algorithm;
             if (value->theta.has_value()) {
                 config.rope.theta = *value->theta;
             }
@@ -255,7 +260,7 @@ private:
                     if (!factor.ok()) {
                         return factor.status();
                     }
-                    rope_config.scaling_factor = *factor;
+                    rope_config.factor = *factor;
                 } else if (*key == "original_max_position_embeddings" ||
                            *key == "original_context_length") {
                     auto value = ParseInt64();
@@ -314,7 +319,7 @@ private:
                     if (!type.ok()) {
                         return type.status();
                     }
-                    rope_config.scaling_type = ParseRopeScalingType(*type);
+                    rope_config.algorithm = ParseHfRoPEAlgorithm(*type);
                 } else if (*key == "rope_theta") {
                     auto theta = ParseDouble();
                     if (!theta.ok()) {
@@ -518,8 +523,9 @@ StatusOr<RawWeightTable> LoadShardedRawWeightTable(const HfDirectoryDescriptor& 
             if (!first) {
                 message += ", ";
             }
+
             first = false;
-            message += "'";
+            message += '\'';
             message += kv.first;
             message += "' (assigned to shard '";
             message += kv.second;
@@ -569,7 +575,8 @@ StatusOr<RawWeightTable> HfDirectoryReader::LoadRawWeightTable() const {
                     "Unknown HF safetensors directory layout", dir_desc_.model_dir));
 }
 
-StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(const std::filesystem::path& model_dir) {
+StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(
+        const std::filesystem::path& model_dir) {
     // Reject an empty path before filesystem probing so the caller gets a usage
     // error instead of a platform-dependent filesystem diagnostic.
     if (model_dir.empty()) {

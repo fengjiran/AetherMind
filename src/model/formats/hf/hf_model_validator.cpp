@@ -49,8 +49,8 @@ bool IsSupportedActivation(std::string_view act) {
 }
 
 bool HasRopeScaling(const HfRopeConfig& rope) {
-    return rope.scaling_type != HfRopeScalingType::kNone ||
-           rope.scaling_factor.has_value() || rope.original_context_length.has_value() ||
+    return rope.algorithm != HfRoPEAlgorithm::kStandard ||
+           rope.factor.has_value() || rope.original_context_length.has_value() ||
            rope.beta_fast.has_value() || rope.beta_slow.has_value() ||
            rope.attention_factor.has_value() || rope.low_frequency_factor.has_value() ||
            rope.high_frequency_factor.has_value() || rope.mscale.has_value() ||
@@ -575,42 +575,41 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
     }
 
     if (options.allow_rope_scaling && has_rope_scaling) {
-        if (config.rope.scaling_type == HfRopeScalingType::kNone) {
+        if (config.rope.algorithm == HfRoPEAlgorithm::kStandard) {
             return Status::InvalidArgument(
-                    "Model config field 'rope.scaling_type' must be provided when RoPE scaling is configured");
+                    "Model config field 'rope_type' must select a non-standard algorithm when scaling fields are configured");
         }
 
         // ModelGraphBuilder remains the authority for algorithm-specific
         // normalization. The loader only rejects structurally incomplete HF
         // tuples before model construction.
         const bool requires_scalar_factor =
-                config.rope.scaling_type == HfRopeScalingType::kLinear ||
-                config.rope.scaling_type == HfRopeScalingType::kDynamicNtk ||
-                config.rope.scaling_type == HfRopeScalingType::kYarn ||
-                config.rope.scaling_type == HfRopeScalingType::kLlama3;
-        if (requires_scalar_factor && !config.rope.scaling_factor.has_value()) {
+                config.rope.algorithm == HfRoPEAlgorithm::kLinear ||
+                config.rope.algorithm == HfRoPEAlgorithm::kDynamicNtk ||
+                config.rope.algorithm == HfRoPEAlgorithm::kYarn ||
+                config.rope.algorithm == HfRoPEAlgorithm::kLlama3;
+        if (requires_scalar_factor && !config.rope.factor.has_value()) {
             return Status::InvalidArgument(
-                    "Model config field 'rope.scaling_factor' must be provided when RoPE scaling is configured");
+                    "Model config field 'rope.factor' must be provided when RoPE scaling is configured");
         }
 
-        if (config.rope.scaling_factor.has_value() &&
-            (!std::isfinite(*config.rope.scaling_factor) ||
-             *config.rope.scaling_factor <= 0.0)) {
-            return Status::InvalidArgument("Model config field 'rope.scaling_factor' must be positive");
+        if (config.rope.factor.has_value() &&
+            (!std::isfinite(*config.rope.factor) || *config.rope.factor <= 0.0)) {
+            return Status::InvalidArgument("Model config field 'rope.factor' must be positive");
         }
 
-        if ((config.rope.scaling_type == HfRopeScalingType::kLongRope ||
-             config.rope.scaling_type == HfRopeScalingType::kSu) &&
+        if ((config.rope.algorithm == HfRoPEAlgorithm::kLongRope ||
+             config.rope.algorithm == HfRoPEAlgorithm::kSu) &&
             (config.rope.short_factors.empty() || config.rope.long_factors.empty())) {
             return Status::InvalidArgument(
                     "LongRoPE requires non-empty short_factor and long_factor arrays");
         }
 
         const bool requires_original_context =
-                config.rope.scaling_type == HfRopeScalingType::kYarn ||
-                config.rope.scaling_type == HfRopeScalingType::kLlama3 ||
-                config.rope.scaling_type == HfRopeScalingType::kLongRope ||
-                config.rope.scaling_type == HfRopeScalingType::kSu;
+                config.rope.algorithm == HfRoPEAlgorithm::kYarn ||
+                config.rope.algorithm == HfRoPEAlgorithm::kLlama3 ||
+                config.rope.algorithm == HfRoPEAlgorithm::kLongRope ||
+                config.rope.algorithm == HfRoPEAlgorithm::kSu;
         if (requires_original_context &&
             (!config.rope.original_context_length.has_value() ||
              *config.rope.original_context_length <= 0)) {

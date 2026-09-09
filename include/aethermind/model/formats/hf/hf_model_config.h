@@ -20,84 +20,85 @@ namespace aethermind {
 // NOLINTBEGIN(readability-identifier-naming)
 // Names below mirror config.json keys and HF strings 1:1, so the naming lint
 // is suppressed for the whole block instead of per name.
-/// @brief RoPE scaling strategies defined in HF config.json.
+/// @brief RoPE algorithm spellings accepted from HF config.json.
 ///
 /// The underlying type is fixed to uint8_t to keep the config struct compact
 /// and its serialization stable.
-enum class HfRopeScalingType : uint8_t {
-    kNone = 0,     // No rope_scaling entry; standard RoPE applies.
-    kLinear,       // HF string: "linear"
-    kDynamicNtk,   // HF string: "dynamic"; Dynamic NTK scaling
-    kYarn,         // HF string: "yarn"
-    kLlama3,       // HF string: "llama3"; LLaMA 3.x piecewise scaling
-    kLongRope,     // HF string: "longrope"
-    kSu,           // HF string: "su"; legacy/extended HF scaling type
+enum class HfRoPEAlgorithm : uint8_t {
+    kStandard = 0, // Empty or "default" HF rope_type.
+    kLinear = 1,
+    kDynamicNtk = 2,
+    kYarn = 3,
+    kLlama3 = 4,
+    kLongRope = 5,
+    kSu = 6,       // Legacy Phi-3 spelling normalized to LongRoPE.
     kUnknown = 255 // Parsed but not recognized by this engine.
 };
 
-/// @brief Maps an HF config.json rope_scaling.type string to its enum value.
+/// @brief Maps an HF config.json rope_type string to its format-layer enum.
 ///
-/// @param type_str Value of the "rope_scaling.type" key.
-/// @return Matching enum value; kNone for empty or "default", kUnknown for
+/// @param type_str Value of the legacy `rope_scaling.type` or current
+///                 `rope_parameters.rope_type` key.
+/// @return Matching enum value; kStandard for empty or "default", kUnknown for
 /// unrecognized strings.
 /// @note Inverse of ToString except that kUnknown round-trips to "unknown",
 /// which is not a valid HF input string.
-inline HfRopeScalingType ParseRopeScalingType(std::string_view type_str) noexcept {
+inline HfRoPEAlgorithm ParseHfRoPEAlgorithm(std::string_view type_str) noexcept {
     const auto is = [type_str](std::string_view value) noexcept {
         return type_str == value;
     };
 
     if (type_str.empty() || is("default")) {
-        return HfRopeScalingType::kNone;
+        return HfRoPEAlgorithm::kStandard;
     }
 
     if (is("linear")) {
-        return HfRopeScalingType::kLinear;
+        return HfRoPEAlgorithm::kLinear;
     }
 
     if (is("dynamic") || is("dynamic_ntk")) {
-        return HfRopeScalingType::kDynamicNtk;
+        return HfRoPEAlgorithm::kDynamicNtk;
     }
 
     if (is("yarn")) {
-        return HfRopeScalingType::kYarn;
+        return HfRoPEAlgorithm::kYarn;
     }
 
     if (is("llama3")) {
-        return HfRopeScalingType::kLlama3;
+        return HfRoPEAlgorithm::kLlama3;
     }
 
     if (is("longrope")) {
-        return HfRopeScalingType::kLongRope;
+        return HfRoPEAlgorithm::kLongRope;
     }
 
     if (is("su")) {
-        return HfRopeScalingType::kSu;
+        return HfRoPEAlgorithm::kSu;
     }
-    return HfRopeScalingType::kUnknown;
+    return HfRoPEAlgorithm::kUnknown;
 }
 
-/// @brief Maps a scaling enum value back to its HF config.json string.
+/// @brief Maps an HF algorithm enum value back to its config.json string.
 ///
-/// @param scaling_type Enum value to convert.
+/// @param algorithm Enum value to convert.
 /// @return HF string for the value; "unknown" for kUnknown.
-inline std::string_view ToString(HfRopeScalingType scaling_type) noexcept {
-    switch (scaling_type) {
-        case HfRopeScalingType::kNone:
+inline std::string_view ToString(HfRoPEAlgorithm algorithm) noexcept {
+    switch (algorithm) {
+        case HfRoPEAlgorithm::kStandard:
             return "default";
-        case HfRopeScalingType::kLinear:
+        case HfRoPEAlgorithm::kLinear:
             return "linear";
-        case HfRopeScalingType::kDynamicNtk:
+        case HfRoPEAlgorithm::kDynamicNtk:
             return "dynamic";
-        case HfRopeScalingType::kYarn:
+        case HfRoPEAlgorithm::kYarn:
             return "yarn";
-        case HfRopeScalingType::kLlama3:
+        case HfRoPEAlgorithm::kLlama3:
             return "llama3";
-        case HfRopeScalingType::kLongRope:
+        case HfRoPEAlgorithm::kLongRope:
             return "longrope";
-        case HfRopeScalingType::kSu:
+        case HfRoPEAlgorithm::kSu:
             return "su";
-        case HfRopeScalingType::kUnknown:
+        case HfRoPEAlgorithm::kUnknown:
             return "unknown";
     }
     return "unknown";
@@ -109,7 +110,7 @@ inline std::string_view ToString(HfRopeScalingType scaling_type) noexcept {
 /// these format-specific optional fields into one typed semantic alternative.
 struct HfRopeConfig {
     double theta = 10000.0; // Standard RoPE base frequency.
-    std::optional<double> scaling_factor{};
+    std::optional<double> factor{};
     std::optional<int64_t> original_context_length{};
     std::optional<double> beta_fast{};
     std::optional<double> beta_slow{};
@@ -123,7 +124,7 @@ struct HfRopeConfig {
     std::optional<int64_t> rotary_dim{};
     std::vector<double> short_factors{};
     std::vector<double> long_factors{};
-    HfRopeScalingType scaling_type = HfRopeScalingType::kNone;
+    HfRoPEAlgorithm algorithm = HfRoPEAlgorithm::kStandard;
 };
 
 /// @brief Parsed HuggingFace config.json for a model directory.

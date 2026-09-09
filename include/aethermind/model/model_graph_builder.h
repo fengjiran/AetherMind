@@ -10,7 +10,7 @@ namespace aethermind {
 
 class ModelGraphBuilder {
 public:
-    AM_NODISCARD static StatusOr<ModelGraph> BuildLlamaDense(
+    static StatusOr<ModelGraph> BuildLlamaDense(
             const HfModelConfig& config,
             const ResolvedModelWeights& weights);
 };

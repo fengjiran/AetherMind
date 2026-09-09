@@ -109,8 +109,8 @@ TEST(ModelCompiler, SupportsLinearAndDynamicNtkRopeScaling) {
     ASSERT_TRUE(loaded.ok()) << loaded.status().ToString();
 
     HfModelConfig linear_config = (*loaded)->GetConfig();
-    linear_config.rope.scaling_type = HfRopeScalingType::kLinear;
-    linear_config.rope.scaling_factor = 2.0;
+    linear_config.rope.algorithm = HfRoPEAlgorithm::kLinear;
+    linear_config.rope.factor = 2.0;
     auto linear_model = std::make_unique<LoadedModel>(
             std::move(linear_config), (*loaded)->GetResolvedWeights());
 
@@ -120,8 +120,8 @@ TEST(ModelCompiler, SupportsLinearAndDynamicNtkRopeScaling) {
     ASSERT_TRUE(linear.ok()) << linear.status().ToString();
 
     HfModelConfig unsupported_config = (*loaded)->GetConfig();
-    unsupported_config.rope.scaling_type = HfRopeScalingType::kDynamicNtk;
-    unsupported_config.rope.scaling_factor = 2.0;
+    unsupported_config.rope.algorithm = HfRoPEAlgorithm::kDynamicNtk;
+    unsupported_config.rope.factor = 2.0;
     auto unsupported_model = std::make_unique<LoadedModel>(
             std::move(unsupported_config), (*loaded)->GetResolvedWeights());
 

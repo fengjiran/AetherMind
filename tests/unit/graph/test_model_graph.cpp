@@ -313,7 +313,7 @@ TEST(ModelGraph, ValidateRejectsInvalidRoPEParams) {
             RoPEParams{.head_dim = 0,
                        .num_attention_heads = 4,
                        .num_key_value_heads = 2,
-                       .max_position_embeddings = 128});
+                       .max_pos_embeddings = 128});
 
     EXPECT_FALSE(result.ok());
     EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
@@ -1923,7 +1923,7 @@ TEST(ModelGraphSemanticValidation, RoPENodeHasDistinctOutputIds) {
             RoPEParams{.head_dim = 2,
                        .num_attention_heads = 4,
                        .num_key_value_heads = 2,
-                       .max_position_embeddings = 128});
+                       .max_pos_embeddings = 128});
 
     ASSERT_TRUE(result.ok()) << result.status().ToString();
     const AddedNode& added = *result;

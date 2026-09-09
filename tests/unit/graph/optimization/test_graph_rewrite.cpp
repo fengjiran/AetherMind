@@ -20,7 +20,7 @@ RoPEParams ValidRoPEParams() {
     return RoPEParams{.head_dim = 4,
                       .num_attention_heads = 1,
                       .num_key_value_heads = 1,
-                      .max_position_embeddings = 128,
+                      .max_pos_embeddings = 128,
                       .theta = 10000.0,
                       .algorithm = StandardRoPE{}};
 }

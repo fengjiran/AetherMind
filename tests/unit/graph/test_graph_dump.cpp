@@ -217,7 +217,7 @@ TEST(GraphDump, DumpsEveryOpParamsVariant) {
             RoPEParams{.head_dim = 8,
                        .num_attention_heads = 4,
                        .num_key_value_heads = 2,
-                       .max_position_embeddings = 128,
+                       .max_pos_embeddings = 128,
                        .theta = 10000.0,
                        .algorithm = LinearRoPE{.factor = 2.0}},
             MatMulParams{.transpose_rhs = true},

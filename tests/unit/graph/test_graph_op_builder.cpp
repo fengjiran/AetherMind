@@ -364,7 +364,7 @@ TEST(GraphOpBuilder, AddsMultiOutputOperatorHelpers) {
                            RoPEParams{.head_dim = 2,
                                       .num_attention_heads = 2,
                                       .num_key_value_heads = 2,
-                                      .max_position_embeddings = 128},
+                                      .max_pos_embeddings = 128},
                            "rope");
     ASSERT_TRUE(rope_or.ok()) << rope_or.status().ToString();
     const RoPEOutputs rope = *rope_or;

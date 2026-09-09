@@ -47,16 +47,16 @@ bool IsDynamicRoPE(const RoPEAlgorithmParams& params) noexcept;
 /// @param theta Base frequency from the semantic RoPE parameters.
 /// @param rotary_dim Effective rotary dimension; must exceed 2.
 /// @param factor Dynamic NTK scaling factor; must be finite and positive.
-/// @param original_context_length Training context length; must be positive.
-/// @param effective_sequence_length Execution-time length, normally max(position_ids) + 1.
+/// @param original_context_len Training context length; must be positive.
+/// @param effective_seq_len Execution-time length, normally max(position_ids) + 1.
 /// @return Scaled theta base, or InvalidArgument for contract violations and Overflow
 ///         when the derived base is not finite.
 /// @note Supports backend reference kernels that derive one pair at a time.
 StatusOr<double> ComputeDynamicNtkBase(double theta,
                                        int64_t rotary_dim,
                                        double factor,
-                                       int64_t original_context_length,
-                                       int64_t effective_sequence_length);
+                                       int64_t original_context_len,
+                                       int64_t effective_seq_len);
 
 /// @brief Resolves frequencies for algorithms with a position-independent table.
 ///

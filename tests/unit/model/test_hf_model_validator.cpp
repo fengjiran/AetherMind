@@ -344,8 +344,8 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsNonPositiveRopeTheta) {
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsRopeScalingWhenDisallowed) {
     HfModelConfig config = MakeValidLlamaConfig();
-    config.rope.scaling_factor = 2.0;
-    config.rope.scaling_type = HfRopeScalingType::kLinear;
+    config.rope.factor = 2.0;
+    config.rope.algorithm = HfRoPEAlgorithm::kLinear;
     ModelValidationOptions options{};
     options.allow_rope_scaling = false;
 
@@ -357,8 +357,8 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsRopeScalingWhenDisallowed) {
 
 TEST(ModelLoader_HfModelValidatorTest, AcceptsPositiveRopeScalingWhenAllowed) {
     HfModelConfig config = MakeValidLlamaConfig();
-    config.rope.scaling_factor = 2.0;
-    config.rope.scaling_type = HfRopeScalingType::kLinear;
+    config.rope.factor = 2.0;
+    config.rope.algorithm = HfRoPEAlgorithm::kLinear;
     ModelValidationOptions options{};
     options.allow_rope_scaling = true;
 
@@ -369,7 +369,7 @@ TEST(ModelLoader_HfModelValidatorTest, AcceptsPositiveRopeScalingWhenAllowed) {
 
 TEST(ModelLoader_HfModelValidatorTest, AcceptsStructurallyCompleteLongRopeWithoutScalarFactor) {
     HfModelConfig config = MakeValidLlamaConfig();
-    config.rope.scaling_type = HfRopeScalingType::kLongRope;
+    config.rope.algorithm = HfRoPEAlgorithm::kLongRope;
     config.rope.original_context_length = 128;
     config.rope.short_factors = {1.0};
     config.rope.long_factors = {2.0};
@@ -381,7 +381,7 @@ TEST(ModelLoader_HfModelValidatorTest, AcceptsStructurallyCompleteLongRopeWithou
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsLongRopeWithoutOriginalContext) {
     HfModelConfig config = MakeValidLlamaConfig();
-    config.rope.scaling_type = HfRopeScalingType::kLongRope;
+    config.rope.algorithm = HfRoPEAlgorithm::kLongRope;
     config.rope.short_factors = {1.0};
     config.rope.long_factors = {2.0};
 
@@ -390,25 +390,25 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsLongRopeWithoutOriginalContext) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ModelLoader_HfModelValidatorTest, DefersRopeScalingTypeValueValidationToBuilder) {
+TEST(ModelLoader_HfModelValidatorTest, DefersUnknownRoPEAlgorithmValidationToBuilder) {
     HfModelConfig config = MakeValidLlamaConfig();
-    config.rope.scaling_factor = 2.0;
-    config.rope.scaling_type = HfRopeScalingType::kUnknown;
+    config.rope.factor = 2.0;
+    config.rope.algorithm = HfRoPEAlgorithm::kUnknown;
     ModelValidationOptions options{};
     options.allow_rope_scaling = true;
 
     const Status status = HfModelValidator::ValidateConfig(config, options);
 
-    // HfModelValidator no longer rejects scaling_type values; the semantic
+    // HfModelValidator no longer rejects unknown algorithm values; the semantic
     // conversion/rejection authority is MakeRoPEParams in ModelGraphBuilder.
     // kUnknown passes structural validation here and is rejected later by
     // MakeRoPEParams with a "not representable on the semantic graph surface" error.
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(ModelLoader_HfModelValidatorTest, RejectsPartialRopeScalingTypeByDefault) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsRoPEAlgorithmWithoutRequiredFactorByDefault) {
     HfModelConfig config = MakeValidLlamaConfig();
-    config.rope.scaling_type = HfRopeScalingType::kLinear;
+    config.rope.algorithm = HfRoPEAlgorithm::kLinear;
 
     const Status status = HfModelValidator::ValidateConfig(config);
 
@@ -416,9 +416,9 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsPartialRopeScalingTypeByDefault) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ModelLoader_HfModelValidatorTest, RejectsPartialRopeScalingWhenAllowed) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsRoPEAlgorithmWithoutRequiredFactorWhenAllowed) {
     HfModelConfig config = MakeValidLlamaConfig();
-    config.rope.scaling_type = HfRopeScalingType::kLinear;
+    config.rope.algorithm = HfRoPEAlgorithm::kLinear;
     ModelValidationOptions options{};
     options.allow_rope_scaling = true;
 

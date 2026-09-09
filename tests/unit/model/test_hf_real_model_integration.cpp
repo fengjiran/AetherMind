@@ -58,8 +58,8 @@ TEST(ModelLoader_HfRealModelIntegrationTest, ParsesRealConfigCorrectly) {
     EXPECT_TRUE(config->weight_dtype_hint.IsFloat32());
 
     EXPECT_DOUBLE_EQ(config->rope.theta, 10000.0);
-    EXPECT_FALSE(config->rope.scaling_factor.has_value());
-    EXPECT_EQ(config->rope.scaling_type, HfRopeScalingType::kNone);
+    EXPECT_FALSE(config->rope.factor.has_value());
+    EXPECT_EQ(config->rope.algorithm, HfRoPEAlgorithm::kStandard);
 }
 
 TEST(ModelLoader_HfRealModelIntegrationTest, LoadsRealWeightTable) {

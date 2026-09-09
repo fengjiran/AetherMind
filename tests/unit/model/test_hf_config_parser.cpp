@@ -152,9 +152,9 @@ TEST(ModelLoader_HfConfigTest, ParsesMinimalLlamaConfig) {
     EXPECT_FALSE(config->attention_bias);
     EXPECT_FALSE(config->mlp_bias);
     EXPECT_DOUBLE_EQ(config->rope.theta, 10000.0);
-    ASSERT_TRUE(config->rope.scaling_factor.has_value());
-    EXPECT_DOUBLE_EQ(*config->rope.scaling_factor, 2.0);
-    EXPECT_EQ(config->rope.scaling_type, HfRopeScalingType::kLinear);
+    ASSERT_TRUE(config->rope.factor.has_value());
+    EXPECT_DOUBLE_EQ(*config->rope.factor, 2.0);
+    EXPECT_EQ(config->rope.algorithm, HfRoPEAlgorithm::kLinear);
     EXPECT_EQ(config->weight_dtype_hint_name, "bfloat16");
     EXPECT_EQ(config->weight_dtype_hint, DataType::BFloat(16));
 }
@@ -186,7 +186,7 @@ TEST(ModelLoader_HfConfigTest, DefaultsOptionalFields) {
     EXPECT_FALSE(config->attention_bias);
     EXPECT_FALSE(config->mlp_bias);
     EXPECT_DOUBLE_EQ(config->rope.theta, 10000.0);
-    EXPECT_FALSE(config->rope.scaling_factor.has_value());
+    EXPECT_FALSE(config->rope.factor.has_value());
     EXPECT_TRUE(config->weight_dtype_hint_name.empty());
     EXPECT_EQ(config->weight_dtype_hint, DataType{});
 }
@@ -281,8 +281,8 @@ TEST(ModelLoader_HfConfigTest, ParsesNullRopeScalingAsAbsent) {
     const auto config = reader->ParseConfig();
 
     ASSERT_TRUE(config.ok()) << config.status().ToString();
-    EXPECT_FALSE(config->rope.scaling_factor.has_value());
-    EXPECT_EQ(config->rope.scaling_type, HfRopeScalingType::kNone);
+    EXPECT_FALSE(config->rope.factor.has_value());
+    EXPECT_EQ(config->rope.algorithm, HfRoPEAlgorithm::kStandard);
 }
 
 TEST(ModelLoader_HfConfigTest, ParsesDTypeAndRopeParametersAliases) {
@@ -308,9 +308,9 @@ TEST(ModelLoader_HfConfigTest, ParsesDTypeAndRopeParametersAliases) {
     ASSERT_TRUE(config.ok()) << config.status().ToString();
     EXPECT_TRUE(config->weight_dtype_hint.IsFloat16());
     EXPECT_EQ(config->weight_dtype_hint_name, "float16");
-    ASSERT_TRUE(config->rope.scaling_factor.has_value());
-    EXPECT_DOUBLE_EQ(*config->rope.scaling_factor, 8.0);
-    EXPECT_EQ(config->rope.scaling_type, HfRopeScalingType::kLlama3);
+    ASSERT_TRUE(config->rope.factor.has_value());
+    EXPECT_DOUBLE_EQ(*config->rope.factor, 8.0);
+    EXPECT_EQ(config->rope.algorithm, HfRoPEAlgorithm::kLlama3);
 }
 
 TEST(ModelLoader_HfConfigTest, PreservesTopLevelRopeThetaBeforeRopeScaling) {
@@ -335,9 +335,9 @@ TEST(ModelLoader_HfConfigTest, PreservesTopLevelRopeThetaBeforeRopeScaling) {
 
     ASSERT_TRUE(config.ok()) << config.status().ToString();
     EXPECT_DOUBLE_EQ(config->rope.theta, 500000.0);
-    ASSERT_TRUE(config->rope.scaling_factor.has_value());
-    EXPECT_DOUBLE_EQ(*config->rope.scaling_factor, 8.0);
-    EXPECT_EQ(config->rope.scaling_type, HfRopeScalingType::kLlama3);
+    ASSERT_TRUE(config->rope.factor.has_value());
+    EXPECT_DOUBLE_EQ(*config->rope.factor, 8.0);
+    EXPECT_EQ(config->rope.algorithm, HfRoPEAlgorithm::kLlama3);
 }
 
 TEST(ModelLoader_HfConfigTest, ParsesNestedRopeThetaFromRopeScaling) {
@@ -361,9 +361,9 @@ TEST(ModelLoader_HfConfigTest, ParsesNestedRopeThetaFromRopeScaling) {
 
     ASSERT_TRUE(config.ok()) << config.status().ToString();
     EXPECT_DOUBLE_EQ(config->rope.theta, 500000.0);
-    ASSERT_TRUE(config->rope.scaling_factor.has_value());
-    EXPECT_DOUBLE_EQ(*config->rope.scaling_factor, 8.0);
-    EXPECT_EQ(config->rope.scaling_type, HfRopeScalingType::kLlama3);
+    ASSERT_TRUE(config->rope.factor.has_value());
+    EXPECT_DOUBLE_EQ(*config->rope.factor, 8.0);
+    EXPECT_EQ(config->rope.algorithm, HfRoPEAlgorithm::kLlama3);
 }
 
 TEST(ModelLoader_HfConfigTest, ParsesExtendedRopeAlgorithmFields) {
@@ -393,7 +393,7 @@ TEST(ModelLoader_HfConfigTest, ParsesExtendedRopeAlgorithmFields) {
     ASSERT_TRUE(reader.ok()) << reader.status().ToString();
     const auto config = reader->ParseConfig();
     ASSERT_TRUE(config.ok()) << config.status().ToString();
-    EXPECT_EQ(config->rope.scaling_type, HfRopeScalingType::kLongRope);
+    EXPECT_EQ(config->rope.algorithm, HfRoPEAlgorithm::kLongRope);
     ASSERT_TRUE(config->rope.partial_rotary_factor.has_value());
     EXPECT_DOUBLE_EQ(*config->rope.partial_rotary_factor, 0.5);
     ASSERT_TRUE(config->rope.original_context_length.has_value());
@@ -406,28 +406,28 @@ TEST(ModelLoader_HfConfigTest, ParsesExtendedRopeAlgorithmFields) {
     EXPECT_FALSE(*config->rope.truncate_correction_range);
 }
 
-TEST(ModelLoader_HfConfigTest, ParsesRopeScalingTypeNames) {
-    EXPECT_EQ(ParseRopeScalingType(""), HfRopeScalingType::kNone);
-    EXPECT_EQ(ParseRopeScalingType("default"), HfRopeScalingType::kNone);
-    EXPECT_EQ(ParseRopeScalingType("linear"), HfRopeScalingType::kLinear);
-    EXPECT_EQ(ParseRopeScalingType("dynamic"), HfRopeScalingType::kDynamicNtk);
-    EXPECT_EQ(ParseRopeScalingType("dynamic_ntk"), HfRopeScalingType::kDynamicNtk);
-    EXPECT_EQ(ParseRopeScalingType("yarn"), HfRopeScalingType::kYarn);
-    EXPECT_EQ(ParseRopeScalingType("llama3"), HfRopeScalingType::kLlama3);
-    EXPECT_EQ(ParseRopeScalingType("longrope"), HfRopeScalingType::kLongRope);
-    EXPECT_EQ(ParseRopeScalingType("su"), HfRopeScalingType::kSu);
-    EXPECT_EQ(ParseRopeScalingType("future_rope"), HfRopeScalingType::kUnknown);
+TEST(ModelLoader_HfConfigTest, ParsesHfRoPEAlgorithmNames) {
+    EXPECT_EQ(ParseHfRoPEAlgorithm(""), HfRoPEAlgorithm::kStandard);
+    EXPECT_EQ(ParseHfRoPEAlgorithm("default"), HfRoPEAlgorithm::kStandard);
+    EXPECT_EQ(ParseHfRoPEAlgorithm("linear"), HfRoPEAlgorithm::kLinear);
+    EXPECT_EQ(ParseHfRoPEAlgorithm("dynamic"), HfRoPEAlgorithm::kDynamicNtk);
+    EXPECT_EQ(ParseHfRoPEAlgorithm("dynamic_ntk"), HfRoPEAlgorithm::kDynamicNtk);
+    EXPECT_EQ(ParseHfRoPEAlgorithm("yarn"), HfRoPEAlgorithm::kYarn);
+    EXPECT_EQ(ParseHfRoPEAlgorithm("llama3"), HfRoPEAlgorithm::kLlama3);
+    EXPECT_EQ(ParseHfRoPEAlgorithm("longrope"), HfRoPEAlgorithm::kLongRope);
+    EXPECT_EQ(ParseHfRoPEAlgorithm("su"), HfRoPEAlgorithm::kSu);
+    EXPECT_EQ(ParseHfRoPEAlgorithm("future_rope"), HfRoPEAlgorithm::kUnknown);
 }
 
-TEST(ModelLoader_HfConfigTest, FormatsRopeScalingTypeNames) {
-    EXPECT_EQ(ToString(HfRopeScalingType::kNone), "default");
-    EXPECT_EQ(ToString(HfRopeScalingType::kLinear), "linear");
-    EXPECT_EQ(ToString(HfRopeScalingType::kDynamicNtk), "dynamic");
-    EXPECT_EQ(ToString(HfRopeScalingType::kYarn), "yarn");
-    EXPECT_EQ(ToString(HfRopeScalingType::kLlama3), "llama3");
-    EXPECT_EQ(ToString(HfRopeScalingType::kLongRope), "longrope");
-    EXPECT_EQ(ToString(HfRopeScalingType::kSu), "su");
-    EXPECT_EQ(ToString(HfRopeScalingType::kUnknown), "unknown");
+TEST(ModelLoader_HfConfigTest, FormatsHfRoPEAlgorithmNames) {
+    EXPECT_EQ(ToString(HfRoPEAlgorithm::kStandard), "default");
+    EXPECT_EQ(ToString(HfRoPEAlgorithm::kLinear), "linear");
+    EXPECT_EQ(ToString(HfRoPEAlgorithm::kDynamicNtk), "dynamic");
+    EXPECT_EQ(ToString(HfRoPEAlgorithm::kYarn), "yarn");
+    EXPECT_EQ(ToString(HfRoPEAlgorithm::kLlama3), "llama3");
+    EXPECT_EQ(ToString(HfRoPEAlgorithm::kLongRope), "longrope");
+    EXPECT_EQ(ToString(HfRoPEAlgorithm::kSu), "su");
+    EXPECT_EQ(ToString(HfRoPEAlgorithm::kUnknown), "unknown");
 }
 
 TEST(ModelLoader_HfConfigTest, DefersUnsupportedDTypeToValidator) {

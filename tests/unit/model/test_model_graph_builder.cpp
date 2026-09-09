@@ -281,7 +281,7 @@ TEST(ModelGraphBuilder, RecordsTypedParamsForAllGraphOps) {
     EXPECT_EQ(rope_params->head_dim, config.head_dim);
     EXPECT_EQ(rope_params->num_attention_heads, config.num_attention_heads);
     EXPECT_EQ(rope_params->num_key_value_heads, config.num_key_value_heads);
-    EXPECT_EQ(rope_params->max_position_embeddings, config.max_position_embeddings);
+    EXPECT_EQ(rope_params->max_pos_embeddings, config.max_position_embeddings);
     EXPECT_DOUBLE_EQ(rope_params->theta, config.rope.theta);
 
     EXPECT_NE(std::get_if<KVCacheUpdateParams>(&nodes[6].op_params), nullptr);
@@ -670,30 +670,30 @@ TEST(ModelGraphBuilder, AssignsPyTorchStyleWeightDebugNames) {
 // --- RoPE frontend conversion boundary ---
 //
 // ModelGraphBuilder::BuildLlamaDense is the single point where HF RoPE
-// scaling types are normalized into the semantic typed variant before any
+// HF algorithm spellings are normalized into the semantic typed variant before any
 // graph mutation. The fixtures below use head_dim 4 for Dynamic NTK.
 
-HfModelConfig MakeLlamaConfigWithScaling(HfRopeScalingType scaling_type,
+HfModelConfig MakeLlamaConfigWithScaling(HfRoPEAlgorithm algorithm,
                                          std::optional<double> scaling_factor) {
     HfModelConfig config = MakeLlamaConfig(1);
-    config.rope.scaling_type = scaling_type;
-    config.rope.scaling_factor = scaling_factor;
+    config.rope.algorithm = algorithm;
+    config.rope.factor = scaling_factor;
     return config;
 }
 
-HfModelConfig MakeExtendedRoPEConfig(HfRopeScalingType scaling_type) {
+HfModelConfig MakeExtendedRoPEConfig(HfRoPEAlgorithm algorithm) {
     HfModelConfig config = MakeLlamaConfig(1);
     config.hidden_size = 16;
     config.intermediate_size = 32;
     config.head_dim = 4;
-    config.rope.scaling_type = scaling_type;
-    config.rope.scaling_factor = 2.0;
+    config.rope.algorithm = algorithm;
+    config.rope.factor = 2.0;
     config.rope.original_context_length = 128;
     return config;
 }
 
-TEST(ModelGraphBuilder, MapsHfNoneToSemanticNone) {
-    const HfModelConfig config = MakeLlamaConfigWithScaling(HfRopeScalingType::kNone, std::nullopt);
+TEST(ModelGraphBuilder, MapsHfStandardToSemanticStandard) {
+    const HfModelConfig config = MakeLlamaConfigWithScaling(HfRoPEAlgorithm::kStandard, std::nullopt);
     const ResolvedModelWeights weights = MakeWeights(config);
 
     const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
@@ -706,7 +706,7 @@ TEST(ModelGraphBuilder, MapsHfNoneToSemanticNone) {
 }
 
 TEST(ModelGraphBuilder, MapsHfLinearToSemanticLinear) {
-    const HfModelConfig config = MakeLlamaConfigWithScaling(HfRopeScalingType::kLinear, 2.0);
+    const HfModelConfig config = MakeLlamaConfigWithScaling(HfRoPEAlgorithm::kLinear, 2.0);
     const ResolvedModelWeights weights = MakeWeights(config);
 
     const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
@@ -719,7 +719,7 @@ TEST(ModelGraphBuilder, MapsHfLinearToSemanticLinear) {
 }
 
 TEST(ModelGraphBuilder, MapsHfDynamicNtkToSemanticVariant) {
-    const HfModelConfig config = MakeExtendedRoPEConfig(HfRopeScalingType::kDynamicNtk);
+    const HfModelConfig config = MakeExtendedRoPEConfig(HfRoPEAlgorithm::kDynamicNtk);
     const ResolvedModelWeights weights = MakeWeights(config);
     const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
@@ -730,7 +730,7 @@ TEST(ModelGraphBuilder, MapsHfDynamicNtkToSemanticVariant) {
 }
 
 TEST(ModelGraphBuilder, MapsHfYarnToSemanticVariant) {
-    const HfModelConfig config = MakeExtendedRoPEConfig(HfRopeScalingType::kYarn);
+    const HfModelConfig config = MakeExtendedRoPEConfig(HfRoPEAlgorithm::kYarn);
     const ResolvedModelWeights weights = MakeWeights(config);
     const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
@@ -739,7 +739,7 @@ TEST(ModelGraphBuilder, MapsHfYarnToSemanticVariant) {
 }
 
 TEST(ModelGraphBuilder, MapsHfLlama3ToSemanticVariant) {
-    HfModelConfig config = MakeExtendedRoPEConfig(HfRopeScalingType::kLlama3);
+    HfModelConfig config = MakeExtendedRoPEConfig(HfRoPEAlgorithm::kLlama3);
     config.rope.low_frequency_factor = 1.0;
     config.rope.high_frequency_factor = 4.0;
     const ResolvedModelWeights weights = MakeWeights(config);
@@ -750,7 +750,7 @@ TEST(ModelGraphBuilder, MapsHfLlama3ToSemanticVariant) {
 }
 
 TEST(ModelGraphBuilder, MapsHfLongRopeAndSuToSemanticVariant) {
-    HfModelConfig config = MakeExtendedRoPEConfig(HfRopeScalingType::kLongRope);
+    HfModelConfig config = MakeExtendedRoPEConfig(HfRoPEAlgorithm::kLongRope);
     config.rope.short_factors = {1.0, 1.0};
     config.rope.long_factors = {2.0, 2.0};
     const ResolvedModelWeights weights = MakeWeights(config);
@@ -758,15 +758,15 @@ TEST(ModelGraphBuilder, MapsHfLongRopeAndSuToSemanticVariant) {
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     EXPECT_TRUE(std::holds_alternative<LongRoPE>(
             std::get<RoPEParams>(graph->GetNodes()[5].op_params).algorithm));
-    config.rope.scaling_type = HfRopeScalingType::kSu;
+    config.rope.algorithm = HfRoPEAlgorithm::kSu;
     const StatusOr<ModelGraph> su_graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
     ASSERT_TRUE(su_graph.ok()) << su_graph.status().ToString();
     EXPECT_TRUE(std::holds_alternative<LongRoPE>(
             std::get<RoPEParams>(su_graph->GetNodes()[5].op_params).algorithm));
 }
 
-TEST(ModelGraphBuilder, RejectsUnsupportedRoPEUnknownScaling) {
-    const HfModelConfig config = MakeLlamaConfigWithScaling(HfRopeScalingType::kUnknown, 2.0);
+TEST(ModelGraphBuilder, RejectsUnknownHfRoPEAlgorithm) {
+    const HfModelConfig config = MakeLlamaConfigWithScaling(HfRoPEAlgorithm::kUnknown, 2.0);
     const ResolvedModelWeights weights = MakeWeights(config);
 
     const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
@@ -776,7 +776,7 @@ TEST(ModelGraphBuilder, RejectsUnsupportedRoPEUnknownScaling) {
 }
 
 TEST(ModelGraphBuilder, RejectsIncompleteAndConflictingExtendedRoPEConfig) {
-    HfModelConfig config = MakeExtendedRoPEConfig(HfRopeScalingType::kLlama3);
+    HfModelConfig config = MakeExtendedRoPEConfig(HfRoPEAlgorithm::kLlama3);
     config.rope.low_frequency_factor = 1.0;
     config.rope.high_frequency_factor = 4.0;
     config.rope.original_context_length.reset();
@@ -784,7 +784,7 @@ TEST(ModelGraphBuilder, RejectsIncompleteAndConflictingExtendedRoPEConfig) {
     EXPECT_EQ(ModelGraphBuilder::BuildLlamaDense(config, weights).status().code(),
               StatusCode::kInvalidArgument);
 
-    config = MakeExtendedRoPEConfig(HfRopeScalingType::kDynamicNtk);
+    config = MakeExtendedRoPEConfig(HfRoPEAlgorithm::kDynamicNtk);
     config.rope.partial_rotary_factor = 0.5;
     config.rope.rotary_dim = 4;
     EXPECT_EQ(ModelGraphBuilder::BuildLlamaDense(config, weights).status().code(),

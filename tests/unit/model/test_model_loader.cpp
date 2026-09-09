@@ -212,9 +212,9 @@ TEST(ModelLoader_PipelineTest, AllowsStructurallyValidRopeScalingForModelCompile
     const auto model = ModelLoader::Load(temp_dir.path());
 
     ASSERT_TRUE(model.ok()) << model.status().ToString();
-    EXPECT_EQ((*model)->GetConfig().rope.scaling_type, HfRopeScalingType::kLinear);
-    ASSERT_TRUE((*model)->GetConfig().rope.scaling_factor.has_value());
-    EXPECT_DOUBLE_EQ(*(*model)->GetConfig().rope.scaling_factor, 2.0);
+    EXPECT_EQ((*model)->GetConfig().rope.algorithm, HfRoPEAlgorithm::kLinear);
+    ASSERT_TRUE((*model)->GetConfig().rope.factor.has_value());
+    EXPECT_DOUBLE_EQ(*(*model)->GetConfig().rope.factor, 2.0);
 }
 
 TEST(ModelLoader_PipelineTest, RejectsUnsupportedModelFamily) {

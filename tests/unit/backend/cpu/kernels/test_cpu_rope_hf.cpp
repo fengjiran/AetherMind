@@ -109,7 +109,7 @@ TEST_P(CPUKernelRoPEHf, MatchesPinnedCpuFloat32Golden) {
             .head_dim = fixture.head_dim,
             .num_attention_heads = fixture.q_heads,
             .num_key_value_heads = fixture.kv_heads,
-            .max_position_embeddings = 8192,
+            .max_pos_embeddings = 8192,
             .theta = fixture.theta,
     };
     if (fixture.linear) {

@@ -32,7 +32,7 @@ RoPEParams MakeRoPEParams(int64_t head_dim = 4,
             .head_dim = head_dim,
             .num_attention_heads = num_q_heads,
             .num_key_value_heads = num_kv_heads,
-            .max_position_embeddings = 8,
+            .max_pos_embeddings = 8,
             .theta = theta,
             .algorithm = StandardRoPE{},
     };
@@ -793,7 +793,7 @@ TEST(CPUKernelRoPE, DynamicNtkReuseAndLongRopeContextSwitchUseRuntimePositions) 
     long_rope.algorithm = LongRoPE{.short_factors = {1.0, 1.0},
                                    .long_factors = {2.0, 4.0},
                                    .original_context_length = 4,
-                                   .attention_scale = 1.5};
+                                   .rotary_output_scale = 1.5};
     const auto long_kernel = PrepareRoPEKernel(long_rope);
     ASSERT_TRUE(long_kernel.ok()) << long_kernel.status().ToString();
     positions[0] = 3;
@@ -834,9 +834,9 @@ TEST(CPUKernelRoPE, ReferenceConsumesYarnAndLlama3StaticFrequencyTables) {
                                          })
                             .ok());
         for (int64_t pair = 0; pair < 2; ++pair) {
-            const double angle = 3.0 * frequencies->inverse_frequencies[static_cast<size_t>(pair)];
-            const double cosine = std::cos(angle) * frequencies->attention_scale;
-            const double sine = std::sin(angle) * frequencies->attention_scale;
+            const double angle = 3.0 * frequencies->inv_freqs[static_cast<size_t>(pair)];
+            const double cosine = std::cos(angle) * frequencies->rotary_output_scale;
+            const double sine = std::sin(angle) * frequencies->rotary_output_scale;
             const int64_t second = pair + 2;
             const float expected_first = static_cast<float>(values[pair] * cosine - values[second] * sine);
             const float expected_second = static_cast<float>(values[second] * cosine + values[pair] * sine);
@@ -851,7 +851,7 @@ TEST(CPUKernelRoPE, ReferenceConsumesYarnAndLlama3StaticFrequencyTables) {
                            .original_context_length = 8,
                            .beta_fast = 32.0,
                            .beta_slow = 1.0,
-                           .attention_scale = 1.5,
+                           .rotary_output_scale = 1.5,
                            .truncate_correction_range = false});
     run_and_check(Llama3RoPE{.factor = 2.0,
                              .low_frequency_factor = 1.0,

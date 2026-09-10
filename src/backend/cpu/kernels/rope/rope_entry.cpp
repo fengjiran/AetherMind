@@ -42,14 +42,13 @@ bool ToAddressValue(int64_t value, std::uintptr_t* result) noexcept {
     return true;
 }
 
-StatusOr<RowwiseAddressLayout> BuildRowwiseAddressLayout(
-        const void* data,
-        int64_t row_count,
-        int64_t column_count,
-        int64_t row_stride,
-        int64_t column_stride,
-        size_t item_size,
-        const char* role) noexcept {
+StatusOr<RowwiseAddressLayout> BuildRowwiseAddressLayout(const void* data,
+                                                         int64_t row_count,
+                                                         int64_t column_count,
+                                                         int64_t row_stride,
+                                                         int64_t column_stride,
+                                                         size_t item_size,
+                                                         const char* role) noexcept {
     std::uintptr_t row_count_minus_one = 0;
     std::uintptr_t column_count_minus_one = 0;
     std::uintptr_t row_stride_elements = 0;
@@ -95,8 +94,7 @@ StatusOr<RowwiseAddressLayout> BuildRowwiseAddressLayout(
     };
 }
 
-AddressRange RowAddressRange(const RowwiseAddressLayout& layout,
-                             int64_t row) noexcept {
+AddressRange RowAddressRange(const RowwiseAddressLayout& layout, int64_t row) noexcept {
     // BuildRowwiseAddressLayout checked the last row's end address, so every
     // earlier row address and end is representable as well.
     const std::uintptr_t row_offset =
@@ -186,14 +184,14 @@ Status ValidateMetadataLayout(const RoPEF32KernelMetadata& metadata,
         return Status::InvalidArgument("CPU RoPE kernel attrs are invalid");
     }
     const uint8_t expected_table_count = ExpectedFrequencyTableCount(metadata.algorithm);
-    if (expected_table_count == 255 || metadata.frequency_table_count != expected_table_count ||
-        metadata.frequency_count != static_cast<uint32_t>(metadata.rotary_dim / 2)) {
+    if (expected_table_count == 255 || metadata.freq_table_count != expected_table_count ||
+        metadata.freq_count != static_cast<uint32_t>(metadata.rotary_dim / 2)) {
         return Status::InvalidArgument("CPU RoPE kernel attrs have invalid frequency tables");
     }
     size_t table_bytes = 0;
-    if (CheckOverflowMul(static_cast<size_t>(metadata.frequency_count), sizeof(double),
+    if (CheckOverflowMul(static_cast<size_t>(metadata.freq_count), sizeof(double),
                          &table_bytes) ||
-        CheckOverflowMul(table_bytes, static_cast<size_t>(metadata.frequency_table_count),
+        CheckOverflowMul(table_bytes, static_cast<size_t>(metadata.freq_table_count),
                          &table_bytes) ||
         table_bytes > attrs.size() - sizeof(metadata) ||
         attrs.size() != sizeof(metadata) + table_bytes) {
@@ -232,12 +230,11 @@ Status ValidateRoPEParamsForKernel(const RoPEParams& params,
             .num_q_heads = params.num_attention_heads,
             .num_kv_heads = params.num_key_value_heads,
             .theta = params.theta,
-            .frequency_count = static_cast<uint32_t>(EffectiveRoPERotaryDim(params) / 2),
-            .pairing = params.pairing,
-            .algorithm = GetRoPEAlgorithm(params.algorithm),
+            .freq_count = static_cast<uint32_t>(EffectiveRoPERotaryDim(params) / 2),
             .truncate_correction_range = false,
-            .frequency_table_count = ExpectedFrequencyTableCount(GetRoPEAlgorithm(params.algorithm)),
-    };
+            .freq_table_count = ExpectedFrequencyTableCount(GetRoPEAlgorithm(params.algorithm)),
+            .pairing = params.pairing,
+            .algorithm = GetRoPEAlgorithm(params.algorithm)};
     std::visit(
             [&](const auto& algorithm) {
                 using T = std::decay_t<decltype(algorithm)>;
@@ -255,8 +252,8 @@ Status ValidateRoPEParamsForKernel(const RoPEParams& params,
                     metadata.truncate_correction_range = algorithm.truncate_correction_range;
                 } else if constexpr (std::is_same_v<T, Llama3RoPE>) {
                     metadata.factor = algorithm.factor;
-                    metadata.low_frequency_factor = algorithm.low_frequency_factor;
-                    metadata.high_frequency_factor = algorithm.high_frequency_factor;
+                    metadata.low_freq_factor = algorithm.low_frequency_factor;
+                    metadata.high_freq_factor = algorithm.high_frequency_factor;
                     metadata.original_context_length = algorithm.original_context_length;
                 } else if constexpr (std::is_same_v<T, LongRoPE>) {
                     metadata.original_context_length = algorithm.original_context_length;
@@ -447,10 +444,10 @@ Status BuildRoPEF32Metadata(const OpParams& params,
         }
         AM_ASSIGN_OR_RETURN(auto short_table,
                             ResolveDynamicRoPEFreqs(*rope_params,
-                                                          long_rope->original_context_length));
+                                                    long_rope->original_context_length));
         AM_ASSIGN_OR_RETURN(auto long_table,
                             ResolveDynamicRoPEFreqs(*rope_params,
-                                                          long_rope->original_context_length + 1));
+                                                    long_rope->original_context_length + 1));
         metadata.rotary_output_scale = short_table.rotary_output_scale;
         tables.push_back(std::move(short_table));
         tables.push_back(std::move(long_table));
@@ -466,13 +463,13 @@ Status BuildRoPEF32Metadata(const OpParams& params,
         metadata.rotary_output_scale = table.rotary_output_scale;
         tables.push_back(std::move(table));
     }
-    if (tables.size() != metadata.frequency_table_count) {
+    if (tables.size() != metadata.freq_table_count) {
         return Status::Internal("CPU RoPE metadata table count does not match algorithm");
     }
     const auto bytes = std::as_bytes(std::span{&metadata, size_t{1}});
     attrs.assign(bytes.begin(), bytes.end());
     for (const ResolvedRoPEFreqs& table: tables) {
-        if (table.inv_freqs.size() != metadata.frequency_count) {
+        if (table.inv_freqs.size() != metadata.freq_count) {
             return Status::Internal("CPU RoPE resolver returned invalid frequency count");
         }
         const auto append = [&](const std::vector<double>& frequencies) {

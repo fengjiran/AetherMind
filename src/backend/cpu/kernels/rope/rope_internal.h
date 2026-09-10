@@ -33,13 +33,13 @@ struct RoPEF32KernelMetadata {
     double beta_fast{};
     double beta_slow{};
     double rotary_output_scale{};
-    double low_frequency_factor{};
-    double high_frequency_factor{};
-    uint32_t frequency_count{};
+    double low_freq_factor{};
+    double high_freq_factor{};
+    uint32_t freq_count{};
+    bool truncate_correction_range{};
+    uint8_t freq_table_count{};
     RoPEPairing pairing{RoPEPairing::kSplitHalf};
     RoPEAlgorithm algorithm{RoPEAlgorithm::kStandard};
-    bool truncate_correction_range{};
-    uint8_t frequency_table_count{};
 };
 
 /// @brief Pre-validated FP32 arguments for all supported RoPE algorithms.

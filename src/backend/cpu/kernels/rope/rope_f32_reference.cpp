@@ -31,26 +31,28 @@ StatusOr<RoPEF32KernelMetadata> ReadAndValidateMetadata(
     if (attrs.size() < sizeof(RoPEF32KernelMetadata)) {
         return Status::InvalidArgument("CPU RoPE metadata attrs are truncated");
     }
+
     RoPEF32KernelMetadata metadata{};
     std::memcpy(&metadata, attrs.data(), sizeof(metadata));
     if (metadata.rotary_dim <= 0 || metadata.rotary_dim % 2 != 0 ||
-        metadata.frequency_count != static_cast<uint32_t>(metadata.rotary_dim / 2) ||
-        metadata.frequency_table_count != ExpectedFrequencyTableCount(metadata.algorithm) ||
+        metadata.freq_count != static_cast<uint32_t>(metadata.rotary_dim / 2) ||
+        metadata.freq_table_count != ExpectedFrequencyTableCount(metadata.algorithm) ||
         !std::isfinite(metadata.rotary_output_scale)) {
         return Status::InvalidArgument("CPU RoPE metadata attrs are invalid");
     }
-    size_t table_bytes = 0;
-    if (metadata.frequency_count > 0 &&
-        static_cast<size_t>(metadata.frequency_count) >
-                std::numeric_limits<size_t>::max() / sizeof(double)) {
+
+    if (metadata.freq_count > 0 && static_cast<size_t>(metadata.freq_count) >
+                                           std::numeric_limits<size_t>::max() / sizeof(double)) {
         return Status::InvalidArgument("CPU RoPE frequency attrs overflow");
     }
-    table_bytes = static_cast<size_t>(metadata.frequency_count) * sizeof(double);
-    if (metadata.frequency_table_count > 0 &&
-        table_bytes > std::numeric_limits<size_t>::max() / metadata.frequency_table_count) {
+
+    size_t table_bytes = static_cast<size_t>(metadata.freq_count) * sizeof(double);
+    if (metadata.freq_table_count > 0 && table_bytes > std::numeric_limits<size_t>::max() /
+                                                               metadata.freq_table_count) {
         return Status::InvalidArgument("CPU RoPE frequency attrs overflow");
     }
-    table_bytes *= metadata.frequency_table_count;
+
+    table_bytes *= metadata.freq_table_count;
     if (table_bytes > attrs.size() - sizeof(metadata) ||
         attrs.size() != sizeof(metadata) + table_bytes) {
         return Status::InvalidArgument("CPU RoPE frequency attrs are truncated");
@@ -68,6 +70,7 @@ StatusOr<int64_t> ValidatePositionIdsAndGetEffectiveSequenceLength(
         }
         max_pos = std::max(max_pos, position);
     }
+
     if (max_pos == std::numeric_limits<int64_t>::max()) {
         return Status::Overflow("CPU RoPE max position cannot form sequence length");
     }
@@ -79,7 +82,7 @@ double ReadFrequency(const RoPEF32KernelMetadata& metadata,
                      uint8_t table,
                      int64_t pair) noexcept {
     double frequency = 0.0;
-    const size_t index = static_cast<size_t>(table) * metadata.frequency_count +
+    const size_t index = static_cast<size_t>(table) * metadata.freq_count +
                          static_cast<size_t>(pair);
     std::memcpy(&frequency, attrs.data() + sizeof(metadata) + index * sizeof(double),
                 sizeof(frequency));
@@ -87,28 +90,32 @@ double ReadFrequency(const RoPEF32KernelMetadata& metadata,
 }
 
 StatusOr<double> ResolveDynamicBase(const RoPEF32KernelMetadata& metadata,
-                                    int64_t effective_sequence_length) noexcept {
-    if (metadata.algorithm != RoPEAlgorithm::kDynamicNtk) return metadata.theta;
+                                    int64_t effective_seq_len) noexcept {
+    if (metadata.algorithm != RoPEAlgorithm::kDynamicNtk) {
+        return metadata.theta;
+    }
     return ComputeDynamicNtkBase(metadata.theta, metadata.rotary_dim, metadata.factor,
-                                 metadata.original_context_length, effective_sequence_length);
+                                 metadata.original_context_length,
+                                 effective_seq_len);
 }
 
 StatusOr<double> FrequencyForPair(const RoPEF32KernelMetadata& metadata,
                                   std::span<const std::byte> attrs,
-                                  int64_t effective_sequence_length,
+                                  int64_t effective_seq_len,
                                   double dynamic_base,
                                   int64_t pair) noexcept {
     if (metadata.algorithm == RoPEAlgorithm::kDynamicNtk) {
-        const double exponent = -2.0 * static_cast<double>(pair) /
-                                static_cast<double>(metadata.rotary_dim);
+        const double exponent = -2.0 * static_cast<double>(pair) / static_cast<double>(metadata.rotary_dim);
         const double frequency = std::pow(dynamic_base, exponent);
         if (!std::isfinite(frequency) || frequency <= 0.0) {
-            return Status::Overflow("CPU RoPE Dynamic NTK inverse frequency is not finite");
+            return Status::Overflow(
+                    "CPU RoPE Dynamic NTK inverse frequency is not finite");
         }
         return frequency;
     }
+
     const uint8_t table = metadata.algorithm == RoPEAlgorithm::kLongRope &&
-                                          effective_sequence_length > metadata.original_context_length
+                                          effective_seq_len > metadata.original_context_length
                                   ? 1
                                   : 0;
     const double frequency = ReadFrequency(metadata, attrs, table, pair);
@@ -120,7 +127,9 @@ StatusOr<double> FrequencyForPair(const RoPEF32KernelMetadata& metadata,
 
 StatusOr<double> EffectivePosition(const RoPEF32KernelMetadata& metadata,
                                    int64_t position) noexcept {
-    const double result = metadata.algorithm == RoPEAlgorithm::kLinear ? static_cast<double>(position) / metadata.factor : static_cast<double>(position);
+    const double result = metadata.algorithm == RoPEAlgorithm::kLinear
+                                  ? static_cast<double>(position) / metadata.factor
+                                  : static_cast<double>(position);
     if (!std::isfinite(result)) {
         return Status::Overflow("CPU RoPE effective position is not finite");
     }
@@ -130,47 +139,48 @@ StatusOr<double> EffectivePosition(const RoPEF32KernelMetadata& metadata,
 Status ValidateAngleRange(const RoPEF32KernelArgs& args,
                           const RoPEF32KernelMetadata& metadata,
                           std::span<const std::byte> attrs,
-                          int64_t effective_sequence_length,
+                          int64_t effective_seq_len,
                           double dynamic_base) noexcept {
-    int64_t max_position = 0;
+    int64_t max_pos = 0;
     for (int64_t token = 0; token < args.seq_len; ++token) {
-        max_position = std::max(max_position, args.pos_ids[token * args.pos_stride]);
+        max_pos = std::max(max_pos, args.pos_ids[token * args.pos_stride]);
     }
-    double max_frequency = 0.0;
+
+    double max_freq = 0.0;
     for (int64_t pair = 0; pair < args.rotary_dim / 2; ++pair) {
         AM_ASSIGN_OR_RETURN(const double frequency,
-                            FrequencyForPair(metadata, attrs, effective_sequence_length,
+                            FrequencyForPair(metadata, attrs, effective_seq_len,
                                              dynamic_base, pair));
-        max_frequency = std::max(max_frequency, frequency);
+        max_freq = std::max(max_freq, frequency);
     }
-    AM_ASSIGN_OR_RETURN(const double max_effective_position,
-                        EffectivePosition(metadata, max_position));
-    if (!std::isfinite(max_effective_position * max_frequency)) {
+
+    AM_ASSIGN_OR_RETURN(const double max_effective_position, EffectivePosition(metadata, max_pos));
+    if (!std::isfinite(max_effective_position * max_freq)) {
         return Status::Overflow("CPU RoPE angle is not finite");
     }
     return Status::Ok();
 }
 
-void RotateHeads(const float* input,
-                 float* output,
-                 int64_t num_heads,
-                 int64_t head_dim,
-                 int64_t rotary_dim,
+void RotateHeads(const float* input, float* output,
+                 int64_t num_heads, int64_t head_dim, int64_t rotary_dim,
                  RoPEPairing pairing,
-                 int64_t input_col_stride,
-                 int64_t output_col_stride,
+                 int64_t input_col_stride, int64_t output_col_stride,
                  int64_t pair,
-                 double cosine,
-                 double sine) noexcept {
+                 double cosine, double sine) noexcept {
     const int64_t first_pair_offset = pairing == RoPEPairing::kSplitHalf ? pair : pair * 2;
     const int64_t second_pair_offset = pairing == RoPEPairing::kSplitHalf ? rotary_dim / 2 + pair : pair * 2 + 1;
     for (int64_t head = 0; head < num_heads; ++head) {
         const int64_t head_offset = head * head_dim;
-        const float first = input[(head_offset + first_pair_offset) * input_col_stride];
-        const float second = input[(head_offset + second_pair_offset) * input_col_stride];
-        output[(head_offset + first_pair_offset) * output_col_stride] = static_cast<float>(
+        const size_t input_idx0 = (head_offset + first_pair_offset) * input_col_stride;
+        const size_t input_idx1 = (head_offset + second_pair_offset) * input_col_stride;
+        const size_t output_idx0 = (head_offset + first_pair_offset) * output_col_stride;
+        const size_t output_idx1 = (head_offset + second_pair_offset) * output_col_stride;
+
+        const float first = input[input_idx0];
+        const float second = input[input_idx1];
+        output[output_idx0] = static_cast<float>(
                 static_cast<double>(first) * cosine - static_cast<double>(second) * sine);
-        output[(head_offset + second_pair_offset) * output_col_stride] = static_cast<float>(
+        output[output_idx1] = static_cast<float>(
                 static_cast<double>(second) * cosine + static_cast<double>(first) * sine);
     }
 }
@@ -200,22 +210,22 @@ Status RunRoPEF32Reference(const RoPEF32KernelArgs& args,
         metadata.pairing != args.pairing) {
         return Status::InvalidArgument("CPU RoPE prepared args do not match metadata");
     }
-    AM_ASSIGN_OR_RETURN(const int64_t effective_sequence_length,
+
+    AM_ASSIGN_OR_RETURN(const int64_t effective_seq_len,
                         ValidatePositionIdsAndGetEffectiveSequenceLength(args));
     AM_ASSIGN_OR_RETURN(const double dynamic_base,
-                        ResolveDynamicBase(metadata, effective_sequence_length));
-    AM_RETURN_IF_ERROR(ValidateAngleRange(args, metadata, attrs, effective_sequence_length,
-                                          dynamic_base));
+                        ResolveDynamicBase(metadata, effective_seq_len));
+    AM_RETURN_IF_ERROR(ValidateAngleRange(args, metadata, attrs, effective_seq_len, dynamic_base));
 
     for (int64_t pair = 0; pair < args.rotary_dim / 2; ++pair) {
-        AM_ASSIGN_OR_RETURN(const double inverse_frequency,
-                            FrequencyForPair(metadata, attrs, effective_sequence_length,
+        AM_ASSIGN_OR_RETURN(const double inv_freq,
+                            FrequencyForPair(metadata, attrs, effective_seq_len,
                                              dynamic_base, pair));
         for (int64_t token = 0; token < args.seq_len; ++token) {
-            AM_ASSIGN_OR_RETURN(const double position,
+            AM_ASSIGN_OR_RETURN(const double pos,
                                 EffectivePosition(metadata,
                                                   args.pos_ids[token * args.pos_stride]));
-            const double angle = position * inverse_frequency;
+            const double angle = pos * inv_freq;
             const double cosine = std::cos(angle) * metadata.rotary_output_scale;
             const double sine = std::sin(angle) * metadata.rotary_output_scale;
             RotateHeads(args.q + token * args.q_row_stride,
@@ -228,6 +238,7 @@ Status RunRoPEF32Reference(const RoPEF32KernelArgs& args,
                         args.k_col_stride, args.k_output_col_stride, pair, cosine, sine);
         }
     }
+
     for (int64_t token = 0; token < args.seq_len; ++token) {
         CopyUnrotatedTail(args.q + token * args.q_row_stride,
                           args.q_output + token * args.q_output_row_stride,

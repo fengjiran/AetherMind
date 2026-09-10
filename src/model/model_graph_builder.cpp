@@ -239,7 +239,7 @@ StatusOr<RoPEParams> MakeRoPEParams(const HfModelConfig& config, int64_t head_di
             .theta = config.rope.theta,
             .algorithm = std::move(algorithm),
     };
-    AM_RETURN_IF_ERROR(ValidateRoPEFrequencyParameters(result));
+    AM_RETURN_IF_ERROR(ValidateRoPEFreqParams(result));
     return result;
 }
 

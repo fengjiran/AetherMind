@@ -82,25 +82,26 @@ StatusOr<ResolvedRoPEFreqs> ResolveYarn(const RoPEParams& params, const YarnRoPE
     };
 }
 
-StatusOr<ResolvedRoPEFreqs> ResolveLlama3(const RoPEParams& params,
-                                          const Llama3RoPE& algorithm) {
+StatusOr<ResolvedRoPEFreqs> ResolveLlama3(const RoPEParams& params, const Llama3RoPE& algorithm) {
     AM_ASSIGN_OR_RETURN(auto base, MakeBaseFreqs(params.theta, EffectiveRoPERotaryDim(params)));
     const double low_wavelength = static_cast<double>(algorithm.original_context_length) /
                                   algorithm.low_frequency_factor;
     const double high_wavelength = static_cast<double>(algorithm.original_context_length) /
                                    algorithm.high_frequency_factor;
-    for (double& frequency: base) {
-        const double wavelength = 2.0 * std::numbers::pi / frequency;
-        if (wavelength > low_wavelength) {
-            frequency /= algorithm.factor;
+
+    for (auto& freq: base) {
+        if (const double wavelength = 2.0 * std::numbers::pi / freq;
+            wavelength > low_wavelength) {
+            freq /= algorithm.factor;
         } else if (wavelength >= high_wavelength) {
             const double smooth =
                     (static_cast<double>(algorithm.original_context_length) / wavelength -
                      algorithm.low_frequency_factor) /
                     (algorithm.high_frequency_factor - algorithm.low_frequency_factor);
-            frequency = (1.0 - smooth) * frequency / algorithm.factor + smooth * frequency;
+            freq = (1.0 - smooth) * freq / algorithm.factor + smooth * freq;
         }
-        if (!IsFinitePositive(frequency)) {
+
+        if (!IsFinitePositive(freq)) {
             return Status::Overflow("RoPE Llama3 inverse frequency is not finite");
         }
     }
@@ -109,10 +110,11 @@ StatusOr<ResolvedRoPEFreqs> ResolveLlama3(const RoPEParams& params,
 
 StatusOr<ResolvedRoPEFreqs> ResolveDynamicNtk(const RoPEParams& params,
                                               const DynamicNtkRoPE& algorithm,
-                                              int64_t effective_sequence_length) {
-    AM_ASSIGN_OR_RETURN(const double base, ComputeDynamicNtkBase(
-                                                   params.theta, EffectiveRoPERotaryDim(params), algorithm.factor,
-                                                   algorithm.original_context_length, effective_sequence_length));
+                                              int64_t effective_seq_len) {
+    AM_ASSIGN_OR_RETURN(const double base,
+                        ComputeDynamicNtkBase(
+                                params.theta, EffectiveRoPERotaryDim(params), algorithm.factor,
+                                algorithm.original_context_length, effective_seq_len));
     AM_ASSIGN_OR_RETURN(auto frequencies,
                         MakeBaseFreqs(base, EffectiveRoPERotaryDim(params)));
     return ResolvedRoPEFreqs{.inv_freqs = std::move(frequencies)};
@@ -120,25 +122,26 @@ StatusOr<ResolvedRoPEFreqs> ResolveDynamicNtk(const RoPEParams& params,
 
 StatusOr<ResolvedRoPEFreqs> ResolveLongRope(const RoPEParams& params,
                                             const LongRoPE& algorithm,
-                                            int64_t effective_sequence_length) {
-    const bool use_long = effective_sequence_length > algorithm.original_context_length;
+                                            int64_t effective_seq_len) {
+    const bool use_long = effective_seq_len > algorithm.original_context_length;
     const std::vector<double>& factors = use_long ? algorithm.long_factors : algorithm.short_factors;
-    AM_ASSIGN_OR_RETURN(auto frequencies, MakeBaseFreqs(params.theta, EffectiveRoPERotaryDim(params)));
-    for (size_t pair = 0; pair < frequencies.size(); ++pair) {
-        frequencies[pair] /= factors[pair];
-        if (!IsFinitePositive(frequencies[pair])) {
+    AM_ASSIGN_OR_RETURN(auto freqs,
+                        MakeBaseFreqs(params.theta, EffectiveRoPERotaryDim(params)));
+    for (size_t pair = 0; pair < freqs.size(); ++pair) {
+        freqs[pair] /= factors[pair];
+        if (!IsFinitePositive(freqs[pair])) {
             return Status::Overflow("RoPE LongRoPE inverse frequency is not finite");
         }
     }
     return ResolvedRoPEFreqs{
-            .inv_freqs = std::move(frequencies),
+            .inv_freqs = std::move(freqs),
             .rotary_output_scale = algorithm.rotary_output_scale,
     };
 }
 
 } // namespace
 
-Status ValidateRoPEFrequencyParameters(const RoPEParams& params) {
+Status ValidateRoPEFreqParams(const RoPEParams& params) {
     AM_RETURN_IF_ERROR(ValidateCommon(params));
     const int64_t pair_count = EffectiveRoPERotaryDim(params) / 2;
     auto visitor = overloaded{
@@ -152,6 +155,7 @@ Status ValidateRoPEFrequencyParameters(const RoPEParams& params) {
                 if (!IsFinitePositive(algorithm.factor)) {
                     return InvalidAlgorithmParameter("Dynamic NTK factor");
                 }
+
                 if (algorithm.original_context_length <= 0 ||
                     EffectiveRoPERotaryDim(params) <= 2) {
                     return Status::InvalidArgument(
@@ -194,6 +198,7 @@ Status ValidateRoPEFrequencyParameters(const RoPEParams& params) {
                         return InvalidAlgorithmParameter("LongRoPE short factor");
                     }
                 }
+
                 for (double value: algorithm.long_factors) {
                     if (!IsFinitePositive(value)) {
                         return InvalidAlgorithmParameter("LongRoPE long factor");
@@ -220,17 +225,18 @@ StatusOr<double> ComputeDynamicNtkBase(double theta,
     }
 
     const auto seq_len = static_cast<double>(std::max(effective_seq_len, original_context_len));
-    const double ratio = factor * seq_len / static_cast<double>(original_context_len) - (factor - 1.0);
+    const double context_ratio = seq_len / static_cast<double>(original_context_len);
+    const double ntk_scale = 1.0 + factor * (context_ratio - 1.0);
     const double exponent = static_cast<double>(rotary_dim) / static_cast<double>(rotary_dim - 2);
-    const double base = theta * std::pow(ratio, exponent);
+    const double base = theta * std::pow(ntk_scale, exponent);
     if (!IsFinitePositive(base)) {
         return Status::Overflow("RoPE Dynamic NTK base frequency is not finite");
     }
     return base;
 }
 
-StatusOr<ResolvedRoPEFreqs> ResolveStaticRoPEFrequencies(const RoPEParams& params) {
-    AM_RETURN_IF_ERROR(ValidateRoPEFrequencyParameters(params));
+StatusOr<ResolvedRoPEFreqs> ResolveStaticRoPEFreqs(const RoPEParams& params) {
+    AM_RETURN_IF_ERROR(ValidateRoPEFreqParams(params));
     auto visitor = overloaded{
             [&](const StandardRoPE&) -> StatusOr<ResolvedRoPEFreqs> {
                 AM_ASSIGN_OR_RETURN(auto frequencies,
@@ -240,7 +246,9 @@ StatusOr<ResolvedRoPEFreqs> ResolveStaticRoPEFrequencies(const RoPEParams& param
             [&](const LinearRoPE& algorithm) -> StatusOr<ResolvedRoPEFreqs> {
                 AM_ASSIGN_OR_RETURN(auto frequencies,
                                     MakeBaseFreqs(params.theta, EffectiveRoPERotaryDim(params)));
-                for (double& value: frequencies) value /= algorithm.factor;
+                for (double& value: frequencies) {
+                    value /= algorithm.factor;
+                }
                 return ResolvedRoPEFreqs{.inv_freqs = std::move(frequencies)};
             },
             [&](const YarnRoPE& algorithm) -> StatusOr<ResolvedRoPEFreqs> {
@@ -260,21 +268,21 @@ StatusOr<ResolvedRoPEFreqs> ResolveStaticRoPEFrequencies(const RoPEParams& param
     return std::visit(visitor, params.algorithm);
 }
 
-StatusOr<ResolvedRoPEFreqs> ResolveDynamicRoPEFrequencies(const RoPEParams& params,
-                                                          int64_t effective_sequence_length) {
-    AM_RETURN_IF_ERROR(ValidateRoPEFrequencyParameters(params));
-    if (effective_sequence_length <= 0) {
+StatusOr<ResolvedRoPEFreqs> ResolveDynamicRoPEFreqs(const RoPEParams& params,
+                                                    int64_t effective_seq_len) {
+    AM_RETURN_IF_ERROR(ValidateRoPEFreqParams(params));
+    if (effective_seq_len <= 0) {
         return Status::InvalidArgument("RoPE effective sequence length must be positive");
     }
 
     if (!IsDynamicRoPE(params.algorithm)) {
-        return ResolveStaticRoPEFrequencies(params);
+        return ResolveStaticRoPEFreqs(params);
     }
 
     if (const auto* dynamic_ntk = std::get_if<DynamicNtkRoPE>(&params.algorithm)) {
-        return ResolveDynamicNtk(params, *dynamic_ntk, effective_sequence_length);
+        return ResolveDynamicNtk(params, *dynamic_ntk, effective_seq_len);
     }
-    return ResolveLongRope(params, std::get<LongRoPE>(params.algorithm), effective_sequence_length);
+    return ResolveLongRope(params, std::get<LongRoPE>(params.algorithm), effective_seq_len);
 }
 
 } // namespace aethermind

@@ -184,7 +184,7 @@ StatusOr<InferenceResult> InferRoPE(const OpParams& params,
     }
 
     AM_RETURN_IF_ERROR(ValidateRoPEParams(*rope_params));
-    AM_RETURN_IF_ERROR(ValidateRoPEFrequencyParameters(*rope_params));
+    AM_RETURN_IF_ERROR(ValidateRoPEFreqParams(*rope_params));
     AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kRoPE, inputs));
     AM_RETURN_IF_ERROR(ValidateRoPEDTypes(inputs));
 

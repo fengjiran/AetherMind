@@ -821,7 +821,7 @@ TEST(CPUKernelRoPE, ReferenceConsumesYarnAndLlama3StaticFrequencyTables) {
     auto params = MakeRoPEParams(4, 1, 1, 4.0);
     const auto run_and_check = [&](RoPEAlgorithmParams algorithm) {
         params.algorithm = std::move(algorithm);
-        const auto frequencies = ResolveStaticRoPEFrequencies(params);
+        const auto frequencies = ResolveStaticRoPEFreqs(params);
         ASSERT_TRUE(frequencies.ok()) << frequencies.status().ToString();
         std::array<float, 4> q_output{};
         std::array<float, 4> k_output{};

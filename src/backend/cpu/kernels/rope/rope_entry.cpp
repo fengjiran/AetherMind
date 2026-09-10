@@ -210,7 +210,7 @@ Status ValidateRoPEParamsForKernel(const RoPEParams& params,
                 "CPU RoPE requires positive dimensions and head counts");
     }
 
-    AM_RETURN_IF_ERROR(ValidateRoPEFrequencyParameters(params));
+    AM_RETURN_IF_ERROR(ValidateRoPEFreqParams(params));
     if (static_cast<uint64_t>(EffectiveRoPERotaryDim(params) / 2) >
         static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
         return Status::InvalidArgument("CPU RoPE rotary pair count exceeds metadata range");
@@ -446,10 +446,10 @@ Status BuildRoPEF32Metadata(const OpParams& params,
             return Status::InvalidArgument("CPU RoPE LongRoPE original context is too large");
         }
         AM_ASSIGN_OR_RETURN(auto short_table,
-                            ResolveDynamicRoPEFrequencies(*rope_params,
+                            ResolveDynamicRoPEFreqs(*rope_params,
                                                           long_rope->original_context_length));
         AM_ASSIGN_OR_RETURN(auto long_table,
-                            ResolveDynamicRoPEFrequencies(*rope_params,
+                            ResolveDynamicRoPEFreqs(*rope_params,
                                                           long_rope->original_context_length + 1));
         metadata.rotary_output_scale = short_table.rotary_output_scale;
         tables.push_back(std::move(short_table));
@@ -462,7 +462,7 @@ Status BuildRoPEF32Metadata(const OpParams& params,
         if (std::holds_alternative<LinearRoPE>(static_params.algorithm)) {
             static_params.algorithm = StandardRoPE{};
         }
-        AM_ASSIGN_OR_RETURN(auto table, ResolveStaticRoPEFrequencies(static_params));
+        AM_ASSIGN_OR_RETURN(auto table, ResolveStaticRoPEFreqs(static_params));
         metadata.rotary_output_scale = table.rotary_output_scale;
         tables.push_back(std::move(table));
     }

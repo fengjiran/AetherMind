@@ -34,7 +34,7 @@ struct ResolvedRoPEFreqs {
 /// @note Scalar geometry is validated by InferRoPE; this function adds only the
 ///       per-algorithm checks (for example, finite positive factors and matching
 ///       LongRoPE factor-table lengths).
-Status ValidateRoPEFrequencyParameters(const RoPEParams& params);
+Status ValidateRoPEFreqParams(const RoPEParams& params);
 
 /// @brief Reports whether an algorithm needs an execution-time sequence length.
 ///
@@ -63,18 +63,18 @@ StatusOr<double> ComputeDynamicNtkBase(double theta,
 /// @param params Semantic RoPE parameters carrying a static algorithm.
 /// @return Owned frequency table, or InvalidArgument for Dynamic NTK and LongRoPE
 ///         which require an execution-time sequence length.
-StatusOr<ResolvedRoPEFreqs> ResolveStaticRoPEFrequencies(const RoPEParams& params);
+StatusOr<ResolvedRoPEFreqs> ResolveStaticRoPEFreqs(const RoPEParams& params);
 
 /// @brief Resolves the frequency table for one execution.
 ///
 /// @param params Semantic RoPE parameters carrying any supported algorithm.
-/// @param effective_sequence_length Execution-time length, normally max(position_ids) + 1;
+/// @param effective_seq_len Execution-time length, normally max(position_ids) + 1;
 ///        must be positive.
 /// @return Owned frequency table; static algorithms ignore the sequence length and
 ///         resolve as in ResolveStaticRoPEFrequencies.
-StatusOr<ResolvedRoPEFreqs> ResolveDynamicRoPEFrequencies(
+StatusOr<ResolvedRoPEFreqs> ResolveDynamicRoPEFreqs(
         const RoPEParams& params,
-        int64_t effective_sequence_length);
+        int64_t effective_seq_len);
 
 } // namespace aethermind
 

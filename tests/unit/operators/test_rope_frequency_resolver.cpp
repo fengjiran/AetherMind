@@ -21,20 +21,20 @@ RoPEParams MakeParams() {
 
 TEST(RoPEFrequencyResolver, ResolvesStandardLinearAndDynamicNtkGolden) {
     auto params = MakeParams();
-    auto standard = ResolveStaticRoPEFrequencies(params);
+    auto standard = ResolveStaticRoPEFreqs(params);
     ASSERT_TRUE(standard.ok()) << standard.status().ToString();
     ASSERT_EQ(standard->inv_freqs.size(), 2U);
     EXPECT_DOUBLE_EQ(standard->inv_freqs[0], 1.0);
     EXPECT_DOUBLE_EQ(standard->inv_freqs[1], 0.5);
 
     params.algorithm = LinearRoPE{.factor = 2.0};
-    auto linear = ResolveStaticRoPEFrequencies(params);
+    auto linear = ResolveStaticRoPEFreqs(params);
     ASSERT_TRUE(linear.ok()) << linear.status().ToString();
     EXPECT_DOUBLE_EQ(linear->inv_freqs[0], 0.5);
     EXPECT_DOUBLE_EQ(linear->inv_freqs[1], 0.25);
 
     params.algorithm = DynamicNtkRoPE{.factor = 2.0, .original_context_length = 4};
-    auto dynamic = ResolveDynamicRoPEFrequencies(params, 8);
+    auto dynamic = ResolveDynamicRoPEFreqs(params, 8);
     ASSERT_TRUE(dynamic.ok()) << dynamic.status().ToString();
     // base = 4 * (2 * 8 / 4 - 1) ^ (4 / (4 - 2)) = 36.
     EXPECT_DOUBLE_EQ(dynamic->inv_freqs[0], 1.0);
@@ -49,7 +49,7 @@ TEST(RoPEFrequencyResolver, ResolvesYarnLlama3AndLongRope) {
                                 .beta_slow = 1.0,
                                 .rotary_output_scale = 1.5,
                                 .truncate_correction_range = false};
-    auto yarn = ResolveStaticRoPEFrequencies(params);
+    auto yarn = ResolveStaticRoPEFreqs(params);
     ASSERT_TRUE(yarn.ok()) << yarn.status().ToString();
     EXPECT_DOUBLE_EQ(yarn->rotary_output_scale, 1.5);
     // HF's extrapolation ramp is zero for pair 0 and one for pair 1 here.
@@ -63,10 +63,10 @@ TEST(RoPEFrequencyResolver, ResolvesYarnLlama3AndLongRope) {
                                 .beta_slow = 1.0,
                                 .rotary_output_scale = 1.0,
                                 .truncate_correction_range = false};
-    auto yarn_raw = ResolveStaticRoPEFrequencies(params);
+    auto yarn_raw = ResolveStaticRoPEFreqs(params);
     ASSERT_TRUE(yarn_raw.ok()) << yarn_raw.status().ToString();
     std::get<YarnRoPE>(params.algorithm).truncate_correction_range = true;
-    auto yarn_truncated = ResolveStaticRoPEFrequencies(params);
+    auto yarn_truncated = ResolveStaticRoPEFreqs(params);
     ASSERT_TRUE(yarn_truncated.ok()) << yarn_truncated.status().ToString();
     // Raw high≈1.309 makes pair 1's ramp≈0.764; truncating it to ceil(2)
     // makes the same ramp 0.5. The unscaled second frequency is 0.1.
@@ -82,7 +82,7 @@ TEST(RoPEFrequencyResolver, ResolvesYarnLlama3AndLongRope) {
                                   .low_frequency_factor = 1.0,
                                   .high_frequency_factor = 4.0,
                                   .original_context_length = 16};
-    auto llama3 = ResolveStaticRoPEFrequencies(params);
+    auto llama3 = ResolveStaticRoPEFreqs(params);
     ASSERT_TRUE(llama3.ok()) << llama3.status().ToString();
     // Both wavelengths fall in Llama3's smooth interval for this fixture.
     const double first_wavelength = 2.0 * std::acos(-1.0);
@@ -98,8 +98,8 @@ TEST(RoPEFrequencyResolver, ResolvesYarnLlama3AndLongRope) {
                                 .long_factors = {2.0, 4.0},
                                 .original_context_length = 4,
                                 .rotary_output_scale = 1.25};
-    auto short_table = ResolveDynamicRoPEFrequencies(params, 4);
-    auto long_table = ResolveDynamicRoPEFrequencies(params, 5);
+    auto short_table = ResolveDynamicRoPEFreqs(params, 4);
+    auto long_table = ResolveDynamicRoPEFreqs(params, 5);
     ASSERT_TRUE(short_table.ok()) << short_table.status().ToString();
     ASSERT_TRUE(long_table.ok()) << long_table.status().ToString();
     EXPECT_DOUBLE_EQ(short_table->inv_freqs[0], 1.0);
@@ -112,19 +112,19 @@ TEST(RoPEFrequencyResolver, ResolvesYarnLlama3AndLongRope) {
 TEST(RoPEFrequencyResolver, RejectsInvalidTypedVariants) {
     auto params = MakeParams();
     params.rotary_dim = 3;
-    EXPECT_FALSE(ValidateRoPEFrequencyParameters(params).ok());
+    EXPECT_FALSE(ValidateRoPEFreqParams(params).ok());
     params.rotary_dim = 4;
     params.algorithm = DynamicNtkRoPE{.factor = 2.0, .original_context_length = 0};
-    EXPECT_FALSE(ValidateRoPEFrequencyParameters(params).ok());
+    EXPECT_FALSE(ValidateRoPEFreqParams(params).ok());
     params.algorithm = YarnRoPE{.factor = 2.0,
                                 .original_context_length = 8,
                                 .beta_fast = 1.0,
                                 .beta_slow = 1.0};
-    EXPECT_FALSE(ValidateRoPEFrequencyParameters(params).ok());
+    EXPECT_FALSE(ValidateRoPEFreqParams(params).ok());
     params.algorithm = LongRoPE{.short_factors = {1.0},
                                 .long_factors = {1.0},
                                 .original_context_length = 4};
-    EXPECT_FALSE(ValidateRoPEFrequencyParameters(params).ok());
+    EXPECT_FALSE(ValidateRoPEFreqParams(params).ok());
 }
 
 } // namespace

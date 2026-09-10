@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <string_view>
 #include <vector>
@@ -550,6 +551,40 @@ TEST(CPUKernelRoPE, PreparedParamsRejectUnrepresentableInverseFrequency) {
               StatusCode::kOverflow);
 }
 
+TEST(CPUKernelRoPEEntry, ParamsBuilderRejectsCorruptFrozenFrequencyAttrs) {
+    constexpr int64_t shape[2] = {1, 4};
+    constexpr int64_t strides[2] = {4, 1};
+    constexpr int64_t position_shape[1] = {1};
+    constexpr int64_t position_strides[1] = {1};
+    constexpr int64_t positions[1] = {0};
+    std::array<float, 4> q{};
+    std::array<float, 4> k{};
+    std::array<float, 4> q_output{};
+    std::array<float, 4> k_output{};
+    const auto views = RoPETestViews{
+            .q = TensorView{q.data(), DataType::Float32(), shape, strides},
+            .k = TensorView{k.data(), DataType::Float32(), shape, strides},
+            .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+            .q_output = MutableTensorView{q_output.data(), DataType::Float32(), shape, strides},
+            .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, strides},
+    };
+    const auto kernel = PrepareRoPEKernel(MakeRoPEParams(4, 1, 1));
+    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+
+    auto truncated = *kernel;
+    truncated.attrs.pop_back();
+    EXPECT_EQ(BuildRoPEPreparedParams(truncated, views).status().code(),
+              StatusCode::kInvalidArgument);
+
+    auto invalid_frequency = *kernel;
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    std::memcpy(invalid_frequency.attrs.data() +
+                        sizeof(cpu::detail::RoPEF32KernelMetadata),
+                &nan, sizeof(nan));
+    EXPECT_EQ(BuildRoPEPreparedParams(invalid_frequency, views).status().code(),
+              StatusCode::kOverflow);
+}
+
 TEST(CPUKernelRoPEEntry, RejectsInvalidParamsLayoutsAndAliases) {
     CpuBackend backend;
     EXPECT_EQ(backend.PrepareKernel(OpType::kRoPE, MakeRoPESelector(), OpParams{RmsNormParams{}})
@@ -808,6 +843,35 @@ TEST(CPUKernelRoPE, DynamicNtkReuseAndLongRopeContextSwitchUseRuntimePositions) 
     EXPECT_NEAR(q_output[1],
                 1.5 * (q[1] * std::cos(long_angle) - q[3] * std::sin(long_angle)),
                 1.0e-6F);
+}
+
+TEST(CPUKernelRoPE, DynamicNtkRejectsSubunitBaseFrequencyOverflowBeforeWrites) {
+    constexpr int64_t kHeadDim = 128;
+    constexpr int64_t shape[2] = {1, kHeadDim};
+    constexpr int64_t strides[2] = {kHeadDim, 1};
+    constexpr int64_t position_shape[1] = {1};
+    constexpr int64_t position_strides[1] = {1};
+    constexpr int64_t positions[1] = {0};
+    std::array<float, kHeadDim> q{};
+    std::array<float, kHeadDim> k{};
+    std::array<float, kHeadDim> q_output{};
+    std::array<float, kHeadDim> k_output{};
+    q_output.fill(17.0F);
+    k_output.fill(19.0F);
+
+    auto params = MakeRoPEParams(kHeadDim, 1, 1,
+                                 std::numeric_limits<double>::denorm_min());
+    params.algorithm = DynamicNtkRoPE{.factor = 1.0, .original_context_length = 4};
+    const Status status = RunRoPEEntry(params, RoPETestViews{
+                                                       .q = TensorView{q.data(), DataType::Float32(), shape, strides},
+                                                       .k = TensorView{k.data(), DataType::Float32(), shape, strides},
+                                                       .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+                                                       .q_output = MutableTensorView{q_output.data(), DataType::Float32(), shape, strides},
+                                                       .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, strides},
+                                               });
+    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+    for (float value: q_output) EXPECT_EQ(value, 17.0F);
+    for (float value: k_output) EXPECT_EQ(value, 19.0F);
 }
 
 TEST(CPUKernelRoPE, ReferenceConsumesYarnAndLlama3StaticFrequencyTables) {

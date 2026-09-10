@@ -1,6 +1,7 @@
 #include "aethermind/base/macros.h"
 #include "aethermind/operators/rope_frequency_resolver.h"
 #include "rope_internal.h"
+#include "utils/logging.h"
 
 #include <algorithm>
 #include <cmath>
@@ -11,154 +12,109 @@
 namespace aethermind::cpu::detail {
 namespace {
 
-uint8_t ExpectedFrequencyTableCount(RoPEAlgorithm algorithm) noexcept {
-    switch (algorithm) {
-        case RoPEAlgorithm::kDynamicNtk:
-            return 0;
-        case RoPEAlgorithm::kLongRope:
-            return 2;
-        case RoPEAlgorithm::kStandard:
-        case RoPEAlgorithm::kLinear:
-        case RoPEAlgorithm::kYarn:
-        case RoPEAlgorithm::kLlama3:
-            return 1;
-    }
-    return 255;
-}
+struct RoPERuntimeState {
+    double dynamic_base{};
+    uint8_t static_frequency_table{};
+};
 
-StatusOr<RoPEF32KernelMetadata> ReadAndValidateMetadata(
-        std::span<const std::byte> attrs) noexcept {
-    if (attrs.size() < sizeof(RoPEF32KernelMetadata)) {
-        return Status::InvalidArgument("CPU RoPE metadata attrs are truncated");
-    }
-
-    RoPEF32KernelMetadata metadata{};
-    std::memcpy(&metadata, attrs.data(), sizeof(metadata));
-    if (metadata.rotary_dim <= 0 || metadata.rotary_dim % 2 != 0 ||
-        metadata.freq_count != static_cast<uint32_t>(metadata.rotary_dim / 2) ||
-        metadata.freq_table_count != ExpectedFrequencyTableCount(metadata.algorithm) ||
-        !std::isfinite(metadata.rotary_output_scale)) {
-        return Status::InvalidArgument("CPU RoPE metadata attrs are invalid");
-    }
-
-    if (metadata.freq_count > 0 && static_cast<size_t>(metadata.freq_count) >
-                                           std::numeric_limits<size_t>::max() / sizeof(double)) {
-        return Status::InvalidArgument("CPU RoPE frequency attrs overflow");
-    }
-
-    size_t table_bytes = static_cast<size_t>(metadata.freq_count) * sizeof(double);
-    if (metadata.freq_table_count > 0 && table_bytes > std::numeric_limits<size_t>::max() /
-                                                               metadata.freq_table_count) {
-        return Status::InvalidArgument("CPU RoPE frequency attrs overflow");
-    }
-
-    table_bytes *= metadata.freq_table_count;
-    if (table_bytes > attrs.size() - sizeof(metadata) ||
-        attrs.size() != sizeof(metadata) + table_bytes) {
-        return Status::InvalidArgument("CPU RoPE frequency attrs are truncated");
-    }
-    return metadata;
-}
-
-StatusOr<int64_t> ValidatePositionIdsAndGetEffectiveSequenceLength(
-        const RoPEF32KernelArgs& args) noexcept {
+StatusOr<int64_t> ValidatePositionIdsAndGetMaxPosition(const RoPEF32KernelArgs& args) noexcept {
     int64_t max_pos = 0;
     for (int64_t token = 0; token < args.seq_len; ++token) {
-        const int64_t position = args.pos_ids[token * args.pos_stride];
-        if (position < 0) {
+        const int64_t pos = args.pos_ids[token * args.pos_stride];
+        if (pos < 0) {
             return Status::InvalidArgument("CPU RoPE requires non-negative position_ids");
         }
-        max_pos = std::max(max_pos, position);
+        max_pos = std::max(max_pos, pos);
+    }
+    return max_pos;
+}
+
+double ReadStaticFrequencyUnchecked(const RoPEF32KernelArgs& args,
+                                    std::span<const std::byte> attrs,
+                                    uint8_t table,
+                                    int64_t pair) noexcept {
+    double frequency = 0.0;
+    const size_t index = static_cast<size_t>(table) * args.freq_count + static_cast<size_t>(pair);
+    const size_t offset = sizeof(RoPEF32KernelMetadata) + index * sizeof(frequency);
+    AM_DCHECK(offset <= attrs.size());
+    AM_DCHECK(attrs.size() - offset >= sizeof(frequency));
+    std::memcpy(&frequency, attrs.data() + offset, sizeof(frequency));
+    return frequency;
+}
+
+StatusOr<double> DynamicMaxInverseFrequency(const RoPEF32KernelArgs& args,
+                                            double dynamic_base) noexcept {
+    AM_DCHECK(std::isfinite(dynamic_base));
+    AM_DCHECK(dynamic_base > 0.0);
+
+    if (dynamic_base >= 1.0) {
+        return 1.0;
     }
 
+    const double last_exponent = -2.0 * static_cast<double>(args.freq_count - 1) /
+                                 static_cast<double>(args.rotary_dim);
+    const double max_frequency = std::pow(dynamic_base, last_exponent);
+    if (!std::isfinite(max_frequency) || max_frequency <= 0.0) {
+        return Status::Overflow("CPU RoPE Dynamic NTK inverse frequency is not finite");
+    }
+    return max_frequency;
+}
+
+double FrequencyForPairUnchecked(const RoPEF32KernelArgs& args,
+                                 std::span<const std::byte> attrs,
+                                 const RoPERuntimeState& runtime,
+                                 int64_t pair) noexcept {
+    if (args.algorithm != RoPEAlgorithm::kDynamicNtk) {
+        return ReadStaticFrequencyUnchecked(args, attrs, runtime.static_frequency_table, pair);
+    }
+    const double exponent = -2.0 * static_cast<double>(pair) / static_cast<double>(args.rotary_dim);
+    return std::pow(runtime.dynamic_base, exponent);
+}
+
+double EffectivePositionUnchecked(const RoPEF32KernelArgs& args,
+                                  int64_t position) noexcept {
+    return args.algorithm == RoPEAlgorithm::kLinear
+                   ? static_cast<double>(position) / args.factor
+                   : static_cast<double>(position);
+}
+
+StatusOr<RoPERuntimeState> PrepareRuntimeState(const RoPEF32KernelArgs& args) noexcept {
+    AM_ASSIGN_OR_RETURN(const int64_t max_pos,
+                        ValidatePositionIdsAndGetMaxPosition(args));
     if (max_pos == std::numeric_limits<int64_t>::max()) {
         return Status::Overflow("CPU RoPE max position cannot form sequence length");
     }
-    return max_pos + 1;
-}
 
-double ReadFrequency(const RoPEF32KernelMetadata& metadata,
-                     std::span<const std::byte> attrs,
-                     uint8_t table,
-                     int64_t pair) noexcept {
-    double frequency = 0.0;
-    const size_t index = static_cast<size_t>(table) * metadata.freq_count +
-                         static_cast<size_t>(pair);
-    std::memcpy(&frequency, attrs.data() + sizeof(metadata) + index * sizeof(double),
-                sizeof(frequency));
-    return frequency;
-}
-
-StatusOr<double> ResolveDynamicBase(const RoPEF32KernelMetadata& metadata,
-                                    int64_t effective_seq_len) noexcept {
-    if (metadata.algorithm != RoPEAlgorithm::kDynamicNtk) {
-        return metadata.theta;
-    }
-    return ComputeDynamicNtkBase(metadata.theta, metadata.rotary_dim, metadata.factor,
-                                 metadata.original_context_length,
-                                 effective_seq_len);
-}
-
-StatusOr<double> FrequencyForPair(const RoPEF32KernelMetadata& metadata,
-                                  std::span<const std::byte> attrs,
-                                  int64_t effective_seq_len,
-                                  double dynamic_base,
-                                  int64_t pair) noexcept {
-    if (metadata.algorithm == RoPEAlgorithm::kDynamicNtk) {
-        const double exponent = -2.0 * static_cast<double>(pair) / static_cast<double>(metadata.rotary_dim);
-        const double frequency = std::pow(dynamic_base, exponent);
-        if (!std::isfinite(frequency) || frequency <= 0.0) {
-            return Status::Overflow(
-                    "CPU RoPE Dynamic NTK inverse frequency is not finite");
-        }
-        return frequency;
+    const int64_t effective_seq_len = max_pos + 1;
+    double dynamic_base = args.theta;
+    if (args.algorithm == RoPEAlgorithm::kDynamicNtk) {
+        AM_ASSIGN_OR_RETURN(dynamic_base,
+                            ComputeDynamicNtkBase(args.theta, args.rotary_dim, args.factor,
+                                                  args.original_context_length,
+                                                  effective_seq_len));
     }
 
-    const uint8_t table = metadata.algorithm == RoPEAlgorithm::kLongRope &&
-                                          effective_seq_len > metadata.original_context_length
-                                  ? 1
-                                  : 0;
-    const double frequency = ReadFrequency(metadata, attrs, table, pair);
-    if (!std::isfinite(frequency) || frequency <= 0.0) {
-        return Status::Overflow("CPU RoPE inverse frequency is not finite");
-    }
-    return frequency;
-}
-
-StatusOr<double> EffectivePosition(const RoPEF32KernelMetadata& metadata,
-                                   int64_t position) noexcept {
-    const double result = metadata.algorithm == RoPEAlgorithm::kLinear
-                                  ? static_cast<double>(position) / metadata.factor
-                                  : static_cast<double>(position);
-    if (!std::isfinite(result)) {
-        return Status::Overflow("CPU RoPE effective position is not finite");
-    }
-    return result;
-}
-
-Status ValidateAngleRange(const RoPEF32KernelArgs& args,
-                          const RoPEF32KernelMetadata& metadata,
-                          std::span<const std::byte> attrs,
-                          int64_t effective_seq_len,
-                          double dynamic_base) noexcept {
-    int64_t max_pos = 0;
-    for (int64_t token = 0; token < args.seq_len; ++token) {
-        max_pos = std::max(max_pos, args.pos_ids[token * args.pos_stride]);
+    const uint8_t static_frequency_table =
+            args.algorithm == RoPEAlgorithm::kLongRope &&
+                            effective_seq_len > args.original_context_length
+                    ? 1
+                    : 0;
+    double max_inv_freq = static_frequency_table == 0
+                                  ? args.short_max_inv_freq
+                                  : args.long_max_inv_freq;
+    if (args.algorithm == RoPEAlgorithm::kDynamicNtk) {
+        AM_ASSIGN_OR_RETURN(max_inv_freq, DynamicMaxInverseFrequency(args, dynamic_base));
     }
 
-    double max_freq = 0.0;
-    for (int64_t pair = 0; pair < args.rotary_dim / 2; ++pair) {
-        AM_ASSIGN_OR_RETURN(const double frequency,
-                            FrequencyForPair(metadata, attrs, effective_seq_len,
-                                             dynamic_base, pair));
-        max_freq = std::max(max_freq, frequency);
-    }
-
-    AM_ASSIGN_OR_RETURN(const double max_effective_position, EffectivePosition(metadata, max_pos));
-    if (!std::isfinite(max_effective_position * max_freq)) {
+    if (const double max_effective_pos = EffectivePositionUnchecked(args, max_pos);
+        !std::isfinite(max_effective_pos) || !std::isfinite(max_effective_pos * max_inv_freq)) {
         return Status::Overflow("CPU RoPE angle is not finite");
     }
-    return Status::Ok();
+
+    return RoPERuntimeState{
+            .dynamic_base = dynamic_base,
+            .static_frequency_table = static_frequency_table,
+    };
 }
 
 void RotateHeads(const float* input, float* output,
@@ -185,18 +141,13 @@ void RotateHeads(const float* input, float* output,
     }
 }
 
-void CopyUnrotatedTail(const float* input,
-                       float* output,
-                       int64_t num_heads,
-                       int64_t head_dim,
-                       int64_t rotary_dim,
-                       int64_t input_col_stride,
-                       int64_t output_col_stride) noexcept {
+void CopyUnrotatedTail(const float* input, float* output,
+                       int64_t num_heads, int64_t head_dim, int64_t rotary_dim,
+                       int64_t input_col_stride, int64_t output_col_stride) noexcept {
     for (int64_t head = 0; head < num_heads; ++head) {
         const int64_t head_offset = head * head_dim;
-        for (int64_t element = rotary_dim; element < head_dim; ++element) {
-            output[(head_offset + element) * output_col_stride] =
-                    input[(head_offset + element) * input_col_stride];
+        for (int64_t i = rotary_dim; i < head_dim; ++i) {
+            output[(head_offset + i) * output_col_stride] = input[(head_offset + i) * input_col_stride];
         }
     }
 }
@@ -205,37 +156,26 @@ void CopyUnrotatedTail(const float* input,
 
 Status RunRoPEF32Reference(const RoPEF32KernelArgs& args,
                            std::span<const std::byte> attrs) noexcept {
-    AM_ASSIGN_OR_RETURN(const RoPEF32KernelMetadata metadata, ReadAndValidateMetadata(attrs));
-    if (metadata.head_dim != args.head_dim || metadata.rotary_dim != args.rotary_dim ||
-        metadata.pairing != args.pairing) {
-        return Status::InvalidArgument("CPU RoPE prepared args do not match metadata");
-    }
-
-    AM_ASSIGN_OR_RETURN(const int64_t effective_seq_len,
-                        ValidatePositionIdsAndGetEffectiveSequenceLength(args));
-    AM_ASSIGN_OR_RETURN(const double dynamic_base,
-                        ResolveDynamicBase(metadata, effective_seq_len));
-    AM_RETURN_IF_ERROR(ValidateAngleRange(args, metadata, attrs, effective_seq_len, dynamic_base));
+    AM_ASSIGN_OR_RETURN(const RoPERuntimeState runtime, PrepareRuntimeState(args));
 
     for (int64_t pair = 0; pair < args.rotary_dim / 2; ++pair) {
-        AM_ASSIGN_OR_RETURN(const double inv_freq,
-                            FrequencyForPair(metadata, attrs, effective_seq_len,
-                                             dynamic_base, pair));
+        const double inv_freq = FrequencyForPairUnchecked(args, attrs, runtime, pair);
         for (int64_t token = 0; token < args.seq_len; ++token) {
-            AM_ASSIGN_OR_RETURN(const double pos,
-                                EffectivePosition(metadata,
-                                                  args.pos_ids[token * args.pos_stride]));
+            const double pos =
+                    EffectivePositionUnchecked(args, args.pos_ids[token * args.pos_stride]);
             const double angle = pos * inv_freq;
-            const double cosine = std::cos(angle) * metadata.rotary_output_scale;
-            const double sine = std::sin(angle) * metadata.rotary_output_scale;
+            const double cosine = std::cos(angle) * args.rotary_output_scale;
+            const double sine = std::sin(angle) * args.rotary_output_scale;
             RotateHeads(args.q + token * args.q_row_stride,
                         args.q_output + token * args.q_output_row_stride,
                         args.num_q_heads, args.head_dim, args.rotary_dim, args.pairing,
-                        args.q_col_stride, args.q_output_col_stride, pair, cosine, sine);
+                        args.q_col_stride, args.q_output_col_stride, pair,
+                        cosine, sine);
             RotateHeads(args.k + token * args.k_row_stride,
                         args.k_output + token * args.k_output_row_stride,
                         args.num_kv_heads, args.head_dim, args.rotary_dim, args.pairing,
-                        args.k_col_stride, args.k_output_col_stride, pair, cosine, sine);
+                        args.k_col_stride, args.k_output_col_stride, pair,
+                        cosine, sine);
         }
     }
 

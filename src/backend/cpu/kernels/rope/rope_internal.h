@@ -46,7 +46,8 @@ struct RoPEF32KernelMetadata {
 ///
 /// All pointers and geometry are prepared once for a binding. `position_ids`
 /// is read on each execution; its values are validated before the kernel
-/// writes either output. Algorithm parameters and precomputed static frequency
+/// writes either output. The caller must not modify that buffer concurrently
+/// with an invocation. Algorithm parameters and precomputed static frequency
 /// tables are immutable attrs owned by the resolved kernel; the args retain no
 /// borrowed vector pointers into those attrs.
 struct RoPEF32KernelArgs {
@@ -72,12 +73,25 @@ struct RoPEF32KernelArgs {
     int64_t k_output_row_stride{};
     int64_t k_output_col_stride{1};
 
+    int64_t original_context_length{};
+    double theta{};
+    double factor{};
+    double rotary_output_scale{};
+    // Built by the cold-path params builder after it validates every static
+    // frequency entry. LongRoPE uses the first value for its short table and
+    // the second for its long table; other static algorithms use only short.
+    double short_max_inv_freq{};
+    double long_max_inv_freq{};
+    uint32_t freq_count{};
+
     RoPEPairing pairing{RoPEPairing::kSplitHalf};
+    RoPEAlgorithm algorithm{RoPEAlgorithm::kStandard};
 };
 
 /// @brief Runs the scalar FP32 RoPE reference kernel.
 ///
 /// @param args Pre-validated tensor layout and frozen RoPE parameters.
+/// @param attrs Kernel attrs.
 /// @return InvalidArgument when a runtime position id is negative, Overflow
 ///         when its derived angle is not finite, or Ok after rotating both
 ///         outputs. A position failure occurs before any output write.

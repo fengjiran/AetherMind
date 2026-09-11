@@ -233,8 +233,8 @@ StatusOr<RoPEParams> MakeRoPEParams(const HfModelConfig& config, int64_t head_di
     RoPEParams result{
             .head_dim = head_dim,
             .rotary_dim = rotary_dim,
-            .num_attention_heads = config.num_attention_heads,
-            .num_key_value_heads = config.num_key_value_heads,
+            .num_q_heads = config.num_attention_heads,
+            .num_kv_heads = config.num_key_value_heads,
             .max_pos_embeddings = config.max_position_embeddings,
             .theta = config.rope.theta,
             .algorithm = std::move(algorithm),
@@ -457,8 +457,8 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
             .rms_norm_eps = static_cast<float>(config.rms_norm_eps),
             .rope = rope_params,
             .attention = AttentionParams{
-                    .num_attention_heads = config.num_attention_heads,
-                    .num_key_value_heads = config.num_key_value_heads,
+                    .num_q_heads = config.num_attention_heads,
+                    .num_kv_heads = config.num_key_value_heads,
                     .head_dim = head_dim,
             },
     };

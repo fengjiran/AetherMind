@@ -441,9 +441,9 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
             [&](const RoPEParams& p) {
                 os << "RoPE version=2 head_dim=" << p.head_dim
                    << " rotary_dim=" << EffectiveRoPERotaryDim(p)
-                   << " num_attention_heads=" << p.num_attention_heads
-                   << " num_key_value_heads=" << p.num_key_value_heads
-                   << " max_position_embeddings=" << p.max_pos_embeddings
+                   << " num_q_heads=" << p.num_q_heads
+                   << " num_kv_heads=" << p.num_kv_heads
+                   << " max_pos_embeddings=" << p.max_pos_embeddings
                    << " theta=" << p.theta
                    << " pairing=" << ToString(p.pairing)
                    << " algorithm=" << ToString(GetRoPEAlgorithm(p.algorithm));
@@ -489,8 +489,8 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
             [&](const ElementwiseMulParams&) { os << "ElementwiseMul"; },
             [&](const KVCacheUpdateParams&) { os << "KVCacheUpdate"; },
             [&](const AttentionParams& p) {
-                os << "Attention num_attention_heads=" << p.num_attention_heads
-                   << " num_key_value_heads=" << p.num_key_value_heads
+                os << "Attention num_q_heads=" << p.num_q_heads
+                   << " num_kv_heads=" << p.num_kv_heads
                    << " head_dim=" << p.head_dim;
             },
             [&](const ArgmaxParams& p) { os << "Argmax axis=" << p.axis; },
@@ -560,12 +560,12 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
             AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 7));
             StatusOr<int64_t> head_dim = ParseInt64(fields, "head_dim");
             AM_RETURN_IF_ERROR(head_dim.status());
-            StatusOr<int64_t> num_attention_heads = ParseInt64(fields, "num_attention_heads");
-            AM_RETURN_IF_ERROR(num_attention_heads.status());
-            StatusOr<int64_t> num_key_value_heads = ParseInt64(fields, "num_key_value_heads");
-            AM_RETURN_IF_ERROR(num_key_value_heads.status());
-            StatusOr<int64_t> max_position_embeddings = ParseInt64(fields, "max_position_embeddings");
-            AM_RETURN_IF_ERROR(max_position_embeddings.status());
+            StatusOr<int64_t> num_q_heads = ParseInt64(fields, "num_q_heads");
+            AM_RETURN_IF_ERROR(num_q_heads.status());
+            StatusOr<int64_t> num_kv_heads = ParseInt64(fields, "num_kv_heads");
+            AM_RETURN_IF_ERROR(num_kv_heads.status());
+            StatusOr<int64_t> max_pos_embeddings = ParseInt64(fields, "max_pos_embeddings");
+            AM_RETURN_IF_ERROR(max_pos_embeddings.status());
             StatusOr<double> theta = ParseDouble(fields, "theta");
             AM_RETURN_IF_ERROR(theta.status());
             StatusOr<std::optional<double>> scaling_factor = ParseOptionalDouble(fields, "scaling_factor");
@@ -583,9 +583,9 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
             }
             return OpParams{RoPEParams{.head_dim = *head_dim,
                                        .rotary_dim = *head_dim,
-                                       .num_attention_heads = *num_attention_heads,
-                                       .num_key_value_heads = *num_key_value_heads,
-                                       .max_pos_embeddings = *max_position_embeddings,
+                                       .num_q_heads = *num_q_heads,
+                                       .num_kv_heads = *num_kv_heads,
+                                       .max_pos_embeddings = *max_pos_embeddings,
                                        .theta = *theta,
                                        .algorithm = std::move(params)}};
         }
@@ -618,12 +618,12 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
         AM_RETURN_IF_ERROR(head_dim.status());
         StatusOr<int64_t> rotary_dim = ParseInt64(fields, "rotary_dim");
         AM_RETURN_IF_ERROR(rotary_dim.status());
-        StatusOr<int64_t> num_attention_heads = ParseInt64(fields, "num_attention_heads");
-        AM_RETURN_IF_ERROR(num_attention_heads.status());
-        StatusOr<int64_t> num_key_value_heads = ParseInt64(fields, "num_key_value_heads");
-        AM_RETURN_IF_ERROR(num_key_value_heads.status());
-        StatusOr<int64_t> max_position_embeddings = ParseInt64(fields, "max_position_embeddings");
-        AM_RETURN_IF_ERROR(max_position_embeddings.status());
+        StatusOr<int64_t> num_q_heads = ParseInt64(fields, "num_q_heads");
+        AM_RETURN_IF_ERROR(num_q_heads.status());
+        StatusOr<int64_t> num_kv_heads = ParseInt64(fields, "num_kv_heads");
+        AM_RETURN_IF_ERROR(num_kv_heads.status());
+        StatusOr<int64_t> max_pos_embeddings = ParseInt64(fields, "max_pos_embeddings");
+        AM_RETURN_IF_ERROR(max_pos_embeddings.status());
         StatusOr<double> theta = ParseDouble(fields, "theta");
         AM_RETURN_IF_ERROR(theta.status());
         StatusOr<RoPEPairing> pairing = ParseRoPEPairingField(fields);
@@ -697,9 +697,9 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
         }
         return OpParams{RoPEParams{.head_dim = *head_dim,
                                    .rotary_dim = *rotary_dim,
-                                   .num_attention_heads = *num_attention_heads,
-                                   .num_key_value_heads = *num_key_value_heads,
-                                   .max_pos_embeddings = *max_position_embeddings,
+                                   .num_q_heads = *num_q_heads,
+                                   .num_kv_heads = *num_kv_heads,
+                                   .max_pos_embeddings = *max_pos_embeddings,
                                    .theta = *theta,
                                    .pairing = *pairing,
                                    .algorithm = std::move(algorithm_params)}};
@@ -746,14 +746,14 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
 
     if (kind == "Attention") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 3));
-        StatusOr<int64_t> num_attention_heads = ParseInt64(fields, "num_attention_heads");
-        AM_RETURN_IF_ERROR(num_attention_heads.status());
-        StatusOr<int64_t> num_key_value_heads = ParseInt64(fields, "num_key_value_heads");
-        AM_RETURN_IF_ERROR(num_key_value_heads.status());
+        StatusOr<int64_t> num_q_heads = ParseInt64(fields, "num_q_heads");
+        AM_RETURN_IF_ERROR(num_q_heads.status());
+        StatusOr<int64_t> num_kv_heads = ParseInt64(fields, "num_kv_heads");
+        AM_RETURN_IF_ERROR(num_kv_heads.status());
         StatusOr<int64_t> head_dim = ParseInt64(fields, "head_dim");
         AM_RETURN_IF_ERROR(head_dim.status());
-        return OpParams{AttentionParams{.num_attention_heads = *num_attention_heads,
-                                        .num_key_value_heads = *num_key_value_heads,
+        return OpParams{AttentionParams{.num_q_heads = *num_q_heads,
+                                        .num_kv_heads = *num_kv_heads,
                                         .head_dim = *head_dim}};
     }
 

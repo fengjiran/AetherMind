@@ -9,29 +9,29 @@ namespace {
 // Validates AttentionParams fields. Must be called before any input-dependent
 // checks since it depends only on params.
 Status ValidateAttentionParams(const AttentionParams& p) {
-    if (p.num_attention_heads <= 0) {
+    if (p.num_q_heads <= 0) {
         return Status::InvalidArgument(
-                "Attention num_attention_heads must be positive");
+                "Attention num_q_heads must be positive");
     }
 
-    if (p.num_key_value_heads <= 0) {
+    if (p.num_kv_heads <= 0) {
         return Status::InvalidArgument(
-                "Attention num_key_value_heads must be positive");
+                "Attention num_kv_heads must be positive");
     }
 
     if (p.head_dim <= 0) {
         return Status::InvalidArgument("Attention head_dim must be positive");
     }
 
-    if (p.num_attention_heads % p.num_key_value_heads != 0) {
+    if (p.num_q_heads % p.num_kv_heads != 0) {
         return Status::InvalidArgument(
-                "Attention num_attention_heads must be divisible by "
-                "num_key_value_heads");
+                "Attention num_q_heads must be divisible by "
+                "num_kv_heads");
     }
 
-    if (int64_t hidden = 0; CheckOverflowMul(p.num_attention_heads, p.head_dim, &hidden)) {
+    if (int64_t hidden = 0; CheckOverflowMul(p.num_q_heads, p.head_dim, &hidden)) {
         return Status::InvalidArgument(
-                "Attention num_attention_heads * head_dim overflows int64_t");
+                "Attention num_q_heads * head_dim overflows int64_t");
     }
     return Status::Ok();
 }
@@ -76,12 +76,12 @@ Status ValidateAttentionShapes(const AttentionParams& params,
 
     if (!HasRank(k_cache_shape, 3)) {
         return Status::InvalidArgument("Attention k_cache must be rank 3 "
-                                       "[num_key_value_heads, cache_len, head_dim]");
+                                       "[num_kv_heads, cache_len, head_dim]");
     }
 
     if (!HasRank(v_cache_shape, 3)) {
         return Status::InvalidArgument("Attention v_cache must be rank 3 "
-                                       "[num_key_value_heads, cache_len, head_dim]");
+                                       "[num_kv_heads, cache_len, head_dim]");
     }
 
     const ShapeSymbol& q_seq_len = q_shape[0];
@@ -90,17 +90,17 @@ Status ValidateAttentionShapes(const AttentionParams& params,
     const ShapeSymbol& cache_len = k_cache_shape[1];
     const ShapeSymbol& head_dim = k_cache_shape[2];
 
-    // Static equation: q.shape[1] == num_attention_heads * head_dim.
+    // Static equation: q.shape[1] == num_q_heads * head_dim.
     // Overflow already rejected by ValidateAttentionParams.
     if (q_hidden.IsStatic() &&
-        q_hidden.GetStaticValue() != params.num_attention_heads * params.head_dim) {
+        q_hidden.GetStaticValue() != params.num_q_heads * params.head_dim) {
         return Status::InvalidArgument("Attention q hidden dim must equal "
-                                       "num_attention_heads * head_dim");
+                                       "num_q_heads * head_dim");
     }
 
-    // Static equation: k_cache.shape[0] == num_key_value_heads.
+    // Static equation: k_cache.shape[0] == num_kv_heads.
     if (kv_heads.IsStatic() &&
-        kv_heads.GetStaticValue() != params.num_key_value_heads) {
+        kv_heads.GetStaticValue() != params.num_kv_heads) {
         return Status::InvalidArgument(
                 "Attention k_cache num_kv_heads must match params");
     }

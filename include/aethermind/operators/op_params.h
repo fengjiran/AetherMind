@@ -146,14 +146,14 @@ inline RoPEAlgorithm GetRoPEAlgorithm(const RoPEAlgorithmParams& params) noexcep
 ///
 /// @pre Graph-time invariants enforced by InferRoPE:
 ///      - scalar params: `head_dim` positive; `rotary_dim` is positive, even,
-///        and at most `head_dim`; `num_attention_heads`,
-///        `num_key_value_heads`, `max_position_embeddings` positive; `theta`
-///        finite and positive; `num_attention_heads * head_dim` and
-///        `num_key_value_heads * head_dim` do not overflow int64_t
+///        and at most `head_dim`; `num_q_heads`,
+///        `num_kv_heads`, `max_pos_embeddings` positive; `theta`
+///        finite and positive; `num_q_heads * head_dim` and
+///        `num_kv_heads * head_dim` do not overflow int64_t
 ///      - the active `algorithm` alternative contains every parameter needed
 ///        by its formula; no tag-plus-optional-field combinations exist
 ///      - input shapes: q and k rank 2 with widths equal to
-///        `num_attention_heads * head_dim` and `num_key_value_heads * head_dim`
+///        `num_q_heads * head_dim` and `num_kv_heads * head_dim`
 ///        respectively when static (symbolic widths remain legal);
 ///        position_ids rank 1, Int64, with seq_len reconciled to q/k
 ///      - input dtypes: q and k share a dtype from {Float32, Float16, BFloat16}
@@ -178,8 +178,8 @@ struct RoPEParams {
     /// Rotated prefix per head. Zero is a legacy input spelling for head_dim;
     /// semantic producers must write the normalized positive value.
     int64_t rotary_dim = 0;
-    int64_t num_attention_heads = 0;
-    int64_t num_key_value_heads = 0;
+    int64_t num_q_heads = 0;
+    int64_t num_kv_heads = 0;
     int64_t max_pos_embeddings = 0;
     double theta = 10000.0;
     RoPEPairing pairing = RoPEPairing::kSplitHalf;
@@ -211,8 +211,8 @@ struct ElementwiseMulParams {};
 struct KVCacheUpdateParams {};
 
 struct AttentionParams {
-    int64_t num_attention_heads = 0;
-    int64_t num_key_value_heads = 0;
+    int64_t num_q_heads = 0;
+    int64_t num_kv_heads = 0;
     int64_t head_dim = 0;
 };
 

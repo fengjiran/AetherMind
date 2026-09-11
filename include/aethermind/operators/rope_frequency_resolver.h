@@ -65,13 +65,15 @@ StatusOr<double> ComputeDynamicNtkBase(double theta,
 ///         which require an execution-time sequence length.
 StatusOr<ResolvedRoPEFreqs> ResolveStaticRoPEFreqs(const RoPEParams& params);
 
-/// @brief Resolves the frequency table for one execution.
+/// @brief Resolves frequencies for algorithms that depend on the execution-time
+///        sequence length.
 ///
-/// @param params Semantic RoPE parameters carrying any supported algorithm.
+/// @param params Semantic RoPE parameters carrying Dynamic NTK or LongRoPE.
 /// @param effective_seq_len Execution-time length, normally max(position_ids) + 1;
 ///        must be positive.
-/// @return Owned frequency table; static algorithms ignore the sequence length and
-///         resolve as in ResolveStaticRoPEFrequencies.
+/// @return Owned frequency table, or InvalidArgument for position-independent
+///         algorithms (resolve those with ResolveStaticRoPEFreqs) and for a
+///         non-positive effective_seq_len.
 StatusOr<ResolvedRoPEFreqs> ResolveDynamicRoPEFreqs(
         const RoPEParams& params,
         int64_t effective_seq_len);

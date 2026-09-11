@@ -1,5 +1,6 @@
 #include "aethermind/operators/rope_frequency_resolver.h"
 #include "aethermind/base/macros.h"
+#include "utils/numeric_utils.h"
 #include "utils/variant_utils.h"
 
 #include <algorithm>
@@ -10,10 +11,6 @@
 
 namespace aethermind {
 namespace {
-
-bool IsFinitePositive(double value) noexcept {
-    return std::isfinite(value) && value > 0.0;
-}
 
 Status InvalidAlgorithmParameter(std::string_view name) {
     return Status::InvalidArgument("RoPE " + std::string(name) +
@@ -124,7 +121,7 @@ StatusOr<ResolvedRoPEFreqs> ResolveLongRope(const RoPEParams& params,
                                             const LongRoPE& algorithm,
                                             int64_t effective_seq_len) {
     const bool use_long = effective_seq_len > algorithm.original_context_length;
-    const std::vector<double>& factors = use_long ? algorithm.long_factors : algorithm.short_factors;
+    const auto& factors = use_long ? algorithm.long_factors : algorithm.short_factors;
     AM_ASSIGN_OR_RETURN(auto freqs,
                         MakeBaseFreqs(params.theta, EffectiveRoPERotaryDim(params)));
     for (size_t pair = 0; pair < freqs.size(); ++pair) {
@@ -133,6 +130,7 @@ StatusOr<ResolvedRoPEFreqs> ResolveLongRope(const RoPEParams& params,
             return Status::Overflow("RoPE LongRoPE inverse frequency is not finite");
         }
     }
+
     return ResolvedRoPEFreqs{
             .inv_freqs = std::move(freqs),
             .rotary_output_scale = algorithm.rotary_output_scale,
@@ -158,8 +156,8 @@ Status ValidateRoPEFreqParams(const RoPEParams& params) {
 
                 if (algorithm.original_context_length <= 0 ||
                     EffectiveRoPERotaryDim(params) <= 2) {
-                    return Status::InvalidArgument(
-                            "RoPE Dynamic NTK requires positive original context and rotary_dim > 2");
+                    return Status::InvalidArgument("RoPE Dynamic NTK requires"
+                                                   " positive original context and rotary_dim > 2");
                 }
                 return Status::Ok();
             },
@@ -271,12 +269,13 @@ StatusOr<ResolvedRoPEFreqs> ResolveStaticRoPEFreqs(const RoPEParams& params) {
 StatusOr<ResolvedRoPEFreqs> ResolveDynamicRoPEFreqs(const RoPEParams& params,
                                                     int64_t effective_seq_len) {
     AM_RETURN_IF_ERROR(ValidateRoPEFreqParams(params));
-    if (effective_seq_len <= 0) {
-        return Status::InvalidArgument("RoPE effective sequence length must be positive");
+    if (!IsDynamicRoPE(params.algorithm)) {
+        return Status::InvalidArgument(
+                "RoPE algorithm does not require an execution-time sequence length");
     }
 
-    if (!IsDynamicRoPE(params.algorithm)) {
-        return ResolveStaticRoPEFreqs(params);
+    if (effective_seq_len <= 0) {
+        return Status::InvalidArgument("RoPE effective sequence length must be positive");
     }
 
     if (const auto* dynamic_ntk = std::get_if<DynamicNtkRoPE>(&params.algorithm)) {

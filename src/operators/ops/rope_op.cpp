@@ -14,19 +14,19 @@ Status ValidateRoPEParams(const RoPEParams& p) {
         return Status::InvalidArgument("RoPE head_dim must be positive");
     }
 
-    if (p.num_attention_heads <= 0) {
+    if (p.num_q_heads <= 0) {
         return Status::InvalidArgument(
-                "RoPE num_attention_heads must be positive");
+                "RoPE num_q_heads must be positive");
     }
 
-    if (p.num_key_value_heads <= 0) {
+    if (p.num_kv_heads <= 0) {
         return Status::InvalidArgument(
-                "RoPE num_key_value_heads must be positive");
+                "RoPE num_kv_heads must be positive");
     }
 
     if (p.max_pos_embeddings <= 0) {
         return Status::InvalidArgument(
-                "RoPE max_position_embeddings must be positive");
+                "RoPE max_pos_embeddings must be positive");
     }
 
     if (const int64_t rotary_dim = EffectiveRoPERotaryDim(p);
@@ -44,14 +44,14 @@ Status ValidateRoPEParams(const RoPEParams& p) {
         return Status::InvalidArgument("RoPE theta must be finite and positive");
     }
 
-    if (int64_t hidden = 0; CheckOverflowMul(p.num_attention_heads, p.head_dim, &hidden)) {
+    if (int64_t hidden = 0; CheckOverflowMul(p.num_q_heads, p.head_dim, &hidden)) {
         return Status::InvalidArgument(
-                "RoPE num_attention_heads * head_dim overflows int64_t");
+                "RoPE num_q_heads * head_dim overflows int64_t");
     }
 
-    if (int64_t hidden = 0; CheckOverflowMul(p.num_key_value_heads, p.head_dim, &hidden)) {
+    if (int64_t hidden = 0; CheckOverflowMul(p.num_kv_heads, p.head_dim, &hidden)) {
         return Status::InvalidArgument(
-                "RoPE num_key_value_heads * head_dim overflows int64_t");
+                "RoPE num_kv_heads * head_dim overflows int64_t");
     }
     return Status::Ok();
 }
@@ -110,15 +110,15 @@ Status ValidateRoPEShapes(const RoPEParams& params,
 
     // Static width equations (overflow already rejected by ValidateRoPEParams).
     if (q_hidden.IsStatic() &&
-        q_hidden.GetStaticValue() != params.num_attention_heads * params.head_dim) {
+        q_hidden.GetStaticValue() != params.num_q_heads * params.head_dim) {
         return Status::InvalidArgument(
-                "RoPE q hidden dim must equal num_attention_heads * head_dim");
+                "RoPE q hidden dim must equal num_q_heads * head_dim");
     }
 
     if (kv_hidden.IsStatic() &&
-        kv_hidden.GetStaticValue() != params.num_key_value_heads * params.head_dim) {
+        kv_hidden.GetStaticValue() != params.num_kv_heads * params.head_dim) {
         return Status::InvalidArgument(
-                "RoPE k hidden dim must equal num_key_value_heads * head_dim");
+                "RoPE k hidden dim must equal num_kv_heads * head_dim");
     }
 
     // Static q seq_len <= 0 rejected.

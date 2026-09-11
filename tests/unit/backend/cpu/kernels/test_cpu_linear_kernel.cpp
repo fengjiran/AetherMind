@@ -254,6 +254,30 @@ TEST(CPUKernelLinear, ReferenceExecutesPositiveColumnStrides) {
     ExpectLinearRowsNear(input.data(), weight.data(), output.data(), 2, 3, 2, 7, 2, 8, 2, 8, 3);
 }
 
+TEST(CPUKernelLinear, AllowsDisjointViewsInsideOneAllocation) {
+    constexpr int64_t input_shape[2] = {2, 3};
+    constexpr int64_t input_strides[2] = {3, 1};
+    constexpr int64_t weight_shape[2] = {2, 3};
+    constexpr int64_t weight_strides[2] = {3, 1};
+    constexpr int64_t output_shape[2] = {2, 2};
+    constexpr int64_t output_strides[2] = {2, 1};
+    std::array<float, 10> storage{};
+    std::array<float, 6> weight{};
+    for (int64_t index = 0; index < 6; ++index) {
+        storage[static_cast<size_t>(index)] = static_cast<float>(index) * 0.5F - 1.0F;
+        weight[static_cast<size_t>(index)] = static_cast<float>(index % 3) * 0.25F + 1.0F;
+    }
+
+    const Status status = RunLinearEntry(LinearTestViews{
+            .input_tensor = TensorView{storage.data(), DataType::Float32(), input_shape, input_strides},
+            .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{storage.data() + 6, DataType::Float32(), output_shape, output_strides},
+    });
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    ExpectLinearRowsNear(storage.data(), weight.data(), storage.data() + 6, 2, 3, 2, 3, 1, 3, 1, 2, 1);
+}
+
 TEST(CPUKernelLinear, ZeroLeadingDimensionIsSuccessfulNoOp) {
     constexpr int64_t input_shape[3] = {2, 0, 3};
     constexpr int64_t input_strides[3] = {0, 3, 1};
@@ -307,6 +331,30 @@ TEST(CPUKernelLinear, ZeroInputFeatureDimensionWritesZero) {
 
     ASSERT_TRUE(status.ok()) << status.ToString();
     for (float value: output) {
+        EXPECT_EQ(value, 0.0F);
+    }
+}
+
+TEST(CPUKernelLinear, ZeroInputFeatureDimensionAllowsOutputAliasingInputs) {
+    constexpr int64_t input_shape[2] = {2, 0};
+    constexpr int64_t input_strides[2] = {1, 1};
+    constexpr int64_t weight_shape[2] = {3, 0};
+    constexpr int64_t weight_strides[2] = {1, 1};
+    constexpr int64_t output_shape[2] = {2, 3};
+    constexpr int64_t output_strides[2] = {3, 1};
+    std::array<float, 6> storage{};
+    storage.fill(1.0F);
+
+    // in_features == 0 only zero-fills the output and reads neither input nor
+    // weight, so sharing one buffer with both is safe here.
+    const Status status = RunLinearEntry(LinearTestViews{
+            .input_tensor = TensorView{storage.data(), DataType::Float32(), input_shape, input_strides},
+            .weight_tensor = TensorView{storage.data(), DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), output_shape, output_strides},
+    });
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    for (float value: storage) {
         EXPECT_EQ(value, 0.0F);
     }
 }
@@ -451,6 +499,63 @@ TEST(CPUKernelLinearEntry, RejectsOutputBasePointerAliases) {
             .output_tensor = MutableTensorView{weight.data(), DataType::Float32(), output_shape, output_strides},
     });
     EXPECT_EQ(aliases_weight.code(), StatusCode::kInvalidArgument) << aliases_weight.ToString();
+}
+
+TEST(CPUKernelLinearEntry, RejectsInputOverlapAtDistinctBasePointer) {
+    constexpr int64_t input_shape[2] = {2, 3};
+    constexpr int64_t input_strides[2] = {3, 1};
+    constexpr int64_t weight_shape[2] = {2, 3};
+    constexpr int64_t weight_strides[2] = {3, 1};
+    constexpr int64_t output_shape[2] = {2, 2};
+    constexpr int64_t output_strides[2] = {2, 1};
+    std::array<float, 7> storage{};
+    std::array<float, 6> weight{};
+
+    const Status status = RunLinearEntry(LinearTestViews{
+            .input_tensor = TensorView{storage.data(), DataType::Float32(), input_shape, input_strides},
+            .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{storage.data() + 1, DataType::Float32(), output_shape, output_strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(CPUKernelLinearEntry, RejectsWeightOverlapAtDistinctBasePointer) {
+    constexpr int64_t input_shape[2] = {2, 3};
+    constexpr int64_t input_strides[2] = {3, 1};
+    constexpr int64_t weight_shape[2] = {2, 3};
+    constexpr int64_t weight_strides[2] = {3, 1};
+    constexpr int64_t output_shape[2] = {2, 2};
+    constexpr int64_t output_strides[2] = {2, 1};
+    std::array<float, 6> input{};
+    std::array<float, 7> weight_storage{};
+
+    const Status status = RunLinearEntry(LinearTestViews{
+            .input_tensor = TensorView{input.data(), DataType::Float32(), input_shape, input_strides},
+            .weight_tensor = TensorView{weight_storage.data(), DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{weight_storage.data() + 1, DataType::Float32(), output_shape, output_strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(CPUKernelLinearEntry, ReportsUndecidableColumnStrideOverlapAsUnimplemented) {
+    constexpr int64_t input_shape[2] = {2, 3};
+    constexpr int64_t input_strides[2] = {7, 2};
+    constexpr int64_t weight_shape[2] = {2, 3};
+    constexpr int64_t weight_strides[2] = {3, 1};
+    constexpr int64_t output_shape[2] = {2, 2};
+    constexpr int64_t output_strides[2] = {5, 2};
+    std::array<float, 13> storage{};
+    std::array<float, 6> weight{};
+
+    const Status status = RunLinearEntry(LinearTestViews{
+            .input_tensor = TensorView{storage.data(), DataType::Float32(), input_shape, input_strides},
+            .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{storage.data() + 1, DataType::Float32(), output_shape, output_strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
 }
 
 TEST(CPUKernelLinear, ExecutionPlanBuilderRunsPreparedReferenceKernel) {

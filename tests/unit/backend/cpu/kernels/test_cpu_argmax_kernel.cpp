@@ -863,8 +863,10 @@ TEST(CPUKernelArgmaxEntry, RejectsNonPositiveOutputStride) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
 }
 
-TEST(CPUKernelArgmaxEntry, DoesNotSupportUnprovenOutputLayout) {
-    // Shape [2, 2] with strides [1, 1] maps four coordinates onto two slots.
+TEST(CPUKernelArgmaxEntry, RejectsProvenNonInjectiveOutputLayout) {
+    // Shape [2, 2] with strides [1, 1] maps four coordinates onto offsets
+    // {0, 1, 1, 2}: a proven collision, hence InvalidArgument rather than the
+    // Unimplemented reserved for layouts the cheap proof cannot decide.
     constexpr float input[8] = {};
     int64_t output[2] = {};
     constexpr int64_t input_shape[3] = {2, 2, 2};
@@ -878,14 +880,14 @@ TEST(CPUKernelArgmaxEntry, DoesNotSupportUnprovenOutputLayout) {
                                                         .output_tensor = MutableTensorView{output, DataType::Int(64), output_shape,
                                                                                            output_strides},
                                                 });
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelArgmaxEntry, ReportsInjectiveIrregularOutputAsUnimplemented) {
     // Shape [2, 3] with strides [3, 2] maps to offsets
-    // {0, 2, 4, 3, 5, 7}. The layout is injective, but it does not satisfy the
-    // kernel's inexpensive stride-span proof and therefore lies outside the
-    // explicitly supported output-layout subset.
+    // {0, 2, 4, 3, 5, 7}. The layout is injective, but the inexpensive
+    // stride-span proof can neither confirm nor refute it, so the kernel reports
+    // missing capability instead of claiming a violation.
     constexpr float input[12] = {};
     std::array<int64_t, 8> output{};
     constexpr int64_t input_shape[3] = {2, 3, 2};
@@ -917,9 +919,8 @@ TEST(CPUKernelArgmaxEntry, AcceptsTransposedOutputLayout) {
 
 TEST(CPUKernelArgmaxEntry, RejectsAliasedInputOutputBasePointer) {
     // ArgMax changes dtype and rank, so a shared base pointer is never a legal
-    // in-place execution. Only identical base pointers are detectable: the
-    // TensorView API carries no storage bounds, so partial overlap between two
-    // distinct pointers can be proven neither way.
+    // in-place execution: both footprints start at the same address and
+    // therefore provably overlap.
     std::array<float, 4> storage{};
     constexpr int64_t input_shape[2] = {2, 2};
     constexpr int64_t input_strides[2] = {2, 1};
@@ -933,6 +934,51 @@ TEST(CPUKernelArgmaxEntry, RejectsAliasedInputOutputBasePointer) {
                                                                                            output_shape, output_strides},
                                                 });
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(CPUKernelArgmaxEntry, RejectsInputOverlapAtDistinctBasePointer) {
+    // One allocation viewed as float input at offset 0 and int64 output at
+    // offset 8: both layouts are dense, so the intersecting byte envelopes prove
+    // a real conflict even though the base pointers differ.
+    constexpr int64_t input_shape[2] = {2, 4};
+    constexpr int64_t input_strides[2] = {4, 1};
+    constexpr int64_t output_shape[1] = {2};
+    constexpr int64_t output_strides[1] = {1};
+    alignas(std::max_align_t) std::array<std::byte, 64> storage{};
+
+    const Status status = RunArgmaxWithAxis(-1, ArgmaxTestViews{
+                                                        .input_tensor = TensorView{reinterpret_cast<const float*>(storage.data()),
+                                                                                   DataType::Float32(), input_shape, input_strides},
+                                                        .output_tensor = MutableTensorView{reinterpret_cast<int64_t*>(storage.data() + 8),
+                                                                                           DataType::Int(64), output_shape, output_strides},
+                                                });
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(CPUKernelArgmaxEntry, AcceptsDisjointInputOutputInsideOneAllocation) {
+    constexpr int64_t input_shape[2] = {2, 4};
+    constexpr int64_t input_strides[2] = {4, 1};
+    constexpr int64_t output_shape[1] = {2};
+    constexpr int64_t output_strides[1] = {1};
+    constexpr float input_values[8] = {1.0F, 5.0F, 2.0F, 3.0F, 9.0F, 0.0F, 1.0F, 2.0F};
+    alignas(std::max_align_t) std::array<std::byte, 64> storage{};
+    auto* const input = reinterpret_cast<float*>(storage.data());
+    auto* const output = reinterpret_cast<int64_t*>(storage.data() + 32);
+    for (int64_t index = 0; index < 8; ++index) {
+        input[index] = input_values[index];
+    }
+    output[0] = kSentinel;
+    output[1] = kSentinel;
+
+    const Status status = RunArgmaxWithAxis(-1, ArgmaxTestViews{
+                                                        .input_tensor = TensorView{input, DataType::Float32(), input_shape, input_strides},
+                                                        .output_tensor = MutableTensorView{output, DataType::Int(64), output_shape, output_strides},
+                                                });
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    EXPECT_EQ(output[0], 1);
+    EXPECT_EQ(output[1], 0);
 }
 
 TEST(CPUKernelArgmaxEntry, RejectsOutputElementCountOverflow) {
@@ -1109,7 +1155,7 @@ TEST(CPUKernelArgmaxEntry, OverlappingOutputFailsAtPrepareExecutionBindings) {
     constexpr int64_t overlapping_output_strides[2] = {1, 1};
     const ExecutionStep& step = plan->steps().front();
 
-    // The params builder runs inside PrepareExecutionBindings: the overlapping
+    // The params builder runs inside PrepareExecutionBindings: the colliding
     // output layout must be rejected here, before any kernel execution.
     const auto table = PrepareExecutionBindings(
             *plan,
@@ -1122,7 +1168,7 @@ TEST(CPUKernelArgmaxEntry, OverlappingOutputFailsAtPrepareExecutionBindings) {
                                                        overlapping_output_strides)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_FALSE(table.ok());
-    EXPECT_EQ(table.status().code(), StatusCode::kUnimplemented)
+    EXPECT_EQ(table.status().code(), StatusCode::kInvalidArgument)
             << table.status().ToString();
     EXPECT_EQ(output[0], kSentinel);
     EXPECT_EQ(output[1], kSentinel);

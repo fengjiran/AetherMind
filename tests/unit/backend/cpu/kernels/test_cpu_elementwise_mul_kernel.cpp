@@ -86,6 +86,39 @@ TEST(ElementwiseMulKernel, SameShapeContiguous) {
     EXPECT_FLOAT_EQ(output[5], 360.0F);
 }
 
+TEST(ElementwiseMulKernel, AcceptsExactInPlaceAgainstLhs) {
+    float lhs[6] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F};
+    constexpr float rhs[6] = {10.0F, 20.0F, 30.0F, 40.0F, 50.0F, 60.0F};
+    constexpr int64_t shape[2] = {2, 3};
+    constexpr int64_t strides[2] = {3, 1};
+
+    const Status status = RunElementwiseMul(ElementwiseMulTestViews{
+            .lhs_tensor = TensorView{lhs, DataType::Float32(), shape, strides},
+            .rhs_tensor = TensorView{rhs, DataType::Float32(), shape, strides},
+            .output_tensor = MutableTensorView{lhs, DataType::Float32(), shape, strides},
+    });
+    ASSERT_TRUE(status.ok()) << status.ToString();
+
+    EXPECT_FLOAT_EQ(lhs[0], 10.0F);
+    EXPECT_FLOAT_EQ(lhs[1], 40.0F);
+    EXPECT_FLOAT_EQ(lhs[5], 360.0F);
+}
+
+TEST(ElementwiseMulKernel, RejectsOutputShiftedIntoLhs) {
+    float lhs[7] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F};
+    constexpr float rhs[6] = {10.0F, 20.0F, 30.0F, 40.0F, 50.0F, 60.0F};
+    constexpr int64_t shape[2] = {2, 3};
+    constexpr int64_t strides[2] = {3, 1};
+
+    const Status status = RunElementwiseMul(ElementwiseMulTestViews{
+            .lhs_tensor = TensorView{lhs, DataType::Float32(), shape, strides},
+            .rhs_tensor = TensorView{rhs, DataType::Float32(), shape, strides},
+            .output_tensor = MutableTensorView{lhs + 1, DataType::Float32(), shape, strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
 TEST(ElementwiseMulKernel, TrailingBroadcast) {
     constexpr float lhs[2] = {10.0F, 20.0F};
     constexpr float rhs[3] = {1.0F, 2.0F, 3.0F};

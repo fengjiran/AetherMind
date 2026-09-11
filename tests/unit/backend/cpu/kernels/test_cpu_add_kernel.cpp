@@ -260,6 +260,110 @@ TEST(AddKernel, ZeroPlusOneYieldsZero) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
+TEST(AddKernel, AcceptsExactInPlaceAgainstLhs) {
+    float lhs[4] = {1.0F, 2.0F, 3.0F, 4.0F};
+    constexpr float rhs[4] = {10.0F, 20.0F, 30.0F, 40.0F};
+    constexpr int64_t shape[1] = {4};
+    constexpr int64_t strides[1] = {1};
+
+    const Status status = RunAdd(AddTestViews{
+            .lhs_tensor = TensorView{lhs, DataType::Float32(), shape, strides},
+            .rhs_tensor = TensorView{rhs, DataType::Float32(), shape, strides},
+            .output_tensor = MutableTensorView{lhs, DataType::Float32(), shape, strides},
+    });
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    EXPECT_FLOAT_EQ(lhs[0], 11.0F);
+    EXPECT_FLOAT_EQ(lhs[1], 22.0F);
+    EXPECT_FLOAT_EQ(lhs[2], 33.0F);
+    EXPECT_FLOAT_EQ(lhs[3], 44.0F);
+}
+
+TEST(AddKernel, AcceptsExactInPlaceAgainstRhs) {
+    constexpr float lhs[4] = {1.0F, 2.0F, 3.0F, 4.0F};
+    float rhs[4] = {10.0F, 20.0F, 30.0F, 40.0F};
+    constexpr int64_t shape[1] = {4};
+    constexpr int64_t strides[1] = {1};
+
+    const Status status = RunAdd(AddTestViews{
+            .lhs_tensor = TensorView{lhs, DataType::Float32(), shape, strides},
+            .rhs_tensor = TensorView{rhs, DataType::Float32(), shape, strides},
+            .output_tensor = MutableTensorView{rhs, DataType::Float32(), shape, strides},
+    });
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    EXPECT_FLOAT_EQ(rhs[0], 11.0F);
+    EXPECT_FLOAT_EQ(rhs[3], 44.0F);
+}
+
+TEST(AddKernel, RejectsOutputShiftedIntoLhs) {
+    float lhs[5] = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F};
+    constexpr float rhs[4] = {10.0F, 20.0F, 30.0F, 40.0F};
+    constexpr int64_t shape[1] = {4};
+    constexpr int64_t strides[1] = {1};
+
+    const Status status = RunAdd(AddTestViews{
+            .lhs_tensor = TensorView{lhs, DataType::Float32(), shape, strides},
+            .rhs_tensor = TensorView{rhs, DataType::Float32(), shape, strides},
+            .output_tensor = MutableTensorView{lhs + 1, DataType::Float32(), shape, strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(AddKernel, RejectsBroadcastInputInsideOutputRegion) {
+    float storage[4] = {1.0F, 2.0F, 3.0F, 4.0F};
+    constexpr int64_t shape[1] = {4};
+    constexpr int64_t strides[1] = {1};
+    constexpr int64_t scalar_shape[1] = {1};
+    constexpr int64_t scalar_strides[1] = {1};
+
+    // The broadcast rhs is the first element the output overwrites, so that
+    // write would change the value every later element still has to read. An
+    // identical mapping cannot exempt it: the shapes differ.
+    const Status status = RunAdd(AddTestViews{
+            .lhs_tensor = TensorView{storage, DataType::Float32(), shape, strides},
+            .rhs_tensor = TensorView{storage, DataType::Float32(), scalar_shape, scalar_strides},
+            .output_tensor = MutableTensorView{storage, DataType::Float32(), shape, strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(AddKernel, RejectsNonInjectiveOutputLayout) {
+    constexpr float lhs[4] = {1.0F, 2.0F, 3.0F, 4.0F};
+    constexpr float rhs[4] = {10.0F, 20.0F, 30.0F, 40.0F};
+    float output[4] = {};
+    constexpr int64_t shape[2] = {2, 2};
+    constexpr int64_t strides[2] = {1, 1};
+
+    const Status status = RunAdd(AddTestViews{
+            .lhs_tensor = TensorView{lhs, DataType::Float32(), shape, strides},
+            .rhs_tensor = TensorView{rhs, DataType::Float32(), shape, strides},
+            .output_tensor = MutableTensorView{output, DataType::Float32(), shape, strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(AddKernel, ReportsUndecidableStridedOverlapAsUnimplemented) {
+    float storage[9] = {};
+    constexpr float rhs[4] = {1.0F, 2.0F, 3.0F, 4.0F};
+    constexpr int64_t shape[1] = {4};
+    constexpr int64_t holed_strides[1] = {2};
+    constexpr int64_t rhs_strides[1] = {1};
+
+    // Both views stride by two elements, so their envelopes intersect while
+    // their logical elements may still be disjoint.
+    const Status status = RunAdd(AddTestViews{
+            .lhs_tensor = TensorView{storage, DataType::Float32(), shape, holed_strides},
+            .rhs_tensor = TensorView{rhs, DataType::Float32(), shape, rhs_strides},
+            .output_tensor = MutableTensorView{storage + 1, DataType::Float32(), shape, holed_strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
+}
+
 TEST(AddKernel, OnePlusZeroYieldsZero) {
     const float lhs[3] = {1, 2, 3};
     const int64_t zero_shape[2] = {0, 3};

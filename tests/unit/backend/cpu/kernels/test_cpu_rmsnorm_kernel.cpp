@@ -418,6 +418,27 @@ TEST(CPUKernelRmsNorm, ReferenceSupportsPositiveInnerStrides) {
     ExpectRowsNear(input, weight, output.data(), 2, 3, 7, 2, 2, 8, 2);
 }
 
+TEST(CPUKernelRmsNorm, ReferenceAllowsDisjointViewsInsideOneAllocation) {
+    constexpr int64_t io_shape[2] = {2, 4};
+    constexpr int64_t io_strides[2] = {4, 1};
+    constexpr int64_t weight_shape[1] = {4};
+    constexpr int64_t weight_strides[1] = {1};
+    constexpr float weight[4] = {1.0F, 0.5F, 1.5F, 1.0F};
+    std::array<float, 16> storage{};
+    for (int64_t index = 0; index < 8; ++index) {
+        storage[static_cast<size_t>(index)] = static_cast<float>(index) * 0.25F - 0.5F;
+    }
+
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
+            .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
+            .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{storage.data() + 8, DataType::Float32(), io_shape, io_strides},
+    });
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    ExpectRowsNear(storage.data(), weight, storage.data() + 8, 2, 4, 4, 1, 1, 4, 1);
+}
+
 TEST(CPUKernelRmsNorm, Avx2FmaPreparedKernelMatchesDoubleReferenceWithTail) {
     const StatusOr<ResolvedKernel> kernel = PrepareRmsNormKernel();
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
@@ -703,6 +724,57 @@ TEST(CPUKernelRmsNormEntry, RejectsOutputAliasingWeight) {
     });
 
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(CPUKernelRmsNormEntry, RejectsInputOverlapAtDistinctBasePointer) {
+    constexpr int64_t io_shape[2] = {2, 4};
+    constexpr int64_t io_strides[2] = {4, 1};
+    constexpr int64_t weight_shape[1] = {4};
+    constexpr int64_t weight_strides[1] = {1};
+    constexpr float weight[4] = {1.0F, 1.0F, 1.0F, 1.0F};
+    std::array<float, 9> storage{};
+
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
+            .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
+            .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{storage.data() + 1, DataType::Float32(), io_shape, io_strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(CPUKernelRmsNormEntry, RejectsWeightOverlapAtDistinctBasePointer) {
+    constexpr int64_t io_shape[2] = {2, 4};
+    constexpr int64_t io_strides[2] = {4, 1};
+    constexpr int64_t weight_shape[1] = {4};
+    constexpr int64_t weight_strides[1] = {1};
+    std::array<float, 8> input{};
+    std::array<float, 9> weight_storage{};
+
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
+            .input_tensor = TensorView{input.data(), DataType::Float32(), io_shape, io_strides},
+            .weight_tensor = TensorView{weight_storage.data(), DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{weight_storage.data() + 1, DataType::Float32(), io_shape, io_strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(CPUKernelRmsNormEntry, ReportsUndecidableColumnStrideOverlapAsUnimplemented) {
+    constexpr int64_t io_shape[2] = {2, 3};
+    constexpr int64_t io_strides[2] = {8, 2};
+    constexpr int64_t weight_shape[1] = {3};
+    constexpr int64_t weight_strides[1] = {1};
+    constexpr float weight[3] = {1.0F, 1.0F, 1.0F};
+    std::array<float, 14> storage{};
+
+    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
+            .input_tensor = TensorView{storage.data(), DataType::Float32(), io_shape, io_strides},
+            .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{storage.data() + 1, DataType::Float32(), io_shape, io_strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, RejectsNonFloat32Tensors) {

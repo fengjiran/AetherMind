@@ -217,6 +217,75 @@ TEST(EmbeddingKernel, AcceptsZeroTokenCount) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
+TEST(EmbeddingKernel, RejectsOutputOverlappingWeight) {
+    constexpr int64_t token_ids[3] = {2, 0, 3};
+    constexpr int64_t token_shape[1] = {3};
+    constexpr int64_t token_strides[1] = {1};
+    constexpr int64_t weight_shape[2] = {4, 3};
+    constexpr int64_t weight_strides[2] = {3, 1};
+    constexpr int64_t output_shape[2] = {3, 3};
+    constexpr int64_t output_strides[2] = {3, 1};
+    std::array<float, 12> storage{};
+
+    const Status status = RunEmbedding(EmbeddingTestViews{
+            .token_ids = TensorView{token_ids, DataType::Int(64), token_shape, token_strides},
+            .weight = TensorView{storage.data(), DataType::Float32(), weight_shape, weight_strides},
+            .output = MutableTensorView{storage.data() + 1, DataType::Float32(), output_shape, output_strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(EmbeddingKernel, RejectsOutputOverlappingTokenIds) {
+    constexpr int64_t token_shape[1] = {2};
+    constexpr int64_t token_strides[1] = {1};
+    constexpr int64_t weight_shape[2] = {4, 3};
+    constexpr int64_t weight_strides[2] = {3, 1};
+    constexpr int64_t output_shape[2] = {2, 3};
+    constexpr int64_t output_strides[2] = {3, 1};
+    constexpr float weight[12] = {};
+    // Byte storage keeps the test address-only: the builder rejects the overlap
+    // before any element is read through either view.
+    alignas(std::max_align_t) std::array<std::byte, 64> storage{};
+
+    const Status status = RunEmbedding(EmbeddingTestViews{
+            .token_ids = TensorView{reinterpret_cast<const int64_t*>(storage.data()),
+                                    DataType::Int(64), token_shape, token_strides},
+            .weight = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
+            .output = MutableTensorView{reinterpret_cast<float*>(storage.data() + sizeof(int64_t)),
+                                        DataType::Float32(), output_shape, output_strides},
+    });
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+}
+
+TEST(EmbeddingKernel, AcceptsDisjointOutputInsideWeightAllocation) {
+    constexpr int64_t token_ids[3] = {2, 0, 3};
+    constexpr int64_t token_shape[1] = {3};
+    constexpr int64_t token_strides[1] = {1};
+    constexpr int64_t weight_shape[2] = {4, 3};
+    constexpr int64_t weight_strides[2] = {3, 1};
+    constexpr int64_t output_shape[2] = {3, 3};
+    constexpr int64_t output_strides[2] = {3, 1};
+    std::array<float, 21> storage{};
+    for (int64_t index = 0; index < 12; ++index) {
+        storage[static_cast<size_t>(index)] = static_cast<float>(index);
+    }
+
+    const Status status = RunEmbedding(EmbeddingTestViews{
+            .token_ids = TensorView{token_ids, DataType::Int(64), token_shape, token_strides},
+            .weight = TensorView{storage.data(), DataType::Float32(), weight_shape, weight_strides},
+            .output = MutableTensorView{storage.data() + 12, DataType::Float32(), output_shape, output_strides},
+    });
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    constexpr float expected[9] = {6.0F, 7.0F, 8.0F, 0.0F, 1.0F, 2.0F, 9.0F, 10.0F, 11.0F};
+    for (int64_t index = 0; index < 9; ++index) {
+        EXPECT_EQ(storage[static_cast<size_t>(12 + index)], expected[index])
+                << "mismatch at output element " << index;
+    }
+}
+
 TEST(EmbeddingKernel, RejectsOutOfRangeTokenId) {
     constexpr int64_t token_ids[3] = {2, 4, 0};
     constexpr float weight[12] = {

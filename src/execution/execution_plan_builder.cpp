@@ -341,27 +341,27 @@ StatusOr<PreparedNode> PrepareNode(OpType op_type,
 }
 
 StatusOr<ExecutionValueKind> KindFromPayload(const GraphValuePayload& payload) {
-    if (std::holds_alternative<ModelInputValue>(payload)) {
-        return ExecutionValueKind::kModelInput;
-    }
-
-    if (std::holds_alternative<ActivationValue>(payload)) {
-        return ExecutionValueKind::kActivation;
-    }
-
-    if (std::holds_alternative<WeightValue>(payload)) {
-        return ExecutionValueKind::kWeight;
-    }
-
-    if (std::holds_alternative<ConstantValue>(payload)) {
-        return ExecutionValueKind::kConstant;
-    }
-
-    if (std::holds_alternative<StateValue>(payload)) {
-        return ExecutionValueKind::kState;
-    }
-    return Status::Internal(
-            "Finalized LoweredGraph contains a value with unknown payload kind");
+    auto visitor = overloaded{
+            [](const ModelInputValue&) -> StatusOr<ExecutionValueKind> {
+                return ExecutionValueKind::kModelInput;
+            },
+            [](const ActivationValue&) -> StatusOr<ExecutionValueKind> {
+                return ExecutionValueKind::kActivation;
+            },
+            [](const WeightValue&) -> StatusOr<ExecutionValueKind> {
+                return ExecutionValueKind::kWeight;
+            },
+            [](const ConstantValue&) -> StatusOr<ExecutionValueKind> {
+                return ExecutionValueKind::kConstant;
+            },
+            [](const StateValue&) -> StatusOr<ExecutionValueKind> {
+                return ExecutionValueKind::kState;
+            },
+            [](const std::monostate&) -> StatusOr<ExecutionValueKind> {
+                return Status::Internal(
+                        "Finalized LoweredGraph contains a value with unknown payload kind");
+            }};
+    return std::visit(visitor, payload);
 }
 
 StatusOr<PreparedExecutionGraph> PrepareUntrustedGraph(

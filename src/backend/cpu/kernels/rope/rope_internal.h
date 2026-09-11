@@ -34,7 +34,9 @@ struct RoPEF32KernelMetadata {
     double factor{};
     double beta_fast{};
     double beta_slow{};
-    double rotary_output_scale{};
+    // Frozen resolver coefficient shared by every pair and invocation.
+    double position_divisor{1.0};
+    double rotary_output_scale{1.0};
     double low_freq_factor{};
     double high_freq_factor{};
     uint32_t freq_count{};
@@ -97,7 +99,9 @@ struct RoPEF32KernelArgs {
     int64_t original_context_length{};
     double theta{};
     double factor{};
-    double rotary_output_scale{};
+    // Copied from immutable attrs; position data remains invocation-local.
+    double position_divisor{1.0};
+    double rotary_output_scale{1.0};
     // Built by the cold-path params builder after it validates every static
     // frequency entry. LongRoPE uses the first value for its short table and
     // the second for its long table; other static algorithms use only short.

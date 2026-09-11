@@ -15,13 +15,18 @@
 
 namespace aethermind {
 
-/// @brief Resolved inverse frequencies for one RoPE execution.
+/// @brief Rotation coefficients resolved for one RoPE execution.
 ///
-/// Owns the per-pair frequency table consumed by kernels. The table length is
-/// half the effective rotary dimension; kernels derive per-pair angles from it.
-struct ResolvedRoPEFreqs {
+/// Owns the per-pair inverse-frequency table plus its scalar modifiers,
+/// consumed by kernels. The table length is half the effective rotary
+/// dimension; kernels derive each angle as
+/// `(position / position_divisor) * inv_freq`.
+struct RoPERotationCoefficients {
     // One inverse frequency per rotary pair; size equals rotary_dim / 2.
     std::vector<double> inv_freqs;
+    // Divisor applied to every position before its per-pair rotation. Linear
+    // RoPE stores its factor here and preserves the unscaled base frequencies.
+    double position_divisor = 1.0;
     // Amplitude multiplier applied to the rotated output; 1.0 unless the
     // active YaRN or LongRoPE algorithm carries a front-end-normalized scale.
     double rotary_output_scale = 1.0;
@@ -58,23 +63,24 @@ StatusOr<double> ComputeDynamicNtkBase(double theta,
                                        int64_t original_context_len,
                                        int64_t effective_seq_len);
 
-/// @brief Resolves frequencies for algorithms with a position-independent table.
+/// @brief Resolves coefficients for algorithms with a position-independent table.
 ///
 /// @param params Semantic RoPE parameters carrying a static algorithm.
-/// @return Owned frequency table, or InvalidArgument for Dynamic NTK and LongRoPE
+/// @return Owned coefficients, or InvalidArgument for Dynamic NTK and LongRoPE
 ///         which require an execution-time sequence length.
-StatusOr<ResolvedRoPEFreqs> ResolveStaticRoPEFreqs(const RoPEParams& params);
+StatusOr<RoPERotationCoefficients> ResolveStaticRoPERotationCoefficients(
+        const RoPEParams& params);
 
-/// @brief Resolves frequencies for algorithms that depend on the execution-time
+/// @brief Resolves coefficients for algorithms that depend on the execution-time
 ///        sequence length.
 ///
 /// @param params Semantic RoPE parameters carrying Dynamic NTK or LongRoPE.
 /// @param effective_seq_len Execution-time length, normally max(position_ids) + 1;
 ///        must be positive.
-/// @return Owned frequency table, or InvalidArgument for position-independent
-///         algorithms (resolve those with ResolveStaticRoPEFreqs) and for a
+/// @return Owned coefficients, or InvalidArgument for position-independent
+///         algorithms (resolve those with ResolveStaticRoPERotationCoefficients) and for a
 ///         non-positive effective_seq_len.
-StatusOr<ResolvedRoPEFreqs> ResolveDynamicRoPEFreqs(
+StatusOr<RoPERotationCoefficients> ResolveDynamicRoPERotationCoefficients(
         const RoPEParams& params,
         int64_t effective_seq_len);
 

@@ -156,8 +156,10 @@ Status ValidateMetadataLayout(const RoPEF32KernelMetadata& metadata,
     if (attrs.size() < sizeof(metadata) || metadata.head_dim <= 0 || metadata.rotary_dim <= 0 ||
         metadata.rotary_dim > metadata.head_dim || metadata.rotary_dim % 2 != 0 ||
         metadata.num_q_heads <= 0 || metadata.num_kv_heads <= 0 ||
-        !IsFinitePositive(metadata.theta) || !IsFinitePositive(metadata.rotary_output_scale) ||
-        (metadata.pairing != RoPEPairing::kSplitHalf && metadata.pairing != RoPEPairing::kInterleaved)) {
+        !IsFinitePositive(metadata.theta) || !IsFinitePositive(metadata.position_divisor) ||
+        !IsFinitePositive(metadata.rotary_output_scale) ||
+        (metadata.pairing != RoPEPairing::kSplitHalf &&
+         metadata.pairing != RoPEPairing::kInterleaved)) {
         return Status::InvalidArgument("CPU RoPE kernel attrs are invalid");
     }
 
@@ -169,11 +171,7 @@ Status ValidateMetadataLayout(const RoPEF32KernelMetadata& metadata,
 
     switch (metadata.algorithm) {
         case RoPEAlgorithm::kStandard:
-            break;
         case RoPEAlgorithm::kLinear:
-            if (!IsFinitePositive(metadata.factor)) {
-                return Status::InvalidArgument("CPU RoPE Linear attrs are invalid");
-            }
             break;
         case RoPEAlgorithm::kDynamicNtk:
             if (metadata.rotary_dim <= 2 || !IsFinitePositive(metadata.factor) ||
@@ -222,12 +220,11 @@ StatusOr<std::array<double, 2>> ValidateFrequencyTablesAndFindMax(
     std::array<double, 2> max_inv_freqs{};
     for (uint8_t table = 0; table < metadata.freq_table_count; ++table) {
         for (uint32_t pair = 0; pair < metadata.freq_count; ++pair) {
-            const double frequency = ReadStaticInvFreqUnchecked(
-                    metadata.freq_count, attrs, table, pair);
-            if (!IsFinitePositive(frequency)) {
+            auto freq = ReadStaticInvFreqUnchecked(metadata.freq_count, attrs, table, pair);
+            if (!IsFinitePositive(freq)) {
                 return Status::Overflow("CPU RoPE inverse frequency attrs are invalid");
             }
-            max_inv_freqs[table] = std::max(max_inv_freqs[table], frequency);
+            max_inv_freqs[table] = std::max(max_inv_freqs[table], freq);
         }
     }
     return max_inv_freqs;
@@ -265,6 +262,8 @@ StatusOr<RoPEF32KernelMetadata> MakeRoPEF32KernelMetadata(const RoPEParams& para
             .num_q_heads = params.num_q_heads,
             .num_kv_heads = params.num_kv_heads,
             .theta = params.theta,
+            .position_divisor = 1.0,
+            .rotary_output_scale = 1.0,
             .freq_count = static_cast<uint32_t>(pair_count),
             .truncate_correction_range = false,
             .freq_table_count = ExpectedFrequencyTableCount(rope_algorithm),
@@ -273,9 +272,7 @@ StatusOr<RoPEF32KernelMetadata> MakeRoPEF32KernelMetadata(const RoPEParams& para
 
     auto visitor = overloaded{
             [](const StandardRoPE&) {},
-            [&](const LinearRoPE& algorithm) {
-                metadata.factor = algorithm.factor;
-            },
+            [](const LinearRoPE&) {},
             [&](const DynamicNtkRoPE& algorithm) {
                 metadata.factor = algorithm.factor;
                 metadata.original_context_length = algorithm.original_context_length;
@@ -285,7 +282,6 @@ StatusOr<RoPEF32KernelMetadata> MakeRoPEF32KernelMetadata(const RoPEParams& para
                 metadata.original_context_length = algorithm.original_context_length;
                 metadata.beta_fast = algorithm.beta_fast;
                 metadata.beta_slow = algorithm.beta_slow;
-                metadata.rotary_output_scale = algorithm.rotary_output_scale;
                 metadata.truncate_correction_range = algorithm.truncate_correction_range;
             },
             [&](const Llama3RoPE& algorithm) {
@@ -296,7 +292,6 @@ StatusOr<RoPEF32KernelMetadata> MakeRoPEF32KernelMetadata(const RoPEParams& para
             },
             [&](const LongRoPE& algorithm) {
                 metadata.original_context_length = algorithm.original_context_length;
-                metadata.rotary_output_scale = algorithm.rotary_output_scale;
             }};
     std::visit(visitor, params.algorithm);
     return metadata;
@@ -309,12 +304,13 @@ Status BuildRoPEF32Metadata(const OpParams& params, std::vector<std::byte>& attr
     }
 
     AM_ASSIGN_OR_RETURN(RoPEF32KernelMetadata metadata, MakeRoPEF32KernelMetadata(*rope_params));
-    metadata.rotary_output_scale = 1.0;
-    std::vector<ResolvedRoPEFreqs> tables;
-    auto append_static_table = [&](const RoPEParams& static_params) -> Status {
-        AM_ASSIGN_OR_RETURN(auto table, ResolveStaticRoPEFreqs(static_params));
-        metadata.rotary_output_scale = table.rotary_output_scale;
-        tables.push_back(std::move(table));
+    std::vector<RoPERotationCoefficients> tables;
+    auto append_static_coefficients = [&]() -> Status {
+        AM_ASSIGN_OR_RETURN(auto coefficients,
+                            ResolveStaticRoPERotationCoefficients(*rope_params));
+        metadata.position_divisor = coefficients.position_divisor;
+        metadata.rotary_output_scale = coefficients.rotary_output_scale;
+        tables.push_back(std::move(coefficients));
         return Status::Ok();
     };
 
@@ -325,15 +321,21 @@ Status BuildRoPEF32Metadata(const OpParams& params, std::vector<std::byte>& attr
                             "CPU RoPE LongRoPE original context is too large");
                 }
 
-                AM_ASSIGN_OR_RETURN(auto short_table,
-                                    ResolveDynamicRoPEFreqs(*rope_params,
-                                                            algorithm.original_context_length));
-                AM_ASSIGN_OR_RETURN(auto long_table,
-                                    ResolveDynamicRoPEFreqs(*rope_params,
-                                                            algorithm.original_context_length + 1));
-                metadata.rotary_output_scale = short_table.rotary_output_scale;
-                tables.push_back(std::move(short_table));
-                tables.push_back(std::move(long_table));
+                AM_ASSIGN_OR_RETURN(auto short_coefficients,
+                                    ResolveDynamicRoPERotationCoefficients(
+                                            *rope_params, algorithm.original_context_length));
+                AM_ASSIGN_OR_RETURN(auto long_coefficients,
+                                    ResolveDynamicRoPERotationCoefficients(
+                                            *rope_params, algorithm.original_context_length + 1));
+                if (short_coefficients.position_divisor != long_coefficients.position_divisor ||
+                    short_coefficients.rotary_output_scale != long_coefficients.rotary_output_scale) {
+                    return Status::Internal(
+                            "CPU RoPE LongRoPE resolved inconsistent scalar coefficients");
+                }
+                metadata.position_divisor = short_coefficients.position_divisor;
+                metadata.rotary_output_scale = short_coefficients.rotary_output_scale;
+                tables.push_back(std::move(short_coefficients));
+                tables.push_back(std::move(long_coefficients));
                 return Status::Ok();
             },
             [](const DynamicNtkRoPE&) -> Status {
@@ -341,21 +343,16 @@ Status BuildRoPEF32Metadata(const OpParams& params, std::vector<std::byte>& attr
                 return Status::Ok();
             },
             [&](const StandardRoPE&) -> Status {
-                return append_static_table(*rope_params);
+                return append_static_coefficients();
             },
             [&](const LinearRoPE&) -> Status {
-                // Retain Linear's position-divisor formulation in the CPU reference.
-                // It avoids rejecting a finite tiny factor when every current position
-                // is zero, while preserving the exact mathematical result.
-                RoPEParams linear_params = *rope_params;
-                linear_params.algorithm = StandardRoPE{};
-                return append_static_table(linear_params);
+                return append_static_coefficients();
             },
             [&](const YarnRoPE&) -> Status {
-                return append_static_table(*rope_params);
+                return append_static_coefficients();
             },
             [&](const Llama3RoPE&) -> Status {
-                return append_static_table(*rope_params);
+                return append_static_coefficients();
             }};
     AM_RETURN_IF_ERROR(std::visit(visitor, rope_params->algorithm));
 
@@ -365,7 +362,8 @@ Status BuildRoPEF32Metadata(const OpParams& params, std::vector<std::byte>& attr
 
     const auto bytes = std::as_bytes(std::span{&metadata, size_t{1}});
     attrs.assign(bytes.begin(), bytes.end());
-    for (const auto& [inv_freqs, _]: tables) {
+    for (const auto& table: tables) {
+        const auto& inv_freqs = table.inv_freqs;
         if (inv_freqs.size() != metadata.freq_count) {
             return Status::Internal("CPU RoPE resolver returned invalid frequency count");
         }
@@ -391,12 +389,11 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
     AM_ASSIGN_OR_RETURN(const auto max_inv_freqs,
                         ValidateFrequencyTablesAndFindMax(metadata, context.attrs));
     int64_t checked_q_width = 0;
-    int64_t checked_k_width = 0;
-    if (CheckOverflowMul(metadata.num_q_heads, metadata.head_dim,
-                         &checked_q_width) ||
-        CheckOverflowMul(metadata.num_kv_heads, metadata.head_dim,
-                         &checked_k_width)) {
-        return Status::InvalidArgument("CPU RoPE kernel attrs tensor width overflows int64_t");
+    int64_t checked_kv_width = 0;
+    if (CheckOverflowMul(metadata.num_q_heads, metadata.head_dim, &checked_q_width) ||
+        CheckOverflowMul(metadata.num_kv_heads, metadata.head_dim, &checked_kv_width)) {
+        return Status::InvalidArgument(
+                "CPU RoPE kernel attrs tensor width overflows int64_t");
     }
 
     const auto inputs = context.inputs;
@@ -407,23 +404,23 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
 
     const TensorView& q = inputs[0];
     const TensorView& k = inputs[1];
-    const TensorView& position_ids = inputs[2];
+    const TensorView& pos_ids = inputs[2];
     const MutableTensorView& q_output = outputs[0];
     const MutableTensorView& k_output = outputs[1];
-    if (!q.is_valid() || !k.is_valid() || !position_ids.is_valid() ||
+    if (!q.is_valid() || !k.is_valid() || !pos_ids.is_valid() ||
         !q_output.is_valid() || !k_output.is_valid()) {
         return Status::InvalidArgument("CPU RoPE requires valid TensorViews");
     }
 
-    if (const DataType fp32 = DataType::Float32();
+    if (const auto fp32 = DataType::Float32();
         q.dtype() != fp32 || k.dtype() != fp32 || q_output.dtype() != fp32 ||
-        k_output.dtype() != fp32 || position_ids.dtype() != DataType::Int(64)) {
+        k_output.dtype() != fp32 || pos_ids.dtype() != DataType::Int(64)) {
         return Status::InvalidArgument(
                 "CPU RoPE reference requires float32 q/k/outputs and int64 position_ids");
     }
 
     if (q.rank() != 2 || k.rank() != 2 || q_output.rank() != 2 ||
-        k_output.rank() != 2 || position_ids.rank() != 1) {
+        k_output.rank() != 2 || pos_ids.rank() != 1) {
         return Status::InvalidArgument(
                 "CPU RoPE requires rank-2 q/k/outputs and rank-1 position_ids");
     }
@@ -433,13 +430,13 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
         return Status::InvalidArgument("CPU RoPE requires positive seq_len");
     }
 
-    if (k.dim(0) != seq_len || position_ids.dim(0) != seq_len ||
+    if (k.dim(0) != seq_len || pos_ids.dim(0) != seq_len ||
         q_output.dim(0) != seq_len || k_output.dim(0) != seq_len) {
         return Status::InvalidArgument("CPU RoPE requires matching sequence lengths");
     }
 
     const int64_t q_width = checked_q_width;
-    const int64_t k_width = checked_k_width;
+    const int64_t k_width = checked_kv_width;
     if (q.dim(1) != q_width || q_output.dim(1) != q_width ||
         k.dim(1) != k_width || k_output.dim(1) != k_width) {
         return Status::InvalidArgument("CPU RoPE tensor widths do not match RoPEParams");
@@ -450,7 +447,7 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
     AM_RETURN_IF_ERROR(ValidatePositiveStrides(
             k, "CPU RoPE requires positive k strides"));
     AM_RETURN_IF_ERROR(ValidatePositiveStrides(
-            position_ids, "CPU RoPE requires positive position_ids strides"));
+            pos_ids, "CPU RoPE requires positive position_ids strides"));
     AM_RETURN_IF_ERROR(ValidatePositiveStrides(
             q_output, "CPU RoPE requires positive q output strides"));
     AM_RETURN_IF_ERROR(ValidatePositiveStrides(
@@ -464,7 +461,7 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
             k.stride(1), "k"));
     AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
             "CPU RoPE", seq_len, 1,
-            position_ids.stride(0), 1, "position_ids"));
+            pos_ids.stride(0), 1, "position_ids"));
     AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
             "CPU RoPE", seq_len, q_width,
             q_output.stride(0), q_output.stride(1), "q output"));
@@ -487,9 +484,9 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
                                                   k.stride(0), k.stride(1),
                                                   k.itemsize(), "k"));
     AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout position_layout,
-                        BuildRowwiseAddressLayout(position_ids.data(), seq_len, 1,
-                                                  position_ids.stride(0), 1,
-                                                  position_ids.itemsize(), "position_ids"));
+                        BuildRowwiseAddressLayout(pos_ids.data(), seq_len, 1,
+                                                  pos_ids.stride(0), 1,
+                                                  pos_ids.itemsize(), "position_ids"));
     AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout q_output_layout,
                         BuildRowwiseAddressLayout(q_output.data(), seq_len, q_width,
                                                   q_output.stride(0), q_output.stride(1),
@@ -503,6 +500,7 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
         AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
                 q_output_layout, "q output", q_layout, "q"));
     }
+
     if (!HasIdenticalMapping(k, k_output)) {
         AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
                 k_output_layout, "k output", k_layout, "k"));
@@ -522,7 +520,7 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
     ::new (params_buffer) RoPEF32KernelArgs{
             .q = q.data<float>(),
             .k = k.data<float>(),
-            .pos_ids = position_ids.data<int64_t>(),
+            .pos_ids = pos_ids.data<int64_t>(),
             .q_output = q_output.data<float>(),
             .k_output = k_output.data<float>(),
             .seq_len = seq_len,
@@ -534,7 +532,7 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
             .q_col_stride = q.stride(1),
             .k_row_stride = k.stride(0),
             .k_col_stride = k.stride(1),
-            .pos_stride = position_ids.stride(0),
+            .pos_stride = pos_ids.stride(0),
             .q_output_row_stride = q_output.stride(0),
             .q_output_col_stride = q_output.stride(1),
             .k_output_row_stride = k_output.stride(0),
@@ -542,6 +540,7 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
             .original_context_length = metadata.original_context_length,
             .theta = metadata.theta,
             .factor = metadata.factor,
+            .position_divisor = metadata.position_divisor,
             .rotary_output_scale = metadata.rotary_output_scale,
             .short_max_inv_freq = max_inv_freqs[0],
             .long_max_inv_freq = max_inv_freqs[1],

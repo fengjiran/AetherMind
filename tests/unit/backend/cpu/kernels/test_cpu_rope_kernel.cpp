@@ -885,8 +885,8 @@ TEST(CPUKernelRoPE, ReferenceConsumesYarnAndLlama3StaticFrequencyTables) {
     auto params = MakeRoPEParams(4, 1, 1, 4.0);
     const auto run_and_check = [&](RoPEAlgorithmParams algorithm) {
         params.algorithm = std::move(algorithm);
-        const auto frequencies = ResolveStaticRoPEFreqs(params);
-        ASSERT_TRUE(frequencies.ok()) << frequencies.status().ToString();
+        const auto coefficients = ResolveStaticRoPERotationCoefficients(params);
+        ASSERT_TRUE(coefficients.ok()) << coefficients.status().ToString();
         std::array<float, 4> q_output{};
         std::array<float, 4> k_output{};
         ASSERT_TRUE(RunRoPEEntry(params, RoPETestViews{
@@ -898,9 +898,10 @@ TEST(CPUKernelRoPE, ReferenceConsumesYarnAndLlama3StaticFrequencyTables) {
                                          })
                             .ok());
         for (int64_t pair = 0; pair < 2; ++pair) {
-            const double angle = 3.0 * frequencies->inv_freqs[static_cast<size_t>(pair)];
-            const double cosine = std::cos(angle) * frequencies->rotary_output_scale;
-            const double sine = std::sin(angle) * frequencies->rotary_output_scale;
+            const double angle = 3.0 / coefficients->position_divisor *
+                                 coefficients->inv_freqs[static_cast<size_t>(pair)];
+            const double cosine = std::cos(angle) * coefficients->rotary_output_scale;
+            const double sine = std::sin(angle) * coefficients->rotary_output_scale;
             const int64_t second = pair + 2;
             const float expected_first = static_cast<float>(values[pair] * cosine - values[second] * sine);
             const float expected_second = static_cast<float>(values[second] * cosine + values[pair] * sine);

@@ -62,9 +62,7 @@ double FrequencyForPairUnchecked(const RoPEF32KernelArgs& args,
 
 double EffectivePositionUnchecked(const RoPEF32KernelArgs& args,
                                   int64_t position) noexcept {
-    return args.algorithm == RoPEAlgorithm::kLinear
-                   ? static_cast<double>(position) / args.factor
-                   : static_cast<double>(position);
+    return static_cast<double>(position) / args.position_divisor;
 }
 
 StatusOr<RoPERuntimeState> PrepareRuntimeState(const RoPEF32KernelArgs& args) noexcept {

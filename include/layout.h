@@ -5,6 +5,8 @@
 #ifndef AETHERMIND_LAYOUT_H
 #define AETHERMIND_LAYOUT_H
 
+#include "utils/logging.h"
+
 #include <cstdint>
 #include <ostream>
 

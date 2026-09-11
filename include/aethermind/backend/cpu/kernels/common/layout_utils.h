@@ -182,7 +182,8 @@ inline Status ValidateNonOverlappingOutputRows(std::string_view kernel_name,
         return Status::Ok();
     }
 
-    AM_ASSIGN_OR_RETURN(const int64_t row_span, ComputeRowSpan(kernel_name, column_count, column_stride));
+    AM_ASSIGN_OR_RETURN(const int64_t row_span,
+                        ComputeRowSpan(kernel_name, column_count, column_stride));
 
     if (row_stride < row_span) {
         return Status::InvalidArgument(std::string(kernel_name) +

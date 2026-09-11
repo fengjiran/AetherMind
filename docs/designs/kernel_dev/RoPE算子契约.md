@@ -21,6 +21,11 @@ pairing 和旋转。Standard、Linear、YaRN、Llama3 在 kernel preparation 阶
 immutable inverse-frequency table；LongRoPE 生成 short/long 两张表。这些 table 只存于
 `ResolvedKernel::attrs`，不会复制进每次执行的 prepared args。
 
+resolver 返回 `RoPERotationCoefficients`：`inv_freqs`、`position_divisor` 与
+`rotary_output_scale`。所有 kernel 统一计算
+`angle = (position_id / position_divisor) * inv_freq`；因此 Linear 保留未缩放的 base
+frequency table，并将其 factor 冻结为 `position_divisor`。其余当前算法的 divisor 为 1。
+
 Dynamic NTK 不把首次 position 固化进 `PreparedExecutionBindings`。每次执行先取得
 `effective_sequence_length = max(position_ids) + 1`，据此计算 dynamic base，再按 pair
 即时计算频率。LongRoPE 同样以该长度选择 short 或 long table。kernel invocation 路径
@@ -67,7 +72,7 @@ backing storage 以及元素自然对齐仍由调用方保证。
 
 ```text
 effective_sequence_length = max_position_id + 1
-max_angle = double(max_position_id) * max_inverse_frequency
+max_angle = (double(max_position_id) / position_divisor) * max_inverse_frequency
 ```
 
 非有限的 inverse frequency、effective position 或 angle 返回 `Overflow`。

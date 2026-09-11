@@ -12,9 +12,11 @@
 
 #include "aethermind/base/status.h"
 #include "aethermind/operators/op_params.h"
+#include "utils/logging.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <span>
 
 namespace aethermind::cpu::detail {
@@ -41,6 +43,25 @@ struct RoPEF32KernelMetadata {
     RoPEPairing pairing{RoPEPairing::kSplitHalf};
     RoPEAlgorithm algorithm{RoPEAlgorithm::kStandard};
 };
+
+/// Reads one frozen inverse frequency from the attrs byte blob.
+///
+/// Preconditions, established by the binding-time layout validation: attrs
+/// holds the metadata header followed by freq_count * freq_table_count
+/// doubles, with `table` and `pair` within range. Out-of-range reads are
+/// detected only in debug builds (AM_DCHECK).
+inline double ReadStaticInvFreqUnchecked(uint32_t freq_count,
+                                         std::span<const std::byte> attrs,
+                                         uint8_t table,
+                                         int64_t pair) noexcept {
+    double frequency = 0.0;
+    const size_t index = static_cast<size_t>(table) * freq_count + static_cast<size_t>(pair);
+    const size_t offset = sizeof(RoPEF32KernelMetadata) + index * sizeof(frequency);
+    AM_DCHECK(offset <= attrs.size());
+    AM_DCHECK(attrs.size() - offset >= sizeof(frequency));
+    std::memcpy(&frequency, attrs.data() + offset, sizeof(frequency));
+    return frequency;
+}
 
 /// @brief Pre-validated FP32 arguments for all supported RoPE algorithms.
 ///

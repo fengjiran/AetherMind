@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <limits>
 
 namespace aethermind::cpu::detail {
@@ -17,29 +16,17 @@ struct RoPERuntimeState {
     uint8_t static_frequency_table{};
 };
 
-StatusOr<int64_t> ValidatePositionIdsAndGetMaxPosition(const RoPEF32KernelArgs& args) noexcept {
+StatusOr<int64_t> ValidatePosIdsAndGetMaxPos(const RoPEF32KernelArgs& args) noexcept {
     int64_t max_pos = 0;
     for (int64_t token = 0; token < args.seq_len; ++token) {
         const int64_t pos = args.pos_ids[token * args.pos_stride];
         if (pos < 0) {
-            return Status::InvalidArgument("CPU RoPE requires non-negative position_ids");
+            return Status::InvalidArgument(
+                    "CPU RoPE requires non-negative position_ids");
         }
         max_pos = std::max(max_pos, pos);
     }
     return max_pos;
-}
-
-double ReadStaticFrequencyUnchecked(const RoPEF32KernelArgs& args,
-                                    std::span<const std::byte> attrs,
-                                    uint8_t table,
-                                    int64_t pair) noexcept {
-    double frequency = 0.0;
-    const size_t index = static_cast<size_t>(table) * args.freq_count + static_cast<size_t>(pair);
-    const size_t offset = sizeof(RoPEF32KernelMetadata) + index * sizeof(frequency);
-    AM_DCHECK(offset <= attrs.size());
-    AM_DCHECK(attrs.size() - offset >= sizeof(frequency));
-    std::memcpy(&frequency, attrs.data() + offset, sizeof(frequency));
-    return frequency;
 }
 
 StatusOr<double> DynamicMaxInverseFrequency(const RoPEF32KernelArgs& args,
@@ -65,8 +52,10 @@ double FrequencyForPairUnchecked(const RoPEF32KernelArgs& args,
                                  const RoPERuntimeState& runtime,
                                  int64_t pair) noexcept {
     if (args.algorithm != RoPEAlgorithm::kDynamicNtk) {
-        return ReadStaticFrequencyUnchecked(args, attrs, runtime.static_frequency_table, pair);
+        return ReadStaticInvFreqUnchecked(args.freq_count, attrs,
+                                          runtime.static_frequency_table, pair);
     }
+
     const double exponent = -2.0 * static_cast<double>(pair) / static_cast<double>(args.rotary_dim);
     return std::pow(runtime.dynamic_base, exponent);
 }
@@ -79,8 +68,7 @@ double EffectivePositionUnchecked(const RoPEF32KernelArgs& args,
 }
 
 StatusOr<RoPERuntimeState> PrepareRuntimeState(const RoPEF32KernelArgs& args) noexcept {
-    AM_ASSIGN_OR_RETURN(const int64_t max_pos,
-                        ValidatePositionIdsAndGetMaxPosition(args));
+    AM_ASSIGN_OR_RETURN(const int64_t max_pos, ValidatePosIdsAndGetMaxPos(args));
     if (max_pos == std::numeric_limits<int64_t>::max()) {
         return Status::Overflow("CPU RoPE max position cannot form sequence length");
     }
@@ -161,8 +149,7 @@ Status RunRoPEF32Reference(const RoPEF32KernelArgs& args,
     for (int64_t pair = 0; pair < args.rotary_dim / 2; ++pair) {
         const double inv_freq = FrequencyForPairUnchecked(args, attrs, runtime, pair);
         for (int64_t token = 0; token < args.seq_len; ++token) {
-            const double pos =
-                    EffectivePositionUnchecked(args, args.pos_ids[token * args.pos_stride]);
+            const double pos = EffectivePositionUnchecked(args, args.pos_ids[token * args.pos_stride]);
             const double angle = pos * inv_freq;
             const double cosine = std::cos(angle) * args.rotary_output_scale;
             const double sine = std::sin(angle) * args.rotary_output_scale;

@@ -1,3 +1,4 @@
+#include "aethermind/backend/cpu/kernels/common/alias_utils.h"
 #include "aethermind/backend/cpu/kernels/common/layout_utils.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
@@ -5,11 +6,11 @@
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/rope_frequency_resolver.h"
 #include "rope_internal.h"
+#include "utils/numeric_utils.h"
 #include "utils/overflow_check.h"
 #include "utils/variant_utils.h"
 
 #include <array>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -21,11 +22,6 @@
 
 namespace aethermind::cpu::detail {
 namespace {
-
-struct AddressRange {
-    std::uintptr_t begin{};
-    std::uintptr_t end{};
-};
 
 struct RowwiseAddressLayout {
     AddressRange envelope{};
@@ -99,14 +95,9 @@ StatusOr<RowwiseAddressLayout> BuildRowwiseAddressLayout(const void* data,
 AddressRange RowAddressRange(const RowwiseAddressLayout& layout, int64_t row) noexcept {
     // BuildRowwiseAddressLayout checked the last row's end address, so every
     // earlier row address and end is representable as well.
-    const std::uintptr_t row_offset =
-            static_cast<std::uintptr_t>(row) * layout.row_stride_bytes;
+    const std::uintptr_t row_offset = static_cast<std::uintptr_t>(row) * layout.row_stride_bytes;
     const std::uintptr_t begin = layout.envelope.begin + row_offset;
     return AddressRange{.begin = begin, .end = begin + layout.row_bytes};
-}
-
-bool RangesOverlap(const AddressRange& lhs, const AddressRange& rhs) noexcept {
-    return lhs.begin < rhs.end && rhs.begin < lhs.end;
 }
 
 bool RowwiseRangesOverlap(const RowwiseAddressLayout& lhs,
@@ -145,21 +136,6 @@ Status ValidateNoRowwiseOverlap(const RowwiseAddressLayout& output,
                                    " must not overlap " + input_role);
 }
 
-bool HasIdenticalMapping(const TensorView& input,
-                         const MutableTensorView& output) noexcept {
-    if (input.data() != output.data() || input.dtype() != output.dtype() ||
-        input.rank() != output.rank()) {
-        return false;
-    }
-
-    for (int32_t dim = 0; dim < input.rank(); ++dim) {
-        if (input.dim(dim) != output.dim(dim) || input.stride(dim) != output.stride(dim)) {
-            return false;
-        }
-    }
-    return true;
-}
-
 uint8_t ExpectedFrequencyTableCount(RoPEAlgorithm algorithm) noexcept {
     switch (algorithm) {
         case RoPEAlgorithm::kDynamicNtk:
@@ -173,10 +149,6 @@ uint8_t ExpectedFrequencyTableCount(RoPEAlgorithm algorithm) noexcept {
             return 1;
     }
     return 255;
-}
-
-bool IsFinitePositive(double value) noexcept {
-    return std::isfinite(value) && value > 0.0;
 }
 
 Status ValidateMetadataLayout(const RoPEF32KernelMetadata& metadata,
@@ -250,11 +222,8 @@ StatusOr<std::array<double, 2>> ValidateFrequencyTablesAndFindMax(
     std::array<double, 2> max_inv_freqs{};
     for (uint8_t table = 0; table < metadata.freq_table_count; ++table) {
         for (uint32_t pair = 0; pair < metadata.freq_count; ++pair) {
-            const size_t index = static_cast<size_t>(table) * metadata.freq_count + pair;
-            double frequency = 0.0;
-            std::memcpy(&frequency,
-                        attrs.data() + sizeof(metadata) + index * sizeof(frequency),
-                        sizeof(frequency));
+            const double frequency = ReadStaticInvFreqUnchecked(
+                    metadata.freq_count, attrs, table, pair);
             if (!IsFinitePositive(frequency)) {
                 return Status::Overflow("CPU RoPE inverse frequency attrs are invalid");
             }
@@ -264,44 +233,49 @@ StatusOr<std::array<double, 2>> ValidateFrequencyTablesAndFindMax(
     return max_inv_freqs;
 }
 
-Status ValidateRoPEParamsForKernel(const RoPEParams& params,
-                                   RoPEF32KernelMetadata& metadata) noexcept {
-    if (params.head_dim <= 0 || params.num_attention_heads <= 0 ||
-        params.num_key_value_heads <= 0 || params.max_pos_embeddings <= 0) {
+StatusOr<RoPEF32KernelMetadata> MakeRoPEF32KernelMetadata(const RoPEParams& params) noexcept {
+    if (params.head_dim <= 0 || params.num_q_heads <= 0 ||
+        params.num_kv_heads <= 0 || params.max_pos_embeddings <= 0) {
         return Status::InvalidArgument(
                 "CPU RoPE requires positive dimensions and head counts");
     }
 
     AM_RETURN_IF_ERROR(ValidateRoPEFreqParams(params));
-    if (static_cast<uint64_t>(EffectiveRoPERotaryDim(params) / 2) >
+    const int64_t rotary_dim = EffectiveRoPERotaryDim(params);
+    const int64_t pair_count = rotary_dim / 2;
+    const RoPEAlgorithm rope_algorithm = GetRoPEAlgorithm(params.algorithm);
+    if (static_cast<uint64_t>(pair_count) >
         static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
         return Status::InvalidArgument("CPU RoPE rotary pair count exceeds metadata range");
     }
 
     int64_t q_width = 0;
-    if (CheckOverflowMul(params.num_attention_heads, params.head_dim, &q_width)) {
+    if (CheckOverflowMul(params.num_q_heads, params.head_dim, &q_width)) {
         return Status::InvalidArgument("CPU RoPE q width overflows int64_t");
     }
 
     int64_t k_width = 0;
-    if (CheckOverflowMul(params.num_key_value_heads, params.head_dim, &k_width)) {
+    if (CheckOverflowMul(params.num_kv_heads, params.head_dim, &k_width)) {
         return Status::InvalidArgument("CPU RoPE k width overflows int64_t");
     }
 
-    metadata = RoPEF32KernelMetadata{
+    RoPEF32KernelMetadata metadata{
             .head_dim = params.head_dim,
-            .rotary_dim = EffectiveRoPERotaryDim(params),
-            .num_q_heads = params.num_attention_heads,
-            .num_kv_heads = params.num_key_value_heads,
+            .rotary_dim = rotary_dim,
+            .num_q_heads = params.num_q_heads,
+            .num_kv_heads = params.num_kv_heads,
             .theta = params.theta,
-            .freq_count = static_cast<uint32_t>(EffectiveRoPERotaryDim(params) / 2),
+            .freq_count = static_cast<uint32_t>(pair_count),
             .truncate_correction_range = false,
-            .freq_table_count = ExpectedFrequencyTableCount(GetRoPEAlgorithm(params.algorithm)),
+            .freq_table_count = ExpectedFrequencyTableCount(rope_algorithm),
             .pairing = params.pairing,
-            .algorithm = GetRoPEAlgorithm(params.algorithm)};
+            .algorithm = rope_algorithm};
+
     auto visitor = overloaded{
             [](const StandardRoPE&) {},
-            [&](const LinearRoPE& algorithm) { metadata.factor = algorithm.factor; },
+            [&](const LinearRoPE& algorithm) {
+                metadata.factor = algorithm.factor;
+            },
             [&](const DynamicNtkRoPE& algorithm) {
                 metadata.factor = algorithm.factor;
                 metadata.original_context_length = algorithm.original_context_length;
@@ -325,6 +299,83 @@ Status ValidateRoPEParamsForKernel(const RoPEParams& params,
                 metadata.rotary_output_scale = algorithm.rotary_output_scale;
             }};
     std::visit(visitor, params.algorithm);
+    return metadata;
+}
+
+Status BuildRoPEF32Metadata(const OpParams& params, std::vector<std::byte>& attrs) {
+    const auto* rope_params = std::get_if<RoPEParams>(&params);
+    if (rope_params == nullptr) {
+        return Status::InvalidArgument("CPU RoPE kernel requires RoPEParams");
+    }
+
+    AM_ASSIGN_OR_RETURN(RoPEF32KernelMetadata metadata, MakeRoPEF32KernelMetadata(*rope_params));
+    metadata.rotary_output_scale = 1.0;
+    std::vector<ResolvedRoPEFreqs> tables;
+    auto append_static_table = [&](const RoPEParams& static_params) -> Status {
+        AM_ASSIGN_OR_RETURN(auto table, ResolveStaticRoPEFreqs(static_params));
+        metadata.rotary_output_scale = table.rotary_output_scale;
+        tables.push_back(std::move(table));
+        return Status::Ok();
+    };
+
+    auto visitor = overloaded{
+            [&](const LongRoPE& algorithm) -> Status {
+                if (algorithm.original_context_length == std::numeric_limits<int64_t>::max()) {
+                    return Status::InvalidArgument(
+                            "CPU RoPE LongRoPE original context is too large");
+                }
+
+                AM_ASSIGN_OR_RETURN(auto short_table,
+                                    ResolveDynamicRoPEFreqs(*rope_params,
+                                                            algorithm.original_context_length));
+                AM_ASSIGN_OR_RETURN(auto long_table,
+                                    ResolveDynamicRoPEFreqs(*rope_params,
+                                                            algorithm.original_context_length + 1));
+                metadata.rotary_output_scale = short_table.rotary_output_scale;
+                tables.push_back(std::move(short_table));
+                tables.push_back(std::move(long_table));
+                return Status::Ok();
+            },
+            [](const DynamicNtkRoPE&) -> Status {
+                // Dynamic NTK derives frequencies at invocation time; no frozen table.
+                return Status::Ok();
+            },
+            [&](const StandardRoPE&) -> Status {
+                return append_static_table(*rope_params);
+            },
+            [&](const LinearRoPE&) -> Status {
+                // Retain Linear's position-divisor formulation in the CPU reference.
+                // It avoids rejecting a finite tiny factor when every current position
+                // is zero, while preserving the exact mathematical result.
+                RoPEParams linear_params = *rope_params;
+                linear_params.algorithm = StandardRoPE{};
+                return append_static_table(linear_params);
+            },
+            [&](const YarnRoPE&) -> Status {
+                return append_static_table(*rope_params);
+            },
+            [&](const Llama3RoPE&) -> Status {
+                return append_static_table(*rope_params);
+            }};
+    AM_RETURN_IF_ERROR(std::visit(visitor, rope_params->algorithm));
+
+    if (tables.size() != metadata.freq_table_count) {
+        return Status::Internal("CPU RoPE metadata table count does not match algorithm");
+    }
+
+    const auto bytes = std::as_bytes(std::span{&metadata, size_t{1}});
+    attrs.assign(bytes.begin(), bytes.end());
+    for (const auto& [inv_freqs, _]: tables) {
+        if (inv_freqs.size() != metadata.freq_count) {
+            return Status::Internal("CPU RoPE resolver returned invalid frequency count");
+        }
+
+        const auto append = [&](const std::vector<double>& freqs) {
+            const auto factor_bytes = std::as_bytes(std::span{freqs});
+            attrs.insert(attrs.end(), factor_bytes.begin(), factor_bytes.end());
+        };
+        append(inv_freqs);
+    }
     return Status::Ok();
 }
 
@@ -498,62 +549,6 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
             .pairing = metadata.pairing,
             .algorithm = metadata.algorithm,
     };
-    return Status::Ok();
-}
-
-Status BuildRoPEF32Metadata(const OpParams& params,
-                            std::vector<std::byte>& attrs) {
-    const auto* rope_params = std::get_if<RoPEParams>(&params);
-    if (rope_params == nullptr) {
-        return Status::InvalidArgument("CPU RoPE kernel requires RoPEParams");
-    }
-
-    RoPEF32KernelMetadata metadata{};
-    AM_RETURN_IF_ERROR(ValidateRoPEParamsForKernel(*rope_params, metadata));
-    metadata.rotary_output_scale = 1.0;
-    std::vector<ResolvedRoPEFreqs> tables;
-    if (const auto* long_rope = std::get_if<LongRoPE>(&rope_params->algorithm)) {
-        if (long_rope->original_context_length == std::numeric_limits<int64_t>::max()) {
-            return Status::InvalidArgument("CPU RoPE LongRoPE original context is too large");
-        }
-        AM_ASSIGN_OR_RETURN(auto short_table,
-                            ResolveDynamicRoPEFreqs(*rope_params,
-                                                    long_rope->original_context_length));
-        AM_ASSIGN_OR_RETURN(auto long_table,
-                            ResolveDynamicRoPEFreqs(*rope_params,
-                                                    long_rope->original_context_length + 1));
-        metadata.rotary_output_scale = short_table.rotary_output_scale;
-        tables.push_back(std::move(short_table));
-        tables.push_back(std::move(long_table));
-    } else if (!std::holds_alternative<DynamicNtkRoPE>(rope_params->algorithm)) {
-        RoPEParams static_params = *rope_params;
-        // Retain Linear's position-divisor formulation in the CPU reference.
-        // It avoids rejecting a finite tiny factor when every current position
-        // is zero, while preserving the exact mathematical result.
-        if (std::holds_alternative<LinearRoPE>(static_params.algorithm)) {
-            static_params.algorithm = StandardRoPE{};
-        }
-        AM_ASSIGN_OR_RETURN(auto table, ResolveStaticRoPEFreqs(static_params));
-        metadata.rotary_output_scale = table.rotary_output_scale;
-        tables.push_back(std::move(table));
-    }
-
-    if (tables.size() != metadata.freq_table_count) {
-        return Status::Internal("CPU RoPE metadata table count does not match algorithm");
-    }
-
-    const auto bytes = std::as_bytes(std::span{&metadata, size_t{1}});
-    attrs.assign(bytes.begin(), bytes.end());
-    for (const ResolvedRoPEFreqs& table: tables) {
-        if (table.inv_freqs.size() != metadata.freq_count) {
-            return Status::Internal("CPU RoPE resolver returned invalid frequency count");
-        }
-        const auto append = [&](const std::vector<double>& frequencies) {
-            const auto factor_bytes = std::as_bytes(std::span{frequencies});
-            attrs.insert(attrs.end(), factor_bytes.begin(), factor_bytes.end());
-        };
-        append(table.inv_freqs);
-    }
     return Status::Ok();
 }
 

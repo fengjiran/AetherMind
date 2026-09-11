@@ -187,13 +187,12 @@ inline StatusOr<int64_t> CheckedOutputNumel(int32_t rank,
 /// get the flat-path eligibility computed here.
 ///
 /// @param context Binding-time per-step views.
-/// @param args Compute-ready args being populated.
 /// @param kernel_name Caller name used as the error-message prefix.
-/// @return Ok on success, InvalidArgument on any violated invariant.
+/// @return Compute-ready args on success, InvalidArgument on any violated
+///         invariant.
 template<typename KernelArgs>
-Status ValidateAndBuildElementwiseArgs(const KernelParamsBuildContext& context,
-                                       KernelArgs& args,
-                                       std::string_view kernel_name) noexcept {
+StatusOr<KernelArgs> ValidateAndBuildElementwiseArgs(const KernelParamsBuildContext& context,
+                                                     std::string_view kernel_name) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
@@ -246,8 +245,7 @@ Status ValidateAndBuildElementwiseArgs(const KernelParamsBuildContext& context,
 
     const int64_t numel = numel_or.value();
     if (numel == 0) {
-        args = KernelArgs{};
-        return Status::Ok();
+        return KernelArgs{};
     }
 
     if (lhs.data() == nullptr) {
@@ -282,6 +280,7 @@ Status ValidateAndBuildElementwiseArgs(const KernelParamsBuildContext& context,
         }
     }
 
+    KernelArgs args{};
     args.lhs_data = static_cast<decltype(args.lhs_data)>(lhs.data());
     args.rhs_data = static_cast<decltype(args.rhs_data)>(rhs.data());
     args.output_data = static_cast<decltype(args.output_data)>(output.data());
@@ -313,7 +312,7 @@ Status ValidateAndBuildElementwiseArgs(const KernelParamsBuildContext& context,
         args.output_strides[i] = output.strides()[i];
     }
 
-    return Status::Ok();
+    return args;
 }
 
 } // namespace aethermind::cpu::detail

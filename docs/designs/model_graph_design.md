@@ -905,22 +905,22 @@ Phase-1 Attention 算子在 graph 层面表达以下语义契约，物理 layout
 
 | 端口 | 种类 | Rank | Shape | 约束 |
 |------|------|------|-------|------|
-| q (input 0) | Activation | 2 | `[seq_len, hidden]` | `hidden = num_attention_heads * head_dim` |
-| k_cache (input 1) | State | 3 | `[num_key_value_heads, cache_len, head_dim]` | `contributes_tensor_spec = false` |
-| v_cache (input 2) | State | 3 | `[num_key_value_heads, cache_len, head_dim]` | `contributes_tensor_spec = false` |
+| q (input 0) | Activation | 2 | `[seq_len, hidden]` | `hidden = num_q_heads * head_dim` |
+| k_cache (input 1) | State | 3 | `[num_kv_heads, cache_len, head_dim]` | `contributes_tensor_spec = false` |
+| v_cache (input 2) | State | 3 | `[num_kv_heads, cache_len, head_dim]` | `contributes_tensor_spec = false` |
 | output (output 0) | Activation | 2 | `[seq_len, hidden]` | 与 q spec 一致 |
 
 **Dtype 契约：** q、k_cache、v_cache 三者 dtype 必须一致，取值 ∈ {Float32, Float16, BFloat16}。输出 dtype 跟随 q。禁止隐式类型转换。
 
 **参数校验：**
-- `num_attention_heads`、`num_key_value_heads`、`head_dim` 均为正
-- `num_attention_heads % num_key_value_heads == 0`（GQA 约束）
-- `num_attention_heads * head_dim` 不溢出 `int64_t`
+- `num_q_heads`、`num_kv_heads`、`head_dim` 均为正
+- `num_q_heads % num_kv_heads == 0`（GQA 约束）
+- `num_q_heads * head_dim` 不溢出 `int64_t`
 
 **静态等式校验：**
 - `q.shape[1]`（hidden）、`k_cache.shape[0]`（kv_heads）、`k_cache.shape[2]`（head_dim）在 Phase 1 必须**静态**；symbolic 维度拒绝
-- `q.shape[1] == num_attention_heads * head_dim`
-- `k_cache.shape[0] == num_key_value_heads`
+- `q.shape[1] == num_q_heads * head_dim`
+- `k_cache.shape[0] == num_kv_heads`
 - `k_cache.shape[2] == head_dim`
 - `k_cache.shape == v_cache.shape`（逐维 `AreProvablyEqual`）
 
@@ -941,8 +941,8 @@ Phase-1 RoPE 算子在 graph 层面表达以下语义契约（rank-2、无 batch
 
 | 端口 | 种类 | Rank | Shape | 约束 |
 |------|------|------|-------|------|
-| q (input 0) | Activation | 2 | `[seq_len, num_attention_heads * head_dim]` | `q[1] == num_attention_heads * head_dim`（静态时） |
-| k (input 1) | Activation | 2 | `[seq_len, num_key_value_heads * head_dim]` | `k[1] == num_key_value_heads * head_dim`（静态时） |
+| q (input 0) | Activation | 2 | `[seq_len, num_q_heads * head_dim]` | `q[1] == num_q_heads * head_dim`（静态时） |
+| k (input 1) | Activation | 2 | `[seq_len, num_kv_heads * head_dim]` | `k[1] == num_kv_heads * head_dim`（静态时） |
 | position_ids (input 2) | ModelInput | 1 | `[seq_len]` | dtype 必须为 Int64 |
 | q_rope (output 0) | Activation | 2 | 与 q spec 完全一致 | 输出保持输入 TensorSpec |
 | k_rope (output 1) | Activation | 2 | 与 k spec 完全一致 | 输出保持输入 TensorSpec |
@@ -965,17 +965,17 @@ y[half + i] = b * cos(angle) + a * sin(angle)
 interleaved 下配对 `(2*i, 2*i+1)`。同一 token/pair 的 `sin(angle)` / `cos(angle)` 可复用于全部 q heads 和 kv heads。pairing 是算子语义，不能由 backend 自行推断。
 
 **参数校验：**
-- `head_dim`、`num_attention_heads`、`num_key_value_heads`、`max_position_embeddings` 均为正
+- `head_dim`、`num_q_heads`、`num_kv_heads`、`max_pos_embeddings` 均为正
 - `rotary_dim` 必须为正偶数且不大于 `head_dim`
 - `theta` 有限且为正
-- `num_attention_heads * head_dim`、`num_key_value_heads * head_dim` 独立进行溢出检查
+- `num_q_heads * head_dim`、`num_kv_heads * head_dim` 独立进行溢出检查
 
 **算法契约：** `RoPEAlgorithmParams` 是唯一 tag/payload 来源，包含 `StandardRoPE`、`LinearRoPE`、`DynamicNtkRoPE`、`YarnRoPE`、`Llama3RoPE` 与 `LongRoPE`。各 alternative 只携带其公式所需参数，消除 enum 与 optional 字段不一致的状态。Dynamic NTK 按本次执行的 `max(position_ids)+1` 解析动态 base；LongRoPE 以该长度选择 short/long 频率表。HF `su` 仅作为 model 前端 legacy spelling，在参数完整时规范化为 `LongRoPE`；unknown type 拒绝。
 
 **静态等式校验（仅静态维度）：**
-- `q.shape[1] == num_attention_heads * head_dim`（静态时强制；symbolic 宽度合法，不发 product 约束）
-- `k.shape[1] == num_key_value_heads * head_dim`（同上）
-- 不添加 `num_attention_heads % num_key_value_heads == 0` 的 GQA 约束（该约束归 Attention）
+- `q.shape[1] == num_q_heads * head_dim`（静态时强制；symbolic 宽度合法，不发 product 约束）
+- `k.shape[1] == num_kv_heads * head_dim`（同上）
+- 不添加 `num_q_heads % num_kv_heads == 0` 的 GQA 约束（该约束归 Attention）
 
 **Symbolic 维度处理与 runtime checks：**
 - q、k、position_ids 的 seq_len 三方协调：`AreProvablyEqual` 时不发约束；双方均静态且不等则拒绝；否则发 `DimEqualConstraint`
@@ -985,7 +985,7 @@ interleaved 下配对 `(2*i, 2*i+1)`。同一 token/pair 的 `sin(angle)` / `cos
 
 **执行边界（不属于 graph 语义层）：**
 - 本语义层**不**检查 position tensor 内容。executable RoPE path 必须校验非负 position ID 与 symbolic q/k 宽度和 params 的一致性；只有 future scaling contract 明确 effective-position 上界后，才可额外施加该检查
-- 不声称 `position_ids < max_position_embeddings`——该 coordinate/bound 策略未在本语义任务中冻结
+- 不声称 `position_ids < max_pos_embeddings`——该 coordinate/bound 策略未在本语义任务中冻结
 - Loader `allow_rope_scaling` 仍是独立策略；语义接受不等于当前 end-to-end kernel 支持
 - sin/cos table 是可选的派生资源；reference kernel 可直接计算，若后续引入 table，必须作为 compiler/runtime 管理的共享资源，不能在每个 RoPE step 的 attrs 中重复持有
 

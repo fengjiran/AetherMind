@@ -110,7 +110,7 @@ PrepareExecutionBindings（PreparedExecutionBindings 构建，cold path）
     -> step.kernel.params_builder（每 step 每 PreparedExecutionBindings 恰好一次）
     -> BuildRmsNormF32ReferenceArgs / BuildRmsNormF32Avx2FmaArgs
     -> ValidateAndBuildF32Args（dtype 专用壳层：支持集检查 + 调模板）
-    -> ValidateAndBuildCommonArgs（dtype 无关共享模板：epsilon、rank、shape、row count、layout、pointer、stride、alias）
+    -> ValidateAndBuildRmsNormArgs（dtype 无关共享模板：epsilon、rank、shape、row count、layout、pointer、stride、alias）
     -> PreparedExecutionBindings 持有 compute-ready RmsNormF32KernelArgs
 
 每次 Execute（hot path）
@@ -120,7 +120,7 @@ PrepareExecutionBindings（PreparedExecutionBindings 构建，cold path）
 
 - prepared params（`RmsNormF32KernelArgs`）由 `PreparedExecutionBindings` 的 params arena 持有，生命周期等于 PreparedExecutionBindings；PreparedExecutionBindings 内存续期内 data pointer / shape / stride / dtype 不变，任何变化都必须重建 PreparedExecutionBindings。
 
-- `ValidateAndBuildCommonArgs` 是 dtype 无关的共享模板验证核心，负责 epsilon、rank、shape、row count、layout、pointer、stride 和 alias 检查；它是 TU-local（rmsnorm\_entry.cpp 匿名命名空间），通过模板参数直接填充自调用方传入的类型化 `*KernelArgs`，无中间结构体。它在 `PrepareExecutionBindings` 阶段执行，非法 binding 在该阶段返回错误，而不是在 Execute 时失败。dtype 专用壳层 `ValidateAndBuildF32Args` 先做支持集检查，再调用模板即可。
+- `ValidateAndBuildRmsNormArgs` 是 dtype 无关的共享模板验证核心，负责 epsilon、rank、shape、row count、layout、pointer、stride 和 alias 检查；它是 TU-local（rmsnorm\_entry.cpp 匿名命名空间），返回 `StatusOr<KernelArgs>`：校验成功后直接构造出完整的 compute-ready args 值，`KernelParamsBuilder` 再将其 placement-new 进 params arena；失败时 arena 中不构造任何对象。它在 `PrepareExecutionBindings` 阶段执行，非法 binding 在该阶段返回错误，而不是在 Execute 时失败。dtype 专用壳层 `ValidateAndBuildF32Args` 先做支持集检查，再调用模板即可。
 
 - AVX2+FMA 的 unit inner-stride 要求在它的 `KernelParamsBuilder` 中检查（zero-row 豁免）。
 

@@ -76,7 +76,7 @@ max_angle = double(max_position_id) * max_inverse_frequency
 
 该保证不承诺扫描或拒绝 Q/K 数据中的 NaN/Inf，也不承诺任意幅值输入的旋转结果都可用
 Float32 表示。Linear 的 `0 < factor < 1` 仍合法；不 clamp position，也不新增
-`position_ids < max_position_embeddings` 限制。有限巨大角度只保证可执行，不代表已完成
+`position_ids < max_pos_embeddings` 限制。有限巨大角度只保证可执行，不代表已完成
 对应上下文范围的 HF 兼容性验收。
 
 成功执行不分配 heap 或 workspace。静态频率解析属于 cold path；每次执行的位置预检查

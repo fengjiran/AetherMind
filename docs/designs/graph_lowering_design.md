@@ -453,8 +453,8 @@ struct RmsNormParams {
 **AttentionParams**
 ```cpp
 struct AttentionParams {
-    uint32_t num_attention_heads = 0;
-    uint32_t num_key_value_heads = 0;
+    uint32_t num_q_heads = 0;
+    uint32_t num_kv_heads = 0;
     uint32_t head_dim = 0;
 };
 ```

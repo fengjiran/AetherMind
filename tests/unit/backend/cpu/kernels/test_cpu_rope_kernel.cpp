@@ -369,6 +369,28 @@ TEST(CPUKernelRoPE, ReferenceRejectsPartialAndCrossTensorAliases) {
     expect_invalid(views);
 }
 
+TEST(CPUKernelRoPE, ReferenceReportsConservativeStridedAliasAsUnsupported) {
+    constexpr int64_t shape[2] = {1, 4};
+    constexpr int64_t strided_columns[2] = {8, 2};
+    constexpr int64_t contiguous_strides[2] = {4, 1};
+    constexpr int64_t position_shape[1] = {1};
+    constexpr int64_t position_strides[1] = {1};
+    constexpr int64_t positions[1] = {0};
+    std::array<float, 8> q_and_q_output{};
+    std::array<float, 4> k{};
+    std::array<float, 4> k_output{};
+
+    const Status status = RunRoPEEntry(MakeRoPEParams(4, 1, 1), RoPETestViews{
+                                                                        .q = TensorView{q_and_q_output.data(), DataType::Float32(), shape, strided_columns},
+                                                                        .k = TensorView{k.data(), DataType::Float32(), shape, contiguous_strides},
+                                                                        .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+                                                                        .q_output = MutableTensorView{q_and_q_output.data() + 1, DataType::Float32(), shape, strided_columns},
+                                                                        .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, contiguous_strides},
+                                                                });
+
+    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
+}
+
 TEST(CPUKernelRoPE, ReferenceAllowsSameAllocationWithRowSeparatedViews) {
     constexpr int64_t shape[2] = {2, 4};
     constexpr int64_t strides[2] = {8, 1};

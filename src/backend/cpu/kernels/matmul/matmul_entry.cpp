@@ -1,3 +1,4 @@
+#include "aethermind/backend/cpu/kernels/common/alias_utils.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/backend/kernel_types.h"
@@ -15,11 +16,6 @@
 
 namespace aethermind::cpu::detail {
 namespace {
-
-struct AddressRange {
-    std::uintptr_t begin{};
-    std::uintptr_t end{};
-};
 
 template<typename TensorLike>
 StatusOr<int64_t> ComputeMaxOffset(const TensorLike& tensor,
@@ -66,10 +62,6 @@ StatusOr<AddressRange> ComputeAddressRange(const TensorLike& tensor,
         return Status::InvalidArgument(message);
     }
     return AddressRange{.begin = begin, .end = end};
-}
-
-bool RangesOverlap(const AddressRange& lhs, const AddressRange& rhs) noexcept {
-    return lhs.begin < rhs.end && rhs.begin < lhs.end;
 }
 
 template<typename TensorLike>
@@ -120,8 +112,8 @@ Status BuildMatMulF32Metadata(const OpParams& params, std::vector<std::byte>& at
     return Status::Ok();
 }
 
-Status ValidateAndBuildMatMulF32Args(const KernelParamsBuildContext& context,
-                                     MatMulF32KernelArgs& args) noexcept {
+StatusOr<MatMulF32KernelArgs> ValidateAndBuildMatMulF32Args(
+        const KernelParamsBuildContext& context) noexcept {
     if (context.attrs.size() != 1) {
         return Status::InvalidArgument("MatMulKernelEntry requires transpose_rhs metadata");
     }
@@ -220,8 +212,7 @@ Status ValidateAndBuildMatMulF32Args(const KernelParamsBuildContext& context,
     const bool has_output_elements =
             built_args.batch_count != 0 && built_args.m != 0 && built_args.n != 0;
     if (!has_output_elements) {
-        args = built_args;
-        return Status::Ok();
+        return built_args;
     }
 
     AM_RETURN_IF_ERROR(ValidateInjectiveOutputMapping(output));
@@ -238,14 +229,13 @@ Status ValidateAndBuildMatMulF32Args(const KernelParamsBuildContext& context,
         }
     }
 
-    args = built_args;
-    return Status::Ok();
+    return built_args;
 }
 
 Status BuildMatMulF32ReferenceArgs(const KernelParamsBuildContext& context,
                                    void* params_buffer) noexcept {
-    MatMulF32KernelArgs args;
-    AM_RETURN_IF_ERROR(ValidateAndBuildMatMulF32Args(context, args));
+    AM_ASSIGN_OR_RETURN(const MatMulF32KernelArgs args,
+                        ValidateAndBuildMatMulF32Args(context));
     ::new (params_buffer) MatMulF32KernelArgs(args);
     return Status::Ok();
 }

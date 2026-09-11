@@ -7,8 +7,8 @@
 namespace aethermind::cpu::detail {
 namespace {
 
-Status ValidateAndBuildF32Args(const KernelParamsBuildContext& context,
-                               ElementwiseMulF32KernelArgs& args) noexcept {
+StatusOr<ElementwiseMulF32KernelArgs> ValidateAndBuildF32Args(
+        const KernelParamsBuildContext& context) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
@@ -23,13 +23,14 @@ Status ValidateAndBuildF32Args(const KernelParamsBuildContext& context,
                 "ElementwiseMulKernel requires float32 lhs, rhs, and output TensorViews");
     }
 
-    return ValidateAndBuildElementwiseArgs(context, args, "ElementwiseMulKernel");
+    return ValidateAndBuildElementwiseArgs<ElementwiseMulF32KernelArgs>(
+            context, "ElementwiseMulKernel");
 }
 
 Status BuildElementwiseMulF32ReferenceArgs(const KernelParamsBuildContext& context,
                                            void* params_buffer) noexcept {
-    ElementwiseMulF32KernelArgs args;
-    AM_RETURN_IF_ERROR(ValidateAndBuildF32Args(context, args));
+    AM_ASSIGN_OR_RETURN(const ElementwiseMulF32KernelArgs args,
+                        ValidateAndBuildF32Args(context));
     ::new (params_buffer) ElementwiseMulF32KernelArgs(args);
     return Status::Ok();
 }

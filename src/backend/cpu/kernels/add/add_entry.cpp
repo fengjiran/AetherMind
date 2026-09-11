@@ -10,8 +10,7 @@
 namespace aethermind::cpu::detail {
 namespace {
 
-Status ValidateAndBuildArgs(const KernelParamsBuildContext& context,
-                            AddKernelArgs& args) noexcept {
+StatusOr<AddKernelArgs> ValidateAndBuildArgs(const KernelParamsBuildContext& context) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
@@ -29,15 +28,15 @@ Status ValidateAndBuildArgs(const KernelParamsBuildContext& context,
                 MakeAddUnsupportedDTypeMessage("AddKernel"));
     }
 
-    AM_RETURN_IF_ERROR(ValidateAndBuildElementwiseArgs(context, args, "AddKernel"));
+    AM_ASSIGN_OR_RETURN(AddKernelArgs args,
+                        ValidateAndBuildElementwiseArgs<AddKernelArgs>(context, "AddKernel"));
     args.dtype = dtype;
-    return Status::Ok();
+    return args;
 }
 
 Status BuildAddArgs(const KernelParamsBuildContext& context,
                     void* params_buffer) noexcept {
-    AddKernelArgs args;
-    AM_RETURN_IF_ERROR(ValidateAndBuildArgs(context, args));
+    AM_ASSIGN_OR_RETURN(const AddKernelArgs args, ValidateAndBuildArgs(context));
     ::new (params_buffer) AddKernelArgs(args);
     return Status::Ok();
 }

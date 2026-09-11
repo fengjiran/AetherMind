@@ -1,3 +1,4 @@
+#include "aethermind/backend/cpu/kernels/common/alias_utils.h"
 #include "aethermind/backend/cpu/kernels/common/layout_utils.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
@@ -16,25 +17,10 @@ bool HasUnitColumnStrides(const RmsNormF32KernelArgs& args) noexcept {
     return args.input_col_stride == 1 && args.weight_stride == 1 && args.output_col_stride == 1;
 }
 
-bool HasIdenticalMapping(const TensorView& input,
-                         const MutableTensorView& output) noexcept {
-    if (input.data() != output.data() || input.dtype() != output.dtype() ||
-        input.rank() != output.rank()) {
-        return false;
-    }
-
-    for (int32_t i = 0; i < input.rank(); ++i) {
-        if (input.dim(i) != output.dim(i) || input.stride(i) != output.stride(i)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 template<typename KernelArgs>
-Status ValidateAndBuildRmsNormArgs(const KernelParamsBuildContext& context,
-                                   KernelArgs& args) noexcept {
+StatusOr<KernelArgs> ValidateAndBuildRmsNormArgs(
+        const KernelParamsBuildContext& context) noexcept {
+    KernelArgs args{};
     float eps = 0.0f;
     if (context.attrs.size() != sizeof(float)) {
         return Status::InvalidArgument(
@@ -110,11 +96,10 @@ Status ValidateAndBuildRmsNormArgs(const KernelParamsBuildContext& context,
     }
 
     if (row_count.value() == 0) {
-        args = KernelArgs{};
         args.row_count = 0;
         args.hidden_size = hidden_size;
         args.eps = eps;
-        return Status::Ok();
+        return args;
     }
 
     if (input.data() == nullptr || weight.data() == nullptr || output.data() == nullptr) {
@@ -188,11 +173,11 @@ Status ValidateAndBuildRmsNormArgs(const KernelParamsBuildContext& context,
     args.output_row_stride = output_row_stride;
     args.output_col_stride = output.stride(rank - 1);
     args.eps = eps;
-    return Status::Ok();
+    return args;
 }
 
-Status ValidateAndBuildF32Args(const KernelParamsBuildContext& context,
-                               RmsNormF32KernelArgs& args) noexcept {
+StatusOr<RmsNormF32KernelArgs> ValidateAndBuildF32Args(
+        const KernelParamsBuildContext& context) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
@@ -205,21 +190,19 @@ Status ValidateAndBuildF32Args(const KernelParamsBuildContext& context,
                 "RmsNormKernelEntry requires float32 input, weight, and output TensorViews");
     }
 
-    return ValidateAndBuildRmsNormArgs(context, args);
+    return ValidateAndBuildRmsNormArgs<RmsNormF32KernelArgs>(context);
 }
 
 Status BuildRmsNormF32ReferenceArgs(const KernelParamsBuildContext& context,
                                     void* params_buffer) noexcept {
-    RmsNormF32KernelArgs args;
-    AM_RETURN_IF_ERROR(ValidateAndBuildF32Args(context, args));
+    AM_ASSIGN_OR_RETURN(const RmsNormF32KernelArgs args, ValidateAndBuildF32Args(context));
     ::new (params_buffer) RmsNormF32KernelArgs(args);
     return Status::Ok();
 }
 
 Status BuildRmsNormF32Avx2FmaArgs(const KernelParamsBuildContext& context,
                                   void* params_buffer) noexcept {
-    RmsNormF32KernelArgs args;
-    AM_RETURN_IF_ERROR(ValidateAndBuildF32Args(context, args));
+    AM_ASSIGN_OR_RETURN(const RmsNormF32KernelArgs args, ValidateAndBuildF32Args(context));
 
     if (args.row_count != 0 && !HasUnitColumnStrides(args)) {
         return Status::InvalidArgument(

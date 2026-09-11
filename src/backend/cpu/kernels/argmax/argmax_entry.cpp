@@ -126,8 +126,8 @@ Status ValidateSupportedOutputLayout(const ArgmaxF32KernelArgs& args) noexcept {
     return Status::Ok();
 }
 
-Status ValidateAndBuildArgmaxF32Args(const KernelParamsBuildContext& context,
-                                     ArgmaxF32KernelArgs& args) noexcept {
+StatusOr<ArgmaxF32KernelArgs> ValidateAndBuildArgmaxF32Args(
+        const KernelParamsBuildContext& context) noexcept {
     AM_ASSIGN_OR_RETURN(const int64_t axis, ReadFrozenAxis(context.attrs));
 
     const auto inputs = context.inputs;
@@ -220,8 +220,7 @@ Status ValidateAndBuildArgmaxF32Args(const KernelParamsBuildContext& context,
         // Nothing to write: the geometry is carried for diagnostics only and the
         // micro-kernel dereferences neither pointer, so null data, zero strides,
         // and overlapping layouts are all acceptable here.
-        args = built;
-        return Status::Ok();
+        return built;
     }
 
     if (input.data() == nullptr || output.data() == nullptr) {
@@ -248,14 +247,13 @@ Status ValidateAndBuildArgmaxF32Args(const KernelParamsBuildContext& context,
 
     built.input = input.data<float>();
     built.output = output.data<int64_t>();
-    args = built;
-    return Status::Ok();
+    return built;
 }
 
 Status BuildArgmaxF32ReferenceArgs(const KernelParamsBuildContext& context,
                                    void* params_buffer) noexcept {
-    ArgmaxF32KernelArgs args{};
-    AM_RETURN_IF_ERROR(ValidateAndBuildArgmaxF32Args(context, args));
+    AM_ASSIGN_OR_RETURN(const ArgmaxF32KernelArgs args,
+                        ValidateAndBuildArgmaxF32Args(context));
     ::new (params_buffer) ArgmaxF32KernelArgs(args);
     return Status::Ok();
 }

@@ -31,8 +31,8 @@ RoPEParams MakeRoPEParams(int64_t head_dim = 4,
                           double theta = 4.0) {
     return RoPEParams{
             .head_dim = head_dim,
-            .num_attention_heads = num_q_heads,
-            .num_key_value_heads = num_kv_heads,
+            .num_q_heads = num_q_heads,
+            .num_kv_heads = num_kv_heads,
             .max_pos_embeddings = 8,
             .theta = theta,
             .algorithm = StandardRoPE{},
@@ -680,7 +680,7 @@ TEST(CPUKernelRoPE, PreparedParamsRevalidateMutablePositionContentsBeforeWrites)
     ASSERT_TRUE(prepared.ok()) << prepared.status().ToString();
     ASSERT_TRUE(RunRoPEEntry(*kernel, *prepared).ok());
     EXPECT_EQ(q_output[0], q[0]);
-    // max_position_embeddings is not a coordinate upper bound.
+    // max_pos_embeddings is not a coordinate upper bound.
     positions[1] = 999;
     ASSERT_TRUE(RunRoPEEntry(*kernel, *prepared).ok());
     ExpectRoPENear(q, q_output.data(), 2, 1, 4, 4, 1, 4, 1, positions, 1, 4.0, 1.0);

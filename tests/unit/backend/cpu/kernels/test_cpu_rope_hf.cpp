@@ -107,8 +107,8 @@ TEST_P(CPUKernelRoPEHf, MatchesPinnedCpuFloat32Golden) {
     CpuBackend backend;
     RoPEParams params{
             .head_dim = fixture.head_dim,
-            .num_attention_heads = fixture.q_heads,
-            .num_key_value_heads = fixture.kv_heads,
+            .num_q_heads = fixture.q_heads,
+            .num_kv_heads = fixture.kv_heads,
             .max_pos_embeddings = 8192,
             .theta = fixture.theta,
     };

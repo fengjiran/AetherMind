@@ -18,8 +18,8 @@ constexpr int64_t kMaxPositionEmbeddings = 2048;
 RoPEParams MakeStandardParams() {
     return RoPEParams{
             .head_dim = kHeadDim,
-            .num_attention_heads = kNumAttentionHeads,
-            .num_key_value_heads = kNumKeyValueHeads,
+            .num_q_heads = kNumAttentionHeads,
+            .num_kv_heads = kNumKeyValueHeads,
             .max_pos_embeddings = kMaxPositionEmbeddings,
             .theta = 10000.0,
             .algorithm = StandardRoPE{},
@@ -64,13 +64,13 @@ TEST(RoPEInference, RejectsZeroHeadDim) {
 
 TEST(RoPEInference, RejectsZeroNumAttentionHeads) {
     auto p = MakeStandardParams();
-    p.num_attention_heads = 0;
+    p.num_q_heads = 0;
     EXPECT_FALSE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
 }
 
 TEST(RoPEInference, RejectsZeroNumKeyValueHeads) {
     auto p = MakeStandardParams();
-    p.num_key_value_heads = 0;
+    p.num_kv_heads = 0;
     EXPECT_FALSE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
 }
 
@@ -120,14 +120,14 @@ TEST(RoPEInference, RejectsUnknownPairingAndYarnThetaOne) {
 
 TEST(RoPEInference, RejectsAttentionHeadsProductOverflow) {
     auto p = MakeStandardParams();
-    p.num_attention_heads = INT64_MAX;
+    p.num_q_heads = INT64_MAX;
     p.head_dim = 2;
     EXPECT_FALSE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
 }
 
 TEST(RoPEInference, RejectsKeyValueHeadsProductOverflow) {
     auto p = MakeStandardParams();
-    p.num_key_value_heads = INT64_MAX;
+    p.num_kv_heads = INT64_MAX;
     p.head_dim = 2;
     EXPECT_FALSE(InferOperator(OpType::kRoPE, p, MakeInputs(DataType::Float32())).ok());
 }

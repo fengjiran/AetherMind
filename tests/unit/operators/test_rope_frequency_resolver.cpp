@@ -12,8 +12,8 @@ RoPEParams MakeParams() {
     return RoPEParams{
             .head_dim = 4,
             .rotary_dim = 4,
-            .num_attention_heads = 1,
-            .num_key_value_heads = 1,
+            .num_q_heads = 1,
+            .num_kv_heads = 1,
             .max_pos_embeddings = 4,
             .theta = 4.0,
     };
@@ -125,6 +125,23 @@ TEST(RoPEFrequencyResolver, RejectsInvalidTypedVariants) {
                                 .long_factors = {1.0},
                                 .original_context_length = 4};
     EXPECT_FALSE(ValidateRoPEFreqParams(params).ok());
+}
+
+TEST(RoPEFrequencyResolver, EntryPointsRejectMismatchedAlgorithmClasses) {
+    auto params = MakeParams();
+    params.algorithm = DynamicNtkRoPE{.factor = 2.0, .original_context_length = 4};
+    EXPECT_FALSE(ResolveStaticRoPEFreqs(params).ok());
+
+    params.algorithm = LongRoPE{.short_factors = {1.0, 2.0},
+                                .long_factors = {2.0, 4.0},
+                                .original_context_length = 4};
+    EXPECT_FALSE(ResolveStaticRoPEFreqs(params).ok());
+
+    params.algorithm = StandardRoPE{};
+    EXPECT_FALSE(ResolveDynamicRoPEFreqs(params, 8).ok());
+
+    params.algorithm = LinearRoPE{.factor = 2.0};
+    EXPECT_FALSE(ResolveDynamicRoPEFreqs(params, 8).ok());
 }
 
 } // namespace

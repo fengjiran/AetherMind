@@ -9,8 +9,8 @@ namespace {
 using namespace aethermind;
 
 // Phase-1 Attention logical signature:
-//   q        : rank 2, [seq_len, hidden]  where hidden = num_attention_heads * head_dim
-//   k/v cache: rank 3, [num_key_value_heads, cache_len, head_dim]
+//   q        : rank 2, [seq_len, hidden]  where hidden = num_q_heads * head_dim
+//   k/v cache: rank 3, [num_kv_heads, cache_len, head_dim]
 //   output   : rank 2, same spec as q
 
 TEST(AttentionInference, SupportedDTypeSetIsExact) {
@@ -225,7 +225,7 @@ TEST(AttentionInference, RejectsQHiddenMismatch) {
 }
 
 TEST(AttentionInference, RejectsKVHeadsMismatch) {
-    // cache kv_heads = 4 but params say num_key_value_heads = 8.
+    // cache kv_heads = 4 but params say num_kv_heads = 8.
     auto q = MakeSpec(DataType::Float32(), {1, 32 * 64});
     auto kCache = MakeSpec(DataType::Float32(), {4, 1024, 64});
     auto vCache = MakeSpec(DataType::Float32(), {4, 1024, 64});

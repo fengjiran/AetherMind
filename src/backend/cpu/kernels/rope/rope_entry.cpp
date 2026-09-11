@@ -7,14 +7,12 @@
 #include "aethermind/operators/rope_frequency_resolver.h"
 #include "rope_internal.h"
 #include "utils/numeric_utils.h"
-#include "utils/overflow_check.h"
 #include "utils/variant_utils.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <limits>
 #include <new>
 #include <span>
 #include <string>
@@ -23,117 +21,22 @@
 namespace aethermind::cpu::detail {
 namespace {
 
-struct RowwiseAddressLayout {
-    AddressRange envelope{};
-    std::uintptr_t row_stride_bytes{};
-    std::uintptr_t row_bytes{};
-    int64_t row_count{};
-};
-
-bool ToAddressValue(int64_t value, std::uintptr_t* result) noexcept {
-    if (value < 0 ||
-        static_cast<std::uintmax_t>(value) > std::numeric_limits<std::uintptr_t>::max()) {
-        return false;
-    }
-
-    *result = static_cast<std::uintptr_t>(value);
-    return true;
-}
-
-StatusOr<RowwiseAddressLayout> BuildRowwiseAddressLayout(const void* data,
-                                                         int64_t row_count,
-                                                         int64_t column_count,
-                                                         int64_t row_stride,
-                                                         int64_t column_stride,
-                                                         size_t item_size,
-                                                         const char* role) noexcept {
-    std::uintptr_t row_count_minus_one = 0;
-    std::uintptr_t column_count_minus_one = 0;
-    std::uintptr_t row_stride_elements = 0;
-    std::uintptr_t column_stride_elements = 0;
-    if (!ToAddressValue(row_count - 1, &row_count_minus_one) ||
-        !ToAddressValue(column_count - 1, &column_count_minus_one) ||
-        !ToAddressValue(row_stride, &row_stride_elements) ||
-        !ToAddressValue(column_stride, &column_stride_elements) ||
-        item_size > std::numeric_limits<std::uintptr_t>::max()) {
-        return Status::InvalidArgument(std::string("CPU RoPE ") + role +
-                                       " address range overflow");
-    }
-
-    const auto item_size_bytes = item_size;
-    std::uintptr_t last_column_offset = 0;
-    std::uintptr_t row_span_elements = 0;
-    std::uintptr_t row_bytes = 0;
-    std::uintptr_t row_stride_bytes = 0;
-    std::uintptr_t last_row_offset = 0;
-    if (CheckOverflowMul(column_count_minus_one, column_stride_elements, &last_column_offset) ||
-        CheckOverflowAdd(last_column_offset, std::uintptr_t{1}, &row_span_elements) ||
-        CheckOverflowMul(row_span_elements, item_size_bytes, &row_bytes) ||
-        CheckOverflowMul(row_stride_elements, item_size_bytes, &row_stride_bytes) ||
-        CheckOverflowMul(row_count_minus_one, row_stride_bytes, &last_row_offset)) {
-        return Status::InvalidArgument(std::string("CPU RoPE ") + role +
-                                       " address range overflow");
-    }
-
-    const auto begin = reinterpret_cast<std::uintptr_t>(data);
-    std::uintptr_t last_row_begin = 0;
-    std::uintptr_t end = 0;
-    if (CheckOverflowAdd(begin, last_row_offset, &last_row_begin) ||
-        CheckOverflowAdd(last_row_begin, row_bytes, &end)) {
-        return Status::InvalidArgument(std::string("CPU RoPE ") + role +
-                                       " address range overflow");
-    }
-
-    return RowwiseAddressLayout{
-            .envelope = AddressRange{.begin = begin, .end = end},
-            .row_stride_bytes = row_stride_bytes,
-            .row_bytes = row_bytes,
-            .row_count = row_count,
-    };
-}
-
-AddressRange RowAddressRange(const RowwiseAddressLayout& layout, int64_t row) noexcept {
-    // BuildRowwiseAddressLayout checked the last row's end address, so every
-    // earlier row address and end is representable as well.
-    const std::uintptr_t row_offset = static_cast<std::uintptr_t>(row) * layout.row_stride_bytes;
-    const std::uintptr_t begin = layout.envelope.begin + row_offset;
-    return AddressRange{.begin = begin, .end = begin + layout.row_bytes};
-}
-
-bool RowwiseRangesOverlap(const RowwiseAddressLayout& lhs,
-                          const RowwiseAddressLayout& rhs) noexcept {
-    // Positive row strides keep both row ranges in increasing-address order.
-    // A row range includes column-stride holes, deliberately rejecting a few
-    // otherwise safe strided views instead of requiring set-wise alias checks.
-    int64_t lhs_row = 0;
-    int64_t rhs_row = 0;
-    while (lhs_row < lhs.row_count && rhs_row < rhs.row_count) {
-        const AddressRange lhs_range = RowAddressRange(lhs, lhs_row);
-        const AddressRange rhs_range = RowAddressRange(rhs, rhs_row);
-        if (RangesOverlap(lhs_range, rhs_range)) {
-            return true;
-        }
-
-        if (lhs_range.end <= rhs_range.begin) {
-            ++lhs_row;
-        } else {
-            ++rhs_row;
-        }
-    }
-    return false;
-}
-
 Status ValidateNoRowwiseOverlap(const RowwiseAddressLayout& output,
                                 const char* output_role,
                                 const RowwiseAddressLayout& input,
                                 const char* input_role) noexcept {
-    if (!RangesOverlap(output.envelope, input.envelope) ||
-        !RowwiseRangesOverlap(output, input)) {
-        return Status::Ok();
+    switch (ClassifyRowwiseLayoutOverlap(output, input)) {
+        case RowwiseLayoutOverlap::kDisjoint:
+            return Status::Ok();
+        case RowwiseLayoutOverlap::kProvenOverlap:
+            return Status::InvalidArgument(std::string("CPU RoPE ") + output_role +
+                                           " must not overlap " + input_role);
+        case RowwiseLayoutOverlap::kMayOverlap:
+            return Status::Unimplemented(std::string("CPU RoPE cannot prove ") + output_role +
+                                         " is disjoint from " + input_role +
+                                         " for the requested strided layouts");
     }
-
-    return Status::InvalidArgument(std::string("CPU RoPE ") + output_role +
-                                   " must not overlap " + input_role);
+    return Status::Internal("CPU RoPE row-wise overlap classification is invalid");
 }
 
 uint8_t ExpectedFrequencyTableCount(RoPEAlgorithm algorithm) noexcept {
@@ -478,23 +381,23 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
     AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout q_layout,
                         BuildRowwiseAddressLayout(q.data(), seq_len, q_width,
                                                   q.stride(0), q.stride(1),
-                                                  q.itemsize(), "q"));
+                                                  q.itemsize(), "CPU RoPE q"));
     AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout k_layout,
                         BuildRowwiseAddressLayout(k.data(), seq_len, k_width,
                                                   k.stride(0), k.stride(1),
-                                                  k.itemsize(), "k"));
+                                                  k.itemsize(), "CPU RoPE k"));
     AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout position_layout,
                         BuildRowwiseAddressLayout(pos_ids.data(), seq_len, 1,
                                                   pos_ids.stride(0), 1,
-                                                  pos_ids.itemsize(), "position_ids"));
+                                                  pos_ids.itemsize(), "CPU RoPE position_ids"));
     AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout q_output_layout,
                         BuildRowwiseAddressLayout(q_output.data(), seq_len, q_width,
                                                   q_output.stride(0), q_output.stride(1),
-                                                  q_output.itemsize(), "q output"));
+                                                  q_output.itemsize(), "CPU RoPE q output"));
     AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout k_output_layout,
                         BuildRowwiseAddressLayout(k_output.data(), seq_len, k_width,
                                                   k_output.stride(0), k_output.stride(1),
-                                                  k_output.itemsize(), "k output"));
+                                                  k_output.itemsize(), "CPU RoPE k output"));
 
     if (!HasIdenticalMapping(q, q_output)) {
         AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(

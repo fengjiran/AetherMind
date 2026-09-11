@@ -279,8 +279,8 @@ TEST(ModelGraphBuilder, RecordsTypedParamsForAllGraphOps) {
     const auto* rope_params = std::get_if<RoPEParams>(&nodes[5].op_params);
     ASSERT_NE(rope_params, nullptr);
     EXPECT_EQ(rope_params->head_dim, config.head_dim);
-    EXPECT_EQ(rope_params->num_attention_heads, config.num_attention_heads);
-    EXPECT_EQ(rope_params->num_key_value_heads, config.num_key_value_heads);
+    EXPECT_EQ(rope_params->num_q_heads, config.num_attention_heads);
+    EXPECT_EQ(rope_params->num_kv_heads, config.num_key_value_heads);
     EXPECT_EQ(rope_params->max_pos_embeddings, config.max_position_embeddings);
     EXPECT_DOUBLE_EQ(rope_params->theta, config.rope.theta);
 
@@ -289,8 +289,8 @@ TEST(ModelGraphBuilder, RecordsTypedParamsForAllGraphOps) {
     const auto* attention_params = std::get_if<AttentionParams>(&nodes[7].op_params);
     ASSERT_NE(attention_params, nullptr);
     EXPECT_EQ(attention_params->head_dim, config.head_dim);
-    EXPECT_EQ(attention_params->num_attention_heads, config.num_attention_heads);
-    EXPECT_EQ(attention_params->num_key_value_heads, config.num_key_value_heads);
+    EXPECT_EQ(attention_params->num_q_heads, config.num_attention_heads);
+    EXPECT_EQ(attention_params->num_kv_heads, config.num_key_value_heads);
 
     EXPECT_NE(std::get_if<AddParams>(&nodes[9].op_params), nullptr);
     EXPECT_NE(std::get_if<SiluMulParams>(&nodes[13].op_params), nullptr);

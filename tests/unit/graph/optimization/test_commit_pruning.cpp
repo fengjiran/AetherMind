@@ -337,8 +337,8 @@ TEST(CommitPruning, KeepsLivePrefixAndPrunesDeadSuffix) {
     const GraphValueId k = AddActivation(graph, "k");
     const GraphValueId position = graph.AddInput(Spec(DataType::Int(64), {2}), "position");
     const RoPEParams params{.head_dim = 4,
-                            .num_attention_heads = 1,
-                            .num_key_value_heads = 1,
+                            .num_q_heads = 1,
+                            .num_kv_heads = 1,
                             .max_pos_embeddings = 128,
                             .theta = 10000.0,
                             .algorithm = StandardRoPE{}};
@@ -433,8 +433,8 @@ TEST(CommitPruning, KeepsSideEffectfulSourceNode) {
     ASSERT_TRUE(cache_or.ok()) << cache_or.status().ToString();
     const GraphValueId query = AddActivation(graph, "query");
     const AttentionParams attention_params{
-            .num_attention_heads = 1,
-            .num_key_value_heads = 1,
+            .num_q_heads = 1,
+            .num_kv_heads = 1,
             .head_dim = 4};
     auto target_or = AddAttention(graph,
                                   0U,

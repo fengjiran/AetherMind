@@ -61,8 +61,8 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
             q,
             k_cache,
             v_cache,
-            AttentionParams{.num_attention_heads = 2,
-                            .num_key_value_heads = 2,
+            AttentionParams{.num_q_heads = 2,
+                            .num_kv_heads = 2,
                             .head_dim = 2},
             "attention");
     ASSERT_TRUE(attn_or.ok()) << attn_or.status().ToString();
@@ -362,8 +362,8 @@ TEST(GraphOpBuilder, AddsMultiOutputOperatorHelpers) {
                            k,
                            position_ids,
                            RoPEParams{.head_dim = 2,
-                                      .num_attention_heads = 2,
-                                      .num_key_value_heads = 2,
+                                      .num_q_heads = 2,
+                                      .num_kv_heads = 2,
                                       .max_pos_embeddings = 128},
                            "rope");
     ASSERT_TRUE(rope_or.ok()) << rope_or.status().ToString();

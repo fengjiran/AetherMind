@@ -311,8 +311,8 @@ TEST(ModelGraph, ValidateRejectsInvalidRoPEParams) {
             {{.payload = ActivationValue{}},
              {.payload = ActivationValue{}}},
             RoPEParams{.head_dim = 0,
-                       .num_attention_heads = 4,
-                       .num_key_value_heads = 2,
+                       .num_q_heads = 4,
+                       .num_kv_heads = 2,
                        .max_pos_embeddings = 128});
 
     EXPECT_FALSE(result.ok());
@@ -1921,8 +1921,8 @@ TEST(ModelGraphSemanticValidation, RoPENodeHasDistinctOutputIds) {
             {{.payload = ActivationValue{}},
              {.payload = ActivationValue{}}},
             RoPEParams{.head_dim = 2,
-                       .num_attention_heads = 4,
-                       .num_key_value_heads = 2,
+                       .num_q_heads = 4,
+                       .num_kv_heads = 2,
                        .max_pos_embeddings = 128});
 
     ASSERT_TRUE(result.ok()) << result.status().ToString();

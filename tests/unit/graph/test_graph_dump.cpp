@@ -215,8 +215,8 @@ TEST(GraphDump, DumpsEveryOpParamsVariant) {
             RmsNormParams{.eps = 1.0e-6F},
             LinearParams{},
             RoPEParams{.head_dim = 8,
-                       .num_attention_heads = 4,
-                       .num_key_value_heads = 2,
+                       .num_q_heads = 4,
+                       .num_kv_heads = 2,
                        .max_pos_embeddings = 128,
                        .theta = 10000.0,
                        .algorithm = LinearRoPE{.factor = 2.0}},
@@ -225,7 +225,7 @@ TEST(GraphDump, DumpsEveryOpParamsVariant) {
             AddParams{},
             SiluMulParams{},
             KVCacheUpdateParams{},
-            AttentionParams{.num_attention_heads = 4, .num_key_value_heads = 2, .head_dim = 8},
+            AttentionParams{.num_q_heads = 4, .num_kv_heads = 2, .head_dim = 8},
             ArgmaxParams{.axis = -1},
             ReshapeParams{.target_shape = {ReshapeInputDim{0}, ReshapeInputDim{1}, ReshapeLiteralDim{32}, ReshapeInferDim{}}},
             PermuteParams{.permutation = {2, 0, 1}},
@@ -251,7 +251,7 @@ TEST(GraphDump, DumpsEveryOpParamsVariant) {
     EXPECT_NE(dump.find("RmsNormParams{eps="), std::string::npos);
     EXPECT_NE(dump.find("RoPEParams{head_dim=8"), std::string::npos);
     EXPECT_NE(dump.find("MatMulParams{transpose_rhs=true}"), std::string::npos);
-    EXPECT_NE(dump.find("AttentionParams{num_attention_heads=4"), std::string::npos);
+    EXPECT_NE(dump.find("AttentionParams{num_q_heads=4"), std::string::npos);
     EXPECT_NE(dump.find("ArgmaxParams{axis=-1}"), std::string::npos);
     EXPECT_NE(dump.find("ReshapeParams{target_shape=[@0,@1,32,*]}"), std::string::npos);
     EXPECT_NE(dump.find("PermuteParams{permutation=[2,0,1]}"), std::string::npos);

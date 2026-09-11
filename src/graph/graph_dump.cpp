@@ -235,9 +235,9 @@ void DumpOpParams(const OpParams& params, std::ostream& os) {
             [&](const RoPEParams& p) {
                 os << "RoPEParams{head_dim=" << p.head_dim
                    << ", rotary_dim=" << EffectiveRoPERotaryDim(p)
-                   << ", num_attention_heads=" << p.num_attention_heads
-                   << ", num_key_value_heads=" << p.num_key_value_heads
-                   << ", max_position_embeddings=" << p.max_pos_embeddings
+                   << ", num_q_heads=" << p.num_q_heads
+                   << ", num_kv_heads=" << p.num_kv_heads
+                   << ", max_pos_embeddings=" << p.max_pos_embeddings
                    << ", theta=" << p.theta
                    << ", pairing=" << ToString(p.pairing)
                    << ", algorithm=" << ToString(GetRoPEAlgorithm(p.algorithm)) << '}';
@@ -264,8 +264,8 @@ void DumpOpParams(const OpParams& params, std::ostream& os) {
                 DumpEmptyParams("KVCacheUpdateParams", os);
             },
             [&](const AttentionParams& p) {
-                os << "AttentionParams{num_attention_heads=" << p.num_attention_heads
-                   << ", num_key_value_heads=" << p.num_key_value_heads
+                os << "AttentionParams{num_q_heads=" << p.num_q_heads
+                   << ", num_kv_heads=" << p.num_kv_heads
                    << ", head_dim=" << p.head_dim << '}';
             },
             [&](const ArgmaxParams& p) {

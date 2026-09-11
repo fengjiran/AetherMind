@@ -1140,32 +1140,46 @@ Status GraphRewriteSession::CopyExternalValues(ModelGraph& committed,
             continue;
         }
 
-        if (std::get_if<ModelInputValue>(&value.payload)) {
-            const auto input_name = FindInputName(graph_, {.index = i});
-            if (!input_name.has_value()) {
-                return Status::InvalidArgument(
-                        "GraphRewriteSession::Commit model input name not found");
-            }
-            maps.source_values[i] = committed.AddInput(value.spec, *input_name);
-        } else if (const auto* weight = std::get_if<WeightValue>(&value.payload)) {
-            maps.source_values[i] = committed.AddWeight(value.spec, weight->binding, value.name);
-        } else if (const auto* constant = std::get_if<ConstantValue>(&value.payload)) {
-            maps.source_values[i] = committed.AddConstant(value.spec, constant->binding, value.name);
-        } else if (const auto* state = std::get_if<StateValue>(&value.payload)) {
-            maps.source_values[i] = committed.AddState(value.spec, state->binding, value.name);
-        } else if (std::holds_alternative<std::monostate>(value.payload)) {
-            // External values must be input, weight, constant, or state.
-            // A monostate payload indicates an uninitialized value: the source
-            // graph is not a valid snapshot and cannot be committed.
-            return Status::InvalidArgument(
-                    "GraphRewriteSession::Commit external value has unspecified "
-                    "(monostate) payload; ModelGraph values must be input, "
-                    "weight, constant, or state");
-        } else {
-            return Status::InvalidArgument(
-                    "GraphRewriteSession::Commit external value has unsupported "
-                    "payload variant");
-        }
+        auto visitor = overloaded{
+                [&](const ModelInputValue&) -> Status {
+                    const auto input_name = FindInputName(graph_, {.index = i});
+                    if (!input_name.has_value()) {
+                        return Status::InvalidArgument(
+                                "GraphRewriteSession::Commit model input name not found");
+                    }
+                    maps.source_values[i] = committed.AddInput(value.spec, *input_name);
+                    return Status::Ok();
+                },
+                [&](const WeightValue& weight) -> Status {
+                    maps.source_values[i] =
+                            committed.AddWeight(value.spec, weight.binding, value.name);
+                    return Status::Ok();
+                },
+                [&](const ConstantValue& constant) -> Status {
+                    maps.source_values[i] =
+                            committed.AddConstant(value.spec, constant.binding, value.name);
+                    return Status::Ok();
+                },
+                [&](const StateValue& state) -> Status {
+                    maps.source_values[i] =
+                            committed.AddState(value.spec, state.binding, value.name);
+                    return Status::Ok();
+                },
+                [&](const ActivationValue&) -> Status {
+                    return Status::InvalidArgument(
+                            "GraphRewriteSession::Commit external value has unsupported "
+                            "payload variant");
+                },
+                [&](const std::monostate&) -> Status {
+                    // External values must be input, weight, constant, or state.
+                    // A monostate payload indicates an uninitialized value: the source
+                    // graph is not a valid snapshot and cannot be committed.
+                    return Status::InvalidArgument(
+                            "GraphRewriteSession::Commit external value has unspecified "
+                            "(monostate) payload; ModelGraph values must be input, "
+                            "weight, constant, or state");
+                }};
+        AM_RETURN_IF_ERROR(std::visit(visitor, value.payload));
 
         committed.SetQuantization(*maps.source_values[i], value.quantization);
     }

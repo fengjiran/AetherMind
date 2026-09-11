@@ -358,60 +358,57 @@ std::string FormatNodeContext(size_t idx, OpType op_type, const std::string& nam
 Status ValidateValueSelfConsistency(const GraphValue& value,
                                     size_t value_index,
                                     std::span<const GraphNode> nodes) {
-    if (std::holds_alternative<std::monostate>(value.payload)) {
-        return Status::InvalidArgument("Graph value has monostate payload");
-    }
+    auto visitor = overloaded{
+            [](const std::monostate&) -> Status {
+                return Status::InvalidArgument("Graph value has monostate payload");
+            },
+            [&](const ActivationValue&) -> Status {
+                if (!value.producer.has_value() || !IsValidNodeId(*value.producer, nodes)) {
+                    return Status::InvalidArgument("Activation value has no valid producer");
+                }
 
-    if (std::holds_alternative<ActivationValue>(value.payload)) {
-        if (!value.producer.has_value() || !IsValidNodeId(*value.producer, nodes)) {
-            return Status::InvalidArgument("Activation value has no valid producer");
-        }
+                if (!NodeListsOutput(nodes[value.producer->index],
+                                     GraphValueId{static_cast<uint32_t>(value_index)})) {
+                    return Status::InvalidArgument(
+                            "Activation producer does not list produced value");
+                }
+                return Status::Ok();
+            },
+            [&](const StateValue& state) -> Status {
+                AM_RETURN_IF_ERROR(ValidateStateBindingSelfConsistency(state.binding));
 
-        if (!NodeListsOutput(nodes[value.producer->index],
-                             GraphValueId{static_cast<uint32_t>(value_index)})) {
-            return Status::InvalidArgument(
-                    "Activation producer does not list produced value");
-        }
-        return Status::Ok();
-    }
+                if (value.producer.has_value()) {
+                    if (!IsValidNodeId(*value.producer, nodes)) {
+                        return Status::InvalidArgument("State value has an invalid producer");
+                    }
 
-    if (std::holds_alternative<StateValue>(value.payload)) {
-        const StateBinding& binding = std::get<StateValue>(value.payload).binding;
-        AM_RETURN_IF_ERROR(ValidateStateBindingSelfConsistency(binding));
-
-        if (value.producer.has_value()) {
-            if (!IsValidNodeId(*value.producer, nodes)) {
-                return Status::InvalidArgument("State value has an invalid producer");
-            }
-
-            if (!NodeListsOutput(nodes[value.producer->index],
-                                 GraphValueId{static_cast<uint32_t>(value_index)})) {
-                return Status::InvalidArgument("State producer does not list produced value");
-            }
-        }
-        return Status::Ok();
-    }
-
-    if (std::holds_alternative<ConstantValue>(value.payload)) {
-        if (value.producer.has_value()) {
-            return Status::InvalidArgument("Constant value must not have a producer");
-        }
-        return Status::Ok();
-    }
-
-    if (std::holds_alternative<WeightValue>(value.payload)) {
-        if (value.producer.has_value()) {
-            return Status::InvalidArgument("Weight value must not have a producer");
-        }
-        const WeightBinding& binding = std::get<WeightValue>(value.payload).binding;
-        return ValidateWeightBindingSelfConsistency(binding);
-    }
-
-    // ModelInputValue (or any payload not handled above): must not carry a producer.
-    if (value.producer.has_value()) {
-        return Status::InvalidArgument("External graph value must not have a producer");
-    }
-    return Status::Ok();
+                    if (!NodeListsOutput(nodes[value.producer->index],
+                                         GraphValueId{static_cast<uint32_t>(value_index)})) {
+                        return Status::InvalidArgument(
+                                "State producer does not list produced value");
+                    }
+                }
+                return Status::Ok();
+            },
+            [&](const ConstantValue&) -> Status {
+                if (value.producer.has_value()) {
+                    return Status::InvalidArgument("Constant value must not have a producer");
+                }
+                return Status::Ok();
+            },
+            [&](const WeightValue& weight) -> Status {
+                if (value.producer.has_value()) {
+                    return Status::InvalidArgument("Weight value must not have a producer");
+                }
+                return ValidateWeightBindingSelfConsistency(weight.binding);
+            },
+            [&](const ModelInputValue&) -> Status {
+                if (value.producer.has_value()) {
+                    return Status::InvalidArgument("External graph value must not have a producer");
+                }
+                return Status::Ok();
+            }};
+    return std::visit(visitor, value.payload);
 }
 
 // Validates port-level invariants for ModelGraph::AddNode:

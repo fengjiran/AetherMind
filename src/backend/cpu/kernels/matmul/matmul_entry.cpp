@@ -7,100 +7,13 @@
 #include "utils/overflow_check.h"
 
 #include <algorithm>
-#include <array>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <new>
 #include <type_traits>
 
 namespace aethermind::cpu::detail {
 namespace {
-
-template<typename TensorLike>
-StatusOr<int64_t> ComputeMaxOffset(const TensorLike& tensor,
-                                   const char* message) noexcept {
-    int64_t max_offset = 0;
-    for (int32_t axis = 0; axis < tensor.rank(); ++axis) {
-        const int64_t extent = tensor.dim(axis);
-        if (extent == 0) {
-            return int64_t{0};
-        }
-
-        int64_t axis_offset = 0;
-        if (CheckOverflowMul(extent - 1, tensor.stride(axis), &axis_offset) ||
-            CheckOverflowAdd(max_offset, axis_offset, &max_offset)) {
-            return Status::InvalidArgument(message);
-        }
-    }
-    return max_offset;
-}
-
-template<typename TensorLike>
-StatusOr<AddressRange> ComputeAddressRange(const TensorLike& tensor,
-                                           const char* message) noexcept {
-    AM_ASSIGN_OR_RETURN(const int64_t max_offset, ComputeMaxOffset(tensor, message));
-    if (max_offset < 0 ||
-        static_cast<uint64_t>(max_offset) >
-                static_cast<uint64_t>(std::numeric_limits<std::ptrdiff_t>::max())) {
-        return Status::InvalidArgument(message);
-    }
-
-    const std::uintptr_t max_offset_unsigned = static_cast<std::uintptr_t>(max_offset);
-    std::uintptr_t byte_offset = 0;
-    if (CheckOverflowMul(max_offset_unsigned,
-                         static_cast<std::uintptr_t>(sizeof(float)),
-                         &byte_offset)) {
-        return Status::InvalidArgument(message);
-    }
-
-    const std::uintptr_t begin = reinterpret_cast<std::uintptr_t>(tensor.data());
-    std::uintptr_t last_element = 0;
-    std::uintptr_t end = 0;
-    if (CheckOverflowAdd(begin, byte_offset, &last_element) ||
-        CheckOverflowAdd(last_element, static_cast<std::uintptr_t>(sizeof(float)), &end)) {
-        return Status::InvalidArgument(message);
-    }
-    return AddressRange{.begin = begin, .end = end};
-}
-
-template<typename TensorLike>
-Status ValidateInjectiveOutputMapping(const TensorLike& output) noexcept {
-    struct Axis {
-        int64_t extent;
-        int64_t stride;
-    };
-
-    std::array<Axis, ShapeAndStride::kMaxRank> axes{};
-    size_t axis_count = 0;
-    for (int32_t axis = 0; axis < output.rank(); ++axis) {
-        if (output.dim(axis) > 1) {
-            axes[axis_count++] = Axis{
-                    .extent = output.dim(axis),
-                    .stride = output.stride(axis),
-            };
-        }
-    }
-
-    std::sort(axes.begin(), axes.begin() + static_cast<std::ptrdiff_t>(axis_count),
-              [](const Axis& lhs, const Axis& rhs) {
-                  return lhs.stride < rhs.stride;
-              });
-
-    int64_t covered_span = 1;
-    for (size_t axis = 0; axis < axis_count; ++axis) {
-        if (axes[axis].stride < covered_span) {
-            return Status::InvalidArgument("CPU MatMul output logical elements must not overlap");
-        }
-
-        int64_t axis_span = 0;
-        if (CheckOverflowMul(axes[axis].extent - 1, axes[axis].stride, &axis_span) ||
-            CheckOverflowAdd(covered_span, axis_span, &covered_span)) {
-            return Status::InvalidArgument("MatMulKernelEntry output stride span overflow");
-        }
-    }
-    return Status::Ok();
-}
 
 Status BuildMatMulF32Metadata(const OpParams& params, std::vector<std::byte>& attrs) {
     const auto* matmul_params = std::get_if<MatMulParams>(&params);
@@ -215,18 +128,24 @@ StatusOr<MatMulF32KernelArgs> ValidateAndBuildMatMulF32Args(
         return built_args;
     }
 
-    AM_RETURN_IF_ERROR(ValidateInjectiveOutputMapping(output));
-    AM_ASSIGN_OR_RETURN(const AddressRange output_range,
-                        ComputeAddressRange(output, "MatMulKernelEntry output offset overflow"));
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint output_footprint,
+                        BuildStridedAddressFootprint(output.data(), output.shape(),
+                                                     output.strides(), output.itemsize(),
+                                                     "MatMulKernelEntry output"));
+    AM_RETURN_IF_ERROR(ValidateInjectiveLayout(
+            "CPU MatMul", output_footprint.injectivity, "output"));
 
     if (built_args.k != 0) {
-        AM_ASSIGN_OR_RETURN(const AddressRange lhs_range,
-                            ComputeAddressRange(lhs, "MatMulKernelEntry lhs offset overflow"));
-        AM_ASSIGN_OR_RETURN(const AddressRange rhs_range,
-                            ComputeAddressRange(rhs, "MatMulKernelEntry rhs offset overflow"));
-        if (RangesOverlap(output_range, lhs_range) || RangesOverlap(output_range, rhs_range)) {
-            return Status::InvalidArgument("CPU MatMul output must not alias input");
-        }
+        AM_ASSIGN_OR_RETURN(const StridedAddressFootprint lhs_footprint,
+                            BuildStridedAddressFootprint(lhs.data(), lhs.shape(), lhs.strides(),
+                                                         lhs.itemsize(), "MatMulKernelEntry lhs"));
+        AM_ASSIGN_OR_RETURN(const StridedAddressFootprint rhs_footprint,
+                            BuildStridedAddressFootprint(rhs.data(), rhs.shape(), rhs.strides(),
+                                                         rhs.itemsize(), "MatMulKernelEntry rhs"));
+        AM_RETURN_IF_ERROR(ValidateNoFootprintOverlap(
+                "CPU MatMul", output_footprint, "output", lhs_footprint, "lhs"));
+        AM_RETURN_IF_ERROR(ValidateNoFootprintOverlap(
+                "CPU MatMul", output_footprint, "output", rhs_footprint, "rhs"));
     }
 
     return built_args;

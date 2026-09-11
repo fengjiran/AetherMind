@@ -1,3 +1,4 @@
+#include "aethermind/backend/cpu/kernels/common/alias_utils.h"
 #include "aethermind/backend/cpu/kernels/common/layout_utils.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
@@ -129,9 +130,26 @@ Status BuildLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
             "LinearKernelEntry", out_features, in_features,
             weight.stride(0), weight.stride(1), "weight"));
 
-    if (output.data() == input.data() || output.data() == weight.data()) {
-        return Status::InvalidArgument("CPU Linear output must not alias input or weight");
-    }
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout input_layout,
+                        BuildRowwiseAddressLayout(input.data(), row_count.value(), in_features,
+                                                  input_row_stride, input.stride(rank - 1),
+                                                  input.itemsize(), "LinearKernelEntry input"));
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout weight_layout,
+                        BuildRowwiseAddressLayout(weight.data(), out_features, in_features,
+                                                  weight.stride(0), weight.stride(1),
+                                                  weight.itemsize(), "LinearKernelEntry weight"));
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout output_layout,
+                        BuildRowwiseAddressLayout(output.data(), row_count.value(), out_features,
+                                                  output_row_stride, output.stride(rank - 1),
+                                                  output.itemsize(), "LinearKernelEntry output"));
+
+    // Linear has no valid in-place form, not even when in_features equals
+    // out_features: writing one output row can clobber input or weight elements
+    // that later dot products have not read yet.
+    AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
+            "CPU Linear", output_layout, "output", input_layout, "input"));
+    AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
+            "CPU Linear", output_layout, "output", weight_layout, "weight"));
 
     ::new (params_buffer) LinearF32KernelArgs{
             .input = input.data<float>(),

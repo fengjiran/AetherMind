@@ -1,3 +1,4 @@
+#include "aethermind/backend/cpu/kernels/common/alias_utils.h"
 #include "aethermind/backend/cpu/kernels/common/layout_utils.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
@@ -6,14 +7,10 @@
 #include "argmax_internal.h"
 #include "utils/overflow_check.h"
 
-#include <algorithm>
-#include <array>
 #include <cstddef>
 #include <cstring>
 #include <new>
 #include <span>
-#include <string>
-#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -53,77 +50,6 @@ StatusOr<int64_t> CanonicalizeAxis(int64_t axis, int32_t input_rank) noexcept {
         return Status::InvalidArgument("CPU ArgMax axis is out of range for the input rank");
     }
     return canonical_axis;
-}
-
-/// Verifies that the maximum reachable element offset of a view is representable.
-///
-/// Sums `(extent - 1) * stride` over every axis with overflow checks, catching
-/// views whose declared geometry would index past addressable storage.
-template<typename TensorLike>
-Status ValidateMaxOffsetRepresentable(const TensorLike& tensor,
-                                      std::string_view role) noexcept {
-    int64_t max_offset = 0;
-    for (int32_t dim = 0; dim < tensor.rank(); ++dim) {
-        int64_t axis_offset = 0;
-        if (CheckOverflowMul(tensor.dim(dim) - 1, tensor.stride(dim), &axis_offset)) {
-            return Status::InvalidArgument("CPU ArgMax " + std::string(role) +
-                                           " offset overflow");
-        }
-
-        int64_t next_offset = 0;
-        if (CheckOverflowAdd(max_offset, axis_offset, &next_offset)) {
-            return Status::InvalidArgument("CPU ArgMax " + std::string(role) +
-                                           " offset overflow");
-        }
-        max_offset = next_offset;
-    }
-    return Status::Ok();
-}
-
-/// Verifies that the output layout belongs to the supported non-overlapping subset.
-///
-/// Positive strides alone do not exclude overlap: shape `[2, 2]` with strides
-/// `[1, 1]` maps four coordinates onto two slots. Processing the axes with
-/// extent > 1 in ascending stride order and requiring each stride to reach past
-/// the span covered by the lower axes is a cheap sufficient proof that the
-/// coordinate-to-offset map is injective. Transposed, padded, and dense-permuted
-/// layouts pass. Failure is reported as Unimplemented rather than InvalidArgument:
-/// the test is intentionally conservative and cannot distinguish actual overlap
-/// from an injective irregular layout outside the supported subset.
-Status ValidateSupportedOutputLayout(const ArgmaxF32KernelArgs& args) noexcept {
-    std::array<int32_t, ShapeAndStride::kMaxRank> axes{};
-    int32_t axis_count = 0;
-    for (int32_t dim = 0; dim < args.output_rank; ++dim) {
-        if (args.output_shape[dim] > 1) {
-            axes[static_cast<size_t>(axis_count++)] = dim;
-        }
-    }
-
-    const auto ordered = std::span{axes}.first(static_cast<size_t>(axis_count));
-    std::sort(ordered.begin(), ordered.end(), [&](int32_t lhs, int32_t rhs) {
-        return args.output_strides[lhs] < args.output_strides[rhs];
-    });
-
-    int64_t covered_span = 1;
-    for (const int32_t dim: ordered) {
-        const int64_t stride = args.output_strides[dim];
-        if (stride < covered_span) {
-            return Status::Unimplemented(
-                    "CPU ArgMax requires a provably non-overlapping output layout");
-        }
-
-        int64_t axis_span = 0;
-        if (CheckOverflowMul(args.output_shape[dim] - 1, stride, &axis_span)) {
-            return Status::InvalidArgument("CPU ArgMax output span overflow");
-        }
-
-        int64_t next_span = 0;
-        if (CheckOverflowAdd(covered_span, axis_span, &next_span)) {
-            return Status::InvalidArgument("CPU ArgMax output span overflow");
-        }
-        covered_span = next_span;
-    }
-    return Status::Ok();
 }
 
 StatusOr<ArgmaxF32KernelArgs> ValidateAndBuildArgmaxF32Args(
@@ -233,17 +159,21 @@ StatusOr<ArgmaxF32KernelArgs> ValidateAndBuildArgmaxF32Args(
     AM_RETURN_IF_ERROR(ValidatePositiveStrides(
             output, "CPU ArgMax requires positive output strides"));
 
-    AM_RETURN_IF_ERROR(ValidateMaxOffsetRepresentable(input, "input"));
-    AM_RETURN_IF_ERROR(ValidateMaxOffsetRepresentable(output, "output"));
-    AM_RETURN_IF_ERROR(ValidateSupportedOutputLayout(built));
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint input_footprint,
+                        BuildStridedAddressFootprint(input.data(), input.shape(), input.strides(),
+                                                     input.itemsize(), "CPU ArgMax input"));
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint output_footprint,
+                        BuildStridedAddressFootprint(output.data(), output.shape(),
+                                                     output.strides(), output.itemsize(),
+                                                     "CPU ArgMax output"));
 
-    // Only an identical base pointer is detectable here: TensorView carries no
-    // storage bounds, so partial overlap between two distinct base pointers
-    // cannot be proven either way. ArgMax changes dtype and rank, so any shared
-    // base pointer is rejected outright instead of allowing in-place execution.
-    if (input.data() == output.data()) {
-        return Status::InvalidArgument("CPU ArgMax output must not alias the input");
-    }
+    AM_RETURN_IF_ERROR(ValidateInjectiveLayout(
+            "CPU ArgMax", output_footprint.injectivity, "output"));
+
+    // ArgMax changes both dtype and rank, so no output view can be an exact
+    // in-place alias of its input and the footprints are compared as byte ranges.
+    AM_RETURN_IF_ERROR(ValidateNoFootprintOverlap(
+            "CPU ArgMax", output_footprint, "output", input_footprint, "input"));
 
     built.input = input.data<float>();
     built.output = output.data<int64_t>();

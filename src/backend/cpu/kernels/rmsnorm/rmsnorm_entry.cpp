@@ -150,17 +150,29 @@ StatusOr<KernelArgs> ValidateAndBuildRmsNormArgs(
             output_row_stride,
             output.stride(rank - 1)));
 
-    if (const bool shares_base_pointer = input.data() == output.data();
-        shares_base_pointer && !HasIdenticalMapping(input, output)) {
-        return Status::InvalidArgument(
-                "CPU RmsNorm in-place execution requires identical "
-                "input and output shape/strides");
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout input_layout,
+                        BuildRowwiseAddressLayout(input.data(), row_count.value(), hidden_size,
+                                                  input_row_stride, input.stride(rank - 1),
+                                                  input.itemsize(), "RmsNormKernelEntry input"));
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout weight_layout,
+                        BuildRowwiseAddressLayout(weight.data(), 1, hidden_size,
+                                                  0, weight.stride(0),
+                                                  weight.itemsize(), "RmsNormKernelEntry weight"));
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout output_layout,
+                        BuildRowwiseAddressLayout(output.data(), row_count.value(), hidden_size,
+                                                  output_row_stride, output.stride(rank - 1),
+                                                  output.itemsize(), "RmsNormKernelEntry output"));
+
+    // Exact in-place is the only input aliasing RmsNorm can execute correctly:
+    // each output element is written after its own input element was read.
+    if (!HasIdenticalMapping(input, output)) {
+        AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
+                "CPU RmsNorm", output_layout, "output", input_layout, "input"));
     }
 
-    if (weight.data() == output.data()) {
-        return Status::InvalidArgument(
-                "CPU RmsNorm output must not alias weight");
-    }
+    // The weight is re-read for every row, so no output element may land in it.
+    AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
+            "CPU RmsNorm", output_layout, "output", weight_layout, "weight"));
 
     args.input = static_cast<decltype(args.input)>(input.data());
     args.weight = static_cast<decltype(args.weight)>(weight.data());

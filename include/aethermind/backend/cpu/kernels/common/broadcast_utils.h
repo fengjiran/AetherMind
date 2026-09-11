@@ -11,6 +11,7 @@
 /// input are pinned implicitly), and the binding-time validation core shared
 /// by the KernelParamsBuilders.
 
+#include "aethermind/backend/cpu/kernels/common/alias_utils.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/base/shape_and_stride.h"
 #include "aethermind/base/status.h"
@@ -97,50 +98,6 @@ inline bool ValidateBroadcastCompatible(std::span<const int64_t> lhs_shape,
     return true;
 }
 
-/// @brief Verifies that `(shape, strides)` span a representable max offset.
-///
-/// Computes `sum((shape[i] - 1) * strides[i])` with overflow checks; a zero
-/// extent short-circuits to Ok. Catches views whose declared shape would
-/// index past the end of their storage when traversed with their strides.
-///
-/// @param kernel_name Caller name used as the error-message prefix.
-/// @param shape Extents per axis.
-/// @param strides Strides in elements per axis.
-/// @param name Tensor role (e.g. "lhs") used in the error message.
-/// @return Ok when the max offset is representable, otherwise InvalidArgument.
-inline Status ValidateMaxOffset(std::string_view kernel_name,
-                                std::span<const int64_t> shape,
-                                std::span<const int64_t> strides,
-                                std::string_view name) noexcept {
-    const auto rank = static_cast<int32_t>(shape.size());
-    if (rank == 0) {
-        return Status::Ok();
-    }
-
-    int64_t max_offset = 0;
-    for (int32_t i = 0; i < rank; ++i) {
-        if (shape[i] == 0) {
-            return Status::Ok();
-        }
-
-        int64_t contrib = 0;
-        if (CheckOverflowMul(shape[i] - 1, strides[i], &contrib)) {
-            return Status::InvalidArgument(
-                    std::string(kernel_name) + " " +
-                    std::string(name) + " offset overflow");
-        }
-
-        int64_t new_max = 0;
-        if (CheckOverflowAdd(max_offset, contrib, &new_max)) {
-            return Status::InvalidArgument(
-                    std::string(kernel_name) + " " +
-                    std::string(name) + " offset overflow");
-        }
-        max_offset = new_max;
-    }
-    return Status::Ok();
-}
-
 /// @brief Computes the element count of `shape` with overflow and sign checks.
 ///
 /// A zero extent yields 0. Negative extents or products that overflow int64_t
@@ -181,15 +138,18 @@ inline StatusOr<int64_t> CheckedOutputNumel(int32_t rank,
 ///
 /// Shared builder core for elementwise broadcast kernels (Add,
 /// ElementwiseMul, ...). Validates view validity, matching output rank,
-/// broadcast compatibility, an overflow-safe element count and max offset,
-/// and non-null data pointers, then fills the rank/shape/stride fields of
-/// the kernel args. Kernels whose args carry an `is_flat` member additionally
-/// get the flat-path eligibility computed here.
+/// broadcast compatibility, an overflow-safe element count, and non-null data
+/// pointers, then builds the address footprint of each view to require a
+/// provably injective output mapping and to reject output/input overlap. Exact
+/// in-place against one input is the only accepted aliasing. Finally it fills
+/// the rank/shape/stride fields of the kernel args; kernels whose args carry an
+/// `is_flat` member additionally get the flat-path eligibility computed here.
 ///
 /// @param context Binding-time per-step views.
 /// @param kernel_name Caller name used as the error-message prefix.
 /// @return Compute-ready args on success, InvalidArgument on any violated
-///         invariant.
+///         invariant or proven overlap, or Unimplemented when strided layouts
+///         leave overlap undecidable.
 template<typename KernelArgs>
 StatusOr<KernelArgs> ValidateAndBuildElementwiseArgs(const KernelParamsBuildContext& context,
                                                      std::string_view kernel_name) noexcept {
@@ -263,21 +223,36 @@ StatusOr<KernelArgs> ValidateAndBuildElementwiseArgs(const KernelParamsBuildCont
                 std::string(kernel_name) + " requires non-null output data");
     }
 
-    {
-        auto status = ValidateMaxOffset(kernel_name, lhs.shape(), lhs.strides(), "lhs");
-        if (!status.ok()) {
-            return status;
-        }
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint lhs_footprint,
+                        BuildStridedAddressFootprint(lhs.data(), lhs.shape(), lhs.strides(),
+                                                     lhs.itemsize(),
+                                                     std::string(kernel_name) + " lhs"));
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint rhs_footprint,
+                        BuildStridedAddressFootprint(rhs.data(), rhs.shape(), rhs.strides(),
+                                                     rhs.itemsize(),
+                                                     std::string(kernel_name) + " rhs"));
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint output_footprint,
+                        BuildStridedAddressFootprint(output.data(), output.shape(),
+                                                     output.strides(), output.itemsize(),
+                                                     std::string(kernel_name) + " output"));
 
-        status = ValidateMaxOffset(kernel_name, rhs.shape(), rhs.strides(), "rhs");
-        if (!status.ok()) {
-            return status;
-        }
+    // A non-injective output writes one slot from several coordinates, so the
+    // stored value would depend on iteration order.
+    AM_RETURN_IF_ERROR(ValidateInjectiveLayout(
+            kernel_name, output_footprint.injectivity, "output"));
 
-        status = ValidateMaxOffset(kernel_name, output.shape(), output.strides(), "output");
-        if (!status.ok()) {
-            return status;
-        }
+    // Exact in-place against one input is safe: that element is read immediately
+    // before its own slot is written. Identical mapping implies an equal shape,
+    // so a broadcast input (an extent-1 element reused by every output element)
+    // never qualifies here and stays subject to the overlap check.
+    if (!HasIdenticalMapping(lhs, output)) {
+        AM_RETURN_IF_ERROR(ValidateNoFootprintOverlap(
+                kernel_name, output_footprint, "output", lhs_footprint, "lhs"));
+    }
+
+    if (!HasIdenticalMapping(rhs, output)) {
+        AM_RETURN_IF_ERROR(ValidateNoFootprintOverlap(
+                kernel_name, output_footprint, "output", rhs_footprint, "rhs"));
     }
 
     KernelArgs args{};

@@ -15,29 +15,10 @@
 #include <cstring>
 #include <new>
 #include <span>
-#include <string>
 #include <vector>
 
 namespace aethermind::cpu::detail {
 namespace {
-
-Status ValidateNoRowwiseOverlap(const RowwiseAddressLayout& output,
-                                const char* output_role,
-                                const RowwiseAddressLayout& input,
-                                const char* input_role) noexcept {
-    switch (ClassifyRowwiseLayoutOverlap(output, input)) {
-        case RowwiseLayoutOverlap::kDisjoint:
-            return Status::Ok();
-        case RowwiseLayoutOverlap::kProvenOverlap:
-            return Status::InvalidArgument(std::string("CPU RoPE ") + output_role +
-                                           " must not overlap " + input_role);
-        case RowwiseLayoutOverlap::kMayOverlap:
-            return Status::Unimplemented(std::string("CPU RoPE cannot prove ") + output_role +
-                                         " is disjoint from " + input_role +
-                                         " for the requested strided layouts");
-    }
-    return Status::Internal("CPU RoPE row-wise overlap classification is invalid");
-}
 
 uint8_t ExpectedFrequencyTableCount(RoPEAlgorithm algorithm) noexcept {
     switch (algorithm) {
@@ -401,24 +382,24 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
 
     if (!HasIdenticalMapping(q, q_output)) {
         AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-                q_output_layout, "q output", q_layout, "q"));
+                "CPU RoPE", q_output_layout, "q output", q_layout, "q"));
     }
 
     if (!HasIdenticalMapping(k, k_output)) {
         AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-                k_output_layout, "k output", k_layout, "k"));
+                "CPU RoPE", k_output_layout, "k output", k_layout, "k"));
     }
 
     AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-            q_output_layout, "q output", k_layout, "k"));
+            "CPU RoPE", q_output_layout, "q output", k_layout, "k"));
     AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-            q_output_layout, "q output", k_output_layout, "k output"));
+            "CPU RoPE", q_output_layout, "q output", k_output_layout, "k output"));
     AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-            q_output_layout, "q output", position_layout, "position_ids"));
+            "CPU RoPE", q_output_layout, "q output", position_layout, "position_ids"));
     AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-            k_output_layout, "k output", q_layout, "q"));
+            "CPU RoPE", k_output_layout, "k output", q_layout, "q"));
     AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-            k_output_layout, "k output", position_layout, "position_ids"));
+            "CPU RoPE", k_output_layout, "k output", position_layout, "position_ids"));
 
     ::new (params_buffer) RoPEF32KernelArgs{
             .q = q.data<float>(),

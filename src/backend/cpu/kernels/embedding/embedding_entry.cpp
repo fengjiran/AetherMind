@@ -1,3 +1,4 @@
+#include "aethermind/backend/cpu/kernels/common/alias_utils.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/backend/kernel_types.h"
@@ -140,19 +141,42 @@ Status BuildEmbeddingF32ReferenceArgs(const KernelParamsBuildContext& context, v
                 "EmbeddingKernel requires non-null output data");
     }
 
-    // Check that dimension products do not overflow size_t before computing offsets.
-    size_t weight_total = 0;
-    if (CheckOverflowMul(static_cast<size_t>(vocab_size),
-                         static_cast<size_t>(hidden_size), &weight_total)) {
+    int64_t weight_element_count = 0;
+    if (CheckOverflowMul(vocab_size, hidden_size, &weight_element_count)) {
         return Status::InvalidArgument(
                 "EmbeddingKernel weight dimensions overflow");
     }
 
-    size_t output_total = 0;
-    if (CheckOverflowMul(static_cast<size_t>(token_count),
-                         static_cast<size_t>(hidden_size), &output_total)) {
+    int64_t output_element_count = 0;
+    if (CheckOverflowMul(token_count, hidden_size, &output_element_count)) {
         return Status::InvalidArgument(
                 "EmbeddingKernel output dimensions overflow");
+    }
+
+    AM_ASSIGN_OR_RETURN(const AddressRange token_ids_range,
+                        BuildContiguousAddressRange(token_ids.data(), token_count,
+                                                    token_ids.itemsize(),
+                                                    "EmbeddingKernel token ids"));
+    AM_ASSIGN_OR_RETURN(const AddressRange weight_range,
+                        BuildContiguousAddressRange(weight.data(), weight_element_count,
+                                                    weight.itemsize(),
+                                                    "EmbeddingKernel weight"));
+    AM_ASSIGN_OR_RETURN(const AddressRange output_range,
+                        BuildContiguousAddressRange(output.data(), output_element_count,
+                                                    output.itemsize(),
+                                                    "EmbeddingKernel output"));
+
+    // The gather reads token ids and weight rows progressively, so writing into
+    // either one can corrupt values later iterations still need. All three views
+    // are contiguous, hence an intersecting range is proven byte overlap.
+    if (RangesOverlap(output_range, token_ids_range)) {
+        return Status::InvalidArgument(
+                "CPU Embedding output must not overlap token ids");
+    }
+
+    if (RangesOverlap(output_range, weight_range)) {
+        return Status::InvalidArgument(
+                "CPU Embedding output must not overlap weight");
     }
 
     ::new (params_buffer) EmbeddingF32KernelArgs{

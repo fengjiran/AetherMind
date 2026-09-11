@@ -56,10 +56,12 @@ logit 等于 `scale² * dot(rotary_prefix) + dot(unrotated_tail)`，不存在单
 单调排列的行区间。因此同一 QKV allocation 内各行分离的 Q/K 视图可以合法原地执行。
 
 按行检查使用每行的包围区间，包含 column stride 产生的空隙；只因空隙交叠而实际
-元素不相交的布局也可能被保守拒绝。该限制明确属于此 reference kernel，不能解释为
-TensorView 的通用 alias 定义。输出各行也必须满足既有的非重叠行约束。
+元素不相交的布局会被保守判为无法证明不相交。该分类与状态码映射由共享的 row-wise
+alias 原语（`alias_utils`，RMSNorm / Linear 同用）提供，不能解释为 TensorView 的
+通用 alias 定义。输出各行也必须满足既有的非重叠行约束。
 
-不支持的 overlap 和不可表示的地址范围返回 `InvalidArgument`，发生在 binding 阶段，
+可证明的 overlap 和不可表示的地址范围返回 `InvalidArgument`；仅因 column stride
+空隙而无法判定的 overlap 返回 `Unimplemented`。两者都发生在 binding 阶段，
 不修改任何 tensor 内容。验证地址范围不能证明 allocation 的真实容量；足够大的有效
 backing storage 以及元素自然对齐仍由调用方保证。
 

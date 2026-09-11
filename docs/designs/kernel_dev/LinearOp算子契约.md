@@ -73,9 +73,18 @@ $$
 
 ### 2.5 Aliasing / in-place
 
-- **不允许** `output` 与 `input` 或 `weight` 重叠。Linear 输出 shape 与 input shape 不同（最后一维从 `K` 变为 `N`），不存在合法 in-place 场景。
+- **不允许** `output` 与 `input` 或 `weight` 重叠。Linear 输出 shape 与 input shape 不同（最后一维从 `K` 变为 `N`），不存在合法 in-place 场景；即使 `K == N`，写某一行 `output` 也可能破坏后续 dot product 尚未读取的 `input`，因此不提供 exact in-place 豁免。
 - `input` 和 `weight` 在 kernel 执行期间只读，不得被修改。
-- 不允许 `output` 与 `input` 部分重叠；部分 overlap 行为未定义，后续应在 Tensor alias 检查能力完善后显式拒绝。
+- `output` 与 `input`、`output` 与 `weight` 两对关系使用与 RoPE / RMSNorm 相同的 row-wise alias 原语（`alias_utils`）按半开字节区间分类：
+
+  | 分类 | 结果 |
+  | --- | --- |
+  | 可证明不相交（含同一 allocation 内分离的视图） | 允许 |
+  | 可证明重叠（same base pointer，或 distinct base pointer 的部分重叠） | `InvalidArgument` |
+  | column stride 空隙导致无法判定 | `Unimplemented` |
+
+- kernel 层 `M == 0` / `N == 0`（无读写）与 `K == 0`（只 zero-fill `output`，不读取 `input` / `weight`）的早返回路径不做 alias 校验，见 2.6 的实现说明。
+- 校验基于地址区间，不能证明 allocation 的真实容量；足够大的 backing storage 与元素自然对齐仍由调用方保证。
 
 ### 2.6 空 tensor
 
@@ -250,7 +259,7 @@ Phase 1 correctness 以 double reference 为基准。Linear 的累加误差随 `
 - [ ] 随机输入：uniform、normal、mixed sign、small magnitude、large magnitude。
 - [ ] NaN / Inf / denormal 行为按契约记录。
 - [ ] 与 double reference 比较 `max_abs_diff` 和 `max_rel_diff`，按 4.3 阈值缩放 `K`。
-- [ ] `output` 与 `input` / `weight` 重叠应被拒绝（Phase 1 假定不重叠，alias 检查完善后补测试）。
+- [x] `output` 与 `input` / `weight` 重叠应被拒绝：覆盖 same base pointer 与 distinct base pointer 的 partial overlap（`InvalidArgument`）、column stride 空隙下无法判定的 overlap（`Unimplemented`）、同一 allocation 内可证明不相交的视图仍被接受，以及 `K == 0` 路径的豁免。
 
 ### 7.2 Benchmark
 
@@ -272,4 +281,3 @@ Phase 1 correctness 以 double reference 为基准。Linear 的累加误差随 `
 4. **累加精度策略**：大 `K`（`K=11008`）下 FP32 累加误差可能超出阈值；需要决定是否在 optimized kernel 中使用 Kahan / pairwise summation，还是接受放宽阈值。
 5. **多线程阈值**：Prefill 阶段按 `M` 维切分的线程数阈值需要按目标硬件和 workload 通过 benchmark 固化，而不是写死为永久策略。
 6. **`test_cpu_resolve_kernel.cpp` 回归**：现有测试 `MissingKeyReturnsNullptr` 断言 `kLinear` 返回 nullptr；LinearOp 实现后必须更新该断言为 `EXPECT_NE`。
-7. **in-place / alias 显式拒绝**：当前 Phase 1 假定 `output` 不与 `input`/`weight` 重叠；Tensor alias 检查能力完善后应在 Operator 层显式拒绝部分 overlap。

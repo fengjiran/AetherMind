@@ -89,13 +89,21 @@ CPU entry 将 `input.shape[0 : rank - 1]` 的乘积转换为 `row_count`，并�
 
 - CPU FP32 kernel 支持 exact input/output in-place。
 
-- Exact 要求 data pointer、dtype、shape 和 strides 完全一致；same-base 但 mapping 不同（如同 data pointer 但 strides 不同）返回 `InvalidArgument`。
+- Exact 要求 data pointer、dtype、shape 和 strides 完全一致；满足时跳过 output 与 input 的重叠校验。
 
 - Mutable output 的逻辑 rows 必须物理不重叠，见 §3.2 的 row span 条件。
 
-- `output` 不得与 `weight` alias；相同 data pointer 直接返回 `InvalidArgument`。指向同一 allocation 不同 offset 的部分重叠当前无法完整检测，仍由调用方保证。
+- `output` 与 `input`、`output` 与 `weight` 两对关系使用与 RoPE 相同的 row-wise alias 原语（`alias_utils`）按半开字节区间分类判定：
 
-- 不同 base pointer 之间的 partial overlap 由调用方禁止；当前 `TensorView` 不包含足够的 backing-storage 信息进行完整 alias 检测。
+  | 分类 | 结果 |
+  | --- | --- |
+  | 可证明不相交 | 允许 |
+  | 可证明重叠（含 same-base 但 mapping 不同，如同 data pointer 但 strides 不同） | `InvalidArgument` |
+  | column stride 空隙导致无法判定 | `Unimplemented` |
+
+- `weight` 每行都会被重复读取，因此不享受 exact in-place 豁免：output 与 weight 的任何可证明重叠都返回 `InvalidArgument`。
+
+- 校验基于元素 stride 换算出的字节区间，因此指向同一 allocation 不同 offset 的部分重叠（distinct base pointer）同样会被拒绝。地址范围不能证明 allocation 的真实容量；足够大的 backing storage 与元素自然对齐仍由调用方保证。
 
 - 支持 in-place 不表示 ExecutionPlan 默认选择 in-place；kernel 只是声明能力，buffer 复用由执行层 planner 决定。
 
@@ -154,7 +162,7 @@ PrepareExecutionBindings（PreparedExecutionBindings 构建，cold path）
 
 - inference：rank-0 拒绝，rank-1 及 higher-rank `[..., H]` 保持语义，zero leading dimension 成功，hidden / weight / epsilon 约束正确。
 
-- binding / entry：rank-1、rank-2、可折叠 rank-3 / rank-4、zero-row、不可折叠 layout、row-count / address-offset / row-span overflow、reference strided layout、AVX2 inner-stride 拒绝、output row overlap 拒绝、same-pointer 异 mapping 拒绝、output/weight alias 拒绝以及 exact in-place（reference 与 AVX2+FMA 路径）。上述非法 binding 现在都在 `PrepareExecutionBindings` / params builder 阶段拒绝；binding 成功后 entry 可重复执行。
+- binding / entry：rank-1、rank-2、可折叠 rank-3 / rank-4、zero-row、不可折叠 layout、row-count / address-offset / row-span overflow、reference strided layout、AVX2 inner-stride 拒绝、output row overlap 拒绝、same-pointer 异 mapping 拒绝、distinct base pointer 的 input / weight partial overlap 拒绝、column stride 空隙下无法判定的 overlap 报 `Unimplemented`、同一 allocation 内可证明不相交的 input/output 视图允许，以及 exact in-place（reference 与 AVX2+FMA 路径）。上述非法 binding 现在都在 `PrepareExecutionBindings` / params builder 阶段拒绝；binding 成功后 entry 可重复执行。
 
 - correctness：使用 double reference 覆盖 SIMD tail、非 2 的幂 / 质数 hidden 和常见 Llama hidden size。
 

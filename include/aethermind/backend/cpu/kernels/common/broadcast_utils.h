@@ -238,20 +238,20 @@ StatusOr<KernelArgs> ValidateAndBuildElementwiseArgs(const KernelParamsBuildCont
 
     // A non-injective output writes one slot from several coordinates, so the
     // stored value would depend on iteration order.
-    AM_RETURN_IF_ERROR(ValidateInjectiveLayout(
+    AM_RETURN_IF_ERROR(ValidateLayoutInjectivity(
             kernel_name, output_footprint.injectivity, "output"));
 
     // Exact in-place against one input is safe: that element is read immediately
     // before its own slot is written. Identical mapping implies an equal shape,
     // so a broadcast input (an extent-1 element reused by every output element)
     // never qualifies here and stays subject to the overlap check.
-    if (!HasIdenticalMapping(lhs, output)) {
-        AM_RETURN_IF_ERROR(ValidateNoFootprintOverlap(
+    if (!HaveIdenticalViewMapping(lhs, output)) {
+        AM_RETURN_IF_ERROR(ValidateStridedDisjoint(
                 kernel_name, output_footprint, "output", lhs_footprint, "lhs"));
     }
 
-    if (!HasIdenticalMapping(rhs, output)) {
-        AM_RETURN_IF_ERROR(ValidateNoFootprintOverlap(
+    if (!HaveIdenticalViewMapping(rhs, output)) {
+        AM_RETURN_IF_ERROR(ValidateStridedDisjoint(
                 kernel_name, output_footprint, "output", rhs_footprint, "rhs"));
     }
 

@@ -20,8 +20,8 @@ Status ValidatePositiveStridesImpl(const TensorLike& tensor,
 }
 
 template<typename TensorLike>
-Status ValidateCollapsibleLeadingDimensionsImpl(const TensorLike& tensor,
-                                                std::string_view kernel_name) noexcept {
+Status ValidateFlattenableLeadingAxesImpl(const TensorLike& tensor,
+                                          std::string_view kernel_name) noexcept {
     for (int32_t i = 0; i < tensor.rank() - 2; ++i) {
         int64_t expected_stride = 0;
         if (CheckOverflowMul(tensor.dim(i + 1), tensor.stride(i + 1), &expected_stride)) {
@@ -37,10 +37,27 @@ Status ValidateCollapsibleLeadingDimensionsImpl(const TensorLike& tensor,
     return Status::Ok();
 }
 
+StatusOr<int64_t> ComputeRowElementSpan(std::string_view kernel_name,
+                                        int64_t column_count,
+                                        int64_t column_stride) noexcept {
+    int64_t last_column_offset = 0;
+    if (CheckOverflowMul(column_count - 1, column_stride, &last_column_offset)) {
+        return Status::InvalidArgument(std::string(kernel_name) +
+                                       " output row span overflow");
+    }
+
+    int64_t row_span = 0;
+    if (CheckOverflowAdd(last_column_offset, int64_t{1}, &row_span)) {
+        return Status::InvalidArgument(std::string(kernel_name) +
+                                       " output row span overflow");
+    }
+    return row_span;
+}
+
 } // namespace
 
-StatusOr<int64_t> ComputeRowCount(const TensorView& input,
-                                  std::string_view kernel_name) noexcept {
+StatusOr<int64_t> ComputeFlattenedRowCount(const TensorView& input,
+                                           std::string_view kernel_name) noexcept {
     int64_t row_count = 1;
     for (int32_t i = 0; i < input.rank() - 1; ++i) {
         const int64_t extent = input.dim(i);
@@ -68,22 +85,22 @@ Status ValidatePositiveStrides(const MutableTensorView& tensor,
     return ValidatePositiveStridesImpl(tensor, message);
 }
 
-Status ValidateCollapsibleLeadingDimensions(const TensorView& tensor,
-                                            std::string_view kernel_name) noexcept {
-    return ValidateCollapsibleLeadingDimensionsImpl(tensor, kernel_name);
+Status ValidateFlattenableLeadingAxes(const TensorView& tensor,
+                                      std::string_view kernel_name) noexcept {
+    return ValidateFlattenableLeadingAxesImpl(tensor, kernel_name);
 }
 
-Status ValidateCollapsibleLeadingDimensions(const MutableTensorView& tensor,
-                                            std::string_view kernel_name) noexcept {
-    return ValidateCollapsibleLeadingDimensionsImpl(tensor, kernel_name);
+Status ValidateFlattenableLeadingAxes(const MutableTensorView& tensor,
+                                      std::string_view kernel_name) noexcept {
+    return ValidateFlattenableLeadingAxesImpl(tensor, kernel_name);
 }
 
-Status ValidateRowColMaxOffset(std::string_view kernel_name,
-                               int64_t row_count,
-                               int64_t column_count,
-                               int64_t row_stride,
-                               int64_t column_stride,
-                               std::string_view role) noexcept {
+Status ValidateRowwiseMaxOffsetRepresentable(std::string_view kernel_name,
+                                             int64_t row_count,
+                                             int64_t column_count,
+                                             int64_t row_stride,
+                                             int64_t column_stride,
+                                             std::string_view role) noexcept {
     int64_t row_offset = 0;
     if (CheckOverflowMul(row_count - 1, row_stride, &row_offset)) {
         return Status::InvalidArgument(
@@ -104,34 +121,17 @@ Status ValidateRowColMaxOffset(std::string_view kernel_name,
     return Status::Ok();
 }
 
-StatusOr<int64_t> ComputeRowSpan(std::string_view kernel_name,
-                                 int64_t column_count,
-                                 int64_t column_stride) noexcept {
-    int64_t last_column_offset = 0;
-    if (CheckOverflowMul(column_count - 1, column_stride, &last_column_offset)) {
-        return Status::InvalidArgument(std::string(kernel_name) +
-                                       " output row span overflow");
-    }
-
-    int64_t row_span = 0;
-    if (CheckOverflowAdd(last_column_offset, int64_t{1}, &row_span)) {
-        return Status::InvalidArgument(std::string(kernel_name) +
-                                       " output row span overflow");
-    }
-    return row_span;
-}
-
-Status ValidateNonOverlappingOutputRows(std::string_view kernel_name,
-                                        int64_t row_count,
-                                        int64_t column_count,
-                                        int64_t row_stride,
-                                        int64_t column_stride) noexcept {
+Status ValidateDisjointOutputRowEnvelopes(std::string_view kernel_name,
+                                          int64_t row_count,
+                                          int64_t column_count,
+                                          int64_t row_stride,
+                                          int64_t column_stride) noexcept {
     if (row_count <= 1) {
         return Status::Ok();
     }
 
     AM_ASSIGN_OR_RETURN(const int64_t row_span,
-                        ComputeRowSpan(kernel_name, column_count, column_stride));
+                        ComputeRowElementSpan(kernel_name, column_count, column_stride));
 
     if (row_stride < row_span) {
         return Status::InvalidArgument(std::string(kernel_name) +

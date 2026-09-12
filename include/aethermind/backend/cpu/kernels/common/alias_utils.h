@@ -37,10 +37,10 @@ struct RowwiseAddressLayout {
     AddressRange envelope{};
     std::uintptr_t row_stride_bytes{};
     std::uintptr_t row_envelope_bytes{};
-    std::uintptr_t column_stride_bytes{};
+    std::uintptr_t col_stride_bytes{};
     std::uintptr_t item_size_bytes{};
     int64_t row_count{};
-    int64_t column_count{};
+    int64_t col_count{};
 };
 
 /// @brief Result of conservatively classifying two row-wise layouts.
@@ -98,9 +98,9 @@ StatusOr<AddressRange> BuildContiguousAddressRange(const void* data,
 StatusOr<RowwiseAddressLayout> BuildRowwiseAddressLayout(
         const void* data,
         int64_t row_count,
-        int64_t column_count,
+        int64_t col_count,
         int64_t row_stride,
-        int64_t column_stride,
+        int64_t col_stride,
         size_t item_size,
         std::string_view context) noexcept;
 

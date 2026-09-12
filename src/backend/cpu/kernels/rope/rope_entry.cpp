@@ -7,6 +7,7 @@
 #include "aethermind/operators/rope_frequency_resolver.h"
 #include "rope_internal.h"
 #include "utils/numeric_utils.h"
+#include "utils/overflow_check.h"
 #include "utils/variant_utils.h"
 
 #include <array>

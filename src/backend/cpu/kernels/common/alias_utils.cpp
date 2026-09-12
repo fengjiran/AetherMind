@@ -53,7 +53,7 @@ AddressRange RowAddressRange(const RowwiseAddressLayout& layout,
 }
 
 bool HasColumnStrideHoles(const RowwiseAddressLayout& layout) noexcept {
-    return layout.column_count > 1 && layout.column_stride_bytes != layout.item_size_bytes;
+    return layout.col_count > 1 && layout.col_stride_bytes != layout.item_size_bytes;
 }
 
 } // namespace
@@ -83,8 +83,7 @@ StatusOr<AddressRange> BuildContiguousAddressRange(const void* data,
 
     std::uintptr_t span_bytes = 0;
     std::uintptr_t end = 0;
-    if (CheckOverflowMul(element_count_value, static_cast<std::uintptr_t>(item_size),
-                         &span_bytes) ||
+    if (CheckOverflowMul(element_count_value, item_size, &span_bytes) ||
         CheckOverflowAdd(begin, span_bytes, &end)) {
         return AddressRangeOverflow(context);
     }
@@ -95,22 +94,22 @@ StatusOr<AddressRange> BuildContiguousAddressRange(const void* data,
 StatusOr<RowwiseAddressLayout> BuildRowwiseAddressLayout(
         const void* data,
         int64_t row_count,
-        int64_t column_count,
+        int64_t col_count,
         int64_t row_stride,
-        int64_t column_stride,
+        int64_t col_stride,
         size_t item_size,
         std::string_view context) noexcept {
-    if (row_count < 0 || column_count < 0 || row_stride < 0 || column_stride < 0 ||
+    if (row_count < 0 || col_count < 0 || row_stride < 0 || col_stride < 0 ||
         item_size == 0) {
         return AddressGeometryError(context);
     }
 
     const auto begin = reinterpret_cast<std::uintptr_t>(data);
-    if (row_count == 0 || column_count == 0) {
+    if (row_count == 0 || col_count == 0) {
         return RowwiseAddressLayout{
                 .envelope = AddressRange{.begin = begin, .end = begin},
                 .row_count = row_count,
-                .column_count = column_count,
+                .col_count = col_count,
         };
     }
 
@@ -119,28 +118,28 @@ StatusOr<RowwiseAddressLayout> BuildRowwiseAddressLayout(
     }
 
     std::uintptr_t row_count_minus_one = 0;
-    std::uintptr_t column_count_minus_one = 0;
+    std::uintptr_t col_count_minus_one = 0;
     std::uintptr_t row_stride_elements = 0;
-    std::uintptr_t column_stride_elements = 0;
+    std::uintptr_t col_stride_elements = 0;
     if (!ToAddressValue(row_count - 1, &row_count_minus_one) ||
-        !ToAddressValue(column_count - 1, &column_count_minus_one) ||
+        !ToAddressValue(col_count - 1, &col_count_minus_one) ||
         !ToAddressValue(row_stride, &row_stride_elements) ||
-        !ToAddressValue(column_stride, &column_stride_elements) ||
+        !ToAddressValue(col_stride, &col_stride_elements) ||
         item_size > std::numeric_limits<std::uintptr_t>::max()) {
         return AddressRangeOverflow(context);
     }
 
     const std::uintptr_t item_size_bytes = item_size;
-    std::uintptr_t last_column_offset = 0;
+    std::uintptr_t last_col_offset = 0;
     std::uintptr_t row_envelope_bytes = 0;
     std::uintptr_t row_stride_bytes = 0;
-    std::uintptr_t column_stride_bytes = 0;
+    std::uintptr_t col_stride_bytes = 0;
     std::uintptr_t last_row_offset = 0;
-    if (CheckOverflowMul(column_count_minus_one, column_stride_elements, &last_column_offset) ||
-        CheckOverflowMul(last_column_offset, item_size_bytes, &row_envelope_bytes) ||
+    if (CheckOverflowMul(col_count_minus_one, col_stride_elements, &last_col_offset) ||
+        CheckOverflowMul(last_col_offset, item_size_bytes, &row_envelope_bytes) ||
         CheckOverflowAdd(row_envelope_bytes, item_size_bytes, &row_envelope_bytes) ||
         CheckOverflowMul(row_stride_elements, item_size_bytes, &row_stride_bytes) ||
-        CheckOverflowMul(column_stride_elements, item_size_bytes, &column_stride_bytes) ||
+        CheckOverflowMul(col_stride_elements, item_size_bytes, &col_stride_bytes) ||
         CheckOverflowMul(row_count_minus_one, row_stride_bytes, &last_row_offset)) {
         return AddressRangeOverflow(context);
     }
@@ -156,10 +155,10 @@ StatusOr<RowwiseAddressLayout> BuildRowwiseAddressLayout(
             .envelope = AddressRange{.begin = begin, .end = end},
             .row_stride_bytes = row_stride_bytes,
             .row_envelope_bytes = row_envelope_bytes,
-            .column_stride_bytes = column_stride_bytes,
+            .col_stride_bytes = col_stride_bytes,
             .item_size_bytes = item_size_bytes,
             .row_count = row_count,
-            .column_count = column_count,
+            .col_count = col_count,
     };
 }
 
@@ -217,8 +216,8 @@ Status ValidateNoRowwiseOverlap(std::string_view kernel_name,
                     " must not overlap " + std::string(input_role));
         case RowwiseLayoutOverlap::kMayOverlap:
             return Status::Unimplemented(
-                    std::string(kernel_name) + " cannot prove " + std::string(output_role) +
-                    " is disjoint from " + std::string(input_role) +
+                    std::string(kernel_name) + " cannot prove " +
+                    std::string(output_role) + " is disjoint from " + std::string(input_role) +
                     " for the requested strided layouts");
     }
     return Status::Internal(std::string(kernel_name) +

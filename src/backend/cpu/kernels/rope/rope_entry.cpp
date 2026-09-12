@@ -338,69 +338,69 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
     AM_RETURN_IF_ERROR(ValidatePositiveStrides(
             k_output, "CPU RoPE requires positive k output strides"));
 
-    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
             "CPU RoPE", seq_len, q_width, q.stride(0),
             q.stride(1), "q"));
-    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
             "CPU RoPE", seq_len, k_width, k.stride(0),
             k.stride(1), "k"));
-    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
             "CPU RoPE", seq_len, 1,
             pos_ids.stride(0), 1, "position_ids"));
-    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
             "CPU RoPE", seq_len, q_width,
             q_output.stride(0), q_output.stride(1), "q output"));
-    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
             "CPU RoPE", seq_len, k_width,
             k_output.stride(0), k_output.stride(1), "k output"));
-    AM_RETURN_IF_ERROR(ValidateNonOverlappingOutputRows(
+    AM_RETURN_IF_ERROR(ValidateDisjointOutputRowEnvelopes(
             "CPU RoPE", seq_len, q_width,
             q_output.stride(0), q_output.stride(1)));
-    AM_RETURN_IF_ERROR(ValidateNonOverlappingOutputRows(
+    AM_RETURN_IF_ERROR(ValidateDisjointOutputRowEnvelopes(
             "CPU RoPE", seq_len, k_width,
             k_output.stride(0), k_output.stride(1)));
 
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout q_layout,
-                        BuildRowwiseAddressLayout(q.data(), seq_len, q_width,
-                                                  q.stride(0), q.stride(1),
-                                                  q.itemsize(), "CPU RoPE q"));
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout k_layout,
-                        BuildRowwiseAddressLayout(k.data(), seq_len, k_width,
-                                                  k.stride(0), k.stride(1),
-                                                  k.itemsize(), "CPU RoPE k"));
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout position_layout,
-                        BuildRowwiseAddressLayout(pos_ids.data(), seq_len, 1,
-                                                  pos_ids.stride(0), 1,
-                                                  pos_ids.itemsize(), "CPU RoPE position_ids"));
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout q_output_layout,
-                        BuildRowwiseAddressLayout(q_output.data(), seq_len, q_width,
-                                                  q_output.stride(0), q_output.stride(1),
-                                                  q_output.itemsize(), "CPU RoPE q output"));
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout k_output_layout,
-                        BuildRowwiseAddressLayout(k_output.data(), seq_len, k_width,
-                                                  k_output.stride(0), k_output.stride(1),
-                                                  k_output.itemsize(), "CPU RoPE k output"));
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint q_footprint,
+                        BuildRowwiseAddressFootprint(q.data(), seq_len, q_width,
+                                                     q.stride(0), q.stride(1),
+                                                     q.itemsize(), "CPU RoPE q"));
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint k_footprint,
+                        BuildRowwiseAddressFootprint(k.data(), seq_len, k_width,
+                                                     k.stride(0), k.stride(1),
+                                                     k.itemsize(), "CPU RoPE k"));
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint position_footprint,
+                        BuildRowwiseAddressFootprint(pos_ids.data(), seq_len, 1,
+                                                     pos_ids.stride(0), 1,
+                                                     pos_ids.itemsize(), "CPU RoPE position_ids"));
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint q_output_footprint,
+                        BuildRowwiseAddressFootprint(q_output.data(), seq_len, q_width,
+                                                     q_output.stride(0), q_output.stride(1),
+                                                     q_output.itemsize(), "CPU RoPE q output"));
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint k_output_footprint,
+                        BuildRowwiseAddressFootprint(k_output.data(), seq_len, k_width,
+                                                     k_output.stride(0), k_output.stride(1),
+                                                     k_output.itemsize(), "CPU RoPE k output"));
 
-    if (!HasIdenticalMapping(q, q_output)) {
-        AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-                "CPU RoPE", q_output_layout, "q output", q_layout, "q"));
+    if (!HaveIdenticalViewMapping(q, q_output)) {
+        AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+                "CPU RoPE", q_output_footprint, "q output", q_footprint, "q"));
     }
 
-    if (!HasIdenticalMapping(k, k_output)) {
-        AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-                "CPU RoPE", k_output_layout, "k output", k_layout, "k"));
+    if (!HaveIdenticalViewMapping(k, k_output)) {
+        AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+                "CPU RoPE", k_output_footprint, "k output", k_footprint, "k"));
     }
 
-    AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-            "CPU RoPE", q_output_layout, "q output", k_layout, "k"));
-    AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-            "CPU RoPE", q_output_layout, "q output", k_output_layout, "k output"));
-    AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-            "CPU RoPE", q_output_layout, "q output", position_layout, "position_ids"));
-    AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-            "CPU RoPE", k_output_layout, "k output", q_layout, "q"));
-    AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-            "CPU RoPE", k_output_layout, "k output", position_layout, "position_ids"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU RoPE", q_output_footprint, "q output", k_footprint, "k"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU RoPE", q_output_footprint, "q output", k_output_footprint, "k output"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU RoPE", q_output_footprint, "q output", position_footprint, "position_ids"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU RoPE", k_output_footprint, "k output", q_footprint, "q"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU RoPE", k_output_footprint, "k output", position_footprint, "position_ids"));
 
     ::new (params_buffer) RoPEF32KernelArgs{
             .q = q.data<float>(),

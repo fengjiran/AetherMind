@@ -70,7 +70,7 @@ Status BuildLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
                 "LinearKernelEntry requires output last dimension to match weight output dimension");
     }
 
-    const auto row_count = ComputeRowCount(input, "LinearKernelEntry");
+    const auto row_count = ComputeFlattenedRowCount(input, "LinearKernelEntry");
     if (!row_count.ok()) {
         return row_count.status();
     }
@@ -87,13 +87,13 @@ Status BuildLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
     AM_RETURN_IF_ERROR(ValidatePositiveStrides(
             output, "LinearKernelEntry requires positive output strides"));
     if (rank > 2) {
-        AM_RETURN_IF_ERROR(ValidateCollapsibleLeadingDimensions(output, "LinearKernelEntry"));
+        AM_RETURN_IF_ERROR(ValidateFlattenableLeadingAxes(output, "LinearKernelEntry"));
     }
     const int64_t output_row_stride = rank == 1 ? 0 : output.stride(rank - 2);
-    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
             "LinearKernelEntry", row_count.value(), out_features,
             output_row_stride, output.stride(rank - 1), "output"));
-    AM_RETURN_IF_ERROR(ValidateNonOverlappingOutputRows(
+    AM_RETURN_IF_ERROR(ValidateDisjointOutputRowEnvelopes(
             "LinearKernelEntry", row_count.value(), out_features,
             output_row_stride, output.stride(rank - 1)));
 
@@ -119,37 +119,37 @@ Status BuildLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
     AM_RETURN_IF_ERROR(ValidatePositiveStrides(
             weight, "LinearKernelEntry requires positive weight strides"));
     if (rank > 2) {
-        AM_RETURN_IF_ERROR(ValidateCollapsibleLeadingDimensions(input, "LinearKernelEntry"));
+        AM_RETURN_IF_ERROR(ValidateFlattenableLeadingAxes(input, "LinearKernelEntry"));
     }
 
     const int64_t input_row_stride = rank == 1 ? 0 : input.stride(rank - 2);
-    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
             "LinearKernelEntry", row_count.value(), in_features,
             input_row_stride, input.stride(rank - 1), "input"));
-    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
             "LinearKernelEntry", out_features, in_features,
             weight.stride(0), weight.stride(1), "weight"));
 
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout input_layout,
-                        BuildRowwiseAddressLayout(input.data(), row_count.value(), in_features,
-                                                  input_row_stride, input.stride(rank - 1),
-                                                  input.itemsize(), "LinearKernelEntry input"));
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout weight_layout,
-                        BuildRowwiseAddressLayout(weight.data(), out_features, in_features,
-                                                  weight.stride(0), weight.stride(1),
-                                                  weight.itemsize(), "LinearKernelEntry weight"));
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout output_layout,
-                        BuildRowwiseAddressLayout(output.data(), row_count.value(), out_features,
-                                                  output_row_stride, output.stride(rank - 1),
-                                                  output.itemsize(), "LinearKernelEntry output"));
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint input_footprint,
+                        BuildRowwiseAddressFootprint(input.data(), row_count.value(), in_features,
+                                                     input_row_stride, input.stride(rank - 1),
+                                                     input.itemsize(), "LinearKernelEntry input"));
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint weight_footprint,
+                        BuildRowwiseAddressFootprint(weight.data(), out_features, in_features,
+                                                     weight.stride(0), weight.stride(1),
+                                                     weight.itemsize(), "LinearKernelEntry weight"));
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint output_footprint,
+                        BuildRowwiseAddressFootprint(output.data(), row_count.value(), out_features,
+                                                     output_row_stride, output.stride(rank - 1),
+                                                     output.itemsize(), "LinearKernelEntry output"));
 
     // Linear has no valid in-place form, not even when in_features equals
     // out_features: writing one output row can clobber input or weight elements
     // that later dot products have not read yet.
-    AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-            "CPU Linear", output_layout, "output", input_layout, "input"));
-    AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-            "CPU Linear", output_layout, "output", weight_layout, "weight"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU Linear", output_footprint, "output", input_footprint, "input"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU Linear", output_footprint, "output", weight_footprint, "weight"));
 
     ::new (params_buffer) LinearF32KernelArgs{
             .input = input.data<float>(),

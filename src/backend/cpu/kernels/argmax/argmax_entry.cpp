@@ -167,12 +167,12 @@ StatusOr<ArgmaxF32KernelArgs> ValidateAndBuildArgmaxF32Args(
                                                      output.strides(), output.itemsize(),
                                                      "CPU ArgMax output"));
 
-    AM_RETURN_IF_ERROR(ValidateInjectiveLayout(
+    AM_RETURN_IF_ERROR(ValidateLayoutInjectivity(
             "CPU ArgMax", output_footprint.injectivity, "output"));
 
     // ArgMax changes both dtype and rank, so no output view can be an exact
     // in-place alias of its input and the footprints are compared as byte ranges.
-    AM_RETURN_IF_ERROR(ValidateNoFootprintOverlap(
+    AM_RETURN_IF_ERROR(ValidateStridedDisjoint(
             "CPU ArgMax", output_footprint, "output", input_footprint, "input"));
 
     built.input = input.data<float>();

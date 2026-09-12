@@ -132,7 +132,7 @@ StatusOr<MatMulF32KernelArgs> ValidateAndBuildMatMulF32Args(
                         BuildStridedAddressFootprint(output.data(), output.shape(),
                                                      output.strides(), output.itemsize(),
                                                      "MatMulKernelEntry output"));
-    AM_RETURN_IF_ERROR(ValidateInjectiveLayout(
+    AM_RETURN_IF_ERROR(ValidateLayoutInjectivity(
             "CPU MatMul", output_footprint.injectivity, "output"));
 
     if (built_args.k != 0) {
@@ -142,9 +142,9 @@ StatusOr<MatMulF32KernelArgs> ValidateAndBuildMatMulF32Args(
         AM_ASSIGN_OR_RETURN(const StridedAddressFootprint rhs_footprint,
                             BuildStridedAddressFootprint(rhs.data(), rhs.shape(), rhs.strides(),
                                                          rhs.itemsize(), "MatMulKernelEntry rhs"));
-        AM_RETURN_IF_ERROR(ValidateNoFootprintOverlap(
+        AM_RETURN_IF_ERROR(ValidateStridedDisjoint(
                 "CPU MatMul", output_footprint, "output", lhs_footprint, "lhs"));
-        AM_RETURN_IF_ERROR(ValidateNoFootprintOverlap(
+        AM_RETURN_IF_ERROR(ValidateStridedDisjoint(
                 "CPU MatMul", output_footprint, "output", rhs_footprint, "rhs"));
     }
 

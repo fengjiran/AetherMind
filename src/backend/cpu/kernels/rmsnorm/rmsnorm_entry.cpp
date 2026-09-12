@@ -90,7 +90,7 @@ StatusOr<KernelArgs> ValidateAndBuildRmsNormArgs(
                 "RmsNormKernelEntry requires weight length to match hidden_size");
     }
 
-    const StatusOr<int64_t> row_count = ComputeRowCount(input, "RmsNormKernelEntry");
+    const StatusOr<int64_t> row_count = ComputeFlattenedRowCount(input, "RmsNormKernelEntry");
     if (!row_count.ok()) {
         return row_count.status();
     }
@@ -115,27 +115,27 @@ StatusOr<KernelArgs> ValidateAndBuildRmsNormArgs(
             output, "RmsNormKernelEntry requires positive output strides"));
 
     if (rank > 2) {
-        AM_RETURN_IF_ERROR(ValidateCollapsibleLeadingDimensions(input, "RmsNormKernelEntry"));
-        AM_RETURN_IF_ERROR(ValidateCollapsibleLeadingDimensions(output, "RmsNormKernelEntry"));
+        AM_RETURN_IF_ERROR(ValidateFlattenableLeadingAxes(input, "RmsNormKernelEntry"));
+        AM_RETURN_IF_ERROR(ValidateFlattenableLeadingAxes(output, "RmsNormKernelEntry"));
     }
 
     const int64_t input_row_stride = rank == 1 ? 0 : input.stride(rank - 2);
     const int64_t output_row_stride = rank == 1 ? 0 : output.stride(rank - 2);
-    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
             "RmsNormKernelEntry",
             row_count.value(),
             hidden_size,
             input_row_stride,
             input.stride(rank - 1),
             "input"));
-    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
             "RmsNormKernelEntry",
             1,
             hidden_size,
             0,
             weight.stride(0),
             "weight"));
-    AM_RETURN_IF_ERROR(ValidateRowColMaxOffset(
+    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
             "RmsNormKernelEntry",
             row_count.value(),
             hidden_size,
@@ -143,36 +143,36 @@ StatusOr<KernelArgs> ValidateAndBuildRmsNormArgs(
             output.stride(rank - 1),
             "output"));
 
-    AM_RETURN_IF_ERROR(ValidateNonOverlappingOutputRows(
+    AM_RETURN_IF_ERROR(ValidateDisjointOutputRowEnvelopes(
             "RmsNormKernelEntry",
             row_count.value(),
             hidden_size,
             output_row_stride,
             output.stride(rank - 1)));
 
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout input_layout,
-                        BuildRowwiseAddressLayout(input.data(), row_count.value(), hidden_size,
-                                                  input_row_stride, input.stride(rank - 1),
-                                                  input.itemsize(), "RmsNormKernelEntry input"));
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout weight_layout,
-                        BuildRowwiseAddressLayout(weight.data(), 1, hidden_size,
-                                                  0, weight.stride(0),
-                                                  weight.itemsize(), "RmsNormKernelEntry weight"));
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressLayout output_layout,
-                        BuildRowwiseAddressLayout(output.data(), row_count.value(), hidden_size,
-                                                  output_row_stride, output.stride(rank - 1),
-                                                  output.itemsize(), "RmsNormKernelEntry output"));
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint input_footprint,
+                        BuildRowwiseAddressFootprint(input.data(), row_count.value(), hidden_size,
+                                                     input_row_stride, input.stride(rank - 1),
+                                                     input.itemsize(), "RmsNormKernelEntry input"));
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint weight_footprint,
+                        BuildRowwiseAddressFootprint(weight.data(), 1, hidden_size,
+                                                     0, weight.stride(0),
+                                                     weight.itemsize(), "RmsNormKernelEntry weight"));
+    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint output_footprint,
+                        BuildRowwiseAddressFootprint(output.data(), row_count.value(), hidden_size,
+                                                     output_row_stride, output.stride(rank - 1),
+                                                     output.itemsize(), "RmsNormKernelEntry output"));
 
     // Exact in-place is the only input aliasing RmsNorm can execute correctly:
     // each output element is written after its own input element was read.
-    if (!HasIdenticalMapping(input, output)) {
-        AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-                "CPU RmsNorm", output_layout, "output", input_layout, "input"));
+    if (!HaveIdenticalViewMapping(input, output)) {
+        AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+                "CPU RmsNorm", output_footprint, "output", input_footprint, "input"));
     }
 
     // The weight is re-read for every row, so no output element may land in it.
-    AM_RETURN_IF_ERROR(ValidateNoRowwiseOverlap(
-            "CPU RmsNorm", output_layout, "output", weight_layout, "weight"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU RmsNorm", output_footprint, "output", weight_footprint, "weight"));
 
     args.input = static_cast<decltype(args.input)>(input.data());
     args.weight = static_cast<decltype(args.weight)>(weight.data());

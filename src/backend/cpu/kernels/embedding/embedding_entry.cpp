@@ -153,28 +153,28 @@ Status BuildEmbeddingF32ReferenceArgs(const KernelParamsBuildContext& context, v
                 "EmbeddingKernel output dimensions overflow");
     }
 
-    AM_ASSIGN_OR_RETURN(const AddressRange token_ids_range,
-                        BuildContiguousAddressRange(token_ids.data(), token_count,
-                                                    token_ids.itemsize(),
-                                                    "EmbeddingKernel token ids"));
-    AM_ASSIGN_OR_RETURN(const AddressRange weight_range,
-                        BuildContiguousAddressRange(weight.data(), weight_element_count,
-                                                    weight.itemsize(),
-                                                    "EmbeddingKernel weight"));
-    AM_ASSIGN_OR_RETURN(const AddressRange output_range,
-                        BuildContiguousAddressRange(output.data(), output_element_count,
-                                                    output.itemsize(),
-                                                    "EmbeddingKernel output"));
+    AM_ASSIGN_OR_RETURN(const ByteAddressRange token_ids_range,
+                        BuildContiguousByteRange(token_ids.data(), token_count,
+                                                 token_ids.itemsize(),
+                                                 "EmbeddingKernel token ids"));
+    AM_ASSIGN_OR_RETURN(const ByteAddressRange weight_range,
+                        BuildContiguousByteRange(weight.data(), weight_element_count,
+                                                 weight.itemsize(),
+                                                 "EmbeddingKernel weight"));
+    AM_ASSIGN_OR_RETURN(const ByteAddressRange output_range,
+                        BuildContiguousByteRange(output.data(), output_element_count,
+                                                 output.itemsize(),
+                                                 "EmbeddingKernel output"));
 
     // The gather reads token ids and weight rows progressively, so writing into
     // either one can corrupt values later iterations still need. All three views
     // are contiguous, hence an intersecting range is proven byte overlap.
-    if (RangesOverlap(output_range, token_ids_range)) {
+    if (ByteRangesOverlap(output_range, token_ids_range)) {
         return Status::InvalidArgument(
                 "CPU Embedding output must not overlap token ids");
     }
 
-    if (RangesOverlap(output_range, weight_range)) {
+    if (ByteRangesOverlap(output_range, weight_range)) {
         return Status::InvalidArgument(
                 "CPU Embedding output must not overlap weight");
     }

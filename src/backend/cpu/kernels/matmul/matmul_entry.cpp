@@ -129,19 +129,15 @@ StatusOr<MatMulF32KernelArgs> ValidateAndBuildMatMulF32Args(
     }
 
     AM_ASSIGN_OR_RETURN(const StridedAddressFootprint output_footprint,
-                        BuildStridedAddressFootprint(output.data(), output.shape(),
-                                                     output.strides(), output.itemsize(),
-                                                     "MatMulKernelEntry output"));
+                        BuildStridedAddressFootprint(output, "MatMulKernelEntry output"));
     AM_RETURN_IF_ERROR(ValidateLayoutInjectivity(
-            "CPU MatMul", output_footprint.injectivity, "output"));
+            "CPU MatMul", output_footprint.injectivity(), "output"));
 
     if (built_args.k != 0) {
         AM_ASSIGN_OR_RETURN(const StridedAddressFootprint lhs_footprint,
-                            BuildStridedAddressFootprint(lhs.data(), lhs.shape(), lhs.strides(),
-                                                         lhs.itemsize(), "MatMulKernelEntry lhs"));
+                            BuildStridedAddressFootprint(lhs, "MatMulKernelEntry lhs"));
         AM_ASSIGN_OR_RETURN(const StridedAddressFootprint rhs_footprint,
-                            BuildStridedAddressFootprint(rhs.data(), rhs.shape(), rhs.strides(),
-                                                         rhs.itemsize(), "MatMulKernelEntry rhs"));
+                            BuildStridedAddressFootprint(rhs, "MatMulKernelEntry rhs"));
         AM_RETURN_IF_ERROR(ValidateStridedDisjoint(
                 "CPU MatMul", output_footprint, "output", lhs_footprint, "lhs"));
         AM_RETURN_IF_ERROR(ValidateStridedDisjoint(

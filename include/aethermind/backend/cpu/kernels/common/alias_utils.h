@@ -6,12 +6,12 @@
 ///
 /// Hosts the buffer-aliasing primitives shared by kernels that must reject
 /// overlapping input/output storage: half-open byte-address ranges, exact
-/// in-place view checks, conservative row-wise layout classification, and the
-/// status mapping that turns a classification into a diagnostic. Kernels own
-/// which tensor pairs they validate and which exemptions they grant (such as
-/// exact in-place); they use these primitives instead of maintaining private
-/// copies.
+/// in-place view checks, complete row-wise view analysis, and the status
+/// mapping that turns a classification into a diagnostic. Kernels own which
+/// tensor pairs they validate and which exemptions they grant (such as exact
+/// in-place); they use these primitives instead of maintaining private copies.
 
+#include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor_view.h"
 
@@ -28,31 +28,138 @@ struct ByteAddressRange {
     std::uintptr_t end{};
 };
 
+/// @brief Result of classifying whether a layout maps coordinates injectively.
+///
+/// `kUnknown` records that the inexpensive stride-span proof could not decide.
+/// Such a layout may still be injective (shape `[2, 3]` with strides `[3, 2]`
+/// is), so it must not be reported as a proven violation.
+enum class InjectivityClassification : uint8_t {
+    kProvenInjective,
+    kProvenNonInjective,
+    kUnknown
+};
+
 /// @brief Address geometry for a non-negative-stride two-dimensional view.
 ///
 /// `envelope` and each implicit row range include the bytes between
 /// column-strided elements. They can therefore include holes which are not
-/// logical elements of the view.
-struct RowwiseAddressFootprint {
-    ByteAddressRange envelope{};
-    std::uintptr_t row_stride_bytes{};
-    std::uintptr_t row_envelope_bytes{};
-    std::uintptr_t column_stride_bytes{};
-    std::uintptr_t element_size_bytes{};
-    int64_t row_count{};
-    int64_t column_count{};
+/// logical elements of the view. Instances are produced only by the checked
+/// builders in this component and expose read-only facts to callers.
+class RowwiseAddressFootprint {
+public:
+    AM_NODISCARD ByteAddressRange envelope() const noexcept {
+        return envelope_;
+    }
+
+    AM_NODISCARD std::uintptr_t row_stride_bytes() const noexcept {
+        return row_stride_bytes_;
+    }
+
+    AM_NODISCARD std::uintptr_t row_envelope_bytes() const noexcept {
+        return row_envelope_bytes_;
+    }
+
+    AM_NODISCARD std::uintptr_t column_stride_bytes() const noexcept {
+        return column_stride_bytes_;
+    }
+
+    AM_NODISCARD std::uintptr_t element_size_bytes() const noexcept {
+        return element_size_bytes_;
+    }
+
+    AM_NODISCARD int64_t row_count() const noexcept {
+        return row_count_;
+    }
+
+    AM_NODISCARD int64_t column_count() const noexcept {
+        return column_count_;
+    }
+
+    AM_NODISCARD bool is_empty() const noexcept {
+        return is_empty_;
+    }
+
+private:
+    RowwiseAddressFootprint(ByteAddressRange envelope,
+                            std::uintptr_t row_stride_bytes,
+                            std::uintptr_t row_envelope_bytes,
+                            std::uintptr_t column_stride_bytes,
+                            std::uintptr_t element_size_bytes,
+                            int64_t row_count,
+                            int64_t column_count,
+                            bool is_empty) noexcept;
+
+    friend class AliasUtilsFactory;
+
+    ByteAddressRange envelope_{};
+    std::uintptr_t row_stride_bytes_{};
+    std::uintptr_t row_envelope_bytes_{};
+    std::uintptr_t column_stride_bytes_{};
+    std::uintptr_t element_size_bytes_{};
+    int64_t row_count_{};
+    int64_t column_count_{};
+    bool is_empty_{};
 };
 
-/// @brief Proof result for overlap between two logical byte-address sets.
+/// @brief Checked row-wise geometry of a tensor view.
 ///
-/// `kUnknown` records that address envelopes intersect but stride holes prevent
-/// the inexpensive classifier from deciding whether logical element bytes
-/// intersect. The same proof states apply to row-wise and general strided
-/// footprints.
-enum class OverlapClassification : uint8_t {
-    kProvenDisjoint,
-    kProvenOverlap,
-    kUnknown
+/// The analysis flattens a normal tensor view into `[row_count, column_count]`.
+/// Its `footprint` is safe to pass to the alias validators. The analysis
+/// records facts only: read-only inputs may have overlapping row envelopes,
+/// while ValidateRowwiseOutputLayout applies the stricter mutable-output
+/// policy. Callers cannot construct or alter an analysis piecemeal.
+class RowwiseViewAnalysis {
+public:
+    AM_NODISCARD const RowwiseAddressFootprint& footprint() const& noexcept {
+        return footprint_;
+    }
+
+    AM_NODISCARD const RowwiseAddressFootprint& footprint() const&& = delete;
+
+    AM_NODISCARD int64_t row_count() const noexcept {
+        return footprint_.row_count();
+    }
+
+    AM_NODISCARD int64_t column_count() const noexcept {
+        return footprint_.column_count();
+    }
+
+    AM_NODISCARD int64_t row_stride() const noexcept {
+        return row_stride_;
+    }
+
+    AM_NODISCARD int64_t column_stride() const noexcept {
+        return column_stride_;
+    }
+
+    AM_NODISCARD int64_t max_element_offset() const noexcept {
+        return max_element_offset_;
+    }
+
+    AM_NODISCARD InjectivityClassification injectivity() const noexcept {
+        return injectivity_;
+    }
+
+    AM_NODISCARD bool has_disjoint_row_envelopes() const noexcept {
+        return has_disjoint_row_envelopes_;
+    }
+
+private:
+    RowwiseViewAnalysis(RowwiseAddressFootprint footprint,
+                        int64_t row_stride,
+                        int64_t column_stride,
+                        int64_t max_element_offset,
+                        InjectivityClassification injectivity,
+                        bool has_disjoint_row_envelopes) noexcept;
+
+    friend class AliasUtilsFactory;
+
+    RowwiseAddressFootprint footprint_;
+    int64_t row_stride_{};
+    int64_t column_stride_{};
+    int64_t max_element_offset_{};
+    InjectivityClassification injectivity_{InjectivityClassification::kUnknown};
+    bool has_disjoint_row_envelopes_{};
 };
 
 /// @brief Reports whether two half-open address ranges intersect.
@@ -65,21 +172,22 @@ enum class OverlapClassification : uint8_t {
 /// @param lhs First half-open byte interval `[begin, end)`.
 /// @param rhs Second half-open byte interval `[begin, end)`.
 /// @return True when the two ranges share at least one byte address.
-inline bool ByteRangesOverlap(const ByteAddressRange& lhs,
-                              const ByteAddressRange& rhs) noexcept {
+AM_NODISCARD inline bool ByteRangesOverlap(const ByteAddressRange& lhs,
+                                           const ByteAddressRange& rhs) noexcept {
     if (lhs.begin >= lhs.end || rhs.begin >= rhs.end) {
         return false;
     }
     return lhs.begin < rhs.end && rhs.begin < lhs.end;
 }
 
-/// @brief Builds the exact byte-address range of a contiguous view.
+/// @brief Builds a range from caller-proven contiguous storage geometry.
 ///
 /// The range is `[data, data + element_count * element_size)`. An empty view
 /// (`element_count == 0`) produces an empty range at `data`; a non-empty view
-/// requires non-null data and a non-zero element size. A contiguous view has no
-/// stride holes, so intersecting another contiguous range proves a real byte
-/// overlap instead of merely suggesting one.
+/// requires non-null data and a non-zero element size. This raw overload has
+/// no TensorView metadata and cannot verify that a tensor is contiguous; the
+/// caller must establish that its supplied count describes consecutive elements.
+/// Use the TensorView overloads when a view is available.
 ///
 /// @param data First byte of the viewed storage.
 /// @param element_count Number of logical elements in the view.
@@ -92,36 +200,98 @@ StatusOr<ByteAddressRange> BuildContiguousByteRange(const void* data,
                                                     size_t element_size,
                                                     std::string_view context) noexcept;
 
-/// @brief Builds checked byte-address geometry for a row-wise view.
+/// @brief Builds the range of a valid row-major contiguous tensor view.
 ///
-/// Empty views produce an empty envelope. Non-empty views require non-null
-/// data, non-negative extents and strides, and a non-zero element size. The
-/// caller supplies `context` solely for neutral diagnostics.
-StatusOr<RowwiseAddressFootprint> BuildRowwiseAddressFootprint(
-        const void* data,
-        int64_t row_count,
-        int64_t column_count,
-        int64_t row_stride,
-        int64_t column_stride,
-        size_t element_size,
-        std::string_view context) noexcept;
+/// Performs release-build view validation, checked strided-footprint geometry,
+/// and row-major contiguity validation before returning the footprint envelope.
+/// Rank-0 is one element; zero-element views return an empty range and may have
+/// null data.
+StatusOr<ByteAddressRange> BuildContiguousByteRange(const TensorView& tensor,
+                                                    std::string_view context) noexcept;
 
-/// @brief Conservatively classifies overlap between two row-wise footprints.
-///
-/// `kProvenDisjoint` proves the logical element sets are disjoint. `kProvenOverlap`
-/// proves overlap when both layouts have no column-stride holes, or when their
-/// first elements share an address. Other intersecting row envelopes yield
-/// `kUnknown` rather than claiming that holes are logical elements.
-OverlapClassification ClassifyRowwiseOverlap(const RowwiseAddressFootprint& lhs,
-                                             const RowwiseAddressFootprint& rhs) noexcept;
+/// @see BuildContiguousByteRange(const TensorView&, std::string_view)
+StatusOr<ByteAddressRange> BuildContiguousByteRange(const MutableTensorView& tensor,
+                                                    std::string_view context) noexcept;
 
 /// @brief Requires a mutable output and read input to be provably disjoint.
 ///
-/// Maps ClassifyRowwiseOverlap onto the shared status convention: proven
-/// overlap is InvalidArgument, while overlap that column-stride holes prevent
-/// this helper from deciding is reported as Unimplemented instead of claiming a
-/// violation. Callers decide which pairs to validate and grant exemptions such
-/// as exact in-place before calling.
+/// Contiguous counterpart of ValidateRowwiseDisjoint with the same message
+/// convention: proven overlap is InvalidArgument. Contiguous ranges are exact,
+/// so there is no undecidable case to report as Unimplemented.
+///
+/// @param kernel_name Caller name used as the error-message prefix.
+/// @param output Address range of the mutable output being validated.
+/// @param output_role Output role (e.g. "output") used in the message.
+/// @param input Address range of the read-only input compared against.
+/// @param input_role Input role (e.g. "weight") used in the message.
+/// @return Ok when the ranges are provably disjoint.
+Status ValidateContiguousDisjoint(std::string_view kernel_name,
+                                  const ByteAddressRange& output,
+                                  std::string_view output_role,
+                                  const ByteAddressRange& input,
+                                  std::string_view input_role) noexcept;
+
+/// @brief Analyzes a valid rank >= 1 tensor as a row-wise `[rows, columns]` view.
+///
+/// The last dimension is the column dimension and leading dimensions are
+/// flattened into rows. A rank-1 view is therefore one row with a derived
+/// `row_stride` of zero; that derived stride is not an actual tensor stride and
+/// is legal. View validity is checked first, matching the strided-footprint
+/// overloads; for non-empty views this then validates positive actual strides,
+/// collapsible leading axes, signed element-offset representability, and the
+/// byte-address footprint in that order. Empty views retain the existing no-op
+/// contract and do not require data or positive strides, but must still be
+/// valid views.
+///
+/// This function deliberately does not reject self-overlapping row envelopes:
+/// immutable inputs may legally reuse elements. Mutable-output callers must
+/// apply ValidateRowwiseOutputLayout to the returned facts.
+///
+/// @param tensor Valid view whose last axis becomes the column dimension.
+/// @param context Caller name used as the error-message prefix.
+/// @return The checked row-wise facts, or InvalidArgument / Unimplemented when
+///         the view or its geometry is not supported.
+StatusOr<RowwiseViewAnalysis> AnalyzeRowwiseView(const TensorView& tensor,
+                                                 std::string_view context) noexcept;
+
+/// @see AnalyzeRowwiseView(const TensorView&, std::string_view)
+StatusOr<RowwiseViewAnalysis> AnalyzeRowwiseView(const MutableTensorView& tensor,
+                                                 std::string_view context) noexcept;
+
+/// @brief Analyzes a valid rank-1 tensor as a `[length, 1]` row-wise column vector.
+///
+/// This explicit adapter preserves per-element stride gaps when a vector is
+/// compared against row-wise outputs, such as RoPE `position_ids`. View
+/// validity and positive strides are checked as in AnalyzeRowwiseView, and an
+/// empty vector keeps the same no-op contract.
+///
+/// @param tensor Valid rank-1 view whose elements become rows of one column.
+/// @param context Caller name used as the error-message prefix.
+/// @return The checked row-wise facts, or InvalidArgument when the view is
+///         invalid, is not rank-1, or has unsupported geometry.
+StatusOr<RowwiseViewAnalysis> AnalyzeRowwiseColumnVector(
+        const TensorView& tensor,
+        std::string_view context) noexcept;
+
+/// @see AnalyzeRowwiseColumnVector(const TensorView&, std::string_view)
+StatusOr<RowwiseViewAnalysis> AnalyzeRowwiseColumnVector(
+        const MutableTensorView& tensor,
+        std::string_view context) noexcept;
+
+/// @brief Applies the supported mutable-output row-envelope policy.
+///
+/// Row-envelope disjointness is intentionally stricter than a proof of actual
+/// element collisions: it keeps output writes in separate address regions even
+/// when column-stride holes would otherwise make overlap undecidable.
+Status ValidateRowwiseOutputLayout(std::string_view context,
+                                   const RowwiseViewAnalysis& analysis) noexcept;
+
+/// @brief Requires a mutable output and read input to be provably disjoint.
+///
+/// Proven overlap is InvalidArgument, while overlap that column-stride holes
+/// prevent this helper from deciding is reported as Unimplemented instead of
+/// claiming a violation. Callers decide which pairs to validate and grant
+/// exemptions such as exact in-place before calling.
 ///
 /// @param kernel_name Caller name used as the error-message prefix.
 /// @param output Address footprint of the mutable output being validated.
@@ -135,56 +305,64 @@ Status ValidateRowwiseDisjoint(std::string_view kernel_name,
                                const RowwiseAddressFootprint& input,
                                std::string_view input_role) noexcept;
 
-/// @brief Result of classifying whether a layout maps coordinates injectively.
-///
-/// `kUnknown` records that the inexpensive stride-span proof could not decide.
-/// Such a layout may still be injective (shape `[2, 3]` with strides `[3, 2]`
-/// is), so it must not be reported as a proven violation.
-enum class InjectivityClassification : uint8_t {
-    kProvenInjective,
-    kProvenNonInjective,
-    kUnknown
-};
-
 /// @brief Address geometry and proven layout properties of a strided view.
 ///
 /// `envelope` spans from the base address past the last logical element and can
 /// contain holes that are not logical elements of the view. `is_dense` reports
 /// that the logical elements exactly fill the envelope without holes or
 /// repeats; that is weaker than row-major contiguity, since a transposed layout
-/// can be dense without being contiguous.
-struct StridedAddressFootprint {
-    ByteAddressRange envelope{};
-    int64_t logical_element_count{};
-    int64_t max_element_offset{};
-    InjectivityClassification injectivity{InjectivityClassification::kUnknown};
-    bool is_dense{};
-    bool is_empty{};
+/// can be dense without being contiguous. Instances are produced only by the
+/// checked builders in this component and expose read-only facts to callers.
+class StridedAddressFootprint {
+public:
+    AM_NODISCARD ByteAddressRange envelope() const noexcept {
+        return envelope_;
+    }
+
+    AM_NODISCARD int64_t logical_element_count() const noexcept {
+        return logical_element_count_;
+    }
+
+    AM_NODISCARD int64_t max_element_offset() const noexcept {
+        return max_element_offset_;
+    }
+
+    AM_NODISCARD InjectivityClassification injectivity() const noexcept {
+        return injectivity_;
+    }
+
+    AM_NODISCARD bool is_dense() const noexcept {
+        return is_dense_;
+    }
+
+    AM_NODISCARD bool is_empty() const noexcept {
+        return is_empty_;
+    }
+
+private:
+    StridedAddressFootprint(ByteAddressRange envelope,
+                            int64_t logical_element_count,
+                            int64_t max_element_offset,
+                            InjectivityClassification injectivity,
+                            bool is_dense,
+                            bool is_empty) noexcept;
+
+    friend class AliasUtilsFactory;
+
+    ByteAddressRange envelope_{};
+    int64_t logical_element_count_{};
+    int64_t max_element_offset_{};
+    InjectivityClassification injectivity_{InjectivityClassification::kUnknown};
+    bool is_dense_{};
+    bool is_empty_{};
 };
 
-/// @brief Classifies whether `(shape, strides)` maps coordinates to distinct offsets.
+/// @brief Builds checked address geometry from caller-supplied strided data.
 ///
-/// Axes with extent > 1 are visited in ascending stride order while tracking
-/// the span covered so far and whether the lower axes fill that span without
-/// holes. A stride below the covered span collides with a reachable offset when
-/// the lower axes are dense, and is undecidable otherwise.
-///
-/// @param shape Extents per axis.
-/// @param strides Strides in elements per axis.
-/// @return The proof result; arithmetic overflow yields `kUnknown`, while
-///         BuildStridedAddressFootprint reports it as invalid geometry.
-/// @pre `shape.size() == strides.size()`, `shape.size() <= ShapeAndStride::kMaxRank`,
-///      and every stride is non-negative.
-/// @note A violated size or rank precondition is asserted in debug builds and
-///       reported as `kUnknown` in release builds instead of overrunning the
-///       fixed-rank axis buffer.
-InjectivityClassification ClassifyLayoutInjectivity(
-        std::span<const int64_t> shape,
-        std::span<const int64_t> strides) noexcept;
-
-/// @brief Builds checked address geometry and proven layout properties.
-///
-/// A view with any zero extent produces an empty footprint whose envelope is
+/// This raw overload verifies only the supplied pointer/shape/stride geometry;
+/// it does not validate TensorView metadata, dtype, alignment, or lifetime.
+/// Callers with TensorViews should use the view overloads. A view with any zero
+/// extent produces an empty footprint whose envelope is
 /// `[data, data)`; callers classify empty footprints as disjoint before
 /// consulting `is_dense` or `injectivity`. Non-empty views require non-null
 /// data, a non-zero element size, and non-negative extents and strides. A rank-0
@@ -197,14 +375,18 @@ StatusOr<StridedAddressFootprint> BuildStridedAddressFootprint(
         size_t element_size,
         std::string_view context) noexcept;
 
-/// @brief Conservatively classifies overlap between two address footprints.
+/// @brief Builds checked address geometry from a valid immutable tensor view.
 ///
-/// Intersecting envelopes are proven overlap when both footprints are dense
-/// (their elements fill their envelopes, so a shared byte is a shared element)
-/// or when both start at the same address; any other intersection is
-/// `kUnknown`.
-OverlapClassification ClassifyStridedOverlap(const StridedAddressFootprint& lhs,
-                                             const StridedAddressFootprint& rhs) noexcept;
+/// Binds data, shape, strides, and item size coherently after validating the
+/// view in release builds. Rank-0 and empty-view behavior match the raw helper.
+StatusOr<StridedAddressFootprint> BuildStridedAddressFootprint(
+        const TensorView& tensor,
+        std::string_view context) noexcept;
+
+/// @see BuildStridedAddressFootprint(const TensorView&, std::string_view)
+StatusOr<StridedAddressFootprint> BuildStridedAddressFootprint(
+        const MutableTensorView& tensor,
+        std::string_view context) noexcept;
 
 /// @brief Maps a layout injectivity classification onto the shared status convention.
 ///
@@ -242,8 +424,8 @@ Status ValidateStridedDisjoint(std::string_view kernel_name,
 /// True only when base pointer, dtype, rank, extents, and strides all match.
 /// This is a geometric fact only. The caller decides whether its kernel
 /// semantics permit exact in-place execution.
-bool HaveIdenticalViewMapping(const TensorView& input,
-                              const MutableTensorView& output) noexcept;
+AM_NODISCARD bool HaveIdenticalViewMapping(const TensorView& input,
+                                           const MutableTensorView& output) noexcept;
 
 } // namespace aethermind::cpu::detail
 

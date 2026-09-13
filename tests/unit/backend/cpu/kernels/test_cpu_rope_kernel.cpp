@@ -549,6 +549,34 @@ TEST(CPUKernelRoPEEntry, RejectsByteAndAddressRangeOverflow) {
               StatusCode::kInvalidArgument);
 }
 
+TEST(CPUKernelRoPEEntry, AcceptsOutputInsideStridedPositionIdsGap) {
+    constexpr int64_t shape[2] = {2, 4};
+    constexpr int64_t strides[2] = {4, 1};
+    constexpr int64_t position_shape[1] = {2};
+    constexpr int64_t position_strides[1] = {8};
+    std::array<float, 8> q{};
+    std::array<float, 8> k{};
+    std::array<float, 8> k_output{};
+    std::array<int64_t, 10> position_storage{};
+    position_storage[0] = 0;
+    position_storage[8] = 1;
+
+    // The q output footprint occupies the byte gap between the two strided
+    // position values. Params binding only preserves this raw pointer; it does
+    // not write a float object into position_storage.
+    const auto kernel = PrepareRoPEKernel(MakeRoPEParams(4, 1, 1));
+    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+    const auto prepared = BuildRoPEPreparedParams(*kernel, RoPETestViews{
+                                                                   .q = TensorView{q.data(), DataType::Float32(), shape, strides},
+                                                                   .k = TensorView{k.data(), DataType::Float32(), shape, strides},
+                                                                   .position_ids = TensorView{position_storage.data(), DataType::Int(64), position_shape, position_strides},
+                                                                   .q_output = MutableTensorView{reinterpret_cast<float*>(position_storage.data() + 2), DataType::Float32(), shape, strides},
+                                                                   .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, strides},
+                                                           });
+
+    ASSERT_TRUE(prepared.ok()) << prepared.status().ToString();
+}
+
 TEST(CPUKernelRoPE, PreparedParamsRejectUnrepresentableInverseFrequency) {
     constexpr int64_t shape[2] = {1, 64};
     constexpr int64_t strides[2] = {64, 1};

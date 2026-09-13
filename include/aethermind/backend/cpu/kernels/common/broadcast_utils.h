@@ -224,22 +224,16 @@ StatusOr<KernelArgs> ValidateAndBuildElementwiseArgs(const KernelParamsBuildCont
     }
 
     AM_ASSIGN_OR_RETURN(const StridedAddressFootprint lhs_footprint,
-                        BuildStridedAddressFootprint(lhs.data(), lhs.shape(), lhs.strides(),
-                                                     lhs.itemsize(),
-                                                     std::string(kernel_name) + " lhs"));
+                        BuildStridedAddressFootprint(lhs, std::string(kernel_name) + " lhs"));
     AM_ASSIGN_OR_RETURN(const StridedAddressFootprint rhs_footprint,
-                        BuildStridedAddressFootprint(rhs.data(), rhs.shape(), rhs.strides(),
-                                                     rhs.itemsize(),
-                                                     std::string(kernel_name) + " rhs"));
+                        BuildStridedAddressFootprint(rhs, std::string(kernel_name) + " rhs"));
     AM_ASSIGN_OR_RETURN(const StridedAddressFootprint output_footprint,
-                        BuildStridedAddressFootprint(output.data(), output.shape(),
-                                                     output.strides(), output.itemsize(),
-                                                     std::string(kernel_name) + " output"));
+                        BuildStridedAddressFootprint(output, std::string(kernel_name) + " output"));
 
     // A non-injective output writes one slot from several coordinates, so the
     // stored value would depend on iteration order.
     AM_RETURN_IF_ERROR(ValidateLayoutInjectivity(
-            kernel_name, output_footprint.injectivity, "output"));
+            kernel_name, output_footprint.injectivity(), "output"));
 
     // Exact in-place against one input is safe: that element is read immediately
     // before its own slot is written. Identical mapping implies an equal shape,

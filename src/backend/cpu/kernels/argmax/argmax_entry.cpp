@@ -160,15 +160,12 @@ StatusOr<ArgmaxF32KernelArgs> ValidateAndBuildArgmaxF32Args(
             output, "CPU ArgMax requires positive output strides"));
 
     AM_ASSIGN_OR_RETURN(const StridedAddressFootprint input_footprint,
-                        BuildStridedAddressFootprint(input.data(), input.shape(), input.strides(),
-                                                     input.itemsize(), "CPU ArgMax input"));
+                        BuildStridedAddressFootprint(input, "CPU ArgMax input"));
     AM_ASSIGN_OR_RETURN(const StridedAddressFootprint output_footprint,
-                        BuildStridedAddressFootprint(output.data(), output.shape(),
-                                                     output.strides(), output.itemsize(),
-                                                     "CPU ArgMax output"));
+                        BuildStridedAddressFootprint(output, "CPU ArgMax output"));
 
     AM_RETURN_IF_ERROR(ValidateLayoutInjectivity(
-            "CPU ArgMax", output_footprint.injectivity, "output"));
+            "CPU ArgMax", output_footprint.injectivity(), "output"));
 
     // ArgMax changes both dtype and rank, so no output view can be an exact
     // in-place alias of its input and the footprints are compared as byte ranges.

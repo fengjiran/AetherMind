@@ -107,83 +107,35 @@ StatusOr<KernelArgs> ValidateAndBuildRmsNormArgs(
                 "RmsNormKernelEntry requires non-null data pointers for non-empty tensors");
     }
 
-    AM_RETURN_IF_ERROR(ValidatePositiveStrides(
-            input, "RmsNormKernelEntry requires positive input strides"));
-    AM_RETURN_IF_ERROR(ValidatePositiveStrides(
-            weight, "RmsNormKernelEntry requires positive weight strides"));
-    AM_RETURN_IF_ERROR(ValidatePositiveStrides(
-            output, "RmsNormKernelEntry requires positive output strides"));
-
-    if (rank > 2) {
-        AM_RETURN_IF_ERROR(ValidateFlattenableLeadingAxes(input, "RmsNormKernelEntry"));
-        AM_RETURN_IF_ERROR(ValidateFlattenableLeadingAxes(output, "RmsNormKernelEntry"));
-    }
-
-    const int64_t input_row_stride = rank == 1 ? 0 : input.stride(rank - 2);
-    const int64_t output_row_stride = rank == 1 ? 0 : output.stride(rank - 2);
-    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
-            "RmsNormKernelEntry",
-            row_count.value(),
-            hidden_size,
-            input_row_stride,
-            input.stride(rank - 1),
-            "input"));
-    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
-            "RmsNormKernelEntry",
-            1,
-            hidden_size,
-            0,
-            weight.stride(0),
-            "weight"));
-    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
-            "RmsNormKernelEntry",
-            row_count.value(),
-            hidden_size,
-            output_row_stride,
-            output.stride(rank - 1),
-            "output"));
-
-    AM_RETURN_IF_ERROR(ValidateDisjointOutputRowEnvelopes(
-            "RmsNormKernelEntry",
-            row_count.value(),
-            hidden_size,
-            output_row_stride,
-            output.stride(rank - 1)));
-
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint input_footprint,
-                        BuildRowwiseAddressFootprint(input.data(), row_count.value(), hidden_size,
-                                                     input_row_stride, input.stride(rank - 1),
-                                                     input.itemsize(), "RmsNormKernelEntry input"));
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint weight_footprint,
-                        BuildRowwiseAddressFootprint(weight.data(), 1, hidden_size,
-                                                     0, weight.stride(0),
-                                                     weight.itemsize(), "RmsNormKernelEntry weight"));
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint output_footprint,
-                        BuildRowwiseAddressFootprint(output.data(), row_count.value(), hidden_size,
-                                                     output_row_stride, output.stride(rank - 1),
-                                                     output.itemsize(), "RmsNormKernelEntry output"));
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis input_analysis,
+                        AnalyzeRowwiseView(input, "RmsNormKernelEntry input"));
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis weight_analysis,
+                        AnalyzeRowwiseView(weight, "RmsNormKernelEntry weight"));
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis output_analysis,
+                        AnalyzeRowwiseView(output, "RmsNormKernelEntry output"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout("RmsNormKernelEntry", output_analysis));
 
     // Exact in-place is the only input aliasing RmsNorm can execute correctly:
     // each output element is written after its own input element was read.
     if (!HaveIdenticalViewMapping(input, output)) {
         AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
-                "CPU RmsNorm", output_footprint, "output", input_footprint, "input"));
+                "CPU RmsNorm", output_analysis.footprint(), "output", input_analysis.footprint(), "input"));
     }
 
     // The weight is re-read for every row, so no output element may land in it.
     AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
-            "CPU RmsNorm", output_footprint, "output", weight_footprint, "weight"));
+            "CPU RmsNorm", output_analysis.footprint(), "output", weight_analysis.footprint(), "weight"));
 
     args.input = static_cast<decltype(args.input)>(input.data());
     args.weight = static_cast<decltype(args.weight)>(weight.data());
     args.output = static_cast<decltype(args.output)>(output.data());
-    args.row_count = row_count.value();
+    args.row_count = input_analysis.row_count();
     args.hidden_size = hidden_size;
-    args.input_row_stride = input_row_stride;
-    args.input_col_stride = input.stride(rank - 1);
-    args.weight_stride = weight.stride(0);
-    args.output_row_stride = output_row_stride;
-    args.output_col_stride = output.stride(rank - 1);
+    args.input_row_stride = input_analysis.row_stride();
+    args.input_col_stride = input_analysis.column_stride();
+    args.weight_stride = weight_analysis.column_stride();
+    args.output_row_stride = output_analysis.row_stride();
+    args.output_col_stride = output_analysis.column_stride();
     args.eps = eps;
     return args;
 }

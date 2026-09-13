@@ -84,27 +84,18 @@ Status BuildLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
         return Status::Ok();
     }
 
-    AM_RETURN_IF_ERROR(ValidatePositiveStrides(
-            output, "LinearKernelEntry requires positive output strides"));
-    if (rank > 2) {
-        AM_RETURN_IF_ERROR(ValidateFlattenableLeadingAxes(output, "LinearKernelEntry"));
-    }
-    const int64_t output_row_stride = rank == 1 ? 0 : output.stride(rank - 2);
-    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
-            "LinearKernelEntry", row_count.value(), out_features,
-            output_row_stride, output.stride(rank - 1), "output"));
-    AM_RETURN_IF_ERROR(ValidateDisjointOutputRowEnvelopes(
-            "LinearKernelEntry", row_count.value(), out_features,
-            output_row_stride, output.stride(rank - 1)));
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis output_analysis,
+                        AnalyzeRowwiseView(output, "LinearKernelEntry output"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout("LinearKernelEntry", output_analysis));
 
     if (in_features == 0) {
         ::new (params_buffer) LinearF32KernelArgs{
                 .output = output.data<float>(),
-                .row_count = row_count.value(),
+                .row_count = output_analysis.row_count(),
                 .in_features = 0,
                 .out_features = out_features,
-                .output_row_stride = output_row_stride,
-                .output_col_stride = output.stride(rank - 1),
+                .output_row_stride = output_analysis.row_stride(),
+                .output_col_stride = output_analysis.column_stride(),
         };
         return Status::Ok();
     }
@@ -114,56 +105,32 @@ Status BuildLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
                 "LinearKernelEntry requires non-null data pointers for non-empty tensors");
     }
 
-    AM_RETURN_IF_ERROR(ValidatePositiveStrides(
-            input, "LinearKernelEntry requires positive input strides"));
-    AM_RETURN_IF_ERROR(ValidatePositiveStrides(
-            weight, "LinearKernelEntry requires positive weight strides"));
-    if (rank > 2) {
-        AM_RETURN_IF_ERROR(ValidateFlattenableLeadingAxes(input, "LinearKernelEntry"));
-    }
-
-    const int64_t input_row_stride = rank == 1 ? 0 : input.stride(rank - 2);
-    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
-            "LinearKernelEntry", row_count.value(), in_features,
-            input_row_stride, input.stride(rank - 1), "input"));
-    AM_RETURN_IF_ERROR(ValidateRowwiseMaxOffsetRepresentable(
-            "LinearKernelEntry", out_features, in_features,
-            weight.stride(0), weight.stride(1), "weight"));
-
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint input_footprint,
-                        BuildRowwiseAddressFootprint(input.data(), row_count.value(), in_features,
-                                                     input_row_stride, input.stride(rank - 1),
-                                                     input.itemsize(), "LinearKernelEntry input"));
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint weight_footprint,
-                        BuildRowwiseAddressFootprint(weight.data(), out_features, in_features,
-                                                     weight.stride(0), weight.stride(1),
-                                                     weight.itemsize(), "LinearKernelEntry weight"));
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint output_footprint,
-                        BuildRowwiseAddressFootprint(output.data(), row_count.value(), out_features,
-                                                     output_row_stride, output.stride(rank - 1),
-                                                     output.itemsize(), "LinearKernelEntry output"));
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis input_analysis,
+                        AnalyzeRowwiseView(input, "LinearKernelEntry input"));
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis weight_analysis,
+                        AnalyzeRowwiseView(weight, "LinearKernelEntry weight"));
 
     // Linear has no valid in-place form, not even when in_features equals
     // out_features: writing one output row can clobber input or weight elements
     // that later dot products have not read yet.
     AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
-            "CPU Linear", output_footprint, "output", input_footprint, "input"));
+            "CPU Linear", output_analysis.footprint(), "output", input_analysis.footprint(), "input"));
     AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
-            "CPU Linear", output_footprint, "output", weight_footprint, "weight"));
+            "CPU Linear", output_analysis.footprint(), "output", weight_analysis.footprint(), "weight"));
 
     ::new (params_buffer) LinearF32KernelArgs{
             .input = input.data<float>(),
             .weight = weight.data<float>(),
             .output = output.data<float>(),
-            .row_count = row_count.value(),
+            .row_count = input_analysis.row_count(),
             .in_features = in_features,
             .out_features = out_features,
-            .input_row_stride = input_row_stride,
-            .input_col_stride = input.stride(rank - 1),
-            .weight_row_stride = weight.stride(0),
-            .weight_col_stride = weight.stride(1),
-            .output_row_stride = output_row_stride,
-            .output_col_stride = output.stride(rank - 1),
+            .input_row_stride = input_analysis.row_stride(),
+            .input_col_stride = input_analysis.column_stride(),
+            .weight_row_stride = weight_analysis.row_stride(),
+            .weight_col_stride = weight_analysis.column_stride(),
+            .output_row_stride = output_analysis.row_stride(),
+            .output_col_stride = output_analysis.column_stride(),
     };
     return Status::Ok();
 }

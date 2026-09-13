@@ -64,12 +64,12 @@
 | RMSNorm | FP32 scalar | AVX2+FMA | 可用 |
 | Add | FP32/FP64/BF16/I32/I64 scalar | 无 | FP32 可用 |
 | ElementwiseMul | FP32 scalar | 无 | semantic Llama baseline 不直接依赖 |
-| Linear | 无 | 无 | 阻塞 |
-| RoPE | 无 | 无 | 阻塞 |
+| Linear | FP32 reference | 无 | 可用 |
+| RoPE | FP32 reference | 无 | 可用 |
 | KVCacheUpdate | 无 | 无 | 阻塞 |
 | Attention | 无 | 无 | 阻塞 |
 | SiluMul | 无 | 无 | 阻塞 |
-| Argmax | 无 | 无 | 阻塞 |
+| Argmax | FP32 reference | 无 | 可用 |
 | QkvLinear / GateUpLinear / AddRmsNorm | 无 | 无 | O2 fused path 阻塞 |
 
 当前 O2 默认 semantic pipeline 会产生 `QkvLinear`、`GateUpLinear` 和 `AddRmsNorm`，但 execution lowering 仍是一个 semantic node 对应一个 kernel step，且不存在 kernel-sequence fallback。因此 semantic compilation 成功不等于真实 CPU plan 可构建。

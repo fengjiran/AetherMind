@@ -73,6 +73,8 @@
 | 文档 | 定位 | 状态 |
 |---|---|---|
 | [01-inference-session-generate-readiness.md](improvement-plan/01-inference-session-generate-readiness.md) | InferenceSession/Generate 前置模块、实施顺序与 public API 准入门禁 | Draft |
+| [02-engineering-quality-system.md](improvement-plan/02-engineering-quality-system.md) | Capability-driven 的风险治理、验证 profile 与质量体系建设方案 | Draft |
+| [03-documentation-stabilization.md](improvement-plan/03-documentation-stabilization.md) | Batch -1 文档系统稳定化：D0–D5 迁移计划与 E1–E9 退出条件 | Draft |
 
 ### 开发指南（docs/guides/）
 
@@ -83,7 +85,7 @@
 | [cpp_coding_style_guidelines.md](guides/cpp_coding_style_guidelines.md) | C++ 编码风格 | Current |
 | [cpp_comment_guidelines.md](guides/cpp_comment_guidelines.md) | 注释与 Doxygen 规范 | Current |
 | [test_writing_guidelines.md](guides/test_writing_guidelines.md) | GoogleTest 测试编写规范 | Current |
-| [code_review_guide.md](guides/code_review_guide.md) | 代码审查方法（风险分级驱动） | Current |
+| [code_review_guide.md](guides/code_review_guide.md) | 代码审查方法（风险分级驱动） | **Deprecated**（待重写，见文档头部警示） |
 
 ### 架构决策记录（docs/decisions/）
 

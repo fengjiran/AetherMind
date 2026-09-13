@@ -1,6 +1,16 @@
 # 代码审查指南
 
-> AetherMind 项目系统化代码审查方法 - 风险分级驱动版
+> **状态：Deprecated**（2026-09-14）
+>
+> 本文档已废弃，不得作为审查门禁或执行规范引用。原因：
+> - 第 49 行 `make --build build` 语法错误（应为 `cmake --build build`）；
+> - 5 处 ammalloc 专项规则无对应代码（ammalloc 已移出仓库）；
+> - 审查时间硬阈值无依据支撑；
+> - 格式化命令与 [AGENTS.md §6](../../AGENTS.md) 不一致。
+>
+> 待重写。当前代码审查请以 [AGENTS.md](../../AGENTS.md) §7–§9 和 [02 号工程质量方案](../improvement-plan/02-engineering-quality-system.md) §5 验证门禁为准。
+
+> AetherMind 项目系统化代码审查方法 - 风险分级驱动版（历史内容，仅供参考）
 
 ---
 

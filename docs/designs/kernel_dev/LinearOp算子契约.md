@@ -1,10 +1,10 @@
 # LinearOp 算子契约
 
-版本：v0.1
-状态：Phase 1 契约草案
-适用范围：AetherMind Phase 1 CPU-first / Llama-family dense / FP32 Linear（无 bias）
-更新时间：2026-06-27
-前置文档：`LinearOp算子设计与实现方案_v1.0.md`、`Operator语义层接口实施步骤_v1.0.md` Section 18
+版本：v0.2
+状态：当前实现契约
+适用范围：AetherMind CPU-first / Llama-family dense / FP32 Linear（无 bias）
+更新时间：2026-09-15
+前置文档（已归档）：`docs/archive/kernel_dev/LinearOp算子设计与实现方案_v1.0.md`、`docs/archive/kernel_dev/Operator语义层接口实施步骤_v1.0.md` Section 18
 样板契约：`RMSNorm算子契约.md`
 
 ---
@@ -15,9 +15,9 @@ Linear 对输入张量 `X` 做线性变换 `Y = X @ W.T`，其中 `W` 为权重�
 
 记号约定：
 
-- `X` 形状 `[M, K]`（rank-2，Phase 1 仅支持 ≤2；rank-1 视作 `[1, K]`）
+- `X` 形状 `[..., K]`（rank ≥ 1；rank-1 视作 `[1, K]`，rank > 2 的可折叠 leading dims 在 kernel 内侧展平为 `M` 行）
 - `W` 形状 `[N, K]`（PyTorch/HF row-major 约定：`[out_features, in_features]`）
-- `Y` 形状 `[M, N]`
+- `Y` 形状 `[..., N]`（与 `X` 的 leading dims 一致）
 
 逐元素语义：
 
@@ -37,7 +37,7 @@ $$
 
 | 输入 | 语义 | Phase 1 约束 |
 |---|---|---|
-| `input` | 激活张量 `X` | `float32`，rank ∈ {1, 2}，shape `[M, K]` 或 `[K]`（视作 `M=1`） |
+| `input` | 激活张量 `X` | `float32`，rank ≥ 1，shape `[..., K]`（rank-1 视作 `M=1`；rank > 2 需可折叠 leading dims） |
 | `weight` | 权重张量 `W` | `float32`，rank-2，shape `[N, K]`（`[out_features, in_features]`） |
 
 ### 2.2 输出
@@ -63,11 +63,9 @@ $$
 
 ### 2.4 Layout / stride / alignment
 
-- Phase 1 只支持 contiguous row-major layout。
-- `input` stride 必须等价于 `[K, 1]`（rank-2）或 `[1]`（rank-1）。
-- `weight` stride 必须等价于 `[K, 1]`（即 `[N, K]` row-major）。
-- `output` stride 必须等价于 `[N, 1]`（rank-2）或 `[1]`（rank-1）。
-- 不支持 arbitrary stride、gather/scatter、blocked layout、transposed weight（如 `[K, N]`）、packed weight layout（`kPacked` 由 `WeightPrepackPlanner` 处理，见 8.2）。
+- 语义 layout 为 row-major：`input` 尾维为 `K`，`weight` 为 `[N, K]`，`output` 尾维为 `N`；kernel 不接受转置 weight。
+- 当前 reference 实现支持任意正 stride：`input`/`weight`/`output` 的每个维度 stride 必须为正；rank-1 输入的行 stride 视为 0（单行）；rank > 2 时 leading dims 必须可折叠（低维跨度等于下一维 extent × stride 的乘积），否则拒绝；列 stride 可含空隙（如 padded rows），不做连续化假设。
+- 不支持负 stride、gather/scatter、blocked layout、transposed weight（如 `[K, N]`）、packed weight layout（`kPacked` 由 `WeightPrepackPlanner` 处理，见 8.2）。
 - 不要求调用方提供 32B / 64B 对齐地址；CPU kernel 必须能处理 unaligned load/store。
 - 后续如果引入 aligned fast path，必须保留 unaligned fallback。
 
@@ -88,8 +86,12 @@ $$
 
 ### 2.6 空 tensor
 
-Phase 1 不支持空 tensor。`M <= 0`、`N <= 0` 或 `K <= 0` 必须返回 `InvalidArgument`。
-（实现说明：scalar reference kernel 的三重循环在 `M=0`/`N=0` 时自然不写入，但 `K=0` 会让输出全 0 而非报错；Phase 1 在 Operator 层 `CheckInputSpecs` 拒绝 `IsPositiveIfStatic` 为假的维度，避免依赖 kernel 的隐式行为。）
+常规路径要求 `M > 0`、`N > 0`、`K > 0`。kernel 层对零维给出显式行为（不依赖循环隐式跳过）：
+
+- `M == 0`（任一 leading dim 为 0）或 `N == 0`：成功 no-op，不访问任何指针，也不做输出行重叠/别名校验。
+- `K == 0`：成功，输出全部写 `+0.0F`，不读取 `input` / `weight`（同样豁免别名校验）。
+
+上述行为由 `BuildLinearF32ReferenceArgs` 的显式分支实现（见 6.2），对应测试见 `CPUKernelLinear.Zero*`。
 
 ---
 
@@ -99,7 +101,7 @@ Phase 1 不支持空 tensor。`M <= 0`、`N <= 0` 或 `K <= 0` 必须返回 `Inv
 |---|---|---:|---|---|
 | —（无） | — | — | — | Phase 1 `LinearParams` 为空结构体，无 tunable 参数 |
 
-Operator 层参数为 `LinearOp::Params`（`LinearParams` 别名），当前无字段。CPU kernel 不依赖 `ctx.attrs`（与 `EmbeddingOp` 一致，不覆写 attrs）。
+语义层参数为 `LinearParams`（空结构体，无字段）。CPU kernel 不注册 `metadata_builder`，也不读取 `ctx.attrs`（与 Embedding 一致）。
 
 后续可扩展方向（不在 Phase 1 范围内）：
 
@@ -172,13 +174,13 @@ Phase 1 correctness 以 double reference 为基准。Linear 的累加误差随 `
 ### 5.2 内存与 workspace
 
 - Steady-state zero allocation。
-- `ComputeWorkspaceRequirement()` 返回空 workspace（Phase 1 Scalar kernel 原地计算）。
+- Linear 不需要 workspace：execution 层为其规划的 workspace 需求为空（reference kernel 无临时 buffer）。
 - kernel 不得分配临时 heap buffer。
 - 主访问模式：
   - `input`：连续读取 `M` 行，每行 `K` 元素。
   - `weight`：连续读取 `N` 行，每行 `K` 元素；GEMV 场景下 `weight` 可能被多次扫描。
   - `output`：连续写入 `M` 行，每行 `N` 元素。
-- 后续如果引入 blocked/tiled kernel，需要 workspace 用于 tile buffer；届时覆写 `ComputeWorkspaceRequirement()` 并在文档中记录 tile 尺寸与 workspace 大小关系。
+- 后续如果引入 blocked/tiled kernel，需要 workspace 用于 tile buffer；届时由 execution 层规划并在文档中记录 tile 尺寸与 workspace 大小关系。
 - 默认不使用 non-temporal store，除非 profiling 证明收益且不会破坏后续 cache locality。
 
 ### 5.3 多线程
@@ -192,8 +194,8 @@ Phase 1 correctness 以 double reference 为基准。Linear 的累加误差随 `
 ### 5.4 ISA 与 fallback
 
 - CPU backend 必须提供可运行 fallback 路径；高级 ISA 路径不能成为唯一 correctness 路径。
-- Phase 1 第一版只注册 1 个 kernel：`kPlain + kBoth + kScalar`（reference naive triple-loop）。
-- 后续扩展优先级：
+- 当前只注册 1 个 kernel：`cpu::linear_f32_reference`，selector `{CPU, Float32, Float32, kPlain, kBoth}`（reference naive triple-loop，无 CPU 指令集要求/无 SIMD）。
+- 后续扩展优先级（本节能力类别简写；实际注册以 `KernelSelector` 字段 + `CpuFeatureSet` 表达）：
   1. `kScalar + kDecode`：GEMV 优化（复用 `DotProductF32Avx2Unroll` 风格的内积 kernel，但注册为 `kScalar` 不强制 AVX2）。
   2. `kAVX2 + kPrefill`：blocked GEMM。
   3. `kAVX512 + kPrefill` / `kAMX + kPrefill`：高级向量化路径。
@@ -204,42 +206,37 @@ Phase 1 correctness 以 double reference 为基准。Linear 的累加误差随 `
 
 ---
 
-## 6. Operator / Kernel 边界契约
+## 6. 语义层 / Kernel 层边界契约
 
-### 6.1 Operator 层职责
+### 6.1 语义层职责
 
-`LinearOp` 负责：
+operators 层的 `InferLinear` 负责：
 
-- 校验 `LinearParams`（Phase 1 为空，直接返回 Ok）。
-- 校验输入数量（必须为 2）、dtype（必须 float32）、input rank（≥ 1）、weight rank（必须为 2）。
-- 校验 `input.shape[-1] == weight.shape[1]`（`K` 一致）。
+- 校验输入数量（必须为 2）、dtype（在 Linear 支持的 activation/weight dtype 集合内）、input rank（≥ 1）、weight rank（必须为 2）。
+- 校验 `input.shape[-1] == weight.shape[-1]`（`K` 一致；静态不等立即拒绝，符号兼容时发出运行期 `DimEqualConstraint`）。
 - 推导输出 shape：`output.shape = input.shape[:-1] + [weight.shape[0]]`。
-- 声明空 workspace。
-- 根据 `OperatorContext.backend` 和 `KernelSelector` 解析 kernel。
-- **不**将任何 attrs 写入 `ResolvedKernel`（`LinearParams` 为空，与 `EmbeddingOp` 一致）。
-- Run 时构造 `CpuLinearParams` 并写入 `KernelContext.kernel_params`，调用 `resolved_kernel_.fn(ctx)`。
+- **不**产生 attrs（`LinearParams` 为空结构体，与 Embedding 一致）。
+
+kernel 解析与冻结由 `ExecutionPlanBuilder::PrepareKernelForNode` 按 `KernelSelector` + `KernelRegistry` 完成，不在算子/图层面解析。
 
 ### 6.2 Kernel 层职责
 
 执行期参数绑定：
 
 - `ExecutionPlanBuilder::Build` 解析并冻结 kernel，但不绑定 concrete TensorView。
-- 调用方以 `ExternalTensorBindings` 提供 model input、weight/constant 和 writable output；`PrepareExecutionBindings` 生成 per-value/per-step TensorViews，并在 cold path 调用 `params_builder`。
-- `ExecutionContext::Create` 按值持有 `PreparedExecutionBindings`；`LayerRunner::RunStep` 只读取已经准备的 params 写入 `KernelContext.kernel_params`，不再按 step 构造 `CpuLinearParams`。
-- 因此未来 Linear 的 params 必须由 `PreparedExecutionBindings` 的 arena 持有，且 external data pointer、shape、stride、dtype 或 alias 变化时必须重新 prepare。
+- 调用方提供 external bindings；`PrepareExecutionBindings` 生成 per-value/per-step TensorViews，并在 cold path 调用 `params_builder`（`BuildLinearF32ReferenceArgs`）完成全部 dtype/rank/shape/stride/alias/溢出校验并 placement-new `LinearF32KernelArgs`。
+- `ExecutionContext` 按值持有 `PreparedExecutionBindings`；执行热路径通过 `InvokePreparedKernel` 直接使用已准备的 params，不再按 step 构造或校验。
+- params 由 `PreparedExecutionBindings` 的 arena 持有（trivially destructible）；external data pointer、shape、stride、dtype 或 alias 变化时必须重新 prepare。
 
-`CpuLinearKernelEntry` 负责：
+`LinearF32ReferenceEntry` 负责：
 
-- 校验 `ctx.kernel_params` 非空。
-- 校验 `TensorView` / `MutableTensorView` 有效、dtype 正确、rank 正确、contiguous。
-- 校验 `M`、`N`、`K`、shape、data pointer 和 stride 满足 CPU kernel 的低层参数前置条件。
-- 构造 `LinearF32KernelArgs` 并调用 `CpuLinearKernel`。
+- `static_cast` 出 `LinearF32KernelArgs`（`AM_DCHECK` 非空）并调用 `RunLinearF32Reference`；不做热路径校验。
 
-`CpuLinearKernel` 是已验证参数上的 typed compute primitive：
+`RunLinearF32Reference` 是已验证参数上的 typed compute primitive：
 
-- 调用方必须保证 `LinearF32KernelArgs` 中的指针非空、维度为正、stride 为正，并且 backing storage 覆盖所有访问元素。
-- 执行数值计算并写入预分配 output。
-- 不拥有输入、权重、输出内存；不延长任何指针生命周期。
+- 调用方（bindings 构建期的 params builder）必须保证 args 中的指针非空、维度/stride 合法且 backing storage 覆盖所有访问元素。
+- 零 `row_count`/`out_features` 为 no-op；零 `in_features` 只写 0，不读取 input/weight。
+- 执行 double 累积并写回 float；不拥有输入、权重、输出内存；不延长任何指针生命周期。
 
 ---
 
@@ -275,9 +272,9 @@ Phase 1 correctness 以 double reference 为基准。Linear 的累加误差随 `
 
 ## 8. 当前开放问题
 
-1. **rank > 2 input 支持**：Phase 1 `ExtractArgs` 仅处理 rank ≤ 2；rank > 2（如 `[B, S, K]`）需要展平 leading dims 为 `M`。Llama 推理当前仅用 rank-2，是否在 Phase 1 扩展取决于 graph builder 的输出。
+1. **rank > 2 input 支持**（已解决）：reference 实现通过 `row_count` 展平可折叠 leading dims（rank-1 视为单行，rank > 2 需可折叠）；不可折叠布局在绑定期以 `Unimplemented` 拒绝。
 2. **`kPacked` selector 与 `WeightPrepackPlanner` 的衔接**：prepack planner 已为每个 Linear 权重创建 `kPacked` 请求；第一版只注册 `kPlain` kernel，`kPacked` 请求会被 prepacker 做 memcpy fallback。需确认 fallback 路径不引入静默性能回归。
 3. **bias 支持**：Llama 部分投影（如 QKV bias）有 bias；Phase 1 不实现。后续需要决定：扩展 schema 为 3 输入，还是通过 attrs 传递 bias 指针。
 4. **累加精度策略**：大 `K`（`K=11008`）下 FP32 累加误差可能超出阈值；需要决定是否在 optimized kernel 中使用 Kahan / pairwise summation，还是接受放宽阈值。
 5. **多线程阈值**：Prefill 阶段按 `M` 维切分的线程数阈值需要按目标硬件和 workload 通过 benchmark 固化，而不是写死为永久策略。
-6. **`test_cpu_resolve_kernel.cpp` 回归**：现有测试 `MissingKeyReturnsNullptr` 断言 `kLinear` 返回 nullptr；LinearOp 实现后必须更新该断言为 `EXPECT_NE`。
+6. **`test_cpu_resolve_kernel.cpp` 回归**（已解决）：`kLinear` 的 nullptr 断言已随实现更新，resolve 测试覆盖 `kLinear` 正常解析路径。

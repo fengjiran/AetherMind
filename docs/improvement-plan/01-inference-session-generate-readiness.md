@@ -1,8 +1,9 @@
 # InferenceSession / Generate 前置闭环计划
 
 - **状态**: Draft
-- **版本**: 1.0
+- **版本**: 1.1
 - **日期**: 2026-09-03
+- **最近更新**: 2026-09-15
 - **产品边界**: [AetherMind Phase 1 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **关联模块**: compiler / execution / runtime / backend / model / API orchestration
@@ -56,19 +57,20 @@
 
 ### 2.2 当前 CPU kernel 覆盖
 
-真实 CPU registry 当前只有：
+真实 CPU registry 当前只有（截至 2026-09-15，共 10 类、15 个描述符；reference 命名统一为 `cpu::<op>_f32_reference`）：
 
 | OpType | Reference kernel | Optimized kernel | Generate baseline 状态 |
 |---|---:|---:|---|
-| Embedding | FP32 scalar | 无 | 可用 |
-| RMSNorm | FP32 scalar | AVX2+FMA | 可用 |
-| Add | FP32/FP64/BF16/I32/I64 scalar | 无 | FP32 可用 |
-| ElementwiseMul | FP32 scalar | 无 | semantic Llama baseline 不直接依赖 |
+| Embedding | FP32 reference | 无 | 可用 |
+| RMSNorm | FP32 reference | AVX2+FMA | 可用 |
+| Add | FP32/FP64/BF16/I32/I64 reference | 无 | FP32 可用 |
+| ElementwiseMul | FP32 reference | 无 | semantic Llama baseline 不直接依赖 |
 | Linear | FP32 reference | 无 | 可用 |
 | RoPE | FP32 reference | 无 | 可用 |
 | KVCacheUpdate | 无 | 无 | 阻塞 |
 | Attention | 无 | 无 | 阻塞 |
-| SiluMul | 无 | 无 | 阻塞 |
+| Silu | FP32 reference | 无 | semantic Llama baseline 不直接依赖（SiluMul 未融合对偶） |
+| SiluMul | FP32 reference | 无 | 可用 |
 | Argmax | FP32 reference | 无 | 可用 |
 | QkvLinear / GateUpLinear / AddRmsNorm | 无 | 无 | O2 fused path 阻塞 |
 
@@ -341,14 +343,14 @@ state binding
 
 ### M3：最小 FP32 reference kernel 链
 
-建议顺序：
+建议顺序（截至 2026-09-15 已完成 4/6）：
 
-1. Linear；
-2. RoPE；
-3. KVCacheUpdate（与 M1 联合）；
-4. causal GQA Attention；
-5. SiluMul；
-6. Argmax。
+1. Linear；✅ 已完成（`cpu::linear_f32_reference`）
+2. RoPE；✅ 已完成（`cpu::rope_f32_reference`，含参数化 HF golden 对拍）
+3. KVCacheUpdate（与 M1 联合）；阻塞（无 reference kernel）
+4. causal GQA Attention；阻塞（无 reference kernel）
+5. SiluMul；✅ 已完成（`cpu::silu_mul_f32_reference`；kSilu 对偶 `cpu::silu_f32_reference` 同步落地）
+6. Argmax。✅ 已完成（`cpu::argmax_f32_reference`）
 
 Baseline 使用 O1/unfused graph。每个 kernel 必须走唯一生产路径：
 
@@ -475,7 +477,7 @@ Decode 循环中不得变化：
 - [ ] state binding identity 从 LoweredGraph 到达 kernel；
 - [ ] kernel 获得窄 KV binding，不依赖 Runtime/Session 宽对象；
 - [ ] baseline pipeline 可以通过真实 CpuBackend 构建完整 plan；
-- [ ] Linear/RoPE/KVCacheUpdate/Attention/SiluMul/Argmax reference kernel 可用；
+- [ ] Linear/RoPE/KVCacheUpdate/Attention/SiluMul/Argmax reference kernel 可用（进度 4/6：Linear、RoPE、SiluMul、Argmax 可用；KVCacheUpdate/Attention 待 §3.1 state binding 闭环）；
 - [ ] `PrepareExecutableModel` 可从真实 `LoweredModelArtifact` 构建；
 - [ ] real weights 可自动生成完整 external bindings；
 - [ ] Prefill/Decode phase-plan 合同已验证；
@@ -502,3 +504,4 @@ Decode 循环中不得变化：
 | 日期 | 版本 | 变更 |
 |---|---|---|
 | 2026-09-03 | 1.0 | 基于当前 Runtime/Execution 生命周期与真实 CPU kernel 覆盖建立前置闭环计划 |
+| 2026-09-15 | 1.1 | 同步 §2.2 kernel 覆盖表：SiluMul 升级为 FP32 reference/可用并新增 Silu 行，统一 reference 命名；M3 标注完成 4/6；门禁清单同步进度 |

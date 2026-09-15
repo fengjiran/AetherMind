@@ -25,7 +25,34 @@ StatusOr<SiluMulF32KernelArgs> ValidateAndBuildF32Args(
                 "SiluMulKernel requires float32 gate, up, and output TensorViews");
     }
 
-    return ValidateAndBuildElementwiseArgs<SiluMulF32KernelArgs>(context, "SiluMulKernel");
+    AM_ASSIGN_OR_RETURN(const ElementwiseBroadcastArgs prepared,
+                        ValidateAndBuildBroadcastArgs(context, "SiluMulKernel",
+                                                      "gate", "up"));
+    SiluMulF32KernelArgs args{};
+    args.gate_data = static_cast<const float*>(prepared.lhs_data);
+    args.up_data = static_cast<const float*>(prepared.rhs_data);
+    args.output_data = static_cast<float*>(prepared.output_data);
+    args.numel = prepared.numel;
+    args.is_flat = prepared.is_flat;
+    args.gate_rank = prepared.lhs_rank;
+    args.up_rank = prepared.rhs_rank;
+    args.output_rank = prepared.output_rank;
+    for (int32_t i = 0; i < prepared.lhs_rank; ++i) {
+        args.gate_shape[i] = prepared.lhs_shape[i];
+        args.gate_strides[i] = prepared.lhs_strides[i];
+    }
+
+    for (int32_t i = 0; i < prepared.rhs_rank; ++i) {
+        args.up_shape[i] = prepared.rhs_shape[i];
+        args.up_strides[i] = prepared.rhs_strides[i];
+    }
+
+    for (int32_t i = 0; i < prepared.output_rank; ++i) {
+        args.output_shape[i] = prepared.output_shape[i];
+        args.output_strides[i] = prepared.output_strides[i];
+    }
+
+    return args;
 }
 
 Status BuildSiluMulF32ReferenceArgs(const KernelParamsBuildContext& context,

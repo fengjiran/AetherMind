@@ -23,8 +23,32 @@ StatusOr<ElementwiseMulF32KernelArgs> ValidateAndBuildF32Args(
                 "ElementwiseMulKernel requires float32 lhs, rhs, and output TensorViews");
     }
 
-    return ValidateAndBuildElementwiseArgs<ElementwiseMulF32KernelArgs>(
-            context, "ElementwiseMulKernel");
+    AM_ASSIGN_OR_RETURN(const ElementwiseBroadcastArgs prepared,
+                        ValidateAndBuildBroadcastArgs(context, "ElementwiseMulKernel"));
+    ElementwiseMulF32KernelArgs args{};
+    args.lhs_data = static_cast<const float*>(prepared.lhs_data);
+    args.rhs_data = static_cast<const float*>(prepared.rhs_data);
+    args.output_data = static_cast<float*>(prepared.output_data);
+    args.numel = prepared.numel;
+    args.lhs_rank = prepared.lhs_rank;
+    args.rhs_rank = prepared.rhs_rank;
+    args.output_rank = prepared.output_rank;
+    for (int32_t i = 0; i < prepared.lhs_rank; ++i) {
+        args.lhs_shape[i] = prepared.lhs_shape[i];
+        args.lhs_strides[i] = prepared.lhs_strides[i];
+    }
+
+    for (int32_t i = 0; i < prepared.rhs_rank; ++i) {
+        args.rhs_shape[i] = prepared.rhs_shape[i];
+        args.rhs_strides[i] = prepared.rhs_strides[i];
+    }
+
+    for (int32_t i = 0; i < prepared.output_rank; ++i) {
+        args.output_shape[i] = prepared.output_shape[i];
+        args.output_strides[i] = prepared.output_strides[i];
+    }
+
+    return args;
 }
 
 Status BuildElementwiseMulF32ReferenceArgs(const KernelParamsBuildContext& context,

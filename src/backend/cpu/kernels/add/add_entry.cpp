@@ -28,9 +28,33 @@ StatusOr<AddKernelArgs> ValidateAndBuildArgs(const KernelParamsBuildContext& con
                 MakeAddUnsupportedDTypeMessage("AddKernel"));
     }
 
-    AM_ASSIGN_OR_RETURN(AddKernelArgs args,
-                        ValidateAndBuildElementwiseArgs<AddKernelArgs>(context, "AddKernel"));
+    AM_ASSIGN_OR_RETURN(const ElementwiseBroadcastArgs prepared,
+                        ValidateAndBuildBroadcastArgs(context, "AddKernel"));
+    AddKernelArgs args{};
+    args.lhs_data = prepared.lhs_data;
+    args.rhs_data = prepared.rhs_data;
+    args.output_data = prepared.output_data;
     args.dtype = dtype;
+    args.numel = prepared.numel;
+    args.is_flat = prepared.is_flat;
+    args.lhs_rank = prepared.lhs_rank;
+    args.rhs_rank = prepared.rhs_rank;
+    args.output_rank = prepared.output_rank;
+    for (int32_t i = 0; i < prepared.lhs_rank; ++i) {
+        args.lhs_shape[i] = prepared.lhs_shape[i];
+        args.lhs_strides[i] = prepared.lhs_strides[i];
+    }
+
+    for (int32_t i = 0; i < prepared.rhs_rank; ++i) {
+        args.rhs_shape[i] = prepared.rhs_shape[i];
+        args.rhs_strides[i] = prepared.rhs_strides[i];
+    }
+
+    for (int32_t i = 0; i < prepared.output_rank; ++i) {
+        args.output_shape[i] = prepared.output_shape[i];
+        args.output_strides[i] = prepared.output_strides[i];
+    }
+
     return args;
 }
 

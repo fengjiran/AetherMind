@@ -15,22 +15,21 @@ namespace aethermind::cpu::detail {
 ///
 /// The binding-time builder validates NumPy-style broadcasting, output
 /// injectivity, address arithmetic, and alias safety before this structure is
-/// executed without allocation or registry lookup.
+/// executed without allocation or registry lookup. Operands carry their
+/// semantic names: gate is activated, up is multiplied directly.
 struct SiluMulF32KernelArgs {
-    // The shared broadcast builder names its two generic operands lhs/rhs.
-    // SiluMul maps lhs to gate and rhs to up.
-    const float* lhs_data{};
-    const float* rhs_data{};
+    const float* gate_data{};
+    const float* up_data{};
     float* output_data{};
     int64_t numel{};
     bool is_flat{};
-    int32_t lhs_rank{};
-    int32_t rhs_rank{};
+    int32_t gate_rank{};
+    int32_t up_rank{};
     int32_t output_rank{};
-    std::array<int64_t, kMaxRank> lhs_shape{};
-    std::array<int64_t, kMaxRank> lhs_strides{};
-    std::array<int64_t, kMaxRank> rhs_shape{};
-    std::array<int64_t, kMaxRank> rhs_strides{};
+    std::array<int64_t, kMaxRank> gate_shape{};
+    std::array<int64_t, kMaxRank> gate_strides{};
+    std::array<int64_t, kMaxRank> up_shape{};
+    std::array<int64_t, kMaxRank> up_strides{};
     std::array<int64_t, kMaxRank> output_shape{};
     std::array<int64_t, kMaxRank> output_strides{};
 };

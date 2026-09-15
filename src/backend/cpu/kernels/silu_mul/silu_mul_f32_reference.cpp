@@ -14,20 +14,20 @@ Status RunSiluMulF32Reference(const SiluMulF32KernelArgs& args) noexcept {
 
     if (args.is_flat) {
         for (int64_t index = 0; index < args.numel; ++index) {
-            args.output_data[index] = ComputeSiluF32(args.lhs_data[index]) * args.rhs_data[index];
+            args.output_data[index] = ComputeSiluF32(args.gate_data[index]) * args.up_data[index];
         }
         return Status::Ok();
     }
 
     if (args.output_rank == 0) {
-        args.output_data[0] = ComputeSiluF32(args.lhs_data[0]) * args.rhs_data[0];
+        args.output_data[0] = ComputeSiluF32(args.gate_data[0]) * args.up_data[0];
         return Status::Ok();
     }
 
-    const std::span gate_shape(args.lhs_shape.data(), args.lhs_rank);
-    const std::span gate_strides(args.lhs_strides.data(), args.lhs_rank);
-    const std::span up_shape(args.rhs_shape.data(), args.rhs_rank);
-    const std::span up_strides(args.rhs_strides.data(), args.rhs_rank);
+    const std::span gate_shape(args.gate_shape.data(), args.gate_rank);
+    const std::span gate_strides(args.gate_strides.data(), args.gate_rank);
+    const std::span up_shape(args.up_shape.data(), args.up_rank);
+    const std::span up_strides(args.up_strides.data(), args.up_rank);
 
     std::array<int64_t, kMaxRank> coord{};
     for (int64_t flat_index = 0; flat_index < args.numel; ++flat_index) {
@@ -47,7 +47,7 @@ Status RunSiluMulF32Reference(const SiluMulF32KernelArgs& args) noexcept {
             output_offset += coord[axis] * args.output_strides[axis];
         }
         args.output_data[output_offset] =
-                ComputeSiluF32(args.lhs_data[gate_offset]) * args.rhs_data[up_offset];
+                ComputeSiluF32(args.gate_data[gate_offset]) * args.up_data[up_offset];
     }
     return Status::Ok();
 }

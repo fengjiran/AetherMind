@@ -133,26 +133,55 @@ inline StatusOr<int64_t> CheckedOutputNumel(int32_t rank,
     return count;
 }
 
-/// @brief Validates a 2-input broadcast kernel step and populates its
-/// compute-ready args.
+/// @brief Compute-ready, dtype-erased args produced by the shared 2-input
+///        broadcast validation core.
+///
+/// This is the canonical shape of a validated elementwise broadcast step:
+/// symmetric kernels (Add, ElementwiseMul) project these fields under their
+/// own names, and asymmetric kernels (e.g. SiluMul's gate/up) project them
+/// onto semantic operand names in their own args struct.
+struct ElementwiseBroadcastArgs {
+    const void* lhs_data{};
+    const void* rhs_data{};
+    void* output_data{};
+    int64_t numel{};
+    bool is_flat{};
+    int32_t lhs_rank{};
+    int32_t rhs_rank{};
+    int32_t output_rank{};
+    std::array<int64_t, kMaxRank> lhs_shape{};
+    std::array<int64_t, kMaxRank> lhs_strides{};
+    std::array<int64_t, kMaxRank> rhs_shape{};
+    std::array<int64_t, kMaxRank> rhs_strides{};
+    std::array<int64_t, kMaxRank> output_shape{};
+    std::array<int64_t, kMaxRank> output_strides{};
+};
+
+/// @brief Validates a 2-input broadcast kernel step and produces its
+///        compute-ready args.
 ///
 /// Shared builder core for elementwise broadcast kernels (Add,
-/// ElementwiseMul, ...). Validates view validity, matching output rank,
-/// broadcast compatibility, an overflow-safe element count, and non-null data
-/// pointers, then builds the address footprint of each view to require a
+/// ElementwiseMul, SiluMul, ...). Validates view validity, matching output
+/// rank, broadcast compatibility, an overflow-safe element count, and non-null
+/// data pointers, then builds the address footprint of each view to require a
 /// provably injective output mapping and to reject output/input overlap. Exact
 /// in-place against one input is the only accepted aliasing. Finally it fills
-/// the rank/shape/stride fields of the kernel args; kernels whose args carry an
-/// `is_flat` member additionally get the flat-path eligibility computed here.
+/// the returned canonical args, including flat-path eligibility.
 ///
 /// @param context Binding-time per-step views.
 /// @param kernel_name Caller name used as the error-message prefix.
+/// @param lhs_name Operand name used in errors and footprint labels for the
+///                 first input (default "lhs").
+/// @param rhs_name Operand name used in errors and footprint labels for the
+///                 second input (default "rhs").
 /// @return Compute-ready args on success, InvalidArgument on any violated
 ///         invariant or proven overlap, or Unimplemented when strided layouts
 ///         leave overlap undecidable.
-template<typename KernelArgs>
-StatusOr<KernelArgs> ValidateAndBuildElementwiseArgs(const KernelParamsBuildContext& context,
-                                                     std::string_view kernel_name) noexcept {
+inline StatusOr<ElementwiseBroadcastArgs> ValidateAndBuildBroadcastArgs(
+        const KernelParamsBuildContext& context,
+        std::string_view kernel_name,
+        std::string_view lhs_name = "lhs",
+        std::string_view rhs_name = "rhs") noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
@@ -166,12 +195,14 @@ StatusOr<KernelArgs> ValidateAndBuildElementwiseArgs(const KernelParamsBuildCont
 
     if (!lhs.is_valid()) {
         return Status::InvalidArgument(
-                std::string(kernel_name) + " requires a valid lhs TensorView");
+                std::string(kernel_name) + " requires a valid " + std::string(lhs_name) +
+                " TensorView");
     }
 
     if (!rhs.is_valid()) {
         return Status::InvalidArgument(
-                std::string(kernel_name) + " requires a valid rhs TensorView");
+                std::string(kernel_name) + " requires a valid " + std::string(rhs_name) +
+                " TensorView");
     }
 
     if (!output.is_valid()) {
@@ -205,17 +236,19 @@ StatusOr<KernelArgs> ValidateAndBuildElementwiseArgs(const KernelParamsBuildCont
 
     const int64_t numel = numel_or.value();
     if (numel == 0) {
-        return KernelArgs{};
+        return ElementwiseBroadcastArgs{};
     }
 
     if (lhs.data() == nullptr) {
         return Status::InvalidArgument(
-                std::string(kernel_name) + " requires non-null lhs data");
+                std::string(kernel_name) + " requires non-null " + std::string(lhs_name) +
+                " data");
     }
 
     if (rhs.data() == nullptr) {
         return Status::InvalidArgument(
-                std::string(kernel_name) + " requires non-null rhs data");
+                std::string(kernel_name) + " requires non-null " + std::string(rhs_name) +
+                " data");
     }
 
     if (output.data() == nullptr) {
@@ -223,10 +256,14 @@ StatusOr<KernelArgs> ValidateAndBuildElementwiseArgs(const KernelParamsBuildCont
                 std::string(kernel_name) + " requires non-null output data");
     }
 
-    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint lhs_footprint,
-                        BuildStridedAddressFootprint(lhs, std::string(kernel_name) + " lhs"));
-    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint rhs_footprint,
-                        BuildStridedAddressFootprint(rhs, std::string(kernel_name) + " rhs"));
+    AM_ASSIGN_OR_RETURN(
+            const StridedAddressFootprint lhs_footprint,
+            BuildStridedAddressFootprint(
+                    lhs, std::string(kernel_name) + " " + std::string(lhs_name)));
+    AM_ASSIGN_OR_RETURN(
+            const StridedAddressFootprint rhs_footprint,
+            BuildStridedAddressFootprint(
+                    rhs, std::string(kernel_name) + " " + std::string(rhs_name)));
     AM_ASSIGN_OR_RETURN(const StridedAddressFootprint output_footprint,
                         BuildStridedAddressFootprint(output, std::string(kernel_name) + " output"));
 
@@ -241,28 +278,22 @@ StatusOr<KernelArgs> ValidateAndBuildElementwiseArgs(const KernelParamsBuildCont
     // never qualifies here and stays subject to the overlap check.
     if (!HaveIdenticalViewMapping(lhs, output)) {
         AM_RETURN_IF_ERROR(ValidateStridedDisjoint(
-                kernel_name, output_footprint, "output", lhs_footprint, "lhs"));
+                kernel_name, output_footprint, "output", lhs_footprint, lhs_name));
     }
 
     if (!HaveIdenticalViewMapping(rhs, output)) {
         AM_RETURN_IF_ERROR(ValidateStridedDisjoint(
-                kernel_name, output_footprint, "output", rhs_footprint, "rhs"));
+                kernel_name, output_footprint, "output", rhs_footprint, rhs_name));
     }
 
-    KernelArgs args{};
-    args.lhs_data = static_cast<decltype(args.lhs_data)>(lhs.data());
-    args.rhs_data = static_cast<decltype(args.rhs_data)>(rhs.data());
-    args.output_data = static_cast<decltype(args.output_data)>(output.data());
+    ElementwiseBroadcastArgs args{};
+    args.lhs_data = lhs.data();
+    args.rhs_data = rhs.data();
+    args.output_data = output.data();
     args.numel = numel;
-
-    // Determine flat-path eligibility when the args model supports it.
-    if constexpr (requires { args.is_flat; }) {
-        args.is_flat = lhs.is_contiguous() && rhs.is_contiguous() &&
-                       output.is_contiguous() && lhs.shape() == output.shape() &&
-                       rhs.shape() == output.shape();
-    }
-
-    // Populate broadcast / strided path metadata.
+    args.is_flat = lhs.is_contiguous() && rhs.is_contiguous() &&
+                   output.is_contiguous() && lhs.shape() == output.shape() &&
+                   rhs.shape() == output.shape();
     args.lhs_rank = lhs.rank();
     args.rhs_rank = rhs.rank();
     args.output_rank = output_rank;

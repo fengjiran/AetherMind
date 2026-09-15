@@ -19,7 +19,7 @@ namespace aethermind::cpu::detail {
 /// @brief Pre-validated, type-erased arguments for Add micro-kernels.
 ///
 /// Produced by `ValidateAndBuildArgs` (the dtype-agnostic Add shell over the
-/// shared `ValidateAndBuildElementwiseArgs` template) from the binding-time
+/// shared `ValidateAndBuildBroadcastArgs` core) from the binding-time
 /// `KernelParamsBuildContext` and consumed by the reference implementation,
 /// separating validation from compute. `numel` is the broadcast output element
 /// count; a zero count means the entry returns before dispatch.

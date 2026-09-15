@@ -36,18 +36,20 @@ StatusOr<int64_t> ReadFrozenAxis(std::span<const std::byte> attrs) noexcept {
 ///
 /// @return The axis in `[0, input_rank)`, or InvalidArgument when it is out of
 ///         range or the negative shift overflows.
-StatusOr<int64_t> CanonicalizeAxis(int64_t axis, int32_t input_rank) noexcept {
+StatusOr<int64_t> CanonicalizeAxis(int64_t axis, int64_t input_rank) noexcept {
     int64_t canonical_axis = axis;
     if (canonical_axis < 0) {
         int64_t shifted_axis = 0;
-        if (CheckOverflowAdd(canonical_axis, static_cast<int64_t>(input_rank), &shifted_axis)) {
-            return Status::InvalidArgument("CPU ArgMax axis is out of range for the input rank");
+        if (CheckOverflowAdd(canonical_axis, input_rank, &shifted_axis)) {
+            return Status::InvalidArgument(
+                    "CPU ArgMax axis is out of range for the input rank");
         }
         canonical_axis = shifted_axis;
     }
 
-    if (canonical_axis < 0 || canonical_axis >= static_cast<int64_t>(input_rank)) {
-        return Status::InvalidArgument("CPU ArgMax axis is out of range for the input rank");
+    if (canonical_axis < 0 || canonical_axis >= input_rank) {
+        return Status::InvalidArgument(
+                "CPU ArgMax axis is out of range for the input rank");
     }
     return canonical_axis;
 }
@@ -69,7 +71,8 @@ StatusOr<ArgmaxF32KernelArgs> ValidateAndBuildArgmaxF32Args(
     }
 
     if (!output.is_valid()) {
-        return Status::InvalidArgument("CPU ArgMax requires a valid output MutableTensorView");
+        return Status::InvalidArgument(
+                "CPU ArgMax requires a valid output MutableTensorView");
     }
 
     if (input.dtype() != DataType::Float32()) {
@@ -97,8 +100,8 @@ StatusOr<ArgmaxF32KernelArgs> ValidateAndBuildArgmaxF32Args(
                 "CPU ArgMax requires output rank to be input rank - 1");
     }
 
-    ArgmaxF32KernelArgs built{};
-    built.output_rank = output_rank;
+    ArgmaxF32KernelArgs args{};
+    args.output_rank = output_rank;
 
     int32_t output_axis = 0;
     for (int32_t dim = 0; dim < input_rank; ++dim) {
@@ -112,9 +115,9 @@ StatusOr<ArgmaxF32KernelArgs> ValidateAndBuildArgmaxF32Args(
                     "reduction axis");
         }
 
-        built.output_shape[static_cast<size_t>(output_axis)] = input.dim(dim);
-        built.input_base_strides[static_cast<size_t>(output_axis)] = input.stride(dim);
-        built.output_strides[static_cast<size_t>(output_axis)] = output.stride(output_axis);
+        args.output_shape[static_cast<size_t>(output_axis)] = input.dim(dim);
+        args.input_base_strides[static_cast<size_t>(output_axis)] = input.stride(dim);
+        args.output_strides[static_cast<size_t>(output_axis)] = output.stride(output_axis);
         ++output_axis;
     }
 
@@ -123,12 +126,12 @@ StatusOr<ArgmaxF32KernelArgs> ValidateAndBuildArgmaxF32Args(
         return Status::InvalidArgument(
                 "CPU ArgMax requires a non-empty reduction axis");
     }
-    built.reduction_size = reduction_size;
-    built.reduction_stride = input.stride(static_cast<int32_t>(reduction_axis));
+    args.reduction_size = reduction_size;
+    args.reduction_stride = input.stride(static_cast<int32_t>(reduction_axis));
 
     int64_t output_numel = 1;
     for (int32_t dim = 0; dim < output_rank; ++dim) {
-        const int64_t extent = built.output_shape[static_cast<size_t>(dim)];
+        const int64_t extent = args.output_shape[static_cast<size_t>(dim)];
         if (extent == 0) {
             output_numel = 0;
             break;
@@ -140,13 +143,13 @@ StatusOr<ArgmaxF32KernelArgs> ValidateAndBuildArgmaxF32Args(
         }
         output_numel = next_numel;
     }
-    built.output_numel = output_numel;
+    args.output_numel = output_numel;
 
     if (output_numel == 0) {
         // Nothing to write: the geometry is carried for diagnostics only and the
         // micro-kernel dereferences neither pointer, so null data, zero strides,
         // and overlapping layouts are all acceptable here.
-        return built;
+        return args;
     }
 
     if (input.data() == nullptr || output.data() == nullptr) {
@@ -170,11 +173,12 @@ StatusOr<ArgmaxF32KernelArgs> ValidateAndBuildArgmaxF32Args(
     // ArgMax changes both dtype and rank, so no output view can be an exact
     // in-place alias of its input and the footprints are compared as byte ranges.
     AM_RETURN_IF_ERROR(ValidateStridedDisjoint(
-            "CPU ArgMax", output_footprint, "output", input_footprint, "input"));
+            "CPU ArgMax", output_footprint, "output",
+            input_footprint, "input"));
 
-    built.input = input.data<float>();
-    built.output = output.data<int64_t>();
-    return built;
+    args.input = input.data<float>();
+    args.output = output.data<int64_t>();
+    return args;
 }
 
 Status BuildArgmaxF32ReferenceArgs(const KernelParamsBuildContext& context,
@@ -185,8 +189,7 @@ Status BuildArgmaxF32ReferenceArgs(const KernelParamsBuildContext& context,
     return Status::Ok();
 }
 
-Status BuildArgmaxMetadata(const OpParams& params,
-                           std::vector<std::byte>& attrs) {
+Status BuildArgmaxMetadata(const OpParams& params, std::vector<std::byte>& attrs) {
     const auto* argmax_params = std::get_if<ArgmaxParams>(&params);
     if (argmax_params == nullptr) {
         return Status::InvalidArgument("ArgMax kernel requires ArgmaxParams");

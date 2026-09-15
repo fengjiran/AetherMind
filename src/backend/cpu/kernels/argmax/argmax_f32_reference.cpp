@@ -8,24 +8,27 @@ namespace {
 /// Selects the winning reduction index of one slice.
 ///
 /// Only a strictly greater candidate replaces the current best, so equal maxima
-/// keep the lowest index. A NaN candidate replaces a non-NaN best, and once the
-/// best is NaN nothing replaces it: the first NaN of the slice therefore wins,
-/// which is deterministic and independent of unordered NaN comparisons.
+/// keep the lowest index. The first NaN of the slice wins outright: a NaN best
+/// is never replaced, so the scan stops there and returns its index — a
+/// deterministic result that does not depend on unordered NaN comparisons.
 int64_t ArgmaxF32Slice(const float* slice,
                        int64_t reduction_size,
                        int64_t reduction_stride) noexcept {
+    if (std::isnan(slice[0])) {
+        return 0;
+    }
+
     int64_t best_index = 0;
     float best = slice[0];
-    for (int64_t r = 1; r < reduction_size; ++r) {
-        const float candidate = slice[r * reduction_stride];
+    for (int64_t i = 1; i < reduction_size; ++i) {
+        const float candidate = slice[i * reduction_stride];
         if (std::isnan(candidate)) {
-            if (!std::isnan(best)) {
-                best = candidate;
-                best_index = r;
-            }
-        } else if (!std::isnan(best) && candidate > best) {
+            return i;
+        }
+
+        if (candidate > best) {
             best = candidate;
-            best_index = r;
+            best_index = i;
         }
     }
     return best_index;

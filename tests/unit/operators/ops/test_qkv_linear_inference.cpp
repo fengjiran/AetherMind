@@ -4,6 +4,8 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
+
 namespace {
 using namespace aethermind;
 
@@ -94,6 +96,19 @@ TEST(QkvLinearInference, RejectsNegativeOutFeatures) {
                                   .status();
 
     EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+}
+
+TEST(QkvLinearInference, RejectsOverflowingCombinedOutFeatures) {
+    const TensorSpec inputs[2] = {
+            MakeSpec(DataType::Float32(), {1, 1}),
+            MakeSpec(DataType::Float32(), {1, 1}),
+    };
+    const Status status = InferOperator(
+                                  OpType::kQkvLinear,
+                                  MakeParams(std::numeric_limits<int64_t>::max(), 1, 0), inputs)
+                                  .status();
+
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 

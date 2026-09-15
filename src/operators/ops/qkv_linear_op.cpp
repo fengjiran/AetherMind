@@ -1,6 +1,7 @@
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/ops/linear_op.h"
 #include "aethermind/shape_inference/shape_constraint.h"
+#include "utils/overflow_check.h"
 
 namespace aethermind {
 
@@ -56,9 +57,17 @@ StatusOr<InferenceResult> InferQkvLinear(const OpParams& params,
     // Params are compile-time constants, but the shape-constraint vocabulary
     // only compares tensor dimensions, so a symbolic packed row count is
     // deferred to runtime validation instead of emitting a deferred check.
+    int64_t qk_out_features = 0;
+    int64_t expected_rows = 0;
+    if (CheckOverflowAdd(qkv_params.q_out_features, qkv_params.k_out_features,
+                         &qk_out_features) ||
+        CheckOverflowAdd(qk_out_features, qkv_params.v_out_features,
+                         &expected_rows)) {
+        return Status::InvalidArgument(
+                "QkvLinear q/k/v out_features overflow int64");
+    }
+
     const ShapeSymbol& packed_rows = weight_shape[0];
-    const int64_t expected_rows = qkv_params.q_out_features + qkv_params.k_out_features +
-                                  qkv_params.v_out_features;
     if (packed_rows.IsStatic() && packed_rows.GetStaticValue() != expected_rows) {
         return Status::InvalidArgument(
                 "QkvLinear qkv_weight rows must equal q_out + k_out + v_out features");

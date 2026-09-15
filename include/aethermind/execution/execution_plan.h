@@ -78,6 +78,10 @@ struct ExecutionStep {
     std::vector<uint32_t> kernel_input_ports{};
     /// Maps compact kernel-output indices to semantic output-port indices.
     std::vector<uint32_t> kernel_output_ports{};
+    /// Deferred checks use inference-input indices (all schema ports that
+    /// contribute tensor specs) so a packed semantic weight can participate
+    /// without becoming a kernel TensorView. Output indices are compacted to
+    /// `kernel_output_ports` because state outputs have no TensorView.
     std::vector<ShapeConstraint> runtime_checks{};
 };
 

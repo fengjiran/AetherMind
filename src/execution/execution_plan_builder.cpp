@@ -57,11 +57,14 @@ Status ValidateCallerWorkspaceRequirement(const WorkspaceRequirement& caller,
     return Status::Ok();
 }
 
-std::vector<uint32_t> MakeKernelInputPorts(const OperatorSchema& schema) {
+std::vector<uint32_t> MakeKernelInputPorts(const OperatorSchema& schema,
+                                           const KernelSelector& selector) {
     std::vector<uint32_t> ports;
     ports.reserve(schema.input_ports.size());
     for (size_t i = 0; i < schema.input_ports.size(); ++i) {
-        if (schema.input_ports[i].kind != OperatorPortKind::kState) {
+        if (schema.input_ports[i].kind != OperatorPortKind::kState &&
+            (selector.weight_format != WeightFormat::kPacked ||
+             schema.input_ports[i].kind != OperatorPortKind::kWeight)) {
             ports.push_back(static_cast<uint32_t>(i));
         }
     }
@@ -115,35 +118,24 @@ bool ShapeMatchesSpec(const TensorSpec& spec,
 StatusOr<std::vector<ShapeConstraint>> RemapRuntimeChecks(
         const std::vector<ShapeConstraint>& checks,
         std::span<const uint32_t> inference_input_ports,
-        std::span<const uint32_t> kernel_input_ports,
         std::span<const uint32_t> semantic_output_ports,
         size_t semantic_output_count) {
-    std::vector<size_t> input_to_kernel(inference_input_ports.size(), SIZE_MAX);
-    for (size_t i = 0; i < inference_input_ports.size(); ++i) {
-        const uint32_t semantic_port = inference_input_ports[i];
-        for (size_t j = 0; j < kernel_input_ports.size(); ++j) {
-            if (kernel_input_ports[j] == semantic_port) {
-                input_to_kernel[i] = j;
-                break;
-            }
-        }
-    }
-
+    // Input references retain inference-port order: a packed semantic weight
+    // has logical shape premises but deliberately is not a kernel TensorView.
+    // Outputs still map through their compact TensorView projection because
+    // state outputs have no tensor binding.
     std::vector<size_t> output_to_kernel(semantic_output_count, SIZE_MAX);
     for (size_t i = 0; i < semantic_output_ports.size(); ++i) {
         const uint32_t semantic_port = semantic_output_ports[i];
         output_to_kernel[semantic_port] = i;
     }
 
-    auto remap_port = [&input_to_kernel, &output_to_kernel](TensorPort& port) -> Status {
+    auto remap_port = [&inference_input_ports, &output_to_kernel](TensorPort& port) -> Status {
         if (port.direction == TensorPortType::kInput) {
-            if (port.tensor_idx >= input_to_kernel.size() ||
-                input_to_kernel[port.tensor_idx] == SIZE_MAX) {
+            if (port.tensor_idx >= inference_input_ports.size()) {
                 return Status::Internal(
-                        "Runtime check references a non-kernel inference input port");
+                        "Runtime check references an invalid inference input port");
             }
-
-            port.tensor_idx = input_to_kernel[port.tensor_idx];
             return Status::Ok();
         }
 
@@ -274,7 +266,7 @@ StatusOr<PreparedNode> PrepareNode(OpType op_type,
     }
 
     const auto inference_input_ports = MakeInferenceInputPorts(*schema);
-    const auto kernel_inputs = MakeKernelInputPorts(*schema);
+    const auto kernel_inputs = MakeKernelInputPorts(*schema, selector);
     const auto kernel_outputs = MakeKernelOutputPorts(*schema);
     auto inference_inputs = MakeCompactInputSpecs(*schema, semantic_inputs);
     if (!inference_inputs.ok()) {
@@ -322,7 +314,7 @@ StatusOr<PreparedNode> PrepareNode(OpType op_type,
 
     auto remapped_checks =
             RemapRuntimeChecks(runtime_checks, inference_input_ports,
-                               kernel_inputs, kernel_outputs,
+                               kernel_outputs,
                                semantic_outputs.size());
     if (!remapped_checks.ok()) {
         return untrusted

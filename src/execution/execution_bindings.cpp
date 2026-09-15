@@ -1,13 +1,17 @@
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/memory/allocator.h"
+#include "aethermind/operators/operator_schema.h"
 #include "aethermind/runtime/workspace.h"
 #include "aethermind/shape_inference/shape_constraint_evaluator.h"
 #include "utils/overflow_check.h"
 
 #include <cstddef>
 #include <limits>
+#include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
@@ -143,6 +147,122 @@ StatusOr<size_t> ComputeByteSize(const ConcreteTensorMetadata& metadata,
     return bytes;
 }
 
+StatusOr<std::vector<int64_t>> MakeContiguousStrides(
+        std::span<const int64_t> shape,
+        std::string_view context) {
+    std::vector<int64_t> strides(shape.size(), 1);
+    for (size_t i = shape.size(); i > 1; --i) {
+        if (shape[i - 1] < 0) {
+            return Status::InvalidArgument(std::string(context) +
+                                           " has a negative logical dimension");
+        }
+        int64_t next_stride = 0;
+        if (CheckOverflowMul(strides[i - 1], shape[i - 1], &next_stride)) {
+            return Status::Overflow(std::string(context) +
+                                    " logical stride computation overflowed int64_t");
+        }
+        strides[i - 2] = next_stride;
+    }
+    if (!shape.empty() && shape[0] < 0) {
+        return Status::InvalidArgument(std::string(context) +
+                                       " has a negative logical dimension");
+    }
+    return strides;
+}
+
+StatusOr<uint32_t> FindPackedWeightPort(const ExecutionStep& step) {
+    const auto schema = GetOperatorSchema(step.kernel.op_type);
+    if (!schema.ok()) {
+        return schema.status();
+    }
+
+    std::optional<uint32_t> weight_port;
+    for (size_t port = 0; port < schema->input_ports.size(); ++port) {
+        if (schema->input_ports[port].kind != OperatorPortKind::kWeight) {
+            continue;
+        }
+        if (weight_port.has_value()) {
+            return Status::InvalidArgument(
+                    "Packed execution step has more than one kWeight input");
+        }
+        weight_port = static_cast<uint32_t>(port);
+    }
+
+    if (!weight_port.has_value() || step.packed_weights == nullptr) {
+        return Status::InvalidArgument(
+                "Packed execution step has no packed weight artifact");
+    }
+    return *weight_port;
+}
+
+StatusOr<PackedWeightBuildView> MakePackedWeightBuildView(
+        const ExecutionStep& step) {
+    if (step.packed_weights == nullptr ||
+        step.packed_weights->storage().data() == nullptr) {
+        return Status::InvalidArgument(
+                "Packed execution step has an invalid packed weight artifact");
+    }
+
+    const PackedWeights& packed = *step.packed_weights;
+    return PackedWeightBuildView{
+            .data = packed.storage().data(),
+            .nbytes = packed.storage().nbytes(),
+            .logical_dtype = packed.logical_dtype(),
+            .logical_shape = packed.logical_shape(),
+            .recipe_layout = packed.recipe().layout,
+            .recipe_alignment = packed.recipe().alignment,
+            .alignment = packed.storage().alignment(),
+    };
+}
+
+Status ValidatePackedWeightLogicalBindings(
+        const ExecutionPlan& plan,
+        SymbolValueMap& symbol_values) {
+    for (const ExecutionStep& step: plan.steps()) {
+        if (step.selector.weight_format != WeightFormat::kPacked) {
+            continue;
+        }
+
+        AM_ASSIGN_OR_RETURN(const uint32_t weight_port, FindPackedWeightPort(step));
+        AM_ASSIGN_OR_RETURN(const PackedWeightBuildView packed,
+                            MakePackedWeightBuildView(step));
+        const ExecutionValueId value = step.inputs[weight_port];
+        AM_RETURN_IF_ERROR(ValidateConcreteShapeAgainstSpec(
+                plan.values()[value.index].spec, packed.logical_dtype,
+                IntArrayView(packed.logical_shape), "packed weight", weight_port,
+                symbol_values));
+    }
+    return Status::Ok();
+}
+
+StatusOr<std::vector<bool>> ComputeExternalReadRequirements(
+        const ExecutionPlan& plan) {
+    std::vector<bool> required(plan.values().size(), false);
+    for (size_t i = 0; i < plan.values().size(); ++i) {
+        const ExecutionValueKind kind = plan.values()[i].kind;
+        required[i] = kind == ExecutionValueKind::kModelInput ||
+                      kind == ExecutionValueKind::kConstant;
+    }
+
+    for (const ExecutionStep& step: plan.steps()) {
+        for (const uint32_t port: step.kernel_input_ports) {
+            if (port >= step.inputs.size()) {
+                return Status::InvalidArgument(
+                        "Execution step kernel input port exceeds semantic inputs");
+            }
+            const ExecutionValueId value = step.inputs[port];
+            if (value.index >= required.size()) {
+                return Status::InvalidArgument(
+                        "Execution step kernel input references an invalid value");
+            }
+            if (plan.values()[value.index].kind == ExecutionValueKind::kWeight) {
+                required[value.index] = true;
+            }
+        }
+    }
+    return required;
+}
+
 } // namespace
 
 class PreparedExecutionBindingsStorage {
@@ -274,6 +394,10 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(const ExecutionPlan
         writable[value.index] = &tensor;
     }
 
+    AM_RETURN_IF_ERROR(ValidatePackedWeightLogicalBindings(plan, symbol_values));
+    AM_ASSIGN_OR_RETURN(const std::vector<bool> requires_external_read,
+                        ComputeExternalReadRequirements(plan));
+
     std::vector<size_t> act_offsets(plan.values().size(), kUnassignedOffset);
     size_t act_bytes = 0;
     for (size_t i = 0; i < plan.values().size(); ++i) {
@@ -281,11 +405,15 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(const ExecutionPlan
         BoundValue& bound = storage->values[i];
         switch (value.kind) {
             case ExecutionValueKind::kModelInput:
-            case ExecutionValueKind::kWeight:
             case ExecutionValueKind::kConstant:
-                if (readable[i] == nullptr) {
+            case ExecutionValueKind::kWeight:
+                if (readable[i] == nullptr && requires_external_read[i]) {
                     return Status::FailedPrecondition("ExecutionPlan value requires "
                                                       "an external read-only binding");
+                }
+
+                if (readable[i] == nullptr) {
+                    break;
                 }
 
                 SnapshotMetadata(storage->metadata[i], readable[i]->shape(),
@@ -434,15 +562,59 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(const ExecutionPlan
 
         AM_RETURN_IF_ERROR(ValidateTensorBindingPremises(
                 input_specs, output_specs, binding.inputs, binding.outputs));
+
+        const auto schema = GetOperatorSchema(step.kernel.op_type);
+        if (!schema.ok()) {
+            return schema.status();
+        }
+        std::vector<TensorView> runtime_check_inputs;
+        std::vector<std::vector<int64_t>> packed_constraint_strides;
+        runtime_check_inputs.reserve(schema->input_ports.size());
+        packed_constraint_strides.reserve(schema->input_ports.size());
+        for (size_t port = 0; port < schema->input_ports.size(); ++port) {
+            if (!schema->input_ports[port].contributes_tensor_spec) {
+                continue;
+            }
+
+            const ExecutionValueId value_id = step.inputs[port];
+            if (step.selector.weight_format == WeightFormat::kPacked &&
+                schema->input_ports[port].kind == OperatorPortKind::kWeight) {
+                AM_ASSIGN_OR_RETURN(const PackedWeightBuildView packed,
+                                    MakePackedWeightBuildView(step));
+                AM_ASSIGN_OR_RETURN(auto strides,
+                                    MakeContiguousStrides(packed.logical_shape,
+                                                          "packed weight logical shape"));
+                packed_constraint_strides.push_back(std::move(strides));
+                // The constraint evaluator reads only dtype and shape. This
+                // proxy must never become a kernel operand: opaque packed
+                // layouts do not promise row-major logical addressing.
+                runtime_check_inputs.emplace_back(
+                        packed.data, packed.logical_dtype, packed.logical_shape,
+                        packed_constraint_strides.back(), packed.alignment);
+                continue;
+            }
+
+            const TensorView& input = storage->values[value_id.index].readable;
+            if (!input.is_valid()) {
+                return Status::FailedPrecondition(
+                        "ExecutionPlan runtime check input has no canonical TensorView binding");
+            }
+            runtime_check_inputs.push_back(input);
+        }
         AM_RETURN_IF_ERROR(ValidateShapeConstraints(
-                step.runtime_checks, binding.inputs, binding.outputs));
+                step.runtime_checks, runtime_check_inputs, binding.outputs));
         if (step.kernel.params_builder != nullptr) {
             void* params_buffer = MutableKernelParamsPointer(*storage, step_index);
+            std::optional<PackedWeightBuildView> packed_weight;
+            if (step.selector.weight_format == WeightFormat::kPacked) {
+                AM_ASSIGN_OR_RETURN(packed_weight, MakePackedWeightBuildView(step));
+            }
             AM_RETURN_IF_ERROR(step.kernel.params_builder(
                     KernelParamsBuildContext{
                             .inputs = binding.inputs,
                             .outputs = binding.outputs,
                             .attrs = step.kernel.attrs,
+                            .packed_weight = packed_weight,
                     },
                     params_buffer));
         }

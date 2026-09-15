@@ -139,15 +139,30 @@ Status ValidateValueId(const std::vector<ExecutionValueDesc>& values,
 }
 
 template<typename Port>
-std::vector<uint32_t> ExpectedKernelPorts(std::span<const Port> ports) {
+std::vector<uint32_t> ExpectedKernelPorts(std::span<const Port> ports,
+                                          WeightFormat weight_format) {
     std::vector<uint32_t> indices;
     indices.reserve(ports.size());
     for (size_t i = 0; i < ports.size(); ++i) {
         if constexpr (std::is_same_v<Port, OperatorInputPort>) {
-            if (ports[i].kind != OperatorPortKind::kState) {
+            if (ports[i].kind != OperatorPortKind::kState &&
+                (weight_format != WeightFormat::kPacked ||
+                 ports[i].kind != OperatorPortKind::kWeight)) {
                 indices.push_back(static_cast<uint32_t>(i));
             }
         } else if (ports[i].kind != OperatorPortKind::kState) {
+            indices.push_back(static_cast<uint32_t>(i));
+        }
+    }
+    return indices;
+}
+
+std::vector<uint32_t> ExpectedInferenceInputPorts(
+        std::span<const OperatorInputPort> ports) {
+    std::vector<uint32_t> indices;
+    indices.reserve(ports.size());
+    for (size_t i = 0; i < ports.size(); ++i) {
+        if (ports[i].contributes_tensor_spec) {
             indices.push_back(static_cast<uint32_t>(i));
         }
     }
@@ -318,10 +333,32 @@ Status ExecutionPlan::AddStep(ExecutionStep step) {
                 "Execution step semantic operand arity differs from its operator schema");
     }
 
-    const auto expected_input_ports =
-            ExpectedKernelPorts<OperatorInputPort>(schema->input_ports);
+    if (step.selector.weight_format == WeightFormat::kPacked) {
+        const size_t packed_weight_ports = static_cast<size_t>(std::count_if(
+                schema->input_ports.begin(), schema->input_ports.end(),
+                [](const OperatorInputPort& port) {
+                    return port.kind == OperatorPortKind::kWeight;
+                }));
+        if (packed_weight_ports != 1U || step.packed_weights == nullptr) {
+            return Status::InvalidArgument(
+                    "Packed execution step requires exactly one packed weight artifact");
+        }
+        if (step.packed_weights->op_type() != step.kernel.op_type ||
+            step.packed_weights->selector() != step.selector ||
+            step.packed_weights->recipe() != step.kernel.expected_packing_recipe) {
+            return Status::InvalidArgument(
+                    "Packed execution step artifact does not match the prepared kernel");
+        }
+    } else if (step.packed_weights != nullptr) {
+        return Status::InvalidArgument(
+                "Plain execution step cannot retain a packed weight artifact");
+    }
+
+    const auto expected_input_ports = ExpectedKernelPorts<OperatorInputPort>(
+            schema->input_ports, step.selector.weight_format);
     const auto expected_output_ports =
-            ExpectedKernelPorts<OperatorOutputPort>(schema->output_ports);
+            ExpectedKernelPorts<OperatorOutputPort>(schema->output_ports,
+                                                    step.selector.weight_format);
     if (step.kernel_input_ports != expected_input_ports ||
         step.kernel_output_ports != expected_output_ports) {
         return Status::InvalidArgument(
@@ -346,10 +383,11 @@ Status ExecutionPlan::AddStep(ExecutionStep step) {
         }
     }
 
-    std::vector<TensorSpec> compact_input_specs;
-    compact_input_specs.reserve(step.kernel_input_ports.size());
-    for (uint32_t port: step.kernel_input_ports) {
-        compact_input_specs.push_back(values_[step.inputs[port].index].spec);
+    const auto inference_input_ports = ExpectedInferenceInputPorts(schema->input_ports);
+    std::vector<TensorSpec> inference_input_specs;
+    inference_input_specs.reserve(inference_input_ports.size());
+    for (uint32_t port: inference_input_ports) {
+        inference_input_specs.push_back(values_[step.inputs[port].index].spec);
     }
     std::vector<TensorSpec> compact_output_specs;
     compact_output_specs.reserve(step.kernel_output_ports.size());
@@ -359,7 +397,7 @@ Status ExecutionPlan::AddStep(ExecutionStep step) {
 
     for (const auto& check: step.runtime_checks) {
         AM_RETURN_IF_ERROR(ValidateRuntimeCheckReferences(
-                check, compact_input_specs, compact_output_specs));
+                check, inference_input_specs, compact_output_specs));
     }
 
     steps_.push_back(std::move(step));

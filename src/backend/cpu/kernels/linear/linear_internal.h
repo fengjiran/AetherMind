@@ -33,7 +33,7 @@ struct LinearF32KernelArgs {
 /// `args` must have been produced by the binding-time params builder. A zero
 /// `row_count` or `out_features` is a no-op. With zero `in_features`, the
 /// kernel writes zero to every output element without reading input or weight.
-AM_NODISCARD Status RunLinearF32Reference(const LinearF32KernelArgs& args) noexcept;
+Status RunLinearF32Reference(const LinearF32KernelArgs& args) noexcept;
 
 } // namespace aethermind::cpu::detail
 

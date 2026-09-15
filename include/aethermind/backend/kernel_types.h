@@ -15,12 +15,31 @@
 #include "aethermind/operators/op_params.h"
 
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace aethermind {
 
 struct KernelContext;
+
+/// @brief Binding-time description of one opaque packed-weight artifact.
+///
+/// The payload is intentionally not exposed as a TensorView: its physical
+/// layout need not match the logical row-major shape. Kernels that consume a
+/// packed artifact must interpret `data` according to `recipe`, while
+/// `logical_dtype` and `logical_shape` are available for validation only.
+struct PackedWeightBuildView {
+    const void* data = nullptr;
+    size_t nbytes = 0;
+    DataType logical_dtype{};
+    std::span<const int64_t> logical_shape{};
+    std::string_view recipe_layout{};
+    size_t recipe_alignment = 0;
+    size_t alignment = 0;
+};
 
 /// @brief Type-erased kernel entry point.
 ///
@@ -36,11 +55,14 @@ using KernelFunc = Status (*)(const KernelContext&) noexcept;
 /// `inputs` and `outputs` are the per-step TensorViews cached in the caller's
 /// `PreparedExecutionBindings`; their data pointers, shape, stride, and dtype are immutable
 /// for the bindings' lifetime. `attrs` is the frozen per-kernel metadata owned by
-/// the `ResolvedKernel`.
+/// the `ResolvedKernel`. Packed-weight kernels receive their opaque artifact
+/// through `packed_weight`; its semantic kWeight port is intentionally absent
+/// from `inputs`.
 struct KernelParamsBuildContext {
     std::span<const TensorView> inputs{};
     std::span<const MutableTensorView> outputs{};
     std::span<const std::byte> attrs{};
+    std::optional<PackedWeightBuildView> packed_weight{};
 };
 
 /// @brief Cold-path binding specializer constructing a kernel-specific params

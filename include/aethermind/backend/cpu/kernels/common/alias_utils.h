@@ -305,6 +305,19 @@ Status ValidateRowwiseDisjoint(std::string_view kernel_name,
                                const RowwiseAddressFootprint& input,
                                std::string_view input_role) noexcept;
 
+/// @brief Requires a row-wise mutable output to be disjoint from contiguous storage.
+///
+/// The contiguous range is modeled as one dense row before applying the same
+/// classification as ValidateRowwiseDisjoint. This preserves the distinction
+/// between a proven overlap and an overlap that only a strided output's holes
+/// make undecidable.
+Status ValidateRowwiseDisjointFromContiguous(
+        std::string_view kernel_name,
+        const RowwiseAddressFootprint& output,
+        std::string_view output_role,
+        const ByteAddressRange& input,
+        std::string_view input_role) noexcept;
+
 /// @brief Address geometry and proven layout properties of a strided view.
 ///
 /// `envelope` spans from the base address past the last logical element and can

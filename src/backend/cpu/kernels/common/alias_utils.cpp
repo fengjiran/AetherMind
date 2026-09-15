@@ -514,6 +514,28 @@ Status ValidateRowwiseDisjoint(std::string_view kernel_name,
                             " row-wise overlap classification is invalid");
 }
 
+Status ValidateRowwiseDisjointFromContiguous(std::string_view kernel_name,
+                                             const RowwiseAddressFootprint& output,
+                                             std::string_view output_role,
+                                             const ByteAddressRange& input,
+                                             std::string_view input_role) noexcept {
+    if (input.begin > input.end ||
+        input.end - input.begin >
+                static_cast<std::uintptr_t>(std::numeric_limits<int64_t>::max())) {
+        return Status::Overflow(std::string(kernel_name) +
+                                " contiguous input range is not representable");
+    }
+
+    const auto input_bytes = static_cast<int64_t>(input.end - input.begin);
+    AM_ASSIGN_OR_RETURN(
+            const RowwiseAddressFootprint input_footprint,
+            BuildRowwiseAddressFootprintImpl(
+                    reinterpret_cast<const void*>(input.begin), 1, input_bytes,
+                    input_bytes, 1, 1, input_role));
+    return ValidateRowwiseDisjoint(kernel_name, output, output_role,
+                                   input_footprint, input_role);
+}
+
 StatusOr<StridedAddressFootprint> BuildStridedAddressFootprint(
         const void* data,
         std::span<const int64_t> shape,

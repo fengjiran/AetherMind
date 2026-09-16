@@ -4,10 +4,10 @@
 
 ## 1. 项目简介
 - 项目名称：AetherMind
-- 项目目标：分阶段构建大模型推理引擎
-  - Phase 1（当前）：桌面/服务器 CPU 本地推理运行时，支持 Llama 家族模型，C/C++ API
-  - Phase 2+：服务化/分布式推理引擎（见 docs/products/aethermind_prd.md 附录）
-  - 阶段边界：当前工作以 Phase 1 为界；除非用户明确要求，不要预先实现 Phase 2+ 的服务化/分布式能力。
+- 项目目标：构建可独立交付的桌面/服务器 CPU 本地大模型推理引擎，支持 Llama 家族模型与 C/C++ API
+  - 当前产品边界：CPU-only、单进程、同步、单请求、Token IDs I/O、静态 KV Cache
+  - 长期演进方向：服务化、异构计算与分布式推理（见 docs/products/aethermind_prd.md 附录），不构成当前交付承诺
+  - 范围约束：除非用户明确要求，不要预先实现当前产品边界之外的服务化、调度、GPU 或分布式能力。
 - 语言：C++20（`CMAKE_CXX_STANDARD 20`）
 - 构建系统：CMake >= 3.28
 - 核心库目标：`AetherMind`（shared）
@@ -171,7 +171,7 @@ See full test writing rules:
 - `.cursorrules`：不存在
 - `.cursor/rules/`：不存在
 - `.github/copilot-instructions.md`：不存在
-- `docs/products/aethermind_prd.md`：**Phase 1 产品需求与验收标准**（产品范围、公开 API、架构或验收标准相关工作时必读）
+- `docs/products/aethermind_prd.md`：**当前产品需求与验收标准**（产品范围、公开 API、架构或验收标准相关工作时必读）
 
 ## 11. 指令优先级与作用域
 

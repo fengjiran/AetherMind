@@ -20,7 +20,7 @@
 | 问题跟踪 | [issues.md](issues.md) | 每条目 `[x]`/`[ ]` | 已知缺陷与优化待办，短生命周期 |
 | 变更记录 | [../CHANGELOG.md](../CHANGELOG.md) | 无 | 行为可见变更，按语义化版本 |
 | 开发日志 | [logs/development_log.md](logs/development_log.md) | 无 | 过程记录（开发黑匣子），记录"为什么"而非"做了什么" |
-| 产品需求 | [products/aethermind_prd.md](products/aethermind_prd.md) | Current | Phase 1 产品范围、验收标准（唯一权威） |
+| 产品需求 | [products/aethermind_prd.md](products/aethermind_prd.md) | Current | 当前产品范围、验收标准（唯一权威） |
 
 **职责边界判定**：描述"代码里现在是什么" → `designs/`；"将来要做什么" → `improvement-plan/`；"曾经怎么决策的" → `decisions/`；"怎么干活" → `guides/`；"API 怎么用" → `api/`；"已知缺陷/待办" → `issues.md`。
 
@@ -34,7 +34,7 @@
 
 | 文档 | 定位 | 状态 | 最后更新 |
 |---|---|---|---|
-| [architecture/architecture_overview.md](designs/architecture/architecture_overview.md) | 全系统唯一权威总览（六层架构、依赖规则、产物所有权、Phase 1 边界） | Current | 2026-08-21 |
+| [architecture/architecture_overview.md](designs/architecture/architecture_overview.md) | 全系统唯一权威总览（六层架构、依赖规则、产物所有权、当前产品边界） | Current | 2026-08-21 |
 
 #### 模块设计（按模块子目录）
 
@@ -75,6 +75,9 @@
 | [01-inference-session-generate-readiness.md](improvement-plan/01-inference-session-generate-readiness.md) | InferenceSession/Generate 前置模块、实施顺序与 public API 准入门禁 | Draft |
 | [02-engineering-quality-system.md](improvement-plan/02-engineering-quality-system.md) | Capability-driven 的风险治理、验证 profile 与质量体系建设方案 | Draft |
 | [03-documentation-stabilization.md](improvement-plan/03-documentation-stabilization.md) | Batch -1 文档系统稳定化：D0–D5 迁移计划与 E1–E9 退出条件 | Draft |
+| [04-cpu-gemm-optimization.md](improvement-plan/04-cpu-gemm-optimization.md) | CPU GEMM engine、shape specialization、packing 与 benchmark 演进方案 | Draft |
+| [05-kv-cache-manager-evolution.md](improvement-plan/05-kv-cache-manager-evolution.md) | 静态 KV correctness、lease/transaction/kernel binding 与 Paged KV 演进边界 | Draft |
+| [06-system-capability-evolution-roadmap.md](improvement-plan/06-system-capability-evolution-roadmap.md) | 全仓库 capability gap、模块演进裁决与实施顺序 | Draft |
 
 ### 开发指南（docs/guides/）
 
@@ -156,4 +159,4 @@
 | PreparedExecutionBindings | `ExecutionPlan` 的 cold-path tensor specialization：拥有 activation/metadata/prepared params，借用 external backing |
 | ExecutionContext | 单 plan 的窄执行资源：拥有 prepared bindings，借用 WorkspaceArena，保存 KVCacheView |
 | ammalloc | 自研用户态分配器（ThreadCache/CentralCache/PageCache） |
-| Argmax | 贪婪采样（Phase 1 唯一采样策略） |
+| Argmax | 贪婪采样（当前产品唯一采样策略） |

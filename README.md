@@ -1,6 +1,6 @@
 # AetherMind
 
-> A phased LLM inference engine — Phase 1 delivers a desktop/server CPU local inference runtime for the Llama family of dense models.
+> A desktop/server CPU local inference runtime for the Llama family of dense models, with explicitly scoped long-term evolution directions.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![C++](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/)
@@ -8,11 +8,11 @@
 
 ## Overview
 
-AetherMind is an inference engine built in phases. The current effort focuses on **Phase 1**: a self-contained, production-grade CPU runtime that loads HuggingFace-format Llama-family dense models and performs greedy token generation with a statically pre-allocated KV cache. The runtime is single-process, synchronous, and token-ID based (no tokenizer in Phase 1).
+AetherMind is a self-contained, production-grade CPU inference runtime that loads HuggingFace-format Llama-family dense models and targets greedy token generation with a statically pre-allocated KV cache. The current product scope is single-process, synchronous, and token-ID based, with no tokenizer integration.
 
-Future phases (GPU offloading, serving, distributed execution) are direction-only and documented in the [PRD appendix](docs/products/aethermind_prd.md).
+GPU offloading, serving, and distributed execution are direction-only and documented in the [PRD appendix](docs/products/aethermind_prd.md); they are not current delivery commitments.
 
-### Phase 1 Scope
+### Current Product Scope
 
 | Included | Excluded |
 |----------|----------|
@@ -194,7 +194,7 @@ If `build/compile_commands.json` is available, `clang-tidy` can be run against i
 AetherMind follows a disciplined development workflow. Before contributing:
 
 1. Read [AGENTS.md](AGENTS.md) — the repository-wide engineering guide covering build, test, coding style, and review conventions.
-2. Read the [PRD](docs/products/aethermind_prd.md) for Phase 1 scope and acceptance criteria.
+2. Read the [PRD](docs/products/aethermind_prd.md) for the current product scope and acceptance criteria.
 3. Make minimal, style-consistent changes; build the narrowest affected target first.
 4. Run focused tests (`--gtest_filter=Suite.Case`) before widening scope.
 5. For performance-sensitive changes, run the focused benchmark target.
@@ -212,36 +212,36 @@ Key guidelines:
 | Document | Description |
 |----------|-------------|
 | [AGENTS.md](AGENTS.md) | Repository-wide engineering guide |
-| [docs/products/aethermind_prd.md](docs/products/aethermind_prd.md) | Phase 1 product requirements & acceptance criteria |
+| [docs/products/aethermind_prd.md](docs/products/aethermind_prd.md) | Current product requirements and acceptance criteria |
 | [docs/guides/cpp_coding_style_guidelines.md](docs/guides/cpp_coding_style_guidelines.md) | C++ coding style |
 | [docs/guides/cpp_comment_guidelines.md](docs/guides/cpp_comment_guidelines.md) | Comment guidelines |
 | [docs/guides/test_writing_guidelines.md](docs/guides/test_writing_guidelines.md) | Test writing guidelines |
 | [docs/designs/](docs/designs/) | Architecture and module design documents |
 
-## Roadmap
+## Product Scope and Evolution
 
-- **Phase 1 (current)**: CPU-only Llama-family inference runtime with INT8/INT4 quantization, static KV cache, and synchronous greedy generation.
-- **Phase 2+ (direction only, not committed)**: GPU offloading, continuous batching, HTTP API, PagedAttention, speculative decoding. See the [PRD appendix](docs/products/aethermind_prd.md) for the long-term direction.
+- **Current product contract**: CPU-only Llama-family inference runtime with INT8/INT4 quantization, static KV cache, and synchronous greedy generation.
+- **Long-term directions, not committed**: GPU offloading, continuous batching, HTTP API, PagedAttention, and speculative decoding. See the [PRD appendix](docs/products/aethermind_prd.md).
 
 ## FAQ
 
 **Q: Does AetherMind include a tokenizer?**
-No. Phase 1 uses token IDs as the data boundary. Tokenizer integration is deferred to a later phase.
+No. The current product contract uses token IDs as the data boundary. Tokenizer integration is outside the current scope.
 
 **Q: Is GPU inference supported?**
-Not in Phase 1. GPU/CUDA backends are a Phase 2 direction only.
+No. GPU/CUDA backends are a long-term direction, not a current product commitment.
 
 **Q: Which models are supported?**
 Llama-family dense models loaded from HuggingFace format (`config.json` + `*.safetensors`). MoE, encoder-decoder, and sliding-window attention models are explicitly rejected.
 
 **Q: What sampling strategies are supported?**
-Greedy sampling only (`argmax(logits)`). Temperature / top-k / top-p are out of Phase 1 scope.
+Greedy sampling only (`argmax(logits)`). Temperature / top-k / top-p are outside the current product scope.
 
 **Q: How is determinism guaranteed?**
 Reference CPU kernels provide numerical stability and deterministic output for the same platform and kernel precision. Bit-identical cross-platform output is a target of the reference kernels only.
 
 **Q: Where is the C ABI?**
-The C ABI is a Phase 1 target currently under design (draft v1.0). The existing `include/c_api.h` exposes object lifecycle, error handling, and traceback primitives. The full `am_session_generate` contract is defined in the PRD and will be frozen before the v1.0 release.
+The C ABI is a current product target under design (draft v1.0). The existing `include/c_api.h` exposes object lifecycle, error handling, and traceback primitives. The full `am_session_generate` contract is defined in the PRD and will be frozen before the v1.0 release.
 
 ## License
 

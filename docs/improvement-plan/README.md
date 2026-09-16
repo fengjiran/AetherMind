@@ -11,7 +11,7 @@
 |---|---|---|---|
 | 01 | [InferenceSession / Generate 前置闭环计划](01-inference-session-generate-readiness.md) | Draft | 2026-09-03 |
 | 02 | [工程质量体系建设方案](02-engineering-quality-system.md) | Draft | 2026-09-14 |
-| 03 | [文档系统稳定化方案](03-documentation-stabilization.md) | Draft | 2026-09-14 |
+| 03 | [文档系统稳定化方案](03-documentation-stabilization.md) | In Progress | 2026-09-17 |
 | 04 | [CPU GEMM 优化方案](04-cpu-gemm-optimization.md) | Draft | 2026-09-16 |
 | 05 | [KVCache Manager 演进方案](05-kv-cache-manager-evolution.md) | Draft | 2026-09-16 |
 | 06 | [AetherMind 系统能力演进路线图](06-system-capability-evolution-roadmap.md) | Draft | 2026-09-16 |

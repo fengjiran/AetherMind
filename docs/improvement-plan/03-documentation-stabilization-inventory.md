@@ -1,14 +1,14 @@
 # AetherMind 文档清查表（Batch -1 D2 交付物）
 
 - **状态**: Draft
-- **版本**: 1.2
-- **日期**: 2026-09-14
+- **版本**: 1.3
+- **日期**: 2026-09-17
 - **主方案**: [03-documentation-stabilization.md](03-documentation-stabilization.md)
 - **规范来源**: [文档系统规范](../guides/documentation-guide.md)
 
 本表是 [03 号方案](03-documentation-stabilization.md) §5 D2 的一次性清查交付物，登记范围内所有 .md 文档的类型、状态、事实权威、当前性、问题、处置与优先级。**本清查阶段不批量重命名或移动文件**，"处置" 列仅记录建议值，实际执行放到 D3 及后续 workstream。
 
-**当前状态（2026-09-14）**：本表为 D2 规划工件，已建立 144 行清查记录；"当前性"列 144/144 为"未核验"，"状态"列 69 篇为 `Unverified`，"处置"列多数为"待 D3 排序确认"。D1 核验、D3 处置、D4 术语迁移、D5 工具扩展均未启动。Batch -1 整体状态与 E1–E9 评估见 [03 号方案 §1.3](03-documentation-stabilization.md)。
+**当前状态（2026-09-17）**：本表为 D2 规划工件，已建立 144 行清查记录。治理范围 59 篇中：Current 16、Unverified 27、Historical Snapshot 10、Draft 4、Deprecated 1、Accepted 1。核心 9 篇当前性均为"已核验"（结构核验，见 [03 号方案 §4.4](03-documentation-stabilization.md)）；其余 27 篇 Unverified 均有处置+优先级值，满足修订后的 E2。D0 frontmatter 落地、D3 P1/P2 处置、D4 非核心术语迁移、D5b metadata schema 未启动。Batch -1 整体状态见 [03 号方案 §1.3](03-documentation-stabilization.md)。
 
 ## 1. 字段与取值
 
@@ -44,10 +44,10 @@
 
 | 路径 | 类型 | 状态 | 事实权威 | 当前性 | 问题 | 处置 | 优先级 |
 |---|---|---|---|---|---|---|---|
-| AGENTS.md | guide | Unverified | 是（模块 ownership） | 部分核验 | - | 保留（D1 核验） | P0 |
-| CHANGELOG.md | log | Unverified | 否 | 未核验 | 内容极少（22 行） | 保留 | P2 |
-| README.md | index | Unverified | 是（构建选项） | 部分核验 | - | 保留（D1 核验） | P0 |
-| docs/README.md | index | Unverified | 是（文档索引 + 术语表） | 部分核验 | 术语过时（含 `Phase 1` 表述，第 37/158 行） | 修订（D4 术语迁移） | P0 |
+| AGENTS.md | guide | Current | 是（模块 ownership） | 已核验 | - | 保留（D1 核验） | P0 |
+| CHANGELOG.md | log | Current | 否 | 部分核验 | 内容极少（22 行） | 保留 | P2 |
+| README.md | index | Current | 是（构建选项） | 已核验 | - | 保留（D1 核验） | P0 |
+| docs/README.md | index | Current | 是（文档索引 + 术语表） | 已核验 | 术语已迁移（2026-09-17） | 保留 | P0 |
 | docs/agent/decisions/template.md | template | Unverified | 否 | 未核验 | 独立子系统，本规范不适用 | 保留 | P2 |
 | docs/agent/handoff/README.md | index | Unverified | 否 | 未核验 | 独立子系统 | 保留 | P2 |
 | docs/agent/handoff/workstreams/ammalloc__page_allocator/20260313T163000Z--ses_31a1b709effemOwSr0RspyMwiV--sisyphus.md | handoff | Historical Snapshot | 否 | 未核验 | ammalloc 已移出仓库 | 保留（agent 独立子系统） | P2 |
@@ -102,7 +102,7 @@
 | docs/agent/tests/memory_system_automation_plan.md | plan | Unverified | 否 | 未核验 | 独立子系统 | 保留 | P2 |
 | docs/agent/tests/memory_system_automation_plan_initial.md | plan | Historical Snapshot | 否 | 未核验 | 独立子系统；文件名含 `initial` 提示历史版本 | 保留 | P2 |
 | docs/agent/tests/memory_system_test_suite.md | test | Unverified | 否 | 未核验 | 独立子系统；953 行接近 1000 行阈值 | 保留 | P2 |
-| docs/api/public-api.md | api | Unverified | 是（Public API 汇总） | 部分核验 | - | 保留（D1 核验） | P0 |
+| docs/api/public-api.md | api | Current | 是（Public API 汇总） | 已核验 | - | 保留（D1 核验） | P0 |
 | docs/archive/README.md | index | Deprecated | 否 | 未核验 | 归档区索引 | 保留 | P2 |
 | docs/archive/aethermind_arch_design.md | archive | Deprecated | 否 | 未核验 | 有效内容已并入 architecture_overview | 保留 | P2 |
 | docs/archive/designs-legacy/amstring_design_and_execution_plan.md | archive | Deprecated | 否 | 未核验 | - | 保留 | P2 |
@@ -131,7 +131,7 @@
 | docs/archive/model_loader/model_loader_implementation_plan.md | archive | Deprecated | 否 | 未核验 | - | 保留 | P2 |
 | docs/archive/model_loader/model_validator_design.md | archive | Deprecated | 否 | 未核验 | 过长（1330 行） | 保留 | P2 |
 | docs/archive/model_loader/model_weight_packing_strategy.md | archive | Deprecated | 否 | 未核验 | - | 保留 | P2 |
-| docs/decisions/0001-documentation-system.md | decision | Unverified | 否 | 未核验 | 唯一 ADR，需与 documentation-guide.md 同步核验 | 保留 | P1 |
+| docs/decisions/0001-documentation-system.md | decision | Accepted | 否 | 部分核验 | 唯一 ADR，与 documentation-guide.md 同步 | 保留 | P1 |
 | docs/designs/amstring/BasicStringCore_design.md | design | Unverified | 否 | 未核验 | 命名违规（无 NN- 前缀） | 待 D3 排序确认（重命名） | P2 |
 | docs/designs/amstring/CharLayoutPolicy_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认（重命名） | P2 |
 | docs/designs/amstring/GenericLayoutPolicy_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认（重命名） | P2 |
@@ -140,7 +140,7 @@
 | docs/designs/amstring/amstring_policy_based_architecture_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认（重命名） | P2 |
 | docs/designs/amstring/amstring_storage_architecture_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认（重命名） | P2 |
 | docs/archive/designs-legacy/amstring_task_checklist.md | archive | Deprecated | 否 | 未核验 | 分类错误已修复（原位于 designs/amstring/，2026-09-14 归档） | 保留（归档） | P2 |
-| docs/designs/architecture/architecture_overview.md | design | Unverified | 是（当前架构） | 部分核验 | - | 保留（D1 核验） | P0 |
+| docs/designs/architecture/architecture_overview.md | design | Current | 是（当前架构） | 已核验 | 术语已迁移（2026-09-17） | 保留（D1 核验） | P0 |
 | docs/designs/backend_design.md | design | Unverified | 否 | 未核验 | 命名违规（应在 backend/NN-*.md） | 待 D3 排序确认（移动 + 重命名） | P2 |
 | docs/designs/cpu_capability_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
 | docs/designs/dispatch_design.md | design | Unverified | 否 | 未核验 | 过长（1061 行）+ 命名违规 | 待 D3 排序确认（拆分 + 移动） | P2 |
@@ -162,27 +162,27 @@
 | docs/designs/tensor_view_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
 | docs/designs/unified_allocator_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
 | docs/designs/已证明约束的执行阶段保障方案.md | design | Unverified | 否 | 未核验 | 中文文件名 + 命名违规 | 待 D3 排序确认（重命名） | P2 |
-| docs/guides/code_review_guide.md | guide | Deprecated | 否 | 已核验 | 失效命令（第 49 行）+ ammalloc 专项残留（37+ 处）+ 硬阈值无依据（第 26 行）+ 与 AGENTS.md §6 不一致 | 已标 Deprecated（2026-09-14），待重写 | P0 |
-| docs/guides/cpp_coding_style_guidelines.md | guide | Unverified | 否 | 未核验 | - | 保留（D1 后核验） | P1 |
-| docs/guides/cpp_comment_guidelines.md | guide | Unverified | 否 | 未核验 | - | 保留（D1 后核验） | P1 |
-| docs/guides/documentation-guide.md | guide | Unverified | 是（文档规范元） | 部分核验 | - | 保留（D1 核验） | P0 |
+| docs/guides/code_review_guide.md | guide | Deprecated | 否 | 已核验 | 失效命令（第 49 行）+ ammalloc 专项残留（5 处）+ 硬阈值无依据（第 26 行）+ 与 AGENTS.md §6 不一致 | 已标 Deprecated（2026-09-14），待重写 | P0 |
+| docs/guides/cpp_coding_style_guidelines.md | guide | Current | 否 | 部分核验 | - | 保留 | P1 |
+| docs/guides/cpp_comment_guidelines.md | guide | Current | 否 | 部分核验 | - | 保留 | P1 |
+| docs/guides/documentation-guide.md | guide | Current | 是（文档规范元） | 已核验 | - | 保留（D1 核验） | P0 |
 | docs/guides/operator_optimization_guide.md | guide | Unverified | 否 | 未核验 | 过长（2110 行） | 待 D1 后核验决定是否拆分 | P2 |
-| docs/guides/test_writing_guidelines.md | guide | Unverified | 否 | 未核验 | - | 保留（D1 后核验） | P1 |
+| docs/guides/test_writing_guidelines.md | guide | Current | 否 | 部分核验 | - | 保留 | P1 |
 | docs/improvement-plan/01-inference-session-generate-readiness.md | plan | Draft | 否 | 部分核验 | 漂移已修复（§2.2 Linear/RoPE/Argmax 更新为 FP32 reference / 可用，2026-09-14） | 保留（其余章节待核验） | P0 |
 | docs/improvement-plan/02-engineering-quality-system.md | plan | Draft | 否 | 未核验 | Workstream A 与 Batch 0 含文档治理项，需移交本方案 | 修订（本 Plan 已处理） | P0 |
 | docs/improvement-plan/03-documentation-stabilization-inventory.md | plan | Draft | 否 | 未核验 | 本文档 | 保留 | P0 |
 | docs/improvement-plan/03-documentation-stabilization.md | plan | Draft | 否 | 未核验 | 本方案主文档（Draft 提案，不是治理权威） | 保留（Batch -1 完成后迁移到 Implemented） | P0 |
-| docs/improvement-plan/README.md | index | Unverified | 是（演进提案索引） | 已核验 | 需新增 03 行 | 修订（本 Plan 已处理） | P0 |
-| docs/issues.md | index | Unverified | 是（已知问题） | 已核验 | 未解决条目为空（第 9 行 `- （无）`），与已知缺口不一致 | 修订（Batch -1 内 P0） | P0 |
-| docs/logs/development_log.md | log | Unverified | 否 | 未核验 | 追加式过程记录，696 行 | 保留 | P2 |
-| docs/products/aethermind_prd.md | prd | Unverified | 是（产品能力） | 部分核验 | 术语过时（32 处 `Phase 1`） | 保留（D1 核验） | P0 |
+| docs/improvement-plan/README.md | index | Current | 是（演进提案索引） | 已核验 | - | 保留 | P0 |
+| docs/issues.md | index | Current | 是（已知问题） | 已核验 | - | 保留 | P0 |
+| docs/logs/development_log.md | log | Current | 否 | 部分核验 | 追加式过程记录，696 行 | 保留 | P2 |
+| docs/products/aethermind_prd.md | prd | Current | 是（产品能力） | 已核验 | 术语已迁移（2026-09-17） | 保留（D1 核验） | P0 |
 | docs/reviews/graph_compilation_flow.md | review | Historical Snapshot | 否 | 未核验 | 命名违规（无日期）+ 与 designs/ 同名冲突 + docs/README.md 已标"已过时" | 重命名加日期（D3 P1） | P1 |
-| docs/reviews/model_graph_data_structure_review.md | review | Unverified | 否 | 未核验 | 命名违规（无日期）+ docs/README.md 标 Current 但无快照日期 | 重命名加日期或标 Historical Snapshot | P1 |
+| docs/reviews/model_graph_data_structure_review.md | review | Historical Snapshot | 否 | 未核验 | 命名违规（无日期）+ docs/README.md 标 Current 但无快照日期 | 重命名加日期（D3 P1） | P1 |
 | docs/reviews/operator_kernel_architecture_review_2026-07-18.md | review | Historical Snapshot | 否 | 未核验 | -（canonical 命名） | 保留 | P2 |
-| docs/reviews/operator_semantic_layer_review.md | review | Unverified | 否 | 未核验 | 命名违规（无日期） | 重命名加日期或标 Historical Snapshot | P1 |
-| docs/reviews/prd/prd_review.md | review | Unverified | 否 | 未核验 | 命名违规（无日期） | 重命名加日期 | P1 |
-| docs/templates/adr.md | template | Unverified | 否 | 未核验 | - | 保留 | P2 |
-| docs/templates/module-design.md | template | Unverified | 否 | 未核验 | - | 保留 | P2 |
+| docs/reviews/operator_semantic_layer_review.md | review | Historical Snapshot | 否 | 未核验 | 命名违规（无日期） | 重命名加日期 | P1 |
+| docs/reviews/prd/prd_review.md | review | Historical Snapshot | 否 | 未核验 | 命名违规（无日期） | 重命名加日期 | P1 |
+| docs/templates/adr.md | template | Current | 否 | 部分核验 | - | 保留 | P2 |
+| docs/templates/module-design.md | template | Current | 否 | 部分核验 | - | 保留 | P2 |
 | docs/tests/ammalloc_benchmark_rigorous_20260303.md | test | Historical Snapshot | 否 | 未核验 | ammalloc 已移出仓库 | 保留（历史验证快照） | P2 |
 | docs/tests/amstring_charlayout_m7_validation_20260429.md | test | Historical Snapshot | 否 | 未核验 | - | 保留 | P2 |
 | docs/tests/amstring_m6_validation_20260428.md | test | Historical Snapshot | 否 | 未核验 | - | 保留 | P2 |
@@ -218,12 +218,13 @@
 | 状态 | 数量 |
 |---|---|
 | Out of Scope | 54（`docs/agent/` 覆盖规则，见 §2） |
-| Unverified | 51 |
-| Deprecated | 28 |
-| Historical Snapshot | 7 |
-| Draft | 4 |
-| Current | 0（首批填写遵守 [03 号方案 §3.3](03-documentation-stabilization.md) 硬约束，D1 核验后再迁移） |
-| **合计** | **144** |
+| Deprecated | 32（archive/ 31 + code_review_guide 1） |
+| Unverified | 27（治理范围内 designs/ 26 + guides/ 1，均有处置+优先级） |
+| Current | 16（核心 9 篇 + guides 4 + templates 2 + CHANGELOG 1） |
+| Historical Snapshot | 10（reviews/ 5 + tests/ 5） |
+| Draft | 4（improvement-plan/ 01–03 + inventory） |
+| Accepted | 1（decisions/0001） |
+| **合计** | **144**（治理范围 59 + archive 31 + OOS 54） |
 
 ### 4.3 按优先级
 

@@ -74,7 +74,7 @@
 |---|---|---|
 | [01-inference-session-generate-readiness.md](improvement-plan/01-inference-session-generate-readiness.md) | InferenceSession/Generate 前置模块、实施顺序与 public API 准入门禁 | Draft |
 | [02-engineering-quality-system.md](improvement-plan/02-engineering-quality-system.md) | Capability-driven 的风险治理、验证 profile 与质量体系建设方案 | Draft |
-| [03-documentation-stabilization.md](improvement-plan/03-documentation-stabilization.md) | Batch -1 文档系统稳定化：D0–D5 迁移计划与 E1–E9 退出条件 | Draft |
+| [03-documentation-stabilization.md](improvement-plan/03-documentation-stabilization.md) | Batch -1 文档系统稳定化：D0–D5 迁移计划与 E1–E9 退出条件 | In Progress |
 | [04-cpu-gemm-optimization.md](improvement-plan/04-cpu-gemm-optimization.md) | CPU GEMM engine、shape specialization、packing 与 benchmark 演进方案 | Draft |
 | [05-kv-cache-manager-evolution.md](improvement-plan/05-kv-cache-manager-evolution.md) | 静态 KV correctness、lease/transaction/kernel binding 与 Paged KV 演进边界 | Draft |
 | [06-system-capability-evolution-roadmap.md](improvement-plan/06-system-capability-evolution-roadmap.md) | 全仓库 capability gap、模块演进裁决与实施顺序 | Draft |
@@ -105,10 +105,10 @@
 | 文档 | 定位 | 状态 |
 |---|---|---|
 | [graph_compilation_flow.md](reviews/graph_compilation_flow.md) | 图编译功能历史审查快照（已过时，头部有警示） | 历史快照 |
-| [model_graph_data_structure_review.md](reviews/model_graph_data_structure_review.md) | ModelGraph 数据结构评审 | Current |
-| [operator_kernel_architecture_review_2026-07-18.md](reviews/operator_kernel_architecture_review_2026-07-18.md) | 算子内核架构评审 | Current |
-| [operator_semantic_layer_review.md](reviews/operator_semantic_layer_review.md) | 算子语义层评审 | Current |
-| [prd/prd_review.md](reviews/prd/prd_review.md) | PRD 评审 | Current |
+| [model_graph_data_structure_review.md](reviews/model_graph_data_structure_review.md) | ModelGraph 数据结构评审 | 历史快照 |
+| [operator_kernel_architecture_review_2026-07-18.md](reviews/operator_kernel_architecture_review_2026-07-18.md) | 算子内核架构评审 | 历史快照 |
+| [operator_semantic_layer_review.md](reviews/operator_semantic_layer_review.md) | 算子语义层评审 | 历史快照 |
+| [prd/prd_review.md](reviews/prd/prd_review.md) | PRD 评审 | 历史快照 |
 
 ### 验证报告（docs/tests/）
 

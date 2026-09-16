@@ -358,7 +358,7 @@ release-benchmark
 
 Batch -1 的退出条件 E1–E9（见 [03 号方案 §9](03-documentation-stabilization.md)）是 Batch 0 的准入门禁。文档治理、清查表、阶段性术语迁移与 `verify_docs.py` 演进全部在 Batch -1 内完成。
 
-**当前状态（2026-09-14）**：规划工件已交付（见 [03 号方案 §1.3](03-documentation-stabilization.md) 快照），D1–D5 实质执行未启动；E1–E8 失败，E9 部分完成；**Batch 0 阻塞中**。
+**当前状态（2026-09-17）**：Batch -1 主要实施动作已完成，但最终收口存在 correctness 问题（E1 缺乏深度核验记录）。03 号方案状态为 `In Progress`。**Batch 0 仍阻塞**，直到 E1 完全满足。
 
 ### Batch 0：事实与风险基线
 

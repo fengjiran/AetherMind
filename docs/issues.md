@@ -13,13 +13,13 @@
 - [ ] PRD 的单线程/OpenMP、compile-time dispatch/planning-time resolve、多 Session 验收/单 active KV slot 等表述需要按当前事实与产品目标重新裁决（关联：[系统能力演进路线图 §17.1](improvement-plan/06-system-capability-evolution-roadmap.md#171-当前需要裁决的漂移)）
 - [ ] designs/graph_compilation_flow.md 与 reviews/graph_compilation_flow.md 同名冲突，易混淆权威来源（关联：[docs/designs/graph_compilation_flow.md](designs/graph_compilation_flow.md)、[docs/reviews/graph_compilation_flow.md](reviews/graph_compilation_flow.md)）
 - [ ] 4 篇非归档文档超长（>1000 行）：operator_optimization_guide.md 2110、model_graph_design.md 1706、dispatch_design.md 1061、graph_lowering_design.md 1005（关联：[docs/guides/](guides/)、[docs/designs/](designs/)）
-- [ ] 核心 9 篇文档中 `Phase 1 / Phase 2` 术语 83 处待分类迁移（关联：AGENTS.md、README.md、docs/README.md、docs/products/aethermind_prd.md、docs/designs/architecture/architecture_overview.md、docs/api/public-api.md）
 - [ ] 大量文档无明确状态字段：designs/、guides/、reviews/ 中多数文档头部无状态标记（关联：[docs/designs/](designs/)、[docs/guides/](guides/)、[docs/reviews/](reviews/)）
 - [ ] 4 篇 review 无日期命名：graph_compilation_flow.md、model_graph_data_structure_review.md、operator_semantic_layer_review.md、prd/prd_review.md（关联：[docs/reviews/](reviews/)）
 - [ ] 25 篇 designs/ 命名违规（非 canonical `NN-<kebab-name>.md`）待迁移（关联：[docs/designs/](designs/)）
 
 ## 已解决
 
+- [x] 核心 9 篇文档中 `Phase 1 / Phase 2` 术语 83 处待分类迁移（修复：2026-09-17 全部迁移为具体 capability 表述；AGENTS.md/README.md/docs/README.md/prd/architecture_overview/public-api 均为 0 处，仅本文件保留元描述）
 - [x] verify_docs.py 覆盖不足（修复：2026-09-14 实现 D5a 全部 7 项，389 行，report-only + --strict-* 框架）
 - [x] designs/amstring/ 中 development_plan、milestones、task_checklist 分类违规（修复：2026-09-14 归档到 docs/archive/designs-legacy/）
 - [x] 01 号方案 §2.2 kernel 覆盖表漂移：Linear、RoPE、Argmax 标为"无/阻塞"，实际存在 reference kernel（修复：2026-09-14 更新为 FP32 reference / 可用）

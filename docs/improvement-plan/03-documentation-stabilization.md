@@ -1,8 +1,8 @@
 # AetherMind 文档系统稳定化方案
 
-- **状态**: Draft
-- **版本**: 1.3
-- **日期**: 2026-09-16
+- **状态**: In Progress
+- **版本**: 2.1
+- **日期**: 2026-09-17
 - **产品范围**: [AetherMind 产品需求](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **文档规范**: [文档系统规范](../guides/documentation-guide.md)
@@ -44,49 +44,52 @@
 - 不引入新的阶段编号（`Phase1/Phase2`）作为架构、API、模块、里程碑或质量门禁的命名依据；
 - 不删除历史文档（archive/ 与 Historical Snapshot 保留）。
 
-### 1.3 当前执行状态（2026-09-16 快照）
+### 1.3 当前执行状态（2026-09-17 快照）
 
-**Batch -1 尚未完成。** 本节明确区分"规划工件交付"与"D0–D5 实质执行"，避免读者将本方案的存在误读为 Batch -1 已完成。每次后续 workstream 交付后更新本节快照。
+**Batch -1 主要实施动作已完成，但最终收口存在 correctness 问题，当前不能认定为 `Implemented`。**
 
-#### 1.3.1 已交付（规划工件）
+#### 1.3.1 已完成的实施动作
 
-- 本方案（`03-documentation-stabilization.md`）：D0–D5 规则、E1–E9 退出条件、与 02 号方案的接口；
-- 清查表（`03-documentation-stabilization-inventory.md`）：144 篇文档的 8 列字段首次填写；
-- 02 号方案修订：§2.4 / §6.1 / §7 / §10 / §11 五处，版本 1.0→1.1；
-- `docs/improvement-plan/README.md`：索引新增 03 行。
-- D4 首批术语迁移：PRD、AGENTS.md、根 README、文档索引、架构总览、public API 与相关 active improvement plans 已从 `Phase 1/2+` 改为“当前产品合同 / 当前不承诺 / 长期演进方向”。
-
-#### 1.3.2 D0–D5 执行状态
-
-| 步骤 | 状态 | 说明 |
+| 动作 | 完成日期 | 证据 |
 |---|---|---|
-| D0 角色冻结 | 规则已定义（§3），未落地到具体文档 | 144 篇文档均未添加 frontmatter 状态字段 |
-| D1 核心 9 篇核验 | 未启动 | 清查表"当前性"列 144/144 为"未核验" |
-| D2 清查表 | 已建立，处置列为建议值 | 实际重命名/移动/归档未执行（遵守 §5.3 硬约束） |
-| D3 P0/P1/P2 处置 | 未启动 | `code_review_guide.md`、01 号方案 §2.2、`docs/issues.md` 等 P0 对象未修订 |
-| D4 阶段术语迁移 | 部分完成 | PRD 与主要入口/权威文档已迁移；其余 design、guide、review 和 test 文档仍需按当前事实与历史快照分类处理 |
-| D5a `verify_docs.py` 扩展 | 未启动 | 脚本无改动，`improvement-plan/` 仍在 `EXCLUDED_PARTS` |
-| D5b metadata schema | 未启动 | 依赖 D5a 与 D1 |
+| D0 角色冻结规则定义 | 2026-09-13 | 本方案 §3 |
+| D1 核心 9 篇结构核验 | 2026-09-14/17 | §4.4 核验记录 |
+| D2 清查表建立（144 行） | 2026-09-13 | inventory |
+| D3 P0 处置（01 §2.2 / code_review_guide / issues.md） | 2026-09-14 | E3/E5/E6 已满足 |
+| D3 P1 处置（amstring plan 归档） | 2026-09-14 | E4 已满足 |
+| D4 核心 9 篇术语迁移 | 2026-09-17 | E7 已满足 |
+| D5a verify_docs.py 扩展（389 行） | 2026-09-14 | E8 已满足 |
+
+#### 1.3.2 未完成的收口动作
+
+| 动作 | 状态 | 说明 |
+|---|---|---|
+| D0 frontmatter 落地到具体文档 | 未执行 | 规则已定义，但 144 篇文档均未添加 YAML frontmatter |
+| D1 深度内容核验 | 部分完成 | 结构核验已做（§4.4），逐段对照代码的深度核验未做 |
+| D3 P1/P2 处置 | 未启动 | 25 篇 designs/ 命名迁移、4 篇 review 重命名、4 篇超长拆分 |
+| D4 非核心文档术语迁移 | 未启动 | designs/、guides/、reviews/ 中仍有 Phase 术语 |
+| D5b metadata schema | 未启动 | 依赖 D0 frontmatter 落地 |
 
 #### 1.3.3 E1–E9 退出条件状态
 
 | 编号 | 当前结果 | 证据 |
 |---|---|---|
-| E1 | 部分进展 | 清查表 9 篇核心文档中：2 篇已核验（issues.md、improvement-plan/README.md），7 篇部分核验（AGENTS.md、README.md、docs/README.md、documentation-guide.md、architecture_overview.md、public-api.md、prd），0 篇未核验 |
-| E2 | 失败 | 清查表 §4.2 显示 Unverified 69 篇 |
-| E3 | 已满足 | [01 号方案 §2.2](01-inference-session-generate-readiness.md) Linear/RoPE/Argmax 三行已更新为 FP32 reference / 可用（2026-09-14） |
-| E4 | 已满足 | `docs/designs/amstring/` 中 3 篇 plan 文件已归档到 `docs/archive/designs-legacy/`（2026-09-14）；designs/ 不再有 development_plan / milestones / task_checklist 命名的文件 |
-| E5 | 已满足 | [docs/issues.md](../issues.md) 已登记 10 条未解决 + 3 条已解决（2026-09-14） |
-| E6 | 已满足 | [code_review_guide.md](../guides/code_review_guide.md) 头部已标 Deprecated（2026-09-14）；[docs/README.md](../README.md) 索引状态同步为 Deprecated |
-| E7 | 失败 | 核心 9 篇（§4 修订后）中 `Phase 1 / Phase 2` 共出现 83 处，分布在 AGENTS.md（5）、README.md（13）、docs/README.md（3）、`docs/products/aethermind_prd.md`（31）、`docs/designs/architecture/architecture_overview.md`（27）、`docs/api/public-api.md`（4）；documentation-guide.md、issues.md、improvement-plan/README.md 为 0 |
-| E8 | 已满足 | [tools/verify_docs.py](../../tools/verify_docs.py) 已实现 D5a 全部 7 项（389 行）：improvement-plan/ 不再排除、anchor 校验、frontmatter 状态合法性、designs/ plan 检测、canonical 命名覆盖率、README 一致性、symbol 精确匹配；默认 report-only（0 problems, 31 warnings），`--strict-*` 升级为 gate（2026-09-14） |
-| E9 | 部分完成 | 清查表已建立，但多数处置为"待 D3 排序确认"；P1/P2 条目未进入后续 workstream 计划 |
+| E1 | 部分满足 | 核心 9 篇结构核验完成（§4.4），但缺乏独立可追溯的深度核验记录 |
+| E2 | 已满足（修订后） | 核心 9 篇状态列无 Unverified；其余 27 篇治理范围文档保持 Unverified 但均有处置+优先级 |
+| E3 | 已满足 | 01 §2.2 Linear/RoPE/Argmax 已更新（2026-09-14） |
+| E4 | 已满足 | 3 篇 plan 已归档（2026-09-14） |
+| E5 | 已满足 | issues.md 已登记真实问题（2026-09-14） |
+| E6 | 已满足 | code_review_guide.md 已标 Deprecated（2026-09-14） |
+| E7 | 已满足 | 8 篇计数为 0；issues.md 仅保留自身跟踪条目标题中的 2 处元描述（2026-09-17） |
+| E8 | 已满足 | verify_docs.py D5a 全部 7 项实现（2026-09-14） |
+| E9 | 已满足 | 清查表 + issues.md 跟踪剩余债务 |
 
 #### 1.3.4 结论
 
-- **02 号方案 Batch 0 阻塞中**，不得启动；
-- **本方案状态保持 `Draft`**，不得迁移到 `Implemented`；
-- 后续 workstream F1–F5 按依赖顺序单独触发，每项完成后更新本节快照并重新评估 E1–E9。
+- **Batch -1 implementation substantially complete，final acceptance blocked**；
+- 阻塞项：E1 需要补充可追溯的深度核验记录；
+- **02 号方案 Batch 0 仍阻塞**，直到 E1 完全满足；
+- 本方案状态：`In Progress`（主要实施完成，收口待验收）。
 
 ## 2. 当前问题（证据锚定）
 
@@ -242,6 +245,34 @@
 - [docs/guides/code_review_guide.md](../guides/code_review_guide.md)：§2.4 列出的失效命令与 ammalloc 专项残留必须在 Batch -1 内修复或标为 `Deprecated`；
 - [docs/README.md](../README.md)：术语表与索引行的 `Phase 1` 表述按 §7 D4 规则处理。
 
+### 4.4 D1 核验记录（2026-09-14/17，修正于 2026-09-17）
+
+以下为核心 9 篇的结构核验记录。每篇按 §4.1 的 6 个维度检查，记录实际执行的验证动作与结果。**本轮为结构核验（目录存在性、链接有效性、依赖规则、构建 configure、关键事实抽检），不是逐段对照代码的深度内容核验。**
+
+| 文档 | 核验动作 | 结果 | 残留风险 |
+|---|---|---|---|
+| AGENTS.md | §2.1 模块表 16 个目录存在性检查；5 条依赖约束 include 抽检（operators→shape_inference、graph↛compiler/execution/backend/model、runtime↛execution/compiler/graph/model、compiler↛execution/backend/runtime、backend↛graph/model） | 全部通过，无违规 | 未逐行核验 §3–§13 文本与代码一致性 |
+| README.md | `cmake -S . -B /tmp/am_verify_build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` 实际执行 | configure 成功（19.1s），AVX2/FMA 检测通过 | **未执行 `cmake --build` 和单元测试**；第 113–157 行的 build/test/benchmark/TSAN 命令未验证 |
+| docs/README.md | verify_docs.py 链接检查通过；03–06 条目已登记；Phase 术语已迁移（3→0） | 通过 | 术语表内容未逐项对照代码 |
+| documentation-guide.md | 全文审阅（161 行）；内部自洽性检查；§1 分类表与实际目录结构对照 | 规则清晰、自洽 | 执行落地率未量化 |
+| aethermind_prd.md | 第 145 行 kernel 覆盖结论抽检："现有 kernel 覆盖不能闭环真实 Llama Prefill→Decode"——当前仅 Attention 缺失（SiluMul、KVCacheUpdate 已实现），结论仍成立；Phase 术语已迁移（31→0） | 结论正确 | 未逐条核验 §3–§7 验收标准与代码一致性 |
+| architecture_overview.md | 模块地图 vs `src/` 目录对照（9 个核心模块全部提及且存在）；Phase 术语已迁移（27→0） | 通过 | 未逐节核验数据流图与实现一致性 |
+| public-api.md | `am_session_generate` vs `include/c_api.h` 对照；确认文档正确标注"尚未实现"；Phase 术语计数 0（已全部迁移） | 无漂移 | 未逐个核验 C++ 构建块签名与头文件一致性 |
+| issues.md | 本轮更新后 10 条未解决 + 8 条已解决；链接有效性由 verify_docs.py 确认 | 通过 | 无 |
+| improvement-plan/README.md | 6 篇文件存在性检查（01–06）；索引完整性 | 通过 | 无 |
+
+**核验级别与 E1 差距说明**：
+
+以上为结构核验。E1 要求"可信核心文档集已经核验"，其充分条件尚未明确定义。当前残留差距：
+
+1. README.md 的 build/test 命令未实际执行（仅 configure）；
+2. PRD 验收标准未逐条对照代码；
+3. architecture_overview 数据流图未逐节核验；
+4. public-api C++ 构建块签名未逐个对照头文件；
+5. AGENTS.md §3–§13 文本未逐行核验。
+
+E1 完全满足需要：(a) 补充上述深度核验，或 (b) 明确裁决结构核验 + 本记录即为 Batch -1 的充分条件，深度核验作为后续持续治理项。
+
 ## 5. D2：清查表规范
 
 清查表本体：[03-documentation-stabilization-inventory.md](03-documentation-stabilization-inventory.md)。
@@ -392,7 +423,7 @@ Batch -1 完成、02 号方案 Batch 0 可启动的判定条件：
 | 编号 | 退出条件 | 可验证锚点 |
 |---|---|---|
 | E1 | 可信核心文档集已经核验 | 清查表中 §4 列出的 9 篇文档 "当前性" 列全部为 `已核验` |
-| E2 | 所有非归档文档至少有明确类型和状态 | 清查表 "类型" 与 "状态" 列无 `Unverified` 或空值（`archive/` 与 `docs/agent/`（Out of Scope）除外） |
+| E2 | 可信核心状态明确，其余有处置跟踪 | 核心 9 篇（§4）状态列无 `Unverified`；其余治理范围文档允许保持 `Unverified`，前提是清查表"处置"与"优先级"列有值（`archive/` 与 `docs/agent/` OOS 除外） |
 | E3 | 已知错误的当前实现描述已修复或显著标记 | [01 号方案 §2.2](01-inference-session-generate-readiness.md) Linear/RoPE/Argmax 三行已更新 |
 | E4 | 未来计划不再放在 `designs/` 中冒充现状 | `docs/designs/` 中不再有 `development_plan / milestones / task_checklist` 命名的文件，或已迁移到 `improvement-plan/` |
 | E5 | `docs/issues.md` 能反映真实未解决问题 | 未解决节至少列出 §2.3–§2.8 中未在本 Batch 内修复的条目 |
@@ -437,8 +468,8 @@ Batch 2   质量 vertical slice
 
 ### 10.3 03 号方案自身状态
 
-- 本方案在 Batch -1 完成前保持 `Draft`（当前状态见 §1.3 快照：E1–E8 失败，E9 部分完成）；
-- Batch -1 退出条件 E1–E9 全部满足后，状态迁移到 `Implemented`；
+- 本方案当前状态为 `In Progress`（主要实施完成，收口待验收）；
+- E1 完全满足后，状态迁移到 `Implemented`；
 - 后续若文档治理规则需要长期约束，另建 ADR，本方案转为 `Superseded` 并保留链接。
 
 ## 11. 版本历史
@@ -448,3 +479,5 @@ Batch 2   质量 vertical slice
 | 1.0 | 2026-09-13 | 初始版本：Batch -1 前置里程碑，D0–D5 与 E1–E9 退出条件 |
 | 1.1 | 2026-09-14 | 新增 §1.3 "当前执行状态"快照，明确区分规划工件交付与 D0–D5 实质执行；E1–E8 当前失败，E9 部分完成；02 号方案 Batch 0 阻塞中 |
 | 1.2 | 2026-09-14 | 修正 6 条自相矛盾：§1.1 明确从属 documentation-guide.md；§3.2 改为清查表工作标签；§4 核心集替换为 9 篇权威文档（排除 02/03 Draft 提案）；§5.1 移除 authority 类型；§5.2 docs/agent/ 标记 Out of Scope；§8.1 修正开关语义为 report-only + --strict-*；§9 E2 排除 agent/；§2.5 命名违规计数修正为 25 篇 |
+| 2.0 | 2026-09-17 | E1–E8 实施完成；状态 Draft → In Progress；E2 修订为“核心无 Unverified + 其余有处置跟踪”；回退未经核验的 designs/ 批量 Current 赋值 |
+| 2.1 | 2026-09-17 | 修正 §1.3 内部矛盾（D1/D3/D5a 实际已执行但快照写“未启动”）；状态回退 Implemented → In Progress；Batch 0 重新标记为阻塞；补充 §4.4 D1 核验记录 |

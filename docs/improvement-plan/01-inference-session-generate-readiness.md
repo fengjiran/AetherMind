@@ -74,9 +74,9 @@
 | Argmax | FP32 reference | 无 | 可用 |
 | QkvLinear | FP32 reference（packed-only） | 无 | 可用（需 O2 融合 + `enable_packed_weights=true`） |
 | GateUpLinear | FP32 reference（packed-only） | 无 | 可用（需 O2 融合 + `enable_packed_weights=true`） |
-| AddRmsNorm | 无 | 无 | O2 fused path 阻塞（无 kernel） |
+| AddRmsNorm | FP32 reference（plain + packed identity） | 无 | 可用（O2 fused path；packed 需 `enable_packed_weights=true`） |
 
-当前 O2 默认 semantic pipeline 会产生 `QkvLinear`、`GateUpLinear` 和 `AddRmsNorm`。前两者的 packed-only kernel 与 execution packed 绑定链路（`ExecutionStep.packed_weights` → packing request → `WeightPrepackPlanner` → plan build → execute）已落地并走通全链路测试；`AddRmsNorm` 仍无 kernel（execution lowering 是一个 semantic node 对应一个 kernel step，且不存在 kernel-sequence fallback）。因此 O2 + `enable_packed_weights=true` 的 QKV/GateUp 路径已可构建，但含 `AddRmsNorm` 节点的完整 O2 图仍会 plan build 失败。
+当前 O2 默认 semantic pipeline 会产生 `QkvLinear`、`GateUpLinear` 和 `AddRmsNorm`。三者的 packed kernel 与 execution packed 绑定链路（`ExecutionStep.packed_weights` → packing request → `WeightPrepackPlanner` → plan build → execute）均已落地并走通全链路测试；AddRmsNorm 另外保留 plain FP32 reference descriptor。execution lowering 仍是一个 semantic node 对应一个 kernel step，且不存在 kernel-sequence fallback，但 AddRmsNorm 已不再是 O2 plan build 的阻塞项；完整 Llama O2 readiness 仍受其余未覆盖算子约束。
 
 ### 2.3 当前 packed-weight 能力
 

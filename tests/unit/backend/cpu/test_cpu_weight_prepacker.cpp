@@ -1,4 +1,5 @@
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
+#include "aethermind/backend/cpu/identity_packing.h"
 
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/base/kernel_selector.h"
@@ -9,6 +10,8 @@
 
 #include <cstdlib>
 #include <gtest/gtest.h>
+
+#include <array>
 
 namespace {
 
@@ -72,6 +75,27 @@ TEST(CpuWeightPrepacker, RecipeForIsDeterministicPerSelector) {
     EXPECT_EQ(CpuWeightPrepacker::RecipeFor(selector),
               CpuWeightPrepacker::RecipeFor(selector));
     EXPECT_FALSE(CpuWeightPrepacker::RecipeFor(selector).layout.empty());
+}
+
+TEST(CpuWeightPrepacker, IdentityPackingPreservesStrongerSourceAlignment) {
+    constexpr std::array<int64_t, 2> shape = {2, 4};
+    ShapeAndStride shape_and_stride;
+    shape_and_stride.set_contiguous(shape);
+    Tensor logical_weight(MakeTestBuffer(8 * sizeof(float), 128),
+                          0,
+                          DataType::Float32(),
+                          shape_and_stride);
+    ASSERT_TRUE(logical_weight.is_initialized());
+
+    CpuWeightPrepacker prepacker;
+    const auto packed = prepacker.Pack(
+            OpType::kLinear, logical_weight, MakePackedCpuSelector());
+
+    ASSERT_TRUE(packed.ok()) << packed.status().ToString();
+    ASSERT_NE(*packed, nullptr);
+    EXPECT_EQ((*packed)->recipe().layout, cpu::kCpuIdentityPackingLayout);
+    EXPECT_EQ((*packed)->recipe().alignment, cpu::kCpuIdentityPackingAlignment);
+    EXPECT_GE((*packed)->storage().alignment(), size_t{128});
 }
 
 TEST(CpuWeightPrepacker, PackRejectsNonPackedWeightFormatRequests) {

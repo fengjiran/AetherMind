@@ -1,7 +1,7 @@
 # InferenceSession / Generate 前置闭环计划
 
 - **状态**: Draft
-- **版本**: 1.3
+- **版本**: 1.4
 - **日期**: 2026-09-03
 - **最近更新**: 2026-09-16
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
@@ -57,7 +57,7 @@
 
 ### 2.2 当前 CPU kernel 覆盖
 
-真实 CPU registry 当前有（截至 2026-09-16，共 12 类、17 个描述符；reference 命名统一为 `cpu::<op>_f32_reference`）：
+真实 CPU registry 当前有（截至 2026-09-16，共 14 类、20 个描述符；reference 命名统一为 `cpu::<op>_f32_reference`）：
 
 | OpType | Reference kernel | Optimized kernel | Generate baseline 状态 |
 |---|---:|---:|---|
@@ -67,7 +67,7 @@
 | ElementwiseMul | FP32 reference | 无 | semantic Llama baseline 不直接依赖 |
 | Linear | FP32 reference | 无 | 可用 |
 | RoPE | FP32 reference | 无 | 可用 |
-| KVCacheUpdate | 无 | 无 | 阻塞 |
+| KVCacheUpdate | FP32 reference（窄 KV binding） | 无 | 可用 |
 | Attention | 无 | 无 | 阻塞 |
 | Silu | FP32 reference | 无 | semantic Llama baseline 不直接依赖（SiluMul 未融合对偶） |
 | SiluMul | FP32 reference | 无 | 可用 |
@@ -76,7 +76,7 @@
 | GateUpLinear | FP32 reference（packed-only） | 无 | 可用（需 O2 融合 + `enable_packed_weights=true`） |
 | AddRmsNorm | FP32 reference（plain + packed identity） | 无 | 可用（O2 fused path；packed 需 `enable_packed_weights=true`） |
 
-当前 O2 默认 semantic pipeline 会产生 `QkvLinear`、`GateUpLinear` 和 `AddRmsNorm`。三者的 packed kernel 与 execution packed 绑定链路（`ExecutionStep.packed_weights` → packing request → `WeightPrepackPlanner` → plan build → execute）均已落地并走通全链路测试；AddRmsNorm 另外保留 plain FP32 reference descriptor。execution lowering 仍是一个 semantic node 对应一个 kernel step，且不存在 kernel-sequence fallback，但 AddRmsNorm 已不再是 O2 plan build 的阻塞项；完整 Llama O2 readiness 仍受其余未覆盖算子约束。
+当前 O2 默认 semantic pipeline 会产生 `QkvLinear`、`GateUpLinear` 和 `AddRmsNorm`。三者的 packed kernel 与 execution packed 绑定链路（`ExecutionStep.packed_weights` → packing request → `WeightPrepackPlanner` → plan build → execute）均已落地并走通全链路测试；AddRmsNorm 另外保留 plain FP32 reference descriptor。execution lowering 仍是一个 semantic node 对应一个 kernel step，且不存在 kernel-sequence fallback；O2/完整图的剩余 kernel 缺口收敛为 Attention（KVCacheUpdate 已落地，见 §3.1）。
 
 ### 2.3 当前 packed-weight 能力
 
@@ -100,35 +100,25 @@
 
 ## 3. 必须先闭环的阻塞项
 
-### 3.1 KV/state identity 没有到达 kernel
+### 3.1 KV/state identity 到达 kernel ✅（2026-09-16 闭环）
 
 KVCache Manager 的 correctness 修复、lease/append transaction、execution binding 与长期 Paged KV 边界由 [KVCache Manager 演进方案](05-kv-cache-manager-evolution.md) 详细定义；本节只保留 Generate 闭环所需的集成门禁。
 
-当前 `ExecutionContext` 保存 `KVCacheView`，`LayerRunner` 只验证 state alias 的 presence、dtype 和静态 geometry。`KernelContext` 不携带 KV storage、layer、K/V slot 或 commit position。
-
-同时，`LoweredGraph` 中 `StateValue::binding` 所携带的：
-
-```text
-KVCacheStateBinding {
-    decoder_layer_index,
-    KVCacheSlot
-}
-```
-
-在转换为 `ExecutionValueDesc` 时只保留了 `kind == kState`，资源 identity 没有进入 `ExecutionPlan`。因此真实 `KVCacheUpdate`/`Attention` kernel 无法确定物理 KV 位置。
-
-必须建立以下数据链：
+该数据链已落地（commits 66df0256..24c60799）：
 
 ```text
 LoweredGraph StateBinding
-    → execution-native resolved state identity
-    → ExecutionPlan / ExecutionStep
-    → LayerRunner narrow binding
-    → KernelContext
-    → KVCacheUpdate / Attention kernel
+    → ExecutionKVCacheStateIdentity（execution 自有的 layer/slot identity，进入 ExecutionPlan / ExecutionStep）
+    → LayerRunner 组装窄绑定（KVCacheAppendBinding / KVCacheReadBinding）
+    → KernelContext::kv_append / kv_read（仅单次同步调用有效）
+    → KVCacheUpdate kernel（已消费；Attention 读绑定机制已就绪）
 ```
 
-硬性约束：
+- [kv_cache_binding.h](../../include/aethermind/base/kv_cache_binding.h)：`KVCacheLayerStorageBinding`（key/value 指针、dtype、layer、kv_heads、head_dim、capacity、strides）+ `KVCacheAppendBinding`（本 plan 写入窗口 `[begin, end)`，`end` 为本地可见前沿）+ `KVCacheReadBinding`（`[0, committed_end)` 跨 plan 可见，`[committed_end, visible_end)` 仅同一 plan 内后续已验证 step 可读）。
+- commit 事务：`LayerRunner` 只在完整 plan 成功后推进 commit watermark；plan 级 binding/commit/可见窗口语义由 `KVCacheUpdateKernel.*` 覆盖，manager 级前沿与越界由 `test_kv_cache_manager.cpp` 覆盖。
+- kernel 侧只接收窄绑定：KV 存储指针与窗口经 `KernelContext` 逐调用传入（`KVCacheUpdateF32KernelArgs` 刻意不携带 cache 指针与位置），不进 prepared params。
+
+硬性约束（已落实）：
 
 - 不得把 `Runtime*`、`ExecutionContext*` 或整个 `KVCacheManager*` 传给 kernel；
 - backend 不得依赖 graph/compiler；
@@ -311,6 +301,8 @@ state binding
 
 ### M1：execution-native KV/state binding
 
+**状态（2026-09-16）**：交付内容已全部落地（见 §3.1 闭环记录）；plan 级 binding/commit 语义由 `KVCacheUpdateKernel.*` 覆盖，manager 级 view/越界由 `test_kv_cache_manager.cpp` 覆盖。
+
 #### 交付内容
 
 - execution-native state identity；
@@ -348,11 +340,11 @@ state binding
 
 ### M3：最小 FP32 reference kernel 链
 
-建议顺序（截至 2026-09-16 已完成 4/6；fused 变体 kQkvLinear/kGateUpLinear 亦已提前落地为 packed-only reference kernel，见 §2.2）：
+建议顺序（截至 2026-09-16 已完成 5/6；fused 变体 kQkvLinear/kGateUpLinear（packed-only）与 kAddRmsNorm（plain + packed identity）亦已提前落地，见 §2.2）：
 
 1. Linear；✅ 已完成（`cpu::linear_f32_reference`）
 2. RoPE；✅ 已完成（`cpu::rope_f32_reference`，含参数化 HF golden 对拍）
-3. KVCacheUpdate（与 M1 联合）；阻塞（无 reference kernel）
+3. KVCacheUpdate（与 M1 联合）；✅ 已完成（`cpu::kvcache_update_f32_reference` + 窄 KV binding 链路）
 4. causal GQA Attention；阻塞（无 reference kernel）
 5. SiluMul；✅ 已完成（`cpu::silu_mul_f32_reference`；kSilu 对偶 `cpu::silu_f32_reference` 同步落地）
 6. Argmax。✅ 已完成（`cpu::argmax_f32_reference`）
@@ -479,10 +471,10 @@ Decode 循环中不得变化：
 
 本提案在 M1 开始实施时从 Draft 转为 In Progress。以下条件全部满足后，才允许进入 M5 并开始实现 public `InferenceSession::Generate`：
 
-- [ ] state binding identity 从 LoweredGraph 到达 kernel；
-- [ ] kernel 获得窄 KV binding，不依赖 Runtime/Session 宽对象；
+- [x] state binding identity 从 LoweredGraph 到达 kernel（`ExecutionKVCacheStateIdentity` 进入 plan，窄绑定经 `KernelContext` 到达 kernel，见 §3.1）；
+- [x] kernel 获得窄 KV binding，不依赖 Runtime/Session 宽对象（`KVCacheAppendBinding`/`KVCacheReadBinding` 逐调用传入）；
 - [ ] baseline pipeline 可以通过真实 CpuBackend 构建完整 plan；
-- [ ] Linear/RoPE/KVCacheUpdate/Attention/SiluMul/Argmax reference kernel 可用（进度 4/6：Linear、RoPE、SiluMul、Argmax 可用；KVCacheUpdate/Attention 待 §3.1 state binding 闭环）；fused QkvLinear/GateUpLinear（packed-only）亦已落地；
+- [ ] Linear/RoPE/KVCacheUpdate/Attention/SiluMul/Argmax reference kernel 可用（进度 5/6：Linear、RoPE、KVCacheUpdate、SiluMul、Argmax 可用；Attention 待实现）；fused QkvLinear/GateUpLinear/AddRmsNorm 亦已落地；
 - [ ] `PrepareExecutableModel` 可从真实 `LoweredModelArtifact` 构建；
 - [ ] real weights 可自动生成完整 external bindings；
 - [ ] Prefill/Decode phase-plan 合同已验证；
@@ -496,6 +488,7 @@ Decode 循环中不得变化：
 
 - [`include/aethermind/runtime/runtime.h`](../../include/aethermind/runtime/runtime.h)
 - [`include/aethermind/execution/execution_plan.h`](../../include/aethermind/execution/execution_plan.h)
+- [`include/aethermind/base/kv_cache_binding.h`](../../include/aethermind/base/kv_cache_binding.h)
 - [`include/aethermind/execution/execution_bindings.h`](../../include/aethermind/execution/execution_bindings.h)
 - [`include/aethermind/execution/execution_context.h`](../../include/aethermind/execution/execution_context.h)
 - [`include/aethermind/backend/kernel_context.h`](../../include/aethermind/backend/kernel_context.h)
@@ -511,3 +504,5 @@ Decode 循环中不得变化：
 | 2026-09-03 | 1.0 | 基于当前 Runtime/Execution 生命周期与真实 CPU kernel 覆盖建立前置闭环计划 |
 | 2026-09-15 | 1.1 | 同步 §2.2 kernel 覆盖表：SiluMul 升级为 FP32 reference/可用并新增 Silu 行，统一 reference 命名；M3 标注完成 4/6；门禁清单同步进度 |
 | 2026-09-16 | 1.2 | 同步 §2.2/§2.3：新增 QkvLinear/GateUpLinear（packed-only, cpu_identity）行与 packed 能力说明，O2 fused 阻塞项收敛为 AddRmsNorm；M3 与门禁清单同步 |
+| 2026-09-16 | 1.3 | AddRmsNorm（plain + packed identity）落表；PRD 链接与术语（当前产品口径）更新 |
+| 2026-09-16 | 1.4 | 同步 KVCacheUpdate 与窄 KV binding 链路：§2.2 覆盖表（14 类 20 描述符）、§3.1 闭环重写、M1 状态、M3 5/6、门禁前两项勾选 |

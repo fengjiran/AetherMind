@@ -1,9 +1,12 @@
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
+#include "aethermind/backend/cpu/identity_packing.h"
 #include "aethermind/base/tensor_view.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <string>
 
 namespace aethermind {
 
@@ -127,7 +130,11 @@ StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
     }
 
     const size_t packed_nbytes = logical_weight.logical_nbytes();
-    Buffer packed_storage = AllocateCpuPackedBuffer(packed_nbytes, logical_weight.alignment());
+    // Identity consumers require at least the recipe alignment, while a
+    // source view may carry a stronger alignment contract that callers retain.
+    Buffer packed_storage = AllocateCpuPackedBuffer(
+            packed_nbytes,
+            std::max(logical_weight.alignment(), cpu::kCpuIdentityPackingAlignment));
     if (!packed_storage.is_initialized()) {
         return Status::ResourceExhausted("Failed to allocate packed CPU weight storage");
     }
@@ -149,7 +156,8 @@ PackingRecipe CpuWeightPrepacker::RecipeFor(const KernelSelector& selector) noex
     // so distinct packing variants of the same {binding, selector} stay
     // distinguishable once real tile-block layouts land.
     (void) selector;
-    return PackingRecipe{.layout = "cpu_identity", .alignment = 64};
+    return PackingRecipe{.layout = std::string(cpu::kCpuIdentityPackingLayout),
+                         .alignment = cpu::kCpuIdentityPackingAlignment};
 }
 
 } // namespace aethermind

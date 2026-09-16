@@ -104,9 +104,9 @@ Status BuildQkvLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
         return Status::InvalidArgument(
                 "QkvLinearKernelEntry outputs do not match QKV feature metadata");
     }
-    AM_RETURN_IF_ERROR(ValidateIdentityPackedWeight(*context.packed_weight,
-                                                    total_out_features, in_features,
-                                                    "QkvLinearKernelEntry"));
+    AM_RETURN_IF_ERROR(ValidateIdentityPackedWeight(
+            *context.packed_weight, std::array{total_out_features, in_features},
+            "QkvLinearKernelEntry"));
 
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "QkvLinearKernelEntry"));

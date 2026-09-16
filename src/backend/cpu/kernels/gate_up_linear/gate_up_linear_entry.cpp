@@ -101,9 +101,9 @@ Status BuildGateUpLinearF32ReferenceArgs(const KernelParamsBuildContext& context
         return Status::InvalidArgument(
                 "GateUpLinearKernelEntry outputs do not match Gate-Up feature metadata");
     }
-    AM_RETURN_IF_ERROR(ValidateIdentityPackedWeight(*context.packed_weight,
-                                                    total_out_features, in_features,
-                                                    "GateUpLinearKernelEntry"));
+    AM_RETURN_IF_ERROR(ValidateIdentityPackedWeight(
+            *context.packed_weight, std::array{total_out_features, in_features},
+            "GateUpLinearKernelEntry"));
 
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "GateUpLinearKernelEntry"));

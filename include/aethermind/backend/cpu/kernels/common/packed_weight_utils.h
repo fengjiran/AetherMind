@@ -7,38 +7,40 @@
 ///
 /// Hosts the binding-time validation core shared by the packed-only weight
 /// kernels (QkvLinear, GateUpLinear, ...): checks that a PackedWeightView
-/// carries the expected logical Float32 weight shape and the canonical
-/// "cpu_identity" packing recipe with enough storage for the logical weight.
+/// carries the expected logical Float32 weight shape and the canonical CPU
+/// identity-packing recipe with enough storage for the logical weight.
 /// The implementation lives in packed_weight_utils.cpp.
 
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/base/status.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string_view>
 
 namespace aethermind::cpu::detail {
 
 /// @brief Validates a packed weight artifact against the identity-packing
-///        contract.
+///        contract for the expected logical Float32 shape.
 ///
-/// Requires a Float32 logical weight of shape `[total_out_features,
-/// in_features]`, the canonical "cpu_identity" recipe with 64-byte
-/// alignment, matching storage alignment, and storage whose byte size covers
-/// the logical weight. Used by the binding-time KernelParamsBuilders of the
-/// packed-only weight kernels; callers derive per-split weight pointers from
-/// the artifact's logical row ranges after this check passes.
+/// Requires exact logical metadata (rank and every dimension), the canonical
+/// CPU identity-packing recipe with 64-byte alignment, matching storage
+/// alignment, and enough storage for every Float32 logical element. Shape
+/// products are checked before converting them to bytes. Used by the
+/// binding-time KernelParamsBuilders of the packed-only weight kernels;
+/// callers derive operand pointers from the artifact's logical ranges after
+/// this check passes.
 ///
 /// @param packed Packed weight artifact exposed to the params builder.
-/// @param total_out_features Expected logical row count (sum of the fused
-///        output splits, e.g. Q+K+V for QkvLinear).
-/// @param in_features Expected logical column count.
+/// @param expected_shape Expected logical shape; the rank and every dimension
+///        are compared exactly and the element/byte products are computed
+///        with overflow checks.
 /// @param kernel_name Caller name used as the error-message prefix.
 /// @return Ok when the artifact satisfies the identity-packing contract,
 ///         InvalidArgument/Overflow otherwise.
 Status ValidateIdentityPackedWeight(const PackedWeightView& packed,
-                                    int64_t total_out_features,
-                                    int64_t in_features,
+                                    std::span<const int64_t> expected_shape,
                                     std::string_view kernel_name) noexcept;
 
 } // namespace aethermind::cpu::detail

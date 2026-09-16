@@ -131,7 +131,7 @@ TEST(RuntimeBackendIntegration, KVCacheManagerCanBeBuiltFromRuntimeOptions) {
 
     const StatusOr<KVCacheView> view = manager->ReserveForSession(8, 8);
     ASSERT_TRUE(view.ok());
-    EXPECT_EQ(view->current_pos(), 8U);
+    EXPECT_EQ(view->current_pos(), 0U);
     EXPECT_EQ(view->token_capacity(), 16U);
 }
 

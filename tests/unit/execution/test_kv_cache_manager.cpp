@@ -98,7 +98,9 @@ TEST(KVCacheManager, InitAndReserveCreatesValidView) {
     EXPECT_EQ(view->head_dim(), 16U);
     EXPECT_EQ(view->max_tokens(), 32U);
     EXPECT_EQ(view->token_capacity(), 16U);
-    EXPECT_EQ(view->current_pos(), 8U);
+    EXPECT_EQ(view->current_pos(), 0U);
+    EXPECT_TRUE(view->awaiting_prefill());
+    EXPECT_EQ(view->prompt_len(), 8U);
     EXPECT_GT(manager.total_bytes(), 0U);
 }
 
@@ -169,32 +171,36 @@ TEST(KVCacheManager, CommitAndReadWritePointersRespectBounds) {
     StatusOr<KVCacheView> view = manager.ReserveForSession(4, 4);
     ASSERT_TRUE(view.ok());
 
-    EXPECT_FALSE(view->KeyData(0, 0, 4).ok());
-
-    ASSERT_TRUE(view->CommitUntil(5).ok());
-    EXPECT_EQ(view->current_pos(), 5U);
-
-    const StatusOr<void*> key_ptr = view->MutableKeyData(0, 0, 4);
-    const StatusOr<void*> value_ptr = view->MutableValueData(0, 0, 4);
+    const StatusOr<void*> key_ptr = view->MutableKeyData(0, 0, 0);
+    const StatusOr<void*> value_ptr = view->MutableValueData(0, 0, 0);
     ASSERT_TRUE(key_ptr.ok());
     ASSERT_TRUE(value_ptr.ok());
     EXPECT_NE(key_ptr.value(), value_ptr.value());
 
-    const StatusOr<const void*> key_read = view->KeyData(0, 0, 4);
+    EXPECT_FALSE(view->KeyData(0, 0, 0).ok());
+    ASSERT_TRUE(view->CommitUntil(4).ok());
+    EXPECT_EQ(view->current_pos(), 4U);
+    EXPECT_FALSE(view->awaiting_prefill());
+
+    const StatusOr<const void*> key_read = view->KeyData(0, 0, 0);
     ASSERT_TRUE(key_read.ok());
     EXPECT_EQ(key_read.value(), key_ptr.value());
 }
 
-TEST(KVCacheManager, ResetSessionRewindsToPromptLength) {
+TEST(KVCacheManager, ResetSessionClearsCommittedPosition) {
     KVCacheManager manager;
     ASSERT_TRUE(manager.Init(1, 1, 32, 8, MakeKVType(), 64).ok());
     StatusOr<KVCacheView> view = manager.ReserveForSession(6, 10);
     ASSERT_TRUE(view.ok());
+    ASSERT_TRUE(view->CommitUntil(6).ok());
     ASSERT_TRUE(view->CommitUntil(10).ok());
 
     ASSERT_TRUE(manager.ResetSession(*view).ok());
 
-    EXPECT_EQ(view->current_pos(), 6U);
+    EXPECT_EQ(view->current_pos(), 0U);
+    EXPECT_EQ(view->prompt_len(), 6U);
+    EXPECT_EQ(view->token_capacity(), 16U);
+    EXPECT_TRUE(view->awaiting_prefill());
 }
 
 TEST(KVCacheManager, ReleaseInvalidatesViewAndAllowsNewReservation) {
@@ -205,11 +211,12 @@ TEST(KVCacheManager, ReleaseInvalidatesViewAndAllowsNewReservation) {
 
     ASSERT_TRUE(manager.ReleaseSession(*view).ok());
     EXPECT_FALSE(view->valid());
+    EXPECT_FALSE(view->BindLayerForAppend(0, 0, 1).ok());
 
     StatusOr<KVCacheView> next = manager.ReserveForSession(2, 4);
     ASSERT_TRUE(next.ok());
     EXPECT_TRUE(next->valid());
-    EXPECT_EQ(next->current_pos(), 2U);
+    EXPECT_EQ(next->current_pos(), 0U);
 }
 
 TEST(KVCacheManager, ReserveRejectsRequestsBeyondPhysicalCapacity) {
@@ -220,6 +227,31 @@ TEST(KVCacheManager, ReserveRejectsRequestsBeyondPhysicalCapacity) {
 
     ASSERT_FALSE(view.ok());
     EXPECT_EQ(view.status().code(), StatusCode::kOutOfRange);
+}
+
+TEST(KVCacheManager, ReserveRejectsEmptyPrompt) {
+    KVCacheManager manager;
+    ASSERT_TRUE(manager.Init(1, 1, 8, 8, MakeKVType(), 64).ok());
+
+    const StatusOr<KVCacheView> view = manager.ReserveForSession(0, 1);
+
+    ASSERT_FALSE(view.ok());
+    EXPECT_EQ(view.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(KVCacheView, AppendBindingRequiresTheCommittedFrontier) {
+    KVCacheManager manager;
+    ASSERT_TRUE(manager.Init(1, 1, 8, 8, MakeKVType(), 64).ok());
+    const auto view = manager.ReserveForSession(2, 2);
+    ASSERT_TRUE(view.ok());
+
+    EXPECT_FALSE(view->BindLayerForAppend(0, 1, 2).ok());
+    const auto append = view->BindLayerForAppend(0, 0, 2);
+    ASSERT_TRUE(append.ok()) << append.status().ToString();
+    EXPECT_EQ(append->begin, 0U);
+    EXPECT_EQ(append->end, 2U);
+    EXPECT_EQ(append->storage.layer_index, 0U);
+    EXPECT_EQ(append->storage.token_capacity, 4U);
 }
 
 } // namespace

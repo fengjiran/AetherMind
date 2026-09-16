@@ -360,10 +360,22 @@ TEST(ExecutionPlan, SortsStateAliasPlanForStepLookup) {
     const auto plan = ExecutionPlan::Create(
             {{.spec = tensor_spec, .kind = ExecutionValueKind::kModelInput},
              {.spec = tensor_spec, .kind = ExecutionValueKind::kModelInput},
-             {.spec = tensor_spec, .kind = ExecutionValueKind::kState},
-             {.spec = tensor_spec, .kind = ExecutionValueKind::kState},
-             {.spec = tensor_spec, .kind = ExecutionValueKind::kState},
-             {.spec = tensor_spec, .kind = ExecutionValueKind::kState}},
+             {.spec = tensor_spec,
+              .kind = ExecutionValueKind::kState,
+              .state_binding = ExecutionKVCacheStateIdentity{.decoder_layer_index = 0,
+                                                             .slot = ExecutionKVCacheSlot::kKey}},
+             {.spec = tensor_spec,
+              .kind = ExecutionValueKind::kState,
+              .state_binding = ExecutionKVCacheStateIdentity{.decoder_layer_index = 0,
+                                                             .slot = ExecutionKVCacheSlot::kValue}},
+             {.spec = tensor_spec,
+              .kind = ExecutionValueKind::kState,
+              .state_binding = ExecutionKVCacheStateIdentity{.decoder_layer_index = 0,
+                                                             .slot = ExecutionKVCacheSlot::kKey}},
+             {.spec = tensor_spec,
+              .kind = ExecutionValueKind::kState,
+              .state_binding = ExecutionKVCacheStateIdentity{.decoder_layer_index = 0,
+                                                             .slot = ExecutionKVCacheSlot::kValue}}},
             {{.index = 0}, {.index = 1}}, {},
             {{.kernel = kernel,
               .inputs = {{.index = 0}, {.index = 1}, {.index = 2}, {.index = 3}},
@@ -377,6 +389,17 @@ TEST(ExecutionPlan, SortsStateAliasPlanForStepLookup) {
     ASSERT_EQ(aliases.size(), 2U);
     EXPECT_EQ(aliases[0].input_port, 3U);
     EXPECT_EQ(aliases[1].input_port, 2U);
+}
+
+TEST(ExecutionPlan, RejectsStateValueWithoutExplicitIdentity) {
+    const TensorSpec tensor_spec = FloatVectorSpec(2);
+
+    const auto plan = ExecutionPlan::Create(
+            {{.spec = tensor_spec, .kind = ExecutionValueKind::kState}}, {}, {}, {});
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(plan.status().message().find("state identity"), std::string::npos);
 }
 
 TEST(ExecutionPlan, RejectsStateAliasBeyondStepCount) {

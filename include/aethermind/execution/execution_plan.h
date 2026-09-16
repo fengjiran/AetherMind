@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace aethermind {
@@ -48,10 +49,33 @@ enum class ExecutionValueKind : uint8_t {
     kState,
 };
 
+/// @brief Execution-owned KV plane tag. Deliberately independent of graph IR.
+enum class ExecutionKVCacheSlot : uint8_t {
+    kKey,
+    kValue,
+};
+
+/// @brief Physical state identity retained after graph lowering.
+struct ExecutionKVCacheStateIdentity {
+    uint32_t decoder_layer_index = 0;
+    ExecutionKVCacheSlot slot = ExecutionKVCacheSlot::kKey;
+
+    AM_NODISCARD friend constexpr bool operator==(
+            const ExecutionKVCacheStateIdentity& lhs,
+            const ExecutionKVCacheStateIdentity& rhs) noexcept = default;
+};
+
+/// @brief Runtime-owned persistent-state identity.
+///
+/// `std::monostate` is valid only for non-state values. ExecutionPlan::Create
+/// rejects it on every `ExecutionValueKind::kState` value.
+using ExecutionStateBinding = std::variant<std::monostate, ExecutionKVCacheStateIdentity>;
+
 /// @brief Immutable logical metadata for one ExecutionPlan value.
 struct ExecutionValueDesc {
     TensorSpec spec{};
     ExecutionValueKind kind = ExecutionValueKind::kActivation;
+    ExecutionStateBinding state_binding{};
     std::string name{};
 };
 

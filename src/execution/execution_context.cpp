@@ -1,5 +1,7 @@
 #include "aethermind/execution/execution_context.h"
 
+#include <algorithm>
+
 namespace aethermind {
 
 StatusOr<ExecutionContext> ExecutionContext::Create(
@@ -17,13 +19,20 @@ StatusOr<ExecutionContext> ExecutionContext::Create(
                 "ExecutionPlan requires a WorkspaceArena for non-zero workspace requirements");
     }
 
-    if (!plan.state_alias_plan().aliases.empty() && !kv_cache_view.valid()) {
+    const bool requires_kv_cache = std::ranges::any_of(
+            plan.values(), [](const ExecutionValueDesc& value) {
+                return value.kind == ExecutionValueKind::kState;
+            });
+    if (requires_kv_cache && !kv_cache_view.valid()) {
         return Status::FailedPrecondition(
-                "ExecutionPlan state aliases require a valid KVCacheView");
+                "ExecutionPlan state values require a valid KVCacheView");
     }
 
     ExecutionContext context(workspace_arena);
     context.kv_cache_view_ = kv_cache_view;
+    if (requires_kv_cache) {
+        context.kv_layer_transaction_scratch_.resize(kv_cache_view.num_layers());
+    }
     context.prepared_bindings_ = std::move(prepared_bindings);
     return context;
 }
@@ -68,9 +77,15 @@ const PreparedExecutionBindings* ExecutionContext::prepared_bindings() const noe
     return prepared_bindings_.empty() ? nullptr : &prepared_bindings_;
 }
 
+std::span<uint8_t> ExecutionContext::ResetKVLayerTransactionScratch() noexcept {
+    std::ranges::fill(kv_layer_transaction_scratch_, uint8_t{0});
+    return kv_layer_transaction_scratch_;
+}
+
 void ExecutionContext::Clear() noexcept {
     prepared_bindings_ = {};
     kv_cache_view_ = {};
+    kv_layer_transaction_scratch_.clear();
     workspace_arena_ = nullptr;
 }
 

@@ -10,6 +10,10 @@
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/runtime/kv_cache_view.h"
 
+#include <cstdint>
+#include <span>
+#include <vector>
+
 namespace aethermind {
 
 /// @brief Aggregates the resources needed to execute one specialized plan.
@@ -66,6 +70,13 @@ public:
     /// the context has been cleared or was not created for execution.
     AM_NODISCARD const PreparedExecutionBindings* prepared_bindings() const noexcept;
 
+    /// @brief Clears and returns cold-path-allocated per-layer transaction scratch.
+    ///
+    /// The returned storage is valid for this synchronous Execute() call only.
+    /// It is preallocated by Create() from the bound KV view geometry so Decode
+    /// does not allocate while tracking per-layer append readiness.
+    AM_NODISCARD std::span<uint8_t> ResetKVLayerTransactionScratch() noexcept;
+
     /// @brief Clears owned bindings and borrowed handles.
     ///
     /// This does not reset the borrowed WorkspaceArena or release the KV
@@ -79,6 +90,7 @@ private:
     WorkspaceArena* workspace_arena_ = nullptr;
     KVCacheView kv_cache_view_{};
     PreparedExecutionBindings prepared_bindings_{};
+    std::vector<uint8_t> kv_layer_transaction_scratch_{};
 };
 
 } // namespace aethermind

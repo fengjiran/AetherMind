@@ -5,6 +5,7 @@
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_schema.h"
 
+#include <algorithm>
 #include <optional>
 #include <span>
 #include <string>
@@ -356,6 +357,38 @@ StatusOr<ExecutionValueKind> KindFromPayload(const GraphValuePayload& payload) {
     return std::visit(visitor, payload);
 }
 
+StatusOr<ExecutionStateBinding> StateBindingFromPayload(
+        const GraphValuePayload& payload) {
+    const auto* state = std::get_if<StateValue>(&payload);
+    if (state == nullptr) {
+        return Status::Internal(
+                "Finalized LoweredGraph kState value has no StateValue payload");
+    }
+
+    const auto* kv = std::get_if<KVCacheStateBinding>(&state->binding);
+    if (kv == nullptr) {
+        return Status::Internal(
+                "Phase 1 execution supports only KVCacheStateBinding state values");
+    }
+
+    ExecutionKVCacheSlot slot{};
+    switch (kv->slot) {
+        case KVCacheSlot::kKey:
+            slot = ExecutionKVCacheSlot::kKey;
+            break;
+        case KVCacheSlot::kValue:
+            slot = ExecutionKVCacheSlot::kValue;
+            break;
+        default:
+            return Status::Internal(
+                    "Finalized LoweredGraph has an invalid KV cache state slot");
+    }
+    return ExecutionKVCacheStateIdentity{
+            .decoder_layer_index = kv->decoder_layer_index,
+            .slot = slot,
+    };
+}
+
 StatusOr<PreparedExecutionGraph> PrepareUntrustedGraph(
         const std::vector<ExecutionPlanNodeSpec>& nodes) {
     PreparedExecutionGraph graph;
@@ -363,17 +396,29 @@ StatusOr<PreparedExecutionGraph> PrepareUntrustedGraph(
     for (const auto& [op_type, selector, workspace_requirement,
                       input_specs, output_specs,
                       runtime_checks, op_params]: nodes) {
+        const auto schema = GetOperatorSchema(op_type);
+        if (!schema.ok()) {
+            return schema.status();
+        }
+        const bool has_state_port = std::ranges::any_of(
+                                            schema->input_ports, [](const OperatorInputPort& port) {
+                                                return port.kind == OperatorPortKind::kState;
+                                            }) ||
+                                    std::ranges::any_of(schema->output_ports, [](const OperatorOutputPort& port) {
+                                        return port.kind == OperatorPortKind::kState;
+                                    });
+        if (has_state_port) {
+            return Status::InvalidArgument(
+                    "Stateful ExecutionPlanNodeSpec requires explicit state identity; "
+                    "the untrusted Phase 1 API does not expose one");
+        }
+
         auto prepared =
                 PrepareNode(op_type, selector, op_params, input_specs,
                             output_specs, runtime_checks,
                             MakeCallerWorkspaceAssertion(workspace_requirement), true);
         if (!prepared.ok()) {
             return prepared.status();
-        }
-
-        const auto schema = GetOperatorSchema(op_type);
-        if (!schema.ok()) {
-            return schema.status();
         }
 
         for (size_t i = 0; i < input_specs.size(); ++i) {
@@ -445,8 +490,17 @@ StatusOr<PreparedExecutionGraph> PrepareTrustedGraph(const LoweredGraph& lowered
         if (!kind.ok()) {
             return kind.status();
         }
+        ExecutionStateBinding state_binding;
+        if (*kind == ExecutionValueKind::kState) {
+            auto binding = StateBindingFromPayload(value.payload);
+            if (!binding.ok()) {
+                return binding.status();
+            }
+            state_binding = std::move(*binding);
+        }
         graph.values.push_back({.spec = value.spec,
                                 .kind = *kind,
+                                .state_binding = std::move(state_binding),
                                 .name = value.name});
     }
 

@@ -185,6 +185,19 @@ StatusOr<ExecutionPlan> ExecutionPlan::Create(std::vector<ExecutionValueDesc> va
     plan.workspace_layout_ = workspace_layout;
     plan.steps_.reserve(steps.size());
 
+    for (const ExecutionValueDesc& value: plan.values_) {
+        const bool has_state_binding =
+                !std::holds_alternative<std::monostate>(value.state_binding);
+        if (value.kind == ExecutionValueKind::kState && !has_state_binding) {
+            return Status::InvalidArgument(
+                    "ExecutionPlan kState value requires an explicit state identity");
+        }
+        if (value.kind != ExecutionValueKind::kState && has_state_binding) {
+            return Status::InvalidArgument(
+                    "ExecutionPlan non-state value cannot carry a state identity");
+        }
+    }
+
     std::vector<bool> seen_model_inputs(plan.values_.size());
     for (const auto id: plan.model_inputs_) {
         AM_RETURN_IF_ERROR(ValidateValueId(plan.values_, id, "model input"));

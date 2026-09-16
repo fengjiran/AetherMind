@@ -4,10 +4,9 @@
 
 namespace aethermind::cpu::detail {
 
-Status RunKVCacheUpdateF32Reference(
-        const KVCacheUpdateF32KernelArgs& args,
-        const KVCacheAppendBinding& append) noexcept {
-    const KVCacheLayerStorageBinding& storage = append.storage;
+Status RunKVCacheUpdateF32Reference(const KVCacheUpdateF32KernelArgs& args,
+                                    const KVCacheAppendBinding& append) noexcept {
+    const auto& storage = append.storage;
     const size_t token_count = append.end - append.begin;
     const size_t head_dim = storage.head_dim;
 
@@ -19,7 +18,7 @@ Status RunKVCacheUpdateF32Reference(
         const size_t source_head_offset = head * head_dim;
 
         for (size_t token = 0; token < token_count; ++token) {
-            const int64_t source_row = static_cast<int64_t>(token);
+            const auto source_row = static_cast<int64_t>(token);
             const auto* const key_source = args.key_data +
                                            source_row * args.key_row_stride +
                                            static_cast<int64_t>(source_head_offset) *

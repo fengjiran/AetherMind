@@ -17,12 +17,10 @@ namespace aethermind {
 /// norms to remain valid without introducing an activation alias contract.
 ///
 /// Registered in the default O2 pipeline (after SiluMulFusionPass, before
-/// DeadCodeEliminationPass). NOTE: runtime execution of the fused op requires
-/// an AddRmsNorm backend kernel, which is not implemented yet; the default
-/// pipeline emits the fused op regardless, so end-to-end execution of a fused
-/// graph is unsupported until the kernel lands (see
-/// docs/designs/model_graph_design.md §16.4). The `enable_fused_add_rms_norm`
-/// PassContext flag (default true) gates the pass at runtime.
+/// DeadCodeEliminationPass). CPU provides FP32 reference descriptors for both
+/// plain and `cpu_identity` packed weights, so a fused node remains one
+/// executable kernel step. The `enable_fused_add_rms_norm` PassContext flag
+/// (default true) gates the pass at runtime.
 class AddRmsNormFusionPass final : public GraphPass {
 public:
     AM_NODISCARD std::string_view Name() const noexcept override;

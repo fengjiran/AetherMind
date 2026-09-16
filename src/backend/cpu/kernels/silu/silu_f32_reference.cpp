@@ -1,4 +1,4 @@
-#include "backend/cpu/kernels/common/activation_utils.h"
+#include "aethermind/backend/cpu/kernels/common/activation_utils.h"
 #include "silu_internal.h"
 
 #include <array>

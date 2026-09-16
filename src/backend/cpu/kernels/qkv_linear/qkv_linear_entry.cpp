@@ -1,5 +1,6 @@
 #include "aethermind/backend/cpu/kernels/common/alias_utils.h"
 #include "aethermind/backend/cpu/kernels/common/layout_utils.h"
+#include "aethermind/backend/cpu/kernels/common/packed_weight_utils.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/backend/kernel_types.h"
@@ -13,16 +14,12 @@
 #include <limits>
 #include <new>
 #include <span>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 namespace aethermind::cpu::detail {
 namespace {
-
-constexpr std::string_view kCpuIdentityPackingLayout = "cpu_identity";
-constexpr size_t kCpuIdentityPackingAlignment = 64;
 
 StatusOr<int64_t> TotalOutFeatures(const QkvLinearF32KernelMetadata& metadata) noexcept {
     if (metadata.q_out_features < 0 || metadata.k_out_features < 0 ||
@@ -43,64 +40,13 @@ StatusOr<int64_t> TotalOutFeatures(const QkvLinearF32KernelMetadata& metadata) n
     return total_features;
 }
 
-StatusOr<size_t> RequiredPackedBytes(int64_t total_out_features,
-                                     int64_t in_features) noexcept {
-    if (total_out_features < 0 || in_features < 0) {
-        return Status::InvalidArgument(
-                "QkvLinearKernelEntry packed shape has a negative dimension");
-    }
-    if (static_cast<uint64_t>(total_out_features) >
-                static_cast<uint64_t>(std::numeric_limits<size_t>::max()) ||
-        static_cast<uint64_t>(in_features) >
-                static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
-        return Status::Overflow(
-                "QkvLinearKernelEntry packed dimensions exceed size_t");
-    }
-    size_t elements = 0;
-    if (CheckOverflowMul(static_cast<size_t>(total_out_features),
-                         static_cast<size_t>(in_features), &elements)) {
-        return Status::Overflow(
-                "QkvLinearKernelEntry packed element count overflows size_t");
-    }
-    size_t bytes = 0;
-    if (CheckOverflowMul(elements, sizeof(float), &bytes)) {
-        return Status::Overflow(
-                "QkvLinearKernelEntry packed byte count overflows size_t");
-    }
-    return bytes;
-}
-
-Status ValidatePackedWeight(const PackedWeightBuildView& packed,
-                            int64_t total_out_features,
-                            int64_t in_features) noexcept {
-    if (packed.logical_dtype != DataType::Float32() ||
-        packed.logical_shape.size() != 2U ||
-        packed.logical_shape[0] != total_out_features ||
-        packed.logical_shape[1] != in_features) {
-        return Status::InvalidArgument(
-                "QkvLinearKernelEntry packed logical metadata does not match QKV dimensions");
-    }
-    if (packed.recipe_layout != kCpuIdentityPackingLayout ||
-        packed.recipe_alignment != kCpuIdentityPackingAlignment ||
-        packed.alignment < kCpuIdentityPackingAlignment) {
-        return Status::InvalidArgument(
-                "QkvLinearKernelEntry requires the cpu_identity packed weight recipe");
-    }
-    AM_ASSIGN_OR_RETURN(const size_t required_bytes,
-                        RequiredPackedBytes(total_out_features, in_features));
-    if (packed.nbytes < required_bytes) {
-        return Status::InvalidArgument(
-                "QkvLinearKernelEntry packed storage is smaller than its logical weight");
-    }
-    return Status::Ok();
-}
-
 StatusOr<QkvLinearF32KernelMetadata> ReadMetadata(
         std::span<const std::byte> attrs) noexcept {
     if (attrs.size() != sizeof(QkvLinearF32KernelMetadata)) {
         return Status::InvalidArgument(
                 "QkvLinearKernelEntry requires QKV metadata in attrs");
     }
+
     QkvLinearF32KernelMetadata metadata{};
     std::memcpy(&metadata, attrs.data(), sizeof(metadata));
     AM_RETURN_IF_ERROR(TotalOutFeatures(metadata).status());
@@ -142,6 +88,7 @@ Status BuildQkvLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
         return Status::InvalidArgument(
                 "QkvLinearKernelEntry requires input and outputs with matching rank >= 1");
     }
+
     for (int32_t dim = 0; dim < rank - 1; ++dim) {
         if (query.dim(dim) != input.dim(dim) || key.dim(dim) != input.dim(dim) ||
             value.dim(dim) != input.dim(dim)) {
@@ -157,8 +104,9 @@ Status BuildQkvLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
         return Status::InvalidArgument(
                 "QkvLinearKernelEntry outputs do not match QKV feature metadata");
     }
-    AM_RETURN_IF_ERROR(ValidatePackedWeight(*context.packed_weight,
-                                            total_out_features, in_features));
+    AM_RETURN_IF_ERROR(ValidateIdentityPackedWeight(*context.packed_weight,
+                                                    total_out_features, in_features,
+                                                    "QkvLinearKernelEntry"));
 
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "QkvLinearKernelEntry"));
@@ -225,6 +173,7 @@ Status BuildQkvLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
         return Status::InvalidArgument(
                 "QkvLinearKernelEntry requires non-null data for non-empty tensors");
     }
+
     AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis input_analysis,
                         AnalyzeRowwiseView(input, "QkvLinearKernelEntry input"));
     AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
@@ -242,10 +191,11 @@ Status BuildQkvLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
         return Status::Overflow(
                 "QkvLinearKernelEntry packed storage size exceeds int64_t");
     }
-    AM_ASSIGN_OR_RETURN(const ByteAddressRange packed_range,
-                        BuildContiguousByteRange(context.packed_weight->data,
-                                                 static_cast<int64_t>(context.packed_weight->nbytes),
-                                                 size_t{1}, "QkvLinearKernelEntry packed weight"));
+    AM_ASSIGN_OR_RETURN(
+            const ByteAddressRange packed_range,
+            BuildContiguousByteRange(context.packed_weight->data,
+                                     static_cast<int64_t>(context.packed_weight->nbytes),
+                                     size_t{1}, "QkvLinearKernelEntry packed weight"));
     for (const auto& [footprint, role]: std::array{
                  std::pair{query_analysis.footprint(), "q output"},
                  std::pair{key_analysis.footprint(), "k output"},
@@ -284,11 +234,13 @@ Status BuildQkvLinearF32Metadata(const OpParams& params,
         return Status::InvalidArgument(
                 "CPU QkvLinear kernel requires no-bias QkvLinearParams");
     }
+
     const QkvLinearF32KernelMetadata metadata{
             .q_out_features = qkv_params->q_out_features,
             .k_out_features = qkv_params->k_out_features,
             .v_out_features = qkv_params->v_out_features,
     };
+
     AM_RETURN_IF_ERROR(TotalOutFeatures(metadata).status());
     const auto bytes = std::as_bytes(std::span{&metadata, size_t{1}});
     attrs.assign(bytes.begin(), bytes.end());

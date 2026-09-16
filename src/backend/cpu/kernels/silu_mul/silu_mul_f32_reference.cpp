@@ -1,5 +1,5 @@
+#include "aethermind/backend/cpu/kernels/common/activation_utils.h"
 #include "aethermind/backend/cpu/kernels/common/broadcast_utils.h"
-#include "backend/cpu/kernels/common/activation_utils.h"
 #include "silu_mul_internal.h"
 
 #include <array>

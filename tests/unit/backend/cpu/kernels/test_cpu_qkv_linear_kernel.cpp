@@ -66,7 +66,7 @@ struct PreparedKernelParams {
 
 Status RunQkvEntry(const ResolvedKernel& kernel,
                    const QkvTestViews& views,
-                   PackedWeightBuildView packed) {
+                   PackedWeightView packed) {
     const std::array<TensorView, 1> inputs{views.input};
     const std::array<MutableTensorView, 3> outputs{views.query, views.key, views.value};
     PreparedKernelParams prepared;
@@ -84,10 +84,10 @@ Status RunQkvEntry(const ResolvedKernel& kernel,
     });
 }
 
-PackedWeightBuildView MakeIdentityPackedWeight(const float* data,
-                                               size_t nbytes,
-                                               std::span<const int64_t> shape) {
-    return PackedWeightBuildView{
+PackedWeightView MakeIdentityPackedWeight(const float* data,
+                                          size_t nbytes,
+                                          std::span<const int64_t> shape) {
+    return PackedWeightView{
             .data = data,
             .nbytes = nbytes,
             .logical_dtype = DataType::Float32(),
@@ -379,7 +379,7 @@ TEST(CPUKernelQkvLinear, RejectsMalformedPackedMetadataAndTensorViews) {
                       .code(),
               StatusCode::kInvalidArgument);
 
-    PackedWeightBuildView wrong_recipe =
+    PackedWeightView wrong_recipe =
             MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape);
     wrong_recipe.recipe_layout = "different_layout";
     EXPECT_EQ(RunQkvEntry(*kernel, views, wrong_recipe).code(), StatusCode::kInvalidArgument);

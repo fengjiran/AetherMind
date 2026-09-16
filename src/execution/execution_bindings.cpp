@@ -195,7 +195,7 @@ StatusOr<uint32_t> FindPackedWeightPort(const ExecutionStep& step) {
     return *weight_port;
 }
 
-StatusOr<PackedWeightBuildView> MakePackedWeightBuildView(
+StatusOr<PackedWeightView> MakePackedWeightView(
         const ExecutionStep& step) {
     if (step.packed_weights == nullptr ||
         step.packed_weights->storage().data() == nullptr) {
@@ -204,7 +204,7 @@ StatusOr<PackedWeightBuildView> MakePackedWeightBuildView(
     }
 
     const PackedWeights& packed = *step.packed_weights;
-    return PackedWeightBuildView{
+    return PackedWeightView{
             .data = packed.storage().data(),
             .nbytes = packed.storage().nbytes(),
             .logical_dtype = packed.logical_dtype(),
@@ -224,8 +224,8 @@ Status ValidatePackedWeightLogicalBindings(
         }
 
         AM_ASSIGN_OR_RETURN(const uint32_t weight_port, FindPackedWeightPort(step));
-        AM_ASSIGN_OR_RETURN(const PackedWeightBuildView packed,
-                            MakePackedWeightBuildView(step));
+        AM_ASSIGN_OR_RETURN(const PackedWeightView packed,
+                            MakePackedWeightView(step));
         const ExecutionValueId value = step.inputs[weight_port];
         AM_RETURN_IF_ERROR(ValidateConcreteShapeAgainstSpec(
                 plan.values()[value.index].spec, packed.logical_dtype,
@@ -579,8 +579,8 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(const ExecutionPlan
             const ExecutionValueId value_id = step.inputs[port];
             if (step.selector.weight_format == WeightFormat::kPacked &&
                 schema->input_ports[port].kind == OperatorPortKind::kWeight) {
-                AM_ASSIGN_OR_RETURN(const PackedWeightBuildView packed,
-                                    MakePackedWeightBuildView(step));
+                AM_ASSIGN_OR_RETURN(const PackedWeightView packed,
+                                    MakePackedWeightView(step));
                 AM_ASSIGN_OR_RETURN(auto strides,
                                     MakeContiguousStrides(packed.logical_shape,
                                                           "packed weight logical shape"));
@@ -605,9 +605,9 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(const ExecutionPlan
                 step.runtime_checks, runtime_check_inputs, binding.outputs));
         if (step.kernel.params_builder != nullptr) {
             void* params_buffer = MutableKernelParamsPointer(*storage, step_index);
-            std::optional<PackedWeightBuildView> packed_weight;
+            std::optional<PackedWeightView> packed_weight;
             if (step.selector.weight_format == WeightFormat::kPacked) {
-                AM_ASSIGN_OR_RETURN(packed_weight, MakePackedWeightBuildView(step));
+                AM_ASSIGN_OR_RETURN(packed_weight, MakePackedWeightView(step));
             }
             AM_RETURN_IF_ERROR(step.kernel.params_builder(
                     KernelParamsBuildContext{

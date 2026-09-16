@@ -31,7 +31,7 @@ struct KernelContext;
 /// layout need not match the logical row-major shape. Kernels that consume a
 /// packed artifact must interpret `data` according to `recipe`, while
 /// `logical_dtype` and `logical_shape` are available for validation only.
-struct PackedWeightBuildView {
+struct PackedWeightView {
     const void* data = nullptr;
     size_t nbytes = 0;
     DataType logical_dtype{};
@@ -62,7 +62,7 @@ struct KernelParamsBuildContext {
     std::span<const TensorView> inputs{};
     std::span<const MutableTensorView> outputs{};
     std::span<const std::byte> attrs{};
-    std::optional<PackedWeightBuildView> packed_weight{};
+    std::optional<PackedWeightView> packed_weight{};
 };
 
 /// @brief Cold-path binding specializer constructing a kernel-specific params

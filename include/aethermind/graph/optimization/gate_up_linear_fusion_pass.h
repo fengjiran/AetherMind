@@ -11,9 +11,9 @@ namespace aethermind {
 /// @brief Replaces compatible MLP gate/up Linear projections with one
 /// GateUpLinear projection and a fixed Gate-Up composite weight recipe.
 ///
-/// The pass is registered at O2 but disabled by default until execution has a
-/// GateUpLinear kernel. It changes graph semantics and logical weight binding,
-/// never materializes or prepacks a physical fused weight.
+/// The pass changes graph semantics and logical weight binding, never
+/// materializes or prepacks a physical fused weight. Packed-weight lowering
+/// materializes the Gate-Up recipe for kernels that require it.
 class GateUpLinearFusionPass final : public GraphPass {
 public:
     AM_NODISCARD std::string_view Name() const noexcept override;

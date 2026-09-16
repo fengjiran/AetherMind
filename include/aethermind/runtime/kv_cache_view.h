@@ -4,6 +4,7 @@
 /// @file kv_cache_view.h
 /// @brief Borrowed views into KV cache storage with validation and offsets.
 
+#include "aethermind/base/kv_cache_binding.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"
 #include "aethermind/dtypes/data_type.h"
@@ -73,6 +74,10 @@ struct SessionKVSlot {
     size_t capacity_tokens = 0;
     size_t prompt_len = 0;
     size_t current_pos = 0;
+    enum class Progress : uint8_t {
+        kAwaitingPrefill,
+        kDecodeReady,
+    } progress = Progress::kAwaitingPrefill;
 };
 
 /// @brief Borrowed, validated view into manager-owned KV cache state.
@@ -111,6 +116,10 @@ public:
     AM_NODISCARD size_t token_capacity() const noexcept;
     /// @brief Returns the number of committed tokens (== current_pos()).
     AM_NODISCARD size_t committed_tokens() const noexcept;
+    /// @brief Returns the immutable prompt reservation length.
+    AM_NODISCARD size_t prompt_len() const noexcept;
+    /// @brief Returns whether the next append must be the full Prefill write.
+    AM_NODISCARD bool awaiting_prefill() const noexcept;
 
     /// @brief Validates a contiguous write of `token_count` tokens.
     ///
@@ -135,6 +144,21 @@ public:
                         size_t kv_head_idx,
                         size_t seq_begin,
                         size_t seq_end) const noexcept;
+
+    /// @brief Binds one layer for an append transaction.
+    ///
+    /// Requires `begin == current_pos()` and `end > begin`; a normal append
+    /// exposes exactly its written range, so `end` is the sole visible frontier.
+    AM_NODISCARD StatusOr<KVCacheAppendBinding> BindLayerForAppend(
+            size_t layer_idx, size_t begin, size_t end) const noexcept;
+
+    /// @brief Binds one layer for a validated read window.
+    ///
+    /// `committed_end` must equal the current global commit watermark. Callers
+    /// may pass a larger `visible_end` only after their transaction has proved
+    /// that this layer's append completed earlier in the same plan.
+    AM_NODISCARD StatusOr<KVCacheReadBinding> BindLayerForRead(
+            size_t layer_idx, size_t committed_end, size_t visible_end) const noexcept;
 
     /// @brief Returns a mutable pointer to key data for one token element.
     ///
@@ -206,6 +230,8 @@ private:
                             size_t kv_head_idx,
                             size_t seq_pos,
                             size_t dim_idx) const noexcept;
+    AM_NODISCARD StatusOr<KVCacheLayerStorageBinding> BindLayerStorage(
+            size_t layer_idx) const noexcept;
 
     const KVCacheLayout* layout_ = nullptr;
     KVCacheStorage* storage_ = nullptr;

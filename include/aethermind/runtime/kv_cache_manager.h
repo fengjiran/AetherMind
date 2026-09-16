@@ -42,10 +42,11 @@ public:
     ///         physical capacity.
     StatusOr<KVCacheView> ReserveForSession(size_t prompt_len,
                                             size_t max_new_tokens) noexcept;
-    /// @brief Rewinds a session's commit position to its prompt length.
+    /// @brief Clears the committed position while retaining its reservation.
     ///
     /// @param view Active session view to reset.
-    /// @return Status::Ok() on success.
+    /// @return Status::Ok() on success. The next append must run Prefill again;
+    ///         this does not preserve prompt KV for repeated Decode.
     Status ResetSession(KVCacheView& view) noexcept;
     /// @brief Releases the active reservation and invalidates the view.
     ///

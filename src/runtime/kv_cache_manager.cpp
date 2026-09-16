@@ -117,6 +117,10 @@ StatusOr<KVCacheView> KVCacheManager::ReserveForSession(size_t prompt_len,
         return Status::FailedPrecondition("KVCacheManager already has an active session reservation");
     }
 
+    if (prompt_len == 0) {
+        return Status::InvalidArgument("KV session reservation requires a non-empty prompt");
+    }
+
     size_t requested_tokens = 0;
     if (CheckOverflowAdd(prompt_len, max_new_tokens, &requested_tokens)) {
         return Status::Overflow("KV session reservation overflowed size_t");
@@ -132,7 +136,8 @@ StatusOr<KVCacheView> KVCacheManager::ReserveForSession(size_t prompt_len,
     slot_.in_use = true;
     slot_.capacity_tokens = requested_tokens;
     slot_.prompt_len = prompt_len;
-    slot_.current_pos = prompt_len;
+    slot_.current_pos = 0;
+    slot_.progress = SessionKVSlot::Progress::kAwaitingPrefill;
 
     return KVCacheView(&layout_, &storage_, &slot_);
 }
@@ -145,7 +150,8 @@ Status KVCacheManager::ResetSession(KVCacheView& view) noexcept {
         return Status::FailedPrecondition("Cannot reset an invalid or stale KVCacheView");
     }
 
-    slot_.current_pos = slot_.prompt_len;
+    slot_.current_pos = 0;
+    slot_.progress = SessionKVSlot::Progress::kAwaitingPrefill;
     return Status::Ok();
 }
 
@@ -161,6 +167,7 @@ Status KVCacheManager::ReleaseSession(KVCacheView& view) noexcept {
     slot_.capacity_tokens = 0;
     slot_.prompt_len = 0;
     slot_.current_pos = 0;
+    slot_.progress = SessionKVSlot::Progress::kAwaitingPrefill;
     ++slot_.generation;
     view.Invalidate();
     return Status::Ok();

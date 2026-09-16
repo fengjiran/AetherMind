@@ -1,6 +1,8 @@
 #include "aethermind/runtime/kv_cache_view.h"
 #include "aethermind/runtime/workspace.h"
 
+#include <limits>
+
 namespace aethermind {
 namespace {
 
@@ -180,6 +182,14 @@ size_t KVCacheView::committed_tokens() const noexcept {
     return current_pos();
 }
 
+size_t KVCacheView::prompt_len() const noexcept {
+    return valid() ? slot_->prompt_len : 0;
+}
+
+bool KVCacheView::awaiting_prefill() const noexcept {
+    return valid() && slot_->progress == SessionKVSlot::Progress::kAwaitingPrefill;
+}
+
 Status KVCacheView::ValidateBaseState() const noexcept {
     if (layout_ == nullptr || storage_ == nullptr || slot_ == nullptr) {
         return Status::FailedPrecondition("KVCacheView is not bound to manager-owned state");
@@ -253,6 +263,88 @@ Status KVCacheView::ValidateRead(size_t layer_idx,
     return Status::Ok();
 }
 
+StatusOr<KVCacheLayerStorageBinding> KVCacheView::BindLayerStorage(
+        size_t layer_idx) const noexcept {
+    AM_RETURN_IF_ERROR(ValidateBaseState());
+    AM_RETURN_IF_ERROR(ValidateIndexRange(layer_idx, layout_->num_layers, "layer"));
+    if (layer_idx > std::numeric_limits<uint32_t>::max()) {
+        return Status::OutOfRange("KV layer index exceeds kernel binding range");
+    }
+
+    const auto key_offset = layout_->Offset(layer_idx, 0, 0, 0);
+    if (!key_offset.ok()) {
+        return key_offset.status();
+    }
+    const auto value_offset = layout_->Offset(layer_idx, 0, 0, 0);
+    if (!value_offset.ok()) {
+        return value_offset.status();
+    }
+
+    auto* const key_base = static_cast<std::byte*>(storage_->key_buffer.mutable_data());
+    auto* const value_base = static_cast<std::byte*>(storage_->value_buffer.mutable_data());
+    if (key_base == nullptr || value_base == nullptr) {
+        return Status::FailedPrecondition("KVCacheView storage has a null backing pointer");
+    }
+
+    return KVCacheLayerStorageBinding{
+            .key_data = key_base + *key_offset,
+            .value_data = value_base + *value_offset,
+            .dtype = layout_->kv_dtype,
+            .layer_index = static_cast<uint32_t>(layer_idx),
+            .num_kv_heads = layout_->num_kv_heads,
+            .head_dim = layout_->head_dim,
+            .token_capacity = slot_->capacity_tokens,
+            .token_stride_bytes = layout_->token_stride,
+            .head_stride_bytes = layout_->head_stride,
+    };
+}
+
+StatusOr<KVCacheAppendBinding> KVCacheView::BindLayerForAppend(
+        size_t layer_idx, size_t begin, size_t end) const noexcept {
+    AM_RETURN_IF_ERROR(ValidateBaseState());
+    if (begin != slot_->current_pos) {
+        return Status::InvalidArgument(
+                "KV append begin must equal the committed token position");
+    }
+    if (end <= begin) {
+        return Status::InvalidArgument("KV append end must be greater than begin");
+    }
+    if (end > slot_->capacity_tokens) {
+        return Status::OutOfRange("KV append exceeds reserved session token capacity");
+    }
+    if (end > layout_->max_tokens) {
+        return Status::OutOfRange("KV append exceeds physical KV capacity");
+    }
+
+    AM_ASSIGN_OR_RETURN(KVCacheLayerStorageBinding storage, BindLayerStorage(layer_idx));
+    return KVCacheAppendBinding{.storage = storage, .begin = begin, .end = end};
+}
+
+StatusOr<KVCacheReadBinding> KVCacheView::BindLayerForRead(
+        size_t layer_idx, size_t committed_end, size_t visible_end) const noexcept {
+    AM_RETURN_IF_ERROR(ValidateBaseState());
+    if (committed_end != slot_->current_pos) {
+        return Status::InvalidArgument(
+                "KV read committed_end must equal the current commit position");
+    }
+    if (visible_end < committed_end) {
+        return Status::InvalidArgument("KV read visible_end must not precede committed_end");
+    }
+    if (visible_end > slot_->capacity_tokens) {
+        return Status::OutOfRange("KV read visible range exceeds reserved session token capacity");
+    }
+    if (visible_end > layout_->max_tokens) {
+        return Status::OutOfRange("KV read visible range exceeds physical KV capacity");
+    }
+
+    AM_ASSIGN_OR_RETURN(KVCacheLayerStorageBinding storage, BindLayerStorage(layer_idx));
+    return KVCacheReadBinding{
+            .storage = storage,
+            .committed_end = committed_end,
+            .visible_end = visible_end,
+    };
+}
+
 StatusOr<size_t> KVCacheView::Offset(size_t layer_idx,
                                      size_t kv_head_idx,
                                      size_t seq_pos,
@@ -316,6 +408,13 @@ Status KVCacheView::CommitUntil(size_t new_pos) noexcept {
     }
     if (new_pos > slot_->capacity_tokens) {
         return Status::OutOfRange("KV commit exceeds reserved session token capacity");
+    }
+    if (slot_->progress == SessionKVSlot::Progress::kAwaitingPrefill) {
+        if (slot_->current_pos != 0 || new_pos != slot_->prompt_len) {
+            return Status::FailedPrecondition(
+                    "KV initial commit must complete the reserved Prefill range");
+        }
+        slot_->progress = SessionKVSlot::Progress::kDecodeReady;
     }
     slot_->current_pos = new_pos;
     return Status::Ok();

@@ -2,11 +2,11 @@
 
 > 本文件汇总 AetherMind 公共 API 的语义，与头文件 Doxygen 注释**同源同步**：修改头文件注释必须同步本文件，反之亦然（[文档系统规范](../guides/documentation-guide.md) §7.3）。
 >
-> 构建选项与运行配置以根 [README.md](../../README.md) 为单一事实源，本文件不复制其表格。Phase 1 目标 API（`am_session_generate`、`Session::Generate`）尚未实现，见 [PRD](../products/aethermind_prd.md)，不在此列。
+> 构建选项与运行配置以根 [README.md](../../README.md) 为单一事实源，本文件不复制其表格。当前产品目标 API（`am_session_generate`、`Session::Generate`）尚未实现，见 [PRD](../products/aethermind_prd.md)，不在此列。
 
 ## 1. C ABI（include/c_api.h）
 
-> 当前 C ABI 仅提供对象引用计数、错误处理与 traceback 原语；`am_session_generate` 为 Phase 1 冻结目标（PRD 定义）。
+> 当前 C ABI 仅提供对象引用计数、错误处理与 traceback 原语；`am_session_generate` 为当前产品冻结目标（PRD 定义）。
 
 ### `int IncObjectRef(ObjectHandle obj_ptr)`
 
@@ -114,8 +114,8 @@
 ## 3. 语义约束
 
 - C ABI 句柄（`ObjectHandle`、`am_error_handle`）为不透明指针，不暴露内部布局；对象生命周期由引用计数/显式 destroy 管理。
-- `am_status_code` 覆盖全部 Phase 1 错误类别（OK/CANCELLED/UNKNOWN/INVALID_ARGUMENT/.../UNAUTHENTICATED）。
-- `Executor::Execute` 是单计划一次性执行，不具备跨步骤状态管理（Prefill/Decode 状态机为 Phase 1 目标，见[架构总览](../designs/architecture/architecture_overview.md) §八）。
+- `am_status_code` 覆盖当前产品所需的错误类别（OK/CANCELLED/UNKNOWN/INVALID_ARGUMENT/.../UNAUTHENTICATED）。
+- `Executor::Execute` 是单计划一次性执行，不具备跨步骤状态管理（Prefill/Decode 状态机为当前产品目标，见[架构总览](../designs/architecture/architecture_overview.md) §八）。
 - `Session::Generate` 与 `am_session_generate` 尚未实现；当前公开 API 形态为底层构建块（PRD 定义的生成入口为冻结目标）。
 
 ## 4. 相关文档

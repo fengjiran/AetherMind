@@ -1,14 +1,14 @@
 # AetherMind 系统架构总览
 
 - **状态**: Current（描述已验证实现；只写仓库事实）
-- **版本**: 1.0
-- **日期**: 2026-08-21（文档系统落地时定稿为全系统唯一架构总览）
+- **版本**: 1.1
+- **日期**: 2026-09-16
 - **术语**: 见 [docs/README.md 术语表](../../README.md)
 - **规范**: 本文档为全系统唯一权威总览，其他设计文档引用其章节而非复制内容（[文档系统规范](../../guides/documentation-guide.md)）
 
 ## 系统架构总览
 
-AetherMind Phase 1 的代码组织遵循六个**概念责任层**。这些层是逻辑责任边界，**不是**源文件目录结构的一对一映射；其中 `compiler/` 负责 semantic graph 之后、execution plan 之前的编译 artifact 与阶段编排。
+AetherMind 当前产品的代码组织遵循六个**概念责任层**。这些层是逻辑责任边界，**不是**源文件目录结构的一对一映射；其中 `compiler/` 负责 semantic graph 之后、execution plan 之前的编译 artifact 与阶段编排。
 
 ```mermaid
 flowchart TB
@@ -18,8 +18,8 @@ flowchart TB
         direction LR
         CAPI["现有 C 基础 ABI<br/>对象 refcount/错误/追踪原语<br/>(当前已实现)"]
         CPPBLD["C++ 公开构建块<br/>RuntimeBuilder, ModelLoader,<br/>Executor (当前已实现)"]
-        CAPITGT["am_session_generate<br/>(Phase 1 目标/未闭环)"]
-        CPPTG["Session::Generate<br/>(Phase 1 目标/未闭环)"]
+        CAPITGT["am_session_generate<br/>(当前产品目标/未闭环)"]
+        CPPTG["Session::Generate<br/>(当前产品目标/未闭环)"]
     end
 
     subgraph L2["2. 调度控制层<br/>同步单请求生命周期与执行编排"]
@@ -54,7 +54,7 @@ flowchart TB
         AMM["ammalloc / WorkspaceArena<br/>(已实现)"]
     end
 
-    subgraph HW["CPU 后端: x86_64 (当前重点) / ARM64 NEON (Phase 1 目标/计划)"]
+    subgraph HW["CPU 后端: x86_64 (当前重点) / ARM64 NEON (当前产品目标/计划)"]
         direction LR
         HW1["x86_64 AVX2/FMA"]
     end
@@ -70,7 +70,7 @@ flowchart TB
     CPPBLD --> ML
     EXEC --> LRUN
     RTB --> EPB
-    ML -.->|"Phase 1 目标/未闭环"| MGB
+    ML -.->|"当前产品目标/未闭环"| MGB
     MGB --> SEM
     SEM --> COMP
     COMP --> LART
@@ -116,7 +116,7 @@ API 服务层是 AetherMind **进程内**集成/服务边界。它不是 HTTP/gR
 | **目标缺口** | `Session::Generate` 完整方法、`am_session_generate` C ABI 生成函数尚未完整实现；当前公开 API 为底层构建块而非一站式生成入口 |
 | **禁止责任泄漏** | 不得包含 HTTP/gRPC 服务、不得做 tokenizer 操作、不得做请求排队、不得做异步回调、不得暴露推理内部状态机 |
 
-> 当前 API 服务层呈现为"底层构建块"形态：调用方可以使用 `RuntimeBuilder` 装配运行时、`ModelLoader::Load` 加载模型、`Executor::Execute` 执行单计划，但 `Session::Generate` 这样的一站式生成入口属于 Phase 1 目标。PRD 定义的 `am_session_generate` C ABI（`am_session_t` + `uint32_t*` 输入输出）与 `Session::Generate`（`vector<uint32_t>` → `vector<uint32_t>`）是后续冻结目标。
+> 当前 API 服务层呈现为"底层构建块"形态：调用方可以使用 `RuntimeBuilder` 装配运行时、`ModelLoader::Load` 加载模型、`Executor::Execute` 执行单计划，但 `Session::Generate` 这样的一站式生成入口属于当前产品目标。PRD 定义的 `am_session_generate` C ABI（`am_session_t` + `uint32_t*` 输入输出）与 `Session::Generate`（`vector<uint32_t>` → `vector<uint32_t>`）是后续冻结目标。
 
 ---
 
@@ -139,7 +139,7 @@ API 服务层是 AetherMind **进程内**集成/服务边界。它不是 HTTP/gR
 | **目标缺口** | `InferenceSession`/`PrefillPath`/`DecodePath` 未实现；同步 Generate 状态机尚未闭环。当前 `Executor::Execute` 只执行一个已 specialize 的 plan，不承担跨步骤状态管理或 Prefill/Decode 阶段切换。前置模块与准入门禁见 [InferenceSession / Generate 前置闭环计划](../../improvement-plan/01-inference-session-generate-readiness.md) |
 | **禁止责任泄漏** | 不得承担请求排队/批处理、不得处理网络 IO、不得承担算子级 dispatch 决策（仅为调用方） |
 
-> 当前生命周期为 `RuntimeBuilder::Build → Runtime`、`ExecutionPlanBuilder::Build → ExecutionPlan`、`PrepareExecutionBindings → PreparedExecutionBindings`、`ExecutionContext::Create → Executor::Execute`。shape/layout/aliasing premise、deferred shape constraints 和 kernel params 均在 `PrepareExecutionBindings` 冷路径验证；`LayerRunner` 只读取已准备的 bindings，绑定 step workspace 并调用冻结的 `step.kernel.fn`。整个 Generate 状态机（session reservation → Prefill → Decode loop → Argmax/stop）仍是 Phase 1 目标。
+> 当前生命周期为 `RuntimeBuilder::Build → Runtime`、`ExecutionPlanBuilder::Build → ExecutionPlan`、`PrepareExecutionBindings → PreparedExecutionBindings`、`ExecutionContext::Create → Executor::Execute`。shape/layout/aliasing premise、deferred shape constraints 和 kernel params 均在 `PrepareExecutionBindings` 冷路径验证；`LayerRunner` 只读取已准备的 bindings，绑定 step workspace 并调用冻结的 `step.kernel.fn`。整个 Generate 状态机（session reservation → Prefill → Decode loop → Argmax/stop）仍是当前产品目标。
 
 ---
 
@@ -187,7 +187,7 @@ flowchart LR
     I --> K["LoweredModelArtifact<br/>(owns LoadedModel + LoweredGraph)"]
     I -->|"ExecutionPlanBuilder::Build<br/>(层边界适配器, 已实现)"| J["ExecutionPlan<br/>ExecutionStep[]<br/>(kernel fn resolved,<br/>packed weight ptr bound,<br/>workspace req frozen)"]
 
-    J -.->|"Phase 1 目标/未闭环<br/>接入目标 Generate 管线"| K["Session::Generate"]
+    J -.->|"当前产品目标/未闭环<br/>接入目标 Generate 管线"| K["Session::Generate"]
 
     classDef impl fill:#c6efce,stroke:#2d7d46
     classDef tgt fill:#fce4d6,stroke:#c55a11,stroke-dasharray:5 5
@@ -219,7 +219,7 @@ flowchart LR
 
 ### 执行阶段调用序列
 
-以下时序图展示 Prefill/Decode 阶段的执行流。**所有带参与者交互的完整 Generate、Prefill 计划、Decode 循环、Argmax/stop 编排消息均为 Phase 1 目标行为**。当前已实现的原语仅限于底层的 `Executor::Execute(plan, bindings) -> LayerRunner::Run(plan, bindings)` 单计划遍历执行。
+以下时序图展示 Prefill/Decode 阶段的执行流。**所有带参与者交互的完整 Generate、Prefill 计划、Decode 循环、Argmax/stop 编排消息均为当前产品目标行为**。当前已实现的原语仅限于底层的 `Executor::Execute(plan, bindings) -> LayerRunner::Run(plan, bindings)` 单计划遍历执行。
 
 ```mermaid
 sequenceDiagram
@@ -229,7 +229,7 @@ sequenceDiagram
     participant LR as 硬件执行层
     participant KV as KVCacheManager
 
-    Note over App, KV: 以下 Generate 编排均为 Phase 1 目标
+    Note over App, KV: 以下 Generate 编排均为当前产品目标
 
     App->>API: am_session_generate(token_ids, config)
     API->>Exec: Session::Generate(prompt, config)
@@ -240,7 +240,7 @@ sequenceDiagram
     KV-->>Exec: KVCacheView (逻辑视图)
 
     rect rgb(200, 230, 200)
-        Note over Exec,LR: Prefill (Phase 1 目标, 层间消息示意)
+        Note over Exec,LR: Prefill (当前产品目标, 层间消息示意)
         Exec->>LR: LayerRunner::Run(prefill_plan, bindings)
         Note over LR: 全量 prompt 各层前向 → 写入 KV
         LR-->>Exec: Status::Ok()
@@ -248,7 +248,7 @@ sequenceDiagram
     end
 
     rect rgb(230, 230, 200)
-        Note over Exec,LR: Decode Loop (Phase 1 目标)
+        Note over Exec,LR: Decode Loop (当前产品目标)
         loop DecodeStep
             Exec->>LR: LayerRunner::Run(decode_step_plan, bindings)
             Note over LR: 单 token 各层前向 → 读写 KV
@@ -282,7 +282,7 @@ flowchart LR
     subgraph ART["不可变产物 (Immutable Artifacts)"]
         direction LR
         B1["HF 模型目录"] -->|"Load + Compile"| B2["LoweredModelArtifact<br/>(caller-owned)"]
-        B2 -->|"Phase 1 目标/未闭环<br/>(weight materialization + plan build)"| B3["ExecutionPlan<br/>(movable 值)"]
+        B2 -->|"当前产品目标/未闭环<br/>(weight materialization + plan build)"| B3["ExecutionPlan<br/>(movable 值)"]
         B3 -->|"读取"| A3
     end
 
@@ -411,8 +411,8 @@ flowchart TB
 |--------|------|
 | **可测试性** | 每层可独立测试：`ExecutionPlanBuilder` 不依赖 `Executor`；`LayerRunner` 不依赖模型加载；Kernel 函数不依赖 Runtime 上下文 |
 | **热路径效率** | kernel 执行通过 plan-build-time prepare 的 `ResolvedKernel::fn` 函数指针完成；`LayerRunner` 从 `PreparedExecutionBindings` 读取已构造的 kernel params 后直接调用，不发生 backend 查找、shape inference、params construction 或对象虚调用 |
-| **可替换性** | 后端感知的差异通过 `KernelSelector`、Backend 与 `KernelRegistry` 收敛在计划构建和硬件执行边界，避免向 API 泄漏；这只是隔离能力，不代表 Phase 1 支持非 CPU 后端 |
-| **演进边界** | 后续阶段若引入批处理、PagedAttention 或非 CPU 后端，需要重新评估相应层内模块；semantic graph、compiler、execution 与 backend 的边界用于局部化变化，不构成兼容性或交付承诺 |
+| **可替换性** | 后端感知的差异通过 `KernelSelector`、Backend 与 `KernelRegistry` 收敛在计划构建和硬件执行边界，避免向 API 泄漏；这只是隔离能力，不代表当前产品支持非 CPU 后端 |
+| **演进边界** | 长期演进若引入批处理、PagedAttention 或非 CPU 后端，需要重新评估相应层内模块；semantic graph、compiler、execution 与 backend 的边界用于局部化变化，不构成兼容性或交付承诺 |
 
 ---
 
@@ -431,9 +431,9 @@ flowchart TB
 
 ---
 
-## 八、当前实现 vs Phase 1 目标差距概要
+## 八、当前实现 vs 当前产品目标差距概要
 
-| 维度 | 当前实现了什么 | Phase 1 目标/未闭环 | Phase 1 边界外 |
+| 维度 | 当前实现了什么 | 当前产品目标/未闭环 | 当前不承诺 |
 |------|----------------|---------------------|----------------|
 | **API** | `c_api.h` 中的对象 refcount、错误处理与 traceback 原语 | `Session::Generate` 完整方法、`am_session_generate` C ABI 函数 | HTTP/gRPC 服务、tokenizer、异步/流式 API |
 | **模型加载** | `ModelLoader::Load`（HF 配置验证、权重加载 resolve、`LoadedModel` 创建） | graph-driven weight materialization 后的 Generate 管线 | MoE、encoder-decoder、sliding window attention |
@@ -445,16 +445,16 @@ flowchart TB
 | **Backend** | CPU Backend（`CpuBackend` factory/freeze/resolve、`KernelRegistry` 全局 singleton + `AM_REGISTER_KERNEL`） | 更完整的 Llama-layer 算子覆盖与 SIMD kernel | GPU/CUDA、CANN |
 | **内存** | `ammalloc`（ThreadCache/CentralCache/PageCache）、`WorkspaceArena`（Bind/Reset） | Decode 稳态零分配验证 | - |
 
-当前状态机完整度已在第二节中注明：当前能力为 `Executor::Execute → LayerRunner::Run` 单计划遍历执行；完整 `Generate` 状态机（PrepareSession → Prefill → Decode loop → Argmax/stop → output tokens）属于 Phase 1 目标。
+当前状态机完整度已在第二节中注明：当前能力为 `Executor::Execute → LayerRunner::Run` 单计划遍历执行；完整 `Generate` 状态机（PrepareSession → Prefill → Decode loop → Argmax/stop → output tokens）属于当前产品目标。
 
 ---
 
-## 九、Phase 1 边界速查
+## 九、当前产品边界速查
 
 | 包含 | 排除 |
 |------|------|
 | Token IDs 输入/输出 | ❌ 字符串/文本输入输出 |
-| CPU-only 后端（x86_64 AVX2/FMA 当前重点; ARM64 NEON Phase 1 目标/计划） | ❌ GPU/CUDA 后端 |
+| CPU-only 后端（x86_64 AVX2/FMA 当前重点; ARM64 NEON 当前产品目标/计划） | ❌ GPU/CUDA 后端 |
 | 同步单请求执行 | ❌ 异步/流式 API |
 | 贪婪采样（Argmax） | ❌ Temperature / Top-K / Top-P |
 | 静态预分配 KV Cache | ❌ PagedAttention / 动态 Cache |
@@ -468,13 +468,13 @@ flowchart TB
 
 ## 十、架构级并发模型
 
-### 10.1 Phase 1 执行模型
+### 10.1 当前产品执行模型
 
 > **single-request synchronous runtime + optional intra-op parallel compute**
 
 - 控制流：单请求、同步阻塞；不提供 request scheduler，不支持多请求批处理。
 - 算子层：允许 intra-op parallelism（GEMM/GEMV 并行、Attention 局部并行），由统一线程配置驱动。
-- 线程实施指南：Phase 1 默认采用算子内部（intra-op）并行；若依赖 OpenMP 或第三方并行数学库，必须通过 `Runtime` 提供统一线程数配置，避免多层嵌套并行导致 oversubscription。
+- 线程实施指南：当前产品目标采用算子内部（intra-op）并行；若依赖 OpenMP 或第三方并行数学库，必须通过 `Runtime` 提供统一线程数配置，避免多层嵌套并行导致 oversubscription。
 
 ### 10.2 并发边界
 
@@ -484,7 +484,7 @@ flowchart TB
 | Runtime 统一线程数配置 | 引入 request-level 并发调度 |
 | 单一主导的 intra-op threading runtime | 多会话共享调度器 / request-level 与 intra-op 混用 |
 
-> 当前已实现部分为单线程逐计划执行（`Executor::Execute` → `LayerRunner::Run`）；intra-op 并行属 Phase 1 目标/推进中。
+> 当前已实现部分为单线程逐计划执行（`Executor::Execute` → `LayerRunner::Run`）；intra-op 并行属于当前产品目标，尚未闭环。
 
 ## 十一、内存架构与稳态零分配
 
@@ -533,7 +533,7 @@ flowchart TB
 
 ## 十四、参考来源
 
-本文档的所有"当前实现"状态均基于以下代码与设计文档。当前状态以源代码为准，Phase 1 目标以 PRD 为准。
+本文档的所有"当前实现"状态均基于以下代码与设计文档。当前状态以源代码为准，当前产品目标以 PRD 为准。
 
 ### 关键代码路径
 
@@ -558,7 +558,7 @@ flowchart TB
 
 | 文档 | 覆盖内容 |
 |------|----------|
-| [`../../products/aethermind_prd.md`](../../products/aethermind_prd.md) | Phase 1 产品需求、验收标准、边界定义 |
+| [`../../products/aethermind_prd.md`](../../products/aethermind_prd.md) | 当前产品需求、验收标准、边界定义 |
 | [`../graph_compilation_flow.md`](../graph_compilation_flow.md) | 图编译流程（ModelGraph → LoweredGraph → ExecutionPlan）的详细实现追踪 |
 | [`../backend_design.md`](../backend_design.md) | Backend 层三阶段执行模型（注册/构建/执行）、CPU Backend 设计 |
 | [`../dispatch_design.md`](../dispatch_design.md) | Dispatch 模块（全局 KernelRegistry + AM_REGISTER_KERNEL + plan-build-time resolve） |
@@ -567,6 +567,6 @@ flowchart TB
 ### 维护规则
 
 1. **源代码证明当前状态**。本文档中的"当前已实现"标记在编写时已验证源代码与测试文件。如有偏差，以代码行为为准。
-2. **PRD 定义 Phase 1 目标状态**。`docs/products/aethermind_prd.md` 是 Phase 1 功能需求与验收标准的唯一权威来源。
+2. **PRD 定义当前产品目标状态**。`docs/products/aethermind_prd.md` 是当前产品功能需求与验收标准的唯一权威来源。
 3. **本文档为宏观架构总览**，不替代具体模块的详细设计文档。各模块的精确接口、数据结构与设计决策请查阅对应的设计文档。
 4. **当发现本文档与代码不符时**，请更新本文档以反映当前代码事实，或在 PR 中标注偏离，而非修改代码去迎合文档。

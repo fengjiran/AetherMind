@@ -1,45 +1,47 @@
-# AetherMind 推理引擎产品需求文档 (PRD v1.1)
+# AetherMind 推理引擎产品需求文档 (PRD v1.2)
 
-| 文档版本 | V1.1 |
+| 文档版本 | V1.2 |
 |----------|----------------|
 | **项目名称** | **AetherMind** |
-| **核心目标** | 交付生产级桌面/服务器 CPU 推理引擎 (Phase 1)，并为服务化/分布式演进预留架构空间 |
+| **核心目标** | 交付生产级桌面/服务器 CPU 本地推理引擎，并为服务化、异构计算和分布式演进保留可验证的架构边界 |
 | **关键技术** | C++20 (Concepts), Safetensors, INT8/INT4 Quantization, Static KV Cache |
-| **更新日期** | 2026年3月 |
+| **更新日期** | 2026年9月16日 |
 
 ---
 
 ## 效力说明与设计约束
 
 本文档采用**双层结构**：
-- **Phase 1（本文档主体）**：可执行的详细产品合同，聚焦桌面/服务器 CPU 本地推理运行时
-- **长期路线图（附录 A）**：战略愿景，Phase 2+ 能力仅作为方向指引，**不构成交付承诺**
+- **当前产品合同（本文档主体）**：可执行的详细产品合同，聚焦桌面/服务器 CPU 本地推理运行时
+- **长期演进方向（附录 A）**：战略愿景，仅作为方向指引，**不构成当前交付承诺**
+
+阶段编号不再作为规范性产品分层。产品边界以“当前承诺 / 当前不承诺 / 长期演进方向”和可验证的 capability 状态表达，避免编号被误读为实现状态或时间承诺。
 
 **核心设计约束**：
-- Phase 1 是**独立可交付的产品**，而非临时原型
+- 当前产品范围是**独立可交付的产品**，而非临时原型
 - 向后兼容通过**版本化 C ABI** 实现，而非永久稳定承诺
-- Phase 2+ 需基于 Phase 1 经验重新评估，可能独立成册
+- 当前不承诺的长期能力必须基于当前产品的实现证据重新评估，必要时独立成册
 
 ---
 
-## 1. Phase 1 产品概述
+## 1. 当前产品概述
 
 ### 1.1 定位与边界
 
-**Phase 1 = 桌面/服务器 CPU 推理引擎**
+**当前产品 = 桌面/服务器 CPU 本地推理引擎**
 
 ```
-Phase 1 边界（本文档）
+当前产品边界（本文档）
 ├── 单进程、单线程、单模型、单请求
 ├── Token IDs 输入 / Token IDs 输出（无文本分词器）
-├── 仅 CPU 后端（GPU 后端在 Phase 2 规划）
+├── 仅 CPU 后端（GPU 后端属于长期演进方向）
 ├── 同步执行（无调度器/批处理）
 ├── 贪婪采样唯一（无 temperature/top-k/top-p）
 ├── 静态预分配 KV Cache（无 PagedAttention）
 └── Llama 家族 Dense 模型（无 MoE）
 ```
 
-**明确排除在 Phase 1 之外**：
+**当前明确不承诺**：
 - ❌ HTTP/gRPC 服务接口
 - ❌ 连续批处理 / Chunked Prefill
 - ❌ Prefix Caching / PagedAttention
@@ -51,12 +53,12 @@ Phase 1 边界（本文档）
 
 ### 1.2 核心价值主张
 
-| 价值点 | Phase 1 实现 | 后续阶段演进 |
+| 价值点 | 当前产品承诺 | 可能的长期演进 |
 |--------|--------------|--------------|
-| **本地部署** | 面向桌面/服务器 CPU 的 INT8/INT4 量化推理，支持 7B 模型运行 | Phase 2: GPU 卸载 |
-| **确定性输出** | 贪婪采样 + 数值稳定的 CPU 参考内核 | Phase 2+: 支持 temperature/top-p |
-| **低延迟启动** | 静态预分配，预热后稳态零分配 | Phase 2+: PagedAttention 动态管理 |
-| **API 演进** | 定义中：版本化 C ABI (v1.0)，优先实现核心推理接口 | Phase 2+: HTTP API |
+| **本地部署** | 面向桌面/服务器 CPU 的 INT8/INT4 量化推理，支持 7B 模型运行 | GPU 卸载与异构执行 |
+| **确定性输出** | 贪婪采样 + 数值稳定的 CPU 参考内核 | temperature/top-p 等采样策略 |
+| **低延迟启动** | 静态预分配，预热后稳态零分配 | PagedAttention 与动态缓存管理 |
+| **API 演进** | 定义中：版本化 C ABI (v1.0)，优先实现核心推理接口 | HTTP/API 服务层 |
 
 ### 1.3 目标用户
 
@@ -67,7 +69,7 @@ Phase 1 边界（本文档）
 
 ---
 
-## 2. Phase 1 架构（严格边界内）
+## 2. 当前产品架构（严格边界内）
 
 ### 2.1 分层架构
 
@@ -139,8 +141,8 @@ Phase 1 边界（本文档）
 
 - **前端语义分析**：算子输入验证、dtype/rank 校验、输出 shape 推导由 per-op 类型化自由函数 `Infer*`（位于 `src/operators/*_op.cpp`，如 `InferRoPE`、`InferSiluMul`、`InferRmsNorm`）统一完成；结果写入 semantic graph，compiler lowering 按值携带 output specs 与 deferred ShapeConstraints，execution 对 finalized `LoweredGraph` 不重复推理。
 - **图编译与绑定管道**：`ModelLoader` 只产生 backend-independent 的 `LoadedModel`（HF I/O、validation、resolved raw weights）；compiler 模块中的 `ModelCompiler` 串联 `ModelGraphBuilder`、`OptimizeModelGraph` 与 `LowerModelGraph`，产出拥有 `LoadedModel` 的 `LoweredModelArtifact`。`LoweredGraph` 是不可变且经结构验证的 compiler artifact，含 `LoweredStepSpec` steps、按 `GraphValueId` 稠密索引的 value metadata 和 unresolved state aliases；`ExecutionPlanBuilder::Build(Runtime, LoweredGraph)` 仅在 execution 内部将 aliases 转为 `StateAliasPlan` 并 resolve kernel。随后 `PrepareExecutionBindings` 在 cold path 绑定 external tensors、校验 runtime shape/layout/aliasing、分配 activation 并准备 kernel params；`ExecutionContext::Create` 聚合这些 bindings、borrowed workspace 和 KV view。`Execute` 仅消费已经冻结的 `ResolvedKernel` 与 prepared params，无运行时 dispatch 或 shape validation 开销。
-- **核心计算模型**：Phase 1 以 **decoder-only Transformer** 为执行核心，运行时显式区分 **Prefill** 与 **Decode** 两个阶段。
-- **核心组件**：Phase 1 的已实现底层组件为 `Runtime`（生命周期与资源管理）、`PreparedExecutionBindings`（plan 的物理 tensor specialization）、`ExecutionContext`（窄执行资源）、`Executor`（同步执行已 specialize 的 `ExecutionPlan`）与 `KVCacheManager`（静态 KV 内存池管理）。`InferenceSession`/Generate 编排尚未实现：现有 kernel 覆盖不能闭环真实 Llama Prefill→Decode，故本次不引入 placeholder。
+- **核心计算模型**：当前产品以 **decoder-only Transformer** 为执行核心，运行时显式区分 **Prefill** 与 **Decode** 两个执行阶段。
+- **核心组件**：当前已实现的底层组件为 `Runtime`（生命周期与资源管理）、`PreparedExecutionBindings`（plan 的物理 tensor specialization）、`ExecutionContext`（窄执行资源）、`Executor`（同步执行已 specialize 的 `ExecutionPlan`）与 `KVCacheManager`（静态 KV 内存池管理）。`InferenceSession`/Generate 编排尚未实现：现有 kernel 覆盖不能闭环真实 Llama Prefill→Decode，故本次不引入 placeholder。
 - **模块所有权（源码目录-职责冻结）**：
   - **`graph/`（顶层）**：通用 Graph IR、GraphOpBuilder、GraphRewrite/GraphPassManager 与 backend-independent semantic passes、诊断 dump — 设备/ISA 独立，不允许包含 compiler/execution/backend/model。
   - **`operators/`（顶层）**：OpType、OperatorSchema、OpParams（typed variant）、`Infer*` 自由函数、OpParams serde — 语义层，不允许包含执行/图容器细节。
@@ -148,17 +150,17 @@ Phase 1 边界（本文档）
   - **`execution/`（顶层）**：ExecutionPlan、仅供 untrusted 手工/低层请求的 ExecutionPlanNodeSpec、StateAliasPlan、LayerRunner、ExecutionPlanBuilder。Public headers 不依赖 compiler；实现层消费 compiler artifact，负责 state alias runtime conversion、workspace 和 kernel planning。
   - **`model/`**：HF 加载/校验、`LoadedModel`、ModelLoader、**ModelGraphBuilder**（前端→语义图的唯一转换权威；HF RoPE 字段在 `BuildLlamaDense` 中规范化为 typed `RoPEAlgorithmParams`，unknown type 拒绝）。ModelCompiler 归 compiler；ModelLoader 不执行 graph build、kernel resolve 或 prepack。权重重排/materialization 必须由优化图的具体 weight binding 驱动。`PackedWeightStore`/`WeightPrepackPlanner` 仅为现有 ExecutionPlan packed-weight API 的兼容设施。
   - 构建目标保持单一 `AetherMind` shared（`src/**` 由 GLOB_RECURSE 收集），无 graph/operators 专用 target。
-- 无请求调度器：Phase 1 不引入 `Request Scheduler`，不承担请求排队、批处理、连续批处理或多会话仲裁职责。
+- 无请求调度器：当前产品不引入 `Request Scheduler`，不承担请求排队、批处理、连续批处理或多会话仲裁职责。
 - 无虚函数开销：使用 C++20 Concepts + 静态分发
 - 无动态内存：稳态零分配（推理预热完成后，Decode 路径排除权重映射与 KV Cache 静态扩容外，无堆内存申请）
-- 内存池化：中间工作区与 KV 缓存采用池化管理；Phase 1 使用静态 KV 布局，Paged KV 作为后续演进能力。
+- 内存池化：中间工作区与 KV 缓存采用池化管理；当前产品使用静态 KV 布局，Paged KV 作为长期演进能力。
 - 无跨层依赖：HAL 仅暴露 Concepts，不暴露模板实现
 
 ### 2.2 API 边界定义
 
 **核心原则：Token IDs 是唯一数据边界**
 
-> 注：以下 C++ API / C ABI 为 **Phase 1 目标接口草案**，用于冻结功能边界与验收口径；在 v1.0 接口冻结前，其作为开发目标契约，不代表仓库当前已完整实现。
+> 注：以下 C++ API / C ABI 为**当前产品目标接口草案**，用于冻结功能边界与验收口径；在 v1.0 接口冻结前，其作为开发目标契约，不代表仓库当前已完整实现。
 
 ```cpp
 // C++ API 伪代码
@@ -194,7 +196,7 @@ int am_session_generate(
 
 ---
 
-## 3. Phase 1 功能需求
+## 3. 当前产品功能需求
 
 ### 3.1 模型加载与管理
 
@@ -289,7 +291,7 @@ Output Tokens
 ### 3.4 C ABI 规范
 
 #### 版本化策略
-- **Phase 1 目标是发布 ABI v1.0**
+- **当前产品目标是发布 ABI v1.0**
 - 稳定性承诺以最终发布的 runtime C ABI 为准；在接口冻结前，本文中的函数签名视为目标契约而非既成实现
 - 向前兼容：v1.x 保持向后兼容，新增功能通过扩展接口
 - 破坏性变更：通过 `_v2` 后缀显式区分，不隐式兼容
@@ -331,7 +333,7 @@ void am_error_free(am_error_t error);
 
 ### 4.1 性能门禁与基准指标
 
-**交付门禁（Hard Gates，未达成则 Phase 1 交付失败）**：
+**交付门禁（Hard Gates，未达成则当前产品不可交付）**：
 
 | 指标 | 目标 | 测试条件 | 验证命令 |
 |------|------|----------|----------|
@@ -371,7 +373,7 @@ void am_error_free(am_error_t error);
 
 > 注：以下为 **目标测试套件**，按里程碑逐步落地并纳入验收。
 
-| 测试套件 | 覆盖范围 | 验收阶段 |
+| 测试套件 | 覆盖范围 | 验收里程碑 |
 |----------|----------|----------|
 | `InferenceRuntimeContract.*` | API 边界与生命周期 | M1 |
 | `ModelConfigContract.*` | 配置解析与拒绝策略 | M1 |
@@ -404,7 +406,7 @@ void am_error_free(am_error_t error);
 
 ---
 
-## 6. Phase 1 里程碑
+## 6. 当前产品里程碑
 
 ### M1: 基础运行时 (Week 1-4)
 
@@ -428,11 +430,11 @@ void am_error_free(am_error_t error);
 
 ---
 
-## 附录 A: 长期路线图（战略方向，非承诺）
+## 附录 A: 长期演进方向（战略方向，非承诺）
 
-> **警告**：以下内容仅作为战略方向指引，具体实施计划需在 Phase 1 完成后重新评估，可能独立成册。
+> **警告**：以下内容仅作为战略方向指引，不属于当前产品交付合同。具体实施计划必须基于已验证需求、当前产品实现证据和独立评审重新确定，必要时另行成册。
 
-### Phase 2: 服务化引擎（GPU-First）
+### 服务化与异构执行方向
 **目标方向**：GPU 服务化、连续批处理、HTTP API
 
 **考虑范围**（非承诺）：
@@ -443,12 +445,12 @@ void am_error_free(am_error_t error);
 - HTTP/gRPC API (OpenAI 兼容)
 - Prefix Caching (RadixAttention)
 
-**关键决策点**（Phase 1 后评估）：
+**关键决策点**（进入专项立项前评估）：
 - 是否保留 C++ API 作为服务层底层？
 - C ABI v1.0 是否需要 v2.0 以支持异步接口？
 - 是否引入第三方依赖（gRPC, libevent）？
 
-### Phase 3: 分布式引擎（Multi-Node）
+### 分布式执行方向（Multi-Node）
 **目标方向**：张量并行、专家并行、多机调度
 
 **考虑范围**（非承诺）：
@@ -457,7 +459,7 @@ void am_error_free(am_error_t error);
 - C++20 Coroutines 异步调度
 - 分层存储 (GPU/CPU/Disk)
 
-### Phase 4: 智能体引擎（Agentic）
+### 高级推理与智能体方向（Agentic）
 **目标方向**：高级解码、多模态、生产治理
 
 **考虑范围**（非承诺）：
@@ -471,12 +473,12 @@ void am_error_free(am_error_t error);
 
 ## 附录 B: 参考文档
 
-- **Phase 1 详细实施计划**: `.sisyphus/plans/cpu-first-llama-runtime-v1.md`
+- **CPU 本地推理详细实施计划**: `.sisyphus/plans/cpu-first-llama-runtime-v1.md`
 - **编码规范**: `AGENTS.md`
 - **分配器规范**: `ammalloc/AGENTS.md`
 
 ---
 
-**文档所有者**: AetherMind 架构团队  
-**当前状态**: ✅ Phase 1 技术交付契约已核准  
+**文档所有者**: AetherMind 架构团队
+**当前状态**: ✅ 当前产品技术交付契约已核准
 **下次更新**: M1 里程碑完成后补充实践经验

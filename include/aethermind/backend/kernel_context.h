@@ -3,6 +3,7 @@
 
 #include "aethermind/backend/stream.h"
 #include "aethermind/base/device.h"
+#include "aethermind/base/kv_cache_binding.h"
 #include "aethermind/base/workspace.h"
 #include "aethermind/base/workspace_arena.h"
 
@@ -18,6 +19,12 @@ struct KernelContext {
     WorkspaceBinding workspace_binding{};
     const void* packed_weights = nullptr;
     const void* kernel_params = nullptr;
+    /// Per-invocation KV append binding. Borrowed storage is valid only while
+    /// this synchronous kernel call is active and must never be cached.
+    const KVCacheAppendBinding* kv_append = nullptr;
+    /// Per-invocation KV read binding. Borrowed storage is valid only while
+    /// this synchronous kernel call is active and must never be cached.
+    const KVCacheReadBinding* kv_read = nullptr;
     std::span<const std::byte> attrs{};
 };
 

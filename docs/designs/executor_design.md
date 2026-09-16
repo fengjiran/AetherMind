@@ -349,6 +349,7 @@ Prefill 负责将 Prompt 编码进 KV Cache，并生成第一个输出 token。
 3. **逐层前向**：逐层执行 Transformer Block。
    - 在 Attention 算子中一次性计算 Prompt 区间的 K / V。
    - 将 KV 写入 `KVCacheView` 的起始位置（`0 .. prompt_len - 1`）。
+   - 所有 layer 必须恰好使用一次同一 append range；只有整个 plan 成功才将该 range commit。
 4. **Final Norm + LM Head**：对最后位置的 hidden state 计算 logits。
 5. **Argmax**：从最后位置 logits 中选出第一个输出 token。
 6. **Stop Check**：检查是否命中 EOS，或 `max_new_tokens == 0` 等停止条件。
@@ -374,6 +375,8 @@ Decode 是 steady-state 热路径，目标是在最小控制开销下逐步生�
 3. **逐层执行**：
    - 对每层执行 norm / linear / rope / attention / mlp / residual
    - Attention 通过 `KVCacheView` 读取历史 KV，并在当前位置追加当前 token 的 K / V
+   - 当前 plan 内 Attention 可见本 layer 已完成的未提交 append；其他 layer 或
+     Attention-before-update 不得读取该范围。
 4. **Final Norm + LM Head**：得到当前步 logits
 5. **Argmax**：选择 `next_token`
 6. **Stop Check**：判断是否命中 EOS 或达到 `max_new_tokens`
@@ -400,7 +403,8 @@ Status ExecutorImpl::Generate(SessionState& session) {
 
 ### 6.5 特殊情况约定
 
-- **空 Prompt**：允许存在，但实现必须明确 BOS / 起始 token 策略。
+- **空 Prompt**：Phase 1 的 KV reservation 拒绝；支持 BOS/空上下文前必须先定义
+  无 Prefill 如何进入 DecodeReady 的独立语义。
 - **`max_new_tokens == 0`**：不进入 Decode；是否在 Prefill 后直接结束应由产品语义明确。Phase 1 推荐在 Preparation 或 Prefill 后直接返回 finished。
 - **首 token 即 EOS**：视为正常停止，不应返回错误。
 

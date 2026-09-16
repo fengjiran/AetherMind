@@ -489,6 +489,8 @@ Phase 1 必须满足以下要求：
 - `KeyWriteView` / `ValueWriteView` 返回当前写窗口
 - `KeyReadView` / `ValueReadView` 返回历史区间视图
 - `CommitUntil(new_pos)` 只在 Prefill / Decode 成功后推进逻辑位置
+- `KVCacheAppendBinding` / `KVCacheReadBinding` 是 kernel invocation-only 的 borrowed
+  contract；其物理指针不能缓存进 prepared params，也不能跨 Execute() 保存
 
 ### 6.6 历史读取与当前写入语义
 
@@ -524,11 +526,13 @@ Uninitialized
     -> Init
 Initialized
     -> ReserveForSession
-Reserved
-    -> Prefill / Decode
-Active
+AwaitingPrefill
+    -> Prefill transaction succeeds
+DecodeReady
+    -> Decode transaction succeeds
+DecodeReady
     -> ResetSession
-Reserved
+AwaitingPrefill
     -> ReleaseSession
 Initialized
 ```
@@ -539,10 +543,13 @@ Initialized
 
 - 校验 manager 已初始化
 - 校验 `prompt_len + max_new_tokens <= max_tokens`
+- Phase 1 拒绝空 `prompt_len`；BOS/空上下文策略属于更高层输入语义
 - 校验当前 slot 未被占用
 - 标记 slot `in_use = true`
 - 记录 `prompt_len`
 - 设置 `current_pos = 0`
+- 记录 `AwaitingPrefill`；`prompt_len` 和 reservation capacity 是 immutable metadata，
+  不能由 `current_pos` 代替
 - 返回 `KVCacheView`
 
 ### 7.4 Append
@@ -550,25 +557,31 @@ Initialized
 #### Prefill
 
 - 以批量方式写入 `0 .. prompt_len-1`
-- 完成后调用 `CommitUntil(prompt_len)`
+- 一个 execution plan 的所有 decoder layer 必须恰好写入一次相同区间
+  `[0, prompt_len)`；仅当整个 plan 成功后调用一次 `CommitUntil(prompt_len)`
 
 #### Decode
 
 - 每步写入当前 `current_pos`
-- 成功后调用 `CommitUntil(current_pos + 1)`
+- Phase 1 每个 Decode transaction 只接受一个 token；仅当整个 plan 成功后调用一次
+  `CommitUntil(current_pos + 1)`
 
 ### 7.5 Read
 
-- Attention 读取 `[0, current_pos)` 的历史范围
-- 读取必须服从当前已提交位置上限
-- 不允许读取未提交写入区间
+- `[0, committed_end)` 是跨 plan 已提交范围，可由普通 `KVCacheView` read API 读取
+- `[committed_end, visible_end)` 是当前同步 plan 已写但尚未提交的范围；只允许同一
+  transaction 内、且本 layer 的 KVCacheUpdate 已成功之后的 Attention 读取
+- `[visible_end, capacity)` 不可读取。Attention-before-update 不能通过扩大
+  `visible_end` 读取未初始化内容
 
 ### 7.6 Reset
 
 `ResetSession()` 的语义：
 
 - 清空逻辑位置
-- 清空 prompt_len / current_pos 等逻辑状态
+- 将 `current_pos` 设为 0 并回到 `AwaitingPrefill`
+- 保留 `prompt_len` 和 reservation capacity；下一次执行必须重新 Prefill，
+  Reset 不表达“保留 prompt KV 后重跑 Decode”
 - 保留已分配的底层 K/V 存储
 - 不触发新的堆分配
 - 不强制对底层存储做 `memset`

@@ -1,10 +1,10 @@
 # InferenceSession / Generate 前置闭环计划
 
 - **状态**: Draft
-- **版本**: 1.2
+- **版本**: 1.3
 - **日期**: 2026-09-03
 - **最近更新**: 2026-09-16
-- **产品边界**: [AetherMind Phase 1 PRD](../products/aethermind_prd.md)
+- **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **关联模块**: compiler / execution / runtime / backend / model / API orchestration
 
@@ -18,7 +18,7 @@
 2. 不以 fake backend、空 kernel 或只改变状态字段的 placeholder 冒充 Generate 实现。
 3. 先完成 FP32 reference baseline，再增加 fusion、packing、quantization 和 SIMD 优化。
 4. Session 只负责编排，不承担 compiler、weight materialization、kernel resolve 或算子语义。
-5. Phase 1 保持同步、单请求、Token IDs 边界，不引入 scheduler、continuous batching 或 paged KV cache。
+5. 当前产品保持同步、单请求、Token IDs 边界，不引入 scheduler、continuous batching 或 paged KV cache。
 
 ### 1.1 本计划包含
 
@@ -102,6 +102,8 @@
 
 ### 3.1 KV/state identity 没有到达 kernel
 
+KVCache Manager 的 correctness 修复、lease/append transaction、execution binding 与长期 Paged KV 边界由 [KVCache Manager 演进方案](05-kv-cache-manager-evolution.md) 详细定义；本节只保留 Generate 闭环所需的集成门禁。
+
 当前 `ExecutionContext` 保存 `KVCacheView`，`LayerRunner` 只验证 state alias 的 presence、dtype 和静态 geometry。`KernelContext` 不携带 KV storage、layer、K/V slot 或 commit position。
 
 同时，`LoweredGraph` 中 `StateValue::binding` 所携带的：
@@ -175,7 +177,7 @@ LoweredModelArtifact
 
 当前 lowering 支持 `ExecPhase::{kPrefill, kDecode, kBoth}`，但一次 `ModelCompiler::Compile` 只返回一个 `LoweredGraph`。
 
-Phase 1 reference baseline 允许先使用一个 `kBoth` plan：
+当前产品的 reference baseline 允许先使用一个 `kBoth` plan：
 
 - semantic topology 相同；
 - prefill/decode 分别构建不同的 `PreparedExecutionBindings`；

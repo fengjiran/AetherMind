@@ -1,8 +1,8 @@
 # AetherMind 文档系统稳定化方案
 
 - **状态**: Draft
-- **版本**: 1.2
-- **日期**: 2026-09-14
+- **版本**: 1.3
+- **日期**: 2026-09-16
 - **产品范围**: [AetherMind 产品需求](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **文档规范**: [文档系统规范](../guides/documentation-guide.md)
@@ -44,7 +44,7 @@
 - 不引入新的阶段编号（`Phase1/Phase2`）作为架构、API、模块、里程碑或质量门禁的命名依据；
 - 不删除历史文档（archive/ 与 Historical Snapshot 保留）。
 
-### 1.3 当前执行状态（2026-09-14 快照）
+### 1.3 当前执行状态（2026-09-16 快照）
 
 **Batch -1 尚未完成。** 本节明确区分"规划工件交付"与"D0–D5 实质执行"，避免读者将本方案的存在误读为 Batch -1 已完成。每次后续 workstream 交付后更新本节快照。
 
@@ -54,8 +54,9 @@
 - 清查表（`03-documentation-stabilization-inventory.md`）：144 篇文档的 8 列字段首次填写；
 - 02 号方案修订：§2.4 / §6.1 / §7 / §10 / §11 五处，版本 1.0→1.1；
 - `docs/improvement-plan/README.md`：索引新增 03 行。
+- D4 首批术语迁移：PRD、AGENTS.md、根 README、文档索引、架构总览、public API 与相关 active improvement plans 已从 `Phase 1/2+` 改为“当前产品合同 / 当前不承诺 / 长期演进方向”。
 
-#### 1.3.2 未执行（D0–D5 实质工作）
+#### 1.3.2 D0–D5 执行状态
 
 | 步骤 | 状态 | 说明 |
 |---|---|---|
@@ -63,7 +64,7 @@
 | D1 核心 9 篇核验 | 未启动 | 清查表"当前性"列 144/144 为"未核验" |
 | D2 清查表 | 已建立，处置列为建议值 | 实际重命名/移动/归档未执行（遵守 §5.3 硬约束） |
 | D3 P0/P1/P2 处置 | 未启动 | `code_review_guide.md`、01 号方案 §2.2、`docs/issues.md` 等 P0 对象未修订 |
-| D4 阶段术语迁移 | 未启动 | 核心 9 篇中 `Phase 1 / Phase 2` 出现位置未分类处理 |
+| D4 阶段术语迁移 | 部分完成 | PRD 与主要入口/权威文档已迁移；其余 design、guide、review 和 test 文档仍需按当前事实与历史快照分类处理 |
 | D5a `verify_docs.py` 扩展 | 未启动 | 脚本无改动，`improvement-plan/` 仍在 `EXCLUDED_PARTS` |
 | D5b metadata schema | 未启动 | 依赖 D5a 与 D1 |
 
@@ -155,7 +156,7 @@
 
 ### 2.8 阶段性术语散布
 
-`Phase 1 / Phase 2` 出现在架构、设计、API、评审、指南中。[docs/README.md](../README.md) 术语表第 158 行 `Argmax | 贪婪采样（Phase 1 唯一采样策略）`、architecture_overview 索引行 `Phase 1 边界` 均为示例。02 号方案 §1.1 已确立 capability-driven 原则，但存量术语迁移未启动。
+`Phase 1 / Phase 2` 仍出现在部分设计、评审、指南和测试记录中。2026-09-16 已完成 PRD、AGENTS.md、根 README、文档索引、架构总览、public API 与相关 active improvement plans 的首批迁移；其余存量文档必须区分当前规范与历史快照，不能机械替换。02 号方案 §1.1 已确立 capability-driven 原则。
 
 ## 3. D0：冻结文档角色
 

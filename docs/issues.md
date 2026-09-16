@@ -6,6 +6,11 @@
 
 ## 未解决
 
+- [ ] `HfModelValidator` 接受 `gelu/relu`，但 `ModelGraphBuilder::BuildLlamaDense` 固定生成 `SiluMul`，存在 accepted config 被静默编译为错误 MLP 语义的风险；当前产品应收窄到 `silu`，或先补齐对应 operator/graph/kernel（关联：[系统能力演进路线图 §5.2](improvement-plan/06-system-capability-evolution-roadmap.md#52-p0统一接受的模型和实际语义)）
+- [ ] `ElementwiseMul` operator inference 与 CPU kernel 支持 broadcast，但 `GraphOpBuilder::AddElementwiseMul` 拒绝不同完整 `TensorSpec`，三层语义不一致（关联：[系统能力演进路线图 §6.2](improvement-plan/06-system-capability-evolution-roadmap.md#62-p0修复-graphopbuilder-与-operator-semantic-漂移)）
+- [ ] `WorkspaceRequirement::lifetime/reusable` 尚未影响 offset 规划，`PlanWorkspaceRequirements` 仍顺序累加全部 requirement（关联：[系统能力演进路线图 §13.3](improvement-plan/06-system-capability-evolution-roadmap.md#133-p1workspace-lifetime-真正生效)）
+- [ ] activation arena 为所有 activation 顺序分配，尚无 producer/last-consumer liveness reuse，峰值接近全部 activation bytes 之和（关联：[系统能力演进路线图 §9.3](improvement-plan/06-system-capability-evolution-roadmap.md#93-p1activation-liveness-planning)）
+- [ ] PRD 的单线程/OpenMP、compile-time dispatch/planning-time resolve、多 Session 验收/单 active KV slot 等表述需要按当前事实与产品目标重新裁决（关联：[系统能力演进路线图 §17.1](improvement-plan/06-system-capability-evolution-roadmap.md#171-当前需要裁决的漂移)）
 - [ ] designs/graph_compilation_flow.md 与 reviews/graph_compilation_flow.md 同名冲突，易混淆权威来源（关联：[docs/designs/graph_compilation_flow.md](designs/graph_compilation_flow.md)、[docs/reviews/graph_compilation_flow.md](reviews/graph_compilation_flow.md)）
 - [ ] 4 篇非归档文档超长（>1000 行）：operator_optimization_guide.md 2110、model_graph_design.md 1706、dispatch_design.md 1061、graph_lowering_design.md 1005（关联：[docs/guides/](guides/)、[docs/designs/](designs/)）
 - [ ] 核心 9 篇文档中 `Phase 1 / Phase 2` 术语 83 处待分类迁移（关联：AGENTS.md、README.md、docs/README.md、docs/products/aethermind_prd.md、docs/designs/architecture/architecture_overview.md、docs/api/public-api.md）

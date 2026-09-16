@@ -14,6 +14,8 @@
 
 namespace aethermind {
 
+struct KVAppendTransaction;
+
 /// @brief Runs each step of an ExecutionPlan in order.
 ///
 /// Steps are executed synchronously and single-threaded. State-alias steps
@@ -26,7 +28,7 @@ public:
     /// @param context Prepared tensor bindings and runtime resources.
     /// @return Status::Ok() on success, or the first failing step's error.
     static Status Run(const ExecutionPlan& plan,
-                      const ExecutionContext& context) noexcept;
+                      ExecutionContext& context) noexcept;
 
 private:
     /// @brief Executes a single step after alias and binding validation.
@@ -41,7 +43,8 @@ private:
                           const ExecutionContext& context,
                           const PreparedExecutionBindings& prepared_bindings,
                           const StateAliasPlan& alias_plan,
-                          const std::vector<ExecutionValueDesc>& values) noexcept;
+                          const std::vector<ExecutionValueDesc>& values,
+                          KVAppendTransaction& kv_transaction) noexcept;
 
     /// @brief Verifies that a step's state aliases have runtime backing.
     ///

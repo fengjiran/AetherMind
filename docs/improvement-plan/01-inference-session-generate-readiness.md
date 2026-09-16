@@ -1,9 +1,9 @@
 # InferenceSession / Generate 前置闭环计划
 
 - **状态**: Draft
-- **版本**: 1.1
+- **版本**: 1.2
 - **日期**: 2026-09-03
-- **最近更新**: 2026-09-15
+- **最近更新**: 2026-09-16
 - **产品边界**: [AetherMind Phase 1 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **关联模块**: compiler / execution / runtime / backend / model / API orchestration
@@ -57,7 +57,7 @@
 
 ### 2.2 当前 CPU kernel 覆盖
 
-真实 CPU registry 当前只有（截至 2026-09-15，共 10 类、15 个描述符；reference 命名统一为 `cpu::<op>_f32_reference`）：
+真实 CPU registry 当前有（截至 2026-09-16，共 12 类、17 个描述符；reference 命名统一为 `cpu::<op>_f32_reference`）：
 
 | OpType | Reference kernel | Optimized kernel | Generate baseline 状态 |
 |---|---:|---:|---|
@@ -72,9 +72,11 @@
 | Silu | FP32 reference | 无 | semantic Llama baseline 不直接依赖（SiluMul 未融合对偶） |
 | SiluMul | FP32 reference | 无 | 可用 |
 | Argmax | FP32 reference | 无 | 可用 |
-| QkvLinear / GateUpLinear / AddRmsNorm | 无 | 无 | O2 fused path 阻塞 |
+| QkvLinear | FP32 reference（packed-only） | 无 | 可用（需 O2 融合 + `enable_packed_weights=true`） |
+| GateUpLinear | FP32 reference（packed-only） | 无 | 可用（需 O2 融合 + `enable_packed_weights=true`） |
+| AddRmsNorm | 无 | 无 | O2 fused path 阻塞（无 kernel） |
 
-当前 O2 默认 semantic pipeline 会产生 `QkvLinear`、`GateUpLinear` 和 `AddRmsNorm`，但 execution lowering 仍是一个 semantic node 对应一个 kernel step，且不存在 kernel-sequence fallback。因此 semantic compilation 成功不等于真实 CPU plan 可构建。
+当前 O2 默认 semantic pipeline 会产生 `QkvLinear`、`GateUpLinear` 和 `AddRmsNorm`。前两者的 packed-only kernel 与 execution packed 绑定链路（`ExecutionStep.packed_weights` → packing request → `WeightPrepackPlanner` → plan build → execute）已落地并走通全链路测试；`AddRmsNorm` 仍无 kernel（execution lowering 是一个 semantic node 对应一个 kernel step，且不存在 kernel-sequence fallback）。因此 O2 + `enable_packed_weights=true` 的 QKV/GateUp 路径已可构建，但含 `AddRmsNorm` 节点的完整 O2 图仍会 plan build 失败。
 
 ### 2.3 当前 packed-weight 能力
 
@@ -83,17 +85,18 @@
 - binding-aware `WeightArtifactKey`；
 - graph-driven packing request；
 - direct/QKV/Gate-Up composite weight materialization；
+- QkvLinear/GateUpLinear packed-only reference kernel（cpu_identity 契约：logical shape/recipe/alignment 校验、行切分、与输出的 disjoint 校验）；
 - `RawWeightView` byte-size 验证；
 - tied lm-head fallback；
 - plain-step filtering和 exact recipe lookup。
 
 仍未具备：
 
-- 真实 packed/quantized Linear kernel；
-- 实际 tile/block packing recipe；
-- packed Linear 数值端到端验证。
+- kLinear 的 kPacked 变体（unfused packed 路径）；
+- 实际 tile/block packing recipe（当前 `cpu_identity` 是逻辑行主序拷贝）；
+- `enable_packed_weights=true` 的 unfused e2e 数值验证。
 
-当前 `CpuWeightPrepacker` 是 `cpu_identity` copy。它可验证 artifact identity/lifetime，但不能作为生产 packed compute 已就绪的证据。
+当前 `CpuWeightPrepacker` 是 `cpu_identity` copy。QkvLinear/GateUpLinear 的 packed 契约已被全链路数值测试覆盖，但它仍不能作为生产 packed compute（tile/block 重排）已就绪的证据。
 
 ## 3. 必须先闭环的阻塞项
 
@@ -343,7 +346,7 @@ state binding
 
 ### M3：最小 FP32 reference kernel 链
 
-建议顺序（截至 2026-09-15 已完成 4/6）：
+建议顺序（截至 2026-09-16 已完成 4/6；fused 变体 kQkvLinear/kGateUpLinear 亦已提前落地为 packed-only reference kernel，见 §2.2）：
 
 1. Linear；✅ 已完成（`cpu::linear_f32_reference`）
 2. RoPE；✅ 已完成（`cpu::rope_f32_reference`，含参数化 HF golden 对拍）
@@ -477,7 +480,7 @@ Decode 循环中不得变化：
 - [ ] state binding identity 从 LoweredGraph 到达 kernel；
 - [ ] kernel 获得窄 KV binding，不依赖 Runtime/Session 宽对象；
 - [ ] baseline pipeline 可以通过真实 CpuBackend 构建完整 plan；
-- [ ] Linear/RoPE/KVCacheUpdate/Attention/SiluMul/Argmax reference kernel 可用（进度 4/6：Linear、RoPE、SiluMul、Argmax 可用；KVCacheUpdate/Attention 待 §3.1 state binding 闭环）；
+- [ ] Linear/RoPE/KVCacheUpdate/Attention/SiluMul/Argmax reference kernel 可用（进度 4/6：Linear、RoPE、SiluMul、Argmax 可用；KVCacheUpdate/Attention 待 §3.1 state binding 闭环）；fused QkvLinear/GateUpLinear（packed-only）亦已落地；
 - [ ] `PrepareExecutableModel` 可从真实 `LoweredModelArtifact` 构建；
 - [ ] real weights 可自动生成完整 external bindings；
 - [ ] Prefill/Decode phase-plan 合同已验证；
@@ -505,3 +508,4 @@ Decode 循环中不得变化：
 |---|---|---|
 | 2026-09-03 | 1.0 | 基于当前 Runtime/Execution 生命周期与真实 CPU kernel 覆盖建立前置闭环计划 |
 | 2026-09-15 | 1.1 | 同步 §2.2 kernel 覆盖表：SiluMul 升级为 FP32 reference/可用并新增 Silu 行，统一 reference 命名；M3 标注完成 4/6；门禁清单同步进度 |
+| 2026-09-16 | 1.2 | 同步 §2.2/§2.3：新增 QkvLinear/GateUpLinear（packed-only, cpu_identity）行与 packed 能力说明，O2 fused 阻塞项收敛为 AddRmsNorm；M3 与门禁清单同步 |

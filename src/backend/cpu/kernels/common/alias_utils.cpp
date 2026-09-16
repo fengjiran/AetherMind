@@ -310,9 +310,10 @@ StatusOr<RowwiseViewAnalysis> BuildRowwiseViewAnalysis(const void* data,
         }
     }
 
-    AM_ASSIGN_OR_RETURN(const RowwiseAddressFootprint footprint,
-                        BuildRowwiseAddressFootprintImpl(data, row_count, column_count,
-                                                         row_stride, column_stride, element_size, context));
+    AM_ASSIGN_OR_RETURN(
+            const RowwiseAddressFootprint footprint,
+            BuildRowwiseAddressFootprintImpl(data, row_count, column_count,
+                                             row_stride, column_stride, element_size, context));
 
     const bool is_empty = row_count == 0 || column_count == 0;
     const std::array<int64_t, 2> shape = {row_count, column_count};

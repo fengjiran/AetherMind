@@ -1,9 +1,12 @@
 # CPU FP32 GEMM 优化方案
 
 版本：v0.1
-状态：设计方案，尚未实现 optimized kernel
-适用范围：AetherMind Phase 1 CPU FP32 GEMM / MatMul
+状态：Superseded（历史草案，optimized kernel 尚未实现）
+替代文档：[CPU GEMM 优化方案](../../improvement-plan/04-cpu-gemm-optimization.md)
+适用范围：AetherMind 当前产品 CPU FP32 GEMM / MatMul
 更新时间：2026-09-04
+
+> 本文保留 2026-09-04 的 MatMul-focused 机制草案，不再作为当前实施方案。当前方案已根据 `Linear`、`QkvLinear`、`GateUpLinear`、exact packing recipe、prepared bindings 和 benchmark 证据门禁重新整理到上述演进提案。
 
 本文定义 CPU FP32 GEMM 从 reference primitive 演进到 SIMD、cache blocking、packing 和多线程实现的工程方案。本文中的性能判断均为机制分析；micro-tile、cache block、dispatch 阈值和实际加速比必须由 benchmark 决定，不能作为已测量结论引用。
 

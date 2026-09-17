@@ -10,8 +10,8 @@
 namespace aethermind::cpu::detail {
 namespace {
 
-StatusOr<SiluMulF32KernelArgs> ValidateAndBuildF32Args(
-        const KernelParamsBuildContext& context) noexcept {
+Status BuildSiluMulF32ReferenceArgs(const KernelParamsBuildContext& context,
+                                    void* params_buffer) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
@@ -52,12 +52,6 @@ StatusOr<SiluMulF32KernelArgs> ValidateAndBuildF32Args(
         args.output_strides[i] = prepared.output_strides[i];
     }
 
-    return args;
-}
-
-Status BuildSiluMulF32ReferenceArgs(const KernelParamsBuildContext& context,
-                                    void* params_buffer) noexcept {
-    AM_ASSIGN_OR_RETURN(const SiluMulF32KernelArgs args, ValidateAndBuildF32Args(context));
     ::new (params_buffer) SiluMulF32KernelArgs(args);
     return Status::Ok();
 }

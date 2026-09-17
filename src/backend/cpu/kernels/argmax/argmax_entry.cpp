@@ -54,8 +54,8 @@ StatusOr<int64_t> CanonicalizeAxis(int64_t axis, int64_t input_rank) noexcept {
     return canonical_axis;
 }
 
-StatusOr<ArgmaxF32KernelArgs> ValidateAndBuildArgmaxF32Args(
-        const KernelParamsBuildContext& context) noexcept {
+Status BuildArgmaxF32ReferenceArgs(const KernelParamsBuildContext& context,
+                                   void* params_buffer) noexcept {
     AM_ASSIGN_OR_RETURN(const int64_t axis, ReadFrozenAxis(context.attrs));
 
     const auto inputs = context.inputs;
@@ -149,7 +149,8 @@ StatusOr<ArgmaxF32KernelArgs> ValidateAndBuildArgmaxF32Args(
         // Nothing to write: the geometry is carried for diagnostics only and the
         // micro-kernel dereferences neither pointer, so null data, zero strides,
         // and overlapping layouts are all acceptable here.
-        return args;
+        ::new (params_buffer) ArgmaxF32KernelArgs(args);
+        return Status::Ok();
     }
 
     if (input.data() == nullptr || output.data() == nullptr) {
@@ -178,13 +179,6 @@ StatusOr<ArgmaxF32KernelArgs> ValidateAndBuildArgmaxF32Args(
 
     args.input = input.data<float>();
     args.output = output.data<int64_t>();
-    return args;
-}
-
-Status BuildArgmaxF32ReferenceArgs(const KernelParamsBuildContext& context,
-                                   void* params_buffer) noexcept {
-    AM_ASSIGN_OR_RETURN(const ArgmaxF32KernelArgs args,
-                        ValidateAndBuildArgmaxF32Args(context));
     ::new (params_buffer) ArgmaxF32KernelArgs(args);
     return Status::Ok();
 }

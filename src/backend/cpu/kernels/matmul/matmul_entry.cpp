@@ -25,8 +25,8 @@ Status BuildMatMulF32Metadata(const OpParams& params, std::vector<std::byte>& at
     return Status::Ok();
 }
 
-StatusOr<MatMulF32KernelArgs> ValidateAndBuildMatMulF32Args(
-        const KernelParamsBuildContext& context) noexcept {
+Status BuildMatMulF32ReferenceArgs(const KernelParamsBuildContext& context,
+                                   void* params_buffer) noexcept {
     if (context.attrs.size() != 1) {
         return Status::InvalidArgument("MatMulKernelEntry requires transpose_rhs metadata");
     }
@@ -125,7 +125,8 @@ StatusOr<MatMulF32KernelArgs> ValidateAndBuildMatMulF32Args(
     const bool has_output_elements =
             built_args.batch_count != 0 && built_args.m != 0 && built_args.n != 0;
     if (!has_output_elements) {
-        return built_args;
+        ::new (params_buffer) MatMulF32KernelArgs(built_args);
+        return Status::Ok();
     }
 
     AM_ASSIGN_OR_RETURN(const StridedAddressFootprint output_footprint,
@@ -144,14 +145,7 @@ StatusOr<MatMulF32KernelArgs> ValidateAndBuildMatMulF32Args(
                 "CPU MatMul", output_footprint, "output", rhs_footprint, "rhs"));
     }
 
-    return built_args;
-}
-
-Status BuildMatMulF32ReferenceArgs(const KernelParamsBuildContext& context,
-                                   void* params_buffer) noexcept {
-    AM_ASSIGN_OR_RETURN(const MatMulF32KernelArgs args,
-                        ValidateAndBuildMatMulF32Args(context));
-    ::new (params_buffer) MatMulF32KernelArgs(args);
+    ::new (params_buffer) MatMulF32KernelArgs(built_args);
     return Status::Ok();
 }
 

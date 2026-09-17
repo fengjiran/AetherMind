@@ -11,8 +11,8 @@
 namespace aethermind::cpu::detail {
 namespace {
 
-StatusOr<SiluF32KernelArgs> ValidateAndBuildF32Args(
-        const KernelParamsBuildContext& context) noexcept {
+Status BuildSiluF32ReferenceArgs(const KernelParamsBuildContext& context,
+                                 void* params_buffer) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 1 || outputs.size() != 1) {
@@ -52,7 +52,8 @@ StatusOr<SiluF32KernelArgs> ValidateAndBuildF32Args(
 
     AM_ASSIGN_OR_RETURN(const int64_t numel, CheckedOutputNumel(output.rank(), output.shape()));
     if (numel == 0) {
-        return SiluF32KernelArgs{};
+        ::new (params_buffer) SiluF32KernelArgs{};
+        return Status::Ok();
     }
 
     if (input.data() == nullptr || output.data() == nullptr) {
@@ -86,12 +87,6 @@ StatusOr<SiluF32KernelArgs> ValidateAndBuildF32Args(
         args.input_strides[axis] = input.strides()[axis];
         args.output_strides[axis] = output.strides()[axis];
     }
-    return args;
-}
-
-Status BuildSiluF32ReferenceArgs(const KernelParamsBuildContext& context,
-                                 void* params_buffer) noexcept {
-    AM_ASSIGN_OR_RETURN(const SiluF32KernelArgs args, ValidateAndBuildF32Args(context));
     ::new (params_buffer) SiluF32KernelArgs(args);
     return Status::Ok();
 }

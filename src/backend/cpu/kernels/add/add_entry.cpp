@@ -10,7 +10,8 @@
 namespace aethermind::cpu::detail {
 namespace {
 
-StatusOr<AddKernelArgs> ValidateAndBuildArgs(const KernelParamsBuildContext& context) noexcept {
+Status BuildAddArgs(const KernelParamsBuildContext& context,
+                    void* params_buffer) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
@@ -55,12 +56,6 @@ StatusOr<AddKernelArgs> ValidateAndBuildArgs(const KernelParamsBuildContext& con
         args.output_strides[i] = prepared.output_strides[i];
     }
 
-    return args;
-}
-
-Status BuildAddArgs(const KernelParamsBuildContext& context,
-                    void* params_buffer) noexcept {
-    AM_ASSIGN_OR_RETURN(const AddKernelArgs args, ValidateAndBuildArgs(context));
     ::new (params_buffer) AddKernelArgs(args);
     return Status::Ok();
 }

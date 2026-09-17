@@ -1,8 +1,8 @@
 # CPU GEMM 优化方案
 
 - **状态**: Draft
-- **版本**: 1.0
-- **日期**: 2026-09-16
+- **版本**: 1.1
+- **日期**: 2026-09-17
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **优化方法基线**: [算子优化指南](../guides/operator_optimization_guide.md)
@@ -38,10 +38,6 @@ AetherMind 不应新增 semantic `Gemm` operator。当前 GEMM 是 CPU backend �
 - 把第三方 BLAS 引入为生产依赖；
 - GPU GEMM、MoE、continuous batching 或分布式执行；
 - 在没有测量证据时承诺具体 tile size、prefetch distance 或性能倍数。
-
-### 1.3 与旧草案的关系
-
-本文替代 [2026-09-04 CPU FP32 GEMM 草案](../designs/kernel_dev/CPU_FP32_GEMM优化方案.md)。旧草案主要面向通用 `MatMul` 的无 packing AVX2 路径；本文保留其 binding-time driver 和 descriptor-internal fallback 思路，并补齐 LLM Linear/fused Linear 优先级、exact packed recipe、workspace 演进、streaming-weight benchmark 及分阶段证据门禁。旧草案保留为历史机制记录，不代表当前已实现设计。
 
 ## 2. 已验证的当前状态
 
@@ -212,7 +208,7 @@ AVX-512、NEON/SVE 使用同一 driver contract、不同 microkernel 与 recipe�
 
 ### 4.5 Workspace
 
-第一阶段使用 direct A + prepacked B，保持 zero-workspace。Prefill 需要 A panel packing 时，再引入 binding-dependent workspace：
+首个实现包使用 direct A + prepacked B，保持 zero-workspace。Prefill 需要 A panel packing 时，再引入 binding-dependent workspace：
 
 ```text
 Resolved ISA kernel
@@ -383,66 +379,113 @@ python3 tools/compare_benchmark_json.py \
 
 不预先规定“必须达到某个 GFLOP/s”。在首轮基线采集后，结合目标 CPU 的可实现峰值和 memory bandwidth，为各 shape 类别设置硬门禁。
 
-## 7. 分阶段实施
+## 7. 实施路线与证据门禁
 
-### G0：证据基线
+G0–G6 是带依赖关系的工作包，不是要求机械串行执行的产品阶段。G0 是所有性能工作的前置门禁；G1 与 G2 可以在接口边界冻结后局部并行验证；G3、G5 和 G6 只有在 benchmark 或产品需求提供明确证据时才进入实施。任何工作包未达到退出条件时，不得仅凭 microbenchmark 提高 production descriptor priority。
 
+```text
+G0 合同与证据基线
+ ├──> G1 Decode direct-weight AVX2
+ └──> G2 exact recipe 与 packed B
+          ├──> G3 Prefill blocked GEMM / 可选 workspace 演进
+          └──> G4 fused Linear consumers
+G2/G4 + quantization contract ──> G5 量化与新 ISA
+runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
+```
+
+### G0：合同与证据基线
+
+目标是先建立可重复、可解释的 correctness 与性能事实，不修改 production 优先级。
+
+- 保留 `RunGemmF32Reference` 的 double accumulation，作为 correctness oracle；
+- 明确外部语义为 `C = A × B`；K blocking 所需的 accumulate 仅为 microkernel 内部状态，不扩张成公共 `alpha/beta` API；
 - 新增 prepared Linear/GEMM、packing 和 cache-mode benchmark；
-- 补齐 canonical/boundary correctness tests；
-- 记录 scalar 的反汇编、Roofline 输入和 JSON baseline；
-- 验证 benchmark 不把 params build、pack 或 allocation 混入 steady-state loop。
+- 覆盖 Decode/Prefill canonical shapes、tile boundary、zero-size、合法 stride、unaligned pointer、alias/injectivity 和 overflow；
+- 分离 hot artifact、streaming artifact 和 cold preparation；
+- 记录 scalar Release 反汇编、Roofline 输入、硬件计数器和原始 JSON；
+- 验证 params build、validation、packing 和 allocation 不混入 steady-state compute loop。
 
-退出条件：baseline 可重复，shape/cache/packing 维度可区分，结果可以由脚本比较。
+退出条件：correctness baseline 完整；benchmark 可重复；shape、cache state、packing 与 binding 成本可独立归因；baseline/candidate 可以由脚本比较。
 
-### G1：FP32 AVX2+FMA Decode
+### G1：Decode direct-weight AVX2
 
-- 增加 AVX2+FMA translation unit 和 feature-gated descriptor；
-- 先覆盖 plain Linear，沿 K 向量化并展开多个输出行；若本阶段做 fused consumer 原型，其字节解释必须继续严格兼容现有 `cpu_identity`；
-- binding time 选择 `M=1` GEMV、小 M skinny 或 compatible scalar driver；
-- 本阶段不改变 packed bytes 的解释方式；plain、`cpu_identity` 和未来 interleaved recipe 不能混用；
-- 覆盖 N/K tail、padded stride 和 alias rejection；
-- 检查 Release 反汇编确认目标指令与无意 spill。
+目标是用最小架构扩张覆盖当前最重要的 `M=1`/small-M latency 路径。
 
-退出条件：Decode canonical geomean 稳定提升，无 correctness/zero-allocation 回归。
+- 增加独立 AVX2+FMA translation unit 和 feature-gated descriptor，不对整个 target 使用 `-march=native`；
+- 先覆盖 plain Linear，沿 K 向量化并展开多个 N 输出行；
+- binding time 根据 concrete `M/N/K/stride` 选择 `M=1` GEMV、small-M skinny 或 compatible scalar driver；
+- optimized descriptor 必须覆盖其声明的完整合法 layout 合同，不适合 SIMD 的输入在 descriptor 内 fallback；
+- 若验证 fused consumer 原型，packed bytes 仍必须严格解释为现有 `cpu_identity`；
+- 覆盖 N/K tail、padded stride、unaligned access 和 alias rejection；
+- 检查 Release 反汇编，确认 FMA、unroll、register pressure 和 spill 情况。
 
-### G2：真实 packed B + Prefill blocked GEMM
+退出条件：Decode canonical geomean 有稳定收益；任一 canonical shape 的显著回退均有 shape fallback；feature-disabled 环境确定选择 reference；hot path 无新增分配。
 
-- descriptor-owned exact recipe；
-- backend-owned pack service；
-- B panel packing 与 blocked driver；
-- direct-A zero-workspace 版本先落地；
-- benchmark hot/streaming artifact 和 packing break-even。
+### G2：exact recipe 与 packed B
 
-退出条件：packed artifact 全链路数值测试通过，Prefill canonical geomean 稳定提升，启动成本和内存放大可接受。
+目标是建立真实 immutable weight packing，而不是继续把 aligned identity copy 当作优化布局。
 
-### G3：binding-dependent workspace
+- `KernelDescriptor`/prepared kernel 提供其精确 `PackingRecipe`；
+- packing request 从已 prepare 的 kernel 收集 exact recipe；
+- backend 提供按 recipe pack 的服务，model 层不建立平行 `WeightLayout` enum，也不在 `ModelLoader` 中 prepack；
+- packing 发生在 semantic graph optimization/fusion 之后，由具体 `WeightBinding` 驱动；
+- 实现 N-interleaved packed-B layout、tail padding、alignment 和 compatible fallback driver；
+- `PackedWeightStore` 继续按 binding + selector + exact recipe 区分 artifact；
+- 单独测 packing latency、GB/s、size amplification、hot/streaming compute 和 break-even invocation count。
 
-- 扩展 specialization/workspace 合同；
-- 增加 A panel packing 或其他 shape-dependent scratch；
-- execution 聚合 specialization 后的 workspace；
-- 保持 Execute 无分配。
+退出条件：exact recipe 从 kernel resolve、materialization、store 到 execution binding 全链路一致；layout/alignment/metadata mismatch 明确失败；packed numerical tests 通过；packing amortization 与内存开销可接受。
 
-退出条件：workspace size/alignment/lifetime 被端到端验证，收益覆盖额外 copy 成本。
+### G3：Prefill blocked GEMM 与按需 workspace 演进
+
+目标是在真实 Prefill shapes 上建立 register/cache reuse，同时避免无证据扩张 workspace 合同。
+
+- 基于 packed-B microkernel 联合选择 `MR/NR` 与 `MC/NC/KC`，不把 register blocking、microkernel、cache blocking 和 packing 当作互不相关的固定步骤；
+- 首版使用 direct A + prepacked B，保持 zero-workspace；
+- full tile、M/N/K tail 和小 M fallback 使用同一 recipe 语义；
+- 只有 profiling 证明 A packing 或其他 scratch 能覆盖 copy 成本时，才扩展 binding-dependent workspace specialization；
+- 若引入 workspace，由 `PreparedExecutionBindings` 聚合 size/alignment/lifetime，Execute 只绑定已规划 slice；
+- 比较 compute-only、packing-inclusive 和 execution-integration 结果。
+
+退出条件：Prefill canonical geomean 稳定提升；block/tile 参数有反汇编、cache counter 和 benchmark 支持；workspace size/alignment/lifetime 端到端验证；Execute 保持零分配。
 
 ### G4：fused Linear consumers
 
-- QkvLinear/GateUpLinear 复用同一 packed GEMM engine；
-- 以一个 combined N traversal 取代三次/两次独立 reference GEMM；
-- epilogue 只融合已有 operator 语义，不私自加入 bias/activation；
-- 比较 fused 与 unfused 的 bytes、latency 和 packing overhead。
+目标是让 fused semantic operators 复用同一 GEMM engine，同时保持 graph/operator 与 backend 边界。
 
-### G5：INT8/INT4 与新 ISA
+- `QkvLinear` 和 `GateUpLinear` 使用同一 packed GEMM engine；
+- 以 combined-N traversal 取代三次/两次独立 reference GEMM；
+- adapter 继续负责 output split、shape、stride、alias 和 packed metadata 校验；
+- epilogue 只实现现有 operator 已定义的语义，不增加任意 Bias/Activation/Residual 组合器；
+- 分别比较 fused/unfused latency、logical bytes、streaming-weight 行为和 packing overhead。
 
-- 先冻结 quantization/dequantization、scale、group、rounding 和 accumulator 合同；
-- AVX2/VNNI/AMX、NEON/DotProd/I8MM 分别注册 capability requirements；
-- Decode 与 Prefill 分开选择，AMX 不覆盖小 M fallback；
-- 增加模型级数值/质量门禁，而非只比较单算子误差。
+退出条件：fused operator 全链路数值测试通过；semantic port、weight binding 和 output split 保持一致；收益不是由遗漏写回或缩窄合法 layout 获得。
 
-### G6：runtime 线程池与 NUMA
+### G5：量化与新 ISA
 
-- 仅在产品边界与 runtime thread-pool ownership 明确后实施；
-- 单线程仍是 correctness/performance baseline；
-- 单独测 scaling efficiency、barrier cost、oversubscription 和 NUMA placement。
+目标是在量化合同稳定后引入独立的 recipe/microkernel family，而不是把 dtype 与 ISA 写成固定线性序列。
+
+- 先冻结 activation/weight dtype、scale、zero-point、group size、rounding、accumulator 和 output conversion 合同；
+- INT8/INT4 packing recipe 显式编码 quantization metadata；
+- dequant/unpack 在 microkernel 内融合，避免完整反量化 tensor；
+- AVX2、AVX-VNNI、AVX-512/VNNI、AMX 与 NEON/DotProd/I8MM/SVE 分别声明 capability requirements；
+- GEMV/small-M/blocked 路径独立选择，AMX 不覆盖小 M fallback；
+- 除单算子误差外，增加 logits/token 或模型级质量门禁。
+
+退出条件：quantization contract 可独立验证；reference/optimized error budget 明确；目标 ISA 与 fallback 均有数值覆盖；模型级质量、内存节省和 latency/throughput 收益同时达标。
+
+### G6：runtime threading 与 NUMA
+
+目标是在单线程 engine 稳定后扩展多核能力，线程和内存 placement 由 runtime 统一拥有。
+
+- 仅在 runtime-owned persistent thread pool 的 ownership、lifetime 和线程数配置明确后实施；
+- Decode `M=1` 优先按 N tiles 切分，Prefill 按 M/N output tiles 切分；
+- 默认避免 K-split，除非极端 shape 的 reduction 收益有测量证据；
+- 一个 output tile 只由一个 worker 写，避免 false sharing；
+- 禁止 kernel 创建临时线程或进入嵌套并行区；
+- NUMA/first-touch/affinity 作为多 socket 部署策略，不作为所有服务器 CPU 的无条件要求；
+- 单独测 scaling efficiency、barrier cost、load balance、bandwidth saturation、oversubscription 和 local/remote NUMA traffic。
+
+退出条件：单线程结果不回退；多线程 scaling 与同步成本可解释；无数据竞争和 false-sharing 热点；线程池与 packed-weight placement 的 ownership 清晰；不同 core/socket 配置均有原始数据。
 
 ## 8. 风险与依赖
 

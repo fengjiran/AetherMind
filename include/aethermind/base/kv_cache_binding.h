@@ -42,10 +42,17 @@ struct KVCacheAppendBinding {
 ///
 /// `[0, committed_end)` is visible across plans. `[committed_end, visible_end)`
 /// may be read only by a later, validated step in this same synchronous plan.
+/// `query_begin` and `query_end` identify the absolute token interval of the
+/// attention query rows. They are execution-transaction semantics filled by
+/// LayerRunner; KVCacheView only supplies storage and visibility frontiers.
 struct KVCacheReadBinding {
     KVCacheLayerStorageBinding storage{};
     size_t committed_end = 0;
     size_t visible_end = 0;
+    /// Query row i has absolute position `query_begin + i`.
+    size_t query_begin = 0;
+    /// Exclusive end of the query interval; `query_end <= visible_end`.
+    size_t query_end = 0;
 };
 
 } // namespace aethermind

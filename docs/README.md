@@ -1,6 +1,6 @@
 # AetherMind 文档索引
 
-本文档是 AetherMind 项目文档的唯一入口。文档分类体系、命名与交叉引用规则、质量标准与维护流程见 [文档系统规范](guides/documentation-guide.md)；新建文档从 [文档模板](templates/module-design.md) 复制填充。
+本文档是 AetherMind 项目文档的唯一入口。文档分类体系、命名与交叉引用规则、质量标准与维护流程见 [文档系统规范](guides/documentation-guide.md)；模块设计从[模块设计模板](templates/module-design.md)开始，算子工作使用[算子开发与优化工作流](guides/operator-development-workflow.md)及其标准模板。
 
 > 迁移状态：本索引按 [文档系统设计方案](guides/documentation-guide.md) 落地；`docs/designs/` 存量文档正处于渐进式迁移中，未完成迁移的文档在清单中标注"待迁移"。
 
@@ -16,10 +16,10 @@
 | API 参考 | [api/public-api.md](api/public-api.md) | Current | 公共 API 语义（与头文件 Doxygen 同源同步） |
 | 决策记录 | [decisions/](decisions/) | Proposed / Accepted / Deprecated / Superseded | 已作出/被否决的架构决策及其理由（ADR），每篇至少 1 个被否定备选方案 |
 | 评审报告 | [reviews/](reviews/) | Current / 历史快照 | 代码/设计评审结论；过时快照头部加"已过时"警示 |
-| 验证报告 | [tests/](tests/) | Current | 测试/基准验证结果与结论 |
+| 验证报告 | [tests/](tests/) | Current | 测试/基准验证结果与结论；新算子报告按 [tests/operators/](tests/operators/) 组织 |
 | 问题跟踪 | [issues.md](issues.md) | 每条目 `[x]`/`[ ]` | 已知缺陷与优化待办，短生命周期 |
 | 变更记录 | [../CHANGELOG.md](../CHANGELOG.md) | 无 | 行为可见变更，按语义化版本 |
-| 开发日志 | [logs/development_log.md](logs/development_log.md) | 无 | 过程记录（开发黑匣子），记录"为什么"而非"做了什么" |
+| 开发日志 | [logs/development_log.md](logs/development_log.md) / [logs/operators/](logs/operators/) | 无 | 项目过程记录与追加式算子实验日志，记录"为什么"而非"做了什么" |
 | 产品需求 | [products/aethermind_prd.md](products/aethermind_prd.md) | Current | 当前产品范围、验收标准（唯一权威） |
 
 **职责边界判定**：描述"代码里现在是什么" → `designs/`；"将来要做什么" → `improvement-plan/`；"曾经怎么决策的" → `decisions/`；"怎么干活" → `guides/`；"API 怎么用" → `api/`；"已知缺陷/待办" → `issues.md`。
@@ -84,11 +84,22 @@
 | 文档 | 定位 | 状态 |
 |---|---|---|
 | [documentation-guide.md](guides/documentation-guide.md) | 文档系统规范：命名、交叉引用、质量、维护流程 | Current |
+| [operator-development-workflow.md](guides/operator-development-workflow.md) | 算子开发与优化工作流：Change Profile、O0–O6 证据门禁、实验与验证记录 | Current |
 | [operator_optimization_guide.md](guides/operator_optimization_guide.md) | 算子优化指南（由 kernel_dev/算子开发指南.md 归位） | Current |
 | [cpp_coding_style_guidelines.md](guides/cpp_coding_style_guidelines.md) | C++ 编码风格 | Current |
 | [cpp_comment_guidelines.md](guides/cpp_comment_guidelines.md) | 注释与 Doxygen 规范 | Current |
 | [test_writing_guidelines.md](guides/test_writing_guidelines.md) | GoogleTest 测试编写规范 | Current |
 | [code_review_guide.md](guides/code_review_guide.md) | 代码审查方法（风险分级驱动） | **Deprecated**（待重写，见文档头部警示） |
+
+### 文档模板（docs/templates/）
+
+| 模板 | 用途 |
+|---|---|
+| [module-design.md](templates/module-design.md) | 当前模块设计文档 |
+| [adr.md](templates/adr.md) | 架构决策记录 |
+| [operator-optimization-plan.md](templates/operator-optimization-plan.md) | 算子专项优化提案 |
+| [operator-experiment-log.md](templates/operator-experiment-log.md) | 追加式实验与失败尝试记录 |
+| [operator-validation-report.md](templates/operator-validation-report.md) | 正式 correctness/performance 验证报告 |
 
 ### 架构决策记录（docs/decisions/）
 
@@ -111,6 +122,8 @@
 | [prd/prd_review.md](reviews/prd/prd_review.md) | PRD 评审 | 历史快照 |
 
 ### 验证报告（docs/tests/）
+
+- [tests/operators/](tests/operators/)：按算子组织的新 correctness/performance/integration 验证报告索引。
 
 | 文档 | 定位 | 状态 |
 |---|---|---|

@@ -117,6 +117,7 @@
 | 性能基线变化 | `architecture_overview.md` 性能章节、CHANGELOG |
 | 编码/注释/测试规范变更 | 对应 `guides/*` + AGENTS.md §7–§9 双向同步 |
 | 缺陷修复 | `issues.md` 勾选条目、CHANGELOG（行为可见时） |
+| 算子语义/reference/optimized/packing/fusion/threading 变更 | [算子开发与优化工作流](operator-development-workflow.md)要求的 proposal、实验日志、validation report、design/ADR/CHANGELOG（按 Change Profile 触发） |
 
 ### 6.2 防过期机制
 
@@ -154,8 +155,17 @@
 | 设计文档变更记录表 | 各 `NN-*.md` §10 | 模块级变更轨迹（日期/变更/原因/关联 PR/ADR） |
 | CHANGELOG.md | 仓库根 | 行为可见变更（API/配置/性能/缺陷修复），按语义化版本 |
 
+### 7.6 算子开发与优化文档
+
+- 所有算子开发、reference kernel、optimized kernel、packing/layout、fusion 和 threading 工作遵循[算子开发与优化工作流](operator-development-workflow.md)。
+- 专项路线使用[算子优化提案模板](../templates/operator-optimization-plan.md)。
+- 调优过程使用[算子实验日志模板](../templates/operator-experiment-log.md)，保持追加式并保留失败实验。
+- 正式证据使用[算子验证报告模板](../templates/operator-validation-report.md)，绑定 commit、环境、命令和 raw artifact。
+- GEMM、Attention 等算子的具体技术顺序属于专项提案，不作为所有算子的统一强制路线。
+
 ## 版本历史
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | v1.0 | 2026-08-21 | 初始版本：文档系统分类、命名、交叉引用、质量、维护规则成文 |
+| v1.1 | 2026-09-17 | 增加算子开发与优化工作流、Change Profile 和三类标准模板引用 |

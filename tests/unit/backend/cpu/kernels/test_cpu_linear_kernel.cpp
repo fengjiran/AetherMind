@@ -194,6 +194,34 @@ TEST(CPUKernelLinear, ReferenceExecutesRankTwoInput) {
     ExpectLinearRowsNear(input, weight, output, 2, 3, 2, 3, 1, 3, 1, 2, 1);
 }
 
+TEST(CPUKernelLinear, ReferenceExecutesViewsWithoutSimdAlignmentGuarantee) {
+    constexpr int64_t input_shape[2] = {1, 3};
+    constexpr int64_t input_strides[2] = {3, 1};
+    constexpr int64_t weight_shape[2] = {2, 3};
+    constexpr int64_t weight_strides[2] = {3, 1};
+    constexpr int64_t output_shape[2] = {1, 2};
+    constexpr int64_t output_strides[2] = {2, 1};
+    alignas(64) std::array<float, 4> input_storage = {0.0F, 1.0F, -2.0F, 0.5F};
+    alignas(64) std::array<float, 7> weight_storage = {
+            0.0F, 2.0F, 1.0F, -1.0F, -0.5F, 3.0F, 4.0F};
+    alignas(64) std::array<float, 3> output_storage = {0.0F, 9.0F, 9.0F};
+    const float* const input = input_storage.data() + 1;
+    const float* const weight = weight_storage.data() + 1;
+    float* const output = output_storage.data() + 1;
+
+    const Status status = RunLinearEntry(LinearTestViews{
+            // The views intentionally leave alignment unspecified. The
+            // pointers are float-aligned but offset from a 64-byte base, so a
+            // later SIMD descriptor must retain an unaligned-compatible path.
+            .input_tensor = TensorView{input, DataType::Float32(), input_shape, input_strides},
+            .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
+    });
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    ExpectLinearRowsNear(input, weight, output, 1, 3, 2, 3, 1, 3, 1, 2, 1);
+}
+
 TEST(CPUKernelLinear, ReferenceExecutesCollapsibleRankFourPaddedRows) {
     constexpr int64_t input_shape[4] = {2, 2, 2, 3};
     constexpr int64_t input_strides[4] = {20, 10, 5, 1};

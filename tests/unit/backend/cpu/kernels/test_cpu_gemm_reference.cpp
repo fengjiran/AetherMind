@@ -46,6 +46,36 @@ TEST(CPUKernelGemmReference, ComputesStridedMatrices) {
     EXPECT_FLOAT_EQ(output[13], 5.0F);
 }
 
+TEST(CPUKernelGemmReference, OverwritesExistingOutputInsteadOfAccumulating) {
+    constexpr std::array<float, 2> lhs = {2.0F, -3.0F};
+    constexpr std::array<float, 4> rhs = {
+            4.0F,
+            5.0F,
+            -1.0F,
+            2.0F,
+    };
+    std::array<float, 2> output = {100.0F, -100.0F};
+
+    const Status status = cpu::detail::RunGemmF32Reference(cpu::detail::GemmF32Args{
+            .lhs = lhs.data(),
+            .rhs = rhs.data(),
+            .output = output.data(),
+            .m = 1,
+            .n = 2,
+            .k = 2,
+            .lhs_m_stride = 2,
+            .lhs_k_stride = 1,
+            .rhs_k_stride = 2,
+            .rhs_n_stride = 1,
+            .output_m_stride = 2,
+            .output_n_stride = 1,
+    });
+
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    EXPECT_FLOAT_EQ(output[0], 11.0F);
+    EXPECT_FLOAT_EQ(output[1], 4.0F);
+}
+
 TEST(CPUKernelGemmReference, ZeroInnerDimensionWritesZeroWithoutInputPointers) {
     std::array<float, 10> output{};
     output.fill(3.0F);

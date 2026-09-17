@@ -2,7 +2,6 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/kernel_invoker.h"
 #include "aethermind/runtime/kv_cache_view.h"
-
 #include "utils/overflow_check.h"
 
 #include <optional>
@@ -39,13 +38,14 @@ StatusOr<ExecutionKVCacheStateIdentity> GetKVStateIdentity(
         return Status::InvalidArgument("KV state " + std::string(role) +
                                        " references a value beyond the plan table");
     }
+
     const ExecutionValueDesc& value = values[id.index];
     if (value.kind != ExecutionValueKind::kState) {
         return Status::InvalidArgument("KV state " + std::string(role) +
                                        " must refer to a kState value");
     }
-    const auto* identity = std::get_if<ExecutionKVCacheStateIdentity>(
-            &value.state_binding);
+
+    const auto* identity = std::get_if<ExecutionKVCacheStateIdentity>(&value.state_binding);
     if (identity == nullptr) {
         return Status::InvalidArgument("KV state " + std::string(role) +
                                        " has no KV cache state identity");
@@ -60,17 +60,19 @@ Status ValidateKVCacheStateSpec(const TensorSpec& spec,
         return Status::InvalidArgument("KV state " + std::string(role) +
                                        " dtype does not match the KVCacheView element dtype");
     }
-    const auto rank = spec.shape.rank();
-    if (!rank.has_value() || *rank != 3) {
+
+    if (const auto rank = spec.shape.rank(); !rank.has_value() || *rank != 3) {
         return Status::InvalidArgument("KV state " + std::string(role) +
                                        " must be rank 3 [kv_heads, cache_len, head_dim]");
     }
+
     for (size_t dim = 0; dim < 3; ++dim) {
         if (!spec.shape[dim].IsStatic()) {
             return Status::InvalidArgument("KV state " + std::string(role) +
                                            " requires static runtime cache geometry");
         }
     }
+
     if (spec.shape[0].GetStaticValue() != static_cast<int64_t>(view.num_kv_heads()) ||
         spec.shape[1].GetStaticValue() != static_cast<int64_t>(view.max_tokens()) ||
         spec.shape[2].GetStaticValue() != static_cast<int64_t>(view.head_dim())) {
@@ -89,6 +91,7 @@ Status ValidateKVCacheStatePair(const std::vector<ExecutionValueDesc>& values,
         return Status::InvalidArgument("KV state " + std::string(role) +
                                        " references a value beyond the plan table");
     }
+
     const TensorSpec& key = values[key_id.index].spec;
     const TensorSpec& value = values[value_id.index].spec;
     if (key != value) {
@@ -119,13 +122,16 @@ StatusOr<uint32_t> ValidateKVCacheUpdateStateIdentity(
         value_input.slot != ExecutionKVCacheSlot::kValue ||
         key_output.slot != ExecutionKVCacheSlot::kKey ||
         value_output.slot != ExecutionKVCacheSlot::kValue) {
-        return Status::InvalidArgument("KVCacheUpdate state slots must be key then value");
+        return Status::InvalidArgument(
+                "KVCacheUpdate state slots must be key then value");
     }
+
     if (key_input.decoder_layer_index != value_input.decoder_layer_index ||
         key_input != key_output || value_input != value_output) {
         return Status::InvalidArgument(
                 "KVCacheUpdate state inputs and outputs must identify one decoder layer");
     }
+
     AM_RETURN_IF_ERROR(ValidateKVCacheStatePair(
             values, step.inputs[2], step.inputs[3], view, "KVCacheUpdate input"));
     AM_RETURN_IF_ERROR(ValidateKVCacheStatePair(
@@ -138,8 +144,10 @@ StatusOr<uint32_t> ValidateAttentionStateIdentity(
         const std::vector<ExecutionValueDesc>& values,
         const KVCacheView& view) noexcept {
     if (step.inputs.size() != 3) {
-        return Status::InvalidArgument("Attention requires complete key/value state ports");
+        return Status::InvalidArgument(
+                "Attention requires complete key/value state ports");
     }
+
     AM_ASSIGN_OR_RETURN(const ExecutionKVCacheStateIdentity key,
                         GetKVStateIdentity(values, step.inputs[1], "attention key input"));
     AM_ASSIGN_OR_RETURN(const ExecutionKVCacheStateIdentity value,
@@ -150,6 +158,7 @@ StatusOr<uint32_t> ValidateAttentionStateIdentity(
         return Status::InvalidArgument(
                 "Attention key/value state inputs must identify one decoder layer");
     }
+
     AM_RETURN_IF_ERROR(ValidateKVCacheStatePair(
             values, step.inputs[1], step.inputs[2], view, "Attention input"));
     return key.decoder_layer_index;
@@ -164,8 +173,8 @@ StatusOr<size_t> KVCacheUpdateSequenceLength(
         tensors.inputs[0].rank() != 2 || tensors.inputs[1].rank() != 2 ||
         tensors.inputs[0].shape() != tensors.inputs[1].shape() ||
         tensors.inputs[0].dim(0) <= 0) {
-        return Status::InvalidArgument(
-                "KVCacheUpdate requires prepared K/V tensors with matching positive [T, hidden] shapes");
+        return Status::InvalidArgument("KVCacheUpdate requires prepared K/V "
+                                       "tensors with matching positive [T, hidden] shapes");
     }
     return static_cast<size_t>(tensors.inputs[0].dim(0));
 }
@@ -196,8 +205,8 @@ Status PrepareKVAppendTransaction(const ExecutionPlan& plan,
     if (context.HasKVCacheView()) {
         transaction.layer_progress = context.ResetKVLayerTransactionScratch();
         if (transaction.layer_progress.size() != view.num_layers()) {
-            return Status::Internal(
-                    "ExecutionContext KV transaction scratch does not match KVCacheView layers");
+            return Status::Internal("ExecutionContext KV transaction scratch "
+                                    "does not match KVCacheView layers");
         }
     }
 
@@ -206,27 +215,33 @@ Status PrepareKVAppendTransaction(const ExecutionPlan& plan,
         if (step.kernel.op_type != OpType::kKVCacheUpdate) {
             continue;
         }
+
         if (!context.HasKVCacheView()) {
-            return Status::FailedPrecondition("KVCacheUpdate requires a valid KVCacheView");
+            return Status::FailedPrecondition(
+                    "KVCacheUpdate requires a valid KVCacheView");
         }
+
         AM_ASSIGN_OR_RETURN(const uint32_t layer,
                             ValidateKVCacheUpdateStateIdentity(step, plan.values(), view));
         if (layer >= transaction.layer_progress.size()) {
-            return Status::OutOfRange("KVCacheUpdate state layer exceeds KVCacheView layer count");
+            return Status::OutOfRange(
+                    "KVCacheUpdate state layer exceeds KVCacheView layer count");
         }
-        if (transaction.layer_progress[layer] != static_cast<uint8_t>(
-                                                         KVAppendTransaction::LayerProgress::kNotScheduled)) {
-            return Status::InvalidArgument(
-                    "KV append transaction has more than one update for one decoder layer");
+
+        if (transaction.layer_progress[layer] !=
+            static_cast<uint8_t>(KVAppendTransaction::LayerProgress::kNotScheduled)) {
+            return Status::InvalidArgument("KV append transaction has more than "
+                                           "one update for one decoder layer");
         }
-        transaction.layer_progress[layer] = static_cast<uint8_t>(
-                KVAppendTransaction::LayerProgress::kScheduled);
+
+        transaction.layer_progress[layer] =
+                static_cast<uint8_t>(KVAppendTransaction::LayerProgress::kScheduled);
 
         AM_ASSIGN_OR_RETURN(const size_t current_sequence_length,
                             KVCacheUpdateSequenceLength(i, step, prepared_bindings));
         if (sequence_length.has_value() && *sequence_length != current_sequence_length) {
-            return Status::InvalidArgument(
-                    "All KVCacheUpdate steps in one plan must have the same sequence length");
+            return Status::InvalidArgument("All KVCacheUpdate steps in one plan "
+                                           "must have the same sequence length");
         }
         sequence_length = current_sequence_length;
     }
@@ -240,28 +255,33 @@ Status PrepareKVAppendTransaction(const ExecutionPlan& plan,
     if (view.awaiting_prefill()) {
         if (*sequence_length != view.prompt_len() || transaction.committed_begin != 0) {
             return Status::FailedPrecondition(
-                    "KV initial append must write exactly the reserved Prefill length from position zero");
+                    "KV initial append must write "
+                    "exactly the reserved Prefill length from position zero");
         }
     } else if (*sequence_length != 1) {
-        return Status::InvalidArgument("Phase 1 KV Decode append must contain exactly one token");
+        return Status::InvalidArgument(
+                "Phase 1 KV Decode append must contain exactly one token");
     }
 
     size_t end = 0;
     if (CheckOverflowAdd(transaction.committed_begin, *sequence_length, &end)) {
         return Status::Overflow("KV append transaction range overflowed size_t");
     }
+
     if (end > view.token_capacity() || end > view.max_tokens()) {
         return Status::OutOfRange("KV append transaction exceeds cache capacity");
     }
 
     for (size_t layer = 0; layer < transaction.layer_progress.size(); ++layer) {
-        if (transaction.layer_progress[layer] != static_cast<uint8_t>(
-                                                         KVAppendTransaction::LayerProgress::kScheduled)) {
-            return Status::InvalidArgument(
-                    "KV append transaction must update every KVCacheView layer exactly once");
+        if (transaction.layer_progress[layer] !=
+            static_cast<uint8_t>(KVAppendTransaction::LayerProgress::kScheduled)) {
+            return Status::InvalidArgument("KV append transaction must update "
+                                           "every KVCacheView layer exactly once");
         }
-        const auto binding = view.BindLayerForAppend(layer, transaction.committed_begin, end);
-        if (!binding.ok()) {
+
+        if (const auto binding =
+                    view.BindLayerForAppend(layer, transaction.committed_begin, end);
+            !binding.ok()) {
             return binding.status();
         }
     }
@@ -278,13 +298,13 @@ Status LayerRunner::Run(const ExecutionPlan& plan,
     const auto& alias_plan = plan.state_alias_plan();
     const PreparedExecutionBindings* const prepared_bindings = context.prepared_bindings();
     if (prepared_bindings == nullptr) {
-        return Status::FailedPrecondition(
-                "ExecutionContext requires a PreparedExecutionBindings before execution");
+        return Status::FailedPrecondition("ExecutionContext requires a"
+                                          " PreparedExecutionBindings before execution");
     }
 
     if (!prepared_bindings->IsCompatible(plan)) {
-        return Status::InvalidArgument(
-                "ExecutionContext PreparedExecutionBindings is not compatible with ExecutionPlan");
+        return Status::InvalidArgument("ExecutionContext PreparedExecutionBindings "
+                                       "is not compatible with ExecutionPlan");
     }
 
     KVAppendTransaction kv_transaction;
@@ -298,6 +318,7 @@ Status LayerRunner::Run(const ExecutionPlan& plan,
             return status;
         }
     }
+
     if (kv_transaction.has_append) {
         KVCacheView view = context.kv_cache_view();
         AM_RETURN_IF_ERROR(view.CommitUntil(kv_transaction.visible_end));
@@ -315,9 +336,17 @@ Status LayerRunner::RunStep(size_t step_index,
     AM_RETURN_IF_ERROR(ValidateStateAliasesForStep(
             step_index, step, alias_plan, context, values));
 
-    const auto workspace_binding = context.BindWorkspace(step.workspace_requirement);
+    const auto workspace_binding =
+            context.BindWorkspace(step.workspace_requirement);
     if (!workspace_binding.ok()) {
         return workspace_binding.status();
+    }
+
+    const StepTensorBinding& tensor_binding = prepared_bindings.step(step_index);
+    if (tensor_binding.inputs.size() != step.kernel_input_ports.size() ||
+        tensor_binding.outputs.size() != step.kernel_output_ports.size()) {
+        return Status::InvalidArgument("Runtime tensor binding arity"
+                                       " does not match ExecutionStep ports");
     }
 
     std::optional<KVCacheAppendBinding> append_binding;
@@ -329,31 +358,62 @@ Status LayerRunner::RunStep(size_t step_index,
         if (!kv_transaction.has_append) {
             return Status::Internal("KVCacheUpdate is absent from its append transaction");
         }
+
         const KVCacheView& view = context.kv_cache_view();
-        AM_ASSIGN_OR_RETURN(append_binding, view.BindLayerForAppend(
-                                                    layer, kv_transaction.committed_begin,
+        AM_ASSIGN_OR_RETURN(append_binding,
+                            view.BindLayerForAppend(layer, kv_transaction.committed_begin,
                                                     kv_transaction.visible_end));
     } else if (step.kernel.op_type == OpType::kAttention) {
         if (!context.HasKVCacheView()) {
             return Status::FailedPrecondition("Attention requires a valid KVCacheView");
         }
+
+        if (tensor_binding.inputs.size() != 1 || tensor_binding.inputs[0].rank() != 2 ||
+            tensor_binding.inputs[0].dim(0) <= 0) {
+            return Status::InvalidArgument("Attention requires one prepared "
+                                           "query TensorView with positive rank-2 sequence length");
+        }
+
+        const auto query_sequence_length = static_cast<size_t>(tensor_binding.inputs[0].dim(0));
         const KVCacheView& view = context.kv_cache_view();
         AM_ASSIGN_OR_RETURN(const uint32_t layer,
                             ValidateAttentionStateIdentity(step, values, view));
         if (layer >= kv_transaction.layer_progress.size()) {
-            return Status::OutOfRange("Attention state layer exceeds KVCacheView layer count");
+            return Status::OutOfRange(
+                    "Attention state layer exceeds KVCacheView layer count");
         }
+
         if (kv_transaction.has_append &&
-            kv_transaction.layer_progress[layer] != static_cast<uint8_t>(
-                                                            KVAppendTransaction::LayerProgress::kWritten)) {
-            return Status::FailedPrecondition(
-                    "Attention cannot read this plan's uncommitted KV range before its layer update");
+            kv_transaction.layer_progress[layer] !=
+                    static_cast<uint8_t>(KVAppendTransaction::LayerProgress::kWritten)) {
+            return Status::FailedPrecondition("Attention cannot read this"
+                                              " plan's uncommitted KV range before its layer update");
         }
+
         const size_t visible_end = kv_transaction.has_append
                                            ? kv_transaction.visible_end
                                            : kv_transaction.committed_begin;
-        AM_ASSIGN_OR_RETURN(read_binding, view.BindLayerForRead(
-                                                  layer, kv_transaction.committed_begin, visible_end));
+        AM_ASSIGN_OR_RETURN(read_binding,
+                            view.BindLayerForRead(
+                                    layer, kv_transaction.committed_begin, visible_end));
+        if (kv_transaction.has_append) {
+            const size_t append_length =
+                    kv_transaction.visible_end - kv_transaction.committed_begin;
+            if (query_sequence_length != append_length) {
+                return Status::FailedPrecondition("Attention query sequence length "
+                                                  "must match this plan's KV append length");
+            }
+
+            read_binding->query_begin = kv_transaction.committed_begin;
+            read_binding->query_end = kv_transaction.visible_end;
+        } else {
+            if (query_sequence_length > visible_end) {
+                return Status::FailedPrecondition("Attention pure-read query "
+                                                  "sequence length exceeds the visible KV range");
+            }
+            read_binding->query_begin = visible_end - query_sequence_length;
+            read_binding->query_end = visible_end;
+        }
     }
 
     KernelContext ctx = BuildKernelContext(step, context,
@@ -361,16 +421,12 @@ Status LayerRunner::RunStep(size_t step_index,
                                            read_binding ? &*read_binding : nullptr);
     ctx.workspace_binding = workspace_binding.value();
 
-    const StepTensorBinding& tensor_binding = prepared_bindings.step(step_index);
-    if (tensor_binding.inputs.size() != step.kernel_input_ports.size() ||
-        tensor_binding.outputs.size() != step.kernel_output_ports.size()) {
-        return Status::InvalidArgument("Runtime tensor binding arity does not match ExecutionStep ports");
-    }
-    const Status status = InvokePreparedKernel(
+    Status status = InvokePreparedKernel(
             step.kernel, ctx, prepared_bindings.kernel_params(step_index));
     if (!status.ok()) {
         return status;
     }
+
     if (step.kernel.op_type == OpType::kKVCacheUpdate) {
         AM_ASSIGN_OR_RETURN(const uint32_t layer,
                             ValidateKVCacheUpdateStateIdentity(
@@ -411,6 +467,7 @@ Status LayerRunner::ValidateStateAliasesForStep(
             return Status::InvalidArgument(
                     "State alias input and output specs must match for must-alias update");
         }
+
         AM_ASSIGN_OR_RETURN(const ExecutionKVCacheStateIdentity input_identity,
                             GetKVStateIdentity(values, step.inputs[alias.input_port],
                                                "alias input"));
@@ -421,16 +478,19 @@ Status LayerRunner::ValidateStateAliasesForStep(
             return Status::InvalidArgument(
                     "State alias input and output must retain the same state identity");
         }
+
         if (input_spec.dtype != view.kv_dtype()) {
             return Status::InvalidArgument(
                     "State alias dtype does not match the KVCacheView element dtype");
         }
+
         const SymbolicShape& shape = input_spec.shape;
         const auto rank = shape.rank();
         if (!rank.has_value() || *rank != 3) {
             return Status::InvalidArgument(
                     "State alias value must be rank 3 [kv_heads, cache_len, head_dim]");
         }
+
         const ShapeSymbol& kv_heads = shape[0];
         const ShapeSymbol& head_dim = shape[2];
         if (kv_heads.IsStatic() &&
@@ -438,6 +498,7 @@ Status LayerRunner::ValidateStateAliasesForStep(
             return Status::InvalidArgument(
                     "State alias kv_heads does not match the KVCacheView head count");
         }
+
         if (head_dim.IsStatic() &&
             static_cast<size_t>(head_dim.GetStaticValue()) != view.head_dim()) {
             return Status::InvalidArgument(

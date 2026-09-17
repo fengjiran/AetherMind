@@ -10,6 +10,7 @@
 #include <array>
 #include <optional>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -138,15 +139,21 @@ StatusOr<ExecutionContext> MakeContext(Runtime& runtime,
     return ExecutionContext::Create(plan, std::move(prepared), nullptr, view);
 }
 
-StatusOr<ExecutionPlan> BuildUpdateThenAttentionPlan(Runtime& runtime,
-                                                     KernelFunc attention_kernel) {
+ResolvedKernel MakeAttentionTestKernel(KernelFunc fn) {
+    return {.op_type = OpType::kAttention, .fn = fn};
+}
+
+StatusOr<ExecutionPlan> BuildUpdateThenAttentionPlan(
+        Runtime& runtime,
+        ResolvedKernel attention_kernel,
+        int64_t sequence_length = 2) {
     AM_ASSIGN_OR_RETURN(Backend * backend, runtime.GetBackend(DeviceType::kCPU));
     AM_ASSIGN_OR_RETURN(const ResolvedKernel update_kernel,
                         backend->PrepareKernel(
                                 OpType::kKVCacheUpdate, F32CpuSelector(),
                                 OpParams{KVCacheUpdateParams{}}));
 
-    const TensorSpec activation = F32Spec({2, 4});
+    const TensorSpec activation = F32Spec({sequence_length, 4});
     const TensorSpec cache = F32Spec({2, 8, 2});
     return ExecutionPlan::Create(
             {{.spec = activation, .kind = ExecutionValueKind::kModelInput},
@@ -176,13 +183,86 @@ StatusOr<ExecutionPlan> BuildUpdateThenAttentionPlan(Runtime& runtime,
               .kernel_input_ports = {0, 1},
               .kernel_output_ports = {}},
              {.selector = F32CpuSelector(),
-              .kernel = {.op_type = OpType::kAttention, .fn = attention_kernel},
+              .kernel = std::move(attention_kernel),
               .inputs = {{.index = 0}, {.index = 2}, {.index = 3}},
               .outputs = {{.index = 4}},
               .kernel_input_ports = {0},
               .kernel_output_ports = {0}}},
             {.aliases = {{.step_index = 0, .input_port = 2, .output_port = 0},
                          {.step_index = 0, .input_port = 3, .output_port = 1}}});
+}
+
+StatusOr<ExecutionPlan> BuildMismatchedUpdateThenAttentionPlan(
+        Runtime& runtime,
+        int64_t update_sequence_length,
+        int64_t query_sequence_length) {
+    AM_ASSIGN_OR_RETURN(Backend * backend, runtime.GetBackend(DeviceType::kCPU));
+    AM_ASSIGN_OR_RETURN(const ResolvedKernel update_kernel,
+                        backend->PrepareKernel(
+                                OpType::kKVCacheUpdate, F32CpuSelector(),
+                                OpParams{KVCacheUpdateParams{}}));
+    const TensorSpec update_activation = F32Spec({update_sequence_length, 4});
+    const TensorSpec query_activation = F32Spec({query_sequence_length, 4});
+    const TensorSpec cache = F32Spec({2, 8, 2});
+    return ExecutionPlan::Create(
+            {{.spec = update_activation, .kind = ExecutionValueKind::kModelInput},
+             {.spec = update_activation, .kind = ExecutionValueKind::kModelInput},
+             {.spec = cache,
+              .kind = ExecutionValueKind::kState,
+              .state_binding = ExecutionKVCacheStateIdentity{.decoder_layer_index = 0,
+                                                             .slot = ExecutionKVCacheSlot::kKey}},
+             {.spec = cache,
+              .kind = ExecutionValueKind::kState,
+              .state_binding = ExecutionKVCacheStateIdentity{.decoder_layer_index = 0,
+                                                             .slot = ExecutionKVCacheSlot::kValue}},
+             {.spec = query_activation, .kind = ExecutionValueKind::kActivation},
+             {.spec = cache,
+              .kind = ExecutionValueKind::kState,
+              .state_binding = ExecutionKVCacheStateIdentity{.decoder_layer_index = 0,
+                                                             .slot = ExecutionKVCacheSlot::kKey}},
+             {.spec = cache,
+              .kind = ExecutionValueKind::kState,
+              .state_binding = ExecutionKVCacheStateIdentity{.decoder_layer_index = 0,
+                                                             .slot = ExecutionKVCacheSlot::kValue}},
+             {.spec = query_activation, .kind = ExecutionValueKind::kModelInput}},
+            {{.index = 0}, {.index = 1}, {.index = 7}}, {},
+            {{.selector = F32CpuSelector(),
+              .kernel = update_kernel,
+              .inputs = {{.index = 0}, {.index = 1}, {.index = 2}, {.index = 3}},
+              .outputs = {{.index = 5}, {.index = 6}},
+              .kernel_input_ports = {0, 1},
+              .kernel_output_ports = {}},
+             {.selector = F32CpuSelector(),
+              .kernel = MakeAttentionTestKernel(&CaptureReadBindingKernel),
+              .inputs = {{.index = 7}, {.index = 2}, {.index = 3}},
+              .outputs = {{.index = 4}},
+              .kernel_input_ports = {0},
+              .kernel_output_ports = {0}}},
+            {.aliases = {{.step_index = 0, .input_port = 2, .output_port = 0},
+                         {.step_index = 0, .input_port = 3, .output_port = 1}}});
+}
+
+StatusOr<ExecutionPlan> BuildPureAttentionPlan(int64_t query_sequence_length) {
+    const TensorSpec query = F32Spec({query_sequence_length, 4});
+    const TensorSpec cache = F32Spec({2, 8, 2});
+    return ExecutionPlan::Create(
+            {{.spec = query, .kind = ExecutionValueKind::kModelInput},
+             {.spec = cache,
+              .kind = ExecutionValueKind::kState,
+              .state_binding = ExecutionKVCacheStateIdentity{.decoder_layer_index = 0,
+                                                             .slot = ExecutionKVCacheSlot::kKey}},
+             {.spec = cache,
+              .kind = ExecutionValueKind::kState,
+              .state_binding = ExecutionKVCacheStateIdentity{.decoder_layer_index = 0,
+                                                             .slot = ExecutionKVCacheSlot::kValue}},
+             {.spec = query, .kind = ExecutionValueKind::kActivation}},
+            {{.index = 0}}, {},
+            {{.selector = F32CpuSelector(),
+              .kernel = MakeAttentionTestKernel(&CaptureReadBindingKernel),
+              .inputs = {{.index = 0}, {.index = 1}, {.index = 2}},
+              .outputs = {{.index = 3}},
+              .kernel_input_ports = {0},
+              .kernel_output_ports = {0}}});
 }
 
 float ReadKey(const KVCacheView& view, size_t layer, size_t head, size_t token, size_t dim) {
@@ -445,6 +525,8 @@ TEST(KVCacheUpdateKernel, PureReadPlanUsesCommittedRangeWithoutCommit) {
     ASSERT_TRUE(g_last_read_binding.has_value());
     EXPECT_EQ(g_last_read_binding->committed_end, 2U);
     EXPECT_EQ(g_last_read_binding->visible_end, 2U);
+    EXPECT_EQ(g_last_read_binding->query_begin, 1U);
+    EXPECT_EQ(g_last_read_binding->query_end, 2U);
     EXPECT_EQ(view->current_pos(), 2U);
 }
 
@@ -454,7 +536,8 @@ TEST(KVCacheUpdateKernel, UpdateThenAttentionReadsVisibleRangeAndCommitsAtPlanEn
     ASSERT_NE(manager, nullptr);
     auto view = manager->ReserveForSession(2, 1);
     ASSERT_TRUE(view.ok());
-    const auto plan = BuildUpdateThenAttentionPlan(runtime, &CaptureReadBindingKernel);
+    const auto plan = BuildUpdateThenAttentionPlan(
+            runtime, MakeAttentionTestKernel(&CaptureReadBindingKernel));
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
 
     float key[8] = {1, 2, 3, 4, 5, 6, 7, 8};
@@ -477,8 +560,118 @@ TEST(KVCacheUpdateKernel, UpdateThenAttentionReadsVisibleRangeAndCommitsAtPlanEn
     ASSERT_TRUE(g_last_read_binding.has_value());
     EXPECT_EQ(g_last_read_binding->committed_end, 0U);
     EXPECT_EQ(g_last_read_binding->visible_end, 2U);
+    EXPECT_EQ(g_last_read_binding->query_begin, 0U);
+    EXPECT_EQ(g_last_read_binding->query_end, 2U);
     EXPECT_EQ(view->current_pos(), 2U);
     EXPECT_FLOAT_EQ(ReadKey(*view, 0, 0, 0, 0), 1.0F);
+}
+
+TEST(KVCacheUpdateKernel, AttentionRejectsAppendTransactionQueryLengthMismatch) {
+    Runtime runtime = MakeRuntime(1);
+    KVCacheManager* const manager = runtime.GetKVCacheManager();
+    ASSERT_NE(manager, nullptr);
+    auto view = manager->ReserveForSession(2, 1);
+    ASSERT_TRUE(view.ok());
+    const auto plan = BuildMismatchedUpdateThenAttentionPlan(runtime, 2, 1);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+
+    float key[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+    float value[8] = {11, 12, 13, 14, 15, 16, 17, 18};
+    float query[4] = {};
+    const int64_t update_shape[2] = {2, 4};
+    const int64_t query_shape[2] = {1, 4};
+    const int64_t strides[2] = {4, 1};
+    auto context = MakeContext(
+            runtime, *plan, *view,
+            std::array<TensorView, 3>{
+                    TensorView(key, DataType::Float32(), update_shape, strides),
+                    TensorView(value, DataType::Float32(), update_shape, strides),
+                    TensorView(query, DataType::Float32(), query_shape, strides)});
+    ASSERT_TRUE(context.ok()) << context.status().ToString();
+    g_last_read_binding.reset();
+
+    const Status status = Executor::Execute(*plan, *context);
+
+    EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
+    EXPECT_FALSE(g_last_read_binding.has_value());
+    EXPECT_EQ(view->current_pos(), 0U);
+}
+
+TEST(KVCacheUpdateKernel, AttentionRejectsPureReadQueryLengthPastVisibleRange) {
+    Runtime runtime = MakeRuntime(1);
+    KVCacheManager* const manager = runtime.GetKVCacheManager();
+    ASSERT_NE(manager, nullptr);
+    auto view = manager->ReserveForSession(2, 1);
+    ASSERT_TRUE(view.ok());
+    ASSERT_TRUE(view->CommitUntil(2).ok());
+    const auto plan = BuildPureAttentionPlan(3);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+
+    float query[12] = {};
+    const int64_t query_shape[2] = {3, 4};
+    const int64_t strides[2] = {4, 1};
+    auto context = MakeContext(
+            runtime, *plan, *view,
+            std::array<TensorView, 1>{
+                    TensorView(query, DataType::Float32(), query_shape, strides)});
+    ASSERT_TRUE(context.ok()) << context.status().ToString();
+    g_last_read_binding.reset();
+
+    const Status status = Executor::Execute(*plan, *context);
+
+    EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
+    EXPECT_FALSE(g_last_read_binding.has_value());
+    EXPECT_EQ(view->current_pos(), 2U);
+}
+
+TEST(KVCacheUpdateKernel, FP32AttentionReferenceRunsPrefillThenDecode) {
+    Runtime runtime = MakeRuntime(1);
+    KVCacheManager* const manager = runtime.GetKVCacheManager();
+    ASSERT_NE(manager, nullptr);
+    auto view = manager->ReserveForSession(2, 1);
+    ASSERT_TRUE(view.ok()) << view.status().ToString();
+    const auto backend = runtime.GetBackend(DeviceType::kCPU);
+    ASSERT_TRUE(backend.ok()) << backend.status().ToString();
+    const auto attention_kernel = backend.value()->PrepareKernel(
+            OpType::kAttention, F32CpuSelector(),
+            OpParams{AttentionParams{
+                    .num_q_heads = 2,
+                    .num_kv_heads = 2,
+                    .head_dim = 2,
+            }});
+    ASSERT_TRUE(attention_kernel.ok()) << attention_kernel.status().ToString();
+
+    const auto prefill_plan = BuildUpdateThenAttentionPlan(runtime, *attention_kernel, 2);
+    ASSERT_TRUE(prefill_plan.ok()) << prefill_plan.status().ToString();
+    float prefill_key[8] = {1, 0, 0, 1, 1, 1, -1, 1};
+    float prefill_value[8] = {10, 11, 20, 21, 30, 31, 40, 41};
+    const int64_t prefill_shape[2] = {2, 4};
+    const int64_t strides[2] = {4, 1};
+    auto prefill_context = MakeContext(
+            runtime, *prefill_plan, *view,
+            std::array<TensorView, 2>{
+                    TensorView(prefill_key, DataType::Float32(), prefill_shape, strides),
+                    TensorView(prefill_value, DataType::Float32(), prefill_shape, strides)});
+    ASSERT_TRUE(prefill_context.ok()) << prefill_context.status().ToString();
+    ASSERT_TRUE(Executor::Execute(*prefill_plan, *prefill_context).ok());
+    EXPECT_EQ(view->current_pos(), 2U);
+
+    const auto decode_plan = BuildUpdateThenAttentionPlan(runtime, *attention_kernel, 1);
+    ASSERT_TRUE(decode_plan.ok()) << decode_plan.status().ToString();
+    float decode_key[4] = {1, -1, -1, -1};
+    float decode_value[4] = {50, 51, 60, 61};
+    const int64_t decode_shape[2] = {1, 4};
+    auto decode_context = MakeContext(
+            runtime, *decode_plan, *view,
+            std::array<TensorView, 2>{
+                    TensorView(decode_key, DataType::Float32(), decode_shape, strides),
+                    TensorView(decode_value, DataType::Float32(), decode_shape, strides)});
+    ASSERT_TRUE(decode_context.ok()) << decode_context.status().ToString();
+    ASSERT_TRUE(Executor::Execute(*decode_plan, *decode_context).ok());
+
+    EXPECT_EQ(view->current_pos(), 3U);
+    EXPECT_FLOAT_EQ(ReadValue(*view, 0, 0, 2, 0), 50.0F);
+    EXPECT_FLOAT_EQ(ReadValue(*view, 0, 1, 2, 1), 61.0F);
 }
 
 TEST(KVCacheUpdateKernel, AttentionRejectsStateGeometryThatDiffersFromKVCacheView) {
@@ -534,7 +727,8 @@ TEST(KVCacheUpdateKernel, LaterStepFailureLeavesWrittenRangeUncommitted) {
     ASSERT_NE(manager, nullptr);
     auto view = manager->ReserveForSession(2, 1);
     ASSERT_TRUE(view.ok());
-    const auto plan = BuildUpdateThenAttentionPlan(runtime, &FailingReadBindingKernel);
+    const auto plan = BuildUpdateThenAttentionPlan(
+            runtime, MakeAttentionTestKernel(&FailingReadBindingKernel));
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
 
     float key[8] = {41, 42, 43, 44, 45, 46, 47, 48};
@@ -554,6 +748,8 @@ TEST(KVCacheUpdateKernel, LaterStepFailureLeavesWrittenRangeUncommitted) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
     ASSERT_TRUE(g_last_read_binding.has_value());
     EXPECT_EQ(g_last_read_binding->visible_end, 2U);
+    EXPECT_EQ(g_last_read_binding->query_begin, 0U);
+    EXPECT_EQ(g_last_read_binding->query_end, 2U);
     EXPECT_FLOAT_EQ(key_cache[0], 41.0F);
     EXPECT_EQ(view->current_pos(), 0U);
     EXPECT_FALSE(view->KeyData(0, 0, 0).ok());

@@ -929,7 +929,7 @@ Phase-1 Attention 算子在 graph 层面表达以下语义契约，物理 layout
 - `cache_len` 为 symbolic 时，仅当 k_cache 与 v_cache 共享可证相等 symbol 时接受，不发 State-port check。
 - 静态零 seq_len / cache_len 拒绝。
 
-**`cache_len` vs runtime frontier 边界：** graph 层面的 `cache_len` 是逻辑容量上限（对应 `KVCacheView` 的 `max_tokens`），不等于 runtime 的 `current_pos`（跨 plan 已提交长度）。一次 execution transaction 同时维护 `committed_end` 与 `visible_end`：`[0, committed_end)` 跨 plan 可读；`[committed_end, visible_end)` 仅供本 plan 中已经完成同 layer KV 更新后的 Attention 读取；之后的区间不可读。`CommitUntil(new_pos)` 仅在整个 Prefill / Decode plan 成功后推进 committed frontier；prefill 写 `[0, prompt_len)`，Phase 1 decode 写 `[current_pos, current_pos+1)`。graph 语义层不校验 `cache_len == seq_len`。
+**`cache_len` vs runtime frontier 边界：** graph 层面的 `cache_len` 是逻辑容量上限（对应 `KVCacheView` 的 `max_tokens`），不等于 runtime 的 `current_pos`（跨 plan 已提交长度）。一次 execution transaction 同时维护 `committed_end` 与 `visible_end`：`[0, committed_end)` 跨 plan 可读；`[committed_end, visible_end)` 仅供本 plan 中已经完成同 layer KV 更新后的 Attention 读取；之后的区间不可读。Attention read binding 还携带 `[query_begin, query_end)`：query row `i` 的绝对 position 为 `query_begin + i`，并要求 `query_end <= visible_end`，因此 causal kernel 只读取 `[0, query_begin + i + 1)`。有 append 的 plan 使用其 append interval；pure-read 以 visible suffix `[visible_end - seq_len, visible_end)` 重算。`CommitUntil(new_pos)` 仅在整个 Prefill / Decode plan 成功后推进 committed frontier；prefill 写 `[0, prompt_len)`，Phase 1 decode 写 `[current_pos, current_pos+1)`。graph 语义层不校验 `cache_len == seq_len`。
 
 **不属于 graph 语义层：** batch 维度、attention mask、sliding window、PagedAttention、continuous batching、物理 KV layout、kernel dispatch。
 

@@ -1,11 +1,12 @@
 # CPU GEMM 优化方案
 
-- **状态**: Draft
-- **版本**: 1.1
+- **状态**: In Progress
+- **版本**: 1.4
 - **日期**: 2026-09-17
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **优化方法基线**: [算子优化指南](../guides/operator_optimization_guide.md)
+- **工作流规范**: [算子开发与优化工作流](../guides/operator-development-workflow.md)
 - **关联模块**: backend / execution / model / benchmark
 
 ## 1. 结论与范围
@@ -15,18 +16,20 @@ AetherMind 不应新增 semantic `Gemm` operator。当前 GEMM 是 CPU backend �
 实施优先级不是“先做通用大矩阵 SGEMM”，而是：
 
 1. 建立可信 benchmark 与 Roofline 基线；
-2. 优先优化 LLM Decode 的 `M=1` GEMV / skinny GEMM；
-3. 再优化 Prefill 的 blocked GEMM；
-4. 将真实 packed-weight recipe 接入 kernel resolve 和 materialization；
-5. 在量化合同稳定后增加 INT8/INT4 路径；
-6. 多线程只通过 runtime 统一线程池演进，不在 kernel 内引入 OpenMP 或私有线程。
+2. 建立独立的 portable scalar optimized 路径，先验证 loop/layout/register reuse 的收益；
+3. 在 scalar 数据流基线上优先优化 LLM Decode 的 `M=1` AVX2 GEMV / skinny GEMM；
+4. 再优化 Prefill 的 blocked GEMM；
+5. 将真实 packed-weight recipe 接入 kernel resolve 和 materialization；
+6. 在量化合同稳定后增加 INT8/INT4 路径；
+7. 多线程只通过 runtime 统一线程池演进，不在 kernel 内引入 OpenMP 或私有线程。
 
-第一条完整 production 优化路径建议为 **x86-64 FP32 AVX2+FMA、单线程、immutable packed weight、无运行时分配**。在 exact recipe 链路完成前，可以先用 plain/`cpu_identity` weight 实现直接访问的 AVX2 Decode baseline，但它只是风险收敛里程碑，不是最终 packing 方案。AVX-512、AMX、AArch64、INT8/INT4 和多线程均是后续独立里程碑，不能写成当前已实现能力。
+第一条完整 production 优化路径建议为 **portable FP32 scalar optimized → x86-64 FP32 AVX2+FMA → immutable packed weight**，保持单线程和运行时零分配。scalar optimized 用来分离数据访问、loop structure、unroll 和 register blocking 的收益；它不能取代 double-accumulation reference oracle。在 exact recipe 链路完成前，可以先用 plain/`cpu_identity` weight 实现直接访问的 scalar/AVX2 Decode baseline，但它们只是风险收敛里程碑，不是最终 packing 方案。AVX-512、AMX、AArch64、INT8/INT4 和多线程均是后续独立里程碑，不能写成当前已实现能力。
 
 ### 1.1 包含
 
 - `Linear` / fused Linear 的 GEMV、skinny GEMM 和 blocked GEMM；
 - 通用 `MatMul` 对共享 GEMM engine 的复用边界；
+- 独立于 reference 与 SIMD 的 portable scalar optimized driver；
 - SIMD microkernel、cache blocking、packing、prefetch 和 dispatch；
 - binding-time shape specialization 与 workspace 演进；
 - correctness、microbenchmark、production-path benchmark、packing benchmark 和最终端到端验证设计。
@@ -44,6 +47,7 @@ AetherMind 不应新增 semantic `Gemm` operator。当前 GEMM 是 CPU backend �
 | 能力 | 当前实现 | 对优化的影响 |
 |---|---|---|
 | GEMM primitive | `RunGemmF32Reference`，三重循环，double accumulator，支持二维 stride | correctness baseline，不是性能基线 |
+| scalar optimized | 尚未实现；当前没有独立于 reference 的 FP32 scalar fast path | 无法单独归因 loop/layout 优化与 SIMD 的收益，需在 AVX2 前补齐 |
 | MatMul | FP32 reference；支持 batch broadcast、`transpose_rhs` 和任意已验证 stride | 通用性高，首轮优化不应受其最宽 layout 合同约束 |
 | Linear | FP32 plain-weight reference；将 leading dimensions flatten 为 `row_count` | LLM unfused path 可作为 production adapter 样板 |
 | QkvLinear / GateUpLinear | FP32 packed-only reference；当前 packed payload 是 `cpu_identity` | 已打通 opaque artifact 与 execution binding，但没有真实 tile packing |
@@ -53,11 +57,11 @@ AetherMind 不应新增 semantic `Gemm` operator。当前 GEMM 是 CPU backend �
 | packing recipe | `CpuWeightPrepacker::RecipeFor(selector)` 返回全局 `cpu_identity` | 不足以表达 AVX2/AVX-512/AMX 或 tile/version 不同的 layout |
 | CPU dispatch | 已有 AVX2/FMA/AVX-512/VNNI/AMX、NEON/DotProd/I8MM/SVE 等 capability model | feature gate 基础可复用；当前仅 RMSNorm 有 AVX2+FMA optimized descriptor |
 | threading | 当前产品边界为单请求、单线程，现有 kernel 也保持单线程 | 首轮优化保持单线程；并行化属于 runtime 级后续工作 |
-| benchmark | Google Benchmark；RMSNorm 已示范 prepared kernel 与 binding-cost 分离 | GEMM 需新增 shape、cache-state、packing 和生产路径维度 |
+| benchmark | Google Benchmark；G0 已提供 Linear prepared-path、binding-cost 与 `cpu_identity` packing 基线 | 当前只有 reference descriptor；原始性能数据仍须按本提案的运行协议采集 |
 
 ### 2.1 当前主要瓶颈
 
-1. reference loop 的 `row → col → k` 每个输出点重新流过 K，缺少寄存器 blocking，无法复用 A/B 数据；
+1. reference loop 的 `row → col → k` 每个输出点重新流过 K，缺少 scalar optimized 的 layout specialization、multi-accumulator 和 register blocking，无法复用 A/B 数据；
 2. 没有 SIMD microkernel、cache blocking 或 software prefetch；
 3. `cpu_identity` 只是 aligned copy，不降低 microkernel 的地址计算和访存代价；
 4. Decode 与 Prefill 形状差异巨大，却只能 resolve 到同一个固定 kernel entry；
@@ -85,7 +89,7 @@ AetherMind 不应新增 semantic `Gemm` operator。当前 GEMM 是 CPU backend �
 ### 3.3 数值与安全
 
 - reference kernel 保留 double accumulation，作为 correctness oracle，不用其结果定义 optimized FP32 的逐 bit 一致性。
-- optimized FP32 默认使用 FP32 FMA accumulation；误差按绝对误差、相对误差和规模相关容差验收。
+- scalar/SIMD optimized FP32 默认使用 FP32 accumulation；SIMD 路径可使用 FMA。两者均按绝对误差、相对误差和规模相关容差验收。
 - output 必须 injective；Linear/fused Linear output 与 input/weight 必须 proven disjoint。
 - stride-hole 或 overlap 无法证明安全时返回 `Unimplemented`，不能把 unknown 当作 disjoint。
 - `M/N/K == 0`、非 tile 整除 tail、非连续 row stride 和整数溢出继续有确定行为。
@@ -107,9 +111,11 @@ Prepared operator params
 GEMM driver
         ├── direct-A + packed-B GEMV/skinny path
         ├── blocked GEMM path
-        └── scalar/reference fallback
+        ├── portable scalar optimized driver
+        └── correctness reference fallback
+                │
                 ▼
-        ISA microkernel + epilogue
+        scalar register block / ISA microkernel
 ```
 
 ### 4.1 Backend-internal contracts
@@ -161,7 +167,28 @@ struct GemmPreparedF32 {
 
 `threshold` 和 tile 参数必须由 benchmark 在目标 CPU 上确定，不写成跨平台常量。首轮可以提供保守静态表；后续只允许在 model preparation/binding cold path 做轻量选择，不在每次 Execute 自动调优。
 
-### 4.3 Microkernel
+### 4.3 Scalar optimized 路径
+
+scalar optimized 必须是独立实现，不能修改或覆盖 `RunGemmF32Reference`。建议使用 backend-private 的 `RunGemmF32ScalarOptimized` 或等价 driver。
+
+优先验证以下机制：
+
+- 针对 N-contiguous 与 K-contiguous RHS 分别选择循环和访问顺序；
+- 使用 pointer bumping/strength reduction 减少地址计算；
+- 使用 2–8 个独立 accumulator 打断单一 dependency chain；
+- 对 K loop 做小规模 unroll，并检查 code size 与 instruction-cache 影响；
+- 为 `M=1`、small-M 和 generic M 建立不同 driver；
+- 使用 `1×4`、`2×4`、`4×4` 等 scalar register block 候选，具体大小由 benchmark 决定；
+- 不适配 fast path 的合法 stride/layout 走 reference-compatible fallback，不缩窄 operator 合同。
+
+必须区分两种“scalar”：
+
+1. **portable scalar source**：不使用 intrinsic，但允许编译器 auto-vectorization；这是可进入 production 的 portable fast path 候选；
+2. **strict non-SIMD diagnostic**：仅在独立 translation unit 或 benchmark variant 上关闭 loop/SLP vectorization，并通过反汇编确认无 packed SIMD；它用于归因 loop/layout/unroll 收益，不要求成为 production descriptor。
+
+不得对整个 `AetherMind` target 添加 `-fno-tree-vectorize`、`-fno-slp-vectorize` 或等价选项。portable scalar、strict diagnostic scalar、AVX2 必须使用同一 shape/layout 测试矩阵，以分别回答“算法/访存优化贡献多少”和“SIMD 额外贡献多少”。
+
+### 4.4 ISA microkernel
 
 AVX2+FMA 分成两个物理路径：
 
@@ -182,7 +209,7 @@ AVX2+FMA 分成两个物理路径：
 
 AVX-512、NEON/SVE 使用同一 driver contract、不同 microkernel 与 recipe。AMX 不作为 AVX2 的简单高优先级替换：tile setup 与 M 较小时的固定成本可能使 Decode 退化，必须按 shape 单独选择。
 
-### 4.4 Packed weight
+### 4.5 Packed weight
 
 真实 packing layout 至少编码：
 
@@ -206,7 +233,7 @@ AVX-512、NEON/SVE 使用同一 driver contract、不同 microkernel 与 recipe�
 
 在上述链路闭环前，只能新增与 `cpu_identity` 兼容的计算优化，不能让 optimized descriptor 悄悄解释另一种物理布局。
 
-### 4.5 Workspace
+### 4.6 Workspace
 
 首个实现包使用 direct A + prepacked B，保持 zero-workspace。Prefill 需要 A panel packing 时，再引入 binding-dependent workspace：
 
@@ -220,7 +247,7 @@ Resolved ISA kernel
 
 不能在 kernel 内临时 `malloc`，也不能用一个按最大模型 shape 永久膨胀的全局 scratch 规避合同设计。
 
-### 4.6 Threading 与 NUMA
+### 4.7 Threading 与 NUMA
 
 当前产品边界内保持单线程。未来引入 runtime thread pool 后：
 
@@ -308,8 +335,9 @@ Resolved ISA kernel
 ### 6.4 Baseline 与对照
 
 - correctness oracle：`RunGemmF32Reference` 或算子 reference kernel；
-- performance baseline：当前 scalar production descriptor；
-- candidate：AVX2/AVX-512/量化 descriptor；
+- performance baseline：当前 reference production descriptor；
+- scalar candidate：portable scalar optimized；strict non-SIMD variant 只用于诊断归因；
+- ISA candidate：AVX2/AVX-512/量化 descriptor；
 - optional external ceiling：相同线程数的成熟 BLAS/oneDNN，仅作研究对照；
 - scalar 与特定 ISA 通过 `CpuFeaturePolicy` 或显式测试入口固定，不能依赖运行机器“碰巧”选择某个 kernel。
 
@@ -381,11 +409,12 @@ python3 tools/compare_benchmark_json.py \
 
 ## 7. 实施路线与证据门禁
 
-G0–G6 是带依赖关系的工作包，不是要求机械串行执行的产品阶段。G0 是所有性能工作的前置门禁；G1 与 G2 可以在接口边界冻结后局部并行验证；G3、G5 和 G6 只有在 benchmark 或产品需求提供明确证据时才进入实施。任何工作包未达到退出条件时，不得仅凭 microbenchmark 提高 production descriptor priority。
+G0、G1S、G1V 与 G2–G6 是带依赖关系的工作包，不是要求机械串行执行的产品阶段。G0 是所有性能工作的前置门禁；G1S 先建立独立 scalar optimized 证据，G1V 再量化 SIMD 的额外贡献；G2 可以在 scalar 接口边界冻结后并行推进 exact recipe；G3、G5 和 G6 只有在 benchmark 或产品需求提供明确证据时才进入实施。任何工作包未达到退出条件时，不得仅凭 microbenchmark 提高 production descriptor priority。
 
 ```text
 G0 合同与证据基线
- ├──> G1 Decode direct-weight AVX2
+ ├──> G1S portable scalar optimized
+ │       └──> G1V Decode direct-weight AVX2
  └──> G2 exact recipe 与 packed B
           ├──> G3 Prefill blocked GEMM / 可选 workspace 演进
           └──> G4 fused Linear consumers
@@ -405,21 +434,46 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 - 记录 scalar Release 反汇编、Roofline 输入、硬件计数器和原始 JSON；
 - 验证 params build、validation、packing 和 allocation 不混入 steady-state compute loop。
 
+当前代码已提供以下基础设施，但尚未提交任何性能收益结论或机器相关 baseline 数据：
+
+- `tests/benchmark/cpu_kernels/benchmark_cpu_gemm_microkernel.cpp` 的 backend-private direct GEMM reference 基线，分别覆盖 N-contiguous 与 K-contiguous RHS；该 benchmark 用于后续 microkernel、unroll 和 blocking 调优，不替代 production Linear benchmark；
+- `tests/benchmark/cpu_kernels/benchmark_cpu_linear.cpp` 的 hot/streaming prepared Linear 与 binding-specialization 测量。每个 compute case 都经 `CpuBackend::PrepareKernel`、`KernelParamsBuilder` 和 `ResolvedKernel::fn`，且在计时外将结果与 `RunGemmF32Reference` 对照；
+- `tests/benchmark/cpu_kernels/benchmark_cpu_weight_packing.cpp` 的独立 `cpu_identity` cold-packing 测量。当前没有 packed Linear descriptor，因此该数据仅表示 pack/allocate/copy 成本，不能解释为 packed Linear compute 性能；
+- `tests/unit/backend/cpu/kernels/test_cpu_gemm_reference.cpp` 对 `C = A × B` 覆盖写回合同的显式测试，以及 Linear 对未声明 SIMD alignment 的合法 view 的回归测试。
+
+采集时分别保存 hot、streaming、binding 与 packing JSON；不要将它们合并为一个几何平均值。可使用 [第 6.7 节](#67-运行协议) 的命令和 `tools/compare_benchmark_json.py` 对同一模式、同一 shape 的 baseline/candidate JSON 比较。
+
 退出条件：correctness baseline 完整；benchmark 可重复；shape、cache state、packing 与 binding 成本可独立归因；baseline/candidate 可以由脚本比较。
 
-### G1：Decode direct-weight AVX2
+### G1S：portable scalar optimized
 
-目标是用最小架构扩张覆盖当前最重要的 `M=1`/small-M latency 路径。
+目标是在不依赖显式 SIMD 的前提下，独立验证 loop/layout、address generation、unroll、multi-accumulator 和 scalar register blocking 的收益，同时建立可移植的 optimized fallback。
+
+- 新增独立 `RunGemmF32ScalarOptimized` 或等价 backend-private driver，不修改 `RunGemmF32Reference`；
+- 分别覆盖 N-contiguous 与 K-contiguous RHS，优先优化 `M=1`/small-M；
+- 测试 pointer bumping、K unroll、multi-accumulator 与小型 scalar register block，所有参数由 benchmark 决定；
+- binding time 根据 concrete `M/N/K/stride` 选择 scalar fast driver 或 reference-compatible fallback；
+- portable scalar source 不使用 intrinsic，但允许编译器 auto-vectorization；
+- strict non-SIMD 仅作为独立 diagnostic build/benchmark，使用局部编译选项关闭 loop/SLP vectorization，并检查汇编；
+- direct microkernel 与 production Linear benchmark 使用相同 shape/layout/correctness matrix；
+- optimized FP32 accumulation 的误差相对 double reference 单独验收。
+
+退出条件：portable scalar 在目标 Decode canonical geomean 上有稳定收益；strict diagnostic 证明至少一部分收益来自 loop/layout 而非 SIMD；合法但不适合 fast path 的布局确定 fallback；reference oracle 完全不变；hot path 无新增分配。
+
+### G1V：Decode direct-weight AVX2
+
+目标是在 G1S 已验证的数据流和 shape 分类上引入 AVX2+FMA，并明确分离 SIMD 相对 scalar optimized 的额外收益。
 
 - 增加独立 AVX2+FMA translation unit 和 feature-gated descriptor，不对整个 target 使用 `-march=native`；
-- 先覆盖 plain Linear，沿 K 向量化并展开多个 N 输出行；
+- 先覆盖 plain Linear，沿 K 向量化并展开多个 N 输出行；能复用 G1S 的 driver/planner 合同时不建立平行体系；
 - binding time 根据 concrete `M/N/K/stride` 选择 `M=1` GEMV、small-M skinny 或 compatible scalar driver；
 - optimized descriptor 必须覆盖其声明的完整合法 layout 合同，不适合 SIMD 的输入在 descriptor 内 fallback；
 - 若验证 fused consumer 原型，packed bytes 仍必须严格解释为现有 `cpu_identity`；
 - 覆盖 N/K tail、padded stride、unaligned access 和 alias rejection；
+- 同时报告 reference → scalar optimized 与 scalar optimized → AVX2 两组差值；
 - 检查 Release 反汇编，确认 FMA、unroll、register pressure 和 spill 情况。
 
-退出条件：Decode canonical geomean 有稳定收益；任一 canonical shape 的显著回退均有 shape fallback；feature-disabled 环境确定选择 reference；hot path 无新增分配。
+退出条件：AVX2 相对 scalar optimized 的 Decode canonical geomean 有稳定增益；任一 canonical shape 的显著回退均有 shape fallback；feature-disabled 环境确定选择 scalar optimized 或 reference；hot path 无新增分配。
 
 ### G2：exact recipe 与 packed B
 
@@ -492,6 +546,7 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | shape 在 kernel resolve 后才可见 | 无法选 GEMV/blocked path | binding-time internal driver；workspace/recipe 依赖 shape 时升级 specialization 合同 |
+| “scalar source” 被编译器自动向量化 | 错把 SIMD 收益归因于 loop/layout 优化 | portable scalar 与 strict non-SIMD diagnostic 分开；检查实际 Release 汇编 |
 | recipe 只由 selector 决定 | 多 ISA layout 被误绑定 | descriptor-owned exact recipe + prepare-first packing request |
 | 通用 MatMul 合同拖累 Linear | optimized fast path 被任意 stride/broadcast 复杂化 | adapter 分层；合法但不适合 fast path 的 layout 在 descriptor 内走 compatible scalar driver，原本无法证明安全的 layout 才返回 `Unimplemented` |
 | benchmark 重复同一权重 | 高估 Decode cache locality | 同时报 hot 与 streaming artifact |
@@ -527,6 +582,7 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 
 ## 10. 相关文档
 
+- [算子开发与优化工作流](../guides/operator-development-workflow.md)：Change Profile、O0–O6 门禁、实验日志和正式验证报告规范。
 - [AetherMind 当前产品 PRD](../products/aethermind_prd.md)：产品范围、单线程边界、INT8/INT4 目标。
 - [架构总览](../designs/architecture/architecture_overview.md)：模块边界与执行数据流。
 - [算子优化指南](../guides/operator_optimization_guide.md)：Roofline、SIMD、packing、blocking、fusion 与 benchmark 通用方法。

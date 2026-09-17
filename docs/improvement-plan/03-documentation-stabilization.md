@@ -1,7 +1,7 @@
 # AetherMind 文档系统稳定化方案
 
 - **状态**: In Progress
-- **版本**: 2.1
+- **版本**: 2.2
 - **日期**: 2026-09-17
 - **产品范围**: [AetherMind 产品需求](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
@@ -64,9 +64,9 @@
 
 | 动作 | 状态 | 说明 |
 |---|---|---|
-| D0 frontmatter 落地到具体文档 | 未执行 | 规则已定义，但 144 篇文档均未添加 YAML frontmatter |
+| D0 frontmatter 落地到具体文档 | 未执行 | 规则已定义，但 143 篇文档均未添加 YAML frontmatter |
 | D1 深度内容核验 | 部分完成 | 结构核验已做（§4.4），逐段对照代码的深度核验未做 |
-| D3 P1/P2 处置 | 未启动 | 25 篇 designs/ 命名迁移、4 篇 review 重命名、4 篇超长拆分 |
+| D3 P1/P2 处置 | 未启动 | 24 篇 designs/ 命名迁移、4 篇 review 重命名、4 篇超长拆分 |
 | D4 非核心文档术语迁移 | 未启动 | designs/、guides/、reviews/ 中仍有 Phase 术语 |
 | D5b metadata schema | 未启动 | 依赖 D0 frontmatter 落地 |
 
@@ -75,7 +75,7 @@
 | 编号 | 当前结果 | 证据 |
 |---|---|---|
 | E1 | 部分满足 | 核心 9 篇结构核验完成（§4.4），但缺乏独立可追溯的深度核验记录 |
-| E2 | 已满足（修订后） | 核心 9 篇状态列无 Unverified；其余 27 篇治理范围文档保持 Unverified 但均有处置+优先级 |
+| E2 | 已满足（修订后） | 核心 9 篇状态列无 Unverified；其余 26 篇治理范围文档保持 Unverified 但均有处置+优先级 |
 | E3 | 已满足 | 01 §2.2 Linear/RoPE/Argmax 已更新（2026-09-14） |
 | E4 | 已满足 | 3 篇 plan 已归档（2026-09-14） |
 | E5 | 已满足 | issues.md 已登记真实问题（2026-09-14） |
@@ -138,7 +138,7 @@
 - [docs/archive/designs-legacy/amstring_development_plan.md](../archive/designs-legacy/amstring_development_plan.md)：development plan 而非设计（已归档 2026-09-14）；
 - [docs/archive/designs-legacy/amstring_milestones.md](../archive/designs-legacy/amstring_milestones.md)：milestones 而非设计（已归档 2026-09-14）；
 - [docs/archive/designs-legacy/amstring_task_checklist.md](../archive/designs-legacy/amstring_task_checklist.md)：task checklist 而非设计（已归档 2026-09-14）；
-- 命名违规统计（分母重新定义）：`docs/designs/` 现有 27 篇文件（原 30 篇，3 篇 plan 已归档），其中 canonical module design 1 篇（`model/01-model-loader.md`）、存量例外 1 篇（`architecture/architecture_overview.md`，见 [documentation-guide.md §2](../guides/documentation-guide.md)）、**真正待迁移的命名违规 25 篇**；
+- 命名违规统计（分母重新定义）：`docs/designs/` 现有 26 篇文件（原 30 篇：3 篇 plan 已归档、1 篇 superseded 草案已删除），其中 canonical module design 1 篇（`model/01-model-loader.md`）、存量例外 1 篇（`architecture/architecture_overview.md`，见 [documentation-guide.md §2](../guides/documentation-guide.md)）、**真正待迁移的命名违规 24 篇**；
 - 中文文件名：`status设计方案.md`、`已证明约束的执行阶段保障方案.md`、`kernel_dev/*.md` 全部；
 - 同名冲突：[docs/designs/graph_compilation_flow.md](../designs/graph_compilation_flow.md) 与 [docs/reviews/graph_compilation_flow.md](../reviews/graph_compilation_flow.md) 并存，容易混淆权威来源。
 
@@ -481,3 +481,4 @@ Batch 2   质量 vertical slice
 | 1.2 | 2026-09-14 | 修正 6 条自相矛盾：§1.1 明确从属 documentation-guide.md；§3.2 改为清查表工作标签；§4 核心集替换为 9 篇权威文档（排除 02/03 Draft 提案）；§5.1 移除 authority 类型；§5.2 docs/agent/ 标记 Out of Scope；§8.1 修正开关语义为 report-only + --strict-*；§9 E2 排除 agent/；§2.5 命名违规计数修正为 25 篇 |
 | 2.0 | 2026-09-17 | E1–E8 实施完成；状态 Draft → In Progress；E2 修订为“核心无 Unverified + 其余有处置跟踪”；回退未经核验的 designs/ 批量 Current 赋值 |
 | 2.1 | 2026-09-17 | 修正 §1.3 内部矛盾（D1/D3/D5a 实际已执行但快照写“未启动”）；状态回退 Implemented → In Progress；Batch 0 重新标记为阻塞；补充 §4.4 D1 核验记录 |
+| 2.2 | 2026-09-17 | 同步清点表：删除 superseded 草案 `CPU_FP32_GEMM优化方案.md` 后重算计数（清查 144→143 行、designs 27→26、命名违规 25→24） |

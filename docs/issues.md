@@ -15,7 +15,7 @@
 - [ ] 4 篇非归档文档超长（>1000 行）：operator_optimization_guide.md 2110、model_graph_design.md 1706、dispatch_design.md 1061、graph_lowering_design.md 1005（关联：[docs/guides/](guides/)、[docs/designs/](designs/)）
 - [ ] 大量文档无明确状态字段：designs/、guides/、reviews/ 中多数文档头部无状态标记（关联：[docs/designs/](designs/)、[docs/guides/](guides/)、[docs/reviews/](reviews/)）
 - [ ] 4 篇 review 无日期命名：graph_compilation_flow.md、model_graph_data_structure_review.md、operator_semantic_layer_review.md、prd/prd_review.md（关联：[docs/reviews/](reviews/)）
-- [ ] 25 篇 designs/ 命名违规（非 canonical `NN-<kebab-name>.md`）待迁移（关联：[docs/designs/](designs/)）
+- [ ] 24 篇 designs/ 命名违规（非 canonical `NN-<kebab-name>.md`）待迁移（关联：[docs/designs/](designs/)）
 
 ## 已解决
 

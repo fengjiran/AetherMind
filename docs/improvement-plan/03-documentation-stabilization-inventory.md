@@ -1,14 +1,14 @@
 # AetherMind 文档清查表（Batch -1 D2 交付物）
 
 - **状态**: Draft
-- **版本**: 1.3
+- **版本**: 1.4
 - **日期**: 2026-09-17
 - **主方案**: [03-documentation-stabilization.md](03-documentation-stabilization.md)
 - **规范来源**: [文档系统规范](../guides/documentation-guide.md)
 
 本表是 [03 号方案](03-documentation-stabilization.md) §5 D2 的一次性清查交付物，登记范围内所有 .md 文档的类型、状态、事实权威、当前性、问题、处置与优先级。**本清查阶段不批量重命名或移动文件**，"处置" 列仅记录建议值，实际执行放到 D3 及后续 workstream。
 
-**当前状态（2026-09-17）**：本表为 D2 规划工件，已建立 144 行清查记录。治理范围 59 篇中：Current 16、Unverified 27、Historical Snapshot 10、Draft 4、Deprecated 1、Accepted 1。核心 9 篇当前性均为"已核验"（结构核验，见 [03 号方案 §4.4](03-documentation-stabilization.md)）；其余 27 篇 Unverified 均有处置+优先级值，满足修订后的 E2。D0 frontmatter 落地、D3 P1/P2 处置、D4 非核心术语迁移、D5b metadata schema 未启动。Batch -1 整体状态见 [03 号方案 §1.3](03-documentation-stabilization.md)。
+**当前状态（2026-09-17）**：本表为 D2 规划工件，已建立 143 行清查记录。治理范围 58 篇中：Current 16、Unverified 26、Historical Snapshot 10、Draft 4、Deprecated 1、Accepted 1。核心 9 篇当前性均为"已核验"（结构核验，见 [03 号方案 §4.4](03-documentation-stabilization.md)）；其余 26 篇 Unverified 均有处置+优先级值，满足修订后的 E2。D0 frontmatter 落地、D3 P1/P2 处置、D4 非核心术语迁移、D5b metadata schema 未启动。Batch -1 整体状态见 [03 号方案 §1.3](03-documentation-stabilization.md)。
 
 ## 1. 字段与取值
 
@@ -30,7 +30,7 @@
 - **包含（治理范围）**：仓库根 `README.md`、`AGENTS.md`、`CHANGELOG.md`；`docs/` 下全部 .md（含 `archive/`、`improvement-plan/`、`templates/`）。
 - **包含（仅登记，Out of Scope）**：`docs/agent/` 下全部 .md——按 [documentation-guide.md §1](../guides/documentation-guide.md) 准入条件，`docs/agent/` 是独立子系统。清查表为全景统计列出，但排除在 E1–E9、状态迁移、命名和 metadata 门禁之外。
 - **排除**：`3rdparty/`、`build*/`、`.models/`、`.qoder/`、`.trae/`、`.omo/`、`.sisyphus/`、`.codex/`、`.gemini/`、`.idea/`、`.vscode/`、`.cache/`、`.agents/`、`tools/agent_memory/`。
-- **总数**：144 篇（根 3 + `docs/` 141）；其中治理范围 90 篇，Out of Scope 54 篇（`docs/agent/`）。
+- **总数**：143 篇（根 3 + `docs/` 140）；其中治理范围 89 篇，Out of Scope 54 篇（`docs/agent/`）。
 
 **docs/agent/ 覆盖规则**：清查表中所有 `docs/agent/` 路径的行统一适用以下覆盖，无需逐行修改：
 - 状态 → `Out of Scope`
@@ -148,7 +148,6 @@
 | docs/designs/graph_compilation_flow.md | design | Unverified | 否 | 未核验 | 命名违规 + 与 docs/reviews/graph_compilation_flow.md 同名冲突 | 待 D3 排序确认（重命名或移动） | P1 |
 | docs/designs/graph_invariants_and_validator_architecture.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
 | docs/designs/graph_lowering_design.md | design | Unverified | 否 | 未核验 | 过长（1005 行）+ 命名违规 | 待 D3 排序确认（拆分 + 移动） | P2 |
-| docs/designs/kernel_dev/CPU_FP32_GEMM优化方案.md | design | Unverified | 否 | 未核验 | 中文文件名 + 命名违规 | 待 D3 排序确认（重命名） | P2 |
 | docs/designs/kernel_dev/LinearOp算子契约.md | design | Unverified | 否 | 未核验 | 中文文件名 + 命名违规 | 待 D3 排序确认 | P2 |
 | docs/designs/kernel_dev/RMSNorm算子契约.md | design | Unverified | 否 | 未核验 | 中文文件名 + 命名违规 | 待 D3 排序确认 | P2 |
 | docs/designs/kernel_dev/RoPE算子契约.md | design | Unverified | 否 | 未核验 | 中文文件名 + 命名违规 | 待 D3 排序确认 | P2 |
@@ -191,13 +190,13 @@
 
 ## 4. 汇总统计
 
-以下计数由本清查表 §3 直接汇总，与表内行数一致（合计 144）。
+以下计数由本清查表 §3 直接汇总，与表内行数一致（合计 143）。
 
 ### 4.1 按类型
 
 | 类型 | 数量 |
 |---|---|
-| design | 27 |
+| design | 26 |
 | archive | 27 |
 | handoff | 20 |
 | memory | 12 |
@@ -211,7 +210,7 @@
 | log | 2 |
 | api | 1 |
 | prd | 1 |
-| **合计** | **144** |
+| **合计** | **143** |
 
 ### 4.2 按状态
 
@@ -219,12 +218,12 @@
 |---|---|
 | Out of Scope | 54（`docs/agent/` 覆盖规则，见 §2） |
 | Deprecated | 32（archive/ 31 + code_review_guide 1） |
-| Unverified | 27（治理范围内 designs/ 26 + guides/ 1，均有处置+优先级） |
+| Unverified | 26（治理范围内 designs/ 25 + guides/ 1，均有处置+优先级） |
 | Current | 16（核心 9 篇 + guides 4 + templates 2 + CHANGELOG 1） |
 | Historical Snapshot | 10（reviews/ 5 + tests/ 5） |
 | Draft | 4（improvement-plan/ 01–03 + inventory） |
 | Accepted | 1（decisions/0001） |
-| **合计** | **144**（治理范围 59 + archive 31 + OOS 54） |
+| **合计** | **143**（治理范围 58 + archive 31 + OOS 54） |
 
 ### 4.3 按优先级
 
@@ -232,21 +231,21 @@
 |---|---|---|
 | P0 | 14 | 权威事实源 + 已知漂移 + 失效门禁 |
 | P1 | 13 | 分类错误 + 无日期 review + 命名冲突 |
-| P2 | 63 | 归档 + 命名违规 + 超长（内容待核验） |
+| P2 | 62 | 归档 + 命名违规 + 超长（内容待核验） |
 | OOS | 54 | `docs/agent/` 独立子系统，不参与门禁 |
-| **合计** | **144** | |
+| **合计** | **143** | |
 
 ### 4.4 按处置建议
 
 | 处置 | 数量 |
 |---|---|
 | 保留（含 D1 核验后保留、历史快照保留等变体） | 105 |
-| 待 D3 排序确认（重命名 / 移动 / 拆分） | 25 |
+| 待 D3 排序确认（重命名 / 移动 / 拆分） | 24 |
 | 修订（Batch -1 内处理或本 Plan 已处理） | 6 |
 | 重命名加日期（reviews/） | 4 |
 | 移动到 improvement-plan/ 或归档（designs/ 中的 plan 类） | 3 |
 | 待 D1 后核验决定是否拆分 | 1 |
-| **合计** | **144** |
+| **合计** | **143** | |
 
 ## 5. 已知债务快照
 
@@ -261,7 +260,7 @@
 | `graph_compilation_flow.md` 同名冲突 | designs/ 与 reviews/ 并存 | 对应 2 行 | Batch -1 P1 |
 | 4 篇 review 无日期 | `graph_compilation_flow.md`、`model_graph_data_structure_review.md`、`operator_semantic_layer_review.md`、`prd/prd_review.md` | docs/reviews/ 对应 4 行 | Batch -1 P1 |
 | 4 篇非归档文档超长（>1000 行） | `operator_optimization_guide.md` 2110、`model_graph_design.md` 1706、`dispatch_design.md` 1061、`graph_lowering_design.md` 1005 | 对应 4 行 | 后续 workstream（P2） |
-| 25 篇 designs/ 命名违规 | 全部 30 篇中：canonical 1（`model/01-model-loader.md`）、存量例外 1（`architecture_overview.md`）、plan 分类错误 3、真正命名违规 25 | docs/designs/ 对应 25 行 | 后续 workstream（P2） |
+| 24 篇 designs/ 命名违规 | 全部 29 篇中：canonical 1（`model/01-model-loader.md`）、存量例外 1（`architecture_overview.md`）、plan 分类错误 3、真正命名违规 24 | docs/designs/ 对应 24 行 | 后续 workstream（P2） |
 | 术语过时（`Phase 1`） | `docs/README.md` 第 37/158 行；`docs/products/aethermind_prd.md`；architecture_overview 索引行 | 对应各行 | D4 术语迁移（Batch -1 内启动，后续完成） |
 | `verify_docs.py` 覆盖不足 | 第 7 行 anchors 不校验；第 39 行 improvement-plan 排除；第 128-134 行 loose symbol 匹配；第 155-158 行目录级索引覆盖 | 不在清查表（工具而非文档） | D5a Batch -1 内完成 |
 
@@ -272,3 +271,5 @@
 | 1.0 | 2026-09-13 | 初始清查：144 篇文档，8 列字段，P0/P1/P2 优先级映射 |
 | 1.1 | 2026-09-14 | 头部增加"当前状态"说明：本表为 D2 规划工件，D1/D3/D4/D5 未启动；指向 03 号方案 §1.3 快照 |
 | 1.2 | 2026-09-14 | 移除 authority 类型（改为 guide/index/api/design/prd/plan）；状态枚举增加 Out of Scope；§2 增加 docs/agent/ 覆盖规则（排除 E1–E9 门禁）；§4 统计重算 |
+| 1.3 | 2026-09-17 | 核心 9 篇置 Current、4 篇 review 转 Historical Snapshot、重算状态计数；与 03 号方案 v2.0/2.1 快照同步 |
+| 1.4 | 2026-09-17 | 删除 superseded 草案 `docs/designs/kernel_dev/CPU_FP32_GEMM优化方案.md`：移除对应行并重算 §4/§5 统计（144→143 行、治理 59→58、Unverified 27→26、命名违规 25→24） |

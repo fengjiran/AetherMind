@@ -1,7 +1,7 @@
 # AetherMind 系统能力演进路线图
 
 - **状态**: Draft
-- **版本**: 1.0
+- **版本**: 1.1
 - **日期**: 2026-09-16
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
@@ -29,7 +29,7 @@ AetherMind 当前不需要再次进行顶层架构重写。`model → graph/oper
 
 ## 2. 盘点方法与事实边界
 
-本路线图基于 2026-09-16 当前源码、测试、PRD 和现有 01–05 号提案。状态含义：
+本路线图基于 2026-09-17 当前源码、测试、PRD 和现有 01–05 号提案。状态含义：
 
 | 状态 | 含义 |
 |---|---|
@@ -52,13 +52,13 @@ AetherMind 当前不需要再次进行顶层架构重写。`model → graph/oper
 |---|---|---|---:|---|
 | public C++ / C API | 未闭环 | `Session::Generate`、`am_session_*`、ABI/version/error ownership | P0 | [01](01-inference-session-generate-readiness.md)、§15 |
 | model loader / HF adapter | 部分闭环 | 支持范围真值、activation 漂移、量化格式、模型 fingerprint | P0/P1 | §5 |
-| operators | 部分闭环 | semantic/capability matrix 漂移、Attention/KV execution contract | P0 | §6 |
+| operators | 部分闭环 | semantic/capability matrix 漂移（KV/Attention 契约已闭环） | P0 | §6 |
 | graph | 基础已闭环 | pass outcome 验证、contract drift；无需 target-aware 重写 | P1 | §7 |
 | compiler/lowering | 基础已闭环 | 1:1 step 限制；仅在真实 1→N 需求出现后引入 ImplementationPlan | P1/P2 | §8 |
 | execution planning | 部分闭环 | ExecutableModel preparation、shape-aware prepare、activation liveness | P0/P1 | [01](01-inference-session-generate-readiness.md)、§9 |
 | runtime | 部分闭环 | KV transaction、resource budget、线程/topology、metrics | P0/P1 | [05](05-kv-cache-manager-evolution.md)、§10 |
 | backend dispatch | 基础已闭环 | prepare request 缺 concrete shape/layout；packing service 边界 | P1 | §11 |
-| CPU kernels | 部分闭环 | KVCacheUpdate/Attention 缺失；量化和优化覆盖不足 | P0/P1 | [01](01-inference-session-generate-readiness.md)、[04](04-cpu-gemm-optimization.md)、§12 |
+| CPU kernels | 部分闭环 | reference 主链已齐备（6/6）；量化和优化覆盖不足 | P0/P1 | [01](01-inference-session-generate-readiness.md)、[04](04-cpu-gemm-optimization.md)、§12 |
 | memory/allocator | 基础已闭环 | activation/workspace/KV provider 统一、budget/NUMA policy | P1 | §13 |
 | shape inference | 基础已闭环 | specialization 诊断与 runtime constraint 证据；不需通用动态 shape engine | P1 | §14 |
 | base/dtypes/container | 当前足够 | 问题驱动维护；不作为推理主链重构目标 | P2 | §14 |
@@ -215,6 +215,8 @@ Operator inference 声明的支持范围可以宽于某个 backend，但必须�
 - [CPU ElementwiseMul](../../src/backend/cpu/kernels/elementwise_mul/elementwise_mul_entry.cpp)
 
 ### 6.3 P0：Attention / KVCacheUpdate execution contract
+
+**状态（2026-09-17）**：下列冻结项已随 reference chain 落地（`cpu::kvcache_update_f32_reference` / `cpu::attention_f32_reference` + `KVCache*Binding` 窄契约 + `KVCacheUpdateKernel.*`/`CPUKernelAttention.*` 测试）。
 
 需要冻结：
 
@@ -451,12 +453,9 @@ Kernel descriptor/resolve 需要逐步表达：
 
 ### 12.1 P0：完整 reference chain
 
-当前 Llama FP32 reference 主链仅剩关键缺口：
+**状态（2026-09-17）：主链已齐备**——`KVCacheUpdate` 与 causal `Attention`（含 GQA、Prefill/Decode 与稳定 softmax）均已落地（`cpu::kvcache_update_f32_reference` / `cpu::attention_f32_reference`），layout/alias/bounds 与数值测试覆盖于 `KVCacheUpdateKernel.*` / `CPUKernelAttention.*`。
 
-- `KVCacheUpdate`；
-- causal `Attention`（含 GQA/MQA、Prefill/Decode 和稳定 softmax）。
-
-必须先实现 correctness-first reference path，再谈 fused/paged/SIMD Attention。reference kernel 需要完整覆盖 layout/alias/bounds 与数值测试，并进入 production Executor vertical slice。
+后续：进入 production Executor vertical slice（ExecutableModel/真实绑定/端到端数值验收，见 [01](01-inference-session-generate-readiness.md) §3.2–§3.5），再谈 fused/paged/SIMD Attention。
 
 ### 12.2 P1：性能优先级
 
@@ -768,3 +767,4 @@ microkernel
 | 日期 | 版本 | 变更 |
 |---|---|---|
 | 2026-09-16 | 1.0 | 首次建立全仓库 capability gap、模块演进裁决、依赖顺序和 Batch A–F 路线图 |
+| 2026-09-17 | 1.1 | 同步 Attention/KVCacheUpdate reference kernel 落地：§3 模块总表、§6.3、§12.1 状态更新 |

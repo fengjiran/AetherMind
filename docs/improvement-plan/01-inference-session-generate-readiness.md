@@ -1,9 +1,9 @@
 # InferenceSession / Generate 前置闭环计划
 
 - **状态**: Draft
-- **版本**: 1.4
+- **版本**: 1.5
 - **日期**: 2026-09-03
-- **最近更新**: 2026-09-16
+- **最近更新**: 2026-09-17
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **关联模块**: compiler / execution / runtime / backend / model / API orchestration
@@ -57,7 +57,7 @@
 
 ### 2.2 当前 CPU kernel 覆盖
 
-真实 CPU registry 当前有（截至 2026-09-16，共 14 类、20 个描述符；reference 命名统一为 `cpu::<op>_f32_reference`）：
+真实 CPU registry 当前有（截至 2026-09-17，共 15 类、21 个描述符；reference 命名统一为 `cpu::<op>_f32_reference`）：
 
 | OpType | Reference kernel | Optimized kernel | Generate baseline 状态 |
 |---|---:|---:|---|
@@ -68,7 +68,7 @@
 | Linear | FP32 reference | 无 | 可用 |
 | RoPE | FP32 reference | 无 | 可用 |
 | KVCacheUpdate | FP32 reference（窄 KV binding） | 无 | 可用 |
-| Attention | 无 | 无 | 阻塞 |
+| Attention | FP32 reference（kv_read 读绑定） | 无 | 可用 |
 | Silu | FP32 reference | 无 | semantic Llama baseline 不直接依赖（SiluMul 未融合对偶） |
 | SiluMul | FP32 reference | 无 | 可用 |
 | Argmax | FP32 reference | 无 | 可用 |
@@ -76,7 +76,7 @@
 | GateUpLinear | FP32 reference（packed-only） | 无 | 可用（需 O2 融合 + `enable_packed_weights=true`） |
 | AddRmsNorm | FP32 reference（plain + packed identity） | 无 | 可用（O2 fused path；packed 需 `enable_packed_weights=true`） |
 
-当前 O2 默认 semantic pipeline 会产生 `QkvLinear`、`GateUpLinear` 和 `AddRmsNorm`。三者的 packed kernel 与 execution packed 绑定链路（`ExecutionStep.packed_weights` → packing request → `WeightPrepackPlanner` → plan build → execute）均已落地并走通全链路测试；AddRmsNorm 另外保留 plain FP32 reference descriptor。execution lowering 仍是一个 semantic node 对应一个 kernel step，且不存在 kernel-sequence fallback；O2/完整图的剩余 kernel 缺口收敛为 Attention（KVCacheUpdate 已落地，见 §3.1）。
+当前 O2 默认 semantic pipeline 会产生 `QkvLinear`、`GateUpLinear` 和 `AddRmsNorm`。三者的 packed kernel 与 execution packed 绑定链路（`ExecutionStep.packed_weights` → packing request → `WeightPrepackPlanner` → plan build → execute）均已落地并走通全链路测试；AddRmsNorm 另外保留 plain FP32 reference descriptor。execution lowering 仍是一个 semantic node 对应一个 kernel step，且不存在 kernel-sequence fallback；**baseline 全链路 kernel 已全部齐备（15 类 21 描述符全部可用）**，剩余准入项为 ExecutableModel 入口、真实权重绑定与端到端证据（见 §3.2–§3.5）。
 
 ### 2.3 当前 packed-weight 能力
 
@@ -104,18 +104,18 @@
 
 KVCache Manager 的 correctness 修复、lease/append transaction、execution binding 与长期 Paged KV 边界由 [KVCache Manager 演进方案](05-kv-cache-manager-evolution.md) 详细定义；本节只保留 Generate 闭环所需的集成门禁。
 
-该数据链已落地（commits 66df0256..24c60799）：
+该数据链已落地（commits 66df0256..24c60799；query interval 扩展 5afa877c/299fb93d）：
 
 ```text
 LoweredGraph StateBinding
     → ExecutionKVCacheStateIdentity（execution 自有的 layer/slot identity，进入 ExecutionPlan / ExecutionStep）
     → LayerRunner 组装窄绑定（KVCacheAppendBinding / KVCacheReadBinding）
     → KernelContext::kv_append / kv_read（仅单次同步调用有效）
-    → KVCacheUpdate kernel（已消费；Attention 读绑定机制已就绪）
+    → KVCacheUpdate / Attention kernel（均已消费：`kv_append` / `kv_read`）
 ```
 
-- [kv_cache_binding.h](../../include/aethermind/base/kv_cache_binding.h)：`KVCacheLayerStorageBinding`（key/value 指针、dtype、layer、kv_heads、head_dim、capacity、strides）+ `KVCacheAppendBinding`（本 plan 写入窗口 `[begin, end)`，`end` 为本地可见前沿）+ `KVCacheReadBinding`（`[0, committed_end)` 跨 plan 可见，`[committed_end, visible_end)` 仅同一 plan 内后续已验证 step 可读）。
-- commit 事务：`LayerRunner` 只在完整 plan 成功后推进 commit watermark；plan 级 binding/commit/可见窗口语义由 `KVCacheUpdateKernel.*` 覆盖，manager 级前沿与越界由 `test_kv_cache_manager.cpp` 覆盖。
+- [kv_cache_binding.h](../../include/aethermind/base/kv_cache_binding.h)：`KVCacheLayerStorageBinding`（key/value 指针、dtype、layer、kv_heads、head_dim、capacity、strides）+ `KVCacheAppendBinding`（本 plan 写入窗口 `[begin, end)`，`end` 为本地可见前沿）+ `KVCacheReadBinding`（`[0, committed_end)` 跨 plan 可见，`[committed_end, visible_end)` 仅同一 plan 内后续已验证 step 可读；`query_begin/query_end` 为 attention query 行的绝对位置区间，由 LayerRunner 填充）。
+- commit 事务：`LayerRunner` 只在完整 plan 成功后推进 commit watermark；plan 级 append/commit 语义由 `KVCacheUpdateKernel.*` 覆盖、read 侧 query interval 与几何由 `CPUKernelAttention.*` 覆盖；manager 级前沿与越界由 `test_kv_cache_manager.cpp` 覆盖。
 - kernel 侧只接收窄绑定：KV 存储指针与窗口经 `KernelContext` 逐调用传入（`KVCacheUpdateF32KernelArgs` 刻意不携带 cache 指针与位置），不进 prepared params。
 
 硬性约束（已落实）：
@@ -340,12 +340,12 @@ state binding
 
 ### M3：最小 FP32 reference kernel 链
 
-建议顺序（截至 2026-09-16 已完成 5/6；fused 变体 kQkvLinear/kGateUpLinear（packed-only）与 kAddRmsNorm（plain + packed identity）亦已提前落地，见 §2.2）：
+建议顺序（截至 2026-09-17 已完成 6/6；fused 变体 kQkvLinear/kGateUpLinear（packed-only）与 kAddRmsNorm（plain + packed identity）亦已提前落地，见 §2.2）：
 
 1. Linear；✅ 已完成（`cpu::linear_f32_reference`）
 2. RoPE；✅ 已完成（`cpu::rope_f32_reference`，含参数化 HF golden 对拍）
 3. KVCacheUpdate（与 M1 联合）；✅ 已完成（`cpu::kvcache_update_f32_reference` + 窄 KV binding 链路）
-4. causal GQA Attention；阻塞（无 reference kernel）
+4. causal GQA Attention；✅ 已完成（`cpu::attention_f32_reference`；`KVCacheReadBinding` query interval 语义）
 5. SiluMul；✅ 已完成（`cpu::silu_mul_f32_reference`；kSilu 对偶 `cpu::silu_f32_reference` 同步落地）
 6. Argmax。✅ 已完成（`cpu::argmax_f32_reference`）
 
@@ -474,7 +474,7 @@ Decode 循环中不得变化：
 - [x] state binding identity 从 LoweredGraph 到达 kernel（`ExecutionKVCacheStateIdentity` 进入 plan，窄绑定经 `KernelContext` 到达 kernel，见 §3.1）；
 - [x] kernel 获得窄 KV binding，不依赖 Runtime/Session 宽对象（`KVCacheAppendBinding`/`KVCacheReadBinding` 逐调用传入）；
 - [ ] baseline pipeline 可以通过真实 CpuBackend 构建完整 plan；
-- [ ] Linear/RoPE/KVCacheUpdate/Attention/SiluMul/Argmax reference kernel 可用（进度 5/6：Linear、RoPE、KVCacheUpdate、SiluMul、Argmax 可用；Attention 待实现）；fused QkvLinear/GateUpLinear/AddRmsNorm 亦已落地；
+- [x] Linear/RoPE/KVCacheUpdate/Attention/SiluMul/Argmax reference kernel 可用（6/6 全部可用）；fused QkvLinear/GateUpLinear/AddRmsNorm 亦已落地；
 - [ ] `PrepareExecutableModel` 可从真实 `LoweredModelArtifact` 构建；
 - [ ] real weights 可自动生成完整 external bindings；
 - [ ] Prefill/Decode phase-plan 合同已验证；
@@ -506,3 +506,4 @@ Decode 循环中不得变化：
 | 2026-09-16 | 1.2 | 同步 §2.2/§2.3：新增 QkvLinear/GateUpLinear（packed-only, cpu_identity）行与 packed 能力说明，O2 fused 阻塞项收敛为 AddRmsNorm；M3 与门禁清单同步 |
 | 2026-09-16 | 1.3 | AddRmsNorm（plain + packed identity）落表；PRD 链接与术语（当前产品口径）更新 |
 | 2026-09-16 | 1.4 | 同步 KVCacheUpdate 与窄 KV binding 链路：§2.2 覆盖表（14 类 20 描述符）、§3.1 闭环重写、M1 状态、M3 5/6、门禁前两项勾选 |
+| 2026-09-17 | 1.5 | 同步 Attention kernel 与 read binding query interval：§2.2（15 类 21 描述符）、§3.1、M3 6/6、门禁 kernel 项勾选 |

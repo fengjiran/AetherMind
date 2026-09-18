@@ -1,7 +1,7 @@
 # CPU GEMM 优化方案
 
 - **状态**: In Progress
-- **版本**: 1.7
+- **版本**: 1.8
 - **日期**: 2026-09-18
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
@@ -181,12 +181,7 @@ scalar optimized 必须是独立实现，不能修改或覆盖 `RunGemmF32Refere
 - 使用 `1×4`、`2×4`、`4×4` 等 scalar register block 候选，具体大小由 benchmark 决定；
 - 不适配 fast path 的合法 stride/layout 走 reference-compatible fallback，不缩窄 operator 合同。
 
-必须区分两种“scalar”：
-
-1. **portable scalar source**：不使用 intrinsic，但允许编译器 auto-vectorization；这是可进入 production 的 portable fast path 候选；
-2. **strict non-SIMD diagnostic**：仅在独立 translation unit 或 benchmark variant 上关闭 loop/SLP vectorization，并通过反汇编确认无 packed SIMD；它用于归因 loop/layout/unroll 收益，不要求成为 production descriptor。
-
-不得对整个 `AetherMind` target 添加 `-fno-tree-vectorize`、`-fno-slp-vectorize` 或等价选项。portable scalar、strict diagnostic scalar、AVX2 必须使用同一 shape/layout 测试矩阵，以分别回答“算法/访存优化贡献多少”和“SIMD 额外贡献多少”。
+scalar optimized 不使用 intrinsic，但**允许编译器 auto-vectorization**（2026-09-18 简化决策：不建设 strict non-SIMD 归因变体，不做 loop/layout 与 vectorization 的贡献拆分，G1S-SCALAR-002 的 strict 目标撤销）。scalar 候选、未来 SIMD 候选与 reference 使用同一 shape/layout 测试矩阵与正确性合同。
 
 ### 4.4 ISA microkernel
 
@@ -336,7 +331,7 @@ Resolved ISA kernel
 
 - correctness oracle：`RunGemmF32Reference` 或算子 reference kernel；
 - performance baseline：当前 reference production descriptor；
-- scalar candidate：portable scalar optimized；strict non-SIMD variant 只用于诊断归因；
+- scalar candidate：scalar optimized（允许 auto-vectorization；不建设 strict 归因变体）；
 - ISA candidate：AVX2/AVX-512/量化 descriptor；
 - optional external ceiling：相同线程数的成熟 BLAS/oneDNN，仅作研究对照；
 - scalar 与特定 ISA 通过 `CpuFeaturePolicy` 或显式测试入口固定，不能依赖运行机器“碰巧”选择某个 kernel。
@@ -460,18 +455,21 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 
 ### G1S：portable scalar optimized
 
+**状态**：In Progress（backend-private candidate 与 opt-in production-like binding integration 已完成；production acceptance blocked by formal evidence）
+
 目标是在不依赖显式 SIMD 的前提下，独立验证 loop/layout、address generation、unroll、multi-accumulator 和 scalar register blocking 的收益，同时建立可移植的 optimized fallback。
 
 - 新增独立 `RunGemmF32ScalarOptimized` 或等价 backend-private driver，不修改 `RunGemmF32Reference`；
 - 分别覆盖 N-contiguous 与 K-contiguous RHS，优先优化 `M=1`/small-M；
 - 测试 pointer bumping、K unroll、multi-accumulator 与小型 scalar register block，所有参数由 benchmark 决定；
 - binding time 根据 concrete `M/N/K/stride` 选择 scalar fast driver 或 reference-compatible fallback；
-- portable scalar source 不使用 intrinsic，但允许编译器 auto-vectorization；
-- strict non-SIMD 仅作为独立 diagnostic build/benchmark，使用局部编译选项关闭 loop/SLP vectorization，并检查汇编；
+- scalar optimized source 不使用 intrinsic，但允许编译器 auto-vectorization（不建设 strict 归因变体，见 §4.3）；
 - direct microkernel 与 production Linear benchmark 使用相同 shape/layout/correctness matrix；
 - optimized FP32 accumulation 的误差相对 double reference 单独验收。
 
-退出条件：portable scalar 在目标 Decode canonical geomean 上有稳定收益；strict diagnostic 证明至少一部分收益来自 loop/layout 而非 SIMD；合法但不适合 fast path 的布局确定 fallback；reference oracle 完全不变；hot path 无新增分配。
+2026-09-18 已新增 `RunGemmF32ScalarOptimized`（单文件单入口）：首版仅实现 `M=1`、unit-stride lhs K/output N 的 K-contiguous 或 N-contiguous RHS，使用 `NR=4` 与 K unroll 2；所有其他 reference-legal layout 调回 `RunGemmF32Reference`。同日简化决策：移除 strict 归因变体与 exact/export-冻结机制，Linear 集成为 opt-in candidate descriptor 直调单入口（无函数指针冻结）。显式启用 `AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE=ON` 时注册 `cpu::linear_f32_scalar_candidate`；默认 OFF 时 `cpu::linear_f32_reference` 的 descriptor/name/entry 保持不变。首次本地 smoke、汇编与测试见 [G1S scalar 实验日志](../tests/operators/gemm/g1s-scalar-log.md)；opt-in integration 不构成 production acceptance。
+
+退出条件：scalar optimized 在目标 Decode canonical geomean 上有稳定收益；合法但不适合 fast path 的布局确定 fallback；reference oracle 完全不变；hot path 无新增分配（SIMD 归因要求已按 2026-09-18 简化决策撤销）。
 
 ### G1V：Decode direct-weight AVX2
 
@@ -559,7 +557,7 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | shape 在 kernel resolve 后才可见 | 无法选 GEMV/blocked path | binding-time internal driver；workspace/recipe 依赖 shape 时升级 specialization 合同 |
-| “scalar source” 被编译器自动向量化 | 错把 SIMD 收益归因于 loop/layout 优化 | portable scalar 与 strict non-SIMD diagnostic 分开；检查实际 Release 汇编 |
+| “scalar source” 被编译器自动向量化 | 收益归因模糊（已接受：不做拆分） | 不再区分 strict 变体；如需归因可回溯引入（该机制已于 2026-09-18 实现并验证后移除） |
 | recipe 只由 selector 决定 | 多 ISA layout 被误绑定 | descriptor-owned exact recipe + prepare-first packing request |
 | 通用 MatMul 合同拖累 Linear | optimized fast path 被任意 stride/broadcast 复杂化 | adapter 分层；合法但不适合 fast path 的 layout 在 descriptor 内走 compatible scalar driver，原本无法证明安全的 layout 才返回 `Unimplemented` |
 | benchmark 重复同一权重 | 高估 Decode cache locality | 同时报 hot 与 streaming artifact |

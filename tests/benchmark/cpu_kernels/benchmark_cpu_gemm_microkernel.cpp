@@ -12,6 +12,8 @@ namespace {
 
 using namespace aethermind;
 
+using GemmRunner = Status (*)(const cpu::detail::GemmF32Args&) noexcept;
+
 enum class RhsLayout {
     /// Logical B[K,N] is stored row-major; N is contiguous.
     kNContiguous,
@@ -42,7 +44,8 @@ const char* LayoutName(RhsLayout layout) noexcept {
     return "unknown";
 }
 
-Status ValidateGemmOutput(const cpu::detail::GemmF32Args& args) {
+Status ValidateGemmOutput(const cpu::detail::GemmF32Args& args,
+                          float error_tolerance) {
     for (int64_t row = 0; row < args.m; ++row) {
         for (int64_t col = 0; col < args.n; ++col) {
             double expected = 0.0;
@@ -65,7 +68,7 @@ Status ValidateGemmOutput(const cpu::detail::GemmF32Args& args) {
 
             const float absolute_error = std::fabs(actual - reference);
             const float relative_error = absolute_error / std::max(std::fabs(reference), 1.0e-6F);
-            if (absolute_error > 1.0e-5F && relative_error > 1.0e-5F) {
+            if (absolute_error > error_tolerance && relative_error > error_tolerance) {
                 return Status::Internal(
                         "GEMM microkernel benchmark disagrees with its independent oracle");
             }
@@ -100,8 +103,10 @@ void SetGemmCounters(benchmark::State& state,
             benchmark::Counter::OneK::kIs1000);
 }
 
-void BenchmarkGemmF32Reference(benchmark::State& state,
-                               RhsLayout rhs_layout) {
+void BenchmarkGemmF32(benchmark::State& state,
+                      RhsLayout rhs_layout,
+                      GemmRunner runner,
+                      float error_tolerance) {
     const int64_t m = state.range(0);
     const int64_t k = state.range(1);
     const int64_t n = state.range(2);
@@ -131,13 +136,13 @@ void BenchmarkGemmF32Reference(benchmark::State& state,
             .output_n_stride = 1,
     };
 
-    const Status correctness_run = cpu::detail::RunGemmF32Reference(args);
+    const Status correctness_run = runner(args);
     if (!correctness_run.ok()) {
         state.SkipWithError(correctness_run.ToString());
         return;
     }
 
-    const Status correctness = ValidateGemmOutput(args);
+    const Status correctness = ValidateGemmOutput(args, error_tolerance);
     if (!correctness.ok()) {
         state.SkipWithError(correctness.ToString());
         return;
@@ -145,7 +150,7 @@ void BenchmarkGemmF32Reference(benchmark::State& state,
 
     state.SetLabel(LayoutName(rhs_layout));
     for (auto _: state) {
-        const Status status = cpu::detail::RunGemmF32Reference(args);
+        const Status status = runner(args);
         if (!status.ok()) {
             state.SkipWithError(status.ToString());
             break;
@@ -157,11 +162,23 @@ void BenchmarkGemmF32Reference(benchmark::State& state,
 }
 
 void BM_GemmF32ReferenceNContiguous(benchmark::State& state) {
-    BenchmarkGemmF32Reference(state, RhsLayout::kNContiguous);
+    BenchmarkGemmF32(state, RhsLayout::kNContiguous,
+                     &cpu::detail::RunGemmF32Reference, 1.0e-5F);
 }
 
 void BM_GemmF32ReferenceKContiguous(benchmark::State& state) {
-    BenchmarkGemmF32Reference(state, RhsLayout::kKContiguous);
+    BenchmarkGemmF32(state, RhsLayout::kKContiguous,
+                     &cpu::detail::RunGemmF32Reference, 1.0e-5F);
+}
+
+void BM_GemmF32ScalarOptimizedNContiguous(benchmark::State& state) {
+    BenchmarkGemmF32(state, RhsLayout::kNContiguous,
+                     &cpu::detail::RunGemmF32ScalarOptimized, 1.0e-4F);
+}
+
+void BM_GemmF32ScalarOptimizedKContiguous(benchmark::State& state) {
+    BenchmarkGemmF32(state, RhsLayout::kKContiguous,
+                     &cpu::detail::RunGemmF32ScalarOptimized, 1.0e-4F);
 }
 
 benchmark::Benchmark* RegisterGemmShapes(benchmark::Benchmark* benchmark) {
@@ -178,11 +195,28 @@ benchmark::Benchmark* RegisterGemmShapes(benchmark::Benchmark* benchmark) {
             ->ArgNames({"M", "K", "N"});
 }
 
+benchmark::Benchmark* RegisterScalarGemmShapes(benchmark::Benchmark* benchmark) {
+    return benchmark
+            // The G1S candidate specializes M=1; keep direct comparisons
+            // shape-identical across reference, portable, and strict variants.
+            ->Args({1, 4096, 4096})
+            ->Args({1, 4096, 11008})
+            ->Args({1, 33, 31})
+            ->Args({1, 32, 33})
+            ->ArgNames({"M", "K", "N"});
+}
+
 const auto* const kGemmF32ReferenceNContiguous = RegisterGemmShapes(
         benchmark::RegisterBenchmark("BM_GemmF32ReferenceNContiguous",
                                      &BM_GemmF32ReferenceNContiguous));
 const auto* const kGemmF32ReferenceKContiguous = RegisterGemmShapes(
         benchmark::RegisterBenchmark("BM_GemmF32ReferenceKContiguous",
                                      &BM_GemmF32ReferenceKContiguous));
+const auto* const kGemmF32ScalarOptimizedNContiguous = RegisterScalarGemmShapes(
+        benchmark::RegisterBenchmark("BM_GemmF32ScalarOptimizedNContiguous",
+                                     &BM_GemmF32ScalarOptimizedNContiguous));
+const auto* const kGemmF32ScalarOptimizedKContiguous = RegisterScalarGemmShapes(
+        benchmark::RegisterBenchmark("BM_GemmF32ScalarOptimizedKContiguous",
+                                     &BM_GemmF32ScalarOptimizedKContiguous));
 
 } // namespace

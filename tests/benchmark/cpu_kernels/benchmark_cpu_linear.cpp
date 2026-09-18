@@ -108,7 +108,8 @@ Status ValidateLinearAgainstGemmReference(const ResolvedKernel& kernel,
                                           float* output,
                                           int64_t m,
                                           int64_t k,
-                                          int64_t n) {
+                                          int64_t n,
+                                          float error_tolerance) {
     const auto output_elements = static_cast<size_t>(m * n);
     std::vector<float> expected(output_elements,
                                 std::numeric_limits<float>::quiet_NaN());
@@ -140,7 +141,7 @@ Status ValidateLinearAgainstGemmReference(const ResolvedKernel& kernel,
         const float absolute_error = std::fabs(actual - reference);
         const float relative_error =
                 absolute_error / std::max(std::fabs(reference), 1.0e-6F);
-        if (absolute_error > 1.0e-5F && relative_error > 1.0e-5F) {
+        if (absolute_error > error_tolerance && relative_error > error_tolerance) {
             return Status::Internal(
                     "Linear benchmark correctness guard disagrees with GEMM reference");
         }
@@ -252,9 +253,14 @@ void BenchmarkLinearPreparedPath(benchmark::State& state,
         }
     }
 
+#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
+    constexpr float kErrorTolerance = 1.0e-4F;
+#else
+    constexpr float kErrorTolerance = 1.0e-5F;
+#endif
     const Status correctness = ValidateLinearAgainstGemmReference(
             *resolved, prepared.front(), input.data(),
-            weights.data(), output.data(), m, k, n);
+            weights.data(), output.data(), m, k, n, kErrorTolerance);
     if (!correctness.ok()) {
         state.SkipWithError(correctness.ToString());
         return;
@@ -301,6 +307,16 @@ void BM_LinearBindingSpecialization(benchmark::State& state) {
     BenchmarkLinearPreparedPath(state, LinearBenchmarkMode::kBindingSpecialization);
 }
 
+#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
+void BM_LinearPreparedScalarCandidateHot(benchmark::State& state) {
+    BenchmarkLinearPreparedPath(state, LinearBenchmarkMode::kPreparedHot);
+}
+
+void BM_LinearPreparedScalarCandidateStreaming(benchmark::State& state) {
+    BenchmarkLinearPreparedPath(state, LinearBenchmarkMode::kPreparedStreaming);
+}
+#endif
+
 BENCHMARK(BM_LinearPreparedHot)
         // Decode projections.
         ->Args({1, 4096, 4096})
@@ -346,5 +362,28 @@ BENCHMARK(BM_LinearBindingSpecialization)
         ->Args({1, 33, 31})
         ->Args({2, 32, 33})
         ->ArgNames({"M", "K", "N"});
+
+#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
+BENCHMARK(BM_LinearPreparedScalarCandidateHot)
+        // This resolves the opt-in descriptor and invokes ResolvedKernel::fn.
+        ->Args({1, 4096, 4096})
+        ->Args({1, 4096, 6144})
+        ->Args({1, 4096, 11008})
+        ->Args({1, 4096, 22016})
+        ->Args({1, 11008, 4096})
+        ->Args({1, 4096, 32000})
+        ->Args({1, 33, 31})
+        ->Args({1, 32, 33})
+        ->ArgNames({"M", "K", "N"});
+
+BENCHMARK(BM_LinearPreparedScalarCandidateStreaming)
+        ->Args({1, 4096, 4096})
+        ->Args({1, 4096, 6144})
+        ->Args({1, 4096, 11008})
+        ->Args({1, 4096, 22016})
+        ->Args({1, 11008, 4096})
+        ->Args({1, 4096, 32000})
+        ->ArgNames({"M", "K", "N"});
+#endif
 
 } // namespace

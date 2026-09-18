@@ -90,6 +90,12 @@ public:
         std::vector<HfSafetensorsEntry> entries;
         SkipWhitespace();
         if (TryConsume('}')) {
+            // An empty header object must not be followed by data bytes;
+            // otherwise the contiguity walk below would see no entries.
+            if (data_size_ > 0) {
+                return Status::InvalidArgument(
+                        "Safetensors file has a data region but no tensor entries");
+            }
             return entries;
         }
 
@@ -134,6 +140,13 @@ public:
         }
 
         if (data_size_ > 0 || !entries.empty()) {
+            // A data region without any tensor entries is malformed; the
+            // contiguity walk below would otherwise read past an empty list.
+            if (entries.empty()) {
+                return Status::InvalidArgument(
+                        "Safetensors file has a data region but no tensor entries");
+            }
+
             std::vector<const HfSafetensorsEntry*> sorted;
             sorted.reserve(entries.size());
             for (const auto& e: entries) {

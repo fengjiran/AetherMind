@@ -262,6 +262,35 @@ TEST(ModelLoader_HfSafetensorsFileTest, KeepsMappedViewAliveAfterFileIsRemoved) 
     EXPECT_FLOAT_EQ(ReadFloat(view.data + sizeof(float)), 8.0f);
 }
 
+TEST(ModelLoader_HfSafetensorsFileTest, RejectsEmptyHeaderWithTrailingDataBytes) {
+    TempDirectory temp_dir;
+    const auto raw_bytes = FloatArrayToBytes(std::array<float, 1>{1.0f});
+    const auto path = WriteSafetensorsFile(temp_dir.Path(), "{}", raw_bytes);
+
+    const auto file = HfSafetensorsFile::Open(path);
+
+    ASSERT_FALSE(file.ok());
+    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(file.status().message().find("no tensor entries"),
+              std::string::npos);
+}
+
+TEST(ModelLoader_HfSafetensorsFileTest, RejectsMetadataOnlyHeaderWithTrailingDataBytes) {
+    TempDirectory temp_dir;
+    const auto raw_bytes = FloatArrayToBytes(std::array<float, 1>{1.0f});
+    const auto path = WriteSafetensorsFile(
+            temp_dir.Path(),
+            R"({"__metadata__":{"format":"pt"}})",
+            raw_bytes);
+
+    const auto file = HfSafetensorsFile::Open(path);
+
+    ASSERT_FALSE(file.ok());
+    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(file.status().message().find("no tensor entries"),
+              std::string::npos);
+}
+
 TEST(ModelLoader_HfSafetensorsFileTest, RejectsShapeNumelOverflow) {
     TempDirectory temp_dir;
     const auto path = WriteSafetensorsFile(

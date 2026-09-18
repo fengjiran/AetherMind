@@ -2,7 +2,7 @@
 title: 算子优化指南
 type: topic
 category: 算子开发
-updated: 2026-05-31
+updated: 2026-09-19
 tags:
   - operator-optimization
   - cpu
@@ -398,6 +398,43 @@ speedup_vs_baseline=...
 max_abs_diff=...
 max_rel_diff=...
 ```
+
+### 2.4.2 噪声 floor、repetitions 与最小可信 delta
+
+固定的百分比回退阈值（例如"差异超过 5% 即判 REGRESS"）不是可直接套用的常数：噪声 floor 是"机器 × benchmark 组"的属性，同一组在不同机器上可以相差一个数量级，且最差组可能完全不同。任何自动门禁在启用前必须完成以下量化。
+
+**1. 分解方差来源**
+
+| 来源 | 度量方式 | 提高 repetitions 是否有效 |
+|---|---|---|
+| 进程内方差：同一 benchmark 进程内各 repetition 的抖动 | 每 case 的 CV / stddev | 有效 |
+| 跨进程系统偏移：换一次进程就整体平移 | 同实现多进程 median 的分布宽度 | **无效** |
+
+当实测显示进程内 CV 远小于跨进程偏移时，不确定性几乎全部来自后者，提高 `--benchmark_repetitions` 不会收紧门禁。有效手段是：
+
+1. 重复多个**独立进程**，比较"每进程 median 的分布"，而不是单进程内的分位数；
+2. 把 baseline 与 candidate 调度进**同一进程内交替执行**（交错 A/B），使共同偏移在配对差值中抵消；
+3. 保存原始 per-repetition 行，聚合值只在分析阶段产生。
+
+**2. 用零改动样本校验阈值本身**
+
+1. 把**同一份实现**的两轮采集当作 baseline/candidate 互比；
+2. 若被判出 REGRESS 或 IMPROVE，该阈值在该组上不可用作自动门禁，只能降级为人工判读提示；
+3. 只有噪声 floor 明显低于阈值的组进入自动门禁；
+4. 判读 candidate 时使用**该机器该组的噪声 floor**作为最小可信 delta，而不是全局固定值。
+
+**3. 绑定环境与拓扑可解释性**
+
+1. 记录 CPU 型号、microcode、kernel、编译器及版本、构建参数、governor、SMT、NUMA binding、内存频率与有效 CPU feature；
+2. 虚拟化层可能把非对称拓扑（P/E 混合核、SMT 兄弟）伪造成对称 CPU，此时 `taskset` 只是咨询性绑定，"固定到某一类核"这一采集前提无法建立；
+3. 需要核类别或 SMT 控制的结论只在裸机采集，虚拟化环境的结果须显式标注为指示性；
+4. 采集前实测逐逻辑 CPU 吞吐与 SMT 兄弟并发争用，确认绑定语义后再定义门禁组。
+
+**4. 结论要求**
+
+小于该组噪声 floor 的单次差异不是收益证据；未达到门禁的实现不得提高 production descriptor priority。
+
+> 实例：两台 WSL2 机器上的逐组噪声 floor、以及"同实现 A/B 自比被误判"的实测，见 [G0 配对 A/B 验证报告](../tests/operators/gemm/gemm_g0_paired_ab_validation_2026-09-18.md)与 [G0 baseline 验证报告（DESKTOP-QHIHOGQ）](../tests/operators/gemm/gemm_g0_baseline_validation_desktop-qhihogq_2026-09-19.md)。
 
 ---
 

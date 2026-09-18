@@ -3,7 +3,7 @@
 - **算子/工作包**: GEMM / G0 合同与证据基线
 - **专项提案**: [CPU GEMM 优化方案](../../../improvement-plan/04-cpu-gemm-optimization.md)
 - **采集机**: `DESKTOP-54H5MMI` — Intel Core Ultra 9 285H（Arrow Lake-H，16 核、SMT off、单 NUMA、AVX2+FMA+AVX-VNNI、无 AVX-512/AMX），WSL2 kernel 6.6.87.2
-- **日志范围**: 2026-09-18 首次机器级 baseline、独立复跑与 Roofline 定位
+- **日志范围**: 2026-09-18 首次机器级 baseline、独立复跑与 Roofline 定位；2026-09-19 提案 §7 汇总范围值归档
 - **原始数据位置**: `benchmark-results/operators/gemm/20260918T012602Z_5cbd378695bb_DESKTOP-54H5MMI_g0-baseline/` — 该目录 gitignored、不随仓库分发，**仅存在于上述采集机本地磁盘**，在其他机器上不存在且不可恢复
 - **正式报告**: [G0 baseline validation](gemm_g0_baseline_validation_2026-09-18.md)；[Roofline 定位分析](gemm_g0_roofline_analysis_2026-09-18.md)
 
@@ -16,6 +16,7 @@
 | 2026-09-18 | G0-BASELINE-001 | 当前 benchmark 能分离 direct GEMM、prepared Linear、binding、streaming 与 packing 成本 | 结构和调用链有效；WSL2 噪声不支持百分比级 production gate | Needs More Data |
 | 2026-09-18 | G0-BASELINE-002 | 相邻配对交错 A/B 与 raw repetitions 能给出可归因的本机噪声 floor | canonical compute 中位噪声 ~2–3%（顺序两轮为 ±10–25%）；binding/小形状仍超 5% | Closed locally / Production gate Needs More Data |
 | 2026-09-18 | G0-BASELINE-003 | 现有 baseline 数据足以对全部 canonical 形状做单线程 Roofline 定位 | canonical 形状 ≤27% cap；M=1 记忆侧（~26% Triad）/ M≥16 计算侧（~2.4% 峰值）；访问顺序主导 | Closed locally（指示性定位） |
+| 2026-09-19 | G0-BASELINE-004 | 提案 §7 粘贴的本机汇总范围值在本目录已有权威副本 | 部分范围值无副本，已补录并标注与单 case median 的口径差异；提案侧删除副本 | Closed locally |
 
 ## 2026-09-18 — G0-BASELINE-001：首次机器级 reference baseline
 
@@ -178,4 +179,44 @@ context.json SHA256: 902717d37212ecf0946a6d5ecbeffa01f0d6d5112dcf242ad454679f3e2
 
 - **Closed locally**：Roofline 定位分析归档、纳入 [GEMM 实验记录与验证报告索引](README.md)；
 - G0 门禁清单不变（production 百分比级门禁仍 Needs More Data）。
+
+## 2026-09-19 — G0-BASELINE-004：提案 §7 汇总范围值归档
+
+### 1. 假设
+
+专项提案 `04-cpu-gemm-optimization.md` §7 曾直接粘贴本机 baseline 的跨形状汇总范围值。按工作流「专项提案只保留工作包状态、当前结论和正式验证报告链接」与「同一事实只在一个位置详述」，这些数值必须先在本日志拥有权威副本，才能从提案删除。
+
+### 2. 代码与环境
+
+- 数据来源：G0-BASELINE-001 baseline run（commit `5cbd378695bb90d97fa4273a7359bf2bfea20e8f`），**本次不新增采集**；
+- 触发原因：2026-09-19 文档拓扑拆分时逐值 grep，发现下列范围值在 `docs/tests/operators/gemm/` 内无完整副本（既有报告只记了单 case median）；
+- 本文所有数值仍只对 `DESKTOP-54H5MMI` 成立，口径与不可跨机复用约束与本日志开头一致。
+
+### 3. 覆盖内容
+
+补录跨 canonical shape 的汇总范围，并显式标注它与既有报告单 case median 的聚合口径关系。
+
+### 4. 已验证事实（补录自提案 §7）
+
+| 指标 | 本机汇总范围 | 与既有报告副本的关系 |
+|---|---|---|
+| reference 访问顺序归因（direct GEMM） | K-contiguous 2.6–3.0 GFLOPS；N-contiguous 0.2–0.29 GFLOPS（约 10–14×） | 跨形状范围；单 case median 见验证报告 §6.1（2.818 / 0.205）；Roofline 报告按 6 形状统计的倍差为 11–14×，两者为不同形状子集 |
+| prepared Linear compute | 2.85–3.2 GFLOPS（全 canonical 形状稳定带） | 跨形状范围；单 case median 2.916（hot）/ 2.974（streaming） |
+| Decode `M=1` 权重流读 | 5.3–6.3 GiB/s logical | §6.5 logical 下界口径，非 DRAM traffic；与 Roofline 报告「有效带宽 5.6–6.1 GB/s」分母不同，不可直接互换 |
+| binding specialization | 0.28–0.40 µs/call | 跨形状范围；单 case median 359 ns |
+| `cpu_identity` cold packing | 3.4–4.2 GB/s effective；size amplification 1.0 | 与验证报告单 case 3.128 effective GB/s 存在口径差异（疑为是否计入目标缓冲写入与分配开销），差值未超本机噪声 floor；权威为本机 gitignored JSON |
+
+### 5. 推断
+
+提案里的"范围"与报告里的"单 case median"是同一原始数据的两种聚合口径；删除提案副本不损失信息，但聚合口径必须显式标注，否则换机重采时无法与本机对齐。
+
+### 6. 尚未满足
+
+上述范围的逐 case 原始行仅存在于本机 gitignored JSON；durable retention URL 仍缺（与提案 G0 未满足项一致）。`3.128` 与 `3.4–4.2` 的 packing 口径差异未在本文裁决。
+
+### 7. 决定
+
+- **Closed locally**：本条为上述范围值的权威归档位置，提案 §7 对应段落改为指向本日志与三份报告；
+- 不修改既有报告结论；packing 口径差异记为待复核项，在裸机复采时用同一脚本口径消除。
+
 

@@ -19,6 +19,7 @@
 - 按提案 §6.7（baseline/candidate 必须同机、同配置）与 §6.5（不得跨微架构比较原始计数），任一采集机的数值**都不能作为另一台的基线或门禁参照**。
 - 因此 G0 状态按机器计：某台机器 Baseline Complete 不代表其他机器 Complete；每台目标机必须各自采集并归档自己的 raw artifact 后才能判定。
 - 与机器无关、可在任何机器由源码复核的部分：G0 benchmark/测试/采集脚本本身、correctness 契约测试、reference 反汇编为纯标量的事实、G1S candidate 入口与 fallback 边界、opt-in descriptor 注册逻辑。
+- **与提案的分工**（2026-09-19 固化）：[专项提案](../../../improvement-plan/04-cpu-gemm-optimization.md)只保留优化原理、合同、工作包状态与指向本目录的链接；机器级性能数值、噪声 floor 与 Roofline 百分比的**权威位置是本目录**，不得回填进提案，也不得跨机引用。噪声 floor 的量化方法本身属于[算子优化指南 §2.4.2](../../../guides/operator_optimization_guide.md)。
 
 | 日期 | 类型 | 文件 | 采集机 | 结论 | 状态 |
 |---|---|---|---|---|---|

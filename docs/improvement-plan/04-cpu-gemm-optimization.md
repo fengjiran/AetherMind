@@ -1,8 +1,8 @@
 # CPU GEMM 优化方案
 
 - **状态**: In Progress
-- **版本**: 1.8
-- **日期**: 2026-09-18
+- **版本**: 1.9
+- **日期**: 2026-09-19
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **优化方法基线**: [算子优化指南](../guides/operator_optimization_guide.md)
@@ -57,7 +57,7 @@ AetherMind 不应新增 semantic `Gemm` operator。当前 GEMM 是 CPU backend �
 | packing recipe | `CpuWeightPrepacker::RecipeFor(selector)` 返回全局 `cpu_identity` | 不足以表达 AVX2/AVX-512/AMX 或 tile/version 不同的 layout |
 | CPU dispatch | 已有 AVX2/FMA/AVX-512/VNNI/AMX、NEON/DotProd/I8MM/SVE 等 capability model | feature gate 基础可复用；当前仅 RMSNorm 有 AVX2+FMA optimized descriptor |
 | threading | 当前产品边界为单请求、单线程，现有 kernel 也保持单线程 | 首轮优化保持单线程；并行化属于 runtime 级后续工作 |
-| benchmark | Google Benchmark；G0 已提供 Linear prepared-path、binding-cost 与 `cpu_identity` packing 基线 | 当前只有 reference descriptor；首次机器级基线已于 2026-09-18 采集（见 §7 G0，WSL2 环境限制与可重复性边界已记录） |
+| benchmark | Google Benchmark；G0 已提供 Linear prepared-path、binding-cost 与 `cpu_identity` packing 基线 | 当前只有 reference descriptor；机器级基线已在 `DESKTOP-54H5MMI`（Core Ultra 9 285H）与 `DESKTOP-QHIHOGQ`（i9-12900H）各自采集（见 §7 G0）。按 §6.7 同机要求，两者数据**互不替代、不可跨机复用**，其余机器须各自重采 |
 
 ### 2.1 当前主要瓶颈
 
@@ -402,6 +402,26 @@ python3 tools/compare_benchmark_json.py \
 
 不预先规定“必须达到某个 GFLOP/s”。在首轮基线采集后，结合目标 CPU 的可实现峰值和 memory bandwidth，为各 shape 类别设置硬门禁。
 
+#### 6.8.1 噪声 floor 是机器属性，必须按机器按组量化
+
+上述 5% 回退阈值**不是**一个可以直接套用的常数。两台采集机的实测结果表明：
+
+| 组 | `DESKTOP-54H5MMI`（285H）median | `DESKTOP-QHIHOGQ`（12900H）median |
+|---|---:|---:|
+| microkernel | 2.62% | 1.72% |
+| linear_hot | 1.95% | 3.89% |
+| linear_streaming | 3.08% | 5.17% |
+| linear_binding | **12.08%** | **0.90%** |
+| packing | 4.70% | **0.28%** |
+
+同一组在两台上可以相差一个数量级，且最差组完全不同（285H 是 binding，12900H 是 streaming）。因此：
+
+- 5% 阈值必须在**每台机器、每个 benchmark 组**上先用量化的噪声 floor 校验，只有 floor 明显低于 5% 的组才可作为自动门禁；
+- 在 12900H 上，`linear_binding` 与 `packing` 满足条件，`microkernel`/`linear_hot`/`linear_streaming` 不满足；
+- 判读 candidate 时使用**该机器该组的噪声 floor**作为最小可信 delta，而不是固定 5%；
+- 必须区分**进程内方差**与**跨进程偏移**。12900H 的实测显示进程内 CV 仅 0.03–0.04%，而跨进程系统偏移达 0.28–5.17%，即不确定性几乎全部来自后者。这种情况下提高 `--benchmark_repetitions` **无效**，有效手段是重复多个独立进程并比较「每进程 median 的分布」，或把 baseline/candidate 调度进同一进程内交替执行；
+- 采集脚本必须能证明阈值本身有效：把**同一份实现**的两轮 A/B 互比，若被判出 REGRESS/IMPROVE，则该阈值在该组上不可用作自动门禁（12900H 上 `linear_streaming` 被判出 4 个 REGRESS、`microkernel` 出现 −16.40% 的 "IMPROVE"）。
+
 ## 7. 实施路线与证据门禁
 
 G0、G1S、G1V 与 G2–G6 是带依赖关系的工作包，不是要求机械串行执行的产品阶段。G0 是所有性能工作的前置门禁；G1S 先建立独立 scalar optimized 证据，G1V 再量化 SIMD 的额外贡献；G2 可以在 scalar 接口边界冻结后并行推进 exact recipe；G3、G5 和 G6 只有在 benchmark 或产品需求提供明确证据时才进入实施。任何工作包未达到退出条件时，不得仅凭 microbenchmark 提高 production descriptor priority。
@@ -419,7 +439,9 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 
 ### G0：合同与证据基线
 
-**状态**：Local Baseline Complete / Production Gate Needs More Data
+**状态**：Baseline Complete on `DESKTOP-54H5MMI` and `DESKTOP-QHIHOGQ` / Production Gate Needs More Data / **Not Collected on Other Machines**
+
+状态按机器计。G0 的 benchmark、测试与采集脚本属于仓库资产，跨机可用；但机器级 baseline 数据不可跨机复用，每台目标机必须各自完成一次采集并归档自己的 raw artifact。
 
 目标是先建立可重复、可解释的 correctness 与性能事实，不修改 production 优先级。
 
@@ -440,16 +462,28 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 
 采集时分别保存 hot、streaming、binding 与 packing JSON；不要将它们合并为一个几何平均值。可使用 [第 6.7 节](#67-运行协议) 的命令和 `tools/compare_benchmark_json.py` 对同一模式、同一 shape 的 baseline/candidate JSON 比较。
 
-**G0 基线采集记录（2026-09-18）**：run id `20260918T012602Z_5cbd378695bb_DESKTOP-54H5MMI_g0-baseline`。环境为 Intel Core Ultra 9 285H（16 核、SMT off、单 NUMA 节点、AVX2+FMA+AVX-VNNI、无 AVX-512/AMX）上的 WSL2 实例，GCC 14.2.0 Release 构建，单线程 `taskset` 固定 CPU、10 repetitions、aggregates-only JSON。主要结论与边界：
+**G0 基线采集记录（2026-09-18，采集机 `DESKTOP-54H5MMI`）**：run id `20260918T012602Z_5cbd378695bb_DESKTOP-54H5MMI_g0-baseline`。以下全部数值**只对该机器成立**，不得当作其他机器的基线或门禁参照。环境为 Intel Core Ultra 9 285H（16 核、SMT off、单 NUMA 节点、AVX2+FMA+AVX-VNNI、无 AVX-512/AMX）上的 WSL2 实例，GCC 14.2.0 Release 构建，单线程 `taskset` 固定 CPU、10 repetitions、aggregates-only JSON。主要结论与边界：
 
 - correctness：GEMM/Linear/MatMul/Qkv/GateUp/Prepacker/Resolve 80 个契约测试全部通过；Executor/PreparedExecutionBindings/ExecutionContext 15 个框架不变量测试通过（steady-state 零分配、params 只构建一次），确认 params build/validation 未混入 compute loop；
 - 归因结论：访问顺序主导 reference 性能——K-contiguous RHS（Linear 实际布局）约 2.6–3.0 GFLOPS，N-contiguous 约 0.2–0.29 GFLOPS（约 10–14× 差距）；prepared Linear 全形状稳定在约 2.85–3.2 GFLOPS；Decode `M=1` 权重流读约 5.3–6.3 GiB/s logical；hot 与 streaming artifact 在 `M=1` 几乎相同（权重已超出 LLC，reference 本身 DRAM-bound）；binding specialization 约 0.28–0.40 µs/call；`cpu_identity` cold packing 约 3.4–4.2 GB/s effective、size amplification 1.0（pack/allocate/copy 成本）；
 - Roofline 输入：单线程 AVX2+FMA 峰值 123.74 GFLOPS（cpufp），STREAM 单线程 Copy 37.1 GB/s / Triad 22.1 GB/s；reference 约为 SIMD 峰值的 2.4%，Decode `M=1` 约为 Triad 带宽的 26%；Release 反汇编确认 reference 内层循环未向量化（标量代码）；
 - 可重复性：baseline 与 repeat 两轮独立进程经 `tools/compare_benchmark_json.py` 端到端比较成功，结构性结论一致，但该 WSL2 环境运行间 delta 可达 ±10–25%，超过 §6.8 的 5% 回退阈值；单线程百分比级性能门禁必须在裸机、隔离 CPU 环境重采后才可作为 production 证据；
 - 环境限制：`perf stat` 硬件计数器与 governor/microcode 在该 WSL2 内核不可用，需在目标裸机采集；
-- 原始证据：`benchmark-results/operators/gemm/<run-id>/`（gitignored，本机保留），含 context.json、五组模式 JSON、复跑 JSON、repeatability-comparison.txt、correctness-tests.txt、disassembly.txt、perf-stat.txt、roofline.txt 与采集脚本。
+- 原始证据：`benchmark-results/operators/gemm/<run-id>/`，含 context.json、五组模式 JSON、复跑 JSON、repeatability-comparison.txt、correctness-tests.txt、disassembly.txt、perf-stat.txt、roofline.txt 与采集脚本。该目录被 `.gitignore` 忽略、**不随仓库分发，只存在于采集机 `DESKTOP-54H5MMI` 的本地磁盘**；在任何其他机器上都不存在，因此上述 run id 在别处不可恢复、不可复核。这是 G0 尚未满足 durable artifact retention 的直接后果（见 §6.7 与 G0 退出条件）。
 
-**工作流状态**：G0 的实现与本地 reference baseline 已完成，正式[实验日志](../tests/operators/gemm/g0-baseline-log.md)、[验证报告](../tests/operators/gemm/gemm_g0_baseline_validation_2026-09-18.md)与[Roofline 定位分析](../tests/operators/gemm/gemm_g0_roofline_analysis_2026-09-18.md)已归档；原始 repetitions、streaming repeat 与交错 A/B 已完成本地补采并量化噪声 floor（见[配对 A/B 验证报告](../tests/operators/gemm/gemm_g0_paired_ab_validation_2026-09-18.md)）；但 production 百分比级性能门禁与 bare-metal perf、durable artifact URL 仍为 `Needs More Data`，必须在调整 descriptor priority 前补齐。
+**G0 基线采集记录（2026-09-18/19，采集机 `DESKTOP-QHIHOGQ`）**：run id `20260918T151928Z_162ab3e7583f_DESKTOP-QHIHOGQ_g0-baseline`。同样**只对该机器成立**，与上一条 285H 记录并列、互不替代。环境为 Intel Core i9-12900H（Alder Lake-H，6P+8E 混合，单 NUMA，AVX2+FMA+AVX-VNNI、无 AVX-512/AMX）上的 WSL2 实例（kernel 6.18.33.2），GCC 14.2.0 Release `-O3 -DNDEBUG`，`AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE=OFF`，`taskset -c 16`、10 repetitions、min_time 1s、**保留全部 repetition 原始行**。主要结论与边界：
+
+- correctness：GEMM/Linear/MatMul/Qkv/GateUp/Prepacker/Resolve **106** 个契约测试全部通过（多于 285H 记录的 80 个，差额来自 G1S 新增的 `CPUKernelGemmScalar` 与 `FastPathBoundaries`）；Executor/PreparedExecutionBindings/ExecutionContext/NoHotpathPrepare/WorkspacePlanning **30** 个框架不变量测试通过；benchmark `label` 确认为 `kernel=cpu::linear_f32_reference`；
+- 归因结论：访问顺序主导且**比 285H 更强**——K=4096 形状 N-contiguous 比 K-contiguous 慢 **16–18×**（0.199–0.227 vs 3.468–3.766 GFLOPS）；但 L1 可驻留的小形状只差 **1.18×**，证明差距来自 stride 访存而非代码路径。prepared Linear hot canonical **3.41–3.72 GFLOPS**（L1 小形状 4.58–4.69）；Decode `M=1` 有效带宽 **7.0–7.4 GB/s** logical；`hot ≈ streaming`（权重超出 24 MiB L3，reference 本身 DRAM-bound）；binding **0.414–0.433 µs/call**；`cpu_identity` cold packing **5.45–6.13 GB/s**、amplification 1.0；
+- Roofline 输入（本机实测）：单线程 AVX2+FMA 峰值 **130.21 GFLOPS**（8 条独立 FMA 链 best-of-7）、STREAM Triad **25.32 GB/s**、Copy 41.12 GB/s（glibc memcpy 走 NT store，为上界）、ridge **5.14 FLOP/byte**；`M=1` 达记忆侧 ceiling 的 **27.7–29.4%**，`M≥16` 达计算峰值的 **2.6–2.8%**；
+- 反汇编：`RunGemmF32Reference` 为**纯标量**（`mulsd`/`addsd`/`movss`，零 packed FP 算术，`ymm=0`），复现 285H 结论；`RunGemmF32ScalarOptimized` 在仅 `-O3`（两个 GEMM TU 都没有 `-mavx2 -mfma`）下被自动向量化为 **SSE2 4-wide**（`mulps`×16、`addps`×12），并带 **55 条 shuffle/unpack**（约为 packed 算术的 2 倍）。这符合 §4.3 与 §8 已接受的风险，但同时说明 **G1S 完全未用到本机 AVX2+FMA，G1V 仍有真实空间**；
+- 可重复性（本机核心新结论）：**进程内 CV 仅 0.03–0.04%（max 0.11%），而跨进程系统偏移达 0.28–5.17% median、max 15.30%**。不确定性来源是每进程系统偏移而非随机抖动，因此提高 `--benchmark_repetitions` 无效；偏移方向在组之间与 35 分钟窗口内均不稳定。用 `tools/compare_benchmark_json.py` 把**同一份实现**的 A/B 两轮互比，按默认 5% 阈值判出 `linear_streaming` **4 个 REGRESS**（+5.52%~+7.39%）与 `microkernel` 最大 **−16.40% 的 "IMPROVE"**，即零改动也会被误判；`linear_binding`（max 1.47%）与 `packing`（max 2.02%）则**可以**适用 5% 门禁；
+- 环境限制：`perf`、`cpufreq`/governor、内存频率均不可用，`microcode` 为 Hyper-V 虚拟值 `0xffffffff`；**WSL2 把 6P+8E 混合的 12900H 伪造成对称的 10 核/20 线程**（`cpu_capacity` 全 1024、每「核」L2 均 1280K、无 `core_type`），逐 vCPU 实测吞吐全落在 112–135 GFLOPS 而无 E-core 低档，且 sysfs 声称的 SMT 兄弟对并发时各拿满吞吐、合计 131 GFLOPS 无争用——故 **`taskset` 只是咨询性绑定，物理核与 P/E core 类别不可控**，「固定到某一类核」这一采集前提在本机无法建立；
+- 原始证据：`benchmark-results/operators/gemm/20260918T151928Z_162ab3e7583f_DESKTOP-QHIHOGQ_g0-baseline/`（gitignored，仅存在于本机；34 个文件、1.7 MiB，含 context.json、五组 × A/B 十份 JSON、`checksums.sha256`、correctness 输出、两份反汇编、roofline.txt、roofline-positioning.txt、noise-floor-summary.txt、noise-floor-comparison.txt 与 `collect_g0.sh`/`summarize_g0.py`/`roofline_positioning.py`）。
+
+**工作流状态**：G0 的实现（benchmark/测试/采集脚本）已完成并属于仓库资产。机器级 reference baseline 已在两台采集机上各自完成并互不替代：`DESKTOP-54H5MMI` 见[实验日志](../tests/operators/gemm/g0-baseline-log.md)、[验证报告](../tests/operators/gemm/gemm_g0_baseline_validation_2026-09-18.md)、[Roofline 定位分析](../tests/operators/gemm/gemm_g0_roofline_analysis_2026-09-18.md)与[配对 A/B 验证报告](../tests/operators/gemm/gemm_g0_paired_ab_validation_2026-09-18.md)；`DESKTOP-QHIHOGQ` 见[实验日志](../tests/operators/gemm/g0-baseline-log-desktop-qhihogq.md)、[验证报告](../tests/operators/gemm/gemm_g0_baseline_validation_desktop-qhihogq_2026-09-19.md)与[Roofline 定位分析](../tests/operators/gemm/gemm_g0_roofline_analysis_desktop-qhihogq_2026-09-19.md)。仍未满足：production 百分比级性能门禁（两台机器的 WSL2 环境都不支持）、bare-metal perf、durable artifact URL，以及**其余目标机各自的 baseline 采集**——必须在调整 descriptor priority 前补齐。
+
+两台的噪声结构不同，因此门禁策略也不同：285H 上 binding 是最差组（median 12.08%），而 12900H 上 binding/packing 反而最稳（0.90% / 0.28%）、可直接适用 5% 门禁，compute 三组则因跨进程系统偏移不可用。**噪声 floor 是机器属性，不得跨机沿用。**
 
 退出条件：correctness baseline 完整；benchmark 可重复；shape、cache state、packing 与 binding 成本可独立归因；baseline/candidate 可以由脚本比较。
 
@@ -467,7 +501,7 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 - direct microkernel 与 production Linear benchmark 使用相同 shape/layout/correctness matrix；
 - optimized FP32 accumulation 的误差相对 double reference 单独验收。
 
-2026-09-18 已新增 `RunGemmF32ScalarOptimized`（单文件单入口）：首版仅实现 `M=1`、unit-stride lhs K/output N 的 K-contiguous 或 N-contiguous RHS，使用 `NR=4` 与 K unroll 2；所有其他 reference-legal layout 调回 `RunGemmF32Reference`。同日简化决策：移除 strict 归因变体与 exact/export-冻结机制，Linear 集成为 opt-in candidate descriptor 直调单入口（无函数指针冻结）。显式启用 `AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE=ON` 时注册 `cpu::linear_f32_scalar_candidate`；默认 OFF 时 `cpu::linear_f32_reference` 的 descriptor/name/entry 保持不变。首次本地 smoke、汇编与测试见 [G1S scalar 实验日志](../tests/operators/gemm/g1s-scalar-log.md)；opt-in integration 不构成 production acceptance。
+2026-09-18 已新增 `RunGemmF32ScalarOptimized`（单文件单入口）：首版仅实现 `M=1`、unit-stride lhs K/output N 的 K-contiguous 或 N-contiguous RHS，使用 `NR=4` 与 K unroll 2；所有其他 reference-legal layout 调回 `RunGemmF32Reference`。同日简化决策：移除 strict 归因变体与 exact/export-冻结机制，Linear 集成为 opt-in candidate descriptor 直调单入口（无函数指针冻结）。显式启用 `AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE=ON` 时注册 `cpu::linear_f32_scalar_candidate`；默认 OFF 时 `cpu::linear_f32_reference` 的 descriptor/name/entry 保持不变。首次 smoke、汇编与测试在采集机 `DESKTOP-54H5MMI`（Core Ultra 9 285H）上进行，见 [G1S scalar 实验日志](../tests/operators/gemm/g1s-scalar-log.md)；opt-in integration 不构成 production acceptance，该 smoke 数据同样不可跨机复用。
 
 退出条件：scalar optimized 在目标 Decode canonical geomean 上有稳定收益；合法但不适合 fast path 的布局确定 fallback；reference oracle 完全不变；hot path 无新增分配（SIMD 归因要求已按 2026-09-18 简化决策撤销）。
 
@@ -563,6 +597,9 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 | benchmark 重复同一权重 | 高估 Decode cache locality | 同时报 hot 与 streaming artifact |
 | 大 GEMM 平均值掩盖 M=1 回退 | token latency 退化 | Decode/Prefill 分组 geomean 与 per-shape gate |
 | tile 参数过拟合单机 | 跨 CPU 退化 | ISA/微架构静态 profile + fallback；保留原始数据 |
+| 跨进程系统偏移被当成 candidate 收益/回退 | 错误接受或否决 optimized kernel | 按 §6.8.1 逐机逐组量化噪声 floor；分离进程内 CV 与跨进程偏移；用同实现 A/B 自比校验阈值有效性 |
+| 虚拟化环境伪造拓扑，`taskset` 只是咨询性绑定 | 采集可能跨物理核/P-E core 迁移，数据不可解释 | 采集前实测逐 vCPU 吞吐与 SMT 兄弟争用以识别伪造拓扑；在 context 中记录 affinity 的咨询性质；需 P/E 或 SMT 控制的结论只在裸机采集 |
+| 基线 raw artifact 仅存单机 gitignored 目录 | 换机即丢失、无法复核，跨机误用他人基线 | 上传 CI/object storage 并记录 retention URL；报告中显式标注采集机与「不可跨机复用」 |
 | kernel 内部并行 | oversubscription、lifetime 不清 | runtime 统一线程池，kernel 只消费并行上下文 |
 | 量化过早耦合 | layout/scale 合同返工 | FP32 engine 先稳定，量化作为独立 recipe/microkernel family |
 
@@ -589,7 +626,10 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 - Decode/Prefill 分开报告，并保存原始 JSON；
 - 关键收益有重复测量、置信区间、反汇编和硬件计数器支持；
 - packing break-even、内存放大和端到端影响均有证据；
-- 未达到门禁的 optimized path 不提高 registry priority。
+- 未达到门禁的 optimized path 不提高 registry priority；
+- baseline 与 candidate 在**同一台机器**采集，报告显式标注采集机身份；任何性能数值不得跨机引用或替换（§6.7、§6.5）；
+- 每台目标机各自的噪声 floor 已按 §6.8.1 逐组量化，并区分进程内方差与跨进程偏移；用于自动门禁的组其 floor 必须明显低于阈值，且经同实现 A/B 自比验证不会误判；
+- raw artifact 有可复核的存放位置（本机 gitignored 目录或 durable retention URL），报告中记录 run id 与 checksum。
 
 ## 10. 相关文档
 

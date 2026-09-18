@@ -4,9 +4,12 @@
 
 - **算子/工作包**: GEMM / G1S portable scalar optimized
 - **专项提案**: [CPU GEMM 优化方案](../../../improvement-plan/04-cpu-gemm-optimization.md)
+- **采集机**: `DESKTOP-54H5MMI` — Intel Core Ultra 9 285H（16 核、SMT off、单 NUMA），WSL2 kernel 6.6.87.2，GCC 14.2.0
 - **日志范围**: 2026-09-18 backend-private candidate、本地 diagnostic smoke 与同日简化重构
-- **原始数据位置**: `benchmark-results/operators/gemm/20260918T141000Z_g1s-local-diagnostic/`（gitignored，本机）
+- **原始数据位置**: `benchmark-results/operators/gemm/20260918T141000Z_g1s-local-diagnostic/`（gitignored、不随仓库分发，**仅存在于上述采集机本地磁盘**，其他机器上不存在）
 - **正式报告**: 尚无；production gate 仍为 `Needs More Data`
+
+> **机器归属**：本日志中的 smoke 时延、汇编与噪声观察均来自采集机 `DESKTOP-54H5MMI`，不可跨机复用。代码层面的事实（candidate 入口、fallback 边界、opt-in descriptor 注册、测试通过与否）与机器无关，在任何机器上都可由仓库源码复核；性能数字则必须在目标机重采。
 
 ## 日志索引
 

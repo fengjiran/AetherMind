@@ -4,9 +4,12 @@
 - **日期**: 2026-09-18
 - **专项提案**: [CPU GEMM 优化方案](../../../improvement-plan/04-cpu-gemm-optimization.md)
 - **工作包**: G0 合同与证据基线（Roofline 定位）
-- **数据来源**: baseline run `benchmark-results/operators/gemm/20260918T012602Z_5cbd378695bb_DESKTOP-54H5MMI_g0-baseline/`（本机 gitignored）
+- **采集机**: `DESKTOP-54H5MMI` — Intel Core Ultra 9 285H（16 核、SMT off、单 NUMA、无 AVX-512/AMX），WSL2 kernel 6.6.87.2
+- **数据来源**: baseline run `benchmark-results/operators/gemm/20260918T012602Z_5cbd378695bb_DESKTOP-54H5MMI_g0-baseline/`（gitignored、不随仓库分发，**仅存在于上述采集机本地磁盘**）
 - **Commit**: `5cbd378695bb90d97fa4273a7359bf2bfea20e8f`
 - **关联证据**: [G0 baseline 验证报告](gemm_g0_baseline_validation_2026-09-18.md)（§6.3 Roofline 输入）、[配对 A/B 验证报告](gemm_g0_paired_ab_validation_2026-09-18.md)（噪声 floor）
+
+> **机器归属**：Roofline 的计算峰值与带宽上限是采集机 `DESKTOP-54H5MMI` 的硬件属性（cpufp 123.74 GFLOP/s、STREAM Triad 22.11 GB/s）。其他机器的峰值不同，因此本文的百分比定位**不可跨机套用**；换机须用该机自己的峰值与 benchmark JSON 重算。
 
 ## 1. 目标与结论
 

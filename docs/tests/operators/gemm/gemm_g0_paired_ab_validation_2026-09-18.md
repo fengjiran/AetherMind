@@ -7,10 +7,13 @@
 - **Change Profile**: Optimized benchmark infrastructure / Tuning-only measurement protocol
 - **Candidate commit**: `5cbd378695bb90d97fa4273a7359bf2bfea20e8f`（与 baseline 同实现）
 - **Baseline**: 同实现、独立进程、相邻配对
-- **Raw artifact**: `benchmark-results/operators/gemm/20260918T023421Z_5cbd378695bb_DESKTOP-54H5MMI_g0-ab/`（本机 gitignored）
+- **采集机**: `DESKTOP-54H5MMI` — Intel Core Ultra 9 285H，SMT off，WSL2 kernel 6.6.87.2（同前置报告）
+- **Raw artifact**: `benchmark-results/operators/gemm/20260918T023421Z_5cbd378695bb_DESKTOP-54H5MMI_g0-ab/`（gitignored、不随仓库分发，**仅存在于上述采集机本地磁盘**）
 - **Artifact checksum**: `context.json` SHA256 `902717d37212ecf0946a6d5ecbeffa01f0d6d5112dcf242ad454679f3e2d967a`；数据产物清单见 `checksums.sha256`（`sha256sum -c` 通过）
 - **前置报告**: [G0 baseline validation](gemm_g0_baseline_validation_2026-09-18.md)
 - **关联 ADR**: 无
+
+> **机器归属**：本报告量化的噪声 floor 是采集机 `DESKTOP-54H5MMI` 的属性，**不是** G1S/G1V candidate 在其他机器上可用的最小可信 delta；换机必须重新量化。下文“本机”一律指该采集机。
 
 ## 1. 验证目标与结论
 

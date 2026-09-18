@@ -8,9 +8,12 @@
 - **Candidate commit**: `5cbd378695bb90d97fa4273a7359bf2bfea20e8f`
 - **Baseline commit**: `5cbd378695bb90d97fa4273a7359bf2bfea20e8f`（同实现独立复跑）
 - **Working tree**: benchmark 代码对应 commit；artifact finalization 时仅 proposal 文档 dirty
-- **Raw artifact**: `benchmark-results/operators/gemm/20260918T012602Z_5cbd378695bb_DESKTOP-54H5MMI_g0-baseline/`（本机 gitignored）
+- **采集机**: `DESKTOP-54H5MMI` — Intel Core Ultra 9 285H（Arrow Lake-H，16 核、SMT off、单 NUMA、无 AVX-512/AMX），WSL2 kernel 6.6.87.2
+- **Raw artifact**: `benchmark-results/operators/gemm/20260918T012602Z_5cbd378695bb_DESKTOP-54H5MMI_g0-baseline/`（gitignored、不随仓库分发，**仅存在于上述采集机本地磁盘**，其他机器上不存在）
 - **Artifact checksum**: `context.json` SHA256 `e12077e9b1c87c3b5a16f268b250aa8a801522156a5f14175284bf439daea621`；各文件 checksum 见 context manifest
 - **关联 ADR**: 无
+
+> **机器归属**：本报告的全部数值只对采集机 `DESKTOP-54H5MMI` 成立，按提案 §6.7/§6.5 不可跨机复用；其他目标机的 G0 状态须各自采集后单独判定。
 
 ## 1. 验证目标与结论
 
@@ -147,7 +150,7 @@ reference 与 SIMD 峰值的比值只用于说明优化空间，不能当作未�
 - 原始 repetitions 未保存；
 - streaming 未复跑；
 - perf/governor/可信 microcode 不可用；
-- raw artifact 当前仅本机保留，没有远端 retention URL；
+- raw artifact 当前仅保留在采集机 `DESKTOP-54H5MMI` 的 gitignored 目录，没有远端 retention URL，其他机器无法复核；
 - README 的“工作树干净”与最终 context 的 proposal-only dirty 状态不一致。
 
 ## 10. 门禁判定
@@ -163,12 +166,13 @@ reference 与 SIMD 峰值的比值只用于说明优化空间，不能当作未�
 - [ ] bare-metal perf/governor/microcode 证据；
 - [ ] durable CI/object-storage artifact URL。
 
-因此：G0 的实现和本地 reference baseline 可以关闭；G1S 可以开始。任何 production priority 调整仍被上述未完成项阻塞。
+因此：G0 的实现（benchmark/测试/采集脚本，属仓库资产）可以关闭；采集机 `DESKTOP-54H5MMI` 上的 reference baseline 可以关闭；G1S 可以开始。**其他机器的 G0 仍为 Not Collected**，且任何 production priority 调整仍被上述未完成项阻塞。
 
 ## 11. 后续动作
 
-- proposal：将 G0 标记为“Local Baseline Complete / Production Gate Needs More Data”；
+- proposal：将 G0 标记为“Baseline Complete on `DESKTOP-54H5MMI` Only / Production Gate Needs More Data / Not Collected on Other Machines”；
 - G1S：开始 backend-private scalar optimized candidate，不改变 production descriptor priority；
 - 正式 candidate 比较前，在裸机或隔离 CPU 环境补采完整 raw repetitions、streaming repeat 和 perf；
+- **每台目标机（含当前开发机）各自完成一次 G0 采集并归档 raw artifact**，因为 §6.7 要求 baseline/candidate 同机；
 - 将 raw artifact 上传 CI/object storage 后补充 retention URL 与 checksum。
 

@@ -2,9 +2,12 @@
 
 - **算子/工作包**: GEMM / G0 合同与证据基线
 - **专项提案**: [CPU GEMM 优化方案](../../../improvement-plan/04-cpu-gemm-optimization.md)
+- **采集机**: `DESKTOP-54H5MMI` — Intel Core Ultra 9 285H（Arrow Lake-H，16 核、SMT off、单 NUMA、AVX2+FMA+AVX-VNNI、无 AVX-512/AMX），WSL2 kernel 6.6.87.2
 - **日志范围**: 2026-09-18 首次机器级 baseline、独立复跑与 Roofline 定位
-- **原始数据位置**: `benchmark-results/operators/gemm/20260918T012602Z_5cbd378695bb_DESKTOP-54H5MMI_g0-baseline/`
+- **原始数据位置**: `benchmark-results/operators/gemm/20260918T012602Z_5cbd378695bb_DESKTOP-54H5MMI_g0-baseline/` — 该目录 gitignored、不随仓库分发，**仅存在于上述采集机本地磁盘**，在其他机器上不存在且不可恢复
 - **正式报告**: [G0 baseline validation](gemm_g0_baseline_validation_2026-09-18.md)；[Roofline 定位分析](gemm_g0_roofline_analysis_2026-09-18.md)
+
+> **适用范围**：本日志中所有性能数值、噪声 floor 与 Roofline 百分比只对采集机 `DESKTOP-54H5MMI` 成立。按提案 §6.7（baseline/candidate 必须同机）与 §6.5（不得跨微架构比较原始计数），这些数据不可作为其他机器的基线或门禁参照；其他目标机必须各自重采并归档自己的 raw artifact。下文出现的“本机”一律指该采集机。
 
 ## 日志索引
 
@@ -75,7 +78,7 @@ context.json SHA256: e12077e9b1c87c3b5a16f268b250aa8a801522156a5f14175284bf439da
 - streaming 组没有独立复跑；
 - baseline/repeat 不是交错 A/B 次序；
 - perf hardware counters、governor 和可信 microcode 不可得；
-- raw artifact 仅保存在本机 gitignored 目录，尚无 CI/object-storage retention URL。
+- raw artifact 仅保存在采集机 `DESKTOP-54H5MMI` 的 gitignored 目录，不随仓库分发，尚无 CI/object-storage retention URL；换机器即丢失；
 
 ### 7. 决定
 

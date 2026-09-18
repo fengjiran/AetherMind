@@ -86,6 +86,7 @@ void RunM1NContiguous(const GemmF32Args& args) noexcept {
             sum3 += lhs1 * weight[3];
             weight += args.rhs_k_stride;
         }
+
         if (inner < args.k) {
             const float lhs0 = lhs[inner];
             sum0 += lhs0 * weight[0];

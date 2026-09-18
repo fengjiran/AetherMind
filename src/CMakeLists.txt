@@ -62,3 +62,8 @@ if (CXX_SUPPORTS_AVX2 AND CXX_SUPPORTS_FMA)
 else ()
     message(STATUS "AVX2/FMA not supported by compiler")
 endif ()
+
+if (AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE=1)
+    message(STATUS "Experimental GEMM scalar Linear candidate enabled")
+endif ()

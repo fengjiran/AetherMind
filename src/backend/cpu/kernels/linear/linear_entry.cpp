@@ -12,8 +12,8 @@
 namespace aethermind::cpu::detail {
 namespace {
 
-Status BuildLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
-                                   void* params_buffer) noexcept {
+Status BuildLinearF32Args(const KernelParamsBuildContext& context,
+                          void* params_buffer) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
@@ -141,11 +141,50 @@ Status LinearF32ReferenceEntry(const KernelContext& ctx) noexcept {
     return RunLinearF32Reference(*args);
 }
 
+#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
+Status LinearF32ScalarCandidateEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const LinearF32KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunGemmF32ScalarOptimized(GemmF32Args{
+            .lhs = args->input,
+            .rhs = args->weight,
+            .output = args->output,
+            .m = args->row_count,
+            .n = args->out_features,
+            .k = args->in_features,
+            .lhs_m_stride = args->input_row_stride,
+            .lhs_k_stride = args->input_col_stride,
+            .rhs_k_stride = args->weight_col_stride,
+            .rhs_n_stride = args->weight_row_stride,
+            .output_m_stride = args->output_row_stride,
+            .output_n_stride = args->output_col_stride,
+    });
+}
+#endif
+
 } // namespace
 
 static_assert(std::is_trivially_destructible_v<LinearF32KernelArgs>);
 static_assert(alignof(LinearF32KernelArgs) <= alignof(std::max_align_t));
 
+#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
+AM_REGISTER_KERNEL(
+        CpuLinearF32ScalarCandidate,
+        KernelDescriptor{
+                .op_type = OpType::kLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float32(),
+                        .weight_format = WeightFormat::kPlain,
+                        .phase = ExecPhase::kBoth,
+                },
+                .kernel_func = &LinearF32ScalarCandidateEntry,
+                .priority = 10,
+                .params_size = sizeof(LinearF32KernelArgs),
+                .params_builder = &BuildLinearF32Args,
+                .name = "cpu::linear_f32_scalar_candidate"})
+#else
 AM_REGISTER_KERNEL(
         CpuLinearF32Reference,
         KernelDescriptor{
@@ -160,7 +199,8 @@ AM_REGISTER_KERNEL(
                 .kernel_func = &LinearF32ReferenceEntry,
                 .priority = 10,
                 .params_size = sizeof(LinearF32KernelArgs),
-                .params_builder = &BuildLinearF32ReferenceArgs,
+                .params_builder = &BuildLinearF32Args,
                 .name = "cpu::linear_f32_reference"})
+#endif
 
 } // namespace aethermind::cpu::detail

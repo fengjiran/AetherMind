@@ -2,7 +2,7 @@
 #define AETHERMIND_BACKEND_CPU_KERNELS_GEMM_GEMM_INTERNAL_H
 
 /// @file gemm_internal.h
-/// @brief Backend-internal FP32 GEMM reference primitive.
+/// @brief Backend-internal FP32 GEMM primitives.
 
 #include "aethermind/base/status.h"
 
@@ -35,6 +35,15 @@ struct GemmF32Args {
 /// A zero `m` or `n` is a no-op. A zero `k` writes `+0.0F` to every output
 /// element without reading `lhs` or `rhs`.
 Status RunGemmF32Reference(const GemmF32Args& args) noexcept;
+
+/// @brief Runs the scalar-optimized FP32 GEMM candidate.
+///
+/// This candidate intentionally remains separate from the double-accumulation
+/// reference oracle. It specializes only the pre-validated M=1 cases with
+/// unit-stride lhs K, unit-stride output N, and either contiguous RHS K or N.
+/// Every other reference-legal layout falls back to RunGemmF32Reference.
+/// It uses no intrinsics or heap allocation.
+Status RunGemmF32ScalarOptimized(const GemmF32Args& args) noexcept;
 
 } // namespace aethermind::cpu::detail
 

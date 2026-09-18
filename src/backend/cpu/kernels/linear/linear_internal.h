@@ -2,12 +2,13 @@
 #define AETHERMIND_BACKEND_CPU_KERNELS_LINEAR_LINEAR_INTERNAL_H
 
 #include "aethermind/base/status.h"
+#include "backend/cpu/kernels/gemm/gemm_internal.h"
 
 #include <cstdint>
 
 namespace aethermind::cpu::detail {
 
-/// @brief Pre-validated FP32 arguments for the scalar Linear reference kernel.
+/// @brief Pre-validated FP32 arguments for one Linear kernel invocation.
 ///
 /// Produced once by the registered KernelParamsBuilder and consumed on every
 /// execution. `row_count` flattens input leading dimensions; rank-1 input is

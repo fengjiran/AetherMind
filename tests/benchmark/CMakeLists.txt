@@ -15,3 +15,7 @@ target_link_libraries(${BENCHMARK_TARGET} PRIVATE
         ${PROJECT_NAME}
         benchmark::benchmark_main
 )
+
+if (AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
+    target_compile_definitions(${BENCHMARK_TARGET} PRIVATE AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE=1)
+endif ()

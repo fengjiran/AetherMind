@@ -19,7 +19,7 @@
 | 验证报告 | [tests/](tests/) | Current | 测试/基准验证结果与结论；新算子报告按 [tests/operators/](tests/operators/) 组织 |
 | 问题跟踪 | [issues.md](issues.md) | 每条目 `[x]`/`[ ]` | 已知缺陷与优化待办，短生命周期 |
 | 变更记录 | [../CHANGELOG.md](../CHANGELOG.md) | 无 | 行为可见变更，按语义化版本 |
-| 开发日志 | [logs/development_log.md](logs/development_log.md) / [logs/operators/](logs/operators/) | 无 | 项目过程记录与追加式算子实验日志，记录"为什么"而非"做了什么" |
+| 开发日志 | [logs/development_log.md](logs/development_log.md) | 无 | 项目开发过程记录，记录"为什么"而非"做了什么"；算子实验与验证记录见 [tests/operators/](tests/operators/) |
 | 产品需求 | [products/aethermind_prd.md](products/aethermind_prd.md) | Current | 当前产品范围、验收标准（唯一权威） |
 
 **职责边界判定**：描述"代码里现在是什么" → `designs/`；"将来要做什么" → `improvement-plan/`；"曾经怎么决策的" → `decisions/`；"怎么干活" → `guides/`；"API 怎么用" → `api/`；"已知缺陷/待办" → `issues.md`。

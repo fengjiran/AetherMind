@@ -27,7 +27,7 @@
 | 内容 | 位置 | 权威范围 | 更新方式 |
 |---|---|---|---|
 | 算子专项路线、工作包、风险、退出条件 | `docs/improvement-plan/NN-<operator>-optimization.md` | 未来工作与当前实施状态 | 持续更新状态和证据链接 |
-| 实验过程、失败尝试、参数 sweep | `docs/logs/operators/<operator>/` | 过程记录 | 追加式，不改写旧结论 |
+| 实验过程、失败尝试、参数 sweep | `docs/tests/operators/<operator>/<work-package>-log.md` | 过程记录 | 追加式，不改写旧结论 |
 | 正式 correctness/performance 验证 | `docs/tests/operators/<operator>/` | 指定 commit/环境的证据快照 | 新结果新建报告，旧报告不覆盖 |
 | 重大架构/合同决策 | `docs/decisions/NNNN-*.md` | 决策与被否定方案 | 状态迁移，不删除历史 |
 | 已经实现的当前设计 | `docs/designs/<module>/NN-*.md` | 当前仓库事实 | 与代码同 PR 同步 |

@@ -1,12 +1,13 @@
-# 算子验证报告索引
+# 算子实验与验证记录索引
 
-本目录保存算子 correctness、performance 和 integration 的正式验证报告。规范和证据门禁见[算子开发与优化工作流](../../guides/operator-development-workflow.md)，新报告从[算子验证报告模板](../../templates/operator-validation-report.md)复制。
+本目录保存算子实验过程记录，以及 correctness、performance 和 integration 的正式验证报告。规范和证据门禁见[算子开发与优化工作流](../../guides/operator-development-workflow.md)；实验日志从[算子实验日志模板](../../templates/operator-experiment-log.md)复制，新报告从[算子验证报告模板](../../templates/operator-validation-report.md)复制。
 
 ## 目录约定
 
 ```text
 docs/tests/operators/<operator>/
 ├── README.md
+├── <work-package>-log.md
 └── <operator>_<scope>_validation_<YYYY-MM-DD>.md
 ```
 
@@ -17,5 +18,6 @@ docs/tests/operators/<operator>/
 
 ## 算子索引
 
-当前尚无按新工作流生成的正式算子验证报告。新增首篇报告时，在此登记算子、工作包、结论和当前状态。
-
+| 算子 | 目录 | 当前证据 |
+|---|---|---|
+| GEMM | [gemm/](gemm/) | G0 本地 reference baseline、配对 A/B 噪声 floor 与 Roofline 定位 Accepted；production gate Needs More Data |

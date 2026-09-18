@@ -1,8 +1,8 @@
 # CPU GEMM 优化方案
 
 - **状态**: In Progress
-- **版本**: 1.4
-- **日期**: 2026-09-17
+- **版本**: 1.7
+- **日期**: 2026-09-18
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **优化方法基线**: [算子优化指南](../guides/operator_optimization_guide.md)
@@ -57,7 +57,7 @@ AetherMind 不应新增 semantic `Gemm` operator。当前 GEMM 是 CPU backend �
 | packing recipe | `CpuWeightPrepacker::RecipeFor(selector)` 返回全局 `cpu_identity` | 不足以表达 AVX2/AVX-512/AMX 或 tile/version 不同的 layout |
 | CPU dispatch | 已有 AVX2/FMA/AVX-512/VNNI/AMX、NEON/DotProd/I8MM/SVE 等 capability model | feature gate 基础可复用；当前仅 RMSNorm 有 AVX2+FMA optimized descriptor |
 | threading | 当前产品边界为单请求、单线程，现有 kernel 也保持单线程 | 首轮优化保持单线程；并行化属于 runtime 级后续工作 |
-| benchmark | Google Benchmark；G0 已提供 Linear prepared-path、binding-cost 与 `cpu_identity` packing 基线 | 当前只有 reference descriptor；原始性能数据仍须按本提案的运行协议采集 |
+| benchmark | Google Benchmark；G0 已提供 Linear prepared-path、binding-cost 与 `cpu_identity` packing 基线 | 当前只有 reference descriptor；首次机器级基线已于 2026-09-18 采集（见 §7 G0，WSL2 环境限制与可重复性边界已记录） |
 
 ### 2.1 当前主要瓶颈
 
@@ -424,6 +424,8 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 
 ### G0：合同与证据基线
 
+**状态**：Local Baseline Complete / Production Gate Needs More Data
+
 目标是先建立可重复、可解释的 correctness 与性能事实，不修改 production 优先级。
 
 - 保留 `RunGemmF32Reference` 的 double accumulation，作为 correctness oracle；
@@ -434,7 +436,7 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 - 记录 scalar Release 反汇编、Roofline 输入、硬件计数器和原始 JSON；
 - 验证 params build、validation、packing 和 allocation 不混入 steady-state compute loop。
 
-当前代码已提供以下基础设施，但尚未提交任何性能收益结论或机器相关 baseline 数据：
+2026-09-18 已完成首次机器级基线采集（记录见下方“G0 基线采集记录”）。当前代码提供以下基础设施：
 
 - `tests/benchmark/cpu_kernels/benchmark_cpu_gemm_microkernel.cpp` 的 backend-private direct GEMM reference 基线，分别覆盖 N-contiguous 与 K-contiguous RHS；该 benchmark 用于后续 microkernel、unroll 和 blocking 调优，不替代 production Linear benchmark；
 - `tests/benchmark/cpu_kernels/benchmark_cpu_linear.cpp` 的 hot/streaming prepared Linear 与 binding-specialization 测量。每个 compute case 都经 `CpuBackend::PrepareKernel`、`KernelParamsBuilder` 和 `ResolvedKernel::fn`，且在计时外将结果与 `RunGemmF32Reference` 对照；
@@ -442,6 +444,17 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 - `tests/unit/backend/cpu/kernels/test_cpu_gemm_reference.cpp` 对 `C = A × B` 覆盖写回合同的显式测试，以及 Linear 对未声明 SIMD alignment 的合法 view 的回归测试。
 
 采集时分别保存 hot、streaming、binding 与 packing JSON；不要将它们合并为一个几何平均值。可使用 [第 6.7 节](#67-运行协议) 的命令和 `tools/compare_benchmark_json.py` 对同一模式、同一 shape 的 baseline/candidate JSON 比较。
+
+**G0 基线采集记录（2026-09-18）**：run id `20260918T012602Z_5cbd378695bb_DESKTOP-54H5MMI_g0-baseline`。环境为 Intel Core Ultra 9 285H（16 核、SMT off、单 NUMA 节点、AVX2+FMA+AVX-VNNI、无 AVX-512/AMX）上的 WSL2 实例，GCC 14.2.0 Release 构建，单线程 `taskset` 固定 CPU、10 repetitions、aggregates-only JSON。主要结论与边界：
+
+- correctness：GEMM/Linear/MatMul/Qkv/GateUp/Prepacker/Resolve 80 个契约测试全部通过；Executor/PreparedExecutionBindings/ExecutionContext 15 个框架不变量测试通过（steady-state 零分配、params 只构建一次），确认 params build/validation 未混入 compute loop；
+- 归因结论：访问顺序主导 reference 性能——K-contiguous RHS（Linear 实际布局）约 2.6–3.0 GFLOPS，N-contiguous 约 0.2–0.29 GFLOPS（约 10–14× 差距）；prepared Linear 全形状稳定在约 2.85–3.2 GFLOPS；Decode `M=1` 权重流读约 5.3–6.3 GiB/s logical；hot 与 streaming artifact 在 `M=1` 几乎相同（权重已超出 LLC，reference 本身 DRAM-bound）；binding specialization 约 0.28–0.40 µs/call；`cpu_identity` cold packing 约 3.4–4.2 GB/s effective、size amplification 1.0（pack/allocate/copy 成本）；
+- Roofline 输入：单线程 AVX2+FMA 峰值 123.74 GFLOPS（cpufp），STREAM 单线程 Copy 37.1 GB/s / Triad 22.1 GB/s；reference 约为 SIMD 峰值的 2.4%，Decode `M=1` 约为 Triad 带宽的 26%；Release 反汇编确认 reference 内层循环未向量化（标量代码）；
+- 可重复性：baseline 与 repeat 两轮独立进程经 `tools/compare_benchmark_json.py` 端到端比较成功，结构性结论一致，但该 WSL2 环境运行间 delta 可达 ±10–25%，超过 §6.8 的 5% 回退阈值；单线程百分比级性能门禁必须在裸机、隔离 CPU 环境重采后才可作为 production 证据；
+- 环境限制：`perf stat` 硬件计数器与 governor/microcode 在该 WSL2 内核不可用，需在目标裸机采集；
+- 原始证据：`benchmark-results/operators/gemm/<run-id>/`（gitignored，本机保留），含 context.json、五组模式 JSON、复跑 JSON、repeatability-comparison.txt、correctness-tests.txt、disassembly.txt、perf-stat.txt、roofline.txt 与采集脚本。
+
+**工作流状态**：G0 的实现与本地 reference baseline 已完成，正式[实验日志](../tests/operators/gemm/g0-baseline-log.md)、[验证报告](../tests/operators/gemm/gemm_g0_baseline_validation_2026-09-18.md)与[Roofline 定位分析](../tests/operators/gemm/gemm_g0_roofline_analysis_2026-09-18.md)已归档；原始 repetitions、streaming repeat 与交错 A/B 已完成本地补采并量化噪声 floor（见[配对 A/B 验证报告](../tests/operators/gemm/gemm_g0_paired_ab_validation_2026-09-18.md)）；但 production 百分比级性能门禁与 bare-metal perf、durable artifact URL 仍为 `Needs More Data`，必须在调整 descriptor priority 前补齐。
 
 退出条件：correctness baseline 完整；benchmark 可重复；shape、cache state、packing 与 binding 成本可独立归因；baseline/candidate 可以由脚本比较。
 

@@ -11,7 +11,7 @@
 | 架构总览 | [designs/architecture/architecture_overview.md](designs/architecture/architecture_overview.md) | Current | 全系统唯一权威总览：分层架构、硬性约束、跨层流程、模块地图、性能基线 |
 | 模块设计 | [designs/](designs/) | Current / Deprecated | 单模块深入设计：数据结构、并发模型、接口、边界、权衡；按 AGENTS.md §2.1 模块表分子目录（算子/backend 相关设计已归位文档见 [operators/](operators/)，不在此目录） |
 | 算子文档 | [operators/](operators/) | 各算子目录自含状态 | **全部算子文档唯一位置**：算子契约、专项提案、工作文件/证据（按算子分目录），算子语义层设计（operator_contract_design、算子系统设计）在其根目录；规范见 [guides/operator-development-workflow.md](guides/operator-development-workflow.md) |
-| 调研备忘 | [designs/research/](designs/research/) | 无状态，头部标注日期与可信度 | 未验证/未采纳的技术调研，不承诺实现，禁止当作事实引用 |
+| 调研备忘 | `docs/designs/research/`（当前无内容） | 无状态，头部标注日期与可信度 | 未验证/未采纳的技术调研，不承诺实现，禁止当作事实引用 |
 | 演进提案 | [improvement-plan/](improvement-plan/) | Draft / In Progress / Implemented / Superseded | 未来要做什么：路线图与专题提案 |
 | 开发指南 | [guides/](guides/) | Current / Deprecated | "怎么做"的过程规范：编码、注释、测试、评审、文档 |
 | API 参考 | [api/public-api.md](api/public-api.md) | Current | 公共 API 语义（与头文件 Doxygen 同源同步） |
@@ -125,11 +125,7 @@
 
 | 文档 | 定位 | 状态 |
 |---|---|---|
-| [ammalloc_benchmark_rigorous_20260303.md](tests/ammalloc_benchmark_rigorous_20260303.md) | ammalloc 基准严格验证 | Current |
 | [size_class_benchmark_20260310.md](tests/size_class_benchmark_20260310.md) | size_class 基准验证 | Current |
-| [amstring_m6_validation_20260428.md](tests/amstring_m6_validation_20260428.md) | amstring M6 里程碑验证 | Current |
-| [amstring_charlayout_m7_validation_20260429.md](tests/amstring_charlayout_m7_validation_20260429.md) | amstring CharLayout M7 验证 | Current |
-| [amstring_sso_boundary_validation_20260502.md](tests/amstring_sso_boundary_validation_20260502.md) | amstring SSO 边界验证 | Current |
 
 ### 问题跟踪（docs/issues.md）
 

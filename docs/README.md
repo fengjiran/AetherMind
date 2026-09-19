@@ -73,18 +73,17 @@
 | [01-inference-session-generate-readiness.md](improvement-plan/01-inference-session-generate-readiness.md) | InferenceSession/Generate 前置模块、实施顺序与 public API 准入门禁 | Draft |
 | [02-engineering-quality-system.md](improvement-plan/02-engineering-quality-system.md) | Capability-driven 的风险治理、验证 profile 与质量体系建设方案 | Draft |
 | [03-documentation-stabilization.md](improvement-plan/03-documentation-stabilization.md) | Batch -1 文档系统稳定化：D0–D5 迁移计划与 E1–E9 退出条件 | In Progress |
-| [cpu-gemm-optimization.md](operators/gemm/cpu-gemm-optimization.md) | CPU GEMM engine、shape specialization、packing 与 benchmark 演进方案（原 04 号专项，2026-09-19 归入 [operators/gemm/](operators/gemm/)） | In Progress |
 | [05-kv-cache-manager-evolution.md](improvement-plan/05-kv-cache-manager-evolution.md) | 静态 KV correctness、lease/transaction/kernel binding 与 Paged KV 演进边界 | Draft |
 | [06-system-capability-evolution-roadmap.md](improvement-plan/06-system-capability-evolution-roadmap.md) | 全仓库 capability gap、模块演进裁决与实施顺序 | Draft |
 
-> 单算子专项提案（如 GEMM）不再新增于本目录：按 [算子开发工作流 §4](guides/operator-development-workflow.md) 建在 `docs/operators/<op>/<op>-optimization.md`，本表只保留指向其入口的行以便发现。
+> 算子专项提案不再建在本目录：按 [算子开发工作流 O3](guides/operator-development-workflow.md) 建在 `docs/operators/<op>/<op>-optimization.md`（原 04 号 GEMM 专项已迁至 [operators/gemm/cpu-gemm-optimization.md](operators/gemm/cpu-gemm-optimization.md)）。
 
 ### 开发指南（docs/guides/）
 
 | 文档 | 定位 | 状态 |
 |---|---|---|
 | [documentation-guide.md](guides/documentation-guide.md) | 文档系统规范：命名、交叉引用、质量、维护流程 | Current |
-| [operator-development-workflow.md](guides/operator-development-workflow.md) | 算子开发的单一规范文档：Change Profile 分级证据、O0–O6 门禁、Benchmark 规范、提案/工作文件骨架（附录 A/B）与优化方法（附录 C） | Current |
+| [operator-development-workflow.md](guides/operator-development-workflow.md) | 算子开发的单一规范文档：O0–O4 证据门禁、Benchmark 规范（§5）、工作文件骨架（§4）与优化方法（§7） | Current |
 | [cpp_coding_style_guidelines.md](guides/cpp_coding_style_guidelines.md) | C++ 编码风格 | Current |
 | [cpp_comment_guidelines.md](guides/cpp_comment_guidelines.md) | 注释与 Doxygen 规范 | Current |
 | [test_writing_guidelines.md](guides/test_writing_guidelines.md) | GoogleTest 测试编写规范 | Current |
@@ -97,7 +96,7 @@
 | [module-design.md](templates/module-design.md) | 当前模块设计文档 |
 | [adr.md](templates/adr.md) | 架构决策记录 |
 
-算子专项提案与工作文件不使用独立模板：骨架内嵌于 [operator-development-workflow.md](guides/operator-development-workflow.md) 附录 A/B。
+算子工作文件不使用独立模板：骨架内嵌于 [operator-development-workflow.md](guides/operator-development-workflow.md) §4；优化方法见 §7。
 
 ### 架构决策记录（docs/decisions/）
 

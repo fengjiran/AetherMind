@@ -11,7 +11,7 @@ docs/operators/
 ├── 算子系统设计.md                 # 算子体系设计（原 kernel_dev/算子系统设计.md）
 └── <operator>/                    # 每算子一个自包含目录
     ├── README.md                  # 算子首页：门禁状态 + 证据索引
-    ├── <op>-optimization.md       # 专项提案（如有）
+    ├── <op>-optimization.md       # 专项提案（如有；非平凡优化方案成文）
     ├── *算子契约.md                # 算子契约（如有）
     └── benchmarks/                # 证据文件：一工作包一文件，结论按 commit@date 冻结追加
 ```
@@ -20,8 +20,8 @@ docs/operators/
 
 ## 规则
 
-- 新增算子的契约、提案、证据全部建在本目录对应算子子目录下；**不得**再写入 `docs/designs/`、`docs/improvement-plan/` 或 `docs/tests/`。
-- 专项提案迁移自 `improvement-plan/04-*`：仅保留优化原理、工作包状态与证据链接；机器级数值与噪声 floor 在各自算子目录 `benchmarks/` 内。
+- 新增算子的契约、专项提案、工作文件/证据全部建在本目录对应算子子目录下；**不得**再写入 `docs/designs/`、`docs/improvement-plan/` 或 `docs/tests/`。
+- 专项提案（原 `improvement-plan/04-*`）已迁入本目录对应算子子目录（2026-09-19）：提案只承载优化原理、合同与工作包状态，工作包证据记入 `benchmarks/` 工作文件，机器级数值不回填提案。
 - 本目录只放**算子层**文档：跨算子共享的算子体系/契约设计平铺在本目录（上述两份）。`backend_design.md`、`dispatch_design.md`、`cpu_capability_design.md`、`op_evaluator.md` 属 backend/graph 模块设计，仍留在 [docs/designs/](../designs/)，不搬入本目录。
 
 ## 算子索引

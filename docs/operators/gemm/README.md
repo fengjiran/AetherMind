@@ -1,11 +1,21 @@
 # GEMM 实验记录与验证报告索引
 
-- **专项提案**: [CPU GEMM 优化方案](cpu-gemm-optimization.md)
-- **工作流**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
+- **专项提案**: [CPU GEMM 优化方案](cpu-gemm-optimization.md)（方案、合同、工作包与退出条件）
+- **规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
 
 本目录是本算子实验过程记录与正式验证/分析报告的**唯一存放位置**（2026-09-18 由 `docs/logs/operators/gemm/` 与 `docs/tests/operators/gemm/` 合并，2026-09-19 迁入 `docs/operators/gemm/`）。
 
-> **规范演进（2026-09-19）**：工作流改为"一工作包一文件"（骨架见[工作流文档附录 B](../../guides/operator-development-workflow.md)）。下列按机器/日期命名的日志与报告为 2026-09-19 前的**历史不可变快照**，按机器并列成立，保留不并改；此后新证据按附录 B 骨架追加，不再新建"每次运行一份报告"。
+> **规范演进（2026-09-19）**：工作流改为"一工作包一文件"（骨架见[工作流文档 §4](../../guides/operator-development-workflow.md#4-算子工作文件骨架)）。下列按机器/日期命名的日志与报告为 2026-09-19 前的**历史不可变快照**，按机器并列成立，保留不并改；此后新证据按 §4 骨架追加，不再新建"每次运行一份报告"。
+
+## 工作包状态
+
+各工作包执行状态速览（退出条件与逐机门禁详情见 [CPU GEMM 优化方案](cpu-gemm-optimization.md) §7）：
+
+| 工作包 | 状态 |
+|---|---|
+| G0 合同与证据基线 | Baseline Complete on `54H5MMI` / `QHIHOGQ`；production gate Needs More Data；其余目标机 **Not Collected** |
+| G1S portable scalar optimized | In Progress（backend-private candidate + opt-in 集成完成；production acceptance 待正式证据） |
+| G1V–G6 | Not Started（按证据门禁进入） |
 
 ## 机器归属与可复核性
 
@@ -21,7 +31,7 @@
 - 按提案 §6.7（baseline/candidate 必须同机、同配置）与 §6.5（不得跨微架构比较原始计数），任一采集机的数值**都不能作为另一台的基线或门禁参照**。
 - 因此 G0 状态按机器计：某台机器 Baseline Complete 不代表其他机器 Complete；每台目标机必须各自采集并归档自己的 raw artifact 后才能判定。
 - 与机器无关、可在任何机器由源码复核的部分：G0 benchmark/测试/采集脚本本身、correctness 契约测试、reference 反汇编为纯标量的事实、G1S candidate 入口与 fallback 边界、opt-in descriptor 注册逻辑。
-- **与提案的分工**（2026-09-19 固化）：[专项提案](cpu-gemm-optimization.md)只保留优化原理、合同、工作包状态与指向本目录的链接；机器级性能数值、噪声 floor 与 Roofline 百分比的**权威位置是本目录**，不得回填进提案，也不得跨机引用。噪声 floor 的量化方法本身属于[算子开发与优化工作流附录 C.2.4](../../guides/operator-development-workflow.md#附录-c优化方法)。
+- **数据归属**（2026-09-19 固化）：机器级性能数值、噪声 floor 与 Roofline 百分比的**权威位置是本目录**，不得回填进其他文档，也不得跨机引用。噪声 floor 的量化方法本身属于[算子开发与优化工作流 §7.2.4](../../guides/operator-development-workflow.md#72-正确性与基准)。
 
 | 日期 | 类型 | 文件 | 采集机 | 结论 | 状态 |
 |---|---|---|---|---|---|

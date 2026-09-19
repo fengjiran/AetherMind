@@ -117,7 +117,7 @@
 | 性能基线变化 | `architecture_overview.md` 性能章节、CHANGELOG |
 | 编码/注释/测试规范变更 | 对应 `guides/*` + AGENTS.md §7–§9 双向同步 |
 | 缺陷修复 | `issues.md` 勾选条目、CHANGELOG（行为可见时） |
-| 算子语义/reference/optimized/packing/fusion/threading 变更 | [算子开发与优化工作流](operator-development-workflow.md)要求的 proposal、实验日志、validation report、design/ADR/CHANGELOG（按 Change Profile 触发） |
+| 算子语义/reference/optimized/packing/fusion/threading 变更 | [算子开发与优化工作流](operator-development-workflow.md)要求的专项提案（非平凡方案）、work file、design/CHANGELOG（按变更投入触发） |
 
 ### 6.2 防过期机制
 
@@ -157,7 +157,7 @@
 
 ### 7.6 算子开发与优化文档
 
-- 算子开发、reference/optimized kernel、packing/layout、fusion、threading 工作遵循 **唯一规范文档** [算子开发与优化工作流](operator-development-workflow.md)：Change Profile 证据等级、O0–O6 门禁、Benchmark 规范、专项提案骨架（附录 A）、工作文件骨架（附录 B，实验区追加式、结论区按 `commit@date` 冻结）与优化方法（附录 C）均在其中；各算子的具体技术顺序属专项提案，不作为统一强制路线。
+- 算子开发、reference/optimized kernel、packing/layout、fusion、threading 工作遵循 **唯一规范文档** [算子开发与优化工作流](operator-development-workflow.md)：O0–O4 证据门禁、Benchmark 规范（§5）、算子工作文件骨架（§4，实验区追加式、结论区按 `commit@date` 冻结）与优化方法（§7）均在其中；各算子的具体技术顺序不作统一强制路线。
 
 ## 版本历史
 

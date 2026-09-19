@@ -146,16 +146,16 @@ TEST(CPUKernelLinearScalarCandidate, CpuBackendPreparesPlainF32CandidateKernel) 
     EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::LinearF32KernelArgs));
 }
 
-TEST(CPUKernelLinearScalarCandidate, CandidateEntryHandlesFastAndFallbackViews) {
-    constexpr int64_t input_shape[2] = {1, 3};
+TEST(CPUKernelLinearScalarCandidate, CandidateEntryHandlesMultiRowFastAndFallbackViews) {
+    constexpr int64_t input_shape[2] = {2, 3};
     constexpr int64_t input_strides[2] = {3, 1};
     constexpr int64_t weight_shape[2] = {2, 3};
     constexpr int64_t weight_strides[2] = {3, 1};
-    constexpr int64_t output_shape[2] = {1, 2};
+    constexpr int64_t output_shape[2] = {2, 2};
     constexpr int64_t output_strides[2] = {2, 1};
-    constexpr float input[3] = {1.0F, -2.0F, 0.5F};
+    constexpr float input[6] = {1.0F, -2.0F, 0.5F, -3.0F, 0.25F, 4.0F};
     constexpr float weight[6] = {2.0F, 1.0F, -1.0F, -0.5F, 3.0F, 4.0F};
-    float output[2] = {};
+    float output[4] = {};
     const auto kernel = PrepareLinearKernel();
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
 
@@ -167,10 +167,10 @@ TEST(CPUKernelLinearScalarCandidate, CandidateEntryHandlesFastAndFallbackViews) 
     const auto fast_params = BuildLinearPreparedParams(*kernel, fast_views);
     ASSERT_TRUE(fast_params.ok()) << fast_params.status().ToString();
     ASSERT_TRUE(RunLinearEntryWith(*kernel, fast_views).ok());
-    ExpectLinearRowsNear(input, weight, output, 1, 3, 2, 0, 1, 3, 1, 0, 1);
+    ExpectLinearRowsNear(input, weight, output, 2, 3, 2, 3, 1, 3, 1, 2, 1);
 
-    constexpr int64_t fallback_output_strides[2] = {6, 3};
-    std::array<float, 6> fallback_output{};
+    constexpr int64_t fallback_output_strides[2] = {9, 3};
+    std::array<float, 12> fallback_output{};
     const LinearTestViews fallback_views{
             .input_tensor = TensorView{input, DataType::Float32(), input_shape, input_strides},
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
@@ -179,11 +179,13 @@ TEST(CPUKernelLinearScalarCandidate, CandidateEntryHandlesFastAndFallbackViews) 
     };
     const auto fallback_params = BuildLinearPreparedParams(*kernel, fallback_views);
     ASSERT_TRUE(fallback_params.ok()) << fallback_params.status().ToString();
+    ASSERT_TRUE(RunLinearEntryWith(*kernel, fallback_views).ok());
+    ExpectLinearRowsNear(input, weight, fallback_output.data(), 2, 3, 2, 3, 1, 3, 1, 9, 3);
 
     constexpr int64_t n_contiguous_weight_strides[2] = {1, 2};
     std::array<float, 6> n_contiguous_weight = {
             2.0F, -0.5F, 1.0F, 3.0F, -1.0F, 4.0F};
-    float n_contiguous_output[2] = {};
+    float n_contiguous_output[4] = {};
     const LinearTestViews n_contiguous_views{
             .input_tensor = TensorView{input, DataType::Float32(), input_shape, input_strides},
             .weight_tensor = TensorView{n_contiguous_weight.data(), DataType::Float32(), weight_shape,
@@ -194,8 +196,8 @@ TEST(CPUKernelLinearScalarCandidate, CandidateEntryHandlesFastAndFallbackViews) 
     const auto n_contiguous_params = BuildLinearPreparedParams(*kernel, n_contiguous_views);
     ASSERT_TRUE(n_contiguous_params.ok()) << n_contiguous_params.status().ToString();
     ASSERT_TRUE(RunLinearEntryWith(*kernel, n_contiguous_views).ok());
-    ExpectLinearRowsNear(input, n_contiguous_weight.data(), n_contiguous_output, 1, 3, 2, 0, 1, 1, 2,
-                         0, 1);
+    ExpectLinearRowsNear(input, n_contiguous_weight.data(), n_contiguous_output, 2, 3, 2, 3, 1, 1, 2,
+                         2, 1);
 }
 
 TEST(CPUKernelLinearScalarCandidate, CandidateEntryWritesZerosForZeroInnerDimension) {

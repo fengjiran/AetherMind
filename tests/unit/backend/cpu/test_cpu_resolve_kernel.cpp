@@ -38,14 +38,18 @@ TEST(CpuPrepareKernel, RegisteredKeyReturnsPreparedKernel) {
     EXPECT_EQ(resolved->workspace_requirement.alignment, 64U);
 }
 
-TEST(CpuPrepareKernel, LinearReferenceKeyReturnsPreparedKernel) {
+TEST(CpuPrepareKernel, LinearKeyReturnsConfiguredPreparedKernel) {
     CpuBackend backend;
 
     const StatusOr<ResolvedKernel> resolved = backend.PrepareKernel(
             OpType::kLinear, MakeCpuSelector(), OpParams{LinearParams{}});
 
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
+#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
+    EXPECT_STREQ(resolved->name, "cpu::linear_f32_scalar_candidate");
+#else
     EXPECT_STREQ(resolved->name, "cpu::linear_f32_reference");
+#endif
 }
 
 TEST(CpuPrepareKernel, RejectsInvalidKernelMetadata) {

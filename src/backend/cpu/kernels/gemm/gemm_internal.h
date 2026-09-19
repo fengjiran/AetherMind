@@ -39,10 +39,10 @@ Status RunGemmF32Reference(const GemmF32Args& args) noexcept;
 /// @brief Runs the scalar-optimized FP32 GEMM candidate.
 ///
 /// This candidate intentionally remains separate from the double-accumulation
-/// reference oracle. It specializes only the pre-validated M=1 cases with
-/// unit-stride lhs K, unit-stride output N, and either contiguous RHS K or N.
-/// Every other reference-legal layout falls back to RunGemmF32Reference.
-/// It uses no intrinsics or heap allocation.
+/// reference oracle. It specializes pre-validated M=1, small-M, and generic-M
+/// cases with unit-stride lhs K, unit-stride output N, and either contiguous
+/// RHS K or N. Every other reference-legal layout falls back to
+/// RunGemmF32Reference. It uses no intrinsics or heap allocation.
 Status RunGemmF32ScalarOptimized(const GemmF32Args& args) noexcept;
 
 } // namespace aethermind::cpu::detail

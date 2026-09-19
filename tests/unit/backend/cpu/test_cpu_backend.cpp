@@ -39,12 +39,16 @@ TEST(CpuBackend, PolicyRestrictsKernelEligibility) {
     EXPECT_FALSE(backend.cpu_capabilities().effective_features.Contains(CpuFeature::kFma));
 }
 
-TEST(CpuBackend, PrepareKernelFindsLinearReferenceDescriptor) {
+TEST(CpuBackend, PrepareKernelFindsConfiguredLinearDescriptor) {
     CpuBackend backend;
     const StatusOr<ResolvedKernel> resolved = backend.PrepareKernel(
             OpType::kLinear, MakeCpuSelector(), OpParams{LinearParams{}});
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
+#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
+    EXPECT_STREQ(resolved->name, "cpu::linear_f32_scalar_candidate");
+#else
     EXPECT_STREQ(resolved->name, "cpu::linear_f32_reference");
+#endif
 }
 
 TEST(CpuBackend, TryGetKernelRegistryForDebugReturnsRegistry) {

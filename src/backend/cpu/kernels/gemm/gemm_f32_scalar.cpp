@@ -1,9 +1,14 @@
 #include "gemm_internal.h"
 
+#include <array>
+
 namespace aethermind::cpu::detail {
 namespace {
 
 constexpr int64_t kScalarOutputBlock = 4;
+// This is a conservative driver split for the first scalar candidate, not a
+// measured dispatch threshold.
+constexpr int64_t kScalarSmallMMax = 8;
 
 void RunM1KContiguous(const GemmF32Args& args) noexcept {
     const float* const lhs = args.lhs;
@@ -113,6 +118,152 @@ void RunM1NContiguous(const GemmF32Args& args) noexcept {
     }
 }
 
+template<int Rows, bool RhsKContiguous>
+void RunFullOutputBlock(const GemmF32Args& args,
+                        int64_t first_row,
+                        int64_t first_col) noexcept {
+    std::array<const float*, Rows> lhs_rows{};
+    std::array<float*, Rows> output_rows{};
+    std::array<std::array<float, kScalarOutputBlock>, Rows> sums{};
+    for (int row = 0; row < Rows; ++row) {
+        lhs_rows[row] = args.lhs + (first_row + row) * args.lhs_m_stride;
+        output_rows[row] = args.output + (first_row + row) * args.output_m_stride + first_col;
+    }
+
+    int64_t inner = 0;
+    if constexpr (RhsKContiguous) {
+        std::array<const float*, kScalarOutputBlock> weights{
+                args.rhs + first_col * args.rhs_n_stride,
+                args.rhs + (first_col + 1) * args.rhs_n_stride,
+                args.rhs + (first_col + 2) * args.rhs_n_stride,
+                args.rhs + (first_col + 3) * args.rhs_n_stride,
+        };
+        for (; inner + 1 < args.k; inner += 2) {
+            for (int row = 0; row < Rows; ++row) {
+                const float lhs0 = lhs_rows[row][inner];
+                const float lhs1 = lhs_rows[row][inner + 1];
+                sums[row][0] += lhs0 * weights[0][0];
+                sums[row][0] += lhs1 * weights[0][1];
+                sums[row][1] += lhs0 * weights[1][0];
+                sums[row][1] += lhs1 * weights[1][1];
+                sums[row][2] += lhs0 * weights[2][0];
+                sums[row][2] += lhs1 * weights[2][1];
+                sums[row][3] += lhs0 * weights[3][0];
+                sums[row][3] += lhs1 * weights[3][1];
+            }
+            for (const float*& weight: weights) {
+                weight += 2;
+            }
+        }
+        if (inner < args.k) {
+            for (int row = 0; row < Rows; ++row) {
+                const float lhs0 = lhs_rows[row][inner];
+                sums[row][0] += lhs0 * weights[0][0];
+                sums[row][1] += lhs0 * weights[1][0];
+                sums[row][2] += lhs0 * weights[2][0];
+                sums[row][3] += lhs0 * weights[3][0];
+            }
+        }
+    } else {
+        const float* weight = args.rhs + first_col;
+        for (; inner + 1 < args.k; inner += 2) {
+            for (int row = 0; row < Rows; ++row) {
+                const float lhs0 = lhs_rows[row][inner];
+                sums[row][0] += lhs0 * weight[0];
+                sums[row][1] += lhs0 * weight[1];
+                sums[row][2] += lhs0 * weight[2];
+                sums[row][3] += lhs0 * weight[3];
+            }
+            weight += args.rhs_k_stride;
+            for (int row = 0; row < Rows; ++row) {
+                const float lhs1 = lhs_rows[row][inner + 1];
+                sums[row][0] += lhs1 * weight[0];
+                sums[row][1] += lhs1 * weight[1];
+                sums[row][2] += lhs1 * weight[2];
+                sums[row][3] += lhs1 * weight[3];
+            }
+            weight += args.rhs_k_stride;
+        }
+        if (inner < args.k) {
+            for (int row = 0; row < Rows; ++row) {
+                const float lhs0 = lhs_rows[row][inner];
+                sums[row][0] += lhs0 * weight[0];
+                sums[row][1] += lhs0 * weight[1];
+                sums[row][2] += lhs0 * weight[2];
+                sums[row][3] += lhs0 * weight[3];
+            }
+        }
+    }
+
+    for (int row = 0; row < Rows; ++row) {
+        output_rows[row][0] = sums[row][0];
+        output_rows[row][1] = sums[row][1];
+        output_rows[row][2] = sums[row][2];
+        output_rows[row][3] = sums[row][3];
+    }
+}
+
+template<int Rows, bool RhsKContiguous>
+void RunOutputTail(const GemmF32Args& args, int64_t first_row, int64_t first_col) noexcept {
+    for (int row = 0; row < Rows; ++row) {
+        const float* const lhs = args.lhs + (first_row + row) * args.lhs_m_stride;
+        float* const output = args.output + (first_row + row) * args.output_m_stride;
+        for (int64_t col = first_col; col < args.n; ++col) {
+            float sum = 0.0F;
+            if constexpr (RhsKContiguous) {
+                const float* weight = args.rhs + col * args.rhs_n_stride;
+                for (int64_t inner = 0; inner < args.k; ++inner) {
+                    sum += lhs[inner] * weight[inner];
+                }
+            } else {
+                const float* weight = args.rhs + col;
+                for (int64_t inner = 0; inner < args.k; ++inner) {
+                    sum += lhs[inner] * *weight;
+                    weight += args.rhs_k_stride;
+                }
+            }
+            output[col] = sum;
+        }
+    }
+}
+
+template<int Rows, bool RhsKContiguous>
+void RunRowBlock(const GemmF32Args& args, int64_t first_row) noexcept {
+    int64_t col = 0;
+    for (; col + kScalarOutputBlock <= args.n; col += kScalarOutputBlock) {
+        RunFullOutputBlock<Rows, RhsKContiguous>(args, first_row, col);
+    }
+    if (col < args.n) {
+        RunOutputTail<Rows, RhsKContiguous>(args, first_row, col);
+    }
+}
+
+template<bool RhsKContiguous>
+void RunSmallM(const GemmF32Args& args) noexcept {
+    int64_t row = 0;
+    for (; row + 2 <= args.m; row += 2) {
+        RunRowBlock<2, RhsKContiguous>(args, row);
+    }
+    if (row < args.m) {
+        RunRowBlock<1, RhsKContiguous>(args, row);
+    }
+}
+
+template<bool RhsKContiguous>
+void RunGenericM(const GemmF32Args& args) noexcept {
+    int64_t row = 0;
+    for (; row + 4 <= args.m; row += 4) {
+        RunRowBlock<4, RhsKContiguous>(args, row);
+    }
+    if (row + 2 <= args.m) {
+        RunRowBlock<2, RhsKContiguous>(args, row);
+        row += 2;
+    }
+    if (row < args.m) {
+        RunRowBlock<1, RhsKContiguous>(args, row);
+    }
+}
+
 } // namespace
 
 Status RunGemmF32ScalarOptimized(const GemmF32Args& args) noexcept {
@@ -121,19 +272,30 @@ Status RunGemmF32ScalarOptimized(const GemmF32Args& args) noexcept {
     }
 
     // Preserve the reference's exact zero-inner semantics and retain it for
-    // every layout that this first candidate does not explicitly optimize.
-    if (args.k == 0 || args.m != 1 || args.lhs_k_stride != 1 ||
-        args.output_n_stride != 1) {
+    // every layout that this candidate does not explicitly optimize.
+    if (args.k == 0 || args.lhs_k_stride != 1 || args.output_n_stride != 1) {
         return RunGemmF32Reference(args);
     }
 
     if (args.rhs_k_stride == 1) {
-        RunM1KContiguous(args);
+        if (args.m == 1) {
+            RunM1KContiguous(args);
+        } else if (args.m <= kScalarSmallMMax) {
+            RunSmallM<true>(args);
+        } else {
+            RunGenericM<true>(args);
+        }
         return Status::Ok();
     }
 
     if (args.rhs_n_stride == 1) {
-        RunM1NContiguous(args);
+        if (args.m == 1) {
+            RunM1NContiguous(args);
+        } else if (args.m <= kScalarSmallMMax) {
+            RunSmallM<false>(args);
+        } else {
+            RunGenericM<false>(args);
+        }
         return Status::Ok();
     }
     return RunGemmF32Reference(args);

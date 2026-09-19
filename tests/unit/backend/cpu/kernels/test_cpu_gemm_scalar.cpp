@@ -52,79 +52,106 @@ void ExpectCandidateNearReference(const cpu::detail::GemmF32Args& candidate_args
 
 struct ScalarFastPathCase {
     RhsLayout layout;
+    int64_t m;
     int64_t k;
     int64_t n;
 };
 
 std::string ScalarFastPathCaseName(const testing::TestParamInfo<ScalarFastPathCase>& info) {
     return std::string{info.param.layout == RhsLayout::kNContiguous ? "NContiguous" : "KContiguous"} +
-           "K" + std::to_string(info.param.k) + "N" + std::to_string(info.param.n);
+           "M" + std::to_string(info.param.m) + "K" + std::to_string(info.param.k) + "N" +
+           std::to_string(info.param.n);
 }
 
 class CPUKernelGemmScalarFastPathTest : public testing::TestWithParam<ScalarFastPathCase> {};
 
 TEST_P(CPUKernelGemmScalarFastPathTest, MatchesDoubleReferenceWithinF32ErrorBudget) {
     const ScalarFastPathCase test_case = GetParam();
-    std::vector<float> lhs(static_cast<size_t>(test_case.k));
-    std::vector<float> rhs(static_cast<size_t>(test_case.k * test_case.n));
-    std::vector<float> candidate_output(static_cast<size_t>(test_case.n), 31.0F);
-    std::vector<float> reference_output(static_cast<size_t>(test_case.n), -17.0F);
+    const int64_t lhs_m_stride = test_case.k + 3;
+    const int64_t rhs_k_stride =
+            test_case.layout == RhsLayout::kNContiguous ? test_case.n + 5 : 1;
+    const int64_t rhs_n_stride =
+            test_case.layout == RhsLayout::kNContiguous ? 1 : test_case.k + 5;
+    const int64_t output_m_stride = test_case.n + 4;
+    std::vector<float> lhs(static_cast<size_t>(test_case.m * lhs_m_stride));
+    std::vector<float> rhs(static_cast<size_t>(test_case.layout == RhsLayout::kNContiguous
+                                                       ? test_case.k * rhs_k_stride
+                                                       : test_case.n * rhs_n_stride));
+    std::vector<float> candidate_output(static_cast<size_t>(test_case.m * output_m_stride), 31.0F);
+    std::vector<float> reference_output(static_cast<size_t>(test_case.m * output_m_stride), -17.0F);
     FillValues(lhs);
     FillValues(rhs);
 
-    const int64_t rhs_k_stride = test_case.layout == RhsLayout::kNContiguous ? test_case.n : 1;
-    const int64_t rhs_n_stride = test_case.layout == RhsLayout::kNContiguous ? 1 : test_case.k;
     const cpu::detail::GemmF32Args candidate_args{
             .lhs = lhs.data(),
             .rhs = rhs.data(),
             .output = candidate_output.data(),
-            .m = 1,
+            .m = test_case.m,
             .n = test_case.n,
             .k = test_case.k,
-            .lhs_m_stride = test_case.k,
+            .lhs_m_stride = lhs_m_stride,
             .lhs_k_stride = 1,
             .rhs_k_stride = rhs_k_stride,
             .rhs_n_stride = rhs_n_stride,
-            .output_m_stride = test_case.n,
+            .output_m_stride = output_m_stride,
             .output_n_stride = 1,
     };
     auto reference_args = candidate_args;
     reference_args.output = reference_output.data();
     ExpectCandidateNearReference(candidate_args, reference_args);
+    for (int64_t row = 0; row < test_case.m; ++row) {
+        for (int64_t col = test_case.n; col < output_m_stride; ++col) {
+            EXPECT_EQ(candidate_output[static_cast<size_t>(row * output_m_stride + col)], 31.0F)
+                    << "row=" << row << " padding_col=" << col;
+        }
+    }
 }
 
 INSTANTIATE_TEST_SUITE_P(
         FastPathBoundaries,
         CPUKernelGemmScalarFastPathTest,
         testing::Values(
-                ScalarFastPathCase{RhsLayout::kNContiguous, 1, 1},
-                ScalarFastPathCase{RhsLayout::kNContiguous, 31, 2},
-                ScalarFastPathCase{RhsLayout::kNContiguous, 32, 3},
-                ScalarFastPathCase{RhsLayout::kNContiguous, 33, 4},
-                ScalarFastPathCase{RhsLayout::kNContiguous, 127, 5},
-                ScalarFastPathCase{RhsLayout::kNContiguous, 128, 31},
-                ScalarFastPathCase{RhsLayout::kNContiguous, 129, 32},
-                ScalarFastPathCase{RhsLayout::kNContiguous, 33, 33},
-                ScalarFastPathCase{RhsLayout::kNContiguous, 4096, 5},
-                ScalarFastPathCase{RhsLayout::kKContiguous, 1, 1},
-                ScalarFastPathCase{RhsLayout::kKContiguous, 31, 2},
-                ScalarFastPathCase{RhsLayout::kKContiguous, 32, 3},
-                ScalarFastPathCase{RhsLayout::kKContiguous, 33, 4},
-                ScalarFastPathCase{RhsLayout::kKContiguous, 127, 5},
-                ScalarFastPathCase{RhsLayout::kKContiguous, 128, 31},
-                ScalarFastPathCase{RhsLayout::kKContiguous, 129, 32},
-                ScalarFastPathCase{RhsLayout::kKContiguous, 33, 33},
-                ScalarFastPathCase{RhsLayout::kKContiguous, 4096, 5}),
+                ScalarFastPathCase{RhsLayout::kNContiguous, 1, 1, 1},
+                ScalarFastPathCase{RhsLayout::kNContiguous, 1, 31, 5},
+                ScalarFastPathCase{RhsLayout::kNContiguous, 1, 32, 31},
+                ScalarFastPathCase{RhsLayout::kNContiguous, 1, 33, 33},
+                ScalarFastPathCase{RhsLayout::kNContiguous, 2, 31, 2},
+                ScalarFastPathCase{RhsLayout::kNContiguous, 3, 32, 3},
+                ScalarFastPathCase{RhsLayout::kNContiguous, 4, 33, 4},
+                ScalarFastPathCase{RhsLayout::kNContiguous, 7, 127, 5},
+                ScalarFastPathCase{RhsLayout::kNContiguous, 8, 128, 31},
+                ScalarFastPathCase{RhsLayout::kNContiguous, 10, 33, 5},
+                ScalarFastPathCase{RhsLayout::kNContiguous, 11, 33, 5},
+                ScalarFastPathCase{RhsLayout::kNContiguous, 16, 129, 32},
+                ScalarFastPathCase{RhsLayout::kNContiguous, 17, 33, 33},
+                ScalarFastPathCase{RhsLayout::kNContiguous, 17, 4096, 5},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 1, 1, 1},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 1, 31, 5},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 1, 32, 31},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 1, 33, 33},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 2, 31, 2},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 3, 32, 3},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 4, 33, 4},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 7, 127, 5},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 8, 128, 31},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 10, 33, 5},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 11, 33, 5},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 16, 129, 32},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 17, 33, 33},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 17, 4096, 5}),
         ScalarFastPathCaseName);
 
-TEST(CPUKernelGemmScalar, KContiguousPaddedAndUnalignedMatchesReference) {
+TEST(CPUKernelGemmScalar, KContiguousMultiRowPaddedAndUnalignedMatchesReference) {
+    constexpr int64_t m = 3;
     constexpr int64_t k = 5;
     constexpr int64_t n = 5;
+    constexpr int64_t lhs_m_stride = 7;
     constexpr int64_t weight_row_stride = 8;
-    std::array<float, 8> lhs_storage{};
+    constexpr int64_t output_m_stride = 7;
+    std::array<float, 21> lhs_storage{};
     std::array<float, n * weight_row_stride + 1> rhs_storage{};
-    std::array<float, 8> candidate_storage{};
-    std::array<float, 8> reference_storage{};
+    std::array<float, 22> candidate_storage{};
+    std::array<float, 22> reference_storage{};
     for (size_t index = 0; index < lhs_storage.size(); ++index) {
         lhs_storage[index] = TestValue(index);
     }
@@ -138,14 +165,14 @@ TEST(CPUKernelGemmScalar, KContiguousPaddedAndUnalignedMatchesReference) {
             .lhs = lhs_storage.data() + 1,
             .rhs = rhs_storage.data() + 1,
             .output = candidate_storage.data() + 1,
-            .m = 1,
+            .m = m,
             .n = n,
             .k = k,
-            .lhs_m_stride = k,
+            .lhs_m_stride = lhs_m_stride,
             .lhs_k_stride = 1,
             .rhs_k_stride = 1,
             .rhs_n_stride = weight_row_stride,
-            .output_m_stride = n,
+            .output_m_stride = output_m_stride,
             .output_n_stride = 1,
     };
     auto reference_args = candidate_args;
@@ -155,41 +182,44 @@ TEST(CPUKernelGemmScalar, KContiguousPaddedAndUnalignedMatchesReference) {
     EXPECT_EQ(reference_storage.front(), -23.0F);
 }
 
-TEST(CPUKernelGemmScalar, NContiguousPaddedMatchesReference) {
+TEST(CPUKernelGemmScalar, NContiguousMultiRowPaddedAndUnalignedMatchesReference) {
+    constexpr int64_t m = 3;
     constexpr int64_t k = 5;
     constexpr int64_t n = 5;
+    constexpr int64_t lhs_m_stride = 7;
     constexpr int64_t rhs_k_stride = 8;
-    std::array<float, k> lhs{};
-    std::array<float, k * rhs_k_stride> rhs{};
-    std::array<float, n> candidate_output{};
-    std::array<float, n> reference_output{};
-    for (size_t index = 0; index < lhs.size(); ++index) {
-        lhs[index] = TestValue(index);
+    constexpr int64_t output_m_stride = 7;
+    std::array<float, 21> lhs_storage{};
+    std::array<float, k * rhs_k_stride + 1> rhs_storage{};
+    std::array<float, 22> candidate_storage{};
+    std::array<float, 22> reference_storage{};
+    for (size_t index = 0; index < lhs_storage.size(); ++index) {
+        lhs_storage[index] = TestValue(index);
     }
-    for (size_t index = 0; index < rhs.size(); ++index) {
-        rhs[index] = TestValue(index + 31U);
+    for (size_t index = 0; index < rhs_storage.size(); ++index) {
+        rhs_storage[index] = TestValue(index + 31U);
     }
 
     const cpu::detail::GemmF32Args candidate_args{
-            .lhs = lhs.data(),
-            .rhs = rhs.data(),
-            .output = candidate_output.data(),
-            .m = 1,
+            .lhs = lhs_storage.data() + 1,
+            .rhs = rhs_storage.data() + 1,
+            .output = candidate_storage.data() + 1,
+            .m = m,
             .n = n,
             .k = k,
-            .lhs_m_stride = k,
+            .lhs_m_stride = lhs_m_stride,
             .lhs_k_stride = 1,
             .rhs_k_stride = rhs_k_stride,
             .rhs_n_stride = 1,
-            .output_m_stride = n,
+            .output_m_stride = output_m_stride,
             .output_n_stride = 1,
     };
     auto reference_args = candidate_args;
-    reference_args.output = reference_output.data();
+    reference_args.output = reference_storage.data() + 1;
     ExpectCandidateNearReference(candidate_args, reference_args);
 }
 
-TEST(CPUKernelGemmScalar, FallsBackToReferenceForMNotOneAndNonUnitStrides) {
+TEST(CPUKernelGemmScalar, FallsBackToReferenceForNonCanonicalStrides) {
     constexpr int64_t m = 2;
     constexpr int64_t n = 3;
     constexpr int64_t k = 3;
@@ -272,21 +302,40 @@ TEST(CPUKernelGemmScalar, M1NonUnitOutputStrideFallsBackToReference) {
 }
 
 TEST(CPUKernelGemmScalar, ZeroInnerDimensionWritesPositiveZeroWithoutInputs) {
-    std::array<float, 8> output{};
+    std::array<float, 13> output{};
     output.fill(-7.0F);
     const Status status = cpu::detail::RunGemmF32ScalarOptimized(cpu::detail::GemmF32Args{
             .output = output.data(),
-            .m = 1,
+            .m = 3,
             .n = 3,
             .k = 0,
             .output_m_stride = 5,
             .output_n_stride = 1,
     });
     ASSERT_TRUE(status.ok()) << status.ToString();
-    for (int64_t col = 0; col < 3; ++col) {
-        EXPECT_EQ(output[static_cast<size_t>(col)], 0.0F);
-        EXPECT_FALSE(std::signbit(output[static_cast<size_t>(col)]));
+    for (int64_t row = 0; row < 3; ++row) {
+        for (int64_t col = 0; col < 3; ++col) {
+            const size_t output_index = static_cast<size_t>(row * 5 + col);
+            EXPECT_EQ(output[output_index], 0.0F);
+            EXPECT_FALSE(std::signbit(output[output_index]));
+        }
     }
+}
+
+TEST(CPUKernelGemmScalar, ZeroOutputDimensionsAreNoOps) {
+    const Status zero_m = cpu::detail::RunGemmF32ScalarOptimized(cpu::detail::GemmF32Args{
+            .m = 0,
+            .n = 3,
+            .k = 7,
+    });
+    ASSERT_TRUE(zero_m.ok()) << zero_m.ToString();
+
+    const Status zero_n = cpu::detail::RunGemmF32ScalarOptimized(cpu::detail::GemmF32Args{
+            .m = 3,
+            .n = 0,
+            .k = 7,
+    });
+    ASSERT_TRUE(zero_n.ok()) << zero_n.ToString();
 }
 
 TEST(CPUKernelGemmScalar, OverwritesExistingOutput) {

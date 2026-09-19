@@ -5,7 +5,7 @@
 适用范围：AetherMind CPU-first / Llama-family dense / FP32 Linear（无 bias）
 更新时间：2026-09-15
 前置文档（已归档）：`docs/archive/kernel_dev/LinearOp算子设计与实现方案_v1.0.md`、`docs/archive/kernel_dev/Operator语义层接口实施步骤_v1.0.md` Section 18
-样板契约：`RMSNorm算子契约.md`
+样板契约：`../rmsnorm/RMSNorm算子契约.md`
 
 ---
 

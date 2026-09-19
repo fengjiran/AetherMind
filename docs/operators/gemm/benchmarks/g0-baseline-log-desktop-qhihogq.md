@@ -1,7 +1,7 @@
 # GEMM G0 基线实验日志 — DESKTOP-QHIHOGQ
 
 - **算子/工作包**: GEMM / G0 合同与证据基线
-- **专项提案**: [CPU GEMM 优化方案](../../../improvement-plan/04-cpu-gemm-optimization.md)
+- **专项提案**: [CPU GEMM 优化方案](../cpu-gemm-optimization.md)
 - **采集机**: `DESKTOP-QHIHOGQ` — Intel Core i9-12900H（Alder Lake-H，6P+8E 混合），WSL2 kernel 6.18.33.2，GCC 14.2.0
 - **日志范围**: 2026-09-18/19 本机首次 G0 采集：correctness、五组 benchmark、交错 A/B 噪声分解、反汇编与 Roofline 输入
 - **原始数据位置**: `benchmark-results/operators/gemm/20260918T151928Z_162ab3e7583f_DESKTOP-QHIHOGQ_g0-baseline/`（gitignored，仅存在于本机）

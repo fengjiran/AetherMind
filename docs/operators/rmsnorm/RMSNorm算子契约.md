@@ -156,7 +156,7 @@ PrepareExecutionBindings（PreparedExecutionBindings 构建，cold path）
 
 - AVX2+FMA translation unit 仅在编译器同时支持 `-mavx2` 和 `-mfma` 时编译并注册；否则 binary 中只有 reference descriptor。
 
-- AVX2+FMA descriptor 通过 `cpu_requirements = CpuFeatureSet::From({kAvx2, kFma})` 声明完整指令集要求；运行期由 backend 按 `CpuCapabilities.effective_features` 过滤，因此"支持 AVX2 但缺少 FMA"的机器会自动回退 reference descriptor。能力模型见 `docs/designs/cpu_capability_design.md`。
+- AVX2+FMA descriptor 通过 `cpu_requirements = CpuFeatureSet::From({kAvx2, kFma})` 声明完整指令集要求；运行期由 backend 按 `CpuCapabilities.effective_features` 过滤，因此"支持 AVX2 但缺少 FMA"的机器会自动回退 reference descriptor。能力模型见 `../system`。
 
 ## 7. 验证要求
 

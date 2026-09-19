@@ -1,7 +1,7 @@
 # GEMM G0 基线实验日志
 
 - **算子/工作包**: GEMM / G0 合同与证据基线
-- **专项提案**: [CPU GEMM 优化方案](../../../improvement-plan/04-cpu-gemm-optimization.md)
+- **专项提案**: [CPU GEMM 优化方案](../cpu-gemm-optimization.md)
 - **采集机**: `DESKTOP-54H5MMI` — Intel Core Ultra 9 285H（Arrow Lake-H，16 核、SMT off、单 NUMA、AVX2+FMA+AVX-VNNI、无 AVX-512/AMX），WSL2 kernel 6.6.87.2
 - **日志范围**: 2026-09-18 首次机器级 baseline、独立复跑与 Roofline 定位；2026-09-19 提案 §7 汇总范围值归档
 - **原始数据位置**: `benchmark-results/operators/gemm/20260918T012602Z_5cbd378695bb_DESKTOP-54H5MMI_g0-baseline/` — 该目录 gitignored、不随仓库分发，**仅存在于上述采集机本地磁盘**，在其他机器上不存在且不可恢复
@@ -31,7 +31,7 @@
 ```text
 candidate/baseline commit: 5cbd378695bb90d97fa4273a7359bf2bfea20e8f
 code working tree at audited commit: clean
-artifact finalization state: docs/improvement-plan/04-cpu-gemm-optimization.md modified
+artifact finalization state: docs/operators/gemm/04-cpu-gemm-optimization.md modified
 CPU: Intel Core Ultra 9 285H, 16 cores, SMT off, one NUMA node
 OS: Ubuntu 24.04 under WSL2, kernel 6.6.87.2-microsoft-standard-WSL2
 compiler: GCC 14.2.0
@@ -177,19 +177,19 @@ context.json SHA256: 902717d37212ecf0946a6d5ecbeffa01f0d6d5112dcf242ad454679f3e2
 
 ### 7. 决定
 
-- **Closed locally**：Roofline 定位分析归档、纳入 [GEMM 实验记录与验证报告索引](README.md)；
+- **Closed locally**：Roofline 定位分析归档、纳入 [GEMM 实验记录与验证报告索引](../README.md)；
 - G0 门禁清单不变（production 百分比级门禁仍 Needs More Data）。
 
 ## 2026-09-19 — G0-BASELINE-004：提案 §7 汇总范围值归档
 
 ### 1. 假设
 
-专项提案 `04-cpu-gemm-optimization.md` §7 曾直接粘贴本机 baseline 的跨形状汇总范围值。按工作流「专项提案只保留工作包状态、当前结论和正式验证报告链接」与「同一事实只在一个位置详述」，这些数值必须先在本日志拥有权威副本，才能从提案删除。
+专项提案 `cpu-gemm-optimization.md` §7 曾直接粘贴本机 baseline 的跨形状汇总范围值。按工作流「专项提案只保留工作包状态、当前结论和正式验证报告链接」与「同一事实只在一个位置详述」，这些数值必须先在本日志拥有权威副本，才能从提案删除。
 
 ### 2. 代码与环境
 
 - 数据来源：G0-BASELINE-001 baseline run（commit `5cbd378695bb90d97fa4273a7359bf2bfea20e8f`），**本次不新增采集**；
-- 触发原因：2026-09-19 文档拓扑拆分时逐值 grep，发现下列范围值在 `docs/tests/operators/gemm/` 内无完整副本（既有报告只记了单 case median）；
+- 触发原因：2026-09-19 文档拓扑拆分时逐值 grep，发现下列范围值在 `docs/operators/gemm/` 内无完整副本（既有报告只记了单 case median）；
 - 本文所有数值仍只对 `DESKTOP-54H5MMI` 成立，口径与不可跨机复用约束与本日志开头一致。
 
 ### 3. 覆盖内容

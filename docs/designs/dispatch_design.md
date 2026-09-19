@@ -204,7 +204,7 @@ Quantized packed weight
 
 * 注入：`CpuBackendFactory(policy)` / `RuntimeOptions.backend.cpu_feature_policy`；测试可停用 AVX2/FMA 强制 scalar 回退。
 
-**完整设计见** **`docs/designs/cpu_capability_design.md`**（检测矩阵、policy 语义、平台差异与取舍）。
+**完整设计见** **`cpu_capability_design.md`**（检测矩阵、policy 语义、平台差异与取舍）。
 
 # 5. Kernel 函数签名
 

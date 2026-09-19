@@ -58,7 +58,7 @@ AetherMind 当前不需要再次进行顶层架构重写。`model → graph/oper
 | execution planning | 部分闭环 | ExecutableModel preparation、shape-aware prepare、activation liveness | P0/P1 | [01](01-inference-session-generate-readiness.md)、§9 |
 | runtime | 部分闭环 | KV transaction、resource budget、线程/topology、metrics | P0/P1 | [05](05-kv-cache-manager-evolution.md)、§10 |
 | backend dispatch | 基础已闭环 | prepare request 缺 concrete shape/layout；packing service 边界 | P1 | §11 |
-| CPU kernels | 部分闭环 | reference 主链已齐备（6/6）；量化和优化覆盖不足 | P0/P1 | [01](01-inference-session-generate-readiness.md)、[04](04-cpu-gemm-optimization.md)、§12 |
+| CPU kernels | 部分闭环 | reference 主链已齐备（6/6）；量化和优化覆盖不足 | P0/P1 | [01](01-inference-session-generate-readiness.md)、[04](../operators/gemm/cpu-gemm-optimization.md)、§12 |
 | memory/allocator | 基础已闭环 | activation/workspace/KV provider 统一、budget/NUMA policy | P1 | §13 |
 | shape inference | 基础已闭环 | specialization 诊断与 runtime constraint 证据；不需通用动态 shape engine | P1 | §14 |
 | base/dtypes/container | 当前足够 | 问题驱动维护；不作为推理主链重构目标 | P2 | §14 |
@@ -163,7 +163,7 @@ HF quantization config/tensor schema
 - logical quantization identity 如何进入 `WeightArtifactKey/PackingRecipe`；
 - reference dequantize path与 optimized integer path 的误差门禁。
 
-量化细节在真正实施前应从本路线图拆出独立提案；在合同未冻结前，[CPU GEMM 优化方案](04-cpu-gemm-optimization.md) 只负责预留 driver/packing 边界，不应猜测格式。
+量化细节在真正实施前应从本路线图拆出独立提案；在合同未冻结前，[CPU GEMM 优化方案](../operators/gemm/cpu-gemm-optimization.md) 只负责预留 driver/packing 边界，不应猜测格式。
 
 ### 5.4 P1：模型身份与可复现性
 
@@ -468,7 +468,7 @@ Kernel descriptor/resolve 需要逐步表达：
 7. 多线程与 NUMA；
 8. AArch64 NEON/SVE（仅在目标硬件纳入验收后）。
 
-GEMM 细节见 [CPU GEMM 优化方案](04-cpu-gemm-optimization.md)。
+GEMM 细节见 [CPU GEMM 优化方案](../operators/gemm/cpu-gemm-optimization.md)。
 
 ### 12.3 kernel 共同质量门禁
 

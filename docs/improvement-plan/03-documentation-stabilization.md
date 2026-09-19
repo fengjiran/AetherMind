@@ -146,9 +146,9 @@
 
 按 [文档系统规范 §4](../guides/documentation-guide.md)："单文档 ≤ 1000 行"。当前超限（非归档）：
 
-- [docs/guides/operator_optimization_guide.md](../guides/operator_optimization_guide.md) 2110 行；
+- ~~operator_optimization_guide.md~~ 2110 行（2026-09-19 已压缩合并入算子开发工作流附录 C 后移除）；
 - [docs/designs/model_graph_design.md](../designs/model_graph_design.md) 1706 行；
-- [docs/designs/dispatch_design.md](../designs/dispatch_design.md) 1061 行；
+- dispatch_design.md 1061 行（2026-09-19 迁入 [docs/designs/](../designs/dispatch_design.md)）；
 - [docs/designs/graph_lowering_design.md](../designs/graph_lowering_design.md) 1005 行。
 
 归档区超限文档（`docs/archive/kernel_dev/*.md` 等）不作为 Batch -1 优先项，仅在清查表登记。
@@ -344,7 +344,7 @@ E1 完全满足需要：(a) 补充上述深度核验，或 (b) 明确裁决结�
 
 ### 6.3 P2 首批对象
 
-- [docs/guides/operator_optimization_guide.md](../guides/operator_optimization_guide.md) 2110 行、[docs/designs/model_graph_design.md](../designs/model_graph_design.md) 1706 行、`dispatch_design.md` 1061 行、`graph_lowering_design.md` 1005 行（超长，内容正确性待核验后决定是否拆分）；
+- ~~operator_optimization_guide.md~~ 2110 行（2026-09-19 已压缩合并入算子开发工作流附录 C 后移除）、[docs/designs/model_graph_design.md](../designs/model_graph_design.md) 1706 行、`dispatch_design.md` 1061 行、`graph_lowering_design.md` 1005 行（超长，内容正确性待核验后决定是否拆分）；
 - 中文文件名、非 canonical 命名（待 D3 排序后统一处理）。
 
 ## 7. D4：阶段术语弱化

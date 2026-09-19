@@ -141,22 +141,22 @@
 | docs/designs/amstring/amstring_storage_architecture_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认（重命名） | P2 |
 | docs/archive/designs-legacy/amstring_task_checklist.md | archive | Deprecated | 否 | 未核验 | 分类错误已修复（原位于 designs/amstring/，2026-09-14 归档） | 保留（归档） | P2 |
 | docs/designs/architecture/architecture_overview.md | design | Current | 是（当前架构） | 已核验 | 术语已迁移（2026-09-17） | 保留（D1 核验） | P0 |
-| docs/designs/backend_design.md | design | Unverified | 否 | 未核验 | 命名违规（应在 backend/NN-*.md） | 待 D3 排序确认（移动 + 重命名） | P2 |
-| docs/designs/cpu_capability_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
-| docs/designs/dispatch_design.md | design | Unverified | 否 | 未核验 | 过长（1061 行）+ 命名违规 | 待 D3 排序确认（拆分 + 移动） | P2 |
+| docs/designs/backend_design.md | design | **Moved**（2026-09-19） | 否 | 已处理 | 命名违规（应在 backend/NN-*.md） | 曾暂迁 operators，2026-09-19 回流 docs/designs/backend_design.md | Resolved |
+| docs/designs/cpu_capability_design.md | design | **Moved**（2026-09-19） | 否 | 已处理 | 命名违规 | 曾暂迁 operators，2026-09-19 回流 docs/designs/cpu_capability_design.md | Resolved |
+| docs/designs/dispatch_design.md | design | **Moved**（2026-09-19） | 否 | 已处理 | 过长（1061 行）+ 命名违规 | 曾暂迁 operators，2026-09-19 回流 docs/designs/dispatch_design.md | Resolved |
 | docs/designs/executor_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
 | docs/designs/graph_compilation_flow.md | design | Unverified | 否 | 未核验 | 命名违规 + 与 docs/reviews/graph_compilation_flow.md 同名冲突 | 待 D3 排序确认（重命名或移动） | P1 |
 | docs/designs/graph_invariants_and_validator_architecture.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
 | docs/designs/graph_lowering_design.md | design | Unverified | 否 | 未核验 | 过长（1005 行）+ 命名违规 | 待 D3 排序确认（拆分 + 移动） | P2 |
-| docs/designs/kernel_dev/LinearOp算子契约.md | design | Unverified | 否 | 未核验 | 中文文件名 + 命名违规 | 待 D3 排序确认 | P2 |
-| docs/designs/kernel_dev/RMSNorm算子契约.md | design | Unverified | 否 | 未核验 | 中文文件名 + 命名违规 | 待 D3 排序确认 | P2 |
-| docs/designs/kernel_dev/RoPE算子契约.md | design | Unverified | 否 | 未核验 | 中文文件名 + 命名违规 | 待 D3 排序确认 | P2 |
-| docs/designs/kernel_dev/算子系统设计.md | design | Unverified | 否 | 未核验 | 中文文件名 + 命名违规 | 待 D3 排序确认 | P2 |
+| docs/designs/kernel_dev/LinearOp算子契约.md | design | **Moved**（2026-09-19） | 否 | 已处理 | 中文文件名 + 命名违规 | 已归入 docs/operators/linear/LinearOp算子契约.md | Resolved |
+| docs/designs/kernel_dev/RMSNorm算子契约.md | design | **Moved**（2026-09-19） | 否 | 已处理 | 中文文件名 + 命名违规 | 已归入 docs/operators/rmsnorm/RMSNorm算子契约.md | Resolved |
+| docs/designs/kernel_dev/RoPE算子契约.md | design | **Moved**（2026-09-19） | 否 | 已处理 | 中文文件名 + 命名违规 | 已归入 docs/operators/rope/RoPE算子契约.md | Resolved |
+| docs/designs/kernel_dev/算子系统设计.md | design | **Moved**（2026-09-19） | 否 | 已处理 | 中文文件名 + 命名违规 | 已归入 docs/operators/算子系统设计.md | Resolved |
 | docs/designs/kv_cache_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
 | docs/designs/model/01-model-loader.md | design | Unverified | 否 | 未核验 | -（canonical 命名） | 保留（D1 核验后决定是否升级为权威） | P1 |
 | docs/designs/model_graph_design.md | design | Unverified | 否 | 未核验 | 过长（1706 行）+ 命名违规 | 待 D3 排序确认（拆分 + 移动） | P2 |
-| docs/designs/op_evaluator.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
-| docs/designs/operator_contract_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
+| docs/designs/op_evaluator.md | design | **Moved**（2026-09-19） | 否 | 已处理 | 命名违规 | 曾暂迁 operators，2026-09-19 回流 docs/designs/op_evaluator.md | Resolved |
+| docs/designs/operator_contract_design.md | design | **Moved**（2026-09-19） | 否 | 已处理 | 命名违规 | 已归入 docs/operators/operator_contract_design.md | Resolved |
 | docs/designs/status设计方案.md | design | Unverified | 否 | 未核验 | 中文文件名 + 命名违规 | 待 D3 排序确认（重命名） | P2 |
 | docs/designs/tensor_view_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
 | docs/designs/unified_allocator_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
@@ -165,7 +165,7 @@
 | docs/guides/cpp_coding_style_guidelines.md | guide | Current | 否 | 部分核验 | - | 保留 | P1 |
 | docs/guides/cpp_comment_guidelines.md | guide | Current | 否 | 部分核验 | - | 保留 | P1 |
 | docs/guides/documentation-guide.md | guide | Current | 是（文档规范元） | 已核验 | - | 保留（D1 核验） | P0 |
-| docs/guides/operator_optimization_guide.md | guide | Unverified | 否 | 未核验 | 过长（2110 行） | 待 D1 后核验决定是否拆分 | P2 |
+| docs/guides/operator_optimization_guide.md | guide | **Removed**（2026-09-19） | 否 | 已处理 | 过长（2110 行） | 已压缩合并入算子开发工作流附录 C 后删除 | Resolved |
 | docs/guides/test_writing_guidelines.md | guide | Current | 否 | 部分核验 | - | 保留 | P1 |
 | docs/improvement-plan/01-inference-session-generate-readiness.md | plan | Draft | 否 | 部分核验 | 漂移已修复（§2.2 Linear/RoPE/Argmax 更新为 FP32 reference / 可用，2026-09-14） | 保留（其余章节待核验） | P0 |
 | docs/improvement-plan/02-engineering-quality-system.md | plan | Draft | 否 | 未核验 | Workstream A 与 Batch 0 含文档治理项，需移交本方案 | 修订（本 Plan 已处理） | P0 |
@@ -259,7 +259,7 @@
 | `docs/designs/` 混入 development plan / milestones / task checklist | 已修复：3 篇归档到 `docs/archive/designs-legacy/`（2026-09-14） | 对应 3 行 | 已完成 |
 | `graph_compilation_flow.md` 同名冲突 | designs/ 与 reviews/ 并存 | 对应 2 行 | Batch -1 P1 |
 | 4 篇 review 无日期 | `graph_compilation_flow.md`、`model_graph_data_structure_review.md`、`operator_semantic_layer_review.md`、`prd/prd_review.md` | docs/reviews/ 对应 4 行 | Batch -1 P1 |
-| 4 篇非归档文档超长（>1000 行） | `operator_optimization_guide.md` 2110、`model_graph_design.md` 1706、`dispatch_design.md` 1061、`graph_lowering_design.md` 1005 | 对应 4 行 | 后续 workstream（P2） |
+| 3 篇非归档文档超长（>1000 行）（原 4 篇，operator_optimization_guide.md 已于 2026-09-19 移除） | ~~`operator_optimization_guide.md` 2110~~、`model_graph_design.md` 1706、`dispatch_design.md` 1061、`graph_lowering_design.md` 1005 | 对应 3 行 | 后续 workstream（P2） |
 | 24 篇 designs/ 命名违规 | 全部 29 篇中：canonical 1（`model/01-model-loader.md`）、存量例外 1（`architecture_overview.md`）、plan 分类错误 3、真正命名违规 24 | docs/designs/ 对应 24 行 | 后续 workstream（P2） |
 | 术语过时（`Phase 1`） | `docs/README.md` 第 37/158 行；`docs/products/aethermind_prd.md`；architecture_overview 索引行 | 对应各行 | D4 术语迁移（Batch -1 内启动，后续完成） |
 | `verify_docs.py` 覆盖不足 | 第 7 行 anchors 不校验；第 39 行 improvement-plan 排除；第 128-134 行 loose symbol 匹配；第 155-158 行目录级索引覆盖 | 不在清查表（工具而非文档） | D5a Batch -1 内完成 |

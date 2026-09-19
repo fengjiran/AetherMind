@@ -263,7 +263,7 @@ struct KernelContext {
 Phase 1 CPU Backend 需实现以下关键组件以支持高性能推理：
 
 
-- **CpuCapabilities / CpuFeaturePolicy**：负责检测 AVX2、AVX512、AMX 等指令集支持，并生成三层 capability 快照（hardware/usable/effective）。模型详见 `docs/designs/cpu_capability_design.md`。
+- **CpuCapabilities / CpuFeaturePolicy**：负责检测 AVX2、AVX512、AMX 等指令集支持，并生成三层 capability 快照（hardware/usable/effective）。模型详见 `cpu_capability_design.md`。
 - **执行资源接缝（预留）**：线程池 / NUMA / ISA 辅助信息等后端专属执行资源为后续扩展预留；当前 CPU kernels 直接消费 `KernelContext` 中的窄资源。
 - **CpuWeightPrepacker**：负责将逻辑权重转换为符合 CPU 指令集与缓存友好布局的 packed 格式。
 - **PackedWeights**：预打包权重的存储实体，**由 `PackedWeightStore` 持有**；CPU backend 只定义 packed 格式与构建逻辑。

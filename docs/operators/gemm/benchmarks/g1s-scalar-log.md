@@ -3,7 +3,7 @@
 > 本文是追加式过程记录。它不构成 production acceptance；正式验证只在满足完整配对 A/B、bare-metal 与 production-path 门禁后另建报告。
 
 - **算子/工作包**: GEMM / G1S portable scalar optimized
-- **专项提案**: [CPU GEMM 优化方案](../../../improvement-plan/04-cpu-gemm-optimization.md)
+- **专项提案**: [CPU GEMM 优化方案](../cpu-gemm-optimization.md)
 - **采集机**: `DESKTOP-54H5MMI` — Intel Core Ultra 9 285H（16 核、SMT off、单 NUMA），WSL2 kernel 6.6.87.2，GCC 14.2.0
 - **日志范围**: 2026-09-18 backend-private candidate、本地 diagnostic smoke 与同日简化重构
 - **原始数据位置**: `benchmark-results/operators/gemm/20260918T141000Z_g1s-local-diagnostic/`（gitignored、不随仓库分发，**仅存在于上述采集机本地磁盘**，其他机器上不存在）

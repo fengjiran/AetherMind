@@ -2,7 +2,7 @@
 
 - **状态**: Current
 - **日期**: 2026-09-18
-- **专项提案**: [CPU GEMM 优化方案](../../../improvement-plan/04-cpu-gemm-optimization.md)
+- **专项提案**: [CPU GEMM 优化方案](../cpu-gemm-optimization.md)
 - **工作包**: G0 合同与证据基线（本地补采）
 - **Change Profile**: Optimized benchmark infrastructure / Tuning-only measurement protocol
 - **Candidate commit**: `5cbd378695bb90d97fa4273a7359bf2bfea20e8f`（与 baseline 同实现）

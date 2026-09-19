@@ -1,13 +1,13 @@
 # CPU GEMM 优化方案
 
 - **状态**: In Progress
-- **版本**: 2.0
+- **版本**: 2.1
 - **日期**: 2026-09-19
-- **文档定位**: 本算子的优化原理、合同、工作包与状态。**机器级实测数值、噪声 floor 与 Roofline 百分比不在本文详述**，权威位置见[实验记录与验证报告索引](../tests/operators/gemm/README.md)
-- **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
-- **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
-- **优化方法基线**: [算子优化指南](../guides/operator_optimization_guide.md)
-- **工作流规范**: [算子开发与优化工作流](../guides/operator-development-workflow.md)
+- **文档定位**: 本算子的优化原理、合同、工作包与状态。**机器级实测数值、噪声 floor 与 Roofline 百分比不在本文详述**，权威位置见[实验记录与验证报告索引](README.md)
+- **产品边界**: [AetherMind 当前产品 PRD](../../products/aethermind_prd.md)
+- **架构基线**: [架构总览](../../designs/architecture/architecture_overview.md)
+- **优化方法基线**: [算子开发与优化工作流附录 C](../../guides/operator-development-workflow.md#附录-c优化方法)
+- **工作流规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
 - **Change Profile**: Optimized / Packing/Layout / Threading（G6 起）
 - **关联代码**: `src/backend/cpu/kernels/gemm/`、`src/backend/cpu/cpu_backend.cpp`、`src/backend/cpu/kernels/cpu_weight_prepacker.cpp`
 - **关联测试**: `tests/unit/backend/cpu/kernels/`、`tests/benchmark/cpu_kernels/`
@@ -44,9 +44,9 @@ AetherMind 不应新增 semantic `Gemm` operator。当前 GEMM 是 CPU backend �
 | 能力 | 当前实现 | 对优化的影响 |
 |---|---|---|
 | GEMM primitive | `RunGemmF32Reference`，三重循环，double accumulator，支持二维 stride | correctness baseline，不是性能基线 |
-| scalar optimized | 尚未实现；当前没有独立于 reference 的 FP32 scalar fast path | 无法单独归因 loop/layout 优化与 SIMD 的收益，需在 AVX2 前补齐 |
+| scalar optimized | `RunGemmF32ScalarOptimized` 已落地，但只覆盖 `M=1` 且 lhs K / output N 单位 stride 的两种 RHS 连续布局，其余布局委托 reference；仅在 `AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE=ON` 时经 candidate descriptor 进入 production 路径 | small-M 之外的 loop/register reuse 收益尚未取得 production 证据；不能取代 double-accumulation reference oracle |
 | MatMul | FP32 reference；支持 batch broadcast、`transpose_rhs` 和任意已验证 stride | 通用性高，首轮优化不应受其最宽 layout 合同约束 |
-| Linear | FP32 plain-weight reference；将 leading dimensions flatten 为 `row_count` | LLM unfused path 可作为 production adapter 样板 |
+| Linear | FP32 plain-weight reference，当前是 Linear 私有的 double 累加循环，**尚未复用共享 GEMM primitive**；leading dimensions 在 binding 期 flatten 为 `row_count` | LLM unfused path 可作为 production adapter 样板，但需先接到共享 engine 上 |
 | QkvLinear / GateUpLinear | FP32 packed-only reference；当前 packed payload 是 `cpu_identity` | 已打通 opaque artifact 与 execution binding，但没有真实 tile packing |
 | kernel resolve | `CpuBackend::PrepareKernel` 按 selector、CPU feature 和 priority 选 descriptor | resolve 时尚无 concrete shape/layout，不能按 `M/N/K` 选择算法 |
 | binding specialization | `KernelParamsBuilder` 可看到固定的 pointer/shape/stride/dtype | 可在 cold path 选择 GEMV/skinny/blocked driver，并把函数指针写入 prepared params |
@@ -54,7 +54,7 @@ AetherMind 不应新增 semantic `Gemm` operator。当前 GEMM 是 CPU backend �
 | packing recipe | `CpuWeightPrepacker::RecipeFor(selector)` 返回全局 `cpu_identity` | 不足以表达 AVX2/AVX-512/AMX 或 tile/version 不同的 layout |
 | CPU dispatch | 已有 AVX2/FMA/AVX-512/VNNI/AMX、NEON/DotProd/I8MM/SVE 等 capability model | feature gate 基础可复用；当前仅 RMSNorm 有 AVX2+FMA optimized descriptor |
 | threading | 当前产品边界为单请求、单线程，现有 kernel 也保持单线程 | 首轮优化保持单线程；并行化属于 runtime 级后续工作 |
-| benchmark | Google Benchmark；G0 已提供 Linear prepared-path、binding-cost 与 `cpu_identity` packing 基线 | 当前只有 reference descriptor；机器级基线**按机器各自成立、互不替代**，逐机采集状态与数值见 [GEMM 实验记录与验证报告索引](../tests/operators/gemm/README.md)（§6.7 同机要求；未采集的机器须各自重采） |
+| benchmark | Google Benchmark；G0 已提供 Linear prepared-path、binding-cost 与 `cpu_identity` packing 基线 | 当前只有 reference descriptor；机器级基线**按机器各自成立、互不替代**，逐机采集状态与数值见 [GEMM 实验记录与验证报告索引](README.md)（§6.7 同机要求；未采集的机器须各自重采） |
 
 ### 2.1 当前主要瓶颈
 
@@ -178,7 +178,7 @@ scalar optimized 必须是独立实现，不能修改或覆盖 `RunGemmF32Refere
 - 使用 `1×4`、`2×4`、`4×4` 等 scalar register block 候选，具体大小由 benchmark 决定；
 - 不适配 fast path 的合法 stride/layout 走 reference-compatible fallback，不缩窄 operator 合同。
 
-scalar optimized 不使用 intrinsic，但**允许编译器 auto-vectorization**：不建设 strict non-SIMD 归因变体，也不做 loop/layout 与 vectorization 的贡献拆分（strict 目标曾实现并验证，2026-09-18 按简化决策撤销，过程与理由见 [G1S scalar 实验日志](../tests/operators/gemm/g1s-scalar-log.md)）。scalar 候选、未来 SIMD 候选与 reference 使用同一 shape/layout 测试矩阵与正确性合同。
+scalar optimized 不使用 intrinsic，但**允许编译器 auto-vectorization**：不建设 strict non-SIMD 归因变体，也不做 loop/layout 与 vectorization 的贡献拆分（strict 目标曾实现并验证，2026-09-18 按简化决策撤销，过程与理由见 [G1S scalar 实验日志](benchmarks/g1s-scalar-log.md)）。scalar 候选、未来 SIMD 候选与 reference 使用同一 shape/layout 测试矩阵与正确性合同。
 
 ### 4.4 ISA microkernel
 
@@ -401,13 +401,13 @@ python3 tools/compare_benchmark_json.py \
 
 #### 6.8.1 噪声 floor 是机器属性，必须按机器按组量化
 
-上述 5% 回退阈值**不是**一个可以直接套用的常数：已采集机器的实测表明，同一 benchmark 组的噪声 floor 在不同机器之间可以相差一个数量级，且最差组可以完全不同。量化方法已上移为机器无关的通用规范，见 [算子优化指南 §2.4.2 噪声 floor、repetitions 与最小可信 delta](../guides/operator_optimization_guide.md)。本提案只保留门禁要求：
+上述 5% 回退阈值**不是**一个可以直接套用的常数：已采集机器的实测表明，同一 benchmark 组的噪声 floor 在不同机器之间可以相差一个数量级，且最差组可以完全不同。量化方法已上移为机器无关的通用规范，见 [算子开发工作流附录 C.2.4 噪声 floor、repetitions 与最小可信 delta](../../guides/operator-development-workflow.md#附录-c优化方法)。本提案只保留门禁要求：
 
 - 每台目标机、每个 benchmark 组必须先量化自身的噪声 floor，只有 floor 明显低于 5% 的组才可作为自动门禁；判读 candidate 时使用**该机器该组的噪声 floor**作为最小可信 delta，而不是固定 5%；
 - 必须区分**进程内方差**与**跨进程系统偏移**。当不确定性几乎全部来自后者时，提高 `--benchmark_repetitions` **无效**，有效手段是重复多个独立进程并比较每进程 median 的分布，或把 baseline/candidate 调度进同一进程内交替执行；
 - 采集脚本必须能证明阈值本身有效：把**同一份实现**的两轮 A/B 互比，若被判出 REGRESS/IMPROVE，则该阈值在该组上不可用作自动门禁；
 - 虚拟化环境可能把非对称拓扑伪造成对称 CPU，使 `taskset` 退化为咨询性绑定；需要核类别或 SMT 控制的门禁结论只在裸机采集；
-- 逐机逐组的 floor 数值、被误判的具体 case 与可用组清单属于机器级证据，见 [GEMM 实验记录与验证报告索引](../tests/operators/gemm/README.md)，本文不重复。
+- 逐机逐组的 floor 数值、被误判的具体 case 与可用组清单属于机器级证据，见 [GEMM 实验记录与验证报告索引](README.md)，本文不重复。
 
 ## 7. 实施路线与证据门禁
 
@@ -449,12 +449,12 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 
 采集时分别保存 hot、streaming、binding 与 packing JSON；不要将它们合并为一个几何平均值。可使用 [第 6.7 节](#67-运行协议) 的命令和 `tools/compare_benchmark_json.py` 对同一模式、同一 shape 的 baseline/candidate JSON 比较。
 
-**逐机采集状态**（机器级数值、噪声 floor 与 Roofline 百分比不在本文详述，权威见 [GEMM 实验记录与验证报告索引](../tests/operators/gemm/README.md)）：
+**逐机采集状态**（机器级数值、噪声 floor 与 Roofline 百分比不在本文详述，权威见 [GEMM 实验记录与验证报告索引](README.md)）：
 
 | 采集机 | 环境 | run id | 证据 | 本机定性结论 |
 |---|---|---|---|---|
-| `DESKTOP-54H5MMI` | Core Ultra 9 285H，WSL2，GCC 14.2.0 Release，单线程 `taskset`，10 repetitions | `20260918T012602Z_5cbd378695bb_DESKTOP-54H5MMI_g0-baseline` | [实验日志](../tests/operators/gemm/g0-baseline-log.md)、[验证报告](../tests/operators/gemm/gemm_g0_baseline_validation_2026-09-18.md)、[Roofline 定位](../tests/operators/gemm/gemm_g0_roofline_analysis_2026-09-18.md)、[配对 A/B](../tests/operators/gemm/gemm_g0_paired_ab_validation_2026-09-18.md) | correctness 契约与框架不变量全通过，确认 params build 未混入 compute loop；访问顺序主导 reference；`M=1` 落在记忆侧、`M≥16` 落在计算侧且均远低于 ceiling；reference 反汇编为纯标量；顺序两轮 A/B 的 delta 超过 5% 阈值，百分比级门禁不成立 |
-| `DESKTOP-QHIHOGQ` | Core i9-12900H（6P+8E），WSL2，GCC 14.2.0 `-O3`，`taskset -c 16`，10 repetitions 保留全部原始行 | `20260918T151928Z_162ab3e7583f_DESKTOP-QHIHOGQ_g0-baseline` | [实验日志](../tests/operators/gemm/g0-baseline-log-desktop-qhihogq.md)、[验证报告](../tests/operators/gemm/gemm_g0_baseline_validation_desktop-qhihogq_2026-09-19.md)、[Roofline 定位](../tests/operators/gemm/gemm_g0_roofline_analysis_desktop-qhihogq_2026-09-19.md) | 复现访问顺序归因且更强；进程内 CV 远小于跨进程系统偏移，同实现自比被误判，因此仅 binding 与 packing 两组可适用 5% 门禁；WSL2 伪造对称拓扑使 `taskset` 仅具咨询性；scalar candidate 被自动向量化为 SSE2 4-wide，未触及本机 AVX2+FMA，G1V 仍有空间 |
+| `DESKTOP-54H5MMI` | Core Ultra 9 285H，WSL2，GCC 14.2.0 Release，单线程 `taskset`，10 repetitions | `20260918T012602Z_5cbd378695bb_DESKTOP-54H5MMI_g0-baseline` | [实验日志](benchmarks/g0-baseline-log.md)、[验证报告](benchmarks/gemm_g0_baseline_validation_2026-09-18.md)、[Roofline 定位](benchmarks/gemm_g0_roofline_analysis_2026-09-18.md)、[配对 A/B](benchmarks/gemm_g0_paired_ab_validation_2026-09-18.md) | correctness 契约与框架不变量全通过，确认 params build 未混入 compute loop；访问顺序主导 reference；`M=1` 落在记忆侧、`M≥16` 落在计算侧且均远低于 ceiling；reference 反汇编为纯标量；顺序两轮 A/B 的 delta 超过 5% 阈值，百分比级门禁不成立 |
+| `DESKTOP-QHIHOGQ` | Core i9-12900H（6P+8E），WSL2，GCC 14.2.0 `-O3`，`taskset -c 16`，10 repetitions 保留全部原始行 | `20260918T151928Z_162ab3e7583f_DESKTOP-QHIHOGQ_g0-baseline` | [实验日志](benchmarks/g0-baseline-log-desktop-qhihogq.md)、[验证报告](benchmarks/gemm_g0_baseline_validation_desktop-qhihogq_2026-09-19.md)、[Roofline 定位](benchmarks/gemm_g0_roofline_analysis_desktop-qhihogq_2026-09-19.md) | 复现访问顺序归因且更强；进程内 CV 远小于跨进程系统偏移，同实现自比被误判，因此仅 binding 与 packing 两组可适用 5% 门禁；WSL2 伪造对称拓扑使 `taskset` 仅具咨询性；scalar candidate 被自动向量化为 SSE2 4-wide，未触及本机 AVX2+FMA，G1V 仍有空间 |
 | 其他目标机 | — | — | — | **Not Collected**；不得沿用上述任一台的数值作为基线或门禁参照 |
 
 原始 artifact 位于各采集机本地 gitignored 的 `benchmark-results/operators/gemm/<run-id>/`，**不随仓库分发**，在其他机器上不可恢复、不可复核；这是 G0 尚未满足 durable artifact retention 的直接后果（见 §6.7 与 G0 退出条件）。
@@ -477,7 +477,7 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 - direct microkernel 与 production Linear benchmark 使用相同 shape/layout/correctness matrix；
 - optimized FP32 accumulation 的误差相对 double reference 单独验收。
 
-**当前进展**：`RunGemmF32ScalarOptimized` 已作为 backend-private 单入口 candidate 落地，并在 `AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE=ON` 时注册为 opt-in descriptor `cpu::linear_f32_scalar_candidate`；默认 OFF 时 `cpu::linear_f32_reference` 的 descriptor/name/entry 保持不变。首版覆盖的 shape/layout 范围、fast path 参数与 fallback 边界属于已实现设计，以源码与 [G1S scalar 实验日志](../tests/operators/gemm/g1s-scalar-log.md) 为准，该日志同时记录 strict 归因变体的实现与撤销过程。opt-in integration 与首次 smoke 数据均不构成 production acceptance，且 smoke 数值同样不可跨机复用。
+**当前进展**：`RunGemmF32ScalarOptimized` 已作为 backend-private 单入口 candidate 落地，并在 `AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE=ON` 时注册为 opt-in descriptor `cpu::linear_f32_scalar_candidate`；默认 OFF 时 `cpu::linear_f32_reference` 的 descriptor/name/entry 保持不变。首版覆盖的 shape/layout 范围、fast path 参数与 fallback 边界属于已实现设计，以源码与 [G1S scalar 实验日志](benchmarks/g1s-scalar-log.md) 为准，该日志同时记录 strict 归因变体的实现与撤销过程。opt-in integration 与首次 smoke 数据均不构成 production acceptance，且 smoke 数值同样不可跨机复用。
 
 退出条件：scalar optimized 在目标 Decode canonical geomean 上有稳定收益；合法但不适合 fast path 的布局确定 fallback；reference oracle 完全不变；hot path 无新增分配（SIMD 归因要求已按 2026-09-18 简化决策撤销）。
 
@@ -567,13 +567,14 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | shape 在 kernel resolve 后才可见 | 无法选 GEMV/blocked path | binding-time internal driver；workspace/recipe 依赖 shape 时升级 specialization 合同 |
-| “scalar source” 被编译器自动向量化 | 收益归因模糊（已接受：不做拆分） | 不再区分 strict 变体；如需归因可回溯引入（该机制曾实现并验证后撤销，过程见 [G1S 实验日志](../tests/operators/gemm/g1s-scalar-log.md)） |
+| “scalar source” 被编译器自动向量化 | 收益归因模糊（已接受：不做拆分） | 不再区分 strict 变体；如需归因可回溯引入（该机制曾实现并验证后撤销，过程见 [G1S 实验日志](benchmarks/g1s-scalar-log.md)） |
 | recipe 只由 selector 决定 | 多 ISA layout 被误绑定 | descriptor-owned exact recipe + prepare-first packing request |
 | 通用 MatMul 合同拖累 Linear | optimized fast path 被任意 stride/broadcast 复杂化 | adapter 分层；合法但不适合 fast path 的 layout 在 descriptor 内走 compatible scalar driver，原本无法证明安全的 layout 才返回 `Unimplemented` |
 | benchmark 重复同一权重 | 高估 Decode cache locality | 同时报 hot 与 streaming artifact |
 | 大 GEMM 平均值掩盖 M=1 回退 | token latency 退化 | Decode/Prefill 分组 geomean 与 per-shape gate |
 | tile 参数过拟合单机 | 跨 CPU 退化 | ISA/微架构静态 profile + fallback；保留原始数据 |
-| 跨进程系统偏移被当成 candidate 收益/回退 | 错误接受或否决 optimized kernel | 按 §6.8.1 与 [优化指南 §2.4.2](../guides/operator_optimization_guide.md) 逐机逐组量化噪声 floor；分离进程内 CV 与跨进程偏移；用同实现 A/B 自比校验阈值有效性 |
+| reference 与 scalar candidate 编译期互斥（`linear_entry.cpp:170-204` 的 `#if/#else`，一个二进制里只有一个 descriptor） | 无法在同一进程内做 reference↔candidate 交错 A/B；跨二进制比较会混入链接与代码布局差异 | 两个 Release 二进制分别采集，并在 context 中记录构建选项；若需要同进程交错 A/B，须先把二者改为并存 descriptor（不同 priority）—— 这是 G1S 采集协议的前置决策 |
+| 跨进程系统偏移被当成 candidate 收益/回退 | 错误接受或否决 optimized kernel | 按 §6.8.1 与 [工作流附录 C.2.4](../../guides/operator-development-workflow.md#附录-c优化方法) 逐机逐组量化噪声 floor；分离进程内 CV 与跨进程偏移；用同实现 A/B 自比校验阈值有效性 |
 | 虚拟化环境伪造拓扑，`taskset` 只是咨询性绑定 | 采集可能跨物理核/P-E core 迁移，数据不可解释 | 采集前实测逐 vCPU 吞吐与 SMT 兄弟争用以识别伪造拓扑；在 context 中记录 affinity 的咨询性质；需 P/E 或 SMT 控制的结论只在裸机采集 |
 | 基线 raw artifact 仅存单机 gitignored 目录 | 换机即丢失、无法复核，跨机误用他人基线 | 上传 CI/object storage 并记录 retention URL；报告中显式标注采集机与「不可跨机复用」 |
 | kernel 内部并行 | oversubscription、lifetime 不清 | runtime 统一线程池，kernel 只消费并行上下文 |
@@ -604,22 +605,23 @@ runtime thread-pool contract + 单线程证据 ──> G6 并行与 NUMA
 - packing break-even、内存放大和端到端影响均有证据；
 - 未达到门禁的 optimized path 不提高 registry priority；
 - baseline 与 candidate 在**同一台机器**采集，报告显式标注采集机身份；任何性能数值不得跨机引用或替换（§6.7、§6.5）；
-- 每台目标机各自的噪声 floor 已按 §6.8.1 与 [优化指南 §2.4.2](../guides/operator_optimization_guide.md) 逐组量化，并区分进程内方差与跨进程偏移；用于自动门禁的组其 floor 必须明显低于阈值，且经同实现 A/B 自比验证不会误判；
+- 每台目标机各自的噪声 floor 已按 §6.8.1 与 [工作流附录 C.2.4](../../guides/operator-development-workflow.md#附录-c优化方法) 逐组量化，并区分进程内方差与跨进程偏移；用于自动门禁的组其 floor 必须明显低于阈值，且经同实现 A/B 自比验证不会误判；
 - raw artifact 有可复核的存放位置（本机 gitignored 目录或 durable retention URL），报告中记录 run id 与 checksum。
 
 ## 10. 相关文档
 
-- [算子开发与优化工作流](../guides/operator-development-workflow.md)：Change Profile、O0–O6 门禁、实验日志和正式验证报告规范。
-- [AetherMind 当前产品 PRD](../products/aethermind_prd.md)：产品范围、单线程边界、INT8/INT4 目标。
-- [架构总览](../designs/architecture/architecture_overview.md)：模块边界与执行数据流。
-- [算子优化指南](../guides/operator_optimization_guide.md)：Roofline、SIMD、packing、blocking、fusion 与 benchmark 通用方法；§2.4.2 为噪声 floor 与最小可信 delta 的方法权威。
-- [GEMM 实验记录与验证报告索引](../tests/operators/gemm/README.md)：本算子全部机器级数值、噪声 floor、反汇编与 Roofline 定位的权威位置。
-- [Dispatch 设计](../designs/dispatch_design.md)：kernel registry、selector 与 capability dispatch。
-- [InferenceSession / Generate 前置闭环计划](01-inference-session-generate-readiness.md)：真实 Prefill/Decode vertical slice 与端到端门禁。
+- [算子开发与优化工作流](../../guides/operator-development-workflow.md)：Change Profile 证据等级、O0–O6 门禁、Benchmark 规范与工作文件证据。
+- [AetherMind 当前产品 PRD](../../products/aethermind_prd.md)：产品范围、单线程边界、INT8/INT4 目标。
+- [架构总览](../../designs/architecture/architecture_overview.md)：模块边界与执行数据流。
+- [算子开发与优化工作流附录 C](../../guides/operator-development-workflow.md#附录-c优化方法)：Roofline、SIMD、packing、blocking、fusion 与 benchmark 通用方法；§C.2.4 为噪声 floor 与最小可信 delta 的方法权威。
+- [GEMM 实验记录与验证报告索引](README.md)：本算子全部机器级数值、噪声 floor、反汇编与 Roofline 定位的权威位置。
+- [Dispatch 设计](../../designs/dispatch_design.md)：kernel registry、selector 与 capability dispatch。
+- [InferenceSession / Generate 前置闭环计划](../../improvement-plan/01-inference-session-generate-readiness.md)：真实 Prefill/Decode vertical slice 与端到端门禁。
 
 ## 11. 变更记录
 
 | 日期 | 版本 | 变更 | 原因 | 证据/PR |
 |---|---|---|---|---|
-| 2026-09-19 | 2.0 | 按文档拓扑拆分：§6.8.1 的逐机噪声 floor 表与判读改为原则+链接，方法权威上移指南 §2.4.2；§7 两段 G0 机器级采集记录与 G1S 实施记录改为逐机状态表+报告链接；补模板要求的 Change Profile / 关联代码 / 关联测试 / 关联 ADR / 本文档定位字段 | 工作流要求专项提案只保留工作包状态、当前结论与验证报告链接，不粘贴原始 benchmark 数据；同时消除与 `docs/tests/operators/gemm/` 的重复事实 | `70b1f8d8` |
-| 2026-09-18/19 | 1.9 | 采集机 `DESKTOP-QHIHOGQ` G0 基线与逐机门禁归属 | 第二台机器独立采集，验证噪声 floor 的机器属性 | [G0 验证报告（QHIHOGQ）](../tests/operators/gemm/gemm_g0_baseline_validation_desktop-qhihogq_2026-09-19.md) |
+| 2026-09-19 | 2.1 | 核对代码后修正 §2 三处过期事实：scalar optimized 已落地（仅覆盖 `M=1`、编译期 opt-in）；默认 Linear descriptor 走 Linear 私有的 double 累加循环、**未复用共享 GEMM primitive**；candidate 与 reference 编译期互斥，因此 reference↔candidate 对比必须构建两个二进制（新增 §8 风险行） | 提案的"当前状态"与仓库事实不符会直接误导 G1S/G1V 的采集协议 | `src/backend/cpu/kernels/linear/linear_f32_reference.cpp:20-32`、`linear_entry.cpp:170-204` |
+| 2026-09-19 | 2.0 | 按文档拓扑拆分：§6.8.1 的逐机噪声 floor 表与判读改为原则+链接，方法权威上移指南 §2.4.2；§7 两段 G0 机器级采集记录与 G1S 实施记录改为逐机状态表+报告链接；补模板要求的 Change Profile / 关联代码 / 关联测试 / 关联 ADR / 本文档定位字段 | 工作流要求专项提案只保留工作包状态、当前结论与验证报告链接，不粘贴原始 benchmark 数据；同时消除与 `docs/operators/gemm/` 的重复事实 | `70b1f8d8` |
+| 2026-09-18/19 | 1.9 | 采集机 `DESKTOP-QHIHOGQ` G0 基线与逐机门禁归属 | 第二台机器独立采集，验证噪声 floor 的机器属性 | [G0 验证报告（QHIHOGQ）](benchmarks/gemm_g0_baseline_validation_desktop-qhihogq_2026-09-19.md) |

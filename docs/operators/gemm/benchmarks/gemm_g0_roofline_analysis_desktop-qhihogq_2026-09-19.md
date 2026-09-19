@@ -2,7 +2,7 @@
 
 - **状态**: Current（限 `DESKTOP-QHIHOGQ`）
 - **日期**: 2026-09-19（采集窗口 2026-09-18T15:19Z–16:02Z）
-- **专项提案**: [CPU GEMM 优化方案](../../../improvement-plan/04-cpu-gemm-optimization.md)
+- **专项提案**: [CPU GEMM 优化方案](../cpu-gemm-optimization.md)
 - **工作包**: G0 合同与证据基线（Roofline 定位）
 - **采集机**: `DESKTOP-QHIHOGQ` — Intel Core i9-12900H（Alder Lake-H，6P+8E），WSL2 kernel 6.18.33.2，GCC 14.2.0，Release `-O3 -DNDEBUG`
 - **数据来源**: baseline run `benchmark-results/operators/gemm/20260918T151928Z_162ab3e7583f_DESKTOP-QHIHOGQ_g0-baseline/`（gitignored，仅存在于本机）

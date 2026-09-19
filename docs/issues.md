@@ -12,11 +12,11 @@
 - [ ] activation arena 为所有 activation 顺序分配，尚无 producer/last-consumer liveness reuse，峰值接近全部 activation bytes 之和（关联：[系统能力演进路线图 §9.3](improvement-plan/06-system-capability-evolution-roadmap.md#93-p1activation-liveness-planning)）
 - [ ] PRD 的单线程/OpenMP、compile-time dispatch/planning-time resolve、多 Session 验收/单 active KV slot 等表述需要按当前事实与产品目标重新裁决（关联：[系统能力演进路线图 §17.1](improvement-plan/06-system-capability-evolution-roadmap.md#171-当前需要裁决的漂移)）
 - [ ] designs/graph_compilation_flow.md 与 reviews/graph_compilation_flow.md 同名冲突，易混淆权威来源（关联：[docs/designs/graph_compilation_flow.md](designs/graph_compilation_flow.md)、[docs/reviews/graph_compilation_flow.md](reviews/graph_compilation_flow.md)）
-- [ ] 4 篇非归档文档超长（>1000 行）：operator_optimization_guide.md 2110、model_graph_design.md 1706、dispatch_design.md 1061、graph_lowering_design.md 1005（关联：[docs/guides/](guides/)、[docs/designs/](designs/)）
+- [ ] 3 篇非归档文档超长（>1000 行）：model_graph_design.md 1706、dispatch_design.md 1061、graph_lowering_design.md 1005（关联：[docs/designs/](designs/)）；~~operator_optimization_guide.md~~ 已于 2026-09-19 压缩合并入 [算子开发工作流附录 C](guides/operator-development-workflow.md) 并删除
 - [ ] 大量文档无明确状态字段：designs/、guides/、reviews/ 中多数文档头部无状态标记（关联：[docs/designs/](designs/)、[docs/guides/](guides/)、[docs/reviews/](reviews/)）
 - [ ] 4 篇 review 无日期命名：graph_compilation_flow.md、model_graph_data_structure_review.md、operator_semantic_layer_review.md、prd/prd_review.md（关联：[docs/reviews/](reviews/)）
 - [ ] 24 篇 designs/ 命名违规（非 canonical `NN-<kebab-name>.md`）待迁移（关联：[docs/designs/](designs/)）
-- [ ] GEMM G0 尚缺三项 production 门禁证据：裸机 perf/governor/microcode、稳定 5% 级性能门禁（WSL2 噪声 floor 在 binding/小形状超阈值）、raw artifact 的 CI/object-storage retention URL（关联：[04 号提案 §7 G0](improvement-plan/04-cpu-gemm-optimization.md)、[配对 A/B 验证报告](tests/operators/gemm/gemm_g0_paired_ab_validation_2026-09-18.md)）
+- [ ] GEMM G0 尚缺三项 production 门禁证据：裸机 perf/governor/microcode、稳定 5% 级性能门禁（WSL2 噪声 floor 在 binding/小形状超阈值）、raw artifact 的 CI/object-storage retention URL（关联：[04 号提案 §7 G0](operators/gemm/cpu-gemm-optimization.md)、[配对 A/B 验证报告](operators/gemm/benchmarks/gemm_g0_paired_ab_validation_2026-09-18.md)）
 
 ## 已解决
 

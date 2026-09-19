@@ -2,7 +2,7 @@
 
 - **状态**: Current
 - **日期**: 2026-09-18
-- **专项提案**: [CPU GEMM 优化方案](../../../improvement-plan/04-cpu-gemm-optimization.md)
+- **专项提案**: [CPU GEMM 优化方案](../cpu-gemm-optimization.md)
 - **工作包**: G0 合同与证据基线（Roofline 定位）
 - **采集机**: `DESKTOP-54H5MMI` — Intel Core Ultra 9 285H（16 核、SMT off、单 NUMA、无 AVX-512/AMX），WSL2 kernel 6.6.87.2
 - **数据来源**: baseline run `benchmark-results/operators/gemm/20260918T012602Z_5cbd378695bb_DESKTOP-54H5MMI_g0-baseline/`（gitignored、不随仓库分发，**仅存在于上述采集机本地磁盘**）

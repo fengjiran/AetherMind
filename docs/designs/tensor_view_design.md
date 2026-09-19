@@ -5,7 +5,7 @@ version: v0.1
 date: 2026-03-31
 author: Sisyphus
 source_documents:
-  - docs/designs/operator_contract_design.md
+  - docs/operators/operator_contract_design.md
   - docs/designs/phase1_m1_execution_checklist.md
 ---
 
@@ -24,7 +24,7 @@ source_documents:
 
 本设计基于以下文档的最小契约要求：
 
-- `docs/designs/operator_contract_design.md` §3.2 最小元信息
+- `docs/operators/operator_contract_design.md` §3.2 最小元信息
 - `docs/designs/phase1_m1_execution_checklist.md` §3.3 Base Contract
 
 ### 1.2 Phase 1 目标定位
@@ -565,7 +565,7 @@ M1 阶段已完成:
 
 ## 11. 相关文档
 
-- `docs/designs/operator_contract_design.md` — Operator Contract 契约
+- `docs/operators/operator_contract_design.md` — Operator Contract 契约
 - `docs/designs/phase1_m1_execution_checklist.md` — M1 执行清单
 - `include/container/array_view.h` — ArrayView 参考实现
 - `include/tensor.h` — Tensor owning handle

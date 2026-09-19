@@ -9,17 +9,18 @@
 | 类型 | 目录 | 状态字段 | 职责边界 |
 |---|---|---|---|
 | 架构总览 | [designs/architecture/architecture_overview.md](designs/architecture/architecture_overview.md) | Current | 全系统唯一权威总览：分层架构、硬性约束、跨层流程、模块地图、性能基线 |
-| 模块设计 | [designs/](designs/) | Current / Deprecated | 单模块深入设计：数据结构、并发模型、接口、边界、权衡；按 AGENTS.md §2.1 模块表分子目录 |
+| 模块设计 | [designs/](designs/) | Current / Deprecated | 单模块深入设计：数据结构、并发模型、接口、边界、权衡；按 AGENTS.md §2.1 模块表分子目录（算子/backend 相关设计已归位文档见 [operators/](operators/)，不在此目录） |
+| 算子文档 | [operators/](operators/) | 各算子目录自含状态 | **全部算子文档唯一位置**：算子契约、专项提案、工作文件/证据（按算子分目录），算子语义层设计（operator_contract_design、算子系统设计）在其根目录；规范见 [guides/operator-development-workflow.md](guides/operator-development-workflow.md) |
 | 调研备忘 | [designs/research/](designs/research/) | 无状态，头部标注日期与可信度 | 未验证/未采纳的技术调研，不承诺实现，禁止当作事实引用 |
 | 演进提案 | [improvement-plan/](improvement-plan/) | Draft / In Progress / Implemented / Superseded | 未来要做什么：路线图与专题提案 |
 | 开发指南 | [guides/](guides/) | Current / Deprecated | "怎么做"的过程规范：编码、注释、测试、评审、文档 |
 | API 参考 | [api/public-api.md](api/public-api.md) | Current | 公共 API 语义（与头文件 Doxygen 同源同步） |
 | 决策记录 | [decisions/](decisions/) | Proposed / Accepted / Deprecated / Superseded | 已作出/被否决的架构决策及其理由（ADR），每篇至少 1 个被否定备选方案 |
 | 评审报告 | [reviews/](reviews/) | Current / 历史快照 | 代码/设计评审结论；过时快照头部加"已过时"警示 |
-| 验证报告 | [tests/](tests/) | Current | 测试/基准验证结果与结论；新算子报告按 [tests/operators/](tests/operators/) 组织 |
+| 验证报告 | [tests/](tests/) | Current | 测试/基准验证结果与结论；算子工作文件与证据见 [operators/](operators/) |
 | 问题跟踪 | [issues.md](issues.md) | 每条目 `[x]`/`[ ]` | 已知缺陷与优化待办，短生命周期 |
 | 变更记录 | [../CHANGELOG.md](../CHANGELOG.md) | 无 | 行为可见变更，按语义化版本 |
-| 开发日志 | [logs/development_log.md](logs/development_log.md) | 无 | 项目开发过程记录，记录"为什么"而非"做了什么"；算子实验与验证记录见 [tests/operators/](tests/operators/) |
+| 开发日志 | [logs/development_log.md](logs/development_log.md) | 无 | 项目开发过程记录，记录"为什么"而非"做了什么"；算子实验与验证记录见 [operators/](operators/) |
 | 产品需求 | [products/aethermind_prd.md](products/aethermind_prd.md) | Current | 当前产品范围、验收标准（唯一权威） |
 
 **职责边界判定**：描述"代码里现在是什么" → `designs/`；"将来要做什么" → `improvement-plan/`；"曾经怎么决策的" → `decisions/`；"怎么干活" → `guides/`；"API 怎么用" → `api/`；"已知缺陷/待办" → `issues.md`。
@@ -42,21 +43,18 @@
 |---|---|---|
 | [model/01-model-loader.md](designs/model/01-model-loader.md) | ModelLoader 模块：HF I/O/校验/权重 resolve（P3 新建，基于当前头文件） | Current |
 | [amstring/](designs/amstring/) | amstring 字符串库模块设计（存量，待按 NN- 编号重排） | 待迁移 |
-| [kernel_dev/](designs/kernel_dev/) | 算子契约（LinearOp/RMSNorm 契约、算子系统设计；存量，待归位 operators/backend） | 待迁移 |
 | [graph_compilation_flow.md](designs/graph_compilation_flow.md) | 图编译流程追踪（存量，待归位 compiler/） | 待迁移 |
 | [graph_lowering_design.md](designs/graph_lowering_design.md) | 图降低设计（存量，待归位 compiler/） | 待迁移 |
 | [graph_invariants_and_validator_architecture.md](designs/graph_invariants_and_validator_architecture.md) | 图不变量与验证器架构（存量，待归位 graph/） | 待迁移 |
-| [backend_design.md](designs/backend_design.md) | Backend 层设计（存量，待归位 backend/） | 待迁移 |
-| [dispatch_design.md](designs/dispatch_design.md) | Dispatch/KernelRegistry 设计（存量，待归位 backend/） | 待迁移 |
 | [executor_design.md](designs/executor_design.md) | Executor 设计（存量，待归位 execution/） | 待迁移 |
 | [kv_cache_design.md](designs/kv_cache_design.md) | KV Cache 设计（存量，待归位 execution/） | 待迁移 |
-| [op_evaluator.md](designs/op_evaluator.md) | 算子求值设计（存量，待归位 operators/） | 待迁移 |
-| [operator_contract_design.md](designs/operator_contract_design.md) | 算子契约设计（存量，待归位 operators/） | 待迁移 |
 | [model_graph_design.md](designs/model_graph_design.md) | ModelGraph 设计（存量，待归位 graph/） | 待迁移 |
 | [tensor_view_design.md](designs/tensor_view_design.md) | TensorView 设计（存量，待归位 base/） | 待迁移 |
 | [unified_allocator_design.md](designs/unified_allocator_design.md) | 统一分配器设计（存量，待归位 memory/） | 待迁移 |
 | [status设计方案.md](designs/status设计方案.md) | Status 错误模型设计（存量，待归位 base/） | 待迁移 |
 | [已证明约束的执行阶段保障方案.md](designs/已证明约束的执行阶段保障方案.md) | 形状约束证明与执行期保障（存量，待归位 compiler/或 shape_inference/） | 待迁移 |
+
+> 2026-09-19 算子文档归一：算子契约与算子语义层设计归 [operators/](operators/)（`kernel_dev/` 契约、`operator_contract_design.md`、`算子系统设计.md`）；backend/dispatch/cpu_capability/op_evaluator 属 backend/graph 模块设计，回流 [designs/](designs/)。
 
 #### 历史与过期文档（docs/archive/）
 
@@ -64,7 +62,7 @@
 |---|---|---|
 | [aethermind_arch_design.md](archive/aethermind_arch_design.md) | `docs/designs/` | Deprecated（有效内容并入架构总览） |
 | [model_loader/](archive/model_loader/)（4 篇） | `docs/designs/model_loader/` | Deprecated（历史快照，已被当前实现取代） |
-| [kernel_dev/](archive/kernel_dev/)（8 篇） | `docs/designs/kernel_dev/` | Deprecated（历史方案/审查记录；契约类保留原位） |
+| [kernel_dev/](archive/kernel_dev/)（8 篇） | `docs/designs/kernel_dev/` | Deprecated（历史方案/审查记录；现行算子契约已迁至 [docs/operators/](operators/)） |
 | [designs-legacy/](archive/designs-legacy/)（14 篇） | `docs/designs/` 顶层 | Deprecated（历史计划/评审快照） |
 | [archive/](archive/) | 归档区索引见 archive/README.md | Deprecated |
 
@@ -75,17 +73,18 @@
 | [01-inference-session-generate-readiness.md](improvement-plan/01-inference-session-generate-readiness.md) | InferenceSession/Generate 前置模块、实施顺序与 public API 准入门禁 | Draft |
 | [02-engineering-quality-system.md](improvement-plan/02-engineering-quality-system.md) | Capability-driven 的风险治理、验证 profile 与质量体系建设方案 | Draft |
 | [03-documentation-stabilization.md](improvement-plan/03-documentation-stabilization.md) | Batch -1 文档系统稳定化：D0–D5 迁移计划与 E1–E9 退出条件 | In Progress |
-| [04-cpu-gemm-optimization.md](improvement-plan/04-cpu-gemm-optimization.md) | CPU GEMM engine、shape specialization、packing 与 benchmark 演进方案 | Draft |
+| [cpu-gemm-optimization.md](operators/gemm/cpu-gemm-optimization.md) | CPU GEMM engine、shape specialization、packing 与 benchmark 演进方案（原 04 号专项，2026-09-19 归入 [operators/gemm/](operators/gemm/)） | In Progress |
 | [05-kv-cache-manager-evolution.md](improvement-plan/05-kv-cache-manager-evolution.md) | 静态 KV correctness、lease/transaction/kernel binding 与 Paged KV 演进边界 | Draft |
 | [06-system-capability-evolution-roadmap.md](improvement-plan/06-system-capability-evolution-roadmap.md) | 全仓库 capability gap、模块演进裁决与实施顺序 | Draft |
+
+> 单算子专项提案（如 GEMM）不再新增于本目录：按 [算子开发工作流 §4](guides/operator-development-workflow.md) 建在 `docs/operators/<op>/<op>-optimization.md`，本表只保留指向其入口的行以便发现。
 
 ### 开发指南（docs/guides/）
 
 | 文档 | 定位 | 状态 |
 |---|---|---|
 | [documentation-guide.md](guides/documentation-guide.md) | 文档系统规范：命名、交叉引用、质量、维护流程 | Current |
-| [operator-development-workflow.md](guides/operator-development-workflow.md) | 算子开发与优化工作流：Change Profile、O0–O6 证据门禁、实验与验证记录 | Current |
-| [operator_optimization_guide.md](guides/operator_optimization_guide.md) | 算子优化指南（由 kernel_dev/算子开发指南.md 归位） | Current |
+| [operator-development-workflow.md](guides/operator-development-workflow.md) | 算子开发的单一规范文档：Change Profile 分级证据、O0–O6 门禁、Benchmark 规范、提案/工作文件骨架（附录 A/B）与优化方法（附录 C） | Current |
 | [cpp_coding_style_guidelines.md](guides/cpp_coding_style_guidelines.md) | C++ 编码风格 | Current |
 | [cpp_comment_guidelines.md](guides/cpp_comment_guidelines.md) | 注释与 Doxygen 规范 | Current |
 | [test_writing_guidelines.md](guides/test_writing_guidelines.md) | GoogleTest 测试编写规范 | Current |
@@ -97,9 +96,8 @@
 |---|---|
 | [module-design.md](templates/module-design.md) | 当前模块设计文档 |
 | [adr.md](templates/adr.md) | 架构决策记录 |
-| [operator-optimization-plan.md](templates/operator-optimization-plan.md) | 算子专项优化提案 |
-| [operator-experiment-log.md](templates/operator-experiment-log.md) | 追加式实验与失败尝试记录 |
-| [operator-validation-report.md](templates/operator-validation-report.md) | 正式 correctness/performance 验证报告 |
+
+算子专项提案与工作文件不使用独立模板：骨架内嵌于 [operator-development-workflow.md](guides/operator-development-workflow.md) 附录 A/B。
 
 ### 架构决策记录（docs/decisions/）
 
@@ -123,7 +121,7 @@
 
 ### 验证报告（docs/tests/）
 
-- [tests/operators/](tests/operators/)：按算子组织的新 correctness/performance/integration 验证报告索引。
+- [operators/](operators/)：算子文档唯一位置——契约、专项提案、工作文件/证据按算子分目录；算子语义层设计（operator_contract_design、算子系统设计）在根目录。
 
 | 文档 | 定位 | 状态 |
 |---|---|---|

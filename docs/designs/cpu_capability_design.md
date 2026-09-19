@@ -226,9 +226,9 @@ FindCandidates(op_type, selector)          // 结构匹配
 
 ## 11. 相关文档与代码
 
-- 派发总纲：`docs/designs/dispatch_design.md`（§4 引用本模型）
+- 派发总纲：`dispatch_design.md`（§4 引用本模型）
 
-- Backend 概览：`docs/designs/backend_design.md`
+- Backend 概览：`backend_design.md`
 
 - 代码：`include/aethermind/backend/cpu/cpu_capabilities.h`、`src/backend/cpu/cpu_info.cpp`、`src/backend/cpu/cpu_capabilities.cpp`、`src/backend/cpu/cpu_backend.cpp`
 

@@ -157,11 +157,7 @@
 
 ### 7.6 算子开发与优化文档
 
-- 所有算子开发、reference kernel、optimized kernel、packing/layout、fusion 和 threading 工作遵循[算子开发与优化工作流](operator-development-workflow.md)。
-- 专项路线使用[算子优化提案模板](../templates/operator-optimization-plan.md)。
-- 调优过程使用[算子实验日志模板](../templates/operator-experiment-log.md)，保持追加式并保留失败实验。
-- 正式证据使用[算子验证报告模板](../templates/operator-validation-report.md)，绑定 commit、环境、命令和 raw artifact。
-- GEMM、Attention 等算子的具体技术顺序属于专项提案，不作为所有算子的统一强制路线。
+- 算子开发、reference/optimized kernel、packing/layout、fusion、threading 工作遵循 **唯一规范文档** [算子开发与优化工作流](operator-development-workflow.md)：Change Profile 证据等级、O0–O6 门禁、Benchmark 规范、专项提案骨架（附录 A）、工作文件骨架（附录 B，实验区追加式、结论区按 `commit@date` 冻结）与优化方法（附录 C）均在其中；各算子的具体技术顺序属专项提案，不作为统一强制路线。
 
 ## 版本历史
 
@@ -169,3 +165,5 @@
 |------|------|------|
 | v1.0 | 2026-08-21 | 初始版本：文档系统分类、命名、交叉引用、质量、维护规则成文 |
 | v1.1 | 2026-09-17 | 增加算子开发与优化工作流、Change Profile 和三类标准模板引用 |
+| v1.2 | 2026-09-19 | 算子工作流瘦身为单一文档（operator-development-workflow.md）：实验日志与验证报告合并为工作文件；提案与工作文件骨架并入文档附录 A/B；删除全部算子模板文件（operator-experiment-log / operator-validation-report / operator-optimization-plan / operator-work-file） |
+| v1.3 | 2026-09-19 | 算子文档收敛为单一规范文档：operator_optimization_guide.md 压缩合并为工作流附录 C 后删除；引用单指向 |

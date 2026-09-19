@@ -1,7 +1,7 @@
 # CPU FP32 RoPE 执行契约
 
 本文描述当前 reference kernel 的执行约束。算子端口、shape、dtype 与 split-half
-公式以 [ModelGraph 设计 §12.2](../model_graph_design.md#122-rope-语义与执行边界) 为准。
+公式以 [ModelGraph 设计 §12.2](../../designs/model_graph_design.md#122-rope-语义与执行边界) 为准。
 当前实现 FP32、kPlain、kBoth reference，支持 split-half/interleaved、partial rotary，
 以及 Standard、Linear、Dynamic NTK、YaRN、Llama3 和 LongRoPE。SIMD 路径仍未实现。
 

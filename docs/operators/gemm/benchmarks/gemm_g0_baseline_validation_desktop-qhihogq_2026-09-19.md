@@ -2,7 +2,7 @@
 
 - **状态**: Current（限 `DESKTOP-QHIHOGQ`）
 - **日期**: 2026-09-19（采集窗口 2026-09-18T15:19Z–16:02Z）
-- **专项提案**: [CPU GEMM 优化方案](../../../improvement-plan/04-cpu-gemm-optimization.md)
+- **专项提案**: [CPU GEMM 优化方案](../cpu-gemm-optimization.md)
 - **工作包**: G0 合同与证据基线
 - **Change Profile**: Reference / Optimized benchmark infrastructure / Packing/Layout measurement（无 production 代码改动）
 - **Candidate commit**: `162ab3e7583ffad11c9a7f5bbaa345dade665a9c`

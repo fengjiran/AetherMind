@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | [aethermind_arch_design.md](aethermind_arch_design.md) | `docs/designs/aethermind_arch_design.md` | 2026-08-21 | 早期架构设计；有效内容（并发模型/内存架构/确定性策略/冻结决策）已并入架构总览 | [architecture_overview.md](../designs/architecture/architecture_overview.md) |
 | [model_loader/](model_loader/)（4 篇） | `docs/designs/model_loader/` | 2026-08-21 | 早期加载/prepack 设计，已被当前实现取代（`ModelLoader::Load` 返回 `LoadedModel`，prepack 拆分；文件头部均有历史警示） | [architecture_overview.md](../designs/architecture/architecture_overview.md) 第三章 / PRD |
-| [kernel_dev/](kernel_dev/)（8 篇） | `docs/designs/kernel_dev/` | 2026-08-21 | 历史算子设计方案（已实现或被取代）、审查清单与开发记录；契约类文档保留于 `docs/designs/kernel_dev/` 待归位 | [kernel_dev 契约](../designs/kernel_dev/) |
+| [kernel_dev/](kernel_dev/)（8 篇） | `docs/designs/kernel_dev/` | 2026-08-21 | 历史算子设计方案（已实现或被取代）、审查清单与开发记录；现行算子契约已迁至 [docs/operators/](../operators/) | [算子文档入口](../operators/) |
 | [designs-legacy/](designs-legacy/)（14 篇） | `docs/designs/` 顶层 | 2026-08-21 | 历史计划/评审快照（phase1_*、backend_phase1_*、*_review_and_minimal_fix_plan、路线图等），均已完成或过时 | [architecture_overview.md](../designs/architecture/architecture_overview.md) |
 
 ## 迁移规则

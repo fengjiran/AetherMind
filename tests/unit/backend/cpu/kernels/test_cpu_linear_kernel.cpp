@@ -42,6 +42,18 @@ StatusOr<ResolvedKernel> PrepareLinearKernel() {
     return backend.PrepareKernel(OpType::kLinear, MakeLinearSelector(), OpParams{LinearParams{}});
 }
 
+StatusOr<ResolvedKernel> PrepareLinearKernel(const CpuFeaturePolicy& policy) {
+    CpuBackend backend(policy);
+    return backend.PrepareKernel(OpType::kLinear, MakeLinearSelector(), OpParams{LinearParams{}});
+}
+
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+bool IsAvx2FmaLinearKernel(const ResolvedKernel& kernel) noexcept {
+    return kernel.name != nullptr &&
+           std::string_view{kernel.name} == "cpu::linear_f32_avx2_fma_candidate";
+}
+#endif
+
 struct LinearTestViews {
     TensorView input_tensor{};
     TensorView weight_tensor{};
@@ -140,11 +152,46 @@ TEST(CPUKernelLinearScalarCandidate, CpuBackendPreparesPlainF32CandidateKernel) 
     const auto kernel = PrepareLinearKernel();
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     EXPECT_EQ(kernel->op_type, OpType::kLinear);
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+    CpuBackend backend;
+    if (backend.cpu_capabilities().effective_features.Contains(CpuFeature::kAvx2) &&
+        backend.cpu_capabilities().effective_features.Contains(CpuFeature::kFma)) {
+        EXPECT_EQ(std::string_view{kernel->name}, "cpu::linear_f32_avx2_fma_candidate");
+    } else {
+        EXPECT_EQ(std::string_view{kernel->name}, "cpu::linear_f32_scalar_candidate");
+    }
+#else
     EXPECT_EQ(std::string_view{kernel->name}, "cpu::linear_f32_scalar_candidate");
+#endif
     EXPECT_NE(kernel->fn, nullptr);
     EXPECT_NE(kernel->params_builder, nullptr);
     EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::LinearF32KernelArgs));
 }
+
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+TEST(CPUKernelLinearAvx2Candidate, CpuBackendSelectsAvx2WhenEffectiveFeaturesPermitIt) {
+    CpuBackend backend;
+    if (!backend.cpu_capabilities().effective_features.Contains(CpuFeature::kAvx2) ||
+        !backend.cpu_capabilities().effective_features.Contains(CpuFeature::kFma)) {
+        GTEST_SKIP() << "AVX2+FMA is unavailable on this host";
+    }
+
+    const auto kernel = backend.PrepareKernel(
+            OpType::kLinear, MakeLinearSelector(), OpParams{LinearParams{}});
+    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+    EXPECT_TRUE(IsAvx2FmaLinearKernel(*kernel));
+}
+
+TEST(CPUKernelLinearAvx2Candidate, DisablingAvx2OrFmaSelectsScalarFallback) {
+    for (const CpuFeature feature: {CpuFeature::kAvx2, CpuFeature::kFma}) {
+        const auto kernel = PrepareLinearKernel(CpuFeaturePolicy{
+                .disabled_features = CpuFeatureSet::From({feature}),
+        });
+        ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+        EXPECT_EQ(std::string_view{kernel->name}, "cpu::linear_f32_scalar_candidate");
+    }
+}
+#endif
 
 TEST(CPUKernelLinearScalarCandidate, CandidateEntryHandlesMultiRowFastAndFallbackViews) {
     constexpr int64_t input_shape[2] = {2, 3};
@@ -198,6 +245,37 @@ TEST(CPUKernelLinearScalarCandidate, CandidateEntryHandlesMultiRowFastAndFallbac
     ASSERT_TRUE(RunLinearEntryWith(*kernel, n_contiguous_views).ok());
     ExpectLinearRowsNear(input, n_contiguous_weight.data(), n_contiguous_output, 2, 3, 2, 3, 1, 1, 2,
                          2, 1);
+}
+
+TEST(CPUKernelLinearScalarCandidate, CandidateEntryHandlesGenericMultiRowFallback) {
+    constexpr int64_t m = 16;
+    constexpr int64_t k = 3;
+    constexpr int64_t n = 2;
+    constexpr int64_t input_shape[2] = {m, k};
+    constexpr int64_t input_strides[2] = {k, 1};
+    constexpr int64_t weight_shape[2] = {n, k};
+    constexpr int64_t weight_strides[2] = {k, 1};
+    constexpr int64_t output_shape[2] = {m, n};
+    constexpr int64_t output_strides[2] = {n, 1};
+    std::array<float, m * k> input{};
+    std::array<float, n * k> weight{};
+    std::array<float, m * n> output{};
+    for (size_t index = 0; index < input.size(); ++index) {
+        input[index] = static_cast<float>(static_cast<int64_t>(index % 11U) - 5) * 0.25F;
+    }
+    for (size_t index = 0; index < weight.size(); ++index) {
+        weight[index] = static_cast<float>(static_cast<int64_t>(index) - 2) * 0.5F;
+    }
+
+    const auto kernel = PrepareLinearKernel();
+    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+    const LinearTestViews views{
+            .input_tensor = TensorView{input.data(), DataType::Float32(), input_shape, input_strides},
+            .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{output.data(), DataType::Float32(), output_shape, output_strides},
+    };
+    ASSERT_TRUE(RunLinearEntryWith(*kernel, views).ok());
+    ExpectLinearRowsNear(input.data(), weight.data(), output.data(), m, k, n, k, 1, k, 1, n, 1);
 }
 
 TEST(CPUKernelLinearScalarCandidate, CandidateEntryWritesZerosForZeroInnerDimension) {
@@ -754,7 +832,17 @@ TEST(CPUKernelLinearScalarCandidate, ExecutionPlanRunsScalarCandidateEndToEnd) {
     const auto plan = ExecutionPlanBuilder::Build(runtime, nodes);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+    CpuBackend backend;
+    if (backend.cpu_capabilities().effective_features.Contains(CpuFeature::kAvx2) &&
+        backend.cpu_capabilities().effective_features.Contains(CpuFeature::kFma)) {
+        EXPECT_STREQ(plan->steps()[0].kernel.name, "cpu::linear_f32_avx2_fma_candidate");
+    } else {
+        EXPECT_STREQ(plan->steps()[0].kernel.name, "cpu::linear_f32_scalar_candidate");
+    }
+#else
     EXPECT_STREQ(plan->steps()[0].kernel.name, "cpu::linear_f32_scalar_candidate");
+#endif
 
     constexpr int64_t input_shape[2] = {1, 3};
     constexpr int64_t input_strides[2] = {3, 1};

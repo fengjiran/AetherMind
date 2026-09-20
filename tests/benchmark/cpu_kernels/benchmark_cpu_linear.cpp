@@ -31,6 +31,11 @@ enum class LinearBenchmarkMode {
     kBindingSpecialization,
 };
 
+enum class LinearKernelSelection {
+    kDefault,
+    kScalarFallback,
+};
+
 struct PreparedLinearInvocation {
     alignas(std::max_align_t) std::array<std::byte, kMaxKernelParamsSize> params{};
 };
@@ -45,8 +50,12 @@ KernelSelector MakePlainLinearSelector() {
     };
 }
 
-StatusOr<ResolvedKernel> PreparePlainLinearKernel() {
-    CpuBackend backend;
+StatusOr<ResolvedKernel> PreparePlainLinearKernel(LinearKernelSelection selection) {
+    CpuFeaturePolicy policy;
+    if (selection == LinearKernelSelection::kScalarFallback) {
+        policy.disabled_features = CpuFeatureSet::From({CpuFeature::kAvx2});
+    }
+    CpuBackend backend(policy);
     return backend.PrepareKernel(
             OpType::kLinear, MakePlainLinearSelector(), OpParams{LinearParams{}});
 }
@@ -212,7 +221,8 @@ void SetLinearCounters(benchmark::State& state,
 }
 
 void BenchmarkLinearPreparedPath(benchmark::State& state,
-                                 LinearBenchmarkMode mode) {
+                                 LinearBenchmarkMode mode,
+                                 LinearKernelSelection selection = LinearKernelSelection::kDefault) {
     const int64_t m = state.range(0);
     const int64_t k = state.range(1);
     const int64_t n = state.range(2);
@@ -230,7 +240,7 @@ void BenchmarkLinearPreparedPath(benchmark::State& state,
     FillDeterministic(input);
     FillDeterministic(weights);
 
-    const StatusOr<ResolvedKernel> resolved = PreparePlainLinearKernel();
+    const StatusOr<ResolvedKernel> resolved = PreparePlainLinearKernel(selection);
     if (!resolved.ok()) {
         state.SkipWithError(resolved.status().ToString());
         return;
@@ -253,7 +263,9 @@ void BenchmarkLinearPreparedPath(benchmark::State& state,
         }
     }
 
-#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+    constexpr float kErrorTolerance = 2.0e-4F;
+#elif defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
     constexpr float kErrorTolerance = 1.0e-4F;
 #else
     constexpr float kErrorTolerance = 1.0e-5F;
@@ -307,13 +319,33 @@ void BM_LinearBindingSpecialization(benchmark::State& state) {
     BenchmarkLinearPreparedPath(state, LinearBenchmarkMode::kBindingSpecialization);
 }
 
-#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
+#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE) && !defined(GEMM_HAS_AVX2_FMA_KERNEL)
 void BM_LinearPreparedScalarCandidateHot(benchmark::State& state) {
     BenchmarkLinearPreparedPath(state, LinearBenchmarkMode::kPreparedHot);
 }
 
 void BM_LinearPreparedScalarCandidateStreaming(benchmark::State& state) {
     BenchmarkLinearPreparedPath(state, LinearBenchmarkMode::kPreparedStreaming);
+}
+#endif
+
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+void BM_LinearPreparedAvx2CandidateHot(benchmark::State& state) {
+    BenchmarkLinearPreparedPath(state, LinearBenchmarkMode::kPreparedHot);
+}
+
+void BM_LinearPreparedAvx2CandidateStreaming(benchmark::State& state) {
+    BenchmarkLinearPreparedPath(state, LinearBenchmarkMode::kPreparedStreaming);
+}
+
+void BM_LinearPreparedScalarFallbackHot(benchmark::State& state) {
+    BenchmarkLinearPreparedPath(
+            state, LinearBenchmarkMode::kPreparedHot, LinearKernelSelection::kScalarFallback);
+}
+
+void BM_LinearPreparedScalarFallbackStreaming(benchmark::State& state) {
+    BenchmarkLinearPreparedPath(
+            state, LinearBenchmarkMode::kPreparedStreaming, LinearKernelSelection::kScalarFallback);
 }
 #endif
 
@@ -363,7 +395,7 @@ BENCHMARK(BM_LinearBindingSpecialization)
         ->Args({2, 32, 33})
         ->ArgNames({"M", "K", "N"});
 
-#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
+#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE) && !defined(GEMM_HAS_AVX2_FMA_KERNEL)
 BENCHMARK(BM_LinearPreparedScalarCandidateHot)
         // This resolves the opt-in descriptor and invokes ResolvedKernel::fn.
         ->Args({1, 4096, 4096})
@@ -384,6 +416,39 @@ BENCHMARK(BM_LinearPreparedScalarCandidateStreaming)
         ->Args({1, 11008, 4096})
         ->Args({1, 4096, 32000})
         ->ArgNames({"M", "K", "N"});
+#endif
+
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+using LinearShape = std::array<int64_t, 3>;
+
+constexpr std::array<LinearShape, 6> kAvx2DecodeShapes{{
+        {1, 4096, 4096},
+        {1, 4096, 6144},
+        {1, 4096, 11008},
+        {1, 4096, 22016},
+        {1, 11008, 4096},
+        {1, 4096, 32000},
+}};
+
+benchmark::Benchmark* RegisterAvx2DecodeShapes(benchmark::Benchmark* benchmark) {
+    for (const auto& shape: kAvx2DecodeShapes) {
+        benchmark->Args({shape[0], shape[1], shape[2]});
+    }
+    return benchmark->ArgNames({"M", "K", "N"});
+}
+
+const auto* const kLinearPreparedAvx2CandidateHot = RegisterAvx2DecodeShapes(
+        benchmark::RegisterBenchmark("BM_LinearPreparedAvx2CandidateHot",
+                                     &BM_LinearPreparedAvx2CandidateHot));
+const auto* const kLinearPreparedAvx2CandidateStreaming = RegisterAvx2DecodeShapes(
+        benchmark::RegisterBenchmark("BM_LinearPreparedAvx2CandidateStreaming",
+                                     &BM_LinearPreparedAvx2CandidateStreaming));
+const auto* const kLinearPreparedScalarFallbackHot = RegisterAvx2DecodeShapes(
+        benchmark::RegisterBenchmark("BM_LinearPreparedScalarFallbackHot",
+                                     &BM_LinearPreparedScalarFallbackHot));
+const auto* const kLinearPreparedScalarFallbackStreaming = RegisterAvx2DecodeShapes(
+        benchmark::RegisterBenchmark("BM_LinearPreparedScalarFallbackStreaming",
+                                     &BM_LinearPreparedScalarFallbackStreaming));
 #endif
 
 } // namespace

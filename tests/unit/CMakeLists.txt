@@ -28,6 +28,10 @@ if (AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
     target_compile_definitions(${TEST_TARGET} PRIVATE AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE=1)
 endif ()
 
+if (AETHERMIND_GEMM_HAS_AVX2_FMA_KERNEL)
+    target_compile_definitions(${TEST_TARGET} PRIVATE GEMM_HAS_AVX2_FMA_KERNEL=1)
+endif ()
+
 # SIMD learning tests (test_avx_learning.cpp): add -mavx2 -mfma so the
 # intrinsics compile.  The test file uses #ifdef guards + GTEST_SKIP for
 # portability, so this is safe even on non-x86 (the option is ignored by

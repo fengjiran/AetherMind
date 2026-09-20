@@ -1,3 +1,4 @@
+#include "aethermind/backend/cpu/cpu_info.h"
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
 
 #include <algorithm>
@@ -173,6 +174,21 @@ void BM_GemmF32ScalarOptimizedKContiguous(benchmark::State& state) {
                      1.0e-4F);
 }
 
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+void BM_GemmF32Avx2FmaKContiguous(benchmark::State& state) {
+    const auto capabilities = cpu::DetectCpuCapabilities();
+    if (!capabilities.ok() ||
+        !capabilities->effective_features.Contains(CpuFeature::kAvx2) ||
+        !capabilities->effective_features.Contains(CpuFeature::kFma)) {
+        state.SkipWithError("AVX2+FMA GEMM benchmark requires effective AVX2 and FMA");
+        return;
+    }
+    BenchmarkGemmF32(state, RhsLayout::kKContiguous,
+                     &cpu::detail::RunGemmF32Avx2Fma,
+                     2.0e-4F);
+}
+#endif
+
 using GemmShape = std::array<int64_t, 3>;
 
 // Shape tables consumed by both RHS-layout registrations below; keeping them
@@ -213,6 +229,19 @@ constexpr std::array<GemmShape, 9> kScalarShapes{{
         {16, 4096, 4096},
 }};
 
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+constexpr std::array<GemmShape, 8> kAvx2GemmShapes{{
+        {1, 4096, 4096},
+        {1, 4096, 6144},
+        {1, 4096, 11008},
+        {1, 4096, 22016},
+        {1, 11008, 4096},
+        {1, 4096, 32000},
+        {1, 33, 31},
+        {1, 32, 33},
+}};
+#endif
+
 benchmark::Benchmark* RegisterRefGemmShapes(benchmark::Benchmark* benchmark) {
     for (const auto& shape: kReferenceShapes) {
         benchmark->Args({shape[0], shape[1], shape[2]});
@@ -227,6 +256,15 @@ benchmark::Benchmark* RegisterScalarGemmShapes(benchmark::Benchmark* benchmark) 
     return benchmark->ArgNames({"M", "K", "N"});
 }
 
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+benchmark::Benchmark* RegisterAvx2GemmShapes(benchmark::Benchmark* benchmark) {
+    for (const auto& shape: kAvx2GemmShapes) {
+        benchmark->Args({shape[0], shape[1], shape[2]});
+    }
+    return benchmark->ArgNames({"M", "K", "N"});
+}
+#endif
+
 const auto* const kGemmF32ReferenceNContiguous = RegisterRefGemmShapes(
         benchmark::RegisterBenchmark("BM_GemmF32ReferenceNContiguous",
                                      &BM_GemmF32ReferenceNContiguous));
@@ -239,5 +277,10 @@ const auto* const kGemmF32ScalarOptimizedNContiguous = RegisterScalarGemmShapes(
 const auto* const kGemmF32ScalarOptimizedKContiguous = RegisterScalarGemmShapes(
         benchmark::RegisterBenchmark("BM_GemmF32ScalarOptimizedKContiguous",
                                      &BM_GemmF32ScalarOptimizedKContiguous));
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+const auto* const kGemmF32Avx2FmaKContiguous = RegisterAvx2GemmShapes(
+        benchmark::RegisterBenchmark("BM_GemmF32Avx2FmaKContiguous",
+                                     &BM_GemmF32Avx2FmaKContiguous));
+#endif
 
 } // namespace

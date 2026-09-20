@@ -24,6 +24,20 @@ KernelSelector MakeCpuSelector(ExecPhase phase = ExecPhase::kBoth) {
     };
 }
 
+const char* ExpectedLinearKernelName(const CpuBackend& backend) {
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+    if (backend.cpu_capabilities().effective_features.Contains(CpuFeature::kAvx2) &&
+        backend.cpu_capabilities().effective_features.Contains(CpuFeature::kFma)) {
+        return "cpu::linear_f32_avx2_fma_candidate";
+    }
+#endif
+#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
+    return "cpu::linear_f32_scalar_candidate";
+#else
+    return "cpu::linear_f32_reference";
+#endif
+}
+
 TEST(CpuPrepareKernel, RegisteredKeyReturnsPreparedKernel) {
     CpuBackend backend;
 
@@ -45,11 +59,7 @@ TEST(CpuPrepareKernel, LinearKeyReturnsConfiguredPreparedKernel) {
             OpType::kLinear, MakeCpuSelector(), OpParams{LinearParams{}});
 
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
-#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
-    EXPECT_STREQ(resolved->name, "cpu::linear_f32_scalar_candidate");
-#else
-    EXPECT_STREQ(resolved->name, "cpu::linear_f32_reference");
-#endif
+    EXPECT_STREQ(resolved->name, ExpectedLinearKernelName(backend));
 }
 
 TEST(CpuPrepareKernel, RejectsInvalidKernelMetadata) {

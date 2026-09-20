@@ -141,24 +141,38 @@ Status LinearF32ReferenceEntry(const KernelContext& ctx) noexcept {
     return RunLinearF32Reference(*args);
 }
 
+#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE) || defined(GEMM_HAS_AVX2_FMA_KERNEL)
+GemmF32Args MakeLinearF32GemmArgs(const LinearF32KernelArgs& args) noexcept {
+    return GemmF32Args{
+            .lhs = args.input,
+            .rhs = args.weight,
+            .output = args.output,
+            .m = args.row_count,
+            .n = args.out_features,
+            .k = args.in_features,
+            .lhs_m_stride = args.input_row_stride,
+            .lhs_k_stride = args.input_col_stride,
+            .rhs_k_stride = args.weight_col_stride,
+            .rhs_n_stride = args.weight_row_stride,
+            .output_m_stride = args.output_row_stride,
+            .output_n_stride = args.output_col_stride,
+    };
+}
+#endif
+
 #if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
 Status LinearF32ScalarCandidateEntry(const KernelContext& ctx) noexcept {
     const auto* args = static_cast<const LinearF32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
-    return RunGemmF32ScalarOptimized(GemmF32Args{
-            .lhs = args->input,
-            .rhs = args->weight,
-            .output = args->output,
-            .m = args->row_count,
-            .n = args->out_features,
-            .k = args->in_features,
-            .lhs_m_stride = args->input_row_stride,
-            .lhs_k_stride = args->input_col_stride,
-            .rhs_k_stride = args->weight_col_stride,
-            .rhs_n_stride = args->weight_row_stride,
-            .output_m_stride = args->output_row_stride,
-            .output_n_stride = args->output_col_stride,
-    });
+    return RunGemmF32ScalarOptimized(MakeLinearF32GemmArgs(*args));
+}
+#endif
+
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+Status LinearF32Avx2FmaCandidateEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const LinearF32KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunGemmF32Avx2Fma(MakeLinearF32GemmArgs(*args));
 }
 #endif
 
@@ -201,6 +215,26 @@ AM_REGISTER_KERNEL(
                 .params_size = sizeof(LinearF32KernelArgs),
                 .params_builder = &BuildLinearF32Args,
                 .name = "cpu::linear_f32_reference"})
+#endif
+
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+AM_REGISTER_KERNEL(
+        CpuLinearF32Avx2FmaCandidate,
+        KernelDescriptor{
+                .op_type = OpType::kLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float32(),
+                        .weight_format = WeightFormat::kPlain,
+                        .phase = ExecPhase::kBoth,
+                },
+                .cpu_requirements = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
+                .kernel_func = &LinearF32Avx2FmaCandidateEntry,
+                .priority = 20,
+                .params_size = sizeof(LinearF32KernelArgs),
+                .params_builder = &BuildLinearF32Args,
+                .name = "cpu::linear_f32_avx2_fma_candidate"})
 #endif
 
 } // namespace aethermind::cpu::detail

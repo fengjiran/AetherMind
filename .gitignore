@@ -142,6 +142,8 @@ cmake-build-debug/
 build-asan/
 build-asan-ubsan/
 build-tsan/
+build-g1v-scalar/
+build-g1v-avx2/
 benchmark-results/
 .DS_Store
 3rdparty/

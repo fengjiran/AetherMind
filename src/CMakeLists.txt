@@ -51,6 +51,7 @@ endif (BACKTRACE_ON_SEGFAULT)
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag("-mavx2" CXX_SUPPORTS_AVX2)
 check_cxx_compiler_flag("-mfma" CXX_SUPPORTS_FMA)
+set(AETHERMIND_GEMM_HAS_AVX2_FMA_KERNEL OFF PARENT_SCOPE)
 if (CXX_SUPPORTS_AVX2 AND CXX_SUPPORTS_FMA)
     set_source_files_properties(
             ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/common/dot_product_f32_avx2.cpp
@@ -66,4 +67,20 @@ endif ()
 if (AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
     target_compile_definitions(${PROJECT_NAME} PRIVATE AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE=1)
     message(STATUS "Experimental GEMM scalar Linear candidate enabled")
+endif ()
+
+if (AETHERMIND_ENABLE_GEMM_AVX2_CANDIDATE)
+    if (CXX_SUPPORTS_AVX2 AND CXX_SUPPORTS_FMA)
+        set_source_files_properties(
+                ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_f32_avx2.cpp
+                PROPERTIES COMPILE_FLAGS "-mavx2 -mfma"
+        )
+        target_compile_definitions(${PROJECT_NAME} PRIVATE GEMM_HAS_AVX2_FMA_KERNEL=1)
+        set(AETHERMIND_GEMM_HAS_AVX2_FMA_KERNEL ON PARENT_SCOPE)
+        message(STATUS "Experimental GEMM AVX2/FMA Linear candidate enabled")
+    else ()
+        message(WARNING
+                "AETHERMIND_ENABLE_GEMM_AVX2_CANDIDATE requested, but the compiler lacks "
+                "-mavx2 or -mfma; the AVX2 descriptor will not be registered")
+    endif ()
 endif ()

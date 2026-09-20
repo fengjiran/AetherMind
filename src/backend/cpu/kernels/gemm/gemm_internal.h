@@ -45,6 +45,16 @@ Status RunGemmF32Reference(const GemmF32Args& args) noexcept;
 /// RunGemmF32Reference. It uses no intrinsics or heap allocation.
 Status RunGemmF32ScalarOptimized(const GemmF32Args& args) noexcept;
 
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+/// @brief Runs the AVX2/FMA FP32 GEMM candidate with compatible fallback.
+///
+/// The direct SIMD path requires runtime-validated AVX2/FMA and only handles
+/// `M=1`, nonzero K, unit-stride lhs K, K-contiguous RHS, and unit-stride
+/// output N. Every other reference-legal input delegates to the scalar
+/// candidate, which may in turn delegate to the reference oracle.
+Status RunGemmF32Avx2Fma(const GemmF32Args& args) noexcept;
+#endif
+
 } // namespace aethermind::cpu::detail
 
 #endif // AETHERMIND_BACKEND_CPU_KERNELS_GEMM_GEMM_INTERNAL_H

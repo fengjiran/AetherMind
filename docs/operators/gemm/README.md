@@ -15,7 +15,8 @@
 |---|---|
 | G0 合同与证据基线 | Baseline Complete on `54H5MMI` / `QHIHOGQ`；production gate Needs More Data；其余目标机 **Not Collected** |
 | G1S portable scalar optimized | In Progress（backend-private candidate + opt-in 集成完成；production acceptance 待正式证据） |
-| G1V–G6 | Not Started（按证据门禁进入） |
+| G1V Decode direct-weight AVX2 | In Progress（opt-in AVX2+FMA candidate 已实现；performance Not Run） |
+| G2–G6 | Not Started（按证据门禁进入） |
 
 ## 机器归属与可复核性
 
@@ -43,3 +44,4 @@
 | 2026-09-19 | 实验日志 | [g0-baseline-log-desktop-qhihogq.md](benchmarks/g0-baseline-log-desktop-qhihogq.md) | `QHIHOGQ` | 本机首次 G0 采集；访问顺序归因复现且更强（16–18×，L1 驻留时仅 1.18×）；噪声分解为进程内 CV 0.03–0.04% vs 跨进程偏移 ≤5.17%；WSL2 拓扑伪造致 `taskset` 仅咨询性；G1S 已被 SSE2 自动向量化 | Current |
 | 2026-09-19 | 验证报告 | [gemm_g0_baseline_validation_desktop-qhihogq_2026-09-19.md](benchmarks/gemm_g0_baseline_validation_desktop-qhihogq_2026-09-19.md) | `QHIHOGQ` | 本机 reference baseline Accepted（106+30 测试通过）；production gate Needs More Data；同一实现自我比较被判出 4 个 REGRESS，证明 5% 自动门禁在本机三组上不可用 | Current |
 | 2026-09-19 | 分析报告 | [gemm_g0_roofline_analysis_desktop-qhihogq_2026-09-19.md](benchmarks/gemm_g0_roofline_analysis_desktop-qhihogq_2026-09-19.md) | `QHIHOGQ` | 本机 ceiling：P=130.21 GFLOP/s、Triad=25.32 GB/s、ridge=5.14；M=1 达记忆侧 27.7–29.4%，M≥16 达峰值 2.6–2.8% | Current |
+| 2026-09-21 | 工作文件 | [g1v-avx2.md](benchmarks/g1v-avx2.md) | — | AVX2+FMA opt-in candidate、compatible scalar fallback 与 benchmark registrations；performance Not Run | In Progress |

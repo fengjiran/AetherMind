@@ -1,6 +1,7 @@
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
 
 #include <algorithm>
+#include <array>
 #include <benchmark/benchmark.h>
 #include <cmath>
 #include <cstddef>
@@ -29,8 +30,8 @@ float DeterministicValue(size_t index) {
 }
 
 void FillDeterministic(std::vector<float>& values) {
-    for (size_t index = 0; index < values.size(); ++index) {
-        values[index] = DeterministicValue(index);
+    for (size_t i = 0; i < values.size(); ++i) {
+        values[i] = DeterministicValue(i);
     }
 }
 
@@ -44,31 +45,29 @@ const char* LayoutName(RhsLayout layout) noexcept {
     return "unknown";
 }
 
-Status ValidateGemmOutput(const cpu::detail::GemmF32Args& args,
-                          float error_tolerance) {
+Status ValidateGemmOutput(const cpu::detail::GemmF32Args& args, float error_tolerance) {
     for (int64_t row = 0; row < args.m; ++row) {
         for (int64_t col = 0; col < args.n; ++col) {
             double expected = 0.0;
             for (int64_t inner = 0; inner < args.k; ++inner) {
-                expected += static_cast<double>(
-                                    args.lhs[row * args.lhs_m_stride +
-                                             inner * args.lhs_k_stride]) *
-                            static_cast<double>(
-                                    args.rhs[inner * args.rhs_k_stride +
-                                             col * args.rhs_n_stride]);
+                auto a = static_cast<double>(args.lhs[row * args.lhs_m_stride +
+                                                      inner * args.lhs_k_stride]);
+                auto b = static_cast<double>(args.rhs[inner * args.rhs_k_stride +
+                                                      col * args.rhs_n_stride]);
+                expected += a * b;
             }
 
             const float actual = args.output[row * args.output_m_stride +
                                              col * args.output_n_stride];
-            const auto reference = static_cast<float>(expected);
-            if (!std::isfinite(actual) || !std::isfinite(reference)) {
+            const auto ref = static_cast<float>(expected);
+            if (!std::isfinite(actual) || !std::isfinite(ref)) {
                 return Status::Internal(
                         "GEMM microkernel benchmark correctness guard produced NaN or Inf");
             }
 
-            const float absolute_error = std::fabs(actual - reference);
-            const float relative_error = absolute_error / std::max(std::fabs(reference), 1.0e-6F);
-            if (absolute_error > error_tolerance && relative_error > error_tolerance) {
+            const float abs_error = std::fabs(actual - ref);
+            const float relative_error = abs_error / std::max(std::fabs(ref), 1.0e-6F);
+            if (abs_error > error_tolerance && relative_error > error_tolerance) {
                 return Status::Internal(
                         "GEMM microkernel benchmark disagrees with its independent oracle");
             }
@@ -77,10 +76,7 @@ Status ValidateGemmOutput(const cpu::detail::GemmF32Args& args,
     return Status::Ok();
 }
 
-void SetGemmCounters(benchmark::State& state,
-                     int64_t m,
-                     int64_t k,
-                     int64_t n) {
+void SetGemmCounters(benchmark::State& state, int64_t m, int64_t k, int64_t n) {
     const int64_t output_elements = m * n;
     const int64_t logical_bytes = static_cast<int64_t>(sizeof(float)) *
                                   (m * k + k * n + output_elements);
@@ -95,17 +91,13 @@ void SetGemmCounters(benchmark::State& state,
                          static_cast<double>(k);
     const double bytes = static_cast<double>(state.iterations()) *
                          static_cast<double>(logical_bytes);
-    state.counters["GFLOP/s"] = benchmark::Counter(
-            flops, benchmark::Counter::kIsRate,
-            benchmark::Counter::OneK::kIs1000);
-    state.counters["logical GB/s"] = benchmark::Counter(
-            bytes, benchmark::Counter::kIsRate,
-            benchmark::Counter::OneK::kIs1000);
+    state.counters["GFLOP/s"] = benchmark::Counter(flops, benchmark::Counter::kIsRate,
+                                                   benchmark::Counter::OneK::kIs1000);
+    state.counters["logical GB/s"] = benchmark::Counter(bytes, benchmark::Counter::kIsRate,
+                                                        benchmark::Counter::OneK::kIs1000);
 }
 
-void BenchmarkGemmF32(benchmark::State& state,
-                      RhsLayout rhs_layout,
-                      GemmRunner runner,
+void BenchmarkGemmF32(benchmark::State& state, RhsLayout rhs_layout, GemmRunner runner,
                       float error_tolerance) {
     const int64_t m = state.range(0);
     const int64_t k = state.range(1);
@@ -116,8 +108,7 @@ void BenchmarkGemmF32(benchmark::State& state,
 
     std::vector<float> lhs(lhs_elements);
     std::vector<float> rhs(rhs_elements);
-    std::vector<float> output(output_elements,
-                              std::numeric_limits<float>::quiet_NaN());
+    std::vector<float> output(output_elements, std::numeric_limits<float>::quiet_NaN());
     FillDeterministic(lhs);
     FillDeterministic(rhs);
 
@@ -136,22 +127,19 @@ void BenchmarkGemmF32(benchmark::State& state,
             .output_n_stride = 1,
     };
 
-    const Status correctness_run = runner(args);
-    if (!correctness_run.ok()) {
+    if (const Status correctness_run = runner(args); !correctness_run.ok()) {
         state.SkipWithError(correctness_run.ToString());
         return;
     }
 
-    const Status correctness = ValidateGemmOutput(args, error_tolerance);
-    if (!correctness.ok()) {
+    if (const Status correctness = ValidateGemmOutput(args, error_tolerance); !correctness.ok()) {
         state.SkipWithError(correctness.ToString());
         return;
     }
 
     state.SetLabel(LayoutName(rhs_layout));
     for (auto _: state) {
-        const Status status = runner(args);
-        if (!status.ok()) {
+        if (const Status status = runner(args); !status.ok()) {
             state.SkipWithError(status.ToString());
             break;
         }
@@ -163,53 +151,86 @@ void BenchmarkGemmF32(benchmark::State& state,
 
 void BM_GemmF32ReferenceNContiguous(benchmark::State& state) {
     BenchmarkGemmF32(state, RhsLayout::kNContiguous,
-                     &cpu::detail::RunGemmF32Reference, 1.0e-5F);
+                     &cpu::detail::RunGemmF32Reference,
+                     1.0e-5F);
 }
 
 void BM_GemmF32ReferenceKContiguous(benchmark::State& state) {
     BenchmarkGemmF32(state, RhsLayout::kKContiguous,
-                     &cpu::detail::RunGemmF32Reference, 1.0e-5F);
+                     &cpu::detail::RunGemmF32Reference,
+                     1.0e-5F);
 }
 
 void BM_GemmF32ScalarOptimizedNContiguous(benchmark::State& state) {
     BenchmarkGemmF32(state, RhsLayout::kNContiguous,
-                     &cpu::detail::RunGemmF32ScalarOptimized, 1.0e-4F);
+                     &cpu::detail::RunGemmF32ScalarOptimized,
+                     1.0e-4F);
 }
 
 void BM_GemmF32ScalarOptimizedKContiguous(benchmark::State& state) {
     BenchmarkGemmF32(state, RhsLayout::kKContiguous,
-                     &cpu::detail::RunGemmF32ScalarOptimized, 1.0e-4F);
+                     &cpu::detail::RunGemmF32ScalarOptimized,
+                     1.0e-4F);
 }
 
-benchmark::Benchmark* RegisterGemmShapes(benchmark::Benchmark* benchmark) {
-    return benchmark
-            // Decode and small-M workloads.
-            ->Args({1, 4096, 4096})
-            ->Args({1, 4096, 11008})
-            ->Args({4, 4096, 4096})
-            // A bounded Prefill diagnostic baseline.
-            ->Args({16, 4096, 4096})
-            // Tail shapes for future tile-specific implementations.
-            ->Args({1, 33, 31})
-            ->Args({2, 32, 33})
-            ->ArgNames({"M", "K", "N"});
+using GemmShape = std::array<int64_t, 3>;
+
+// Shape tables consumed by both RHS-layout registrations below; keeping them
+// in one place guarantees every registration sees the identical shape set.
+constexpr std::array<GemmShape, 8> kReferenceShapes{{
+        // Decode and small-M workloads.
+        {1, 4096, 4096},
+        {1, 4096, 11008},
+        {4, 4096, 4096},
+        // Scalar candidate dispatch boundary anchors around
+        // kScalarSmallMMax = 8; keep them shape-identical with the scalar
+        // registration for direct pairing.
+        {8, 4096, 4096},
+        {9, 4096, 4096},
+        // A bounded Prefill diagnostic baseline.
+        {16, 4096, 4096},
+        // Tail shapes for future tile-specific implementations.
+        {1, 33, 31},
+        {2, 32, 33},
+}};
+
+// The scalar candidate covers three dispatch ranges: M=1, small M
+// (2..kScalarSmallMMax), and generic M (>kScalarSmallMMax); keep every case
+// on the scalar fast path and shape-identical with the reference registration
+// for direct pairing.
+constexpr std::array<GemmShape, 9> kScalarShapes{{
+        {1, 4096, 4096},
+        {1, 4096, 11008},
+        {1, 33, 31},
+        {1, 32, 33},
+        // Small-M range: lower bound plus representative row blocks.
+        {2, 32, 33},
+        {4, 4096, 4096},
+        {8, 4096, 4096},
+        // Generic-M range: the first value past kScalarSmallMMax and a wider
+        // row-block case.
+        {9, 4096, 4096},
+        {16, 4096, 4096},
+}};
+
+benchmark::Benchmark* RegisterRefGemmShapes(benchmark::Benchmark* benchmark) {
+    for (const auto& shape: kReferenceShapes) {
+        benchmark->Args({shape[0], shape[1], shape[2]});
+    }
+    return benchmark->ArgNames({"M", "K", "N"});
 }
 
 benchmark::Benchmark* RegisterScalarGemmShapes(benchmark::Benchmark* benchmark) {
-    return benchmark
-            // The G1S candidate specializes M=1; keep direct comparisons
-            // shape-identical across reference, portable, and strict variants.
-            ->Args({1, 4096, 4096})
-            ->Args({1, 4096, 11008})
-            ->Args({1, 33, 31})
-            ->Args({1, 32, 33})
-            ->ArgNames({"M", "K", "N"});
+    for (const auto& shape: kScalarShapes) {
+        benchmark->Args({shape[0], shape[1], shape[2]});
+    }
+    return benchmark->ArgNames({"M", "K", "N"});
 }
 
-const auto* const kGemmF32ReferenceNContiguous = RegisterGemmShapes(
+const auto* const kGemmF32ReferenceNContiguous = RegisterRefGemmShapes(
         benchmark::RegisterBenchmark("BM_GemmF32ReferenceNContiguous",
                                      &BM_GemmF32ReferenceNContiguous));
-const auto* const kGemmF32ReferenceKContiguous = RegisterGemmShapes(
+const auto* const kGemmF32ReferenceKContiguous = RegisterRefGemmShapes(
         benchmark::RegisterBenchmark("BM_GemmF32ReferenceKContiguous",
                                      &BM_GemmF32ReferenceKContiguous));
 const auto* const kGemmF32ScalarOptimizedNContiguous = RegisterScalarGemmShapes(

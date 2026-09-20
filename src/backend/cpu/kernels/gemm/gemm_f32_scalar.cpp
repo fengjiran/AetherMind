@@ -71,10 +71,10 @@ void RunM1NContiguous(const GemmF32Args& args) noexcept {
     int64_t col = 0;
     for (; col + kScalarOutputBlock <= args.n; col += kScalarOutputBlock) {
         const float* weight = args.rhs + col;
-        float sum0 = 0.0F;
-        float sum1 = 0.0F;
-        float sum2 = 0.0F;
-        float sum3 = 0.0F;
+        float sum0 = 0.0f;
+        float sum1 = 0.0f;
+        float sum2 = 0.0f;
+        float sum3 = 0.0f;
 
         int64_t inner = 0;
         for (; inner + 1 < args.k; inner += 2) {
@@ -109,7 +109,7 @@ void RunM1NContiguous(const GemmF32Args& args) noexcept {
     for (; col < args.n; ++col) {
         const float* input = lhs;
         const float* weight = args.rhs + col;
-        float sum = 0.0F;
+        float sum = 0.0f;
         for (int64_t inner = 0; inner < args.k; ++inner) {
             sum += *input++ * *weight;
             weight += args.rhs_k_stride;
@@ -119,9 +119,7 @@ void RunM1NContiguous(const GemmF32Args& args) noexcept {
 }
 
 template<int Rows, bool RhsKContiguous>
-void RunFullOutputBlock(const GemmF32Args& args,
-                        int64_t first_row,
-                        int64_t first_col) noexcept {
+void RunFullOutputBlock(const GemmF32Args& args, int64_t first_row, int64_t first_col) noexcept {
     std::array<const float*, Rows> lhs_rows{};
     std::array<float*, Rows> output_rows{};
     std::array<std::array<float, kScalarOutputBlock>, Rows> sums{};
@@ -138,6 +136,7 @@ void RunFullOutputBlock(const GemmF32Args& args,
                 args.rhs + (first_col + 2) * args.rhs_n_stride,
                 args.rhs + (first_col + 3) * args.rhs_n_stride,
         };
+
         for (; inner + 1 < args.k; inner += 2) {
             for (int row = 0; row < Rows; ++row) {
                 const float lhs0 = lhs_rows[row][inner];
@@ -151,10 +150,12 @@ void RunFullOutputBlock(const GemmF32Args& args,
                 sums[row][3] += lhs0 * weights[3][0];
                 sums[row][3] += lhs1 * weights[3][1];
             }
+
             for (const float*& weight: weights) {
                 weight += 2;
             }
         }
+
         if (inner < args.k) {
             for (int row = 0; row < Rows; ++row) {
                 const float lhs0 = lhs_rows[row][inner];
@@ -174,6 +175,7 @@ void RunFullOutputBlock(const GemmF32Args& args,
                 sums[row][2] += lhs0 * weight[2];
                 sums[row][3] += lhs0 * weight[3];
             }
+
             weight += args.rhs_k_stride;
             for (int row = 0; row < Rows; ++row) {
                 const float lhs1 = lhs_rows[row][inner + 1];
@@ -184,6 +186,7 @@ void RunFullOutputBlock(const GemmF32Args& args,
             }
             weight += args.rhs_k_stride;
         }
+
         if (inner < args.k) {
             for (int row = 0; row < Rows; ++row) {
                 const float lhs0 = lhs_rows[row][inner];
@@ -233,6 +236,7 @@ void RunRowBlock(const GemmF32Args& args, int64_t first_row) noexcept {
     for (; col + kScalarOutputBlock <= args.n; col += kScalarOutputBlock) {
         RunFullOutputBlock<Rows, RhsKContiguous>(args, first_row, col);
     }
+
     if (col < args.n) {
         RunOutputTail<Rows, RhsKContiguous>(args, first_row, col);
     }
@@ -244,6 +248,7 @@ void RunSmallM(const GemmF32Args& args) noexcept {
     for (; row + 2 <= args.m; row += 2) {
         RunRowBlock<2, RhsKContiguous>(args, row);
     }
+
     if (row < args.m) {
         RunRowBlock<1, RhsKContiguous>(args, row);
     }
@@ -255,10 +260,12 @@ void RunGenericM(const GemmF32Args& args) noexcept {
     for (; row + 4 <= args.m; row += 4) {
         RunRowBlock<4, RhsKContiguous>(args, row);
     }
+
     if (row + 2 <= args.m) {
         RunRowBlock<2, RhsKContiguous>(args, row);
         row += 2;
     }
+
     if (row < args.m) {
         RunRowBlock<1, RhsKContiguous>(args, row);
     }

@@ -18,6 +18,7 @@
 | 2026-09-18 | G1S-SCALAR-001 | `M=1` 下的 `NR=4`、K unroll 2 与连续 RHS 能改善 reference 的 loop/layout 开销 | candidate、fallback 与 FP32 error budget 已实现并通过聚焦测试 | In Progress |
 | 2026-09-18 | G1S-SCALAR-002 | strict non-SIMD 可分离 loop/layout 与 compiler auto-vectorization 的贡献 | strict 汇编没有 packed SIMD；本机单次 smoke 不能作为性能门禁 | Superseded（strict 机制已移除，见 G1S-SCALAR-003） |
 | 2026-09-18 | G1S-BINDING-001 | Linear 可在 binding time 冻结 exact scalar/reference driver，而非在 Execute 二次选择 | opt-in descriptor、prepared bindings 和 resolved-entry smoke 已通过；production acceptance 仍需正式证据 | Superseded（冻结机制移除，descriptor 保留简化直调版；见 G1S-SCALAR-003） |
+| 2026-09-20 | G1S-SCOPE-001 | scalar 注册表可扩展到 small/generic M 分派区间（含 8/9 边界），消除 `RunSmallM`/`RunGenericM` 的 benchmark 盲区 | 注册扩展落地，构建与 guard 冒烟通过；性能采集未开始 | In Progress |
 
 ## 2026-09-18 — G1S-SCALAR-001：backend-private portable candidate
 
@@ -191,3 +192,39 @@ raw artifact: benchmark-results/operators/gemm/20260918T150000Z_g1s-b-local-diag
 - **Accepted**：单入口 + 直调集成为当前 G1S 实现形态；下游 G1V/G2 不再假设存在 strict 或 exact-冻结机制；
 - **Needs More Data（不变）**：G1S 的收益证据（受控 sweep、配对 A/B、完整 repetitions、streaming、bare-metal）仍待补齐；
 - 归因机制（strict）与冻结机制（exact drivers）曾在同日完整实现并验证；如未来证据需要归因，可按本日志历史条目回溯引入。
+
+## 2026-09-20 — G1S-SCOPE-001：scalar 注册表扩展到 small/generic M
+
+### 1. 假设与动机
+
+- `RunGemmF32ScalarOptimized` 已覆盖三档分派（M=1 / 2..8 / >8），但 `BM_GemmF32ScalarOptimized{N,K}Contiguous` 原先只注册 M=1，`RunSmallM` 与 `RunGenericM` 在 benchmark 层无覆盖；
+- 假设：按“分派区间代表点 + 边界穿越（8/9）+ 与 reference 组共享锚点”扩展注册表后，新增 case 全部命中 scalar fast path 且 double-oracle guard 通过，可作为后续 A/B 采集的配对基座。
+
+### 2. 改动
+
+- `RegisterScalarGemmShapes` 新增 `(2,32,33)`、`(4,4096,4096)`、`(8,4096,4096)`、`(9,4096,4096)`、`(16,4096,4096)`；
+- `RegisterGemmShapes`（reference 组）同步新增 `(8,4096,4096)`、`(9,4096,4096)` 作为配对锚点；
+- 注册表清单：scalar 9 shape × 2 布局、reference 8 shape × 2 布局；M=3（2-2-1 尾）未注册，由单测覆盖。
+
+### 3. 验证
+
+```bash
+cmake --build build-release --target aethermind_benchmark -j
+./build-release/tests/benchmark/aethermind_benchmark \
+  --benchmark_filter='BM_GemmF32(ScalarOptimized|Reference)(N|K)Contiguous/M:(2|4|8|9|16)/' \
+  --benchmark_min_time=0.05s
+```
+
+| 证据 | 结果 |
+|---|---|
+| 构建 | PASS |
+| 注册清单（--benchmark_list_tests） | scalar 18 case / reference 16 case，含全部新增 |
+| filter 命中的 20 case 冒烟运行 | PASS；无 SkipWithError，double-oracle guard 全部通过 |
+| clang-format -n --Werror | PASS |
+
+环境：`DESKTOP-54H5MMI`，WSL2，load average 0.41；`--benchmark_min_time=0.05s` 单次冒烟，**未做交错 A/B 与 repetitions，不构成性能结论**。
+
+### 4. 决定
+
+- **In Progress**：注册扩展已落地；正式 A/B 采集（含 Linear prepared production path 的 small/generic 边界覆盖）尚未进行；
+- 下一步：按工作流 §5 元数据与交错 A/B 协议采集新增 shape 组，Decode（M≤4）与 Prefill（M≥8）分组报告。

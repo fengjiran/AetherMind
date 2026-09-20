@@ -123,9 +123,9 @@ void RunFullOutputBlock(const GemmF32Args& args, int64_t first_row, int64_t firs
     std::array<const float*, Rows> lhs_rows{};
     std::array<float*, Rows> output_rows{};
     std::array<std::array<float, kScalarOutputBlock>, Rows> sums{};
-    for (int row = 0; row < Rows; ++row) {
-        lhs_rows[row] = args.lhs + (first_row + row) * args.lhs_m_stride;
-        output_rows[row] = args.output + (first_row + row) * args.output_m_stride + first_col;
+    for (int i = 0; i < Rows; ++i) {
+        lhs_rows[i] = args.lhs + (first_row + i) * args.lhs_m_stride;
+        output_rows[i] = args.output + (first_row + i) * args.output_m_stride + first_col;
     }
 
     int64_t inner = 0;
@@ -138,94 +138,94 @@ void RunFullOutputBlock(const GemmF32Args& args, int64_t first_row, int64_t firs
         };
 
         for (; inner + 1 < args.k; inner += 2) {
-            for (int row = 0; row < Rows; ++row) {
-                const float lhs0 = lhs_rows[row][inner];
-                const float lhs1 = lhs_rows[row][inner + 1];
-                sums[row][0] += lhs0 * weights[0][0];
-                sums[row][0] += lhs1 * weights[0][1];
-                sums[row][1] += lhs0 * weights[1][0];
-                sums[row][1] += lhs1 * weights[1][1];
-                sums[row][2] += lhs0 * weights[2][0];
-                sums[row][2] += lhs1 * weights[2][1];
-                sums[row][3] += lhs0 * weights[3][0];
-                sums[row][3] += lhs1 * weights[3][1];
+            for (int r = 0; r < Rows; ++r) {
+                const float lhs0 = lhs_rows[r][inner];
+                const float lhs1 = lhs_rows[r][inner + 1];
+                sums[r][0] += lhs0 * weights[0][0];
+                sums[r][0] += lhs1 * weights[0][1];
+                sums[r][1] += lhs0 * weights[1][0];
+                sums[r][1] += lhs1 * weights[1][1];
+                sums[r][2] += lhs0 * weights[2][0];
+                sums[r][2] += lhs1 * weights[2][1];
+                sums[r][3] += lhs0 * weights[3][0];
+                sums[r][3] += lhs1 * weights[3][1];
             }
 
-            for (const float*& weight: weights) {
+            for (auto& weight: weights) {
                 weight += 2;
             }
         }
 
         if (inner < args.k) {
-            for (int row = 0; row < Rows; ++row) {
-                const float lhs0 = lhs_rows[row][inner];
-                sums[row][0] += lhs0 * weights[0][0];
-                sums[row][1] += lhs0 * weights[1][0];
-                sums[row][2] += lhs0 * weights[2][0];
-                sums[row][3] += lhs0 * weights[3][0];
+            for (int r = 0; r < Rows; ++r) {
+                const float lhs0 = lhs_rows[r][inner];
+                sums[r][0] += lhs0 * weights[0][0];
+                sums[r][1] += lhs0 * weights[1][0];
+                sums[r][2] += lhs0 * weights[2][0];
+                sums[r][3] += lhs0 * weights[3][0];
             }
         }
     } else {
         const float* weight = args.rhs + first_col;
         for (; inner + 1 < args.k; inner += 2) {
-            for (int row = 0; row < Rows; ++row) {
-                const float lhs0 = lhs_rows[row][inner];
-                sums[row][0] += lhs0 * weight[0];
-                sums[row][1] += lhs0 * weight[1];
-                sums[row][2] += lhs0 * weight[2];
-                sums[row][3] += lhs0 * weight[3];
+            for (int r = 0; r < Rows; ++r) {
+                const float lhs0 = lhs_rows[r][inner];
+                sums[r][0] += lhs0 * weight[0];
+                sums[r][1] += lhs0 * weight[1];
+                sums[r][2] += lhs0 * weight[2];
+                sums[r][3] += lhs0 * weight[3];
             }
 
             weight += args.rhs_k_stride;
-            for (int row = 0; row < Rows; ++row) {
-                const float lhs1 = lhs_rows[row][inner + 1];
-                sums[row][0] += lhs1 * weight[0];
-                sums[row][1] += lhs1 * weight[1];
-                sums[row][2] += lhs1 * weight[2];
-                sums[row][3] += lhs1 * weight[3];
+            for (int r = 0; r < Rows; ++r) {
+                const float lhs1 = lhs_rows[r][inner + 1];
+                sums[r][0] += lhs1 * weight[0];
+                sums[r][1] += lhs1 * weight[1];
+                sums[r][2] += lhs1 * weight[2];
+                sums[r][3] += lhs1 * weight[3];
             }
             weight += args.rhs_k_stride;
         }
 
         if (inner < args.k) {
-            for (int row = 0; row < Rows; ++row) {
-                const float lhs0 = lhs_rows[row][inner];
-                sums[row][0] += lhs0 * weight[0];
-                sums[row][1] += lhs0 * weight[1];
-                sums[row][2] += lhs0 * weight[2];
-                sums[row][3] += lhs0 * weight[3];
+            for (int r = 0; r < Rows; ++r) {
+                const float lhs0 = lhs_rows[r][inner];
+                sums[r][0] += lhs0 * weight[0];
+                sums[r][1] += lhs0 * weight[1];
+                sums[r][2] += lhs0 * weight[2];
+                sums[r][3] += lhs0 * weight[3];
             }
         }
     }
 
-    for (int row = 0; row < Rows; ++row) {
-        output_rows[row][0] = sums[row][0];
-        output_rows[row][1] = sums[row][1];
-        output_rows[row][2] = sums[row][2];
-        output_rows[row][3] = sums[row][3];
+    for (int r = 0; r < Rows; ++r) {
+        output_rows[r][0] = sums[r][0];
+        output_rows[r][1] = sums[r][1];
+        output_rows[r][2] = sums[r][2];
+        output_rows[r][3] = sums[r][3];
     }
 }
 
 template<int Rows, bool RhsKContiguous>
 void RunOutputTail(const GemmF32Args& args, int64_t first_row, int64_t first_col) noexcept {
-    for (int row = 0; row < Rows; ++row) {
-        const float* const lhs = args.lhs + (first_row + row) * args.lhs_m_stride;
-        float* const output = args.output + (first_row + row) * args.output_m_stride;
-        for (int64_t col = first_col; col < args.n; ++col) {
-            float sum = 0.0F;
+    for (int r = 0; r < Rows; ++r) {
+        const float* const lhs = args.lhs + (first_row + r) * args.lhs_m_stride;
+        float* const output = args.output + (first_row + r) * args.output_m_stride;
+        for (int64_t c = first_col; c < args.n; ++c) {
+            float sum = 0.0f;
             if constexpr (RhsKContiguous) {
-                const float* weight = args.rhs + col * args.rhs_n_stride;
+                const float* weight = args.rhs + c * args.rhs_n_stride;
                 for (int64_t inner = 0; inner < args.k; ++inner) {
                     sum += lhs[inner] * weight[inner];
                 }
             } else {
-                const float* weight = args.rhs + col;
+                const float* weight = args.rhs + c;
                 for (int64_t inner = 0; inner < args.k; ++inner) {
                     sum += lhs[inner] * *weight;
                     weight += args.rhs_k_stride;
                 }
             }
-            output[col] = sum;
+            output[c] = sum;
         }
     }
 }
@@ -244,30 +244,30 @@ void RunRowBlock(const GemmF32Args& args, int64_t first_row) noexcept {
 
 template<bool RhsKContiguous>
 void RunSmallM(const GemmF32Args& args) noexcept {
-    int64_t row = 0;
-    for (; row + 2 <= args.m; row += 2) {
-        RunRowBlock<2, RhsKContiguous>(args, row);
+    int64_t r = 0;
+    for (; r + 2 <= args.m; r += 2) {
+        RunRowBlock<2, RhsKContiguous>(args, r);
     }
 
-    if (row < args.m) {
-        RunRowBlock<1, RhsKContiguous>(args, row);
+    if (r < args.m) {
+        RunRowBlock<1, RhsKContiguous>(args, r);
     }
 }
 
 template<bool RhsKContiguous>
 void RunGenericM(const GemmF32Args& args) noexcept {
-    int64_t row = 0;
-    for (; row + 4 <= args.m; row += 4) {
-        RunRowBlock<4, RhsKContiguous>(args, row);
+    int64_t r = 0;
+    for (; r + 4 <= args.m; r += 4) {
+        RunRowBlock<4, RhsKContiguous>(args, r);
     }
 
-    if (row + 2 <= args.m) {
-        RunRowBlock<2, RhsKContiguous>(args, row);
-        row += 2;
+    if (r + 2 <= args.m) {
+        RunRowBlock<2, RhsKContiguous>(args, r);
+        r += 2;
     }
 
-    if (row < args.m) {
-        RunRowBlock<1, RhsKContiguous>(args, row);
+    if (r < args.m) {
+        RunRowBlock<1, RhsKContiguous>(args, r);
     }
 }
 

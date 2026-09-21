@@ -1,43 +1,34 @@
+#include "aethermind/backend/cpu/kernels/common/simd_utils.h"
 #include "gemm_internal.h"
 
-#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+#if defined(__AVX2__) && defined(__FMA__)
 #include <immintrin.h>
 #endif
 
 namespace aethermind::cpu::detail {
 namespace {
 
-#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+#if defined(__AVX2__) && defined(__FMA__)
 
 constexpr int64_t kAvx2Lanes = 8;
 constexpr int64_t kAvx2KUnroll = 2;
 constexpr int64_t kAvx2KBlock = kAvx2Lanes * kAvx2KUnroll;
 constexpr int64_t kAvx2OutputBlock = 4;
 
-float HorizontalSum(__m256 value) noexcept {
-    const __m128 lower = _mm256_castps256_ps128(value);
-    const __m128 upper = _mm256_extractf128_ps(value, 1);
-    const __m128 pair_sum = _mm_add_ps(lower, upper);
-    const __m128 high_pair = _mm_movehl_ps(pair_sum, pair_sum);
-    const __m128 half_sum = _mm_add_ps(pair_sum, high_pair);
-    const __m128 low_pair = _mm_shuffle_ps(half_sum, half_sum, 0x55);
-    return _mm_cvtss_f32(_mm_add_ss(half_sum, low_pair));
-}
-
-float RunM1KContiguousAvx2Dot(const float* lhs,
-                              const float* weight,
-                              int64_t k) noexcept {
+float RunM1KContiguousAvx2Dot(const float* lhs, const float* weight, int64_t k) noexcept {
     __m256 sum0 = _mm256_setzero_ps();
     __m256 sum1 = _mm256_setzero_ps();
     int64_t inner = 0;
     for (; inner + kAvx2KBlock <= k; inner += kAvx2KBlock) {
-        const __m256 lhs0 = _mm256_loadu_ps(lhs + inner);
-        const __m256 lhs1 = _mm256_loadu_ps(lhs + inner + kAvx2Lanes);
-        sum0 = _mm256_fmadd_ps(lhs0, _mm256_loadu_ps(weight + inner), sum0);
-        sum1 = _mm256_fmadd_ps(lhs1, _mm256_loadu_ps(weight + inner + kAvx2Lanes), sum1);
+        sum0 = _mm256_fmadd_ps(_mm256_loadu_ps(lhs + inner),
+                               _mm256_loadu_ps(weight + inner),
+                               sum0);
+        sum1 = _mm256_fmadd_ps(_mm256_loadu_ps(lhs + inner + kAvx2Lanes),
+                               _mm256_loadu_ps(weight + inner + kAvx2Lanes),
+                               sum1);
     }
 
-    float sum = HorizontalSum(_mm256_add_ps(sum0, sum1));
+    float sum = HorizontalSumAvx2(_mm256_add_ps(sum0, sum1));
     for (; inner < k; ++inner) {
         sum += lhs[inner] * weight[inner];
     }
@@ -74,10 +65,10 @@ void RunM1KContiguousAvx2Fma(const GemmF32Args& args) noexcept {
             sum31 = _mm256_fmadd_ps(lhs1, _mm256_loadu_ps(weight3 + inner + kAvx2Lanes), sum31);
         }
 
-        float result0 = HorizontalSum(_mm256_add_ps(sum00, sum01));
-        float result1 = HorizontalSum(_mm256_add_ps(sum10, sum11));
-        float result2 = HorizontalSum(_mm256_add_ps(sum20, sum21));
-        float result3 = HorizontalSum(_mm256_add_ps(sum30, sum31));
+        float result0 = HorizontalSumAvx2(_mm256_add_ps(sum00, sum01));
+        float result1 = HorizontalSumAvx2(_mm256_add_ps(sum10, sum11));
+        float result2 = HorizontalSumAvx2(_mm256_add_ps(sum20, sum21));
+        float result3 = HorizontalSumAvx2(_mm256_add_ps(sum30, sum31));
         for (; inner < args.k; ++inner) {
             const float input = args.lhs[inner];
             result0 += input * weight0[inner];
@@ -102,7 +93,7 @@ void RunM1KContiguousAvx2Fma(const GemmF32Args& args) noexcept {
 
 } // namespace
 
-#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+#if defined(__AVX2__) && defined(__FMA__)
 Status RunGemmF32Avx2Fma(const GemmF32Args& args) noexcept {
     if (args.m == 1 && args.k > 0 && args.lhs_k_stride == 1 &&
         args.rhs_k_stride == 1 && args.output_n_stride == 1) {

@@ -3,13 +3,13 @@
 
 #include <cmath>
 
-#if defined(RMSNORM_HAS_AVX2_FMA_KERNEL)
+#if defined(__AVX2__) && defined(__FMA__)
 #include <immintrin.h>
 #endif
 
 namespace aethermind::cpu::detail {
 namespace {
-#if defined(RMSNORM_HAS_AVX2_FMA_KERNEL)
+#if defined(__AVX2__) && defined(__FMA__)
 AM_ALWAYS_INLINE void RmsNormF32RowAvx2Fma(float* output,
                                            const float* input,
                                            const float* weight,

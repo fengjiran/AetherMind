@@ -1,7 +1,9 @@
 #include "aethermind/backend/cpu/kernels/common/dot_product_f32_avx2.h"
 #include "aethermind/backend/cpu/kernels/common/simd_utils.h"
 
+#if defined(__AVX2__) && defined(__FMA__)
 #include <immintrin.h>
+#endif
 
 namespace aethermind {
 

@@ -109,7 +109,7 @@ Status RunGemmF32Avx2Fma(const GemmF32Args& args) noexcept {
         RunM1KContiguousAvx2Fma(args);
         return Status::Ok();
     }
-    return RunGemmF32ScalarOptimized(args);
+    return RunGemmF32Scalar(args);
 }
 #endif
 

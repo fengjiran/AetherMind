@@ -10,14 +10,14 @@
 |---|---|---|---|
 | 架构总览 | [designs/architecture/architecture_overview.md](designs/architecture/architecture_overview.md) | Current | 全系统唯一权威总览：分层架构、硬性约束、跨层流程、模块地图、性能基线 |
 | 模块设计 | [designs/](designs/) | Current / Deprecated | 单模块深入设计：数据结构、并发模型、接口、边界、权衡；按 AGENTS.md §2.1 模块表分子目录（算子/backend 相关设计已归位文档见 [operators/](operators/)，不在此目录） |
-| 算子文档 | [operators/](operators/) | 各算子目录自含状态 | **全部算子文档唯一位置**：算子契约、专项提案、工作文件/证据（按算子分目录），算子语义层设计（operator_contract_design、算子系统设计）在其根目录；规范见 [guides/operator-development-workflow.md](guides/operator-development-workflow.md) |
+| 算子文档 | [operators/](operators/) | 各算子目录自含状态 | **全部算子文档唯一位置**：算子契约、专项提案、证据记录（按算子分目录），算子语义层设计（operator_contract_design、算子系统设计）在其根目录；规范见 [guides/operator-development-workflow.md](guides/operator-development-workflow.md) |
 | 调研备忘 | `docs/designs/research/`（当前无内容） | 无状态，头部标注日期与可信度 | 未验证/未采纳的技术调研，不承诺实现，禁止当作事实引用 |
 | 演进提案 | [improvement-plan/](improvement-plan/) | Draft / In Progress / Implemented / Superseded | 未来要做什么：路线图与专题提案 |
 | 开发指南 | [guides/](guides/) | Current / Deprecated | "怎么做"的过程规范：编码、注释、测试、评审、文档 |
 | API 参考 | [api/public-api.md](api/public-api.md) | Current | 公共 API 语义（与头文件 Doxygen 同源同步） |
 | 决策记录 | [decisions/](decisions/) | Proposed / Accepted / Deprecated / Superseded | 已作出/被否决的架构决策及其理由（ADR），每篇至少 1 个被否定备选方案 |
 | 评审报告 | [reviews/](reviews/) | Current / 历史快照 | 代码/设计评审结论；过时快照头部加"已过时"警示 |
-| 验证报告 | [tests/](tests/) | Current | 测试/基准验证结果与结论；算子工作文件与证据见 [operators/](operators/) |
+| 验证报告 | [tests/](tests/) | Current | 测试/基准验证结果与结论；算子证据记录见 [operators/](operators/) |
 | 问题跟踪 | [issues.md](issues.md) | 每条目 `[x]`/`[ ]` | 已知缺陷与优化待办，短生命周期 |
 | 变更记录 | [../CHANGELOG.md](../CHANGELOG.md) | 无 | 行为可见变更，按语义化版本 |
 | 开发日志 | [logs/development_log.md](logs/development_log.md) | 无 | 项目开发过程记录，记录"为什么"而非"做了什么"；算子实验与验证记录见 [operators/](operators/) |
@@ -83,7 +83,7 @@
 | 文档 | 定位 | 状态 |
 |---|---|---|
 | [documentation-guide.md](guides/documentation-guide.md) | 文档系统规范：命名、交叉引用、质量、维护流程 | Current |
-| [operator-development-workflow.md](guides/operator-development-workflow.md) | 算子开发的单一规范文档：O0–O4 证据门禁、Benchmark 规范（§5）、工作文件骨架（§4）与优化方法（§7） | Current |
+| [operator-development-workflow.md](guides/operator-development-workflow.md) | 算子开发的单一规范文档：O0–O4 证据门禁、Benchmark 规范（§5）、记录文件格式（§4）与优化方法（§7） | Current |
 | [cpp_coding_style_guidelines.md](guides/cpp_coding_style_guidelines.md) | C++ 编码风格 | Current |
 | [cpp_comment_guidelines.md](guides/cpp_comment_guidelines.md) | 注释与 Doxygen 规范 | Current |
 | [test_writing_guidelines.md](guides/test_writing_guidelines.md) | GoogleTest 测试编写规范 | Current |
@@ -96,7 +96,7 @@
 | [module-design.md](templates/module-design.md) | 当前模块设计文档 |
 | [adr.md](templates/adr.md) | 架构决策记录 |
 
-算子工作文件不使用独立模板：骨架内嵌于 [operator-development-workflow.md](guides/operator-development-workflow.md) §4；优化方法见 §7。
+算子证据记录不使用独立模板：格式内嵌于 [operator-development-workflow.md](guides/operator-development-workflow.md) §4；优化方法见 §7。
 
 ### 架构决策记录（docs/decisions/）
 
@@ -120,7 +120,7 @@
 
 ### 验证报告（docs/tests/）
 
-- [operators/](operators/)：算子文档唯一位置——契约、专项提案、工作文件/证据按算子分目录；算子语义层设计（operator_contract_design、算子系统设计）在根目录。
+- [operators/](operators/)：算子文档唯一位置——契约、专项提案、证据记录按算子分目录；算子语义层设计（operator_contract_design、算子系统设计）在根目录。
 
 | 文档 | 定位 | 状态 |
 |---|---|---|

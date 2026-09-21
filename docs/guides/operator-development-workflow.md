@@ -21,75 +21,46 @@
 | **O1 Reference** | 简单、可读、独立的 correctness oracle，覆盖完整合法合同 |
 | **O2 Benchmark baseline** | 以 **prepared operator**（registered/resolved kernel + prepared params）为主门禁，microkernel 仅诊断 |
 | **O3 方案与路线** | 非平凡的优化方案、备选与工作包依赖记入本算子 `<op>-optimization.md`；工作包状态记入其 README；过程证据不写进提案 |
-| **O4 实验与调优** | 在 work file 追加 |
+| **O4 实验与调优** | 在记录文件追加（格式见 §4） |
 
-## 4. 算子工作文件骨架
+## 4. 记录文件
 
-新建 `docs/operators/<op>/benchmarks/<work-package>.md` 时复制以下骨架。
+证据记入 `docs/operators/<op>/benchmarks/<machine>-<op>.md`：**一机器一文件**，文件名只含机器名与算子名。日期、工作包编号、"实验日志/验证报告/分析"等分类都不进文件名，需要区分时用文件内的章节和记录条目。每台机器只写自己的文件，数值不跨文件引用；未采集的机器不建空文件。
+
+机器环境以一张表写在文件开头，只写一次。记录只追加、不覆盖，失败与失败的实验同样保留；按追加顺序排列，标题不写日期（时间由 raw run-id 与 commit 定位）。
 
 ````markdown
-# <算子名> <工作包> 工作文件
+# <算子名> 基准记录 — <机器名>
 
-- **算子索引**: <docs/operators/<op>/README.md>
-- **状态**: Open / In Progress / Under review / Closed
-- **门禁状态**: correctness [ ] / production-path [ ] / 可追溯 [ ]
+| 项 | 值 |
+|---|---|
+| CPU | <型号/核数/SMT/关键 ISA> |
+| OS / kernel | <发行版/kernel> |
+| Compiler / build | <compiler + build flags> |
+| 备注 | <WSL2/affinity/拓扑等注意事项> |
 
-## 1. 目标与合同不变式
+## <被测实现或变更，一句话>
 
-- 目标（一句话）：
-- 合同不变式（端口/dtype/shape/stride/alias/zero-size/overflow/数值预算）：无变化则写"无变化"；有变化必须列明并同步 OperatorSchema/测试。
-- 关联代码 / 关联测试：
-
-## 2. 实验记录（追加式，失败保留）
-
-### YYYY-MM-DD — EXP-001：<标题>
-
-- 假设 / 预期机制：
-- 验证命令（benchmark/test）与核心元数据（commit、dirty、CPU、OS/kernel、compiler+flags、raw artifact）：
-
-```bash
-# exact commands
-```
-
-- Correctness：`测试 | 结果 | 备注`（PASS/FAIL/NOT RUN）
-- 结果摘要：`Case | Baseline | Candidate | Delta | Raw artifact`（不粘贴完整 JSON/终端输出）
-- 分析与决定：Accepted / Rejected / Needs More Data；下一步：
-
-## 3. 正式结论（冻结区，按 commit@date 追加，不覆盖）
-
-### <commit-sha>@<YYYY-MM-DD> — <结论名称>
-
-- 判定：Accepted / Rejected / Needs More Data
-- 环境快照（核心 6 项；production 结论附全档）：
-- correctness / numerical error 摘要：
-- production-path benchmark 摘要：
-- layout/alias/fallback、workspace/ownership、dispatch、并发（适用时）：
-- 未覆盖项与结论边界：
-
-## 4. 门禁判定
-
-- [ ] correctness 与 safety 测试通过
-- [ ] production-path benchmark 已运行且附核心元数据
-- [ ] 结果可追溯（commit/机器/命令/raw artifact）
-- [ ] 未运行或未证明的内容已标注
-
-## 5. 相关链接
-
-- design / issues / 原始数据路径：
+- commit：`<sha>`（dirty 时标明）
+- 命令：`<benchmark / test 命令>`
+- 结果：`<case | baseline | candidate | delta | 测试结果>`（median，n=…；不粘贴 JSON 与终端输出）
+- raw：`benchmark-results/operators/<op>/<run-id>/`
+- 结论：Accepted / Rejected / Needs More Data；下一步
 ````
 
 ## 5. Benchmark 与原始数据规范
 
-### 5.1 两级元数据
+### 5.1 元数据
 
-- **核心（所有性能结论必填）**：git commit + working-tree dirty、CPU model、OS/kernel、compiler/version + build flags、benchmark command、raw artifact 引用。
-- **全档（仅 end-to-end 结论、production 决策或跨机器比较需要）**，在核心之外增加：date/time、baseline/candidate 身份、CPU stepping/microcode、effective CPU features、thread/affinity/NUMA、governor/turbo/SMT、memory configuration、raw JSON/checksum。
+- **文件头（每机器一次）**：CPU model、核数/SMT、OS/kernel、compiler + build flags。
+- **每条记录**：git commit + working-tree dirty、benchmark command、结果摘要、raw artifact 引用。
+- **全档（仅 end-to-end 结论、production 决策或跨机器比较时补记）**：date/time、baseline/candidate 身份、CPU stepping/microcode、effective CPU features、thread/affinity/NUMA、governor/turbo/SMT、memory configuration、JSON/checksum。
 
-缺少核心元数据的结果只能作为本地观察，不能用于 production 决策。
+缺少 commit、命令或 artifact 的记录只能作为本地观察，不能用于 production 决策。
 
 ### 5.2 Raw 数据
 
-gitignored `benchmark-results/operators/<op>/<run-id>/`（run ID 格式 `YYYYMMDDTHHMMSSZ_<git-sha>_<host-id>_<variant>`）。大量 machine-specific JSON 不进 `docs/`；需长期保留时用 CI artifact，在 work file 记录 artifact ID、URL、checksum 与 retention。
+gitignored `benchmark-results/operators/<op>/<run-id>/`（run ID 格式 `YYYYMMDDTHHMMSSZ_<git-sha>_<host-id>_<variant>`）。大量 machine-specific JSON 不进 `docs/`；需长期保留时用 CI artifact，在记录文件中记录 artifact ID、URL、checksum 与 retention。
 
 ### 5.3 比较规则
 
@@ -101,14 +72,14 @@ gitignored `benchmark-results/operators/<op>/<run-id>/`（run ID 格式 `YYYYMMD
 
 ### 6.1 状态流转
 
-work file `Open → In Progress → Under review → Closed`；门禁不过 → 继续实验 / Rejected / Needs More Data；通过 → closeout（descriptor priority、design、CHANGELOG、issues 按触发更新）。
+记录只追加、不覆盖。门禁不过 → 继续实验 / Rejected / Needs More Data；通过 → closeout（descriptor priority、design、CHANGELOG、issues 按触发更新）。算子当前状态以算子 README 的一句话状态为准。
 
 ### 6.2 PR 评审门禁
 
 - [ ] reference 与 optimized 独立；语义/layout/alias/zero-size/overflow 合同未被意外缩窄；
 - [ ] correctness 测试覆盖目标和 fallback；steady-state 计时边界正确；
 - [ ] 性能结论包含核心元数据，microbenchmark 与 production-path 证据已区分；
-- [ ] work file、design、CHANGELOG 按触发条件同步；未运行或未证明内容明确标注。
+- [ ] 记录文件、design、CHANGELOG 按触发条件同步；未运行或未证明内容明确标注。
 
 ### 6.3 反模式
 

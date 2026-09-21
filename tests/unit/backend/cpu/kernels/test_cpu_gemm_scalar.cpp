@@ -29,7 +29,7 @@ void FillValues(std::vector<float>& values) {
 
 void ExpectCandidateNearReference(const cpu::detail::GemmF32Args& candidate_args,
                                   const cpu::detail::GemmF32Args& reference_args) {
-    const Status candidate = cpu::detail::RunGemmF32ScalarOptimized(candidate_args);
+    const Status candidate = cpu::detail::RunGemmF32Scalar(candidate_args);
     ASSERT_TRUE(candidate.ok()) << candidate.ToString();
     const Status reference = cpu::detail::RunGemmF32Reference(reference_args);
     ASSERT_TRUE(reference.ok()) << reference.ToString();
@@ -304,7 +304,7 @@ TEST(CPUKernelGemmScalar, M1NonUnitOutputStrideFallsBackToReference) {
 TEST(CPUKernelGemmScalar, ZeroInnerDimensionWritesPositiveZeroWithoutInputs) {
     std::array<float, 13> output{};
     output.fill(-7.0F);
-    const Status status = cpu::detail::RunGemmF32ScalarOptimized(cpu::detail::GemmF32Args{
+    const Status status = cpu::detail::RunGemmF32Scalar(cpu::detail::GemmF32Args{
             .output = output.data(),
             .m = 3,
             .n = 3,
@@ -323,14 +323,14 @@ TEST(CPUKernelGemmScalar, ZeroInnerDimensionWritesPositiveZeroWithoutInputs) {
 }
 
 TEST(CPUKernelGemmScalar, ZeroOutputDimensionsAreNoOps) {
-    const Status zero_m = cpu::detail::RunGemmF32ScalarOptimized(cpu::detail::GemmF32Args{
+    const Status zero_m = cpu::detail::RunGemmF32Scalar(cpu::detail::GemmF32Args{
             .m = 0,
             .n = 3,
             .k = 7,
     });
     ASSERT_TRUE(zero_m.ok()) << zero_m.ToString();
 
-    const Status zero_n = cpu::detail::RunGemmF32ScalarOptimized(cpu::detail::GemmF32Args{
+    const Status zero_n = cpu::detail::RunGemmF32Scalar(cpu::detail::GemmF32Args{
             .m = 3,
             .n = 0,
             .k = 7,
@@ -349,7 +349,7 @@ TEST(CPUKernelGemmScalar, OverwritesExistingOutput) {
             4.0F,
     };
     std::array<float, 2> output = {101.0F, -101.0F};
-    const Status status = cpu::detail::RunGemmF32ScalarOptimized(cpu::detail::GemmF32Args{
+    const Status status = cpu::detail::RunGemmF32Scalar(cpu::detail::GemmF32Args{
             .lhs = lhs.data(),
             .rhs = weights.data(),
             .output = output.data(),

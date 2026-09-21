@@ -305,7 +305,7 @@ AGENTS.md → docs/agent/memory/project.md → docs/agent/handoff/workstreams/<m
 - 跨机器恢复时，必须先恢复上下文，再精准继续
 
 ## 13. 推荐代理工作流
-算子语义、reference kernel、optimized kernel、packing/layout、fusion 或 threading 工作必须遵循 `docs/guides/operator-development-workflow.md`（该单一文档含 O0–O4 证据门禁、Benchmark 规范、算子工作文件骨架（§4）与优化方法（§7）），并达到对应证据门禁。不得以 microbenchmark 代替 production-path 或端到端证据。
+算子语义、reference kernel、optimized kernel、packing/layout、fusion 或 threading 工作必须遵循 `docs/guides/operator-development-workflow.md`（该单一文档含 O0–O4 证据门禁、Benchmark 规范、证据记录格式（§4）与优化方法（§7）），并达到对应证据门禁。不得以 microbenchmark 代替 production-path 或端到端证据。
 
 1. 修改前先阅读相关 `CMakeLists.txt` 和 `AGENTS.md`；涉及产品范围、公开 API、架构或验收标准时，还需阅读 `docs/products/aethermind_prd.md`。
 2. 进行最小化、风格一致的改动。

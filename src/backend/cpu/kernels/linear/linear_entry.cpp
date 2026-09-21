@@ -164,7 +164,7 @@ GemmF32Args MakeLinearF32GemmArgs(const LinearF32KernelArgs& args) noexcept {
 Status LinearF32ScalarCandidateEntry(const KernelContext& ctx) noexcept {
     const auto* args = static_cast<const LinearF32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
-    return RunGemmF32ScalarOptimized(MakeLinearF32GemmArgs(*args));
+    return RunGemmF32Scalar(MakeLinearF32GemmArgs(*args));
 }
 #endif
 

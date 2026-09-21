@@ -273,7 +273,7 @@ void RunGenericM(const GemmF32Args& args) noexcept {
 
 } // namespace
 
-Status RunGemmF32ScalarOptimized(const GemmF32Args& args) noexcept {
+Status RunGemmF32Scalar(const GemmF32Args& args) noexcept {
     if (args.m == 0 || args.n == 0) {
         return Status::Ok();
     }

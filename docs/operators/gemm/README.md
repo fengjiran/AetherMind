@@ -1,47 +1,15 @@
-# GEMM 实验记录与验证报告索引
+# GEMM 算子文档
 
-- **专项提案**: [CPU GEMM 优化方案](cpu-gemm-optimization.md)（方案、合同、工作包与退出条件）
+- **优化提案**: [CPU GEMM 优化方案](cpu-gemm-optimization.md)（方案、合同与实施顺序）
 - **规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
 
-本目录是本算子实验过程记录与正式验证/分析报告的**唯一存放位置**（2026-09-18 由 `docs/logs/operators/gemm/` 与 `docs/tests/operators/gemm/` 合并，2026-09-19 迁入 `docs/operators/gemm/`）。
+## 证据记录
 
-> **规范演进（2026-09-19）**：工作流改为"一工作包一文件"（骨架见[工作流文档 §4](../../guides/operator-development-workflow.md#4-算子工作文件骨架)）。下列按机器/日期命名的日志与报告为 2026-09-19 前的**历史不可变快照**，按机器并列成立，保留不并改；此后新证据按 §4 骨架追加，不再新建"每次运行一份报告"。
+证据存放在 [benchmarks/](benchmarks/)：**一机器一文件**，文件名只含机器名与算子名。机器级数值按机器各自成立、互不替代，不跨机器引用；未列出的机器为 Not Collected。
 
-## 工作包状态
+| 机器 | 记录 | 状态 |
+|---|---|---|
+| 54H5MMI | [54h5mmi-gemm.md](benchmarks/54h5mmi-gemm.md) | 待重采（2026-09-21 清空） |
+| QHIHOGQ | 首次采集时新建 | 待重采（2026-09-21 清空） |
 
-各工作包执行状态速览（退出条件与逐机门禁详情见 [CPU GEMM 优化方案](cpu-gemm-optimization.md) §7）：
-
-| 工作包 | 状态 |
-|---|---|
-| G0 合同与证据基线 | Baseline Complete on `54H5MMI` / `QHIHOGQ`；production gate Needs More Data；其余目标机 **Not Collected** |
-| G1S portable scalar optimized | In Progress（backend-private candidate + opt-in 集成完成；production acceptance 待正式证据） |
-| G1V Decode direct-weight AVX2 | In Progress（opt-in AVX2+FMA candidate 已实现；performance Not Run） |
-| G2–G6 | Not Started（按证据门禁进入） |
-
-## 机器归属与可复核性
-
-本目录的报告**按机器分别成立**，目前有两台采集机，二者数据并列、互不替代：
-
-| 采集机 | CPU | 环境 | G0 状态 |
-|---|---|---|---|
-| `DESKTOP-54H5MMI` | Intel Core Ultra 9 285H（Arrow Lake-H，同构 16 核，SMT off） | WSL2 kernel 6.6.87.2，GCC 14.2.0 | Baseline Complete / production gate Needs More Data |
-| `DESKTOP-QHIHOGQ` | Intel Core i9-12900H（Alder Lake-H，6P+8E 混合） | WSL2 kernel 6.18.33.2，GCC 14.2.0 | Baseline Complete / production gate Needs More Data |
-| 其他任何机器 | — | — | **Not Collected** |
-
-- 原始 artifact 目录 `benchmark-results/operators/gemm/<run-id>/` 被 `.gitignore` 忽略，**只存在于各自的采集机本地磁盘**，不随仓库分发。在其他机器上这些 run id 不可恢复、数值不可复核。
-- 按提案 §6.7（baseline/candidate 必须同机、同配置）与 §6.5（不得跨微架构比较原始计数），任一采集机的数值**都不能作为另一台的基线或门禁参照**。
-- 因此 G0 状态按机器计：某台机器 Baseline Complete 不代表其他机器 Complete；每台目标机必须各自采集并归档自己的 raw artifact 后才能判定。
-- 与机器无关、可在任何机器由源码复核的部分：G0 benchmark/测试/采集脚本本身、correctness 契约测试、reference 反汇编为纯标量的事实、G1S candidate 入口与 fallback 边界、opt-in descriptor 注册逻辑。
-- **数据归属**（2026-09-19 固化）：机器级性能数值、噪声 floor 与 Roofline 百分比的**权威位置是本目录**，不得回填进其他文档，也不得跨机引用。噪声 floor 的量化方法本身属于[算子开发与优化工作流 §7.2.4](../../guides/operator-development-workflow.md#72-正确性与基准)。
-
-| 日期 | 类型 | 文件 | 采集机 | 结论 | 状态 |
-|---|---|---|---|---|---|
-| 2026-09-18 | 实验日志 | [g0-baseline-log.md](benchmarks/g0-baseline-log.md) | `54H5MMI` | reference 基线、独立复跑与配对 A/B 噪声 floor；production 百分比级门禁仍需裸机补采 | Current |
-| 2026-09-18 | 实验日志 | [g1s-scalar-log.md](benchmarks/g1s-scalar-log.md) | `54H5MMI` | scalar 单入口 candidate 与 opt-in Linear descriptor（strict/exact 机制已按简化决策移除）；默认仍为 reference，未获 production acceptance | In Progress / Needs More Data |
-| 2026-09-18 | 验证报告 | [gemm_g0_baseline_validation_2026-09-18.md](benchmarks/gemm_g0_baseline_validation_2026-09-18.md) | `54H5MMI` | reference baseline Accepted；production gate Needs More Data | Current |
-| 2026-09-18 | 验证报告 | [gemm_g0_paired_ab_validation_2026-09-18.md](benchmarks/gemm_g0_paired_ab_validation_2026-09-18.md) | `54H5MMI` | 关闭 raw repetitions/streaming repeat/交错 A/B 三项；production gate 仍 Needs More Data | Current |
-| 2026-09-18 | 分析报告 | [gemm_g0_roofline_analysis_2026-09-18.md](benchmarks/gemm_g0_roofline_analysis_2026-09-18.md) | `54H5MMI` | Roofline 定位：canonical 形状 ≤27% cap；M=1 记忆侧 / M≥16 计算侧；访问顺序主导 | Current |
-| 2026-09-19 | 实验日志 | [g0-baseline-log-desktop-qhihogq.md](benchmarks/g0-baseline-log-desktop-qhihogq.md) | `QHIHOGQ` | 本机首次 G0 采集；访问顺序归因复现且更强（16–18×，L1 驻留时仅 1.18×）；噪声分解为进程内 CV 0.03–0.04% vs 跨进程偏移 ≤5.17%；WSL2 拓扑伪造致 `taskset` 仅咨询性；G1S 已被 SSE2 自动向量化 | Current |
-| 2026-09-19 | 验证报告 | [gemm_g0_baseline_validation_desktop-qhihogq_2026-09-19.md](benchmarks/gemm_g0_baseline_validation_desktop-qhihogq_2026-09-19.md) | `QHIHOGQ` | 本机 reference baseline Accepted（106+30 测试通过）；production gate Needs More Data；同一实现自我比较被判出 4 个 REGRESS，证明 5% 自动门禁在本机三组上不可用 | Current |
-| 2026-09-19 | 分析报告 | [gemm_g0_roofline_analysis_desktop-qhihogq_2026-09-19.md](benchmarks/gemm_g0_roofline_analysis_desktop-qhihogq_2026-09-19.md) | `QHIHOGQ` | 本机 ceiling：P=130.21 GFLOP/s、Triad=25.32 GB/s、ridge=5.14；M=1 达记忆侧 27.7–29.4%，M≥16 达峰值 2.6–2.8% | Current |
-| 2026-09-21 | 工作文件 | [g1v-avx2.md](benchmarks/g1v-avx2.md) | — | AVX2+FMA opt-in candidate、compatible scalar fallback 与 benchmark registrations；performance Not Run | In Progress |
+原始 artifact 目录 `benchmark-results/operators/gemm/<run-id>/` 被 `.gitignore` 忽略，只存在于各采集机本地。与机器无关、可由源码复核的部分（benchmark/测试/采集脚本、correctness 契约、候选入口与 fallback 边界）随代码评审，不进入本目录。

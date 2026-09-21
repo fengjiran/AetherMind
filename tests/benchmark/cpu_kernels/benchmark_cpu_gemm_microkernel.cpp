@@ -164,13 +164,13 @@ void BM_GemmF32ReferenceKContiguous(benchmark::State& state) {
 
 void BM_GemmF32ScalarOptimizedNContiguous(benchmark::State& state) {
     BenchmarkGemmF32(state, RhsLayout::kNContiguous,
-                     &cpu::detail::RunGemmF32ScalarOptimized,
+                     &cpu::detail::RunGemmF32Scalar,
                      1.0e-4F);
 }
 
 void BM_GemmF32ScalarOptimizedKContiguous(benchmark::State& state) {
     BenchmarkGemmF32(state, RhsLayout::kKContiguous,
-                     &cpu::detail::RunGemmF32ScalarOptimized,
+                     &cpu::detail::RunGemmF32Scalar,
                      1.0e-4F);
 }
 
@@ -193,10 +193,15 @@ using GemmShape = std::array<int64_t, 3>;
 
 // Shape tables consumed by both RHS-layout registrations below; keeping them
 // in one place guarantees every registration sees the identical shape set.
-constexpr std::array<GemmShape, 8> kReferenceShapes{{
-        // Decode and small-M workloads.
+constexpr std::array<GemmShape, 12> kReferenceShapes{{
+        // Decode and small-M workloads; the M=1 projection shapes are shared
+        // with the scalar and AVX2 registrations for direct pairing.
         {1, 4096, 4096},
+        {1, 4096, 6144},
         {1, 4096, 11008},
+        {1, 4096, 22016},
+        {1, 11008, 4096},
+        {1, 4096, 32000},
         {4, 4096, 4096},
         // Scalar candidate dispatch boundary anchors around
         // kScalarSmallMMax = 8; keep them shape-identical with the scalar
@@ -214,9 +219,15 @@ constexpr std::array<GemmShape, 8> kReferenceShapes{{
 // (2..kScalarSmallMMax), and generic M (>kScalarSmallMMax); keep every case
 // on the scalar fast path and shape-identical with the reference registration
 // for direct pairing.
-constexpr std::array<GemmShape, 9> kScalarShapes{{
+constexpr std::array<GemmShape, 13> kScalarShapes{{
+        // M=1 Decode projections shared with the reference and AVX2
+        // registrations for direct pairing.
         {1, 4096, 4096},
+        {1, 4096, 6144},
         {1, 4096, 11008},
+        {1, 4096, 22016},
+        {1, 11008, 4096},
+        {1, 4096, 32000},
         {1, 33, 31},
         {1, 32, 33},
         // Small-M range: lower bound plus representative row blocks.

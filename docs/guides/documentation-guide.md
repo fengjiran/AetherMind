@@ -117,7 +117,7 @@
 | 性能基线变化 | `architecture_overview.md` 性能章节、CHANGELOG |
 | 编码/注释/测试规范变更 | 对应 `guides/*` + AGENTS.md §7–§9 双向同步 |
 | 缺陷修复 | `issues.md` 勾选条目、CHANGELOG（行为可见时） |
-| 算子语义/reference/optimized/packing/fusion/threading 变更 | [算子开发与优化工作流](operator-development-workflow.md)要求的专项提案（非平凡方案）、work file、design/CHANGELOG（按变更投入触发） |
+| 算子语义/reference/optimized/packing/fusion/threading 变更 | [算子开发与优化工作流](operator-development-workflow.md)要求的专项提案（非平凡方案）、证据记录、design/CHANGELOG（按变更投入触发） |
 
 ### 6.2 防过期机制
 
@@ -157,7 +157,7 @@
 
 ### 7.6 算子开发与优化文档
 
-- 算子开发、reference/optimized kernel、packing/layout、fusion、threading 工作遵循 **唯一规范文档** [算子开发与优化工作流](operator-development-workflow.md)：O0–O4 证据门禁、Benchmark 规范（§5）、算子工作文件骨架（§4，实验区追加式、结论区按 `commit@date` 冻结）与优化方法（§7）均在其中；各算子的具体技术顺序不作统一强制路线。
+- 算子开发、reference/optimized kernel、packing/layout、fusion、threading 工作遵循 **唯一规范文档** [算子开发与优化工作流](operator-development-workflow.md)：O0–O4 证据门禁、Benchmark 规范（§5）、记录文件格式（§4，一机器一文件、追加式不覆盖）与优化方法（§7）均在其中；各算子的具体技术顺序不作统一强制路线。
 
 ## 版本历史
 
@@ -167,3 +167,4 @@
 | v1.1 | 2026-09-17 | 增加算子开发与优化工作流、Change Profile 和三类标准模板引用 |
 | v1.2 | 2026-09-19 | 算子工作流瘦身为单一文档（operator-development-workflow.md）：实验日志与验证报告合并为工作文件；提案与工作文件骨架并入文档附录 A/B；删除全部算子模板文件（operator-experiment-log / operator-validation-report / operator-optimization-plan / operator-work-file） |
 | v1.3 | 2026-09-19 | 算子文档收敛为单一规范文档：operator_optimization_guide.md 压缩合并为工作流附录 C 后删除；引用单指向 |
+| v1.4 | 2026-09-21 | 算子证据记录改为「一机器一文件」（`benchmarks/<machine>-<op>.md`）：工作流 §4 骨架替换为精简记录格式，元数据与状态流转相应瘦身 |

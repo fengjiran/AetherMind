@@ -43,7 +43,7 @@ Status RunGemmF32Reference(const GemmF32Args& args) noexcept;
 /// cases with unit-stride lhs K, unit-stride output N, and either contiguous
 /// RHS K or N. Every other reference-legal layout falls back to
 /// RunGemmF32Reference. It uses no intrinsics or heap allocation.
-Status RunGemmF32ScalarOptimized(const GemmF32Args& args) noexcept;
+Status RunGemmF32Scalar(const GemmF32Args& args) noexcept;
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 /// @brief Runs the AVX2/FMA FP32 GEMM candidate with compatible fallback.

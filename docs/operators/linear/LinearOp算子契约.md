@@ -196,7 +196,7 @@ Phase 1 correctness 以 double reference 为基准。Linear 的累加误差随 `
 - CPU backend 必须提供可运行 fallback 路径；高级 ISA 路径不能成为唯一 correctness 路径。
 - 当前只注册 1 个 kernel：`cpu::linear_f32_reference`，selector `{CPU, Float32, Float32, kPlain, kBoth}`（reference naive triple-loop，无 CPU 指令集要求/无 SIMD）。
 - 后续扩展优先级（本节能力类别简写；实际注册以 `KernelSelector` 字段 + `CpuFeatureSet` 表达）：
-  1. `kScalar + kDecode`：GEMV 优化（复用 `DotProductF32Avx2Unroll` 风格的内积 kernel，但注册为 `kScalar` 不强制 AVX2）。
+  1. `kScalar + kDecode`：GEMV 优化（复用 `DotProductF32` 风格的内积 kernel，但注册为 `kScalar` 不强制 AVX2）。
   2. `kAVX2 + kPrefill`：blocked GEMM。
   3. `kAVX512 + kPrefill` / `kAMX + kPrefill`：高级向量化路径。
   4. `kPacked` selector 系列：消费 `WeightPrepacker` 输出。

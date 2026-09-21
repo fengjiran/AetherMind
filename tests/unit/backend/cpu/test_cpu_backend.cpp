@@ -20,20 +20,6 @@ KernelSelector MakeCpuSelector(ExecPhase phase = ExecPhase::kBoth) {
     };
 }
 
-const char* ExpectedLinearKernelName(const CpuBackend& backend) {
-#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
-    if (backend.cpu_capabilities().effective_features.Contains(CpuFeature::kAvx2) &&
-        backend.cpu_capabilities().effective_features.Contains(CpuFeature::kFma)) {
-        return "cpu::linear_f32_avx2_fma_candidate";
-    }
-#endif
-#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
-    return "cpu::linear_f32_scalar_candidate";
-#else
-    return "cpu::linear_f32_reference";
-#endif
-}
-
 TEST(CpuBackend, DeviceTypeIsCPU) {
     CpuBackend backend;
     EXPECT_EQ(backend.device_type(), DeviceType::kCPU);
@@ -58,7 +44,7 @@ TEST(CpuBackend, PrepareKernelFindsConfiguredLinearDescriptor) {
     const StatusOr<ResolvedKernel> resolved = backend.PrepareKernel(
             OpType::kLinear, MakeCpuSelector(), OpParams{LinearParams{}});
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
-    EXPECT_STREQ(resolved->name, ExpectedLinearKernelName(backend));
+    EXPECT_STREQ(resolved->name, "cpu::linear_f32_reference");
 }
 
 TEST(CpuBackend, TryGetKernelRegistryForDebugReturnsRegistry) {

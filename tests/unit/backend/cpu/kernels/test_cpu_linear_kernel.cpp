@@ -47,12 +47,6 @@ StatusOr<ResolvedKernel> PrepareLinearKernel(const CpuFeaturePolicy& policy) {
     return backend.PrepareKernel(OpType::kLinear, MakeLinearSelector(), OpParams{LinearParams{}});
 }
 
-#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
-bool IsAvx2FmaLinearKernel(const ResolvedKernel& kernel) noexcept {
-    return kernel.name != nullptr &&
-           std::string_view{kernel.name} == "cpu::linear_f32_avx2_fma_candidate";
-}
-#endif
 
 struct LinearTestViews {
     TensorView input_tensor{};
@@ -137,7 +131,6 @@ void ExpectLinearRowsNear(const float* input,
     }
 }
 
-#if !defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
 TEST(CPUKernelLinear, CpuBackendPreparesPlainF32ReferenceKernel) {
     const auto kernel = PrepareLinearKernel();
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
@@ -147,159 +140,6 @@ TEST(CPUKernelLinear, CpuBackendPreparesPlainF32ReferenceKernel) {
     EXPECT_NE(kernel->params_builder, nullptr);
     EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::LinearF32KernelArgs));
 }
-#else
-TEST(CPUKernelLinearScalarCandidate, CpuBackendPreparesPlainF32CandidateKernel) {
-    const auto kernel = PrepareLinearKernel();
-    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
-    EXPECT_EQ(kernel->op_type, OpType::kLinear);
-#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
-    CpuBackend backend;
-    if (backend.cpu_capabilities().effective_features.Contains(CpuFeature::kAvx2) &&
-        backend.cpu_capabilities().effective_features.Contains(CpuFeature::kFma)) {
-        EXPECT_EQ(std::string_view{kernel->name}, "cpu::linear_f32_avx2_fma_candidate");
-    } else {
-        EXPECT_EQ(std::string_view{kernel->name}, "cpu::linear_f32_scalar_candidate");
-    }
-#else
-    EXPECT_EQ(std::string_view{kernel->name}, "cpu::linear_f32_scalar_candidate");
-#endif
-    EXPECT_NE(kernel->fn, nullptr);
-    EXPECT_NE(kernel->params_builder, nullptr);
-    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::LinearF32KernelArgs));
-}
-
-#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
-TEST(CPUKernelLinearAvx2Candidate, CpuBackendSelectsAvx2WhenEffectiveFeaturesPermitIt) {
-    CpuBackend backend;
-    if (!backend.cpu_capabilities().effective_features.Contains(CpuFeature::kAvx2) ||
-        !backend.cpu_capabilities().effective_features.Contains(CpuFeature::kFma)) {
-        GTEST_SKIP() << "AVX2+FMA is unavailable on this host";
-    }
-
-    const auto kernel = backend.PrepareKernel(
-            OpType::kLinear, MakeLinearSelector(), OpParams{LinearParams{}});
-    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
-    EXPECT_TRUE(IsAvx2FmaLinearKernel(*kernel));
-}
-
-TEST(CPUKernelLinearAvx2Candidate, DisablingAvx2OrFmaSelectsScalarFallback) {
-    for (const CpuFeature feature: {CpuFeature::kAvx2, CpuFeature::kFma}) {
-        const auto kernel = PrepareLinearKernel(CpuFeaturePolicy{
-                .disabled_features = CpuFeatureSet::From({feature}),
-        });
-        ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
-        EXPECT_EQ(std::string_view{kernel->name}, "cpu::linear_f32_scalar_candidate");
-    }
-}
-#endif
-
-TEST(CPUKernelLinearScalarCandidate, CandidateEntryHandlesMultiRowFastAndFallbackViews) {
-    constexpr int64_t input_shape[2] = {2, 3};
-    constexpr int64_t input_strides[2] = {3, 1};
-    constexpr int64_t weight_shape[2] = {2, 3};
-    constexpr int64_t weight_strides[2] = {3, 1};
-    constexpr int64_t output_shape[2] = {2, 2};
-    constexpr int64_t output_strides[2] = {2, 1};
-    constexpr float input[6] = {1.0F, -2.0F, 0.5F, -3.0F, 0.25F, 4.0F};
-    constexpr float weight[6] = {2.0F, 1.0F, -1.0F, -0.5F, 3.0F, 4.0F};
-    float output[4] = {};
-    const auto kernel = PrepareLinearKernel();
-    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
-
-    const LinearTestViews fast_views{
-            .input_tensor = TensorView{input, DataType::Float32(), input_shape, input_strides},
-            .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
-            .output_tensor = MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
-    };
-    const auto fast_params = BuildLinearPreparedParams(*kernel, fast_views);
-    ASSERT_TRUE(fast_params.ok()) << fast_params.status().ToString();
-    ASSERT_TRUE(RunLinearEntryWith(*kernel, fast_views).ok());
-    ExpectLinearRowsNear(input, weight, output, 2, 3, 2, 3, 1, 3, 1, 2, 1);
-
-    constexpr int64_t fallback_output_strides[2] = {9, 3};
-    std::array<float, 12> fallback_output{};
-    const LinearTestViews fallback_views{
-            .input_tensor = TensorView{input, DataType::Float32(), input_shape, input_strides},
-            .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
-            .output_tensor = MutableTensorView{
-                    fallback_output.data(), DataType::Float32(), output_shape, fallback_output_strides},
-    };
-    const auto fallback_params = BuildLinearPreparedParams(*kernel, fallback_views);
-    ASSERT_TRUE(fallback_params.ok()) << fallback_params.status().ToString();
-    ASSERT_TRUE(RunLinearEntryWith(*kernel, fallback_views).ok());
-    ExpectLinearRowsNear(input, weight, fallback_output.data(), 2, 3, 2, 3, 1, 3, 1, 9, 3);
-
-    constexpr int64_t n_contiguous_weight_strides[2] = {1, 2};
-    std::array<float, 6> n_contiguous_weight = {
-            2.0F, -0.5F, 1.0F, 3.0F, -1.0F, 4.0F};
-    float n_contiguous_output[4] = {};
-    const LinearTestViews n_contiguous_views{
-            .input_tensor = TensorView{input, DataType::Float32(), input_shape, input_strides},
-            .weight_tensor = TensorView{n_contiguous_weight.data(), DataType::Float32(), weight_shape,
-                                        n_contiguous_weight_strides},
-            .output_tensor = MutableTensorView{n_contiguous_output, DataType::Float32(), output_shape,
-                                               output_strides},
-    };
-    const auto n_contiguous_params = BuildLinearPreparedParams(*kernel, n_contiguous_views);
-    ASSERT_TRUE(n_contiguous_params.ok()) << n_contiguous_params.status().ToString();
-    ASSERT_TRUE(RunLinearEntryWith(*kernel, n_contiguous_views).ok());
-    ExpectLinearRowsNear(input, n_contiguous_weight.data(), n_contiguous_output, 2, 3, 2, 3, 1, 1, 2,
-                         2, 1);
-}
-
-TEST(CPUKernelLinearScalarCandidate, CandidateEntryHandlesGenericMultiRowFallback) {
-    constexpr int64_t m = 16;
-    constexpr int64_t k = 3;
-    constexpr int64_t n = 2;
-    constexpr int64_t input_shape[2] = {m, k};
-    constexpr int64_t input_strides[2] = {k, 1};
-    constexpr int64_t weight_shape[2] = {n, k};
-    constexpr int64_t weight_strides[2] = {k, 1};
-    constexpr int64_t output_shape[2] = {m, n};
-    constexpr int64_t output_strides[2] = {n, 1};
-    std::array<float, m * k> input{};
-    std::array<float, n * k> weight{};
-    std::array<float, m * n> output{};
-    for (size_t index = 0; index < input.size(); ++index) {
-        input[index] = static_cast<float>(static_cast<int64_t>(index % 11U) - 5) * 0.25F;
-    }
-    for (size_t index = 0; index < weight.size(); ++index) {
-        weight[index] = static_cast<float>(static_cast<int64_t>(index) - 2) * 0.5F;
-    }
-
-    const auto kernel = PrepareLinearKernel();
-    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
-    const LinearTestViews views{
-            .input_tensor = TensorView{input.data(), DataType::Float32(), input_shape, input_strides},
-            .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
-            .output_tensor = MutableTensorView{output.data(), DataType::Float32(), output_shape, output_strides},
-    };
-    ASSERT_TRUE(RunLinearEntryWith(*kernel, views).ok());
-    ExpectLinearRowsNear(input.data(), weight.data(), output.data(), m, k, n, k, 1, k, 1, n, 1);
-}
-
-TEST(CPUKernelLinearScalarCandidate, CandidateEntryWritesZerosForZeroInnerDimension) {
-    constexpr int64_t input_shape[2] = {1, 0};
-    constexpr int64_t input_strides[2] = {1, 1};
-    constexpr int64_t weight_shape[2] = {2, 0};
-    constexpr int64_t weight_strides[2] = {1, 1};
-    constexpr int64_t output_shape[2] = {1, 2};
-    constexpr int64_t output_strides[2] = {2, 1};
-    std::array<float, 2> output = {3.0F, 3.0F};
-    const auto kernel = PrepareLinearKernel();
-    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
-    const LinearTestViews views{
-            .input_tensor = TensorView{nullptr, DataType::Float32(), input_shape, input_strides},
-            .weight_tensor = TensorView{nullptr, DataType::Float32(), weight_shape, weight_strides},
-            .output_tensor = MutableTensorView{output.data(), DataType::Float32(), output_shape, output_strides},
-    };
-    const auto params = BuildLinearPreparedParams(*kernel, views);
-    ASSERT_TRUE(params.ok()) << params.status().ToString();
-    ASSERT_TRUE(RunLinearEntryWith(*kernel, views).ok());
-    EXPECT_EQ(output[0], 0.0F);
-    EXPECT_EQ(output[1], 0.0F);
-}
-#endif
 
 TEST(CPUKernelLinear, RejectsSelectorsWithoutPlainF32ReferenceSupport) {
     CpuBackend backend;
@@ -806,70 +646,5 @@ TEST(CPUKernelLinear, ExecutionPlanBuilderRunsPreparedReferenceKernel) {
     ASSERT_TRUE(status.ok()) << status.ToString();
     ExpectLinearRowsNear(input, weight, output, 2, 3, 2, 3, 1, 3, 1, 2, 1);
 }
-
-#if defined(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
-TEST(CPUKernelLinearScalarCandidate, ExecutionPlanRunsScalarCandidateEndToEnd) {
-    RuntimeBuilder builder;
-    Runtime runtime = builder.Build();
-    const SymbolicShape activation_shape = StaticShape({1, 3});
-    const SymbolicShape weight_shape = StaticShape({2, 3});
-    const std::vector<TensorSpec> inputs = {
-            TensorSpec{.dtype = DataType::Float32(), .shape = activation_shape},
-            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
-    };
-    const auto analyzed = InferOperator(OpType::kLinear, OpParams{LinearParams{}}, inputs);
-    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
-    const std::vector<ExecutionPlanNodeSpec> nodes = {
-            ExecutionPlanNodeSpec{
-                    .op_type = OpType::kLinear,
-                    .selector = MakeLinearSelector(),
-                    .input_specs = inputs,
-                    .output_specs = analyzed->outputs,
-                    .runtime_checks = analyzed->runtime_checks,
-                    .op_params = OpParams{LinearParams{}},
-            },
-    };
-    const auto plan = ExecutionPlanBuilder::Build(runtime, nodes);
-    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    ASSERT_EQ(plan->size(), 1U);
-#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
-    CpuBackend backend;
-    if (backend.cpu_capabilities().effective_features.Contains(CpuFeature::kAvx2) &&
-        backend.cpu_capabilities().effective_features.Contains(CpuFeature::kFma)) {
-        EXPECT_STREQ(plan->steps()[0].kernel.name, "cpu::linear_f32_avx2_fma_candidate");
-    } else {
-        EXPECT_STREQ(plan->steps()[0].kernel.name, "cpu::linear_f32_scalar_candidate");
-    }
-#else
-    EXPECT_STREQ(plan->steps()[0].kernel.name, "cpu::linear_f32_scalar_candidate");
-#endif
-
-    constexpr int64_t input_shape[2] = {1, 3};
-    constexpr int64_t input_strides[2] = {3, 1};
-    constexpr int64_t weight_raw_shape[2] = {2, 3};
-    constexpr int64_t weight_strides[2] = {3, 1};
-    constexpr int64_t output_shape[2] = {1, 2};
-    constexpr int64_t output_strides[2] = {2, 1};
-    constexpr float input[3] = {1.0F, 2.0F, 3.0F};
-    constexpr float weight[6] = {1.0F, -2.0F, 0.5F, 3.0F, 1.0F, -1.0F};
-    float output[2] = {};
-    test::ExecutionBindingCollector collector(*plan, runtime.GetAllocator(Device::CPU()));
-    collector.Set(0, StepTensorBinding{
-                             .inputs = {
-                                     TensorView{input, DataType::Float32(), input_shape, input_strides},
-                                     TensorView{weight, DataType::Float32(), weight_raw_shape, weight_strides},
-                             },
-                             .outputs = {
-                                     MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
-                             },
-                     });
-    auto context = collector.CreateContext();
-    ASSERT_TRUE(context.ok()) << context.status().ToString();
-
-    const Status status = Executor::Execute(*plan, *context);
-    ASSERT_TRUE(status.ok()) << status.ToString();
-    ExpectLinearRowsNear(input, weight, output, 1, 3, 2, 3, 1, 3, 1, 2, 1);
-}
-#endif
 
 } // namespace

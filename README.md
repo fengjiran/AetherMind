@@ -127,7 +127,6 @@ cmake --build build --target aethermind_benchmark -j  # Benchmarks
 | `USE_LIBBACKTRACE` | `ON` | Enable libbacktrace for stack traces |
 | `BACKTRACE_ON_SEGFAULT` | `ON` | Install a SIGSEGV traceback handler |
 | `ENABLE_TSAN` | `OFF` | Enable ThreadSanitizer |
-| `AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE` | `OFF` | Use the experimental scalar GEMM Linear descriptor for production-path diagnostics |
 | `USE_ALLOC_ALIGNMENT` | `ON` | Apply `KALLOC_ALIGNMENT` to allocations |
 | `KALLOC_ALIGNMENT` | `64` | Memory alignment in bytes |
 

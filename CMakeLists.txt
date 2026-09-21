@@ -25,17 +25,6 @@ option(BACKTRACE_ON_SEGFAULT "Set signal handler to print traceback on segfault"
 option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
 option(USE_ALLOC_ALIGNMENT "Enable alloc alignment" ON)
 option(BUILD_DOCS "Build Doxygen documentation (requires doxygen)" OFF)
-option(AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE
-       "Use the experimental scalar GEMM Linear descriptor for production-path diagnostics" OFF)
-option(AETHERMIND_ENABLE_GEMM_AVX2_CANDIDATE
-       "Use the experimental AVX2/FMA GEMM Linear descriptor for production-path diagnostics" OFF)
-
-if (AETHERMIND_ENABLE_GEMM_AVX2_CANDIDATE AND
-    NOT AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE)
-    message(FATAL_ERROR
-            "AETHERMIND_ENABLE_GEMM_AVX2_CANDIDATE requires "
-            "AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE=ON for its compatible fallback")
-endif ()
 
 find_package(Threads REQUIRED)
 

@@ -43,7 +43,7 @@ AetherMind 不应新增 semantic `Gemm` operator。当前 GEMM 是 CPU backend �
 | 能力 | 当前实现 | 对优化的影响 |
 |---|---|---|
 | GEMM primitive | `RunGemmF32Reference`，三重循环，double accumulator，支持二维 stride | correctness baseline，不是性能基线 |
-| scalar optimized | `RunGemmF32ScalarOptimized` 已覆盖 `M=1`、small-M（`M<=8`）与 generic-M 三类 driver，共用 4 列输出块与 K 展开 2；前提仍是 lhs K 与 output N 单位 stride 且 RHS K 或 N 连续，`k==0` 与非连续 RHS 等布局仍委托 reference。仅在 `AETHERMIND_ENABLE_GEMM_SCALAR_CANDIDATE=ON` 时经 candidate descriptor 进入 production 路径 | 结构覆盖已到位，但 small-M/generic-M 的 loop/register reuse 收益尚无 production-path 证据；`kScalarSmallMMax=8` 是保守划分而非实测阈值；不能取代 double-accumulation reference oracle |
+| scalar optimized | `RunGemmF32Scalar` 已覆盖 `M=1`、small-M（`M<=8`）与 generic-M 三类 driver，共用 4 列输出块与 K 展开 2；前提仍是 lhs K 与 output N 单位 stride 且 RHS K 或 N 连续，`k==0` 与非连续 RHS 等布局仍委托 reference。当前只由 GEMM 微内核 benchmark 直接驱动，未接入 Linear descriptor | 结构覆盖已到位，但 loop/register reuse 收益尚无证据；`kScalarSmallMMax=8` 是保守划分而非实测阈值；不能取代 double-accumulation reference oracle |
 | MatMul | FP32 reference；支持 batch broadcast、`transpose_rhs` 和任意已验证 stride | 通用性高，首轮优化不应受其最宽 layout 合同约束 |
 | Linear | FP32 plain-weight reference，当前是 Linear 私有的 double 累加循环，**尚未复用共享 GEMM primitive**；leading dimensions 在 binding 期 flatten 为 `row_count` | LLM unfused path 可作为 production adapter 样板，但需先接到共享 engine 上 |
 | QkvLinear / GateUpLinear | FP32 packed-only reference；当前 packed payload 是 `cpu_identity` | 已打通 opaque artifact 与 execution binding，但没有真实 tile packing |

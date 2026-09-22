@@ -246,7 +246,7 @@ Status RunGemmF32Avx2Fma(const GemmF32Args& args) noexcept {
     if (args.m >= 9 && args.k > 0 && args.n >= 0 &&
         args.lhs_k_stride == 1 && args.rhs_k_stride == 1 &&
         args.output_n_stride == 1) {
-        // Blocked prefill path: the 6x8 micro-kernel covers the aligned M x N
+        // Blocked prefill path: the 4x16 micro-kernel covers the aligned M x N
         // core (zeroed first, then accumulated across K panels); the right
         // N-tail columns and the bottom M-tail rows reuse the row-pair and
         // single-row cores with overwrite semantics.

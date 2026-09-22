@@ -20,7 +20,7 @@ class WeightPrepackPlanner {
 public:
     struct Request {
         OpType op_type{};
-        /// Source artifact id from the producing LoweredModelArtifact.
+        /// Source artifact id from the producing LoweredGraph.
         uint64_t source_id = 0;
         /// Artifact-local weight value id (GraphValueId) this request packs.
         uint32_t value_index = 0;

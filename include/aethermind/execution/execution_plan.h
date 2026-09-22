@@ -81,10 +81,9 @@ struct ExecutionValueDesc {
 
 /// @brief One resolved kernel invocation within an ExecutionPlan.
 ///
-/// `packed_weights` is a borrowed pointer into a PackedWeightStore's storage;
-/// the store must outlive this plan. Each step retains semantic port operands
-/// and the compact kernel-facing port projection; tensor specs are owned once
-/// in ExecutionPlan::values and derived on demand via inputs/outputs.
+/// Each step retains semantic port operands and the compact kernel-facing port
+/// projection; tensor specs are owned once in ExecutionPlan::values and derived
+/// on demand via inputs/outputs.
 struct ExecutionStep {
     KernelSelector selector{};
     ResolvedKernel kernel{};
@@ -124,9 +123,8 @@ public:
     /// @param model_outputs Logical value IDs exposed as model outputs; the
     ///                      plan takes ownership of the list.
     /// @param steps Step descriptors passed by value; the plan takes ownership
-    ///              of the steps and their embedded kernels. The
-    ///              `packed_weights` pointers inside each step remain borrowed
-    ///              from a PackedWeightStore, which must outlive the plan.
+    ///              of the steps and their embedded kernels, including each
+    ///              step's shared reference to its packed-weight artifact.
     /// @param state_alias_plan Runtime state aliases for the steps.
     /// @param workspace_layout Total workspace size and base alignment needed
     ///                         to allocate a WorkspaceArena for this plan.

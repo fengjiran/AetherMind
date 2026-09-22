@@ -21,7 +21,7 @@ namespace aethermind {
 /// distinct weights no longer collide on the same selector; the recipe
 /// distinguishes packing variants of the same logical weight.
 struct WeightArtifactKey {
-    /// Instance id of the LoweredModelArtifact this artifact was packed for.
+    /// Instance id of the LoweredGraph this artifact was packed for.
     /// Zero means "unbound" (e.g. untrusted single-node requests).
     uint64_t source_id = 0;
     /// The lowered weight value (GraphValueId, artifact-local) this artifact
@@ -50,7 +50,7 @@ public:
     /// May be called before the first Store(); once frozen (after the first
     /// Store or a prior SetSourceId), a different source is rejected.
     ///
-    /// @param source_id LoweredModelArtifact::artifact_id() value.
+    /// @param source_id LoweredGraph::artifact_id() value.
     /// @return Ok, or InvalidArgument if already frozen to a different source.
     Status SetSourceId(uint64_t source_id) noexcept;
 

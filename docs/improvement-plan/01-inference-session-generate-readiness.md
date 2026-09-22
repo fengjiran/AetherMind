@@ -1,9 +1,9 @@
 # InferenceSession / Generate 前置闭环计划
 
-- **状态**: Draft
-- **版本**: 1.5
+- **状态**: In Progress
+- **版本**: 1.6
 - **日期**: 2026-09-03
-- **最近更新**: 2026-09-17
+- **最近更新**: 2026-09-23
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **关联模块**: compiler / execution / runtime / backend / model / API orchestration
@@ -322,6 +322,8 @@ state binding
 
 ### M2：ExecutableModel preparation
 
+模块归属、接口轮廓、准备流程与实施子步骤由 [ExecutableModel 生产准备入口方案](07-executable-model-preparation.md) 详细定义；本节只保留 Generate 闭环所需的交付边界与验收口径。
+
 #### 交付内容
 
 - `PrepareExecutableModel`；
@@ -507,3 +509,4 @@ Decode 循环中不得变化：
 | 2026-09-16 | 1.3 | AddRmsNorm（plain + packed identity）落表；PRD 链接与术语（当前产品口径）更新 |
 | 2026-09-16 | 1.4 | 同步 KVCacheUpdate 与窄 KV binding 链路：§2.2 覆盖表（14 类 20 描述符）、§3.1 闭环重写、M1 状态、M3 5/6、门禁前两项勾选 |
 | 2026-09-17 | 1.5 | 同步 Attention kernel 与 read binding query interval：§2.2（15 类 21 描述符）、§3.1、M3 6/6、门禁 kernel 项勾选 |
+| 2026-09-23 | 1.6 | 按 §9 流转规则（M1 已闭环）将状态由 Draft 转为 In Progress；复核确认 §2.2 描述符计数（15 类 21 个）与 §3.2–§3.5 缺口描述仍与仓库一致：`ExecutableModel`/`PrepareExecutableModel`、`InferenceSession`、真实权重 external binding 生产 API、完整 Llama plan 构建与 Prefill→Decode 端到端测试均未落地，§9 其余 9 项门禁保持未勾选；M2 细化拆出为 [07 号提案](07-executable-model-preparation.md) |

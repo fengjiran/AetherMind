@@ -55,7 +55,7 @@ AetherMind 当前不需要再次进行顶层架构重写。`model → graph/oper
 | operators | 部分闭环 | semantic/capability matrix 漂移（KV/Attention 契约已闭环） | P0 | §6 |
 | graph | 基础已闭环 | pass outcome 验证、contract drift；无需 target-aware 重写 | P1 | §7 |
 | compiler/lowering | 基础已闭环 | 1:1 step 限制；仅在真实 1→N 需求出现后引入 ImplementationPlan | P1/P2 | §8 |
-| execution planning | 部分闭环 | ExecutableModel preparation、shape-aware prepare、activation liveness | P0/P1 | [01](01-inference-session-generate-readiness.md)、§9 |
+| execution planning | 部分闭环 | ExecutableModel preparation、shape-aware prepare、activation liveness | P0/P1 | [07](07-executable-model-preparation.md)、[01](01-inference-session-generate-readiness.md)、§9 |
 | runtime | 部分闭环 | KV transaction、resource budget、线程/topology、metrics | P0/P1 | [05](05-kv-cache-manager-evolution.md)、§10 |
 | backend dispatch | 基础已闭环 | prepare request 缺 concrete shape/layout；packing service 边界 | P1 | §11 |
 | CPU kernels | 部分闭环 | reference 主链已齐备（6/6）；量化和优化覆盖不足 | P0/P1 | [01](01-inference-session-generate-readiness.md)、[04](../operators/gemm/cpu-gemm-optimization.md)、§12 |
@@ -302,7 +302,7 @@ KV Resource IR 只在真实 Paged KV/page table/opaque mutable resource 进入�
 
 ### 9.1 P0：ExecutableModel preparation
 
-详细门禁见 [InferenceSession / Generate 前置闭环计划](01-inference-session-generate-readiness.md)。核心要求：
+详细设计见 [ExecutableModel 生产准备入口方案](07-executable-model-preparation.md)，准入门禁见 [InferenceSession / Generate 前置闭环计划](01-inference-session-generate-readiness.md)。核心要求：
 
 - `LoweredModelArtifact → ExecutableModel` 唯一 production preparation 入口；
 - 自动构造 raw/packed external weight bindings；

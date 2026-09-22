@@ -1,6 +1,7 @@
 # GEMM 算子文档
 
 - **优化提案**: [CPU GEMM 优化方案](cpu-gemm-optimization.md)（方案、合同与实施顺序）
+- **专项提案**: [CPU GEMM Packed Weight 提案](cpu-gemm-packed-weight.md)（exact recipe 与 packed-B 具体化）
 - **规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
 
 ## 证据记录

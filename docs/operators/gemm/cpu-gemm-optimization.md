@@ -8,7 +8,7 @@
 - **架构基线**: [架构总览](../../designs/architecture/architecture_overview.md)
 - **优化方法基线**: [算子开发与优化工作流 §7 优化方法](../../guides/operator-development-workflow.md#7-优化方法)
 - **工作流规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
-- **关联代码**: `src/backend/cpu/kernels/gemm/`、`src/backend/cpu/cpu_backend.cpp`、`src/backend/cpu/kernels/cpu_weight_prepacker.cpp`
+- **关联代码**: `src/backend/cpu/kernels/gemm/`、`src/backend/cpu/cpu_backend.cpp`、`src/backend/cpu/cpu_weight_prepacker.cpp`
 - **关联测试**: `tests/unit/backend/cpu/kernels/`、`tests/benchmark/cpu_kernels/`
 - **关联 ADR**: 无（exact recipe 合同落地时新建）
 - **关联模块**: backend / execution / model / benchmark

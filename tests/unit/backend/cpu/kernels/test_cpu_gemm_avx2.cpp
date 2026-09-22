@@ -162,7 +162,7 @@ TEST(CPUKernelGemmAvx2, SupportsPaddedUnalignedInputsAndOutputGuards) {
     EXPECT_EQ(reference_storage.back(), -37.0F);
 }
 
-TEST(CPUKernelGemmAvx2, FallsBackForMultiRowAndNContiguousLayouts) {
+TEST(CPUKernelGemmAvx2, FallsBackForNContiguousLayouts) {
     if (!CanExecuteAvx2Fma()) {
         GTEST_SKIP() << "AVX2+FMA GEMM kernel is unavailable on this host";
     }
@@ -198,6 +198,77 @@ TEST(CPUKernelGemmAvx2, FallsBackForMultiRowAndNContiguousLayouts) {
     reference_args.output = reference_output.data();
     ExpectAvx2NearReference(candidate_args, reference_args);
 }
+
+struct SmallMShape {
+    int64_t m;
+    int64_t k;
+    int64_t n;
+};
+
+std::string SmallMShapeName(const testing::TestParamInfo<SmallMShape>& info) {
+    return "M" + std::to_string(info.param.m) + "K" + std::to_string(info.param.k) +
+           "N" + std::to_string(info.param.n);
+}
+
+class CPUKernelGemmAvx2SmallMTest : public testing::TestWithParam<SmallMShape> {};
+
+TEST_P(CPUKernelGemmAvx2SmallMTest, MatchesDoubleReference) {
+    if (!CanExecuteAvx2Fma()) {
+        GTEST_SKIP() << "AVX2+FMA GEMM kernel is unavailable on this host";
+    }
+
+    const SmallMShape test_case = GetParam();
+    // Padded row strides exercise the per-row pointer arithmetic of the
+    // row-pair fast path and the leftover-row single-row path.
+    const int64_t lhs_m_stride = test_case.k + 3;
+    const int64_t output_m_stride = test_case.n + 2;
+    const int64_t rhs_n_stride = test_case.k + 5;
+    std::vector<float> lhs(static_cast<size_t>(test_case.m * lhs_m_stride));
+    std::vector<float> rhs(static_cast<size_t>(test_case.n * rhs_n_stride));
+    std::vector<float> candidate_output(static_cast<size_t>(test_case.m * output_m_stride), 17.0F);
+    std::vector<float> reference_output(static_cast<size_t>(test_case.m * output_m_stride), -19.0F);
+    FillValues(lhs);
+    FillValues(rhs);
+
+    const cpu::detail::GemmF32Args candidate_args{
+            .lhs = lhs.data(),
+            .rhs = rhs.data(),
+            .output = candidate_output.data(),
+            .m = test_case.m,
+            .n = test_case.n,
+            .k = test_case.k,
+            .lhs_m_stride = lhs_m_stride,
+            .lhs_k_stride = 1,
+            .rhs_k_stride = 1,
+            .rhs_n_stride = rhs_n_stride,
+            .output_m_stride = output_m_stride,
+            .output_n_stride = 1,
+    };
+    auto reference_args = candidate_args;
+    reference_args.output = reference_output.data();
+    ExpectAvx2NearReference(candidate_args, reference_args);
+
+    // Output guards stay untouched in the padding past each logical row end.
+    for (int64_t row = 0; row < test_case.m; ++row) {
+        EXPECT_EQ(candidate_output[static_cast<size_t>(row * output_m_stride + test_case.n)], 17.0F);
+        EXPECT_EQ(candidate_output[static_cast<size_t>(row * output_m_stride + test_case.n + 1)], 17.0F);
+        EXPECT_EQ(reference_output[static_cast<size_t>(row * output_m_stride + test_case.n)], -19.0F);
+        EXPECT_EQ(reference_output[static_cast<size_t>(row * output_m_stride + test_case.n + 1)], -19.0F);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        SmallMShapes,
+        CPUKernelGemmAvx2SmallMTest,
+        testing::Values(
+                SmallMShape{2, 8, 5},
+                SmallMShape{2, 31, 31},
+                SmallMShape{3, 33, 7},
+                SmallMShape{4, 32, 33},
+                SmallMShape{7, 33, 31},
+                SmallMShape{8, 64, 9},
+                SmallMShape{8, 1024, 33}),
+        SmallMShapeName);
 
 TEST(CPUKernelGemmAvx2, FallsBackForGenericMAndNonUnitStrides) {
     if (!CanExecuteAvx2Fma()) {

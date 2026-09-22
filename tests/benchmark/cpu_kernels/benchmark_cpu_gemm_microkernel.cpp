@@ -241,7 +241,7 @@ constexpr std::array<GemmShape, 13> kScalarShapes{{
 }};
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
-constexpr std::array<GemmShape, 8> kAvx2GemmShapes{{
+constexpr std::array<GemmShape, 16> kAvx2GemmShapes{{
         {1, 4096, 4096},
         {1, 4096, 6144},
         {1, 4096, 11008},
@@ -250,6 +250,16 @@ constexpr std::array<GemmShape, 8> kAvx2GemmShapes{{
         {1, 4096, 32000},
         {1, 33, 31},
         {1, 32, 33},
+        // Small-M projections: batch/tree decode rows sharing each weight
+        // stream, including an odd row count exercising the leftover-row path.
+        {2, 4096, 4096},
+        {2, 4096, 32000},
+        {4, 4096, 4096},
+        {4, 4096, 11008},
+        {7, 4096, 4096},
+        {8, 4096, 4096},
+        {8, 11008, 4096},
+        {2, 32, 33},
 }};
 #endif
 

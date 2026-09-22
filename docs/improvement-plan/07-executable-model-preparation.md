@@ -1,7 +1,7 @@
 # ExecutableModel 生产准备入口方案
 
 - **状态**: In Progress
-- **版本**: 1.4
+- **版本**: 1.5
 - **日期**: 2026-09-23
 - **最近更新**: 2026-09-23
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
@@ -58,7 +58,8 @@
 | role → 原始权重的解析是私有的且重复两份（M2.1 已闭环） | `FindRawWeightByRole` 曾位于 [`packing_request_builder.cpp:83-135`](../../src/compiler/packing_request_builder.cpp) 匿名命名空间；tied lm-head 三元式曾在该文件与 [`model_graph_builder.cpp:509-511`](../../src/model/model_graph_builder.cpp) 各写一遍 | 第三份实现（plain binding 映射）会再复制一次 tied 语义 |
 | external binding 需求集合无公开查询（M2.2 已闭环） | `ComputeExternalReadRequirements`（[`execution_bindings.cpp:238-264`](../../src/execution/execution_bindings.cpp)）曾在匿名命名空间内，仅 `:399` 自用 | 准备入口若不复制该逻辑，就无法保证"不重复不遗漏" |
 | `ConstantValue.inline_data` 未被执行层消费 | payload 携带 `shared_ptr<const vector<byte>>`（[`graph_types.h:226-237`](../../include/aethermind/graph/graph_types.h)），但 `PrepareExecutionBindings` 无条件要求每个 `kConstant` 提供 external 绑定 | 常量折叠产生的常量目前无人物化 |
-| 无完整 Llama plan 构建证据 | `BuildLlamaDense` 只出现在 model/graph/compiler 测试；`OptimizeModelGraph.LowersFullLlamaDenseGraph` 止于 lowering | 01 §9 "baseline pipeline 可通过真实 CpuBackend 构建完整 plan" 未勾选 |
+| 无完整 Llama plan 构建证据（M2.4 已闭环） | `BuildLlamaDense` 只出现在 model/graph/compiler 测试；`OptimizeModelGraph.LowersFullLlamaDenseGraph` 止于 lowering | 01 §9 "baseline pipeline 可通过真实 CpuBackend 构建完整 plan" 未勾选 |
+| packed lowering 对完整模型不可解析（M2.4 实测发现） | `enable_packed_weights=true` 使**所有**含 `kWeight` 输入的 step 变 packed（[`graph_lowering.cpp:116-122`](../../src/compiler/graph_lowering.cpp)），但只有 `QkvLinear`/`GateUpLinear`/`AddRmsNorm` 注册 packed 描述符，`Embedding` 与 `Linear` 均无 | 完整 Llama 的 packed 配置在 kernel resolve 即失败（01 §2.3 只记录了 kLinear 一项）；packed 证据只能取自可解析子图 |
 
 ### 2.3 可直接复用的既有不变量
 
@@ -99,32 +100,35 @@ ExecutableModel                            模型生命周期（move-only）
 ### 3.3 接口轮廓
 
 ```cpp
-// include/aethermind/inference/executable_model.h
+// include/aethermind/inference/executable_model.h（已实现，以此为准）
 class ExecutableModel {
 public:
-    ExecutableModel(ExecutableModel&&) noexcept;
+    ExecutableModel(ExecutableModel&&) noexcept = default;
     ExecutableModel(const ExecutableModel&) = delete;
 
-    /// 按 phase 取 plan；baseline 下 prefill/decode 共享同一不可变 plan。
-    AM_NODISCARD StatusOr<std::reference_wrapper<const ExecutionPlan>>
-    plan(ExecPhase phase) const noexcept;
+    /// 按 phase 取 plan；baseline 下三个 phase 查询返回同一不可变 plan。
+    AM_NODISCARD StatusOr<const ExecutionPlan*> plan(ExecPhase phase) const noexcept;
 
     /// 只含 weight/constant 的不可变只读绑定；model inputs 由 Session 在
     /// prepare 时追加（见 §4.4）。
-    AM_NODISCARD const ExternalTensorBindings& immutable_weight_bindings(
+    AM_NODISCARD StatusOr<const ExternalTensorBindings*> immutable_weight_bindings(
             ExecPhase phase) const noexcept;
 
     AM_NODISCARD uint64_t artifact_id() const noexcept;
-    AM_NODISCARD const PackedWeightStore& packed_weights() const noexcept;
+    AM_NODISCARD ExecPhase phase() const noexcept;
 };
 
 /// 唯一生产准备入口。artifact 按值移入并被 ExecutableModel 拥有。
-StatusOr<ExecutableModel> PrepareExecutableModel(
+AM_NODISCARD StatusOr<ExecutableModel> PrepareExecutableModel(
         Runtime& runtime,
         LoweredModelArtifact artifact);
 ```
 
-相对 01 §4.2 的示意签名，本提案**去掉 `ExecutableModelOptions`**：`enable_packed_weights` 与 `selector.phase` 已在编译期固化进 artifact 的 step selector，准备阶段无可配置项。01 §4.2 明确该轮廓"不是已冻结 public API"。
+相对 01 §4.2 与本提案初版轮廓的三处落地偏差：
+
+1. **去掉 `ExecutableModelOptions`**：`enable_packed_weights` 与 `selector.phase` 已在编译期固化进 artifact 的 step selector，准备阶段无可配置项。
+2. **两个 phase 访问器改为可失败**（`StatusOr<const T*>`，与 `Runtime::GetBackend`、`KVCacheView::KeyData` 同风格）：§4.5 要求 phase 不匹配时报错而非静默复用，返回引用的签名无法表达该失败。仓库无 `std::reference_wrapper` 先例。
+3. **不暴露 `packed_weights()`**：Session 不需要它，packed/plain 正确性可由绑定表与 plan step 的 `packed_weights` 指针验证，保留只读访问器只会扩大公共表面。
 
 ### 3.4 准备流程
 
@@ -274,6 +278,12 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 
 ### M2.4 inference：`PrepareExecutableModel`
 
+**状态（2026-09-23）**：已落地。[`executable_model.h`](../../include/aethermind/inference/executable_model.h) / [`executable_model.cpp`](../../src/inference/executable_model.cpp) 按 §3.4 八步实现，成员声明顺序即销毁契约；三处失实注释已修正（`execution_plan.h` 的 `ExecutionStep` brief 与 `Create` 的 `steps` 参数说明、`packed_weight_store.h:24/53`、`weight_prepack_planner.h:23`）。新增 [`test_executable_model.cpp`](../../tests/unit/inference/test_executable_model.cpp)（8 例）与共享 fixture [`test_llama_checkpoint_helpers.h`](../../tests/unit/model/test_llama_checkpoint_helpers.h)（字节后备的 tiny GQA Llama，形状占位权重会被 `ValidateRawWeightView` 拒绝）。全量 3519 测试通过。
+
+**这同时是仓库首次通过生产路径构建出完整 Llama plan**：`ModelCompiler::Compile`（O1 未融合 + 真实 CpuBackend）→ `PrepareExecutableModel`，1 层、GQA 4/2 头，12 个权重值全部自动绑定、无手工拼 plan。01 §9 的三项门禁据此可勾选。
+
+实施期发现的 packed 缺口比 01 §2.3 描述的更宽：`enable_packed_weights=true` 会把**所有**含 `kWeight` 输入的 step 标为 packed，而当前只有 `QkvLinear`/`GateUpLinear`/`AddRmsNorm` 注册了 packed 描述符——`Embedding` 同样没有（01 §2.3 只提到 kLinear）。因此完整 Llama 的 packed 配置在 kernel resolve 阶段即以 `NOT_FOUND: op_type=Embedding, weight_format=Packed` 失败，测试 `PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 把它固化为可执行记录（断言 `kNotFound`，即失败在 kernel 解析而非权重解析）。
+
 按 §3.4 实现 8 步流程，含 §4.3 常量物化与第 7 步完整性对账；错误路径不泄漏半成品对象。
 
 同批修正三处与实现不符的既有注释：
@@ -281,13 +291,20 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 - [`packed_weight_store.h:53`](../../include/aethermind/model/packed_weight_store.h) 与 [`weight_prepack_planner.h:23`](../../include/aethermind/model/weight_prepack_planner.h) 把 `artifact_id()` 归给 `LoweredModelArtifact`，实际只定义在 `LoweredGraph`（[`lowered_graph.h:156`](../../include/aethermind/compiler/lowered_graph.h)）；`ExecutableModel::artifact_id()` 直接委托 `artifact.graph.artifact_id()`；
 - [`execution_plan.h:84-85`](../../include/aethermind/execution/execution_plan.h) 称 `packed_weights` 是 "borrowed pointer into a PackedWeightStore's storage; the store must outlive this plan"，与同文件 `:91-92`（plan 自持引用，store 销毁后仍可执行）直接矛盾；实际成员类型是 `std::shared_ptr<const PackedWeights>`，应删除失实的前者。
 
-退出条件：从真实 `LoweredModelArtifact` 构建成功，无手工拼 plan 路径；上述注释与实现一致。
+退出条件（已满足）：从真实 `LoweredModelArtifact` 构建成功，无手工拼 plan 路径；上述注释与实现一致。
 
 ### M2.5 测试：完整 Llama 真实后端证据
 
-`BuildLlamaDense` → `ModelCompiler::Compile` → `PrepareExecutableModel(真实 CpuBackend Runtime)`；覆盖 tied lm-head、GQA、`enable_packed_weights` 真/假两种 lowering、常量折叠产生的常量、销毁顺序。
+M2.4 已交付其中大部分：真实 `ModelCompiler` artifact → `PrepareExecutableModel`（真实 CpuBackend）、GQA、tied 与 untied lm-head 的 backing 共享、12 个权重值的双向对账、移动后绑定表仍有效、缺 `loaded_model` 的错误路径。
 
-退出条件：01 §9 "baseline pipeline 可以通过真实 CpuBackend 构建完整 plan" 与 "`PrepareExecutableModel` 可从真实 `LoweredModelArtifact` 构建"、"real weights 可自动生成完整 external bindings" 三项可勾选。
+剩余范围：
+
+- 多层（≥2 decoder layer）artifact，验证 per-layer 权重不串层；
+- 常量折叠产生的 `kConstant` 走 §4.3 物化路径（当前 fixture 的图不产生常量，该分支尚无真实覆盖）；
+- 销毁顺序的 teardown 测试（ASAN/TSAN 下 `PreparedExecutionBindings` 先于 `ExecutableModel` 释放）；
+- packed 路径证据：因 M2.4 记录的缺口，**不能**用完整 Llama，须以可解析的 packed 子图（如 `AddRmsNorm`）验证 packed 权重不进入绑定表且 `packed_weights` 非空；完整模型的 packed 覆盖待 `Embedding`/`Linear` 的 packed 描述符落地后补。
+
+退出条件：01 §9 的 "baseline pipeline 可以通过真实 CpuBackend 构建完整 plan"、"`PrepareExecutableModel` 可从真实 `LoweredModelArtifact` 构建"、"real weights 可自动生成完整 external bindings" 三项可勾选（M2.4 已满足）；本步补齐多层、常量与 teardown 覆盖。
 
 ## 7. 验收标准
 
@@ -300,6 +317,8 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 | tied lm-head 正确共享 backing | 断言 lm-head 与 embed_tokens 绑定 `data()` 相同，且二者 value id 不同 |
 | packed/plain 不重复不遗漏 | 绑定集合与 §4.2 需求集合逐一对账；缺任一方向即测试失败 |
 | 销毁顺序有明确测试或 contract | 头文件写明成员顺序契约 + ASAN/TSAN 下的 teardown 测试 |
+
+前四项已由 M2.4 满足：测试只经 `ModelCompiler` 产出 artifact；`ExecutableModel` 只暴露 `plan`/`immutable_weight_bindings`/`artifact_id`/`phase`，无 `LoweredGraph` 或 `LoweredModelArtifact` 访问器；tied 与 untied 两种 checkpoint 分别断言 backing 共享与独立；绑定集合与 §4.2 需求集合双向对账。第五项的头文件契约已写明，ASAN/TSAN teardown 测试留待 M2.5。
 
 补充判据：
 
@@ -352,3 +371,4 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 | 2026-09-23 | 1.2 | M2.1 落地并转为 In Progress：新增 `weight_binding_resolver.h/.cpp` 与 12 例单测，`packing_request_builder.cpp`、`model_graph_builder.cpp` 改为复用，tied lm-head 回退收敛为一处；记录 layer-scoped 角色 `value_or(0)` 回退的刻意收紧及其不可达依据；记录 legacy `WeightPrepackPlanner::BuildRequests` 的 tied 语义差异与删除计划；全量 3499 测试通过 |
 | 2026-09-23 | 1.3 | M2.2 落地：`ComputeExternalReadRequirements` 提升为 execution 公共 API，`PrepareExecutionBindings` 共用同一实现；新增 `test_execution_bindings.cpp`（4 例，真实 CpuBackend），全量 3503 测试通过。修正初版的不可达验收前提——`LowerModelGraph` 对所有含权重 step 统一赋 `weight_format`、`ExecutionPlanNodeSpec` 不携带输入 value id，故"同一权重同时被 packed 与 plain step 消费"当前不可构造，测试改为覆盖 plain/packed/一致性三个可达形态（§4.2、M2.2）；§3.4 step 5 函数名与实际 API 对齐；§2.2 标注 M2.1/M2.2 已闭环 |
 | 2026-09-23 | 1.4 | M2.3 落地：新增 `inference/` 模块与 `WeightBindingStorage`（含 8 例稳定性测试），根 `AGENTS.md` §2.1 新增 inference 行与依赖规则，实测确认 CMake 的 `GLOB_RECURSE` 自动收录新目录；全量 3511 测试通过。范围调整：`ExecutableModel` 本体移至 M2.4 与 `PrepareExecutableModel` 同批交付，避免留下无构造入口的半成品类型。§4.4 精度修正：`PrepareExecutionBindings` 经 `SnapshotMetadata` 深拷贝 shape/stride、只借用 `data()`，故堆稳定性的真实理由是绑定表被反复交付；`alignment` 统一以 0（未指定）交付并记录依据 |
+| 2026-09-23 | 1.5 | M2.4 落地：`ExecutableModel` 与 `PrepareExecutableModel` 按 §3.4 八步实现，修正四处失实注释，新增 8 例真实 artifact 测试与字节后备 tiny GQA Llama fixture；全量 3519 测试通过，仓库首次经生产路径构建出完整 Llama plan，01 §9 三项门禁可勾选。§3.3 更新为已实现签名并记录三处落地偏差（去 options、phase 访问器改为可失败、不暴露 packed store）；§2.2 新增实测发现——packed lowering 对含 `Embedding`/`Linear` 的完整模型不可解析（比 01 §2.3 记录的更宽）；M2.5 范围据此重划 |

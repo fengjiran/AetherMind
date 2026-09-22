@@ -1,7 +1,7 @@
 # InferenceSession / Generate 前置闭环计划
 
 - **状态**: In Progress
-- **版本**: 1.6
+- **版本**: 1.7
 - **日期**: 2026-09-03
 - **最近更新**: 2026-09-23
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
@@ -93,6 +93,7 @@
 仍未具备：
 
 - kLinear 的 kPacked 变体（unfused packed 路径）；
+- kEmbedding 的 kPacked 变体。由于 lowering 会把**所有**含 `kWeight` 输入的 step 标为 packed（`graph_lowering.cpp:116-122`），缺这两者意味着 `enable_packed_weights=true` 的完整 Llama 在 kernel resolve 阶段即失败（`NOT_FOUND: op_type=Embedding, weight_format=Packed`）；该结论由 `ExecutableModel.PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 固化，细节见 [07 号提案](07-executable-model-preparation.md) §2.2；
 - 实际 tile/block packing recipe（当前 `cpu_identity` 是逻辑行主序拷贝）；
 - `enable_packed_weights=true` 的 unfused e2e 数值验证。
 
@@ -475,10 +476,10 @@ Decode 循环中不得变化：
 
 - [x] state binding identity 从 LoweredGraph 到达 kernel（`ExecutionKVCacheStateIdentity` 进入 plan，窄绑定经 `KernelContext` 到达 kernel，见 §3.1）；
 - [x] kernel 获得窄 KV binding，不依赖 Runtime/Session 宽对象（`KVCacheAppendBinding`/`KVCacheReadBinding` 逐调用传入）；
-- [ ] baseline pipeline 可以通过真实 CpuBackend 构建完整 plan；
+- [x] baseline pipeline 可以通过真实 CpuBackend 构建完整 plan（O1 未融合 tiny GQA Llama 经 `ModelCompiler` → `PrepareExecutableModel`，见 [07 号提案](07-executable-model-preparation.md) M2.4）；
 - [x] Linear/RoPE/KVCacheUpdate/Attention/SiluMul/Argmax reference kernel 可用（6/6 全部可用）；fused QkvLinear/GateUpLinear/AddRmsNorm 亦已落地；
-- [ ] `PrepareExecutableModel` 可从真实 `LoweredModelArtifact` 构建；
-- [ ] real weights 可自动生成完整 external bindings；
+- [x] `PrepareExecutableModel` 可从真实 `LoweredModelArtifact` 构建（`inference/executable_model.h`，07 号提案 M2.4）；
+- [x] real weights 可自动生成完整 external bindings（12 个权重值自动绑定并与需求集合双向对账；packed 路径受 §2.3 缺口限制，只能以子图取证）；
 - [ ] Prefill/Decode phase-plan 合同已验证；
 - [ ] tiny Llama Prefill + 2 Decode 数值测试通过；
 - [ ] KV content 与 commit position 测试通过；
@@ -510,3 +511,4 @@ Decode 循环中不得变化：
 | 2026-09-16 | 1.4 | 同步 KVCacheUpdate 与窄 KV binding 链路：§2.2 覆盖表（14 类 20 描述符）、§3.1 闭环重写、M1 状态、M3 5/6、门禁前两项勾选 |
 | 2026-09-17 | 1.5 | 同步 Attention kernel 与 read binding query interval：§2.2（15 类 21 描述符）、§3.1、M3 6/6、门禁 kernel 项勾选 |
 | 2026-09-23 | 1.6 | 按 §9 流转规则（M1 已闭环）将状态由 Draft 转为 In Progress；复核确认 §2.2 描述符计数（15 类 21 个）与 §3.2–§3.5 缺口描述仍与仓库一致：`ExecutableModel`/`PrepareExecutableModel`、`InferenceSession`、真实权重 external binding 生产 API、完整 Llama plan 构建与 Prefill→Decode 端到端测试均未落地，§9 其余 9 项门禁保持未勾选；M2 细化拆出为 [07 号提案](07-executable-model-preparation.md) |
+| 2026-09-23 | 1.7 | 07 号提案 M2.4 落地后同步：§9 勾选 "baseline pipeline 可通过真实 CpuBackend 构建完整 plan"、"`PrepareExecutableModel` 可从真实 artifact 构建"、"real weights 可自动生成完整 external bindings" 三项；§2.3 补记 kEmbedding 亦无 kPacked 变体，并写明其后果——`enable_packed_weights=true` 的完整 Llama 在 kernel resolve 即失败，packed 取证只能走子图 |

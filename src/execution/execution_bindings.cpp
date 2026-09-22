@@ -235,6 +235,8 @@ Status ValidatePackedWeightLogicalBindings(
     return Status::Ok();
 }
 
+} // namespace
+
 StatusOr<std::vector<bool>> ComputeExternalReadRequirements(
         const ExecutionPlan& plan) {
     std::vector<bool> required(plan.values().size(), false);
@@ -262,8 +264,6 @@ StatusOr<std::vector<bool>> ComputeExternalReadRequirements(
     }
     return required;
 }
-
-} // namespace
 
 class PreparedExecutionBindingsStorage {
 public:

@@ -98,6 +98,28 @@ private:
     std::unique_ptr<PreparedExecutionBindingsStorage> storage_{};
 };
 
+/// @brief Reports which plan values need a caller-supplied read-only binding.
+///
+/// The result is indexed by ExecutionValueId::index and aligned with
+/// ExecutionPlan::values(). Model inputs and constants are always required. A
+/// weight value is required only while some step still consumes it through a
+/// kernel input port: a step selecting WeightFormat::kPacked has its kWeight
+/// ports projected out, so such weights are served by the plan's packed
+/// artifacts and must not be bound externally. Activations and state values are
+/// never required — PrepareExecutionBindings allocates activations, and state
+/// stays owned by ExecutionContext.
+///
+/// PrepareExecutionBindings consults this same function, so supplying exactly
+/// the reported set satisfies its read-only completeness check by construction.
+/// Callers that materialize weight bindings should drive from this query rather
+/// than re-deriving the plain/packed decision.
+///
+/// @param plan Validated plan to inspect.
+/// @return Per-value requirement flags, or an error when the plan's kernel port
+///         metadata is inconsistent with its semantic inputs.
+AM_NODISCARD StatusOr<std::vector<bool>> ComputeExternalReadRequirements(
+        const ExecutionPlan& plan);
+
 /// @brief Resolves external tensors and allocates internal activations.
 ///
 /// This is a cold-path operation. It validates external dtypes/ranks/static

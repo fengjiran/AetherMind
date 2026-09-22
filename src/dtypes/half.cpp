@@ -1,9 +1,8 @@
 /// @file
 /// Software IEEE 754 half-precision conversion implementations.
 ///
-/// Contains the portable integer bit-manipulation paths for binary16 ↔ binary32
-/// conversion. When `X86_F16` is defined, these are replaced by hardware
-/// intrinsics at the call site.
+/// Portable integer bit-manipulation implementations of binary16 ↔ binary32
+/// conversion; no hardware intrinsics are used.
 #include "aethermind/dtypes/half.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/dtypes/detail/floating_point_bits.h"

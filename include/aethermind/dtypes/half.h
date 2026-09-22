@@ -2,9 +2,9 @@
 /// Software IEEE 754 half-precision (binary16) floating-point type.
 ///
 /// Provides `Half` — a C++ type wrapping a 16-bit binary16 bit pattern — and
-/// bit-exact conversion functions between binary16 and binary32. On x86-64
-/// with F16C support, conversions use hardware intrinsics via `X86_F16`;
-/// otherwise they fall back to portable integer bit manipulation.
+/// bit-exact conversion functions between binary16 and binary32. Conversions
+/// are portable integer bit-manipulation implementations and do not use
+/// hardware intrinsics.
 
 #ifndef AETHERMIND_DTYPES_HALF_H
 #define AETHERMIND_DTYPES_HALF_H
@@ -30,6 +30,9 @@
 #if defined(__GNUC__) || defined(__clang__)
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386) || \
         defined(_M_IX86)
+// F16C detection hook. The macro and <immintrin.h> include are reserved for
+// future vectorized conversion paths; the current conversion functions are
+// portable integer implementations and do not dispatch on X86_F16.
 #if defined(__F16C__) &&                                   \
         !(defined(__CUDA_ARCH__) || defined(__CUDACC__) || \
           defined(__HIP_DEVICE_COMPILE__))

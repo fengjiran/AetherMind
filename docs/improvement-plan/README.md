@@ -14,7 +14,7 @@
 | 03 | [文档系统稳定化方案](03-documentation-stabilization.md) | In Progress | 2026-09-17 |
 | 05 | [KVCache Manager 演进方案](05-kv-cache-manager-evolution.md) | Draft | 2026-09-16 |
 | 06 | [AetherMind 系统能力演进路线图](06-system-capability-evolution-roadmap.md) | Draft | 2026-09-16 |
-| 07 | [ExecutableModel 生产准备入口方案](07-executable-model-preparation.md) | Draft | 2026-09-23 |
+| 07 | [ExecutableModel 生产准备入口方案](07-executable-model-preparation.md) | In Progress | 2026-09-23 |
 
 ## 推荐阅读路径
 

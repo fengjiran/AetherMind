@@ -1,7 +1,7 @@
 # ExecutableModel 生产准备入口方案
 
-- **状态**: Draft
-- **版本**: 1.1
+- **状态**: In Progress
+- **版本**: 1.4
 - **日期**: 2026-09-23
 - **最近更新**: 2026-09-23
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
@@ -55,8 +55,8 @@
 | 无 artifact 级准备入口 | `PrepareExecutableModel`/`ExecutableModel` 在仓库中只出现于 docs；`ExecutionPlanBuilder::Build` 无 `LoweredModelArtifact` 重载 | 调用方必须自己按正确顺序拼装 5 个组件 |
 | packing 链路无生产调用者 | 调用者全部在测试且均为单算子图：`test_weight_prepack_planner.cpp`、`test_cpu_qkv_linear_kernel.cpp:624`、`test_cpu_add_rmsnorm_kernel.cpp:729`、`test_cpu_gate_up_linear_kernel.cpp:642` | packed 路径从未在真实模型上走通 |
 | 无真实权重 → external binding 的生产 API | 生产侧 `ResolvedModelWeights` 只由 `ModelLoader` 解析、`LoadedModel` 持有，无任何代码把它转成 `ExternalTensorBindings`；该转换只存在于测试（`ResolvedModelWeights` 出现在 11 个测试文件 84 处，`ExternalTensorBindings` 由 `tests/unit/execution/test_execution_binding_helpers.h` 手工构造） | 01 §3.3 未闭环 |
-| role → 原始权重的解析是私有的且重复两份 | `FindRawWeightByRole` 位于 [`packing_request_builder.cpp:83-135`](../../src/compiler/packing_request_builder.cpp) 匿名命名空间；tied lm-head 三元式在 `:97-101` 与 [`model_graph_builder.cpp:509-511`](../../src/model/model_graph_builder.cpp) 各写一遍 | 第三份实现（plain binding 映射）会再复制一次 tied 语义 |
-| external binding 需求集合无公开查询 | `ComputeExternalReadRequirements`（[`execution_bindings.cpp:238-264`](../../src/execution/execution_bindings.cpp)）在匿名命名空间内，仅 `:399` 自用 | 准备入口若不复制该逻辑，就无法保证"不重复不遗漏" |
+| role → 原始权重的解析是私有的且重复两份（M2.1 已闭环） | `FindRawWeightByRole` 曾位于 [`packing_request_builder.cpp:83-135`](../../src/compiler/packing_request_builder.cpp) 匿名命名空间；tied lm-head 三元式曾在该文件与 [`model_graph_builder.cpp:509-511`](../../src/model/model_graph_builder.cpp) 各写一遍 | 第三份实现（plain binding 映射）会再复制一次 tied 语义 |
+| external binding 需求集合无公开查询（M2.2 已闭环） | `ComputeExternalReadRequirements`（[`execution_bindings.cpp:238-264`](../../src/execution/execution_bindings.cpp)）曾在匿名命名空间内，仅 `:399` 自用 | 准备入口若不复制该逻辑，就无法保证"不重复不遗漏" |
 | `ConstantValue.inline_data` 未被执行层消费 | payload 携带 `shared_ptr<const vector<byte>>`（[`graph_types.h:226-237`](../../include/aethermind/graph/graph_types.h)），但 `PrepareExecutionBindings` 无条件要求每个 `kConstant` 提供 external 绑定 | 常量折叠产生的常量目前无人物化 |
 | 无完整 Llama plan 构建证据 | `BuildLlamaDense` 只出现在 model/graph/compiler 测试；`OptimizeModelGraph.LowersFullLlamaDenseGraph` 止于 lowering | 01 §9 "baseline pipeline 可通过真实 CpuBackend 构建完整 plan" 未勾选 |
 
@@ -134,7 +134,7 @@ PrepareExecutableModel(runtime, artifact)
   2. requests = BuildWeightPackingRequests(artifact.graph, resolved)     // 已有
   3. WeightPrepackPlanner::PrepackAndStore(store, requests)              // 已有；store.SetSourceId 一致性
   4. plan = ExecutionPlanBuilder::Build(runtime, store, artifact.graph)  // 已有
-  5. required = CollectExternalReadRequirements(plan)                    // §4.2 新公开接口
+  5. required = ComputeExternalReadRequirements(plan)                    // §4.2 已公开
   6. 对每个 required[i] 为真、且 plan.values()[i].kind != kModelInput 的 i：
        payload = artifact.graph.values()[i].payload    // 取值来源见下方说明
        kWeight    → ResolveWeightBinding(get<WeightValue>(payload).binding, resolved)
@@ -173,6 +173,8 @@ AM_NODISCARD const RawWeightView* ResolveWeightBinding(
 
 把 `ComputeExternalReadRequirements` 提升为公开 API（`execution_bindings.h`），签名保持 `StatusOr<std::vector<bool>>`，并在 `PrepareExecutionBindings` 内部继续使用同一函数。这样"哪些值需要 external 绑定"只有 execution 一个权威，packed step 裁剪掉的权重端口自然不进入需求集合，**结构性地**满足 01 M2 验收项"packed/plain 路径不会重复或遗漏 binding"，而不是靠准备入口复制一份判断。
 
+一个实施期核实、并修正了本提案初版假设的不变量：`LowerModelGraph` 对**所有**含 `kWeight` 输入的 step 统一赋 `weight_format`（[`graph_lowering.cpp:110-123`](../../src/compiler/graph_lowering.cpp)），而 untrusted 路径的 `ExecutionPlanNodeSpec` 不携带输入 value id、每个节点获得独立值（[`execution_node_spec.h:24-47`](../../include/aethermind/execution/execution_node_spec.h)）。因此"同一权重同时被一个 packed step 和一个 plain step 消费"当前**不可构造**，不能作为验收前提。需求计算按 step 的 `kernel_input_ports` 逐端口判定，将来若引入 per-op packing，无需改动即正确。测试因此覆盖 plain 图、packed 图与查询—prepare 一致性三个**可达**形态。
+
 ### 4.3 常量物化
 
 `PrepareExecutionBindings` 对每个 `kConstant` 无条件要求 external 只读绑定，而 `ConstantBinding.inline_data` 已随 payload 进入 artifact。准备入口按值 spec（dtype/shape）把 `inline_data` 包成 `TensorView`，并校验 `inline_data->size()` 与 spec 推导字节数一致。
@@ -189,6 +191,8 @@ AM_NODISCARD const RawWeightView* ResolveWeightBinding(
 - stride 按行主序紧凑推导（连续性由 §2.3 保证），`alignment` 透传实际对齐。
 
 model inputs 不进入 `immutable_weight_bindings()`：token/position 输入由 Session 按 phase 提供。Session 复制 weight/constant 只读条目后追加自身输入条目，重复 id 由 `PrepareExecutionBindings` 的 `InvalidArgument` 校验兜底（`execution_bindings.cpp:360-363`）。
+
+实施期核实的一处精度修正：`PrepareExecutionBindings` **不借用**外部视图的元数据——它经 `SnapshotMetadata`（[`execution_bindings.cpp:49-54`](../../src/execution/execution_bindings.cpp)，应用于 `:419-424`）把 shape/stride 深拷贝进自有的 `ConcreteTensorMetadata`，只借用 `data()`。因此堆稳定性的真实理由是：`immutable_weight_bindings()` 是一张会被反复交付的长寿命表（prefill 与 decode 各 prepare 一次），表内 `TensorView` 的元数据必须在整个模型生命周期内有效；而不是"prepared bindings 借用元数据"。另外 `alignment` 被原值透传且不做校验，而 `RawWeightView` 不携带对齐信息，故绑定统一以 0（未指定）交付；出现真实对齐需求时再按证据补，不预先推测。
 
 ### 4.5 phase plan 合同
 
@@ -238,23 +242,35 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 
 ### M2.1 model：权重身份解析单一权威
 
+**状态（2026-09-23）**：已落地。`ResolveWeightBinding` 位于 [`weight_binding_resolver.h`](../../include/aethermind/model/weight_binding_resolver.h) / [`weight_binding_resolver.cpp`](../../src/model/weight_binding_resolver.cpp)，`packing_request_builder.cpp` 与 `model_graph_builder.cpp` 均改为复用，tied lm-head 回退在仓库内只剩 `weight_binding_resolver.cpp` 一处。新增 [`test_weight_binding_resolver.cpp`](../../tests/unit/model/test_weight_binding_resolver.cpp)（12 例）覆盖全角色解析、tied/untied lm-head、越界与缺失 layer index、`kMoERouter`、composite 与 roleless 的 `nullptr` 路径；全量单元测试 3499 例通过。
+
+一处刻意的语义收紧：原 `FindRawWeightByRole` 对 attention/MLP 角色使用 `layer.value_or(0)`（缺失 layer index 时静默解析到 layer 0），而 norm 角色返回 `nullptr`，两者不一致。现统一为 layer-scoped 角色一律要求 in-range index，缺失即 `nullptr`。依据是 `ModelGraph::Validate` 已拒绝缺失 layer index 的 per-layer 角色（[`graph.cpp:161-163`](../../src/graph/graph.cpp)），故该回退对任何经验证的图不可达；收紧后全量测试全绿，实测为无操作。
+
+遗留观察：`WeightPrepackPlanner::BuildRequests`（legacy，生产不调用）对 tied lm-head 是**跳过**而非回退（[`weight_prepack_planner.cpp:157`](../../src/model/weight_prepack_planner.cpp)），语义与单一权威不同。M2.4 让 graph-driven 路径成为唯一生产路径后，该 legacy 入口应直接删除，避免读者误认它为第三份权威。
+
 提取 `ResolveWeightBinding` 到 `include/aethermind/model/weight_binding_resolver.h`，改造 `packing_request_builder.cpp` 与 `model_graph_builder.cpp` 复用之；补 tied lm-head / 越界 layer / `kMoERouter` 的单测，含 §4.1 `nullptr` 错误路径（调用方必须转 `FailedPrecondition`）。
 
 退出条件：仓库内 tied lm-head 三元式只剩一处；`nullptr` 返回路径与调用方错误转换各有专项测试；既有测试全绿。
 
 ### M2.2 execution：公开 external binding 需求查询
 
-提升 `ComputeExternalReadRequirements` 为公共 API 并补文档注释；新增 packed/plain 混合图的查询测试（同一权重同时被 packed step 与 plain step 消费的情形必须可判定）。
+**状态（2026-09-23）**：已落地。`ComputeExternalReadRequirements` 已从 `execution_bindings.cpp` 匿名命名空间移出，在 [`execution_bindings.h`](../../include/aethermind/execution/execution_bindings.h) 声明并补齐索引空间与各值类别的契约注释；`PrepareExecutionBindings` 继续调用同一实现，无逻辑副本。新增 [`test_execution_bindings.cpp`](../../tests/unit/execution/test_execution_bindings.cpp)（4 例，真实 CpuBackend + 真实 lowering）：plain 图（model input、constant、两个 plain weight 需要，activation 不需要）、两个 step 共享同一 weight（仍只贡献一条）、packed `AddRmsNorm` 图（`kernel_input_ports` 由 3 投影为 2、weight 不需要而 constant 仍需要）、以及查询与 `PrepareExecutionBindings` 的双向一致性（按查询结果精确供给则成功，任缺一条即 `FailedPrecondition`）。全量 3503 测试通过。该测试同时实证了 §2.3 的值索引同一性（lowered value id 直接用作 execution value id）。
+
+提升 `ComputeExternalReadRequirements` 为公共 API 并补文档注释；新增查询测试覆盖 plain 图、packed 图与查询—`PrepareExecutionBindings` 一致性（混合 packed/plain 形态当前不可构造，见 §4.2）。
 
 退出条件：`PrepareExecutionBindings` 与新公开接口共用同一实现，无逻辑副本。
 
 ### M2.3 inference：模块骨架与 ownership 登记
 
-新增 `include/aethermind/inference/` 与 `src/inference/`；定义 `ExecutableModel` 与 `WeightBindingStorage`，头文件写明 §4.6 生命周期契约；更新根 `AGENTS.md` §2.1 ownership 表与跨模块依赖规则。
+**状态（2026-09-23）**：已落地，范围有一处调整。新增 [`weight_binding_storage.h`](../../include/aethermind/inference/weight_binding_storage.h) / [`weight_binding_storage.cpp`](../../src/inference/weight_binding_storage.cpp)；根 `AGENTS.md` §2.1 已新增 inference 行，跨模块依赖规则已新增 `inference → execution + compiler + model + runtime`。CMake 确认无需改动：两处 `GLOB_RECURSE ... CONFIGURE_DEPENDS` 实测自动收录新目录，`AetherMind.dir/inference/weight_binding_storage.cpp.o` 与 `aethermind_unit_tests.dir/inference/test_weight_binding_storage.cpp.o` 均进入构建。新增 [`test_weight_binding_storage.cpp`](../../tests/unit/inference/test_weight_binding_storage.cpp)（8 例）覆盖视图内容、rank-1/rank-0 形状、以及扩容后与移动构造/移动赋值后已发出视图仍有效；全量 3511 测试通过。
+
+范围调整：`ExecutableModel` 本体不在本步交付，改与 `PrepareExecutableModel` 一起在 M2.4 落地。先定义一个没有任何构造入口的类型会留下无法使用的半成品；而 `WeightBindingStorage` 契约完整、可独立测试，又正是 §4.4 悬垂风险最高的一环，适合作为本步的完整交付物。
+
+新增 `include/aethermind/inference/` 与 `src/inference/`；定义 `WeightBindingStorage` 并写明 §4.4/§4.6 契约；`ExecutableModel` 随 M2.4 落地；更新根 `AGENTS.md` §2.1 ownership 表与跨模块依赖规则。
 
 **CMake 无需改动**：`src/CMakeLists.txt:1-4` 与 `tests/unit/CMakeLists.txt:4-6` 均为 `file(GLOB_RECURSE ... CONFIGURE_DEPENDS)`，新目录自动收录；`include/` 已在 `AetherMind` 的 PUBLIC 头路径上。因此本步唯一的仓库级登记动作是 `AGENTS.md`。
 
-退出条件：`AGENTS.md` §2.1 新增 inference 行且依赖规则与 §3.1 一致；`--target AetherMind` 与 `--target aethermind_unit_tests` 均编译通过，且新目录下的源文件确实进入构建（以一个占位测试的符号可链接为判据，避免 glob 未命中却静默通过）。
+退出条件（已满足）：`AGENTS.md` §2.1 新增 inference 行且依赖规则与 §3.1 一致；`--target AetherMind` 与 `--target aethermind_unit_tests` 均编译通过，且新目录下的源文件确实进入构建（以生成的 `.o` 为准）。
 
 ### M2.4 inference：`PrepareExecutableModel`
 
@@ -333,3 +349,6 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 |---|---|---|
 | 2026-09-23 | 1.0 | 基于仓库实测事实建立 M2 细化提案：确认 packing 链路无生产调用者、role 解析私有且 tied lm-head 重复两份、binding 需求集合无公开查询、常量未被物化；给出 inference 模块归属、`PrepareExecutableModel` 流程与 M2.1–M2.5 实施步骤 |
 | 2026-09-23 | 1.1 | 评审修正事实精度与规格缺口：§1 改为"无 `LoweredModelArtifact` 重载"（`Build` 另有 untrusted node-spec 重载）；§2.2 修正 packing 调用者为 4 个测试文件，并把权重绑定缺口重述为"生产侧无 `ResolvedModelWeights` → `ExternalTensorBindings` 转换"；§3.4 step 6 写明 payload 只能取自 `LoweredGraph.values()[i]`（`ExecutionValueDesc` 不含 payload）、step 7 对账排除 `kModelInput`；§4.1 补 `nullptr` 契约与 `FailedPrecondition` 转换；§4.4 补内层 vector 跨 move 稳定性论证 (b)；§4.5 裁决 phase 权威为 per-step selector、复用 `PhaseMatches`、混合 phase artifact prepare 期拒绝；§4.6 与 M2.4 记录 `execution_plan.h:84-85` 及 `artifact_id()` 归属的失实注释；M2.3 澄清 CMake 为 glob 无需改动并给出可判退出条件 |
+| 2026-09-23 | 1.2 | M2.1 落地并转为 In Progress：新增 `weight_binding_resolver.h/.cpp` 与 12 例单测，`packing_request_builder.cpp`、`model_graph_builder.cpp` 改为复用，tied lm-head 回退收敛为一处；记录 layer-scoped 角色 `value_or(0)` 回退的刻意收紧及其不可达依据；记录 legacy `WeightPrepackPlanner::BuildRequests` 的 tied 语义差异与删除计划；全量 3499 测试通过 |
+| 2026-09-23 | 1.3 | M2.2 落地：`ComputeExternalReadRequirements` 提升为 execution 公共 API，`PrepareExecutionBindings` 共用同一实现；新增 `test_execution_bindings.cpp`（4 例，真实 CpuBackend），全量 3503 测试通过。修正初版的不可达验收前提——`LowerModelGraph` 对所有含权重 step 统一赋 `weight_format`、`ExecutionPlanNodeSpec` 不携带输入 value id，故"同一权重同时被 packed 与 plain step 消费"当前不可构造，测试改为覆盖 plain/packed/一致性三个可达形态（§4.2、M2.2）；§3.4 step 5 函数名与实际 API 对齐；§2.2 标注 M2.1/M2.2 已闭环 |
+| 2026-09-23 | 1.4 | M2.3 落地：新增 `inference/` 模块与 `WeightBindingStorage`（含 8 例稳定性测试），根 `AGENTS.md` §2.1 新增 inference 行与依赖规则，实测确认 CMake 的 `GLOB_RECURSE` 自动收录新目录；全量 3511 测试通过。范围调整：`ExecutableModel` 本体移至 M2.4 与 `PrepareExecutableModel` 同批交付，避免留下无构造入口的半成品类型。§4.4 精度修正：`PrepareExecutionBindings` 经 `SnapshotMetadata` 深拷贝 shape/stride、只借用 `data()`，故堆稳定性的真实理由是绑定表被反复交付；`alignment` 统一以 0（未指定）交付并记录依据 |

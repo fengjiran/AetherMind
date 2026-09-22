@@ -75,7 +75,7 @@
 | [03-documentation-stabilization.md](improvement-plan/03-documentation-stabilization.md) | Batch -1 文档系统稳定化：D0–D5 迁移计划与 E1–E9 退出条件 | In Progress |
 | [05-kv-cache-manager-evolution.md](improvement-plan/05-kv-cache-manager-evolution.md) | 静态 KV correctness、lease/transaction/kernel binding 与 Paged KV 演进边界 | Draft |
 | [06-system-capability-evolution-roadmap.md](improvement-plan/06-system-capability-evolution-roadmap.md) | 全仓库 capability gap、模块演进裁决与实施顺序 | Draft |
-| [07-executable-model-preparation.md](improvement-plan/07-executable-model-preparation.md) | `LoweredModelArtifact → ExecutableModel` 生产准备入口、权重绑定映射与模块归属 | Draft |
+| [07-executable-model-preparation.md](improvement-plan/07-executable-model-preparation.md) | `LoweredModelArtifact → ExecutableModel` 生产准备入口、权重绑定映射与模块归属 | In Progress |
 
 > 算子专项提案不再建在本目录：按 [算子开发工作流 O3](guides/operator-development-workflow.md) 建在 `docs/operators/<op>/<op>-optimization.md`（原 04 号 GEMM 专项已迁至 [operators/gemm/cpu-gemm-optimization.md](operators/gemm/cpu-gemm-optimization.md)）。
 

@@ -270,6 +270,62 @@ INSTANTIATE_TEST_SUITE_P(
                 SmallMShape{8, 1024, 33}),
         SmallMShapeName);
 
+class CPUKernelGemmAvx2BlockedTest : public testing::TestWithParam<SmallMShape> {};
+
+TEST_P(CPUKernelGemmAvx2BlockedTest, MatchesDoubleReference) {
+    if (!CanExecuteAvx2Fma()) {
+        GTEST_SKIP() << "AVX2+FMA GEMM kernel is unavailable on this host";
+    }
+
+    const SmallMShape test_case = GetParam();
+    // Padded strides exercise the packed-panel pointer arithmetic as well as
+    // the N-tail and M-tail edge handling of the blocked path.
+    const int64_t lhs_m_stride = test_case.k + 3;
+    const int64_t output_m_stride = test_case.n + 2;
+    const int64_t rhs_n_stride = test_case.k + 5;
+    std::vector<float> lhs(static_cast<size_t>(test_case.m * lhs_m_stride));
+    std::vector<float> rhs(static_cast<size_t>(test_case.n * rhs_n_stride));
+    std::vector<float> candidate_output(static_cast<size_t>(test_case.m * output_m_stride), 11.0F);
+    std::vector<float> reference_output(static_cast<size_t>(test_case.m * output_m_stride), -13.0F);
+    FillValues(lhs);
+    FillValues(rhs);
+
+    const cpu::detail::GemmF32Args candidate_args{
+            .lhs = lhs.data(),
+            .rhs = rhs.data(),
+            .output = candidate_output.data(),
+            .m = test_case.m,
+            .n = test_case.n,
+            .k = test_case.k,
+            .lhs_m_stride = lhs_m_stride,
+            .lhs_k_stride = 1,
+            .rhs_k_stride = 1,
+            .rhs_n_stride = rhs_n_stride,
+            .output_m_stride = output_m_stride,
+            .output_n_stride = 1,
+    };
+    auto reference_args = candidate_args;
+    reference_args.output = reference_output.data();
+    ExpectAvx2NearReference(candidate_args, reference_args);
+
+    for (int64_t row = 0; row < test_case.m; ++row) {
+        EXPECT_EQ(candidate_output[static_cast<size_t>(row * output_m_stride + test_case.n)], 11.0F);
+        EXPECT_EQ(reference_output[static_cast<size_t>(row * output_m_stride + test_case.n)], -13.0F);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        BlockedShapes,
+        CPUKernelGemmAvx2BlockedTest,
+        testing::Values(
+                SmallMShape{9, 33, 9},
+                SmallMShape{16, 1024, 33},
+                SmallMShape{64, 128, 103},
+                SmallMShape{65, 4097, 33},
+                SmallMShape{128, 1024, 264},
+                SmallMShape{129, 256, 55}),
+        SmallMShapeName);
+
 TEST(CPUKernelGemmAvx2, FallsBackForGenericMAndNonUnitStrides) {
     if (!CanExecuteAvx2Fma()) {
         GTEST_SKIP() << "AVX2+FMA GEMM kernel is unavailable on this host";

@@ -60,3 +60,21 @@
 
 - raw：`benchmark-results/operators/gemm/20260918T023421Z_5cbd378695bb_DESKTOP-54H5MMI_ab/`（含 Linear 组，未收录）
 - 结论：同一二进制自比即有 case 超过 5%（max 13.20%，median 2.62%），5% 自动门禁在本机不可直接使用，判读需按 case 人工
+
+## blocked GEMM（4x16 micro-kernel，G2a 诊断级）
+
+- commit：`42e2df28`（工作树 dirty）
+- 命令：`./build/tests/benchmark/aethermind_benchmark --benchmark_filter='M:16/K|M:64/K|M:128/K'`（WSL2，默认多进程无 taskset；本机 noise floor 结论见上）
+- correctness：`aethermind_unit_tests --gtest_filter='*GemmAvx2*'` 33/33 通过（含 BlockedShapes 参数化）
+- 实现形态：MR=4 × NR=16（acc 沿 N，每 k 步 A 标量广播 × B 行 16 列横向向量，B 转置 k-major 打包 [kc][NR]）；KC=512 面板、MB=48 行驻留；M/N 尾边条复用行对/多目标内核；运行时对 M≥9 K-contiguous 分派（G2b 注册 prepared path 后重验）
+- 结果（单次 run，median n=1；GFLOP/s = 2·M·N·K / t）：
+
+| case | baseline（scalar fallback，同入口） | candidate（blocked） | 提速 |
+|---|---|---|---|
+| M=16, K=4096, N=4096 | 58.78 ms（9.13 GF） | 10.19 ms（**52.7 GF**） | **5.8x** |
+| M=64, K=4096, N=4096 | 238.58 ms（9.00 GF） | 29.79 ms（**72.1 GF**） | **8.0x** |
+| M=128, K=4096, N=4096 | 487.53 ms（8.81 GF） | 53.70 ms（**80.0 GF**） | **9.1x** |
+| M=128, K=4096, N=11008 | 1274.99 ms（9.05 GF） | 150.39 ms（**76.8 GF**） | **8.5x** |
+
+- raw：`benchmark-results/operators/gemm/`（本次未存档 raw repetitions，单次观察）
+- 结论：Needs More Data（方向 Accepted）——单次采样、未跑 repetitions/交错 A/B；80 GF 约达本机 FMA 上限 123.7 GF 的 65%。下一步：MB/NR/KC 调参矩阵 + 交错 A/B 复跑 + G2b 接入 Linear prepared path 后以 `BM_LinearPreparedHot` 为主门禁重验

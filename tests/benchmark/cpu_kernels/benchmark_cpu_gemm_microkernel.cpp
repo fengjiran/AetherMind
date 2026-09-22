@@ -241,7 +241,7 @@ constexpr std::array<GemmShape, 13> kScalarShapes{{
 }};
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
-constexpr std::array<GemmShape, 16> kAvx2GemmShapes{{
+constexpr std::array<GemmShape, 20> kAvx2GemmShapes{{
         {1, 4096, 4096},
         {1, 4096, 6144},
         {1, 4096, 11008},
@@ -260,6 +260,11 @@ constexpr std::array<GemmShape, 16> kAvx2GemmShapes{{
         {8, 4096, 4096},
         {8, 11008, 4096},
         {2, 32, 33},
+        // Prefill-class shapes driving the blocked GEMM path (M >= 9).
+        {16, 4096, 4096},
+        {64, 4096, 4096},
+        {128, 4096, 4096},
+        {128, 4096, 11008},
 }};
 #endif
 

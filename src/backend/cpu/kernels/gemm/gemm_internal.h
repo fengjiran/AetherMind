@@ -48,10 +48,14 @@ Status RunGemmF32Scalar(const GemmF32Args& args) noexcept;
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 /// @brief Runs the AVX2/FMA FP32 GEMM candidate with compatible fallback.
 ///
-/// The direct SIMD path requires runtime-validated AVX2/FMA and only handles
-/// `M=1`, nonzero K, unit-stride lhs K, K-contiguous RHS, and unit-stride
-/// output N. Every other reference-legal input delegates to the scalar
-/// candidate, which may in turn delegate to the reference oracle.
+/// The caller must ensure the host supports AVX2 and FMA before invoking this
+/// entry point (this primitive performs no capability detection itself). The
+/// SIMD paths require nonzero K, unit-stride lhs K, K-contiguous RHS, and
+/// unit-stride output N; `M=1..8` uses the row-pair fast path with a
+/// multi-target core for a leftover odd row, while `M>=9` uses the blocked
+/// 4x16 micro-kernel with A/B panel packing and row-pair edge handling. Every
+/// other reference-legal input delegates to the scalar candidate, which may
+/// in turn delegate to the reference oracle.
 Status RunGemmF32Avx2Fma(const GemmF32Args& args) noexcept;
 #endif
 

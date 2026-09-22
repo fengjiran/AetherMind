@@ -1,5 +1,5 @@
-#include "../common/dot_product_internal.h"
 #include "aethermind/backend/cpu/kernels/common/simd_utils.h"
+#include "backend/cpu/kernels/common/dot_product_internal.h"
 #include "gemm_internal.h"
 
 #include <algorithm>
@@ -99,8 +99,8 @@ void RunRowPairAvx2(const float* lhs0, const float* lhs1, const float* rhs,
 // output columns along N; per scalar K step the row's A value is broadcast
 // (set1) and multiplied with the two 8-column vectors of the current B row
 // (B is packed transposed, k-major: panel[kk][col]). Peak usage is 8
-// accumulators plus 2 streaming B vectors, and the 64 independent FMAs per
-// 8-column B slab saturate both FMA ports.
+// accumulators plus 2 streaming B vectors, and the 8 FMAs issued per K step
+// cover 64 output lanes to saturate both FMA ports.
 
 constexpr int64_t kBlockedMR = 4;
 constexpr int64_t kBlockedNR = 16;

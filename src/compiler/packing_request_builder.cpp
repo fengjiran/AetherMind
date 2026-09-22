@@ -1,8 +1,8 @@
 #include "aethermind/compiler/packing_request_builder.h"
 
+#include "aethermind/model/weight_binding_resolver.h"
 #include "aethermind/operators/operator_schema.h"
 
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -12,21 +12,16 @@
 namespace aethermind {
 namespace {
 
-const RawWeightView* FindRawWeightByRole(const ResolvedModelWeights& resolved,
-                                         std::optional<uint32_t> layer,
-                                         TransformerWeightRole role);
-
-StatusOr<std::vector<RawWeightView>> ResolveSingleWeight(
-        const ResolvedModelWeights& resolved,
-        std::optional<uint32_t> layer,
-        TransformerWeightRole role) {
-    const RawWeightView* raw = FindRawWeightByRole(resolved, layer, role);
+/// @brief Resolves one binding's raw weight, rejecting an absent view.
+StatusOr<RawWeightView> ResolveSingleWeight(const WeightBinding& binding,
+                                            const ResolvedModelWeights& resolved) {
+    const RawWeightView* raw = ResolveWeightBinding(binding, resolved);
     if (raw == nullptr || !raw->IsValid()) {
         return Status::Internal(
                 "BuildWeightPackingRequests: resolved weights are "
                 "missing the raw weight for a binding");
     }
-    return std::vector<RawWeightView>{*raw};
+    return *raw;
 }
 
 /// @brief Resolves the raw weights referenced by a logical weight binding.
@@ -43,10 +38,11 @@ StatusOr<std::vector<RawWeightView>> ResolveWeightComponents(
                     "BuildWeightPackingRequests: weight value has no "
                     "semantic role");
         }
-        return ResolveSingleWeight(
-                resolved,
-                binding.decoder_layer_index,
-                std::get<TransformerWeightRole>(direct->semantic_role));
+        auto single = ResolveSingleWeight(binding, resolved);
+        if (!single.ok()) {
+            return single.status();
+        }
+        return std::vector<RawWeightView>{std::move(*single)};
     }
 
     std::vector<TransformerWeightRole> roles;
@@ -71,67 +67,14 @@ StatusOr<std::vector<RawWeightView>> ResolveWeightComponents(
     components.reserve(roles.size());
     for (const auto role: roles) {
         auto single = ResolveSingleWeight(
-                resolved, binding.decoder_layer_index, role);
+                MakeTransformerWeightBinding(binding.decoder_layer_index, role),
+                resolved);
         if (!single.ok()) {
             return single.status();
         }
-        components.push_back(std::move((*single).front()));
+        components.push_back(std::move(*single));
     }
     return components;
-}
-
-const RawWeightView* FindRawWeightByRole(const ResolvedModelWeights& resolved,
-                                         std::optional<uint32_t> layer,
-                                         TransformerWeightRole role) {
-    const auto layer_at = [&](size_t index) -> const DecoderLayerRawWeights* {
-        if (index >= resolved.layers.size()) {
-            return nullptr;
-        }
-        return &resolved.layers[index];
-    };
-    switch (role) {
-        case TransformerWeightRole::kTokenEmbedding:
-            return &resolved.embed_tokens;
-        case TransformerWeightRole::kFinalNorm:
-            return &resolved.final_norm;
-        case TransformerWeightRole::kLmHead:
-            // Tied embeddings reuse embed_tokens when the checkpoint carries
-            // no independent lm_head, mirroring ModelGraphBuilder.
-            return resolved.lm_head.has_value() ? &*resolved.lm_head
-                                                : &resolved.embed_tokens;
-        case TransformerWeightRole::kInputNorm:
-            return layer.has_value() && *layer < resolved.layers.size()
-                           ? &resolved.layers[*layer].norm.input_rmsnorm
-                           : nullptr;
-        case TransformerWeightRole::kPostAttentionNorm:
-            return layer.has_value() && *layer < resolved.layers.size()
-                           ? &resolved.layers[*layer].norm.post_attn_rmsnorm
-                           : nullptr;
-        case TransformerWeightRole::kAttentionQ:
-            if (const auto* l = layer_at(layer.value_or(0))) return &l->attn.q_proj;
-            return nullptr;
-        case TransformerWeightRole::kAttentionK:
-            if (const auto* l = layer_at(layer.value_or(0))) return &l->attn.k_proj;
-            return nullptr;
-        case TransformerWeightRole::kAttentionV:
-            if (const auto* l = layer_at(layer.value_or(0))) return &l->attn.v_proj;
-            return nullptr;
-        case TransformerWeightRole::kAttentionO:
-            if (const auto* l = layer_at(layer.value_or(0))) return &l->attn.o_proj;
-            return nullptr;
-        case TransformerWeightRole::kMlpGate:
-            if (const auto* l = layer_at(layer.value_or(0))) return &l->mlp.gate_proj;
-            return nullptr;
-        case TransformerWeightRole::kMlpUp:
-            if (const auto* l = layer_at(layer.value_or(0))) return &l->mlp.up_proj;
-            return nullptr;
-        case TransformerWeightRole::kMlpDown:
-            if (const auto* l = layer_at(layer.value_or(0))) return &l->mlp.down_proj;
-            return nullptr;
-        case TransformerWeightRole::kMoERouter:
-            return nullptr;
-    }
-    return nullptr;
 }
 
 } // namespace

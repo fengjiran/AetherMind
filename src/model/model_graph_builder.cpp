@@ -1,6 +1,7 @@
 #include "aethermind/model/model_graph_builder.h"
 #include "aethermind/graph/graph_op_builder.h"
 #include "aethermind/model/formats/hf/hf_model_validator.h"
+#include "aethermind/model/weight_binding_resolver.h"
 #include "aethermind/operators/rope_frequency_resolver.h"
 
 #include <cmath>
@@ -506,17 +507,20 @@ StatusOr<ModelGraph> ModelGraphBuilder::BuildLlamaDense(const HfModelConfig& con
                                 params.rms_norm_eps,
                                 WeightDebugName(TransformerWeightRole::kFinalNorm,
                                                 std::nullopt)));
-    const RawWeightView& lm_head_weight = weights.lm_head.has_value()
-                                                  ? *weights.lm_head
-                                                  : weights.embed_tokens;
+    const WeightBinding lm_head_binding = MakeTransformerWeightBinding(
+            std::nullopt, TransformerWeightRole::kLmHead);
+    const RawWeightView* lm_head_weight = ResolveWeightBinding(lm_head_binding, weights);
+    if (lm_head_weight == nullptr) {
+        return Status::Internal(
+                "ModelGraphBuilder::BuildLlamaDense: lm_head binding did not resolve");
+    }
     AM_ASSIGN_OR_RETURN(const GraphValueId logits,
                         AddLinear(
                                 graph,
                                 final_hidden,
-                                lm_head_weight.shape[0],
-                                lm_head_weight.dtype,
-                                MakeTransformerWeightBinding(std::nullopt,
-                                                             TransformerWeightRole::kLmHead),
+                                lm_head_weight->shape[0],
+                                lm_head_weight->dtype,
+                                lm_head_binding,
                                 WeightDebugName(TransformerWeightRole::kLmHead, std::nullopt)));
     AM_ASSIGN_OR_RETURN(const GraphValueId output_tokens,
                         AddArgmax(graph,

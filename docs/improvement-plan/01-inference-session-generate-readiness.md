@@ -1,7 +1,7 @@
 # InferenceSession / Generate 前置闭环计划
 
 - **状态**: In Progress
-- **版本**: 1.7
+- **版本**: 1.8
 - **日期**: 2026-09-03
 - **最近更新**: 2026-09-23
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
@@ -480,7 +480,7 @@ Decode 循环中不得变化：
 - [x] Linear/RoPE/KVCacheUpdate/Attention/SiluMul/Argmax reference kernel 可用（6/6 全部可用）；fused QkvLinear/GateUpLinear/AddRmsNorm 亦已落地；
 - [x] `PrepareExecutableModel` 可从真实 `LoweredModelArtifact` 构建（`inference/executable_model.h`，07 号提案 M2.4）；
 - [x] real weights 可自动生成完整 external bindings（12 个权重值自动绑定并与需求集合双向对账；packed 路径受 §2.3 缺口限制，只能以子图取证）；
-- [ ] Prefill/Decode phase-plan 合同已验证；
+- [x] Prefill/Decode phase-plan 合同已验证（07 号提案 §4.5：`kBoth` artifact 三种 phase 查询共享同一 plan、单 phase artifact 拒绝不匹配查询、step 间 phase 不一致在 prepare 期拒绝，由 M2.5 测试覆盖）；
 - [ ] tiny Llama Prefill + 2 Decode 数值测试通过；
 - [ ] KV content 与 commit position 测试通过；
 - [ ] Decode 重复执行不重新调用 `PrepareExecutionBindings`；
@@ -512,3 +512,4 @@ Decode 循环中不得变化：
 | 2026-09-17 | 1.5 | 同步 Attention kernel 与 read binding query interval：§2.2（15 类 21 描述符）、§3.1、M3 6/6、门禁 kernel 项勾选 |
 | 2026-09-23 | 1.6 | 按 §9 流转规则（M1 已闭环）将状态由 Draft 转为 In Progress；复核确认 §2.2 描述符计数（15 类 21 个）与 §3.2–§3.5 缺口描述仍与仓库一致：`ExecutableModel`/`PrepareExecutableModel`、`InferenceSession`、真实权重 external binding 生产 API、完整 Llama plan 构建与 Prefill→Decode 端到端测试均未落地，§9 其余 9 项门禁保持未勾选；M2 细化拆出为 [07 号提案](07-executable-model-preparation.md) |
 | 2026-09-23 | 1.7 | 07 号提案 M2.4 落地后同步：§9 勾选 "baseline pipeline 可通过真实 CpuBackend 构建完整 plan"、"`PrepareExecutableModel` 可从真实 artifact 构建"、"real weights 可自动生成完整 external bindings" 三项；§2.3 补记 kEmbedding 亦无 kPacked 变体，并写明其后果——`enable_packed_weights=true` 的完整 Llama 在 kernel resolve 即失败，packed 取证只能走子图 |
+| 2026-09-23 | 1.8 | 07 号提案 M2.5 落地后同步：§9 勾选 "Prefill/Decode phase-plan 合同已验证"（共享单 plan、phase 不匹配报错、混合 phase prepare 期拒绝三项由 M2.5 测试覆盖，见 07 §4.5/§7）；07 转 Implemented，实现描述由 [designs/inference/01-executable-model.md](../designs/inference/01-executable-model.md) 承接。剩余五项门禁（Prefill/Decode 数值、KV content/commit、重复 decode、malloc-hook、KV reservation teardown）属 M4/M5，未勾选 |

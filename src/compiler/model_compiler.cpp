@@ -18,9 +18,8 @@ Status AddStageContext(const Status& status, std::string_view stage) {
 
 } // namespace
 
-StatusOr<LoweredModelArtifact> ModelCompiler::Compile(
-        std::unique_ptr<LoadedModel> model,
-        const ModelCompileOptions& options) {
+StatusOr<LoweredModelArtifact> ModelCompiler::Compile(std::unique_ptr<LoadedModel> model,
+                                                      const ModelCompileOptions& options) {
     if (model == nullptr) {
         return Status::InvalidArgument("ModelCompiler::Compile requires a LoadedModel");
     }

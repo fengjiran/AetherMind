@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -114,22 +115,26 @@ StatusOr<CompiledLlama> CompileTinyLlama(int64_t num_layers,
     return compiled;
 }
 
+/// Wraps a finalized lowered graph into an artifact backed by `weights`.
+LoweredModelArtifact MakeArtifactFrom(LoweredGraph graph, ResolvedModelWeights weights) {
+    auto loaded = std::make_unique<LoadedModel>(
+            MakeTinyLlamaConfig(/*num_layers=*/1, /*tie_word_embeddings=*/false),
+            std::move(weights));
+    return LoweredModelArtifact{.loaded_model = std::move(loaded),
+                                .graph = std::move(graph)};
+}
+
 /// Builds an artifact from an arbitrary semantic graph, mirroring
 /// ModelCompiler::Compile minus the Llama-specific front end. The plan is still
 /// produced only by PrepareExecutableModel.
 StatusOr<LoweredModelArtifact> MakeArtifact(const ModelGraph& graph,
                                             ResolvedModelWeights weights,
-                                            bool enable_packed_weights) {
-    const auto lowered = LowerModelGraph(
-            graph, GraphLoweringConfig{.enable_packed_weights = enable_packed_weights});
+                                            GraphLoweringConfig config) {
+    const auto lowered = LowerModelGraph(graph, config);
     if (!lowered.ok()) {
         return lowered.status();
     }
-    auto loaded = std::make_unique<LoadedModel>(
-            MakeTinyLlamaConfig(/*num_layers=*/1, /*tie_word_embeddings=*/false),
-            std::move(weights));
-    return LoweredModelArtifact{.loaded_model = std::move(loaded),
-                                .graph = std::move(*lowered)};
+    return MakeArtifactFrom(std::move(*lowered), std::move(weights));
 }
 
 std::vector<uint32_t> BindingsSharingData(const ExternalTensorBindings& bindings,
@@ -404,7 +409,8 @@ TEST(ExecutableModel, MaterializesConstantFromInlineData) {
     const void* const weight_data = weights.layers[0].norm.input_rmsnorm.data;
 
     Runtime runtime = MakeCpuRuntime();
-    auto artifact = MakeArtifact(graph, std::move(weights), /*enable_packed_weights=*/false);
+    auto artifact = MakeArtifact(graph, std::move(weights),
+                                 GraphLoweringConfig{.enable_packed_weights = false});
     ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
 
     const auto model = PrepareExecutableModel(runtime, std::move(*artifact));
@@ -448,7 +454,8 @@ TEST(ExecutableModel, RejectsConstantWithoutInlineData) {
     weights.layers[0].norm.input_rmsnorm = carver.Carve({4});
 
     Runtime runtime = MakeCpuRuntime();
-    auto artifact = MakeArtifact(graph, std::move(weights), /*enable_packed_weights=*/false);
+    auto artifact = MakeArtifact(graph, std::move(weights),
+                                 GraphLoweringConfig{.enable_packed_weights = false});
     ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
 
     const auto model = PrepareExecutableModel(runtime, std::move(*artifact));
@@ -478,7 +485,8 @@ TEST(ExecutableModel, RejectsConstantWhoseInlineSizeDisagreesWithShape) {
     weights.layers[0].norm.input_rmsnorm = carver.Carve({4});
 
     Runtime runtime = MakeCpuRuntime();
-    auto artifact = MakeArtifact(graph, std::move(weights), /*enable_packed_weights=*/false);
+    auto artifact = MakeArtifact(graph, std::move(weights),
+                                 GraphLoweringConfig{.enable_packed_weights = false});
     ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
 
     const auto model = PrepareExecutableModel(runtime, std::move(*artifact));
@@ -517,7 +525,8 @@ TEST(ExecutableModel, PackedSubgraphKeepsWeightOutOfBindingTable) {
     const void* const weight_data = weights.layers[0].norm.input_rmsnorm.data;
 
     Runtime runtime = MakeCpuRuntime();
-    auto artifact = MakeArtifact(graph, std::move(weights), /*enable_packed_weights=*/true);
+    auto artifact = MakeArtifact(graph, std::move(weights),
+                                 GraphLoweringConfig{.enable_packed_weights = true});
     ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
 
     const auto model = PrepareExecutableModel(runtime, std::move(*artifact));
@@ -559,6 +568,212 @@ TEST(ExecutableModel, PackedLoweringIsUnresolvableForOpsWithoutPackedKernels) {
     ASSERT_FALSE(model.ok());
     // Kernel resolution, not weight resolution: the weights themselves are fine.
     EXPECT_EQ(model.status().code(), StatusCode::kNotFound);
+}
+
+TEST(ExecutableModel, RejectsWeightWithNoDenseStorageRole) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            FloatSpec({4}), ConstantBinding{.inline_data = MakeConstantBytes(4 * sizeof(float))});
+    const GraphValueId weight = graph.AddWeight(
+            FloatSpec({4, 4}),
+            MakeTransformerWeightBinding(0U, TransformerWeightRole::kMoERouter));
+    const auto linear = graph.AddNode(
+            OpType::kLinear, 0U, {input, weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}}, LinearParams{});
+    ASSERT_TRUE(linear.ok()) << linear.status().ToString();
+    graph.MarkOutput(linear->outputs[0]);
+
+    ResolvedModelWeights weights;
+    weights.layers.resize(1);
+
+    Runtime runtime = MakeCpuRuntime();
+    auto artifact = MakeArtifact(graph, std::move(weights),
+                                 GraphLoweringConfig{.enable_packed_weights = false});
+    ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
+
+    // Dense checkpoints carry no router weight, so the binding resolves to
+    // nothing. Preparation must reject it with the role named instead of
+    // leaving the weight silently unbound.
+    const auto model = PrepareExecutableModel(runtime, std::move(*artifact));
+
+    ASSERT_FALSE(model.ok());
+    EXPECT_EQ(model.status().code(), StatusCode::kFailedPrecondition);
+    const std::string message = model.status().message();
+    EXPECT_NE(message.find("value " + std::to_string(weight.index)), std::string::npos)
+            << message;
+    EXPECT_NE(message.find("MoERouter"), std::string::npos) << message;
+}
+
+TEST(ExecutableModel, RejectsWeightWhoseLayerIndexHasNoStorage) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            FloatSpec({4}), ConstantBinding{.inline_data = MakeConstantBytes(4 * sizeof(float))});
+    const GraphValueId weight = graph.AddWeight(
+            FloatSpec({4, 4}),
+            MakeTransformerWeightBinding(1U, TransformerWeightRole::kAttentionQ));
+    const auto linear = graph.AddNode(
+            OpType::kLinear, 1U, {input, weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}}, LinearParams{});
+    ASSERT_TRUE(linear.ok()) << linear.status().ToString();
+    graph.MarkOutput(linear->outputs[0]);
+
+    // One layer in the checkpoint while the graph addresses layer 1: the
+    // binding is structurally valid yet resolves to nothing.
+    ResolvedModelWeights weights;
+    weights.layers.resize(1);
+
+    Runtime runtime = MakeCpuRuntime();
+    auto artifact = MakeArtifact(graph, std::move(weights),
+                                 GraphLoweringConfig{.enable_packed_weights = false});
+    ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
+
+    const auto model = PrepareExecutableModel(runtime, std::move(*artifact));
+
+    ASSERT_FALSE(model.ok());
+    EXPECT_EQ(model.status().code(), StatusCode::kFailedPrecondition);
+    const std::string message = model.status().message();
+    EXPECT_NE(message.find("value " + std::to_string(weight.index)), std::string::npos)
+            << message;
+    EXPECT_NE(message.find("AttentionQ"), std::string::npos) << message;
+    EXPECT_NE(message.find("layer=1"), std::string::npos) << message;
+}
+
+TEST(ExecutableModel, PhaseSpecificArtifactRejectsUnmatchedPhaseQueries) {
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            FloatSpec({4}), ConstantBinding{.inline_data = MakeConstantBytes(4 * sizeof(float))});
+    const GraphValueId weight = graph.AddWeight(
+            FloatSpec({4}), MakeTransformerWeightBinding(0U, TransformerWeightRole::kInputNorm));
+    const auto norm = graph.AddNode(
+            OpType::kRmsNorm, 0U, {input, weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}}, RmsNormParams{.eps = kEpsilon});
+    ASSERT_TRUE(norm.ok()) << norm.status().ToString();
+    graph.MarkOutput(norm->outputs[0]);
+
+    RawWeightCarver carver;
+    ResolvedModelWeights weights;
+    weights.layers.resize(1);
+    weights.layers[0].norm.input_rmsnorm = carver.Carve({4});
+
+    GraphLoweringConfig config{.enable_packed_weights = false};
+    config.selector.phase = ExecPhase::kPrefill;
+
+    Runtime runtime = MakeCpuRuntime();
+    auto artifact = MakeArtifact(graph, std::move(weights), config);
+    ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
+
+    const auto model = PrepareExecutableModel(runtime, std::move(*artifact));
+    ASSERT_TRUE(model.ok()) << model.status().ToString();
+    EXPECT_EQ(model->phase(), ExecPhase::kPrefill);
+    EXPECT_TRUE(model->plan(ExecPhase::kPrefill).ok());
+
+    // A prefill-only artifact must not answer kDecode, and a kBoth query claims
+    // coverage the artifact does not have; neither may silently reuse the plan.
+    for (const ExecPhase mismatched: {ExecPhase::kDecode, ExecPhase::kBoth}) {
+        const auto plan = model->plan(mismatched);
+        ASSERT_FALSE(plan.ok()) << ToString(mismatched);
+        EXPECT_EQ(plan.status().code(), StatusCode::kFailedPrecondition);
+        const auto bindings = model->immutable_weight_bindings(mismatched);
+        ASSERT_FALSE(bindings.ok()) << ToString(mismatched);
+        EXPECT_EQ(bindings.status().code(), StatusCode::kFailedPrecondition);
+    }
+}
+
+TEST(ExecutableModel, RejectsArtifactWhoseStepsMixPhases) {
+    // Lowering stamps one selector onto every step, so no lowering can produce
+    // a mixed-phase artifact today. The Builder test seam reproduces the
+    // type-level shape, and preparation must reject it: silently accepting it
+    // would make the shared-plan contract undecidable.
+    ModelGraph graph;
+    const GraphValueId input = graph.AddConstant(
+            FloatSpec({4}), ConstantBinding{.inline_data = MakeConstantBytes(4 * sizeof(float))});
+    const GraphValueId first_weight = graph.AddWeight(
+            FloatSpec({4}), MakeTransformerWeightBinding(0U, TransformerWeightRole::kInputNorm));
+    const auto first = graph.AddNode(
+            OpType::kRmsNorm, 0U, {input, first_weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}}, RmsNormParams{.eps = kEpsilon});
+    ASSERT_TRUE(first.ok()) << first.status().ToString();
+    const GraphValueId second_weight = graph.AddWeight(
+            FloatSpec({4}),
+            MakeTransformerWeightBinding(0U, TransformerWeightRole::kPostAttentionNorm));
+    const auto second = graph.AddNode(
+            OpType::kRmsNorm, 0U, {first->outputs[0], second_weight},
+            {NodeOutputDesc{.payload = ActivationValue{}}}, RmsNormParams{.eps = kEpsilon});
+    ASSERT_TRUE(second.ok()) << second.status().ToString();
+    graph.MarkOutput(second->outputs[0]);
+
+    const auto lowered = LowerModelGraph(graph);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+    ASSERT_EQ(lowered->steps().size(), 2U);
+
+    LoweredGraph::Builder builder;
+    builder.steps.assign(lowered->steps().begin(), lowered->steps().end());
+    builder.values.assign(lowered->values().begin(), lowered->values().end());
+    builder.model_inputs.assign(lowered->model_inputs().begin(), lowered->model_inputs().end());
+    builder.model_outputs.assign(lowered->model_outputs().begin(),
+                                 lowered->model_outputs().end());
+    builder.state_aliases.assign(lowered->state_aliases().begin(),
+                                 lowered->state_aliases().end());
+    builder.steps[1].spec.selector.phase = ExecPhase::kPrefill;
+    auto mixed = std::move(builder).Build();
+    ASSERT_TRUE(mixed.ok()) << mixed.status().ToString();
+
+    RawWeightCarver carver;
+    ResolvedModelWeights weights;
+    weights.layers.resize(1);
+    weights.layers[0].norm.input_rmsnorm = carver.Carve({4});
+    weights.layers[0].norm.post_attn_rmsnorm = carver.Carve({4});
+
+    Runtime runtime = MakeCpuRuntime();
+    const auto model = PrepareExecutableModel(
+            runtime, MakeArtifactFrom(std::move(*mixed), std::move(weights)));
+
+    ASSERT_FALSE(model.ok());
+    EXPECT_EQ(model.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_NE(model.status().message().find("mixes execution phases"), std::string::npos)
+            << model.status().message();
+}
+
+TEST(ExecutableModel, PreparedBindingsAreReleasedBeforeTheModel) {
+    // Teardown contract: prepared bindings borrow weight data owned by the
+    // model, so they are released first and the model must outlive them. Under
+    // ASAN/TSAN this pins the ownership order; the assertions after the scope
+    // also prove the model holds no back-reference to session state.
+    Runtime runtime = MakeCpuRuntime();
+    auto compiled = CompileTinyLlama(/*num_layers=*/1, /*tie_word_embeddings=*/false,
+                                     /*opt_level=*/1, /*enable_packed_weights=*/false);
+    ASSERT_TRUE(compiled.ok()) << compiled.status().ToString();
+    auto model = PrepareExecutableModel(runtime, std::move(compiled->artifact));
+    ASSERT_TRUE(model.ok()) << model.status().ToString();
+
+    const void* weight_data = nullptr;
+    {
+        const auto plan = model->plan(ExecPhase::kBoth);
+        ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+        const auto table = model->immutable_weight_bindings(ExecPhase::kBoth);
+        ASSERT_TRUE(table.ok()) << table.status().ToString();
+        ASSERT_FALSE((*table)->readable.empty());
+        const ExecutionValueId weight_value = (*table)->readable.front().value;
+        weight_data = (*table)->readable.front().tensor.data();
+
+        const TestBuffer tokens(DataType::Int(64), {1});
+        const TestBuffer positions(DataType::Int(64), {1});
+        ExternalTensorBindings external = **table;
+        external.readable.push_back(
+                {.value = (*plan)->model_inputs()[0], .tensor = tokens.view()});
+        external.readable.push_back(
+                {.value = (*plan)->model_inputs()[1], .tensor = positions.view()});
+
+        CPUAllocator allocator(Device::CPU());
+        const auto prepared = PrepareExecutionBindings(**plan, external, allocator);
+        ASSERT_TRUE(prepared.ok()) << prepared.status().ToString();
+        EXPECT_EQ(prepared->values()[weight_value.index].readable.data(), weight_data);
+    }
+
+    const auto table = model->immutable_weight_bindings(ExecPhase::kBoth);
+    ASSERT_TRUE(table.ok()) << table.status().ToString();
+    ASSERT_FALSE((*table)->readable.empty());
+    EXPECT_EQ((*table)->readable.front().tensor.data(), weight_data);
 }
 
 } // namespace

@@ -1,8 +1,8 @@
 # CPU GEMM Packed Weight 提案
 
 - **状态**: Proposed
-- **版本**: 1.2
-- **日期**: 2026-09-22
+- **版本**: 1.3
+- **日期**: 2026-09-23
 - **文档定位**: `exact recipe` 与 `packed-B` 阶段（[CPU GEMM 优化方案](cpu-gemm-optimization.md) §7）的具体化设计；只含方案内容，状态与机器级证据不在此维护。
 - **产品边界**: [AetherMind 当前产品 PRD](../../products/aethermind_prd.md)
 - **工作流规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
@@ -20,7 +20,7 @@
 - steady-state 热路径不再执行 B 侧转置打包；A 侧打包与 96KB 栈缓冲保留（packed-B 可省去 32KB `buf_b`）；
 - 为后续量化 recipe（`量化与新 ISA` 阶段）铺好合同基座。
 
-打包与消费两侧的合同骨架大多已存在（`PackingRecipe`、`PackedWeights`、`PackedWeightStore`、`PackedWeightView`、`ResolvedKernel::expected_packing_recipe`）。本方案补四个缺口：① recipe 表达与校验闸口；② recipe 传递链（descriptor → request → artifact）；③ 按 recipe 打包的服务体；④ packed-B 消费 driver。**生产编排点（谁在 model preparation 调用 packing request 生成与执行）当前不存在**，属前置缺失，见 §5 里程碑 M4。
+打包与消费两侧的合同骨架大多已存在（`PackingRecipe`、`PackedWeights`、`PackedWeightStore`、`PackedWeightView`、`ResolvedKernel::expected_packing_recipe`）。本方案补四个缺口：① recipe 表达与校验闸口；② recipe 传递链（descriptor → request → artifact）；③ 按 recipe 打包的服务体；④ packed-B 消费 driver。生产编排点（model preparation 调用 packing request 生成与执行）已由 `PrepareExecutableModel` 落地（[improvement-plan 07](../../improvement-plan/07-executable-model-preparation.md) M2.4），但该点尚不注入 recipe，recipe 传递链属本方案 §5 里程碑 M4。
 
 ## 2. 现状与缺口
 
@@ -29,7 +29,7 @@
 | recipe 合同 | `PackingRecipe{layout, alignment}`，无 tile 字段 | `include/aethermind/backend/packed_weights.h` |
 | 打包服务 | `CpuWeightPrepacker::Pack/RecipeFor`，唯一 recipe 为 `cpu_identity` 对齐拷贝；`Pack` 内部自己调 `RecipeFor(selector)` | `src/backend/cpu/cpu_weight_prepacker.cpp` |
 | 打包 request（生产） | `BuildWeightPackingRequests(lowered, resolved)`：纯数据映射，填 components/op_type/source_id，**never touches a backend**，不携带 recipe | `include/aethermind/compiler/packing_request_builder.h` |
-| 打包 request（legacy） | `WeightPrepackPlanner::BuildRequests`：头注明 "ModelLoader does not call this legacy planner"；实现 `UNUSED(registry)`；把 q/k/v/gate/up 全发成 `OpType::kLinear` + per-role binding、从不填 components | `include/aethermind/model/weight_prepack_planner.h`、`src/model/weight_prepack_planner.cpp` |
+| 打包 request（legacy） | 已删除（2026-09-23）：`WeightPrepackPlanner::BuildRequests` 曾按 role 枚举 linear 权重、从不填 components；graph-driven 的 `BuildWeightPackingRequests` 成为唯一生产 request 来源后移除 | `include/aethermind/model/weight_prepack_planner.h`（现只保留 `PrepackAndStore`）、`src/model/weight_prepack_planner.cpp` |
 | 打包执行 | `PrepackAndStore(store, requests)` 无 Backend 参数；key 的 recipe 由它自己调 `RecipeFor(req.selector)` 得出；model 层直接实例化 `CpuWeightPrepacker`（母提案 §4.5 第 4 点要消除的偏差） | `src/model/weight_prepack_planner.cpp` |
 | 存储/定位 | `PackedWeightStore` + `WeightArtifactKey{source_id, value_index, binding, selector, recipe}`；plan 组装用 `Find(exact_key)`，冻结期校验 `artifact->recipe() != expected_packing_recipe` 即失败 | `include/aethermind/model/packed_weight_store.h`、`src/execution/execution_plan_builder.cpp` |
 | resolve 期 recipe | `ResolvedKernel::expected_packing_recipe` 已在 resolve 期由 backend 填充；resolve 期**没有 shape**（`LinearParams {}` 为空，`QkvLinearParams` 只有 q/k/v out_features） | `include/aethermind/backend/resolved_kernel.h`、`include/aethermind/operators/op_params.h` |
@@ -133,7 +133,7 @@ Execute ── packed driver，零分配
 - `Request 加字段 / Pack 加参数 / key 用同一份 recipe` 三处必须一起改，否则 artifact recipe 与 key recipe 分叉（今天 `Pack` 内部自行 `RecipeFor(selector)`，不加参数产不出 bpanel artifact）。
 - **共存期策略（显式立约）**：identity 与 bpanel 并存期间，二者**按 op_type/selector 不相交**——bpanel 只上新增 descriptor（首落 Linear），现有 QKV/GateUp descriptor 保持 identity 不动；任何时刻 `{binding, selector}` 只映射一种 recipe，同键多 recipe 不出现。若未来需要同键多 recipe（如多 ISA 并存），须先改 `PackedWeightStore::FindByBindingSelector` 的 `kFailedPrecondition` 语义（当前无生产调用者，仅测试使用），不在本方案范围内。
 - **packed 使能是图级全局开关（M5 前置，硬阻塞）**：`GraphLoweringConfig::enable_packed_weights` 是 `bool`，一旦开启，所有带 kWeight 端口的 step 全部翻成 `kPacked`（`graph_lowering.cpp:110-118`）。带 kWeight 端口的算子共 6 个（Embedding/RmsNorm/Linear/QkvLinear/GateUpLinear/AddRmsNorm，`operator_schema.cpp`），当前注册 packed descriptor 的只有 QkvLinear/GateUpLinear/AddRmsNorm。真实 Llama 图开 packed 时 Embedding/RmsNorm/Linear 在 resolve 期 NotFound——"bpanel 首落 Linear"只在单算子测试里成立。M5 端到端前置：补齐 Linear + RmsNorm + Embedding 的 packed descriptor（identity recipe 即可），或引入 per-op packed 使能（属 lowering 语义变更，按 AGENTS.md compiler 边界另立 workstream，不混入本方案）。
-- **生产编排点不存在**：全仓只有测试调用 `BuildWeightPackingRequests + PrepackAndStore`，无任何 `src/` 编排点；PRD 将 `PackedWeightStore/WeightPrepackPlanner` 定位为"仅为现有 ExecutionPlan packed-weight API 的兼容设施"。M4 的端到端验证是其前置依赖（improvement-plan 01 InferenceSession/Generate readiness），须显式标注。
+- **生产编排点已存在，recipe 注入点仍缺失**：`PrepareExecutableModel`（`src/inference/executable_model.cpp`，[improvement-plan 07](../../improvement-plan/07-executable-model-preparation.md) M2.4）已串联 `BuildWeightPackingRequests + PrepackAndStore + ExecutionPlanBuilder::Build`，但该编排点不查询 descriptor recipe、不注入 `Request::recipe`。M4 的端到端验证仍以 recipe 注入点落地为前置。
 
 ### 3.6 合同收窄清单（descriptor 声明范围）
 
@@ -157,7 +157,7 @@ Load HF → BuildLlamaDense → Lower            Execute (zero alloc):
   → PrepackAndStore → Store（模型准备期一次）
 ```
 
-编排点缺失警示：图中"编排层注入"一步今天没有任何生产代码处，属前置依赖（见 §5 M4）。
+recipe 注入点警示：图中"编排层注入 Request.recipe"一步今天没有任何生产代码处（编排点本身已由 `PrepareExecutableModel` 落地，见 §3.5），属前置依赖（见 §5 M4）。
 
 ## 4. 关键决策与权衡
 
@@ -196,10 +196,10 @@ Load HF → BuildLlamaDense → Lower            Execute (zero alloc):
 | M1 合同 | layout 命名/版本规则 + `cpu_bpanel_packing.h` 常量头；nbytes 不变式两侧独立推导互证单测；**不扩展 PackingRecipe** | 合同单测通过 |
 | M2 打包器 | `BpanelPackerV1`（identity 链路保持不动）；pad/对齐/放大公式单测（K 侧数值表入 params）；unpack 后与逻辑权重逐元素一致、pad 区为 0；打包吞吐与放大实测（kc=256 vs 512，作为 M3 决策输入） | 工作流 O0/O1 证据 |
 | M3 packed primitive | 三个 driver；与 `RunGemmF32Reference` 对照覆盖母提案 §6.2 boundary shapes（含 M/N/K=0、非整除、pad 尾、masked/partial store 路径）；**测"移除 pack 的净收益"**并记录 B 流量模型（去掉 PackBPanel 不改变 B 总流量：无 NC 层级时每 `mb` 仍重扫 K 面板全部 n_blocks，只是省掉 transpose-gather 与 32KB 写） | O1 correctness + O2 prepared micro/operator benchmark |
-| M4 传递链 | `KernelDescriptor::packing_recipe` + backend recipe 查询入口 + 编排层注入 `Request::recipe` + `Pack(..., recipe)` 三处联动；mismatch（layout/alignment/nbytes）明确失败；**前置：生产编排点存在**（依赖 improvement-plan 01） | 母提案 §7「exact recipe 与 packed B」退出条件 |
+| M4 传递链 | `KernelDescriptor::packing_recipe` + backend recipe 查询入口 + 编排层注入 `Request::recipe` + `Pack(..., recipe)` 三处联动；mismatch（layout/alignment/nbytes）明确失败；**前置：recipe 注入点落地**（编排点已存在，见 §3.5） | 母提案 §7「exact recipe 与 packed B」退出条件 |
 | M5 消费者 | **前置：补齐 Linear/RmsNorm/Embedding 的 packed descriptor 或引入 per-op packed 使能（§3.5 全局开关）**；component nr 对齐立约（§4 第 5 条方案 i）+ adapter 校验重写；Qkv/GateUp 切 bpanel（跨步受 §4 决策约束）；Linear 新增 packed descriptor | fused 数值全链路 + packing break-even + hot/streaming 双模式 |
 
-依赖关系与母提案依赖图一致：M1-M3 可与「Decode direct-weight AVX2」并行；M4/M5 前置合同与证据基线重采 + 生产编排点落地。
+依赖关系与母提案依赖图一致：M1-M3 可与「Decode direct-weight AVX2」并行；M4/M5 前置合同与证据基线重采 + recipe 注入点落地。
 
 验证方法补充：
 
@@ -224,6 +224,7 @@ Load HF → BuildLlamaDense → Lower            Execute (zero alloc):
 
 | 日期 | 版本 | 变更 | 原因 |
 |---|---|---|---|
+| 2026-09-23 | 1.3 | 现状同步：生产编排点已由 `PrepareExecutableModel`（improvement-plan 07 M2.4）落地，删除"编排点不存在"的表述，M4 前置改为"recipe 注入点落地"；`WeightPrepackPlanner::BuildRequests` legacy request 生成已删除，request 唯一生产来源为 `BuildWeightPackingRequests` | 07 M2.4 落地使 §1/§2/§3.5/§5 的现状描述与仓库不一致 |
 | 2026-09-22 | 1.2 | 第二轮审核修订：scan driver 形态改为 MR∈{1..8} 广播变体（沿 N 向量化、无水平归约）；recipe 查询入口硬约束为复用 ResolveEligibleDescriptor、PrepareKernel 改读 descriptor->packing_recipe；新增 M5 前置（packed 使能是图级全局开关，须补齐 6 个 kWeight 算子的 packed descriptor 或 per-op 使能）；修正 N 尾三选一（NR<16 列变体/partial column store）、kc 取舍维度（C read-modify-write 趟数翻倍，定值归 M3）、layout 常量编译期绑定（去二级查表）、块内/块间布局表述、K 尾边界表述 | 块内布局与遍历序分开声明；scan driver 原"沿 K 向量化"形态在 bpanel 布局下丢失全部收益；图级开关使"首落 Linear"在端到端不成立 |
 | 2026-09-22 | 1.1 | 按审核意见修订：recipe 不扩展（shape 派生字段不可实现）；pad-0 改为只统一块 stride、输出侧须 masked/partial store；传递链改指生产 `BuildWeightPackingRequests` 并指定 recipe 注入 API 与三处联动；补 K 侧放大量化表、PRD 预算、component nr 对齐、params arena 约束、合同收窄清单、真实风险（exact key NotFound）、编排点缺失标注；修容差公式与关联代码清单 | 初稿按字面实施会因 recipe 相等性合同失败、tail 处理越界、现状描述失真带偏实施顺序 |
 | 2026-09-22 | 1.0 | 初稿：从 B panel 重复打包审核结论展开，具体化 exact recipe 与 packed-B 设计 | GEMM AVX2 kernel 审核提出长期方向 |

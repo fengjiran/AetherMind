@@ -11,6 +11,7 @@
 #include "utils/overflow_check.h"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -18,6 +19,57 @@
 
 namespace aethermind {
 namespace {
+
+/// @brief Names a Transformer weight role for error messages.
+///
+/// Labels mirror ModelGraph dumps so a failing preparation can be read against
+/// a graph dump. Kept file-local because the dump header is outside inference's
+/// allowed dependency surface.
+const char* WeightRoleLabel(TransformerWeightRole role) noexcept {
+    switch (role) {
+        case TransformerWeightRole::kTokenEmbedding:
+            return "TokenEmbedding";
+        case TransformerWeightRole::kInputNorm:
+            return "InputNorm";
+        case TransformerWeightRole::kAttentionQ:
+            return "AttentionQ";
+        case TransformerWeightRole::kAttentionK:
+            return "AttentionK";
+        case TransformerWeightRole::kAttentionV:
+            return "AttentionV";
+        case TransformerWeightRole::kAttentionO:
+            return "AttentionO";
+        case TransformerWeightRole::kMlpGate:
+            return "MlpGate";
+        case TransformerWeightRole::kMlpUp:
+            return "MlpUp";
+        case TransformerWeightRole::kMlpDown:
+            return "MlpDown";
+        case TransformerWeightRole::kPostAttentionNorm:
+            return "PostAttentionNorm";
+        case TransformerWeightRole::kFinalNorm:
+            return "FinalNorm";
+        case TransformerWeightRole::kLmHead:
+            return "LmHead";
+        case TransformerWeightRole::kMoERouter:
+            return "MoERouter";
+    }
+    return "UnknownTransformerWeightRole";
+}
+
+/// @brief Describes a weight binding's identity for error messages.
+///
+/// A nullptr resolution is otherwise indistinguishable from a structurally
+/// absent weight, so the message carries the semantic role and layer index.
+std::string DescribeWeightBinding(const WeightBinding& binding) {
+    const std::optional<TransformerWeightRole> role = TryGetTransformerWeightRole(binding);
+    std::string description = "role=";
+    description += role.has_value() ? WeightRoleLabel(*role) : "<none>";
+    if (binding.decoder_layer_index.has_value()) {
+        description += ", layer=" + std::to_string(*binding.decoder_layer_index);
+    }
+    return description;
+}
 
 /// @brief Derives the artifact's single execution phase from its steps.
 ///
@@ -123,7 +175,8 @@ StatusOr<TensorView> MaterializeBinding(WeightBindingStorage& storage,
     if (raw == nullptr) {
         return Status::FailedPrecondition(
                 "PrepareExecutableModel: weight value " + std::to_string(value_index) +
-                " has no resolvable raw weight");
+                " (" + DescribeWeightBinding(weight->binding) +
+                ") has no resolvable raw weight");
     }
     AM_RETURN_IF_ERROR(ValidateRawWeightView(*raw));
     if (!raw->is_contiguous) {

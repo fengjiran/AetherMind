@@ -2,7 +2,6 @@
 
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/backend_factory.h"
-#include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/base/device.h"
@@ -14,7 +13,6 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/graph/graph.h"
-#include "aethermind/model/loaded_model.h"
 #include "aethermind/model/packed_weight_store.h"
 #include "aethermind/operators/ops/embedding_op.h"
 #include "aethermind/operators/ops/rmsnorm_op.h"
@@ -37,21 +35,6 @@ struct TestStorage : RawStorage {
     std::vector<std::byte> data;
 };
 
-HfModelConfig MakeLlamaConfig(int64_t num_layers) {
-    return HfModelConfig{
-            .model_type = "llama",
-            .architectures = {"LlamaForCausalLM"},
-            .hidden_size = 64,
-            .intermediate_size = 256,
-            .num_hidden_layers = num_layers,
-            .num_attention_heads = 8,
-            .num_key_value_heads = 4,
-            .vocab_size = 1000,
-            .rms_norm_eps = 1e-6,
-            .tie_word_embeddings = false,
-    };
-}
-
 SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
     return SymbolicShape(IntArrayView{std::vector<int64_t>(dims)});
 }
@@ -70,21 +53,6 @@ RawWeightView MakeWeightView(const std::shared_ptr<TestStorage>& storage,
     };
 }
 
-DecoderLayerRawWeights MakeTestLayer(const std::shared_ptr<TestStorage>& storage,
-                                     size_t base_offset) {
-    DecoderLayerRawWeights layer;
-    layer.attn.q_proj = MakeWeightView(storage, base_offset + 0, 8, DataType::Float32(), {2, 1});
-    layer.attn.k_proj = MakeWeightView(storage, base_offset + 8, 8, DataType::Float32(), {2, 1});
-    layer.attn.v_proj = MakeWeightView(storage, base_offset + 16, 8, DataType::Float32(), {2, 1});
-    layer.attn.o_proj = MakeWeightView(storage, base_offset + 24, 8, DataType::Float32(), {2, 1});
-    layer.mlp.gate_proj = MakeWeightView(storage, base_offset + 32, 8, DataType::Float32(), {2, 1});
-    layer.mlp.up_proj = MakeWeightView(storage, base_offset + 40, 8, DataType::Float32(), {2, 1});
-    layer.mlp.down_proj = MakeWeightView(storage, base_offset + 48, 8, DataType::Float32(), {2, 1});
-    layer.norm.input_rmsnorm = MakeWeightView(storage, base_offset + 56, 8, DataType::Float32(), {2, 1});
-    layer.norm.post_attn_rmsnorm = MakeWeightView(storage, base_offset + 64, 8, DataType::Float32(), {2, 1});
-    return layer;
-}
-
 KernelSelector MakeExpectedSelector() {
     return KernelSelector{
             .device_type = DeviceType::kCPU,
@@ -95,106 +63,26 @@ KernelSelector MakeExpectedSelector() {
     };
 }
 
-TEST(WeightPrepackPlanner, BuildRequestsEnumeratesAllLinearWeightsPerLayer) {
-    auto storage = std::make_shared<TestStorage>(256);
-
-    ResolvedModelWeights index;
-    index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
-    index.final_norm = MakeWeightView(storage, 8, 8, DataType::Float32(), {2, 1});
-    index.layers.push_back(MakeTestLayer(storage, 16));
-    index.layers.push_back(MakeTestLayer(storage, 100));
-
-    CpuBackend backend;
-    KernelRegistry registry;
-    auto requests = WeightPrepackPlanner::BuildRequests(
-            MakeLlamaConfig(2), index, backend, registry);
-
-    ASSERT_TRUE(requests.ok());
-    // 2 layers × 7 linear weights = 14 requests.
-    EXPECT_EQ(requests->size(), 14);
-
-    // All requests should be kLinear with the expected packed selector.
-    for (const auto& req: *requests) {
-        EXPECT_EQ(req.op_type, OpType::kLinear);
-        EXPECT_EQ(req.selector, MakeExpectedSelector());
-    }
-}
-
-TEST(WeightPrepackPlanner, BuildRequestsExcludesNormsAndEmbeddings) {
-    auto storage = std::make_shared<TestStorage>(256);
-    ResolvedModelWeights index;
-    index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
-    index.final_norm = MakeWeightView(storage, 8, 8, DataType::Float32(), {2, 1});
-    index.layers.push_back(MakeTestLayer(storage, 16));
-
-    CpuBackend backend;
-    KernelRegistry registry;
-    auto requests = WeightPrepackPlanner::BuildRequests(
-            MakeLlamaConfig(1), index, backend, registry);
-
-    ASSERT_TRUE(requests.ok());
-    for (const auto& req: *requests) {
-        EXPECT_NE(req.raw_weight.data, index.embed_tokens.data);
-        EXPECT_NE(req.raw_weight.data, index.final_norm.data);
-        EXPECT_NE(req.raw_weight.data, index.layers[0].norm.input_rmsnorm.data);
-        EXPECT_NE(req.raw_weight.data, index.layers[0].norm.post_attn_rmsnorm.data);
-    }
-}
-
-TEST(WeightPrepackPlanner, BuildRequestsIncludesLmHeadWhenPresent) {
-    auto storage = std::make_shared<TestStorage>(256);
-    ResolvedModelWeights index;
-    index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
-    index.final_norm = MakeWeightView(storage, 8, 8, DataType::Float32(), {2, 1});
-    index.lm_head = MakeWeightView(storage, 16, 8, DataType::Float32(), {2, 1});
-    index.layers.push_back(MakeTestLayer(storage, 24));
-
-    CpuBackend backend;
-    KernelRegistry registry;
-    auto requests = WeightPrepackPlanner::BuildRequests(
-            MakeLlamaConfig(1), index, backend, registry);
-
-    ASSERT_TRUE(requests.ok());
-    // 1 layer × 7 + lm_head = 8.
-    EXPECT_EQ(requests->size(), 8);
-
-    bool found_lm_head = false;
-    for (const auto& req: *requests) {
-        if (req.raw_weight.data == index.lm_head->data) {
-            found_lm_head = true;
-            break;
-        }
-    }
-    EXPECT_TRUE(found_lm_head);
-}
-
 TEST(WeightPrepackPlanner, PrepackAndStoreMakesWeightsFindable) {
     auto storage = std::make_shared<TestStorage>(256);
     // Fill with zeros so Pack can safely memcpy.
     for (auto& b: storage->data) b = std::byte{0};
 
-    ResolvedModelWeights index;
-    index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
-    index.final_norm = MakeWeightView(storage, 8, 8, DataType::Float32(), {2, 1});
-    index.layers.push_back(MakeTestLayer(storage, 16));
+    const std::vector<WeightPrepackPlanner::Request> requests{
+            {.op_type = OpType::kLinear,
+             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
+             .raw_weight = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1}),
+             .selector = MakeExpectedSelector()},
+    };
 
-    LoadedModel loaded_model(MakeLlamaConfig(1), std::move(index));
     PackedWeightStore packed_weight_store;
-
-    CpuBackend backend;
-    KernelRegistry registry;
-    auto requests = WeightPrepackPlanner::BuildRequests(
-            loaded_model.GetConfig(), loaded_model.GetResolvedWeights(), backend, registry);
-    ASSERT_TRUE(requests.ok());
-
-    Status status = WeightPrepackPlanner::PrepackAndStore(packed_weight_store, *requests);
-    ASSERT_TRUE(status.ok());
+    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(packed_weight_store, requests).ok());
 
     const KernelSelector expected_selector = MakeExpectedSelector();
-    const WeightArtifactKey key{.binding = requests->front().binding,
-                                .selector = requests->front().selector,
+    const WeightArtifactKey key{.binding = requests.front().binding,
+                                .selector = requests.front().selector,
                                 .recipe = CpuWeightPrepacker::RecipeFor(
-                                        requests->front().selector)};
+                                        requests.front().selector)};
     const auto found = packed_weight_store.Find(key);
     ASSERT_NE(found, nullptr);
     EXPECT_EQ(found->op_type(), OpType::kLinear);
@@ -206,35 +94,36 @@ TEST(WeightPrepackPlanner, PrepackAndStoreStoresAllLayerWeightsDistinctly) {
     auto storage = std::make_shared<TestStorage>(256);
     for (auto& b: storage->data) b = std::byte{0};
 
-    ResolvedModelWeights index;
-    index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
-    index.final_norm = MakeWeightView(storage, 8, 8, DataType::Float32(), {2, 1});
-    // Two layers — all linear weights share the same (op_type, selector) but
+    // Two layers × 7 linear weights share the same (op_type, selector) but
     // distinct bindings. Every weight must be packed, not silently dropped.
-    index.layers.push_back(MakeTestLayer(storage, 16));
-    index.layers.push_back(MakeTestLayer(storage, 100));
+    const std::vector<TransformerWeightRole> roles{
+            TransformerWeightRole::kAttentionQ, TransformerWeightRole::kAttentionK,
+            TransformerWeightRole::kAttentionV, TransformerWeightRole::kAttentionO,
+            TransformerWeightRole::kMlpGate, TransformerWeightRole::kMlpUp,
+            TransformerWeightRole::kMlpDown};
+    std::vector<WeightPrepackPlanner::Request> requests;
+    for (uint32_t layer = 0; layer < 2; ++layer) {
+        for (size_t role = 0; role < roles.size(); ++role) {
+            requests.push_back(
+                    {.op_type = OpType::kLinear,
+                     .binding = MakeTransformerWeightBinding(layer, roles[role]),
+                     .raw_weight = MakeWeightView(storage, (layer * roles.size() + role) * 8U,
+                                                  8, DataType::Float32(), {2, 1}),
+                     .selector = MakeExpectedSelector()});
+        }
+    }
+    ASSERT_EQ(requests.size(), 14U);
 
-    LoadedModel loaded_model(MakeLlamaConfig(2), std::move(index));
     PackedWeightStore packed_weight_store;
-
-    CpuBackend backend;
-    KernelRegistry registry;
-    auto requests = WeightPrepackPlanner::BuildRequests(
-            loaded_model.GetConfig(), loaded_model.GetResolvedWeights(), backend, registry);
-    ASSERT_TRUE(requests.ok());
-    EXPECT_EQ(requests->size(), 14);
-
-    Status status = WeightPrepackPlanner::PrepackAndStore(packed_weight_store, *requests);
-    ASSERT_TRUE(status.ok());
+    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(packed_weight_store, requests).ok());
 
     // All 14 distinct keys are stored; the same role across layers differs by
     // its layer index and every role is individually findable.
     EXPECT_EQ(packed_weight_store.size(), 14U);
-    for (const auto& req: *requests) {
+    for (const auto& req: requests) {
         const WeightArtifactKey key{.binding = req.binding,
                                     .selector = req.selector,
-                                    .recipe = CpuWeightPrepacker::RecipeFor(
-                                            req.selector)};
+                                    .recipe = CpuWeightPrepacker::RecipeFor(req.selector)};
         EXPECT_NE(packed_weight_store.Find(key), nullptr) << "missing key for layer";
     }
 }
@@ -243,28 +132,21 @@ TEST(WeightPrepackPlanner, RawViewsRemainAccessibleAfterPrepack) {
     auto storage = std::make_shared<TestStorage>(256);
     for (auto& b: storage->data) b = std::byte{0};
 
-    ResolvedModelWeights index;
-    index.embed_tokens = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
-    index.final_norm = MakeWeightView(storage, 8, 8, DataType::Float32(), {2, 1});
-    index.layers.push_back(MakeTestLayer(storage, 16));
+    const RawWeightView raw_weight =
+            MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
+    const std::vector<WeightPrepackPlanner::Request> requests{
+            {.op_type = OpType::kLinear,
+             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
+             .raw_weight = raw_weight,
+             .selector = MakeExpectedSelector()},
+    };
 
-    LoadedModel loaded_model(MakeLlamaConfig(1), std::move(index));
     PackedWeightStore packed_weight_store;
+    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(packed_weight_store, requests).ok());
 
-    CpuBackend backend;
-    KernelRegistry registry;
-    auto requests = WeightPrepackPlanner::BuildRequests(
-            loaded_model.GetConfig(), loaded_model.GetResolvedWeights(), backend, registry);
-    ASSERT_TRUE(requests.ok());
-
-    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(packed_weight_store, *requests).ok());
-
-    const auto& resolved_weights = loaded_model.GetResolvedWeights();
-    EXPECT_TRUE(resolved_weights.embed_tokens.IsValid());
-    EXPECT_TRUE(resolved_weights.final_norm.IsValid());
-    EXPECT_TRUE(resolved_weights.layers[0].attn.q_proj.IsValid());
-    EXPECT_TRUE(resolved_weights.layers[0].mlp.down_proj.IsValid());
-    EXPECT_TRUE(resolved_weights.layers[0].norm.input_rmsnorm.IsValid());
+    // Prepacking borrows the request's raw view; the caller's view stays valid.
+    EXPECT_TRUE(raw_weight.IsValid());
+    EXPECT_TRUE(storage->data.data() == raw_weight.data);
 }
 
 int g_planner_packed_kernel_calls = 0;
@@ -730,7 +612,7 @@ TEST(WeightPrepackPlanner, PrepackAndStoreRejectsOverflowingWeightByteSize) {
 // embed_tokens. The request builder must mirror ModelGraphBuilder and fall
 // back to embed_tokens for the kLmHead binding, or graph-driven
 // materialization fails for common tied models.
-TEST(WeightPrepackPlanner, BuildRequestsFallBackToEmbedTokensForTiedLmHead) {
+TEST(WeightPrepackPlanner, BuildWeightPackingRequestsFallsBackToEmbedTokensForTiedLmHead) {
     auto storage = std::make_shared<TestStorage>(2048);
     for (auto& b: storage->data) b = std::byte{0};
 
@@ -785,7 +667,7 @@ TEST(WeightPrepackPlanner, BuildRequestsFallBackToEmbedTokensForTiedLmHead) {
 // Plain (non-packed) weight steps must not produce packing requests: the
 // planner packs only kPacked selectors, and feeding it plain steps would
 // fail inside CpuWeightPrepacker.
-TEST(WeightPrepackPlanner, BuildRequestsSkipsPlainWeightSteps) {
+TEST(WeightPrepackPlanner, BuildWeightPackingRequestsSkipsPlainWeightSteps) {
     ModelGraph graph;
     const GraphValueId input = graph.AddConstant(
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({1, 8})},
@@ -811,7 +693,7 @@ TEST(WeightPrepackPlanner, BuildRequestsSkipsPlainWeightSteps) {
 // One weight value consumed by several steps with the same selector packs
 // exactly once; duplicate requests would collide on the exact artifact key
 // and fail with AlreadyExists during Store.
-TEST(WeightPrepackPlanner, BuildRequestsDeduplicatesSharedWeightValue) {
+TEST(WeightPrepackPlanner, BuildWeightPackingRequestsDeduplicatesSharedWeightValue) {
     auto storage = std::make_shared<TestStorage>(512);
     for (auto& b: storage->data) b = std::byte{0};
 

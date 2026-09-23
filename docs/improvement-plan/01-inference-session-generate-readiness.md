@@ -1,9 +1,9 @@
 # InferenceSession / Generate 前置闭环计划
 
 - **状态**: In Progress
-- **版本**: 1.9
+- **版本**: 1.10
 - **日期**: 2026-09-03
-- **最近更新**: 2026-09-23
+- **最近更新**: 2026-09-24
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **关联模块**: compiler / execution / runtime / backend / model / API orchestration
@@ -130,75 +130,37 @@ LoweredGraph StateBinding
 - layer/slot/position/capacity 必须有唯一权威来源；
 - KV commit watermark 只在完整 plan 成功后推进。
 
-### 3.2 缺少 ExecutableModel 准备入口
+### 3.2 ExecutableModel 准备入口已落地
 
-当前以下组件彼此独立：
+`PrepareExecutableModel(Runtime&, LoweredModelArtifact)` 是从真实 compiler artifact 到可执行模型的生产准备入口，负责按 lowered graph 物化权重、构建 immutable external binding map 和 execution plan，并让 `ExecutableModel` 持有 artifact、weight backing、packed artifacts、binding metadata 与 plan。Session 不扫描 `LoweredGraph`，也不按 debug name 解析权重角色。
 
-```text
-ModelCompiler
-BuildWeightPackingRequests
-PrepackWeightRequests
-ExecutionPlanBuilder
-PrepareExecutionBindings
-```
+证据包括 `ExecutableModel.*` 测试，以及 M4 直接执行测试 `DirectPrefillDecode.TinyTiedGqaLlamaMatchesScalarOracleAndReusesDecodeBindings`：O1 FP32 plain tiny Llama 从 `ModelCompiler::Compile` 进入 `PrepareExecutableModel`，plan 由真实 `CpuBackendFactory` 构建。
 
-缺少一个生产入口统一完成：
+### 3.3 immutable external weight binding 已落地
 
-```text
-LoweredModelArtifact
-    → graph-driven weight materialization/prepack
-    → plan build
-    → immutable weight/constant external binding map
-    → phase plan selection
-    → ExecutableModel
-```
+模型准备阶段通过结构化 `WeightBinding` identity 将权重和常量绑定到 `ExecutionValueId`。`WeightBindingStorage` 保有 view 所借用的 shape/stride metadata，artifact 保有原始 backing；plain tensors 与 packed artifacts 按 plan requirements 区分。Tied lm-head 由准备阶段解析为与 embedding 相同的 backing。
 
-`InferenceSession` 不得直接扫描 `LoweredGraph`、根据 debug name 查找权重或理解 `TransformerWeightRole`。这些职责属于模型准备阶段。
+已有 `BindingsMatchExternalReadRequirementsExactly`、`TiedLmHeadSharesEmbeddingBacking` 和 packed preparation 测试验证 binding 完整性与 ownership。M4 配置额外断言 immutable table 中 embedding backing 恰好被 embedding 和 tied lm-head 两个 value 引用。
 
-### 3.3 缺少真实 external weight binding 构造
+### 3.4 Prefill/Decode phase-plan 合同已验证
 
-`PrepareExecutionBindings` 要求 model inputs、plain weights 和 constants 提供 `ExternalTensorBindings`。目前测试手工构造这些 views，但没有从 `LoadedModel::resolved_weights` 按 `ExecutionValueId` 生成 immutable binding map 的生产 API。
+reference baseline 编译为一个 `kBoth` lowered graph；`ExecutableModel::plan(kPrefill)` 和 `plan(kDecode)` 可共享同一个 immutable `ExecutionPlan`。两阶段仍分别用 concrete token/position shape 创建 `PreparedExecutionBindings` 和 `ExecutionContext`，Decode loop 复用其单个 specialization。
 
-该映射必须：
+07 号提案 M2.5 已验证共享 plan identity、phase mismatch 拒绝和混合 phase prepare 拒绝。M4 进一步执行该共享 plan：同一 Decode context 连续执行两次，验证所有 step 输入/输出地址和 prepared kernel params 地址保持不变。
 
-- 基于结构化 weight identity，不依赖字符串；
-- 保证 backing storage 比 prepared bindings 活得久；
-- 正确处理 tied lm-head；
-- 区分 plain weight TensorView 和 packed artifact；
-- 在 model preparation 阶段完成完整性验证。
+### 3.5 M4 direct Prefill→Decode 证据已闭环
 
-### 3.4 Prefill/Decode plan 合同未冻结
+2026-09-24，`DirectPrefillDecode.TinyTiedGqaLlamaMatchesScalarOracleAndReusesDecodeBindings` 通过真实 `CpuBackend` 执行 tiny Llama，配置为 1 layer、hidden size 8、4 query heads / 2 KV heads、head_dim 2、tied lm-head、3-token prompt。权重由确定性 fixture 填为非零值。独立 scalar oracle 覆盖 Embedding、RMSNorm、Linear、RoPE、causal GQA Attention、SwiGLU MLP、tied lm-head 与 Argmax。
 
-当前 lowering 支持 `ExecPhase::{kPrefill, kDecode, kBoth}`，但一次 `ModelCompiler::Compile` 只返回一个 `LoweredGraph`。
+测试逐 stage 比较 logits、tokens、完整已提交 key/value 内容和 commit position；重复运行新的 Prefill→Decode 链并逐项比较结果。Prefill 后和每次 Decode 成功后由 `Executor` 自动推进 commit watermark，测试不手动调用 `CommitUntil`。同一 Decode bindings 执行两步；输入/输出地址与 prepared kernel params 保持稳定。
 
-当前产品的 reference baseline 允许先使用一个 `kBoth` plan：
+错误路径将 Decode `position_ids` 设为 -1，验证执行失败且 watermark 不前进；先 `ExecutionContext::Clear()`，再 `ReleaseSession()`，随后成功重新 reserve，证明资源释放顺序可用。
 
-- semantic topology 相同；
-- prefill/decode 分别构建不同的 `PreparedExecutionBindings`；
-- reference kernel 根据 concrete binding/token count 执行正确语义；
-- 两阶段不能同时执行，符合同步单请求边界。
+零分配计数覆盖每个 steady-state Decode body：写入稳定 token/position buffer、存在 workspace 时调用 `WorkspaceArena::Reset()`、执行 `Executor::Execute` 并读取输出 token。scalar oracle、断言、KV snapshot 和计数结果检查都在窗口外。glibc/Linux interposer 对窗口内的 `malloc/calloc/realloc/free/aligned_alloc/posix_memalign/memalign` 计数；C++ `operator new` 经 malloc-family 入口计入。`MallocInterposerObservesCpuAllocatorCalls` 通过共享库内的 `CPUAllocator::Allocate` 校准 `posix_memalign/free` 符号拦截。Debug 和 Release 均观察到两次 Decode 各 0 次分配与释放。
 
-只有出现以下真实需求时才拆成独立 plan：
+该测试还发现并修复两个成功路径分配：KVCacheUpdate 和 Attention 的 KV footprint 验证原先每次为诊断参数动态拼接 `std::string`，现在传入固定 `string_view` 错误标签。执行层也已接受模型图中符号化的 cache_len 轴，同时继续要求静态 KV heads/head_dim 与 `KVCacheView` 匹配；显式静态容量仍须等于 runtime capacity，并有错误几何回归覆盖。
 
-- prefill/decode 选择不同 kernel；
-- workspace requirement 不同；
-- physical topology 或 state/resource use 不同；
-- phase-specific layout/packing 产生可验证收益。
-
-对外 `ExecutableModel` 应提供按 phase 获取 plan 的接口，并允许 prefill/decode 在内部共享同一不可变 plan，避免把当前 baseline 实现固化为长期限制。
-
-### 3.5 缺少端到端数值与稳态证据
-
-在实现 public Session 前必须存在真实 CPU backend 测试，而不是 fake kernel call count：
-
-- tiny one-layer Llama Prefill；
-- 至少两个 Decode step；
-- logits/token 与可信 reference 对比；
-- KV key/value 内容与 commit position 验证；
-- tied lm-head；
-- GQA；
-- 相同输入重复执行的确定性；
-- Decode loop malloc/free 次数为零。
+Allocation interposer 目前为 glibc/Linux 专用；其他平台仍运行数值、KV、确定性和失败清理证明，跳过仅有的 malloc-family 计数证据。完成本节不等同于 public `InferenceSession::Generate` 已实现，M5 仍未开始。
 
 ## 4. 目标架构
 
@@ -374,18 +336,16 @@ CpuBackend::PrepareKernel
 
 ### M4：direct Prefill→Decode execution proof
 
-不经过 Session facade，直接使用 `ExecutableModel`、`ExecutionContext` 和 `Executor`：
+**状态（2026-09-24）**：已完成，详见 §3.5 与 §9。测试不经过 Session facade，直接使用 `ExecutableModel`、`ExecutionContext` 和 `Executor`；完整 plan 成功后由 Executor 自动推进 KV watermark，不额外手动 commit。
 
 ```text
 prepare prefill bindings
-  → Execute
-  → commit prompt KV
-  → read first token
-  → replace with decode bindings once
-  → Execute decode #1
-  → commit
-  → Execute decode #2
-  → commit
+  → Execute Prefill
+  → verify committed prompt KV and read last token
+  → prepare one Decode context
+  → Execute Decode #1 and verify commit
+  → update stable input buffer and reset workspace
+  → Execute Decode #2 and verify commit
 ```
 
 #### 必测配置
@@ -406,7 +366,7 @@ prepare prefill bindings
 2. reserve KV session；
 3. allocate/reuse workspace；
 4. prepare and execute prefill；
-5. commit KV；
+5. 完整 plan 成功时由 `Executor` 提交 KV append transaction，Session 读取 commit watermark；
 6. read Argmax token；
 7. prepare decode bindings once；
 8. run decode loop；
@@ -426,8 +386,8 @@ prompt token IDs + position IDs
   → ExecutionContext::Create
   → workspace reset by Session owner
   → Executor::Execute
-  → success: KVCacheView::CommitUntil(prompt_len)
-  → read first output token
+  → successful full plan automatically commits the KV append transaction
+  → verify current_pos and read the last output token
 ```
 
 ### 7.2 Decode steady state
@@ -440,7 +400,7 @@ loop:
   write/update position ID
   reset workspace through Session owner
   Executor::Execute
-  commit one KV position on success
+  successful full plan automatically commits one KV position
   read Argmax output
   evaluate EOS/max_tokens
 ```
@@ -484,11 +444,11 @@ Decode 循环中不得变化：
 - [x] `PrepareExecutableModel` 可从真实 `LoweredModelArtifact` 构建（`inference/executable_model.h`，07 号提案 M2.4）；
 - [x] real weights 可自动生成完整 external bindings（12 个权重值自动绑定并与需求集合双向对账；packed 全模型路径已可解析，见 §2.3）；
 - [x] Prefill/Decode phase-plan 合同已验证（07 号提案 §4.5：`kBoth` artifact 三种 phase 查询共享同一 plan、单 phase artifact 拒绝不匹配查询、step 间 phase 不一致在 prepare 期拒绝，由 M2.5 测试覆盖）；
-- [ ] tiny Llama Prefill + 2 Decode 数值测试通过；
-- [ ] KV content 与 commit position 测试通过；
-- [ ] Decode 重复执行不重新调用 `PrepareExecutionBindings`；
-- [ ] Decode malloc-hook 稳态零分配测试通过；
-- [ ] 错误路径释放 KV reservation，borrowed resource teardown 顺序正确。
+- [x] tiny Llama Prefill + 2 Decode logits/tokens 与独立 scalar oracle 对齐（`DirectPrefillDecode.TinyTiedGqaLlamaMatchesScalarOracleAndReusesDecodeBindings`）；
+- [x] 所有已写 KV key/value 与 commit position 对齐 oracle，并由 Executor 在完整 plan 成功后自动提交；
+- [x] 同一 Decode `ExecutionContext` 连续执行两步，不重新调用 `PrepareExecutionBindings`，plan / tensor / params 地址稳定；
+- [x] glibc/Linux Decode steady-state body 的 malloc-family 与 C++ allocation 入口计数为零；窗口包括输入内容更新、workspace reset、Execute 和读取输出 token；
+- [x] 非法 Decode position 失败后 watermark 不前进，清理 context 后释放 reservation 并可重新 reserve。
 
 ## 10. 关联代码
 
@@ -502,6 +462,10 @@ Decode 循环中不得变化：
 - [`src/model/llama_dense_graph_builder.cpp`](../../src/model/llama_dense_graph_builder.cpp)
 - [`src/compiler/optimize_graph.cpp`](../../src/compiler/optimize_graph.cpp)
 - [`src/backend/cpu/kernels/`](../../src/backend/cpu/kernels/)
+- [`src/backend/cpu/kernels/kvcache_update/kvcache_update_entry.cpp`](../../src/backend/cpu/kernels/kvcache_update/kvcache_update_entry.cpp)
+- [`src/backend/cpu/kernels/attention/attention_entry.cpp`](../../src/backend/cpu/kernels/attention/attention_entry.cpp)
+- [`tests/unit/inference/test_direct_prefill_decode.cpp`](../../tests/unit/inference/test_direct_prefill_decode.cpp)
+- [`tests/unit/execution/test_kvcache_update_kernel.cpp`](../../tests/unit/execution/test_kvcache_update_kernel.cpp)
 
 ## 11. 变更记录
 
@@ -517,3 +481,4 @@ Decode 循环中不得变化：
 | 2026-09-23 | 1.7 | 07 号提案 M2.4 落地后同步：§9 勾选 "baseline pipeline 可通过真实 CpuBackend 构建完整 plan"、"`PrepareExecutableModel` 可从真实 artifact 构建"、"real weights 可自动生成完整 external bindings" 三项；§2.3 补记 kEmbedding 亦无 kPacked 变体，并写明其后果——`enable_packed_weights=true` 的完整 Llama 在 kernel resolve 即失败，packed 取证只能走子图 |
 | 2026-09-23 | 1.8 | 07 号提案 M2.5 落地后同步：§9 勾选 "Prefill/Decode phase-plan 合同已验证"（共享单 plan、phase 不匹配报错、混合 phase prepare 期拒绝三项由 M2.5 测试覆盖，见 07 §4.5/§7）；07 转 Implemented，实现描述由 [designs/inference/01-executable-model.md](../designs/inference/01-executable-model.md) 承接。剩余五项门禁（Prefill/Decode 数值、KV content/commit、重复 decode、malloc-hook、KV reservation teardown）属 M4/M5，未勾选 |
 | 2026-09-23 | 1.9 | 按当前代码状态同步 packed-weight 能力：§2.2 描述符计数 21→27（新增 kLinear/kEmbedding/kRmsNorm 的 packed identity 与 Qkv/GateUp/Linear 的 `cpu_bpanel_f32_v1_avx2` 候选），表格 packed 相关行更新，段末"剩余准入项"改为端到端数值证据；§2.3 "仍未具备" 重写——kLinear/kEmbedding kPacked 变体与 tile/block recipe 已补齐（`PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 缺口测试已由 `PackedLoweringPreparesAllWeightConsumers` 取代），仅剩"bpanel 升为默认（待 benchmark）"与 unfused e2e 数值验证；§9 括注同步。另注：§3.2–§3.5 的缺口叙述（如"缺少 ExecutableModel 准备入口"）早于本次同步即已过期，待该文件自身维护时重写 |
+| 2026-09-24 | 1.10 | 更正 §3.2–§3.4 中过期的 M2 缺口描述；记录 M4 真实 CpuBackend tiny Llama Prefill + 两步 Decode 的数值、KV、确定性、失败清理与 glibc/Linux steady-state allocation 证据。M4 修复符号化 cache_len 与 KVCacheView geometry 的执行校验冲突，并将 KVCacheUpdate/Attention 热路径的 eager diagnostic string 改为固定 string_view；§7 同步说明 commit 由 Executor 在完整 plan 成功后自动推进，§9 五项 M4 门禁全部勾选。M5 public Generate 仍未实现。|

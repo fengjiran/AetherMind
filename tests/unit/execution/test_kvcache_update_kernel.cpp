@@ -721,6 +721,67 @@ TEST(KVCacheUpdateKernel, AttentionRejectsStateGeometryThatDiffersFromKVCacheVie
     EXPECT_EQ(view->current_pos(), 2U);
 }
 
+TEST(KVCacheUpdateKernel, AttentionRejectsMismatchedStaticKvHeadsAndHeadDimension) {
+    Runtime runtime = MakeRuntime(1);
+    KVCacheManager* const manager = runtime.GetKVCacheManager();
+    ASSERT_NE(manager, nullptr);
+    auto view = manager->ReserveForSession(2, 1);
+    ASSERT_TRUE(view.ok());
+    ASSERT_TRUE(view->CommitUntil(2).ok());
+
+    const TensorSpec activation = F32Spec({1, 4});
+    constexpr std::array<std::array<int64_t, 3>, 2> kInvalidCacheShapes = {
+            std::array<int64_t, 3>{1, 8, 2},
+            std::array<int64_t, 3>{2, 8, 3},
+    };
+    for (const auto& dimensions: kInvalidCacheShapes) {
+        SCOPED_TRACE(testing::Message() << "cache shape [" << dimensions[0] << ", "
+                                        << dimensions[1] << ", " << dimensions[2] << "]");
+        const TensorSpec wrong_cache = F32Spec(
+                {dimensions[0], dimensions[1], dimensions[2]});
+        const std::vector<ExecutionValueDesc> values = {
+                {.spec = activation, .kind = ExecutionValueKind::kModelInput},
+                {.spec = wrong_cache,
+                 .kind = ExecutionValueKind::kState,
+                 .state_binding = ExecutionKVCacheStateIdentity{
+                         .decoder_layer_index = 0,
+                         .slot = ExecutionKVCacheSlot::kKey}},
+                {.spec = wrong_cache, .kind = ExecutionValueKind::kState, .state_binding = ExecutionKVCacheStateIdentity{.decoder_layer_index = 0, .slot = ExecutionKVCacheSlot::kValue}},
+                {.spec = activation, .kind = ExecutionValueKind::kActivation},
+        };
+        const ExecutionStep attention_step = {
+                .selector = F32CpuSelector(),
+                .kernel = {
+                        .op_type = OpType::kAttention,
+                        .fn = &CaptureReadBindingKernel,
+                },
+                .inputs = {{.index = 0}, {.index = 1}, {.index = 2}},
+                .outputs = {{.index = 3}},
+                .kernel_input_ports = {0},
+                .kernel_output_ports = {0},
+        };
+        const auto plan = ExecutionPlan::Create(
+                values, {{.index = 0}}, {}, {attention_step});
+        ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+
+        float query[4] = {};
+        const int64_t shape[2] = {1, 4};
+        const int64_t strides[2] = {4, 1};
+        auto context = MakeContext(
+                runtime, *plan, *view,
+                std::array<TensorView, 1>{
+                        TensorView(query, DataType::Float32(), shape, strides)});
+        ASSERT_TRUE(context.ok()) << context.status().ToString();
+        g_last_read_binding.reset();
+
+        const Status status = Executor::Execute(*plan, *context);
+
+        EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+        EXPECT_FALSE(g_last_read_binding.has_value());
+        EXPECT_EQ(view->current_pos(), 2U);
+    }
+}
+
 TEST(KVCacheUpdateKernel, LaterStepFailureLeavesWrittenRangeUncommitted) {
     Runtime runtime = MakeRuntime(1);
     KVCacheManager* const manager = runtime.GetKVCacheManager();

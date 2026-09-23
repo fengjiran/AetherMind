@@ -8,6 +8,12 @@ file(GLOB_RECURSE TEST_SRC_FILES CONFIGURE_DEPENDS
 find_package(GTest REQUIRED)
 add_executable(${TEST_TARGET} ${TEST_SRC_FILES})
 
+# Export the test executable's glibc malloc wrappers so calls from AetherMind's
+# shared library are interposed during the scoped steady-state allocation check.
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set_target_properties(${TEST_TARGET} PROPERTIES ENABLE_EXPORTS ON)
+endif ()
+
 target_include_directories(${TEST_TARGET}
         PRIVATE
         #        ${PROJECT_SOURCE_DIR}/include

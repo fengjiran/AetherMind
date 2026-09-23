@@ -42,6 +42,10 @@ public:
         return bytes_.data();
     }
 
+    AM_NODISCARD void* mutable_data() noexcept {
+        return bytes_.data();
+    }
+
 private:
     DataType dtype_{};
     std::vector<std::byte> bytes_{};

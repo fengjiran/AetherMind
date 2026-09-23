@@ -28,7 +28,7 @@ ExecutionPlan（ExecutionStep[] + StateAliasPlan）
 | compiler | `OperatorSchema::state_alias_ports` | 有状态算子声明 must-alias 端口对，lowering 与 execution 零特判 |
 | execution | `ExecutionPlanBuilder::Build` / `ResolveStateAliasesForExecution` | 消费 LoweredGraph，验证 artifact、解析 state aliases、resolve kernel、规划 workspace |
 | execution | `ExecutionPlanNodeSpec` | untrusted 执行请求：测试/手工构造路径，经 InferOperator 重验证 |
-| base | `KernelSelector`（含 device/weight_format/phase/dtype） | 跨模块执行请求描述符：lowering 记录，execution/backend 结构化匹配 kernel；指令集要求不在 selector 内，由 backend 按 `KernelDescriptor.cpu_requirements` + 能力快照过滤 |
+| base | `KernelSelector`（含 device/weight_format/phase/dtype） | 跨模块执行请求描述符：lowering 记录，execution/backend 结构化匹配 kernel；指令集要求不在 selector 内，由 backend 按 `KernelDef.cpu_requirements` + 能力快照过滤 |
 
 ### 1.3 Lowering 的职责
 
@@ -369,7 +369,7 @@ struct LoweredStepSpec {
 
 ### 5.2 不保存 WorkspaceRequirement
 
-Workspace 是 Kernel implementation 的执行资源需求。LoweredGraph 尚未选择 Kernel，因此不应该出现 `WorkspaceRequirement workspace;`。Planner 在选定 Kernel 后 `KernelDescriptor → QueryWorkspace() → WorkspaceRequirement`。
+Workspace 是 Kernel implementation 的执行资源需求。LoweredGraph 尚未选择 Kernel，因此不应该出现 `WorkspaceRequirement workspace;`。Planner 在选定 Kernel 后 `KernelDef → QueryWorkspace() → WorkspaceRequirement`。
 
 ### 5.3 不保存最终 Physical Layout
 
@@ -828,7 +828,7 @@ include/aethermind/ + src/
 │   └── execution_plan.h / state_alias_plan.h / executor.h / layer_runner.h ...
 ├── backend/           kernel registry / selector / CPU kernels
 │   ├── kernel_selector.h（转发 base/kernel_selector.h）
-│   └── kernel_registry.h / kernel_descriptor.h / packed_weights.h ...
+│   └── kernel_registry.h / kernel_def.h / packed_weights.h ...
 ├── base/              kernel_attrs.h / workspace_types.h / kernel_selector.h
 ├── graph/             语义 IR（ModelGraph）+ 优化 passes
 └── operators/         算子语义契约层（OpType / OperatorSchema / OpParams / Infer*）

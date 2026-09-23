@@ -27,7 +27,7 @@ KernelRegistry& KernelRegistry::Global() noexcept {
     return registry;
 }
 
-Status KernelRegistry::Register(const KernelDescriptor& descriptor) {
+Status KernelRegistry::Register(const KernelDef& descriptor) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (frozen_.load(std::memory_order_relaxed)) {
@@ -35,7 +35,7 @@ Status KernelRegistry::Register(const KernelDescriptor& descriptor) {
                 "Cannot register kernel after registry has been frozen");
     }
 
-    if (auto status = ValidateKernelDescriptor(descriptor); !status.ok()) {
+    if (auto status = ValidateKernelDef(descriptor); !status.ok()) {
         return status;
     }
 
@@ -76,7 +76,7 @@ Status KernelRegistry::BuildBucketIndex() {
     return Status::Ok();
 }
 
-StatusOr<std::vector<const KernelDescriptor*>> KernelRegistry::FindCandidates(
+StatusOr<std::vector<const KernelDef*>> KernelRegistry::FindCandidates(
         OpType op_type,
         const KernelSelector& selector) const {
     // Register/Freeze use mutex + release-store on frozen_; the acquire-load here
@@ -90,11 +90,11 @@ StatusOr<std::vector<const KernelDescriptor*>> KernelRegistry::FindCandidates(
         return status;
     }
 
-    std::vector<const KernelDescriptor*> candidates;
+    std::vector<const KernelDef*> candidates;
     if (const auto it = buckets_.find(op_type); it != buckets_.end()) {
         candidates.reserve(it->second.size());
         for (size_t idx: it->second) {
-            const KernelDescriptor& descriptor = kernels_[idx];
+            const KernelDef& descriptor = kernels_[idx];
             if (!SelectorMatches(descriptor.selector, selector)) {
                 continue;
             }
@@ -104,13 +104,13 @@ StatusOr<std::vector<const KernelDescriptor*>> KernelRegistry::FindCandidates(
     return candidates;
 }
 
-StatusOr<std::vector<const KernelDescriptor*>> KernelRegistry::FindByOpType(OpType op_type) const {
+StatusOr<std::vector<const KernelDef*>> KernelRegistry::FindByOpType(OpType op_type) const {
     if (!frozen_.load(std::memory_order_acquire)) {
         return Status::FailedPrecondition(
                 "Cannot find kernels by op_type before registry has been frozen");
     }
 
-    std::vector<const KernelDescriptor*> result;
+    std::vector<const KernelDef*> result;
     if (const auto it = buckets_.find(op_type); it != buckets_.end()) {
         result.reserve(it->second.size());
         for (size_t idx: it->second) {

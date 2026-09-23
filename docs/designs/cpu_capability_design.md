@@ -15,7 +15,7 @@ CPU 能力模型基于**特征集合（feature set）**建模：
 
 - **原子性**：每个 `CpuFeature` 是单一、不可再分的指令集能力（如 `kAvx2`、`kFma`、`kAvx512Vnni`），组合要求以特征集的并集表达。
 
-- **互不隐含**：特征之间不存在蕴含关系，`KernelDescriptor::cpu_requirements` 必须显式声明一条路径所需的全部特征。
+- **互不隐含**：特征之间不存在蕴含关系，`KernelDef::cpu_requirements` 必须显式声明一条路径所需的全部特征。
 
 - **严格子集判定**：kernel 可运行当且仅当机器 `effective_features` 包含其全部要求（即 `ContainsAll` 语义）。
 
@@ -169,14 +169,14 @@ effective = usable − disabled
 ### 7.1 注册期
 
 ```cpp
-struct KernelDescriptor {
+struct KernelDef {
     ...
     CpuFeatureSet cpu_requirements{}; // CPU kernel 的完整指令集要求；空 = 任意机器
     ...
 };
 ```
 
-- `ValidateKernelDescriptor`：非 CPU device 携带非空 `cpu_requirements` → InvalidArgument。
+- `ValidateKernelDef`：非 CPU device 携带非空 `cpu_requirements` → InvalidArgument。
 
 - `RegistrationKey = {op_type, selector, cpu_requirements}`：重复注册判定含特征集（scalar 与 AVX2 变体同 selector 可共存）；`RegistrationKeyHash` 复用 `CpuFeatureSet::Hash()`。
 
@@ -191,7 +191,7 @@ FindCandidates(op_type, selector)          // 结构匹配
   → 无命中：NotFound（诊断含 selector + effective_features）
 ```
 
-`KernelDescriptor` 注册的 `cpu_requirements` 与 `RegistrationKey`/hash 保持一致，`effective_features` 来自构造时冻结的 `CpuCapabilities` 快照。
+`KernelDef` 注册的 `cpu_requirements` 与 `RegistrationKey`/hash 保持一致，`effective_features` 来自构造时冻结的 `CpuCapabilities` 快照。
 
 ### 7.3 与打包的关系
 

@@ -256,7 +256,7 @@ static_assert(alignof(KVCacheUpdateF32KernelArgs) <= alignof(std::max_align_t));
 static_assert(sizeof(KVCacheUpdateF32KernelArgs) <= kMaxKernelParamsSize);
 
 AM_REGISTER_KERNEL(CpuKVCacheUpdateF32Reference,
-                   KernelDescriptor{
+                   KernelDef{
                            .op_type = OpType::kKVCacheUpdate,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,

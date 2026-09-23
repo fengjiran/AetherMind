@@ -213,7 +213,7 @@ Phase 1 中必须始终保持：
 
 ### 主要工作
 
-- Batch 1：冻结 dispatch 新旧主线边界，并定义 `OpType`、`KernelSelector`、`KernelDescriptor`、`ResolvedKernel`
+- Batch 1：冻结 dispatch 新旧主线边界，并定义 `OpType`、`KernelSelector`、`KernelDef`、`ResolvedKernel`
 - Batch 1：将 `KernelKey` / `dispatcher_bridge` / `OperatorName` 标注为迁移期保留，而非未来主线核心
 - Batch 2：把 `KernelRegistry` 演进为 selector-based resolve 并增加全局 singleton 模式（设计偏离：原始设计为 backend-owned，实际采用全局 singleton + `AM_REGISTER_KERNEL` 宏；`CpuBackend` 不再持有本地 registry）
 - Batch 3（对齐 `ExecutionPlanBuilder` 阶段）：定义 `KernelResolver` 或等价的计划构建期 resolve 逻辑，并冻结 `ResolvedKernel` / `OpExec`

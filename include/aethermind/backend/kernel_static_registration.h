@@ -6,7 +6,7 @@
 
 namespace aethermind::kernel_registration_detail {
 
-inline Status RegisterKernel(const KernelDescriptor& descriptor) {
+inline Status RegisterKernel(const KernelDef& descriptor) {
     return KernelRegistry::Global().Register(descriptor);
 }
 

@@ -299,7 +299,7 @@ static_assert(sizeof(AttentionF32KernelArgs) <= kMaxKernelParamsSize);
 
 AM_REGISTER_KERNEL(
         CpuAttentionF32Reference,
-        KernelDescriptor{
+        KernelDef{
                 .op_type = OpType::kAttention,
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,

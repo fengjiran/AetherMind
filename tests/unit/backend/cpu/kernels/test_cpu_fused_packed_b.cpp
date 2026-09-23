@@ -34,7 +34,7 @@ void Fill(std::vector<float>& values) {
     for (size_t i = 0; i < values.size(); ++i) values[i] = TestValue(i);
 }
 
-StatusOr<const KernelDescriptor*> ResolveCandidate(
+StatusOr<const KernelDef*> ResolveCandidate(
         OpType op_type,
         std::string_view name,
         const KernelSelector& selector,
@@ -44,7 +44,7 @@ StatusOr<const KernelDescriptor*> ResolveCandidate(
     AM_RETURN_IF_ERROR(global.Freeze());
     AM_ASSIGN_OR_RETURN(const auto registered, global.FindByOpType(op_type));
     const auto candidate = std::find_if(
-            registered.begin(), registered.end(), [&](const KernelDescriptor* d) {
+            registered.begin(), registered.end(), [&](const KernelDef* d) {
                 return d->name == name;
             });
     if (candidate == registered.end()) {

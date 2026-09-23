@@ -14,7 +14,7 @@ enum class OpType : uint8_t;
 enum class ExecPhase : uint8_t;
 enum class WeightFormat : uint8_t;
 
-struct KernelDescriptor;
+struct KernelDef;
 struct KernelSelector;
 struct ResolvedKernel;
 

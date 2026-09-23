@@ -408,7 +408,7 @@ static_assert(sizeof(RoPEF32KernelArgs) <= kMaxKernelParamsSize);
 
 AM_REGISTER_KERNEL(
         CpuRoPEF32Reference,
-        KernelDescriptor{
+        KernelDef{
                 .op_type = OpType::kRoPE,
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,

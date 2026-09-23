@@ -30,7 +30,7 @@ KernelKey + OperatorName + old Dispatcher / DispatchKeySet
 迁移到：
 
 ```text
-OpType + KernelSelector + KernelDescriptor + 全局 KernelRegistry（AM_REGISTER_KERNEL 静态注册）
+OpType + KernelSelector + KernelDef + 全局 KernelRegistry（AM_REGISTER_KERNEL 静态注册）
 + plan-build-time resolve + ResolvedKernel
 ```
 
@@ -75,7 +75,7 @@ OpType + KernelSelector + KernelDescriptor + 全局 KernelRegistry（AM_REGISTER
 
 - [x] `include/aethermind/operators/op_type.h`: 定义 `OpType`
 - [x] `include/aethermind/backend/kernel_selector.h`: 定义 `KernelSelector`、`IsaLevel`、`ExecPhase`、`WeightFormat`
-- [x] `include/aethermind/backend/kernel_descriptor.h`: 定义 `KernelDescriptor`
+- [x] `include/aethermind/backend/kernel_def.h`: 定义 `KernelDef`
 - [x] `include/aethermind/backend/resolved_kernel.h`: 定义 `ResolvedKernel`
 
 #### 迁移辅助（已退场）
@@ -102,7 +102,7 @@ OpType + KernelSelector + KernelDescriptor + 全局 KernelRegistry（AM_REGISTER
 
 #### 核心 registry
 
-- [x] `include/aethermind/backend/kernel_registry.h`: 新增 `Register(const KernelDescriptor&)` 与 `Resolve(OpType, KernelSelector, ...)`
+- [x] `include/aethermind/backend/kernel_registry.h`: 新增 `Register(const KernelDef&)` 与 `Resolve(OpType, KernelSelector, ...)`
 - [x] `src/backend/kernel_registry.cpp`: 实现 selector-based resolve、`kBoth` 匹配、ISA 兼容过滤、priority 选择
 
 #### 迁移兼容（已退场）
@@ -236,7 +236,7 @@ OpType + KernelSelector + KernelDescriptor + 全局 KernelRegistry（AM_REGISTER
 **状态：已完成 ✅**
 
 Dispatch 新主线已落地：
-- `OpType + KernelSelector + KernelDescriptor` 作为核心类型
+- `OpType + KernelSelector + KernelDef` 作为核心类型
 - `Backend-owned KernelRegistry` 完成 selector-based resolve
 - `ExecutionPlanBuilder` 是唯一 resolve 发起方
 - `Executor` 只消费冻结后的 `ResolvedKernel`

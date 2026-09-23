@@ -5,7 +5,7 @@
 #ifndef AETHERMIND_BACKEND_KERNEL_REGISTRY_H
 #define AETHERMIND_BACKEND_KERNEL_REGISTRY_H
 
-#include "aethermind/backend/kernel_descriptor.h"
+#include "aethermind/backend/kernel_def.h"
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/base/status.h"
 #include "utils/hash.h"
@@ -45,12 +45,12 @@ class KernelRegistry {
 public:
     static KernelRegistry& Global() noexcept;
 
-    Status Register(const KernelDescriptor& descriptor);
+    Status Register(const KernelDef& descriptor);
 
     /// Returns every descriptor whose structural selector can serve `selector`.
     /// Callers must apply backend-specific execution requirements before they
     /// choose a concrete kernel.
-    StatusOr<std::vector<const KernelDescriptor*>> FindCandidates(
+    StatusOr<std::vector<const KernelDef*>> FindCandidates(
             OpType op_type,
             const KernelSelector& selector) const;
 
@@ -72,7 +72,7 @@ public:
 
     /// Debug inspection API; unlike FindCandidates, this does not apply a
     /// structural selector filter.
-    StatusOr<std::vector<const KernelDescriptor*>> FindByOpType(OpType op_type) const;
+    StatusOr<std::vector<const KernelDef*>> FindByOpType(OpType op_type) const;
 
     AM_NODISCARD std::string DebugDump() const;
 
@@ -81,7 +81,7 @@ private:
 
     mutable std::mutex mutex_{};
     std::atomic<bool> frozen_{false};
-    std::vector<KernelDescriptor> kernels_{};
+    std::vector<KernelDef> kernels_{};
     std::unordered_map<OpType, std::vector<size_t>> buckets_{};
     std::unordered_set<RegistrationKey, RegistrationKeyHash> registration_keys_{};
 };

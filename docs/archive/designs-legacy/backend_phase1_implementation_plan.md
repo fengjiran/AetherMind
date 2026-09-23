@@ -281,7 +281,7 @@ Phase 0
 
 - `include/aethermind/operators/op_type.h`
 - `include/aethermind/backend/kernel_selector.h`
-- `include/aethermind/backend/kernel_descriptor.h`
+- `include/aethermind/backend/kernel_def.h`
 - `include/aethermind/backend/resolved_kernel.h`
 - `include/aethermind/backend/kernel_key.h`（迁移期保留；明确不再是未来主线核心）
 - `include/aethermind/backend/dispatcher_bridge.h`（迁移辅助；不承接未来主线职责）

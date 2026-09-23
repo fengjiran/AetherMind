@@ -384,7 +384,7 @@ static_assert(alignof(GateUpLinearF32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
         CpuGateUpLinearF32Reference,
-        KernelDescriptor{
+        KernelDef{
                 .op_type = OpType::kGateUpLinear,
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
@@ -409,7 +409,7 @@ static_assert(alignof(GateUpLinearF32PackedBKernelArgs) <= alignof(std::max_alig
 
 AM_REGISTER_KERNEL(
         CpuGateUpLinearF32PackedBpanelCandidate,
-        KernelDescriptor{
+        KernelDef{
                 .op_type = OpType::kGateUpLinear,
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,

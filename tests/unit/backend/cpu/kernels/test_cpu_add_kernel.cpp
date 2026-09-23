@@ -860,7 +860,7 @@ TEST(AddKernel, RejectsIncompatibleRuntimeBroadcastShapes) {
 // TDD red-proof: after consolidation, the frozen registry must contain exactly
 // five canonical Add descriptors with weight_dtype == act_dtype and no
 // undefined-weight / v2 selector.
-TEST(AddKernel, CanonicalAddRegistryHasExactlyFiveDescriptors) {
+TEST(AddKernel, CanonicalAddRegistryHasExactlyFiveDefs) {
     // Constructing a CpuBackend implicitly freezes the global registry.
     CpuBackend backend;
     auto& registry = KernelRegistry::Global();

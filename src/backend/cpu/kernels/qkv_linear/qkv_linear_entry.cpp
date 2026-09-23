@@ -432,7 +432,7 @@ static_assert(alignof(QkvLinearF32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
         CpuQkvLinearF32Reference,
-        KernelDescriptor{
+        KernelDef{
                 .op_type = OpType::kQkvLinear,
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
@@ -457,7 +457,7 @@ static_assert(alignof(QkvLinearF32PackedBKernelArgs) <= alignof(std::max_align_t
 
 AM_REGISTER_KERNEL(
         CpuQkvLinearF32PackedBpanelCandidate,
-        KernelDescriptor{
+        KernelDef{
                 .op_type = OpType::kQkvLinear,
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,

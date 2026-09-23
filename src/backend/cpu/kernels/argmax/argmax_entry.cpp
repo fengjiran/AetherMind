@@ -209,7 +209,7 @@ static_assert(sizeof(ArgmaxF32KernelArgs) <= kMaxKernelParamsSize);
 
 AM_REGISTER_KERNEL(
         CpuArgmaxF32Reference,
-        KernelDescriptor{
+        KernelDef{
                 .op_type = OpType::kArgmax,
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,

@@ -163,7 +163,7 @@ static_assert(alignof(MatMulF32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
         CpuMatMulF32Reference,
-        KernelDescriptor{
+        KernelDef{
                 .op_type = OpType::kMatMul,
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,

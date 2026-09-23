@@ -6,7 +6,7 @@
 | ---- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | v1.0 | 2026-04-15 | 初始设计冻结：backend-owned KernelRegistry                                                                                                                                                              |
 | v1.1 | 2026-06-04 | **设计偏离**：实际实现采用全局 singleton KernelRegistry + `AM_REGISTER_KERNEL` 静态注册宏。原因见第 7、9、16.11 节。本文档其余部分保持原始设计论证，但在冲突处已标注实际实现。                                                                           |
-| v1.2 | 2026-08-31 | **设计偏离**：`IsaLevel` 与 `KernelSelector.isa` 从实现中移除；CPU 指令集要求改由 `KernelDescriptor.cpu_requirements`（特征集）声明，`CpuBackend` 在 resolve 时按 `CpuCapabilities.effective_features` 做子集过滤。详见 4.3 节 CPU 能力模型。 |
+| v1.2 | 2026-08-31 | **设计偏离**：`IsaLevel` 与 `KernelSelector.isa` 从实现中移除；CPU 指令集要求改由 `KernelDef.cpu_requirements`（特征集）声明，`CpuBackend` 在 resolve 时按 `CpuCapabilities.effective_features` 做子集过滤。详见 4.3 节 CPU 能力模型。 |
 
 ***
 
@@ -147,7 +147,7 @@ struct KernelSelector {
 };
 ```
 
-> **v1.2 偏离**：`IsaLevel` 枚举与 `KernelSelector.isa` 字段已从实现中删除。指令集要求不再是 selector 维度，而是 `KernelDescriptor.cpu_requirements`（见 4.3 节）。
+> **v1.2 偏离**：`IsaLevel` 枚举与 `KernelSelector.isa` 字段已从实现中删除。指令集要求不再是 selector 维度，而是 `KernelDef.cpu_requirements`（见 4.3 节）。
 
 ## 4.1 为什么不做 DispatchKeySet
 
@@ -198,7 +198,7 @@ Quantized packed weight
 
 * 类型位于 `include/aethermind/backend/cpu/cpu_capabilities.h`：扁平 `CpuFeature` 枚举、128 位 `CpuFeatureSet` bitmask、`CpuCapabilities` 三层快照（`hardware ⊇ usable ⊇ effective`）、只能削减的 `CpuFeaturePolicy`。
 
-* kernel 通过 `KernelDescriptor.cpu_requirements`（`CpuFeatureSet`，空 = 任意机器）声明指令集要求；注册期校验非 CPU device 禁带。
+* kernel 通过 `KernelDef.cpu_requirements`（`CpuFeatureSet`，空 = 任意机器）声明指令集要求；注册期校验非 CPU device 禁带。
 
 * resolve 流程：`KernelRegistry::FindCandidates`（纯结构匹配）→ `CpuBackend` 按 `effective_features.ContainsAll(cpu_requirements)` 过滤 → 按 `priority` 取优；无命中返回 `NotFound` 并携带 selector 与特征集诊断。
 
@@ -249,12 +249,12 @@ using KernelFn = Status (*)(KernelContext& ctx,
 
 `WorkspaceBinding` 应表示预分配 workspace 的视图，而不是 allocator 本身，这样才能满足 steady-state zero allocation 的目标。
 
-# 6. KernelDescriptor
+# 6. KernelDef
 
 注册时使用。
 
 ```cpp
-struct KernelDescriptor {
+struct KernelDef {
     OpType op_type;
     KernelSelector selector;
     KernelFn fn;
@@ -294,16 +294,16 @@ Packed weight kernel > Plain weight kernel
 class KernelRegistry {
 public:
     static KernelRegistry& Global() noexcept;   // function-local static
-    static Status RegisterGlobal(const KernelDescriptor& desc) noexcept;
+    static Status RegisterGlobal(const KernelDef& desc) noexcept;
 
-    Status Register(const KernelDescriptor& desc) noexcept;
+    Status Register(const KernelDef& desc) noexcept;
     Status Resolve(OpType op_type,
                    const KernelSelector& selector,
-                   const KernelDescriptor** out) const noexcept;
+                   const KernelDef** out) const noexcept;
     void Freeze() noexcept;
 
 private:
-    std::vector<KernelDescriptor> kernels_;
+    std::vector<KernelDef> kernels_;
     bool frozen_ = false;
     mutable std::mutex mutex_;
 };
@@ -368,7 +368,7 @@ bool Match(const KernelSelector& candidate,
 }
 ```
 
-> **v1.2 偏离**：`candidate.isa <= request.isa` 这条 ISA 上限规则已删除——指令集要求不再参与 selector 匹配，改由 `CpuBackend` 在 resolve 时按 `KernelDescriptor.cpu_requirements` 与 `CpuCapabilities.effective_features` 的子集关系过滤（指令集之间不是全序关系，无法用 `<=` 表达，见 4.3 节）。语义等价推论仍然成立：机器支持 AVX512 时可选中 AVX2 kernel；机器不支持 AVX2 时 AVX512 kernel 会被特征过滤淘汰。
+> **v1.2 偏离**：`candidate.isa <= request.isa` 这条 ISA 上限规则已删除——指令集要求不再参与 selector 匹配，改由 `CpuBackend` 在 resolve 时按 `KernelDef.cpu_requirements` 与 `CpuCapabilities.effective_features` 的子集关系过滤（指令集之间不是全序关系，无法用 `<=` 表达，见 4.3 节）。语义等价推论仍然成立：机器支持 AVX512 时可选中 AVX2 kernel；机器不支持 AVX2 时 AVX512 kernel 会被特征过滤淘汰。
 
 而 `candidate.phase == ExecPhase::kBoth` 时，应能同时匹配 `kPrefill` 和 `kDecode` 请求，否则 `kBoth` 没有实际意义。
 
@@ -412,7 +412,7 @@ CpuBackend::CpuBackend() {
     KernelRegistry::Global().Freeze();
 }
 
-StatusOr<const KernelDescriptor*> CpuBackend::ResolveKernel(
+StatusOr<const KernelDef*> CpuBackend::ResolveKernel(
     OpType op_type, const KernelSelector& selector) const noexcept {
     if (selector.device_type != DeviceType::kCPU) {
         return Status::InvalidArgument("CpuBackend can only resolve CPU kernels");
@@ -557,7 +557,7 @@ private:
 
 * **不要继续扩展这套旧体系作为未来主线；**
 
-* Phase 1/Phase 2 的新 dispatch 主线应基于 `OpType + KernelSelector + KernelDescriptor + ResolvedKernel`；
+* Phase 1/Phase 2 的新 dispatch 主线应基于 `OpType + KernelSelector + KernelDef + ResolvedKernel`；
 
 * 旧的 `Dispatcher / DispatchKeySet` 相关文件已从代码库移除，不再是新设计基础。
 
@@ -568,7 +568,7 @@ Phase 1 已落地：
 ```text
 OpType
 KernelSelector
-KernelDescriptor
+KernelDef
 全局 KernelRegistry singleton（设计偏离，见 7.1 节）
 ResolvedKernel
 KernelResolver（或等价的 plan-build resolve 逻辑）
@@ -686,7 +686,7 @@ KernelKey + OperatorName + old Dispatcher/DispatchKeySet
 迁移到：
 
 ```text
-OpType + KernelSelector + KernelDescriptor + 全局 KernelRegistry
+OpType + KernelSelector + KernelDef + 全局 KernelRegistry
 + AM_REGISTER_KERNEL 静态注册 + plan-build-time resolve + ResolvedKernel
 ```
 
@@ -738,7 +738,7 @@ OpType + KernelSelector + KernelDescriptor + 全局 KernelRegistry
 
 * `KernelSelector`
 
-* `KernelDescriptor`
+* `KernelDef`
 
 * `ResolvedKernel`
 
@@ -778,8 +778,8 @@ Find(KernelKey)
 逐步演进到：
 
 ```cpp
-Register(const KernelDescriptor&)
-Resolve(OpType, KernelSelector, const KernelDescriptor**)
+Register(const KernelDef&)
+Resolve(OpType, KernelSelector, const KernelDef**)
 ```
 
 实现最小匹配规则：
@@ -831,7 +831,7 @@ CpuBackend::CpuBackend() {
     KernelRegistry::Global().Freeze();
 }
 
-StatusOr<const KernelDescriptor*> CpuBackend::ResolveKernel(
+StatusOr<const KernelDef*> CpuBackend::ResolveKernel(
     OpType op_type, const KernelSelector& selector) const noexcept {
     if (selector.device_type != DeviceType::kCPU) {
         return Error("CpuBackend: not a CPU selector");
@@ -927,7 +927,7 @@ StatusOr<const KernelDescriptor*> CpuBackend::ResolveKernel(
 
 * 不把新 kernel resolve 逻辑塞回旧路径。
 
-上述文件已物理删除；新算子一律走 `OpType + KernelSelector + KernelDescriptor + ResolvedKernel` 主线。
+上述文件已物理删除；新算子一律走 `OpType + KernelSelector + KernelDef + ResolvedKernel` 主线。
 
 ### 完成标准
 

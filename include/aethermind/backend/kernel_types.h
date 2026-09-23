@@ -43,7 +43,7 @@ struct PackedWeightView {
 
 /// @brief Type-erased kernel entry point.
 ///
-/// Backends register one `KernelFunc` per kernel via `KernelDescriptor::kernel_func`;
+/// Backends register one `KernelFunc` per kernel via `KernelDef::kernel_func`;
 /// The callee reads inputs from `KernelContext::kernel_params` (a `const void*`
 /// pointing at a backend-specific params struct) and `KernelContext::attrs`.
 /// Kernel entries never assume a concrete parameter type beyond their own
@@ -72,7 +72,7 @@ struct KernelParamsBuildContext {
 /// `PreparedExecutionBindings`, after generic shape and constraint validation. On success
 /// the builder placement-constructs its params struct into `params_buffer`,
 /// which is owned by the `PreparedExecutionBindings` params arena, aligned to
-/// `std::max_align_t`, and sized `KernelDescriptor::params_size` (at most
+/// `std::max_align_t`, and sized `KernelDef::params_size` (at most
 /// `kMaxKernelParamsSize`).
 ///
 /// Contract:
@@ -91,7 +91,7 @@ struct KernelParamsBuildContext {
 /// - On failure the builder must not have constructed anything into
 ///   `params_buffer`.
 ///
-/// Registered via `KernelDescriptor::{params_builder, params_size}`. This
+/// Registered via `KernelDef::{params_builder, params_size}`. This
 /// indirection keeps execution independent of backend-specific parameter
 /// structs. `noexcept`: errors are reported only through the return value.
 using KernelParamsBuilder = Status (*)(const KernelParamsBuildContext& context,
@@ -101,7 +101,7 @@ using KernelParamsBuilder = Status (*)(const KernelParamsBuildContext& context,
 /// `KernelParamsBuilder`.
 ///
 /// Each step's params slot is carved from the `PreparedExecutionBindings` params arena
-/// with at most this many bytes. `KernelDescriptor` validation rejects
+/// with at most this many bytes. `KernelDef` validation rejects
 /// kernels whose `params_size` exceeds this constant. Raising the value
 /// increases per-step binding memory.
 inline constexpr size_t kMaxKernelParamsSize = 512;

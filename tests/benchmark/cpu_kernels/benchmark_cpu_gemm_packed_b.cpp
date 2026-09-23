@@ -53,13 +53,13 @@ size_t StreamingReplicas(size_t bytes) {
     return std::clamp(count, size_t{1}, kMaxStreamingReplicas);
 }
 
-StatusOr<const KernelDescriptor*> FindCandidateDescriptor(
+StatusOr<const KernelDef*> FindCandidateDescriptor(
         KernelRegistry& registry) {
     AM_RETURN_IF_ERROR(registry.Freeze());
     AM_ASSIGN_OR_RETURN(const auto descriptors,
                         registry.FindByOpType(OpType::kLinear));
     const auto candidate = std::find_if(
-            descriptors.begin(), descriptors.end(), [](const KernelDescriptor* d) {
+            descriptors.begin(), descriptors.end(), [](const KernelDef* d) {
                 return d->name == "cpu::linear_f32_packed_bpanel_candidate";
             });
     if (candidate == descriptors.end()) {

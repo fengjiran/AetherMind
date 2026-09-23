@@ -32,7 +32,7 @@ KernelSelector MakeSelector(ExecPhase phase = ExecPhase::kBoth) {
 
 TEST(KernelRegistryCandidates, BothPhaseMatchesDecodeRequest) {
     KernelRegistry registry;
-    ASSERT_TRUE(registry.Register(KernelDescriptor{
+    ASSERT_TRUE(registry.Register(KernelDef{
                                           .op_type = OpType::kRmsNorm,
                                           .selector = MakeSelector(ExecPhase::kBoth),
                                           .kernel_func = &ScalarKernel,
@@ -52,7 +52,7 @@ TEST(KernelRegistryCandidates, BothPhaseMatchesDecodeRequest) {
 
 TEST(KernelRegistryCandidates, ReturnsAllStructuralVariantsRegardlessOfRequirements) {
     KernelRegistry registry;
-    ASSERT_TRUE(registry.Register(KernelDescriptor{
+    ASSERT_TRUE(registry.Register(KernelDef{
                                           .op_type = OpType::kRmsNorm,
                                           .selector = MakeSelector(),
                                           .kernel_func = &ScalarKernel,
@@ -60,7 +60,7 @@ TEST(KernelRegistryCandidates, ReturnsAllStructuralVariantsRegardlessOfRequireme
                                           .name = "scalar",
                                   })
                         .ok());
-    ASSERT_TRUE(registry.Register(KernelDescriptor{
+    ASSERT_TRUE(registry.Register(KernelDef{
                                           .op_type = OpType::kRmsNorm,
                                           .selector = MakeSelector(),
                                           .cpu_requirements = CpuFeatureSet::From(
@@ -83,7 +83,7 @@ TEST(KernelRegistryCandidates, ReturnsAllStructuralVariantsRegardlessOfRequireme
 
 TEST(KernelRegistryCandidates, IncompatiblePhaseReturnsNoCandidates) {
     KernelRegistry registry;
-    ASSERT_TRUE(registry.Register(KernelDescriptor{
+    ASSERT_TRUE(registry.Register(KernelDef{
                                           .op_type = OpType::kRmsNorm,
                                           .selector = MakeSelector(ExecPhase::kDecode),
                                           .kernel_func = &DecodeOnlyKernel,

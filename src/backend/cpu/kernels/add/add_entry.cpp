@@ -79,7 +79,7 @@ static_assert(alignof(AddKernelArgs) <= alignof(std::max_align_t));
 // ResolvesThroughCpuBackend for the compile-time check.
 AM_REGISTER_KERNEL(
         CpuAddF32Reference,
-        KernelDescriptor{
+        KernelDef{
                 .op_type = OpType::kAdd,
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
@@ -97,7 +97,7 @@ AM_REGISTER_KERNEL(
 
 AM_REGISTER_KERNEL(
         CpuAddFp64Reference,
-        KernelDescriptor{
+        KernelDef{
                 .op_type = OpType::kAdd,
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
@@ -114,7 +114,7 @@ AM_REGISTER_KERNEL(
         });
 
 AM_REGISTER_KERNEL(CpuAddBf16Reference,
-                   KernelDescriptor{
+                   KernelDef{
                            .op_type = OpType::kAdd,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,
@@ -131,7 +131,7 @@ AM_REGISTER_KERNEL(CpuAddBf16Reference,
                    });
 
 AM_REGISTER_KERNEL(CpuAddI32Reference,
-                   KernelDescriptor{
+                   KernelDef{
                            .op_type = OpType::kAdd,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,
@@ -148,7 +148,7 @@ AM_REGISTER_KERNEL(CpuAddI32Reference,
                    });
 
 AM_REGISTER_KERNEL(CpuAddI64Reference,
-                   KernelDescriptor{
+                   KernelDef{
                            .op_type = OpType::kAdd,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,

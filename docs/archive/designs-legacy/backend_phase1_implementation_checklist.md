@@ -145,7 +145,7 @@
 - [x] `docs/designs/backend_phase1_implementation_plan.md`: 对齐 dispatch batches 与实施顺序
 - [x] `include/aethermind/operators/op_type.h`: 定义 `OpType` 与 `ToOpType` 过渡映射（实现已挪回 operators 模块）
 - [x] `include/aethermind/backend/kernel_selector.h`: 定义 `KernelSelector`、`IsaLevel`、`ExecPhase`、`WeightFormat`
-- [x] `include/aethermind/backend/kernel_descriptor.h`: 定义 `KernelDescriptor`
+- [x] `include/aethermind/backend/kernel_def.h`: 定义 `KernelDef`
 - [x] `include/aethermind/backend/resolved_kernel.h`: 定义 `ResolvedKernel`
 - [x] ~~`include/aethermind/backend/kernel_key.h`~~: **已删除**
 - [x] ~~`include/aethermind/backend/dispatcher_bridge.h`~~: **已删除**

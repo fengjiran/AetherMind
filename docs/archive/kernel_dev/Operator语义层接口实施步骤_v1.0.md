@@ -18,7 +18,7 @@
 1. Operator 语义层为什么要先做；
 2. Operator 语义层应该负责什么、不应该负责什么；
 3. 第一版 Operator 接口应该如何设计；
-4. 与 KernelDescriptor、KernelRegistry、KernelSelector 如何衔接；
+4. 与 KernelDef、KernelRegistry、KernelSelector 如何衔接；
 5. 如何以 RMSNormOp 作为第一个样板算子打通完整闭环；
 6. 每一步应新增哪些文件、类、函数和测试；
 7. 如何控制 Phase 1 范围，避免过度设计。
@@ -36,7 +36,7 @@ Step 1: 建立 operators/ 目录与 OpType
 Step 2: 定义 OperatorContext
 Step 3: 定义 WorkspaceRequirement
 Step 4: 定义轻量 Operator 接口风格
-Step 5: 建立 KernelDescriptor 对接点
+Step 5: 建立 KernelDef 对接点
 Step 6: 以 RMSNormOp 打通完整链路
 Step 7: 接入 Reference Kernel
 Step 8: 增加 Correctness Test
@@ -63,7 +63,7 @@ Executor
   ↓
 Operator::Run()
   ↓
-Validate / InferShape / BuildKernelDescriptor
+Validate / InferShape / BuildKernelDef
   ↓
 KernelSelector::Resolve()
   ↓
@@ -88,7 +88,7 @@ Operator 层：
 - 负责算子语义
 - 负责输入输出约束
 - 负责 shape/dtype/layout 校验
-- 负责构造 KernelDescriptor
+- 负责构造 KernelDef
 - 负责调度 kernel
 
 Kernel 层：
@@ -118,7 +118,7 @@ Operator 层应负责：
 7. device / backend 校验
 8. 输出 shape 推导
 9. workspace 需求声明
-10. KernelDescriptor 构造
+10. KernelDef 构造
 11. KernelSelector 调用
 12. kernel 参数规范化
 13. 调用 kernel
@@ -212,7 +212,7 @@ src/operators/
   argmax_op.cc
 
 include/aethermind/kernels/
-  kernel_descriptor.h
+  kernel_def.h
   kernel_context.h
   kernel.h
   kernel_registry.h
@@ -276,12 +276,12 @@ A6. 约定 Status 和错误信息规范
 
 ### 阶段 B：Kernel 对接基础
 
-目标：让 Operator 能够构造 KernelDescriptor 并通过 KernelSelector 找到 kernel。
+目标：让 Operator 能够构造 KernelDef 并通过 KernelSelector 找到 kernel。
 
 任务：
 
 ```text
-B1. 定义 KernelDescriptor 与 ToString()
+B1. 定义 KernelDef 与 ToString()
 B2. 定义 KernelContext
 B3. 定义 Kernel 抽象或函数式 Kernel 接口
 B4. 定义 KernelRegistry
@@ -291,7 +291,7 @@ B6. 打通 Reference Kernel 注册路径
 
 ### 阶段 C：RMSNorm 样板算子
 
-目标：以 RMSNormOp 打通 Operator → KernelDescriptor → KernelSelector → Reference Kernel → Test → Benchmark 完整闭环。
+目标：以 RMSNormOp 打通 Operator → KernelDef → KernelSelector → Reference Kernel → Test → Benchmark 完整闭环。
 
 任务：
 
@@ -408,7 +408,7 @@ std::string_view ToString(OpType op_type) noexcept {
 ### 7.5 验收标准
 
 ```text
-1. OpType 可被 KernelDescriptor 引用；
+1. OpType 可被 KernelDef 引用；
 2. ToString(OpType) 可用于错误日志；
 3. 未知类型返回 Unknown；
 4. 不引入动态分配；
@@ -643,17 +643,17 @@ public:
 
 ---
 
-## 11. Step B1：定义 KernelDescriptor 对接点
+## 11. Step B1：定义 KernelDef 对接点
 
 ### 11.1 文件
 
 ```text
-include/aethermind/kernels/kernel_descriptor.h
+include/aethermind/kernels/kernel_def.h
 ```
 
 ### 11.2 设计目标
 
-`KernelDescriptor` 是 Operator 层向 KernelSelector 描述需求的核心对象。
+`KernelDef` 是 Operator 层向 KernelSelector 描述需求的核心对象。
 
 Operator 不应直接选择 AVX2 / AVX512 / reference kernel，而是通过 descriptor 表达需求，由 KernelSelector 决定。
 
@@ -675,7 +675,7 @@ enum class LayoutType;
 enum class IsaCapability;
 enum class KernelPhase;
 
-struct KernelDescriptor {
+struct KernelDef {
     OpType op_type = OpType::kUnknown;
 
     BackendType backend;
@@ -737,7 +737,7 @@ Kernel not found:
 ### 11.6 验收标准
 
 ```text
-1. Operator 能构造 KernelDescriptor；
+1. Operator 能构造 KernelDef；
 2. KernelSelector 能根据 descriptor 查找 kernel；
 3. Resolve 失败时能打印完整 ToString；
 4. descriptor 不持有 Tensor；
@@ -920,7 +920,7 @@ WorkspaceRequirement RmsNormOp::GetWorkspaceRequirement(
 1. 调用 Validate；
 2. 从 Tensor 提取 dtype/layout/shape；
 3. 计算 rows 和 hidden_size；
-4. 构造 KernelDescriptor；
+4. 构造 KernelDef；
 5. 调用 KernelSelector::Resolve；
 6. 将 Tensor 转为裸指针；
 7. 构造 KernelThreadContext；
@@ -941,7 +941,7 @@ Status RmsNormOp::Run(
     const int64_t hidden_size = input.shape().back();
     const int64_t rows = input.numel() / hidden_size;
 
-    KernelDescriptor desc;
+    KernelDef desc;
     desc.op_type = OpType::kRmsNorm;
     desc.backend = BackendType::kCPU;
     desc.device = DeviceType::kCPU;
@@ -1101,7 +1101,7 @@ Registry 至少应支持：
 
 ```text
 1. 注册 kernel；
-2. 按 KernelDescriptor 查询 kernel；
+2. 按 KernelDef 查询 kernel；
 3. 返回 NotFound 时携带 descriptor.ToString()；
 4. 支持多个候选 kernel；
 5. 支持 reference fallback。
@@ -1295,7 +1295,7 @@ packing: 第一版可不启用，只预留字段
 7. bias 如果存在，bias.shape == [weight.shape[0]]。
 ```
 
-### 18.4 KernelDescriptor 差异
+### 18.4 KernelDef 差异
 
 LinearOp 的 descriptor 应加入：
 
@@ -1586,7 +1586,7 @@ if (backend == CPU && isa == AVX2) {
 而应统一：
 
 ```text
-Operator 构造 KernelDescriptor
+Operator 构造 KernelDef
 KernelSelector 选择具体 kernel
 ```
 
@@ -1765,17 +1765,17 @@ include/aethermind/operators/workspace_requirement.h
 Operator 公共上下文和 workspace 描述可用。
 ```
 
-### Commit 3：KernelDescriptor 对接
+### Commit 3：KernelDef 对接
 
 ```text
-include/aethermind/kernels/kernel_descriptor.h
-src/kernels/kernel_descriptor.cc
+include/aethermind/kernels/kernel_def.h
+src/kernels/kernel_def.cc
 ```
 
 目标：
 
 ```text
-KernelDescriptor 可由 Operator 构造，并支持 ToString。
+KernelDef 可由 Operator 构造，并支持 ToString。
 ```
 
 ### Commit 4：RMSNormOp 头文件与 Validate
@@ -1857,8 +1857,8 @@ Operator 语义层第一阶段完成标准：
 [ ] ToString(OpType) 完成
 [ ] WorkspaceRequirement 定义完成
 [ ] OperatorContext 定义完成
-[ ] KernelDescriptor 可由 Operator 构造
-[ ] KernelDescriptor::ToString 可用
+[ ] KernelDef 可由 Operator 构造
+[ ] KernelDef::ToString 可用
 [ ] RmsNormOp 定义完成
 [ ] RmsNormOp::Validate 完成
 [ ] RmsNormOp::Run 完成
@@ -1905,7 +1905,7 @@ RmsNormOp 直接调用 RmsNormAvx2Kernel
 正确：
 
 ```text
-RmsNormOp 构造 KernelDescriptor，由 KernelSelector 选择 kernel。
+RmsNormOp 构造 KernelDef，由 KernelSelector 选择 kernel。
 ```
 
 ### 33.2 误区二：Operator 中写计算逻辑
@@ -1974,7 +1974,7 @@ return Status::InvalidArgument(
 
 ```text
 1. 先实现 OpType / OperatorContext / WorkspaceRequirement；
-2. 再实现 KernelDescriptor 对接；
+2. 再实现 KernelDef 对接；
 3. 以 RMSNormOp 为样板打通完整链路；
 4. 将 RMSNorm 的模式复制到 Linear / RoPE / Softmax；
 5. 在基础算子稳定后实现 AttentionOp；
@@ -1983,7 +1983,7 @@ return Status::InvalidArgument(
 
 一句话总结：
 
-> AetherMind 当前需要先做 Operator 语义层，但必须做成薄语义层；第一目标不是抽象完美，而是通过 RMSNormOp 打通 Operator → KernelDescriptor → KernelSelector → Reference Kernel → Test → Benchmark 的可复用闭环。
+> AetherMind 当前需要先做 Operator 语义层，但必须做成薄语义层；第一目标不是抽象完美，而是通过 RMSNormOp 打通 Operator → KernelDef → KernelSelector → Reference Kernel → Test → Benchmark 的可复用闭环。
 
 ---
 

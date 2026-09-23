@@ -314,7 +314,7 @@ static_assert(alignof(LinearF32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
         CpuLinearF32Reference,
-        KernelDescriptor{
+        KernelDef{
                 .op_type = OpType::kLinear,
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
@@ -332,7 +332,7 @@ AM_REGISTER_KERNEL(
 
 AM_REGISTER_KERNEL(
         CpuLinearF32PackedIdentityReference,
-        KernelDescriptor{
+        KernelDef{
                 .op_type = OpType::kLinear,
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
@@ -355,7 +355,7 @@ static_assert(alignof(PackedGemmF32Args) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
         CpuLinearF32PackedBpanelCandidate,
-        KernelDescriptor{
+        KernelDef{
                 .op_type = OpType::kLinear,
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,

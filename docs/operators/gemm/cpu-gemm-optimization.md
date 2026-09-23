@@ -217,7 +217,7 @@ AVX-512、NEON/SVE 使用同一 driver contract、不同 microkernel 与 recipe�
 
 当前 `CpuWeightPrepacker::RecipeFor(selector)` 必须演进。推荐：
 
-1. `KernelDescriptor` 提供其精确 packing recipe；
+1. `KernelDef` 提供其精确 packing recipe；
 2. `CpuBackend::PrepareKernel` 把 descriptor recipe 复制到 `ResolvedKernel`；
 3. compiler 保持 backend-independent packing request；inference 按每个 consumer 的 op/selector 调 backend recipe query 并注入 exact recipe，coalesce 前检查共享 weight 冲突；
 4. backend 提供按 recipe pack 的服务，model 层不直接实例化具体 `CpuWeightPrepacker`；
@@ -473,7 +473,7 @@ runtime thread-pool contract + 单线程证据 ──> 多线程与 NUMA
 
 **实现状态（2026-09-23）**：descriptor-owned recipe、inference 注入和 exact artifact key 已实现。AVX2 bpanel packing/scan/blocked drivers 与 Linear/QKV/GateUp candidate 已有 correctness 覆盖；当前 recipe 名含 `_candidate`，global resolver 因 identity 同优先级且先注册仍选择 `cpu_identity`。同机性能与 KC 选择状态为 **Needs More Data**，见 [ADR-0002](../../decisions/0002-cpu-gemm-packed-weight.md) 和 [机器级证据](benchmarks/54h5mmi-gemm.md)。
 
-- `KernelDescriptor`/prepared kernel 提供其精确 `PackingRecipe`；
+- `KernelDef`/prepared kernel 提供其精确 `PackingRecipe`；
 - compiler 只构造 backend-independent packing request；inference 使用 backend.GetPackingRecipe 注入 descriptor-owned exact recipe，再按共享 value/selector 检查 consumer 冲突并 coalesce；
 - backend 提供按 recipe pack 的服务，model 层不建立平行 `WeightLayout` enum，也不在 `ModelLoader` 中 prepack；
 - packing 发生在 semantic graph optimization/fusion 之后，由具体 `WeightBinding` 驱动；

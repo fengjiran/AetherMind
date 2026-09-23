@@ -8,7 +8,7 @@
 namespace aethermind::cpu::internal {
 
 /// @brief Shared eligibility/priority resolver used by recipe and kernel queries.
-StatusOr<const KernelDescriptor*> ResolveEligibleDescriptor(
+StatusOr<const KernelDef*> ResolveEligibleDescriptor(
         const KernelRegistry& registry,
         OpType op_type,
         const KernelSelector& selector,

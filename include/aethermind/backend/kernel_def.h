@@ -1,12 +1,12 @@
-#ifndef AETHERMIND_BACKEND_KERNEL_DESCRIPTOR_H
-#define AETHERMIND_BACKEND_KERNEL_DESCRIPTOR_H
+#ifndef AETHERMIND_BACKEND_KERNEL_DEF_H
+#define AETHERMIND_BACKEND_KERNEL_DEF_H
 
-/// @file kernel_descriptor.h
-/// @brief Backend kernel descriptor and its validation.
+/// @file kernel_def.h
+/// @brief Backend kernel definition and its validation.
 ///
-/// A `KernelDescriptor` binds an `OpType` to a concrete `KernelFunc` together
+/// A `KernelDef` binds an `OpType` to a concrete `KernelFunc` together
 /// with its selector, optional CPU feature requirements, and metadata builders.
-/// The registry validates every descriptor with `ValidateKernelDescriptor` before
+/// The registry validates every definition with `ValidateKernelDef` before
 /// registration.
 
 #include "aethermind/backend/cpu/cpu_capabilities.h"
@@ -20,13 +20,13 @@
 
 namespace aethermind {
 
-/// @brief Backend kernel descriptor for registration and selection.
+/// @brief Backend kernel definition for registration and selection.
 ///
-/// Describes one kernel implementation: its operator type, eligibility
+/// Defines one kernel implementation: its operator type, eligibility
 /// selector, optional CPU requirements, entry point, and builders for
-/// params and metadata. The descriptor is validated by
-/// `ValidateKernelDescriptor` before it enters the registry.
-struct KernelDescriptor {
+/// params and metadata. The definition is validated by
+/// `ValidateKernelDef` before it enters the registry.
+struct KernelDef {
     /// Operator type handled by this kernel.
     OpType op_type = OpType::kUnknown;
 
@@ -34,14 +34,14 @@ struct KernelDescriptor {
     KernelSelector selector{};
 
     /// Exact opaque weight layout consumed when selector.weight_format is
-    /// kPacked. Plain descriptors must leave this empty.
+    /// kPacked. Plain definitions must leave this empty.
     PackingRecipe packing_recipe{};
 
     /// CPU execution requirements. They are intentionally separate from the
     /// selector because an instruction set is not a total ordering.
     CpuFeatureSet cpu_requirements{};
 
-    /// Type-erased kernel entry point. Must be non-null for a valid descriptor.
+    /// Type-erased kernel entry point. Must be non-null for a valid definition.
     KernelFunc kernel_func = nullptr;
 
     /// Priority for selection; higher value wins, first-registered wins on tie.
@@ -60,7 +60,7 @@ struct KernelDescriptor {
     std::string name{};
 };
 
-/// @brief Validates a kernel descriptor's invariants.
+/// @brief Validates a kernel definition's invariants.
 ///
 /// Checks operator type, entry point, name, device type, CPU-only feature
 /// requirements, and the consistency between `params_builder` and
@@ -69,22 +69,22 @@ struct KernelDescriptor {
 /// @param descriptor Descriptor to validate.
 /// @return `Ok` when all invariants hold, otherwise `InvalidArgument` with
 ///         a diagnostic message.
-AM_NODISCARD inline Status ValidateKernelDescriptor(const KernelDescriptor& descriptor) noexcept {
+AM_NODISCARD inline Status ValidateKernelDef(const KernelDef& descriptor) noexcept {
     if (descriptor.op_type == OpType::kUnknown) {
-        return Status::InvalidArgument("Kernel descriptor op_type cannot be kUnknown");
+        return Status::InvalidArgument("Kernel definition op_type cannot be kUnknown");
     }
 
     if (descriptor.kernel_func == nullptr) {
-        return Status::InvalidArgument("Kernel descriptor function cannot be null");
+        return Status::InvalidArgument("Kernel definition function cannot be null");
     }
 
     if (descriptor.name.empty()) {
-        return Status::InvalidArgument("Kernel descriptor name cannot be empty");
+        return Status::InvalidArgument("Kernel definition name cannot be empty");
     }
 
     if (descriptor.selector.device_type == DeviceType::kUndefined) {
         return Status::InvalidArgument(
-                "Kernel descriptor device_type cannot be kUndefined");
+                "Kernel definition device_type cannot be kUndefined");
     }
 
     const bool packed_selector =
@@ -94,18 +94,18 @@ AM_NODISCARD inline Status ValidateKernelDescriptor(const KernelDescriptor& desc
             descriptor.packing_recipe.alignment < alignof(void*) ||
             !std::has_single_bit(descriptor.packing_recipe.alignment)) {
             return Status::InvalidArgument(
-                    "Packed kernel descriptor requires a named recipe with power-of-two alignment");
+                    "Packed kernel definition requires a named recipe with power-of-two alignment");
         }
     } else if (!descriptor.packing_recipe.layout.empty() ||
                descriptor.packing_recipe.alignment != 0) {
         return Status::InvalidArgument(
-                "Plain kernel descriptor cannot declare a packing recipe");
+                "Plain kernel definition cannot declare a packing recipe");
     }
 
     if (descriptor.selector.device_type != DeviceType::kCPU &&
         !descriptor.cpu_requirements.empty()) {
         return Status::InvalidArgument(
-                "Only CPU kernel descriptors may declare CPU feature requirements");
+                "Only CPU kernel definitions may declare CPU feature requirements");
     }
 
     if (descriptor.params_builder != nullptr) {

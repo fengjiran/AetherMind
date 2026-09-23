@@ -23,7 +23,7 @@ CpuCapabilities DetectCapabilitiesOrDie(const CpuFeaturePolicy& policy) {
 
 namespace cpu::internal {
 
-StatusOr<const KernelDescriptor*> ResolveEligibleDescriptor(
+StatusOr<const KernelDef*> ResolveEligibleDescriptor(
         const KernelRegistry& registry,
         OpType op_type,
         const KernelSelector& selector,
@@ -33,7 +33,7 @@ StatusOr<const KernelDescriptor*> ResolveEligibleDescriptor(
         return candidates.status();
     }
 
-    const KernelDescriptor* best = nullptr;
+    const KernelDef* best = nullptr;
     for (const auto* descriptor: *candidates) {
         if (!effective_features.ContainsAll(descriptor->cpu_requirements)) {
             continue;
@@ -63,7 +63,7 @@ StatusOr<PackingRecipe> ResolvePackingRecipeFromRegistry(
         return Status::InvalidArgument(
                 "CPU packing recipe query requires a packed CPU selector");
     }
-    AM_ASSIGN_OR_RETURN(const KernelDescriptor* descriptor,
+    AM_ASSIGN_OR_RETURN(const KernelDef* descriptor,
                         ResolveEligibleDescriptor(
                                 registry, op_type, selector, effective_features));
     if (descriptor->packing_recipe.layout.empty() ||
@@ -94,7 +94,7 @@ StatusOr<ResolvedKernel> CpuBackend::PrepareKernel(OpType op_type,
                 "CpuBackend cannot prepare non-CPU kernel selector");
     }
 
-    const StatusOr<const KernelDescriptor*> descriptor =
+    const StatusOr<const KernelDef*> descriptor =
             cpu::internal::ResolveEligibleDescriptor(
                     KernelRegistry::Global(), op_type, selector, capabilities_.effective_features);
     if (!descriptor.ok()) {

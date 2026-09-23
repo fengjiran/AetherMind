@@ -171,7 +171,7 @@ TEST(CpuGemmPackedB, RegisteredCandidateDescriptorPacksAndExecutes) {
     const auto registered = global.FindByOpType(OpType::kLinear);
     ASSERT_TRUE(registered.ok()) << registered.status().ToString();
     const auto candidate = std::find_if(
-            registered->begin(), registered->end(), [](const KernelDescriptor* descriptor) {
+            registered->begin(), registered->end(), [](const KernelDef* descriptor) {
                 return descriptor->name == "cpu::linear_f32_packed_bpanel_candidate";
             });
     ASSERT_NE(candidate, registered->end());

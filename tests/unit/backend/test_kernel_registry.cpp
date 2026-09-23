@@ -18,8 +18,8 @@ Status FakeKernel(const KernelContext&) noexcept {
     return Status::Ok();
 }
 
-KernelDescriptor MakeTestKernelDescriptor() {
-    return KernelDescriptor{
+KernelDef MakeTestKernelDef() {
+    return KernelDef{
             .op_type = OpType::kRmsNorm,
             .selector = KernelSelector{
                     .device_type = DeviceType::kCPU,
@@ -44,27 +44,27 @@ KernelSelector MakeMissingSelector() {
     };
 }
 
-TEST(KernelRegistry, PackedDescriptorRequiresValidRecipeAlignment) {
-    KernelDescriptor descriptor = MakeTestKernelDescriptor();
+TEST(KernelRegistry, PackedDefRequiresValidRecipeAlignment) {
+    KernelDef descriptor = MakeTestKernelDef();
     descriptor.selector.weight_format = WeightFormat::kPacked;
     descriptor.packing_recipe = PackingRecipe{
             .layout = "test_layout",
             .alignment = alignof(void*) / 2U,
     };
-    EXPECT_EQ(ValidateKernelDescriptor(descriptor).code(),
+    EXPECT_EQ(ValidateKernelDef(descriptor).code(),
               StatusCode::kInvalidArgument);
 
     descriptor.packing_recipe.alignment = alignof(void*);
-    EXPECT_TRUE(ValidateKernelDescriptor(descriptor).ok());
+    EXPECT_TRUE(ValidateKernelDef(descriptor).ok());
 
     descriptor.selector.weight_format = WeightFormat::kPlain;
-    EXPECT_EQ(ValidateKernelDescriptor(descriptor).code(),
+    EXPECT_EQ(ValidateKernelDef(descriptor).code(),
               StatusCode::kInvalidArgument);
 }
 
 TEST(KernelRegistry, FindCandidatesReturnsStructuralMatches) {
     KernelRegistry registry;
-    const KernelDescriptor descriptor = MakeTestKernelDescriptor();
+    const KernelDef descriptor = MakeTestKernelDef();
 
     ASSERT_TRUE(registry.Register(descriptor).ok());
     ASSERT_TRUE(registry.Freeze().ok());
@@ -96,7 +96,7 @@ TEST(KernelRegistry, FindCandidatesRejectsUnknownOpType) {
 
 TEST(KernelRegistry, FindCandidatesBeforeFreezeFails) {
     KernelRegistry registry;
-    const KernelDescriptor descriptor = MakeTestKernelDescriptor();
+    const KernelDef descriptor = MakeTestKernelDef();
 
     ASSERT_TRUE(registry.Register(descriptor).ok());
 
@@ -106,7 +106,7 @@ TEST(KernelRegistry, FindCandidatesBeforeFreezeFails) {
 
 TEST(KernelRegistry, FindByOpTypeBeforeFreezeFails) {
     KernelRegistry registry;
-    const KernelDescriptor descriptor = MakeTestKernelDescriptor();
+    const KernelDef descriptor = MakeTestKernelDef();
 
     ASSERT_TRUE(registry.Register(descriptor).ok());
 
@@ -116,13 +116,13 @@ TEST(KernelRegistry, FindByOpTypeBeforeFreezeFails) {
 
 TEST(KernelRegistry, RegisterAfterFreezeFails) {
     KernelRegistry registry;
-    const KernelDescriptor descriptor = MakeTestKernelDescriptor();
+    const KernelDef descriptor = MakeTestKernelDef();
 
     ASSERT_TRUE(registry.Register(descriptor).ok());
     ASSERT_TRUE(registry.Freeze().ok());
     EXPECT_TRUE(registry.frozen());
 
-    KernelDescriptor extra = descriptor;
+    KernelDef extra = descriptor;
     extra.op_type = OpType::kLinear;
     extra.name = "test::other_op";
 
@@ -132,7 +132,7 @@ TEST(KernelRegistry, RegisterAfterFreezeFails) {
 
 TEST(KernelRegistry, DuplicateRegistrationFails) {
     KernelRegistry registry;
-    const KernelDescriptor descriptor = MakeTestKernelDescriptor();
+    const KernelDef descriptor = MakeTestKernelDef();
 
     ASSERT_TRUE(registry.Register(descriptor).ok());
     EXPECT_EQ(registry.Register(descriptor).code(), StatusCode::kAlreadyExists);
@@ -140,7 +140,7 @@ TEST(KernelRegistry, DuplicateRegistrationFails) {
 
 TEST(KernelRegistry, RegisterRejectsEmptyKernelName) {
     KernelRegistry registry;
-    KernelDescriptor descriptor = MakeTestKernelDescriptor();
+    KernelDef descriptor = MakeTestKernelDef();
     descriptor.name.clear();
 
     const Status status = registry.Register(descriptor);
@@ -150,7 +150,7 @@ TEST(KernelRegistry, RegisterRejectsEmptyKernelName) {
 
 TEST(KernelRegistry, RegisterRejectsCpuRequirementsForNonCpuKernel) {
     KernelRegistry registry;
-    KernelDescriptor descriptor = MakeTestKernelDescriptor();
+    KernelDef descriptor = MakeTestKernelDef();
     descriptor.selector.device_type = DeviceType::kCUDA;
     descriptor.cpu_requirements = CpuFeatureSet::From({CpuFeature::kAvx2});
 
@@ -159,11 +159,11 @@ TEST(KernelRegistry, RegisterRejectsCpuRequirementsForNonCpuKernel) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(KernelRegistry, FindByOpTypeReturnsMatchingDescriptors) {
+TEST(KernelRegistry, FindByOpTypeReturnsMatchingDefs) {
     KernelRegistry registry;
-    const KernelDescriptor rms = MakeTestKernelDescriptor();
+    const KernelDef rms = MakeTestKernelDef();
 
-    KernelDescriptor linear = rms;
+    KernelDef linear = rms;
     linear.op_type = OpType::kLinear;
     linear.name = "test::linear";
 
@@ -188,7 +188,7 @@ TEST(KernelRegistry, FindByOpTypeReturnsMatchingDescriptors) {
 
 TEST(KernelRegistry, DebugDumpContainsRegisteredEntries) {
     KernelRegistry registry;
-    ASSERT_TRUE(registry.Register(MakeTestKernelDescriptor()).ok());
+    ASSERT_TRUE(registry.Register(MakeTestKernelDef()).ok());
     ASSERT_TRUE(registry.Freeze().ok());
 
     const std::string dump = registry.DebugDump();
@@ -199,7 +199,7 @@ TEST(KernelRegistry, DebugDumpContainsRegisteredEntries) {
 
 TEST(KernelRegistry, RegisterCopiesKernelNameStorage) {
     KernelRegistry registry;
-    KernelDescriptor descriptor = MakeTestKernelDescriptor();
+    KernelDef descriptor = MakeTestKernelDef();
     std::array<char, 15> mutable_name{};
     const char original_name[] = "test::mutable";
     std::copy_n(original_name, sizeof(original_name), mutable_name.data());
@@ -217,7 +217,7 @@ TEST(KernelRegistry, RegisterCopiesKernelNameStorage) {
 
 TEST(KernelRegistry, ConcurrentFreezeIsIdempotent) {
     KernelRegistry registry;
-    ASSERT_TRUE(registry.Register(MakeTestKernelDescriptor()).ok());
+    ASSERT_TRUE(registry.Register(MakeTestKernelDef()).ok());
 
     std::vector<std::thread> threads;
     std::vector<Status> statuses(8);
@@ -237,7 +237,7 @@ TEST(KernelRegistry, ConcurrentFreezeIsIdempotent) {
     }
     EXPECT_TRUE(registry.frozen());
     const auto candidates = registry.FindCandidates(
-            OpType::kRmsNorm, MakeTestKernelDescriptor().selector);
+            OpType::kRmsNorm, MakeTestKernelDef().selector);
     ASSERT_TRUE(candidates.ok()) << candidates.status().ToString();
     ASSERT_EQ(candidates->size(), 1U);
     EXPECT_EQ((*candidates)[0]->kernel_func, &FakeKernel);

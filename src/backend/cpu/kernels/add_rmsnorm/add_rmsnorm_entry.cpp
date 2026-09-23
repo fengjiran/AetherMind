@@ -295,7 +295,7 @@ static_assert(alignof(AddRmsNormF32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
         CpuAddRmsNormF32Reference,
-        KernelDescriptor{
+        KernelDef{
                 .op_type = OpType::kAddRmsNorm,
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
@@ -313,7 +313,7 @@ AM_REGISTER_KERNEL(
 
 AM_REGISTER_KERNEL(
         CpuAddRmsNormF32PackedIdentityReference,
-        KernelDescriptor{
+        KernelDef{
                 .op_type = OpType::kAddRmsNorm,
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,

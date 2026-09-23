@@ -223,7 +223,7 @@ PRD 要求使用 Concepts 和静态分发，避免虚函数开销；当前 `Laye
 
 ### 5.5 Alias/In-place 合同未显式表达
 
-算子合同要求明确声明是否允许 in-place 和输入输出别名，但当前 KernelDescriptor、Operator 和 Tensor binding 中没有统一 alias policy。
+算子合同要求明确声明是否允许 in-place 和输入输出别名，但当前 KernelDef、Operator 和 Tensor binding 中没有统一 alias policy。
 
 Add 的简单同形 in-place 可能正确，但广播输入与输出重叠时可能覆盖后续仍需读取的数据；RMSNorm 输出与 weight 重叠也可能破坏后续行。应默认拒绝未声明的 overlap，允许的 in-place 模式必须作为显式 contract。
 

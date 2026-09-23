@@ -132,7 +132,7 @@ Kernel 的最终执行形态必须是 plan-build time resolve 后的函数指针
 为了确保热路径的高性能，Backend 参与的执行逻辑必须划分为三个阶段：
 
 ### 6.1 注册期 (Registration Time)
-- Backend 在初始化时通过内部 `KernelRegistry` 安装本设备族支持的 kernels：各内核 TU 通过 `AM_REGISTER_KERNEL` 静态注册 `KernelDescriptor`，首次 `CpuBackend` 实例化时冻结注册表（`Freeze()`）并构建按 `OpType` 分桶的索引。
+- Backend 在初始化时通过内部 `KernelRegistry` 安装本设备族支持的 kernels：各内核 TU 通过 `AM_REGISTER_KERNEL` 静态注册 `KernelDef`，首次 `CpuBackend` 实例化时冻结注册表（`Freeze()`）并构建按 `OpType` 分桶的索引。
 - `BackendRegistry` 由 `Runtime` 持有（无全局单例）；`KernelRegistry::Global()` 是 backend 模块内部、freeze 后只读的 process-wide descriptor catalog。
 
 ### 6.2 计划构建期 (Plan-Build Time)

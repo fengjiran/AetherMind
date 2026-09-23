@@ -242,7 +242,7 @@ static_assert(std::is_nothrow_move_constructible_v<T>);
 - 一般不应使用 `StatusOr<const T>`，因为 const 类型通常不可移动赋值；
 - 如需借用对象，可返回指针，但必须另行约定非空性和生命周期。
 
-例如 `StatusOr<const KernelDescriptor*>` 只表示“得到一个指针或发生错误”，它不会自动禁止成功状态中的空指针。
+例如 `StatusOr<const KernelDef*>` 只表示“得到一个指针或发生错误”，它不会自动禁止成功状态中的空指针。
 
 ### 5.3 构造与特殊成员
 
@@ -455,14 +455,14 @@ if (!inference_or.ok()) {
 `KernelRegistry::Resolve()` 返回：
 
 ```cpp
-StatusOr<const KernelDescriptor*>
+StatusOr<const KernelDef*>
 ```
 
 可能结果包括：
 
 - registry 未冻结：`Status::FailedPrecondition(...)`；
 - 没有匹配 kernel：`Status::NotFound(...)`；
-- 成功：返回 `const KernelDescriptor*`。
+- 成功：返回 `const KernelDef*`。
 
 CPU Add kernel 参数解析返回：
 

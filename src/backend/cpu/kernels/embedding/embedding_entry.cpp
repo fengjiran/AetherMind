@@ -298,7 +298,7 @@ static_assert(std::is_trivially_destructible_v<EmbeddingF32KernelArgs>);
 static_assert(alignof(EmbeddingF32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(CpuEmbeddingF32Reference,
-                   KernelDescriptor{
+                   KernelDef{
                            .op_type = OpType::kEmbedding,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,
@@ -316,7 +316,7 @@ AM_REGISTER_KERNEL(CpuEmbeddingF32Reference,
 
 
 AM_REGISTER_KERNEL(CpuEmbeddingF32PackedIdentityReference,
-                   KernelDescriptor{
+                   KernelDef{
                            .op_type = OpType::kEmbedding,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,

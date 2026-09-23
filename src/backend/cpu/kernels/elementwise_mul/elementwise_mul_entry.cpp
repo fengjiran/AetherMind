@@ -65,7 +65,7 @@ static_assert(std::is_trivially_destructible_v<ElementwiseMulF32KernelArgs>);
 static_assert(alignof(ElementwiseMulF32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(CpuElementwiseMulF32Reference,
-                   KernelDescriptor{
+                   KernelDef{
                            .op_type = OpType::kElementwiseMul,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,

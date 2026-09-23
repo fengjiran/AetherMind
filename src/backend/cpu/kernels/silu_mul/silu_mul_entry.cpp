@@ -69,7 +69,7 @@ static_assert(alignof(SiluMulF32KernelArgs) <= alignof(std::max_align_t));
 static_assert(sizeof(SiluMulF32KernelArgs) <= kMaxKernelParamsSize);
 
 AM_REGISTER_KERNEL(CpuSiluMulF32Reference,
-                   KernelDescriptor{
+                   KernelDef{
                            .op_type = OpType::kSiluMul,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,

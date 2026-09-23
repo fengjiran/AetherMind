@@ -5,7 +5,7 @@
 - **日期**: 2026-08-21
 - **关联代码**: [include/aethermind/model/model_loader.h](../../../include/aethermind/model/model_loader.h) / [src/model/model_loader.cpp](../../../src/model/model_loader.cpp)，及 [include/aethermind/model/formats/hf/](../../../include/aethermind/model/formats/hf/) 下 HF I/O 组件
 - **上游依赖**: `base`（Status/StatusOr）、`formats/hf`（HfDirectoryReader/HfModelValidator/HfWeightResolver）、`ResolvedModelWeights`/`RawWeightView`
-- **下游消费者**: `ModelCompiler::Compile` / `LoadAndCompile`（compiler 模块）、`ModelGraphBuilder::BuildLlamaDense`（model 模块内）
+- **下游消费者**: `ModelCompiler::Compile` / `LoadAndCompile`（compiler 模块）、`BuildModelGraph` 及 per-family builder `BuildLlamaDense`（model 模块内）
 - **关联测试**: [tests/unit/model/test_model_loader.cpp](../../../tests/unit/model/test_model_loader.cpp) 及 `test_hf_*.cpp` 系列
 - **架构总览**: [architecture_overview.md](../architecture/architecture_overview.md) 第三章（模型加载数据流）与第七章
 
@@ -24,7 +24,7 @@ ModelLoader 是模型加载链路的前端唯一入口：把 HuggingFace 模型�
 - **提供**：`ModelLoader::Load(model_dir)` → `unique_ptr<LoadedModel>`。
 - **请求**：`HfDirectoryReader`（目录 I/O）、`HfModelValidator`（三阶段校验）、`hf::ResolveWeights`（tensor 名 → 逻辑视图，命名空间自由函数）。
 - **所有权**：`LoadedModel` 按值持有 `HfModelConfig` 与 `ResolvedModelWeights`；`ResolvedModelWeights` 的共享 backing storage 为 `RawWeightView` 提供底层数据，生命周期随 `LoadedModel` 存活。
-- **明确不做**：图构建（归 `ModelGraphBuilder`）、kernel 解析（归 execution/backend）、权重预打包（归 `WeightPrepackPlanner`/`PackedWeightStore`）、RoPE scaling type 的语义映射与拒绝（归 `ModelGraphBuilder::BuildLlamaDense` 独占）。
+- **明确不做**：图构建（归 `BuildModelGraph` 及 per-family builder）、kernel 解析（归 execution/backend）、权重预打包（归 `PrepackWeightRequests`/`PackedWeightStore`）、RoPE scaling type 的语义映射与拒绝（归 per-family builder 共享件 `MakeRoPEParams` 独占）。
 - **生命周期**：`LoadedModel` 构造后只读；由 `LoweredModelArtifact` 按值持有其 `unique_ptr`（见架构总览 §5 所有权表）。
 
 ## 3. 关键数据结构
@@ -82,16 +82,16 @@ ModelLoader::Load(model_dir)
 ## 7. 边界条件与错误处理
 
 - **目录不存在/无 config.json**：`Open`/`Inspect` 失败。
-- **非法 config 语义**（非 Llama-family、配置不一致）：`ValidateConfig` 返回 `InvalidArgument`。
+- **非法 config 语义**（非 Llama-family、配置不一致）：家族识别由 `ParseModelArchitecture` 单点判定（`BuildModelGraph` 拒绝）；其余结构校验由 `ValidateConfig` 返回 `InvalidArgument`。
 - **schema 不匹配**（缺 tensor、多余 tensor、dtype 不一致）：`ValidateWeightSet` / `ValidateResolved` 按 `ModelValidationOptions` 策略判定（默认允许 extra tensors 与 tied lm_head 缺失，拒绝 bias/量化/适配器）。
-- **RoPE scaling**：结构合法性由 `ValidateConfig`（`allow_rope_scaling` 默认 true）校验；原始 HF 字段到 typed `RoPEAlgorithmParams` 的规范化与 unknown type 拒绝由 `ModelGraphBuilder::BuildLlamaDense` 独占（`LoadedModel` 不决策）。
+- **RoPE scaling**：结构合法性由 `ValidateConfig`（`allow_rope_scaling` 默认 true）校验；原始 HF 字段到 typed `RoPEAlgorithmParams` 的规范化与 unknown type 拒绝由 per-family graph builder 的共享件 `MakeRoPEParams` 独占（`LoadedModel` 不决策）。
 - **所有权**：所有返回的 `StatusOr` 失败值不含部分构造产物，无资源泄漏路径（RAII）。
 
 ## 8. 风险与权衡
 
 - **视图借用而非复制**：`RawWeightView` 不复制权重，加载期内存峰值低；代价是调用方必须保证 `LoadedModel` 在编译期存活（由 `LoweredModelArtifact` 持有保证）。
 - **校验默认宽松**：默认选项接受 HF 导出怪癖（extra tensors、缺失 tied lm_head），换取对常见模型目录的兼容；严格性可通过 `ModelValidationOptions` 收紧。
-- **无 graph 感知**：`LoadedModel` 不含任何 backend artifact，符合单一语义权威原则（`ModelGraphBuilder` 是 HF → 语义图唯一转换权威）；代价是加载与编译边界需要显式衔接（`ModelCompiler`）。
+- **无 graph 感知**：`LoadedModel` 不含任何 backend artifact，符合单一语义权威原则（`BuildModelGraph` 是 HF → 语义图唯一转换权威的入口，按家族分发到 `BuildLlamaDense` 等 per-family builder）；代价是加载与编译边界需要显式衔接（`ModelCompiler`）。
 
 ## 9. 测试要点
 

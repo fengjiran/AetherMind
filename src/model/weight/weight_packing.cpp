@@ -1,9 +1,9 @@
-#include "aethermind/model/weight_prepack_planner.h"
+#include "aethermind/model/weight/weight_packing.h"
 
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/base/tensor_view.h"
-#include "aethermind/model/packed_weight_store.h"
+#include "aethermind/model/weight/packed_weight_store.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -50,7 +50,8 @@ StatusOr<RawWeightView> MaterializeCompositeWeight(
     int64_t total_rows = 0;
     size_t total_bytes = 0;
     for (const auto& component: components) {
-        // Defense in depth: PrepackAndStore validates before materialization,
+        // Defense in depth: PrepackWeightRequests validates before
+        // materialization,
         // but this helper is the layout authority for fused composites.
         AM_RETURN_IF_ERROR(ValidateRawWeightView(component));
         if (!component.IsValid() || !component.is_contiguous) {
@@ -110,8 +111,8 @@ StatusOr<RawWeightView> MaterializeCompositeWeight(
 
 } // namespace
 
-Status WeightPrepackPlanner::PrepackAndStore(PackedWeightStore& packed_weight_store,
-                                             const std::vector<Request>& requests) {
+Status PrepackWeightRequests(PackedWeightStore& packed_weight_store,
+                             const std::vector<WeightPackingRequest>& requests) {
     CpuWeightPrepacker prepacker;
 
     if (!requests.empty()) {

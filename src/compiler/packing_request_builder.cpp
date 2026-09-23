@@ -1,6 +1,6 @@
 #include "aethermind/compiler/packing_request_builder.h"
 
-#include "aethermind/model/weight_binding_resolver.h"
+#include "aethermind/model/weight/weight_binding_resolver.h"
 #include "aethermind/operators/operator_schema.h"
 
 #include <string>
@@ -79,10 +79,10 @@ StatusOr<std::vector<RawWeightView>> ResolveWeightComponents(
 
 } // namespace
 
-StatusOr<std::vector<WeightPrepackPlanner::Request>> BuildWeightPackingRequests(
+StatusOr<std::vector<WeightPackingRequest>> BuildWeightPackingRequests(
         const LoweredGraph& lowered,
         const ResolvedModelWeights& resolved) {
-    std::vector<WeightPrepackPlanner::Request> requests;
+    std::vector<WeightPackingRequest> requests;
     // (value_index, selector) pairs already requested; one artifact serves
     // every step consuming the same weight value with the same selector.
     std::unordered_map<uint32_t, std::unordered_set<KernelSelector>> seen_requests;
@@ -126,13 +126,15 @@ StatusOr<std::vector<WeightPrepackPlanner::Request>> BuildWeightPackingRequests(
             if (!components.ok()) {
                 return components.status();
             }
-            WeightPrepackPlanner::Request request{
+
+            WeightPackingRequest request{
                     .op_type = step.spec.op_type,
                     .source_id = lowered.artifact_id(),
                     .value_index = value.index,
                     .binding = weight->binding,
                     .selector = step.spec.selector,
             };
+
             if (IsCompositeWeightBinding(weight->binding)) {
                 request.components = std::move(*components);
             } else {

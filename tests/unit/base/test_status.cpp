@@ -9,6 +9,25 @@
 namespace {
 using namespace aethermind;
 
+/// Move-constructible but deliberately not move-assignable, mirroring owner
+/// types whose identity must not be replaced in place.
+class MoveConstructOnly {
+public:
+    MoveConstructOnly() = default;
+    MoveConstructOnly(MoveConstructOnly&&) noexcept = default;
+    MoveConstructOnly(const MoveConstructOnly&) = delete;
+    MoveConstructOnly& operator=(MoveConstructOnly&&) = delete;
+    MoveConstructOnly& operator=(const MoveConstructOnly&) = delete;
+    ~MoveConstructOnly() = default;
+
+    AM_NODISCARD int value() const noexcept {
+        return value_;
+    }
+
+private:
+    int value_ = 7;
+};
+
 TEST(Status, DefaultIsOk) {
     Status status;
     EXPECT_TRUE(status.ok());
@@ -78,23 +97,37 @@ TEST(StatusOr, MoveOnlyType) {
 }
 
 TEST(StatusOr, MoveAssignIsNothrowByConstraint) {
-    // StatusOr<T>::operator=(StatusOr&&) is noexcept, backed by the
-    // is_nothrow_move_constructible_v<T> + is_nothrow_move_assignable_v<T>
-    // class-level static_asserts and the Status nothrow-move prerequisite.
-    // A throwing-move-assign T is rejected at instantiation, so noexcept is
-    // honest by construction — no runtime exception propagation test needed.
+    // StatusOr<T>::operator=(StatusOr&&) is noexcept: it stays defaulted, so it
+    // is only usable — and only then noexcept — for value types whose own move
+    // assignment is nothrow.
     static_assert(noexcept(std::declval<StatusOr<int>&>() =
                                    std::declval<StatusOr<int>&&>()),
-                  "StatusOr<int> move-assign must be noexcept (backed by T constraint)");
+                  "StatusOr<int> move-assign must be noexcept");
     static_assert(noexcept(std::declval<StatusOr<std::string>&>() =
                                    std::declval<StatusOr<std::string>&&>()),
-                  "StatusOr<std::string> move-assign must be noexcept (backed by T constraint)");
+                  "StatusOr<std::string> move-assign must be noexcept");
 
     StatusOr<int> a(std::in_place, 1);
     StatusOr<int> b(std::in_place, 2);
     a = std::move(b);
     EXPECT_TRUE(a.ok());
     EXPECT_EQ(*a, 2);
+}
+
+TEST(StatusOr, AcceptsValueTypesWithoutMoveAssignment) {
+    // Only nothrow move construction is required; for a T without move
+    // assignment, StatusOr's own assignment is deleted instead of failing
+    // instantiation, so such owner types remain returnable in StatusOr.
+    static_assert(std::is_nothrow_move_constructible_v<MoveConstructOnly>);
+    static_assert(!std::is_move_assignable_v<MoveConstructOnly>);
+    static_assert(!std::is_move_assignable_v<StatusOr<MoveConstructOnly>>);
+
+    StatusOr<MoveConstructOnly> result(std::in_place);
+    ASSERT_TRUE(result.ok());
+    EXPECT_EQ(result->value(), 7);
+
+    MoveConstructOnly moved = std::move(*result);
+    EXPECT_EQ(moved.value(), 7);
 }
 
 TEST(StatusOr, MoveOutValue) {

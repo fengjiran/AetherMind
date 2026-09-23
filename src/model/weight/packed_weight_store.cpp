@@ -1,4 +1,4 @@
-#include "aethermind/model/packed_weight_store.h"
+#include "aethermind/model/weight/packed_weight_store.h"
 
 #include <limits>
 

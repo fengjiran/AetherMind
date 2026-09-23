@@ -230,7 +230,6 @@ storage_ 不应持有 Status::Ok()
 static_assert(!std::is_reference_v<T>);
 static_assert(!std::is_same_v<std::remove_cv_t<T>, Status>);
 static_assert(std::is_nothrow_move_constructible_v<T>);
-static_assert(std::is_nothrow_move_assignable_v<T>);
 ```
 
 因此：
@@ -239,6 +238,7 @@ static_assert(std::is_nothrow_move_assignable_v<T>);
 - 不支持 `StatusOr<Status>`；
 - 支持原始指针，但不表达所有权；
 - 支持 `std::unique_ptr<T>` 等 nothrow-movable 类型；
+- 赋值不构成实例化前提：两个赋值运算符保持 `= default`，对不可按需赋值的 `T` 自然变为 deleted（而非让整个实例化失败），因此不可赋值的 owner 类型（如只可移动构造的句柄）也能安全用作 `StatusOr<T>`；
 - 一般不应使用 `StatusOr<const T>`，因为 const 类型通常不可移动赋值；
 - 如需借用对象，可返回指针，但必须另行约定非空性和生命周期。
 
@@ -270,7 +270,8 @@ StatusOr& operator=(StatusOr&&) noexcept = default;
 - `std::in_place` 用于直接构造 `T`；
 - 使用 OK `Status` 构造 `StatusOr` 会抛出 `std::invalid_argument`；
 - 如果 `T` 不可复制，默认 copy 操作会被编译器隐式删除；
-- move 构造和赋值通过类型约束保证 `noexcept`。
+- move 构造通过类型约束（nothrow move-constructible）保证 `noexcept`；
+- 赋值保持 `= default`：对可按需赋值的 `T` 为 `noexcept`，对不可赋值的 `T` 变为 deleted，不阻塞 `StatusOr<T>` 本身的实例化与返回。
 
 ### 5.4 状态和值访问
 

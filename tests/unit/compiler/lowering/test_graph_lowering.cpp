@@ -4,7 +4,7 @@
 #include "aethermind/compiler/lowered_graph.h"
 #include "aethermind/execution/execution_plan_builder.h"
 
-#include "aethermind/model/model_graph_builder.h"
+#include "aethermind/model/llama_dense_graph_builder.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_schema.h"
 #include "aethermind/operators/ops/rmsnorm_op.h"
@@ -498,7 +498,7 @@ TEST(GraphLowering, RejectsInvalidGraph) {
 TEST(GraphLowering, LowersFullLlamaDenseGraph) {
     const HfModelConfig config = MakeLlamaConfig(2);
     const ResolvedModelWeights weights = MakeWeights(config);
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(*graph);
@@ -674,7 +674,7 @@ TEST(GraphLowering, CarriesRuntimeChecksFromGraphToLoweredNode) {
 TEST(GraphLowering, CarriesRoPERuntimeChecksFromLlamaGraph) {
     const HfModelConfig config = MakeLlamaConfig(1);
     const ResolvedModelWeights weights = MakeWeights(config);
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
 
     // Locate the RoPE node in the canonical Llama dense graph. With one
@@ -713,7 +713,7 @@ TEST(GraphLowering, CarriesRoPERuntimeChecksFromLlamaGraph) {
 TEST(GraphLowering, LowersCompleteInputSpecsInSchemaPortOrder) {
     const HfModelConfig config = MakeLlamaConfig(2);
     const ResolvedModelWeights weights = MakeWeights(config);
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
 
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(*graph);

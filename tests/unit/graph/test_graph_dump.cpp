@@ -2,7 +2,7 @@
 #include "test_graph_helpers.h"
 
 #include "aethermind/model/formats/hf/hf_model_config.h"
-#include "aethermind/model/model_graph_builder.h"
+#include "aethermind/model/llama_dense_graph_builder.h"
 
 #include <gtest/gtest.h>
 
@@ -168,7 +168,7 @@ TEST(GraphDump, DumpsEmptyGraphWithoutCrash) {
 
 TEST(GraphDump, DumpsLlamaDenseGraph) {
     const HfModelConfig config = MakeConfig();
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, MakeWeights(config));
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, MakeWeights(config));
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
 
     std::ostringstream os;

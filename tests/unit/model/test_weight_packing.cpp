@@ -1,4 +1,4 @@
-#include "aethermind/model/weight_prepack_planner.h"
+#include "aethermind/model/weight/weight_packing.h"
 
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/backend_factory.h"
@@ -13,7 +13,7 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/graph/graph.h"
-#include "aethermind/model/packed_weight_store.h"
+#include "aethermind/model/weight/packed_weight_store.h"
 #include "aethermind/operators/ops/embedding_op.h"
 #include "aethermind/operators/ops/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -63,12 +63,12 @@ KernelSelector MakeExpectedSelector() {
     };
 }
 
-TEST(WeightPrepackPlanner, PrepackAndStoreMakesWeightsFindable) {
+TEST(WeightPacking, PrepackWeightRequestsMakesWeightsFindable) {
     auto storage = std::make_shared<TestStorage>(256);
     // Fill with zeros so Pack can safely memcpy.
     for (auto& b: storage->data) b = std::byte{0};
 
-    const std::vector<WeightPrepackPlanner::Request> requests{
+    const std::vector<WeightPackingRequest> requests{
             {.op_type = OpType::kLinear,
              .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
              .raw_weight = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1}),
@@ -76,7 +76,7 @@ TEST(WeightPrepackPlanner, PrepackAndStoreMakesWeightsFindable) {
     };
 
     PackedWeightStore packed_weight_store;
-    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(packed_weight_store, requests).ok());
+    ASSERT_TRUE(PrepackWeightRequests(packed_weight_store, requests).ok());
 
     const KernelSelector expected_selector = MakeExpectedSelector();
     const WeightArtifactKey key{.binding = requests.front().binding,
@@ -90,7 +90,7 @@ TEST(WeightPrepackPlanner, PrepackAndStoreMakesWeightsFindable) {
     EXPECT_TRUE(found->storage().is_initialized());
 }
 
-TEST(WeightPrepackPlanner, PrepackAndStoreStoresAllLayerWeightsDistinctly) {
+TEST(WeightPacking, PrepackWeightRequestsStoresAllLayerWeightsDistinctly) {
     auto storage = std::make_shared<TestStorage>(256);
     for (auto& b: storage->data) b = std::byte{0};
 
@@ -101,7 +101,7 @@ TEST(WeightPrepackPlanner, PrepackAndStoreStoresAllLayerWeightsDistinctly) {
             TransformerWeightRole::kAttentionV, TransformerWeightRole::kAttentionO,
             TransformerWeightRole::kMlpGate, TransformerWeightRole::kMlpUp,
             TransformerWeightRole::kMlpDown};
-    std::vector<WeightPrepackPlanner::Request> requests;
+    std::vector<WeightPackingRequest> requests;
     for (uint32_t layer = 0; layer < 2; ++layer) {
         for (size_t role = 0; role < roles.size(); ++role) {
             requests.push_back(
@@ -115,7 +115,7 @@ TEST(WeightPrepackPlanner, PrepackAndStoreStoresAllLayerWeightsDistinctly) {
     ASSERT_EQ(requests.size(), 14U);
 
     PackedWeightStore packed_weight_store;
-    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(packed_weight_store, requests).ok());
+    ASSERT_TRUE(PrepackWeightRequests(packed_weight_store, requests).ok());
 
     // All 14 distinct keys are stored; the same role across layers differs by
     // its layer index and every role is individually findable.
@@ -128,13 +128,13 @@ TEST(WeightPrepackPlanner, PrepackAndStoreStoresAllLayerWeightsDistinctly) {
     }
 }
 
-TEST(WeightPrepackPlanner, RawViewsRemainAccessibleAfterPrepack) {
+TEST(WeightPacking, RawViewsRemainAccessibleAfterPrepack) {
     auto storage = std::make_shared<TestStorage>(256);
     for (auto& b: storage->data) b = std::byte{0};
 
     const RawWeightView raw_weight =
             MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1});
-    const std::vector<WeightPrepackPlanner::Request> requests{
+    const std::vector<WeightPackingRequest> requests{
             {.op_type = OpType::kLinear,
              .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
              .raw_weight = raw_weight,
@@ -142,7 +142,7 @@ TEST(WeightPrepackPlanner, RawViewsRemainAccessibleAfterPrepack) {
     };
 
     PackedWeightStore packed_weight_store;
-    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(packed_weight_store, requests).ok());
+    ASSERT_TRUE(PrepackWeightRequests(packed_weight_store, requests).ok());
 
     // Prepacking borrows the request's raw view; the caller's view stays valid.
     EXPECT_TRUE(raw_weight.IsValid());
@@ -201,7 +201,7 @@ public:
 // lower-driven request builder derives key material from the artifact, the
 // prepacker stores artifacts under {source, value, binding, selector, recipe},
 // and the plan builder resolves each step to its own artifact.
-TEST(WeightPrepackPlanner, LoweredDrivenPrepackAndResolve) {
+TEST(WeightPacking, LoweredDrivenPrepackAndResolve) {
     auto storage = std::make_shared<TestStorage>(512);
     for (auto& b: storage->data) b = std::byte{0};
 
@@ -261,7 +261,7 @@ TEST(WeightPrepackPlanner, LoweredDrivenPrepackAndResolve) {
     EXPECT_EQ((*requests)[2].value_index, norm1_weight.index);
 
     PackedWeightStore packed_weight_store;
-    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(
+    ASSERT_TRUE(PrepackWeightRequests(
                         packed_weight_store, *requests)
                         .ok());
     ASSERT_EQ(packed_weight_store.size(), 3U);
@@ -329,7 +329,7 @@ TEST(WeightPrepackPlanner, LoweredDrivenPrepackAndResolve) {
     EXPECT_EQ(g_planner_packed_kernel_calls, 3);
 }
 
-TEST(WeightPrepackPlanner, LoweredDrivenPrepackResolvesCompositeBindings) {
+TEST(WeightPacking, LoweredDrivenPrepackResolvesCompositeBindings) {
     auto storage = std::make_shared<TestStorage>(4096);
     for (auto& b: storage->data) b = std::byte{0};
 
@@ -405,7 +405,7 @@ TEST(WeightPrepackPlanner, LoweredDrivenPrepackResolvesCompositeBindings) {
 
     auto qkv_request = std::find_if(
             requests->begin(), requests->end(),
-            [](const WeightPrepackPlanner::Request& req) {
+            [](const WeightPackingRequest& req) {
                 return req.op_type == OpType::kQkvLinear;
             });
     ASSERT_NE(qkv_request, requests->end());
@@ -418,7 +418,7 @@ TEST(WeightPrepackPlanner, LoweredDrivenPrepackResolvesCompositeBindings) {
 
     auto gate_up_request = std::find_if(
             requests->begin(), requests->end(),
-            [](const WeightPrepackPlanner::Request& req) {
+            [](const WeightPackingRequest& req) {
                 return req.op_type == OpType::kGateUpLinear;
             });
     ASSERT_NE(gate_up_request, requests->end());
@@ -429,7 +429,7 @@ TEST(WeightPrepackPlanner, LoweredDrivenPrepackResolvesCompositeBindings) {
 
     auto embedding_request = std::find_if(
             requests->begin(), requests->end(),
-            [](const WeightPrepackPlanner::Request& req) {
+            [](const WeightPackingRequest& req) {
                 return req.op_type == OpType::kEmbedding;
             });
     ASSERT_NE(embedding_request, requests->end());
@@ -437,7 +437,7 @@ TEST(WeightPrepackPlanner, LoweredDrivenPrepackResolvesCompositeBindings) {
     EXPECT_EQ(embedding_request->raw_weight.data, resolved.embed_tokens.data);
 
     PackedWeightStore packed_weight_store;
-    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(
+    ASSERT_TRUE(PrepackWeightRequests(
                         packed_weight_store, *requests)
                         .ok());
     ASSERT_EQ(packed_weight_store.size(), 3U);
@@ -445,7 +445,7 @@ TEST(WeightPrepackPlanner, LoweredDrivenPrepackResolvesCompositeBindings) {
 
     // Stored fused artifacts carry the fused logical shape and exactly the
     // recipe-ordered concatenation of their components.
-    const auto expect_fused = [&](const WeightPrepackPlanner::Request& req) {
+    const auto expect_fused = [&](const WeightPackingRequest& req) {
         const WeightArtifactKey key{.source_id = req.source_id,
                                     .value_index = req.value_index,
                                     .binding = req.binding,
@@ -501,20 +501,20 @@ TEST(WeightPrepackPlanner, LoweredDrivenPrepackResolvesCompositeBindings) {
     EXPECT_TRUE(saw_gate_up);
 }
 
-Status PrepackSingleRequest(const WeightPrepackPlanner::Request& request) {
+Status PrepackSingleRequest(const WeightPackingRequest& request) {
     PackedWeightStore store;
-    return WeightPrepackPlanner::PrepackAndStore(store, {request});
+    return PrepackWeightRequests(store, {request});
 }
 
 // RawWeightView::bytes must exactly match shape × dtype byte size: the
 // prepacker copies the shape-derived logical size, so any mismatch would
 // read out of bounds or corrupt fused layouts. These cases must be rejected
-// eagerly at the PrepackAndStore boundary.
-TEST(WeightPrepackPlanner, PrepackAndStoreRejectsDirectWeightWithUndersizedBytes) {
+// eagerly at the PrepackWeightRequests boundary.
+TEST(WeightPacking, PrepackWeightRequestsRejectsDirectWeightWithUndersizedBytes) {
     auto storage = std::make_shared<TestStorage>(64);
     for (auto& b: storage->data) b = std::byte{0};
 
-    const WeightPrepackPlanner::Request request{
+    const WeightPackingRequest request{
             .op_type = OpType::kLinear,
             .source_id = 1,
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
@@ -527,11 +527,11 @@ TEST(WeightPrepackPlanner, PrepackAndStoreRejectsDirectWeightWithUndersizedBytes
     EXPECT_NE(status.message().find("does not match"), std::string::npos);
 }
 
-TEST(WeightPrepackPlanner, PrepackAndStoreRejectsDirectWeightWithOversizedBytes) {
+TEST(WeightPacking, PrepackWeightRequestsRejectsDirectWeightWithOversizedBytes) {
     auto storage = std::make_shared<TestStorage>(64);
     for (auto& b: storage->data) b = std::byte{0};
 
-    const WeightPrepackPlanner::Request request{
+    const WeightPackingRequest request{
             .op_type = OpType::kLinear,
             .source_id = 1,
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
@@ -544,11 +544,11 @@ TEST(WeightPrepackPlanner, PrepackAndStoreRejectsDirectWeightWithOversizedBytes)
     EXPECT_NE(status.message().find("does not match"), std::string::npos);
 }
 
-TEST(WeightPrepackPlanner, PrepackAndStoreRejectsCompositeComponentWithUndersizedBytes) {
+TEST(WeightPacking, PrepackWeightRequestsRejectsCompositeComponentWithUndersizedBytes) {
     auto storage = std::make_shared<TestStorage>(64);
     for (auto& b: storage->data) b = std::byte{0};
 
-    const WeightPrepackPlanner::Request request{
+    const WeightPackingRequest request{
             .op_type = OpType::kQkvLinear,
             .source_id = 1,
             .binding = MakeQkvWeightBinding(0U),
@@ -565,11 +565,11 @@ TEST(WeightPrepackPlanner, PrepackAndStoreRejectsCompositeComponentWithUndersize
     EXPECT_NE(status.message().find("does not match"), std::string::npos);
 }
 
-TEST(WeightPrepackPlanner, PrepackAndStoreRejectsNegativeWeightDimension) {
+TEST(WeightPacking, PrepackWeightRequestsRejectsNegativeWeightDimension) {
     auto storage = std::make_shared<TestStorage>(64);
     for (auto& b: storage->data) b = std::byte{0};
 
-    const WeightPrepackPlanner::Request request{
+    const WeightPackingRequest request{
             .op_type = OpType::kLinear,
             .source_id = 1,
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
@@ -582,11 +582,11 @@ TEST(WeightPrepackPlanner, PrepackAndStoreRejectsNegativeWeightDimension) {
     EXPECT_NE(status.message().find("negative dimension"), std::string::npos);
 }
 
-TEST(WeightPrepackPlanner, PrepackAndStoreRejectsOverflowingWeightByteSize) {
+TEST(WeightPacking, PrepackWeightRequestsRejectsOverflowingWeightByteSize) {
     auto storage = std::make_shared<TestStorage>(64);
     for (auto& b: storage->data) b = std::byte{0};
 
-    const WeightPrepackPlanner::Request request{
+    const WeightPackingRequest request{
             .op_type = OpType::kLinear,
             .source_id = 1,
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
@@ -609,10 +609,10 @@ TEST(WeightPrepackPlanner, PrepackAndStoreRejectsOverflowingWeightByteSize) {
 }
 
 // Tied embeddings: a checkpoint without an independent lm_head reuses
-// embed_tokens. The request builder must mirror ModelGraphBuilder and fall
-// back to embed_tokens for the kLmHead binding, or graph-driven
+// embed_tokens. The request builder must mirror the per-family graph builders
+// and fall back to embed_tokens for the kLmHead binding, or graph-driven
 // materialization fails for common tied models.
-TEST(WeightPrepackPlanner, BuildWeightPackingRequestsFallsBackToEmbedTokensForTiedLmHead) {
+TEST(WeightPacking, BuildWeightPackingRequestsFallsBackToEmbedTokensForTiedLmHead) {
     auto storage = std::make_shared<TestStorage>(2048);
     for (auto& b: storage->data) b = std::byte{0};
 
@@ -667,7 +667,7 @@ TEST(WeightPrepackPlanner, BuildWeightPackingRequestsFallsBackToEmbedTokensForTi
 // Plain (non-packed) weight steps must not produce packing requests: the
 // planner packs only kPacked selectors, and feeding it plain steps would
 // fail inside CpuWeightPrepacker.
-TEST(WeightPrepackPlanner, BuildWeightPackingRequestsSkipsPlainWeightSteps) {
+TEST(WeightPacking, BuildWeightPackingRequestsSkipsPlainWeightSteps) {
     ModelGraph graph;
     const GraphValueId input = graph.AddConstant(
             TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape({1, 8})},
@@ -693,7 +693,7 @@ TEST(WeightPrepackPlanner, BuildWeightPackingRequestsSkipsPlainWeightSteps) {
 // One weight value consumed by several steps with the same selector packs
 // exactly once; duplicate requests would collide on the exact artifact key
 // and fail with AlreadyExists during Store.
-TEST(WeightPrepackPlanner, BuildWeightPackingRequestsDeduplicatesSharedWeightValue) {
+TEST(WeightPacking, BuildWeightPackingRequestsDeduplicatesSharedWeightValue) {
     auto storage = std::make_shared<TestStorage>(512);
     for (auto& b: storage->data) b = std::byte{0};
 
@@ -732,7 +732,7 @@ TEST(WeightPrepackPlanner, BuildWeightPackingRequestsDeduplicatesSharedWeightVal
     EXPECT_EQ((*requests)[0].op_type, OpType::kLinear);
 
     PackedWeightStore store;
-    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(store, *requests).ok());
+    ASSERT_TRUE(PrepackWeightRequests(store, *requests).ok());
     EXPECT_EQ(store.size(), 1U);
     EXPECT_EQ(store.source_id(), lowered->artifact_id());
 }
@@ -778,7 +778,7 @@ ExecutionPlanNodeSpec MakePackedLinearNode() {
 // Untrusted packed nodes key their artifacts by the actual kWeight operand
 // id: two packed nodes resolve distinct artifacts instead of colliding on one
 // unbound key.
-TEST(WeightPrepackPlanner, UntrustedBuildBindsDistinctPackedArtifacts) {
+TEST(WeightPacking, UntrustedBuildBindsDistinctPackedArtifacts) {
     const std::vector<ExecutionPlanNodeSpec> nodes{MakePackedLinearNode(),
                                                    MakePackedLinearNode()};
 
@@ -811,7 +811,7 @@ TEST(WeightPrepackPlanner, UntrustedBuildBindsDistinctPackedArtifacts) {
     EXPECT_NE(plan->steps()[0].packed_weights, plan->steps()[1].packed_weights);
 }
 
-TEST(WeightPrepackPlanner, UntrustedBuildRejectsArtifactOpTypeMismatch) {
+TEST(WeightPacking, UntrustedBuildRejectsArtifactOpTypeMismatch) {
     const std::vector<ExecutionPlanNodeSpec> nodes{MakePackedLinearNode()};
 
     PackedWeightStore store;
@@ -835,7 +835,7 @@ TEST(WeightPrepackPlanner, UntrustedBuildRejectsArtifactOpTypeMismatch) {
     EXPECT_NE(plan.status().message().find("op type"), std::string::npos);
 }
 
-TEST(WeightPrepackPlanner, UntrustedBuildRejectsArtifactShapeMismatch) {
+TEST(WeightPacking, UntrustedBuildRejectsArtifactShapeMismatch) {
     const std::vector<ExecutionPlanNodeSpec> nodes{MakePackedLinearNode()};
 
     PackedWeightStore store;

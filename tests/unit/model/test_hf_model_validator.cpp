@@ -173,16 +173,6 @@ TEST(ModelLoader_HfModelValidatorTest, AcceptsValidLlamaConfigWithOptions) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
-TEST(ModelLoader_HfModelValidatorTest, RejectsNonLlamaModelTypeEvenWithLlamaArchitecture) {
-    HfModelConfig config = MakeValidLlamaConfig();
-    config.model_type = "unknown";
-
-    const Status status = HfModelValidator::ValidateConfig(config);
-
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-}
-
 TEST(ModelLoader_HfModelValidatorTest, AcceptsMissingArchitecturesWhenModelTypeIsLlama) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.architectures.clear();
@@ -190,17 +180,6 @@ TEST(ModelLoader_HfModelValidatorTest, AcceptsMissingArchitecturesWhenModelTypeI
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_TRUE(status.ok()) << status.ToString();
-}
-
-TEST(ModelLoader_HfModelValidatorTest, RejectsUnsupportedModelFamily) {
-    HfModelConfig config = MakeValidLlamaConfig();
-    config.model_type = "gpt_neox";
-    config.architectures = {"GPTNeoXForCausalLM"};
-
-    const Status status = HfModelValidator::ValidateConfig(config);
-
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsNonPositiveRequiredDimensions) {
@@ -400,9 +379,10 @@ TEST(ModelLoader_HfModelValidatorTest, DefersUnknownRoPEAlgorithmValidationToBui
     const Status status = HfModelValidator::ValidateConfig(config, options);
 
     // HfModelValidator no longer rejects unknown algorithm values; the semantic
-    // conversion/rejection authority is MakeRoPEParams in ModelGraphBuilder.
-    // kUnknown passes structural validation here and is rejected later by
-    // MakeRoPEParams with a "not representable on the semantic graph surface" error.
+    // conversion/rejection authority is MakeRoPEParams in the per-family graph
+    // builders. kUnknown passes structural validation here and is rejected
+    // later by MakeRoPEParams with a "not representable on the semantic graph
+    // surface" error.
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 

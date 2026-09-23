@@ -515,14 +515,11 @@ Status ValidateResolvedModelDTypes(const HfModelConfig& config,
 } // namespace
 
 Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const ModelValidationOptions& options) {
+    // model_type presence is structural (required config.json key); which
+    // families are accepted is decided by ParseModelArchitecture alone.
     if (config.model_type.empty()) {
         return Status::InvalidArgument("Model config field 'model_type' must be provided");
     }
-
-    if (config.model_type != "llama") {
-        return Status::InvalidArgument("Only model_type=llama is supported in AetherMind Phase 1");
-    }
-
     AM_RETURN_IF_ERROR(RequirePositive(config.hidden_size, "hidden_size"));
     AM_RETURN_IF_ERROR(RequirePositive(config.intermediate_size, "intermediate_size"));
     AM_RETURN_IF_ERROR(RequirePositive(config.num_hidden_layers, "num_hidden_layers"));
@@ -580,7 +577,7 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
                     "Model config field 'rope_type' must select a non-standard algorithm when scaling fields are configured");
         }
 
-        // ModelGraphBuilder remains the authority for algorithm-specific
+        // Per-family graph builders remain the authority for algorithm-specific
         // normalization. The loader only rejects structurally incomplete HF
         // tuples before model construction.
         const bool requires_scalar_factor =

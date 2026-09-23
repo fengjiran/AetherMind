@@ -1,14 +1,14 @@
 # CPU GEMM Packed Weight 提案
 
 - **状态**: Proposed
-- **版本**: 1.3
+- **版本**: 1.4
 - **日期**: 2026-09-23
 - **文档定位**: `exact recipe` 与 `packed-B` 阶段（[CPU GEMM 优化方案](cpu-gemm-optimization.md) §7）的具体化设计；只含方案内容，状态与机器级证据不在此维护。
 - **产品边界**: [AetherMind 当前产品 PRD](../../products/aethermind_prd.md)
 - **工作流规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
 - **架构基线**: [架构总览](../../designs/architecture/architecture_overview.md)
-- **关联代码**: `src/backend/cpu/cpu_weight_prepacker.cpp`、`src/backend/cpu/kernels/gemm/`、`src/backend/cpu/kernels/common/packed_weight_utils.{h,cpp}`（packed recipe 校验闸口）、`src/compiler/packing_request_builder.{h,cpp}`（生产 packing request 来源）、`include/aethermind/backend/resolved_kernel.h`（`expected_packing_recipe` 已存在）、`include/aethermind/backend/packed_weights.h`、`include/aethermind/model/{weight_prepack_planner,packed_weight_store}.h`
-- **关联测试**: `tests/unit/backend/cpu/kernels/`、`tests/unit/model/test_weight_prepack_planner.cpp`、`tests/benchmark/cpu_kernels/`
+- **关联代码**: `src/backend/cpu/cpu_weight_prepacker.cpp`、`src/backend/cpu/kernels/gemm/`、`src/backend/cpu/kernels/common/packed_weight_utils.{h,cpp}`（packed recipe 校验闸口）、`src/compiler/packing_request_builder.{h,cpp}`（生产 packing request 来源）、`include/aethermind/backend/resolved_kernel.h`（`expected_packing_recipe` 已存在）、`include/aethermind/backend/packed_weights.h`、`include/aethermind/model/weight/{weight_packing,packed_weight_store}.h`
+- **关联测试**: `tests/unit/backend/cpu/kernels/`、`tests/unit/model/test_weight_packing.cpp`、`tests/benchmark/cpu_kernels/`
 - **关联 ADR**: 无（exact recipe 合同落地时新建）
 - **关联模块**: backend / execution / compiler / model / benchmark
 
@@ -29,9 +29,9 @@
 | recipe 合同 | `PackingRecipe{layout, alignment}`，无 tile 字段 | `include/aethermind/backend/packed_weights.h` |
 | 打包服务 | `CpuWeightPrepacker::Pack/RecipeFor`，唯一 recipe 为 `cpu_identity` 对齐拷贝；`Pack` 内部自己调 `RecipeFor(selector)` | `src/backend/cpu/cpu_weight_prepacker.cpp` |
 | 打包 request（生产） | `BuildWeightPackingRequests(lowered, resolved)`：纯数据映射，填 components/op_type/source_id，**never touches a backend**，不携带 recipe | `include/aethermind/compiler/packing_request_builder.h` |
-| 打包 request（legacy） | 已删除（2026-09-23）：`WeightPrepackPlanner::BuildRequests` 曾按 role 枚举 linear 权重、从不填 components；graph-driven 的 `BuildWeightPackingRequests` 成为唯一生产 request 来源后移除 | `include/aethermind/model/weight_prepack_planner.h`（现只保留 `PrepackAndStore`）、`src/model/weight_prepack_planner.cpp` |
-| 打包执行 | `PrepackAndStore(store, requests)` 无 Backend 参数；key 的 recipe 由它自己调 `RecipeFor(req.selector)` 得出；model 层直接实例化 `CpuWeightPrepacker`（母提案 §4.5 第 4 点要消除的偏差） | `src/model/weight_prepack_planner.cpp` |
-| 存储/定位 | `PackedWeightStore` + `WeightArtifactKey{source_id, value_index, binding, selector, recipe}`；plan 组装用 `Find(exact_key)`，冻结期校验 `artifact->recipe() != expected_packing_recipe` 即失败 | `include/aethermind/model/packed_weight_store.h`、`src/execution/execution_plan_builder.cpp` |
+| 打包 request（legacy） | 已删除（2026-09-23）：`WeightPrepackPlanner::BuildRequests` 曾按 role 枚举 linear 权重、从不填 components；graph-driven 的 `BuildWeightPackingRequests` 成为唯一生产 request 来源后移除 | `include/aethermind/model/weight/weight_packing.h`（现只提供 `PrepackWeightRequests`）、`src/model/weight/weight_packing.cpp` |
+| 打包执行 | `PrepackWeightRequests(store, requests)` 无 Backend 参数；key 的 recipe 由它自己调 `RecipeFor(req.selector)` 得出；model 层直接实例化 `CpuWeightPrepacker`（母提案 §4.5 第 4 点要消除的偏差） | `src/model/weight/weight_packing.cpp` |
+| 存储/定位 | `PackedWeightStore` + `WeightArtifactKey{source_id, value_index, binding, selector, recipe}`；plan 组装用 `Find(exact_key)`，冻结期校验 `artifact->recipe() != expected_packing_recipe` 即失败 | `include/aethermind/model/weight/packed_weight_store.h`、`src/execution/execution_plan_builder.cpp` |
 | resolve 期 recipe | `ResolvedKernel::expected_packing_recipe` 已在 resolve 期由 backend 填充；resolve 期**没有 shape**（`LinearParams {}` 为空，`QkvLinearParams` 只有 q/k/v out_features） | `include/aethermind/backend/resolved_kernel.h`、`include/aethermind/operators/op_params.h` |
 | binding 期消费 | `KernelParamsBuildContext::packed_weight`（opaque `PackedWeightView`：data/nbytes/logical dtype+shape/recipe_layout/alignment）；**无 tile 字段** | `include/aethermind/backend/kernel_types.h` |
 | packed 校验闸口 | `ValidateIdentityPackedWeight` 硬编码只接受 `cpu_identity`，是所有 packed 消费者的共同闸口 | `src/backend/cpu/kernels/common/packed_weight_utils.cpp` |
@@ -114,8 +114,8 @@ KernelDescriptor  ── 新增 .packing_recipe 字段（packed descriptor 声�
       │   （不能复用 PrepareKernel：QkvLinear 的 metadata_builder 消费 params，
       │    packing request 不带 params；且 compiler 不得依赖 backend）
       │ 由持有 Backend 的编排层调用，注入
-WeightPrepackPlanner::Request  ── 新增 .recipe 字段
-      │ PrepackAndStore(store, requests) 按 req.recipe 调用
+WeightPackingRequest  ── 新增 .recipe 字段
+      │ PrepackWeightRequests(store, requests) 按 req.recipe 调用
 CpuWeightPrepacker::Pack(op, weight, selector, recipe)  ── 不再内部 RecipeFor
       │ 三处联动（Request.recipe == artifact.recipe == key.recipe）
 PackedWeightStore.Store(key{..., recipe})
@@ -224,6 +224,7 @@ recipe 注入点警示：图中"编排层注入 Request.recipe"一步今天没�
 
 | 日期 | 版本 | 变更 | 原因 |
 |---|---|---|---|
+| 2026-09-23 | 1.4 | 命名同步：`WeightPrepackPlanner::PrepackAndStore` 函数化为自由函数 `PrepackWeightRequests`、`Request` 提为 `WeightPackingRequest`（头文件 `model/weight/weight_packing.h`，与 compiler 侧 `BuildWeightPackingRequests` 对称）；M4 传递链示意与关联代码/测试路径同步 | 静态工具类与该类"只执行、不规划"的现状不符，仓库已统一为自由函数形态 |
 | 2026-09-23 | 1.3 | 现状同步：生产编排点已由 `PrepareExecutableModel`（improvement-plan 07 M2.4）落地，删除"编排点不存在"的表述，M4 前置改为"recipe 注入点落地"；`WeightPrepackPlanner::BuildRequests` legacy request 生成已删除，request 唯一生产来源为 `BuildWeightPackingRequests` | 07 M2.4 落地使 §1/§2/§3.5/§5 的现状描述与仓库不一致 |
 | 2026-09-22 | 1.2 | 第二轮审核修订：scan driver 形态改为 MR∈{1..8} 广播变体（沿 N 向量化、无水平归约）；recipe 查询入口硬约束为复用 ResolveEligibleDescriptor、PrepareKernel 改读 descriptor->packing_recipe；新增 M5 前置（packed 使能是图级全局开关，须补齐 6 个 kWeight 算子的 packed descriptor 或 per-op 使能）；修正 N 尾三选一（NR<16 列变体/partial column store）、kc 取舍维度（C read-modify-write 趟数翻倍，定值归 M3）、layout 常量编译期绑定（去二级查表）、块内/块间布局表述、K 尾边界表述 | 块内布局与遍历序分开声明；scan driver 原"沿 K 向量化"形态在 bpanel 布局下丢失全部收益；图级开关使"首落 Linear"在端到端不成立 |
 | 2026-09-22 | 1.1 | 按审核意见修订：recipe 不扩展（shape 派生字段不可实现）；pad-0 改为只统一块 stride、输出侧须 masked/partial store；传递链改指生产 `BuildWeightPackingRequests` 并指定 recipe 注入 API 与三处联动；补 K 侧放大量化表、PRD 预算、component nr 对齐、params arena 约束、合同收窄清单、真实风险（exact key NotFound）、编排点缺失标注；修容差公式与关联代码清单 | 初稿按字面实施会因 recipe 相等性合同失败、tail 处理越界、现状描述失真带偏实施顺序 |

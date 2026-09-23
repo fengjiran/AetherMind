@@ -10,7 +10,7 @@
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/inference/weight_binding_storage.h"
-#include "aethermind/model/packed_weight_store.h"
+#include "aethermind/model/weight/packed_weight_store.h"
 
 #include <cstdint>
 
@@ -36,12 +36,18 @@ class Runtime;
 ///   reverse, releasing the plan and the binding table before the metadata and
 ///   the artifact backing they borrow.
 ///
-/// Move-only. Not thread-safe: preparation is a cold-path operation and callers
+/// Move-only: movable but not assignable. Assignment is deleted because
+/// replacing a prepared model in place would invalidate every plan and binding
+/// pointer already handed out, and because member-wise assignment would release
+/// the artifact backing before the binding table that borrows it. Replace a
+/// model by constructing a new one.
+///
+/// Not thread-safe: preparation is a cold-path operation and callers
 /// must serialize concurrent access.
 class ExecutableModel {
 public:
     ExecutableModel(ExecutableModel&&) noexcept = default;
-    ExecutableModel& operator=(ExecutableModel&&) noexcept = default;
+    ExecutableModel& operator=(ExecutableModel&&) = delete;
     ExecutableModel(const ExecutableModel&) = delete;
     ExecutableModel& operator=(const ExecutableModel&) = delete;
     ~ExecutableModel() = default;

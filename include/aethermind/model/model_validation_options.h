@@ -22,7 +22,7 @@ struct ModelValidationOptions {
     bool allow_unknown_tensors = true; // NOLINT(readability-identifier-naming)
     // Accept configs with rope_scaling; on because HF configs commonly ship
     // it. Scaling type values (kLinear/kNone) are validated downstream in
-    // ModelGraphBuilder::MakeRoPEParams.
+    // the per-family graph builders' shared MakeRoPEParams.
     bool allow_rope_scaling = true; // NOLINT(readability-identifier-naming)
     // Accept attention/MLP bias; off because Llama-family models are bias-free.
     bool allow_bias = false; // NOLINT(readability-identifier-naming)

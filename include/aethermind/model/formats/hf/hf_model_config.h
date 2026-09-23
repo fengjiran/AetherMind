@@ -6,7 +6,8 @@
 ///
 /// Field names mirror config.json keys so parsing is a direct projection.
 /// Values that config.json may omit keep zero-value defaults; consumers
-/// derive or validate them (see ModelGraphBuilder and HfModelValidator).
+/// derive or validate them (see the per-family graph builders and
+/// HfModelValidator).
 #include "aethermind/dtypes/data_type.h"
 
 #include <cstdint>
@@ -106,8 +107,9 @@ inline std::string_view ToString(HfRoPEAlgorithm algorithm) noexcept {
 
 /// @brief RoPE configuration for the model.
 ///
-/// Raw HuggingFace RoPE fields. ModelGraphBuilder is responsible for turning
-/// these format-specific optional fields into one typed semantic alternative.
+/// Raw HuggingFace RoPE fields. The per-family graph builders' shared
+/// MakeRoPEParams is responsible for turning these format-specific optional
+/// fields into one typed semantic alternative.
 struct HfRopeConfig {
     double theta = 10000.0; // Standard RoPE base frequency.
     std::optional<double> factor{};

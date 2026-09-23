@@ -9,9 +9,9 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/graph/graph.h"
 #include "aethermind/memory/cpu_allocator.h"
-#include "aethermind/model/packed_weight_store.h"
 #include "aethermind/model/resolved_model_weights.h"
-#include "aethermind/model/weight_prepack_planner.h"
+#include "aethermind/model/weight/packed_weight_store.h"
+#include "aethermind/model/weight/weight_packing.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/op_type.h"
 #include "aethermind/operators/ops/embedding_op.h"
@@ -195,7 +195,7 @@ StatusOr<PackedFixture> MakePackedAddRmsNormPlan(Runtime& runtime) {
     const auto requests = BuildWeightPackingRequests(*lowered, resolved);
     if (!requests.ok()) return requests.status();
     PackedWeightStore packed_store;
-    const Status stored = WeightPrepackPlanner::PrepackAndStore(packed_store, *requests);
+    const Status stored = PrepackWeightRequests(packed_store, *requests);
     if (!stored.ok()) return stored;
     auto plan = ExecutionPlanBuilder::Build(runtime, packed_store, *lowered);
     if (!plan.ok()) return plan.status();

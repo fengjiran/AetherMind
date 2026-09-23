@@ -117,13 +117,13 @@ HF directory
 - HF directory、config、Safetensors index/file 读取；
 - weight-name validation 与 logical weight resolution；
 - `LoadedModel` 只拥有 config + resolved raw weights/backing；
-- `ModelGraphBuilder` 是 HF → semantic graph 唯一转换权威；
+- `BuildModelGraph`（`ParseModelArchitecture` 家族判定 + per-family builder）是 HF → semantic graph 唯一转换权威；
 - RoPE HF 配置已规范化到 typed `RoPEAlgorithmParams`；
 - ModelLoader 不构图、不 resolve kernel、不 prepack。
 
 ### 5.2 P0：统一“接受的模型”和“实际语义”
 
-当前 `HfModelValidator` 接受 `hidden_act = silu/gelu/relu`，而 `ModelGraphBuilder::BuildLlamaDense` 的 MLP 固定生成 `SiluMul`。这会把接受的 GELU/ReLU 配置静默编译成错误语义。
+当前 `HfModelValidator` 接受 `hidden_act = silu/gelu/relu`，而 `BuildLlamaDense` 的 MLP 固定生成 `SiluMul`。这会把接受的 GELU/ReLU 配置静默编译成错误语义。
 
 推荐裁决：
 
@@ -135,7 +135,7 @@ HF directory
 关联代码：
 
 - [`HfModelValidator`](../../src/model/formats/hf/hf_model_validator.cpp)
-- [`ModelGraphBuilder`](../../src/model/model_graph_builder.cpp)
+- [`llama_dense_graph_builder.cpp`](../../src/model/llama_dense_graph_builder.cpp)
 - [`HfModelConfig`](../../include/aethermind/model/formats/hf/hf_model_config.h)
 
 ### 5.3 P0/P1：INT8/INT4 weight-only 模型链
@@ -440,7 +440,7 @@ Kernel descriptor/resolve 需要逐步表达：
 
 ### 11.3 P1：packing service 边界
 
-当前 `WeightPrepackPlanner` 直接构造 `CpuWeightPrepacker`，且 recipe 主要由 selector 推导。目标应是：
+当前 `PrepackWeightRequests` 直接构造 `CpuWeightPrepacker`，且 recipe 主要由 selector 推导。目标应是：
 
 - backend/descriptor 决定 exact recipe；
 - model/execution preparation 根据 optimized graph 的具体 `WeightBinding` 请求 materialization；

@@ -1,8 +1,8 @@
 #include "aethermind/compiler/model_compiler.h"
 #include "aethermind/compiler/graph_lowering.h"
 #include "aethermind/compiler/optimize_graph.h"
+#include "aethermind/model/build_model_graph.h"
 #include "aethermind/model/loaded_model.h"
-#include "aethermind/model/model_graph_builder.h"
 #include "aethermind/model/model_loader.h"
 
 #include <string>
@@ -24,8 +24,7 @@ StatusOr<LoweredModelArtifact> ModelCompiler::Compile(std::unique_ptr<LoadedMode
         return Status::InvalidArgument("ModelCompiler::Compile requires a LoadedModel");
     }
 
-    auto graph = ModelGraphBuilder::BuildLlamaDense(
-            model->GetConfig(), model->GetResolvedWeights());
+    auto graph = BuildModelGraph(model->GetConfig(), model->GetResolvedWeights());
     if (!graph.ok()) {
         return AddStageContext(graph.status(), "Model graph construction failed");
     }

@@ -65,7 +65,7 @@ $$
 
 - 语义 layout 为 row-major：`input` 尾维为 `K`，`weight` 为 `[N, K]`，`output` 尾维为 `N`；kernel 不接受转置 weight。
 - 当前 reference 实现支持任意正 stride：`input`/`weight`/`output` 的每个维度 stride 必须为正；rank-1 输入的行 stride 视为 0（单行）；rank > 2 时 leading dims 必须可折叠（低维跨度等于下一维 extent × stride 的乘积），否则拒绝；列 stride 可含空隙（如 padded rows），不做连续化假设。
-- 不支持负 stride、gather/scatter、blocked layout、transposed weight（如 `[K, N]`）、packed weight layout（`kPacked` 由 `WeightPrepackPlanner` 处理，见 8.2）。
+- 不支持负 stride、gather/scatter、blocked layout、transposed weight（如 `[K, N]`）、packed weight layout（`kPacked` 由 `PrepackWeightRequests` 处理，见 8.2）。
 - 不要求调用方提供 32B / 64B 对齐地址；CPU kernel 必须能处理 unaligned load/store。
 - 后续如果引入 aligned fast path，必须保留 unaligned fallback。
 
@@ -273,7 +273,7 @@ kernel 解析与冻结由 `ExecutionPlanBuilder::PrepareKernelForNode` 按 `Kern
 ## 8. 当前开放问题
 
 1. **rank > 2 input 支持**（已解决）：reference 实现通过 `row_count` 展平可折叠 leading dims（rank-1 视为单行，rank > 2 需可折叠）；不可折叠布局在绑定期以 `Unimplemented` 拒绝。
-2. **`kPacked` selector 与 `WeightPrepackPlanner` 的衔接**：prepack planner 已为每个 Linear 权重创建 `kPacked` 请求；第一版只注册 `kPlain` kernel，`kPacked` 请求会被 prepacker 做 memcpy fallback。需确认 fallback 路径不引入静默性能回归。
+2. **`kPacked` selector 与 packing 链路的衔接**：`BuildWeightPackingRequests` 已为每个 Linear 权重创建 `kPacked` 请求，由 `PrepackWeightRequests` 执行打包；第一版只注册 `kPlain` kernel，`kPacked` 请求会被 prepacker 做 memcpy fallback。需确认 fallback 路径不引入静默性能回归。
 3. **bias 支持**：Llama 部分投影（如 QKV bias）有 bias；Phase 1 不实现。后续需要决定：扩展 schema 为 3 输入，还是通过 attrs 传递 bias 指针。
 4. **累加精度策略**：大 `K`（`K=11008`）下 FP32 累加误差可能超出阈值；需要决定是否在 optimized kernel 中使用 Kahan / pairwise summation，还是接受放宽阈值。
 5. **多线程阈值**：Prefill 阶段按 `M` 维切分的线程数阈值需要按目标硬件和 workload 通过 benchmark 固化，而不是写死为永久策略。

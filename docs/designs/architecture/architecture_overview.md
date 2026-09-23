@@ -31,7 +31,7 @@ flowchart TB
 
     subgraph L3["3. 计算图语义层<br/>语义图构建与 backend-independent transforms"]
         direction LR
-        MGB["ModelGraphBuilder::BuildLlamaDense<br/>(已实现)"]
+        MGB["BuildModelGraph / BuildLlamaDense<br/>(已实现)"]
         SEM["GraphRewrite / GraphPassManager<br/>具体 semantic passes (已实现)"]
     end
 
@@ -154,7 +154,7 @@ API 服务层是 AetherMind **进程内**集成/服务边界。它不是 HTTP/gR
 | 维度 | 说明 |
 |------|------|
 | **责任** | 基于已解析的模型配置与权重语义构建 Llama dense 语义图；提供 GraphRewrite/GraphPassManager 与常量折叠、语义融合、DCE 等 semantic passes |
-| **当前模块** | `ModelGraphBuilder`、`ModelGraph`、GraphRewrite/GraphPassManager、具体 semantic passes |
+| **当前模块** | `BuildModelGraph` 及 per-family builders（`BuildLlamaDense`）、`ModelGraph`、GraphRewrite/GraphPassManager、具体 semantic passes |
 | **主要输入** | `LoadedModel` 中的模型配置与 resolved weights |
 | **主要输出** | validated `ModelGraph`；compiler 接收它来生成 `LoweredGraph` |
 | **目标缺口** | compiler 主路径已闭环；从具体 `WeightBinding` 物化 weight artifact、补齐 kernel 并构建完整 production `ExecutionPlan` 尚未闭环。 |
@@ -170,7 +170,7 @@ flowchart LR
 
     B -->|"返回 config + resolved weights"| C["LoadedModel"]
 
-    C -->|"当前已实现"| D["ModelGraphBuilder::BuildLlamaDense"]
+    C -->|"当前已实现"| D["BuildModelGraph → BuildLlamaDense"]
 
     D -->|"当前已实现"| E["ModelGraph<br/>(语义 DAG)"]
 
@@ -350,7 +350,7 @@ flowchart TB
     end
 
     subgraph MODEL["model：前端与模型 I/O"]
-        M["ModelLoader / LoadedModel<br/>ModelGraphBuilder"]
+        M["ModelLoader / LoadedModel<br/>BuildModelGraph"]
     end
 
     subgraph GRAPH["graph：语义 IR 与 semantic transforms"]
@@ -394,7 +394,7 @@ flowchart TB
 
 1. **API 服务层仅依赖调度控制层暴露的集成边界**，不得绕过控制层直接操作 compiler 或硬件执行细节（如 kernel 函数指针）。当前底层 C++ 构建块是未闭环阶段的工程入口，不代表最终公共 API 依赖形态。
 2. **调度控制层不可见 API 服务层细节**。`Executor` 不知道调用方是 C ABI 还是 C++ API。
-3. **graph 仅依赖 operators、shape_inference 与 base**，禁止依赖 compiler、execution、backend、model；`ModelGraphBuilder` 位于 model，graph 只拥有语义 IR、rewrite framework 与 backend-independent semantic passes。
+3. **graph 仅依赖 operators、shape_inference 与 base**，禁止依赖 compiler、execution、backend、model；graph 构建入口（`BuildModelGraph` / per-family builders）位于 model，graph 只拥有语义 IR、rewrite framework 与 backend-independent semantic passes。
 4. **compiler 可依赖 model、graph 与 semantic base**，负责优化 pipeline composition、lowering 和 `LoweredGraph`；禁止依赖 execution、backend、runtime 或查询 kernel registry。
 5. **execution 实现消费 compiler artifact，并负责 StateAliasPlan、workspace 与 kernel planning**；execution 不得依赖 graph，public headers 只前向声明 `LoweredGraph`。
 6. **backend/runtime 禁止依赖 graph、compiler、model**。Kernel 函数不允许持有 `Runtime*`、`SessionState*` 等宽对象指针。
@@ -423,8 +423,8 @@ flowchart TB
 | 阶段 | 输入 → 输出 | 关键事实 |
 |------|-------------|----------|
 | **模型加载** | HF 目录 → `LoadedModel` | `ModelLoader::Load` 返回 `unique_ptr<LoadedModel>`；含 config、resolved weights 和 backing storage，不含 packed weights |
-| **图构建** | `LoadedModel` → `ModelGraph`（语义 DAG） | `ModelGraphBuilder::BuildLlamaDense` 构建 dense decoder 的算子 DAG |
-| **图编译** | `LoadedModel` → `LoweredModelArtifact` | compiler `ModelCompiler` 串联 `BuildLlamaDense` → `OptimizeModelGraph` → `LowerModelGraph`；immutable `LoweredGraph` 保留 `LoweredStepSpec[]` 和 dense value metadata |
+| **图构建** | `LoadedModel` → `ModelGraph`（语义 DAG） | `BuildModelGraph` 按家族分发，`BuildLlamaDense` 构建 dense decoder 的算子 DAG |
+| **图编译** | `LoadedModel` → `LoweredModelArtifact` | compiler `ModelCompiler` 串联 `BuildModelGraph`（家族分发）→ `OptimizeModelGraph` → `LowerModelGraph`；immutable `LoweredGraph` 保留 `LoweredStepSpec[]` 和 dense value metadata |
 | **计划构建** | `LoweredGraph` → 不可变 `ExecutionPlan` | `ExecutionPlanBuilder` 向硬件层发起 kernel resolve，绑定 packed weight 指针，冻结 workspace requirement |
 | **绑定准备** | `ExecutionPlan` + external TensorViews → `PreparedExecutionBindings` | `PrepareExecutionBindings` snapshot metadata、校验 shape/layout/aliasing/constraints 并分配 activation、构造 prepared params；任一 address、shape、stride、dtype 或 alias 变化都必须重建 |
 | **执行** | `ExecutionPlan` + `ExecutionContext` → tensor/KV 状态 | `Executor::Execute` → `LayerRunner::Run` 按步绑定 workspace 并调用已准备 kernel。Token IDs 由目标 Generate 循环经 Argmax 处理后产生 |
@@ -437,7 +437,7 @@ flowchart TB
 |------|----------------|---------------------|----------------|
 | **API** | `c_api.h` 中的对象 refcount、错误处理与 traceback 原语 | `Session::Generate` 完整方法、`am_session_generate` C ABI 函数 | HTTP/gRPC 服务、tokenizer、异步/流式 API |
 | **模型加载** | `ModelLoader::Load`（HF 配置验证、权重加载 resolve、`LoadedModel` 创建） | graph-driven weight materialization 后的 Generate 管线 | MoE、encoder-decoder、sliding window attention |
-| **图编译** | `ModelCompiler`、`ModelGraphBuilder::BuildLlamaDense`、`OptimizeModelGraph` + `LowerModelGraph`、`LoweredModelArtifact` | production `LoweredModelArtifact → ExecutionPlan` 自动入口（weight artifact identity + kernel 覆盖） | - |
+| **图编译** | `ModelCompiler`、`BuildModelGraph`/`BuildLlamaDense`、`OptimizeModelGraph` + `LowerModelGraph`、`LoweredModelArtifact` | production `LoweredModelArtifact → ExecutionPlan` 自动入口（weight artifact identity + kernel 覆盖） | - |
 | **计划构建** | `ExecutionPlanBuilder::Build`（kernel resolve + packed weight bind + workspace plan） | - | - |
 | **执行引擎** | `Executor::Execute` → `LayerRunner::Run`（单一 plan 按步执行） | PrefillPath / DecodePath 状态机、Generate 编排 | Continuous batching、request scheduling |
 | **KV Cache** | `KVCacheManager`（静态预分配 Init + ReserveForSession）、`KVCacheView`（逻辑读写） | 接入 Generate 的完整 Prefill/Decode KV 读写流 | PagedAttention、动态扩容 |
@@ -540,7 +540,7 @@ flowchart TB
 | 路径 | 对应模块 |
 |------|----------|
 | [`include/aethermind/model/model_loader.h`](../../../include/aethermind/model/model_loader.h) / [`src/model/model_loader.cpp`](../../../src/model/model_loader.cpp) | `ModelLoader::Load` |
-| [`include/aethermind/model/model_graph_builder.h`](../../../include/aethermind/model/model_graph_builder.h) / [`src/model/model_graph_builder.cpp`](../../../src/model/model_graph_builder.cpp) | `ModelGraphBuilder::BuildLlamaDense` |
+| [`include/aethermind/model/llama_dense_graph_builder.h`](../../../include/aethermind/model/llama_dense_graph_builder.h) / [`src/model/llama_dense_graph_builder.cpp`](../../../src/model/llama_dense_graph_builder.cpp) | `BuildLlamaDense` |
 | [`include/aethermind/compiler/optimize_graph.h`](../../../include/aethermind/compiler/optimize_graph.h) / [`src/compiler/optimize_graph.cpp`](../../../src/compiler/optimize_graph.cpp) | `OptimizeModelGraph` |
 | [`include/aethermind/compiler/graph_lowering.h`](../../../include/aethermind/compiler/graph_lowering.h) / [`src/compiler/graph_lowering.cpp`](../../../src/compiler/graph_lowering.cpp) | `LowerModelGraph` / `ValidateLoweredGraph` |
 | [`include/aethermind/execution/execution_plan_builder.h`](../../../include/aethermind/execution/execution_plan_builder.h) / [`src/execution/execution_plan_builder.cpp`](../../../src/execution/execution_plan_builder.cpp) | `ExecutionPlanBuilder::Build` |
@@ -551,7 +551,7 @@ flowchart TB
 | [`include/aethermind/runtime/runtime_builder.h`](../../../include/aethermind/runtime/runtime_builder.h) / [`src/runtime/runtime_builder.cpp`](../../../src/runtime/runtime_builder.cpp) | `RuntimeBuilder::Build` |
 | [`include/aethermind/runtime/kv_cache_manager.h`](../../../include/aethermind/runtime/kv_cache_manager.h) / [`src/runtime/kv_cache_manager.cpp`](../../../src/runtime/kv_cache_manager.cpp) | `KVCacheManager` |
 | [`include/aethermind/compiler/model_compiler.h`](../../../include/aethermind/compiler/model_compiler.h) / [`src/compiler/model_compiler.cpp`](../../../src/compiler/model_compiler.cpp) | `ModelCompiler::Compile` / `LoadAndCompile` |
-| [`include/aethermind/model/packed_weight_store.h`](../../../include/aethermind/model/packed_weight_store.h) / [`src/model/packed_weight_store.cpp`](../../../src/model/packed_weight_store.cpp) | `PackedWeightStore` |
+| [`include/aethermind/model/weight/packed_weight_store.h`](../../../include/aethermind/model/weight/packed_weight_store.h) / [`src/model/weight/packed_weight_store.cpp`](../../../src/model/weight/packed_weight_store.cpp) | `PackedWeightStore` |
 | [`include/aethermind/runtime/runtime.h`](../../../include/aethermind/runtime/runtime.h) | `Runtime` |
 
 ### 关键设计文档

@@ -7,7 +7,7 @@
 #include "aethermind/execution/executor.h"
 #include "aethermind/graph/graph_dump.h"
 #include "aethermind/graph/graph_op_builder.h"
-#include "aethermind/model/model_graph_builder.h"
+#include "aethermind/model/llama_dense_graph_builder.h"
 #include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>
@@ -695,7 +695,7 @@ ResolvedModelWeights MakeLlamaWeights(const HfModelConfig& config) {
 TEST(OptimizeModelGraph, LowersFullLlamaDenseGraph) {
     const HfModelConfig config = MakeLlamaConfig2Layer();
     const ResolvedModelWeights weights = MakeLlamaWeights(config);
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
 
     // Capture source graph state for immutability check.

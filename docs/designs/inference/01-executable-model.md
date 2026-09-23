@@ -5,7 +5,7 @@
 - **日期**: 2026-09-23
 - **来源提案**: [07 号提案：ExecutableModel 生产准备入口方案](../../improvement-plan/07-executable-model-preparation.md)（Implemented）
 - **关联代码**: [include/aethermind/inference/](../../../include/aethermind/inference/)（`executable_model.h`、`weight_binding_storage.h`）/[src/inference/](../../../src/inference/)
-- **上游依赖**: compiler（`LoweredModelArtifact`、`BuildWeightPackingRequests`）、model（`LoadedModel`/`ResolvedModelWeights`、`ResolveWeightBinding`、`WeightPrepackPlanner::PrepackAndStore`、`PackedWeightStore`）、execution（`ExecutionPlanBuilder`、`ComputeExternalReadRequirements`、`ExternalTensorBindings`）、runtime（`Runtime` 提供 backends/allocator）、graph/operators 纯数据 payload 契约（`WeightValue`/`ConstantValue`）
+- **上游依赖**: compiler（`LoweredModelArtifact`、`BuildWeightPackingRequests`）、model（`LoadedModel`/`ResolvedModelWeights`、`ResolveWeightBinding`、`PrepackWeightRequests`、`PackedWeightStore`）、execution（`ExecutionPlanBuilder`、`ComputeExternalReadRequirements`、`ExternalTensorBindings`）、runtime（`Runtime` 提供 backends/allocator）、graph/operators 纯数据 payload 契约（`WeightValue`/`ConstantValue`）
 - **下游消费者**: `InferenceSession`/`Generate`（[01 号计划](../../improvement-plan/01-inference-session-generate-readiness.md) M5，未落地）
 - **关联测试**: [tests/unit/inference/test_executable_model.cpp](../../../tests/unit/inference/test_executable_model.cpp)（19 例）、[test_weight_binding_storage.cpp](../../../tests/unit/inference/test_weight_binding_storage.cpp)（8 例）；权重解析权威测试见 [test_weight_binding_resolver.cpp](../../../tests/unit/model/test_weight_binding_resolver.cpp)，需求查询测试见 [test_execution_bindings.cpp](../../../tests/unit/execution/test_execution_bindings.cpp)
 
@@ -70,7 +70,9 @@ class ExecutableModel {
 ```
 
 - 两个 phase 访问器返回 `StatusOr<const T*>`（借用指针），使 phase 不匹配可表达为失败而非静默复用。
-- `ExecutableModel` move-only；不暴露 packed store 与 artifact 访问器。
+- 只可移动构造、不可赋值：就地替换一个已 prepare 的模型会作废此前交出的 `plan()`/`immutable_weight_bindings()` 借用指针与派生的 `PreparedExecutionBindings`，且逐成员赋值会先释放 artifact 再替换借用它的绑定表（违反 §3.1 的逆序销毁契约）；换模型应构造新对象。
+- 返回路径只依赖 `StatusOr` 的 nothrow 移动构造前提（`StatusOr` 不再要求 `T` 可赋值，其赋值运算符对这类 `T` 变为 deleted）。
+- 不暴露 packed store 与 artifact 访问器。
 
 ## 6. 算法与流程
 
@@ -78,7 +80,7 @@ class ExecutableModel {
 
 1. 取 `artifact.loaded_model->GetResolvedWeights()`（缺失 `loaded_model` 即拒绝）。
 2. `BuildWeightPackingRequests(artifact.graph, resolved)`：graph-driven，跳过非 `kPacked` step，按 `(value_index, selector)` 去重。
-3. `PackedWeightStore::SetSourceId(artifact.graph.artifact_id())` + `WeightPrepackPlanner::PrepackAndStore`；composite 权重按 recipe 序 axis-0 拼接进自有对齐存储。
+3. `PackedWeightStore::SetSourceId(artifact.graph.artifact_id())` + `PrepackWeightRequests`；composite 权重按 recipe 序 axis-0 拼接进自有对齐存储。
 4. `ExecutionPlanBuilder::Build(runtime, store, artifact.graph)`。
 5. `ComputeExternalReadRequirements(plan)`：execution 层的唯一需求权威（packed 裁剪掉权重端口后自然不进入需求集合）。
 6. 对每个"被需求且非 `kModelInput`"的值按下标 i 物化绑定：
@@ -131,6 +133,7 @@ model inputs 不进绑定表：token/position 由 Session 按 phase 追加，重
 - packed：`AddRmsNorm` 子图权重不进绑定表且 `step.packed_weights` 非空；完整模型 packed 的 `kNotFound` 缺口固化。
 - phase：`kBoth` artifact 三查询同 plan；单 phase artifact 拒绝不匹配查询；混合 phase artifact prepare 期拒绝。
 - 元数据稳定性：移动后、扩容后已发出的 `TensorView` 仍有效；绑定表先于模型释放的 teardown 顺序在 ASAN/TSAN 下验证。
+- 契约钉住：`IsMoveConstructibleButNotAssignable` 断言只可移动构造、不可赋值/复制。
 
 ## 10. 变更记录
 

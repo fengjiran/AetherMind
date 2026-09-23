@@ -10,8 +10,8 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/graph/graph.h"
-#include "aethermind/model/packed_weight_store.h"
-#include "aethermind/model/weight_prepack_planner.h"
+#include "aethermind/model/weight/packed_weight_store.h"
+#include "aethermind/model/weight/weight_packing.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "backend/cpu/kernels/qkv_linear/qkv_linear_internal.h"
@@ -627,7 +627,7 @@ TEST(CPUKernelQkvLinear, FusedPackedExecutionRequiresNoExternalQkvWeightBinding)
     EXPECT_EQ(requests->front().op_type, OpType::kQkvLinear);
 
     PackedWeightStore packed_store;
-    ASSERT_TRUE(WeightPrepackPlanner::PrepackAndStore(packed_store, *requests).ok());
+    ASSERT_TRUE(PrepackWeightRequests(packed_store, *requests).ok());
     RuntimeBuilder runtime_builder;
     runtime_builder.RegisterBackendFactory(
             DeviceType::kCPU, std::make_unique<CpuBackendFactory>());

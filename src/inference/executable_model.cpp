@@ -5,8 +5,8 @@
 #include "aethermind/graph/graph_types.h"
 #include "aethermind/model/raw_weight.h"
 #include "aethermind/model/resolved_model_weights.h"
-#include "aethermind/model/weight_binding_resolver.h"
-#include "aethermind/model/weight_prepack_planner.h"
+#include "aethermind/model/weight/weight_binding_resolver.h"
+#include "aethermind/model/weight/weight_packing.h"
 #include "aethermind/runtime/runtime.h"
 #include "utils/overflow_check.h"
 
@@ -245,7 +245,7 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
 
     PackedWeightStore packed_weights;
     AM_RETURN_IF_ERROR(packed_weights.SetSourceId(artifact.graph.artifact_id()));
-    AM_RETURN_IF_ERROR(WeightPrepackPlanner::PrepackAndStore(packed_weights, *requests));
+    AM_RETURN_IF_ERROR(PrepackWeightRequests(packed_weights, *requests));
 
     const auto plan = ExecutionPlanBuilder::Build(runtime, packed_weights, artifact.graph);
     if (!plan.ok()) {

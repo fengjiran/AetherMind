@@ -1,5 +1,6 @@
 #include "aethermind/model/formats/hf/hf_model_config.h"
-#include "aethermind/model/model_graph_builder.h"
+#include "aethermind/model/llama_dense_graph_builder.h"
+#include "test_model_graph_helpers.h"
 
 #include "aethermind/compiler/graph_lowering.h"
 #include "aethermind/graph/optimization/add_rmsnorm_fusion_pass.h"
@@ -15,73 +16,6 @@
 namespace {
 
 using namespace aethermind;
-
-struct TestStorage : RawStorage {};
-
-HfModelConfig MakeLlamaConfig(int64_t num_layers) {
-    return HfModelConfig{
-            .model_type = "llama",
-            .architectures = {"LlamaForCausalLM"},
-            .hidden_size = 8,
-            .intermediate_size = 16,
-            .num_hidden_layers = num_layers,
-            .num_attention_heads = 4,
-            .num_key_value_heads = 2,
-            .vocab_size = 32,
-            .max_position_embeddings = 128,
-            .head_dim = 2,
-            .rms_norm_eps = 1.0e-5,
-            .hidden_act = "silu",
-            .tie_word_embeddings = false,
-            .weight_dtype_hint = DataType::Float32(),
-    };
-}
-
-RawWeightView MakeWeightView(const std::shared_ptr<TestStorage>& storage,
-                             std::vector<int64_t> shape) {
-    return RawWeightView{
-            .data = nullptr,
-            .bytes = 0,
-            .dtype = DataType::Float32(),
-            .shape = std::move(shape),
-            .storage = storage,
-            .is_contiguous = true,
-    };
-}
-
-ResolvedModelWeights MakeWeights(const HfModelConfig& config) {
-    const auto storage = std::make_shared<TestStorage>();
-    ResolvedModelWeights weights{
-            .embed_tokens = MakeWeightView(storage, {config.vocab_size, config.hidden_size}),
-            .final_norm = MakeWeightView(storage, {config.hidden_size}),
-            .lm_head = MakeWeightView(storage, {config.vocab_size, config.hidden_size}),
-    };
-
-    weights.layers.reserve(static_cast<size_t>(config.num_hidden_layers));
-    const int64_t head_dim = config.head_dim != 0 ? config.head_dim : config.hidden_size / config.num_attention_heads;
-    const int64_t kv_hidden_size = config.num_key_value_heads * head_dim;
-    for (int64_t i = 0; i < config.num_hidden_layers; ++i) {
-        weights.layers.push_back(DecoderLayerRawWeights{
-                .norm = NormRawWeights{
-                        .input_rmsnorm = MakeWeightView(storage, {config.hidden_size}),
-                        .post_attn_rmsnorm = MakeWeightView(storage, {config.hidden_size}),
-                },
-                .attn = AttnRawWeights{
-                        .q_proj = MakeWeightView(storage, {config.hidden_size, config.hidden_size}),
-                        .k_proj = MakeWeightView(storage, {kv_hidden_size, config.hidden_size}),
-                        .v_proj = MakeWeightView(storage, {kv_hidden_size, config.hidden_size}),
-                        .o_proj = MakeWeightView(storage, {config.hidden_size, config.hidden_size}),
-                },
-                .mlp = MLPRawWeights{
-                        .gate_proj = MakeWeightView(storage, {config.intermediate_size, config.hidden_size}),
-                        .up_proj = MakeWeightView(storage, {config.intermediate_size, config.hidden_size}),
-                        .down_proj = MakeWeightView(storage, {config.hidden_size, config.intermediate_size}),
-                },
-        });
-    }
-
-    return weights;
-}
 
 const TensorSpec& OnlyOneOutput(const ModelGraph& graph, const GraphNode& node) {
     EXPECT_EQ(node.outputs.size(), 1U);
@@ -130,11 +64,11 @@ void ExpectLayerWeightBinding(const ModelGraph& graph,
     ExpectWeightBinding(graph, node, slot, role, layer_index);
 }
 
-TEST(ModelGraphBuilder, BuildsFullLlamaDenseTopology) {
+TEST(LlamaDenseGraphBuilder, BuildsFullLlamaDenseTopology) {
     const HfModelConfig config = MakeLlamaConfig(2);
     const ResolvedModelWeights weights = MakeWeights(config);
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     ASSERT_EQ(graph->GetNodes().size(), 1U + 2U * 15U + 3U);
@@ -189,10 +123,10 @@ TEST(ModelGraphBuilder, BuildsFullLlamaDenseTopology) {
     EXPECT_FALSE(nodes[tail + 2].decoder_layer_index.has_value());
 }
 
-TEST(ModelGraphBuilder, AddRmsNormFusionCoversMultiLayerResidualAndFinalNormPaths) {
+TEST(LlamaDenseGraphBuilder, AddRmsNormFusionCoversMultiLayerResidualAndFinalNormPaths) {
     const HfModelConfig config = MakeLlamaConfig(2);
     const ResolvedModelWeights weights = MakeWeights(config);
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
 
     GraphPassManager pipeline;
@@ -217,11 +151,11 @@ TEST(ModelGraphBuilder, AddRmsNormFusionCoversMultiLayerResidualAndFinalNormPath
     EXPECT_EQ(lowered->steps().size(), fused->GetNodes().size());
 }
 
-TEST(ModelGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {
+TEST(LlamaDenseGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {
     const HfModelConfig config = MakeLlamaConfig(1);
     const ResolvedModelWeights weights = MakeWeights(config);
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
@@ -262,11 +196,11 @@ TEST(ModelGraphBuilder, RecordsWeightBindingsAndRegisteredOperatorParams) {
     EXPECT_FALSE(lm_head_weight.decoder_layer_index.has_value());
 }
 
-TEST(ModelGraphBuilder, RecordsTypedParamsForAllGraphOps) {
+TEST(LlamaDenseGraphBuilder, RecordsTypedParamsForAllGraphOps) {
     const HfModelConfig config = MakeLlamaConfig(1);
     const ResolvedModelWeights weights = MakeWeights(config);
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
@@ -301,11 +235,11 @@ TEST(ModelGraphBuilder, RecordsTypedParamsForAllGraphOps) {
     EXPECT_EQ(argmax_params->axis, -1);
 }
 
-TEST(ModelGraphBuilder, TracesResidualDataflowInAttention) {
+TEST(LlamaDenseGraphBuilder, TracesResidualDataflowInAttention) {
     const HfModelConfig config = MakeLlamaConfig(1);
     const ResolvedModelWeights weights = MakeWeights(config);
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
@@ -324,11 +258,11 @@ TEST(ModelGraphBuilder, TracesResidualDataflowInAttention) {
     EXPECT_EQ(hidden_consumers[1], GraphNodeId{9});
 }
 
-TEST(ModelGraphBuilder, TracesRopeDualOutputDataflow) {
+TEST(LlamaDenseGraphBuilder, TracesRopeDualOutputDataflow) {
     const HfModelConfig config = MakeLlamaConfig(1);
     const ResolvedModelWeights weights = MakeWeights(config);
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
@@ -393,11 +327,11 @@ TEST(ModelGraphBuilder, TracesRopeDualOutputDataflow) {
     EXPECT_EQ(dim_pos.dim.dim_index, 0U);
 }
 
-TEST(ModelGraphBuilder, TracesKvCacheStateDataflow) {
+TEST(LlamaDenseGraphBuilder, TracesKvCacheStateDataflow) {
     const HfModelConfig config = MakeLlamaConfig(1);
     const ResolvedModelWeights weights = MakeWeights(config);
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
@@ -434,11 +368,11 @@ TEST(ModelGraphBuilder, TracesKvCacheStateDataflow) {
     EXPECT_EQ(KVCacheBindingForValue(*graph, attention.inputs[2]).slot, KVCacheSlot::kValue);
 }
 
-TEST(ModelGraphBuilder, TracesPerLayerKvCacheStateFamilies) {
+TEST(LlamaDenseGraphBuilder, TracesPerLayerKvCacheStateFamilies) {
     const HfModelConfig config = MakeLlamaConfig(2);
     const ResolvedModelWeights weights = MakeWeights(config);
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
@@ -498,11 +432,11 @@ TEST(ModelGraphBuilder, TracesPerLayerKvCacheStateFamilies) {
     EXPECT_EQ(layer1_v_input_binding.slot, KVCacheSlot::kValue);
 }
 
-TEST(ModelGraphBuilder, UsesSymbolicSequenceAndStaticModelDimensions) {
+TEST(LlamaDenseGraphBuilder, UsesSymbolicSequenceAndStaticModelDimensions) {
     const HfModelConfig config = MakeLlamaConfig(1);
     const ResolvedModelWeights weights = MakeWeights(config);
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
@@ -559,33 +493,33 @@ TEST(ModelGraphBuilder, UsesSymbolicSequenceAndStaticModelDimensions) {
     EXPECT_EQ(logits.shape[1].GetStaticValue(), config.vocab_size);
 }
 
-TEST(ModelGraphBuilder, RejectsInvalidConfig) {
+TEST(LlamaDenseGraphBuilder, RejectsInvalidConfig) {
     HfModelConfig config = MakeLlamaConfig(1);
     config.hidden_size = 0;
     const ResolvedModelWeights weights = MakeWeights(MakeLlamaConfig(1));
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
     ASSERT_FALSE(graph.ok());
     EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ModelGraphBuilder, RejectsResolvedLayerCountMismatch) {
+TEST(LlamaDenseGraphBuilder, RejectsResolvedLayerCountMismatch) {
     const HfModelConfig config = MakeLlamaConfig(2);
     ResolvedModelWeights weights = MakeWeights(config);
     weights.layers.pop_back();
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
     ASSERT_FALSE(graph.ok());
     EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ModelGraphBuilder, AssignsPyTorchStyleDebugNames) {
+TEST(LlamaDenseGraphBuilder, AssignsPyTorchStyleDebugNames) {
     const HfModelConfig config = MakeLlamaConfig(1);
     const ResolvedModelWeights weights = MakeWeights(config);
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     constexpr std::string_view kExpectedNames[] = {
@@ -615,11 +549,11 @@ TEST(ModelGraphBuilder, AssignsPyTorchStyleDebugNames) {
     }
 }
 
-TEST(ModelGraphBuilder, AssignsLayerScopedKvCacheStateDebugNames) {
+TEST(LlamaDenseGraphBuilder, AssignsLayerScopedKvCacheStateDebugNames) {
     const HfModelConfig config = MakeLlamaConfig(1);
     const ResolvedModelWeights weights = MakeWeights(config);
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
@@ -629,11 +563,11 @@ TEST(ModelGraphBuilder, AssignsLayerScopedKvCacheStateDebugNames) {
     EXPECT_EQ(graph->GetValue(kv_cache_update.inputs[3]).name, "layers.0.self_attn.v_cache");
 }
 
-TEST(ModelGraphBuilder, TracesMlpResidualDataflow) {
+TEST(LlamaDenseGraphBuilder, TracesMlpResidualDataflow) {
     const HfModelConfig config = MakeLlamaConfig(1);
     const ResolvedModelWeights weights = MakeWeights(config);
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
@@ -645,11 +579,11 @@ TEST(ModelGraphBuilder, TracesMlpResidualDataflow) {
     EXPECT_EQ(mlp_add.inputs[1], mlp_down.outputs[0]);
 }
 
-TEST(ModelGraphBuilder, AssignsPyTorchStyleWeightDebugNames) {
+TEST(LlamaDenseGraphBuilder, AssignsPyTorchStyleWeightDebugNames) {
     const HfModelConfig config = MakeLlamaConfig(1);
     const ResolvedModelWeights weights = MakeWeights(config);
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
 
@@ -669,9 +603,9 @@ TEST(ModelGraphBuilder, AssignsPyTorchStyleWeightDebugNames) {
 
 // --- RoPE frontend conversion boundary ---
 //
-// ModelGraphBuilder::BuildLlamaDense is the single point where HF RoPE
-// HF algorithm spellings are normalized into the semantic typed variant before any
-// graph mutation. The fixtures below use head_dim 4 for Dynamic NTK.
+// BuildLlamaDense is the single point where HF RoPE algorithm spellings are
+// normalized into the semantic typed variant before any graph mutation. The
+// fixtures below use head_dim 4 for Dynamic NTK.
 
 HfModelConfig MakeLlamaConfigWithScaling(HfRoPEAlgorithm algorithm,
                                          std::optional<double> scaling_factor) {
@@ -692,11 +626,11 @@ HfModelConfig MakeExtendedRoPEConfig(HfRoPEAlgorithm algorithm) {
     return config;
 }
 
-TEST(ModelGraphBuilder, MapsHfStandardToSemanticStandard) {
+TEST(LlamaDenseGraphBuilder, MapsHfStandardToSemanticStandard) {
     const HfModelConfig config = MakeLlamaConfigWithScaling(HfRoPEAlgorithm::kStandard, std::nullopt);
     const ResolvedModelWeights weights = MakeWeights(config);
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
     const auto* rope_params = std::get_if<RoPEParams>(&nodes[5].op_params);
@@ -705,11 +639,11 @@ TEST(ModelGraphBuilder, MapsHfStandardToSemanticStandard) {
     EXPECT_EQ(rope_params->rotary_dim, 2);
 }
 
-TEST(ModelGraphBuilder, MapsHfLinearToSemanticLinear) {
+TEST(LlamaDenseGraphBuilder, MapsHfLinearToSemanticLinear) {
     const HfModelConfig config = MakeLlamaConfigWithScaling(HfRoPEAlgorithm::kLinear, 2.0);
     const ResolvedModelWeights weights = MakeWeights(config);
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto nodes = graph->GetNodes();
     const auto* rope_params = std::get_if<RoPEParams>(&nodes[5].op_params);
@@ -718,10 +652,10 @@ TEST(ModelGraphBuilder, MapsHfLinearToSemanticLinear) {
     EXPECT_DOUBLE_EQ(std::get<LinearRoPE>(rope_params->algorithm).factor, 2.0);
 }
 
-TEST(ModelGraphBuilder, MapsHfDynamicNtkToSemanticVariant) {
+TEST(LlamaDenseGraphBuilder, MapsHfDynamicNtkToSemanticVariant) {
     const HfModelConfig config = MakeExtendedRoPEConfig(HfRoPEAlgorithm::kDynamicNtk);
     const ResolvedModelWeights weights = MakeWeights(config);
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     const auto* params = std::get_if<RoPEParams>(&graph->GetNodes()[5].op_params);
     ASSERT_NE(params, nullptr);
@@ -729,65 +663,65 @@ TEST(ModelGraphBuilder, MapsHfDynamicNtkToSemanticVariant) {
     EXPECT_EQ(std::get<DynamicNtkRoPE>(params->algorithm).original_context_length, 128);
 }
 
-TEST(ModelGraphBuilder, MapsHfYarnToSemanticVariant) {
+TEST(LlamaDenseGraphBuilder, MapsHfYarnToSemanticVariant) {
     const HfModelConfig config = MakeExtendedRoPEConfig(HfRoPEAlgorithm::kYarn);
     const ResolvedModelWeights weights = MakeWeights(config);
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     EXPECT_TRUE(std::holds_alternative<YarnRoPE>(
             std::get<RoPEParams>(graph->GetNodes()[5].op_params).algorithm));
 }
 
-TEST(ModelGraphBuilder, MapsHfLlama3ToSemanticVariant) {
+TEST(LlamaDenseGraphBuilder, MapsHfLlama3ToSemanticVariant) {
     HfModelConfig config = MakeExtendedRoPEConfig(HfRoPEAlgorithm::kLlama3);
     config.rope.low_frequency_factor = 1.0;
     config.rope.high_frequency_factor = 4.0;
     const ResolvedModelWeights weights = MakeWeights(config);
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     EXPECT_TRUE(std::holds_alternative<Llama3RoPE>(
             std::get<RoPEParams>(graph->GetNodes()[5].op_params).algorithm));
 }
 
-TEST(ModelGraphBuilder, MapsHfLongRopeAndSuToSemanticVariant) {
+TEST(LlamaDenseGraphBuilder, MapsHfLongRopeAndSuToSemanticVariant) {
     HfModelConfig config = MakeExtendedRoPEConfig(HfRoPEAlgorithm::kLongRope);
     config.rope.short_factors = {1.0, 1.0};
     config.rope.long_factors = {2.0, 2.0};
     const ResolvedModelWeights weights = MakeWeights(config);
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
     ASSERT_TRUE(graph.ok()) << graph.status().ToString();
     EXPECT_TRUE(std::holds_alternative<LongRoPE>(
             std::get<RoPEParams>(graph->GetNodes()[5].op_params).algorithm));
     config.rope.algorithm = HfRoPEAlgorithm::kSu;
-    const StatusOr<ModelGraph> su_graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> su_graph = BuildLlamaDense(config, weights);
     ASSERT_TRUE(su_graph.ok()) << su_graph.status().ToString();
     EXPECT_TRUE(std::holds_alternative<LongRoPE>(
             std::get<RoPEParams>(su_graph->GetNodes()[5].op_params).algorithm));
 }
 
-TEST(ModelGraphBuilder, RejectsUnknownHfRoPEAlgorithm) {
+TEST(LlamaDenseGraphBuilder, RejectsUnknownHfRoPEAlgorithm) {
     const HfModelConfig config = MakeLlamaConfigWithScaling(HfRoPEAlgorithm::kUnknown, 2.0);
     const ResolvedModelWeights weights = MakeWeights(config);
 
-    const StatusOr<ModelGraph> graph = ModelGraphBuilder::BuildLlamaDense(config, weights);
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
     ASSERT_FALSE(graph.ok());
     EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
     EXPECT_NE(graph.status().message().find("not supported"), std::string::npos);
 }
 
-TEST(ModelGraphBuilder, RejectsIncompleteAndConflictingExtendedRoPEConfig) {
+TEST(LlamaDenseGraphBuilder, RejectsIncompleteAndConflictingExtendedRoPEConfig) {
     HfModelConfig config = MakeExtendedRoPEConfig(HfRoPEAlgorithm::kLlama3);
     config.rope.low_frequency_factor = 1.0;
     config.rope.high_frequency_factor = 4.0;
     config.rope.original_context_length.reset();
     const ResolvedModelWeights weights = MakeWeights(config);
-    EXPECT_EQ(ModelGraphBuilder::BuildLlamaDense(config, weights).status().code(),
+    EXPECT_EQ(BuildLlamaDense(config, weights).status().code(),
               StatusCode::kInvalidArgument);
 
     config = MakeExtendedRoPEConfig(HfRoPEAlgorithm::kDynamicNtk);
     config.rope.partial_rotary_factor = 0.5;
     config.rope.rotary_dim = 4;
-    EXPECT_EQ(ModelGraphBuilder::BuildLlamaDense(config, weights).status().code(),
+    EXPECT_EQ(BuildLlamaDense(config, weights).status().code(),
               StatusCode::kInvalidArgument);
 }
 

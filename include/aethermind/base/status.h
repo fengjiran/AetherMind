@@ -536,8 +536,6 @@ public:
     static_assert(!std::is_same_v<std::remove_cv_t<T>, Status>, "StatusOr<Status> is not supported");
     static_assert(std::is_nothrow_move_constructible_v<T>,
                   "StatusOr<T> requires T to be nothrow move-constructible for noexcept guarantee");
-    static_assert(std::is_nothrow_move_assignable_v<T>,
-                  "StatusOr<T> requires T to be nothrow move-assignable for noexcept guarantee");
 
     /// @brief Constructs a StatusOr holding a valid value from a compatible type.
     /// @tparam U Must be convertible to T and must not be Status or StatusOr,
@@ -578,10 +576,10 @@ public:
     StatusOr(const StatusOr&) = default;
     // noexcept is backed by the is_nothrow_move_constructible_v<T> static_assert.
     StatusOr(StatusOr&&) noexcept = default;
+    // Both assignments stay defaulted and are deleted for a T that is not
+    // suitably assignable, so they are only usable — and only then noexcept —
+    // for value types that support the corresponding assignment.
     StatusOr& operator=(const StatusOr&) = default;
-    // noexcept is backed by the is_nothrow_move_constructible_v<T> and
-    // is_nothrow_move_assignable_v<T> static_asserts above, plus the
-    // Status-level nothrow-move prerequisite below.
     StatusOr& operator=(StatusOr&&) noexcept = default;
     ~StatusOr() = default;
 

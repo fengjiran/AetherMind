@@ -170,8 +170,9 @@ inline RoPEAlgorithm GetRoPEAlgorithm(const RoPEAlgorithmParams& params) noexcep
 ///       the scaling contract, and symbolic q/k widths against params before
 ///       computation. Loader `allow_rope_scaling` remains a separate policy;
 ///       semantic acceptance does not imply current end-to-end kernel support.
-///       ModelGraphBuilder normalizes HuggingFace configuration into this
-///       format, but this semantic layer also supports programmatic graphs.
+///       The model layer's per-family graph builders normalize HuggingFace
+///       configuration into this format, but this semantic layer also supports
+///       programmatic graphs.
 ///
 struct RoPEParams {
     int64_t head_dim = 0;

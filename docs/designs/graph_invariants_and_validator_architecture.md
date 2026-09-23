@@ -198,7 +198,7 @@ KV 池隔离是构造性的：`KVCacheManager` 独占静态存储，所有权与
 | --- | --- | --- | --- |
 | DCE 可达性 | DCE pass | [ComputeRetainedNodes](../../src/graph/optimization/graph_rewrite.cpp:906) 内部计算 | 图不变量不要求"无死节点"，裁剪是 pass 行为 |
 | 静态形状解析 | 模型构建/规划 | `TensorSpec` + `ShapeConstraint` | 动态维度解析是阶段行为，非图校验职责 |
-| kernel 解析/预打包 | 执行计划构建 | [PrepareKernelChecked](../../src/execution/execution_plan_builder.cpp:251)、`WeightPrepackPlanner` | backend 域，graph 层不得涉及 |
+| kernel 解析/预打包 | 执行计划构建 | [PrepareKernelChecked](../../src/execution/execution_plan_builder.cpp:251)、`PrepackWeightRequests` | backend 域，graph 层不得涉及 |
 | workspace 对齐/偏移 | 执行计划构建 | [PlanWorkspaceRequirements](../../include/aethermind/runtime/workspace.h:121) | 顺序规划：对齐合法性 + 溢出检查，无生命周期复用 |
 | 内存计划 | 规划阶段 | 无全面校验器 | activation 池、临时池、KV 池的分配与复用规划，见 §7.2 行 16、17 |
 

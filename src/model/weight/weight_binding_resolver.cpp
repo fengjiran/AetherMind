@@ -1,4 +1,4 @@
-#include "aethermind/model/weight_binding_resolver.h"
+#include "aethermind/model/weight/weight_binding_resolver.h"
 
 #include <optional>
 

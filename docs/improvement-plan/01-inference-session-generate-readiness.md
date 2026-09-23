@@ -52,7 +52,7 @@
 | 窄执行上下文 | 已实现 | `ExecutionContext` 拥有 prepared bindings，借用 workspace，保存 KV view |
 | 执行热路径 | 已实现 | `Executor → LayerRunner → InvokePreparedKernel`，无 registry lookup 和 params rebuild |
 | KV storage/session view | 部分实现 | `KVCacheManager` 支持 reserve/reset/release；`KVCacheView` 支持 generation 检查和 commit watermark |
-| semantic Llama graph | 已实现 | `ModelGraphBuilder::BuildLlamaDense` 生成完整 decoder-only semantic graph |
+| semantic Llama graph | 已实现 | `BuildModelGraph` 家族分发到 `BuildLlamaDense`，生成完整 decoder-only semantic graph |
 | compiler/lowering | 已实现 | `ModelCompiler` 生成结构验证过的 `LoweredModelArtifact` |
 
 ### 2.2 当前 CPU kernel 覆盖
@@ -76,7 +76,7 @@
 | GateUpLinear | FP32 reference（packed-only） | 无 | 可用（需 O2 融合 + `enable_packed_weights=true`） |
 | AddRmsNorm | FP32 reference（plain + packed identity） | 无 | 可用（O2 fused path；packed 需 `enable_packed_weights=true`） |
 
-当前 O2 默认 semantic pipeline 会产生 `QkvLinear`、`GateUpLinear` 和 `AddRmsNorm`。三者的 packed kernel 与 execution packed 绑定链路（`ExecutionStep.packed_weights` → packing request → `WeightPrepackPlanner` → plan build → execute）均已落地并走通全链路测试；AddRmsNorm 另外保留 plain FP32 reference descriptor。execution lowering 仍是一个 semantic node 对应一个 kernel step，且不存在 kernel-sequence fallback；**baseline 全链路 kernel 已全部齐备（15 类 21 描述符全部可用）**，剩余准入项为 ExecutableModel 入口、真实权重绑定与端到端证据（见 §3.2–§3.5）。
+当前 O2 默认 semantic pipeline 会产生 `QkvLinear`、`GateUpLinear` 和 `AddRmsNorm`。三者的 packed kernel 与 execution packed 绑定链路（`ExecutionStep.packed_weights` → packing request → `PrepackWeightRequests` → plan build → execute）均已落地并走通全链路测试；AddRmsNorm 另外保留 plain FP32 reference descriptor。execution lowering 仍是一个 semantic node 对应一个 kernel step，且不存在 kernel-sequence fallback；**baseline 全链路 kernel 已全部齐备（15 类 21 描述符全部可用）**，剩余准入项为 ExecutableModel 入口、真实权重绑定与端到端证据（见 §3.2–§3.5）。
 
 ### 2.3 当前 packed-weight 能力
 
@@ -134,7 +134,7 @@ LoweredGraph StateBinding
 ```text
 ModelCompiler
 BuildWeightPackingRequests
-WeightPrepackPlanner
+PrepackWeightRequests
 ExecutionPlanBuilder
 PrepareExecutionBindings
 ```

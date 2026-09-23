@@ -22,6 +22,7 @@
 #include <gtest/gtest.h>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -378,6 +379,16 @@ TEST(ExecutableModel, SurvivesBeingMoved) {
     for (const ExternalReadOnlyValueBinding& entry: (*bindings)->readable) {
         EXPECT_TRUE(entry.tensor.is_valid()) << "value " << entry.value.index;
     }
+}
+
+TEST(ExecutableModel, IsMoveConstructibleButNotAssignable) {
+    // Owning identity: replacing a prepared model in place would invalidate
+    // every plan/binding pointer already handed out, so only move construction
+    // is allowed and StatusOr<ExecutableModel> relies on that alone.
+    static_assert(std::is_nothrow_move_constructible_v<ExecutableModel>);
+    static_assert(!std::is_move_assignable_v<ExecutableModel>);
+    static_assert(!std::is_copy_constructible_v<ExecutableModel>);
+    static_assert(!std::is_copy_assignable_v<ExecutableModel>);
 }
 
 TEST(ExecutableModel, RejectsArtifactWithoutLoadedModel) {

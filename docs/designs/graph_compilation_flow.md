@@ -577,7 +577,7 @@ LoweredGraph::steps() (std::span<const LoweredStep>, carrying LoweredStepSpec)
 
 ### 层次 C：LoadedModel 到 LoweredModelArtifact 的生产模型编译管线（已实现）
 
-`ModelLoader::Load` 生成 `LoadedModel`，`ModelCompiler::Compile` 串联 `ModelGraphBuilder::BuildLlamaDense`、`OptimizeModelGraph` 与 `LowerModelGraph`，并以 `LoweredModelArtifact` 将 loaded raw-weight ownership 与 lowering artifact 一起返回。`ModelCompiler::LoadAndCompile` 是对应的一站式薄 facade。该阶段不调用 backend、prepack 或 `ExecutionPlanBuilder`。
+`ModelLoader::Load` 生成 `LoadedModel`，`ModelCompiler::Compile` 串联 `BuildModelGraph`（内部经 `ParseModelArchitecture` 家族分发到 `BuildLlamaDense`）、`OptimizeModelGraph` 与 `LowerModelGraph`，并以 `LoweredModelArtifact` 将 loaded raw-weight ownership 与 lowering artifact 一起返回。`ModelCompiler::LoadAndCompile` 是对应的一站式薄 facade。该阶段不调用 backend、prepack 或 `ExecutionPlanBuilder`。
 
 ### 层次 D：LoweredModelArtifact 到 ExecutionPlan 的生产管线（未完成）
 

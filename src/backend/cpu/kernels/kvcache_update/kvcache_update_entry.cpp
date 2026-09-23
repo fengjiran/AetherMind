@@ -131,9 +131,12 @@ StatusOr<StridedAddressFootprint> BuildTargetFootprint(
                                           static_cast<int64_t>(storage.head_dim)};
     const std::array<int64_t, 3> strides = {static_cast<int64_t>(head_stride),
                                             static_cast<int64_t>(token_stride), 1};
+    // Keep the diagnostic label allocation-free on the successful append path.
+    const std::string_view cache_label = role == "key"
+                                                 ? "CPU KVCacheUpdate key cache"
+                                                 : "CPU KVCacheUpdate value cache";
     return BuildStridedAddressFootprint(
-            data + begin_bytes, shape, strides, sizeof(float),
-            std::string(kKernelName) + " " + std::string(role) + " cache");
+            data + begin_bytes, shape, strides, sizeof(float), cache_label);
 }
 
 Status ValidateNoOverlap(const KVCacheUpdateF32KernelArgs& args,

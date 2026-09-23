@@ -164,9 +164,12 @@ StatusOr<StridedAddressFootprint> BuildKVFootprint(const KVCacheLayerStorageBind
             static_cast<int64_t>(token_stride),
             1,
     };
-    return BuildStridedAddressFootprint(
-            data, shape, strides, sizeof(float),
-            std::string(kKernelName) + " " + std::string(role) + " cache");
+    // Avoid formatting a diagnostic label for every successful KV read.
+    const std::string_view cache_label = role == "key"
+                                                 ? "CPU Attention key cache"
+                                                 : "CPU Attention value cache";
+    return BuildStridedAddressFootprint(data, shape, strides,
+                                        sizeof(float), cache_label);
 }
 
 StatusOr<StridedAddressFootprint> BuildOutputFootprint(

@@ -7,8 +7,8 @@
 - **产品边界**: [AetherMind 当前产品 PRD](../../products/aethermind_prd.md)
 - **工作流规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
 - **架构基线**: [架构总览](../../designs/architecture/architecture_overview.md)
-- **关联代码**: `src/backend/cpu/cpu_weight_prepacker.cpp`、`src/backend/cpu/kernels/gemm/`、`src/backend/cpu/kernels/common/packed_weight_utils.{h,cpp}`（packed recipe 校验闸口）、`src/compiler/packing_request_builder.{h,cpp}`（生产 packing request 来源）、`include/aethermind/backend/resolved_kernel.h`（`expected_packing_recipe` 已存在）、`include/aethermind/backend/packed_weights.h`、`include/aethermind/model/weight/{weight_packing,packed_weight_store}.h`
-- **关联测试**: `tests/unit/backend/cpu/kernels/`、`tests/unit/model/test_weight_packing.cpp`、`tests/benchmark/cpu_kernels/`
+- **关联代码**: `src/backend/cpu/cpu_weight_prepacker.cpp`、`src/backend/cpu/kernels/gemm/`、`src/backend/cpu/kernels/common/packed_weight_utils.{h,cpp}`（packed recipe 校验闸口）、`src/compiler/packing_request_builder.{h,cpp}`（生产 packing request 来源）、`include/aethermind/backend/resolved_kernel.h`（`expected_packing_recipe` 已存在）、`include/aethermind/backend/packed_weights.h`、`include/aethermind/model/weight/weight_packing.h`
+- **关联测试**: `tests/unit/backend/cpu/kernels/`、`tests/unit/model/weight/test_weight_packing.cpp`、`tests/benchmark/cpu_kernels/`
 - **关联 ADR**: 无（exact recipe 合同落地时新建）
 - **关联模块**: backend / execution / compiler / model / benchmark
 
@@ -27,11 +27,11 @@
 | 环节 | 现状 | 位置 |
 |---|---|---|
 | recipe 合同 | `PackingRecipe{layout, alignment}`，无 tile 字段 | `include/aethermind/backend/packed_weights.h` |
-| 打包服务 | `CpuWeightPrepacker::Pack/RecipeFor`，唯一 recipe 为 `cpu_identity` 对齐拷贝；`Pack` 内部自己调 `RecipeFor(selector)` | `src/backend/cpu/cpu_weight_prepacker.cpp` |
+| 打包服务 | `CpuWeightPrepacker::Pack/RecipeFor`，唯一 recipe 为 `cpu_identity` 对齐拷贝（`kCpuIdentityPacking*` 常量与 prepacker 同文件）；`Pack` 内部自己调 `RecipeFor(selector)` | `include/aethermind/backend/cpu/cpu_weight_prepacker.h`、`src/backend/cpu/cpu_weight_prepacker.cpp` |
 | 打包 request（生产） | `BuildWeightPackingRequests(lowered, resolved)`：纯数据映射，填 components/op_type/source_id，**never touches a backend**，不携带 recipe | `include/aethermind/compiler/packing_request_builder.h` |
 | 打包 request（legacy） | 已删除（2026-09-23）：`WeightPrepackPlanner::BuildRequests` 曾按 role 枚举 linear 权重、从不填 components；graph-driven 的 `BuildWeightPackingRequests` 成为唯一生产 request 来源后移除 | `include/aethermind/model/weight/weight_packing.h`（现只提供 `PrepackWeightRequests`）、`src/model/weight/weight_packing.cpp` |
-| 打包执行 | `PrepackWeightRequests(store, requests)` 无 Backend 参数；key 的 recipe 由它自己调 `RecipeFor(req.selector)` 得出；model 层直接实例化 `CpuWeightPrepacker`（母提案 §4.5 第 4 点要消除的偏差） | `src/model/weight/weight_packing.cpp` |
-| 存储/定位 | `PackedWeightStore` + `WeightArtifactKey{source_id, value_index, binding, selector, recipe}`；plan 组装用 `Find(exact_key)`，冻结期校验 `artifact->recipe() != expected_packing_recipe` 即失败 | `include/aethermind/model/weight/packed_weight_store.h`、`src/execution/execution_plan_builder.cpp` |
+| 打包执行 | `PrepackWeightRequests(backend, store, requests)` 经 `Backend::PackWeights` 抽象执行，model 层不再实例化 `CpuWeightPrepacker`（母提案 §4.5 第 4 点偏差已消除）；key 的 recipe 从产物 `recipe()` 回读，store 校验 key/artifact 一致 | `include/aethermind/backend/backend.h`、`src/model/weight/weight_packing.cpp` |
+| 存储/定位 | `PackedWeightStore` + `WeightArtifactKey{source_id, value_index, binding, selector, recipe}`（model/weight 三件套合一于 `weight_packing.h/.cpp`）；plan 组装用 `Find(exact_key)`，冻结期校验 `artifact->recipe() != expected_packing_recipe` 即失败 | `include/aethermind/model/weight/weight_packing.h`、`src/execution/execution_plan_builder.cpp` |
 | resolve 期 recipe | `ResolvedKernel::expected_packing_recipe` 已在 resolve 期由 backend 填充；resolve 期**没有 shape**（`LinearParams {}` 为空，`QkvLinearParams` 只有 q/k/v out_features） | `include/aethermind/backend/resolved_kernel.h`、`include/aethermind/operators/op_params.h` |
 | binding 期消费 | `KernelParamsBuildContext::packed_weight`（opaque `PackedWeightView`：data/nbytes/logical dtype+shape/recipe_layout/alignment）；**无 tile 字段** | `include/aethermind/backend/kernel_types.h` |
 | packed 校验闸口 | `ValidateIdentityPackedWeight` 硬编码只接受 `cpu_identity`，是所有 packed 消费者的共同闸口 | `src/backend/cpu/kernels/common/packed_weight_utils.cpp` |

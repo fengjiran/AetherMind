@@ -4,7 +4,7 @@
 - **版本**: 1.0
 - **日期**: 2026-08-21
 - **关联代码**: [include/aethermind/model/model_loader.h](../../../include/aethermind/model/model_loader.h) / [src/model/model_loader.cpp](../../../src/model/model_loader.cpp)，及 [include/aethermind/model/formats/hf/](../../../include/aethermind/model/formats/hf/) 下 HF I/O 组件
-- **上游依赖**: `base`（Status/StatusOr）、`formats/hf`（HfDirectoryReader/HfModelValidator/HfWeightResolver）、`ResolvedModelWeights`/`RawWeightView`
+- **上游依赖**: `base`（Status/StatusOr）、`formats/hf`（HfDirectoryReader/HfModelValidator/`hf::ResolveWeights`）、`ResolvedModelWeights`/`RawWeightView`
 - **下游消费者**: `ModelCompiler::Compile` / `LoadAndCompile`（compiler 模块）、`BuildModelGraph` 及 per-family builder `BuildLlamaDense`（model 模块内）
 - **关联测试**: [tests/unit/model/test_model_loader.cpp](../../../tests/unit/model/test_model_loader.cpp) 及 `test_hf_*.cpp` 系列
 - **架构总览**: [architecture_overview.md](../architecture/architecture_overview.md) 第三章（模型加载数据流）与第七章
@@ -101,7 +101,7 @@ ModelLoader::Load(model_dir)
 - `test_hf_config_parser.cpp` / `test_hf_json_reader.cpp`：config 解析边界。
 - `test_hf_directory_reader.cpp`：目录布局（单文件/分片）。
 - `test_hf_model_validator.cpp`：三阶段校验的正反用例（含策略开关组合）。
-- `test_hf_weight_resolver.cpp`：tensor 名解析与 tied embeddings。
+- `test_hf_tensor_resolver.cpp`：tensor 名解析与 tied embeddings。
 - `test_hf_safetensors_file.cpp` / `test_hf_safetensors_index.cpp`：safetensors 读取。
 - `test_hf_real_model_integration.cpp`：真实模型目录端到端集成。
 

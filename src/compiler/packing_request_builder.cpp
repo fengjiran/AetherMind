@@ -1,6 +1,5 @@
 #include "aethermind/compiler/packing_request_builder.h"
 
-#include "aethermind/model/weight/weight_binding_resolver.h"
 #include "aethermind/operators/operator_schema.h"
 
 #include <string>
@@ -93,10 +92,12 @@ StatusOr<std::vector<WeightPackingRequest>> BuildWeightPackingRequests(
         if (step.spec.selector.weight_format != WeightFormat::kPacked) {
             continue;
         }
+
         const auto schema = GetOperatorSchema(step.spec.op_type);
         if (!schema.ok()) {
             return schema.status();
         }
+
         for (size_t port = 0; port < schema->input_ports.size(); ++port) {
             if (schema->input_ports[port].kind != OperatorPortKind::kWeight) {
                 continue;

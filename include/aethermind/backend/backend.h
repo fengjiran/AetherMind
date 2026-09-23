@@ -14,7 +14,12 @@
 #include "aethermind/base/macros.h"
 #include "aethermind/operators/op_params.h"
 
+#include <span>
+
 namespace aethermind {
+
+class PackedWeights;
+class TensorView;
 
 /// @brief Abstract backend for planning-time kernel selection and preparation.
 ///
@@ -47,6 +52,35 @@ public:
             OpType op_type,
             const KernelSelector& selector,
             const OpParams& params) const = 0;
+
+    /// @brief Packs logical weight views into a backend-layout artifact.
+    ///
+    /// `components` carries the recipe-ordered raw weight views: exactly one
+    /// for direct bindings, several (Q/K/V or Gate/Up) for composite bindings.
+    /// The backend owns the packing layout authority: it validates
+    /// rank/dtype/feature-count agreement, materializes any composite
+    /// concatenation, allocates aligned storage, and returns an artifact whose
+    /// `recipe()` the caller must use when building the `WeightArtifactKey`.
+    ///
+    /// Default returns `Unimplemented`; only backends with weight prepacking
+    /// implement it.
+    ///
+    /// @param op_type Operator the packed weight serves.
+    /// @param components Recipe-ordered logical weight views to pack.
+    /// @param selector Selector describing device, dtype, and layout
+    ///        constraints. Must request `WeightFormat::kPacked`.
+    /// @return Packed artifact, or an error when the backend does not support
+    ///         packing or the views violate the packing contract.
+    AM_NODISCARD virtual StatusOr<std::unique_ptr<PackedWeights>> PackWeights(
+            OpType op_type,
+            std::span<const TensorView> components,
+            const KernelSelector& selector) const {
+        (void) op_type;
+        (void) components;
+        (void) selector;
+        return Status::Unimplemented(
+                "Backend does not implement weight packing");
+    }
 
     /// @brief Returns the kernel registry for debug inspection, if available.
     ///

@@ -1,5 +1,5 @@
 #include "aethermind/backend/cpu/kernels/common/packed_weight_utils.h"
-#include "aethermind/backend/cpu/identity_packing.h"
+#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "utils/overflow_check.h"
 
 #include <cstddef>

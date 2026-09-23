@@ -1,4 +1,4 @@
-#include "aethermind/model/formats/hf/hf_weight_resolver.h"
+#include "aethermind/model/formats/hf/hf_tensor_resolver.h"
 
 #include <array>
 #include <cstddef>

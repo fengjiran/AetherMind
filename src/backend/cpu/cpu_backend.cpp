@@ -96,6 +96,16 @@ StatusOr<ResolvedKernel> CpuBackend::PrepareKernel(OpType op_type,
     return resolved;
 }
 
+StatusOr<std::unique_ptr<PackedWeights>> CpuBackend::PackWeights(
+        OpType op_type,
+        std::span<const TensorView> components,
+        const KernelSelector& selector) const {
+    // The prepacker is stateless; constructing it per call keeps CpuBackend's
+    // header free of the backend/cpu packing implementation.
+    CpuWeightPrepacker prepacker;
+    return prepacker.Pack(op_type, components, selector);
+}
+
 StatusOr<std::unique_ptr<Backend>> CpuBackendFactory::Create() const {
     auto capabilities = cpu::DetectCpuCapabilities(policy_);
     if (!capabilities.ok()) {

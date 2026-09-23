@@ -496,7 +496,7 @@ Decode 循环中不得变化：
 - [`include/aethermind/execution/execution_context.h`](../../include/aethermind/execution/execution_context.h)
 - [`include/aethermind/backend/kernel_context.h`](../../include/aethermind/backend/kernel_context.h)
 - [`src/execution/layer_runner.cpp`](../../src/execution/layer_runner.cpp)
-- [`src/model/model_graph_builder.cpp`](../../src/model/model_graph_builder.cpp)
+- [`src/model/llama_dense_graph_builder.cpp`](../../src/model/llama_dense_graph_builder.cpp)
 - [`src/compiler/optimize_graph.cpp`](../../src/compiler/optimize_graph.cpp)
 - [`src/backend/cpu/kernels/`](../../src/backend/cpu/kernels/)
 

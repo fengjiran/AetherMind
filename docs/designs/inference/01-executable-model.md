@@ -7,7 +7,7 @@
 - **关联代码**: [include/aethermind/inference/](../../../include/aethermind/inference/)（`executable_model.h`、`weight_binding_storage.h`）/[src/inference/](../../../src/inference/)
 - **上游依赖**: compiler（`LoweredModelArtifact`、`BuildWeightPackingRequests`）、model（`LoadedModel`/`ResolvedModelWeights`、`ResolveWeightBinding`、`PrepackWeightRequests`、`PackedWeightStore`）、execution（`ExecutionPlanBuilder`、`ComputeExternalReadRequirements`、`ExternalTensorBindings`）、runtime（`Runtime` 提供 backends/allocator）、graph/operators 纯数据 payload 契约（`WeightValue`/`ConstantValue`）
 - **下游消费者**: `InferenceSession`/`Generate`（[01 号计划](../../improvement-plan/01-inference-session-generate-readiness.md) M5，未落地）
-- **关联测试**: [tests/unit/inference/test_executable_model.cpp](../../../tests/unit/inference/test_executable_model.cpp)（19 例）、[test_weight_binding_storage.cpp](../../../tests/unit/inference/test_weight_binding_storage.cpp)（8 例）；权重解析权威测试见 [test_weight_binding_resolver.cpp](../../../tests/unit/model/test_weight_binding_resolver.cpp)，需求查询测试见 [test_execution_bindings.cpp](../../../tests/unit/execution/test_execution_bindings.cpp)
+- **关联测试**: [tests/unit/inference/test_executable_model.cpp](../../../tests/unit/inference/test_executable_model.cpp)（20 例）、[test_weight_binding_storage.cpp](../../../tests/unit/inference/test_weight_binding_storage.cpp)（8 例）；权重解析权威测试见 [tests/unit/model/weight/test_weight_packing.cpp](../../../tests/unit/model/weight/test_weight_packing.cpp)（`WeightBindingResolver` 套件），需求查询测试见 [test_execution_bindings.cpp](../../../tests/unit/execution/test_execution_bindings.cpp)
 
 ## 1. 背景与目标
 
@@ -80,7 +80,7 @@ class ExecutableModel {
 
 1. 取 `artifact.loaded_model->GetResolvedWeights()`（缺失 `loaded_model` 即拒绝）。
 2. `BuildWeightPackingRequests(artifact.graph, resolved)`：graph-driven，跳过非 `kPacked` step，按 `(value_index, selector)` 去重。
-3. `PackedWeightStore::SetSourceId(artifact.graph.artifact_id())` + `PrepackWeightRequests`；composite 权重按 recipe 序 axis-0 拼接进自有对齐存储。
+3. `PackedWeightStore::SetSourceId(artifact.graph.artifact_id())` + 取 backend（`runtime.GetBackend(requests[0].selector.device_type)`）+ `PrepackWeightRequests(backend, store, requests)`；composite 物化、对齐与分配由 backend 的 `Backend::PackWeights` 落实，key 的 recipe 从产物回读。
 4. `ExecutionPlanBuilder::Build(runtime, store, artifact.graph)`。
 5. `ComputeExternalReadRequirements(plan)`：execution 层的唯一需求权威（packed 裁剪掉权重端口后自然不进入需求集合）。
 6. 对每个"被需求且非 `kModelInput`"的值按下标 i 物化绑定：

@@ -6,7 +6,7 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/memory/buffer.h"
-#include "aethermind/model/weight/packed_weight_store.h"
+#include "aethermind/model/weight/weight_packing.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"

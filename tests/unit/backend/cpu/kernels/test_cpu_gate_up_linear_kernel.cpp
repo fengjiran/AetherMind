@@ -10,7 +10,6 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/graph/graph.h"
-#include "aethermind/model/weight/packed_weight_store.h"
 #include "aethermind/model/weight/weight_packing.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -646,11 +645,13 @@ TEST(CPUKernelGateUpLinear, FusedPackedExecutionRequiresNoExternalGateUpWeightBi
     ASSERT_EQ(requests->front().components.size(), 2U);
 
     PackedWeightStore packed_store;
-    ASSERT_TRUE(PrepackWeightRequests(packed_store, *requests).ok());
     RuntimeBuilder runtime_builder;
     runtime_builder.RegisterBackendFactory(
             DeviceType::kCPU, std::make_unique<CpuBackendFactory>());
     Runtime runtime = runtime_builder.Build();
+    const auto prepack_backend = runtime.GetBackend(DeviceType::kCPU);
+    ASSERT_TRUE(prepack_backend.ok()) << prepack_backend.status().ToString();
+    ASSERT_TRUE(PrepackWeightRequests(**prepack_backend, packed_store, *requests).ok());
     const auto plan = ExecutionPlanBuilder::Build(runtime, packed_store, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
 

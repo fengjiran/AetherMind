@@ -1,11 +1,11 @@
 #include "aethermind/inference/executable_model.h"
 
 #include "aethermind/compiler/packing_request_builder.h"
+#include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/graph/graph_types.h"
 #include "aethermind/model/raw_weight.h"
 #include "aethermind/model/resolved_model_weights.h"
-#include "aethermind/model/weight/weight_binding_resolver.h"
 #include "aethermind/model/weight/weight_packing.h"
 #include "aethermind/runtime/runtime.h"
 #include "utils/overflow_check.h"
@@ -245,7 +245,15 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
 
     PackedWeightStore packed_weights;
     AM_RETURN_IF_ERROR(packed_weights.SetSourceId(artifact.graph.artifact_id()));
-    AM_RETURN_IF_ERROR(PrepackWeightRequests(packed_weights, *requests));
+    // Prepack goes through the Backend::PackWeights contract; resolve the
+    // backend once from the first request's device (empty requests skip
+    // packing entirely and default to CPU, mirroring the plan builder).
+    const DeviceType device = requests->empty()
+                                      ? DeviceType::kCPU
+                                      : requests->front().selector.device_type;
+    const auto backend = runtime.GetBackend(device);
+    AM_RETURN_IF_ERROR(backend.status());
+    AM_RETURN_IF_ERROR(PrepackWeightRequests(**backend, packed_weights, *requests));
 
     const auto plan = ExecutionPlanBuilder::Build(runtime, packed_weights, artifact.graph);
     if (!plan.ok()) {

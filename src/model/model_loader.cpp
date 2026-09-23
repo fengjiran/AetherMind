@@ -1,7 +1,7 @@
 #include "aethermind/model/model_loader.h"
 #include "aethermind/model/formats/hf/hf_directory_reader.h"
 #include "aethermind/model/formats/hf/hf_model_validator.h"
-#include "aethermind/model/formats/hf/hf_weight_resolver.h"
+#include "aethermind/model/formats/hf/hf_tensor_resolver.h"
 #include "aethermind/model/loaded_model.h"
 
 #include <memory>

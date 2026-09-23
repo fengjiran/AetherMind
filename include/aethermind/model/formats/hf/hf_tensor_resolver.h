@@ -1,7 +1,7 @@
-#ifndef AETHERMIND_MODEL_FORMATS_HF_HF_WEIGHT_RESOLVER_H
-#define AETHERMIND_MODEL_FORMATS_HF_HF_WEIGHT_RESOLVER_H
+#ifndef AETHERMIND_MODEL_FORMATS_HF_HF_TENSOR_RESOLVER_H
+#define AETHERMIND_MODEL_FORMATS_HF_HF_TENSOR_RESOLVER_H
 
-/// @file hf_weight_resolver.h
+/// @file hf_tensor_resolver.h
 /// @brief HF tensor-name resolution into logical model weight views.
 
 #include "aethermind/base/status.h"

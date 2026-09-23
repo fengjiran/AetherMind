@@ -2,7 +2,7 @@
 
 #include "aethermind/graph/graph_op_builder.h"
 #include "aethermind/model/formats/hf/hf_model_validator.h"
-#include "aethermind/model/weight/weight_binding_resolver.h"
+#include "aethermind/model/weight/weight_packing.h"
 #include "rope_params_builder.h"
 #include "transformer_graph_common.h"
 

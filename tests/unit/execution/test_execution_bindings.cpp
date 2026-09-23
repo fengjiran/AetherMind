@@ -10,7 +10,6 @@
 #include "aethermind/graph/graph.h"
 #include "aethermind/memory/cpu_allocator.h"
 #include "aethermind/model/resolved_model_weights.h"
-#include "aethermind/model/weight/packed_weight_store.h"
 #include "aethermind/model/weight/weight_packing.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/op_type.h"
@@ -194,8 +193,11 @@ StatusOr<PackedFixture> MakePackedAddRmsNormPlan(Runtime& runtime) {
 
     const auto requests = BuildWeightPackingRequests(*lowered, resolved);
     if (!requests.ok()) return requests.status();
+    const auto prepack_backend = runtime.GetBackend(DeviceType::kCPU);
+    if (!prepack_backend.ok()) return prepack_backend.status();
     PackedWeightStore packed_store;
-    const Status stored = PrepackWeightRequests(packed_store, *requests);
+    const Status stored =
+            PrepackWeightRequests(**prepack_backend, packed_store, *requests);
     if (!stored.ok()) return stored;
     auto plan = ExecutionPlanBuilder::Build(runtime, packed_store, *lowered);
     if (!plan.ok()) return plan.status();

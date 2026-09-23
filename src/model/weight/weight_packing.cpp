@@ -1,14 +1,12 @@
 #include "aethermind/model/weight/weight_packing.h"
 
-#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
+#include "aethermind/backend/backend.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/base/tensor_view.h"
-#include "aethermind/model/weight/packed_weight_store.h"
 
-#include <cstdlib>
-#include <cstring>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -16,160 +14,165 @@ namespace aethermind {
 
 namespace {
 
-constexpr size_t kFusedWeightAlignment = 64;
-
-/// @brief Owns an aligned heap buffer backing a materialized fused weight.
-class OwnedAlignedStorage final : public RawStorage {
-public:
-    explicit OwnedAlignedStorage(void* data) noexcept : data_(data) {}
-
-    ~OwnedAlignedStorage() override {
-        std::free(data_);
+/// Layer-scoped roles must carry an in-range decoder_layer_index; graph
+/// validation already rejects a missing index (TransformerRoleRequiresLayer),
+/// so nullptr here means the binding did not come from a validated graph.
+const DecoderLayerRawWeights* LayerAt(const ResolvedModelWeights& resolved,
+                                      std::optional<uint32_t> layer) noexcept {
+    if (!layer.has_value() || *layer >= resolved.layers.size()) {
+        return nullptr;
     }
+    return &resolved.layers[*layer];
+}
 
-private:
-    void* data_ = nullptr;
-};
-
-/// @brief Materializes a composite weight by concatenating its components
-/// along axis 0 into one owned, aligned buffer.
+/// @brief Converts a validated raw weight view into a row-major TensorView.
 ///
-/// The composite recipes (QKV / Gate-Up) are fixed axis-0 concatenations of
-/// their components in recipe order. All components must be valid,
-/// contiguous, rank-2 views of one dtype with a shared feature count; a
-/// sequential byte copy then yields exactly the fused row-major layout.
-StatusOr<RawWeightView> MaterializeCompositeWeight(
-        const std::vector<RawWeightView>& components) {
-    if (components.empty()) {
-        return Status::InvalidArgument(
-                "composite weight requires at least one component");
+/// The view borrows the raw weight's owned shape through `strides` only for
+/// the duration of the packing call; nothing outlives the request.
+StatusOr<TensorView> MakeRowMajorView(const RawWeightView& raw,
+                                      std::vector<int64_t>& strides) {
+    AM_RETURN_IF_ERROR(ValidateRawWeightView(raw));
+    strides.resize(raw.shape.size());
+    if (!strides.empty()) {
+        strides.back() = 1;
+        for (int64_t i = static_cast<int64_t>(strides.size()) - 2; i >= 0; --i) {
+            strides[i] = strides[i + 1] * raw.shape[i + 1];
+        }
     }
+    return TensorView(raw.data, raw.dtype, IntArrayView(raw.shape),
+                      IntArrayView(strides), 0);
+}
 
-    const DataType& dtype = components.front().dtype;
-    int64_t feature_count = -1;
-    int64_t total_rows = 0;
-    size_t total_bytes = 0;
-    for (const auto& component: components) {
-        // Defense in depth: PrepackWeightRequests validates before
-        // materialization,
-        // but this helper is the layout authority for fused composites.
-        AM_RETURN_IF_ERROR(ValidateRawWeightView(component));
-        if (!component.IsValid() || !component.is_contiguous) {
-            return Status::InvalidArgument(
-                    "composite weight component is not a valid contiguous view");
-        }
-        if (component.dtype != dtype) {
-            return Status::InvalidArgument(
-                    "composite weight components must share one dtype");
-        }
-        if (component.shape.size() != 2U) {
-            return Status::InvalidArgument(
-                    "composite weight components must be rank 2");
-        }
-        if (feature_count < 0) {
-            feature_count = component.shape[1];
-        } else if (feature_count != component.shape[1]) {
-            return Status::InvalidArgument(
-                    "composite weight components must share a feature count");
-        }
-        const int64_t rows = component.shape[0];
-        if (rows < 0 || total_rows > std::numeric_limits<int64_t>::max() - rows) {
-            return Status::InvalidArgument(
-                    "composite weight row count is negative or overflows");
-        }
-        total_rows += rows;
-        if (total_bytes >
-            std::numeric_limits<size_t>::max() - component.bytes) {
-            return Status::InvalidArgument(
-                    "composite weight byte count overflows");
-        }
-        total_bytes += component.bytes;
+/// Expected byte payload of the logical weight an artifact claims to pack.
+/// Undefined dtypes or empty shapes yield 0 (no size premise).
+StatusOr<size_t> LogicalByteSize(const PackedWeights& artifact) noexcept {
+    if (artifact.logical_dtype().IsUndefined() ||
+        artifact.logical_dtype().nbytes() == 0) {
+        return 0U;
     }
-
-    const size_t padded_bytes = total_bytes == 0 ? 1 : total_bytes;
-    void* data = nullptr;
-    if (posix_memalign(&data, kFusedWeightAlignment, padded_bytes) != 0 ||
-        data == nullptr) {
-        return Status::ResourceExhausted(
-                "failed to allocate composite weight buffer");
+    size_t elements = 1;
+    for (const int64_t dimension: artifact.logical_shape()) {
+        if (dimension < 0) {
+            return Status::InvalidArgument(
+                    "Packed artifact logical shape contains a negative "
+                    "dimension");
+        }
+        if (elements > std::numeric_limits<size_t>::max() /
+                               static_cast<size_t>(dimension)) {
+            return Status::Overflow(
+                    "Packed artifact logical size overflowed size_t");
+        }
+        elements *= static_cast<size_t>(dimension);
     }
-    auto* out = static_cast<std::byte*>(data);
-    for (const auto& component: components) {
-        std::memcpy(out, component.data, component.bytes);
-        out += component.bytes;
+    if (elements > std::numeric_limits<size_t>::max() /
+                           static_cast<size_t>(artifact.logical_dtype().nbytes())) {
+        return Status::Overflow(
+                "Packed artifact logical size overflowed size_t");
     }
-
-    return RawWeightView{
-            .data = static_cast<const std::byte*>(data),
-            .bytes = total_bytes,
-            .dtype = dtype,
-            .shape = std::vector<int64_t>{total_rows, feature_count},
-            .storage = std::make_shared<OwnedAlignedStorage>(data),
-            .is_contiguous = true,
-    };
+    return elements * static_cast<size_t>(artifact.logical_dtype().nbytes());
 }
 
 } // namespace
 
-Status PrepackWeightRequests(PackedWeightStore& packed_weight_store,
-                             const std::vector<WeightPackingRequest>& requests) {
-    CpuWeightPrepacker prepacker;
+const RawWeightView* ResolveWeightBinding(
+        const WeightBinding& binding,
+        const ResolvedModelWeights& resolved) noexcept {
+    const std::optional<TransformerWeightRole> role =
+            TryGetTransformerWeightRole(binding);
+    if (!role.has_value()) {
+        return nullptr;
+    }
+    const std::optional<uint32_t> layer = binding.decoder_layer_index;
+    switch (*role) {
+        case TransformerWeightRole::kTokenEmbedding:
+            return &resolved.embed_tokens;
+        case TransformerWeightRole::kFinalNorm:
+            return &resolved.final_norm;
+        case TransformerWeightRole::kLmHead:
+            // Tied embeddings reuse embed_tokens when the checkpoint carries no
+            // independent lm_head.
+            return resolved.lm_head.has_value() ? &*resolved.lm_head
+                                                : &resolved.embed_tokens;
+        case TransformerWeightRole::kInputNorm:
+            if (const auto* l = LayerAt(resolved, layer)) return &l->norm.input_rmsnorm;
+            return nullptr;
+        case TransformerWeightRole::kPostAttentionNorm:
+            if (const auto* l = LayerAt(resolved, layer)) return &l->norm.post_attn_rmsnorm;
+            return nullptr;
+        case TransformerWeightRole::kAttentionQ:
+            if (const auto* l = LayerAt(resolved, layer)) return &l->attn.q_proj;
+            return nullptr;
+        case TransformerWeightRole::kAttentionK:
+            if (const auto* l = LayerAt(resolved, layer)) return &l->attn.k_proj;
+            return nullptr;
+        case TransformerWeightRole::kAttentionV:
+            if (const auto* l = LayerAt(resolved, layer)) return &l->attn.v_proj;
+            return nullptr;
+        case TransformerWeightRole::kAttentionO:
+            if (const auto* l = LayerAt(resolved, layer)) return &l->attn.o_proj;
+            return nullptr;
+        case TransformerWeightRole::kMlpGate:
+            if (const auto* l = LayerAt(resolved, layer)) return &l->mlp.gate_proj;
+            return nullptr;
+        case TransformerWeightRole::kMlpUp:
+            if (const auto* l = LayerAt(resolved, layer)) return &l->mlp.up_proj;
+            return nullptr;
+        case TransformerWeightRole::kMlpDown:
+            if (const auto* l = LayerAt(resolved, layer)) return &l->mlp.down_proj;
+            return nullptr;
+        case TransformerWeightRole::kMoERouter:
+            // Dense checkpoints carry no router weight; MoE is out of the
+            // current product scope.
+            return nullptr;
+    }
+    return nullptr;
+}
 
+Status PrepackWeightRequests(const Backend& backend,
+                             PackedWeightStore& packed_weight_store,
+                             const std::vector<WeightPackingRequest>& requests) {
     if (!requests.empty()) {
         AM_RETURN_IF_ERROR(
                 packed_weight_store.SetSourceId(requests.front().source_id));
     }
 
     for (const auto& req: requests) {
-        // The prepacker copies shape-derived logical_nbytes() out of these
-        // views; validate byte sizes up front so a mismatch fails eagerly
-        // instead of reading out of bounds or fusing a corrupted layout.
+        // Validate byte sizes up front so a mismatch fails eagerly here with a
+        // view-level message instead of surfacing deep inside the backend.
+        std::vector<TensorView> components;
+        std::vector<std::vector<int64_t>> strides_storage;
+        const auto append_component = [&](const RawWeightView& raw) {
+            strides_storage.emplace_back();
+            auto view = MakeRowMajorView(raw, strides_storage.back());
+            if (!view.ok()) {
+                return view.status();
+            }
+            components.push_back(*view);
+            return Status::Ok();
+        };
+
         if (req.components.empty()) {
-            AM_RETURN_IF_ERROR(ValidateRawWeightView(req.raw_weight));
+            AM_RETURN_IF_ERROR(append_component(req.raw_weight));
         } else {
-            for (const auto& component: req.components) {
-                AM_RETURN_IF_ERROR(ValidateRawWeightView(component));
+            for (const RawWeightView& component: req.components) {
+                AM_RETURN_IF_ERROR(append_component(component));
             }
         }
 
-        // Composite bindings carry recipe-ordered component views; the fused
-        // buffer is materialized here and kept alive through pack + store.
-        RawWeightView fused{};
-        const RawWeightView* weight = &req.raw_weight;
-        if (!req.components.empty()) {
-            auto materialized = MaterializeCompositeWeight(req.components);
-            if (!materialized.ok()) {
-                return materialized.status();
-            }
-            fused = std::move(*materialized);
-            weight = &fused;
-        }
-
-        const auto& shape = weight->shape;
-        std::vector<int64_t> strides(shape.size());
-        if (!strides.empty()) {
-            strides.back() = 1;
-            for (int64_t i = static_cast<int64_t>(strides.size()) - 2; i >= 0; --i) {
-                strides[i] = strides[i + 1] * shape[i + 1];
-            }
-        }
-
-        TensorView view(weight->data,
-                        weight->dtype,
-                        IntArrayView(shape),
-                        IntArrayView(strides),
-                        0);
-
-        auto packed = prepacker.Pack(req.op_type, view, req.selector);
+        auto packed = backend.PackWeights(req.op_type, components, req.selector);
         if (!packed.ok()) {
             return packed.status();
         }
 
-        const WeightArtifactKey key{.source_id = req.source_id,
-                                    .value_index = req.value_index,
-                                    .binding = req.binding,
-                                    .selector = req.selector,
-                                    .recipe = CpuWeightPrepacker::RecipeFor(req.selector)};
+        // Read the recipe back from the produced artifact instead of deriving
+        // it again: the store re-verifies key/artifact consistency, so pack and
+        // consume can never drift apart.
+        const WeightArtifactKey key{
+                .source_id = req.source_id,
+                .value_index = req.value_index,
+                .binding = req.binding,
+                .selector = req.selector,
+                .recipe = (*packed)->recipe()};
         // A duplicate {binding, selector} is a planner bug: propagate as an
         // explicit error instead of silently skipping a weight.
         AM_RETURN_IF_ERROR(packed_weight_store.Store(
@@ -177,6 +180,86 @@ Status PrepackWeightRequests(PackedWeightStore& packed_weight_store,
     }
 
     return {};
+}
+
+Status PackedWeightStore::SetSourceId(uint64_t source_id) noexcept {
+    if (source_frozen_ && source_id != source_id_) {
+        return Status::InvalidArgument(
+                "PackedWeightStore is already frozen to a different source "
+                "artifact");
+    }
+    source_id_ = source_id;
+    source_frozen_ = true;
+    return Status::Ok();
+}
+
+uint64_t PackedWeightStore::source_id() const noexcept {
+    return source_id_;
+}
+
+Status PackedWeightStore::Store(const WeightArtifactKey& key,
+                                std::shared_ptr<const PackedWeights> artifact) noexcept {
+    if (artifact == nullptr) {
+        return Status::InvalidArgument(
+                "PackedWeightStore cannot store null packed weights");
+    }
+
+    if (Find(key) != nullptr) {
+        return Status::AlreadyExists(
+                "Packed weights already exist for the requested weight key");
+    }
+
+    // The store is the trust boundary where a caller may pair an arbitrary
+    // artifact with a key. Reject any drift so execution never consumes a
+    // mismatched payload, regardless of which recipe/selector the plan asked
+    // for.
+    if (key.selector != artifact->selector()) {
+        return Status::InvalidArgument(
+                "Packed weight key selector does not match the artifact "
+                "selector");
+    }
+    if (key.recipe != artifact->recipe()) {
+        return Status::InvalidArgument(
+                "Packed weight key recipe does not match the artifact recipe");
+    }
+    if (artifact->storage().alignment() < key.recipe.alignment) {
+        return Status::InvalidArgument(
+                "Packed artifact storage alignment is below its recipe "
+                "alignment");
+    }
+    auto expected_bytes = LogicalByteSize(*artifact);
+    if (!expected_bytes.ok()) {
+        return expected_bytes.status();
+    }
+    if (artifact->storage().nbytes() < *expected_bytes) {
+        return Status::InvalidArgument(
+                "Packed artifact storage is smaller than its logical weight");
+    }
+
+    if (!source_frozen_) {
+        source_frozen_ = true;
+    }
+
+    entries_.emplace_back(key, std::move(artifact));
+    return Status::Ok();
+}
+
+std::shared_ptr<const PackedWeights> PackedWeightStore::Find(
+        const WeightArtifactKey& key) const noexcept {
+    for (const auto& [entry_key, artifact]: entries_) {
+        if (entry_key == key) {
+            return artifact;
+        }
+    }
+    return nullptr;
+}
+
+size_t PackedWeightStore::size() const noexcept {
+    return entries_.size();
+}
+
+bool PackedWeightStore::empty() const noexcept {
+    return entries_.empty();
 }
 
 } // namespace aethermind

@@ -36,7 +36,7 @@
 | **model** | `include/aethermind/model/` | `src/model/` | 模型加载与前端适配：HfModelConfig/HfDirectoryReader/HfModelValidator、ResolvedModelWeights、**LoadedModel**（只持有 config + resolved raw weights/backing storage）、ModelLoader（仅 HF I/O/validation/resolution）、**模型家族识别与图构建**（`ParseModelArchitecture` 是家族判定唯一权威；`BuildModelGraph` 是 HF → semantic graph 唯一转换权威的 dispatch 入口，按家族路由到 per-family builder，如 `BuildLlamaDense` 将 HF RoPE 字段规范化为 typed `RoPEAlgorithmParams`，legacy `su` 映射为 `LongRoPE`，unknown type 拒绝）。ModelCompiler 归 compiler；ModelLoader 不调用 graph、backend 或 prepack。 |
 | **inference** | `include/aethermind/inference/` | `src/inference/` | 模型准备与会话编排层：`WeightBindingStorage`（immutable 绑定所借用的 shape/stride 元数据所有权）、`ExecutableModel`（拥有 `LoweredModelArtifact`、packed artifacts、immutable external weight/constant bindings 与 phase ExecutionPlan）及其唯一生产准备入口 `PrepareExecutableModel`；后续 `InferenceSession`/`Generate` 的同步编排亦归本模块。**不得被 graph/operators/compiler/execution/runtime/model/backend 反向依赖**；只做编排与所有权聚合，不承担算子语义、kernel resolve、weight materialization 算法或 KV 物理存储职责。 |
 | **shape_inference** | `include/aethermind/shape_inference/` | `src/shape_inference/` | TensorSpec、ShapeSymbol、ShapeConstraint、InferenceResult 等通用形状推导基础设施。 |
-| **backend / kernels** | `include/aethermind/backend/` + per-ISA kernels | `src/backend/` | Backend 抽象、KernelRegistry、ExecutionStep 运行时执行（基于 base 层 `KernelSelector` 纯数据契约做内核匹配，见 `base/kernel_selector.h`）。不得依赖 Graph IR 或 OperatorSchema 的语义细节；可 include operators 的纯数据 dtype 契约头（`kXxxSupportedDTypes`/`IsXxxSupportedDType`）及 backend-independent 的 `rope_frequency_resolver.h`（RoPE 频率公式契约）。 |
+| **backend / kernels** | `include/aethermind/backend/` + per-ISA kernels | `src/backend/` | Backend 抽象、KernelRegistry、ExecutionStep 运行时执行（基于 base 层 `KernelSelector` 纯数据契约做内核匹配，见 `base/kernel_selector.h`），以及经 `Backend::PackWeights` 契约暴露的权重打包服务（layout 权威在 backend，composite 物化/对齐/分配由 backend 落实）。不得依赖 Graph IR 或 OperatorSchema 的语义细节；可 include operators 的纯数据 dtype 契约头（`kXxxSupportedDTypes`/`IsXxxSupportedDType`）及 backend-independent 的 `rope_frequency_resolver.h`（RoPE 频率公式契约）。 |
 
 **跨模块依赖规则**：
 - operators → shape_inference（+ dtypes/base 基础库）
@@ -44,7 +44,7 @@
 - compiler → model + graph + operators + shape_inference + base
 - execution → runtime + compiler + operators + shape_inference + base（public headers 不 include compiler）；实现可依赖 model 的权重组装契约（`PackedWeightStore`/`WeightArtifactKey`）；公共头可含 backend 的纯数据契约头（`ResolvedKernel`/`PackedWeights`/`KernelSelector`）
 - runtime → base + backend（backend registry/factory）+ memory
-- model → graph + operators + formats/hf；权重组装组件（`WeightPackingRequest`/`PrepackWeightRequests`/`PackedWeightStore`）可依赖 backend 的打包契约（`PackedWeights`/`PackingRecipe`），不得依赖其余 backend/kernels 细节
+- model → graph + operators + formats/hf；权重组装组件（`WeightPackingRequest`/`PrepackWeightRequests`/`PackedWeightStore`）可依赖 backend 的打包契约（`PackedWeights`/`PackingRecipe`），打包执行必须经 `Backend::PackWeights` 抽象入口，不得依赖其余 backend/kernels 细节（不 include 具体 prepacker 实现）
 - inference → execution + compiler + model + runtime（+ graph/operators 的纯数据 payload 契约 `WeightValue`/`ConstantValue`/`WeightBinding`，以及 base 的 `TensorView`/`KernelSelector`）；位于依赖最上层，任何下层模块不得依赖 inference
 - backend/kernels → operators（OpParams/OpType，及 `kXxxSupportedDTypes`/`IsXxxSupportedDType` 等纯数据 dtype 契约头，以及 backend-independent 的 `rope_frequency_resolver.h` 频率公式契约；不得依赖其余语义细节）不得反向依赖 graph/model；执行期共享契约（`WorkspaceArena`/`WorkspaceBinding`/`KernelSelector`）统一放在 base 层；`ResolvedKernel`/`PackedWeights`/`PackingRecipe` 等 backend 纯数据契约头供 execution/model 上层直接依赖，不再额外下沉
 

@@ -10,7 +10,7 @@
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/inference/weight_binding_storage.h"
-#include "aethermind/model/weight/packed_weight_store.h"
+#include "aethermind/model/weight/weight_packing.h"
 
 #include <cstdint>
 

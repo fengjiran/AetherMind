@@ -1,7 +1,7 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/backend/packed_weights.h"
 #include "aethermind/compiler/lowered_graph.h"
-#include "aethermind/model/weight/packed_weight_store.h"
+#include "aethermind/model/weight/weight_packing.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_schema.h"
 

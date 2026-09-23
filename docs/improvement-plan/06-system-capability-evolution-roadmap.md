@@ -440,7 +440,7 @@ Kernel descriptor/resolve 需要逐步表达：
 
 ### 11.3 P1：packing service 边界
 
-当前 `PrepackWeightRequests` 直接构造 `CpuWeightPrepacker`，且 recipe 主要由 selector 推导。目标应是：
+`PrepackWeightRequests` 已收敛到经 `Backend::PackWeights` 抽象执行（key 的 recipe 从产物回读，store 校验兜底），不再直接构造 `CpuWeightPrepacker`；recipe 仍主要由 selector 推导（隐藏在 backend 实现内）。目标应是：
 
 - backend/descriptor 决定 exact recipe；
 - model/execution preparation 根据 optimized graph 的具体 `WeightBinding` 请求 materialization；

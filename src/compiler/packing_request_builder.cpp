@@ -84,14 +84,14 @@ StatusOr<std::vector<WeightPackingRequest>> BuildWeightPackingRequests(
     // resolves descriptor recipes. It can then detect incompatible consumers
     // instead of silently retaining the first op for a shared weight value.
 
-    for (const LoweredStep& step: lowered.steps()) {
+    for (const auto& [spec, binding]: lowered.steps()) {
         // Packing requests describe packed weight storage only; steps that
         // consume plain or quantized weights must not enter the planner.
-        if (step.spec.selector.weight_format != WeightFormat::kPacked) {
+        if (spec.selector.weight_format != WeightFormat::kPacked) {
             continue;
         }
 
-        const auto schema = GetOperatorSchema(step.spec.op_type);
+        const auto schema = GetOperatorSchema(spec.op_type);
         if (!schema.ok()) {
             return schema.status();
         }
@@ -100,15 +100,18 @@ StatusOr<std::vector<WeightPackingRequest>> BuildWeightPackingRequests(
             if (schema->input_ports[port].kind != OperatorPortKind::kWeight) {
                 continue;
             }
-            if (port >= step.binding.input_values.size()) {
+
+            if (port >= binding.input_values.size()) {
                 return Status::Internal(
                         "BuildWeightPackingRequests: kWeight port beyond binding");
             }
-            const GraphValueId value = step.binding.input_values[port];
+
+            const GraphValueId value = binding.input_values[port];
             if (value.index >= lowered.values().size()) {
                 return Status::Internal(
                         "BuildWeightPackingRequests: weight value out of range");
             }
+
             const auto* weight =
                     std::get_if<WeightValue>(&lowered.values()[value.index].payload);
             if (weight == nullptr) {
@@ -116,17 +119,18 @@ StatusOr<std::vector<WeightPackingRequest>> BuildWeightPackingRequests(
                         "BuildWeightPackingRequests: kWeight value has no "
                         "WeightValue payload");
             }
+
             auto components = ResolveWeightComponents(resolved, weight->binding);
             if (!components.ok()) {
                 return components.status();
             }
 
             WeightPackingRequest request{
-                    .op_type = step.spec.op_type,
+                    .op_type = spec.op_type,
                     .source_id = lowered.artifact_id(),
                     .value_index = value.index,
                     .binding = weight->binding,
-                    .selector = step.spec.selector,
+                    .selector = spec.selector,
                     .recipe = {},
             };
 

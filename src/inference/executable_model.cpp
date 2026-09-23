@@ -276,7 +276,7 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
     }
     const ResolvedModelWeights& resolved = artifact.loaded_model->GetResolvedWeights();
 
-    const auto requests = BuildWeightPackingRequests(artifact.graph, resolved);
+    auto requests = BuildWeightPackingRequests(artifact.graph, resolved);
     if (!requests.ok()) {
         return requests.status();
     }
@@ -297,7 +297,7 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
     AM_RETURN_IF_ERROR(PrepackWeightRequests(
             **backend, packed_weights, resolved_requests));
 
-    const auto plan = ExecutionPlanBuilder::Build(runtime, packed_weights, artifact.graph);
+    auto plan = ExecutionPlanBuilder::Build(runtime, packed_weights, artifact.graph);
     if (!plan.ok()) {
         return plan.status();
     }

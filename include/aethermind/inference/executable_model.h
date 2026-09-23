@@ -92,7 +92,7 @@ private:
                     ExecPhase phase) noexcept;
 
     /// @brief Validates a phase query against the compiled artifact phase.
-    AM_NODISCARD Status CheckPhase(ExecPhase phase) const noexcept;
+    Status CheckPhase(ExecPhase phase) const noexcept;
 
     LoweredModelArtifact artifact_{};
     PackedWeightStore packed_weights_{};
@@ -119,7 +119,7 @@ private:
 /// @return The prepared model, or an error if any weight or constant cannot be
 ///         materialized, the artifact mixes execution phases, or plan building
 ///         fails. No partially prepared model is observable on failure.
-AM_NODISCARD StatusOr<ExecutableModel> PrepareExecutableModel(
+StatusOr<ExecutableModel> PrepareExecutableModel(
         Runtime& runtime,
         LoweredModelArtifact artifact);
 

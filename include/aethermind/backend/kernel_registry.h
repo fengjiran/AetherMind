@@ -50,11 +50,11 @@ public:
     /// Returns every descriptor whose structural selector can serve `selector`.
     /// Callers must apply backend-specific execution requirements before they
     /// choose a concrete kernel.
-    AM_NODISCARD StatusOr<std::vector<const KernelDescriptor*>> FindCandidates(
+    StatusOr<std::vector<const KernelDescriptor*>> FindCandidates(
             OpType op_type,
             const KernelSelector& selector) const;
 
-    AM_NODISCARD Status Freeze();
+    Status Freeze();
 
     AM_NODISCARD size_t size() const {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -72,12 +72,12 @@ public:
 
     /// Debug inspection API; unlike FindCandidates, this does not apply a
     /// structural selector filter.
-    AM_NODISCARD StatusOr<std::vector<const KernelDescriptor*>> FindByOpType(OpType op_type) const;
+    StatusOr<std::vector<const KernelDescriptor*>> FindByOpType(OpType op_type) const;
 
     AM_NODISCARD std::string DebugDump() const;
 
 private:
-    AM_NODISCARD Status BuildBucketIndex();
+    Status BuildBucketIndex();
 
     mutable std::mutex mutex_{};
     std::atomic<bool> frozen_{false};

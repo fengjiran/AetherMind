@@ -1,5 +1,4 @@
 #include "aethermind/model/llama_dense_graph_builder.h"
-
 #include "aethermind/graph/graph_op_builder.h"
 #include "aethermind/model/formats/hf/hf_model_validator.h"
 #include "aethermind/model/weight/weight_packing.h"
@@ -296,7 +295,7 @@ StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
                                 params.rms_norm_eps,
                                 detail::WeightDebugName(TransformerWeightRole::kFinalNorm,
                                                         std::nullopt)));
-    const WeightBinding lm_head_binding = MakeTransformerWeightBinding(
+    constexpr WeightBinding lm_head_binding = MakeTransformerWeightBinding(
             std::nullopt, TransformerWeightRole::kLmHead);
     const RawWeightView* lm_head_weight = ResolveWeightBinding(lm_head_binding, weights);
     if (lm_head_weight == nullptr) {

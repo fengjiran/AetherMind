@@ -38,10 +38,12 @@ StatusOr<const KernelDescriptor*> ResolveEligibleDescriptor(
         if (!effective_features.ContainsAll(descriptor->cpu_requirements)) {
             continue;
         }
+
         if (best == nullptr || descriptor->priority > best->priority) {
             best = descriptor;
         }
     }
+
     if (best == nullptr) {
         return Status::NotFound(
                 "No eligible CPU kernel registered for op_type=" +

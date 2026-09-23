@@ -17,6 +17,7 @@
 #include "aethermind/operators/ops/embedding_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/shape_inference/tensor_spec.h"
+#include "execution/test_tensor_buffer_helpers.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -29,6 +30,7 @@
 namespace {
 
 using namespace aethermind;
+using aethermind::test::TestBuffer;
 
 constexpr float kEpsilon = 1.0e-5F;
 
@@ -40,37 +42,6 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dimensions) {
 TensorSpec FloatSpec(std::initializer_list<int64_t> dimensions) {
     return TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape(dimensions)};
 }
-
-/// Owns the bytes plus the shape/stride arrays a TensorView borrows, so the
-/// view stays valid for as long as the buffer does.
-class TestBuffer {
-public:
-    TestBuffer(DataType dtype, std::initializer_list<int64_t> dimensions)
-        : dtype_(dtype), shape_(dimensions) {
-        int64_t count = 1;
-        for (const int64_t dim: shape_) {
-            count *= dim;
-        }
-        bytes_.assign(static_cast<size_t>(count) * static_cast<size_t>(dtype_.nbytes()),
-                      std::byte{0});
-        strides_.resize(shape_.size());
-        int64_t stride = 1;
-        for (size_t i = shape_.size(); i-- > 0;) {
-            strides_[i] = stride;
-            stride *= shape_[i];
-        }
-    }
-
-    AM_NODISCARD TensorView view() const {
-        return TensorView(bytes_.data(), dtype_, IntArrayView{shape_}, IntArrayView{strides_});
-    }
-
-private:
-    DataType dtype_{};
-    std::vector<std::byte> bytes_{};
-    std::vector<int64_t> shape_{};
-    std::vector<int64_t> strides_{};
-};
 
 class FloatRawStorage final : public RawStorage {
 public:

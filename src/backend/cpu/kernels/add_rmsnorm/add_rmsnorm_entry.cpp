@@ -1,4 +1,5 @@
 #include "add_rmsnorm_internal.h"
+#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/cpu/kernels/common/alias_utils.h"
 #include "aethermind/backend/cpu/kernels/common/layout_utils.h"
 #include "aethermind/backend/cpu/kernels/common/packed_weight_utils.h"
@@ -321,6 +322,7 @@ AM_REGISTER_KERNEL(
                         .weight_format = WeightFormat::kPacked,
                         .phase = ExecPhase::kBoth,
                 },
+                .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &AddRmsNormF32ReferenceEntry,
                 .priority = 10,
                 .params_size = sizeof(AddRmsNormF32KernelArgs),

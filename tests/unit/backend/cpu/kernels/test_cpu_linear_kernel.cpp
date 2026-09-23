@@ -1,4 +1,5 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/execution/execution_bindings.h"
@@ -149,13 +150,18 @@ TEST(CPUKernelLinear, RejectsSelectorsWithoutPlainF32ReferenceSupport) {
             OpType::kLinear, selector, OpParams{LinearParams{}});
     EXPECT_FALSE(fp16.ok());
     EXPECT_EQ(fp16.status().code(), StatusCode::kNotFound);
+}
 
-    selector = MakeLinearSelector();
+TEST(CPUKernelLinear, PreparesPackedIdentityFallback) {
+    CpuBackend backend;
+    KernelSelector selector = MakeLinearSelector();
     selector.weight_format = WeightFormat::kPacked;
     const auto packed = backend.PrepareKernel(
             OpType::kLinear, selector, OpParams{LinearParams{}});
-    EXPECT_FALSE(packed.ok());
-    EXPECT_EQ(packed.status().code(), StatusCode::kNotFound);
+    ASSERT_TRUE(packed.ok()) << packed.status().ToString();
+    EXPECT_EQ(std::string_view{packed->name},
+              "cpu::linear_f32_packed_identity_reference");
+    EXPECT_EQ(packed->expected_packing_recipe, CpuIdentityPackingRecipe());
 }
 
 TEST(CPUKernelLinear, ReferenceExecutesRankOneInput) {

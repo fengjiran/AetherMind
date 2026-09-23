@@ -561,24 +561,30 @@ TEST(ExecutableModel, PackedSubgraphKeepsWeightOutOfBindingTable) {
     EXPECT_EQ(BindingsSharingData(**bindings, residual_bytes->data()).size(), 1U);
 }
 
-TEST(ExecutableModel, PackedLoweringIsUnresolvableForOpsWithoutPackedKernels) {
-    // Lowering marks every weight-consuming step packed when
-    // enable_packed_weights is set, but only QkvLinear, GateUpLinear and
-    // AddRmsNorm register packed descriptors. Embedding is the first such step in
-    // a Llama graph, so a packed full-model artifact cannot resolve; o_proj,
-    // down_proj and lm_head (kLinear) would fail next. This records the gap and
-    // fails loudly once packed variants land, which is when the packed
-    // full-model path becomes testable.
+TEST(ExecutableModel, PackedLoweringPreparesAllWeightConsumers) {
+    // Packed enablement is graph-wide, so every current Llama weight consumer
+    // must resolve and receive an artifact before model preparation succeeds.
     Runtime runtime = MakeCpuRuntime();
     auto compiled = CompileTinyLlama(/*num_layers=*/1, /*tie_word_embeddings=*/false,
                                      /*opt_level=*/2, /*enable_packed_weights=*/true);
     ASSERT_TRUE(compiled.ok()) << compiled.status().ToString();
 
     const auto model = PrepareExecutableModel(runtime, std::move(compiled->artifact));
+    ASSERT_TRUE(model.ok()) << model.status().ToString();
+    const auto plan = model->plan(ExecPhase::kBoth);
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
 
-    ASSERT_FALSE(model.ok());
-    // Kernel resolution, not weight resolution: the weights themselves are fine.
-    EXPECT_EQ(model.status().code(), StatusCode::kNotFound);
+    size_t packed_steps = 0;
+    for (const ExecutionStep& step: (*plan)->steps()) {
+        if (step.selector.weight_format != WeightFormat::kPacked) {
+            continue;
+        }
+        ++packed_steps;
+        ASSERT_NE(step.packed_weights, nullptr);
+        EXPECT_EQ(step.packed_weights->recipe(),
+                  step.kernel.expected_packing_recipe);
+    }
+    EXPECT_GT(packed_steps, 0U);
 }
 
 TEST(ExecutableModel, RejectsWeightWithNoDenseStorageRole) {

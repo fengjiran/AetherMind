@@ -1,5 +1,6 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/cpu_info.h"
+#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/execution/execution_bindings.h"
@@ -161,6 +162,149 @@ void ExpectRowsNear(const float* input,
                     << "mismatch at row " << row << ", col " << col;
         }
     }
+}
+
+TEST(CPUKernelRmsNorm, PackedIdentityDescriptorExecutesRankTwoInput) {
+    constexpr int64_t io_shape[2] = {2, 4};
+    constexpr int64_t io_strides[2] = {4, 1};
+    constexpr int64_t weight_shape[1] = {4};
+    constexpr int64_t weight_strides[1] = {1};
+    constexpr float input_data[8] = {1.0F, 2.0F, 3.0F, 4.0F,
+                                     -1.0F, 0.5F, 2.0F, -3.0F};
+    constexpr float weight_data[4] = {1.0F, 0.5F, 1.5F, 2.0F};
+    std::array<float, 8> output{};
+    const TensorView input(input_data, DataType::Float32(), io_shape, io_strides);
+    const TensorView weight(weight_data, DataType::Float32(), weight_shape,
+                            weight_strides);
+    const KernelSelector selector{
+            .device_type = DeviceType::kCPU,
+            .act_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPacked,
+            .phase = ExecPhase::kBoth,
+    };
+    CpuBackend backend;
+    const auto recipe = backend.GetPackingRecipe(OpType::kRmsNorm, selector);
+    ASSERT_TRUE(recipe.ok()) << recipe.status().ToString();
+    const std::array<TensorView, 1> components{weight};
+    auto packed = backend.PackWeights(OpType::kRmsNorm, components,
+                                      selector, *recipe);
+    ASSERT_TRUE(packed.ok()) << packed.status().ToString();
+    const auto kernel = backend.PrepareKernel(
+            OpType::kRmsNorm, selector,
+            OpParams{RmsNormParams{.eps = kEpsilon}});
+    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+    ASSERT_EQ(kernel->expected_packing_recipe, *recipe);
+
+    const PackedWeightView packed_view{
+            .data = (*packed)->storage().data(),
+            .nbytes = (*packed)->storage().nbytes(),
+            .logical_dtype = (*packed)->logical_dtype(),
+            .logical_shape = (*packed)->logical_shape(),
+            .recipe_layout = (*packed)->recipe().layout,
+            .recipe_alignment = (*packed)->recipe().alignment,
+            .alignment = (*packed)->storage().alignment(),
+    };
+    const MutableTensorView output_view(
+            output.data(), DataType::Float32(), io_shape, io_strides);
+    alignas(std::max_align_t) std::array<std::byte, kMaxKernelParamsSize> params{};
+    ASSERT_TRUE(kernel->params_builder(
+                              KernelParamsBuildContext{
+                                      .inputs = std::span<const TensorView>(&input, 1),
+                                      .outputs = std::span<const MutableTensorView>(
+                                              &output_view, 1),
+                                      .attrs = kernel->attrs,
+                                      .packed_weight = packed_view,
+                              },
+                              params.data())
+                        .ok());
+    ASSERT_TRUE(kernel->fn(KernelContext{
+                                   .device_type = DeviceType::kCPU,
+                                   .kernel_params = params.data(),
+                                   .attrs = kernel->attrs,
+                           })
+                        .ok());
+    ExpectRowsNear(input_data, weight_data, output.data(), 2, 4, 4, 1, 1, 4, 1);
+}
+
+TEST(CPUKernelRmsNorm, PackedIdentityBuilderChecksZeroSizeMetadataAndAlias) {
+    constexpr int64_t weight_shape[1] = {4};
+    constexpr int64_t weight_stride[1] = {1};
+    constexpr float weight_data[4] = {1.0F, 0.5F, 1.5F, 2.0F};
+    const TensorView weight(weight_data, DataType::Float32(),
+                            weight_shape, weight_stride);
+    const KernelSelector selector{
+            .device_type = DeviceType::kCPU,
+            .act_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPacked,
+            .phase = ExecPhase::kBoth,
+    };
+    CpuBackend backend;
+    const auto recipe = backend.GetPackingRecipe(OpType::kRmsNorm, selector);
+    ASSERT_TRUE(recipe.ok()) << recipe.status().ToString();
+    auto packed = backend.PackWeights(
+            OpType::kRmsNorm, std::array<TensorView, 1>{weight}, selector, *recipe);
+    ASSERT_TRUE(packed.ok()) << packed.status().ToString();
+    const auto kernel = backend.PrepareKernel(
+            OpType::kRmsNorm, selector,
+            OpParams{RmsNormParams{.eps = kEpsilon}});
+    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+    const PackedWeightView packed_view{
+            .data = (*packed)->storage().data(),
+            .nbytes = (*packed)->storage().nbytes(),
+            .logical_dtype = (*packed)->logical_dtype(),
+            .logical_shape = (*packed)->logical_shape(),
+            .recipe_layout = (*packed)->recipe().layout,
+            .recipe_alignment = (*packed)->recipe().alignment,
+            .alignment = (*packed)->storage().alignment(),
+    };
+    const auto build = [&](const TensorView& input,
+                           const MutableTensorView& output,
+                           const PackedWeightView& artifact) {
+        alignas(std::max_align_t) std::array<std::byte, kMaxKernelParamsSize> params{};
+        const std::array<TensorView, 1> inputs{input};
+        const std::array<MutableTensorView, 1> outputs{output};
+        return kernel->params_builder(
+                KernelParamsBuildContext{
+                        .inputs = inputs,
+                        .outputs = outputs,
+                        .attrs = kernel->attrs,
+                        .packed_weight = artifact,
+                },
+                params.data());
+    };
+
+    constexpr int64_t empty_shape[2] = {0, 4};
+    constexpr int64_t io_strides[2] = {4, 1};
+    const TensorView empty_input(nullptr, DataType::Float32(),
+                                 empty_shape, io_strides);
+    const MutableTensorView empty_output(nullptr, DataType::Float32(),
+                                         empty_shape, io_strides);
+    EXPECT_TRUE(build(empty_input, empty_output, packed_view).ok());
+
+    constexpr int64_t input_shape[2] = {1, 4};
+    constexpr float input_data[4] = {1.0F, 2.0F, 3.0F, 4.0F};
+    float output_data[4]{};
+    const TensorView input(input_data, DataType::Float32(), input_shape, io_strides);
+    const MutableTensorView output(output_data, DataType::Float32(),
+                                   input_shape, io_strides);
+    PackedWeightView wrong_recipe = packed_view;
+    wrong_recipe.recipe_layout = "wrong_recipe";
+    EXPECT_EQ(build(input, output, wrong_recipe).code(),
+              StatusCode::kInvalidArgument);
+    constexpr std::array<int64_t, 1> wrong_shape{3};
+    PackedWeightView wrong_metadata = packed_view;
+    wrong_metadata.logical_shape = wrong_shape;
+    EXPECT_EQ(build(input, output, wrong_metadata).code(),
+              StatusCode::kInvalidArgument);
+
+    auto* const aliased_output_data = const_cast<float*>(
+            static_cast<const float*>((*packed)->storage().data()));
+    const MutableTensorView aliased_output(
+            aliased_output_data, DataType::Float32(), input_shape, io_strides);
+    EXPECT_EQ(build(input, aliased_output, packed_view).code(),
+              StatusCode::kInvalidArgument);
 }
 
 TEST(CPUKernelRmsNorm, CpuBackendPreparedKernelExecutesRankTwoInput) {

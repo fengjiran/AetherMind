@@ -2,6 +2,7 @@
 #define AETHERMIND_BACKEND_CPU_KERNELS_GATE_UP_LINEAR_GATE_UP_LINEAR_INTERNAL_H
 
 #include "aethermind/base/status.h"
+#include "backend/cpu/kernels/gemm/gemm_internal.h"
 
 #include <cstdint>
 
@@ -38,6 +39,15 @@ struct GateUpLinearF32KernelArgs {
 
 /// @brief Executes the compute-ready scalar FP32 Gate-Up projection.
 Status RunGateUpLinearF32Reference(const GateUpLinearF32KernelArgs& args) noexcept;
+
+/// @brief Prepared bpanel args for Gate and Up output slices.
+struct GateUpLinearF32PackedBKernelArgs {
+    PackedGemmF32Args gate{};
+    PackedGemmF32Args up{};
+};
+
+Status RunGateUpLinearF32PackedB(
+        const GateUpLinearF32PackedBKernelArgs& args) noexcept;
 
 } // namespace aethermind::cpu::detail
 

@@ -1,4 +1,5 @@
 #include "aethermind/inference/executable_model.h"
+#include "inference/executable_model_internal.h"
 
 #include "aethermind/compiler/packing_request_builder.h"
 #include "aethermind/execution/execution_bindings.h"
@@ -13,6 +14,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -230,6 +232,42 @@ ExecPhase ExecutableModel::phase() const noexcept {
     return phase_;
 }
 
+StatusOr<std::vector<WeightPackingRequest>>
+inference::internal::ResolveWeightPackingRequests(
+        const Backend& backend,
+        std::vector<WeightPackingRequest> requests,
+        DeviceType expected_device) {
+    std::vector<WeightPackingRequest> resolved_requests;
+    std::unordered_map<uint32_t, std::unordered_map<KernelSelector, size_t>>
+            request_index;
+    for (WeightPackingRequest& request: requests) {
+        if (request.selector.device_type != expected_device) {
+            return Status::InvalidArgument(
+                    "PrepareExecutableModel: packed weights span multiple devices");
+        }
+        AM_ASSIGN_OR_RETURN(request.recipe,
+                            backend.GetPackingRecipe(request.op_type,
+                                                     request.selector));
+        auto& selectors = request_index[request.value_index];
+        const auto existing = selectors.find(request.selector);
+        if (existing != selectors.end()) {
+            const WeightPackingRequest& first =
+                    resolved_requests[existing->second];
+            if (first.op_type != request.op_type ||
+                first.binding != request.binding ||
+                first.recipe != request.recipe) {
+                return Status::InvalidArgument(
+                        "PrepareExecutableModel: shared packed weight consumers "
+                        "require incompatible op types or packing recipes");
+            }
+            continue;
+        }
+        selectors.emplace(request.selector, resolved_requests.size());
+        resolved_requests.push_back(std::move(request));
+    }
+    return resolved_requests;
+}
+
 StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
                                                  LoweredModelArtifact artifact) {
     if (artifact.loaded_model == nullptr) {
@@ -245,15 +283,19 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
 
     PackedWeightStore packed_weights;
     AM_RETURN_IF_ERROR(packed_weights.SetSourceId(artifact.graph.artifact_id()));
-    // Prepack goes through the Backend::PackWeights contract; resolve the
-    // backend once from the first request's device (empty requests skip
-    // packing entirely and default to CPU, mirroring the plan builder).
+    // Resolve the backend once from the first request's device (empty requests
+    // skip packing entirely and default to CPU, mirroring plan construction).
     const DeviceType device = requests->empty()
                                       ? DeviceType::kCPU
                                       : requests->front().selector.device_type;
     const auto backend = runtime.GetBackend(device);
     AM_RETURN_IF_ERROR(backend.status());
-    AM_RETURN_IF_ERROR(PrepackWeightRequests(**backend, packed_weights, *requests));
+
+    AM_ASSIGN_OR_RETURN(std::vector<WeightPackingRequest> resolved_requests,
+                        inference::internal::ResolveWeightPackingRequests(
+                                **backend, std::move(*requests), device));
+    AM_RETURN_IF_ERROR(PrepackWeightRequests(
+            **backend, packed_weights, resolved_requests));
 
     const auto plan = ExecutionPlanBuilder::Build(runtime, packed_weights, artifact.graph);
     if (!plan.ok()) {

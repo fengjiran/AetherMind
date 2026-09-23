@@ -191,10 +191,15 @@ StatusOr<PackedFixture> MakePackedAddRmsNormPlan(Runtime& runtime) {
     resolved.layers.resize(1);
     resolved.layers[0].norm.input_rmsnorm = MakeRawWeight(storage, {3});
 
-    const auto requests = BuildWeightPackingRequests(*lowered, resolved);
+    auto requests = BuildWeightPackingRequests(*lowered, resolved);
     if (!requests.ok()) return requests.status();
     const auto prepack_backend = runtime.GetBackend(DeviceType::kCPU);
     if (!prepack_backend.ok()) return prepack_backend.status();
+    for (WeightPackingRequest& request: *requests) {
+        auto recipe = (*prepack_backend)->GetPackingRecipe(request.op_type, request.selector);
+        if (!recipe.ok()) return recipe.status();
+        request.recipe = std::move(*recipe);
+    }
     PackedWeightStore packed_store;
     const Status stored =
             PrepackWeightRequests(**prepack_backend, packed_store, *requests);

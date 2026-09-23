@@ -45,7 +45,7 @@ AM_NODISCARD const RawWeightView* ResolveWeightBinding(
 
 class PackedWeightStore;
 
-/// @brief One weight value to prepack, keyed by its position in the artifact.
+/// @brief One packed consumer request, keyed by its weight value in the artifact.
 struct WeightPackingRequest {
     OpType op_type{};
     /// Source artifact id from the producing LoweredGraph.
@@ -65,13 +65,14 @@ struct WeightPackingRequest {
     /// direct bindings, whose single view lives in `raw_weight`.
     std::vector<RawWeightView> components{};
     KernelSelector selector;
+    /// Exact recipe selected by the consumer descriptor during preparation.
+    PackingRecipe recipe{};
 };
 
 /// @brief Executes prepack for every request and stores the resulting
 /// PackedWeights artifacts into a PackedWeightStore. Packing identity
-/// remains {source_id, value_index, binding, selector, recipe}; the recipe is
-/// read back from each produced artifact, so pack and consume can never
-/// drift apart.
+/// remains {source_id, value_index, binding, selector, recipe}; the selected
+/// recipe is passed explicitly to the backend and checked against its output.
 ///
 /// Production requests come from the graph-driven BuildWeightPackingRequests
 /// (compiler); this function only executes them. Execution goes through the

@@ -78,3 +78,21 @@
 
 - raw：`benchmark-results/operators/gemm/`（本次未存档 raw repetitions，单次观察）
 - 结论：Needs More Data（方向 Accepted）——单次采样、未跑 repetitions/交错 A/B；80 GF 约达本机 FMA 上限 123.7 GF 的 65%。下一步：MB/NR/KC 调参矩阵 + 交错 A/B 复跑 + G2b 接入 Linear prepared path 后以 `BM_LinearPreparedHot` 为主门禁重验
+
+## CPU B-panel packed candidate diagnostic — Needs More Data
+
+- commit：`3d36700d`（工作树 dirty）
+- 命令：`./build/tests/benchmark/aethermind_benchmark --benchmark_filter='BM_LinearPreparedHot/M:1/K:4096/N:4096|BM_LinearPackedBpanelHot/M:1/K:4096/N:4096|BM_LinearPreparedStreaming/M:1/K:4096/N:4096|BM_LinearPackedBpanelStreaming/M:1/K:4096/N:4096|BM_LinearPreparedHot/M:16/K:4096/N:4096|BM_LinearPackedBpanelHot/M:16/K:4096/N:4096|BM_LinearPreparedStreaming/M:16/K:4096/N:4096|BM_LinearPackedBpanelStreaming/M:16/K:4096/N:4096|BM_WeightPackingCpuBpanel/N:4096/K:4096|BM_WeightPackingCpuBpanel/N:4096/K:768' --benchmark_min_time=0.02s --benchmark_repetitions=5 --benchmark_report_aggregates_only=true --benchmark_out=benchmark-results/operators/gemm/20260923T103216Z_3d36700d_DESKTOP-54H5MMI_candidate/results.json --benchmark_out_format=json`
+- 结果：median `real_time`，prepared plain Linear reference 对照 AVX2 bpanel candidate；candidate 是直接隔离注册 descriptor benchmark，尚未成为 global 默认 kernel。
+
+| mode | shape | plain reference | bpanel candidate | candidate CV |
+|---|---|---:|---:|---:|
+| hot | M=1, K=4096, N=4096 | 10.47 ms | 3.64 ms | 4.42% |
+| streaming（256 MiB packed working set） | M=1, K=4096, N=4096 | 11.57 ms | 3.71 ms | 2.13% |
+| hot | M=16, K=4096, N=4096 | 176.57 ms | 7.82 ms | 5.42% |
+| streaming（256 MiB packed working set） | M=16, K=4096, N=4096 | 177.33 ms | 7.89 ms | 6.50% |
+
+Cold packing：`N=4096,K=4096` median 66.83 ms，packed size 64 MiB（amplification 1.00×，1.97 GB/s effective read+write）；`N=4096,K=768` median 7.92 ms，logical size 12 MiB、packed size 16 MiB（1.33×，3.64 GB/s）。benchmark setup 的 8 次交错短样本给出 break-even estimate：M=1 约 9 次、M=16 小于 1 次；这些数字仅作诊断，不是 promotion 门禁。
+
+- raw：`benchmark-results/operators/gemm/20260923T103216Z_3d36700d_DESKTOP-54H5MMI_candidate/results.json`
+- 结论：**Needs More Data**。本次在 WSL2 运行，case 间 CV 约 2–12%，且没有当前同实现进程噪声 floor、KC=256 对照或完整端到端 Generate 数据；K=768 的 1.33× padding 已验证，其他形状放大率需按真实模型继续检查。保持 identity descriptor 默认，KC512 仍是候选命名，不据此宣称性能收益。

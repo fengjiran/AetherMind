@@ -67,6 +67,9 @@ public:
             const KernelSelector& selector,
             const OpParams& params) const override;
 
+    AM_NODISCARD StatusOr<PackingRecipe> GetPackingRecipe(
+            OpType op_type, const KernelSelector& selector) const override;
+
     /// @brief Packs recipe-ordered weight views through the CPU identity
     ///        prepacker.
     ///
@@ -76,6 +79,12 @@ public:
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector) const override;
+
+    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeights>> PackWeights(
+            OpType op_type,
+            std::span<const TensorView> components,
+            const KernelSelector& selector,
+            const PackingRecipe& recipe) const override;
 
     /// @brief Returns the global kernel registry for debug inspection.
     ///

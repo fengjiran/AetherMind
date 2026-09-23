@@ -30,11 +30,29 @@ struct GemmF32Args {
     int64_t output_n_stride{};
 };
 
+/// @brief Pre-validated FP32 GEMM whose B operand is an opaque v1 B-panel.
+///
+/// `gemm.n` is the output slice width, `weight_n_offset` selects its first
+/// logical row in the packed [N,K] weight, and `logical_n`/`n_blocks` describe
+/// that complete weight. `gemm.rhs` and rhs strides are unused.
+struct PackedGemmF32Args {
+    GemmF32Args gemm{};
+    const float* packed_b{};
+    size_t packed_nbytes{};
+    int64_t logical_n{};
+    int64_t logical_k{};
+    int64_t weight_n_offset{};
+    int64_t n_blocks{};
+};
+
 /// @brief Runs the scalar FP32 reference GEMM.
 ///
 /// A zero `m` or `n` is a no-op. A zero `k` writes `+0.0F` to every output
 /// element without reading `lhs` or `rhs`.
 Status RunGemmF32Reference(const GemmF32Args& args) noexcept;
+
+/// @brief Runs the double-accumulation oracle over the v1 packed-B layout.
+Status RunGemmF32PackedBReference(const PackedGemmF32Args& args) noexcept;
 
 /// @brief Runs the scalar-optimized FP32 GEMM candidate.
 ///
@@ -46,6 +64,15 @@ Status RunGemmF32Reference(const GemmF32Args& args) noexcept;
 Status RunGemmF32Scalar(const GemmF32Args& args) noexcept;
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+/// @brief Runs the AVX2 scan or blocked consumer for packed-B, with fallback.
+Status RunGemmF32PackedB(const PackedGemmF32Args& args) noexcept;
+
+/// @brief AVX2 packed-B scan driver, including partial N and arbitrary M.
+Status RunGemmF32PackedBScan(const PackedGemmF32Args& args) noexcept;
+
+/// @brief AVX2 packed-B blocked prefill driver with scan fallback.
+Status RunGemmF32PackedBBlocked(const PackedGemmF32Args& args) noexcept;
+
 /// @brief Runs the AVX2/FMA FP32 GEMM candidate with compatible fallback.
 ///
 /// The caller must ensure the host supports AVX2 and FMA before invoking this

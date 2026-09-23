@@ -10,7 +10,18 @@
 
 | 机器 | 记录 | 状态 |
 |---|---|---|
-| 54H5MMI | [54h5mmi-gemm.md](benchmarks/54h5mmi-gemm.md) | 待重采（2026-09-21 清空） |
+| 54H5MMI | [54h5mmi-gemm.md](benchmarks/54h5mmi-gemm.md) | Needs More Data（2026-09-23 WSL2 diagnostic；不用于 promotion） |
 | QHIHOGQ | 首次采集时新建 | 待重采（2026-09-21 清空） |
 
 原始 artifact 目录 `benchmark-results/operators/gemm/<run-id>/` 被 `.gitignore` 忽略，只存在于各采集机本地。与机器无关、可由源码复核的部分（benchmark/测试/采集脚本、correctness 契约、候选入口与 fallback 边界）随代码评审，不进入本目录。
+
+## 实现与证据状态
+
+| 能力 | 状态 | 说明 |
+|---|---|---|
+| exact recipe 生产链 | Implemented | descriptor → backend query → inference request → pack artifact → exact-key store / plan |
+| graph-wide packed preparation | Implemented | Linear、Embedding、RmsNorm、QKV、GateUp、AddRmsNorm identity consumers 已覆盖；tiny-Llama packed preparation test 通过 |
+| AVX2 bpanel | Candidate / correctness verified | KC512 layout、Linear/QKV/GateUp scan/blocked 与尾块测试已落地；global identity descriptor 保持默认 |
+| 性能与 KC 选择 | **Needs More Data** | 当前 WSL2 小样本不能量化可信噪声 floor；无 KC256 同机对照，不提升 candidate priority |
+
+决策合同见 [ADR-0002](../../decisions/0002-cpu-gemm-packed-weight.md)。本机诊断采样见 [54H5MMI GEMM 记录](benchmarks/54h5mmi-gemm.md)；其他机器数据不得由该记录代替。

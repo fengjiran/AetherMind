@@ -1,13 +1,17 @@
+#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/cpu/kernels/common/alias_utils.h"
 #include "aethermind/backend/cpu/kernels/common/layout_utils.h"
+#include "aethermind/backend/cpu/kernels/common/packed_weight_utils.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/operators/op_params.h"
 #include "rmsnorm_internal.h"
 
+#include <array>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <type_traits>
 
 namespace aethermind::cpu::detail {
@@ -164,6 +168,101 @@ Status BuildRmsNormF32ReferenceArgs(const KernelParamsBuildContext& context,
     return Status::Ok();
 }
 
+Status BuildRmsNormF32PackedIdentityArgs(
+        const KernelParamsBuildContext& context,
+        void* params_buffer) noexcept {
+    if (context.inputs.size() != 1U || context.outputs.size() != 1U ||
+        !context.packed_weight.has_value()) {
+        return Status::InvalidArgument(
+                "Packed RmsNorm requires one input, one output, and a weight artifact");
+    }
+    if (context.attrs.size() != sizeof(float)) {
+        return Status::InvalidArgument(
+                "RmsNormKernelEntry requires epsilon in KernelContext.attrs");
+    }
+    float eps = 0.0F;
+    std::memcpy(&eps, context.attrs.data(), sizeof(eps));
+    if (!std::isfinite(eps) || eps <= 0.0F) {
+        return Status::InvalidArgument(
+                "RmsNormKernelEntry requires finite positive epsilon");
+    }
+
+    const TensorView& input = context.inputs[0];
+    const MutableTensorView& output = context.outputs[0];
+    const PackedWeightView& packed = *context.packed_weight;
+    if (!input.is_valid() || !output.is_valid() ||
+        input.dtype() != DataType::Float32() ||
+        output.dtype() != DataType::Float32() || input.rank() < 1 ||
+        output.rank() != input.rank() || packed.logical_shape.size() != 1U) {
+        return Status::InvalidArgument(
+                "Packed RmsNorm requires rank-matched float32 activation views and rank-1 weight");
+    }
+    for (int32_t i = 0; i < input.rank(); ++i) {
+        if (output.dim(i) != input.dim(i)) {
+            return Status::InvalidArgument(
+                    "Packed RmsNorm output shape must match input shape");
+        }
+    }
+    const int64_t hidden_size = input.dim(input.rank() - 1);
+    if (hidden_size <= 0 || packed.logical_shape[0] != hidden_size) {
+        return Status::InvalidArgument(
+                "Packed RmsNorm weight length must match positive hidden size");
+    }
+    const std::array<int64_t, 1> expected_shape{hidden_size};
+    AM_RETURN_IF_ERROR(ValidateIdentityPackedWeight(
+            packed, expected_shape, "RmsNormKernelEntry"));
+
+    AM_ASSIGN_OR_RETURN(const int64_t row_count,
+                        ComputeFlattenedRowCount(input, "RmsNormKernelEntry"));
+    RmsNormF32KernelArgs args{
+            .row_count = row_count,
+            .hidden_size = hidden_size,
+            .weight_stride = 1,
+            .eps = eps,
+    };
+    if (row_count == 0) {
+        ::new (params_buffer) RmsNormF32KernelArgs(args);
+        return Status::Ok();
+    }
+    if (input.data() == nullptr || output.data() == nullptr || packed.data == nullptr) {
+        return Status::InvalidArgument(
+                "Packed RmsNorm requires non-null storage for non-empty tensors");
+    }
+
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis input_analysis,
+                        AnalyzeRowwiseView(input, "RmsNormKernelEntry input"));
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis output_analysis,
+                        AnalyzeRowwiseView(output, "RmsNormKernelEntry output"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout(
+            "RmsNormKernelEntry", output_analysis));
+    if (!HaveIdenticalViewMapping(input, output)) {
+        AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+                "CPU RmsNorm", output_analysis.footprint(), "output",
+                input_analysis.footprint(), "input"));
+    }
+    if (packed.nbytes > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+        return Status::Overflow("Packed RmsNorm artifact byte range exceeds int64_t");
+    }
+    AM_ASSIGN_OR_RETURN(const ByteAddressRange packed_range,
+                        BuildContiguousByteRange(
+                                packed.data, static_cast<int64_t>(packed.nbytes),
+                                size_t{1}, "RmsNormKernelEntry packed weight"));
+    AM_RETURN_IF_ERROR(ValidateContiguousDisjoint(
+            "CPU RmsNorm", output_analysis.footprint().envelope(), "output",
+            packed_range, "packed weight"));
+
+    args.input = input.data<float>();
+    args.weight = static_cast<const float*>(packed.data);
+    args.output = output.data<float>();
+    args.row_count = input_analysis.row_count();
+    args.input_row_stride = input_analysis.row_stride();
+    args.input_col_stride = input_analysis.column_stride();
+    args.output_row_stride = output_analysis.row_stride();
+    args.output_col_stride = output_analysis.column_stride();
+    ::new (params_buffer) RmsNormF32KernelArgs(args);
+    return Status::Ok();
+}
+
 Status BuildRmsNormF32Avx2FmaArgs(const KernelParamsBuildContext& context,
                                   void* params_buffer) noexcept {
     AM_ASSIGN_OR_RETURN(const RmsNormF32KernelArgs args, ValidateAndBuildF32Args(context));
@@ -229,6 +328,25 @@ AM_REGISTER_KERNEL(
                 .params_builder = &BuildRmsNormF32ReferenceArgs,
                 .metadata_builder = &BuildRmsNormF32Metadata,
                 .name = "cpu::rmsnorm_f32_reference"});
+
+AM_REGISTER_KERNEL(
+        CpuRmsNormF32PackedIdentityReference,
+        KernelDescriptor{
+                .op_type = OpType::kRmsNorm,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float32(),
+                        .weight_format = WeightFormat::kPacked,
+                        .phase = ExecPhase::kBoth,
+                },
+                .packing_recipe = CpuIdentityPackingRecipe(),
+                .kernel_func = &RmsNormF32ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(RmsNormF32KernelArgs),
+                .params_builder = &BuildRmsNormF32PackedIdentityArgs,
+                .metadata_builder = &BuildRmsNormF32Metadata,
+                .name = "cpu::rmsnorm_f32_packed_identity_reference"});
 
 #if defined(RMSNORM_HAS_AVX2_FMA_KERNEL)
 AM_REGISTER_KERNEL(

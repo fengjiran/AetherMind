@@ -1,10 +1,13 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/base/device.h"
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/runtime/runtime_builder.h"
 
 #include <gtest/gtest.h>
+
+#include <array>
 
 namespace {
 
@@ -45,6 +48,27 @@ TEST(CpuBackend, PrepareKernelFindsConfiguredLinearDescriptor) {
             OpType::kLinear, MakeCpuSelector(), OpParams{LinearParams{}});
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
     EXPECT_STREQ(resolved->name, "cpu::linear_f32_reference");
+}
+
+TEST(CpuBackend, RejectsRecipeNotSelectedByItsFeaturePolicy) {
+    CpuBackend backend;
+    KernelSelector selector = MakeCpuSelector();
+    selector.weight_format = WeightFormat::kPacked;
+    const auto selected = backend.GetPackingRecipe(OpType::kLinear, selector);
+    ASSERT_TRUE(selected.ok()) << selected.status().ToString();
+    EXPECT_EQ(*selected, CpuIdentityPackingRecipe());
+
+    constexpr std::array<float, 4> weights{1.0F, 2.0F, 3.0F, 4.0F};
+    constexpr std::array<int64_t, 2> shape{2, 2};
+    constexpr std::array<int64_t, 2> strides{2, 1};
+    const TensorView weight(weights.data(), DataType::Float32(), shape, strides);
+    const std::array<TensorView, 1> components{weight};
+    const auto packed = backend.PackWeights(
+            OpType::kLinear, components, selector,
+            cpu::CpuBPanelF32V1Avx2Recipe());
+    ASSERT_FALSE(packed.ok());
+    EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(packed.status().message().find("not selected"), std::string::npos);
 }
 
 TEST(CpuBackend, TryGetKernelRegistryForDebugReturnsRegistry) {

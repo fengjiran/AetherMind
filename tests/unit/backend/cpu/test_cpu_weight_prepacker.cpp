@@ -100,6 +100,67 @@ TEST(CpuWeightPrepacker, IdentityPackingPreservesStrongerSourceAlignment) {
     EXPECT_GE((*packed)->storage().alignment(), size_t{128});
 }
 
+TEST(CpuWeightPrepacker, BpanelPacksLogicalMatrixAndZeroPadsEveryTail) {
+    constexpr int64_t n = 17;
+    constexpr int64_t k = 513;
+    constexpr int64_t shape[2] = {n, k};
+    constexpr int64_t strides[2] = {k, 1};
+    std::vector<float> logical(static_cast<size_t>(n * k));
+    for (size_t i = 0; i < logical.size(); ++i) {
+        logical[i] = static_cast<float>(static_cast<int64_t>(i % 23U) - 11) * 0.25F;
+    }
+    const TensorView logical_view(
+            logical.data(), DataType::Float32(), shape, strides);
+    const KernelSelector selector = MakePackedCpuSelector();
+    const PackingRecipe recipe = cpu::CpuBPanelF32V1Avx2Recipe();
+
+    const auto required_bytes = cpu::CpuBPanelF32V1PackedByteSize(n, k);
+    ASSERT_TRUE(required_bytes.ok()) << required_bytes.status().ToString();
+    EXPECT_EQ(*required_bytes, size_t{131072});
+
+    CpuWeightPrepacker prepacker;
+    const auto packed = prepacker.Pack(
+            OpType::kLinear, logical_view, selector, recipe);
+    ASSERT_TRUE(packed.ok()) << packed.status().ToString();
+    ASSERT_NE(*packed, nullptr);
+    EXPECT_EQ((*packed)->recipe(), recipe);
+    EXPECT_EQ((*packed)->logical_shape(), (std::vector<int64_t>{n, k}));
+    EXPECT_EQ((*packed)->storage().nbytes(), *required_bytes);
+    ASSERT_EQ((*packed)->storage().alignment(), recipe.alignment);
+
+    const float* const data = static_cast<const float*>((*packed)->storage().data());
+    constexpr int64_t n_blocks = 2;
+    for (int64_t padded_k = 0; padded_k < 2 * cpu::kCpuBPanelF32V1KC;
+         ++padded_k) {
+        for (int64_t padded_n = 0; padded_n < n_blocks * cpu::kCpuBPanelF32V1NR;
+             ++padded_n) {
+            const size_t index =
+                    (((static_cast<size_t>(padded_k / cpu::kCpuBPanelF32V1KC) *
+                               static_cast<size_t>(n_blocks) +
+                       static_cast<size_t>(padded_n / cpu::kCpuBPanelF32V1NR)) *
+                              static_cast<size_t>(cpu::kCpuBPanelF32V1KC) +
+                      static_cast<size_t>(padded_k % cpu::kCpuBPanelF32V1KC)) *
+                     static_cast<size_t>(cpu::kCpuBPanelF32V1NR)) +
+                    static_cast<size_t>(padded_n % cpu::kCpuBPanelF32V1NR);
+            const float expected = padded_n < n && padded_k < k
+                                           ? logical[static_cast<size_t>(padded_n * k + padded_k)]
+                                           : 0.0F;
+            EXPECT_EQ(data[index], expected)
+                    << "logical N=" << padded_n << " K=" << padded_k;
+        }
+    }
+}
+
+TEST(CpuWeightPrepacker, BpanelRejectsUnknownRecipe) {
+    CpuWeightPrepacker prepacker;
+    const Tensor logical_weight = MakeLogicalWeightTensor(2, 4);
+    PackingRecipe unknown{.layout = "unknown_layout", .alignment = 64};
+    const auto packed = prepacker.Pack(
+            OpType::kLinear, logical_weight.view(), MakePackedCpuSelector(), unknown);
+    ASSERT_FALSE(packed.ok());
+    EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
+}
+
 TEST(CpuWeightPrepacker, PackRejectsNonPackedWeightFormatRequests) {
     CpuWeightPrepacker prepacker;
     const Tensor logical_weight = MakeLogicalWeightTensor(2, 4);

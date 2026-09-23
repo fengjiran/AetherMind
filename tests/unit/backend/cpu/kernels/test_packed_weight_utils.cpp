@@ -27,6 +27,41 @@ PackedWeightView MakeIdentityPackedWeight(const void* data,
     };
 }
 
+
+PackedWeightView MakeBpanelPackedWeight(const void* data,
+                                        size_t nbytes,
+                                        std::span<const int64_t> shape) {
+    return PackedWeightView{
+            .data = data,
+            .nbytes = nbytes,
+            .logical_dtype = DataType::Float32(),
+            .logical_shape = shape,
+            .recipe_layout = cpu::kCpuBPanelF32V1Avx2Layout,
+            .recipe_alignment = cpu::kCpuBPanelF32V1Alignment,
+            .alignment = cpu::kCpuBPanelF32V1Alignment,
+    };
+}
+
+TEST(CpuBpanelPackedWeight, RequiresExactLayoutSizeAndRealAlignment) {
+    alignas(64) std::array<std::byte, 32768> storage{};
+    constexpr std::array<int64_t, 2> shape{1, 1};
+    constexpr size_t required = 32768;
+    EXPECT_TRUE(cpu::detail::ValidateBPanelF32PackedWeight(
+                        MakeBpanelPackedWeight(storage.data(), required, shape),
+                        shape, "PackedWeightUtilsTest")
+                        .ok());
+    EXPECT_EQ(cpu::detail::ValidateBPanelF32PackedWeight(
+                      MakeBpanelPackedWeight(storage.data(), required + 4, shape),
+                      shape, "PackedWeightUtilsTest")
+                      .code(),
+              StatusCode::kInvalidArgument);
+    EXPECT_EQ(cpu::detail::ValidateBPanelF32PackedWeight(
+                      MakeBpanelPackedWeight(storage.data() + 1, required, shape),
+                      shape, "PackedWeightUtilsTest")
+                      .code(),
+              StatusCode::kInvalidArgument);
+}
+
 TEST(CpuIdentityPackedWeight, ValidatesRankOneAndRankTwoShapes) {
     alignas(64) float rank_one_storage[3]{};
     constexpr std::array<int64_t, 1> rank_one_shape{3};

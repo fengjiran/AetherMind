@@ -1,7 +1,7 @@
 # InferenceSession / Generate 前置闭环计划
 
 - **状态**: In Progress
-- **版本**: 1.8
+- **版本**: 1.9
 - **日期**: 2026-09-03
 - **最近更新**: 2026-09-23
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
@@ -57,47 +57,50 @@
 
 ### 2.2 当前 CPU kernel 覆盖
 
-真实 CPU registry 当前有（截至 2026-09-17，共 15 类、21 个描述符；reference 命名统一为 `cpu::<op>_f32_reference`）：
+真实 CPU registry 当前有（截至 2026-09-23，共 15 类、27 个描述符，其中 6 个 packed 变体；reference 命名统一为 `cpu::<op>_f32_reference`）：
 
 | OpType | Reference kernel | Optimized kernel | Generate baseline 状态 |
 |---|---:|---:|---|
-| Embedding | FP32 reference | 无 | 可用 |
-| RMSNorm | FP32 reference | AVX2+FMA | 可用 |
+| Embedding | FP32 reference（+ packed identity） | 无 | 可用（packed 需 `enable_packed_weights=true`） |
+| RMSNorm | FP32 reference（+ packed identity） | AVX2+FMA | 可用 |
 | Add | FP32/FP64/BF16/I32/I64 reference | 无 | FP32 可用 |
 | ElementwiseMul | FP32 reference | 无 | semantic Llama baseline 不直接依赖 |
-| Linear | FP32 reference | 无 | 可用 |
+| Linear | FP32 reference（+ packed identity） | packed bpanel candidate（AVX2+FMA） | 可用 |
 | RoPE | FP32 reference | 无 | 可用 |
 | KVCacheUpdate | FP32 reference（窄 KV binding） | 无 | 可用 |
 | Attention | FP32 reference（kv_read 读绑定） | 无 | 可用 |
 | Silu | FP32 reference | 无 | semantic Llama baseline 不直接依赖（SiluMul 未融合对偶） |
 | SiluMul | FP32 reference | 无 | 可用 |
 | Argmax | FP32 reference | 无 | 可用 |
-| QkvLinear | FP32 reference（packed-only） | 无 | 可用（需 O2 融合 + `enable_packed_weights=true`） |
-| GateUpLinear | FP32 reference（packed-only） | 无 | 可用（需 O2 融合 + `enable_packed_weights=true`） |
+| QkvLinear | packed identity reference（packed-only） | packed bpanel candidate（AVX2+FMA） | 可用（需 O2 融合 + `enable_packed_weights=true`） |
+| GateUpLinear | packed identity reference（packed-only） | packed bpanel candidate（AVX2+FMA） | 可用（需 O2 融合 + `enable_packed_weights=true`） |
 | AddRmsNorm | FP32 reference（plain + packed identity） | 无 | 可用（O2 fused path；packed 需 `enable_packed_weights=true`） |
 
-当前 O2 默认 semantic pipeline 会产生 `QkvLinear`、`GateUpLinear` 和 `AddRmsNorm`。三者的 packed kernel 与 execution packed 绑定链路（`ExecutionStep.packed_weights` → packing request → `PrepackWeightRequests` → plan build → execute）均已落地并走通全链路测试；AddRmsNorm 另外保留 plain FP32 reference descriptor。execution lowering 仍是一个 semantic node 对应一个 kernel step，且不存在 kernel-sequence fallback；**baseline 全链路 kernel 已全部齐备（15 类 21 描述符全部可用）**，剩余准入项为 ExecutableModel 入口、真实权重绑定与端到端证据（见 §3.2–§3.5）。
+当前 O2 默认 semantic pipeline 会产生 `QkvLinear`、`GateUpLinear` 和 `AddRmsNorm`。三者的 packed kernel 与 execution packed 绑定链路（`ExecutionStep.packed_weights` → packing request → `PrepackWeightRequests` → plan build → execute）均已落地并走通全链路测试；AddRmsNorm 另外保留 plain FP32 reference descriptor。execution lowering 仍是一个 semantic node 对应一个 kernel step，且不存在 kernel-sequence fallback；**baseline 全链路 kernel 已全部齐备（15 类 27 描述符全部可用）**，剩余准入项为 Prefill→Decode 端到端数值证据（见 §3.3–§3.5）。
 
 ### 2.3 当前 packed-weight 能力
 
 已经具备：
 
 - binding-aware `WeightArtifactKey`；
-- graph-driven packing request；
-- direct/QKV/Gate-Up composite weight materialization；
-- QkvLinear/GateUpLinear packed-only reference kernel（cpu_identity 契约：logical shape/recipe/alignment 校验、行切分、与输出的 disjoint 校验）；
+- graph-driven packing request（compiler）+ 编排期 recipe 注入（`Backend::GetPackingRecipe` → `WeightPackingRequest::recipe`）；
+- direct/QKV/Gate-Up composite weight materialization（backend 经 `Backend::PackWeights` 落实，含对齐与分配）；
+- QkvLinear/GateUpLinear packed-only reference kernel（cpu_identity 与 cpu_bpanel_f32_v1_avx2 双 recipe 契约：logical shape/recipe/alignment 校验、行切分、与输出的 disjoint 校验）；
 - `RawWeightView` byte-size 验证；
 - tied lm-head fallback；
 - plain-step filtering和 exact recipe lookup。
 
+已补齐（2026-09-23）：
+
+- kLinear/kEmbedding/kRmsNorm 的 kPacked identity 变体（unfused packed 路径可解析）；`enable_packed_weights=true` 的完整 Llama 已可 prepare，由 `ExecutableModel.PackedLoweringPreparesAllWeightConsumers` 正向覆盖（此前的 `PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 缺口测试已移除）；
+- QkvLinear/GateUpLinear/Linear 的 `cpu_bpanel_f32_v1_avx2` 候选 descriptor（AVX2+FMA 特化；与 identity 同 priority，选举当前仍落 identity，测试 `CPUKernelLinear.PreparesPackedIdentityFallback` 固化）。
+
 仍未具备：
 
-- kLinear 的 kPacked 变体（unfused packed 路径）；
-- kEmbedding 的 kPacked 变体。由于 lowering 会把**所有**含 `kWeight` 输入的 step 标为 packed（`graph_lowering.cpp:116-122`），缺这两者意味着 `enable_packed_weights=true` 的完整 Llama 在 kernel resolve 阶段即失败（`NOT_FOUND: op_type=Embedding, weight_format=Packed`）；该结论由 `ExecutableModel.PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 固化，细节见 [07 号提案](07-executable-model-preparation.md) §2.2；
-- 实际 tile/block packing recipe（当前 `cpu_identity` 是逻辑行主序拷贝）；
+- bpanel 成为默认选择（需 benchmark 证据后调整 priority/eligibility，见 [GEMM 提案](../operators/gemm/cpu-gemm-packed-weight.md) §5 M5）；
 - `enable_packed_weights=true` 的 unfused e2e 数值验证。
 
-当前 `CpuWeightPrepacker` 是 `cpu_identity` copy。QkvLinear/GateUpLinear 的 packed 契约已被全链路数值测试覆盖，但它仍不能作为生产 packed compute（tile/block 重排）已就绪的证据。
+`CpuWeightPrepacker::Pack(..., recipe)` 已按显式 recipe 分派 identity 与 `cpu_bpanel_f32_v1_avx2` 两种 layout；`RecipeFor(selector)` 仅作兼容保留（无生产调用者）。QkvLinear/GateUpLinear/Linear 的 packed 契约已有全链路数值测试覆盖；bpanel 是否升为默认仍取决于 benchmark 结论。
 
 ## 3. 必须先闭环的阻塞项
 
@@ -479,7 +482,7 @@ Decode 循环中不得变化：
 - [x] baseline pipeline 可以通过真实 CpuBackend 构建完整 plan（O1 未融合 tiny GQA Llama 经 `ModelCompiler` → `PrepareExecutableModel`，见 [07 号提案](07-executable-model-preparation.md) M2.4）；
 - [x] Linear/RoPE/KVCacheUpdate/Attention/SiluMul/Argmax reference kernel 可用（6/6 全部可用）；fused QkvLinear/GateUpLinear/AddRmsNorm 亦已落地；
 - [x] `PrepareExecutableModel` 可从真实 `LoweredModelArtifact` 构建（`inference/executable_model.h`，07 号提案 M2.4）；
-- [x] real weights 可自动生成完整 external bindings（12 个权重值自动绑定并与需求集合双向对账；packed 路径受 §2.3 缺口限制，只能以子图取证）；
+- [x] real weights 可自动生成完整 external bindings（12 个权重值自动绑定并与需求集合双向对账；packed 全模型路径已可解析，见 §2.3）；
 - [x] Prefill/Decode phase-plan 合同已验证（07 号提案 §4.5：`kBoth` artifact 三种 phase 查询共享同一 plan、单 phase artifact 拒绝不匹配查询、step 间 phase 不一致在 prepare 期拒绝，由 M2.5 测试覆盖）；
 - [ ] tiny Llama Prefill + 2 Decode 数值测试通过；
 - [ ] KV content 与 commit position 测试通过；
@@ -513,3 +516,4 @@ Decode 循环中不得变化：
 | 2026-09-23 | 1.6 | 按 §9 流转规则（M1 已闭环）将状态由 Draft 转为 In Progress；复核确认 §2.2 描述符计数（15 类 21 个）与 §3.2–§3.5 缺口描述仍与仓库一致：`ExecutableModel`/`PrepareExecutableModel`、`InferenceSession`、真实权重 external binding 生产 API、完整 Llama plan 构建与 Prefill→Decode 端到端测试均未落地，§9 其余 9 项门禁保持未勾选；M2 细化拆出为 [07 号提案](07-executable-model-preparation.md) |
 | 2026-09-23 | 1.7 | 07 号提案 M2.4 落地后同步：§9 勾选 "baseline pipeline 可通过真实 CpuBackend 构建完整 plan"、"`PrepareExecutableModel` 可从真实 artifact 构建"、"real weights 可自动生成完整 external bindings" 三项；§2.3 补记 kEmbedding 亦无 kPacked 变体，并写明其后果——`enable_packed_weights=true` 的完整 Llama 在 kernel resolve 即失败，packed 取证只能走子图 |
 | 2026-09-23 | 1.8 | 07 号提案 M2.5 落地后同步：§9 勾选 "Prefill/Decode phase-plan 合同已验证"（共享单 plan、phase 不匹配报错、混合 phase prepare 期拒绝三项由 M2.5 测试覆盖，见 07 §4.5/§7）；07 转 Implemented，实现描述由 [designs/inference/01-executable-model.md](../designs/inference/01-executable-model.md) 承接。剩余五项门禁（Prefill/Decode 数值、KV content/commit、重复 decode、malloc-hook、KV reservation teardown）属 M4/M5，未勾选 |
+| 2026-09-23 | 1.9 | 按当前代码状态同步 packed-weight 能力：§2.2 描述符计数 21→27（新增 kLinear/kEmbedding/kRmsNorm 的 packed identity 与 Qkv/GateUp/Linear 的 `cpu_bpanel_f32_v1_avx2` 候选），表格 packed 相关行更新，段末"剩余准入项"改为端到端数值证据；§2.3 "仍未具备" 重写——kLinear/kEmbedding kPacked 变体与 tile/block recipe 已补齐（`PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 缺口测试已由 `PackedLoweringPreparesAllWeightConsumers` 取代），仅剩"bpanel 升为默认（待 benchmark）"与 unfused e2e 数值验证；§9 括注同步。另注：§3.2–§3.5 的缺口叙述（如"缺少 ExecutableModel 准备入口"）早于本次同步即已过期，待该文件自身维护时重写 |

@@ -52,9 +52,9 @@ struct ResolvedKernel {
     /// planning assigns its offset before the kernel is frozen into a step.
     WorkspaceRequirement workspace_requirement{};
 
-    /// Packing layout this kernel consumes from packed-weight artifacts. Empty
-    /// (default) for non-packed selectors. Execution resolves artifacts by
-    /// the exact `{binding, selector, recipe}` key built from this field.
+    /// Exact descriptor-owned packing layout consumed from packed-weight
+    /// artifacts. Empty (default) for non-packed selectors. Execution resolves
+    /// artifacts by the exact `{binding, selector, recipe}` key built from it.
     PackingRecipe expected_packing_recipe{};
 };
 

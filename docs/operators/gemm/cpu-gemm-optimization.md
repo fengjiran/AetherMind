@@ -1,8 +1,8 @@
 # CPU GEMM 优化方案
 
 - **状态**: In Progress
-- **版本**: 2.4
-- **日期**: 2026-09-21
+- **版本**: 2.5
+- **日期**: 2026-09-23
 - **文档定位**: 本算子的优化原理、合同、阶段与状态。**机器级实测数值、噪声 floor 与 Roofline 百分比不在本文详述**，权威位置见 [GEMM 证据记录](README.md)
 - **产品边界**: [AetherMind 当前产品 PRD](../../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../../designs/architecture/architecture_overview.md)
@@ -10,7 +10,7 @@
 - **工作流规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
 - **关联代码**: `src/backend/cpu/kernels/gemm/`、`src/backend/cpu/cpu_backend.cpp`、`src/backend/cpu/cpu_weight_prepacker.cpp`
 - **关联测试**: `tests/unit/backend/cpu/kernels/`、`tests/benchmark/cpu_kernels/`
-- **关联 ADR**: 无（exact recipe 合同落地时新建）
+- **关联 ADR**: [ADR-0002: CPU GEMM packed-weight recipe](../../decisions/0002-cpu-gemm-packed-weight.md)
 - **关联模块**: backend / execution / model / benchmark
 
 ## 1. 结论与范围
@@ -45,25 +45,26 @@ AetherMind 不应新增 semantic `Gemm` operator。当前 GEMM 是 CPU backend �
 | GEMM primitive | `RunGemmF32Reference`，三重循环，double accumulator，支持二维 stride | correctness baseline，不是性能基线 |
 | scalar optimized | `RunGemmF32Scalar` 已覆盖 `M=1`、small-M（`M<=8`）与 generic-M 三类 driver，共用 4 列输出块与 K 展开 2；前提仍是 lhs K 与 output N 单位 stride 且 RHS K 或 N 连续，`k==0` 与非连续 RHS 等布局仍委托 reference。当前只由 GEMM 微内核 benchmark 直接驱动，未接入 Linear descriptor | 结构覆盖已到位，但 loop/register reuse 收益尚无证据；`kScalarSmallMMax=8` 是保守划分而非实测阈值；不能取代 double-accumulation reference oracle |
 | MatMul | FP32 reference；支持 batch broadcast、`transpose_rhs` 和任意已验证 stride | 通用性高，首轮优化不应受其最宽 layout 合同约束 |
-| Linear | FP32 plain-weight reference，当前是 Linear 私有的 double 累加循环，**尚未复用共享 GEMM primitive**；leading dimensions 在 binding 期 flatten 为 `row_count` | LLM unfused path 可作为 production adapter 样板，但需先接到共享 engine 上 |
-| QkvLinear / GateUpLinear | FP32 packed-only reference；当前 packed payload 是 `cpu_identity` | 已打通 opaque artifact 与 execution binding，但没有真实 tile packing |
+| Linear | plain selector 仍走 double reference；packed identity descriptor 是当前默认 packed 路径；另有 AVX2 bpanel candidate 和 packed scan/blocked driver，绑定期固化 args | candidate 与 identity priority 相同且后注册，当前 global resolve 保持 identity；candidate 只由隔离 registry 测试/benchmark 驱动 |
+| QkvLinear / GateUpLinear | identity-packed reference 保持默认；AVX2 bpanel candidate 对每个输出 slice 使用完整 artifact 的 logical N offset，非 NR 对齐边界走兼容 scan/reference | QKV/GateUp bpanel 的未对齐 component 边界和输出 guard 有 focused tests；全局 priority 未提升 |
+| Embedding / RmsNorm | graph-wide packed lowering 所需的 FP32 identity descriptor 与 opaque-artifact binding builder 已提供 | full tiny-Llama packed executable preparation 可解析所有带 weight 的步骤；这只证明 preparation，不证明 Prefill/Decode 端到端执行 |
 | kernel resolve | `CpuBackend::PrepareKernel` 按 selector、CPU feature 和 priority 选 descriptor | resolve 时尚无 concrete shape/layout，不能按 `M/N/K` 选择算法 |
 | binding specialization | `KernelParamsBuilder` 可看到固定的 pointer/shape/stride/dtype | 可在 cold path 选择 GEMV/skinny/blocked driver，并把函数指针写入 prepared params |
 | workspace | `ResolvedKernel.workspace_requirement` 在 binding 前规划 | 不能表达依赖 concrete `M/N/K` 的 transient A/B packing scratch |
-| packing recipe | `CpuWeightPrepacker::RecipeFor(selector)` 返回全局 `cpu_identity` | 不足以表达 AVX2/AVX-512/AMX 或 tile/version 不同的 layout |
-| CPU dispatch | 已有 AVX2/FMA/AVX-512/VNNI/AMX、NEON/DotProd/I8MM/SVE 等 capability model | feature gate 基础可复用；当前仅 RMSNorm 有 AVX2+FMA optimized descriptor |
+| packing recipe | descriptor 声明 recipe；backend query 与 prepare 共用 eligibility resolver；inference 注入 request，recipe、artifact、store key 和 resolved kernel exact-match；共享权重 recipe/op 冲突在准备期拒绝 | recipe 传递链已实现。bpanel 物理 layout 为 `cpu_bpanel_f32_v1_avx2_kc512_candidate`，KC512 未完成性能选择 |
+| CPU dispatch | 已有 AVX2/FMA/AVX-512/VNNI/AMX、NEON/DotProd/I8MM/SVE 等 capability model | RMSNorm 有 AVX2+FMA optimized descriptor；GEMM 有 AVX2/FMA packed-B candidates，但默认 identity dispatch 不变 |
 | threading | 当前产品边界为单请求、单线程，现有 kernel 也保持单线程 | 首轮优化保持单线程；并行化属于 runtime 级后续工作 |
-| benchmark | Google Benchmark；已有 Linear prepared-path（hot/streaming）、binding-cost 与 weight packing benchmark | 当前只有 reference descriptor；机器级基线**按机器各自成立、互不替代**，逐机采集状态与数值见 [GEMM 证据记录](README.md)（§6.7 同机要求；未采集的机器须各自重采） |
+| benchmark | Google Benchmark 包含 plain Linear prepared-path、bpanel candidate prepared hot/streaming Decode/Prefill、cold packing、size amplification 与诊断 break-even estimate | 当前 WSL2 仅有小样本；噪声 floor 和 KC256 对照未完成，production priority 仍为 identity。机器级证据按机成立，见 [GEMM 证据记录](README.md) |
 
 ### 2.1 当前主要瓶颈
 
 1. reference loop 的 `row → col → k` 每个输出点重新流过 K，缺少 scalar optimized 的 layout specialization、multi-accumulator 和 register blocking，无法复用 A/B 数据；
-2. 没有 SIMD microkernel、cache blocking 或 software prefetch；
-3. `cpu_identity` 只是 aligned copy，不降低 microkernel 的地址计算和访存代价；
+2. 新增 AVX2 packed-B scan 与 4x16 blocked candidate，但 global resolve 仍选 identity；性能门禁未通过前不作为默认生产实现，也没有 software prefetch；
+3. 当前默认 `cpu_identity` 仍是 aligned copy；bpanel candidate 可消除其自身执行中的重复 B panel pack，但候选收益与 padding 成本尚无可信性能结论；
 4. Decode 与 Prefill 形状差异巨大，却只能 resolve 到同一个固定 kernel entry；
-5. packed recipe 由 selector 而非实际 descriptor 决定，无法安全支持同一 selector 下的多 ISA layout；
+5. descriptor-owned recipe 传递链已落地；global dispatch 尚未选择 bpanel candidate，同一 backend 的显式 PackWeights 会拒绝未被当前 feature policy 选中的 recipe；
 6. shape-dependent workspace 尚无合同，不能直接加入 transient panel packing；
-7. 现有 benchmark 没有覆盖 LLM 真实形状，也没有区分 hot-cache、streaming-weight、packing cost 和 binding cost。
+7. benchmark 已覆盖代表性 Linear hot/streaming Decode/Prefill 与 cold packing，但目前是 WSL2 小样本；当前噪声 floor、KC256 对照及 tiny-Llama Prefill→Decode 端到端数据仍缺失。
 
 ## 3. 约束与 invariant
 
@@ -218,7 +219,7 @@ AVX-512、NEON/SVE 使用同一 driver contract、不同 microkernel 与 recipe�
 
 1. `KernelDescriptor` 提供其精确 packing recipe；
 2. `CpuBackend::PrepareKernel` 把 descriptor recipe 复制到 `ResolvedKernel`；
-3. packing request 从已 prepare 的 kernel 收集 exact recipe；
+3. compiler 保持 backend-independent packing request；inference 按每个 consumer 的 op/selector 调 backend recipe query 并注入 exact recipe，coalesce 前检查共享 weight 冲突；
 4. backend 提供按 recipe pack 的服务，model 层不直接实例化具体 `CpuWeightPrepacker`；
 5. `PackedWeightStore` 继续以 binding + selector + exact recipe 区分 artifact。
 
@@ -470,8 +471,10 @@ runtime thread-pool contract + 单线程证据 ──> 多线程与 NUMA
 
 目标是建立真实 immutable weight packing，而不是继续把 aligned identity copy 当作优化布局。
 
+**实现状态（2026-09-23）**：descriptor-owned recipe、inference 注入和 exact artifact key 已实现。AVX2 bpanel packing/scan/blocked drivers 与 Linear/QKV/GateUp candidate 已有 correctness 覆盖；当前 recipe 名含 `_candidate`，global resolver 因 identity 同优先级且先注册仍选择 `cpu_identity`。同机性能与 KC 选择状态为 **Needs More Data**，见 [ADR-0002](../../decisions/0002-cpu-gemm-packed-weight.md) 和 [机器级证据](benchmarks/54h5mmi-gemm.md)。
+
 - `KernelDescriptor`/prepared kernel 提供其精确 `PackingRecipe`；
-- packing request 从已 prepare 的 kernel 收集 exact recipe；
+- compiler 只构造 backend-independent packing request；inference 使用 backend.GetPackingRecipe 注入 descriptor-owned exact recipe，再按共享 value/selector 检查 consumer 冲突并 coalesce；
 - backend 提供按 recipe pack 的服务，model 层不建立平行 `WeightLayout` enum，也不在 `ModelLoader` 中 prepack；
 - packing 发生在 semantic graph optimization/fusion 之后，由具体 `WeightBinding` 驱动；
 - 实现 N-interleaved packed-B layout、tail padding、alignment 和 compatible fallback driver；
@@ -496,6 +499,8 @@ runtime thread-pool contract + 单线程证据 ──> 多线程与 NUMA
 ### fused Linear consumers
 
 目标是让 fused semantic operators 复用同一 GEMM engine，同时保持 graph/operator 与 backend 边界。
+
+**实现状态（2026-09-23）**：QkvLinear/GateUpLinear bpanel candidates 对 arbitrary component row offsets 走 packed slice drivers，focused numerical/guard tests 通过；global priority 仍保留 identity。性能收益与 fused-vs-unfused gate 未验证。
 
 - `QkvLinear` 和 `GateUpLinear` 使用同一 packed GEMM engine；
 - 以 combined-N traversal 取代三次/两次独立 reference GEMM；
@@ -538,7 +543,7 @@ runtime thread-pool contract + 单线程证据 ──> 多线程与 NUMA
 |---|---|---|
 | shape 在 kernel resolve 后才可见 | 无法选 GEMV/blocked path | binding-time internal driver；workspace/recipe 依赖 shape 时升级 specialization 合同 |
 | “scalar source” 被编译器自动向量化 | 收益归因模糊（已接受：不做拆分） | 不再区分 strict 变体；如需归因可回溯引入（该机制曾实现并验证后撤销） |
-| recipe 只由 selector 决定 | 多 ISA layout 被误绑定 | descriptor-owned exact recipe + prepare-first packing request |
+| recipe 只由 selector 决定 | 多 ISA layout 被误绑定 | descriptor-owned exact recipe + inference-side backend query/injection + exact-key plan lookup |
 | 通用 MatMul 合同拖累 Linear | optimized fast path 被任意 stride/broadcast 复杂化 | adapter 分层；合法但不适合 fast path 的 layout 在 descriptor 内走 compatible scalar driver，原本无法证明安全的 layout 才返回 `Unimplemented` |
 | benchmark 重复同一权重 | 高估 Decode cache locality | 同时报 hot 与 streaming artifact |
 | 大 GEMM 平均值掩盖 M=1 回退 | token latency 退化 | Decode/Prefill 分组 geomean 与 per-shape gate |
@@ -592,6 +597,7 @@ runtime thread-pool contract + 单线程证据 ──> 多线程与 NUMA
 
 | 日期 | 版本 | 变更 | 原因 | 证据/PR |
 |---|---|---|---|---|
+| 2026-09-23 | 2.5 | 同步 exact recipe/bpanel candidate、全图 identity packed 前置和 fused candidate 的已验证状态；明确 KC512 与 performance gate 仍为 Needs More Data | packed vertical slice 已实现，但同机噪声 floor/KC256 对照尚未通过，避免把 candidate 记为生产提优 | ADR-0002、tests/unit/backend/cpu/kernels/test_cpu_fused_packed_b.cpp |
 | 2026-09-21 | 2.4 | 去除提案内的工作包编号：§7 改为按名称的阶段描述，§1/§2/§4.3/§8 的引用与依赖图同步 | 编号与精简后的证据组织不再对应 | — |
 | 2026-09-21 | 2.3 | 证据组织改为"一机器一文件"（`benchmarks/<machine>-<op>.md`）；删除全部历史证据文件，待重采 | 证据按日期/报告类型拆分导致文件膨胀，且与机器级数据分区不一致 | — |
 | 2026-09-20 | 2.2 | §2 scalar optimized 反映 small-M（`M<=8`）与 generic-M driver；引用改指瘦身后工作流的 §7 优化方法，移除已废止的 Change Profile 字段 | 代码扩展了 candidate 覆盖范围；工作流撤除了 Change Profile 与附录编号 | `17d7d544` |

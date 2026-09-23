@@ -15,6 +15,7 @@
 #include "aethermind/operators/op_params.h"
 
 #include <span>
+#include <utility>
 
 namespace aethermind {
 
@@ -39,9 +40,10 @@ public:
     ///
     /// Freezes type-erased metadata derived from typed semantic parameters
     /// into the returned value, including its scratch-space requirement.
-    /// This is the sole planning-time kernel-resolution entry point; the
-    /// returned `ResolvedKernel` is later owned by an `ExecutionStep` and
-    /// invoked without another backend lookup.
+    /// This is the planning-time kernel-resolution entry point; the returned
+    /// `ResolvedKernel` is later owned by an `ExecutionStep` and invoked without
+    /// another backend lookup. Packed artifacts use GetPackingRecipe during
+    /// model preparation before the request is passed to PackWeights.
     ///
     /// @param op_type Operator type to resolve.
     /// @param selector Selector describing device, dtype, and layout constraints.
@@ -53,6 +55,19 @@ public:
             const KernelSelector& selector,
             const OpParams& params) const = 0;
 
+    /// @brief Returns the packing recipe selected for this operator/selector.
+    ///
+    /// Backends must use the same descriptor eligibility and priority policy
+    /// as PrepareKernel. This query is used during model preparation, where
+    /// operator params and tensor shapes are not available yet.
+    AM_NODISCARD virtual StatusOr<PackingRecipe> GetPackingRecipe(
+            OpType op_type, const KernelSelector& selector) const {
+        (void) op_type;
+        (void) selector;
+        return Status::Unimplemented(
+                "Backend does not expose descriptor packing recipes");
+    }
+
     /// @brief Packs logical weight views into a backend-layout artifact.
     ///
     /// `components` carries the recipe-ordered raw weight views: exactly one
@@ -62,8 +77,8 @@ public:
     /// concatenation, allocates aligned storage, and returns an artifact whose
     /// `recipe()` the caller must use when building the `WeightArtifactKey`.
     ///
-    /// Default returns `Unimplemented`; only backends with weight prepacking
-    /// implement it.
+    /// Compatibility overload for backends with a canonical packing policy.
+    /// Production preparation uses the explicit-recipe overload below.
     ///
     /// @param op_type Operator the packed weight serves.
     /// @param components Recipe-ordered logical weight views to pack.
@@ -80,6 +95,34 @@ public:
         (void) selector;
         return Status::Unimplemented(
                 "Backend does not implement weight packing");
+    }
+
+    /// @brief Packs using a recipe already selected from the consumer
+    /// descriptor. The default preserves old backends only when they produce
+    /// the requested exact recipe.
+    AM_NODISCARD virtual StatusOr<std::unique_ptr<PackedWeights>> PackWeights(
+            OpType op_type,
+            std::span<const TensorView> components,
+            const KernelSelector& selector,
+            const PackingRecipe& recipe) const {
+        const auto selected_recipe = GetPackingRecipe(op_type, selector);
+        if (selected_recipe.ok() && *selected_recipe != recipe) {
+            return Status::InvalidArgument(
+                    "Requested packing recipe is not selected by this backend");
+        }
+        if (!selected_recipe.ok() &&
+            selected_recipe.status().code() != StatusCode::kUnimplemented) {
+            return selected_recipe.status();
+        }
+        auto packed = PackWeights(op_type, components, selector);
+        if (!packed.ok()) {
+            return packed.status();
+        }
+        if ((*packed)->recipe() != recipe) {
+            return Status::InvalidArgument(
+                    "Backend packed artifact recipe differs from the requested recipe");
+        }
+        return std::move(*packed);
     }
 
     /// @brief Returns the kernel registry for debug inspection, if available.

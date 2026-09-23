@@ -2,6 +2,7 @@
 #define AETHERMIND_BACKEND_CPU_KERNELS_QKV_LINEAR_QKV_LINEAR_INTERNAL_H
 
 #include "aethermind/base/status.h"
+#include "backend/cpu/kernels/gemm/gemm_internal.h"
 
 #include <cstdint>
 
@@ -43,6 +44,16 @@ struct QkvLinearF32KernelArgs {
 
 /// @brief Executes the compute-ready scalar FP32 QKV projection.
 Status RunQkvLinearF32Reference(const QkvLinearF32KernelArgs& args) noexcept;
+
+/// @brief Prepared bpanel args for the three output slices of packed QKV.
+struct QkvLinearF32PackedBKernelArgs {
+    PackedGemmF32Args query{};
+    PackedGemmF32Args key{};
+    PackedGemmF32Args value{};
+};
+
+Status RunQkvLinearF32PackedB(
+        const QkvLinearF32PackedBKernelArgs& args) noexcept;
 
 } // namespace aethermind::cpu::detail
 

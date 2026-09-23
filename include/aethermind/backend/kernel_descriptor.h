@@ -11,9 +11,11 @@
 
 #include "aethermind/backend/cpu/cpu_capabilities.h"
 #include "aethermind/backend/kernel_types.h"
+#include "aethermind/backend/packed_weights.h"
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/operators/op_type.h"
 
+#include <bit>
 #include <string>
 
 namespace aethermind {
@@ -30,6 +32,10 @@ struct KernelDescriptor {
 
     /// Selector that determines kernel eligibility (device, dtype, layout).
     KernelSelector selector{};
+
+    /// Exact opaque weight layout consumed when selector.weight_format is
+    /// kPacked. Plain descriptors must leave this empty.
+    PackingRecipe packing_recipe{};
 
     /// CPU execution requirements. They are intentionally separate from the
     /// selector because an instruction set is not a total ordering.
@@ -79,6 +85,21 @@ AM_NODISCARD inline Status ValidateKernelDescriptor(const KernelDescriptor& desc
     if (descriptor.selector.device_type == DeviceType::kUndefined) {
         return Status::InvalidArgument(
                 "Kernel descriptor device_type cannot be kUndefined");
+    }
+
+    const bool packed_selector =
+            descriptor.selector.weight_format == WeightFormat::kPacked;
+    if (packed_selector) {
+        if (descriptor.packing_recipe.layout.empty() ||
+            descriptor.packing_recipe.alignment < alignof(void*) ||
+            !std::has_single_bit(descriptor.packing_recipe.alignment)) {
+            return Status::InvalidArgument(
+                    "Packed kernel descriptor requires a named recipe with power-of-two alignment");
+        }
+    } else if (!descriptor.packing_recipe.layout.empty() ||
+               descriptor.packing_recipe.alignment != 0) {
+        return Status::InvalidArgument(
+                "Plain kernel descriptor cannot declare a packing recipe");
     }
 
     if (descriptor.selector.device_type != DeviceType::kCPU &&

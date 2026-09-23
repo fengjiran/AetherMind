@@ -1,4 +1,6 @@
+#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/cpu/kernels/common/alias_utils.h"
+#include "aethermind/backend/cpu/kernels/common/packed_weight_utils.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/backend/kernel_types.h"
@@ -6,7 +8,9 @@
 #include "embedding_internal.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
+#include <limits>
 
 namespace aethermind::cpu::detail {
 namespace {
@@ -167,6 +171,98 @@ Status BuildEmbeddingF32ReferenceArgs(const KernelParamsBuildContext& context, v
     return Status::Ok();
 }
 
+Status BuildEmbeddingF32PackedIdentityArgs(
+        const KernelParamsBuildContext& context,
+        void* params_buffer) noexcept {
+    if (context.inputs.size() != 1U || context.outputs.size() != 1U ||
+        !context.packed_weight.has_value()) {
+        return Status::InvalidArgument(
+                "Packed Embedding requires token ids, output, and a weight artifact");
+    }
+    const TensorView& token_ids = context.inputs[0];
+    const MutableTensorView& output = context.outputs[0];
+    const PackedWeightView& packed = *context.packed_weight;
+    if (!token_ids.is_valid() || !output.is_valid()) {
+        return Status::InvalidArgument(
+                "Packed Embedding requires valid token id and output views");
+    }
+    if (!IsSupportedTokenIdDType(token_ids.dtype()) ||
+        token_ids.rank() < 1 || !token_ids.is_contiguous()) {
+        return Status::InvalidArgument(
+                "Packed Embedding requires contiguous supported token ids with rank >= 1");
+    }
+    if (output.dtype() != DataType::Float32() ||
+        output.rank() != token_ids.rank() + 1 || !output.is_contiguous()) {
+        return Status::InvalidArgument(
+                "Packed Embedding requires contiguous float32 output with an appended hidden axis");
+    }
+    if (packed.logical_shape.size() != 2U ||
+        packed.logical_shape[0] <= 0 || packed.logical_shape[1] <= 0) {
+        return Status::InvalidArgument(
+                "Packed Embedding requires positive rank-2 logical weight dimensions");
+    }
+    const int64_t vocab_size = packed.logical_shape[0];
+    const int64_t hidden_size = packed.logical_shape[1];
+    const std::array<int64_t, 2> expected_shape{vocab_size, hidden_size};
+    AM_RETURN_IF_ERROR(ValidateIdentityPackedWeight(
+            packed, expected_shape, "EmbeddingKernelEntry"));
+    for (int32_t i = 0; i < token_ids.rank(); ++i) {
+        if (output.dim(i) != token_ids.dim(i)) {
+            return Status::InvalidArgument(
+                    "Packed Embedding output shape must be [token ids..., hidden_size]");
+        }
+    }
+    if (output.dim(token_ids.rank()) != hidden_size) {
+        return Status::InvalidArgument(
+                "Packed Embedding output shape must be [token ids..., hidden_size]");
+    }
+
+    const int64_t token_count = token_ids.numel();
+    if (token_count == 0) {
+        ::new (params_buffer) EmbeddingF32KernelArgs{
+                .token_dtype = token_ids.dtype(),
+                .token_count = 0,
+                .vocab_size = vocab_size,
+                .hidden_size = hidden_size,
+        };
+        return Status::Ok();
+    }
+    if (token_ids.data() == nullptr || output.data() == nullptr ||
+        packed.data == nullptr) {
+        return Status::InvalidArgument(
+                "Packed Embedding requires non-null storage for non-empty tensors");
+    }
+    AM_ASSIGN_OR_RETURN(const ByteAddressRange token_range,
+                        BuildContiguousByteRange(token_ids,
+                                                 "Packed Embedding token ids"));
+    AM_ASSIGN_OR_RETURN(const ByteAddressRange output_range,
+                        BuildContiguousByteRange(output,
+                                                 "Packed Embedding output"));
+    AM_RETURN_IF_ERROR(ValidateContiguousDisjoint(
+            "CPU Embedding", output_range, "output", token_range, "token ids"));
+    if (packed.nbytes > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+        return Status::Overflow("Packed Embedding artifact byte range exceeds int64_t");
+    }
+    AM_ASSIGN_OR_RETURN(const ByteAddressRange packed_range,
+                        BuildContiguousByteRange(
+                                packed.data, static_cast<int64_t>(packed.nbytes),
+                                size_t{1}, "Packed Embedding weight"));
+    AM_RETURN_IF_ERROR(ValidateContiguousDisjoint(
+            "CPU Embedding", output_range, "output", packed_range,
+            "packed weight"));
+
+    ::new (params_buffer) EmbeddingF32KernelArgs{
+            .token_ids_data = token_ids.data(),
+            .token_dtype = token_ids.dtype(),
+            .weight_data = static_cast<const float*>(packed.data),
+            .output_data = output.data<float>(),
+            .token_count = token_count,
+            .vocab_size = vocab_size,
+            .hidden_size = hidden_size,
+    };
+    return Status::Ok();
+}
+
 Status EmbeddingF32ReferenceEntry(const KernelContext& ctx) noexcept {
     const auto* args = static_cast<const EmbeddingF32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
@@ -216,6 +312,25 @@ AM_REGISTER_KERNEL(CpuEmbeddingF32Reference,
                            .params_size = sizeof(EmbeddingF32KernelArgs),
                            .params_builder = &BuildEmbeddingF32ReferenceArgs,
                            .name = "cpu::embedding_f32_reference",
+                   })
+
+
+AM_REGISTER_KERNEL(CpuEmbeddingF32PackedIdentityReference,
+                   KernelDescriptor{
+                           .op_type = OpType::kEmbedding,
+                           .selector = KernelSelector{
+                                   .device_type = DeviceType::kCPU,
+                                   .act_dtype = DataType::Float32(),
+                                   .weight_dtype = DataType::Float32(),
+                                   .weight_format = WeightFormat::kPacked,
+                                   .phase = ExecPhase::kBoth,
+                           },
+                           .packing_recipe = CpuIdentityPackingRecipe(),
+                           .kernel_func = &EmbeddingF32ReferenceEntry,
+                           .priority = 10,
+                           .params_size = sizeof(EmbeddingF32KernelArgs),
+                           .params_builder = &BuildEmbeddingF32PackedIdentityArgs,
+                           .name = "cpu::embedding_f32_packed_identity_reference",
                    })
 
 } // namespace aethermind::cpu::detail

@@ -620,7 +620,7 @@ TEST(CPUKernelQkvLinear, FusedPackedExecutionRequiresNoExternalQkvWeightBinding)
     resolved.layers[0].attn.q_proj = MakeRawWeight(raw, 0, {4, 3});
     resolved.layers[0].attn.k_proj = MakeRawWeight(raw, 12, {2, 3});
     resolved.layers[0].attn.v_proj = MakeRawWeight(raw, 18, {2, 3});
-    const auto requests = BuildWeightPackingRequests(*lowered, resolved);
+    auto requests = BuildWeightPackingRequests(*lowered, resolved);
     ASSERT_TRUE(requests.ok()) << requests.status().ToString();
     ASSERT_EQ(requests->size(), 1U);
     EXPECT_EQ(requests->front().op_type, OpType::kQkvLinear);
@@ -632,6 +632,11 @@ TEST(CPUKernelQkvLinear, FusedPackedExecutionRequiresNoExternalQkvWeightBinding)
     Runtime runtime = runtime_builder.Build();
     const auto prepack_backend = runtime.GetBackend(DeviceType::kCPU);
     ASSERT_TRUE(prepack_backend.ok()) << prepack_backend.status().ToString();
+    for (WeightPackingRequest& request: *requests) {
+        const auto recipe = (*prepack_backend)->GetPackingRecipe(request.op_type, request.selector);
+        ASSERT_TRUE(recipe.ok()) << recipe.status().ToString();
+        request.recipe = *recipe;
+    }
     ASSERT_TRUE(PrepackWeightRequests(**prepack_backend, packed_store, *requests).ok());
     const auto plan = ExecutionPlanBuilder::Build(runtime, packed_store, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();

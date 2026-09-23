@@ -137,6 +137,10 @@ Status PrepackWeightRequests(const Backend& backend,
     }
 
     for (const auto& req: requests) {
+        if (req.recipe.layout.empty() || req.recipe.alignment == 0) {
+            return Status::InvalidArgument(
+                    "PrepackWeightRequests requires an explicit packing recipe");
+        }
         // Validate byte sizes up front so a mismatch fails eagerly here with a
         // view-level message instead of surfacing deep inside the backend.
         std::vector<TensorView> components;
@@ -159,20 +163,22 @@ Status PrepackWeightRequests(const Backend& backend,
             }
         }
 
-        auto packed = backend.PackWeights(req.op_type, components, req.selector);
+        auto packed = backend.PackWeights(
+                req.op_type, components, req.selector, req.recipe);
         if (!packed.ok()) {
             return packed.status();
         }
+        if ((*packed)->recipe() != req.recipe) {
+            return Status::InvalidArgument(
+                    "Packed artifact recipe differs from its request");
+        }
 
-        // Read the recipe back from the produced artifact instead of deriving
-        // it again: the store re-verifies key/artifact consistency, so pack and
-        // consume can never drift apart.
         const WeightArtifactKey key{
                 .source_id = req.source_id,
                 .value_index = req.value_index,
                 .binding = req.binding,
                 .selector = req.selector,
-                .recipe = (*packed)->recipe()};
+                .recipe = req.recipe};
         // A duplicate {binding, selector} is a planner bug: propagate as an
         // explicit error instead of silently skipping a weight.
         AM_RETURN_IF_ERROR(packed_weight_store.Store(

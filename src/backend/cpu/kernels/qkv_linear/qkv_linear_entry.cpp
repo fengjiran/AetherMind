@@ -1,3 +1,4 @@
+#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/cpu/kernels/common/alias_utils.h"
 #include "aethermind/backend/cpu/kernels/common/layout_utils.h"
 #include "aethermind/backend/cpu/kernels/common/packed_weight_utils.h"
@@ -227,6 +228,168 @@ Status BuildQkvLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
     return Status::Ok();
 }
 
+Status BuildQkvLinearF32BpanelArgs(
+        const KernelParamsBuildContext& context,
+        void* params_buffer) noexcept {
+    if (context.inputs.size() != 1U || context.outputs.size() != 3U ||
+        !context.packed_weight.has_value()) {
+        return Status::InvalidArgument(
+                "Packed QkvLinear requires one activation, three outputs, and an artifact");
+    }
+    AM_ASSIGN_OR_RETURN(const QkvLinearF32KernelMetadata metadata,
+                        ReadMetadata(context.attrs));
+    AM_ASSIGN_OR_RETURN(const int64_t total_n, TotalOutFeatures(metadata));
+    const TensorView& input = context.inputs[0];
+    const MutableTensorView& query = context.outputs[0];
+    const MutableTensorView& key = context.outputs[1];
+    const MutableTensorView& value = context.outputs[2];
+    if (!input.is_valid() || !query.is_valid() || !key.is_valid() ||
+        !value.is_valid() || input.dtype() != DataType::Float32() ||
+        query.dtype() != DataType::Float32() || key.dtype() != DataType::Float32() ||
+        value.dtype() != DataType::Float32()) {
+        return Status::InvalidArgument(
+                "Packed QkvLinear requires valid float32 activation and outputs");
+    }
+    const int32_t rank = input.rank();
+    if (rank < 1 || query.rank() != rank || key.rank() != rank || value.rank() != rank) {
+        return Status::InvalidArgument(
+                "Packed QkvLinear requires matching input/output rank >= 1");
+    }
+    for (int32_t dim = 0; dim < rank - 1; ++dim) {
+        if (query.dim(dim) != input.dim(dim) || key.dim(dim) != input.dim(dim) ||
+            value.dim(dim) != input.dim(dim)) {
+            return Status::InvalidArgument(
+                    "Packed QkvLinear requires matching leading dimensions");
+        }
+    }
+    const int64_t in_features = input.dim(rank - 1);
+    if (query.dim(rank - 1) != metadata.q_out_features ||
+        key.dim(rank - 1) != metadata.k_out_features ||
+        value.dim(rank - 1) != metadata.v_out_features) {
+        return Status::InvalidArgument(
+                "Packed QkvLinear outputs do not match metadata");
+    }
+    AM_RETURN_IF_ERROR(ValidateBPanelF32PackedWeight(
+            *context.packed_weight, std::array{total_n, in_features},
+            "QkvLinearKernelEntry"));
+    AM_ASSIGN_OR_RETURN(const int64_t row_count,
+                        ComputeFlattenedRowCount(input, "QkvLinearKernelEntry"));
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis q_analysis,
+                        AnalyzeRowwiseView(query, "QkvLinearKernelEntry q output"));
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis k_analysis,
+                        AnalyzeRowwiseView(key, "QkvLinearKernelEntry k output"));
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis v_analysis,
+                        AnalyzeRowwiseView(value, "QkvLinearKernelEntry v output"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout(
+            "QkvLinearKernelEntry q output", q_analysis));
+    AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout(
+            "QkvLinearKernelEntry k output", k_analysis));
+    AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout(
+            "QkvLinearKernelEntry v output", v_analysis));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU QkvLinear", q_analysis.footprint(), "q output",
+            k_analysis.footprint(), "k output"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU QkvLinear", q_analysis.footprint(), "q output",
+            v_analysis.footprint(), "v output"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU QkvLinear", k_analysis.footprint(), "k output",
+            v_analysis.footprint(), "v output"));
+
+    const int64_t n_blocks = total_n / cpu::kCpuBPanelF32V1NR +
+                             (total_n % cpu::kCpuBPanelF32V1NR != 0);
+    const float* const packed_data =
+            static_cast<const float*>(context.packed_weight->data);
+    const auto build_gemm = [&](const MutableTensorView& output,
+                                const RowwiseViewAnalysis& output_analysis,
+                                int64_t output_n,
+                                int64_t n_offset) {
+        return PackedGemmF32Args{
+                .gemm = GemmF32Args{
+                        .lhs = input.data<float>(),
+                        .output = output.data<float>(),
+                        .m = row_count,
+                        .n = output_n,
+                        .k = in_features,
+                        .lhs_m_stride = 0,
+                        .lhs_k_stride = 1,
+                        .output_m_stride = output_analysis.row_stride(),
+                        .output_n_stride = output_analysis.column_stride(),
+                },
+                .packed_b = packed_data,
+                .packed_nbytes = context.packed_weight->nbytes,
+                .logical_n = total_n,
+                .logical_k = in_features,
+                .weight_n_offset = n_offset,
+                .n_blocks = n_blocks,
+        };
+    };
+    QkvLinearF32PackedBKernelArgs args{
+            .query = build_gemm(query, q_analysis, metadata.q_out_features, 0),
+            .key = build_gemm(key, k_analysis, metadata.k_out_features,
+                              metadata.q_out_features),
+            .value = build_gemm(
+                    value, v_analysis, metadata.v_out_features,
+                    metadata.q_out_features + metadata.k_out_features),
+    };
+    if (row_count == 0 || total_n == 0 || in_features == 0) {
+        ::new (params_buffer) QkvLinearF32PackedBKernelArgs(args);
+        return Status::Ok();
+    }
+    if (input.data() == nullptr ||
+        (metadata.q_out_features != 0 && query.data() == nullptr) ||
+        (metadata.k_out_features != 0 && key.data() == nullptr) ||
+        (metadata.v_out_features != 0 && value.data() == nullptr)) {
+        return Status::InvalidArgument(
+                "Packed QkvLinear requires non-null data for non-empty tensors");
+    }
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis input_analysis,
+                        AnalyzeRowwiseView(input, "QkvLinearKernelEntry input"));
+    for (const auto& [footprint, role]: std::array{
+                 std::pair{q_analysis.footprint(), "q output"},
+                 std::pair{k_analysis.footprint(), "k output"},
+                 std::pair{v_analysis.footprint(), "v output"}}) {
+        AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+                "CPU QkvLinear", footprint, role,
+                input_analysis.footprint(), "input"));
+    }
+    if (context.packed_weight->nbytes >
+        static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+        return Status::Overflow(
+                "QkvLinearKernelEntry packed storage size exceeds int64_t");
+    }
+    AM_ASSIGN_OR_RETURN(const ByteAddressRange packed_range,
+                        BuildContiguousByteRange(
+                                context.packed_weight->data,
+                                static_cast<int64_t>(context.packed_weight->nbytes),
+                                size_t{1}, "QkvLinearKernelEntry packed weight"));
+    for (const auto& [footprint, role]: std::array{
+                 std::pair{q_analysis.footprint(), "q output"},
+                 std::pair{k_analysis.footprint(), "k output"},
+                 std::pair{v_analysis.footprint(), "v output"}}) {
+        AM_RETURN_IF_ERROR(ValidateRowwiseDisjointFromContiguous(
+                "CPU QkvLinear", footprint, role, packed_range,
+                "packed weight"));
+    }
+    if (row_count > 0) {
+        args.query.gemm.lhs_m_stride = input_analysis.row_stride();
+        args.key.gemm.lhs_m_stride = input_analysis.row_stride();
+        args.value.gemm.lhs_m_stride = input_analysis.row_stride();
+        args.query.gemm.lhs_k_stride = input_analysis.column_stride();
+        args.key.gemm.lhs_k_stride = input_analysis.column_stride();
+        args.value.gemm.lhs_k_stride = input_analysis.column_stride();
+    }
+    ::new (params_buffer) QkvLinearF32PackedBKernelArgs(args);
+    return Status::Ok();
+}
+
+Status QkvLinearF32PackedBEntry(const KernelContext& context) noexcept {
+    const auto* args =
+            static_cast<const QkvLinearF32PackedBKernelArgs*>(context.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunQkvLinearF32PackedB(*args);
+}
+
 Status BuildQkvLinearF32Metadata(const OpParams& params,
                                  std::vector<std::byte>& attrs) {
     const auto* qkv_params = std::get_if<QkvLinearParams>(&params);
@@ -255,6 +418,13 @@ Status QkvLinearF32ReferenceEntry(const KernelContext& ctx) noexcept {
 
 } // namespace
 
+Status RunQkvLinearF32PackedB(
+        const QkvLinearF32PackedBKernelArgs& args) noexcept {
+    AM_RETURN_IF_ERROR(RunGemmF32PackedB(args.query));
+    AM_RETURN_IF_ERROR(RunGemmF32PackedB(args.key));
+    return RunGemmF32PackedB(args.value);
+}
+
 static_assert(std::is_trivially_copyable_v<QkvLinearF32KernelMetadata>);
 static_assert(std::is_trivially_destructible_v<QkvLinearF32KernelArgs>);
 static_assert(sizeof(QkvLinearF32KernelArgs) <= kMaxKernelParamsSize);
@@ -271,11 +441,39 @@ AM_REGISTER_KERNEL(
                         .weight_format = WeightFormat::kPacked,
                         .phase = ExecPhase::kBoth,
                 },
+                .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &QkvLinearF32ReferenceEntry,
                 .priority = 10,
                 .params_size = sizeof(QkvLinearF32KernelArgs),
                 .params_builder = &BuildQkvLinearF32ReferenceArgs,
                 .metadata_builder = &BuildQkvLinearF32Metadata,
                 .name = "cpu::qkv_linear_f32_reference"})
+
+
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+static_assert(std::is_trivially_destructible_v<QkvLinearF32PackedBKernelArgs>);
+static_assert(sizeof(QkvLinearF32PackedBKernelArgs) <= kMaxKernelParamsSize);
+static_assert(alignof(QkvLinearF32PackedBKernelArgs) <= alignof(std::max_align_t));
+
+AM_REGISTER_KERNEL(
+        CpuQkvLinearF32PackedBpanelCandidate,
+        KernelDescriptor{
+                .op_type = OpType::kQkvLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float32(),
+                        .weight_format = WeightFormat::kPacked,
+                        .phase = ExecPhase::kBoth,
+                },
+                .packing_recipe = cpu::CpuBPanelF32V1Avx2Recipe(),
+                .cpu_requirements = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
+                .kernel_func = &QkvLinearF32PackedBEntry,
+                .priority = 10,
+                .params_size = sizeof(QkvLinearF32PackedBKernelArgs),
+                .params_builder = &BuildQkvLinearF32BpanelArgs,
+                .metadata_builder = &BuildQkvLinearF32Metadata,
+                .name = "cpu::qkv_linear_f32_packed_bpanel_candidate"})
+#endif
 
 } // namespace aethermind::cpu::detail

@@ -1,7 +1,7 @@
 # ExecutableModel 生产准备入口方案
 
 - **状态**: Implemented
-- **版本**: 1.10
+- **版本**: 1.11
 - **日期**: 2026-09-23
 - **最近更新**: 2026-09-23
 - **实现承接**: [ExecutableModel 模块设计](../designs/inference/01-executable-model.md)
@@ -60,7 +60,7 @@
 | external binding 需求集合无公开查询（M2.2 已闭环） | `ComputeExternalReadRequirements`（[`execution_bindings.cpp:238-264`](../../src/execution/execution_bindings.cpp)）曾在匿名命名空间内，仅 `:399` 自用 | 准备入口若不复制该逻辑，就无法保证"不重复不遗漏" |
 | `ConstantValue.inline_data` 未被执行层消费（M2.4 已闭环，M2.5 补物化测试） | payload 携带 `shared_ptr<const vector<byte>>`（[`graph_types.h:226-237`](../../include/aethermind/graph/graph_types.h)），但 `PrepareExecutionBindings` 无条件要求每个 `kConstant` 提供 external 绑定 | 常量折叠产生的常量目前无人物化 |
 | 无完整 Llama plan 构建证据（M2.4 已闭环） | `BuildLlamaDense` 只出现在 model/graph/compiler 测试；`OptimizeModelGraph.LowersFullLlamaDenseGraph` 止于 lowering | 01 §9 "baseline pipeline 可通过真实 CpuBackend 构建完整 plan" 未勾选 |
-| packed lowering 对完整模型不可解析（M2.4 实测发现） | `enable_packed_weights=true` 使**所有**含 `kWeight` 输入的 step 变 packed（[`graph_lowering.cpp:116-122`](../../src/compiler/graph_lowering.cpp)），但只有 `QkvLinear`/`GateUpLinear`/`AddRmsNorm` 注册 packed 描述符，`Embedding` 与 `Linear` 均无 | 完整 Llama 的 packed 配置在 kernel resolve 即失败（01 §2.3 只记录了 kLinear 一项）；packed 证据只能取自可解析子图 |
+| packed lowering 对完整模型不可解析（M2.4 实测发现；已闭环） | `enable_packed_weights=true` 使**所有**含 `kWeight` 输入的 step 变 packed（[`graph_lowering.cpp:116`](../../src/compiler/graph_lowering.cpp)），当时只有 `QkvLinear`/`GateUpLinear`/`AddRmsNorm` 注册 packed 描述符，`Embedding` 与 `Linear` 均无 | 完整 Llama 的 packed 配置曾在 kernel resolve 即失败；`Embedding`/`RmsNorm`/`Linear` 的 packed identity descriptor 落地后已可解析，由 `ExecutableModel.PackedLoweringPreparesAllWeightConsumers` 正向覆盖（见 01 §2.3） |
 
 ### 2.3 可直接复用的既有不变量
 
@@ -286,7 +286,7 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 
 **这同时是仓库首次通过生产路径构建出完整 Llama plan**：`ModelCompiler::Compile`（O1 未融合 + 真实 CpuBackend）→ `PrepareExecutableModel`，1 层、GQA 4/2 头，12 个权重值全部自动绑定、无手工拼 plan。01 §9 的三项门禁据此可勾选。
 
-实施期发现的 packed 缺口比 01 §2.3 描述的更宽：`enable_packed_weights=true` 会把**所有**含 `kWeight` 输入的 step 标为 packed，而当前只有 `QkvLinear`/`GateUpLinear`/`AddRmsNorm` 注册了 packed 描述符——`Embedding` 同样没有（01 §2.3 只提到 kLinear）。因此完整 Llama 的 packed 配置在 kernel resolve 阶段即以 `NOT_FOUND: op_type=Embedding, weight_format=Packed` 失败，测试 `PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 把它固化为可执行记录（断言 `kNotFound`，即失败在 kernel 解析而非权重解析）。
+实施期发现的 packed 缺口比 01 §2.3 描述的更宽：`enable_packed_weights=true` 会把**所有**含 `kWeight` 输入的 step 标为 packed，而当时只有 `QkvLinear`/`GateUpLinear`/`AddRmsNorm` 注册了 packed 描述符——`Embedding` 同样没有（01 §2.3 只提到 kLinear）。因此完整 Llama 的 packed 配置在 kernel resolve 阶段即以 `NOT_FOUND: op_type=Embedding, weight_format=Packed` 失败，测试 `PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 把它固化为可执行记录（断言 `kNotFound`，即失败在 kernel 解析而非权重解析）。该缺口已闭环：`Embedding`/`RmsNorm`/`Linear` 的 packed identity descriptor 落地，缺口测试被正向的 `PackedLoweringPreparesAllWeightConsumers` 取代。
 
 按 §3.4 实现 8 步流程，含 §4.3 常量物化与第 7 步完整性对账；错误路径不泄漏半成品对象。
 
@@ -303,7 +303,7 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 
 - 多层（2 decoder layer，21 个权重 backing）不串层：`MultiLayerLlamaBindsEveryWeightToItsOwnBacking`；
 - 常量物化：`MaterializesConstantFromInlineData` 走 §4.3 路径并被绑定，另有 `RejectsConstantWithoutInlineData`、`RejectsConstantWhoseInlineSizeDisagreesWithShape` 两条拒绝路径；含常量的图手工构造后经真实 `LowerModelGraph`，未经过 constant folding pass（折叠产物在 lowered 图中的形态与之一致）；
-- packed 子图：`PackedSubgraphKeepsWeightOutOfBindingTable`（`AddRmsNorm`，packed 权重不进绑定表且 `step.packed_weights` 非空）；完整模型的 packed 不可解析仍由 `PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 固化；
+- packed 子图：`PackedSubgraphKeepsWeightOutOfBindingTable`（`AddRmsNorm`，packed 权重不进绑定表且 `step.packed_weights` 非空）；完整模型的 packed 曾不可解析，现由 `PackedLoweringPreparesAllWeightConsumers` 正向覆盖；
 - teardown：`PreparedBindingsAreReleasedBeforeTheModel` 验证 `PreparedExecutionBindings` 先于 `ExecutableModel` 释放、模型不反向引用 Session 侧状态，并在 ASAN/TSAN 下运行；
 - phase 合同（§7 补充判据）：`PhaseSpecificArtifactRejectsUnmatchedPhaseQueries`、`RejectsArtifactWhoseStepsMixPhases`（后者经 `LoweredGraph::Builder` 测试缝构造 lowering 今天产生不了的 mixed-phase 形态）；
 - 权重解析错误路径：`RejectsWeightWithNoDenseStorageRole`（`kMoERouter`）、`RejectsWeightWhoseLayerIndexHasNoStorage`（越界 layer），消息含 value index 与 role；
@@ -387,3 +387,4 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 | 2026-09-23 | 1.8 | 形态整理：`WeightPrepackPlanner` 静态工具类函数化——`PrepackAndStore` → 自由函数 `PrepackWeightRequests`，嵌套 `Request` → 顶层 `WeightPackingRequest`，文件 `weight_prepack_planner.{h,cpp}` → `weight_packing.{h,cpp}`，与 compiler 侧 `BuildWeightPackingRequests` 命名对称；测试文件与套件更名 `test_weight_packing.cpp` / `WeightPacking`（`PrepackWeightRequests*` 用例名同步）。类零状态单静态方法、且 `BuildRequests` 删除后名实不符，仓库同类形态已统一为自由函数（`BuildModelGraph`/`BuildLlamaDense`）。全量 3533 例通过 |
 | 2026-09-23 | 1.9 | 与并行重构同步（非本提案实施）：model/weight 三件套合并为 `weight_packing.{h,cpp}`——`ResolveWeightBinding`、`WeightPackingRequest`、`PrepackWeightRequests`、`WeightArtifactKey`/`PackedWeightStore` 同址；打包执行改经 `Backend::PackWeights`（composite 物化/对齐/分配归 backend，key 的 recipe 由产物回读）；`hf_weight_resolver` 更名为 `hf_tensor_resolver` 以区分两个 resolver。本文档 §2.1/§2.2/§3.4/§4.1/§4.6/§10 的链接与行号已同步；命名与依赖红线见 [02-weight-data-concepts.md](../designs/model/02-weight-data-concepts.md)。全量 3539 例通过 |
 | 2026-09-23 | 1.10 | 测试文件向库单元对齐：`test_packed_weight_store_ownership.cpp`（原在 `tests/unit/backend/`，与所测类型不同层）与 `test_weight_binding_resolver.cpp` 并入 `tests/unit/model/weight/test_weight_packing.cpp`，与单一库单元同址同层；三个套件（`WeightPacking` 17 例、`WeightBindingResolver` 12 例、`PackedWeightStoreOwnership` 5 例）共 34 例。全量 3539 例通过 |
+| 2026-09-23 | 1.11 | packed 缺口闭环同步：§2.2 末行与 M2.4/M2.5 两处不再把"完整模型 packed 不可解析"记为现状——`Embedding`/`RmsNorm`/`Linear` 的 packed identity descriptor 已落地，缺口测试 `PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 被正向的 `PackedLoweringPreparesAllWeightConsumers` 取代；同时 recipe 传递链（`KernelDescriptor::packing_recipe` → `Backend::GetPackingRecipe` → `WeightPackingRequest::recipe` → `PackWeights(..., recipe)`）与 bpanel 打包/消费链已落地，详见 [GEMM 提案](../operators/gemm/cpu-gemm-packed-weight.md) 与 01 §2.3 |

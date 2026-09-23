@@ -3,8 +3,6 @@
 #include "aethermind/operators/operator_schema.h"
 
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -82,9 +80,9 @@ StatusOr<std::vector<WeightPackingRequest>> BuildWeightPackingRequests(
         const LoweredGraph& lowered,
         const ResolvedModelWeights& resolved) {
     std::vector<WeightPackingRequest> requests;
-    // (value_index, selector) pairs already requested; one artifact serves
-    // every step consuming the same weight value with the same selector.
-    std::unordered_map<uint32_t, std::unordered_set<KernelSelector>> seen_requests;
+    // Keep one request per packed consumer until the owning preparation layer
+    // resolves descriptor recipes. It can then detect incompatible consumers
+    // instead of silently retaining the first op for a shared weight value.
 
     for (const LoweredStep& step: lowered.steps()) {
         // Packing requests describe packed weight storage only; steps that
@@ -118,11 +116,6 @@ StatusOr<std::vector<WeightPackingRequest>> BuildWeightPackingRequests(
                         "BuildWeightPackingRequests: kWeight value has no "
                         "WeightValue payload");
             }
-            if (!seen_requests[value.index].insert(step.spec.selector).second) {
-                // A duplicate request would collide on the exact artifact key
-                // and fail with AlreadyExists during Store.
-                continue;
-            }
             auto components = ResolveWeightComponents(resolved, weight->binding);
             if (!components.ok()) {
                 return components.status();
@@ -134,6 +127,7 @@ StatusOr<std::vector<WeightPackingRequest>> BuildWeightPackingRequests(
                     .value_index = value.index,
                     .binding = weight->binding,
                     .selector = step.spec.selector,
+                    .recipe = {},
             };
 
             if (IsCompositeWeightBinding(weight->binding)) {

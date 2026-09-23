@@ -1,7 +1,10 @@
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
+#include "aethermind/base/macros.h"
 #include "aethermind/base/tensor_view.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -242,6 +245,146 @@ StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
             op_type, selector, RecipeFor(selector), dtype,
             std::vector<int64_t>{total_rows, feature_count},
             std::move(packed_storage));
+}
+
+StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
+        OpType op_type,
+        TensorView logical_weight,
+        const KernelSelector& selector,
+        const PackingRecipe& recipe) const noexcept {
+    if (recipe == CpuIdentityPackingRecipe()) {
+        return Pack(op_type, logical_weight, selector);
+    }
+    if (recipe != cpu::CpuBPanelF32V1Avx2Recipe()) {
+        return Status::InvalidArgument(
+                "CpuWeightPrepacker does not support the requested recipe");
+    }
+    const std::array<TensorView, 1> components{logical_weight};
+    return Pack(op_type, components, selector, recipe);
+}
+
+StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
+        OpType op_type,
+        std::span<const TensorView> components,
+        const KernelSelector& selector,
+        const PackingRecipe& recipe) const noexcept {
+    if (recipe == CpuIdentityPackingRecipe()) {
+        return Pack(op_type, components, selector);
+    }
+    if (recipe != cpu::CpuBPanelF32V1Avx2Recipe()) {
+        return Status::InvalidArgument(
+                "CpuWeightPrepacker does not support the requested recipe");
+    }
+    if (op_type == OpType::kUnknown || selector.device_type != DeviceType::kCPU ||
+        selector.weight_format != WeightFormat::kPacked || components.empty()) {
+        return Status::InvalidArgument(
+                "CpuWeightPrepacker requires a packed CPU request and weight components");
+    }
+
+    if (!components.front().is_valid() || components.front().rank() != 2) {
+        return Status::InvalidArgument(
+                "cpu_bpanel_f32 requires valid rank-2 weight components");
+    }
+    const int64_t feature_count = components.front().dim(1);
+    int64_t total_rows = 0;
+    size_t alignment = cpu::kCpuBPanelF32V1Alignment;
+    for (const TensorView& component: components) {
+        if (!component.is_valid() || !component.is_contiguous() ||
+            component.rank() != 2 || component.dtype() != DataType::Float32() ||
+            component.dim(1) != feature_count || component.dim(0) < 0 ||
+            (component.logical_nbytes() != 0 && component.data() == nullptr)) {
+            return Status::InvalidArgument(
+                    "cpu_bpanel_f32 requires contiguous rank-2 float32 weights with equal K");
+        }
+        if (component.dim(0) > std::numeric_limits<int64_t>::max() - total_rows) {
+            return Status::Overflow("cpu_bpanel_f32 logical N overflows int64_t");
+        }
+        total_rows += component.dim(0);
+        alignment = std::max(alignment, component.alignment());
+    }
+    if (feature_count < 0) {
+        return Status::InvalidArgument("cpu_bpanel_f32 requires a non-negative K dimension");
+    }
+
+    AM_ASSIGN_OR_RETURN(const size_t packed_nbytes,
+                        cpu::CpuBPanelF32V1PackedByteSize(total_rows, feature_count));
+    Buffer packed_storage = AllocateCpuPackedBuffer(packed_nbytes, alignment);
+    if (!packed_storage.is_initialized()) {
+        return Status::ResourceExhausted("Failed to allocate packed CPU B-panel storage");
+    }
+    if (packed_nbytes != 0) {
+        std::memset(packed_storage.mutable_data(), 0, packed_nbytes);
+        float* const packed_data = static_cast<float*>(packed_storage.mutable_data());
+        const size_t n_blocks = static_cast<size_t>(
+                total_rows / cpu::kCpuBPanelF32V1NR +
+                (total_rows % cpu::kCpuBPanelF32V1NR != 0));
+        size_t row_offset = 0;
+        for (const TensorView& component: components) {
+            const float* const src = component.data<float>();
+            for (int64_t row = 0; row < component.dim(0); ++row) {
+                const size_t logical_row = row_offset + static_cast<size_t>(row);
+                for (int64_t k = 0; k < feature_count; ++k) {
+                    const size_t panel = static_cast<size_t>(k / cpu::kCpuBPanelF32V1KC);
+                    const size_t block = logical_row /
+                                         static_cast<size_t>(cpu::kCpuBPanelF32V1NR);
+                    const size_t panel_row = static_cast<size_t>(k % cpu::kCpuBPanelF32V1KC);
+                    const size_t column = logical_row %
+                                          static_cast<size_t>(cpu::kCpuBPanelF32V1NR);
+                    const size_t packed_index =
+                            (((panel * n_blocks + block) *
+                                      static_cast<size_t>(cpu::kCpuBPanelF32V1KC) +
+                              panel_row) *
+                             static_cast<size_t>(cpu::kCpuBPanelF32V1NR)) +
+                            column;
+                    packed_data[packed_index] =
+                            src[static_cast<size_t>(row) *
+                                        static_cast<size_t>(feature_count) +
+                                static_cast<size_t>(k)];
+                }
+            }
+            row_offset += static_cast<size_t>(component.dim(0));
+        }
+    }
+
+    std::vector<int64_t> logical_shape{total_rows, feature_count};
+    return std::make_unique<CpuPackedWeights>(
+            op_type, selector, recipe, DataType::Float32(),
+            std::move(logical_shape), std::move(packed_storage));
+}
+
+PackingRecipe cpu::CpuBPanelF32V1Avx2Recipe() {
+    return PackingRecipe{
+            .layout = std::string(cpu::kCpuBPanelF32V1Avx2Layout),
+            .alignment = cpu::kCpuBPanelF32V1Alignment};
+}
+
+StatusOr<size_t> cpu::CpuBPanelF32V1PackedByteSize(
+        int64_t n, int64_t k) noexcept {
+    if (n < 0 || k < 0) {
+        return Status::InvalidArgument(
+                "cpu_bpanel_f32 dimensions must be non-negative");
+    }
+    const size_t n_blocks = static_cast<size_t>(
+            n / cpu::kCpuBPanelF32V1NR +
+            (n % cpu::kCpuBPanelF32V1NR != 0));
+    const size_t k_panels = static_cast<size_t>(
+            k / cpu::kCpuBPanelF32V1KC +
+            (k % cpu::kCpuBPanelF32V1KC != 0));
+    size_t elements = n_blocks;
+    const size_t factors[] = {
+            static_cast<size_t>(cpu::kCpuBPanelF32V1KC),
+            static_cast<size_t>(cpu::kCpuBPanelF32V1NR),
+            k_panels,
+            sizeof(float),
+    };
+    for (const size_t factor: factors) {
+        if (factor != 0 && elements > std::numeric_limits<size_t>::max() / factor) {
+            return Status::Overflow(
+                    "cpu_bpanel_f32 packed byte size overflows size_t");
+        }
+        elements *= factor;
+    }
+    return elements;
 }
 
 PackingRecipe CpuWeightPrepacker::RecipeFor(const KernelSelector& selector) noexcept {

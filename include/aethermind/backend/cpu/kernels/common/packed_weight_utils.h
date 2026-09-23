@@ -43,6 +43,11 @@ Status ValidateIdentityPackedWeight(const PackedWeightView& packed,
                                     std::span<const int64_t> expected_shape,
                                     std::string_view kernel_name) noexcept;
 
+/// @brief Validates the versioned AVX2 FP32 bpanel artifact contract.
+Status ValidateBPanelF32PackedWeight(const PackedWeightView& packed,
+                                     std::span<const int64_t> expected_shape,
+                                     std::string_view kernel_name) noexcept;
+
 } // namespace aethermind::cpu::detail
 
 #endif // AETHERMIND_BACKEND_CPU_KERNELS_COMMON_PACKED_WEIGHT_UTILS_H

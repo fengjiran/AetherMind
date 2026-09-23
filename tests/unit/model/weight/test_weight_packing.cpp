@@ -72,6 +72,12 @@ KernelSelector MakeExpectedSelector() {
     };
 }
 
+void SetIdentityPackingRecipes(std::vector<WeightPackingRequest>& requests) {
+    for (WeightPackingRequest& request: requests) {
+        request.recipe = CpuIdentityPackingRecipe();
+    }
+}
+
 // Packs through the real CPU identity prepacker so model-level prepack tests
 // exercise the Backend::PackWeights contract end to end.
 StatusOr<std::unique_ptr<PackedWeights>> PackViaCpuIdentity(
@@ -141,6 +147,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsBackendWithoutPacking) {
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
             .raw_weight = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1}),
             .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
     };
 
     NoPackingTestBackend backend;
@@ -159,7 +166,8 @@ TEST(WeightPacking, PrepackWeightRequestsMakesWeightsFindable) {
             {.op_type = OpType::kLinear,
              .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
              .raw_weight = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1}),
-             .selector = MakeExpectedSelector()},
+             .selector = MakeExpectedSelector(),
+             .recipe = CpuIdentityPackingRecipe()},
     };
 
     PackingOnlyTestBackend backend;
@@ -197,7 +205,8 @@ TEST(WeightPacking, PrepackWeightRequestsStoresAllLayerWeightsDistinctly) {
                      .binding = MakeTransformerWeightBinding(layer, roles[role]),
                      .raw_weight = MakeWeightView(storage, (layer * roles.size() + role) * 8U,
                                                   8, DataType::Float32(), {2, 1}),
-                     .selector = MakeExpectedSelector()});
+                     .selector = MakeExpectedSelector(),
+                     .recipe = CpuIdentityPackingRecipe()});
         }
     }
     ASSERT_EQ(requests.size(), 14U);
@@ -227,7 +236,8 @@ TEST(WeightPacking, RawViewsRemainAccessibleAfterPrepack) {
             {.op_type = OpType::kLinear,
              .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
              .raw_weight = raw_weight,
-             .selector = MakeExpectedSelector()},
+             .selector = MakeExpectedSelector(),
+             .recipe = CpuIdentityPackingRecipe()},
     };
 
     PackingOnlyTestBackend backend;
@@ -340,6 +350,7 @@ TEST(WeightPacking, LoweredDrivenPrepackAndResolve) {
 
     auto requests = BuildWeightPackingRequests(*lowered, resolved);
     ASSERT_TRUE(requests.ok()) << requests.status().ToString();
+    SetIdentityPackingRecipes(*requests);
     ASSERT_EQ(requests->size(), 3U);
     for (const auto& req: *requests) {
         EXPECT_EQ(req.source_id, lowered->artifact_id());
@@ -491,6 +502,7 @@ TEST(WeightPacking, LoweredDrivenPrepackResolvesCompositeBindings) {
 
     auto requests = BuildWeightPackingRequests(*lowered, resolved);
     ASSERT_TRUE(requests.ok()) << requests.status().ToString();
+    SetIdentityPackingRecipes(*requests);
     // Embedding value + fused QKV weight + fused Gate-Up weight.
     ASSERT_EQ(requests->size(), 3U);
 
@@ -613,6 +625,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsDirectWeightWithUndersizedBytes)
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
             .raw_weight = MakeWeightView(storage, 0, 4, DataType::Float32(), {2, 1}),
             .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
     };
 
     const Status status = PrepackSingleRequest(request);
@@ -630,6 +643,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsDirectWeightWithOversizedBytes) 
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
             .raw_weight = MakeWeightView(storage, 0, 12, DataType::Float32(), {2, 1}),
             .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
     };
 
     const Status status = PrepackSingleRequest(request);
@@ -651,6 +665,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsCompositeComponentWithUndersized
                     MakeWeightView(storage, 24, 8, DataType::Float32(), {2, 1}),
             },
             .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
     };
 
     const Status status = PrepackSingleRequest(request);
@@ -668,6 +683,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsNegativeWeightDimension) {
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
             .raw_weight = MakeWeightView(storage, 0, 0, DataType::Float32(), {-3}),
             .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
     };
 
     const Status status = PrepackSingleRequest(request);
@@ -694,6 +710,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsOverflowingWeightByteSize) {
                     .storage = storage,
             },
             .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
     };
 
     const Status status = PrepackSingleRequest(request);
@@ -783,10 +800,9 @@ TEST(WeightPacking, BuildWeightPackingRequestsSkipsPlainWeightSteps) {
     EXPECT_TRUE(requests->empty());
 }
 
-// One weight value consumed by several steps with the same selector packs
-// exactly once; duplicate requests would collide on the exact artifact key
-// and fail with AlreadyExists during Store.
-TEST(WeightPacking, BuildWeightPackingRequestsDeduplicatesSharedWeightValue) {
+// The compiler preserves all consumers until inference resolves each
+// descriptor-owned recipe and can safely coalesce compatible requests.
+TEST(WeightPacking, BuildWeightPackingRequestsPreservesSharedWeightConsumers) {
     auto storage = std::make_shared<TestStorage>(512);
     for (auto& b: storage->data) b = std::byte{0};
 
@@ -820,15 +836,12 @@ TEST(WeightPacking, BuildWeightPackingRequestsDeduplicatesSharedWeightValue) {
 
     auto requests = BuildWeightPackingRequests(*lowered, resolved);
     ASSERT_TRUE(requests.ok()) << requests.status().ToString();
-    ASSERT_EQ(requests->size(), 1U);
-    EXPECT_EQ((*requests)[0].value_index, weight.index);
-    EXPECT_EQ((*requests)[0].op_type, OpType::kLinear);
-
-    PackingOnlyTestBackend backend;
-    PackedWeightStore store;
-    ASSERT_TRUE(PrepackWeightRequests(backend, store, *requests).ok());
-    EXPECT_EQ(store.size(), 1U);
-    EXPECT_EQ(store.source_id(), lowered->artifact_id());
+    ASSERT_EQ(requests->size(), 2U);
+    for (const WeightPackingRequest& request: *requests) {
+        EXPECT_EQ(request.value_index, weight.index);
+        EXPECT_EQ(request.op_type, OpType::kLinear);
+        EXPECT_TRUE(request.recipe.layout.empty());
+    }
 }
 // Packs a contiguous FP32 test weight via the CPU identity prepacker.
 std::shared_ptr<const PackedWeights> PackTestArtifact(OpType op_type,

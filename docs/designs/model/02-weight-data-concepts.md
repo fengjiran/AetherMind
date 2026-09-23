@@ -1,7 +1,7 @@
 # Weight 数据概念与生命周期
 
 - **状态**: Current（建议性词表；只写仓库事实）
-- **版本**: 1.0
+- **版本**: 1.2
 - **日期**: 2026-09-23
 - **关联代码**: 见 §2 各阶段"权威文件"列
 - **上游依赖**: [AGENTS.md](../../../AGENTS.md) 模块边界、[01-model-loader.md](01-model-loader.md)（加载期 resolve）
@@ -23,8 +23,8 @@ weight 相关概念横跨 graph / model / compiler / backend / execution / infer
 |---|---|---|---|
 | **resolve**（按张量名） | `hf::ResolveWeights`：HF 张量名 → 逻辑权重树（含 tied embedding 别名）；`ResolvedModelWeights`；`RawWeightView`/`RawStorage`（借用视图 + 共享 backing） | [hf_tensor_resolver.h](../../../include/aethermind/model/formats/hf/hf_tensor_resolver.h)、[resolved_model_weights.h](../../../include/aethermind/model/resolved_model_weights.h)、[raw_weight.h](../../../include/aethermind/model/raw_weight.h) | model |
 | **bind**（按结构化角色） | `WeightBinding`/`WeightBindingSpec`（direct/qkv/gate-up，纯数据类型）；`ResolveWeightBinding`：结构化 binding → `RawWeightView`（tied lm-head 回退的单一权威） | [graph_types.h](../../../include/aethermind/graph/graph_types.h)、[weight_packing.h](../../../include/aethermind/model/weight/weight_packing.h) | graph（类型）/ model（映射） |
-| **request**（图 → 请求） | `WeightPackingRequest`（类型）；`BuildWeightPackingRequests`：artifact 的 kWeight 值 → 请求（纯数据映射，不触 backend，唯一生产来源） | [weight_packing.h](../../../include/aethermind/model/weight/weight_packing.h)、[packing_request_builder.h](../../../include/aethermind/compiler/packing_request_builder.h) | model（类型）/ compiler（生产） |
-| **pack**（执行） | `Backend::PackWeights`（抽象契约，默认 Unimplemented）；`PrepackWeightRequests`（编排，经 Backend 抽象）；`PackingRecipe`/`PackedWeights`（backend 纯数据契约）；`CpuWeightPrepacker`（cpu 实现，composite 物化/对齐/分配的 layout 权威，`kCpuIdentityPacking*` 常量同文件）、`packed_weight_utils.h`（消费侧闸口） | [backend.h](../../../include/aethermind/backend/backend.h)、[weight_packing.cpp](../../../src/model/weight/weight_packing.cpp)、[packed_weights.h](../../../include/aethermind/backend/packed_weights.h)、[cpu_weight_prepacker.h](../../../include/aethermind/backend/cpu/cpu_weight_prepacker.h) | backend（契约+实现）/ model（编排） |
+| **request**（图 → 请求） | `WeightPackingRequest`（类型，含 `recipe` 字段）；`BuildWeightPackingRequests`：artifact 的 kWeight 值 → 请求（纯数据映射，不触 backend，唯一生产来源）；recipe 由编排层在 prepare 期经 `Backend::GetPackingRecipe`（复用 descriptor eligibility）注入 | [weight_packing.h](../../../include/aethermind/model/weight/weight_packing.h)、[packing_request_builder.h](../../../include/aethermind/compiler/packing_request_builder.h) | model（类型）/ compiler（生产）/ inference（注入） |
+| **pack**（执行） | `KernelDescriptor::packing_recipe`（per-op layout 声明）；`Backend::PackWeights`/`GetPackingRecipe`（抽象契约，默认 Unimplemented）；`PrepackWeightRequests`（要求显式 recipe，校验产物 recipe 一致）；`PackingRecipe`/`PackedWeights`（backend 纯数据契约）；`CpuWeightPrepacker`（按 recipe 分派：identity 与 `cpu_bpanel_f32_v1_avx2`；常量分别在 `cpu_weight_prepacker.h` 与 `cpu_bpanel_packing.h`）；`packed_weight_utils.h`（消费侧闸口：identity + bpanel） | [backend.h](../../../include/aethermind/backend/backend.h)、[kernel_descriptor.h](../../../include/aethermind/backend/kernel_descriptor.h)、[weight_packing.cpp](../../../src/model/weight/weight_packing.cpp)、[packed_weights.h](../../../include/aethermind/backend/packed_weights.h)、[cpu_weight_prepacker.h](../../../include/aethermind/backend/cpu/cpu_weight_prepacker.h)、[cpu_bpanel_packing.h](../../../include/aethermind/backend/cpu/cpu_bpanel_packing.h) | backend（契约+实现）/ model（编排） |
 | **store**（归位） | `PackedWeightStore`（`Store`/`Find` 按完整 `WeightArtifactKey` 幂等存储与精确查找）；`WeightArtifactKey{source_id, value_index, binding, selector, recipe}` | [weight_packing.h](../../../include/aethermind/model/weight/weight_packing.h) | model |
 | **specialize**（执行期） | `ExternalTensorBindings`/`ExternalReadOnlyValueBinding`/`ExternalWritableValueBinding`（外部绑定契约）；`PrepareExecutionBindings`/`PreparedExecutionBindings`/`ComputeExternalReadRequirements`（plan 冷路径特化）；`WeightBindingStorage`（immutable 绑定 shape/stride 元数据所有权） | [execution_bindings.h](../../../include/aethermind/execution/execution_bindings.h)、[weight_binding_storage.h](../../../include/aethermind/inference/weight_binding_storage.h) | execution / inference |
 
@@ -47,3 +47,4 @@ weight 相关概念横跨 graph / model / compiler / backend / execution / infer
 |---|---|---|
 | 2026-09-23 | 1.0 | 初版：六阶段词表、命名动词约定、依赖红线（Backend::PackWeights 抽象落地后冻结） |
 | 2026-09-23 | 1.1 | 文件合并后同步：`weight_binding_resolver`/`packed_weight_store` 并入 `weight_packing.h/.cpp`（model/weight 三件套合一）；`identity_packing.h` 常量并入 `cpu_weight_prepacker.h`；`external_bindings.h` 回退并入 `execution_bindings.h` |
+| 2026-09-23 | 1.2 | recipe 链闭环同步：request 阶段补 `recipe` 字段与编排层注入（`Backend::GetPackingRecipe`）；pack 阶段补 `KernelDescriptor::packing_recipe` 声明、packer 按 recipe 分派 identity/`cpu_bpanel_f32_v1_avx2`（常量头 `cpu_bpanel_packing.h`）与 identity/bpanel 双消费闸口 |

@@ -44,6 +44,24 @@ KernelSelector MakeMissingSelector() {
     };
 }
 
+TEST(KernelRegistry, PackedDescriptorRequiresValidRecipeAlignment) {
+    KernelDescriptor descriptor = MakeTestKernelDescriptor();
+    descriptor.selector.weight_format = WeightFormat::kPacked;
+    descriptor.packing_recipe = PackingRecipe{
+            .layout = "test_layout",
+            .alignment = alignof(void*) / 2U,
+    };
+    EXPECT_EQ(ValidateKernelDescriptor(descriptor).code(),
+              StatusCode::kInvalidArgument);
+
+    descriptor.packing_recipe.alignment = alignof(void*);
+    EXPECT_TRUE(ValidateKernelDescriptor(descriptor).ok());
+
+    descriptor.selector.weight_format = WeightFormat::kPlain;
+    EXPECT_EQ(ValidateKernelDescriptor(descriptor).code(),
+              StatusCode::kInvalidArgument);
+}
+
 TEST(KernelRegistry, FindCandidatesReturnsStructuralMatches) {
     KernelRegistry registry;
     const KernelDescriptor descriptor = MakeTestKernelDescriptor();

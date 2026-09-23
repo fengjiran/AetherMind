@@ -66,15 +66,18 @@ Status ValidateKVCacheStateSpec(const TensorSpec& spec,
                                        " must be rank 3 [kv_heads, cache_len, head_dim]");
     }
 
-    for (size_t dim = 0; dim < 3; ++dim) {
-        if (!spec.shape[dim].IsStatic()) {
-            return Status::InvalidArgument("KV state " + std::string(role) +
-                                           " requires static runtime cache geometry");
-        }
+    if (!spec.shape[0].IsStatic() || !spec.shape[2].IsStatic()) {
+        return Status::InvalidArgument("KV state " + std::string(role) +
+                                       " requires static KV head and head dimension");
     }
 
+    // Model graphs keep cache_len symbolic; KVCacheView owns the physical
+    // capacity and supplies its runtime value.
+    const bool cache_capacity_mismatch =
+            spec.shape[1].IsStatic() &&
+            spec.shape[1].GetStaticValue() != static_cast<int64_t>(view.max_tokens());
     if (spec.shape[0].GetStaticValue() != static_cast<int64_t>(view.num_kv_heads()) ||
-        spec.shape[1].GetStaticValue() != static_cast<int64_t>(view.max_tokens()) ||
+        cache_capacity_mismatch ||
         spec.shape[2].GetStaticValue() != static_cast<int64_t>(view.head_dim())) {
         return Status::InvalidArgument("KV state " + std::string(role) +
                                        " geometry does not match the KVCacheView");
@@ -491,18 +494,30 @@ Status LayerRunner::ValidateStateAliasesForStep(
                     "State alias value must be rank 3 [kv_heads, cache_len, head_dim]");
         }
 
+        // Keep the alias check aligned with the state spec contract: only the
+        // physical cache capacity axis may remain symbolic.
         const ShapeSymbol& kv_heads = shape[0];
+        const ShapeSymbol& cache_len = shape[1];
         const ShapeSymbol& head_dim = shape[2];
-        if (kv_heads.IsStatic() &&
-            static_cast<size_t>(kv_heads.GetStaticValue()) != view.num_kv_heads()) {
+        if (!kv_heads.IsStatic() || !head_dim.IsStatic()) {
+            return Status::InvalidArgument(
+                    "State alias requires static KV head and head dimension");
+        }
+
+        if (static_cast<size_t>(kv_heads.GetStaticValue()) != view.num_kv_heads()) {
             return Status::InvalidArgument(
                     "State alias kv_heads does not match the KVCacheView head count");
         }
 
-        if (head_dim.IsStatic() &&
-            static_cast<size_t>(head_dim.GetStaticValue()) != view.head_dim()) {
+        if (static_cast<size_t>(head_dim.GetStaticValue()) != view.head_dim()) {
             return Status::InvalidArgument(
                     "State alias head_dim does not match the KVCacheView head dimension");
+        }
+
+        if (cache_len.IsStatic() &&
+            static_cast<size_t>(cache_len.GetStaticValue()) != view.max_tokens()) {
+            return Status::InvalidArgument(
+                    "State alias cache_len does not match the KVCacheView capacity");
         }
     }
 

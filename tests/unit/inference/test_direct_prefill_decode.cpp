@@ -5,10 +5,12 @@
 #include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/inference/executable_model.h"
+#include "aethermind/inference/inference_session.h"
 #include "aethermind/memory/cpu_allocator.h"
 #include "aethermind/model/loaded_model.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "execution/test_tensor_buffer_helpers.h"
+#include "inference/inference_session_internal.h"
 #include "inference/test_malloc_interposer.h"
 #include "model/test_llama_checkpoint_helpers.h"
 
@@ -80,12 +82,22 @@ void FillTinyCheckpoint(ResolvedModelWeights& weights) {
     FillWeight(layer.mlp.down_proj, 37);
 }
 
-Runtime MakeCpuRuntimeWithKVCache() {
+Runtime MakeCpuRuntime() {
+    RuntimeBuilder builder;
+    builder.RegisterBackendFactory(
+            DeviceType::kCPU, std::make_unique<CpuBackendFactory>());
+    return builder.Build();
+}
+
+Runtime MakeCpuRuntimeWithKVCache(size_t kv_heads = kKvHeads,
+                                  size_t capacity = kCacheCapacity,
+                                  bool enable_cpu_allocator = true) {
     RuntimeOptions options;
+    options.allocator.enable_cpu = enable_cpu_allocator;
     options.kv_cache.enable_manager = true;
     options.kv_cache.num_layers = 1;
-    options.kv_cache.num_kv_heads = kKvHeads;
-    options.kv_cache.max_tokens = kCacheCapacity;
+    options.kv_cache.num_kv_heads = kv_heads;
+    options.kv_cache.max_tokens = capacity;
     options.kv_cache.head_dim = kHeadDim;
     options.kv_cache.kv_dtype = DataType::Float32();
     options.kv_cache.alignment = 64;
@@ -344,6 +356,57 @@ private:
     std::vector<float> keys_;
     std::vector<float> values_;
 };
+
+StatusOr<InferenceSession> PrepareTinySession(
+        Runtime& runtime,
+        ResolvedModelWeights* reference_weights) {
+    auto executable = PrepareTinyExecutableModel(runtime, reference_weights);
+    if (!executable.ok()) {
+        return executable.status();
+    }
+    auto shared_model =
+            std::make_shared<ExecutableModel>(std::move(*executable));
+    return InferenceSession::Create(runtime, std::move(shared_model));
+}
+
+std::vector<uint32_t> ScalarGenerate(
+        const ResolvedModelWeights& weights,
+        std::span<const uint32_t> prompt,
+        const GenerationConfig& config) {
+    std::vector<uint32_t> generated;
+    if (config.max_new_tokens == 0) {
+        return generated;
+    }
+
+    std::vector<int64_t> prompt_ids(prompt.begin(), prompt.end());
+    std::vector<int64_t> prompt_positions(prompt.size());
+    for (size_t i = 0; i < prompt_positions.size(); ++i) {
+        prompt_positions[i] = static_cast<int64_t>(i);
+    }
+
+    TinyLlamaScalarReference reference(weights);
+    auto output = reference.Run(prompt_ids, prompt_positions);
+    generated.reserve(config.max_new_tokens);
+    generated.push_back(static_cast<uint32_t>(output.tokens.back()));
+    if (config.eos_token_id.has_value() &&
+        generated.back() == *config.eos_token_id) {
+        return generated;
+    }
+
+    while (generated.size() < config.max_new_tokens) {
+        const std::array<int64_t, 1> input{
+                static_cast<int64_t>(generated.back())};
+        const std::array<int64_t, 1> position{
+                static_cast<int64_t>(prompt.size() + generated.size() - 1)};
+        output = reference.Run(input, position);
+        generated.push_back(static_cast<uint32_t>(output.tokens.back()));
+        if (config.eos_token_id.has_value() &&
+            generated.back() == *config.eos_token_id) {
+            break;
+        }
+    }
+    return generated;
+}
 
 void ReleaseTestSession(KVCacheManager& manager, KVCacheView& cache_view) {
     const Status status = manager.ReleaseSession(cache_view);
@@ -899,6 +962,339 @@ TEST(DirectPrefillDecode, TinyTiedGqaLlamaMatchesScalarOracleAndReusesDecodeBind
     }
 
     EXPECT_TRUE(RunFailureCleanupScenario(runtime, plan, immutable_bindings, prompt));
+}
+
+TEST(InferenceSession, RejectsRuntimeDifferentFromPreparationRuntime) {
+    Runtime preparation_runtime = MakeCpuRuntimeWithKVCache();
+    ResolvedModelWeights reference_weights;
+    auto executable = PrepareTinyExecutableModel(
+            preparation_runtime, &reference_weights);
+    ASSERT_TRUE(executable.ok()) << executable.status().ToString();
+    auto shared_model =
+            std::make_shared<ExecutableModel>(std::move(*executable));
+
+    Runtime other_runtime = MakeCpuRuntime();
+    auto session = InferenceSession::Create(other_runtime, shared_model);
+    ASSERT_FALSE(session.ok());
+    EXPECT_EQ(session.status().code(), StatusCode::kFailedPrecondition);
+}
+
+TEST(InferenceSession, TinyGenerateMatchesScalarOracleAndStartsFreshEachCall) {
+    Runtime runtime = MakeCpuRuntimeWithKVCache();
+    ResolvedModelWeights reference_weights;
+    auto session_result = PrepareTinySession(runtime, &reference_weights);
+    ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
+    InferenceSession session = std::move(*session_result);
+
+    constexpr std::array<uint32_t, 3> prompt{1, 7, 3};
+    const GenerationConfig config{.max_new_tokens = 3};
+    const std::vector<uint32_t> expected =
+            ScalarGenerate(reference_weights, prompt, config);
+
+    auto first = session.Generate(prompt, config);
+    ASSERT_TRUE(first.ok()) << first.status().ToString();
+    EXPECT_EQ(*first, expected);
+
+    auto repeated = session.Generate(prompt, config);
+    ASSERT_TRUE(repeated.ok()) << repeated.status().ToString();
+    EXPECT_EQ(*repeated, expected);
+}
+
+TEST(InferenceSession, HandlesZeroOneEosAndExactKvCapacity) {
+    Runtime runtime = MakeCpuRuntimeWithKVCache();
+    ResolvedModelWeights reference_weights;
+    auto session_result = PrepareTinySession(runtime, &reference_weights);
+    ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
+    InferenceSession session = std::move(*session_result);
+
+    std::array<uint32_t, 3> prompt{1, 7, 3};
+    const GenerationConfig one_token{.max_new_tokens = 1};
+    const auto expected_one = ScalarGenerate(reference_weights, prompt, one_token);
+    auto one = session.Generate(prompt, one_token);
+    ASSERT_TRUE(one.ok()) << one.status().ToString();
+    EXPECT_EQ(*one, expected_one);
+
+    const GenerationConfig full_capacity{.max_new_tokens = 6};
+    std::vector<uint32_t> expected_full;
+    size_t mid_eos_index = full_capacity.max_new_tokens;
+    for (uint32_t final_prompt_token = 0;
+         final_prompt_token < static_cast<uint32_t>(kVocabSize) &&
+         mid_eos_index == full_capacity.max_new_tokens;
+         ++final_prompt_token) {
+        prompt[2] = final_prompt_token;
+        expected_full = ScalarGenerate(reference_weights, prompt, full_capacity);
+        for (size_t index = 1; index < expected_full.size(); ++index) {
+            if (std::find(expected_full.begin(),
+                          expected_full.begin() + static_cast<std::ptrdiff_t>(index),
+                          expected_full[index]) ==
+                expected_full.begin() + static_cast<std::ptrdiff_t>(index)) {
+                mid_eos_index = index;
+                break;
+            }
+        }
+    }
+    ASSERT_LT(mid_eos_index, expected_full.size())
+            << "the tiny fixture must provide a distinct later token for mid-EOS";
+    ASSERT_EQ(expected_full.size(), full_capacity.max_new_tokens);
+    auto full = session.Generate(prompt, full_capacity);
+    ASSERT_TRUE(full.ok()) << full.status().ToString();
+    EXPECT_EQ(*full, expected_full);
+
+    const GenerationConfig first_eos{
+            .max_new_tokens = 6,
+            .eos_token_id = expected_full.front(),
+    };
+    auto first_eos_result = session.Generate(prompt, first_eos);
+    ASSERT_TRUE(first_eos_result.ok()) << first_eos_result.status().ToString();
+    EXPECT_EQ(*first_eos_result,
+              std::vector<uint32_t>{expected_full.front()});
+
+    const GenerationConfig middle_eos{
+            .max_new_tokens = 6,
+            .eos_token_id = expected_full[mid_eos_index],
+    };
+    auto middle_eos_result = session.Generate(prompt, middle_eos);
+    ASSERT_TRUE(middle_eos_result.ok()) << middle_eos_result.status().ToString();
+    EXPECT_EQ(*middle_eos_result,
+              std::vector<uint32_t>(
+                      expected_full.begin(),
+                      expected_full.begin() +
+                              static_cast<std::ptrdiff_t>(mid_eos_index + 1)));
+
+    const GenerationConfig over_capacity{.max_new_tokens = 7};
+    auto over = session.Generate(prompt, over_capacity);
+    ASSERT_FALSE(over.ok());
+    EXPECT_EQ(over.status().code(), StatusCode::kOutOfRange);
+}
+
+TEST(InferenceSession, RejectsContextLimitAndArithmeticOverflowBeforeReservation) {
+    Runtime runtime = MakeCpuRuntimeWithKVCache(kKvHeads, 200);
+    ResolvedModelWeights reference_weights;
+    auto session_result = PrepareTinySession(runtime, &reference_weights);
+    ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
+    InferenceSession session = std::move(*session_result);
+
+    constexpr std::array<uint32_t, 3> prompt{1, 7, 3};
+    auto over_context = session.Generate(
+            prompt, GenerationConfig{.max_new_tokens = 127});
+    ASSERT_FALSE(over_context.ok());
+    EXPECT_EQ(over_context.status().code(), StatusCode::kOutOfRange);
+
+    auto overflow = session.Generate(
+            prompt, GenerationConfig{
+                            .max_new_tokens = std::numeric_limits<size_t>::max(),
+                    });
+    ASSERT_FALSE(overflow.ok());
+    EXPECT_EQ(overflow.status().code(), StatusCode::kOverflow);
+
+    KVCacheManager* const manager = runtime.GetKVCacheManager();
+    ASSERT_NE(manager, nullptr);
+    auto available = manager->ReserveForSession(prompt.size(), 197);
+    ASSERT_TRUE(available.ok()) << available.status().ToString();
+    ReleaseTestSession(*manager, *available);
+}
+
+TEST(InferenceSession, ZeroLimitDoesNotRequireKvAndInputsAreValidated) {
+    Runtime runtime = MakeCpuRuntime();
+    ResolvedModelWeights reference_weights;
+    auto session_result = PrepareTinySession(runtime, &reference_weights);
+    ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
+    InferenceSession session = std::move(*session_result);
+
+    constexpr std::array<uint32_t, 1> prompt{1};
+    auto zero = session.Generate(
+            prompt, GenerationConfig{.max_new_tokens = 0});
+    ASSERT_TRUE(zero.ok()) << zero.status().ToString();
+    EXPECT_TRUE(zero->empty());
+
+    auto no_manager = session.Generate(
+            prompt, GenerationConfig{.max_new_tokens = 1});
+    ASSERT_FALSE(no_manager.ok());
+    EXPECT_EQ(no_manager.status().code(), StatusCode::kFailedPrecondition);
+
+    auto empty_prompt = session.Generate(
+            std::span<const uint32_t>{},
+            GenerationConfig{.max_new_tokens = 0});
+    ASSERT_FALSE(empty_prompt.ok());
+    EXPECT_EQ(empty_prompt.status().code(), StatusCode::kInvalidArgument);
+
+    constexpr std::array<uint32_t, 1> invalid_token{
+            static_cast<uint32_t>(kVocabSize)};
+    auto bad_prompt = session.Generate(
+            invalid_token, GenerationConfig{.max_new_tokens = 0});
+    ASSERT_FALSE(bad_prompt.ok());
+    EXPECT_EQ(bad_prompt.status().code(), StatusCode::kOutOfRange);
+
+    auto bad_eos = session.Generate(
+            prompt, GenerationConfig{
+                            .max_new_tokens = 0,
+                            .eos_token_id = static_cast<uint32_t>(kVocabSize),
+                    });
+    ASSERT_FALSE(bad_eos.ok());
+    EXPECT_EQ(bad_eos.status().code(), StatusCode::kOutOfRange);
+}
+
+TEST(InferenceSession, MissingCpuAllocatorReturnsStatusBeforeReservation) {
+    Runtime runtime =
+            MakeCpuRuntimeWithKVCache(kKvHeads, kCacheCapacity, false);
+    ResolvedModelWeights reference_weights;
+    auto session_result = PrepareTinySession(runtime, &reference_weights);
+    ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
+    InferenceSession session = std::move(*session_result);
+
+    constexpr std::array<uint32_t, 3> prompt{1, 7, 3};
+    auto result = session.Generate(
+            prompt, GenerationConfig{.max_new_tokens = 1});
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kFailedPrecondition);
+
+    KVCacheManager* const manager = runtime.GetKVCacheManager();
+    ASSERT_NE(manager, nullptr);
+    auto available = manager->ReserveForSession(prompt.size(), 0);
+    ASSERT_TRUE(available.ok()) << available.status().ToString();
+    ReleaseTestSession(*manager, *available);
+}
+
+TEST(InferenceSession, HandlesPromptSizedCapacityAndReservationCleanup) {
+    constexpr std::array<uint32_t, 3> prompt{1, 7, 3};
+    Runtime exact_runtime = MakeCpuRuntimeWithKVCache(kKvHeads, prompt.size());
+    ResolvedModelWeights exact_weights;
+    auto exact_session_result = PrepareTinySession(exact_runtime, &exact_weights);
+    ASSERT_TRUE(exact_session_result.ok())
+            << exact_session_result.status().ToString();
+    InferenceSession exact_session = std::move(*exact_session_result);
+
+    const GenerationConfig one_token{.max_new_tokens = 1};
+    auto result = exact_session.Generate(prompt, one_token);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(*result, ScalarGenerate(exact_weights, prompt, one_token));
+
+    auto needs_decode = exact_session.Generate(
+            prompt, GenerationConfig{.max_new_tokens = 2});
+    ASSERT_FALSE(needs_decode.ok());
+    EXPECT_EQ(needs_decode.status().code(), StatusCode::kOutOfRange);
+
+    Runtime mismatch_runtime = MakeCpuRuntimeWithKVCache(kKvHeads - 1);
+    ResolvedModelWeights mismatch_weights;
+    auto mismatch_session_result =
+            PrepareTinySession(mismatch_runtime, &mismatch_weights);
+    ASSERT_TRUE(mismatch_session_result.ok())
+            << mismatch_session_result.status().ToString();
+    InferenceSession mismatch_session = std::move(*mismatch_session_result);
+    KVCacheManager* const manager = mismatch_runtime.GetKVCacheManager();
+    ASSERT_NE(manager, nullptr);
+
+    auto held = manager->ReserveForSession(prompt.size(), 0);
+    ASSERT_TRUE(held.ok()) << held.status().ToString();
+    auto contended = mismatch_session.Generate(prompt, one_token);
+    ASSERT_FALSE(contended.ok());
+    EXPECT_EQ(contended.status().code(), StatusCode::kFailedPrecondition);
+    ReleaseTestSession(*manager, *held);
+
+    auto execution_failure = mismatch_session.Generate(prompt, one_token);
+    ASSERT_FALSE(execution_failure.ok());
+    auto after_failure = manager->ReserveForSession(prompt.size(), 0);
+    ASSERT_TRUE(after_failure.ok()) << after_failure.status().ToString();
+    ReleaseTestSession(*manager, *after_failure);
+}
+
+TEST(InferenceSession, SharedDecodeLoopHasNoMallocFamilyCallsAfterPreparation) {
+#if !defined(__GLIBC__) || !defined(__linux__)
+    GTEST_SKIP() << "The malloc interposer requires glibc/Linux";
+#else
+    ASSERT_TRUE(MallocInterposerAvailable());
+    Runtime runtime = MakeCpuRuntimeWithKVCache();
+    ResolvedModelWeights reference_weights;
+    auto executable_result =
+            PrepareTinyExecutableModel(runtime, &reference_weights);
+    ASSERT_TRUE(executable_result.ok())
+            << executable_result.status().ToString();
+    ExecutableModel executable(std::move(*executable_result));
+    const ExecutionPlan& plan = **executable.plan(ExecPhase::kBoth);
+    const ExternalTensorBindings& immutable_bindings =
+            **executable.immutable_weight_bindings(ExecPhase::kBoth);
+    constexpr std::array<uint32_t, 3> prompt{1, 7, 3};
+    std::vector<int64_t> prompt_tokens(prompt.begin(), prompt.end());
+    std::vector<int64_t> prompt_positions(prompt.size());
+    for (size_t i = 0; i < prompt_positions.size(); ++i) {
+        prompt_positions[i] = static_cast<int64_t>(i);
+    }
+
+    KVCacheManager* const manager = runtime.GetKVCacheManager();
+    ASSERT_NE(manager, nullptr);
+    auto reservation = manager->ReserveForSession(prompt.size(), 2);
+    ASSERT_TRUE(reservation.ok()) << reservation.status().ToString();
+    KVCacheView cache_view = std::move(*reservation);
+
+    WorkspaceStorage workspace_storage(
+            plan.total_workspace_bytes(), plan.workspace_alignment());
+    CpuWorkspaceArena workspace(
+            workspace_storage.data(), workspace_storage.size());
+    WorkspaceArena* const workspace_ptr =
+            plan.total_workspace_bytes() == 0 ? nullptr : &workspace;
+
+    TestBuffer prefill_tokens(
+            DataType::Int(64), {static_cast<int64_t>(prompt.size())});
+    TestBuffer prefill_positions(
+            DataType::Int(64), {static_cast<int64_t>(prompt.size())});
+    std::copy(prompt_tokens.begin(), prompt_tokens.end(),
+              static_cast<int64_t*>(prefill_tokens.mutable_data()));
+    std::copy(prompt_positions.begin(), prompt_positions.end(),
+              static_cast<int64_t*>(prefill_positions.mutable_data()));
+    auto prefill_result = PrepareContext(
+            runtime, plan, immutable_bindings, prefill_tokens,
+            prefill_positions, workspace_ptr, cache_view);
+    ASSERT_TRUE(prefill_result.ok()) << prefill_result.status().ToString();
+    ExecutionContext prefill_context(std::move(*prefill_result));
+    ASSERT_TRUE(Executor::Execute(plan, prefill_context).ok());
+    const ExecutionValueId token_output = plan.model_outputs().front();
+    const MutableTensorView prefill_output =
+            FindOutput(prefill_context, plan, token_output);
+    ASSERT_TRUE(prefill_output.is_valid());
+    const int64_t first_token =
+            prefill_output.data<int64_t>()[prompt.size() - 1];
+    prefill_context.Clear();
+
+    TestBuffer decode_tokens(DataType::Int(64), {1});
+    TestBuffer decode_positions(DataType::Int(64), {1});
+    static_cast<int64_t*>(decode_tokens.mutable_data())[0] = first_token;
+    static_cast<int64_t*>(decode_positions.mutable_data())[0] =
+            static_cast<int64_t>(prompt.size());
+    auto decode_result = PrepareContext(
+            runtime, plan, immutable_bindings, decode_tokens,
+            decode_positions, workspace_ptr, cache_view);
+    ASSERT_TRUE(decode_result.ok()) << decode_result.status().ToString();
+    ExecutionContext decode_context(std::move(*decode_result));
+
+    std::vector<uint32_t> generated;
+    generated.reserve(3);
+    generated.push_back(static_cast<uint32_t>(first_token));
+    int64_t next_position = static_cast<int64_t>(prompt.size());
+    const Status decode_status = [&] {
+        BeginMallocCallCounting();
+        const Status status = inference::internal::RunDecodeLoop(
+                plan, decode_context, token_output,
+                static_cast<int64_t*>(decode_tokens.mutable_data()),
+                static_cast<int64_t*>(decode_positions.mutable_data()),
+                static_cast<size_t>(kVocabSize), 3, std::nullopt, generated);
+        return status;
+    }();
+    const MallocCallCounts counts = EndMallocCallCounting();
+
+    decode_context.Clear();
+    ReleaseTestSession(*manager, cache_view);
+    ASSERT_TRUE(decode_status.ok()) << decode_status.ToString();
+    EXPECT_EQ(generated, ScalarGenerate(
+                                 reference_weights, prompt,
+                                 GenerationConfig{.max_new_tokens = 3}));
+    EXPECT_EQ(counts.malloc_calls, 0U);
+    EXPECT_EQ(counts.calloc_calls, 0U);
+    EXPECT_EQ(counts.realloc_calls, 0U);
+    EXPECT_EQ(counts.free_calls, 0U);
+    EXPECT_EQ(counts.aligned_alloc_calls, 0U);
+    EXPECT_EQ(counts.posix_memalign_calls, 0U);
+    EXPECT_EQ(counts.memalign_calls, 0U);
+#endif
 }
 
 TEST(DirectPrefillDecode, MallocInterposerObservesCpuAllocatorCalls) {

@@ -1,6 +1,6 @@
 # AetherMind Phase 1 KV Cache 设计文档
 
-> **文档关系**：本文保留存量静态 KV Cache 的设计背景。尚未实现的 correctness 修复、`KVCacheLease`、append transaction、execution-native kernel binding 与 Paged KV 演进边界，以 [KVCache Manager 演进方案](../improvement-plan/05-kv-cache-manager-evolution.md) 为计划入口；该提案为 Draft，不代表当前实现。
+> **文档关系**：本文保留存量静态 KV Cache 的设计背景；其中历史缺口叙述不代表当前代码状态。KV owner/epoch 缺陷、CPU Attention 优化准入与 Paged KV 长期边界以 [08 号演进提案](../improvement-plan/08-kv-cache-and-attention-capability-evolution.md) 为当前计划入口；[05 号草案](../improvement-plan/05-kv-cache-manager-evolution.md) 已被取代。
 
 **版本**: v1.1  
 **日期**: 2026-03-25  

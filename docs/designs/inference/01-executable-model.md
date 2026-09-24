@@ -1,12 +1,13 @@
 # ExecutableModel 模块设计
 
 - **状态**: Current（描述已验证实现；只写仓库事实）
-- **版本**: 1.0
+- **版本**: 1.1
 - **日期**: 2026-09-23
+- **最近更新**: 2026-09-24
 - **来源提案**: [07 号提案：ExecutableModel 生产准备入口方案](../../improvement-plan/07-executable-model-preparation.md)（Implemented）
 - **关联代码**: [include/aethermind/inference/](../../../include/aethermind/inference/)（`executable_model.h`、`weight_binding_storage.h`）/[src/inference/](../../../src/inference/)
 - **上游依赖**: compiler（`LoweredModelArtifact`、`BuildWeightPackingRequests`）、model（`LoadedModel`/`ResolvedModelWeights`、`ResolveWeightBinding`、`PrepackWeightRequests`、`PackedWeightStore`）、execution（`ExecutionPlanBuilder`、`ComputeExternalReadRequirements`、`ExternalTensorBindings`）、runtime（`Runtime` 提供 backends/allocator）、graph/operators 纯数据 payload 契约（`WeightValue`/`ConstantValue`）
-- **下游消费者**: `InferenceSession`/`Generate`（[01 号计划](../../improvement-plan/01-inference-session-generate-readiness.md) M5，未落地）
+- **下游消费者**: [`InferenceSession`](02-inference-session.md)（同步 greedy `Generate`，已落地；[01 号计划](../../improvement-plan/01-inference-session-generate-readiness.md) M5）
 - **关联测试**: [tests/unit/inference/test_executable_model.cpp](../../../tests/unit/inference/test_executable_model.cpp)（20 例）、[test_weight_binding_storage.cpp](../../../tests/unit/inference/test_weight_binding_storage.cpp)（8 例）；权重解析权威测试见 [tests/unit/model/weight/test_weight_packing.cpp](../../../tests/unit/model/weight/test_weight_packing.cpp)（`WeightBindingResolver` 套件），需求查询测试见 [test_execution_bindings.cpp](../../../tests/unit/execution/test_execution_bindings.cpp)
 
 ## 1. 背景与目标
@@ -85,7 +86,7 @@ class ExecutableModel {
 5. `ComputeExternalReadRequirements(plan)`：execution 层的唯一需求权威（packed 裁剪掉权重端口后自然不进入需求集合）。
 6. 对每个"被需求且非 `kModelInput`"的值按下标 i 物化绑定：
    - 结构化身份只能取自 `artifact.graph.values()[i].payload`（`ExecutionValueDesc` 不含 payload），下标同一性由 `PrepareTrustedGraph` 1:1 push 保证；
-   - `kWeight` → `ResolveWeightBinding(WeightValue::binding, resolved)`（model 层单一权威，含 tied lm-head 回退）；
+   - `kWeight` → 取 `WeightValue` 的 `binding` 字段交给 `ResolveWeightBinding` 解析（model 层单一权威，含 tied lm-head 回退）；
    - `kConstant` → `ConstantValue::inline_data` 按值 spec 包成 `TensorView`，并校验 inline 字节数与形状推导一致；
    - shape/stride 数组写入 `binding_storage_` 并被 `TensorView` 借用。
 7. 双向对账：`{required 且非 kModelInput}` 与 `{已生成绑定}` 必须完全相等，任一方向不匹配即 `kInternal`。
@@ -121,7 +122,8 @@ model inputs 不进绑定表：token/position 由 Session 按 phase 追加，重
 | 值索引同一性是隐式约定 | 已由 plan builder 的 1:1 push 与专项测试固化；prepare 对越界索引返回 `kInternal` |
 | shape/stride 借用被后续改动破坏 | §3.2 明确禁止内联缓冲；移动与扩容后的有效性有回归测试 |
 | 单 plan 阻碍后续 phase 拆分 | 对外保持按 phase 查询的形状，未来拆分双 plan 不改调用方 |
-| 完整 packed Llama 不可解析 | `enable_packed_weights=true` 会把所有含权重的 step 标为 packed，而 `Embedding`/`Linear` 无 packed 描述符 → kernel resolve 期 `kNotFound`；packed 证据取自已可解析子图（`AddRmsNorm`），缺口由测试固化 |
+| 完整 packed Llama 的可解析性依赖描述符覆盖 | `enable_packed_weights=true` 会把所有含权重的 step 标为 packed，因此每个含权重算子都必须有 packed 描述符。`kEmbedding`/`kRmsNorm`/`kLinear` 的 packed identity 变体已补齐，完整 Llama 的 packed 配置现可 prepare（`ExecutableModel.PackedLoweringPreparesAllWeightConsumers`）；新增含权重算子时若漏掉 packed 变体，会在 kernel resolve 期以 `kNotFound` 失败 |
+| packed recipe 选举 | `cpu_bpanel_f32_v1_avx2` 候选与 identity 同 priority，当前选举仍落 identity；升为默认需 benchmark 证据，见 [GEMM packed weight 提案](../../operators/gemm/cpu-gemm-packed-weight.md) |
 | phase 匹配语义 | 单 phase artifact 对 `kBoth` 查询返回错误（不声称覆盖两个 phase），与 `PhaseMatches` 一致 |
 
 ## 9. 测试要点
@@ -130,7 +132,7 @@ model inputs 不进绑定表：token/position 由 Session 按 phase 追加，重
 - tied/untied lm-head：绑定 `data()` 共享/独立。
 - 多层（≥2 layer）：每个权重绑定到自己的 backing，不串层。
 - 常量：物化成功、无 inline 数据、字节数不符三条路径。
-- packed：`AddRmsNorm` 子图权重不进绑定表且 `step.packed_weights` 非空；完整模型 packed 的 `kNotFound` 缺口固化。
+- packed：`AddRmsNorm` 子图权重不进绑定表且 `step.packed_weights` 非空；完整 Llama 在 `enable_packed_weights=true` 下所有含权重 step 均可解析（`PackedLoweringPreparesAllWeightConsumers`）。
 - phase：`kBoth` artifact 三查询同 plan；单 phase artifact 拒绝不匹配查询；混合 phase artifact prepare 期拒绝。
 - 元数据稳定性：移动后、扩容后已发出的 `TensorView` 仍有效；绑定表先于模型释放的 teardown 顺序在 ASAN/TSAN 下验证。
 - 契约钉住：`IsMoveConstructibleButNotAssignable` 断言只可移动构造、不可赋值/复制。
@@ -140,3 +142,4 @@ model inputs 不进绑定表：token/position 由 Session 按 phase 追加，重
 | 日期 | 版本 | 变更 |
 |---|---|---|
 | 2026-09-23 | 1.0 | 从 [07 号提案](../../improvement-plan/07-executable-model-preparation.md) 落地实现承接：入口与 API、所有权与销毁契约、八步准备流程、phase 合同、错误码表、测试要点 |
+| 2026-09-24 | 1.1 | 修正两处过期断言：下游消费者 `InferenceSession` 已落地（改指 [02-inference-session.md](02-inference-session.md)）；`kEmbedding`/`kRmsNorm`/`kLinear` 的 packed identity 变体已补齐，完整 Llama 的 packed 配置现可 prepare，原"完整 packed Llama 不可解析"风险行改为描述符覆盖依赖，并新增 packed recipe 选举一行 |

@@ -6,6 +6,9 @@
 
 ## 未解决
 
+- [ ] `KVCacheManager::Init` 重置 slot generation，re-init 后再次 reserve 可使旧 `KVCacheView` 复活；须保持 epoch 不回退并加入自动回归（关联：[08 号 KV/Attention 演进提案](improvement-plan/08-kv-cache-and-attention-capability-evolution.md)）
+- [ ] `KVCacheManager::ResetSession/ReleaseSession` 未验证 view 属于当前 Manager；跨 Manager 调用可错误修改 slot；须校验 owner/slot 并加入自动回归（关联：[08 号 KV/Attention 演进提案](improvement-plan/08-kv-cache-and-attention-capability-evolution.md)）
+
 - [ ] `HfModelValidator` 接受 `gelu/relu`，但 `BuildLlamaDense` 固定生成 `SiluMul`，存在 accepted config 被静默编译为错误 MLP 语义的风险；当前产品应收窄到 `silu`，或先补齐对应 operator/graph/kernel（关联：[系统能力演进路线图 §5.2](improvement-plan/06-system-capability-evolution-roadmap.md#52-p0统一接受的模型和实际语义)）
 - [ ] `ElementwiseMul` operator inference 与 CPU kernel 支持 broadcast，但 `GraphOpBuilder::AddElementwiseMul` 拒绝不同完整 `TensorSpec`，三层语义不一致（关联：[系统能力演进路线图 §6.2](improvement-plan/06-system-capability-evolution-roadmap.md#62-p0修复-graphopbuilder-与-operator-semantic-漂移)）
 - [ ] `WorkspaceRequirement::lifetime/reusable` 尚未影响 offset 规划，`PlanWorkspaceRequirements` 仍顺序累加全部 requirement（关联：[系统能力演进路线图 §13.3](improvement-plan/06-system-capability-evolution-roadmap.md#133-p1workspace-lifetime-真正生效)）

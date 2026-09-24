@@ -1,7 +1,7 @@
 # InferenceSession / Generate 前置闭环计划
 
-- **状态**: In Progress
-- **版本**: 1.10
+- **状态**: Implemented
+- **版本**: 1.12
 - **日期**: 2026-09-03
 - **最近更新**: 2026-09-24
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
@@ -10,7 +10,7 @@
 
 ## 1. 结论与范围
 
-当前 `Runtime → ExecutionPlan → PreparedExecutionBindings → ExecutionContext → Executor` 生命周期和执行边界已经足够稳定，可以开始闭环 `InferenceSession` 的前置模块；但尚不具备直接实现并对外宣称完整 `InferenceSession::Generate` 的条件。
+M1–M4 已闭环，M5 已提供基于真实 `CpuBackend` 的同步 `InferenceSession::Generate`。当前范围为 Llama FP32 greedy Argmax、token IDs 输入输出和静态 KV reservation；C ABI、sampling 与 scheduler 不属于本提案交付。
 
 本计划采用以下原则：
 
@@ -51,13 +51,13 @@
 | tensor specialization | 已实现 | `PrepareExecutionBindings` 校验 concrete binding、分配 activation、准备 kernel params |
 | 窄执行上下文 | 已实现 | `ExecutionContext` 拥有 prepared bindings，借用 workspace，保存 KV view |
 | 执行热路径 | 已实现 | `Executor → LayerRunner → InvokePreparedKernel`，无 registry lookup 和 params rebuild |
-| KV storage/session view | 部分实现 | `KVCacheManager` 支持 reserve/reset/release；`KVCacheView` 支持 generation 检查和 commit watermark |
+| KV storage/session view | 已实现（静态 contiguous baseline） | `KVCacheManager` 支持 reserve/reset/release；`KVCacheView` 支持 generation 检查和 commit watermark，watermark 由 `Executor` 在完整 plan 成功后自动推进；M4/M5 端到端复用该路径。KV owner/epoch 修复与 Paged KV 长期准入见 [08 号演进提案](08-kv-cache-and-attention-capability-evolution.md)（Draft，Paged KV 非当前承诺） |
 | semantic Llama graph | 已实现 | `BuildModelGraph` 家族分发到 `BuildLlamaDense`，生成完整 decoder-only semantic graph |
 | compiler/lowering | 已实现 | `ModelCompiler` 生成结构验证过的 `LoweredModelArtifact` |
 
 ### 2.2 当前 CPU kernel 覆盖
 
-真实 CPU registry 当前有（截至 2026-09-23，共 15 类、27 个描述符，其中 6 个 packed 变体；reference 命名统一为 `cpu::<op>_f32_reference`）：
+真实 CPU registry 当前有（截至 2026-09-24，共 15 类、27 个描述符，其中 9 个声明 `weight_format = kPacked`——含 QkvLinear/GateUpLinear 的 packed-only reference、Embedding/RMSNorm/Linear/AddRmsNorm 的 packed identity，以及 Linear/QkvLinear/GateUpLinear 的 `cpu_bpanel_f32_v1_avx2` 候选；reference 命名统一为 `cpu::<op>_f32_reference`）：
 
 | OpType | Reference kernel | Optimized kernel | Generate baseline 状态 |
 |---|---:|---:|---|
@@ -106,7 +106,7 @@
 
 ### 3.1 KV/state identity 到达 kernel ✅（2026-09-16 闭环）
 
-KVCache Manager 的 correctness 修复、lease/append transaction、execution binding 与长期 Paged KV 边界由 [KVCache Manager 演进方案](05-kv-cache-manager-evolution.md) 详细定义；本节只保留 Generate 闭环所需的集成门禁。
+KVCache Manager 当前尚存的 owner/epoch correctness 缺口、CPU Attention 优化准入与长期 Paged KV 边界由 [08 号演进提案](08-kv-cache-and-attention-capability-evolution.md) 定义；本节只保留 Generate 闭环所需的集成门禁。
 
 该数据链已落地（commits 66df0256..24c60799；query interval 扩展 5afa877c/299fb93d）：
 
@@ -160,7 +160,28 @@ reference baseline 编译为一个 `kBoth` lowered graph；`ExecutableModel::pla
 
 该测试还发现并修复两个成功路径分配：KVCacheUpdate 和 Attention 的 KV footprint 验证原先每次为诊断参数动态拼接 `std::string`，现在传入固定 `string_view` 错误标签。执行层也已接受模型图中符号化的 cache_len 轴，同时继续要求静态 KV heads/head_dim 与 `KVCacheView` 匹配；显式静态容量仍须等于 runtime capacity，并有错误几何回归覆盖。
 
-Allocation interposer 目前为 glibc/Linux 专用；其他平台仍运行数值、KV、确定性和失败清理证明，跳过仅有的 malloc-family 计数证据。完成本节不等同于 public `InferenceSession::Generate` 已实现，M5 仍未开始。
+Allocation interposer 目前为 glibc/Linux 专用；其他平台仍运行数值、KV、确定性和失败清理证明，跳过仅有的 malloc-family 计数证据。
+
+### 3.6 M5 public InferenceSession / Generate 已闭环
+
+2026-09-24，public C++ `InferenceSession::Create` 和 `Generate` 已落地。Session 借用必须长于 Session 的 `Runtime`，并以 `shared_ptr<const ExecutableModel>` 保活模型；每次 `Generate` 从新的 Prefill 开始。`Generate` 返回本次新 token，包含 Prefill 预测出的第一个 token，也包含触发停止条件的 EOS。空 prompt 返回错误；`max_new_tokens == 0` 验证 prompt/config 后返回空结果，不要求 KV manager，也不执行模型。
+
+`ExecutableModel` 在准备期从已验证的 HF config 冻结 vocabulary size 与 `max_position_embeddings`，Session 不访问 compiler artifact。后者作为最大 context token 数使用，是保守上限；即使 RoPE 配置支持外推，本接口也不超过该值。Session 按当前 Llama 有序 `model_inputs`（token IDs、position IDs）分别校验 Prefill/Decode plan 的 I/O 合同；Decode plan 的 value ID 可独立于 Prefill。
+
+对于生成上限 N，Prefill 已给出 token #1，因此 KV reservation 精确为 `prompt_len + (N - 1)`。`ReserveForSession` 的第二个参数现明确表示 prompt 后最多追加的 KV positions。请求级 RAII 持有输入 buffer、对齐 workspace、KV view 和当前 context，所有错误路径都先清理 context 再调用 `ReleaseSession`。EOS 命中或 N=1 时不创建 Decode context；否则只准备一次 Decode context，并复用固定 buffers、workspace 与 prepared kernel params。
+
+验证在 `tests/unit/inference/test_direct_prefill_decode.cpp`：
+
+- `InferenceSession.TinyGenerateMatchesScalarOracleAndStartsFreshEachCall`：真实 CpuBackend 的 tiny tied-GQA Llama，完整生成 token 序列与独立 scalar oracle 一致，连续两次调用相同且从新 Prefill 开始；
+- `InferenceSession.HandlesZeroOneEosAndExactKvCapacity`：N=1、EOS 首 token/中途 token、恰好用满物理 KV capacity 和多一个 append 的拒绝；
+- `InferenceSession.RejectsContextLimitAndArithmeticOverflowBeforeReservation`：保守模型 context limit 与 checked-add overflow 在 reservation 前拒绝；
+- `InferenceSession.ZeroLimitDoesNotRequireKvAndInputsAreValidated`：无 KV manager 的零上限、missing manager、空 prompt、越界 prompt/EOS；
+- `InferenceSession.HandlesPromptSizedCapacityAndReservationCleanup`：prompt-only reservation、请求竞争、KV 几何执行失败后的 reservation 清理；
+- `InferenceSession.MissingCpuAllocatorReturnsStatusBeforeReservation`：CPU allocator 未启用时返回状态，且不占用 KV reservation；
+- `InferenceSession.RejectsRuntimeDifferentFromPreparationRuntime`：拒绝与 ExecutableModel 准备时不同的 Runtime；
+- `InferenceSession.SharedDecodeLoopHasNoMallocFamilyCallsAfterPreparation`：对 Generate 共用的 Decode loop helper 做 glibc/Linux malloc-family 计数，bindings/context/workspace 与 output capacity 均在计数窗口前准备，循环内计数为零。其他平台跳过该 interposer 证据。
+
+M5 证明的是当前 C++ greedy Generate orchestration，不包含 C ABI、采样、会话跨调用 KV 复用、并发调用或 HTTP 服务。
 
 ## 4. 目标架构
 
@@ -202,35 +223,39 @@ Runtime
   > single Executor::Execute
 ```
 
-### 4.2 推荐接口轮廓
+### 4.2 已落地接口
 
-以下为目标职责示意，不是已冻结 public API：
+实现已落地，签名以头文件为准；职责与错误码细节见 [ExecutableModel 模块设计](../designs/inference/01-executable-model.md) §5 与 [InferenceSession 模块设计](../designs/inference/02-inference-session.md) §5：
 
 ```cpp
+StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
+                                                LoweredModelArtifact artifact);
+
 class ExecutableModel {
-public:
-    const ExecutionPlan& plan(ExecPhase phase) const;
-    const ExternalTensorBindings& immutable_weight_bindings(ExecPhase phase) const;
+    StatusOr<const ExecutionPlan*> plan(ExecPhase phase) const noexcept;
+    StatusOr<const ExternalTensorBindings*> immutable_weight_bindings(
+            ExecPhase phase) const noexcept;
+    size_t context_limit() const noexcept;  // 冻结自已验证的 HF max_position_embeddings
+    size_t vocab_size() const noexcept;
+    bool IsPreparedFor(const Runtime& runtime) const noexcept;
 };
 
-StatusOr<ExecutableModel> PrepareExecutableModel(
-        Runtime& runtime,
-        LoweredModelArtifact artifact,
-        const ExecutableModelOptions& options);
+struct GenerationConfig {
+    size_t max_new_tokens = 0;
+    std::optional<uint32_t> eos_token_id{};
+};
 
 class InferenceSession {
-public:
     static StatusOr<InferenceSession> Create(
-            Runtime& runtime,
-            std::shared_ptr<const ExecutableModel> model);
-
-    StatusOr<std::vector<uint32_t>> Generate(
-            std::span<const uint32_t> prompt_tokens,
-            const GenerationConfig& config);
+            Runtime& runtime, std::shared_ptr<const ExecutableModel> model);
+    StatusOr<std::vector<uint32_t>> Generate(std::span<const uint32_t> prompt_tokens,
+                                             const GenerationConfig& config);
 };
 ```
 
-`ExecutableModel` 是否放入新 `inference/` 模块、API 层或现有 model/execution 之上的 orchestration 层，需要在落地 M2 前更新根 `AGENTS.md` 模块 ownership 表。不得将它放入 `runtime`，因为 runtime 禁止依赖 compiler/execution/model。
+与本节初版示意的三处差异：无 `ExecutableModelOptions`（packing 与 phase 已在编译期固化进 artifact 的 step selector）；两个 phase 访问器返回 `StatusOr<const T*>`，使 phase 不匹配可表达为失败而非静默复用；`Generate` 以 `std::span` 接收 prompt 并经 `StatusOr` 返回。
+
+`ExecutableModel` 与 `InferenceSession` 均落在新 `inference/` 模块，根 `AGENTS.md` §2.1 ownership 表与跨模块依赖规则已登记（`inference → execution + compiler + model + runtime`，且不得被下层模块反向依赖）；未放入 `runtime`，因为 runtime 禁止依赖 compiler/execution/model。
 
 ## 5. 方案与备选
 
@@ -360,6 +385,8 @@ prepare prefill bindings
 
 ### M5：InferenceSession / Generate
 
+**状态（2026-09-24）：已完成**，实现与证据见 §3.6。
+
 在 M4 通过后实现同步 Session orchestration：
 
 1. validate prompt/config；
@@ -435,7 +462,7 @@ Decode 循环中不得变化：
 
 ## 9. Public Session 实现门禁
 
-本提案在 M1 开始实施时从 Draft 转为 In Progress。以下条件全部满足后，才允许进入 M5 并开始实现 public `InferenceSession::Generate`：
+本提案在 M1 开始实施时从 Draft 转为 In Progress。原 M1–M4 准入门禁已全部满足；以下新增 M5 交付门禁均已完成，构成本提案的最终验收：
 
 - [x] state binding identity 从 LoweredGraph 到达 kernel（`ExecutionKVCacheStateIdentity` 进入 plan，窄绑定经 `KernelContext` 到达 kernel，见 §3.1）；
 - [x] kernel 获得窄 KV binding，不依赖 Runtime/Session 宽对象（`KVCacheAppendBinding`/`KVCacheReadBinding` 逐调用传入）；
@@ -449,6 +476,15 @@ Decode 循环中不得变化：
 - [x] 同一 Decode `ExecutionContext` 连续执行两步，不重新调用 `PrepareExecutionBindings`，plan / tensor / params 地址稳定；
 - [x] glibc/Linux Decode steady-state body 的 malloc-family 与 C++ allocation 入口计数为零；窗口包括输入内容更新、workspace reset、Execute 和读取输出 token；
 - [x] 非法 Decode position 失败后 watermark 不前进，清理 context 后释放 reservation 并可重新 reserve。
+- [x] public C++ `InferenceSession::Generate` 使用真实 `ExecutableModel` phase plans 和 CpuBackend，不解析 artifact 或自行解析权重；
+- [x] prompt/config、Int64→uint32 token 输出、vocabulary 与保守 context limit 校验完成；
+- [x] Prefill 返回第一个新 token；N 个新 token 的 KV reservation 为 prompt 长度加 N−1；
+- [x] N=0 不要求 KV、不执行模型；N=1 和首 token EOS 不建立 Decode context；
+- [x] 正常、EOS、capacity 与执行失败路径均先清理 context 再释放 KV reservation，重复 Generate 从新 Prefill 开始；
+- [x] Session 返回完整 token 序列与独立 scalar oracle 对齐，覆盖 EOS、精确容量、竞争及失败清理；
+- [x] Generate 共用 Decode loop 的 glibc/Linux malloc-family 计数为零，准备工作与结果 capacity reserve 均在计数窗口外；
+- [x] Session 拒绝与 ExecutableModel 准备 Runtime 不同的 Runtime，并拒绝非 CPU execution plan；
+- [x] Runtime 未注册 CPU allocator 时，Generate 在 KV reservation 前返回 FAILED_PRECONDITION。
 
 ## 10. 关联代码
 
@@ -482,3 +518,5 @@ Decode 循环中不得变化：
 | 2026-09-23 | 1.8 | 07 号提案 M2.5 落地后同步：§9 勾选 "Prefill/Decode phase-plan 合同已验证"（共享单 plan、phase 不匹配报错、混合 phase prepare 期拒绝三项由 M2.5 测试覆盖，见 07 §4.5/§7）；07 转 Implemented，实现描述由 [designs/inference/01-executable-model.md](../designs/inference/01-executable-model.md) 承接。剩余五项门禁（Prefill/Decode 数值、KV content/commit、重复 decode、malloc-hook、KV reservation teardown）属 M4/M5，未勾选 |
 | 2026-09-23 | 1.9 | 按当前代码状态同步 packed-weight 能力：§2.2 描述符计数 21→27（新增 kLinear/kEmbedding/kRmsNorm 的 packed identity 与 Qkv/GateUp/Linear 的 `cpu_bpanel_f32_v1_avx2` 候选），表格 packed 相关行更新，段末"剩余准入项"改为端到端数值证据；§2.3 "仍未具备" 重写——kLinear/kEmbedding kPacked 变体与 tile/block recipe 已补齐（`PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 缺口测试已由 `PackedLoweringPreparesAllWeightConsumers` 取代），仅剩"bpanel 升为默认（待 benchmark）"与 unfused e2e 数值验证；§9 括注同步。另注：§3.2–§3.5 的缺口叙述（如"缺少 ExecutableModel 准备入口"）早于本次同步即已过期，待该文件自身维护时重写 |
 | 2026-09-24 | 1.10 | 更正 §3.2–§3.4 中过期的 M2 缺口描述；记录 M4 真实 CpuBackend tiny Llama Prefill + 两步 Decode 的数值、KV、确定性、失败清理与 glibc/Linux steady-state allocation 证据。M4 修复符号化 cache_len 与 KVCacheView geometry 的执行校验冲突，并将 KVCacheUpdate/Attention 热路径的 eager diagnostic string 改为固定 string_view；§7 同步说明 commit 由 Executor 在完整 plan 成功后自动推进，§9 五项 M4 门禁全部勾选。M5 public Generate 仍未实现。|
+| 2026-09-24 | 1.11 | 落地 M5 public C++ `InferenceSession::Generate`：冻结 ExecutableModel 的词表/context 元数据，精确按 prompt + N−1 预约 KV，增加请求级 RAII、Decode loop 复用和 Session oracle/边界/清理/分配测试，并校验 preparation Runtime 身份与 CPU allocator；状态更新为 Implemented。|
+| 2026-09-24 | 1.12 | 修正三处过期表述：§2.2 packed 计数 6 → 实测 9 个描述符声明 `weight_format = kPacked`（并列明其构成）；§2.1 KV 行由"部分实现"改为"已实现（静态 contiguous baseline）"并指向 05 号提案的演进范围；§4.2 由"推荐接口轮廓"改为"已落地接口"，替换为实际签名、删除"落地 M2 前需更新 AGENTS.md"的过期句并记录与初版示意的三处差异。M5 实现描述另由 [InferenceSession 模块设计](../designs/inference/02-inference-session.md) 承接 |

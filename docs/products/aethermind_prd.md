@@ -142,7 +142,7 @@
 - **前端语义分析**：算子输入验证、dtype/rank 校验、输出 shape 推导由 per-op 类型化自由函数 `Infer*`（位于 `src/operators/*_op.cpp`，如 `InferRoPE`、`InferSiluMul`、`InferRmsNorm`）统一完成；结果写入 semantic graph，compiler lowering 按值携带 output specs 与 deferred ShapeConstraints，execution 对 finalized `LoweredGraph` 不重复推理。
 - **图编译与绑定管道**：`ModelLoader` 只产生 backend-independent 的 `LoadedModel`（HF I/O、validation、resolved raw weights）；compiler 模块中的 `ModelCompiler` 串联 `BuildModelGraph`、`OptimizeModelGraph` 与 `LowerModelGraph`，产出拥有 `LoadedModel` 的 `LoweredModelArtifact`。`LoweredGraph` 是不可变且经结构验证的 compiler artifact，含 `LoweredStepSpec` steps、按 `GraphValueId` 稠密索引的 value metadata 和 unresolved state aliases；`ExecutionPlanBuilder::Build(Runtime, LoweredGraph)` 仅在 execution 内部将 aliases 转为 `StateAliasPlan` 并 resolve kernel。随后 `PrepareExecutionBindings` 在 cold path 绑定 external tensors、校验 runtime shape/layout/aliasing、分配 activation 并准备 kernel params；`ExecutionContext::Create` 聚合这些 bindings、borrowed workspace 和 KV view。`Execute` 仅消费已经冻结的 `ResolvedKernel` 与 prepared params，无运行时 dispatch 或 shape validation 开销。
 - **核心计算模型**：当前产品以 **decoder-only Transformer** 为执行核心，运行时显式区分 **Prefill** 与 **Decode** 两个执行阶段。
-- **核心组件**：当前已实现的底层组件为 `Runtime`（生命周期与资源管理）、`ExecutableModel`（模型准备与权重所有权）、`PreparedExecutionBindings`（plan 的物理 tensor specialization）、`ExecutionContext`（窄执行资源）、`Executor`（同步执行已 specialize 的 `ExecutionPlan`）与 `KVCacheManager`（静态 KV 内存池管理）。真实 CpuBackend 的 tiny Llama Prefill→Decode 执行链已有数值与 KV 证据；`InferenceSession`/Generate 编排尚未实现。
+- **核心组件**：当前已实现的底层组件为 `Runtime`（生命周期与资源管理）、`ExecutableModel`（模型准备与权重所有权）、`PreparedExecutionBindings`（plan 的物理 tensor specialization）、`ExecutionContext`（窄执行资源）、`Executor`（同步执行已 specialize 的 `ExecutionPlan`）与 `KVCacheManager`（静态 KV 内存池管理）。真实 CpuBackend 的 tiny Llama Prefill→Decode 执行链已有数值与 KV 证据；C++ `InferenceSession::Generate` 已实现同步 greedy Argmax 编排，返回本次新 token（包含 EOS），每次调用重新 Prefill 并释放 KV reservation。C ABI 仍为目标接口草案。
 - **模块所有权（源码目录-职责冻结）**：
   - **`graph/`（顶层）**：通用 Graph IR、GraphOpBuilder、GraphRewrite/GraphPassManager 与 backend-independent semantic passes、诊断 dump — 设备/ISA 独立，不允许包含 compiler/execution/backend/model。
   - **`operators/`（顶层）**：OpType、OperatorSchema、OpParams（typed variant）、`Infer*` 自由函数、OpParams serde — 语义层，不允许包含执行/图容器细节。
@@ -160,17 +160,25 @@
 
 **核心原则：Token IDs 是唯一数据边界**
 
-> 注：以下 C++ API / C ABI 为**当前产品目标接口草案**，用于冻结功能边界与验收口径；在 v1.0 接口冻结前，其作为开发目标契约，不代表仓库当前已完整实现。
+> 注：以下 C++ API 与 C ABI 描述产品接口边界。`InferenceSession::Generate` 的当前 C++ 实现已落地；C ABI 仍是目标接口草案，尚未实现。
 
 ```cpp
-// C++ API 伪代码
-class Session {
+// C++ API
+struct GenerationConfig {
+    size_t max_new_tokens;
+    std::optional<uint32_t> eos_token_id;
+};
+
+class InferenceSession {
 public:
-    // 输入: token IDs (uint32_t*), 输出: token IDs (uint32_t*)
-    std::vector<uint32_t> Generate(
-        const std::vector<uint32_t>& prompt_tokens,
-        const GenerationConfig& config  // max_tokens, eos_token_id only
-    );
+    static StatusOr<InferenceSession> Create(
+        Runtime& runtime,
+        std::shared_ptr<const ExecutableModel> model);
+
+    // 返回仅包含本次新生成的 token IDs；遇到 EOS 时包含 EOS 后停止。
+    StatusOr<std::vector<uint32_t>> Generate(
+        std::span<const uint32_t> prompt_tokens,
+        const GenerationConfig& config);
 };
 
 // C ABI 伪代码

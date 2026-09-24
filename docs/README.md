@@ -35,13 +35,15 @@
 
 | 文档 | 定位 | 状态 | 最后更新 |
 |---|---|---|---|
-| [architecture/architecture_overview.md](designs/architecture/architecture_overview.md) | 全系统唯一权威总览（六层架构、依赖规则、产物所有权、当前产品边界） | Current | 2026-08-21 |
+| [architecture/architecture_overview.md](designs/architecture/architecture_overview.md) | 全系统唯一权威总览（六层架构、依赖规则、产物所有权、当前产品边界） | Current | 2026-09-24 |
 
 #### 模块设计（按模块子目录）
 
 | 文档 | 定位 | 状态 |
 |---|---|---|
 | [model/01-model-loader.md](designs/model/01-model-loader.md) | ModelLoader 模块：HF I/O/校验/权重 resolve（P3 新建，基于当前头文件） | Current |
+| [inference/01-executable-model.md](designs/inference/01-executable-model.md) | ExecutableModel 模块：`PrepareExecutableModel` 唯一准备入口、所有权与销毁契约、phase 合同、绑定与需求同源 | Current |
+| [inference/02-inference-session.md](designs/inference/02-inference-session.md) | InferenceSession 模块：同步 greedy `Generate`、plan I/O 合同校验、请求级 RAII 与清理顺序、KV 预约算术（prompt + N−1）、Decode 稳态零分配 | Current |
 | [amstring/](designs/amstring/) | amstring 字符串库模块设计（存量，待按 NN- 编号重排） | 待迁移 |
 | [graph_compilation_flow.md](designs/graph_compilation_flow.md) | 图编译流程追踪（存量，待归位 compiler/） | 待迁移 |
 | [graph_lowering_design.md](designs/graph_lowering_design.md) | 图降低设计（存量，待归位 compiler/） | 待迁移 |
@@ -70,12 +72,13 @@
 
 | 文档 | 定位 | 状态 |
 |---|---|---|
-| [01-inference-session-generate-readiness.md](improvement-plan/01-inference-session-generate-readiness.md) | InferenceSession/Generate 前置模块、实施顺序与 public API 准入门禁 | In Progress |
+| [01-inference-session-generate-readiness.md](improvement-plan/01-inference-session-generate-readiness.md) | InferenceSession/Generate 前置模块、实施顺序与 public API 准入门禁 | Implemented |
 | [02-engineering-quality-system.md](improvement-plan/02-engineering-quality-system.md) | Capability-driven 的风险治理、验证 profile 与质量体系建设方案 | Draft |
 | [03-documentation-stabilization.md](improvement-plan/03-documentation-stabilization.md) | Batch -1 文档系统稳定化：D0–D5 迁移计划与 E1–E9 退出条件 | In Progress |
-| [05-kv-cache-manager-evolution.md](improvement-plan/05-kv-cache-manager-evolution.md) | 静态 KV correctness、lease/transaction/kernel binding 与 Paged KV 演进边界 | Draft |
+| [05-kv-cache-manager-evolution.md](improvement-plan/05-kv-cache-manager-evolution.md) | 历史 KV 演进草案；当前事实与排序由 08 号提案取代 | Superseded |
 | [06-system-capability-evolution-roadmap.md](improvement-plan/06-system-capability-evolution-roadmap.md) | 全仓库 capability gap、模块演进裁决与实施顺序 | Draft |
-| [07-executable-model-preparation.md](improvement-plan/07-executable-model-preparation.md) | `LoweredModelArtifact → ExecutableModel` 生产准备入口、权重绑定映射与模块归属 | In Progress |
+| [07-executable-model-preparation.md](improvement-plan/07-executable-model-preparation.md) | `LoweredModelArtifact → ExecutableModel` 生产准备入口、权重绑定映射与模块归属 | Implemented |
+| [08-kv-cache-and-attention-capability-evolution.md](improvement-plan/08-kv-cache-and-attention-capability-evolution.md) | KV owner/epoch 正确性、CPU Attention 优化准入与 Paged KV 长期触发条件 | Draft |
 
 > 算子专项提案不再建在本目录：按 [算子开发工作流 O3](guides/operator-development-workflow.md) 建在 `docs/operators/<op>/<op>-optimization.md`（原 04 号 GEMM 专项已迁至 [operators/gemm/cpu-gemm-optimization.md](operators/gemm/cpu-gemm-optimization.md)）。
 

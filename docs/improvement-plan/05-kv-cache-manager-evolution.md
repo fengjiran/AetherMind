@@ -1,13 +1,16 @@
 # KVCache Manager 演进方案
 
-- **状态**: Draft
-- **版本**: 1.0
+- **状态**: Superseded
+- **版本**: 1.1
 - **日期**: 2026-09-16
+- **最近更新**: 2026-09-24
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **当前实现说明**: [KV Cache 设计](../designs/kv_cache_design.md)
 - **关联计划**: [InferenceSession / Generate 前置闭环计划](01-inference-session-generate-readiness.md)
 - **关联模块**: runtime / execution / backend / model orchestration
+
+> **已被取代**：本文是 2026-09-16 的历史方案，§2、§3、§12 等“当前状态”早于 KV kernel、M4/M5 Generate 落地；不可作为当前实现或未闭环项目清单。最新事实、已复现的 owner/epoch 缺陷、CPU Attention 优化准入与 Paged KV 触发条件见 [08 号演进提案](08-kv-cache-and-attention-capability-evolution.md)。本文的接口草图仅供历史设计参考。
 
 ## 1. 结论与范围
 
@@ -742,3 +745,4 @@ Block[group][layer-in-group][K/V][token-in-block][head][dim]
 | 日期 | 版本 | 变更 |
 |---|---|---|
 | 2026-09-16 | 1.0 | 基于当前静态实现与业界 fixed-block/prefix-cache 方案，建立 contiguous baseline、lease/transaction/binding 目标架构及 Paged KV 演进边界 |
+| 2026-09-24 | 1.1 | 标记为 Superseded；当前事实和演进排序由 08 号提案接管，保留历史设计草图 |

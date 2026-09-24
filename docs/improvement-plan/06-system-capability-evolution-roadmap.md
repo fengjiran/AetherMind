@@ -373,7 +373,7 @@ Prefill/Decode shape 或 address 改变时必须重新 specialize，除非计划
 
 ### 10.1 P0：KVCache Manager
 
-由 [KVCache Manager 演进方案](05-kv-cache-manager-evolution.md) 定义：contiguous static baseline、lease、append transaction、owner/epoch、execution binding 和未来 Paged KV 边界。
+本节保留 2026-09-17 的路线图快照；KV owner/epoch correctness、已闭环的 execution binding、CPU Attention 优化与未来 Paged KV 的当前裁决见 [08 号演进提案](08-kv-cache-and-attention-capability-evolution.md)。
 
 ### 10.2 P1：统一 resource plan
 

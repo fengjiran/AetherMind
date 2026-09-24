@@ -1,8 +1,8 @@
 # AetherMind 系统架构总览
 
 - **状态**: Current（描述已验证实现；只写仓库事实）
-- **版本**: 1.1
-- **日期**: 2026-09-16
+- **版本**: 1.2
+- **日期**: 2026-09-24
 - **术语**: 见 [docs/README.md 术语表](../../README.md)
 - **规范**: 本文档为全系统唯一权威总览，其他设计文档引用其章节而非复制内容（[文档系统规范](../../guides/documentation-guide.md)）
 
@@ -133,13 +133,13 @@ API 服务层是 AetherMind **进程内**集成/服务边界。它不是 HTTP/gR
 | 维度 | 说明 |
 |------|------|
 | **责任** | 装配 Runtime 资源（Allocator、Backend、KVCacheManager）；在冷路径将 `ExecutionPlan` specialize 为 `PreparedExecutionBindings`，并以 `ExecutionContext` 聚合 bindings、borrowed workspace 和 KV view |
-| **当前模块** | `RuntimeBuilder`、`Runtime`、`Executor`、`KVCacheManager`、`PreparedExecutionBindings`、`ExecutionContext`、`ModelLoader` |
-| **主要输入** | 已编译的 `ExecutionPlan`、其对应的模型 artifact（必要时含 `PackedWeightStore`）、Prompt Token 序列、`GenerationConfig` |
-| **主要输出** | 执行步骤结果（tensor 写入 workspace / KV cache 位置）；Token IDs 需由目标 Generate 循环在 Argmax/stop handling 后产生 |
-| **目标缺口** | `InferenceSession`/`PrefillPath`/`DecodePath` 未实现；同步 Generate 状态机尚未闭环。当前 `Executor::Execute` 只执行一个已 specialize 的 plan，不承担跨步骤状态管理或 Prefill/Decode 阶段切换。前置模块与准入门禁见 [InferenceSession / Generate 前置闭环计划](../../improvement-plan/01-inference-session-generate-readiness.md) |
+| **当前模块** | `RuntimeBuilder`、`Runtime`、`Executor`、`KVCacheManager`、`PreparedExecutionBindings`、`ExecutionContext`、`ModelLoader`、`PrepareExecutableModel`/`ExecutableModel`、`InferenceSession` |
+| **主要输入** | 已编译的 `ExecutionPlan`、其对应的模型 artifact（必要时含 `PackedWeightStore`）、Prompt Token 序列、`GenerationConfig{max_new_tokens, eos_token_id}` |
+| **主要输出** | 执行步骤结果（tensor 写入 workspace / KV cache 位置）；`InferenceSession::Generate` 返回本次新生成的 Token IDs（含 Prefill 预测的首 token 与触发停止的 EOS） |
+| **当前缺口** | 同步 Generate 状态机已闭环（session reservation → Prefill → Decode loop → Argmax/stop → 释放预约），见 [InferenceSession 模块设计](../inference/02-inference-session.md)。仓库中不存在独立的 `PrefillPath`/`DecodePath` 类型：phase 区分由 `ExecutableModel::plan(phase)` 与 Session 的两份 `PhaseContract` 承担。剩余缺口为 C ABI（`am_session_*`）、采样、跨调用 KV 复用与并发 Generate |
 | **禁止责任泄漏** | 不得承担请求排队/批处理、不得处理网络 IO、不得承担算子级 dispatch 决策（仅为调用方） |
 
-> 当前生命周期为 `RuntimeBuilder::Build → Runtime`、`ExecutionPlanBuilder::Build → ExecutionPlan`、`PrepareExecutionBindings → PreparedExecutionBindings`、`ExecutionContext::Create → Executor::Execute`。shape/layout/aliasing premise、deferred shape constraints 和 kernel params 均在 `PrepareExecutionBindings` 冷路径验证；`LayerRunner` 只读取已准备的 bindings，绑定 step workspace 并调用冻结的 `step.kernel.fn`。整个 Generate 状态机（session reservation → Prefill → Decode loop → Argmax/stop）仍是当前产品目标。
+> 当前生命周期为 `RuntimeBuilder::Build → Runtime`、`ModelCompiler::Compile → LoweredModelArtifact`、`PrepareExecutableModel → ExecutableModel`（内含 `ExecutionPlanBuilder::Build → ExecutionPlan`）、`InferenceSession::Create/Generate`，其请求内为 `PrepareExecutionBindings → PreparedExecutionBindings`、`ExecutionContext::Create → Executor::Execute`。shape/layout/aliasing premise、deferred shape constraints 和 kernel params 均在 `PrepareExecutionBindings` 冷路径验证；`LayerRunner` 只读取已准备的 bindings，绑定 step workspace 并调用冻结的 `step.kernel.fn`。Generate 状态机（session reservation → Prefill → Decode loop → Argmax/stop）已实现；采样、C ABI 与跨调用 KV 复用仍属当前产品目标。
 
 ---
 

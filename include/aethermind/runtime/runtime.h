@@ -24,6 +24,11 @@ public:
         return allocator_registry_.GetAllocator(device);
     }
 
+    /// @brief Returns whether Runtime has an allocator provider for a device.
+    AM_NODISCARD bool HasAllocatorProvider(DeviceType type) const noexcept {
+        return allocator_registry_.HasProvider(type);
+    }
+
     StatusOr<Backend*> GetBackend(DeviceType type) noexcept {
         return backend_registry_.GetBackend(type);
     }

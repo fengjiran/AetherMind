@@ -111,6 +111,11 @@ public:
     /// \throws RuntimeError if no provider is registered for the device type.
     Allocator& GetAllocator(Device device);
 
+    /// @brief Returns whether a provider is registered for the device type.
+    AM_NODISCARD bool HasProvider(DeviceType type) const noexcept {
+        return providers_.contains(type);
+    }
+
 private:
     std::unordered_map<DeviceType, std::unique_ptr<AllocatorProvider>> providers_;
     std::unordered_map<Device, std::unique_ptr<Allocator>> instances_;

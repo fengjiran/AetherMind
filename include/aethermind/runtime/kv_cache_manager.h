@@ -36,12 +36,14 @@ public:
     /// @brief Reserves the cache for a new session.
     ///
     /// @param prompt_len Prompt token count.
-    /// @param max_new_tokens Tokens the session may still generate.
+    /// @param future_kv_appends Maximum number of KV append positions after the
+    ///        prompt. A Prefill-generated first token is not yet in KV, so a
+    ///        Generate limit of N tokens passes N - 1 here.
     /// @return A view over the reserved slot, or an error if the manager is
     ///         uninitialized, already reserved, or the request exceeds
     ///         physical capacity.
     StatusOr<KVCacheView> ReserveForSession(size_t prompt_len,
-                                            size_t max_new_tokens) noexcept;
+                                            size_t future_kv_appends) noexcept;
     /// @brief Clears the committed position while retaining its reservation.
     ///
     /// @param view Active session view to reset.

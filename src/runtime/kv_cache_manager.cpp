@@ -109,7 +109,7 @@ Status KVCacheManager::Init(size_t num_layers,
 }
 
 StatusOr<KVCacheView> KVCacheManager::ReserveForSession(size_t prompt_len,
-                                                        size_t max_new_tokens) noexcept {
+                                                        size_t future_kv_appends) noexcept {
     if (!initialized_) {
         return Status::FailedPrecondition("KVCacheManager is not initialized");
     }
@@ -122,7 +122,7 @@ StatusOr<KVCacheView> KVCacheManager::ReserveForSession(size_t prompt_len,
     }
 
     size_t requested_tokens = 0;
-    if (CheckOverflowAdd(prompt_len, max_new_tokens, &requested_tokens)) {
+    if (CheckOverflowAdd(prompt_len, future_kv_appends, &requested_tokens)) {
         return Status::Overflow("KV session reservation overflowed size_t");
     }
     if (requested_tokens == 0) {

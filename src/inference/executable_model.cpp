@@ -12,6 +12,7 @@
 #include "utils/overflow_check.h"
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -191,18 +192,24 @@ StatusOr<TensorView> MaterializeBinding(WeightBindingStorage& storage,
 
 } // namespace
 
-ExecutableModel::ExecutableModel(LoweredModelArtifact artifact,
+ExecutableModel::ExecutableModel(Runtime& runtime,
+                                 LoweredModelArtifact artifact,
                                  PackedWeightStore packed_weights,
                                  WeightBindingStorage binding_storage,
                                  ExternalTensorBindings bindings,
                                  ExecutionPlan plan,
-                                 ExecPhase phase) noexcept
-    : artifact_(std::move(artifact)),
+                                 ExecPhase phase,
+                                 size_t context_limit,
+                                 size_t vocab_size) noexcept
+    : runtime_(&runtime),
+      artifact_(std::move(artifact)),
       packed_weights_(std::move(packed_weights)),
       binding_storage_(std::move(binding_storage)),
       bindings_(std::move(bindings)),
       plan_(std::move(plan)),
-      phase_(phase) {}
+      phase_(phase),
+      context_limit_(context_limit),
+      vocab_size_(vocab_size) {}
 
 Status ExecutableModel::CheckPhase(ExecPhase phase) const noexcept {
     if (!PhaseMatches(phase_, phase)) {
@@ -230,6 +237,18 @@ uint64_t ExecutableModel::artifact_id() const noexcept {
 
 ExecPhase ExecutableModel::phase() const noexcept {
     return phase_;
+}
+
+size_t ExecutableModel::context_limit() const noexcept {
+    return context_limit_;
+}
+
+size_t ExecutableModel::vocab_size() const noexcept {
+    return vocab_size_;
+}
+
+bool ExecutableModel::IsPreparedFor(const Runtime& runtime) const noexcept {
+    return runtime_ == &runtime;
 }
 
 StatusOr<std::vector<WeightPackingRequest>>
@@ -273,6 +292,19 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
     if (artifact.loaded_model == nullptr) {
         return Status::InvalidArgument(
                 "PrepareExecutableModel: artifact carries no loaded model");
+    }
+    const HfModelConfig& model_config = artifact.loaded_model->GetConfig();
+    if (model_config.vocab_size <= 0 || model_config.max_position_embeddings <= 0) {
+        return Status::InvalidArgument(
+                "PrepareExecutableModel: loaded model has invalid vocabulary or context limit");
+    }
+    const uint64_t vocab_size = static_cast<uint64_t>(model_config.vocab_size);
+    const uint64_t context_limit =
+            static_cast<uint64_t>(model_config.max_position_embeddings);
+    if (vocab_size > std::numeric_limits<size_t>::max() ||
+        context_limit > std::numeric_limits<size_t>::max()) {
+        return Status::Overflow(
+                "PrepareExecutableModel: vocabulary or context limit does not fit size_t");
     }
     const ResolvedModelWeights& resolved = artifact.loaded_model->GetResolvedWeights();
 
@@ -350,9 +382,11 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
         }
     }
 
-    return ExecutableModel(std::move(artifact), std::move(packed_weights),
+    return ExecutableModel(runtime, std::move(artifact), std::move(packed_weights),
                            std::move(binding_storage), std::move(bindings),
-                           std::move(*plan), *phase);
+                           std::move(*plan), *phase,
+                           static_cast<size_t>(context_limit),
+                           static_cast<size_t>(vocab_size));
 }
 
 } // namespace aethermind

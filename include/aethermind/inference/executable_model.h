@@ -12,6 +12,7 @@
 #include "aethermind/inference/weight_binding_storage.h"
 #include "aethermind/model/weight/weight_packing.h"
 
+#include <cstddef>
 #include <cstdint>
 
 namespace aethermind {
@@ -27,7 +28,8 @@ class Runtime;
 /// role, or interpret packing decisions — preparation has already done it.
 ///
 /// Lifetime, outermost first:
-/// - the Runtime passed to PrepareExecutableModel must outlive this object,
+/// - the Runtime passed to PrepareExecutableModel must remain at the same
+///   address, must not be moved, and must outlive this object,
 ///   because the plan's resolved kernels borrow its backends;
 /// - this object must outlive every PreparedExecutionBindings built from its plan
 ///   and bindings, because prepared bindings borrow the weight data pointers
@@ -80,26 +82,44 @@ public:
     /// @brief Returns the single phase this artifact was compiled for.
     AM_NODISCARD ExecPhase phase() const noexcept;
 
+    /// @brief Returns the conservative maximum sequence length from the
+    ///        validated HF max_position_embeddings field.
+    AM_NODISCARD size_t context_limit() const noexcept;
+
+    /// @brief Returns the validated vocabulary size used to check token IDs.
+    AM_NODISCARD size_t vocab_size() const noexcept;
+
+    /// @brief Returns whether this model's resolved kernels belong to runtime.
+    AM_NODISCARD bool IsPreparedFor(const Runtime& runtime) const noexcept;
+
 private:
     friend StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
                                                             LoweredModelArtifact artifact);
 
-    ExecutableModel(LoweredModelArtifact artifact,
+    ExecutableModel(Runtime& runtime,
+                    LoweredModelArtifact artifact,
                     PackedWeightStore packed_weights,
                     WeightBindingStorage binding_storage,
                     ExternalTensorBindings bindings,
                     ExecutionPlan plan,
-                    ExecPhase phase) noexcept;
+                    ExecPhase phase,
+                    size_t context_limit,
+                    size_t vocab_size) noexcept;
 
     /// @brief Validates a phase query against the compiled artifact phase.
     Status CheckPhase(ExecPhase phase) const noexcept;
 
+    // The resolved kernel function pointers borrow backend-owned state.
+    // This Runtime must stay at the same address and outlive this model.
+    Runtime* runtime_ = nullptr;
     LoweredModelArtifact artifact_{};
     PackedWeightStore packed_weights_{};
     WeightBindingStorage binding_storage_{};
     ExternalTensorBindings bindings_{};
     ExecutionPlan plan_{};
     ExecPhase phase_ = ExecPhase::kBoth;
+    size_t context_limit_ = 0;
+    size_t vocab_size_ = 0;
 };
 
 /// @brief Prepares a compiled artifact for execution.

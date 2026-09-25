@@ -6,8 +6,7 @@
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <array>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -141,7 +140,7 @@ TEST(KernelRegistry, DuplicateRegistrationFails) {
 TEST(KernelRegistry, RegisterRejectsEmptyKernelName) {
     KernelRegistry registry;
     KernelDef descriptor = MakeTestKernelDef();
-    descriptor.name.clear();
+    descriptor.name = {};
 
     const Status status = registry.Register(descriptor);
 
@@ -197,22 +196,22 @@ TEST(KernelRegistry, DebugDumpContainsRegisteredEntries) {
     EXPECT_NE(dump.find("test::op"), std::string::npos);
 }
 
-TEST(KernelRegistry, RegisterCopiesKernelNameStorage) {
+TEST(KernelRegistry, RegisterBorrowsKernelNameStorage) {
     KernelRegistry registry;
+    static constexpr std::string_view kRegisteredName = "test::borrowed";
     KernelDef descriptor = MakeTestKernelDef();
-    std::array<char, 15> mutable_name{};
-    const char original_name[] = "test::mutable";
-    std::copy_n(original_name, sizeof(original_name), mutable_name.data());
-    descriptor.name = mutable_name.data();
+    descriptor.name = kRegisteredName;
 
     ASSERT_TRUE(registry.Register(descriptor).ok());
-    mutable_name.fill('x');
     ASSERT_TRUE(registry.Freeze().ok());
 
     const auto candidates = registry.FindCandidates(OpType::kRmsNorm, descriptor.selector);
     ASSERT_TRUE(candidates.ok()) << candidates.status().ToString();
     ASSERT_EQ(candidates->size(), 1U);
-    EXPECT_EQ((*candidates)[0]->name, original_name);
+    // Registration borrows the name view; it must not rebind it to copied
+    // storage, which is why callers must pass static-duration names.
+    EXPECT_TRUE((*candidates)[0]->name.data() == kRegisteredName.data());
+    EXPECT_EQ((*candidates)[0]->name, kRegisteredName);
 }
 
 TEST(KernelRegistry, ConcurrentFreezeIsIdempotent) {

@@ -354,7 +354,7 @@ StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
 
 PackingRecipe cpu::CpuBPanelF32V1Avx2Recipe() {
     return PackingRecipe{
-            .layout = std::string(cpu::kCpuBPanelF32V1Avx2Layout),
+            .layout = cpu::kCpuBPanelF32V1Avx2Layout,
             .alignment = cpu::kCpuBPanelF32V1Alignment};
 }
 
@@ -392,7 +392,7 @@ PackingRecipe CpuWeightPrepacker::RecipeFor(const KernelSelector& selector) noex
     // so distinct packing variants of the same {binding, selector} stay
     // distinguishable once real tile-block layouts land.
     (void) selector;
-    return PackingRecipe{.layout = std::string(cpu::kCpuIdentityPackingLayout),
+    return PackingRecipe{.layout = cpu::kCpuIdentityPackingLayout,
                          .alignment = cpu::kCpuIdentityPackingAlignment};
 }
 

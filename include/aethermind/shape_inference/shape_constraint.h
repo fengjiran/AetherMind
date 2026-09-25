@@ -3,7 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -110,7 +110,11 @@ using ConstraintVariant = std::variant<
 /// violated, or deferred until concrete runtime shapes are available.
 struct ShapeConstraint {
     ConstraintVariant condition;
-    std::string error_context;
+    /// Diagnostic context of the violated constraint. Borrows the literal used
+    /// by the emitting operator's Infer function, so it must reference
+    /// static-duration storage; constraints are copied into longer-lived
+    /// artifacts (runtime checks of lowered steps and execution plans).
+    std::string_view error_context;
 
     friend bool operator==(const ShapeConstraint& lhs, const ShapeConstraint& rhs) noexcept(
             noexcept(lhs.condition == rhs.condition)) {

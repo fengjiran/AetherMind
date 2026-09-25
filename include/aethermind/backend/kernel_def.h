@@ -16,7 +16,7 @@
 #include "aethermind/operators/op_type.h"
 
 #include <bit>
-#include <string>
+#include <string_view>
 
 namespace aethermind {
 
@@ -56,8 +56,11 @@ struct KernelDef {
     /// Optional builder for immutable metadata derived from `OpParams`.
     KernelMetadataBuilder metadata_builder = nullptr;
 
-    /// Human-readable kernel name for diagnostics and registry lookup.
-    std::string name{};
+    /// Human-readable kernel name for diagnostics. Borrows storage owned by
+    /// the caller: it must reference a string literal or other
+    /// static-duration constant, because the registry stores the view without
+    /// copying and `ResolvedKernel` hands the same pointer to execution.
+    std::string_view name{};
 };
 
 /// @brief Validates a kernel definition's invariants.
@@ -66,60 +69,58 @@ struct KernelDef {
 /// requirements, and the consistency between `params_builder` and
 /// `params_size`.
 ///
-/// @param descriptor Descriptor to validate.
+/// @param def Descriptor to validate.
 /// @return `Ok` when all invariants hold, otherwise `InvalidArgument` with
 ///         a diagnostic message.
-AM_NODISCARD inline Status ValidateKernelDef(const KernelDef& descriptor) noexcept {
-    if (descriptor.op_type == OpType::kUnknown) {
+inline Status ValidateKernelDef(const KernelDef& def) noexcept {
+    if (def.op_type == OpType::kUnknown) {
         return Status::InvalidArgument("Kernel definition op_type cannot be kUnknown");
     }
 
-    if (descriptor.kernel_func == nullptr) {
+    if (def.kernel_func == nullptr) {
         return Status::InvalidArgument("Kernel definition function cannot be null");
     }
 
-    if (descriptor.name.empty()) {
+    if (def.name.empty()) {
         return Status::InvalidArgument("Kernel definition name cannot be empty");
     }
 
-    if (descriptor.selector.device_type == DeviceType::kUndefined) {
+    if (def.selector.device_type == DeviceType::kUndefined) {
         return Status::InvalidArgument(
                 "Kernel definition device_type cannot be kUndefined");
     }
 
-    const bool packed_selector =
-            descriptor.selector.weight_format == WeightFormat::kPacked;
-    if (packed_selector) {
-        if (descriptor.packing_recipe.layout.empty() ||
-            descriptor.packing_recipe.alignment < alignof(void*) ||
-            !std::has_single_bit(descriptor.packing_recipe.alignment)) {
-            return Status::InvalidArgument(
-                    "Packed kernel definition requires a named recipe with power-of-two alignment");
+    if (def.selector.weight_format == WeightFormat::kPacked) {
+        if (def.packing_recipe.layout.empty() ||
+            def.packing_recipe.alignment < alignof(void*) ||
+            !std::has_single_bit(def.packing_recipe.alignment)) {
+            return Status::InvalidArgument("Packed kernel definition requires "
+                                           "a named recipe with power-of-two alignment");
         }
-    } else if (!descriptor.packing_recipe.layout.empty() ||
-               descriptor.packing_recipe.alignment != 0) {
-        return Status::InvalidArgument(
-                "Plain kernel definition cannot declare a packing recipe");
+    } else if (!def.packing_recipe.layout.empty() ||
+               def.packing_recipe.alignment != 0) {
+        return Status::InvalidArgument("Plain kernel definition cannot "
+                                       "declare a packing recipe");
     }
 
-    if (descriptor.selector.device_type != DeviceType::kCPU &&
-        !descriptor.cpu_requirements.empty()) {
-        return Status::InvalidArgument(
-                "Only CPU kernel definitions may declare CPU feature requirements");
+    if (def.selector.device_type != DeviceType::kCPU &&
+        !def.cpu_requirements.empty()) {
+        return Status::InvalidArgument("Only CPU kernel definitions "
+                                       "may declare CPU feature requirements");
     }
 
-    if (descriptor.params_builder != nullptr) {
-        if (descriptor.params_size == 0) {
-            return Status::InvalidArgument(
-                    "params_size must be > 0 when params_builder is set");
+    if (def.params_builder != nullptr) {
+        if (def.params_size == 0) {
+            return Status::InvalidArgument("params_size must be > 0 "
+                                           "when params_builder is set");
         }
 
-        if (descriptor.params_size > kMaxKernelParamsSize) {
+        if (def.params_size > kMaxKernelParamsSize) {
             return Status::InvalidArgument("params_size exceeds kMaxKernelParamsSize");
         }
     }
 
-    if (descriptor.params_builder == nullptr && descriptor.params_size != 0) {
+    if (def.params_builder == nullptr && def.params_size != 0) {
         return Status::InvalidArgument(
                 "params_size must be zero when params_builder is null");
     }

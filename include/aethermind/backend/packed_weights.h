@@ -7,7 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <string>
+#include <string_view>
 #include <vector>
 
 namespace aethermind {
@@ -18,8 +18,11 @@ namespace aethermind {
 /// differ; the store keeps them as distinct entries. The recipe is the
 /// artifact-side counterpart that a kernel's packed format implies.
 struct PackingRecipe {
-    /// Canonical layout name (e.g. "cpu_identity").
-    std::string layout{};
+    /// Canonical layout name (e.g. "cpu_identity"). Borrows storage that must
+    /// outlive every artifact and artifact key carrying this recipe, so it must
+    /// reference a string literal or a static-duration constant such as
+    /// `cpu::kCpuIdentityPackingLayout`.
+    std::string_view layout{};
     /// Required alignment of layout block starts within the artifact.
     size_t alignment = 0;
 

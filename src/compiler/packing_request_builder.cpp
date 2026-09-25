@@ -112,12 +112,10 @@ StatusOr<std::vector<WeightPackingRequest>> BuildWeightPackingRequests(
                         "BuildWeightPackingRequests: weight value out of range");
             }
 
-            const auto* weight =
-                    std::get_if<WeightValue>(&lowered.values()[value.index].payload);
+            const auto* weight = std::get_if<WeightValue>(&lowered.values()[value.index].payload);
             if (weight == nullptr) {
-                return Status::Internal(
-                        "BuildWeightPackingRequests: kWeight value has no "
-                        "WeightValue payload");
+                return Status::Internal("BuildWeightPackingRequests: kWeight value has no "
+                                        "WeightValue payload");
             }
 
             auto components = ResolveWeightComponents(resolved, weight->binding);

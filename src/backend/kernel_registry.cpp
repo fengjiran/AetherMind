@@ -127,7 +127,7 @@ std::string KernelRegistry::DebugDump() const {
         const auto& d = kernels_[i];
         if (i > 0) out += '\n';
         out += std::string(ToString(d.op_type)) + " | " +
-               d.name + " | " +
+               std::string(d.name) + " | " +
                ToString(d.selector) + " | cpu_features=" +
                ToString(d.cpu_requirements) + " | priority=" +
                std::to_string(d.priority);

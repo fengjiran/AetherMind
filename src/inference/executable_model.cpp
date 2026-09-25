@@ -290,24 +290,25 @@ inference::internal::ResolveWeightPackingRequests(
 StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
                                                  LoweredModelArtifact artifact) {
     if (artifact.loaded_model == nullptr) {
-        return Status::InvalidArgument(
-                "PrepareExecutableModel: artifact carries no loaded model");
+        return Status::InvalidArgument("PrepareExecutableModel: artifact "
+                                       "carries no loaded model");
     }
+
     const HfModelConfig& model_config = artifact.loaded_model->GetConfig();
     if (model_config.vocab_size <= 0 || model_config.max_position_embeddings <= 0) {
-        return Status::InvalidArgument(
-                "PrepareExecutableModel: loaded model has invalid vocabulary or context limit");
+        return Status::InvalidArgument("PrepareExecutableModel: loaded model has "
+                                       "invalid vocabulary or context limit");
     }
-    const uint64_t vocab_size = static_cast<uint64_t>(model_config.vocab_size);
-    const uint64_t context_limit =
-            static_cast<uint64_t>(model_config.max_position_embeddings);
+
+    const auto vocab_size = static_cast<uint64_t>(model_config.vocab_size);
+    const auto context_limit = static_cast<uint64_t>(model_config.max_position_embeddings);
     if (vocab_size > std::numeric_limits<size_t>::max() ||
         context_limit > std::numeric_limits<size_t>::max()) {
-        return Status::Overflow(
-                "PrepareExecutableModel: vocabulary or context limit does not fit size_t");
+        return Status::Overflow("PrepareExecutableModel: vocabulary or "
+                                "context limit does not fit size_t");
     }
-    const ResolvedModelWeights& resolved = artifact.loaded_model->GetResolvedWeights();
 
+    const ResolvedModelWeights& resolved = artifact.loaded_model->GetResolvedWeights();
     auto requests = BuildWeightPackingRequests(artifact.graph, resolved);
     if (!requests.ok()) {
         return requests.status();

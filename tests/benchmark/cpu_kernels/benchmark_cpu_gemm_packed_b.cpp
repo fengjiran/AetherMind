@@ -216,7 +216,7 @@ void BenchmarkPackedLinear(benchmark::State& state, CacheMode mode) {
             .op_type = OpType::kLinear,
             .fn = (*resolved_descriptor)->kernel_func,
             .attrs = {},
-            .name = (*resolved_descriptor)->name.c_str(),
+            .name = (*resolved_descriptor)->name,
             .params_builder = (*resolved_descriptor)->params_builder,
             .params_size = (*resolved_descriptor)->params_size,
             .workspace_requirement = {},
@@ -358,7 +358,7 @@ void BenchmarkPackedLinear(benchmark::State& state, CacheMode mode) {
     const double size_amplification = packed_bytes /
                                       static_cast<double>(logical_weight_bytes);
     const double avg_pack_ns = pack_ns_per_artifact;
-    state.SetLabel(std::string{"kernel="} + kernel.name +
+    state.SetLabel(std::string{"kernel="} + std::string{kernel.name} +
                    (mode == CacheMode::kHot ? " cache_mode=hot" : " cache_mode=streaming"));
     state.counters["weight replicas"] = static_cast<double>(replica_count);
     state.counters["weight working set MiB"] =
@@ -427,7 +427,8 @@ void BM_WeightPackingCpuBpanel(benchmark::State& state) {
         return;
     }
     const size_t packed_bytes = (*checked)->storage().nbytes();
-    state.SetLabel(std::string{"recipe="} + recipe.layout + " mode=cold-packing");
+    state.SetLabel(std::string{"recipe="} + std::string{recipe.layout} +
+                   " mode=cold-packing");
     state.counters["size amplification"] =
             static_cast<double>(packed_bytes) / static_cast<double>(logical_bytes);
     state.counters["logical bytes"] = static_cast<double>(logical_bytes);

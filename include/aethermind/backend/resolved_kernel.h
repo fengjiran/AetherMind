@@ -15,6 +15,7 @@
 #include "aethermind/operators/op_type.h"
 
 #include <cstddef>
+#include <string_view>
 #include <vector>
 
 namespace aethermind {
@@ -37,9 +38,9 @@ struct ResolvedKernel {
     /// call.
     std::vector<std::byte> attrs{};
 
-    /// Debug name that borrows backend-owned stable storage. Must stay valid
-    /// for the lifetime of the frozen execution plan.
-    const char* name = nullptr;
+    /// Debug name borrowed from the resolved `KernelDef`, whose storage must
+    /// outlive the frozen execution plan.
+    std::string_view name{};
 
     /// Optional builder for type-erased kernel params; null when param-less.
     KernelParamsBuilder params_builder = nullptr;

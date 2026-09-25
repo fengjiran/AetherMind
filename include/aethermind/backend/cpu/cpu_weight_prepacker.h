@@ -29,7 +29,7 @@ inline constexpr size_t kCpuIdentityPackingAlignment = 64;
 } // namespace cpu
 
 inline PackingRecipe CpuIdentityPackingRecipe() {
-    return PackingRecipe{.layout = std::string(cpu::kCpuIdentityPackingLayout),
+    return PackingRecipe{.layout = cpu::kCpuIdentityPackingLayout,
                          .alignment = cpu::kCpuIdentityPackingAlignment};
 }
 

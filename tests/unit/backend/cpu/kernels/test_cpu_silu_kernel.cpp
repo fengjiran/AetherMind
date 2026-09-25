@@ -86,7 +86,7 @@ TEST(CPUKernelSilu, ResolvesF32ReferenceDescriptor) {
     const auto kernel = PrepareSiluKernel();
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
 
-    EXPECT_STREQ(kernel->name, "cpu::silu_f32_reference");
+    EXPECT_EQ(kernel->name, "cpu::silu_f32_reference");
     EXPECT_EQ(kernel->op_type, OpType::kSilu);
     EXPECT_EQ(kernel->params_size, sizeof(SiluF32KernelArgs));
     EXPECT_NE(kernel->params_builder, nullptr);

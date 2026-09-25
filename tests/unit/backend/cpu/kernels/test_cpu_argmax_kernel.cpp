@@ -278,7 +278,7 @@ TEST(CPUKernelArgmax, ResolvesReferenceDescriptor) {
     const StatusOr<ResolvedKernel> kernel = PrepareArgmaxKernel(-1);
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
 
-    EXPECT_STREQ(kernel->name, "cpu::argmax_f32_reference");
+    EXPECT_EQ(kernel->name, "cpu::argmax_f32_reference");
     EXPECT_EQ(kernel->op_type, OpType::kArgmax);
     EXPECT_EQ(kernel->params_size, sizeof(ArgmaxF32KernelArgs));
     EXPECT_NE(kernel->params_builder, nullptr);

@@ -7,27 +7,27 @@ namespace aethermind {
 namespace {
 
 OperatorInputPort Input(std::string_view name, OperatorPortKind kind) {
-    return {.kind = kind, .name = std::string(name)};
+    return {.kind = kind, .name = name};
 }
 
 OperatorInputPort Input(std::string_view name, OperatorPortKind kind,
                         bool contributes_tensor_spec) {
     return {.kind = kind,
             .contributes_tensor_spec = contributes_tensor_spec,
-            .name = std::string(name)};
+            .name = name};
 }
 
 OperatorOutputPort Output(std::string_view name) {
     return {.kind = OperatorPortKind::kActivation,
-            .name = std::string(name)};
+            .name = name};
 }
 
 OperatorOutputPort Output(std::string_view name, OperatorPortKind kind) {
-    return {.kind = kind, .name = std::string(name)};
+    return {.kind = kind, .name = name};
 }
 
 StateAliasPortPair StateAlias(std::string_view input, std::string_view output) {
-    return {.input_port = std::string(input), .output_port = std::string(output)};
+    return {.input_port = input, .output_port = output};
 }
 
 constexpr OperatorTraits RuntimeOnly() noexcept {
@@ -53,7 +53,7 @@ StatusOr<uint32_t> FindPortIndex(std::span<const Port> ports,
                                  std::string_view name,
                                  const char* not_found_message) noexcept {
     for (const auto& port: ports) {
-        if (std::string_view(port.name) == name) {
+        if (port.name == name) {
             return static_cast<uint32_t>(&port - ports.data());
         }
     }

@@ -14,7 +14,6 @@
 
 #include <cstdint>
 #include <span>
-#include <string>
 #include <string_view>
 #include <vector>
 
@@ -44,7 +43,8 @@ struct OperatorInputPort {
     /// layout is determined by the operator itself, not propagated) are
     /// excluded from spec derivation.
     bool contributes_tensor_spec = true;
-    std::string name{};
+    /// Port name borrowed from the literal in the static schema definition.
+    std::string_view name{};
 };
 
 /// @brief Describes one output position in an operator's semantic ABI.
@@ -52,7 +52,8 @@ struct OperatorInputPort {
 /// The port's vector position is its index: `output_ports[0]` is output 0.
 struct OperatorOutputPort {
     OperatorPortKind kind = OperatorPortKind::kActivation;
-    std::string name{};
+    /// Port name borrowed from the literal in the static schema definition.
+    std::string_view name{};
 };
 
 /// @brief Structural properties used by graph optimization and validation.
@@ -78,9 +79,10 @@ struct OperatorTraits {
 ///
 /// Ports are referenced by name; the schema is the sole authority for their
 /// indexes, resolved via FindInputPortIndex/FindOutputPortIndex at use time.
+/// Both names borrow the literals in the static schema definition.
 struct StateAliasPortPair {
-    std::string input_port{};
-    std::string output_port{};
+    std::string_view input_port{};
+    std::string_view output_port{};
 };
 
 /// @brief Associates an operator type with its port layout and semantic traits.

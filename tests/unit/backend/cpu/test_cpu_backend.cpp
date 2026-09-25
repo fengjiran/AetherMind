@@ -38,7 +38,7 @@ TEST(CpuBackend, PolicyRestrictsKernelEligibility) {
             OpParams{RmsNormParams{.eps = 1.0e-5F}});
 
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
-    EXPECT_STREQ(resolved->name, "cpu::rmsnorm_f32_reference");
+    EXPECT_EQ(resolved->name, "cpu::rmsnorm_f32_reference");
     EXPECT_FALSE(backend.cpu_capabilities().effective_features.Contains(CpuFeature::kFma));
 }
 
@@ -47,7 +47,7 @@ TEST(CpuBackend, PrepareKernelFindsConfiguredLinearDescriptor) {
     const StatusOr<ResolvedKernel> resolved = backend.PrepareKernel(
             OpType::kLinear, MakeCpuSelector(), OpParams{LinearParams{}});
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
-    EXPECT_STREQ(resolved->name, "cpu::linear_f32_reference");
+    EXPECT_EQ(resolved->name, "cpu::linear_f32_reference");
 }
 
 TEST(CpuBackend, RejectsRecipeNotSelectedByItsFeaturePolicy) {

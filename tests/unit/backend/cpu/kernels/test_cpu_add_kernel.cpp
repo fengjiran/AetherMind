@@ -592,7 +592,7 @@ TEST(AddKernel, ResolvesThroughCpuBackend) {
                 OpType::kAdd, selector, OpParams{AddParams{}});
         ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
         EXPECT_NE(resolved.value().fn, nullptr);
-        EXPECT_STREQ(resolved.value().name, expected_name);
+        EXPECT_EQ(resolved.value().name, expected_name);
     }
 }
 

@@ -172,7 +172,7 @@ std::string BenchmarkLabel(const ResolvedKernel& kernel,
         return "unknown";
     }();
     return std::string{"kernel="} +
-           (kernel.name == nullptr ? "<unnamed>" : kernel.name) +
+           (kernel.name.empty() ? std::string{"<unnamed>"} : std::string{kernel.name}) +
            " cache_mode=" + mode_name;
 }
 

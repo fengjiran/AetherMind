@@ -1,13 +1,10 @@
 #include "aethermind/inference/inference_session.h"
-
-#include "aethermind/base/tensor_view.h"
 #include "aethermind/base/workspace_arena.h"
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/inference/executable_model.h"
-#include "aethermind/operators/op_type.h"
 #include "aethermind/runtime/kv_cache_manager.h"
 #include "aethermind/runtime/runtime.h"
 #include "inference_session_internal.h"

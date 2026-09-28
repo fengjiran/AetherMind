@@ -568,7 +568,7 @@ StatusOr<PreparedExecutionGraph> PrepareTrustedGraph(const LoweredGraph& lowered
                 return Status::Internal(
                         "kPacked execution step has no kWeight input value");
             }
-            prepared->packed_key = std::move(packed_key);
+            prepared->packed_key = packed_key;
         }
         graph.nodes.push_back(std::move(*prepared));
     }

@@ -1,32 +1,32 @@
 # ExecutableModel 模块设计
 
 - **状态**: Current（描述已验证实现；只写仓库事实）
-- **版本**: 1.1
+- **版本**: 1.2
 - **日期**: 2026-09-23
-- **最近更新**: 2026-09-24
+- **最近更新**: 2026-09-26
 - **来源提案**: [07 号提案：ExecutableModel 生产准备入口方案](../../improvement-plan/07-executable-model-preparation.md)（Implemented）
 - **关联代码**: [include/aethermind/inference/](../../../include/aethermind/inference/)（`executable_model.h`、`weight_binding_storage.h`）/[src/inference/](../../../src/inference/)
 - **上游依赖**: compiler（`LoweredModelArtifact`、`BuildWeightPackingRequests`）、model（`LoadedModel`/`ResolvedModelWeights`、`ResolveWeightBinding`、`PrepackWeightRequests`、`PackedWeightStore`）、execution（`ExecutionPlanBuilder`、`ComputeExternalReadRequirements`、`ExternalTensorBindings`）、runtime（`Runtime` 提供 backends/allocator）、graph/operators 纯数据 payload 契约（`WeightValue`/`ConstantValue`）
 - **下游消费者**: [`InferenceSession`](02-inference-session.md)（同步 greedy `Generate`，已落地；[01 号计划](../../improvement-plan/01-inference-session-generate-readiness.md) M5）
-- **关联测试**: [tests/unit/inference/test_executable_model.cpp](../../../tests/unit/inference/test_executable_model.cpp)（20 例）、[test_weight_binding_storage.cpp](../../../tests/unit/inference/test_weight_binding_storage.cpp)（8 例）；权重解析权威测试见 [tests/unit/model/weight/test_weight_packing.cpp](../../../tests/unit/model/weight/test_weight_packing.cpp)（`WeightBindingResolver` 套件），需求查询测试见 [test_execution_bindings.cpp](../../../tests/unit/execution/test_execution_bindings.cpp)
+- **关联测试**: [tests/unit/inference/test_executable_model.cpp](../../../tests/unit/inference/test_executable_model.cpp)（20 例）、[test_weight_binding_storage.cpp](../../../tests/unit/inference/test_weight_binding_storage.cpp)（8 例）、[test_load_prepare_executable_model.cpp](../../../tests/unit/inference/test_load_prepare_executable_model.cpp)（3 例）；权重解析权威测试见 [tests/unit/model/weight/test_weight_packing.cpp](../../../tests/unit/model/weight/test_weight_packing.cpp)（`WeightBindingResolver` 套件），需求查询测试见 [test_execution_bindings.cpp](../../../tests/unit/execution/test_execution_bindings.cpp)
 
 ## 1. 背景与目标
 
-`PrepareExecutableModel` 是编译与执行之间的唯一生产准备入口：`LoweredModelArtifact → ExecutableModel`。在它之外不再存在第二条把 artifact、packed 权重、外部绑定与 plan 串起来的路径。
+`PrepareExecutableModel` 是编译与执行之间唯一的 artifact 准备入口：`LoweredModelArtifact → ExecutableModel`，负责把 packed 权重、外部绑定与 plan 组装起来。`LoadAndPrepareExecutableModel(runtime, model_dir, options)` 是面向 HF 模型目录的便捷编排入口，依次调用 `ModelCompiler::LoadAndCompile` 与 `PrepareExecutableModel`，不复制其内部准备逻辑。
 
 目标：
 
-- **单一入口**：调用方（未来的 Session）只持有 `ExecutableModel`，不读取 `LoweredGraph`/`LoweredModelArtifact`，不解析 `TransformerWeightRole`，不解释 packing 决策。
+- **单一入口**：调用方（如 `InferenceSession`）只持有 `ExecutableModel`，不读取 `LoweredGraph`/`LoweredModelArtifact`，不解析 `TransformerWeightRole`，不解释 packing 决策。
 - **准备期失败优于执行期错误数值**：权重无法解析、常量无 inline 数据、phase 自相矛盾等在 prepare 期以可定位的 `Status` 失败，不推进到执行期。
 - **绑定与需求同源**：不可变权重绑定表由 execution 层的唯一需求查询 `ComputeExternalReadRequirements` 推导，二者不可能分叉。
 
 ## 2. 职责与边界
 
-- **提供**：`PrepareExecutableModel(runtime, artifact)`、`ExecutableModel::plan(phase)`、`ExecutableModel::immutable_weight_bindings(phase)`、`artifact_id()`、`phase()`。
+- **提供**：`LoadAndPrepareExecutableModel(runtime, model_dir, options)` 文件到可执行模型的编排、`PrepareExecutableModel(runtime, artifact)` artifact 准备、`ExecutableModel::plan(phase)`、`ExecutableModel::immutable_weight_bindings(phase)`、`artifact_id()`、`phase()`。
 - **请求**：`Runtime`（backend 解析与 workspace 规划）、compiler 的 request builder、model 的 resolver/prepack planner/store、execution 的 plan builder 与需求查询。
 - **所有权**：`ExecutableModel` 按值持有 artifact、`PackedWeightStore`、`WeightBindingStorage`、`ExternalTensorBindings`、`ExecutionPlan`；绑定表只借用其中数据，不复制权重。
 - **明确不做**：不承担算子语义、kernel resolve 算法、weight materialization 算法（packing recipe）或 KV 物理存储；不提供 model inputs 绑定（由 Session 按 phase 追加）；不暴露 packed store 访问器。
-- **生命周期**：`Runtime` > `ExecutableModel` > `InferenceSession` > `ExecutionContext`；`PreparedExecutionBindings` 借用模型数据指针，必须先于 `ExecutableModel` 释放。
+- **生命周期**：`LoadAndPrepareExecutableModel` 借用调用方的 `Runtime`，不创建或拥有 Runtime/Session；Runtime 必须保持原地址并长于返回的 `ExecutableModel`。整体顺序为 `Runtime` > `ExecutableModel` > `InferenceSession` > `ExecutionContext`；`PreparedExecutionBindings` 借用模型数据指针，必须先于 `ExecutableModel` 释放。
 
 ## 3. 关键数据结构
 
@@ -58,6 +58,10 @@
 ## 5. 接口定义
 
 ```cpp
+AM_NODISCARD StatusOr<ExecutableModel> LoadAndPrepareExecutableModel(
+        Runtime& runtime, const std::filesystem::path& model_dir,
+        const ModelCompileOptions& compile_options);
+
 AM_NODISCARD StatusOr<ExecutableModel> PrepareExecutableModel(
         Runtime& runtime, LoweredModelArtifact artifact);
 
@@ -100,6 +104,14 @@ class ExecutableModel {
   - artifact 为 `kBoth` → `kPrefill`/`kDecode`/`kBoth` 查询一律返回同一 plan；
   - artifact 为单 phase → 不匹配查询返回 `kFailedPrecondition`，不静默复用。
 
+### 6.2 目录加载编排与验证范围
+
+- `LoadAndPrepareExecutableModel` 先调用 `ModelCompiler::LoadAndCompile(model_dir, compile_options)`，再把产物移动给 `PrepareExecutableModel(runtime, artifact)`；加载/编译和准备失败都会保留原 `StatusCode`，并在消息中标明失败阶段。
+- `ModelCompileOptions` 必须显式传入。当前默认 O2 优化会形成 fused `QkvLinear`/`GateUpLinear`，而默认 plain weights 与 CPU 对应 kernel 的 packed 要求不兼容；已验证的 HF FP32 文件路径配置为 O1 + plain weights。该入口不创建 Runtime 或 InferenceSession，也不推导 KV Cache 配置。
+- 调用方负责按模型配置创建 Runtime，并保证 Runtime 地址稳定且长于返回模型及其 session；返回的 `ExecutableModel` 持有编译 artifact 和权重 backing，但借用 Runtime 的 backend。
+- 文件到生成的证据见 `LoadAndPrepareExecutableModel.LoadsPreparesAndGeneratesFromHfDirectory`：HF safetensors tiny Llama 使用 O1 + plain weights，入口完成加载、编译、准备及 session 创建，并成功生成 3 个 token（Prefill 后执行两步 Decode）；测试只检查 token 数量与词表范围，不构成标量数值对照或性能证据。
+- O2 + packed 的现有证据是 `ExecutableModel.PackedLoweringPreparesAllWeightConsumers`：合成 tiny Llama artifact 能完成 kernel resolve 与模型准备，并检查 packed step/artifact；它不覆盖 HF 目录入口、`Generate` 或生成数值正确性。
+
 ## 7. 边界条件与错误处理
 
 | 情形 | 错误码 | 备注 |
@@ -128,7 +140,7 @@ model inputs 不进绑定表：token/position 由 Session 按 phase 追加，重
 
 ## 9. 测试要点
 
-- 全流程：真实 `ModelCompiler` artifact（O1 未融合 tiny GQA Llama）→ `PrepareExecutableModel`，权重值自动绑定、与需求集合双向对账、无手工拼 plan。
+- artifact 准备：真实 `ModelCompiler` artifact（O1 未融合 tiny GQA Llama）→ `PrepareExecutableModel`，权重自动绑定并与需求集合双向对账。文件编排：HF safetensors tiny Llama（O1 + plain）→ `LoadAndPrepareExecutableModel` → `InferenceSession::Generate`，请求 3 个新 token 以覆盖 Prefill 与 Decode。
 - tied/untied lm-head：绑定 `data()` 共享/独立。
 - 多层（≥2 layer）：每个权重绑定到自己的 backing，不串层。
 - 常量：物化成功、无 inline 数据、字节数不符三条路径。
@@ -143,3 +155,4 @@ model inputs 不进绑定表：token/position 由 Session 按 phase 追加，重
 |---|---|---|
 | 2026-09-23 | 1.0 | 从 [07 号提案](../../improvement-plan/07-executable-model-preparation.md) 落地实现承接：入口与 API、所有权与销毁契约、八步准备流程、phase 合同、错误码表、测试要点 |
 | 2026-09-24 | 1.1 | 修正两处过期断言：下游消费者 `InferenceSession` 已落地（改指 [02-inference-session.md](02-inference-session.md)）；`kEmbedding`/`kRmsNorm`/`kLinear` 的 packed identity 变体已补齐，完整 Llama 的 packed 配置现可 prepare，原"完整 packed Llama 不可解析"风险行改为描述符覆盖依赖，并新增 packed recipe 选举一行 |
+| 2026-09-26 | 1.2 | 记录 `LoadAndPrepareExecutableModel` 的职责、显式编译配置与 Runtime 生命周期；区分 O1+plain 文件到 Generate 的覆盖范围和 O2+packed 的 prepare 证据 |

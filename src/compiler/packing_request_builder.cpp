@@ -29,12 +29,13 @@ StatusOr<RawWeightView> ResolveSingleWeight(const WeightBinding& binding,
 StatusOr<std::vector<RawWeightView>> ResolveWeightComponents(
         const ResolvedModelWeights& resolved,
         const WeightBinding& binding) {
-    if (const auto* direct = std::get_if<DirectWeightBinding>(&binding.spec)) {
-        if (direct->semantic_role.index() == 0) {
+    if (!IsCompositeWeightBinding(binding)) {
+        if (!TryGetTransformerWeightRole(binding).has_value()) {
             return Status::Internal(
                     "BuildWeightPackingRequests: weight value has no "
                     "semantic role");
         }
+
         auto single = ResolveSingleWeight(binding, resolved);
         if (!single.ok()) {
             return single.status();
@@ -48,8 +49,7 @@ StatusOr<std::vector<RawWeightView>> ResolveWeightComponents(
                  TransformerWeightRole::kAttentionK,
                  TransformerWeightRole::kAttentionV};
     } else if (std::holds_alternative<GateUpWeightBinding>(binding.spec)) {
-        roles = {TransformerWeightRole::kMlpGate,
-                 TransformerWeightRole::kMlpUp};
+        roles = {TransformerWeightRole::kMlpGate, TransformerWeightRole::kMlpUp};
     } else {
         return Status::Internal(
                 "BuildWeightPackingRequests: unknown weight binding spec");
@@ -60,6 +60,7 @@ StatusOr<std::vector<RawWeightView>> ResolveWeightComponents(
                 "BuildWeightPackingRequests: composite binding has no layer "
                 "index");
     }
+
     std::vector<RawWeightView> components;
     components.reserve(roles.size());
     for (const auto role: roles) {

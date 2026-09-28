@@ -25,9 +25,9 @@ namespace aethermind {
 /// @param resolved Resolved raw weights backing the artifact.
 /// @return One request per kWeight input value, or an error when a weight
 ///         value lacks a resolvable raw weight or binding role.
-AM_NODISCARD StatusOr<std::vector<WeightPackingRequest>>
-BuildWeightPackingRequests(const LoweredGraph& lowered,
-                           const ResolvedModelWeights& resolved);
+StatusOr<std::vector<WeightPackingRequest>> BuildWeightPackingRequests(
+        const LoweredGraph& lowered,
+        const ResolvedModelWeights& resolved);
 
 } // namespace aethermind
 

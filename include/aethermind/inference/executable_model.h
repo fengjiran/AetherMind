@@ -14,6 +14,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 
 namespace aethermind {
 
@@ -142,6 +143,25 @@ private:
 StatusOr<ExecutableModel> PrepareExecutableModel(
         Runtime& runtime,
         LoweredModelArtifact artifact);
+
+/// @brief Loads, compiles, and prepares a model directory for execution.
+///
+/// This is a convenience orchestration entry point over
+/// `ModelCompiler::LoadAndCompile` and `PrepareExecutableModel`. Compilation
+/// options are explicit because the default O2/plain-weight combination does
+/// not currently resolve against the CPU kernel registry. The returned model
+/// borrows the backend owned by `runtime`; `runtime` must remain at the same address and
+/// outlive the returned model.
+///
+/// @param runtime Runtime providing the backends used to resolve kernels.
+/// @param model_dir Directory containing the model configuration and weights.
+/// @param compile_options Semantic optimization and lowering configuration.
+/// @return The prepared model, or an error with the original status code and
+///         context identifying loading/compilation or preparation.
+StatusOr<ExecutableModel> LoadAndPrepareExecutableModel(
+        Runtime& runtime,
+        const std::filesystem::path& model_dir,
+        const ModelCompileOptions& compile_options);
 
 } // namespace aethermind
 

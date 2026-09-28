@@ -140,8 +140,7 @@ struct WeightBinding {
 
 /// @brief Creates a generic or semantically-tagged direct-weight binding.
 AM_NODISCARD constexpr WeightBinding MakeDirectWeightBinding(
-        ParameterSlot slot,
-        ModelSemanticRole semantic_role = {},
+        ParameterSlot slot, ModelSemanticRole semantic_role = {},
         std::optional<uint32_t> decoder_layer_index = std::nullopt) noexcept {
     return {.decoder_layer_index = decoder_layer_index,
             .spec = DirectWeightBinding{.slot = slot,
@@ -152,8 +151,9 @@ AM_NODISCARD constexpr WeightBinding MakeDirectWeightBinding(
 AM_NODISCARD constexpr WeightBinding MakeTransformerWeightBinding(
         std::optional<uint32_t> decoder_layer_index,
         TransformerWeightRole role) noexcept {
-    return MakeDirectWeightBinding(
-            SlotForTransformerRole(role), ModelSemanticRole{role}, decoder_layer_index);
+    return MakeDirectWeightBinding(SlotForTransformerRole(role),
+                                   ModelSemanticRole{role},
+                                   decoder_layer_index);
 }
 
 /// @brief Creates the fixed Q, K, V kernel recipe for one decoder layer.
@@ -208,8 +208,7 @@ TryGetTransformerWeightRole(const WeightBinding& binding) noexcept {
 }
 
 /// @brief Returns true when `binding` describes a fixed composite recipe.
-AM_NODISCARD constexpr bool IsCompositeWeightBinding(
-        const WeightBinding& binding) noexcept {
+AM_NODISCARD constexpr bool IsCompositeWeightBinding(const WeightBinding& binding) noexcept {
     return !std::holds_alternative<DirectWeightBinding>(binding.spec);
 }
 

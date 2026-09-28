@@ -386,8 +386,30 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
     return ExecutableModel(runtime, std::move(artifact), std::move(packed_weights),
                            std::move(binding_storage), std::move(bindings),
                            std::move(*plan), *phase,
-                           static_cast<size_t>(context_limit),
-                           static_cast<size_t>(vocab_size));
+                           context_limit,
+                           vocab_size);
+}
+
+StatusOr<ExecutableModel> LoadAndPrepareExecutableModel(
+        Runtime& runtime,
+        const std::filesystem::path& model_dir,
+        const ModelCompileOptions& compile_options) {
+    auto artifact = ModelCompiler::LoadAndCompile(model_dir, compile_options);
+    if (!artifact.ok()) {
+        const Status& status = artifact.status();
+        return status.WithMessage(
+                "LoadAndPrepareExecutableModel loading/compilation failed: " +
+                status.message());
+    }
+
+    auto executable = PrepareExecutableModel(runtime, std::move(*artifact));
+    if (!executable.ok()) {
+        const Status& status = executable.status();
+        return status.WithMessage(
+                "LoadAndPrepareExecutableModel preparation failed: " +
+                status.message());
+    }
+    return std::move(*executable);
 }
 
 } // namespace aethermind

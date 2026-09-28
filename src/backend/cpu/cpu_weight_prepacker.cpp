@@ -354,29 +354,28 @@ StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
 
 PackingRecipe cpu::CpuBPanelF32V1Avx2Recipe() {
     return PackingRecipe{
-            .layout = cpu::kCpuBPanelF32V1Avx2Layout,
-            .alignment = cpu::kCpuBPanelF32V1Alignment};
+            .layout = kCpuBPanelF32V1Avx2Layout,
+            .alignment = kCpuBPanelF32V1Alignment};
 }
 
-StatusOr<size_t> cpu::CpuBPanelF32V1PackedByteSize(
-        int64_t n, int64_t k) noexcept {
+StatusOr<size_t> cpu::CpuBPanelF32V1PackedByteSize(int64_t n, int64_t k) noexcept {
     if (n < 0 || k < 0) {
         return Status::InvalidArgument(
                 "cpu_bpanel_f32 dimensions must be non-negative");
     }
-    const size_t n_blocks = static_cast<size_t>(
-            n / cpu::kCpuBPanelF32V1NR +
-            (n % cpu::kCpuBPanelF32V1NR != 0));
-    const size_t k_panels = static_cast<size_t>(
-            k / cpu::kCpuBPanelF32V1KC +
-            (k % cpu::kCpuBPanelF32V1KC != 0));
+
+    const auto n_blocks = static_cast<size_t>(
+            n / kCpuBPanelF32V1NR + (n % kCpuBPanelF32V1NR != 0));
+    const auto k_panels = static_cast<size_t>(
+            k / kCpuBPanelF32V1KC + (k % kCpuBPanelF32V1KC != 0));
     size_t elements = n_blocks;
     const size_t factors[] = {
-            static_cast<size_t>(cpu::kCpuBPanelF32V1KC),
-            static_cast<size_t>(cpu::kCpuBPanelF32V1NR),
+            static_cast<size_t>(kCpuBPanelF32V1KC),
+            static_cast<size_t>(kCpuBPanelF32V1NR),
             k_panels,
             sizeof(float),
     };
+
     for (const size_t factor: factors) {
         if (factor != 0 && elements > std::numeric_limits<size_t>::max() / factor) {
             return Status::Overflow(

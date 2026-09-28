@@ -12,8 +12,7 @@
 
 namespace aethermind::cpu {
 
-inline constexpr char kCpuBPanelF32V1Avx2Layout[] =
-        "cpu_bpanel_f32_v1_avx2_kc512_candidate";
+inline constexpr char kCpuBPanelF32V1Avx2Layout[] = "cpu_bpanel_f32_v1_avx2_kc512_candidate";
 inline constexpr size_t kCpuBPanelF32V1Alignment = 64;
 inline constexpr int64_t kCpuBPanelF32V1NR = 16;
 inline constexpr int64_t kCpuBPanelF32V1KC = 512;

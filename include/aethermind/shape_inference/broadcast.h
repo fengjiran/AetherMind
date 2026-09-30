@@ -51,8 +51,8 @@ StatusOr<std::vector<int64_t>> BroadcastInputStrides(std::span<const int64_t> in
 /// input shapes. A deferred axis signals that the broadcast dimension
 /// depends on runtime shape information and must be resolved later.
 struct DeferredBroadcastAxis {
-    size_t lhs_axis;
-    size_t rhs_axis;
+    size_t lhs_axis = 0;
+    size_t rhs_axis = 0;
 
     // Defaulted to support EXPECT_EQ comparisons in tests and structural
     // equality checks during deferred-axis resolution.

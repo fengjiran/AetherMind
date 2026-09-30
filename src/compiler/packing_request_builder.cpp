@@ -1,8 +1,6 @@
 #include "aethermind/compiler/packing_request_builder.h"
-
 #include "aethermind/operators/operator_schema.h"
 
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -119,11 +117,6 @@ StatusOr<std::vector<WeightPackingRequest>> BuildWeightPackingRequests(
                                         "WeightValue payload");
             }
 
-            auto components = ResolveWeightComponents(resolved, weight->binding);
-            if (!components.ok()) {
-                return components.status();
-            }
-
             WeightPackingRequest request{
                     .op_type = spec.op_type,
                     .source_id = lowered.artifact_id(),
@@ -132,6 +125,11 @@ StatusOr<std::vector<WeightPackingRequest>> BuildWeightPackingRequests(
                     .selector = spec.selector,
                     .recipe = {},
             };
+
+            auto components = ResolveWeightComponents(resolved, weight->binding);
+            if (!components.ok()) {
+                return components.status();
+            }
 
             if (IsCompositeWeightBinding(weight->binding)) {
                 request.components = std::move(*components);

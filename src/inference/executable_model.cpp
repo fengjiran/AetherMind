@@ -330,7 +330,8 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
     AM_RETURN_IF_ERROR(PrepackWeightRequests(
             **backend, packed_weights, resolved_requests));
 
-    auto plan = ExecutionPlanBuilder::Build(runtime, packed_weights, artifact.graph);
+    auto plan = ExecutionPlanBuilder::Build(runtime,
+                                            packed_weights, artifact.graph);
     if (!plan.ok()) {
         return plan.status();
     }

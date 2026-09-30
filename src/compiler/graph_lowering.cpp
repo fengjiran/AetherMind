@@ -53,11 +53,11 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
         });
     }
 
-    for (const GraphInput& input: graph.GetInputs()) {
+    for (const auto& input: graph.GetInputs()) {
         lowered.model_inputs.push_back(input.value);
     }
 
-    for (const GraphOutput& output: graph.GetOutputs()) {
+    for (const auto& output: graph.GetOutputs()) {
         lowered.model_outputs.push_back(output.value);
     }
 

@@ -59,12 +59,12 @@ struct WeightPackingRequest {
     /// (QkvWeightBinding / GateUpWeightBinding) leave this empty and carry
     /// the recipe-ordered components instead; prepacking materializes the
     /// fused view from `components`.
-    RawWeightView raw_weight;
+    RawWeightView raw_weight{};
     /// Recipe-ordered raw components of a composite binding: Q, K, V for
     /// QkvWeightBinding; Gate, Up for GateUpWeightBinding. Empty for
     /// direct bindings, whose single view lives in `raw_weight`.
     std::vector<RawWeightView> components{};
-    KernelSelector selector;
+    KernelSelector selector{};
     /// Exact recipe selected by the consumer descriptor during preparation.
     PackingRecipe recipe{};
 };

@@ -237,19 +237,23 @@ Status PackedWeightStore::Store(const WeightArtifactKey& key,
                 "Packed weight key selector does not match the artifact "
                 "selector");
     }
+
     if (key.recipe != artifact->recipe()) {
         return Status::InvalidArgument(
                 "Packed weight key recipe does not match the artifact recipe");
     }
+
     if (artifact->storage().alignment() < key.recipe.alignment) {
         return Status::InvalidArgument(
                 "Packed artifact storage alignment is below its recipe "
                 "alignment");
     }
+
     auto expected_bytes = LogicalByteSize(*artifact);
     if (!expected_bytes.ok()) {
         return expected_bytes.status();
     }
+
     if (artifact->storage().nbytes() < *expected_bytes) {
         return Status::InvalidArgument(
                 "Packed artifact storage is smaller than its logical weight");

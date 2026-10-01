@@ -144,9 +144,20 @@ const RawWeightView* ResolveWeightBinding(const WeightBinding& binding,
 Status PrepackWeightRequests(const Backend& backend,
                              PackedWeightStore& packed_weight_store,
                              const std::vector<WeightPackingRequest>& requests) {
+    const uint64_t source_id = requests.empty() ? 0U : requests.front().source_id;
+    // Validate the whole batch before packing anything: a mixed batch would
+    // store one artifact's weights under another's identity, and rejecting it
+    // up front leaves the store exactly as the caller handed it over.
+    for (const auto& req: requests) {
+        if (req.source_id != source_id) {
+            return Status::InvalidArgument(
+                    "PrepackWeightRequests requires every request to share one "
+                    "source artifact");
+        }
+    }
+
     if (!requests.empty()) {
-        AM_RETURN_IF_ERROR(
-                packed_weight_store.SetSourceId(requests.front().source_id));
+        AM_RETURN_IF_ERROR(packed_weight_store.SetSourceId(source_id));
     }
 
     for (const auto& req: requests) {
@@ -203,9 +214,8 @@ Status PrepackWeightRequests(const Backend& backend,
 
 Status PackedWeightStore::SetSourceId(uint64_t source_id) noexcept {
     if (source_frozen_ && source_id != source_id_) {
-        return Status::InvalidArgument(
-                "PackedWeightStore is already frozen to a different source "
-                "artifact");
+        return Status::InvalidArgument("PackedWeightStore is already frozen to "
+                                       "a different source artifact");
     }
     source_id_ = source_id;
     source_frozen_ = true;
@@ -221,6 +231,12 @@ Status PackedWeightStore::Store(const WeightArtifactKey& key,
     if (artifact == nullptr) {
         return Status::InvalidArgument(
                 "PackedWeightStore cannot store null packed weights");
+    }
+
+    if (source_frozen_ && key.source_id != source_id_) {
+        return Status::InvalidArgument(
+                "Packed weight key belongs to a different source artifact than "
+                "the store");
     }
 
     if (Find(key) != nullptr) {
@@ -260,6 +276,10 @@ Status PackedWeightStore::Store(const WeightArtifactKey& key,
     }
 
     if (!source_frozen_) {
+        // Binding on the first successful Store keeps source_id_ consistent
+        // with the entries, so a store populated without an explicit
+        // SetSourceId still rejects later keys from another artifact.
+        source_id_ = key.source_id;
         source_frozen_ = true;
     }
 

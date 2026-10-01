@@ -82,7 +82,9 @@ struct WeightPackingRequest {
 /// @param backend Packing service provider. Must implement PackWeights for
 ///        the requests' selectors.
 /// @param packed_weight_store Store receiving the produced artifacts.
-/// @param requests Requests to execute. All requests must share one source_id.
+/// @param requests Requests to execute. Every request must carry the same
+///        source_id; a mixed batch is rejected before the store is bound or any
+///        weight is packed, so a rejected batch adds nothing to the store.
 /// @return Ok on success, or the first validation/packing/store error.
 Status PrepackWeightRequests(const Backend& backend,
                              PackedWeightStore& packed_weight_store,
@@ -116,6 +118,11 @@ struct WeightArtifactKey {
 /// std::shared_ptr into these artifacts, so a plan stays executable after the
 /// store itself is destroyed.
 ///
+/// Single-source invariant: every entry belongs to one source artifact. The
+/// source is bound by SetSourceId or, failing that, by the first successful
+/// Store; afterwards a key carrying a different source_id is rejected. Zero is
+/// the unbound source used by untrusted single-node requests.
+///
 /// Query contract: preparation-time code stores and looks up by the complete
 /// WeightArtifactKey (Store / Find); execution planning resolves each step's
 /// artifact through the same exact-key lookup. There is no recipe-agnostic
@@ -127,7 +134,8 @@ public:
     /// @brief Sets the source artifact this store was packed for.
     ///
     /// May be called before the first Store(); once frozen (after the first
-    /// Store or a prior SetSourceId), a different source is rejected.
+    /// Store, which binds that key's source_id, or a prior SetSourceId), a
+    /// different source is rejected.
     ///
     /// @param source_id LoweredGraph::artifact_id() value.
     /// @return Ok, or InvalidArgument if already frozen to a different source.
@@ -138,10 +146,13 @@ public:
 
     /// @brief Takes a shared reference to a packed-weights artifact.
     ///
-    /// @param key Binding-aware artifact identity.
+    /// @param key Binding-aware artifact identity. Its source_id must match the
+    ///        store's bound source; when the store is not bound yet, this call
+    ///        binds it to `key.source_id`.
     /// @param artifact Artifact referenced by `key` thereafter.
-    /// @return Ok on success, InvalidArgument if null, or AlreadyExists if an
-    ///         entry with the same key is already present.
+    /// @return Ok on success, InvalidArgument if the artifact is null or its
+    ///         key comes from a different source artifact, or AlreadyExists if
+    ///         an entry with the same key is already present.
     Status Store(const WeightArtifactKey& key,
                  std::shared_ptr<const PackedWeights> artifact) noexcept;
 

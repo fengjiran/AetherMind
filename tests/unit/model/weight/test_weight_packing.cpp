@@ -186,6 +186,37 @@ TEST(WeightPacking, PrepackWeightRequestsMakesWeightsFindable) {
     EXPECT_TRUE(found->storage().is_initialized());
 }
 
+// A batch mixing two model artifacts would store one artifact's weights under
+// another's identity, so it is rejected before the store is bound or any weight
+// is packed.
+TEST(WeightPacking, PrepackWeightRequestsRejectsMixedSourceIds) {
+    auto storage = std::make_shared<TestStorage>(256);
+    for (auto& b: storage->data) b = std::byte{0};
+
+    const WeightPackingRequest first{
+            .op_type = OpType::kLinear,
+            .source_id = 1,
+            .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
+            .raw_weight = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1}),
+            .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
+    };
+    WeightPackingRequest second = first;
+    second.source_id = 2;
+    second.binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionK);
+
+    PackingOnlyTestBackend backend;
+    PackedWeightStore packed_weight_store;
+    const Status status =
+            PrepackWeightRequests(backend, packed_weight_store, {first, second});
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("source artifact"), std::string::npos);
+    EXPECT_TRUE(packed_weight_store.empty());
+    EXPECT_EQ(packed_weight_store.source_id(), 0U);
+}
+
 TEST(WeightPacking, PrepackWeightRequestsStoresAllLayerWeightsDistinctly) {
     auto storage = std::make_shared<TestStorage>(256);
     for (auto& b: storage->data) b = std::byte{0};
@@ -1331,6 +1362,57 @@ TEST(PackedWeightStoreOwnership, StoreRejectsDuplicatePackedWeightEntries) {
 
     ASSERT_FALSE(duplicate_status.ok());
     EXPECT_EQ(duplicate_status.code(), StatusCode::kAlreadyExists);
+}
+
+TEST(PackedWeightStoreOwnership, StoreRejectsKeyFromDifferentSourceArtifact) {
+    PackedWeightStore packed_weight_store;
+    const KernelSelector selector = MakePackedCpuSelector();
+    ASSERT_TRUE(packed_weight_store.SetSourceId(7).ok());
+
+    const Status status = packed_weight_store.Store(
+            WeightArtifactKey{
+                    .source_id = 9,
+                    .binding = MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ),
+                    .selector = selector},
+            std::make_shared<CountingPackedWeights>(
+                    OpType::kLinear, selector, MakeTestBuffer(64), nullptr));
+
+    ASSERT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("source artifact"), std::string::npos);
+    EXPECT_TRUE(packed_weight_store.empty());
+    EXPECT_EQ(packed_weight_store.source_id(), 7U);
+}
+
+// Without an explicit SetSourceId the first stored key binds the source, so a
+// store populated directly still refuses artifacts from another model.
+TEST(PackedWeightStoreOwnership, FirstStoredKeyBindsTheStoreSource) {
+    PackedWeightStore packed_weight_store;
+    const KernelSelector selector = MakePackedCpuSelector();
+    const WeightBinding binding =
+            MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ);
+
+    ASSERT_TRUE(packed_weight_store
+                        .Store(WeightArtifactKey{.source_id = 5,
+                                                 .binding = binding,
+                                                 .selector = selector},
+                               std::make_shared<CountingPackedWeights>(
+                                       OpType::kLinear, selector,
+                                       MakeTestBuffer(64), nullptr))
+                        .ok());
+    EXPECT_EQ(packed_weight_store.source_id(), 5U);
+
+    const Status foreign_status = packed_weight_store.Store(
+            WeightArtifactKey{.source_id = 6,
+                              .value_index = 1,
+                              .binding = binding,
+                              .selector = selector},
+            std::make_shared<CountingPackedWeights>(
+                    OpType::kLinear, selector, MakeTestBuffer(64), nullptr));
+
+    ASSERT_FALSE(foreign_status.ok());
+    EXPECT_EQ(foreign_status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(packed_weight_store.size(), 1U);
 }
 
 TEST(PackedWeightStoreOwnership, DistinctRecipesCoexistForSameBindingAndSelector) {

@@ -259,11 +259,12 @@ inference::internal::ResolveWeightPackingRequests(
     std::vector<WeightPackingRequest> resolved_requests;
     std::unordered_map<uint32_t, std::unordered_map<KernelSelector, size_t>>
             request_index;
-    for (WeightPackingRequest& request: requests) {
+    for (auto& request: requests) {
         if (request.selector.device_type != expected_device) {
             return Status::InvalidArgument(
                     "PrepareExecutableModel: packed weights span multiple devices");
         }
+
         AM_ASSIGN_OR_RETURN(request.recipe,
                             backend.GetPackingRecipe(request.op_type,
                                                      request.selector));

@@ -6,8 +6,8 @@ Use for normal feature implementation, bug fixes,
 refactoring, tests, and well-defined engineering tasks.
 """
 
-model = "gpt-6-luna"
-model_reasoning_effort = "xhigh"
+model = "gpt-6.1-sol"
+model_reasoning_effort = "high"
 
 # 使用 1M 上下文
 model_context_window = 1000000

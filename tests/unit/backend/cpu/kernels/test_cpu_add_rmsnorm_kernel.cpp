@@ -731,7 +731,6 @@ TEST(CPUKernelAddRmsNorm, FusedPackedExecutionRunsThroughLoweringAndBindings) {
     EXPECT_EQ(requests->front().op_type, OpType::kAddRmsNorm);
     EXPECT_EQ(requests->front().selector.weight_format, WeightFormat::kPacked);
 
-    PackedWeightStore packed_store;
     RuntimeBuilder runtime_builder;
     runtime_builder.RegisterBackendFactory(
             DeviceType::kCPU, std::make_unique<CpuBackendFactory>());
@@ -743,8 +742,9 @@ TEST(CPUKernelAddRmsNorm, FusedPackedExecutionRunsThroughLoweringAndBindings) {
         ASSERT_TRUE(recipe.ok()) << recipe.status().ToString();
         request.recipe = *recipe;
     }
-    ASSERT_TRUE(PrepackWeightRequests(**prepack_backend, packed_store, *requests).ok());
-    const auto plan = ExecutionPlanBuilder::Build(runtime, packed_store, *lowered);
+    const auto prepacked = PrepackWeightRequests(**prepack_backend, *requests);
+    ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
+    const auto plan = ExecutionPlanBuilder::Build(runtime, *prepacked, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 3U);
     std::array<const ExecutionStep*, 2> bridge_steps{};

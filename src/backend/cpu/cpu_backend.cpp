@@ -53,21 +53,18 @@ StatusOr<const KernelDef*> ResolveEligibleDescriptor(
     return best;
 }
 
-StatusOr<PackingRecipe> ResolvePackingRecipeFromRegistry(
-        const KernelRegistry& registry,
-        OpType op_type,
-        const KernelSelector& selector,
-        const CpuFeatureSet& effective_features) {
+StatusOr<PackingRecipe> ResolvePackingRecipeFromRegistry(const KernelRegistry& registry,
+                                                         OpType op_type,
+                                                         const KernelSelector& selector,
+                                                         const CpuFeatureSet& effective_features) {
     if (selector.device_type != DeviceType::kCPU ||
         selector.weight_format != WeightFormat::kPacked) {
         return Status::InvalidArgument(
                 "CPU packing recipe query requires a packed CPU selector");
     }
     AM_ASSIGN_OR_RETURN(const KernelDef* descriptor,
-                        ResolveEligibleDescriptor(
-                                registry, op_type, selector, effective_features));
-    if (descriptor->packing_recipe.layout.empty() ||
-        descriptor->packing_recipe.alignment == 0) {
+                        ResolveEligibleDescriptor(registry, op_type, selector, effective_features));
+    if (descriptor->packing_recipe.layout.empty() || descriptor->packing_recipe.alignment == 0) {
         return Status::Internal(
                 "Packed CPU descriptor is missing its packing recipe");
     }

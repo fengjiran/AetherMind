@@ -151,10 +151,9 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsBackendWithoutPacking) {
     };
 
     NoPackingTestBackend backend;
-    PackedWeightStore store;
-    const Status status = PrepackWeightRequests(backend, store, {request});
-    EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented);
+    const auto prepacked = PrepackWeightRequests(backend, {request});
+    EXPECT_FALSE(prepacked.ok());
+    EXPECT_EQ(prepacked.status().code(), StatusCode::kUnimplemented);
 }
 
 TEST(WeightPacking, PrepackWeightRequestsMakesWeightsFindable) {
@@ -171,8 +170,9 @@ TEST(WeightPacking, PrepackWeightRequestsMakesWeightsFindable) {
     };
 
     PackingOnlyTestBackend backend;
-    PackedWeightStore packed_weight_store;
-    ASSERT_TRUE(PrepackWeightRequests(backend, packed_weight_store, requests).ok());
+    const auto prepacked = PrepackWeightRequests(backend, requests);
+    ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
+    const PackedWeightStore& packed_weight_store = *prepacked;
 
     const KernelSelector expected_selector = MakeExpectedSelector();
     const WeightArtifactKey key{.binding = requests.front().binding,
@@ -187,8 +187,7 @@ TEST(WeightPacking, PrepackWeightRequestsMakesWeightsFindable) {
 }
 
 // A batch mixing two model artifacts would store one artifact's weights under
-// another's identity, so it is rejected before the store is bound or any weight
-// is packed.
+// another's identity, so it is rejected before any weight is packed.
 TEST(WeightPacking, PrepackWeightRequestsRejectsMixedSourceIds) {
     auto storage = std::make_shared<TestStorage>(256);
     for (auto& b: storage->data) b = std::byte{0};
@@ -206,15 +205,11 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsMixedSourceIds) {
     second.binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionK);
 
     PackingOnlyTestBackend backend;
-    PackedWeightStore packed_weight_store;
-    const Status status =
-            PrepackWeightRequests(backend, packed_weight_store, {first, second});
+    const auto prepacked = PrepackWeightRequests(backend, {first, second});
 
-    ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-    EXPECT_NE(status.message().find("source artifact"), std::string::npos);
-    EXPECT_TRUE(packed_weight_store.empty());
-    EXPECT_EQ(packed_weight_store.source_id(), 0U);
+    ASSERT_FALSE(prepacked.ok());
+    EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(prepacked.status().message().find("source artifact"), std::string::npos);
 }
 
 TEST(WeightPacking, PrepackWeightRequestsStoresAllLayerWeightsDistinctly) {
@@ -243,8 +238,9 @@ TEST(WeightPacking, PrepackWeightRequestsStoresAllLayerWeightsDistinctly) {
     ASSERT_EQ(requests.size(), 14U);
 
     PackingOnlyTestBackend backend;
-    PackedWeightStore packed_weight_store;
-    ASSERT_TRUE(PrepackWeightRequests(backend, packed_weight_store, requests).ok());
+    const auto prepacked = PrepackWeightRequests(backend, requests);
+    ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
+    const PackedWeightStore& packed_weight_store = *prepacked;
 
     // All 14 distinct keys are stored; the same role across layers differs by
     // its layer index and every role is individually findable.
@@ -272,8 +268,8 @@ TEST(WeightPacking, RawViewsRemainAccessibleAfterPrepack) {
     };
 
     PackingOnlyTestBackend backend;
-    PackedWeightStore packed_weight_store;
-    ASSERT_TRUE(PrepackWeightRequests(backend, packed_weight_store, requests).ok());
+    const auto prepacked = PrepackWeightRequests(backend, requests);
+    ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
 
     // Prepacking borrows the request's raw view; the caller's view stays valid.
     EXPECT_TRUE(raw_weight.IsValid());
@@ -393,10 +389,9 @@ TEST(WeightPacking, LoweredDrivenPrepackAndResolve) {
     EXPECT_EQ((*requests)[2].value_index, norm1_weight.index);
 
     PackingOnlyTestBackend prepack_backend;
-    PackedWeightStore packed_weight_store;
-    ASSERT_TRUE(PrepackWeightRequests(
-                        prepack_backend, packed_weight_store, *requests)
-                        .ok());
+    const auto prepacked = PrepackWeightRequests(prepack_backend, *requests);
+    ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
+    const PackedWeightStore& packed_weight_store = *prepacked;
     ASSERT_EQ(packed_weight_store.size(), 3U);
     EXPECT_EQ(packed_weight_store.source_id(), lowered->artifact_id());
 
@@ -571,10 +566,9 @@ TEST(WeightPacking, LoweredDrivenPrepackResolvesCompositeBindings) {
     EXPECT_EQ(embedding_request->raw_weight.data, resolved.embed_tokens.data);
 
     PackingOnlyTestBackend prepack_backend;
-    PackedWeightStore packed_weight_store;
-    ASSERT_TRUE(PrepackWeightRequests(
-                        prepack_backend, packed_weight_store, *requests)
-                        .ok());
+    const auto prepacked = PrepackWeightRequests(prepack_backend, *requests);
+    ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
+    const PackedWeightStore& packed_weight_store = *prepacked;
     ASSERT_EQ(packed_weight_store.size(), 3U);
     EXPECT_EQ(packed_weight_store.source_id(), lowered->artifact_id());
 
@@ -638,8 +632,7 @@ TEST(WeightPacking, LoweredDrivenPrepackResolvesCompositeBindings) {
 
 Status PrepackSingleRequest(const WeightPackingRequest& request) {
     PackingOnlyTestBackend backend;
-    PackedWeightStore store;
-    return PrepackWeightRequests(backend, store, {request});
+    return PrepackWeightRequests(backend, {request}).status();
 }
 
 // RawWeightView::bytes must exactly match shape × dtype byte size: the

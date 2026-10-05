@@ -252,13 +252,11 @@ bool ExecutableModel::IsPreparedFor(const Runtime& runtime) const noexcept {
 }
 
 StatusOr<std::vector<WeightPackingRequest>>
-inference::internal::ResolveWeightPackingRequests(
-        const Backend& backend,
-        std::vector<WeightPackingRequest> requests,
-        DeviceType expected_device) {
+inference::internal::ResolveWeightPackingRequests(const Backend& backend,
+                                                  std::vector<WeightPackingRequest> requests,
+                                                  DeviceType expected_device) {
     std::vector<WeightPackingRequest> resolved_requests;
-    std::unordered_map<uint32_t, std::unordered_map<KernelSelector, size_t>>
-            request_index;
+    std::unordered_map<uint32_t, std::unordered_map<KernelSelector, size_t>> request_index;
     for (auto& request: requests) {
         if (request.selector.device_type != expected_device) {
             return Status::InvalidArgument(
@@ -266,15 +264,11 @@ inference::internal::ResolveWeightPackingRequests(
         }
 
         AM_ASSIGN_OR_RETURN(request.recipe,
-                            backend.GetPackingRecipe(request.op_type,
-                                                     request.selector));
+                            backend.GetPackingRecipe(request.op_type, request.selector));
         auto& selectors = request_index[request.value_index];
-        const auto existing = selectors.find(request.selector);
-        if (existing != selectors.end()) {
-            const WeightPackingRequest& first =
-                    resolved_requests[existing->second];
-            if (first.op_type != request.op_type ||
-                first.binding != request.binding ||
+        if (const auto existing = selectors.find(request.selector); existing != selectors.end()) {
+            if (const auto& first = resolved_requests[existing->second];
+                first.op_type != request.op_type || first.binding != request.binding ||
                 first.recipe != request.recipe) {
                 return Status::InvalidArgument(
                         "PrepareExecutableModel: shared packed weight consumers "
@@ -315,8 +309,6 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
         return requests.status();
     }
 
-    PackedWeightStore packed_weights;
-    AM_RETURN_IF_ERROR(packed_weights.SetSourceId(artifact.graph.artifact_id()));
     // Resolve the backend once from the first request's device (empty requests
     // skip packing entirely and default to CPU, mirroring plan construction).
     const DeviceType device = requests->empty()
@@ -328,8 +320,8 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
     AM_ASSIGN_OR_RETURN(std::vector<WeightPackingRequest> resolved_requests,
                         inference::internal::ResolveWeightPackingRequests(
                                 **backend, std::move(*requests), device));
-    AM_RETURN_IF_ERROR(PrepackWeightRequests(
-            **backend, packed_weights, resolved_requests));
+    AM_ASSIGN_OR_RETURN(PackedWeightStore packed_weights,
+                        PrepackWeightRequests(**backend, resolved_requests));
 
     auto plan = ExecutionPlanBuilder::Build(runtime,
                                             packed_weights, artifact.graph);

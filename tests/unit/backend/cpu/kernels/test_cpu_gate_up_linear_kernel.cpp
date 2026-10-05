@@ -644,7 +644,6 @@ TEST(CPUKernelGateUpLinear, FusedPackedExecutionRequiresNoExternalGateUpWeightBi
     EXPECT_EQ(requests->front().op_type, OpType::kGateUpLinear);
     ASSERT_EQ(requests->front().components.size(), 2U);
 
-    PackedWeightStore packed_store;
     RuntimeBuilder runtime_builder;
     runtime_builder.RegisterBackendFactory(
             DeviceType::kCPU, std::make_unique<CpuBackendFactory>());
@@ -656,8 +655,9 @@ TEST(CPUKernelGateUpLinear, FusedPackedExecutionRequiresNoExternalGateUpWeightBi
         ASSERT_TRUE(recipe.ok()) << recipe.status().ToString();
         request.recipe = *recipe;
     }
-    ASSERT_TRUE(PrepackWeightRequests(**prepack_backend, packed_store, *requests).ok());
-    const auto plan = ExecutionPlanBuilder::Build(runtime, packed_store, *lowered);
+    const auto prepacked = PrepackWeightRequests(**prepack_backend, *requests);
+    ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
+    const auto plan = ExecutionPlanBuilder::Build(runtime, *prepacked, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
 
     const ExecutionStep* gate_up_step = nullptr;

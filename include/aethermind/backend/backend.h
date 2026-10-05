@@ -62,8 +62,8 @@ public:
     /// operator params and tensor shapes are not available yet.
     AM_NODISCARD virtual StatusOr<PackingRecipe> GetPackingRecipe(
             OpType op_type, const KernelSelector& selector) const {
-        (void) op_type;
-        (void) selector;
+        UNUSED(op_type);
+        UNUSED(selector);
         return Status::Unimplemented(
                 "Backend does not expose descriptor packing recipes");
     }
@@ -90,9 +90,9 @@ public:
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector) const {
-        (void) op_type;
-        (void) components;
-        (void) selector;
+        UNUSED(op_type);
+        UNUSED(components);
+        UNUSED(selector);
         return Status::Unimplemented(
                 "Backend does not implement weight packing");
     }

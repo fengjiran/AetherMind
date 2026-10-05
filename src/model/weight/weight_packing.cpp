@@ -141,13 +141,14 @@ const RawWeightView* ResolveWeightBinding(const WeightBinding& binding,
     return nullptr;
 }
 
-Status PrepackWeightRequests(const Backend& backend,
-                             PackedWeightStore& packed_weight_store,
-                             const std::vector<WeightPackingRequest>& requests) {
+StatusOr<PackedWeightStore> PrepackWeightRequests(
+        const Backend& backend,
+        const std::vector<WeightPackingRequest>& requests) {
+    PackedWeightStore packed_weight_store;
     const uint64_t source_id = requests.empty() ? 0U : requests.front().source_id;
     // Validate the whole batch before packing anything: a mixed batch would
-    // store one artifact's weights under another's identity, and rejecting it
-    // up front leaves the store exactly as the caller handed it over.
+    // store one artifact's weights under another's identity. The store is
+    // returned only on success, so a failed batch is never observable.
     for (const auto& req: requests) {
         if (req.source_id != source_id) {
             return Status::InvalidArgument(
@@ -209,7 +210,7 @@ Status PrepackWeightRequests(const Backend& backend,
                 key, std::shared_ptr<const PackedWeights>(std::move(*packed))));
     }
 
-    return {};
+    return packed_weight_store;
 }
 
 Status PackedWeightStore::SetSourceId(uint64_t source_id) noexcept {

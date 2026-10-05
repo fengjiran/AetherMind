@@ -69,26 +69,29 @@ struct WeightPackingRequest {
     PackingRecipe recipe{};
 };
 
-/// @brief Executes prepack for every request and stores the resulting
-/// PackedWeights artifacts into a PackedWeightStore. Packing identity
-/// remains {source_id, value_index, binding, selector, recipe}; the selected
-/// recipe is passed explicitly to the backend and checked against its output.
+/// @brief Executes prepack for every request and returns the store owning the
+/// resulting PackedWeights artifacts. Packing identity remains
+/// {source_id, value_index, binding, selector, recipe}; the selected recipe is
+/// passed explicitly to the backend and checked against its output.
 ///
 /// Production requests come from the graph-driven BuildWeightPackingRequests
 /// (compiler); this function only executes them. Execution goes through the
 /// Backend::PackWeights contract — this module never touches a concrete
 /// backend implementation.
 ///
+/// The returned store is bound to the batch's single source artifact.
+/// Rejection or failure is all-or-nothing: no partially packed store is
+/// observable.
+///
 /// @param backend Packing service provider. Must implement PackWeights for
 ///        the requests' selectors.
-/// @param packed_weight_store Store receiving the produced artifacts.
 /// @param requests Requests to execute. Every request must carry the same
-///        source_id; a mixed batch is rejected before the store is bound or any
-///        weight is packed, so a rejected batch adds nothing to the store.
-/// @return Ok on success, or the first validation/packing/store error.
-Status PrepackWeightRequests(const Backend& backend,
-                             PackedWeightStore& packed_weight_store,
-                             const std::vector<WeightPackingRequest>& requests);
+///        source_id; a mixed batch is rejected before any weight is packed.
+/// @return The bound store on success, or the first validation/packing/store
+///         error. An empty batch returns an unbound empty store.
+AM_NODISCARD StatusOr<PackedWeightStore> PrepackWeightRequests(
+        const Backend& backend,
+        const std::vector<WeightPackingRequest>& requests);
 
 /// @brief Identity of one packed-weight artifact.
 ///

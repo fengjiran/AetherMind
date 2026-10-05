@@ -1,7 +1,7 @@
 # ExecutableModel 生产准备入口方案
 
 - **状态**: Implemented
-- **版本**: 1.11
+- **版本**: 1.12
 - **日期**: 2026-09-23
 - **最近更新**: 2026-09-23
 - **实现承接**: [ExecutableModel 模块设计](../designs/inference/01-executable-model.md)
@@ -43,8 +43,8 @@
 | `ResolvedModelWeights` | [`resolved_model_weights.h:11-42`](../../include/aethermind/model/resolved_model_weights.h) | 嵌套结构体（非 role map）；`lm_head` 为 `std::optional<RawWeightView>` |
 | `RawWeightView` | [`raw_weight.h:21-37`](../../include/aethermind/model/raw_weight.h) | `data/bytes/dtype/shape/shared_ptr<const RawStorage>/is_contiguous` + `IsValid()`/`IsAligned()`；backing 为引用计数存储 |
 | `BuildWeightPackingRequests` | [`packing_request_builder.h:28-30`](../../include/aethermind/compiler/packing_request_builder.h) | 已实现且 graph-driven：跳过 `weight_format != kPacked` 的 step，按 `(value_index, selector)` 去重 |
-| `PrepackWeightRequests` | [`weight_packing.h:86-88`](../../include/aethermind/model/weight/weight_packing.h) | 已实现；经 `Backend::PackWeights` 执行，composite 物化与对齐归 backend（原 `WeightPrepackPlanner::PrepackAndStore`，1.8 起为自由函数） |
-| `PackedWeightStore` | [`weight_packing.h:112-162`](../../include/aethermind/model/weight/weight_packing.h) | 已实现；与 plan 共享 `shared_ptr` 所有权，`source_id` 首次 Store 后冻结 |
+| `PrepackWeightRequests` | [`weight_packing.h:92-94`](../../include/aethermind/model/weight/weight_packing.h) | 已实现；创建并返回绑定 source 的 `StatusOr<PackedWeightStore>`（失败全有或全无，空批返回未绑定空 store），经 `Backend::PackWeights` 执行，composite 物化与对齐归 backend（原 `WeightPrepackPlanner::PrepackAndStore`，1.8 起为自由函数） |
+| `PackedWeightStore` | [`weight_packing.h:135-177`](../../include/aethermind/model/weight/weight_packing.h) | 已实现；与 plan 共享 `shared_ptr` 所有权，`source_id` 由 `PrepackWeightRequests` 或首次 `Store` 绑定后冻结 |
 | `ExecutionPlanBuilder::Build` | [`execution_plan_builder.h:67-81`](../../include/aethermind/execution/execution_plan_builder.h) | 已实现 `LoweredGraph` 与 `(PackedWeightStore, LoweredGraph)` 重载 |
 | packed/plain 端口裁剪 | [`execution_plan_builder.cpp:61-73`](../../src/execution/execution_plan_builder.cpp) | `weight_format == kPacked` 时丢弃 `kWeight` 语义端口 |
 | `PrepareExecutionBindings` | [`execution_bindings.h:109-112`](../../include/aethermind/execution/execution_bindings.h) | 已实现；缺必需绑定报 `FailedPrecondition`，重复 id 报 `InvalidArgument` |
@@ -140,7 +140,7 @@ AM_NODISCARD StatusOr<ExecutableModel> PrepareExecutableModel(
 PrepareExecutableModel(runtime, artifact)
   1. resolved = artifact.loaded_model->GetResolvedWeights()
   2. requests = BuildWeightPackingRequests(artifact.graph, resolved)     // 已有
-  3. PrepackWeightRequests(*runtime.GetBackend(device), store, requests)  // 已有；经 Backend::PackWeights
+  3. store = PrepackWeightRequests(*runtime.GetBackend(device), requests)  // 返回绑定 source 的 store；经 Backend::PackWeights
   4. plan = ExecutionPlanBuilder::Build(runtime, store, artifact.graph)  // 已有
   5. required = ComputeExternalReadRequirements(plan)                    // §4.2 已公开
   6. 对每个 required[i] 为真、且 plan.values()[i].kind != kModelInput 的 i：
@@ -388,3 +388,4 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 | 2026-09-23 | 1.9 | 与并行重构同步（非本提案实施）：model/weight 三件套合并为 `weight_packing.{h,cpp}`——`ResolveWeightBinding`、`WeightPackingRequest`、`PrepackWeightRequests`、`WeightArtifactKey`/`PackedWeightStore` 同址；打包执行改经 `Backend::PackWeights`（composite 物化/对齐/分配归 backend，key 的 recipe 由产物回读）；`hf_weight_resolver` 更名为 `hf_tensor_resolver` 以区分两个 resolver。本文档 §2.1/§2.2/§3.4/§4.1/§4.6/§10 的链接与行号已同步；命名与依赖红线见 [02-weight-data-concepts.md](../designs/model/02-weight-data-concepts.md)。全量 3539 例通过 |
 | 2026-09-23 | 1.10 | 测试文件向库单元对齐：`test_packed_weight_store_ownership.cpp`（原在 `tests/unit/backend/`，与所测类型不同层）与 `test_weight_binding_resolver.cpp` 并入 `tests/unit/model/weight/test_weight_packing.cpp`，与单一库单元同址同层；三个套件（`WeightPacking` 17 例、`WeightBindingResolver` 12 例、`PackedWeightStoreOwnership` 5 例）共 34 例。全量 3539 例通过 |
 | 2026-09-23 | 1.11 | packed 缺口闭环同步：§2.2 末行与 M2.4/M2.5 两处不再把"完整模型 packed 不可解析"记为现状——`Embedding`/`RmsNorm`/`Linear` 的 packed identity descriptor 已落地，缺口测试 `PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 被正向的 `PackedLoweringPreparesAllWeightConsumers` 取代；同时 recipe 传递链（`KernelDef::packing_recipe` → `Backend::GetPackingRecipe` → `WeightPackingRequest::recipe` → `PackWeights(..., recipe)`）与 bpanel 打包/消费链已落地，详见 [GEMM 提案](../operators/gemm/cpu-gemm-packed-weight.md) 与 01 §2.3 |
+| 2026-10-05 | 1.12 | `PrepackWeightRequests` 签名同步为 `StatusOr<PackedWeightStore> PrepackWeightRequests(const Backend&, const std::vector<WeightPackingRequest>&)`：store 由函数创建、绑定批内 source 并作为返回值（失败全有或全无；空批返回未绑定空 store），§2.1 表与 §3.4 第 3 步同步，生产准备不再显式 `SetSourceId`。全量 3574 例通过 |

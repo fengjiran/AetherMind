@@ -1,9 +1,9 @@
 # ExecutableModel 模块设计
 
 - **状态**: Current（描述已验证实现；只写仓库事实）
-- **版本**: 1.2
+- **版本**: 1.3
 - **日期**: 2026-09-23
-- **最近更新**: 2026-09-26
+- **最近更新**: 2026-10-05
 - **来源提案**: [07 号提案：ExecutableModel 生产准备入口方案](../../improvement-plan/07-executable-model-preparation.md)（Implemented）
 - **关联代码**: [include/aethermind/inference/](../../../include/aethermind/inference/)（`executable_model.h`、`weight_binding_storage.h`）/[src/inference/](../../../src/inference/)
 - **上游依赖**: compiler（`LoweredModelArtifact`、`BuildWeightPackingRequests`）、model（`LoadedModel`/`ResolvedModelWeights`、`ResolveWeightBinding`、`PrepackWeightRequests`、`PackedWeightStore`）、execution（`ExecutionPlanBuilder`、`ComputeExternalReadRequirements`、`ExternalTensorBindings`）、runtime（`Runtime` 提供 backends/allocator）、graph/operators 纯数据 payload 契约（`WeightValue`/`ConstantValue`）
@@ -85,7 +85,7 @@ class ExecutableModel {
 
 1. 取 `artifact.loaded_model->GetResolvedWeights()`（缺失 `loaded_model` 即拒绝）。
 2. `BuildWeightPackingRequests(artifact.graph, resolved)`：graph-driven，跳过非 `kPacked` step，按 `(value_index, selector)` 去重。
-3. `PackedWeightStore::SetSourceId(artifact.graph.artifact_id())` + 取 backend（`runtime.GetBackend(requests[0].selector.device_type)`）+ `PrepackWeightRequests(backend, store, requests)`；composite 物化、对齐与分配由 backend 的 `Backend::PackWeights` 落实，key 的 recipe 从产物回读。
+3. 取 backend（`runtime.GetBackend`，按首个 request 的 device；空请求批默认 CPU）；请求先经 `ResolveWeightPackingRequests` 注入 descriptor recipe、收敛共享消费者，再由 `PrepackWeightRequests(backend, requests)` 创建并返回绑定批内 source 的 store（`AM_ASSIGN_OR_RETURN`；失败全有或全无，空批为未绑定空 store）；composite 物化、对齐与分配由 backend 的 `Backend::PackWeights` 落实，产物 recipe 须等于 request recipe。
 4. `ExecutionPlanBuilder::Build(runtime, store, artifact.graph)`。
 5. `ComputeExternalReadRequirements(plan)`：execution 层的唯一需求权威（packed 裁剪掉权重端口后自然不进入需求集合）。
 6. 对每个"被需求且非 `kModelInput`"的值按下标 i 物化绑定：
@@ -156,3 +156,4 @@ model inputs 不进绑定表：token/position 由 Session 按 phase 追加，重
 | 2026-09-23 | 1.0 | 从 [07 号提案](../../improvement-plan/07-executable-model-preparation.md) 落地实现承接：入口与 API、所有权与销毁契约、八步准备流程、phase 合同、错误码表、测试要点 |
 | 2026-09-24 | 1.1 | 修正两处过期断言：下游消费者 `InferenceSession` 已落地（改指 [02-inference-session.md](02-inference-session.md)）；`kEmbedding`/`kRmsNorm`/`kLinear` 的 packed identity 变体已补齐，完整 Llama 的 packed 配置现可 prepare，原"完整 packed Llama 不可解析"风险行改为描述符覆盖依赖，并新增 packed recipe 选举一行 |
 | 2026-09-26 | 1.2 | 记录 `LoadAndPrepareExecutableModel` 的职责、显式编译配置与 Runtime 生命周期；区分 O1+plain 文件到 Generate 的覆盖范围和 O2+packed 的 prepare 证据 |
+| 2026-10-05 | 1.3 | `PrepackWeightRequests` 签名改为返回 `StatusOr<PackedWeightStore>`：store 由函数创建并绑定批内 source，失败全有或全无（不再存在部分打包的调用方 store）；生产准备不再显式 `SetSourceId`，§6 第 3 步同步 |

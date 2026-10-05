@@ -200,11 +200,9 @@ StatusOr<PackedFixture> MakePackedAddRmsNormPlan(Runtime& runtime) {
         if (!recipe.ok()) return recipe.status();
         request.recipe = std::move(*recipe);
     }
-    PackedWeightStore packed_store;
-    const Status stored =
-            PrepackWeightRequests(**prepack_backend, packed_store, *requests);
-    if (!stored.ok()) return stored;
-    auto plan = ExecutionPlanBuilder::Build(runtime, packed_store, *lowered);
+    auto packed_store = PrepackWeightRequests(**prepack_backend, *requests);
+    if (!packed_store.ok()) return packed_store.status();
+    auto plan = ExecutionPlanBuilder::Build(runtime, *packed_store, *lowered);
     if (!plan.ok()) return plan.status();
     return PackedFixture{.plan = std::move(*plan),
                          .input = AsExecutionValue(input),

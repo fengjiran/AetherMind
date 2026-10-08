@@ -1,16 +1,38 @@
-#ifndef AETHERMIND_INFERENCE_INFERENCE_SESSION_INTERNAL_H
-#define AETHERMIND_INFERENCE_INFERENCE_SESSION_INTERNAL_H
+#ifndef AETHERMIND_INFERENCE_INTERNAL_H
+#define AETHERMIND_INFERENCE_INTERNAL_H
+
+/// @file inference_internal.h
+/// @brief Private preparation and Decode helpers shared with focused tests.
 
 #include "aethermind/base/status.h"
-#include "aethermind/execution/execution_context.h"
-#include "aethermind/execution/execution_plan.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <vector>
 
+namespace aethermind {
+
+class Backend;
+class ExecutionContext;
+class ExecutionPlan;
+struct ExecutionValueId;
+struct WeightPackingRequest;
+enum class DeviceType : uint8_t;
+
+} // namespace aethermind
+
 namespace aethermind::inference::internal {
+
+/// @brief Injects descriptor recipes and coalesces compatible packed consumers.
+/// @param backend Provider of descriptor-owned packing recipes.
+/// @param requests Compiler requests whose recipes have not yet been selected.
+/// @param expected_device Device shared by all requests.
+/// @return Resolved/coalesced requests, or a device/recipe compatibility error.
+StatusOr<std::vector<WeightPackingRequest>> ResolveWeightPackingRequests(
+        const Backend& backend,
+        std::vector<WeightPackingRequest> requests,
+        DeviceType expected_device);
 
 /// @brief Runs the prepared Decode loop shared with InferenceSession.
 ///

@@ -1,15 +1,12 @@
-#ifndef AETHERMIND_BACKEND_CPU_KERNELS_COMMON_PACKED_WEIGHT_UTILS_H
-#define AETHERMIND_BACKEND_CPU_KERNELS_COMMON_PACKED_WEIGHT_UTILS_H
+#ifndef AETHERMIND_BACKEND_CPU_PACKED_WEIGHT_VALIDATION_H
+#define AETHERMIND_BACKEND_CPU_PACKED_WEIGHT_VALIDATION_H
 
-/// @file packed_weight_utils.h
-/// @brief Shared packed-weight validation for CPU kernels that consume
-///        identity-packed artifacts.
+/// @file packed_weight_validation.h
+/// @brief Shared binding-time validation of CPU identity and B-panel weights.
 ///
-/// Hosts the binding-time validation core shared by the packed-only weight
-/// kernels (QkvLinear, GateUpLinear, ...): checks that a PackedWeightView
-/// carries the expected logical Float32 weight shape and the canonical CPU
-/// identity-packing recipe with enough storage for the logical weight.
-/// The implementation lives in packed_weight_utils.cpp.
+/// Kernel params builders validate logical Float32 metadata, the exact recipe,
+/// storage size, and alignment before interpreting the opaque packed payload.
+/// The implementation lives in packed_weight_validation.cpp.
 
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/base/status.h"
@@ -50,4 +47,4 @@ Status ValidateBPanelF32PackedWeight(const PackedWeightView& packed,
 
 } // namespace aethermind::cpu::detail
 
-#endif // AETHERMIND_BACKEND_CPU_KERNELS_COMMON_PACKED_WEIGHT_UTILS_H
+#endif // AETHERMIND_BACKEND_CPU_PACKED_WEIGHT_VALIDATION_H

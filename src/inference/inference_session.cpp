@@ -7,7 +7,7 @@
 #include "aethermind/inference/executable_model.h"
 #include "aethermind/runtime/kv_cache_manager.h"
 #include "aethermind/runtime/runtime.h"
-#include "inference_session_internal.h"
+#include "inference_internal.h"
 #include "utils/overflow_check.h"
 
 #include <algorithm>

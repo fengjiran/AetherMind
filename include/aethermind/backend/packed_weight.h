@@ -1,38 +1,22 @@
 #ifndef AETHERMIND_BACKEND_PACKED_WEIGHT_H
 #define AETHERMIND_BACKEND_PACKED_WEIGHT_H
 
+#include "aethermind/backend/packing_recipe.h"
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/operators/op_type.h"
 
 #include <cstddef>
 #include <cstdint>
-#include <string_view>
 #include <vector>
 
 namespace aethermind {
 
-/// @brief Describes the exact packing layout an artifact was produced with.
+/// @brief One opaque backend-layout weight artifact.
 ///
-/// Two artifacts for the same {binding, selector} differ iff their recipes
-/// differ; the store keeps them as distinct entries. The recipe is the
-/// artifact-side counterpart that a kernel's packed format implies.
-struct PackingRecipe {
-    /// Canonical layout name (e.g. "cpu_identity"). Borrows storage that must
-    /// outlive every artifact and artifact key carrying this recipe, so it must
-    /// reference a string literal or a static-duration constant such as
-    /// `cpu::kCpuIdentityPackingLayout`.
-    std::string_view layout{};
-    /// Required alignment of layout block starts within the artifact.
-    size_t alignment = 0;
-
-    AM_NODISCARD friend bool operator==(const PackingRecipe& lhs,
-                                        const PackingRecipe& rhs) = default;
-};
-
-// Packed weight artifacts are owned by a PackedWeightStore.
-// Backend/prepacker code defines the format and build path but does not own
-// the packed payload lifetime.
+/// Preparation stores artifacts in a PackedWeightStore and shares their
+/// ownership with execution plans. Backend/prepacker code defines the format
+/// and build path without retaining ownership of the returned payload.
 class PackedWeight {
 public:
     virtual ~PackedWeight() = default;

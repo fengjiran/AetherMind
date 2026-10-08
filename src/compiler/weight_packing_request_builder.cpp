@@ -1,4 +1,5 @@
-#include "aethermind/compiler/packing_request_builder.h"
+#include "aethermind/compiler/weight_packing_request_builder.h"
+#include "aethermind/model/weight/weight_binding_resolver.h"
 #include "aethermind/operators/operator_schema.h"
 
 #include <utility>

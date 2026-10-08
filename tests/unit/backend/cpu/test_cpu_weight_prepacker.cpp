@@ -1,3 +1,5 @@
+#include "aethermind/backend/cpu/cpu_bpanel_packing.h"
+#include "aethermind/backend/cpu/cpu_identity_packing.h"
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 
 #include "aethermind/backend/packed_weight.h"

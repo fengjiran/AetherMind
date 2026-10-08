@@ -1,13 +1,13 @@
-#ifndef AETHERMIND_COMPILER_PACKING_REQUEST_BUILDER_H
-#define AETHERMIND_COMPILER_PACKING_REQUEST_BUILDER_H
+#ifndef AETHERMIND_COMPILER_WEIGHT_PACKING_REQUEST_BUILDER_H
+#define AETHERMIND_COMPILER_WEIGHT_PACKING_REQUEST_BUILDER_H
 
-/// @file packing_request_builder.h
+/// @file weight_packing_request_builder.h
 /// @brief Derives weight-packing requests from a compiler artifact.
 
 #include "aethermind/base/status.h"
 #include "aethermind/compiler/lowered_graph.h"
 #include "aethermind/model/resolved_model_weights.h"
-#include "aethermind/model/weight/weight_packing.h"
+#include "aethermind/model/weight/weight_packing_request.h"
 
 #include <vector>
 

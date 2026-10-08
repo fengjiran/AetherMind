@@ -1,16 +1,16 @@
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
+#include "aethermind/backend/cpu/cpu_bpanel_packing.h"
+#include "aethermind/backend/cpu/cpu_identity_packing.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/base/tensor_view.h"
 
 #include <algorithm>
 #include <array>
-#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <memory>
 #include <span>
-#include <string>
 
 namespace aethermind {
 
@@ -352,47 +352,9 @@ StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
             std::move(logical_shape), std::move(packed_storage));
 }
 
-PackingRecipe cpu::CpuBPanelF32V1Avx2Recipe() {
-    return PackingRecipe{
-            .layout = kCpuBPanelF32V1Avx2Layout,
-            .alignment = kCpuBPanelF32V1Alignment};
-}
-
-StatusOr<size_t> cpu::CpuBPanelF32V1PackedByteSize(int64_t n, int64_t k) noexcept {
-    if (n < 0 || k < 0) {
-        return Status::InvalidArgument(
-                "cpu_bpanel_f32 dimensions must be non-negative");
-    }
-
-    const auto n_blocks = static_cast<size_t>(
-            n / kCpuBPanelF32V1NR + (n % kCpuBPanelF32V1NR != 0));
-    const auto k_panels = static_cast<size_t>(
-            k / kCpuBPanelF32V1KC + (k % kCpuBPanelF32V1KC != 0));
-    size_t elements = n_blocks;
-    const size_t factors[] = {
-            static_cast<size_t>(kCpuBPanelF32V1KC),
-            static_cast<size_t>(kCpuBPanelF32V1NR),
-            k_panels,
-            sizeof(float),
-    };
-
-    for (const size_t factor: factors) {
-        if (factor != 0 && elements > std::numeric_limits<size_t>::max() / factor) {
-            return Status::Overflow(
-                    "cpu_bpanel_f32 packed byte size overflows size_t");
-        }
-        elements *= factor;
-    }
-    return elements;
-}
-
 PackingRecipe CpuWeightPrepacker::RecipeFor(const KernelSelector& selector) noexcept {
-    // Phase 1 packs by identity copy; the recipe records this canonical layout
-    // so distinct packing variants of the same {binding, selector} stay
-    // distinguishable once real tile-block layouts land.
     (void) selector;
-    return PackingRecipe{.layout = cpu::kCpuIdentityPackingLayout,
-                         .alignment = cpu::kCpuIdentityPackingAlignment};
+    return CpuIdentityPackingRecipe();
 }
 
 } // namespace aethermind

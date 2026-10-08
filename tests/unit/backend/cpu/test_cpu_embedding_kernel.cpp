@@ -1,5 +1,4 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/execution/execution_context.h"

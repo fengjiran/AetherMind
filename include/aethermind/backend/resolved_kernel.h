@@ -10,7 +10,7 @@
 /// backend lookup.
 
 #include "aethermind/backend/kernel_types.h"
-#include "aethermind/backend/packed_weight.h"
+#include "aethermind/backend/packing_recipe.h"
 #include "aethermind/base/workspace_types.h"
 #include "aethermind/operators/op_type.h"
 

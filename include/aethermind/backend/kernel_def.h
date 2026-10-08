@@ -11,7 +11,7 @@
 
 #include "aethermind/backend/cpu/cpu_capabilities.h"
 #include "aethermind/backend/kernel_types.h"
-#include "aethermind/backend/packed_weight.h"
+#include "aethermind/backend/packing_recipe.h"
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/operators/op_type.h"
 

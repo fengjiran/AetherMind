@@ -10,6 +10,7 @@
 /// does not execute kernels.
 
 #include "aethermind/backend/backend_fwd.h"
+#include "aethermind/backend/packed_weight.h"
 #include "aethermind/backend/resolved_kernel.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/operators/op_params.h"
@@ -19,7 +20,6 @@
 
 namespace aethermind {
 
-class PackedWeight;
 class TensorView;
 
 /// @brief Abstract backend for planning-time kernel selection and preparation.

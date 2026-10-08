@@ -10,7 +10,7 @@
 #include "aethermind/model/loaded_model.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "execution/test_tensor_buffer_helpers.h"
-#include "inference/inference_session_internal.h"
+#include "inference/inference_internal.h"
 #include "inference/test_malloc_interposer.h"
 #include "model/test_llama_checkpoint_helpers.h"
 

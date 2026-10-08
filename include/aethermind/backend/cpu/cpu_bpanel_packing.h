@@ -4,7 +4,7 @@
 /// @file cpu_bpanel_packing.h
 /// @brief Versioned CPU FP32 GEMM packed-B layout contract.
 
-#include "aethermind/backend/packed_weight.h"
+#include "aethermind/backend/packing_recipe.h"
 #include "aethermind/base/status.h"
 
 #include <cstddef>

@@ -1,13 +1,16 @@
 #include "aethermind/inference/executable_model.h"
-#include "inference/executable_model_internal.h"
+#include "aethermind/model/weight/weight_binding_resolver.h"
+#include "inference/inference_internal.h"
 
-#include "aethermind/compiler/packing_request_builder.h"
+#include "aethermind/backend/backend.h"
+#include "aethermind/compiler/weight_packing_request_builder.h"
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/graph/graph_types.h"
 #include "aethermind/model/raw_weight.h"
 #include "aethermind/model/resolved_model_weights.h"
-#include "aethermind/model/weight/weight_packing.h"
+#include "aethermind/model/weight/packed_weight_store.h"
+#include "aethermind/model/weight/weight_packing_request.h"
 #include "aethermind/runtime/runtime.h"
 #include "utils/overflow_check.h"
 
@@ -304,7 +307,8 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
     }
 
     const ResolvedModelWeights& resolved = artifact.loaded_model->GetResolvedWeights();
-    auto requests = BuildWeightPackingRequests(artifact.graph, resolved);
+    auto requests = BuildWeightPackingRequests(
+            artifact.graph, resolved);
     if (!requests.ok()) {
         return requests.status();
     }

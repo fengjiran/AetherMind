@@ -1,7 +1,9 @@
 #include "aethermind/backend/backend.h"
-#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
+#include "aethermind/backend/cpu/cpu_bpanel_packing.h"
+#include "aethermind/backend/cpu/cpu_identity_packing.h"
+#include "aethermind/model/weight/weight_packing_request.h"
 #include "aethermind/operators/op_params.h"
-#include "inference/executable_model_internal.h"
+#include "inference/inference_internal.h"
 
 #include <gtest/gtest.h>
 

@@ -1,5 +1,6 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
+#include "aethermind/backend/cpu/cpu_bpanel_packing.h"
+#include "aethermind/backend/cpu/cpu_identity_packing.h"
 #include "aethermind/base/device.h"
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"

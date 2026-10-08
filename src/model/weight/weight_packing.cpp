@@ -45,7 +45,7 @@ StatusOr<TensorView> MakeRowMajorView(const RawWeightView& raw,
 
 /// Expected byte payload of the logical weight an artifact claims to pack.
 /// Undefined dtypes or empty shapes yield 0 (no size premise).
-StatusOr<size_t> LogicalByteSize(const PackedWeights& artifact) noexcept {
+StatusOr<size_t> LogicalByteSize(const PackedWeight& artifact) noexcept {
     if (artifact.logical_dtype().IsUndefined() ||
         artifact.logical_dtype().nbytes() == 0) {
         return 0U;
@@ -166,6 +166,7 @@ StatusOr<PackedWeightStore> PrepackWeightRequests(
             return Status::InvalidArgument(
                     "PrepackWeightRequests requires an explicit packing recipe");
         }
+
         // Validate byte sizes up front so a mismatch fails eagerly here with a
         // view-level message instead of surfacing deep inside the backend.
         std::vector<TensorView> components;
@@ -193,6 +194,7 @@ StatusOr<PackedWeightStore> PrepackWeightRequests(
         if (!packed.ok()) {
             return packed.status();
         }
+
         if ((*packed)->recipe() != req.recipe) {
             return Status::InvalidArgument(
                     "Packed artifact recipe differs from its request");
@@ -207,7 +209,7 @@ StatusOr<PackedWeightStore> PrepackWeightRequests(
         // A duplicate {binding, selector} is a planner bug: propagate as an
         // explicit error instead of silently skipping a weight.
         AM_RETURN_IF_ERROR(packed_weight_store.Store(
-                key, std::shared_ptr<const PackedWeights>(std::move(*packed))));
+                key, std::shared_ptr<const PackedWeight>(std::move(*packed))));
     }
 
     return packed_weight_store;
@@ -228,7 +230,7 @@ uint64_t PackedWeightStore::source_id() const noexcept {
 }
 
 Status PackedWeightStore::Store(const WeightArtifactKey& key,
-                                std::shared_ptr<const PackedWeights> artifact) noexcept {
+                                std::shared_ptr<const PackedWeight> artifact) noexcept {
     if (artifact == nullptr) {
         return Status::InvalidArgument(
                 "PackedWeightStore cannot store null packed weights");
@@ -288,7 +290,7 @@ Status PackedWeightStore::Store(const WeightArtifactKey& key,
     return Status::Ok();
 }
 
-std::shared_ptr<const PackedWeights> PackedWeightStore::Find(
+std::shared_ptr<const PackedWeight> PackedWeightStore::Find(
         const WeightArtifactKey& key) const noexcept {
     for (const auto& [entry_key, artifact]: entries_) {
         if (entry_key == key) {

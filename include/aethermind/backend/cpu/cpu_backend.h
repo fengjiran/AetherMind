@@ -12,7 +12,7 @@
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/cpu/cpu_capabilities.h"
 #include "aethermind/backend/kernel_registry.h"
-#include "aethermind/backend/packed_weights.h"
+#include "aethermind/backend/packed_weight.h"
 #include "aethermind/base/tensor_view.h"
 
 #include <span>
@@ -75,12 +75,12 @@ public:
     ///
     /// See `Backend::PackWeights` for the component contract; the CPU backend
     /// fuses composites along axis 0 and stores one aligned artifact per call.
-    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeights>> PackWeights(
+    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector) const override;
 
-    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeights>> PackWeights(
+    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector,

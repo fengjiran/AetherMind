@@ -4,7 +4,7 @@
 /// @file execution_plan.h
 /// @brief Validated execution steps and the plan that owns them.
 
-#include "aethermind/backend/packed_weights.h"
+#include "aethermind/backend/packed_weight.h"
 #include "aethermind/backend/resolved_kernel.h"
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/execution/state_alias_plan.h"
@@ -89,7 +89,7 @@ struct ExecutionStep {
     ResolvedKernel kernel{};
     /// Shared reference into PackedWeightStore artifacts. The plan holds its
     /// own reference, so it stays executable after the store is destroyed.
-    std::shared_ptr<const PackedWeights> packed_weights{};
+    std::shared_ptr<const PackedWeight> packed_weights{};
     WorkspaceRequirement workspace_requirement{};
     /// Complete semantic schema-port-ordered input operands. State ports are
     /// retained here even though they do not become kernel TensorViews.

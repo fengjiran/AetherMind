@@ -130,7 +130,7 @@ StatusOr<PackingRecipe> CpuBackend::GetPackingRecipe(
             capabilities_.effective_features);
 }
 
-StatusOr<std::unique_ptr<PackedWeights>> CpuBackend::PackWeights(
+StatusOr<std::unique_ptr<PackedWeight>> CpuBackend::PackWeights(
         OpType op_type,
         std::span<const TensorView> components,
         const KernelSelector& selector) const {
@@ -139,7 +139,7 @@ StatusOr<std::unique_ptr<PackedWeights>> CpuBackend::PackWeights(
     return PackWeights(op_type, components, selector, recipe);
 }
 
-StatusOr<std::unique_ptr<PackedWeights>> CpuBackend::PackWeights(
+StatusOr<std::unique_ptr<PackedWeight>> CpuBackend::PackWeights(
         OpType op_type,
         std::span<const TensorView> components,
         const KernelSelector& selector,

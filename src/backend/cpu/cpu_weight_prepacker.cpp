@@ -36,17 +36,17 @@ Buffer AllocateCpuPackedBuffer(size_t nbytes, size_t alignment) {
                                effective_alignment)};
 }
 
-class CpuPackedWeights final : public PackedWeights {
+class CpuPackedWeight final : public PackedWeight {
 public:
-    CpuPackedWeights(OpType op_type,
-                     KernelSelector selector,
-                     PackingRecipe recipe,
-                     DataType logical_dtype,
-                     std::vector<int64_t> logical_shape,
-                     Buffer storage) noexcept
+    CpuPackedWeight(OpType op_type,
+                    KernelSelector selector,
+                    PackingRecipe recipe,
+                    DataType logical_dtype,
+                    std::vector<int64_t> logical_shape,
+                    Buffer storage) noexcept
         : op_type_(op_type),
           selector_(selector),
-          recipe_(std::move(recipe)),
+          recipe_(recipe),
           logical_dtype_(logical_dtype),
           logical_shape_(std::move(logical_shape)),
           storage_(std::move(storage)) {}
@@ -86,7 +86,7 @@ private:
 
 } // namespace
 
-StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
+StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
         OpType op_type,
         const Tensor& logical_weight,
         const KernelSelector& selector) const noexcept {
@@ -113,7 +113,7 @@ StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
     return Pack(op_type, logical_weight.view(), selector);
 }
 
-StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
+StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
         OpType op_type,
         TensorView logical_weight,
         const KernelSelector& selector) const noexcept {
@@ -149,13 +149,13 @@ StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
 
     std::vector<int64_t> logical_shape(logical_weight.shape().begin(),
                                        logical_weight.shape().end());
-    return std::make_unique<CpuPackedWeights>(
+    return std::make_unique<CpuPackedWeight>(
             op_type, selector, RecipeFor(selector),
             logical_weight.dtype(), std::move(logical_shape),
             std::move(packed_storage));
 }
 
-StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
+StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
         OpType op_type,
         std::span<const TensorView> components,
         const KernelSelector& selector) const noexcept {
@@ -241,13 +241,13 @@ StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
         out += component.logical_nbytes();
     }
 
-    return std::make_unique<CpuPackedWeights>(
+    return std::make_unique<CpuPackedWeight>(
             op_type, selector, RecipeFor(selector), dtype,
             std::vector<int64_t>{total_rows, feature_count},
             std::move(packed_storage));
 }
 
-StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
+StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
         OpType op_type,
         TensorView logical_weight,
         const KernelSelector& selector,
@@ -263,7 +263,7 @@ StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
     return Pack(op_type, components, selector, recipe);
 }
 
-StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
+StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
         OpType op_type,
         std::span<const TensorView> components,
         const KernelSelector& selector,
@@ -347,7 +347,7 @@ StatusOr<std::unique_ptr<PackedWeights>> CpuWeightPrepacker::Pack(
     }
 
     std::vector<int64_t> logical_shape{total_rows, feature_count};
-    return std::make_unique<CpuPackedWeights>(
+    return std::make_unique<CpuPackedWeight>(
             op_type, selector, recipe, DataType::Float32(),
             std::move(logical_shape), std::move(packed_storage));
 }

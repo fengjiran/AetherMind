@@ -1,6 +1,6 @@
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/backend/packed_weights.h"
+#include "aethermind/backend/packed_weight.h"
 #include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/execution_plan_builder.h"
@@ -68,15 +68,15 @@ Status ImmutableKernel(const KernelContext&) noexcept {
 // Recipe the ImmutableTestBackend declares; packed test stores must match.
 const PackingRecipe kTestPackedRecipe{.layout = "test_packed", .alignment = 64};
 
-class ImmutablePackedWeights final : public PackedWeights {
+class ImmutablePackedWeight final : public PackedWeight {
 public:
-    ImmutablePackedWeights(OpType op_type,
-                           KernelSelector selector,
-                           Buffer storage,
-                           bool* destroyed_flag,
-                           PackingRecipe recipe = {},
-                           DataType logical_dtype = {},
-                           std::vector<int64_t> logical_shape = {}) noexcept
+    ImmutablePackedWeight(OpType op_type,
+                          KernelSelector selector,
+                          Buffer storage,
+                          bool* destroyed_flag,
+                          PackingRecipe recipe = {},
+                          DataType logical_dtype = {},
+                          std::vector<int64_t> logical_shape = {}) noexcept
         : op_type_(op_type),
           selector_(selector),
           storage_(std::move(storage)),
@@ -85,7 +85,7 @@ public:
           logical_dtype_(logical_dtype),
           logical_shape_(std::move(logical_shape)) {}
 
-    ~ImmutablePackedWeights() override {
+    ~ImmutablePackedWeight() override {
         if (destroyed_flag_ != nullptr) {
             *destroyed_flag_ = true;
         }
@@ -290,7 +290,7 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
     EXPECT_EQ(step1.workspace_requirement.bytes, 128U);
 }
 
-TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByPackedWeightStore) {
+TEST(ExecutionPlanImmutability, PackedWeightLifetimeManagedByPackedWeightStore) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<ImmutableTestBackendFactory>());
@@ -316,7 +316,7 @@ TEST(ExecutionPlanImmutability, PackedWeightsLifetimeManagedByPackedWeightStore)
     {
         PackedWeightStore packed_weight_store;
         ASSERT_TRUE(packed_weight_store
-                            .Store(key, std::make_shared<ImmutablePackedWeights>(
+                            .Store(key, std::make_shared<ImmutablePackedWeight>(
                                                 OpType::kRmsNorm, selector,
                                                 MakeTestBuffer(256),
                                                 &packed_destroyed,

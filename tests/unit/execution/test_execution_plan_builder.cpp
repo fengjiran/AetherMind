@@ -3,7 +3,7 @@
 #include "aethermind/backend/cpu/cpu_info.h"
 #include "aethermind/backend/cpu/cpu_workspace_arena.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/backend/packed_weights.h"
+#include "aethermind/backend/packed_weight.h"
 #include "aethermind/compiler/graph_lowering.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
@@ -53,14 +53,14 @@ Buffer MakeTestBuffer(size_t nbytes, size_t alignment = 64) {
     return Buffer{nbytes, MemoryHandle(ptr, nullptr, &FreeTestBuffer, Device::CPU(), alignment)};
 }
 
-class TestPackedWeights final : public PackedWeights {
+class TestPackedWeight final : public PackedWeight {
 public:
-    TestPackedWeights(OpType op_type,
-                      KernelSelector selector,
-                      Buffer storage,
-                      PackingRecipe recipe = {},
-                      DataType logical_dtype = {},
-                      std::vector<int64_t> logical_shape = {}) noexcept
+    TestPackedWeight(OpType op_type,
+                     KernelSelector selector,
+                     Buffer storage,
+                     PackingRecipe recipe = {},
+                     DataType logical_dtype = {},
+                     std::vector<int64_t> logical_shape = {}) noexcept
         : op_type_(op_type),
           selector_(selector),
           storage_(std::move(storage)),
@@ -654,7 +654,7 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightStore) {
                                 .recipe = kTestPackedRecipe};
 
     ASSERT_TRUE(packed_weight_store
-                        .Store(key, std::make_shared<TestPackedWeights>(
+                        .Store(key, std::make_shared<TestPackedWeight>(
                                             OpType::kRmsNorm, selector,
                                             MakeTestBuffer(128),
                                             kTestPackedRecipe,
@@ -892,7 +892,7 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphBindsDistinctPackedWeightsByBind
     ASSERT_TRUE(packed_weight_store.SetSourceId(lowered->artifact_id()).ok());
     ASSERT_TRUE(packed_weight_store
                         .Store(embedding_key,
-                               std::make_shared<TestPackedWeights>(
+                               std::make_shared<TestPackedWeight>(
                                        OpType::kEmbedding,
                                        lowered->steps()[0].spec.selector,
                                        MakeTestBuffer(8 * 128),
@@ -902,7 +902,7 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphBindsDistinctPackedWeightsByBind
                         .ok());
     ASSERT_TRUE(packed_weight_store
                         .Store(norm0_key,
-                               std::make_shared<TestPackedWeights>(
+                               std::make_shared<TestPackedWeight>(
                                        OpType::kRmsNorm,
                                        lowered->steps()[1].spec.selector,
                                        MakeTestBuffer(64),
@@ -912,7 +912,7 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphBindsDistinctPackedWeightsByBind
                         .ok());
     ASSERT_TRUE(packed_weight_store
                         .Store(norm1_key,
-                               std::make_shared<TestPackedWeights>(
+                               std::make_shared<TestPackedWeight>(
                                        OpType::kRmsNorm,
                                        lowered->steps()[2].spec.selector,
                                        MakeTestBuffer(64),

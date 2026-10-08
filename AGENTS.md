@@ -42,11 +42,11 @@
 - operators → shape_inference（+ dtypes/base 基础库）
 - graph → operators + shape_inference
 - compiler → model + graph + operators + shape_inference + base
-- execution → runtime + compiler + operators + shape_inference + base（public headers 不 include compiler）；实现可依赖 model 的权重组装契约（`PackedWeightStore`/`WeightArtifactKey`）；公共头可含 backend 的纯数据契约头（`ResolvedKernel`/`PackedWeights`/`KernelSelector`）
+- execution → runtime + compiler + operators + shape_inference + base（public headers 不 include compiler）；实现可依赖 model 的权重组装契约（`PackedWeightStore`/`WeightArtifactKey`）；公共头可含 backend 的纯数据契约头（`ResolvedKernel`/`PackedWeight`/`KernelSelector`）
 - runtime → base + backend（backend registry/factory）+ memory
-- model → graph + operators + formats/hf；权重组装组件（`WeightPackingRequest`/`PrepackWeightRequests`/`PackedWeightStore`）可依赖 backend 的打包契约（`PackedWeights`/`PackingRecipe`），打包执行必须经 `Backend::PackWeights` 抽象入口，不得依赖其余 backend/kernels 细节（不 include 具体 prepacker 实现）
+- model → graph + operators + formats/hf；权重组装组件（`WeightPackingRequest`/`PrepackWeightRequests`/`PackedWeightStore`）可依赖 backend 的打包契约（`PackedWeight`/`PackingRecipe`），打包执行必须经 `Backend::PackWeights` 抽象入口，不得依赖其余 backend/kernels 细节（不 include 具体 prepacker 实现）
 - inference → execution + compiler + model + runtime（+ graph/operators 的纯数据 payload 契约 `WeightValue`/`ConstantValue`/`WeightBinding`，以及 base 的 `TensorView`/`KernelSelector`）；位于依赖最上层，任何下层模块不得依赖 inference
-- backend/kernels → operators（OpParams/OpType，及 `kXxxSupportedDTypes`/`IsXxxSupportedDType` 等纯数据 dtype 契约头，以及 backend-independent 的 `rope_frequency_resolver.h` 频率公式契约；不得依赖其余语义细节）不得反向依赖 graph/model；执行期共享契约（`WorkspaceArena`/`WorkspaceBinding`/`KernelSelector`）统一放在 base 层；`ResolvedKernel`/`PackedWeights`/`PackingRecipe` 等 backend 纯数据契约头供 execution/model 上层直接依赖，不再额外下沉
+- backend/kernels → operators（OpParams/OpType，及 `kXxxSupportedDTypes`/`IsXxxSupportedDType` 等纯数据 dtype 契约头，以及 backend-independent 的 `rope_frequency_resolver.h` 频率公式契约；不得依赖其余语义细节）不得反向依赖 graph/model；执行期共享契约（`WorkspaceArena`/`WorkspaceBinding`/`KernelSelector`）统一放在 base 层；`ResolvedKernel`/`PackedWeight`/`PackingRecipe` 等 backend 纯数据契约头供 execution/model 上层直接依赖，不再额外下沉
 
 ## 3. 构建命令
 ```bash

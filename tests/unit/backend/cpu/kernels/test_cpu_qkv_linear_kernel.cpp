@@ -480,7 +480,7 @@ TEST(CPUKernelQkvLinear, PackedArtifactParticipatesInDeferredShapeChecks) {
             .selector = MakeQkvSelector(),
             .recipe = CpuWeightPrepacker::RecipeFor(MakeQkvSelector()),
     };
-    ASSERT_TRUE(store.Store(key, std::shared_ptr<const PackedWeights>(std::move(*packed))).ok());
+    ASSERT_TRUE(store.Store(key, std::shared_ptr<const PackedWeight>(std::move(*packed))).ok());
 
     RuntimeBuilder runtime_builder;
     runtime_builder.RegisterBackendFactory(

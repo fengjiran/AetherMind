@@ -328,10 +328,12 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
     if (!plan.ok()) {
         return plan.status();
     }
+
     const auto phase = ResolveArtifactPhase(*plan);
     if (!phase.ok()) {
         return phase.status();
     }
+
     const auto required = ComputeExternalReadRequirements(*plan);
     if (!required.ok()) {
         return required.status();
@@ -344,22 +346,26 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
         if (!(*required)[index]) {
             continue;
         }
+
         const ExecutionValueKind kind = plan->values()[index].kind;
         // Model inputs are session-supplied per phase; preparation holds no data
         // for them.
         if (kind == ExecutionValueKind::kModelInput) {
             continue;
         }
+
         if (index >= artifact.graph.values().size()) {
             return Status::Internal(
                     "PrepareExecutableModel: plan value " + std::to_string(index) +
                     " is beyond the artifact's values");
         }
+
         const auto view = MaterializeBinding(binding_storage, artifact.graph.values()[index],
                                              resolved, kind, index);
         if (!view.ok()) {
             return view.status();
         }
+
         bindings.readable.push_back({.value = {.index = index}, .tensor = *view});
         bound[index] = true;
     }

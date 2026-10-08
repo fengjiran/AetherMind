@@ -203,7 +203,7 @@ StatusOr<PackedWeightView> MakePackedWeightView(
                 "Packed execution step has an invalid packed weight artifact");
     }
 
-    const PackedWeights& packed = *step.packed_weights;
+    const PackedWeight& packed = *step.packed_weights;
     return PackedWeightView{
             .data = packed.storage().data(),
             .nbytes = packed.storage().nbytes(),

@@ -1,5 +1,5 @@
 #include "aethermind/execution/execution_plan_builder.h"
-#include "aethermind/backend/packed_weights.h"
+#include "aethermind/backend/packed_weight.h"
 #include "aethermind/compiler/lowered_graph.h"
 #include "aethermind/model/weight/weight_packing.h"
 #include "aethermind/operators/operator_inference.h"
@@ -204,7 +204,7 @@ struct PreparedNode {
     // Populated during graph preparation when selector.weight_format is kPacked;
     // resolved against the PackedWeightStore during assembly.
     std::optional<WeightArtifactKey> packed_key{};
-    std::shared_ptr<const PackedWeights> packed_weights{};
+    std::shared_ptr<const PackedWeight> packed_weights{};
 };
 
 struct PreparedExecutionGraph {

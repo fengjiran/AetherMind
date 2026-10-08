@@ -1,6 +1,6 @@
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 
-#include "aethermind/backend/packed_weights.h"
+#include "aethermind/backend/packed_weight.h"
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor.h"
@@ -54,7 +54,7 @@ KernelSelector MakePackedCpuSelector() {
     };
 }
 
-TEST(CpuWeightPrepacker, PackBuildsPackedWeightsWithCpuStorageAndSelectorMetadata) {
+TEST(CpuWeightPrepacker, PackBuildsPackedWeightWithCpuStorageAndSelectorMetadata) {
     CpuWeightPrepacker prepacker;
     const Tensor logical_weight = MakeLogicalWeightTensor(4, 8);
     const KernelSelector selector = MakePackedCpuSelector();

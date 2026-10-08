@@ -2,7 +2,7 @@
 #define AETHERMIND_BACKEND_CPU_CPU_WEIGHT_PREPACKER_H
 
 #include "aethermind/backend/cpu/cpu_bpanel_packing.h"
-#include "aethermind/backend/packed_weights.h"
+#include "aethermind/backend/packed_weight.h"
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor.h"
@@ -35,17 +35,17 @@ inline PackingRecipe CpuIdentityPackingRecipe() {
 
 class CpuWeightPrepacker {
 public:
-    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeights>> Pack(
+    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeight>> Pack(
             OpType op_type,
             const Tensor& logical_weight,
             const KernelSelector& selector) const noexcept;
 
-    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeights>> Pack(
+    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeight>> Pack(
             OpType op_type,
             TensorView logical_weight,
             const KernelSelector& selector) const noexcept;
 
-    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeights>> Pack(
+    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeight>> Pack(
             OpType op_type,
             TensorView logical_weight,
             const KernelSelector& selector,
@@ -65,12 +65,12 @@ public:
     /// @param selector Selector requesting `WeightFormat::kPacked` on CPU.
     /// @return Fused packed artifact, or an error describing the first
     ///         violation.
-    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeights>> Pack(
+    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeight>> Pack(
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector) const noexcept;
 
-    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeights>> Pack(
+    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeight>> Pack(
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector,

@@ -5,7 +5,7 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/kernel_context.h"
-#include "aethermind/backend/packed_weights.h"
+#include "aethermind/backend/packed_weight.h"
 #include "aethermind/base/device.h"
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/base/status.h"
@@ -80,7 +80,7 @@ void SetIdentityPackingRecipes(std::vector<WeightPackingRequest>& requests) {
 
 // Packs through the real CPU identity prepacker so model-level prepack tests
 // exercise the Backend::PackWeights contract end to end.
-StatusOr<std::unique_ptr<PackedWeights>> PackViaCpuIdentity(
+StatusOr<std::unique_ptr<PackedWeight>> PackViaCpuIdentity(
         OpType op_type,
         std::span<const TensorView> components,
         const KernelSelector& selector) {
@@ -103,7 +103,7 @@ public:
         return Status::NotFound("PackingOnlyTestBackend only packs weights");
     }
 
-    StatusOr<std::unique_ptr<PackedWeights>> PackWeights(
+    StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector) const override {
@@ -868,9 +868,9 @@ TEST(WeightPacking, BuildWeightPackingRequestsPreservesSharedWeightConsumers) {
     }
 }
 // Packs a contiguous FP32 test weight via the CPU identity prepacker.
-std::shared_ptr<const PackedWeights> PackTestArtifact(OpType op_type,
-                                                      const KernelSelector& selector,
-                                                      std::vector<int64_t> shape) {
+std::shared_ptr<const PackedWeight> PackTestArtifact(OpType op_type,
+                                                     const KernelSelector& selector,
+                                                     std::vector<int64_t> shape) {
     size_t numel = 1;
     for (const int64_t dim: shape) numel *= static_cast<size_t>(dim);
     std::vector<float> data(numel, 1.0F);
@@ -889,7 +889,7 @@ std::shared_ptr<const PackedWeights> PackTestArtifact(OpType op_type,
             selector);
     EXPECT_TRUE(packed.ok());
     if (!packed.ok()) return nullptr;
-    return std::shared_ptr<const PackedWeights>(std::move(*packed));
+    return std::shared_ptr<const PackedWeight>(std::move(*packed));
 }
 
 ExecutionPlanNodeSpec MakePackedLinearNode() {
@@ -1224,20 +1224,20 @@ KernelSelector MakePackedCpuSelector() {
     };
 }
 
-class CountingPackedWeights final : public PackedWeights {
+class CountingPackedWeight final : public PackedWeight {
 public:
-    CountingPackedWeights(OpType op_type,
-                          KernelSelector selector,
-                          Buffer storage,
-                          bool* destroyed_flag,
-                          PackingRecipe recipe = {}) noexcept
+    CountingPackedWeight(OpType op_type,
+                         KernelSelector selector,
+                         Buffer storage,
+                         bool* destroyed_flag,
+                         PackingRecipe recipe = {}) noexcept
         : op_type_(op_type),
           selector_(selector),
           storage_(std::move(storage)),
           destroyed_flag_(destroyed_flag),
           recipe_(std::move(recipe)) {}
 
-    ~CountingPackedWeights() override {
+    ~CountingPackedWeight() override {
         if (destroyed_flag_ != nullptr) {
             *destroyed_flag_ = true;
         }
@@ -1275,24 +1275,24 @@ private:
     PackingRecipe recipe_{};
     std::vector<int64_t> logical_shape_{};
 };
-TEST(PackedWeightStoreOwnership, StoreOwnsPackedWeightsUntilItIsDestroyed) {
+TEST(PackedWeightStoreOwnership, StoreOwnsPackedWeightUntilItIsDestroyed) {
     bool destroyed = false;
     const KernelSelector selector = MakePackedCpuSelector();
 
     {
         PackedWeightStore packed_weight_store;
-        auto packed = std::make_unique<CountingPackedWeights>(
+        auto packed = std::make_unique<CountingPackedWeight>(
                 OpType::kLinear,
                 selector,
                 MakeTestBuffer(256),
                 &destroyed);
-        const PackedWeights* raw_ptr = packed.get();
+        const PackedWeight* raw_ptr = packed.get();
 
         const WeightArtifactKey key{
                 .binding = MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ),
                 .selector = selector};
         ASSERT_TRUE(packed_weight_store.Store(
-                                               key, std::shared_ptr<const PackedWeights>(std::move(packed)))
+                                               key, std::shared_ptr<const PackedWeight>(std::move(packed)))
                             .ok());
         EXPECT_FALSE(destroyed);
 
@@ -1305,7 +1305,7 @@ TEST(PackedWeightStoreOwnership, StoreOwnsPackedWeightsUntilItIsDestroyed) {
     EXPECT_TRUE(destroyed);
 }
 
-TEST(PackedWeightStoreOwnership, StoredPackedWeightsOutliveBackendInstance) {
+TEST(PackedWeightStoreOwnership, StoredPackedWeightOutlivesBackendInstance) {
     bool destroyed = false;
     const KernelSelector selector = MakePackedCpuSelector();
 
@@ -1314,7 +1314,7 @@ TEST(PackedWeightStoreOwnership, StoredPackedWeightsOutliveBackendInstance) {
         CpuBackend backend;
         (void) backend;
 
-        auto packed = std::make_unique<CountingPackedWeights>(
+        auto packed = std::make_unique<CountingPackedWeight>(
                 OpType::kLinear,
                 selector,
                 MakeTestBuffer(128),
@@ -1323,7 +1323,7 @@ TEST(PackedWeightStoreOwnership, StoredPackedWeightsOutliveBackendInstance) {
                 .binding = MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ),
                 .selector = selector};
         ASSERT_TRUE(packed_weight_store.Store(
-                                               key, std::shared_ptr<const PackedWeights>(std::move(packed)))
+                                               key, std::shared_ptr<const PackedWeight>(std::move(packed)))
                             .ok());
     }
 
@@ -1344,13 +1344,13 @@ TEST(PackedWeightStoreOwnership, StoreRejectsDuplicatePackedWeightEntries) {
             .selector = selector};
 
     ASSERT_TRUE(packed_weight_store
-                        .Store(key, std::make_shared<CountingPackedWeights>(
+                        .Store(key, std::make_shared<CountingPackedWeight>(
                                             OpType::kLinear, selector,
                                             MakeTestBuffer(64), nullptr))
                         .ok());
 
     const Status duplicate_status = packed_weight_store.Store(
-            key, std::make_shared<CountingPackedWeights>(
+            key, std::make_shared<CountingPackedWeight>(
                          OpType::kLinear, selector, MakeTestBuffer(64), nullptr));
 
     ASSERT_FALSE(duplicate_status.ok());
@@ -1367,7 +1367,7 @@ TEST(PackedWeightStoreOwnership, StoreRejectsKeyFromDifferentSourceArtifact) {
                     .source_id = 9,
                     .binding = MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ),
                     .selector = selector},
-            std::make_shared<CountingPackedWeights>(
+            std::make_shared<CountingPackedWeight>(
                     OpType::kLinear, selector, MakeTestBuffer(64), nullptr));
 
     ASSERT_FALSE(status.ok());
@@ -1389,7 +1389,7 @@ TEST(PackedWeightStoreOwnership, FirstStoredKeyBindsTheStoreSource) {
                         .Store(WeightArtifactKey{.source_id = 5,
                                                  .binding = binding,
                                                  .selector = selector},
-                               std::make_shared<CountingPackedWeights>(
+                               std::make_shared<CountingPackedWeight>(
                                        OpType::kLinear, selector,
                                        MakeTestBuffer(64), nullptr))
                         .ok());
@@ -1400,7 +1400,7 @@ TEST(PackedWeightStoreOwnership, FirstStoredKeyBindsTheStoreSource) {
                               .value_index = 1,
                               .binding = binding,
                               .selector = selector},
-            std::make_shared<CountingPackedWeights>(
+            std::make_shared<CountingPackedWeight>(
                     OpType::kLinear, selector, MakeTestBuffer(64), nullptr));
 
     ASSERT_FALSE(foreign_status.ok());
@@ -1423,7 +1423,7 @@ TEST(PackedWeightStoreOwnership, DistinctRecipesCoexistForSameBindingAndSelector
                         .Store(WeightArtifactKey{.binding = binding,
                                                  .selector = selector,
                                                  .recipe = recipe_a},
-                               std::make_shared<CountingPackedWeights>(
+                               std::make_shared<CountingPackedWeight>(
                                        OpType::kLinear, selector,
                                        MakeTestBuffer(16), nullptr, recipe_a))
                         .ok());
@@ -1431,7 +1431,7 @@ TEST(PackedWeightStoreOwnership, DistinctRecipesCoexistForSameBindingAndSelector
                         .Store(WeightArtifactKey{.binding = binding,
                                                  .selector = selector,
                                                  .recipe = recipe_b},
-                               std::make_shared<CountingPackedWeights>(
+                               std::make_shared<CountingPackedWeight>(
                                        OpType::kLinear, selector,
                                        MakeTestBuffer(16), nullptr, recipe_b))
                         .ok());
@@ -1459,12 +1459,12 @@ TEST(PackedWeightStoreOwnership, DistinctBindingsShareSelectorWithoutCollision) 
             .selector = selector};
 
     ASSERT_TRUE(packed_weight_store
-                        .Store(q_key, std::make_shared<CountingPackedWeights>(
+                        .Store(q_key, std::make_shared<CountingPackedWeight>(
                                               OpType::kLinear, selector,
                                               MakeTestBuffer(64), nullptr))
                         .ok());
     ASSERT_TRUE(packed_weight_store
-                        .Store(v_key, std::make_shared<CountingPackedWeights>(
+                        .Store(v_key, std::make_shared<CountingPackedWeight>(
                                               OpType::kLinear, selector,
                                               MakeTestBuffer(64), nullptr))
                         .ok());

@@ -1,5 +1,5 @@
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
-#include "aethermind/backend/packed_weights.h"
+#include "aethermind/backend/packed_weight.h"
 #include "aethermind/base/tensor_view.h"
 
 #include <benchmark/benchmark.h>

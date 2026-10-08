@@ -71,7 +71,7 @@ StatusOr<const KernelDef*> FindCandidateDescriptor(
 Status BuildPackedParams(const ResolvedKernel& kernel,
                          const TensorView& input,
                          const MutableTensorView& output,
-                         const PackedWeights& weights,
+                         const PackedWeight& weights,
                          PreparedInvocation& prepared) noexcept {
     const PackedWeightView packed{
             .data = weights.storage().data(),
@@ -240,7 +240,7 @@ void BenchmarkPackedLinear(benchmark::State& state, CacheMode mode) {
             output.data(), DataType::Float32(), output_shape, output_strides);
 
     CpuWeightPrepacker prepacker;
-    std::vector<std::unique_ptr<PackedWeights>> artifacts;
+    std::vector<std::unique_ptr<PackedWeight>> artifacts;
     std::vector<PreparedInvocation> prepared(replica_count);
     std::vector<float> first_logical_weights;
     std::chrono::nanoseconds pack_time{};

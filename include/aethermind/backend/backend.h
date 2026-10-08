@@ -19,7 +19,7 @@
 
 namespace aethermind {
 
-class PackedWeights;
+class PackedWeight;
 class TensorView;
 
 /// @brief Abstract backend for planning-time kernel selection and preparation.
@@ -86,7 +86,7 @@ public:
     ///        constraints. Must request `WeightFormat::kPacked`.
     /// @return Packed artifact, or an error when the backend does not support
     ///         packing or the views violate the packing contract.
-    AM_NODISCARD virtual StatusOr<std::unique_ptr<PackedWeights>> PackWeights(
+    AM_NODISCARD virtual StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector) const {
@@ -100,7 +100,7 @@ public:
     /// @brief Packs using a recipe already selected from the consumer
     /// descriptor. The default preserves old backends only when they produce
     /// the requested exact recipe.
-    AM_NODISCARD virtual StatusOr<std::unique_ptr<PackedWeights>> PackWeights(
+    AM_NODISCARD virtual StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector,

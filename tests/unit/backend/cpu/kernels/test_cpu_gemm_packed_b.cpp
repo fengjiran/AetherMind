@@ -37,10 +37,10 @@ void Fill(std::vector<float>& values) {
     }
 }
 
-std::unique_ptr<PackedWeights> PackBpanel(int64_t n,
-                                          int64_t k,
-                                          std::vector<float>& weights,
-                                          const KernelSelector& selector) {
+std::unique_ptr<PackedWeight> PackBpanel(int64_t n,
+                                         int64_t k,
+                                         std::vector<float>& weights,
+                                         const KernelSelector& selector) {
     const int64_t shape[] = {n, k};
     const int64_t strides[] = {k, 1};
     const TensorView weight_view(

@@ -7,7 +7,7 @@
 - **产品边界**: [AetherMind 当前产品 PRD](../../products/aethermind_prd.md)
 - **工作流规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
 - **架构基线**: [架构总览](../../designs/architecture/architecture_overview.md)
-- **关联代码**: `src/backend/cpu/cpu_weight_prepacker.cpp`、`src/backend/cpu/kernels/gemm/`、`src/backend/cpu/kernels/common/packed_weight_utils.{h,cpp}`（packed recipe 校验闸口）、`src/compiler/packing_request_builder.{h,cpp}`（生产 packing request 来源）、`include/aethermind/backend/resolved_kernel.h`（`expected_packing_recipe` 已存在）、`include/aethermind/backend/packed_weights.h`、`include/aethermind/model/weight/weight_packing.h`
+- **关联代码**: `src/backend/cpu/cpu_weight_prepacker.cpp`、`src/backend/cpu/kernels/gemm/`、`src/backend/cpu/kernels/common/packed_weight_utils.{h,cpp}`（packed recipe 校验闸口）、`src/compiler/packing_request_builder.{h,cpp}`（生产 packing request 来源）、`include/aethermind/backend/resolved_kernel.h`（`expected_packing_recipe` 已存在）、`include/aethermind/backend/packed_weight.h`、`include/aethermind/model/weight/weight_packing.h`
 - **关联测试**: `tests/unit/backend/cpu/kernels/`、`tests/unit/model/weight/test_weight_packing.cpp`、`tests/benchmark/cpu_kernels/`
 - **关联 ADR**: 无（exact recipe 合同落地时新建）
 - **关联模块**: backend / execution / compiler / model / benchmark
@@ -20,13 +20,13 @@
 - steady-state 热路径不再执行 B 侧转置打包；A 侧打包与 96KB 栈缓冲保留（packed-B 可省去 32KB `buf_b`）；
 - 为后续量化 recipe（`量化与新 ISA` 阶段）铺好合同基座。
 
-打包与消费两侧的合同骨架大多已存在（`PackingRecipe`、`PackedWeights`、`PackedWeightStore`、`PackedWeightView`、`ResolvedKernel::expected_packing_recipe`）。本方案补四个缺口：① recipe 表达与校验闸口；② recipe 传递链（descriptor → request → artifact）；③ 按 recipe 打包的服务体；④ packed-B 消费 driver。**四个缺口已按 §3 落地**（现状见 §2）：recipe 传递链全通、打包服务体支持 identity 与 `cpu_bpanel_f32_v1_avx2` 两种 layout、packed-B 消费 driver 与消费侧闸口均已就位；剩余决策项是 bpanel 是否升为默认选择（需 §6 的 benchmark 结论）。生产编排点（model preparation 调用 packing request 生成与执行）由 `PrepareExecutableModel` 承担（[improvement-plan 07](../../improvement-plan/07-executable-model-preparation.md) M2.4）。
+打包与消费两侧的合同骨架大多已存在（`PackingRecipe`、`PackedWeight`、`PackedWeightStore`、`PackedWeightView`、`ResolvedKernel::expected_packing_recipe`）。本方案补四个缺口：① recipe 表达与校验闸口；② recipe 传递链（descriptor → request → artifact）；③ 按 recipe 打包的服务体；④ packed-B 消费 driver。**四个缺口已按 §3 落地**（现状见 §2）：recipe 传递链全通、打包服务体支持 identity 与 `cpu_bpanel_f32_v1_avx2` 两种 layout、packed-B 消费 driver 与消费侧闸口均已就位；剩余决策项是 bpanel 是否升为默认选择（需 §6 的 benchmark 结论）。生产编排点（model preparation 调用 packing request 生成与执行）由 `PrepareExecutableModel` 承担（[improvement-plan 07](../../improvement-plan/07-executable-model-preparation.md) M2.4）。
 
 ## 2. 现状与缺口
 
 | 环节 | 现状 | 位置 |
 |---|---|---|
-| recipe 合同 | `PackingRecipe{layout, alignment}`，无 tile 字段 | `include/aethermind/backend/packed_weights.h` |
+| recipe 合同 | `PackingRecipe{layout, alignment}`，无 tile 字段 | `include/aethermind/backend/packed_weight.h` |
 | 打包服务 | `CpuWeightPrepacker::Pack(op, components, selector, recipe)` 按**显式 recipe** 分派：identity 字节拷贝（`kCpuIdentityPacking*` 常量同文件）与 `cpu_bpanel_f32_v1_avx2` 分块打包（常量在 `cpu_bpanel_packing.h`）；`RecipeFor(selector)` 仅作兼容保留（无生产调用者） | `include/aethermind/backend/cpu/cpu_weight_prepacker.h`、`include/aethermind/backend/cpu/cpu_bpanel_packing.h`、`src/backend/cpu/cpu_weight_prepacker.cpp` |
 | 打包 request（生产） | `BuildWeightPackingRequests(lowered, resolved)`：纯数据映射，填 components/op_type/source_id，**never touches a backend**；字段含 `recipe` 但 builder 留空，由编排层在 prepare 期注入（见"打包执行"与 §3.5） | `include/aethermind/compiler/packing_request_builder.h` |
 | 打包 request（legacy） | 已删除（2026-09-23）：`WeightPrepackPlanner::BuildRequests` 曾按 role 枚举 linear 权重、从不填 components；graph-driven 的 `BuildWeightPackingRequests` 成为唯一生产 request 来源后移除 | `include/aethermind/model/weight/weight_packing.h`（model/weight 合并单元，只提供 `PrepackWeightRequests` 执行入口）、`src/model/weight/weight_packing.cpp` |
@@ -58,7 +58,7 @@
 
 - recipe 保持 `{layout, alignment}`；layout 名为 `cpu_bpanel_f32_v1_avx2` 形式，版本编入布局名，布局变更必须改名。
 - `nr`/`kc` 是**layout 常量**，由 layout 名唯一确定（常量头 `cpu_bpanel_packing.h`，仿 `identity_packing.h` 模式），不进 recipe struct、不随 shape 自适应。
-- panel 数与 pad 由 packer 与 consumer **各自**从 `PackedWeights::logical_shape()` + layout 常量派生；交叉校验用不变式：
+- panel 数与 pad 由 packer 与 consumer **各自**从 `PackedWeight::logical_shape()` + layout 常量派生；交叉校验用不变式：
 
 ```text
 packed_nbytes == k_panels * n_blocks * kc * nr * 4

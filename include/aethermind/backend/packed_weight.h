@@ -1,5 +1,5 @@
-#ifndef AETHERMIND_BACKEND_PACKED_WEIGHTS_H
-#define AETHERMIND_BACKEND_PACKED_WEIGHTS_H
+#ifndef AETHERMIND_BACKEND_PACKED_WEIGHT_H
+#define AETHERMIND_BACKEND_PACKED_WEIGHT_H
 
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/memory/buffer.h"
@@ -33,9 +33,9 @@ struct PackingRecipe {
 // Packed weight artifacts are owned by a PackedWeightStore.
 // Backend/prepacker code defines the format and build path but does not own
 // the packed payload lifetime.
-class PackedWeights {
+class PackedWeight {
 public:
-    virtual ~PackedWeights() = default;
+    virtual ~PackedWeight() = default;
 
     AM_NODISCARD virtual OpType op_type() const noexcept = 0;
     AM_NODISCARD virtual const KernelSelector& selector() const noexcept = 0;

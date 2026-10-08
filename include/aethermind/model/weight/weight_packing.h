@@ -5,7 +5,7 @@
 /// @brief Weight assembly: binding resolution, packing requests/execution, and
 ///        packed-artifact storage.
 
-#include "aethermind/backend/packed_weights.h"
+#include "aethermind/backend/packed_weight.h"
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/base/status.h"
 #include "aethermind/graph/graph_types.h"
@@ -70,7 +70,7 @@ struct WeightPackingRequest {
 };
 
 /// @brief Executes prepack for every request and returns the store owning the
-/// resulting PackedWeights artifacts. Packing identity remains
+/// resulting PackedWeight artifacts. Packing identity remains
 /// {source_id, value_index, binding, selector, recipe}; the selected recipe is
 /// passed explicitly to the backend and checked against its output.
 ///
@@ -115,7 +115,7 @@ struct WeightArtifactKey {
                                         const WeightArtifactKey& rhs) = default;
 };
 
-/// @brief Owns PackedWeights artifacts indexed by their binding-aware key.
+/// @brief Owns PackedWeight artifacts indexed by their binding-aware key.
 ///
 /// The store shares artifact ownership with ExecutionPlan: plan steps hold a
 /// std::shared_ptr into these artifacts, so a plan stays executable after the
@@ -157,21 +157,21 @@ public:
     ///         key comes from a different source artifact, or AlreadyExists if
     ///         an entry with the same key is already present.
     Status Store(const WeightArtifactKey& key,
-                 std::shared_ptr<const PackedWeights> artifact) noexcept;
+                 std::shared_ptr<const PackedWeight> artifact) noexcept;
 
     /// @brief Returns the stored artifact matching a key, if any.
     ///
     /// @param key Binding-aware artifact identity.
     /// @return Shared pointer to the stored artifact, or nullptr if no
     ///         matching entry exists.
-    AM_NODISCARD std::shared_ptr<const PackedWeights> Find(
+    AM_NODISCARD std::shared_ptr<const PackedWeight> Find(
             const WeightArtifactKey& key) const noexcept;
 
     AM_NODISCARD size_t size() const noexcept;
     AM_NODISCARD bool empty() const noexcept;
 
 private:
-    std::vector<std::pair<WeightArtifactKey, std::shared_ptr<const PackedWeights>>> entries_{};
+    std::vector<std::pair<WeightArtifactKey, std::shared_ptr<const PackedWeight>>> entries_{};
     uint64_t source_id_ = 0;
     bool source_frozen_ = false;
 };

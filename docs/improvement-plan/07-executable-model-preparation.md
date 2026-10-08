@@ -68,7 +68,7 @@
 
 - **值索引同一性**：`PrepareTrustedGraph` 按 lowered 顺序 1:1 push 值（[`execution_plan_builder.cpp:484-505`](../../src/execution/execution_plan_builder.cpp)），因此 `ExecutionValueId{index}` 与 `LoweredGraph` 的 `GraphValueId{index}` 同索引；`packed_key->value_index` 直接用于索引 `graph.values`（`:648`）即为佐证。
 - **plan 构建后自持**：`ExecutionPlanBuilder.TrustedPathCopiesValueDataflowAfterLoweredGraphLifetimeEnds`（[`test_execution_plan_builder.cpp:1035`](../../tests/unit/execution/test_execution_plan_builder.cpp)）证明 plan 不借用 `LoweredGraph`。
-- **packed artifact 生命周期解耦**：plan step 持 `shared_ptr<const PackedWeights>`，store 销毁后 plan 仍可执行（`weight_packing.h:112-116`）。
+- **packed artifact 生命周期解耦**：plan step 持 `shared_ptr<const PackedWeight>`，store 销毁后 plan 仍可执行（`weight_packing.h:112-116`）。
 - **权重连续性**：HF 校验器拒绝非连续视图（[`hf_model_validator.cpp:83`](../../src/model/formats/hf/hf_model_validator.cpp)）；packing 路径另行复查（`weight_packing.cpp:128`）。
 - **tied lm-head 语义**：解析结果不是标志位，而是复用同一 `RawWeightView`（共享 `storage`），由 `BuildWeightPackingRequestsFallsBackToEmbedTokensForTiedLmHead`（`test_weight_packing.cpp:708-759`）覆盖。
 
@@ -293,7 +293,7 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 同批修正三处与实现不符的既有注释：
 
 - [`weight_packing.h`](../../include/aethermind/model/weight/weight_packing.h)（原 `packed_weight_store.h:53` 与 `weight_prepack_planner.h:23`）把 `artifact_id()` 归给 `LoweredModelArtifact`，实际只定义在 `LoweredGraph`（[`lowered_graph.h:156`](../../include/aethermind/compiler/lowered_graph.h)）；`ExecutableModel::artifact_id()` 直接委托 `artifact.graph.artifact_id()`；
-- [`execution_plan.h:84-85`](../../include/aethermind/execution/execution_plan.h) 称 `packed_weights` 是 "borrowed pointer into a PackedWeightStore's storage; the store must outlive this plan"，与同文件 `:91-92`（plan 自持引用，store 销毁后仍可执行）直接矛盾；实际成员类型是 `std::shared_ptr<const PackedWeights>`，应删除失实的前者。
+- [`execution_plan.h:84-85`](../../include/aethermind/execution/execution_plan.h) 称 `packed_weights` 是 "borrowed pointer into a PackedWeightStore's storage; the store must outlive this plan"，与同文件 `:91-92`（plan 自持引用，store 销毁后仍可执行）直接矛盾；实际成员类型是 `std::shared_ptr<const PackedWeight>`，应删除失实的前者。
 
 退出条件（已满足）：从真实 `LoweredModelArtifact` 构建成功，无手工拼 plan 路径；上述注释与实现一致。
 

@@ -1,5 +1,5 @@
 #include "aethermind/backend/cpu/cpu_identity_packing.h"
-#include "aethermind/model/weight/packed_weight_store.h"
+#include "aethermind/model/weight/packed_weight_collection.h"
 #include "aethermind/model/weight/weight_packing_request.h"
 #include "model/weight/test_weight_helpers.h"
 
@@ -172,14 +172,14 @@ TEST(WeightPacking, PrepackWeightRequestsMakesWeightsFindable) {
     PackingOnlyTestBackend backend;
     const auto prepacked = PrepackWeightRequests(backend, requests);
     ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
-    const PackedWeightStore& packed_weight_store = *prepacked;
+    const PackedWeightCollection& packed_weight_collection = *prepacked;
 
     const KernelSelector expected_selector = MakeExpectedSelector();
     const WeightArtifactKey key{.binding = requests.front().binding,
                                 .selector = requests.front().selector,
                                 .recipe = CpuWeightPrepacker::RecipeFor(
                                         requests.front().selector)};
-    const auto found = packed_weight_store.Find(key);
+    const auto found = packed_weight_collection.Find(key);
     ASSERT_NE(found, nullptr);
     EXPECT_EQ(found->op_type(), OpType::kLinear);
     EXPECT_EQ(found->selector(), expected_selector);
@@ -240,16 +240,16 @@ TEST(WeightPacking, PrepackWeightRequestsStoresAllLayerWeightsDistinctly) {
     PackingOnlyTestBackend backend;
     const auto prepacked = PrepackWeightRequests(backend, requests);
     ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
-    const PackedWeightStore& packed_weight_store = *prepacked;
+    const PackedWeightCollection& packed_weight_collection = *prepacked;
 
     // All 14 distinct keys are stored; the same role across layers differs by
     // its layer index and every role is individually findable.
-    EXPECT_EQ(packed_weight_store.size(), 14U);
+    EXPECT_EQ(packed_weight_collection.size(), 14U);
     for (const auto& req: requests) {
         const WeightArtifactKey key{.binding = req.binding,
                                     .selector = req.selector,
                                     .recipe = CpuWeightPrepacker::RecipeFor(req.selector)};
-        EXPECT_NE(packed_weight_store.Find(key), nullptr) << "missing key for layer";
+        EXPECT_NE(packed_weight_collection.Find(key), nullptr) << "missing key for layer";
     }
 }
 
@@ -391,16 +391,16 @@ TEST(WeightPacking, LoweredDrivenPrepackAndResolve) {
     PackingOnlyTestBackend prepack_backend;
     const auto prepacked = PrepackWeightRequests(prepack_backend, *requests);
     ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
-    const PackedWeightStore& packed_weight_store = *prepacked;
-    ASSERT_EQ(packed_weight_store.size(), 3U);
-    EXPECT_EQ(packed_weight_store.source_id(), lowered->artifact_id());
+    const PackedWeightCollection& packed_weight_collection = *prepacked;
+    ASSERT_EQ(packed_weight_collection.size(), 3U);
+    EXPECT_EQ(packed_weight_collection.source_id(), lowered->artifact_id());
 
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(
             DeviceType::kCPU, std::make_unique<PlannerPackedTestBackendFactory>());
     Runtime runtime = builder.Build();
     const auto plan =
-            ExecutionPlanBuilder::Build(runtime, packed_weight_store, *lowered);
+            ExecutionPlanBuilder::Build(runtime, packed_weight_collection, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 3U);
     ASSERT_NE(plan->steps()[1].packed_weights, nullptr);
@@ -568,9 +568,9 @@ TEST(WeightPacking, LoweredDrivenPrepackResolvesCompositeBindings) {
     PackingOnlyTestBackend prepack_backend;
     const auto prepacked = PrepackWeightRequests(prepack_backend, *requests);
     ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
-    const PackedWeightStore& packed_weight_store = *prepacked;
-    ASSERT_EQ(packed_weight_store.size(), 3U);
-    EXPECT_EQ(packed_weight_store.source_id(), lowered->artifact_id());
+    const PackedWeightCollection& packed_weight_collection = *prepacked;
+    ASSERT_EQ(packed_weight_collection.size(), 3U);
+    EXPECT_EQ(packed_weight_collection.source_id(), lowered->artifact_id());
 
     // Stored fused artifacts carry the fused logical shape and exactly the
     // recipe-ordered concatenation of their components.
@@ -581,7 +581,7 @@ TEST(WeightPacking, LoweredDrivenPrepackResolvesCompositeBindings) {
                                     .selector = req.selector,
                                     .recipe = CpuWeightPrepacker::RecipeFor(
                                             req.selector)};
-        const auto found = packed_weight_store.Find(key);
+        const auto found = packed_weight_collection.Find(key);
         ASSERT_NE(found, nullptr);
         ASSERT_EQ(found->logical_shape().size(), 2U);
         int64_t rows = 0;
@@ -608,7 +608,7 @@ TEST(WeightPacking, LoweredDrivenPrepackResolvesCompositeBindings) {
             DeviceType::kCPU, std::make_unique<PlannerPackedTestBackendFactory>());
     Runtime runtime = builder.Build();
     const auto plan =
-            ExecutionPlanBuilder::Build(runtime, packed_weight_store, *lowered);
+            ExecutionPlanBuilder::Build(runtime, packed_weight_collection, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 3U);
     bool saw_qkv = false;
@@ -915,18 +915,18 @@ TEST(WeightPacking, UntrustedBuildBindsDistinctPackedArtifacts) {
 
     // Each untrusted node appends its operands in schema-port order
     // (activation id 0, weight id 1) before the next node's operands.
-    PackedWeightStore store;
+    PackedWeightCollection collection;
     const KernelSelector selector = MakeExpectedSelector();
     const PackingRecipe recipe = CpuWeightPrepacker::RecipeFor(selector);
     for (const uint32_t value_index: {1U, 4U}) {
         auto artifact = PackTestArtifact(OpType::kLinear, selector, {4, 8});
         ASSERT_NE(artifact, nullptr);
-        ASSERT_TRUE(store.Store({.source_id = 0,
-                                 .value_index = value_index,
-                                 .binding = {},
-                                 .selector = selector,
-                                 .recipe = recipe},
-                                std::move(artifact))
+        ASSERT_TRUE(collection.Insert({.source_id = 0,
+                                       .value_index = value_index,
+                                       .binding = {},
+                                       .selector = selector,
+                                       .recipe = recipe},
+                                      std::move(artifact))
                             .ok());
     }
 
@@ -934,7 +934,7 @@ TEST(WeightPacking, UntrustedBuildBindsDistinctPackedArtifacts) {
     builder.RegisterBackendFactory(
             DeviceType::kCPU, std::make_unique<PlannerPackedTestBackendFactory>());
     Runtime runtime = builder.Build();
-    const auto plan = ExecutionPlanBuilder::Build(runtime, store, nodes);
+    const auto plan = ExecutionPlanBuilder::Build(runtime, collection, nodes);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 2U);
     ASSERT_NE(plan->steps()[0].packed_weights, nullptr);
@@ -945,23 +945,23 @@ TEST(WeightPacking, UntrustedBuildBindsDistinctPackedArtifacts) {
 TEST(WeightPacking, UntrustedBuildRejectsArtifactOpTypeMismatch) {
     const std::vector<ExecutionPlanNodeSpec> nodes{MakePackedLinearNode()};
 
-    PackedWeightStore store;
+    PackedWeightCollection collection;
     const KernelSelector selector = MakeExpectedSelector();
     auto artifact = PackTestArtifact(OpType::kEmbedding, selector, {4, 8});
     ASSERT_NE(artifact, nullptr);
-    ASSERT_TRUE(store.Store({.source_id = 0,
-                             .value_index = 1,
-                             .binding = {},
-                             .selector = selector,
-                             .recipe = CpuWeightPrepacker::RecipeFor(selector)},
-                            std::move(artifact))
+    ASSERT_TRUE(collection.Insert({.source_id = 0,
+                                   .value_index = 1,
+                                   .binding = {},
+                                   .selector = selector,
+                                   .recipe = CpuWeightPrepacker::RecipeFor(selector)},
+                                  std::move(artifact))
                         .ok());
 
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(
             DeviceType::kCPU, std::make_unique<PlannerPackedTestBackendFactory>());
     Runtime runtime = builder.Build();
-    const auto plan = ExecutionPlanBuilder::Build(runtime, store, nodes);
+    const auto plan = ExecutionPlanBuilder::Build(runtime, collection, nodes);
     ASSERT_FALSE(plan.ok());
     EXPECT_NE(plan.status().message().find("op type"), std::string::npos);
 }
@@ -969,23 +969,23 @@ TEST(WeightPacking, UntrustedBuildRejectsArtifactOpTypeMismatch) {
 TEST(WeightPacking, UntrustedBuildRejectsArtifactShapeMismatch) {
     const std::vector<ExecutionPlanNodeSpec> nodes{MakePackedLinearNode()};
 
-    PackedWeightStore store;
+    PackedWeightCollection collection;
     const KernelSelector selector = MakeExpectedSelector();
     auto artifact = PackTestArtifact(OpType::kLinear, selector, {3, 8});
     ASSERT_NE(artifact, nullptr);
-    ASSERT_TRUE(store.Store({.source_id = 0,
-                             .value_index = 1,
-                             .binding = {},
-                             .selector = selector,
-                             .recipe = CpuWeightPrepacker::RecipeFor(selector)},
-                            std::move(artifact))
+    ASSERT_TRUE(collection.Insert({.source_id = 0,
+                                   .value_index = 1,
+                                   .binding = {},
+                                   .selector = selector,
+                                   .recipe = CpuWeightPrepacker::RecipeFor(selector)},
+                                  std::move(artifact))
                         .ok());
 
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(
             DeviceType::kCPU, std::make_unique<PlannerPackedTestBackendFactory>());
     Runtime runtime = builder.Build();
-    const auto plan = ExecutionPlanBuilder::Build(runtime, store, nodes);
+    const auto plan = ExecutionPlanBuilder::Build(runtime, collection, nodes);
     ASSERT_FALSE(plan.ok());
     EXPECT_NE(plan.status().message().find("logical metadata"), std::string::npos);
 }

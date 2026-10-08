@@ -1,7 +1,7 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/backend/packed_weight.h"
 #include "aethermind/compiler/lowered_graph.h"
-#include "aethermind/model/weight/packed_weight_store.h"
+#include "aethermind/model/weight/packed_weight_collection.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_schema.h"
 
@@ -202,7 +202,7 @@ struct PreparedNode {
     // Filled by AssembleExecutionPlan after backend resolution.
     ResolvedKernel kernel{};
     // Populated during graph preparation when selector.weight_format is kPacked;
-    // resolved against the PackedWeightStore during assembly.
+    // resolved against the PackedWeightCollection during assembly.
     std::optional<WeightArtifactKey> packed_key{};
     std::shared_ptr<const PackedWeight> packed_weights{};
 };
@@ -599,7 +599,7 @@ StatusOr<ResolvedKernel> PrepareKernelChecked(
 }
 
 StatusOr<ExecutionPlan> AssembleExecutionPlan(Runtime& runtime,
-                                              const PackedWeightStore* packed_weight_store,
+                                              const PackedWeightCollection* packed_weight_collection,
                                               PreparedExecutionGraph graph,
                                               StateAliasPlan state_alias_plan) {
     std::vector<WorkspaceRequirement> workspace_requirements;
@@ -618,15 +618,15 @@ StatusOr<ExecutionPlan> AssembleExecutionPlan(Runtime& runtime,
         }
 
         if (node.packed_key.has_value()) {
-            if (packed_weight_store == nullptr) {
+            if (packed_weight_collection == nullptr) {
                 return Status::NotFound(
-                        "Packed-weight node requires a PackedWeightStore");
+                        "Packed-weight node requires a PackedWeightCollection");
             }
 
-            if (packed_weight_store->source_id() != 0 &&
-                packed_weight_store->source_id() != node.packed_key->source_id) {
+            if (packed_weight_collection->source_id() != 0 &&
+                packed_weight_collection->source_id() != node.packed_key->source_id) {
                 return Status::InvalidArgument(
-                        "PackedWeightStore belongs to a different model "
+                        "PackedWeightCollection belongs to a different model "
                         "artifact than the lowered graph");
             }
 
@@ -636,7 +636,7 @@ StatusOr<ExecutionPlan> AssembleExecutionPlan(Runtime& runtime,
                     .binding = node.packed_key->binding,
                     .selector = node.packed_key->selector,
                     .recipe = kernel->expected_packing_recipe};
-            auto packed_weights = packed_weight_store->Find(exact_key);
+            auto packed_weights = packed_weight_collection->Find(exact_key);
             if (packed_weights == nullptr || packed_weights->storage().data() == nullptr) {
                 return Status::NotFound(
                         "Packed weights not found for ExecutionPlan node");
@@ -728,13 +728,13 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         Runtime& runtime,
-        const PackedWeightStore& packed_weight_store,
+        const PackedWeightCollection& packed_weight_collection,
         const std::vector<ExecutionPlanNodeSpec>& nodes) {
     auto graph = PrepareUntrustedGraph(nodes);
     if (!graph.ok()) {
         return graph.status();
     }
-    return AssembleExecutionPlan(runtime, &packed_weight_store,
+    return AssembleExecutionPlan(runtime, &packed_weight_collection,
                                  std::move(*graph), {});
 }
 
@@ -756,7 +756,7 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
 
 StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
         Runtime& runtime,
-        const PackedWeightStore& packed_weight_store,
+        const PackedWeightCollection& packed_weight_collection,
         const LoweredGraph& lowered) {
     auto aliases = ResolveStateAliasesForExecution(lowered);
     if (!aliases.ok()) {
@@ -767,7 +767,7 @@ StatusOr<ExecutionPlan> ExecutionPlanBuilder::Build(
     if (!graph.ok()) {
         return graph.status();
     }
-    return AssembleExecutionPlan(runtime, &packed_weight_store,
+    return AssembleExecutionPlan(runtime, &packed_weight_collection,
                                  std::move(*graph), std::move(*aliases));
 }
 

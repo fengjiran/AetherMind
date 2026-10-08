@@ -8,7 +8,7 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/graph/graph.h"
-#include "aethermind/model/weight/packed_weight_store.h"
+#include "aethermind/model/weight/packed_weight_collection.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/ops/embedding_op.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -105,8 +105,8 @@ Status PackedTestKernel(const KernelContext&) noexcept {
     return Status::Ok();
 }
 
-// Recipe the PackedTestBackend declares it consumes; test stores must pack
-// artifacts with the same recipe so exact-key resolution succeeds.
+// Recipe the PackedTestBackend declares it consumes; test collections must
+// contain artifacts with the same recipe so exact-key resolution succeeds.
 const PackingRecipe kTestPackedRecipe{.layout = "test_packed", .alignment = 64};
 
 class PackedTestBackend final : public Backend {
@@ -631,12 +631,12 @@ TEST(ExecutionPlanBuilder, BuildRejectsRawWorkspaceRequirementThatDisagreesWithK
     EXPECT_NE(plan.status().message().find("must match"), std::string::npos);
 }
 
-TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightStore) {
+TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightCollection) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<PackedTestBackendFactory>());
     Runtime runtime = builder.Build();
-    PackedWeightStore packed_weight_store;
+    PackedWeightCollection packed_weight_collection;
     KernelSelector selector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
@@ -644,7 +644,7 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightStore) {
             .weight_format = WeightFormat::kPacked,
             .phase = ExecPhase::kBoth,
     };
-    // Untrusted nodes carry no WeightBinding, so the store key uses the empty
+    // Untrusted nodes carry no WeightBinding, so the collection key uses the empty
     // binding and the node's kWeight operand id (activation id 0, weight id 1)
     // must match the key derived by the builder for untrusted nodes.
     const WeightArtifactKey key{.source_id = 0,
@@ -653,13 +653,13 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightStore) {
                                 .selector = selector,
                                 .recipe = kTestPackedRecipe};
 
-    ASSERT_TRUE(packed_weight_store
-                        .Store(key, std::make_shared<TestPackedWeight>(
-                                            OpType::kRmsNorm, selector,
-                                            MakeTestBuffer(128),
-                                            kTestPackedRecipe,
-                                            DataType::Float32(),
-                                            std::vector<int64_t>{8}))
+    ASSERT_TRUE(packed_weight_collection
+                        .Insert(key, std::make_shared<TestPackedWeight>(
+                                             OpType::kRmsNorm, selector,
+                                             MakeTestBuffer(128),
+                                             kTestPackedRecipe,
+                                             DataType::Float32(),
+                                             std::vector<int64_t>{8}))
                         .ok());
 
     const SymbolicShape act_shape = StaticShape({4, 8});
@@ -687,16 +687,16 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightStore) {
     node.runtime_checks = analyzed->runtime_checks;
     nodes.push_back(std::move(node));
 
-    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, packed_weight_store, nodes);
+    const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, packed_weight_collection, nodes);
 
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 1U);
     ASSERT_NE(plan->steps().front().packed_weights, nullptr);
     EXPECT_EQ(plan->steps().front().packed_weights->storage().data(),
-              packed_weight_store.Find(key)->storage().data());
+              packed_weight_collection.Find(key)->storage().data());
 }
 
-TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutPackedWeightStore) {
+TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutPackedWeightCollection) {
     RuntimeBuilder builder;
     Runtime runtime = builder.Build();
 
@@ -863,7 +863,7 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphBindsDistinctPackedWeightsByBind
         EXPECT_EQ(step.spec.selector.weight_format, WeightFormat::kPacked);
     }
     // Keys must carry the artifact identity and the exact (artifact-local)
-    // value id of each weight so cross-model stores can never collide.
+    // value id of each weight so cross-model collections can never collide.
     const uint64_t source = lowered->artifact_id();
 
     const WeightArtifactKey embedding_key{
@@ -888,37 +888,37 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphBindsDistinctPackedWeightsByBind
     // The two RmsNorm steps share one selector (same dtypes/ISA/phase).
     EXPECT_EQ(lowered->steps()[1].spec.selector, lowered->steps()[2].spec.selector);
 
-    PackedWeightStore packed_weight_store;
-    ASSERT_TRUE(packed_weight_store.SetSourceId(lowered->artifact_id()).ok());
-    ASSERT_TRUE(packed_weight_store
-                        .Store(embedding_key,
-                               std::make_shared<TestPackedWeight>(
-                                       OpType::kEmbedding,
-                                       lowered->steps()[0].spec.selector,
-                                       MakeTestBuffer(8 * 128),
-                                       kTestPackedRecipe,
-                                       DataType::Float32(),
-                                       std::vector<int64_t>{32, 8}))
+    PackedWeightCollection packed_weight_collection;
+    ASSERT_TRUE(packed_weight_collection.SetSourceId(lowered->artifact_id()).ok());
+    ASSERT_TRUE(packed_weight_collection
+                        .Insert(embedding_key,
+                                std::make_shared<TestPackedWeight>(
+                                        OpType::kEmbedding,
+                                        lowered->steps()[0].spec.selector,
+                                        MakeTestBuffer(8 * 128),
+                                        kTestPackedRecipe,
+                                        DataType::Float32(),
+                                        std::vector<int64_t>{32, 8}))
                         .ok());
-    ASSERT_TRUE(packed_weight_store
-                        .Store(norm0_key,
-                               std::make_shared<TestPackedWeight>(
-                                       OpType::kRmsNorm,
-                                       lowered->steps()[1].spec.selector,
-                                       MakeTestBuffer(64),
-                                       kTestPackedRecipe,
-                                       DataType::Float32(),
-                                       std::vector<int64_t>{8}))
+    ASSERT_TRUE(packed_weight_collection
+                        .Insert(norm0_key,
+                                std::make_shared<TestPackedWeight>(
+                                        OpType::kRmsNorm,
+                                        lowered->steps()[1].spec.selector,
+                                        MakeTestBuffer(64),
+                                        kTestPackedRecipe,
+                                        DataType::Float32(),
+                                        std::vector<int64_t>{8}))
                         .ok());
-    ASSERT_TRUE(packed_weight_store
-                        .Store(norm1_key,
-                               std::make_shared<TestPackedWeight>(
-                                       OpType::kRmsNorm,
-                                       lowered->steps()[2].spec.selector,
-                                       MakeTestBuffer(64),
-                                       kTestPackedRecipe,
-                                       DataType::Float32(),
-                                       std::vector<int64_t>{8}))
+    ASSERT_TRUE(packed_weight_collection
+                        .Insert(norm1_key,
+                                std::make_shared<TestPackedWeight>(
+                                        OpType::kRmsNorm,
+                                        lowered->steps()[2].spec.selector,
+                                        MakeTestBuffer(64),
+                                        kTestPackedRecipe,
+                                        DataType::Float32(),
+                                        std::vector<int64_t>{8}))
                         .ok());
 
     RuntimeBuilder builder;
@@ -926,23 +926,23 @@ TEST(ExecutionPlanBuilder, BuildFromLoweredGraphBindsDistinctPackedWeightsByBind
                                    std::make_unique<PackedTestBackendFactory>());
     Runtime runtime = builder.Build();
     const auto plan =
-            ExecutionPlanBuilder::Build(runtime, packed_weight_store, *lowered);
+            ExecutionPlanBuilder::Build(runtime, packed_weight_collection, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     ASSERT_EQ(plan->size(), 3U);
 
     // Each RmsNorm step resolves to the artifact of its own binding; the two
     // steps do not share a pointer even though their selectors are identical.
     EXPECT_EQ(plan->steps()[0].packed_weights,
-              packed_weight_store.Find(embedding_key));
+              packed_weight_collection.Find(embedding_key));
     ASSERT_NE(plan->steps()[1].packed_weights, nullptr);
     ASSERT_NE(plan->steps()[2].packed_weights, nullptr);
-    EXPECT_EQ(plan->steps()[1].packed_weights, packed_weight_store.Find(norm0_key));
-    EXPECT_EQ(plan->steps()[2].packed_weights, packed_weight_store.Find(norm1_key));
+    EXPECT_EQ(plan->steps()[1].packed_weights, packed_weight_collection.Find(norm0_key));
+    EXPECT_EQ(plan->steps()[2].packed_weights, packed_weight_collection.Find(norm1_key));
     EXPECT_NE(plan->steps()[1].packed_weights, plan->steps()[2].packed_weights);
 }
 
-TEST(ExecutionPlanBuilder, TrustedPathRejectsStoreFromAnotherArtifact) {
-    // A store bound to a different model artifact must be refused even when
+TEST(ExecutionPlanBuilder, TrustedPathRejectsCollectionFromAnotherArtifact) {
+    // A collection bound to a different model artifact must be refused even when
     // every packed key would otherwise match: identity includes the source.
     ModelGraph graph;
     const GraphValueId tokens = graph.AddInput(
@@ -973,14 +973,14 @@ TEST(ExecutionPlanBuilder, TrustedPathRejectsStoreFromAnotherArtifact) {
         EXPECT_EQ(step.spec.selector.weight_format, WeightFormat::kPacked);
     }
 
-    PackedWeightStore foreign_store;
-    ASSERT_TRUE(foreign_store.SetSourceId(lowered->artifact_id() + 1000).ok());
+    PackedWeightCollection foreign_collection;
+    ASSERT_TRUE(foreign_collection.SetSourceId(lowered->artifact_id() + 1000).ok());
 
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<PackedTestBackendFactory>());
     Runtime runtime = builder.Build();
-    const auto plan = ExecutionPlanBuilder::Build(runtime, foreign_store, *lowered);
+    const auto plan = ExecutionPlanBuilder::Build(runtime, foreign_collection, *lowered);
 
     ASSERT_FALSE(plan.ok());
     EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);

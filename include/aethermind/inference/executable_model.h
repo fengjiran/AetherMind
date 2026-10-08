@@ -10,7 +10,7 @@
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/inference/weight_binding_storage.h"
-#include "aethermind/model/weight/packed_weight_store.h"
+#include "aethermind/model/weight/packed_weight_collection.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -77,7 +77,7 @@ public:
             ExecPhase phase) const noexcept;
 
     /// @brief Returns the identity of the compiled artifact this model was built
-    ///        from, matching the packed-weight store's source id.
+    ///        from, matching the packed-weight collection's source id.
     AM_NODISCARD uint64_t artifact_id() const noexcept;
 
     /// @brief Returns the single phase this artifact was compiled for.
@@ -99,7 +99,7 @@ private:
 
     ExecutableModel(Runtime& runtime,
                     LoweredModelArtifact artifact,
-                    PackedWeightStore packed_weights,
+                    PackedWeightCollection packed_weights,
                     WeightBindingStorage binding_storage,
                     ExternalTensorBindings bindings,
                     ExecutionPlan plan,
@@ -114,7 +114,7 @@ private:
     // This Runtime must stay at the same address and outlive this model.
     Runtime* runtime_ = nullptr;
     LoweredModelArtifact artifact_{};
-    PackedWeightStore packed_weights_{};
+    PackedWeightCollection packed_weights_{};
     WeightBindingStorage binding_storage_{};
     ExternalTensorBindings bindings_{};
     ExecutionPlan plan_{};

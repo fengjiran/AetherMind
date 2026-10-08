@@ -152,7 +152,7 @@ public:
     /// @brief Instance identity of this compiler artifact.
     ///
     /// Assigned once at Build(); used to tie packed-weight artifacts and their
-    /// PackedWeightStore to the exact lowered graph they were produced for.
+    /// PackedWeightCollection to the exact lowered graph they were produced for.
     AM_NODISCARD uint64_t artifact_id() const noexcept {
         return artifact_id_;
     }

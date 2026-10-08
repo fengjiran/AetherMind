@@ -11,7 +11,7 @@
 #include "aethermind/execution/executor.h"
 #include "aethermind/graph/graph.h"
 #include "aethermind/model/resolved_model_weights.h"
-#include "aethermind/model/weight/packed_weight_store.h"
+#include "aethermind/model/weight/packed_weight_collection.h"
 #include "aethermind/model/weight/weight_packing_request.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"

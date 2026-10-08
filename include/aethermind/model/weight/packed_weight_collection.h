@@ -1,8 +1,8 @@
-#ifndef AETHERMIND_MODEL_PACKED_WEIGHT_STORE_H
-#define AETHERMIND_MODEL_PACKED_WEIGHT_STORE_H
+#ifndef AETHERMIND_MODEL_PACKED_WEIGHT_COLLECTION_H
+#define AETHERMIND_MODEL_PACKED_WEIGHT_COLLECTION_H
 
-/// @file packed_weight_store.h
-/// @brief Packed-weight artifact identity, shared storage, and batch construction.
+/// @file packed_weight_collection.h
+/// @brief Packed-weight artifact identity, collection, and batch construction.
 
 #include "aethermind/backend/packed_weight.h"
 #include "aethermind/base/kernel_selector.h"
@@ -43,27 +43,27 @@ struct WeightArtifactKey {
 
 /// @brief Owns PackedWeight artifacts indexed by their binding-aware key.
 ///
-/// The store shares artifact ownership with ExecutionPlan: plan steps hold a
+/// The collection shares artifact ownership with ExecutionPlan: plan steps hold a
 /// std::shared_ptr into these artifacts, so a plan stays executable after the
-/// store itself is destroyed.
+/// collection itself is destroyed.
 ///
 /// Single-source invariant: every entry belongs to one source artifact. The
 /// source is bound by SetSourceId or, failing that, by the first successful
-/// Store; afterwards a key carrying a different source_id is rejected. Zero is
+/// Insert; afterwards a key carrying a different source_id is rejected. Zero is
 /// the unbound source used by untrusted single-node requests.
 ///
-/// Query contract: preparation-time code stores and looks up by the complete
-/// WeightArtifactKey (Store / Find); execution planning resolves each step's
+/// Query contract: preparation-time code inserts and looks up by the complete
+/// WeightArtifactKey (Insert / Find); execution planning resolves each step's
 /// artifact through the same exact-key lookup. There is no recipe-agnostic
 /// query surface — a step that does not know its recipe is a planner bug.
 ///
 /// @note Not thread-safe; callers must serialize concurrent access.
-class PackedWeightStore {
+class PackedWeightCollection {
 public:
-    /// @brief Sets the source artifact this store was packed for.
+    /// @brief Sets the source artifact this collection was packed for.
     ///
-    /// May be called before the first Store(); once frozen (after the first
-    /// Store, which binds that key's source_id, or a prior SetSourceId), a
+    /// May be called before the first Insert(); once frozen (after the first
+    /// Insert, which binds that key's source_id, or a prior SetSourceId), a
     /// different source is rejected.
     ///
     /// @param source_id LoweredGraph::artifact_id() value.
@@ -76,14 +76,14 @@ public:
     /// @brief Takes a shared reference to a packed-weights artifact.
     ///
     /// @param key Binding-aware artifact identity. Its source_id must match the
-    ///        store's bound source; when the store is not bound yet, this call
-    ///        binds it to `key.source_id`.
+    ///        collection's bound source; if not yet bound, this call binds the
+    ///        collection to `key.source_id`.
     /// @param artifact Artifact referenced by `key` thereafter.
     /// @return Ok on success, InvalidArgument if the artifact is null or its
     ///         key comes from a different source artifact, or AlreadyExists if
     ///         an entry with the same key is already present.
-    Status Store(const WeightArtifactKey& key,
-                 std::shared_ptr<const PackedWeight> artifact) noexcept;
+    Status Insert(const WeightArtifactKey& key,
+                  std::shared_ptr<const PackedWeight> artifact) noexcept;
 
     /// @brief Returns the stored artifact matching a key, if any.
     ///
@@ -102,7 +102,7 @@ private:
     bool source_frozen_ = false;
 };
 
-/// @brief Executes prepack for every request and returns the store owning the
+/// @brief Executes prepack for every request and returns the collection owning the
 /// resulting PackedWeight artifacts. Packing identity remains
 /// {source_id, value_index, binding, selector, recipe}; the selected recipe is
 /// passed explicitly to the backend and checked against its output.
@@ -115,17 +115,17 @@ private:
 /// Backend::PackWeights contract — this module never touches a concrete
 /// backend implementation.
 ///
-/// The returned store is bound to the batch's single source artifact.
-/// Rejection or failure is all-or-nothing: no partially packed store is
+/// The returned collection is bound to the batch's single source artifact.
+/// Rejection or failure is all-or-nothing: no partially packed collection is
 /// observable.
 ///
 /// @param backend Packing service provider. Must implement PackWeights for
 ///        the requests' selectors.
 /// @param requests Requests to execute. Every request must carry the same
 ///        source_id; a mixed batch is rejected before any weight is packed.
-/// @return The bound store on success, or the first validation/packing/store
-///         error. An empty batch returns an unbound empty store.
-StatusOr<PackedWeightStore> PrepackWeightRequests(
+/// @return The bound collection on success, or the first validation, packing,
+///         or insertion error. An empty batch returns an unbound empty collection.
+StatusOr<PackedWeightCollection> PrepackWeightRequests(
         const Backend& backend,
         const std::vector<WeightPackingRequest>& requests);
 

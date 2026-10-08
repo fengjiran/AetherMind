@@ -1,4 +1,4 @@
-#include "aethermind/model/weight/packed_weight_store.h"
+#include "aethermind/model/weight/packed_weight_collection.h"
 
 #include "aethermind/backend/backend.h"
 #include "aethermind/base/macros.h"
@@ -62,9 +62,9 @@ StatusOr<size_t> LogicalByteSize(const PackedWeight& artifact) noexcept {
 
 } // namespace
 
-Status PackedWeightStore::SetSourceId(uint64_t source_id) noexcept {
+Status PackedWeightCollection::SetSourceId(uint64_t source_id) noexcept {
     if (source_frozen_ && source_id != source_id_) {
-        return Status::InvalidArgument("PackedWeightStore is already frozen to "
+        return Status::InvalidArgument("PackedWeightCollection is already frozen to "
                                        "a different source artifact");
     }
 
@@ -73,21 +73,21 @@ Status PackedWeightStore::SetSourceId(uint64_t source_id) noexcept {
     return Status::Ok();
 }
 
-uint64_t PackedWeightStore::source_id() const noexcept {
+uint64_t PackedWeightCollection::source_id() const noexcept {
     return source_id_;
 }
 
-Status PackedWeightStore::Store(const WeightArtifactKey& key,
-                                std::shared_ptr<const PackedWeight> artifact) noexcept {
+Status PackedWeightCollection::Insert(const WeightArtifactKey& key,
+                                      std::shared_ptr<const PackedWeight> artifact) noexcept {
     if (artifact == nullptr) {
         return Status::InvalidArgument(
-                "PackedWeightStore cannot store null packed weights");
+                "PackedWeightCollection cannot insert null packed weights");
     }
 
     if (source_frozen_ && key.source_id != source_id_) {
         return Status::InvalidArgument(
                 "Packed weight key belongs to a different source artifact than "
-                "the store");
+                "the collection");
     }
 
     if (Find(key) != nullptr) {
@@ -95,7 +95,7 @@ Status PackedWeightStore::Store(const WeightArtifactKey& key,
                 "Packed weights already exist for the requested weight key");
     }
 
-    // The store is the trust boundary where a caller may pair an arbitrary
+    // The collection is the trust boundary where a caller may pair an arbitrary
     // artifact with a key. Reject any drift so execution never consumes a
     // mismatched payload, regardless of which recipe/selector the plan asked
     // for.
@@ -127,8 +127,8 @@ Status PackedWeightStore::Store(const WeightArtifactKey& key,
     }
 
     if (!source_frozen_) {
-        // Binding on the first successful Store keeps source_id_ consistent
-        // with the entries, so a store populated without an explicit
+        // Binding on the first successful Insert keeps source_id_ consistent
+        // with the entries, so a collection populated without an explicit
         // SetSourceId still rejects later keys from another artifact.
         source_id_ = key.source_id;
         source_frozen_ = true;
@@ -138,7 +138,7 @@ Status PackedWeightStore::Store(const WeightArtifactKey& key,
     return Status::Ok();
 }
 
-std::shared_ptr<const PackedWeight> PackedWeightStore::Find(
+std::shared_ptr<const PackedWeight> PackedWeightCollection::Find(
         const WeightArtifactKey& key) const noexcept {
     for (const auto& [entry_key, artifact]: entries_) {
         if (entry_key == key) {
@@ -148,21 +148,21 @@ std::shared_ptr<const PackedWeight> PackedWeightStore::Find(
     return nullptr;
 }
 
-size_t PackedWeightStore::size() const noexcept {
+size_t PackedWeightCollection::size() const noexcept {
     return entries_.size();
 }
 
-bool PackedWeightStore::empty() const noexcept {
+bool PackedWeightCollection::empty() const noexcept {
     return entries_.empty();
 }
 
-StatusOr<PackedWeightStore> PrepackWeightRequests(
+StatusOr<PackedWeightCollection> PrepackWeightRequests(
         const Backend& backend,
         const std::vector<WeightPackingRequest>& requests) {
-    PackedWeightStore packed_weight_store;
+    PackedWeightCollection packed_weight_collection;
     const uint64_t source_id = requests.empty() ? 0U : requests.front().source_id;
     // Validate the whole batch before packing anything: a mixed batch would
-    // store one artifact's weights under another's identity. The store is
+    // insert one artifact's weights under another's identity. The collection is
     // returned only on success, so a failed batch is never observable.
     for (const auto& req: requests) {
         if (req.source_id != source_id) {
@@ -173,7 +173,7 @@ StatusOr<PackedWeightStore> PrepackWeightRequests(
     }
 
     if (!requests.empty()) {
-        AM_RETURN_IF_ERROR(packed_weight_store.SetSourceId(source_id));
+        AM_RETURN_IF_ERROR(packed_weight_collection.SetSourceId(source_id));
     }
 
     for (const auto& req: requests) {
@@ -223,11 +223,11 @@ StatusOr<PackedWeightStore> PrepackWeightRequests(
                 .recipe = req.recipe};
         // A duplicate {binding, selector} is a planner bug: propagate as an
         // explicit error instead of silently skipping a weight.
-        AM_RETURN_IF_ERROR(packed_weight_store.Store(
+        AM_RETURN_IF_ERROR(packed_weight_collection.Insert(
                 key, std::shared_ptr<const PackedWeight>(std::move(*packed))));
     }
 
-    return packed_weight_store;
+    return packed_weight_collection;
 }
 
 } // namespace aethermind

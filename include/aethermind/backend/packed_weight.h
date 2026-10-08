@@ -14,7 +14,7 @@ namespace aethermind {
 
 /// @brief One opaque backend-layout weight artifact.
 ///
-/// Preparation stores artifacts in a PackedWeightStore and shares their
+/// Preparation stores artifacts in a PackedWeightCollection and shares their
 /// ownership with execution plans. Backend/prepacker code defines the format
 /// and build path without retaining ownership of the returned payload.
 class PackedWeight {

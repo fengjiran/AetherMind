@@ -6,7 +6,7 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/memory/buffer.h"
-#include "aethermind/model/weight/packed_weight_store.h"
+#include "aethermind/model/weight/packed_weight_collection.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -290,7 +290,7 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
     EXPECT_EQ(step1.workspace_requirement.bytes, 128U);
 }
 
-TEST(ExecutionPlanImmutability, PackedWeightLifetimeManagedByPackedWeightStore) {
+TEST(ExecutionPlanImmutability, PackedWeightLifetimeManagedByPackedWeightCollection) {
     RuntimeBuilder builder;
     builder.RegisterBackendFactory(DeviceType::kCPU,
                                    std::make_unique<ImmutableTestBackendFactory>());
@@ -314,15 +314,15 @@ TEST(ExecutionPlanImmutability, PackedWeightLifetimeManagedByPackedWeightStore) 
     std::optional<ExecutionPlan> plan;
     const void* planned_packed_ptr = nullptr;
     {
-        PackedWeightStore packed_weight_store;
-        ASSERT_TRUE(packed_weight_store
-                            .Store(key, std::make_shared<ImmutablePackedWeight>(
-                                                OpType::kRmsNorm, selector,
-                                                MakeTestBuffer(256),
-                                                &packed_destroyed,
-                                                kTestPackedRecipe,
-                                                DataType::Float32(),
-                                                std::vector<int64_t>{4}))
+        PackedWeightCollection packed_weight_collection;
+        ASSERT_TRUE(packed_weight_collection
+                            .Insert(key, std::make_shared<ImmutablePackedWeight>(
+                                                 OpType::kRmsNorm, selector,
+                                                 MakeTestBuffer(256),
+                                                 &packed_destroyed,
+                                                 kTestPackedRecipe,
+                                                 DataType::Float32(),
+                                                 std::vector<int64_t>{4}))
                             .ok());
 
         const SymbolicShape act_shape = StaticShape({1, 4});
@@ -345,7 +345,7 @@ TEST(ExecutionPlanImmutability, PackedWeightLifetimeManagedByPackedWeightStore) 
                 .op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}},
         });
 
-        const StatusOr<ExecutionPlan> built = ExecutionPlanBuilder::Build(runtime, packed_weight_store, nodes);
+        const StatusOr<ExecutionPlan> built = ExecutionPlanBuilder::Build(runtime, packed_weight_collection, nodes);
 
         ASSERT_TRUE(built.ok());
         ASSERT_EQ(built->size(), 1U);
@@ -354,10 +354,10 @@ TEST(ExecutionPlanImmutability, PackedWeightLifetimeManagedByPackedWeightStore) 
         planned_packed_ptr = step.packed_weights->storage().data();
         EXPECT_FALSE(packed_destroyed);
         plan = std::move(*built);
-    } // The PackedWeightStore is destroyed here.
+    } // The PackedWeightCollection is destroyed here.
 
     // The plan holds its own shared reference into the artifact, so execution
-    // stays valid (and the artifact stays alive) after the store is gone.
+    // stays valid (and the artifact stays alive) after the collection is gone.
     ASSERT_TRUE(plan.has_value());
     EXPECT_FALSE(packed_destroyed);
     ASSERT_NE(plan->steps().front().packed_weights, nullptr);

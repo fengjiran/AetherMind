@@ -87,8 +87,8 @@ struct ExecutionValueDesc {
 struct ExecutionStep {
     KernelSelector selector{};
     ResolvedKernel kernel{};
-    /// Shared reference into PackedWeightStore artifacts. The plan holds its
-    /// own reference, so it stays executable after the store is destroyed.
+    /// Shared reference into PackedWeightCollection artifacts. The plan holds its
+    /// own reference, so it stays executable after the collection is destroyed.
     std::shared_ptr<const PackedWeight> packed_weights{};
     WorkspaceRequirement workspace_requirement{};
     /// Complete semantic schema-port-ordered input operands. State ports are

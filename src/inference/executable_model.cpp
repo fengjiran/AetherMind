@@ -9,7 +9,7 @@
 #include "aethermind/graph/graph_types.h"
 #include "aethermind/model/raw_weight.h"
 #include "aethermind/model/resolved_model_weights.h"
-#include "aethermind/model/weight/packed_weight_store.h"
+#include "aethermind/model/weight/packed_weight_collection.h"
 #include "aethermind/model/weight/weight_packing_request.h"
 #include "aethermind/runtime/runtime.h"
 #include "utils/overflow_check.h"
@@ -197,7 +197,7 @@ StatusOr<TensorView> MaterializeBinding(WeightBindingStorage& storage,
 
 ExecutableModel::ExecutableModel(Runtime& runtime,
                                  LoweredModelArtifact artifact,
-                                 PackedWeightStore packed_weights,
+                                 PackedWeightCollection packed_weights,
                                  WeightBindingStorage binding_storage,
                                  ExternalTensorBindings bindings,
                                  ExecutionPlan plan,
@@ -324,7 +324,7 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
     AM_ASSIGN_OR_RETURN(std::vector<WeightPackingRequest> resolved_requests,
                         inference::internal::ResolveWeightPackingRequests(
                                 **backend, std::move(*requests), device));
-    AM_ASSIGN_OR_RETURN(PackedWeightStore packed_weights,
+    AM_ASSIGN_OR_RETURN(PackedWeightCollection packed_weights,
                         PrepackWeightRequests(**backend, resolved_requests));
 
     auto plan = ExecutionPlanBuilder::Build(runtime,

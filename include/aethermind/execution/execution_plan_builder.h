@@ -13,7 +13,7 @@
 namespace aethermind {
 
 class LoweredGraph;
-class PackedWeightStore;
+class PackedWeightCollection;
 
 /// @brief Builds ExecutionPlan instances.
 ///
@@ -48,12 +48,12 @@ public:
     ///        weights.
     ///
     /// @param runtime Runtime context providing backends.
-    /// @param packed_weight_store Storage for packed-format weights.
+    /// @param packed_weight_collection Collection of packed-weight artifacts.
     /// @param nodes Untrusted per-node metadata.
     /// @return The built plan, or an error on validation or kernel failure.
     static StatusOr<ExecutionPlan> Build(
             Runtime& runtime,
-            const PackedWeightStore& packed_weight_store,
+            const PackedWeightCollection& packed_weight_collection,
             const std::vector<ExecutionPlanNodeSpec>& nodes);
 
     /// @brief Builds an ExecutionPlan from a finalized compiler artifact.
@@ -72,12 +72,12 @@ public:
     ///        weights.
     ///
     /// @param runtime Runtime context providing backends.
-    /// @param packed_weight_store Storage for packed-format weights.
+    /// @param packed_weight_collection Collection of packed-weight artifacts.
     /// @param lowered Finalized compiler artifact.
     /// @return The built plan, or an error if the artifact is invalid.
     static StatusOr<ExecutionPlan> Build(
             Runtime& runtime,
-            const PackedWeightStore& packed_weight_store,
+            const PackedWeightCollection& packed_weight_collection,
             const LoweredGraph& lowered);
 };
 

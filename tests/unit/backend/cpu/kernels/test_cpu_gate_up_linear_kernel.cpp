@@ -10,7 +10,7 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/graph/graph.h"
-#include "aethermind/model/weight/packed_weight_store.h"
+#include "aethermind/model/weight/packed_weight_collection.h"
 #include "aethermind/model/weight/weight_packing_request.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -505,7 +505,7 @@ TEST(CPUKernelGateUpLinear, PackedArtifactParticipatesInDeferredShapeChecks) {
             TensorView(logical_weight, DataType::Float32(), logical_shape, logical_strides, 64),
             MakeGateUpSelector());
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
-    PackedWeightStore store;
+    PackedWeightCollection collection;
     const WeightArtifactKey key{
             .source_id = 0,
             .value_index = 1,
@@ -513,14 +513,14 @@ TEST(CPUKernelGateUpLinear, PackedArtifactParticipatesInDeferredShapeChecks) {
             .selector = MakeGateUpSelector(),
             .recipe = CpuWeightPrepacker::RecipeFor(MakeGateUpSelector()),
     };
-    ASSERT_TRUE(store.Store(key, std::shared_ptr<const PackedWeight>(std::move(*packed))).ok());
+    ASSERT_TRUE(collection.Insert(key, std::shared_ptr<const PackedWeight>(std::move(*packed))).ok());
 
     RuntimeBuilder runtime_builder;
     runtime_builder.RegisterBackendFactory(
             DeviceType::kCPU, std::make_unique<CpuBackendFactory>());
     Runtime runtime = runtime_builder.Build();
     const auto plan = ExecutionPlanBuilder::Build(
-            runtime, store,
+            runtime, collection,
             std::vector{ExecutionPlanNodeSpec{
                     .op_type = OpType::kGateUpLinear,
                     .selector = MakeGateUpSelector(),

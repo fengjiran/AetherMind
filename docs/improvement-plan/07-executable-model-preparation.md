@@ -43,9 +43,9 @@
 | `ResolvedModelWeights` | [`resolved_model_weights.h:11-42`](../../include/aethermind/model/resolved_model_weights.h) | 嵌套结构体（非 role map）；`lm_head` 为 `std::optional<RawWeightView>` |
 | `RawWeightView` | [`raw_weight.h:21-37`](../../include/aethermind/model/raw_weight.h) | `data/bytes/dtype/shape/shared_ptr<const RawStorage>/is_contiguous` + `IsValid()`/`IsAligned()`；backing 为引用计数存储 |
 | `BuildWeightPackingRequests` | [`weight_packing_request_builder.h:28-30`](../../include/aethermind/compiler/weight_packing_request_builder.h) | 已实现且 graph-driven：跳过 `weight_format != kPacked` 的 step，按 `(value_index, selector)` 去重 |
-| `PrepackWeightRequests` | [`packed_weight_store.h`](../../include/aethermind/model/weight/packed_weight_store.h) | 创建并返回绑定 source 的 `StatusOr<PackedWeightStore>`；经 Backend::PackWeights 执行批量请求，composite 物化与对齐归 backend |
-| `PackedWeightStore` | [`packed_weight_store.h`](../../include/aethermind/model/weight/packed_weight_store.h) | 与 plan 共享 shared_ptr 所有权，source_id 在绑定后冻结，按完整 WeightArtifactKey 存取 |
-| `ExecutionPlanBuilder::Build` | [`execution_plan_builder.h:67-81`](../../include/aethermind/execution/execution_plan_builder.h) | 已实现 `LoweredGraph` 与 `(PackedWeightStore, LoweredGraph)` 重载 |
+| `PrepackWeightRequests` | [`packed_weight_collection.h`](../../include/aethermind/model/weight/packed_weight_collection.h) | 创建并返回绑定 source 的 `StatusOr<PackedWeightCollection>`；经 Backend::PackWeights 执行批量请求，composite 物化与对齐归 backend |
+| `PackedWeightCollection` | [`packed_weight_collection.h`](../../include/aethermind/model/weight/packed_weight_collection.h) | 与 plan 共享 shared_ptr 所有权，source_id 在绑定后冻结，按完整 WeightArtifactKey 存取 |
+| `ExecutionPlanBuilder::Build` | [`execution_plan_builder.h:67-81`](../../include/aethermind/execution/execution_plan_builder.h) | 已实现 `LoweredGraph` 与 `(PackedWeightCollection, LoweredGraph)` 重载 |
 | packed/plain 端口裁剪 | [`execution_plan_builder.cpp:61-73`](../../src/execution/execution_plan_builder.cpp) | `weight_format == kPacked` 时丢弃 `kWeight` 语义端口 |
 | `PrepareExecutionBindings` | [`execution_bindings.h:109-112`](../../include/aethermind/execution/execution_bindings.h) | 已实现；缺必需绑定报 `FailedPrecondition`，重复 id 报 `InvalidArgument` |
 
@@ -68,8 +68,8 @@
 
 - **值索引同一性**：`PrepareTrustedGraph` 按 lowered 顺序 1:1 push 值（[`execution_plan_builder.cpp:484-505`](../../src/execution/execution_plan_builder.cpp)），因此 `ExecutionValueId{index}` 与 `LoweredGraph` 的 `GraphValueId{index}` 同索引；`packed_key->value_index` 直接用于索引 `graph.values`（`:648`）即为佐证。
 - **plan 构建后自持**：`ExecutionPlanBuilder.TrustedPathCopiesValueDataflowAfterLoweredGraphLifetimeEnds`（[`test_execution_plan_builder.cpp:1035`](../../tests/unit/execution/test_execution_plan_builder.cpp)）证明 plan 不借用 `LoweredGraph`。
-- **packed artifact 生命周期解耦**：plan step 持 `shared_ptr<const PackedWeight>`，store 销毁后 plan 仍可执行（[`packed_weight_store.h`](../../include/aethermind/model/weight/packed_weight_store.h)）。
-- **权重连续性**：HF 校验器拒绝非连续视图（[`hf_model_validator.cpp:83`](../../src/model/formats/hf/hf_model_validator.cpp)）；批量构建入口经 ValidateRawWeightView 验证 shape/dtype/字节数（`packed_weight_store.cpp`）。
+- **packed artifact 生命周期解耦**：plan step 持 `shared_ptr<const PackedWeight>`，store 销毁后 plan 仍可执行（[`packed_weight_collection.h`](../../include/aethermind/model/weight/packed_weight_collection.h)）。
+- **权重连续性**：HF 校验器拒绝非连续视图（[`hf_model_validator.cpp:83`](../../src/model/formats/hf/hf_model_validator.cpp)）；批量构建入口经 ValidateRawWeightView 验证 shape/dtype/字节数（`packed_weight_collection.cpp`）。
 - **tied lm-head 语义**：解析结果不是标志位，而是复用同一 `RawWeightView`（共享 `storage`），由 `BuildWeightPackingRequestsFallsBackToEmbedTokensForTiedLmHead`（`test_weight_packing.cpp:708-759`）覆盖。
 
 ## 3. 目标架构
@@ -90,7 +90,7 @@ inference → execution + compiler + model + runtime
 ```text
 ExecutableModel                            模型生命周期（move-only）
 ├── owns LoweredModelArtifact              → 间接 owns LoadedModel / ResolvedModelWeights / RawStorage
-├── owns PackedWeightStore                 → 与 plan 共享 shared_ptr 所有权
+├── owns PackedWeightCollection                 → 与 plan 共享 shared_ptr 所有权
 ├── owns WeightBindingStorage              → 每个绑定的 shape/stride 数组（堆稳定）
 ├── owns ExternalTensorBindings            → 仅 weight/constant 只读子集，数据指针借用上面两项
 └── owns ExecutionPlan                     → 构建后自持，不借用 LoweredGraph
@@ -221,7 +221,7 @@ Runtime > ExecutableModel(artifact, store, 元数据, bindings, plan) > Inferenc
 ```
 
 - bindings 借用 `RawStorage` 与 `inline_data` → artifact 必须与 `ExecutableModel` 同生命周期（由所有权直接保证）；
-- plan 持 packed artifact 的 `shared_ptr` → 即使 store 先销毁也可执行（以 [`packed_weight_store.h`](../../include/aethermind/model/weight/packed_weight_store.h) 与成员类型为准；`execution_plan.h:84-85` 的 "borrowed pointer / store must outlive this plan" 注释与之矛盾，属失实注释，M2.4 修正）；`ExecutableModel` 仍持有 store 以维持 `source_id` 与 artifact 的对账能力；
+- plan 持 packed artifact 的 `shared_ptr` → 即使 store 先销毁也可执行（以 [`packed_weight_collection.h`](../../include/aethermind/model/weight/packed_weight_collection.h) 与成员类型为准；`execution_plan.h:84-85` 的 "borrowed pointer / store must outlive this plan" 注释与之矛盾，属失实注释，M2.4 修正）；`ExecutableModel` 仍持有 store 以维持 `source_id` 与 artifact 的对账能力；
 - `PreparedExecutionBindings` 借用 external 数据指针（`execution_bindings.h:59-64`）→ 由 Session 保证其先于 `ExecutableModel` 销毁，该约束在 M5 落地并测试，本提案只在头文件契约中写明。
 
 ## 5. 方案与备选
@@ -254,7 +254,7 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 
 一处刻意的语义收紧：原 `FindRawWeightByRole` 对 attention/MLP 角色使用 `layer.value_or(0)`（缺失 layer index 时静默解析到 layer 0），而 norm 角色返回 `nullptr`，两者不一致。现统一为 layer-scoped 角色一律要求 in-range index，缺失即 `nullptr`。依据是 `ModelGraph::Validate` 已拒绝缺失 layer index 的 per-layer 角色（[`graph.cpp:161-163`](../../src/graph/graph.cpp)），故该回退对任何经验证的图不可达；收紧后全量测试全绿，实测为无操作。
 
-遗留观察（M2.5 已闭环）：`WeightPrepackPlanner::BuildRequests`（legacy，生产不调用）对 tied lm-head 是**跳过**而非回退，语义与单一权威不同。该入口已于 M2.5 连同 `MakePackedSelector` 一并删除，其旧用例改写为直接构造 `WeightPackingRequest`；原 `BuildRequests*` 三例 graph-driven 测试更名为 `BuildWeightPackingRequests*`，避免读者误认存在第三份 request 权威。`WeightPrepackPlanner` 类壳体本身已于 1.8 函数化（见 §10 `packed_weight_store.h`）。
+遗留观察（M2.5 已闭环）：`WeightPrepackPlanner::BuildRequests`（legacy，生产不调用）对 tied lm-head 是**跳过**而非回退，语义与单一权威不同。该入口已于 M2.5 连同 `MakePackedSelector` 一并删除，其旧用例改写为直接构造 `WeightPackingRequest`；原 `BuildRequests*` 三例 graph-driven 测试更名为 `BuildWeightPackingRequests*`，避免读者误认存在第三份 request 权威。`WeightPrepackPlanner` 类壳体本身已于 1.8 函数化（见 §10 `packed_weight_collection.h`）。
 
 提取 `ResolveWeightBinding` 到 model/weight 的 `weight_binding_resolver.h/.cpp` 单元，改造 `weight_packing_request_builder.cpp` 与 `llama_dense_graph_builder.cpp`（原 `model_graph_builder.cpp`）复用之；补 tied lm-head / 越界 layer / `kMoERouter` 的单测，含 §4.1 `nullptr` 错误路径（调用方必须转 `FailedPrecondition`）。
 
@@ -282,7 +282,7 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 
 ### M2.4 inference：`PrepareExecutableModel`
 
-**状态（2026-09-23）**：已落地。[`executable_model.h`](../../include/aethermind/inference/executable_model.h) / [`executable_model.cpp`](../../src/inference/executable_model.cpp) 按 §3.4 八步实现，成员声明顺序即销毁契约；三处失实注释已修正（`execution_plan.h` 的 `ExecutionStep` brief 与 `Create` 的 `steps` 参数说明、`packed_weight_store.h`（原 `packed_weight_store.h:24/53` 与 `weight_prepack_planner.h:23`））。新增 [`test_executable_model.cpp`](../../tests/unit/inference/test_executable_model.cpp)（8 例）与共享 fixture [`test_llama_checkpoint_helpers.h`](../../tests/unit/model/test_llama_checkpoint_helpers.h)（字节后备的 tiny GQA Llama，形状占位权重会被 `ValidateRawWeightView` 拒绝）。全量 3519 测试通过。
+**状态（2026-09-23）**：已落地。[`executable_model.h`](../../include/aethermind/inference/executable_model.h) / [`executable_model.cpp`](../../src/inference/executable_model.cpp) 按 §3.4 八步实现，成员声明顺序即销毁契约；三处失实注释已修正（`execution_plan.h` 的 `ExecutionStep` brief 与 `Create` 的 `steps` 参数说明、`packed_weight_collection.h`（原 `packed_weight_collection.h:24/53` 与 `weight_prepack_planner.h:23`））。新增 [`test_executable_model.cpp`](../../tests/unit/inference/test_executable_model.cpp)（8 例）与共享 fixture [`test_llama_checkpoint_helpers.h`](../../tests/unit/model/test_llama_checkpoint_helpers.h)（字节后备的 tiny GQA Llama，形状占位权重会被 `ValidateRawWeightView` 拒绝）。全量 3519 测试通过。
 
 **这同时是仓库首次通过生产路径构建出完整 Llama plan**：`ModelCompiler::Compile`（O1 未融合 + 真实 CpuBackend）→ `PrepareExecutableModel`，1 层、GQA 4/2 头，12 个权重值全部自动绑定、无手工拼 plan。01 §9 的三项门禁据此可勾选。
 
@@ -292,8 +292,8 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 
 同批修正三处与实现不符的既有注释：
 
-- [`packed_weight_store.h`](../../include/aethermind/model/weight/packed_weight_store.h)（原 `packed_weight_store.h:53` 与 `weight_prepack_planner.h:23`）把 `artifact_id()` 归给 `LoweredModelArtifact`，实际只定义在 `LoweredGraph`（[`lowered_graph.h:156`](../../include/aethermind/compiler/lowered_graph.h)）；`ExecutableModel::artifact_id()` 直接委托 `artifact.graph.artifact_id()`；
-- [`execution_plan.h:84-85`](../../include/aethermind/execution/execution_plan.h) 称 `packed_weights` 是 "borrowed pointer into a PackedWeightStore's storage; the store must outlive this plan"，与同文件 `:91-92`（plan 自持引用，store 销毁后仍可执行）直接矛盾；实际成员类型是 `std::shared_ptr<const PackedWeight>`，应删除失实的前者。
+- [`packed_weight_collection.h`](../../include/aethermind/model/weight/packed_weight_collection.h)（原 `packed_weight_collection.h:53` 与 `weight_prepack_planner.h:23`）把 `artifact_id()` 归给 `LoweredModelArtifact`，实际只定义在 `LoweredGraph`（[`lowered_graph.h:156`](../../include/aethermind/compiler/lowered_graph.h)）；`ExecutableModel::artifact_id()` 直接委托 `artifact.graph.artifact_id()`；
+- [`execution_plan.h:84-85`](../../include/aethermind/execution/execution_plan.h) 称 `packed_weights` 是 "borrowed pointer into a PackedWeightCollection's storage; the store must outlive this plan"，与同文件 `:91-92`（plan 自持引用，store 销毁后仍可执行）直接矛盾；实际成员类型是 `std::shared_ptr<const PackedWeight>`，应删除失实的前者。
 
 退出条件（已满足）：从真实 `LoweredModelArtifact` 构建成功，无手工拼 plan 路径；上述注释与实现一致。
 
@@ -360,14 +360,14 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 - [`include/aethermind/inference/executable_model.h`](../../include/aethermind/inference/executable_model.h)
 - [`src/inference/executable_model.cpp`](../../src/inference/executable_model.cpp)
 - [`include/aethermind/inference/weight_binding_storage.h`](../../include/aethermind/inference/weight_binding_storage.h)
-- [`include/aethermind/model/weight/packed_weight_store.h`](../../include/aethermind/model/weight/packed_weight_store.h)
-- [`src/model/weight/packed_weight_store.cpp`](../../src/model/weight/packed_weight_store.cpp)
+- [`include/aethermind/model/weight/packed_weight_collection.h`](../../include/aethermind/model/weight/packed_weight_collection.h)
+- [`src/model/weight/packed_weight_collection.cpp`](../../src/model/weight/packed_weight_collection.cpp)
 - [`include/aethermind/model/weight/weight_binding_resolver.h`](../../include/aethermind/model/weight/weight_binding_resolver.h)
 - [`src/model/weight/weight_binding_resolver.cpp`](../../src/model/weight/weight_binding_resolver.cpp)
 - [`include/aethermind/model/weight/weight_packing_request.h`](../../include/aethermind/model/weight/weight_packing_request.h)
 - [`src/inference/inference_internal.h`](../../src/inference/inference_internal.h)
 - [`tests/unit/model/weight/test_weight_binding_resolver.cpp`](../../tests/unit/model/weight/test_weight_binding_resolver.cpp)
-- [`tests/unit/model/weight/test_packed_weight_store.cpp`](../../tests/unit/model/weight/test_packed_weight_store.cpp)
+- [`tests/unit/model/weight/test_packed_weight_collection.cpp`](../../tests/unit/model/weight/test_packed_weight_collection.cpp)
 - [`include/aethermind/compiler/model_compiler.h`](../../include/aethermind/compiler/model_compiler.h)
 - [`include/aethermind/model/resolved_model_weights.h`](../../include/aethermind/model/resolved_model_weights.h)
 - [`include/aethermind/model/raw_weight.h`](../../include/aethermind/model/raw_weight.h)

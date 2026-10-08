@@ -94,7 +94,7 @@ HF directory
 `ExecutableModel` 应作为 model/compiler artifact 与 Session 之间的 production-ready 边界，拥有或保持：
 
 - `LoweredModelArtifact` 或保证其 raw weight backing 生命周期；
-- graph-driven `PackedWeightStore`；
+- graph-driven `PackedWeightCollection`；
 - 一个共享 `kBoth` plan，或经证据证明需要的 Prefill/Decode plans；
 - plan 对应的 memory requirements；
 - model identity/fingerprint 与 KV spec；

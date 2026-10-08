@@ -9,7 +9,7 @@ ExecutionPlanBuilder::Build(Runtime& runtime,
                             const std::vector<ExecutionPlanNodeSpec>& nodes)
 
 ExecutionPlanBuilder::Build(Runtime& runtime,
-                            const PackedWeightStore& packed_weight_store,
+                            const PackedWeightCollection& packed_weight_collection,
                             const std::vector<ExecutionPlanNodeSpec>& nodes)
 ```
 
@@ -55,13 +55,13 @@ PrepareUntrustedNodes / PrepareTrustedNodes
         │      └─ trusted node: 透传 lowered 的 output_specs / runtime_checks
         │
         ▼
-AssembleExecutionPlan(runtime, packed_weight_store?, prepared, alias_plan)
+AssembleExecutionPlan(runtime, packed_weight_collection?, prepared, alias_plan)
         │
         ├─ for each prepared node:
         │      ├─ runtime.GetBackend(node.selector.device_type)
         │      ├─ PrepareKernelChecked(...)   // backend 是 workspace 需求唯一权威
         │      │      └─ 返回按值持有的 ResolvedKernel（含 workspace_requirement）
-        │      ├─ ResolvePackedWeights(packed_weight_store?, op_type, selector)
+        │      ├─ ResolvePackedWeights(packed_weight_collection?, op_type, selector)
         │      └─ workspace_requirements.push_back(kernel->workspace_requirement)
         │
         ├─ PlanWorkspaceRequirements(...)   // 统一规划 offset
@@ -89,13 +89,13 @@ BuildExecutionPlan(runtime, nullptr, nodes)
 另一个重载：
 
 ```cpp
-ExecutionPlanBuilder::Build(runtime, packed_weight_store, nodes)
+ExecutionPlanBuilder::Build(runtime, packed_weight_collection, nodes)
 ```
 
 调用：
 
 ```cpp
-BuildExecutionPlan(runtime, &packed_weight_store, nodes)
+BuildExecutionPlan(runtime, &packed_weight_collection, nodes)
 ```
 
 第二个重载用于支持 packed weight 查找。
@@ -193,7 +193,7 @@ backend.PrepareKernel(node.op_type, node.selector, node.op_params)
 ### G. Packed weight 绑定
 
 ```cpp
-ResolvePackedWeights(const PackedWeightStore* packed_weight_store,
+ResolvePackedWeights(const PackedWeightCollection* packed_weight_collection,
                      OpType op_type,
                      const KernelSelector& selector)
 ```
@@ -212,16 +212,16 @@ selector.weight_format != WeightFormat::kPacked
 nullptr
 ```
 
-2. 如果需要 packed weight 但没有 `PackedWeightStore`：
+2. 如果需要 packed weight 但没有 `PackedWeightCollection`：
 
 ```cpp
-Status::NotFound("Packed-weight node requires a PackedWeightStore")
+Status::NotFound("Packed-weight node requires a PackedWeightCollection")
 ```
 
 3. 否则：
 
 ```cpp
-packed_weight_store->Find(node.op_type, selector)
+packed_weight_collection->Find(node.op_type, selector)
 ```
 
 成功后返回：

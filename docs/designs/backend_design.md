@@ -111,7 +111,7 @@ Kernel 的最终执行形态必须是 plan-build time resolve 后的函数指针
 | `BackendFactory`        | `BackendRegistry`                  | 随 `Runtime` 销毁 | 按 `DeviceType` 注册                                      |
 | `Backend`               | `BackendRegistry`                  | 随 `Runtime` 销毁 | 延迟实例化并缓存，表示设备族执行能力                      |
 | `ExecutionPlan`                 | 调用方/模型管理侧       | 模型级、只读       | 保存解析后的 `ExecutionStep` 与静态执行元数据；其 resolve Runtime/backend 必须仍存活 |
-| `PackedWeight`                 | `PackedWeightStore`     | 与模型级 artifact 一致 | 由 Backend 定义格式并构建，但不由 Backend 持有 |
+| `PackedWeight`                 | `PackedWeightCollection`     | 与模型级 artifact 一致 | 由 Backend 定义格式并构建，但不由 Backend 持有 |
 | `PreparedExecutionBindings`     | `ExecutionContext`      | plan specialization | 拥有 activation、metadata 与 prepared params；借用 external tensor backing |
 | `ExecutionContext`              | `Session` / `Request`  | 会话级             | 按值拥有 prepared bindings，借用 workspace arena，保存 KVCacheView；不保存临时输出 buffer 或 sequence state |
 | `KernelContext`                 | 执行栈帧                | 短生命周期          | 单次调用的窄执行上下文 |
@@ -119,7 +119,7 @@ Kernel 的最终执行形态必须是 plan-build time resolve 后的函数指针
 #### 5.1.1 所有权约束
 
 - `Backend` 表示设备族执行能力，不拥有模型权重数据本身。
-- `PackedWeight` 必须由 `PackedWeightStore` 持有，禁止写成 “`Backend` 或 store 二选一”。
+- `PackedWeight` 必须由 `PackedWeightCollection` 持有，禁止写成 “`Backend` 或 store 二选一”。
 - `ExecutionPlan` 是只读的静态执行计划，不承载 request/session 相关的动态地址绑定。
 - `PrepareExecutionBindings` 在冷路径将 external TensorViews specialize 为 `PreparedExecutionBindings`；其 external data backing 必须比 bindings 活得久。
 - `ExecutionContext::Create` 按值接收 prepared bindings、借用 workspace arena 并保存 KV view。`Clear()` 只清除自身 owned/borrowed handles，不 reset arena 或 release KV reservation。
@@ -266,7 +266,7 @@ Phase 1 CPU Backend 需实现以下关键组件以支持高性能推理：
 - **CpuCapabilities / CpuFeaturePolicy**：负责检测 AVX2、AVX512、AMX 等指令集支持，并生成三层 capability 快照（hardware/usable/effective）。模型详见 `cpu_capability_design.md`。
 - **执行资源接缝（预留）**：线程池 / NUMA / ISA 辅助信息等后端专属执行资源为后续扩展预留；当前 CPU kernels 直接消费 `KernelContext` 中的窄资源。
 - **CpuWeightPrepacker**：负责将逻辑权重转换为符合 CPU 指令集与缓存友好布局的 packed 格式。
-- **PackedWeight**：预打包权重的存储实体，**由 `PackedWeightStore` 持有**；CPU backend 只定义 packed 格式与构建逻辑。
+- **PackedWeight**：预打包权重的存储实体，**由 `PackedWeightCollection` 持有**；CPU backend 只定义 packed 格式与构建逻辑。
 - **CpuWorkspaceArena**：实现基于预分配 buffer 的切片借用与按 offset 绑定逻辑。
 
 ---
@@ -349,7 +349,7 @@ Phase 1 中 `Stream` 为最小占位接口。CPU 提供 `CpuInlineStream` 实现
 
 - `ExecutionPlanBuilder` 是唯一的 kernel resolve 发起方。
 - `Executor` 不做 kernel resolve，不直接访问 `KernelRegistry`。
-- `PackedWeight` 由 `PackedWeightStore` 持有。
+- `PackedWeight` 由 `PackedWeightCollection` 持有。
 - `ExecutionPlan` 只保存静态执行信息；`PreparedExecutionBindings` 保存 tensor specialization，`ExecutionContext` 保存 workspace 与 KV view。
 - `Workspace` 采用 arena 借用语义；计划期冻结 requirement/offset，执行期完成地址绑定。
 - `KernelContext` 只携带窄执行资源（stream、workspace 切片、packed weights、params/attrs），不暴露后端专属类型。

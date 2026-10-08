@@ -593,7 +593,7 @@ struct GateUpWeightBinding {}; // concat(Gate, Up, axis=0)
 LoweredGraph 携带逻辑绑定，packed format 由执行规划阶段决定：
 
 ```text
-LoweredStep + Selected Kernel → required packed format → PackedWeightStore 查找 → PackedWeightHandle
+LoweredStep + Selected Kernel → required packed format → PackedWeightCollection 查找 → PackedWeightHandle
 ```
 
 例如 `kQkvLinear + AMXQkvKernel → AMX_QKV_K32N16`。

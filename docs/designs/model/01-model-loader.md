@@ -24,7 +24,7 @@ ModelLoader 是模型加载链路的前端唯一入口：把 HuggingFace 模型�
 - **提供**：`ModelLoader::Load(model_dir)` → `unique_ptr<LoadedModel>`。
 - **请求**：`HfDirectoryReader`（目录 I/O）、`HfModelValidator`（三阶段校验）、`hf::ResolveWeights`（tensor 名 → 逻辑视图，命名空间自由函数）。
 - **所有权**：`LoadedModel` 按值持有 `HfModelConfig` 与 `ResolvedModelWeights`；`ResolvedModelWeights` 的共享 backing storage 为 `RawWeightView` 提供底层数据，生命周期随 `LoadedModel` 存活。
-- **明确不做**：图构建（归 `BuildModelGraph` 及 per-family builder）、kernel 解析（归 execution/backend）、权重预打包（归 `PrepackWeightRequests`/`PackedWeightStore`）、RoPE scaling type 的语义映射与拒绝（归 per-family builder 共享件 `MakeRoPEParams` 独占）。
+- **明确不做**：图构建（归 `BuildModelGraph` 及 per-family builder）、kernel 解析（归 execution/backend）、权重预打包（归 `PrepackWeightRequests`/`PackedWeightCollection`）、RoPE scaling type 的语义映射与拒绝（归 per-family builder 共享件 `MakeRoPEParams` 独占）。
 - **生命周期**：`LoadedModel` 构造后只读；由 `LoweredModelArtifact` 按值持有其 `unique_ptr`（见架构总览 §5 所有权表）。
 
 ## 3. 关键数据结构

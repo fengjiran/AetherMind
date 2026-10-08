@@ -221,7 +221,7 @@ AVX-512、NEON/SVE 使用同一 driver contract、不同 microkernel 与 recipe�
 2. `CpuBackend::PrepareKernel` 把 descriptor recipe 复制到 `ResolvedKernel`；
 3. compiler 保持 backend-independent packing request；inference 按每个 consumer 的 op/selector 调 backend recipe query 并注入 exact recipe，coalesce 前检查共享 weight 冲突；
 4. backend 提供按 recipe pack 的服务，model 层不直接实例化具体 `CpuWeightPrepacker`；
-5. `PackedWeightStore` 继续以 binding + selector + exact recipe 区分 artifact。
+5. `PackedWeightCollection` 继续以 binding + selector + exact recipe 区分 artifact。
 
 新增布局仍须贯穿 descriptor、request、artifact 和 Store 的 exact recipe 合同；optimized descriptor 消费的物理布局必须与打包产物的显式 recipe 一致。
 
@@ -478,7 +478,7 @@ runtime thread-pool contract + 单线程证据 ──> 多线程与 NUMA
 - backend 提供按 recipe pack 的服务，model 层不建立平行 `WeightLayout` enum，也不在 `ModelLoader` 中 prepack；
 - packing 发生在 semantic graph optimization/fusion 之后，由具体 `WeightBinding` 驱动；
 - 实现 N-interleaved packed-B layout、tail padding、alignment 和 compatible fallback driver；
-- `PackedWeightStore` 继续按 binding + selector + exact recipe 区分 artifact；
+- `PackedWeightCollection` 继续按 binding + selector + exact recipe 区分 artifact；
 - 单独测 packing latency、GB/s、size amplification、hot/streaming compute 和 break-even invocation count。
 
 退出条件：exact recipe 从 kernel resolve、materialization、store 到 execution binding 全链路一致；layout/alignment/metadata mismatch 明确失败；packed numerical tests 通过；packing amortization 与内存开销可接受。

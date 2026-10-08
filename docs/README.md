@@ -164,7 +164,7 @@
 | GraphRewrite / GraphPassManager | 语义 pass 框架（graph 模块） |
 | OpType / OperatorSchema / OpParams | 算子语义契约层：端口顺序为语义 ABI；OpParams 为 typed variant |
 | TensorSpec / ShapeSymbol / ShapeConstraint | 形状推导基础设施（shape_inference 模块） |
-| PackedWeightStore | packed weights 存储（legacy backend artifact，调用方持有） |
+| PackedWeightCollection | packed weights 存储（legacy backend artifact，调用方持有） |
 | RuntimeBuilder / Runtime | 运行时装配与上下文（AllocatorRegistry + BackendRegistry + KVCacheManager） |
 | PreparedExecutionBindings | `ExecutionPlan` 的 cold-path tensor specialization：拥有 activation/metadata/prepared params，借用 external backing |
 | ExecutionContext | 单 plan 的窄执行资源：拥有 prepared bindings，借用 WorkspaceArena，保存 KVCacheView |

@@ -134,7 +134,7 @@ API 服务层是 AetherMind **进程内**集成/服务边界。它不是 HTTP/gR
 |------|------|
 | **责任** | 装配 Runtime 资源（Allocator、Backend、KVCacheManager）；在冷路径将 `ExecutionPlan` specialize 为 `PreparedExecutionBindings`，并以 `ExecutionContext` 聚合 bindings、borrowed workspace 和 KV view |
 | **当前模块** | `RuntimeBuilder`、`Runtime`、`Executor`、`KVCacheManager`、`PreparedExecutionBindings`、`ExecutionContext`、`ModelLoader`、`PrepareExecutableModel`/`ExecutableModel`、`InferenceSession` |
-| **主要输入** | 已编译的 `ExecutionPlan`、其对应的模型 artifact（必要时含 `PackedWeightStore`）、Prompt Token 序列、`GenerationConfig{max_new_tokens, eos_token_id}` |
+| **主要输入** | 已编译的 `ExecutionPlan`、其对应的模型 artifact（必要时含 `PackedWeightCollection`）、Prompt Token 序列、`GenerationConfig{max_new_tokens, eos_token_id}` |
 | **主要输出** | 执行步骤结果（tensor 写入 workspace / KV cache 位置）；`InferenceSession::Generate` 返回本次新生成的 Token IDs（含 Prefill 预测的首 token 与触发停止的 EOS） |
 | **当前缺口** | 同步 Generate 状态机已闭环（session reservation → Prefill → Decode loop → Argmax/stop → 释放预约），见 [InferenceSession 模块设计](../inference/02-inference-session.md)。仓库中不存在独立的 `PrefillPath`/`DecodePath` 类型：phase 区分由 `ExecutableModel::plan(phase)` 与 Session 的两份 `PhaseContract` 承担。剩余缺口为 C ABI（`am_session_*`）、采样、跨调用 KV 复用与并发 Generate |
 | **禁止责任泄漏** | 不得承担请求排队/批处理、不得处理网络 IO、不得承担算子级 dispatch 决策（仅为调用方） |
@@ -291,7 +291,7 @@ flowchart LR
         C1["WorkspaceArena<br/>(可复用 buffer)"] -->|"Bind + Borrow"| A4
         C2["KVCacheManager<br/>(静态 KV 存储)"] -->|"Bind + Borrow"| A4
         C3["KVCacheView<br/>(逻辑访问视图)"] -->|"Bind + Borrow"| A4
-        C4["PackedWeightStore<br/>packed weights"] -->|"只读引用 (ptr)"| A4
+        C4["PackedWeightCollection<br/>packed weights"] -->|"只读引用 (ptr)"| A4
     end
 
     A4 -->|"写入"| C2
@@ -323,7 +323,7 @@ flowchart LR
 | 类别 | 生命周期 | 可变性 | 持有者 |
 |------|----------|--------|--------|
 | `LoadedModel` (config + resolved raw weights) | 模型生命周期（长） | 构造后只读 | `LoweredModelArtifact` 按值持有其 `unique_ptr`，负责 RawWeightView backing storage |
-| `PackedWeightStore` (legacy packed-weight store) | 过渡性 backend artifact 生命周期 | 准备阶段可写，执行阶段按只读使用 | 调用方持有；不由 `ModelLoader` 创建 |
+| `PackedWeightCollection` (legacy packed-weight store) | 过渡性 backend artifact 生命周期 | 准备阶段可写，执行阶段按只读使用 | 调用方持有；不由 `ModelLoader` 创建 |
 | `ExecutionPlan`（`ExecutionStep[]`） | 模型生命周期（长） | 构建后不可变 | 模型管理侧持有；必须比使用它的 `ExecutionContext` 和 `Executor::Execute` 活得久 |
 | `Runtime`（AllocatorRegistry + BackendRegistry + KVCacheManager） | Runtime 生命周期（最长） | 装配后基本不可变 | 调用方持有 `RuntimeBuilder::Build()` 返回的值对象；必须比由其 backend resolve 的 plan 活得久，因为 `ResolvedKernel::name` 借用 backend-owned storage |
 | `PreparedExecutionBindings` | plan specialization 生命周期（中） | 构建后只读 | `ExecutionContext` 按值拥有 activation storage、metadata 与 prepared params；external TensorView 的 data backing 由调用方借出且必须保持有效 |
@@ -492,7 +492,7 @@ flowchart TB
 
 | 类别 | 生命周期 | 特征 | 管理者 |
 |---|---|---|---|
-| Model Weights | 模型级（长） | 只读、大块、长期驻留（mmap 或加载后驻留） | `LoadedModel` / `PackedWeightStore` |
+| Model Weights | 模型级（长） | 只读、大块、长期驻留（mmap 或加载后驻留） | `LoadedModel` / `PackedWeightCollection` |
 | KV Cache | Session 级（中） | 静态预分配、按 token 位置递增写入、不动态扩容 | `KVCacheManager` |
 | Workspace / Scratch | 执行期（短/中） | 预留、复用（Bind/Reset） | `WorkspaceArena`（可经 ammalloc） |
 
@@ -553,7 +553,7 @@ flowchart TB
 | [`include/aethermind/compiler/model_compiler.h`](../../../include/aethermind/compiler/model_compiler.h) / [`src/compiler/model_compiler.cpp`](../../../src/compiler/model_compiler.cpp) | `ModelCompiler::Compile` / `LoadAndCompile` |
 | [`include/aethermind/model/weight/weight_binding_resolver.h`](../../../include/aethermind/model/weight/weight_binding_resolver.h) / [`src/model/weight/weight_binding_resolver.cpp`](../../../src/model/weight/weight_binding_resolver.cpp) | `ResolveWeightBinding` |
 | [`include/aethermind/model/weight/weight_packing_request.h`](../../../include/aethermind/model/weight/weight_packing_request.h) | `WeightPackingRequest` |
-| [`include/aethermind/model/weight/packed_weight_store.h`](../../../include/aethermind/model/weight/packed_weight_store.h) / [`src/model/weight/packed_weight_store.cpp`](../../../src/model/weight/packed_weight_store.cpp) | `WeightArtifactKey` / `PackedWeightStore` / `PrepackWeightRequests` |
+| [`include/aethermind/model/weight/packed_weight_collection.h`](../../../include/aethermind/model/weight/packed_weight_collection.h) / [`src/model/weight/packed_weight_collection.cpp`](../../../src/model/weight/packed_weight_collection.cpp) | `WeightArtifactKey` / `PackedWeightCollection` / `PrepackWeightRequests` |
 | [`src/inference/inference_internal.h`](../../../src/inference/inference_internal.h) / [`src/inference/executable_model.cpp`](../../../src/inference/executable_model.cpp) | 准备期 recipe 查询与请求合并（inference 私有） |
 | [`include/aethermind/runtime/runtime.h`](../../../include/aethermind/runtime/runtime.h) | `Runtime` |
 

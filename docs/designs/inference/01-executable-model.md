@@ -6,7 +6,7 @@
 - **最近更新**: 2026-10-05
 - **来源提案**: [07 号提案：ExecutableModel 生产准备入口方案](../../improvement-plan/07-executable-model-preparation.md)（Implemented）
 - **关联代码**: [include/aethermind/inference/](../../../include/aethermind/inference/)（`executable_model.h`、`weight_binding_storage.h`）/[src/inference/](../../../src/inference/)
-- **上游依赖**: compiler（`LoweredModelArtifact`、`BuildWeightPackingRequests`）、model（`LoadedModel`/`ResolvedModelWeights`、`ResolveWeightBinding`、`PrepackWeightRequests`、`PackedWeightStore`）、execution（`ExecutionPlanBuilder`、`ComputeExternalReadRequirements`、`ExternalTensorBindings`）、runtime（`Runtime` 提供 backends/allocator）、graph/operators 纯数据 payload 契约（`WeightValue`/`ConstantValue`）
+- **上游依赖**: compiler（`LoweredModelArtifact`、`BuildWeightPackingRequests`）、model（`LoadedModel`/`ResolvedModelWeights`、`ResolveWeightBinding`、`PrepackWeightRequests`、`PackedWeightCollection`）、execution（`ExecutionPlanBuilder`、`ComputeExternalReadRequirements`、`ExternalTensorBindings`）、runtime（`Runtime` 提供 backends/allocator）、graph/operators 纯数据 payload 契约（`WeightValue`/`ConstantValue`）
 - **下游消费者**: [`InferenceSession`](02-inference-session.md)（同步 greedy `Generate`，已落地；[01 号计划](../../improvement-plan/01-inference-session-generate-readiness.md) M5）
 - **关联测试**: [tests/unit/inference/test_executable_model.cpp](../../../tests/unit/inference/test_executable_model.cpp)（20 例）、[test_weight_binding_storage.cpp](../../../tests/unit/inference/test_weight_binding_storage.cpp)（8 例）、[test_load_prepare_executable_model.cpp](../../../tests/unit/inference/test_load_prepare_executable_model.cpp)（3 例）；权重解析权威测试见 [tests/unit/model/weight/test_weight_binding_resolver.cpp](../../../tests/unit/model/weight/test_weight_binding_resolver.cpp)（`WeightBindingResolver` 套件），需求查询测试见 [test_execution_bindings.cpp](../../../tests/unit/execution/test_execution_bindings.cpp)
 
@@ -24,7 +24,7 @@
 
 - **提供**：`LoadAndPrepareExecutableModel(runtime, model_dir, options)` 文件到可执行模型的编排、`PrepareExecutableModel(runtime, artifact)` artifact 准备、`ExecutableModel::plan(phase)`、`ExecutableModel::immutable_weight_bindings(phase)`、`artifact_id()`、`phase()`。
 - **请求**：`Runtime`（backend 解析与 workspace 规划）、compiler 的 request builder、model 的 resolver/prepack planner/store、execution 的 plan builder 与需求查询。
-- **所有权**：`ExecutableModel` 按值持有 artifact、`PackedWeightStore`、`WeightBindingStorage`、`ExternalTensorBindings`、`ExecutionPlan`；绑定表只借用其中数据，不复制权重。
+- **所有权**：`ExecutableModel` 按值持有 artifact、`PackedWeightCollection`、`WeightBindingStorage`、`ExternalTensorBindings`、`ExecutionPlan`；绑定表只借用其中数据，不复制权重。
 - **明确不做**：不承担算子语义、kernel resolve 算法、weight materialization 算法（packing recipe）或 KV 物理存储；不提供 model inputs 绑定（由 Session 按 phase 追加）；不暴露 packed store 访问器。
 - **生命周期**：`LoadAndPrepareExecutableModel` 借用调用方的 `Runtime`，不创建或拥有 Runtime/Session；Runtime 必须保持原地址并长于返回的 `ExecutableModel`。整体顺序为 `Runtime` > `ExecutableModel` > `InferenceSession` > `ExecutionContext`；`PreparedExecutionBindings` 借用模型数据指针，必须先于 `ExecutableModel` 释放。
 
@@ -35,7 +35,7 @@
 | 成员（声明序） | 含义 | 备注 |
 |---|---|---|
 | `artifact_` | `LoweredModelArtifact`（间接持有 `LoadedModel`/`ResolvedModelWeights`/`RawStorage`） | 最先声明、最后销毁，保证绑定借用的权重 backing 与常量 `inline_data` 全程有效 |
-| `packed_weights_` | `PackedWeightStore` | 与 plan 之间通过 `shared_ptr` 共享所有权；保留它是为了维持 `source_id` 与 artifact 的对账能力 |
+| `packed_weights_` | `PackedWeightCollection` | 与 plan 之间通过 `shared_ptr` 共享所有权；保留它是为了维持 `source_id` 与 artifact 的对账能力 |
 | `binding_storage_` | `WeightBindingStorage` | 被绑定表借用的 shape/stride 元数据 |
 | `bindings_` | `ExternalTensorBindings`（只含 weight/constant） | `TensorView` 借用 `binding_storage_` 的元数据与 artifact 的数据 |
 | `plan_` | `ExecutionPlan` | 构建后自持，不借用 `LoweredGraph`；packed artifact 以 `shared_ptr` 持有 |

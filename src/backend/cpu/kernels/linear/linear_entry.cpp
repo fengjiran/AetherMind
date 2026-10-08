@@ -149,6 +149,7 @@ StatusOr<LinearF32KernelArgs> BuildLinearF32PackedBase(
         return Status::InvalidArgument(
                 "Packed Linear requires one activation, one output, and an artifact");
     }
+
     const TensorView& input = context.inputs[0];
     const MutableTensorView& output = context.outputs[0];
     const PackedWeightView& packed = *context.packed_weight;
@@ -156,11 +157,13 @@ StatusOr<LinearF32KernelArgs> BuildLinearF32PackedBase(
         return Status::InvalidArgument(
                 "Packed Linear requires valid input and output TensorViews");
     }
+
     if (input.dtype() != DataType::Float32() ||
         output.dtype() != DataType::Float32()) {
         return Status::InvalidArgument(
                 "Packed Linear requires float32 input and output TensorViews");
     }
+
     if (input.rank() < 1 || packed.logical_shape.size() != 2U) {
         return Status::InvalidArgument(
                 "Packed Linear requires rank >= 1 input and a rank-2 weight artifact");
@@ -172,6 +175,7 @@ StatusOr<LinearF32KernelArgs> BuildLinearF32PackedBase(
         return Status::InvalidArgument(
                 "Packed Linear weight shape does not match the input feature dimension");
     }
+
     const std::array<int64_t, 2> expected_shape{out_features, in_features};
     if (bpanel) {
         AM_RETURN_IF_ERROR(ValidateBPanelF32PackedWeight(
@@ -186,12 +190,14 @@ StatusOr<LinearF32KernelArgs> BuildLinearF32PackedBase(
         return Status::InvalidArgument(
                 "Packed Linear requires output rank to match input rank");
     }
+
     for (int32_t dim = 0; dim < rank - 1; ++dim) {
         if (output.dim(dim) != input.dim(dim)) {
             return Status::InvalidArgument(
                     "Packed Linear requires output leading dimensions to match input");
         }
     }
+
     if (output.dim(rank - 1) != out_features) {
         return Status::InvalidArgument(
                 "Packed Linear output feature dimension does not match the weight");
@@ -204,6 +210,7 @@ StatusOr<LinearF32KernelArgs> BuildLinearF32PackedBase(
             .in_features = in_features,
             .out_features = out_features,
     };
+
     if (row_count == 0 || out_features == 0) {
         return args;
     }
@@ -216,6 +223,7 @@ StatusOr<LinearF32KernelArgs> BuildLinearF32PackedBase(
         return Status::InvalidArgument(
                 "Packed Linear requires non-null output for non-empty tensors");
     }
+
     args.output = output.data<float>();
     args.output_row_stride = output_analysis.row_stride();
     args.output_col_stride = output_analysis.column_stride();
@@ -223,6 +231,7 @@ StatusOr<LinearF32KernelArgs> BuildLinearF32PackedBase(
     if (in_features == 0) {
         return args;
     }
+
     if (input.data() == nullptr || packed.data == nullptr) {
         return Status::InvalidArgument(
                 "Packed Linear requires non-null input and packed weight data");
@@ -237,6 +246,7 @@ StatusOr<LinearF32KernelArgs> BuildLinearF32PackedBase(
         return Status::Overflow(
                 "Packed Linear artifact byte range exceeds int64_t");
     }
+
     AM_ASSIGN_OR_RETURN(const ByteAddressRange packed_range,
                         BuildContiguousByteRange(
                                 packed.data, static_cast<int64_t>(packed.nbytes),

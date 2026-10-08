@@ -60,7 +60,7 @@ public:
     /// Backends must use the same descriptor eligibility and priority policy
     /// as PrepareKernel. This query is used during model preparation, where
     /// operator params and tensor shapes are not available yet.
-    AM_NODISCARD virtual StatusOr<PackingRecipe> GetPackingRecipe(
+    virtual StatusOr<PackingRecipe> GetPackingRecipe(
             OpType op_type, const KernelSelector& selector) const {
         UNUSED(op_type);
         UNUSED(selector);
@@ -86,7 +86,7 @@ public:
     ///        constraints. Must request `WeightFormat::kPacked`.
     /// @return Packed artifact, or an error when the backend does not support
     ///         packing or the views violate the packing contract.
-    AM_NODISCARD virtual StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
+    virtual StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector) const {
@@ -100,7 +100,7 @@ public:
     /// @brief Packs using a recipe already selected from the consumer
     /// descriptor. The default preserves old backends only when they produce
     /// the requested exact recipe.
-    AM_NODISCARD virtual StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
+    virtual StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector,
@@ -110,14 +110,17 @@ public:
             return Status::InvalidArgument(
                     "Requested packing recipe is not selected by this backend");
         }
+
         if (!selected_recipe.ok() &&
             selected_recipe.status().code() != StatusCode::kUnimplemented) {
             return selected_recipe.status();
         }
+
         auto packed = PackWeights(op_type, components, selector);
         if (!packed.ok()) {
             return packed.status();
         }
+
         if ((*packed)->recipe() != recipe) {
             return Status::InvalidArgument(
                     "Backend packed artifact recipe differs from the requested recipe");

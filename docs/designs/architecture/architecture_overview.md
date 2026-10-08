@@ -551,7 +551,10 @@ flowchart TB
 | [`include/aethermind/runtime/runtime_builder.h`](../../../include/aethermind/runtime/runtime_builder.h) / [`src/runtime/runtime_builder.cpp`](../../../src/runtime/runtime_builder.cpp) | `RuntimeBuilder::Build` |
 | [`include/aethermind/runtime/kv_cache_manager.h`](../../../include/aethermind/runtime/kv_cache_manager.h) / [`src/runtime/kv_cache_manager.cpp`](../../../src/runtime/kv_cache_manager.cpp) | `KVCacheManager` |
 | [`include/aethermind/compiler/model_compiler.h`](../../../include/aethermind/compiler/model_compiler.h) / [`src/compiler/model_compiler.cpp`](../../../src/compiler/model_compiler.cpp) | `ModelCompiler::Compile` / `LoadAndCompile` |
-| [`include/aethermind/model/weight/weight_packing.h`](../../../include/aethermind/model/weight/weight_packing.h) / [`src/model/weight/weight_packing.cpp`](../../../src/model/weight/weight_packing.cpp) | `ResolveWeightBinding` / `PrepackWeightRequests` / `PackedWeightStore` |
+| [`include/aethermind/model/weight/weight_binding_resolver.h`](../../../include/aethermind/model/weight/weight_binding_resolver.h) / [`src/model/weight/weight_binding_resolver.cpp`](../../../src/model/weight/weight_binding_resolver.cpp) | `ResolveWeightBinding` |
+| [`include/aethermind/model/weight/weight_packing_request.h`](../../../include/aethermind/model/weight/weight_packing_request.h) | `WeightPackingRequest` |
+| [`include/aethermind/model/weight/packed_weight_store.h`](../../../include/aethermind/model/weight/packed_weight_store.h) / [`src/model/weight/packed_weight_store.cpp`](../../../src/model/weight/packed_weight_store.cpp) | `WeightArtifactKey` / `PackedWeightStore` / `PrepackWeightRequests` |
+| [`src/inference/inference_internal.h`](../../../src/inference/inference_internal.h) / [`src/inference/executable_model.cpp`](../../../src/inference/executable_model.cpp) | 准备期 recipe 查询与请求合并（inference 私有） |
 | [`include/aethermind/runtime/runtime.h`](../../../include/aethermind/runtime/runtime.h) | `Runtime` |
 
 ### 关键设计文档

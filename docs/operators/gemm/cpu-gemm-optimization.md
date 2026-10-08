@@ -215,7 +215,7 @@ AVX-512、NEON/SVE 使用同一 driver contract、不同 microkernel 与 recipe�
 
 例如 recipe 名可以采用 `cpu_f32_bpanel_v1_avx2_nr8_kr1`，但具体 tile 只有测量后才能冻结。
 
-当前 `CpuWeightPrepacker::RecipeFor(selector)` 必须演进。推荐：
+当前生产路径已经按以下职责传递 exact recipe（见 [Packed Weight 提案](cpu-gemm-packed-weight.md)）；`CpuWeightPrepacker::RecipeFor(selector)` 保留为固定 identity 的兼容查询，不参与生产布局选择：
 
 1. `KernelDef` 提供其精确 packing recipe；
 2. `CpuBackend::PrepareKernel` 把 descriptor recipe 复制到 `ResolvedKernel`；
@@ -223,7 +223,7 @@ AVX-512、NEON/SVE 使用同一 driver contract、不同 microkernel 与 recipe�
 4. backend 提供按 recipe pack 的服务，model 层不直接实例化具体 `CpuWeightPrepacker`；
 5. `PackedWeightStore` 继续以 binding + selector + exact recipe 区分 artifact。
 
-在上述链路闭环前，只能新增与 `cpu_identity` 兼容的计算优化，不能让 optimized descriptor 悄悄解释另一种物理布局。
+新增布局仍须贯穿 descriptor、request、artifact 和 Store 的 exact recipe 合同；optimized descriptor 消费的物理布局必须与打包产物的显式 recipe 一致。
 
 ### 4.6 Workspace
 

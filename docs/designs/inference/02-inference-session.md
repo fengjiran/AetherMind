@@ -4,7 +4,7 @@
 - **版本**: 1.0
 - **日期**: 2026-09-24
 - **来源提案**: [01 号计划：InferenceSession / Generate 前置闭环计划](../../improvement-plan/01-inference-session-generate-readiness.md)（Implemented，§3.6）
-- **关联代码**: [include/aethermind/inference/inference_session.h](../../../include/aethermind/inference/inference_session.h) / [src/inference/inference_session.cpp](../../../src/inference/inference_session.cpp)、[src/inference/inference_session_internal.h](../../../src/inference/inference_session_internal.h)
+- **关联代码**: [include/aethermind/inference/inference_session.h](../../../include/aethermind/inference/inference_session.h) / [src/inference/inference_session.cpp](../../../src/inference/inference_session.cpp)、[src/inference/inference_internal.h](../../../src/inference/inference_internal.h)
 - **上游依赖**: inference（`ExecutableModel` 提供 phase plan、immutable 绑定表、`vocab_size()`/`context_limit()`/`IsPreparedFor()`）、execution（`PrepareExecutionBindings`、`ExecutionContext`、`Executor`、`ExecutionPlan` workspace 需求）、runtime（Runtime 的 `GetKVCacheManager`、`HasAllocatorProvider`/`GetAllocator`，`KVCacheManager::ReserveForSession`/`ReleaseSession`）、base（`WorkspaceArena`、`TensorView`、`CheckOverflowAdd`）、operators（`OpType::kArgmax` 合同校验）
 - **下游消费者**: 当前只有单元测试；C ABI（`am_session_*`）仍为目标草案，未实现
 - **关联测试**: [tests/unit/inference/test_direct_prefill_decode.cpp](../../../tests/unit/inference/test_direct_prefill_decode.cpp)（`InferenceSession` 套件 8 例 + `DirectPrefillDecode` 2 例）
@@ -90,7 +90,7 @@
 | `InferenceSession::Create` | `static StatusOr<InferenceSession> Create(Runtime&, std::shared_ptr<const ExecutableModel>)` | 拒绝空模型（`kInvalidArgument`）、准备 Runtime 不匹配（`kFailedPrecondition`）、模型无已验证 token 上限（`kFailedPrecondition`）；随后取两个 phase plan 并各校验一次 I/O 合同。允许 Runtime 无 KVCacheManager——该缺失只在请求正数上限时报告 | ❌ |
 | `InferenceSession::Generate` | `StatusOr<std::vector<uint32_t>> Generate(std::span<const uint32_t>, const GenerationConfig&)` | 返回本次新生成的 token，**含** Prefill 预测的首 token，也**含**触发停止的 EOS；空 prompt 非法；`max_new_tokens == 0` 在校验 prompt/config 后返回空结果，不要求 KV manager、不执行模型 | ✅（内含 Decode 循环） |
 | `GenerationConfig` | `struct { size_t max_new_tokens = 0; std::optional<uint32_t> eos_token_id; }` | 只有生成上限与停止 token，无采样参数 | — |
-| `inference::internal::RunDecodeLoop` | 见 [inference_session_internal.h](../../../src/inference/inference_session_internal.h) | 内部函数，非公共 API；单独成函数是为了让 malloc-family 计数窗口只覆盖 Decode 循环本体 | ✅ |
+| `inference::internal::RunDecodeLoop` | 见 [inference_internal.h](../../../src/inference/inference_internal.h) | 内部函数，非公共 API；单独成函数是为了让 malloc-family 计数窗口只覆盖 Decode 循环本体 | ✅ |
 
 ## 6. 算法与流程
 

@@ -195,7 +195,7 @@ FindCandidates(op_type, selector)          // 结构匹配
 
 ### 7.3 与打包的关系
 
-`CpuWeightPrepacker::RecipeFor(selector)` 只由 selector 结构字段导出（**不含特征维度**）——一份 packed 权重服务所有特征等级，`WeightArtifactKey` 因此机器无关。若未来引入 ISA 特有排布（如 VNNI 专用 layout），需扩展 recipe 或 selector 维度并重新评估此权衡。
+生产准备通过 `Backend::GetPackingRecipe(op_type, selector)` 查询符合当前 feature policy 的 descriptor，并与 `PrepareKernel` 复用相同 eligibility/priority 策略；选出的 recipe 随 request、artifact 与 `WeightArtifactKey` 传递。`CpuWeightPrepacker::RecipeFor(selector)` 仅为兼容入口，忽略 selector 并固定返回 `cpu_identity_packing.h` 中的 identity recipe。identity 与 B-panel 的布局身份均由显式 recipe 表达，不能由兼容查询推断生产布局或跨 ISA 的产物可复用性。
 
 ## 8. 平台差异与边界
 
@@ -231,4 +231,3 @@ FindCandidates(op_type, selector)          // 结构匹配
 - Backend 概览：`backend_design.md`
 
 - 代码：`include/aethermind/backend/cpu/cpu_capabilities.h`、`src/backend/cpu/cpu_info.cpp`、`src/backend/cpu/cpu_capabilities.cpp`、`src/backend/cpu/cpu_backend.cpp`
-

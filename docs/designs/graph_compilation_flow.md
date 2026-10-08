@@ -61,7 +61,7 @@ AssembleExecutionPlan(runtime, packed_weight_collection?, prepared, alias_plan)
         │      ├─ runtime.GetBackend(node.selector.device_type)
         │      ├─ PrepareKernelChecked(...)   // backend 是 workspace 需求唯一权威
         │      │      └─ 返回按值持有的 ResolvedKernel（含 workspace_requirement）
-        │      ├─ ResolvePackedWeights(packed_weight_collection?, op_type, selector)
+        │      ├─ packed_weight_collection->Find(exact_key)   // 完整 WeightArtifactKey + expected_packing_recipe
         │      └─ workspace_requirements.push_back(kernel->workspace_requirement)
         │
         ├─ PlanWorkspaceRequirements(...)   // 统一规划 offset
@@ -193,9 +193,9 @@ backend.PrepareKernel(node.op_type, node.selector, node.op_params)
 ### G. Packed weight 绑定
 
 ```cpp
-ResolvePackedWeights(const PackedWeightCollection* packed_weight_collection,
-                     OpType op_type,
-                     const KernelSelector& selector)
+// 解析内联于 AssembleExecutionPlan（无独立命名函数）
+// exact_key = {node.packed_key 的 source_id/value_index/binding/selector,
+//              kernel->expected_packing_recipe}
 ```
 
 规则：
@@ -221,16 +221,22 @@ Status::NotFound("Packed-weight node requires a PackedWeightCollection")
 3. 否则：
 
 ```cpp
-packed_weight_collection->Find(node.op_type, selector)
+packed_weight_collection->Find(exact_key)
+```
+
+查找失败（空指针或 `storage().data() == nullptr`）返回：
+
+```cpp
+Status::NotFound("Packed weights not found for ExecutionPlan node")
 ```
 
 成功后返回：
 
 ```cpp
-packed_weights->storage().data()
+std::shared_ptr<const PackedWeight>
 ```
 
-这个指针最终写入：
+这个 shared_ptr 最终写入：
 
 ```cpp
 ExecutionStep::packed_weights

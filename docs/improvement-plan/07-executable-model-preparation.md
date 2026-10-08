@@ -282,7 +282,7 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 
 ### M2.4 inference：`PrepareExecutableModel`
 
-**状态（2026-09-23）**：已落地。[`executable_model.h`](../../include/aethermind/inference/executable_model.h) / [`executable_model.cpp`](../../src/inference/executable_model.cpp) 按 §3.4 八步实现，成员声明顺序即销毁契约；三处失实注释已修正（`execution_plan.h` 的 `ExecutionStep` brief 与 `Create` 的 `steps` 参数说明、`packed_weight_collection.h`（原 `packed_weight_collection.h:24/53` 与 `weight_prepack_planner.h:23`））。新增 [`test_executable_model.cpp`](../../tests/unit/inference/test_executable_model.cpp)（8 例）与共享 fixture [`test_llama_checkpoint_helpers.h`](../../tests/unit/model/test_llama_checkpoint_helpers.h)（字节后备的 tiny GQA Llama，形状占位权重会被 `ValidateRawWeightView` 拒绝）。全量 3519 测试通过。
+**状态（2026-09-23）**：已落地。[`executable_model.h`](../../include/aethermind/inference/executable_model.h) / [`executable_model.cpp`](../../src/inference/executable_model.cpp) 按 §3.4 八步实现，成员声明顺序即销毁契约；三处失实注释已修正（`execution_plan.h` 的 `ExecutionStep` brief 与 `Create` 的 `steps` 参数说明、`packed_weight_collection.h`（原 `packed_weight_store.h:24/53` 与 `weight_prepack_planner.h:23`））。新增 [`test_executable_model.cpp`](../../tests/unit/inference/test_executable_model.cpp)（8 例）与共享 fixture [`test_llama_checkpoint_helpers.h`](../../tests/unit/model/test_llama_checkpoint_helpers.h)（字节后备的 tiny GQA Llama，形状占位权重会被 `ValidateRawWeightView` 拒绝）。全量 3519 测试通过。
 
 **这同时是仓库首次通过生产路径构建出完整 Llama plan**：`ModelCompiler::Compile`（O1 未融合 + 真实 CpuBackend）→ `PrepareExecutableModel`，1 层、GQA 4/2 头，12 个权重值全部自动绑定、无手工拼 plan。01 §9 的三项门禁据此可勾选。
 

@@ -20,12 +20,25 @@ void FreePackedCpuBuffer(void*, void* ptr) noexcept {
     std::free(ptr);
 }
 
-Buffer AllocateCpuPackedBuffer(size_t nbytes, size_t alignment) {
+StatusOr<Buffer> AllocateCpuPackedBuffer(size_t nbytes, size_t alignment) {
+    constexpr size_t kDefaultAlignment = 64;
+    const size_t effective_alignment = alignment == 0 ? kDefaultAlignment : alignment;
+    // posix_memalign requires a power-of-two alignment; any power of two at
+    // least sizeof(void*) is also a multiple of sizeof(void*), satisfying both
+    // constraints. Rejecting invalid values here keeps an EINVAL from being
+    // misreported as resource exhaustion.
+    if (effective_alignment < sizeof(void*) ||
+        (effective_alignment & (effective_alignment - 1)) != 0) {
+        return Status::InvalidArgument(
+                "Packed CPU weight alignment must be a power of two and at "
+                "least sizeof(void*)");
+    }
+
     void* data = nullptr;
-    const size_t effective_alignment = alignment == 0 ? 64 : alignment;
     const int rc = posix_memalign(&data, effective_alignment, nbytes == 0 ? 1 : nbytes);
     if (rc != 0 || data == nullptr) {
-        return {};
+        return Status::ResourceExhausted(
+                "Failed to allocate packed CPU weight storage");
     }
 
     return Buffer{nbytes,
@@ -133,26 +146,7 @@ StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
         return Status::InvalidArgument("CpuWeightPrepacker requires a valid logical weight TensorView");
     }
 
-    const size_t packed_nbytes = logical_weight.logical_nbytes();
-    // Identity consumers require at least the recipe alignment, while a
-    // source view may carry a stronger alignment contract that callers retain.
-    Buffer packed_storage = AllocateCpuPackedBuffer(
-            packed_nbytes,
-            std::max(logical_weight.alignment(), cpu::kCpuIdentityPackingAlignment));
-    if (!packed_storage.is_initialized()) {
-        return Status::ResourceExhausted("Failed to allocate packed CPU weight storage");
-    }
-
-    if (packed_nbytes > 0) {
-        std::memcpy(packed_storage.mutable_data(), logical_weight.data(), packed_nbytes);
-    }
-
-    std::vector<int64_t> logical_shape(logical_weight.shape().begin(),
-                                       logical_weight.shape().end());
-    return std::make_unique<CpuPackedWeight>(
-            op_type, selector, RecipeFor(selector),
-            logical_weight.dtype(), std::move(logical_shape),
-            std::move(packed_storage));
+    return Pack(op_type, logical_weight, selector, RecipeFor(selector));
 }
 
 StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
@@ -175,76 +169,8 @@ StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
         return Status::InvalidArgument(
                 "CpuWeightPrepacker requires at least one weight component");
     }
-    // A single component keeps the unrestricted single-view contract: direct
-    // bindings pack any valid rank (e.g. rank-1 norm weights).
-    if (components.size() == 1U) {
-        return Pack(op_type, components.front(), selector);
-    }
 
-    // The backend owns the fused layout authority for composite bindings:
-    // components must be contiguous rank-2 views sharing one dtype and feature
-    // count, concatenated along axis 0 in recipe order.
-    const DataType& dtype = components.front().dtype();
-    int64_t feature_count = -1;
-    int64_t total_rows = 0;
-    size_t total_bytes = 0;
-    size_t alignment = cpu::kCpuIdentityPackingAlignment;
-    for (const TensorView& component: components) {
-        if (!component.is_valid()) {
-            return Status::InvalidArgument(
-                    "CpuWeightPrepacker requires valid weight component views");
-        }
-        if (!component.is_contiguous()) {
-            return Status::InvalidArgument(
-                    "weight components must be contiguous row-major views");
-        }
-        if (component.rank() != 2) {
-            return Status::InvalidArgument("weight components must be rank 2");
-        }
-        if (component.dtype() != dtype) {
-            return Status::InvalidArgument(
-                    "weight components must share one dtype");
-        }
-        if (feature_count < 0) {
-            feature_count = component.dim(1);
-        } else if (component.dim(1) != feature_count) {
-            return Status::InvalidArgument(
-                    "weight components must share a feature count");
-        }
-        const int64_t rows = component.dim(0);
-        if (rows < 0) {
-            return Status::InvalidArgument(
-                    "weight component row count is negative");
-        }
-        if (rows > std::numeric_limits<int64_t>::max() - total_rows) {
-            return Status::InvalidArgument(
-                    "fused weight row count overflows");
-        }
-        total_rows += rows;
-        const size_t nbytes = component.logical_nbytes();
-        if (nbytes > std::numeric_limits<size_t>::max() - total_bytes) {
-            return Status::InvalidArgument(
-                    "fused weight byte count overflows");
-        }
-        total_bytes += nbytes;
-        alignment = std::max(alignment, component.alignment());
-    }
-
-    Buffer packed_storage = AllocateCpuPackedBuffer(total_bytes, alignment);
-    if (!packed_storage.is_initialized()) {
-        return Status::ResourceExhausted("Failed to allocate packed CPU weight storage");
-    }
-
-    char* out = static_cast<char*>(packed_storage.mutable_data());
-    for (const TensorView& component: components) {
-        std::memcpy(out, component.data(), component.logical_nbytes());
-        out += component.logical_nbytes();
-    }
-
-    return std::make_unique<CpuPackedWeight>(
-            op_type, selector, RecipeFor(selector), dtype,
-            std::vector<int64_t>{total_rows, feature_count},
-            std::move(packed_storage));
+    return Pack(op_type, components, selector, RecipeFor(selector));
 }
 
 StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
@@ -252,15 +178,44 @@ StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
         TensorView logical_weight,
         const KernelSelector& selector,
         const PackingRecipe& recipe) const noexcept {
-    if (recipe == CpuIdentityPackingRecipe()) {
-        return Pack(op_type, logical_weight, selector);
-    }
-    if (recipe != cpu::CpuBPanelF32V1Avx2Recipe()) {
+    if (recipe != CpuIdentityPackingRecipe() &&
+        recipe != cpu::CpuBPanelF32V1Avx2Recipe()) {
         return Status::InvalidArgument(
                 "CpuWeightPrepacker does not support the requested recipe");
     }
-    const std::array<TensorView, 1> components{logical_weight};
-    return Pack(op_type, components, selector, recipe);
+
+    if (op_type == OpType::kUnknown || selector.device_type != DeviceType::kCPU ||
+        selector.weight_format != WeightFormat::kPacked ||
+        !logical_weight.is_valid()) {
+        return Status::InvalidArgument(
+                "CpuWeightPrepacker requires a packed CPU request and a valid "
+                "logical weight");
+    }
+
+    if (recipe == cpu::CpuBPanelF32V1Avx2Recipe()) {
+        const std::array<TensorView, 1> components{logical_weight};
+        return Pack(op_type, components, selector, recipe);
+    }
+
+    // cpu_identity: exact byte copy into recipe-aligned storage.
+    const size_t packed_nbytes = logical_weight.logical_nbytes();
+    // Identity consumers require at least the recipe alignment, while a
+    // source view may carry a stronger alignment contract that callers retain.
+    AM_ASSIGN_OR_RETURN(Buffer packed_storage,
+                        AllocateCpuPackedBuffer(
+                                packed_nbytes,
+                                std::max(logical_weight.alignment(), recipe.alignment)));
+
+    if (packed_nbytes > 0) {
+        std::memcpy(packed_storage.mutable_data(), logical_weight.data(), packed_nbytes);
+    }
+
+    std::vector<int64_t> logical_shape(logical_weight.shape().begin(),
+                                       logical_weight.shape().end());
+    return std::make_unique<CpuPackedWeight>(
+            op_type, selector, recipe,
+            logical_weight.dtype(), std::move(logical_shape),
+            std::move(packed_storage));
 }
 
 StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
@@ -268,19 +223,90 @@ StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
         std::span<const TensorView> components,
         const KernelSelector& selector,
         const PackingRecipe& recipe) const noexcept {
-    if (recipe == CpuIdentityPackingRecipe()) {
-        return Pack(op_type, components, selector);
-    }
-    if (recipe != cpu::CpuBPanelF32V1Avx2Recipe()) {
+    if (recipe != CpuIdentityPackingRecipe() &&
+        recipe != cpu::CpuBPanelF32V1Avx2Recipe()) {
         return Status::InvalidArgument(
                 "CpuWeightPrepacker does not support the requested recipe");
     }
+
     if (op_type == OpType::kUnknown || selector.device_type != DeviceType::kCPU ||
         selector.weight_format != WeightFormat::kPacked || components.empty()) {
         return Status::InvalidArgument(
                 "CpuWeightPrepacker requires a packed CPU request and weight components");
     }
 
+    if (recipe == CpuIdentityPackingRecipe()) {
+        // A single component keeps the unrestricted single-view contract: direct
+        // bindings pack any valid rank (e.g. rank-1 norm weights).
+        if (components.size() == 1U) {
+            return Pack(op_type, components.front(), selector, recipe);
+        }
+
+        // The backend owns the fused layout authority for composite bindings:
+        // components must be contiguous rank-2 views sharing one dtype and
+        // feature count, concatenated along axis 0 in recipe order.
+        const DataType& dtype = components.front().dtype();
+        int64_t feature_count = -1;
+        int64_t total_rows = 0;
+        size_t total_bytes = 0;
+        size_t alignment = recipe.alignment;
+        for (const TensorView& component: components) {
+            if (!component.is_valid()) {
+                return Status::InvalidArgument(
+                        "CpuWeightPrepacker requires valid weight component views");
+            }
+            if (!component.is_contiguous()) {
+                return Status::InvalidArgument(
+                        "weight components must be contiguous row-major views");
+            }
+            if (component.rank() != 2) {
+                return Status::InvalidArgument("weight components must be rank 2");
+            }
+            if (component.dtype() != dtype) {
+                return Status::InvalidArgument(
+                        "weight components must share one dtype");
+            }
+            if (feature_count < 0) {
+                feature_count = component.dim(1);
+            } else if (component.dim(1) != feature_count) {
+                return Status::InvalidArgument(
+                        "weight components must share a feature count");
+            }
+            const int64_t rows = component.dim(0);
+            if (rows < 0) {
+                return Status::InvalidArgument(
+                        "weight component row count is negative");
+            }
+            if (rows > std::numeric_limits<int64_t>::max() - total_rows) {
+                return Status::InvalidArgument(
+                        "fused weight row count overflows");
+            }
+            total_rows += rows;
+            const size_t nbytes = component.logical_nbytes();
+            if (nbytes > std::numeric_limits<size_t>::max() - total_bytes) {
+                return Status::InvalidArgument(
+                        "fused weight byte count overflows");
+            }
+            total_bytes += nbytes;
+            alignment = std::max(alignment, component.alignment());
+        }
+
+        AM_ASSIGN_OR_RETURN(Buffer packed_storage,
+                            AllocateCpuPackedBuffer(total_bytes, alignment));
+
+        char* out = static_cast<char*>(packed_storage.mutable_data());
+        for (const TensorView& component: components) {
+            std::memcpy(out, component.data(), component.logical_nbytes());
+            out += component.logical_nbytes();
+        }
+
+        return std::make_unique<CpuPackedWeight>(
+                op_type, selector, recipe, dtype,
+                std::vector<int64_t>{total_rows, feature_count},
+                std::move(packed_storage));
+    }
+
+    // cpu_bpanel_f32_v1_avx2:
     if (!components.front().is_valid() || components.front().rank() != 2) {
         return Status::InvalidArgument(
                 "cpu_bpanel_f32 requires valid rank-2 weight components");
@@ -308,10 +334,8 @@ StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
 
     AM_ASSIGN_OR_RETURN(const size_t packed_nbytes,
                         cpu::CpuBPanelF32V1PackedByteSize(total_rows, feature_count));
-    Buffer packed_storage = AllocateCpuPackedBuffer(packed_nbytes, alignment);
-    if (!packed_storage.is_initialized()) {
-        return Status::ResourceExhausted("Failed to allocate packed CPU B-panel storage");
-    }
+    AM_ASSIGN_OR_RETURN(Buffer packed_storage,
+                        AllocateCpuPackedBuffer(packed_nbytes, alignment));
     if (packed_nbytes != 0) {
         std::memset(packed_storage.mutable_data(), 0, packed_nbytes);
         float* const packed_data = static_cast<float*>(packed_storage.mutable_data());

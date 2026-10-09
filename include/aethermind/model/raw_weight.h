@@ -46,7 +46,7 @@ struct RawWeightView {
 ///
 /// @param view Raw weight view to validate.
 /// @return Ok, or InvalidArgument describing the first violation.
-AM_NODISCARD inline Status ValidateRawWeightView(const RawWeightView& view) noexcept {
+inline Status ValidateRawWeightView(const RawWeightView& view) noexcept {
     if (!view.IsValid()) {
         return Status::InvalidArgument(
                 "RawWeightView is not a valid view");
@@ -58,6 +58,7 @@ AM_NODISCARD inline Status ValidateRawWeightView(const RawWeightView& view) noex
             return Status::InvalidArgument(
                     "RawWeightView shape has a negative dimension");
         }
+
         if (CheckOverflowMul(numel, static_cast<uint64_t>(dim), &numel)) {
             return Status::InvalidArgument(
                     "RawWeightView shape product overflows");
@@ -65,8 +66,7 @@ AM_NODISCARD inline Status ValidateRawWeightView(const RawWeightView& view) noex
     }
 
     uint64_t expected_bytes = 0;
-    if (CheckOverflowMul(numel,
-                         static_cast<uint64_t>(view.dtype.nbytes()),
+    if (CheckOverflowMul(numel, static_cast<uint64_t>(view.dtype.nbytes()),
                          &expected_bytes)) {
         return Status::InvalidArgument(
                 "RawWeightView byte size overflows");

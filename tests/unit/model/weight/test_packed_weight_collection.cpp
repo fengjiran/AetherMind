@@ -1,6 +1,7 @@
 #include "aethermind/model/weight/packed_weight_collection.h"
 
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/cpu/cpu_identity_packing.h"
 #include "aethermind/base/device.h"
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/memory/buffer.h"
@@ -8,6 +9,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <gtest/gtest.h>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -45,12 +47,16 @@ public:
                          KernelSelector selector,
                          Buffer storage,
                          bool* destroyed_flag,
-                         PackingRecipe recipe = {}) noexcept
+                         PackingRecipe recipe = CpuIdentityPackingRecipe(),
+                         DataType logical_dtype = {},
+                         std::vector<int64_t> logical_shape = {}) noexcept
         : op_type_(op_type),
           selector_(selector),
           storage_(std::move(storage)),
           destroyed_flag_(destroyed_flag),
-          recipe_(std::move(recipe)) {}
+          recipe_(recipe),
+          logical_dtype_(logical_dtype),
+          logical_shape_(std::move(logical_shape)) {}
 
     ~CountingPackedWeight() override {
         if (destroyed_flag_ != nullptr) {
@@ -75,7 +81,7 @@ public:
     }
 
     DataType logical_dtype() const noexcept override {
-        return {};
+        return logical_dtype_;
     }
 
     const std::vector<int64_t>& logical_shape() const noexcept override {
@@ -88,6 +94,7 @@ private:
     Buffer storage_{};
     bool* destroyed_flag_ = nullptr;
     PackingRecipe recipe_{};
+    DataType logical_dtype_{};
     std::vector<int64_t> logical_shape_{};
 };
 TEST(PackedWeightCollectionOwnership, CollectionOwnsPackedWeightUntilItIsDestroyed) {
@@ -105,7 +112,8 @@ TEST(PackedWeightCollectionOwnership, CollectionOwnsPackedWeightUntilItIsDestroy
 
         const WeightArtifactKey key{
                 .binding = MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ),
-                .selector = selector};
+                .selector = selector,
+                .recipe = CpuIdentityPackingRecipe()};
         ASSERT_TRUE(packed_weight_collection.Insert(
                                                     key, std::shared_ptr<const PackedWeight>(std::move(packed)))
                             .ok());
@@ -136,7 +144,8 @@ TEST(PackedWeightCollectionOwnership, StoredPackedWeightOutlivesBackendInstance)
                 &destroyed);
         const WeightArtifactKey key{
                 .binding = MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ),
-                .selector = selector};
+                .selector = selector,
+                .recipe = CpuIdentityPackingRecipe()};
         ASSERT_TRUE(packed_weight_collection.Insert(
                                                     key, std::shared_ptr<const PackedWeight>(std::move(packed)))
                             .ok());
@@ -144,7 +153,8 @@ TEST(PackedWeightCollectionOwnership, StoredPackedWeightOutlivesBackendInstance)
 
     const WeightArtifactKey key{
             .binding = MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ),
-            .selector = selector};
+            .selector = selector,
+            .recipe = CpuIdentityPackingRecipe()};
     const auto found = packed_weight_collection.Find(key);
     ASSERT_NE(found, nullptr);
     EXPECT_FALSE(destroyed);
@@ -156,7 +166,8 @@ TEST(PackedWeightCollectionOwnership, InsertRejectsDuplicatePackedWeightEntries)
     const KernelSelector selector = MakePackedCpuSelector();
     const WeightArtifactKey key{
             .binding = MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ),
-            .selector = selector};
+            .selector = selector,
+            .recipe = CpuIdentityPackingRecipe()};
 
     ASSERT_TRUE(packed_weight_collection
                         .Insert(key, std::make_shared<CountingPackedWeight>(
@@ -181,7 +192,8 @@ TEST(PackedWeightCollectionOwnership, InsertRejectsKeyFromDifferentSourceArtifac
             WeightArtifactKey{
                     .source_id = 9,
                     .binding = MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ),
-                    .selector = selector},
+                    .selector = selector,
+                    .recipe = CpuIdentityPackingRecipe()},
             std::make_shared<CountingPackedWeight>(
                     OpType::kLinear, selector, MakeTestBuffer(64), nullptr));
 
@@ -203,7 +215,8 @@ TEST(PackedWeightCollectionOwnership, FirstInsertedKeyBindsTheCollectionSource) 
     ASSERT_TRUE(packed_weight_collection
                         .Insert(WeightArtifactKey{.source_id = 5,
                                                   .binding = binding,
-                                                  .selector = selector},
+                                                  .selector = selector,
+                                                  .recipe = CpuIdentityPackingRecipe()},
                                 std::make_shared<CountingPackedWeight>(
                                         OpType::kLinear, selector,
                                         MakeTestBuffer(64), nullptr))
@@ -214,7 +227,8 @@ TEST(PackedWeightCollectionOwnership, FirstInsertedKeyBindsTheCollectionSource) 
             WeightArtifactKey{.source_id = 6,
                               .value_index = 1,
                               .binding = binding,
-                              .selector = selector},
+                              .selector = selector,
+                              .recipe = CpuIdentityPackingRecipe()},
             std::make_shared<CountingPackedWeight>(
                     OpType::kLinear, selector, MakeTestBuffer(64), nullptr));
 
@@ -263,6 +277,27 @@ TEST(PackedWeightCollectionOwnership, DistinctRecipesCoexistForSameBindingAndSel
               nullptr);
 }
 
+TEST(PackedWeightCollectionOwnership, InsertRejectsUnspecifiedLayoutWithoutBindingSource) {
+    PackedWeightCollection collection;
+    const KernelSelector selector = MakePackedCpuSelector();
+    const PackingRecipe recipe{.layout = PackingLayout::kNone, .alignment = 64};
+    const WeightArtifactKey key{
+            .source_id = 9,
+            .binding = MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ),
+            .selector = selector,
+            .recipe = recipe};
+
+    const auto status = collection.Insert(
+            key, std::make_shared<CountingPackedWeight>(
+                         OpType::kLinear, selector, MakeTestBuffer(64), nullptr, recipe));
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_TRUE(collection.empty());
+    EXPECT_EQ(collection.Find(key), nullptr);
+    EXPECT_EQ(collection.source_id(), 0U);
+    EXPECT_TRUE(collection.SetSourceId(7).ok());
+}
+
 TEST(PackedWeightCollectionOwnership, InsertRejectsUnknownLayoutWithoutBindingSource) {
     PackedWeightCollection collection;
     const KernelSelector selector = MakePackedCpuSelector();
@@ -284,15 +319,119 @@ TEST(PackedWeightCollectionOwnership, InsertRejectsUnknownLayoutWithoutBindingSo
     EXPECT_EQ(collection.source_id(), 0U);
 }
 
+class PackedWeightCollectionZeroSize : public ::testing::TestWithParam<std::vector<int64_t>> {};
+
+TEST_P(PackedWeightCollectionZeroSize, InsertAcceptsZeroSizedLogicalWeights) {
+    PackedWeightCollection collection;
+    const KernelSelector selector = MakePackedCpuSelector();
+    const PackingRecipe recipe = CpuIdentityPackingRecipe();
+    const WeightArtifactKey key{.source_id = 9, .selector = selector, .recipe = recipe};
+    auto artifact = std::make_shared<CountingPackedWeight>(
+            OpType::kLinear, selector, MakeTestBuffer(0), nullptr,
+            recipe, DataType::Float32(), GetParam());
+
+    const auto status = collection.Insert(key, artifact);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+    EXPECT_EQ(collection.Find(key), artifact);
+    EXPECT_EQ(collection.size(), 1U);
+}
+
+INSTANTIATE_TEST_SUITE_P(ZeroDimensions, PackedWeightCollectionZeroSize,
+                         ::testing::Values(std::vector<int64_t>{0},
+                                           std::vector<int64_t>{4, 0},
+                                           std::vector<int64_t>{0, 4},
+                                           std::vector<int64_t>{4, 0, 2}));
+
+TEST(PackedWeightCollectionOwnership, InsertRejectsNegativeDimensionAfterZero) {
+    PackedWeightCollection collection;
+    const KernelSelector selector = MakePackedCpuSelector();
+    const PackingRecipe recipe = CpuIdentityPackingRecipe();
+    const WeightArtifactKey key{.source_id = 9, .selector = selector, .recipe = recipe};
+    auto artifact = std::make_shared<CountingPackedWeight>(
+            OpType::kLinear, selector, MakeTestBuffer(0), nullptr,
+            recipe, DataType::Float32(), std::vector<int64_t>{0, -1});
+
+    const auto status = collection.Insert(key, artifact);
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_TRUE(collection.empty());
+    EXPECT_TRUE(collection.SetSourceId(7).ok());
+}
+
+TEST(PackedWeightCollectionOwnership, InsertRejectsLogicalElementCountOverflow) {
+    PackedWeightCollection collection;
+    const KernelSelector selector = MakePackedCpuSelector();
+    const PackingRecipe recipe = CpuIdentityPackingRecipe();
+    const WeightArtifactKey key{.selector = selector, .recipe = recipe};
+    auto artifact = std::make_shared<CountingPackedWeight>(
+            OpType::kLinear, selector, MakeTestBuffer(0), nullptr,
+            recipe, DataType::Float32(),
+            std::vector<int64_t>{std::numeric_limits<int64_t>::max(), 3});
+
+    const auto status = collection.Insert(key, artifact);
+
+    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+    EXPECT_TRUE(collection.empty());
+}
+
+TEST(PackedWeightCollectionOwnership, InsertRejectsLogicalByteSizeOverflow) {
+    PackedWeightCollection collection;
+    const KernelSelector selector = MakePackedCpuSelector();
+    const PackingRecipe recipe = CpuIdentityPackingRecipe();
+    const WeightArtifactKey key{.selector = selector, .recipe = recipe};
+    const int64_t elements = static_cast<int64_t>(std::numeric_limits<size_t>::max() / sizeof(float) + 1U);
+    auto artifact = std::make_shared<CountingPackedWeight>(
+            OpType::kLinear, selector, MakeTestBuffer(0), nullptr,
+            recipe, DataType::Float32(), std::vector<int64_t>{elements});
+
+    const auto status = collection.Insert(key, artifact);
+
+    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+    EXPECT_TRUE(collection.empty());
+}
+
+TEST(PackedWeightCollectionOwnership, InsertRejectsUndersizedLogicalStorage) {
+    PackedWeightCollection collection;
+    const KernelSelector selector = MakePackedCpuSelector();
+    const PackingRecipe recipe = CpuIdentityPackingRecipe();
+    const WeightArtifactKey key{.selector = selector, .recipe = recipe};
+    auto artifact = std::make_shared<CountingPackedWeight>(
+            OpType::kLinear, selector, MakeTestBuffer(sizeof(float)), nullptr,
+            recipe, DataType::Float32(), std::vector<int64_t>{4});
+
+    const auto status = collection.Insert(key, artifact);
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_TRUE(collection.empty());
+}
+
+TEST(PackedWeightCollectionOwnership, InsertAcceptsRankZeroLogicalWeight) {
+    PackedWeightCollection collection;
+    const KernelSelector selector = MakePackedCpuSelector();
+    const PackingRecipe recipe = CpuIdentityPackingRecipe();
+    const WeightArtifactKey key{.selector = selector, .recipe = recipe};
+    auto artifact = std::make_shared<CountingPackedWeight>(
+            OpType::kLinear, selector, MakeTestBuffer(sizeof(float)), nullptr,
+            recipe, DataType::Float32(), std::vector<int64_t>{});
+
+    const auto status = collection.Insert(key, artifact);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+    EXPECT_EQ(collection.Find(key), artifact);
+}
+
 TEST(PackedWeightCollectionOwnership, DistinctBindingsShareSelectorWithoutCollision) {
     PackedWeightCollection packed_weight_collection;
     const KernelSelector selector = MakePackedCpuSelector();
     const WeightArtifactKey q_key{
             .binding = MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ),
-            .selector = selector};
+            .selector = selector,
+            .recipe = CpuIdentityPackingRecipe()};
     const WeightArtifactKey v_key{
             .binding = MakeTransformerWeightBinding(2, TransformerWeightRole::kAttentionV),
-            .selector = selector};
+            .selector = selector,
+            .recipe = CpuIdentityPackingRecipe()};
 
     ASSERT_TRUE(packed_weight_collection
                         .Insert(q_key, std::make_shared<CountingPackedWeight>(

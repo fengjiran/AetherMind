@@ -3,6 +3,7 @@
 #include "aethermind/base/macros.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/model/weight/weight_packing_request.h"
+#include "utils/overflow_check.h"
 
 #include <limits>
 #include <memory>
@@ -21,7 +22,10 @@ StatusOr<TensorView> MakeRowMajorView(const RawWeightView& raw,
     if (!strides.empty()) {
         strides.back() = 1;
         for (int64_t i = static_cast<int64_t>(strides.size()) - 2; i >= 0; --i) {
-            strides[i] = strides[i + 1] * raw.shape[i + 1];
+            // A zero element count does not bound the suffix products used as strides.
+            if (CheckOverflowMul(strides[i + 1], raw.shape[i + 1], &strides[i])) {
+                return Status::Overflow("Row-major weight stride overflows int64_t");
+            }
         }
     }
     return TensorView(raw.data, raw.dtype, IntArrayView(raw.shape),
@@ -29,7 +33,7 @@ StatusOr<TensorView> MakeRowMajorView(const RawWeightView& raw,
 }
 
 /// Expected byte payload of the logical weight an artifact claims to pack.
-/// Undefined dtypes or empty shapes yield 0 (no size premise).
+/// Undefined or zero-byte dtypes yield 0 (no size premise).
 StatusOr<size_t> LogicalByteSize(const PackedWeight& artifact) noexcept {
     if (artifact.logical_dtype().IsUndefined() ||
         artifact.logical_dtype().nbytes() == 0) {
@@ -44,19 +48,20 @@ StatusOr<size_t> LogicalByteSize(const PackedWeight& artifact) noexcept {
                     "dimension");
         }
 
-        if (elements > std::numeric_limits<size_t>::max() / static_cast<size_t>(dimension)) {
+        if (static_cast<uint64_t>(dimension) > std::numeric_limits<size_t>::max() ||
+            CheckOverflowMul(elements, static_cast<size_t>(dimension), &elements)) {
             return Status::Overflow(
                     "Packed artifact logical size overflowed size_t");
         }
-        elements *= static_cast<size_t>(dimension);
     }
 
-    if (elements > std::numeric_limits<size_t>::max() /
-                           static_cast<size_t>(artifact.logical_dtype().nbytes())) {
+    size_t bytes = 0;
+    if (CheckOverflowMul(elements,
+                         static_cast<size_t>(artifact.logical_dtype().nbytes()), &bytes)) {
         return Status::Overflow(
                 "Packed artifact logical size overflowed size_t");
     }
-    return elements * static_cast<size_t>(artifact.logical_dtype().nbytes());
+    return bytes;
 }
 
 } // namespace
@@ -104,10 +109,9 @@ Status PackedWeightCollection::Insert(const WeightArtifactKey& key,
                 "selector");
     }
 
-    if (key.recipe.layout != PackingLayout::kNone &&
-        !IsValidPackingLayout(key.recipe.layout)) {
+    if (!IsValidPackingLayout(key.recipe.layout)) {
         return Status::InvalidArgument(
-                "Packed weight key has an unknown packing layout");
+                "Packed weight key requires a known, explicit packing layout");
     }
 
     if (key.recipe != artifact->recipe()) {
@@ -143,8 +147,8 @@ Status PackedWeightCollection::Insert(const WeightArtifactKey& key,
     return Status::Ok();
 }
 
-std::shared_ptr<const PackedWeight> PackedWeightCollection::Find(
-        const WeightArtifactKey& key) const noexcept {
+std::shared_ptr<const PackedWeight>
+PackedWeightCollection::Find(const WeightArtifactKey& key) const noexcept {
     for (const auto& [entry_key, artifact]: entries_) {
         if (entry_key == key) {
             return artifact;
@@ -161,9 +165,9 @@ bool PackedWeightCollection::empty() const noexcept {
     return entries_.empty();
 }
 
-StatusOr<PackedWeightCollection> PrepackWeightRequests(
-        const Backend& backend,
-        const std::vector<WeightPackingRequest>& requests) {
+StatusOr<PackedWeightCollection>
+PrepackWeightRequests(const Backend& backend,
+                      const std::vector<WeightPackingRequest>& requests) {
     PackedWeightCollection packed_weight_collection;
     const uint64_t source_id = requests.empty() ? 0U : requests.front().source_id;
     // Validate the whole batch before packing anything: a mixed batch would

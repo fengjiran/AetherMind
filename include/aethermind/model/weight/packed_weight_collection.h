@@ -77,10 +77,12 @@ public:
     ///
     /// @param key Binding-aware artifact identity. Its source_id must match the
     ///        collection's bound source; if not yet bound, this call binds the
-    ///        collection to `key.source_id`.
+    ///        collection to `key.source_id` on success. Its recipe must identify
+    ///        a known, explicit layout and match the artifact's recipe.
     /// @param artifact Artifact referenced by `key` thereafter.
     /// @return Ok on success, InvalidArgument if the artifact is null or its
-    ///         key comes from a different source artifact, or AlreadyExists if
+    ///         key comes from a different source artifact or violates the recipe
+    ///         contract, or AlreadyExists if
     ///         an entry with the same key is already present.
     Status Insert(const WeightArtifactKey& key,
                   std::shared_ptr<const PackedWeight> artifact) noexcept;
@@ -90,8 +92,8 @@ public:
     /// @param key Binding-aware artifact identity.
     /// @return Shared pointer to the stored artifact, or nullptr if no
     ///         matching entry exists.
-    AM_NODISCARD std::shared_ptr<const PackedWeight> Find(
-            const WeightArtifactKey& key) const noexcept;
+    AM_NODISCARD std::shared_ptr<const PackedWeight>
+    Find(const WeightArtifactKey& key) const noexcept;
 
     AM_NODISCARD size_t size() const noexcept;
     AM_NODISCARD bool empty() const noexcept;

@@ -33,6 +33,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <gtest/gtest.h>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <span>
@@ -107,12 +108,15 @@ public:
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector) const override {
+        ++pack_calls;
         return PackViaCpuIdentity(op_type, components, selector);
     }
 
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override {
         return nullptr;
     }
+
+    mutable size_t pack_calls = 0;
 };
 
 // Backend that relies on the default Backend::PackWeights implementation, so
@@ -222,6 +226,107 @@ TEST(WeightPacking, PrepackWeightRequestsMakesWeightsFindable) {
     EXPECT_EQ(found->op_type(), OpType::kLinear);
     EXPECT_EQ(found->selector(), expected_selector);
     EXPECT_TRUE(found->storage().is_initialized());
+}
+
+TEST(WeightPacking, PrepackWeightRequestsAcceptsZeroSizedWeights) {
+    CpuBackend backend;
+    const KernelSelector selector = MakeExpectedSelector();
+    const auto recipe = backend.GetPackingRecipe(OpType::kLinear, selector);
+    ASSERT_TRUE(recipe.ok()) << recipe.status().ToString();
+    const WeightPackingRequest request{
+            .op_type = OpType::kLinear,
+            .source_id = 9,
+            .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
+            .raw_weight = {.data = nullptr,
+                           .bytes = 0,
+                           .dtype = DataType::Float32(),
+                           .shape = {4, 0},
+                           .storage = std::make_shared<TestStorage>(0)},
+            .selector = selector,
+            .recipe = *recipe,
+    };
+
+    const auto prepacked = PrepackWeightRequests(backend, {request});
+
+    ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
+    const auto packed = prepacked->Find({.source_id = request.source_id,
+                                         .value_index = request.value_index,
+                                         .binding = request.binding,
+                                         .selector = selector,
+                                         .recipe = *recipe});
+    ASSERT_NE(packed, nullptr);
+    EXPECT_EQ(packed->storage().nbytes(), 0U);
+    EXPECT_EQ(packed->logical_shape(), request.raw_weight.shape);
+}
+
+TEST(WeightPacking, PrepackWeightRequestsRejectsStrideOverflowBeforeBackendCall) {
+    PackingOnlyTestBackend backend;
+    const WeightPackingRequest request{
+            .op_type = OpType::kLinear,
+            .source_id = 9,
+            .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
+            .raw_weight = {.data = nullptr,
+                           .bytes = 0,
+                           .dtype = DataType::Float32(),
+                           .shape = {0, std::numeric_limits<int64_t>::max(), 2},
+                           .storage = std::make_shared<TestStorage>(0)},
+            .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
+    };
+    EXPECT_TRUE(ValidateRawWeightView(request.raw_weight).ok());
+
+    const auto prepacked = PrepackWeightRequests(backend, {request});
+
+    EXPECT_EQ(prepacked.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(backend.pack_calls, 0U);
+}
+
+TEST(WeightPacking, PrepackWeightRequestsRejectsCompositeStrideOverflowBeforeBackendCall) {
+    PackingOnlyTestBackend backend;
+    auto storage = std::make_shared<TestStorage>(8);
+    const RawWeightView overflowing_component{
+            .data = nullptr,
+            .bytes = 0,
+            .dtype = DataType::Float32(),
+            .shape = {0, std::numeric_limits<int64_t>::max(), 2},
+            .storage = std::make_shared<TestStorage>(0)};
+    const WeightPackingRequest request{
+            .op_type = OpType::kQkvLinear,
+            .source_id = 9,
+            .binding = MakeQkvWeightBinding(0U),
+            .components = {MakeWeightView(storage, 0, 8, DataType::Float32(), {1, 2}),
+                           overflowing_component,
+                           MakeWeightView(storage, 0, 8, DataType::Float32(), {1, 2})},
+            .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
+    };
+    EXPECT_TRUE(ValidateRawWeightView(overflowing_component).ok());
+
+    const auto prepacked = PrepackWeightRequests(backend, {request});
+
+    EXPECT_EQ(prepacked.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(backend.pack_calls, 0U);
+}
+
+TEST(WeightPacking, PrepackWeightRequestsAcceptsLargestRepresentableStride) {
+    PackingOnlyTestBackend backend;
+    const WeightPackingRequest request{
+            .op_type = OpType::kLinear,
+            .source_id = 9,
+            .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
+            .raw_weight = {.data = nullptr,
+                           .bytes = 0,
+                           .dtype = DataType::Float32(),
+                           .shape = {0, std::numeric_limits<int64_t>::max(), 1},
+                           .storage = std::make_shared<TestStorage>(0)},
+            .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
+    };
+
+    const auto prepacked = PrepackWeightRequests(backend, {request});
+
+    EXPECT_TRUE(prepacked.ok()) << prepacked.status().ToString();
+    EXPECT_EQ(backend.pack_calls, 1U);
 }
 
 // A batch mixing two model artifacts would store one artifact's weights under

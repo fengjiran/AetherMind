@@ -106,3 +106,19 @@ Cold packing：`N=4096,K=4096` median 66.83 ms，packed size 64 MiB（amplificat
 - 输出复核：第一次检查脚本错误地要求 prepared case 带 recipe label；基准本身成功，prepared label 实际为 kernel/cache_mode。按各 case 的既有标签合同复核原始 JSON 通过；未修改实现或重跑取样。复核信息保存在 `validation.json`。
 - raw：`benchmark-results/operators/gemm/20261009T024252Z_46627feb7c42_54h5mmi_packing-layout-enum/`（`metadata.json`、`smoke.json`、`smoke.log`、`validation.json`）。
 - 结论：Accepted（布局身份/正确性迁移）。单次短 smoke 仅验证接通与标签，不作性能改善、回退或 priority 调整结论；tile、padding、物理字节格式、alignment 与 ISA policy 保持。
+
+## PackedWeightCollection 入库边界修复
+
+- commit：`3836d79cffd8`（dirty，含本次修复与回归测试）。
+- 命令：`cmake --build build --target aethermind_unit_tests -j 4`；先运行 `--gtest_filter=PackedWeightCollectionOwnership.InsertRejectsUnspecifiedLayoutWithoutBindingSource`，再运行 `--gtest_filter='PackingRecipe.*:KernelRegistry.*:CpuWeightPrepacker.*:CpuIdentityPackedWeight.*:CpuBpanelPackedWeight.*:PackedWeightCollectionOwnership.*:ZeroDimensions/PackedWeightCollectionZeroSize.*:WeightPacking.*:PackingRequestResolution.*:CpuGemmPackedB.*:CpuQkvLinearPackedB.*:CpuGateUpLinearPackedB.*'`。另对 collection 实现与对应测试启用 `-fsanitize=undefined -fno-sanitize-recover=undefined`，编译和运行命令见 raw `metadata.json`。
+- 结果：构建成功，84/84 聚焦测试通过，包含真实 CPU prepack 与 registered B-panel consumer；18/18 collection UBSan 测试通过，无 sanitizer 诊断。覆盖不同位置的零维度、零维度后的负维度、元素数与字节数溢出、scalar/不足存储，以及 `kNone` 拒绝后集合仍可绑定其他 source。
+- raw：`benchmark-results/operators/gemm/20261009T044846Z_3836d79cffd8_54h5mmi_packed-weight-boundaries/`（`metadata.json`、`patch.diff`、`focused.log`、`ubsan.log`）。
+- 结论：Accepted（入库正确性修复）。本次修改限于准备期校验；性能未测量，无 kernel priority 调整。
+
+## MakeRowMajorView stride 溢出拒绝
+
+- commit：`3836d79cffd8`（dirty，含前序入库修复、已有 RawWeightView 头文件改动及本次 stride 修复）。
+- 命令：`cmake --build build --target aethermind_unit_tests -j 4`；先运行 `--gtest_filter=WeightPacking.PrepackWeightRequestsRejectsStrideOverflowBeforeBackendCall`，再运行 `--gtest_filter='WeightPacking.*:PackedWeightCollectionOwnership.*:ZeroDimensions/PackedWeightCollectionZeroSize.*:PackingRequestResolution.*:CpuWeightPrepacker.*'`。另对 collection 实现与 weight-packing 测试启用 `-fsanitize=undefined -fno-sanitize-recover=undefined`，运行 `--gtest_filter='WeightPacking.*Stride*:WeightPacking.PrepackWeightRequestsAcceptsZeroSizedWeights'`；完整编译命令见 raw `metadata.json`。
+- 结果：构建成功，57/57 聚焦测试和 4/4 UBSan 测试通过，无 sanitizer 诊断。直接权重与 composite component 的 `{0, INT64_MAX, 2}` 在 backend 打包前返回 `Overflow`，调用次数为 0；`{0, INT64_MAX, 1}` 与正常零尺寸输入仍可打包。
+- raw：`benchmark-results/operators/gemm/20261009T055145Z_3836d79cffd8_54h5mmi_stride-overflow/`（`metadata.json`、`patch.diff`、`focused.log`、`ubsan.log`）。
+- 结论：Accepted（准备期 stride 正确性修复）。性能未测量，无 kernel priority 调整。

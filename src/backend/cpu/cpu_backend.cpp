@@ -11,6 +11,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <new>
 #include <span>
 #include <string>
 #include <utility>
@@ -38,18 +39,22 @@ StatusOr<Buffer> AllocateCpuPackedBuffer(size_t nbytes, size_t alignment) {
     }
 
     void* data = nullptr;
-    const int rc = posix_memalign(&data, effective_alignment, nbytes == 0 ? 1 : nbytes);
-    if (rc != 0 || data == nullptr) {
+    if (const int rc = posix_memalign(&data, effective_alignment, nbytes == 0 ? 1 : nbytes);
+        rc != 0 || data == nullptr) {
         return Status::ResourceExhausted(
                 "Failed to allocate packed CPU weight storage");
     }
 
-    return Buffer{nbytes,
-                  MemoryHandle(data,
-                               nullptr,
-                               &FreePackedCpuBuffer,
-                               Device::CPU(),
-                               effective_alignment)};
+    try {
+        return Buffer{nbytes,
+                      MemoryHandle(data,
+                                   nullptr,
+                                   &FreePackedCpuBuffer,
+                                   Device::CPU(),
+                                   effective_alignment)};
+    } catch (const std::bad_alloc&) {
+        return Status::ResourceExhausted("Failed to allocate packed CPU weight buffer metadata");
+    }
 }
 
 class CpuPackedWeight final : public PackedWeight {

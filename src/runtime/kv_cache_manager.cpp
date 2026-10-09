@@ -3,6 +3,7 @@
 #include "aethermind/runtime/workspace.h"
 
 #include <cstdlib>
+#include <new>
 
 namespace aethermind {
 namespace {
@@ -11,7 +12,7 @@ void FreeAlignedMemory(void*, void* ptr) noexcept {
     std::free(ptr);
 }
 
-StatusOr<Buffer> AllocateAlignedCpuBuffer(size_t nbytes, size_t alignment) noexcept {
+StatusOr<Buffer> AllocateAlignedCpuBuffer(size_t nbytes, size_t alignment) {
     if (!IsValidWorkspaceAlignment(alignment)) {
         return Status::InvalidArgument("KV buffer alignment must be a non-zero power of two");
     }
@@ -22,8 +23,12 @@ StatusOr<Buffer> AllocateAlignedCpuBuffer(size_t nbytes, size_t alignment) noexc
         return Status::ResourceExhausted("Failed to allocate aligned KV buffer");
     }
 
-    return Buffer{nbytes,
-                  MemoryHandle(ptr, nullptr, &FreeAlignedMemory, Device::CPU(), alignment)};
+    try {
+        return Buffer{nbytes,
+                      MemoryHandle(ptr, nullptr, &FreeAlignedMemory, Device::CPU(), alignment)};
+    } catch (const std::bad_alloc&) {
+        return Status::ResourceExhausted("Failed to allocate KV buffer metadata");
+    }
 }
 
 } // namespace

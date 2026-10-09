@@ -24,6 +24,32 @@ void BeginMallocCallCounting() noexcept;
 /// @brief Stops counting and returns the calls observed since Begin.
 MallocCallCounts EndMallocCallCounting() noexcept;
 
+struct MallocFailureResult {
+    bool allocation_failed = false;
+    size_t aligned_allocation_calls = 0;
+    bool last_aligned_allocation_released = false;
+};
+
+/// @brief Fails the next matching malloc call on this thread, at most once.
+///
+/// Requires MallocInterposerAvailable(). Scopes must not nest. Tracking the last
+/// successful posix_memalign pointer verifies cleanup after metadata failure.
+class ScopedMallocFailure {
+public:
+    explicit ScopedMallocFailure(size_t allocation_size) noexcept;
+    ~ScopedMallocFailure() noexcept;
+
+    ScopedMallocFailure(const ScopedMallocFailure&) = delete;
+    ScopedMallocFailure& operator=(const ScopedMallocFailure&) = delete;
+
+    /// @brief Disables injection and clears its thread-local state.
+    /// @return Observed failure and aligned payload cleanup, or empty if stopped.
+    MallocFailureResult Stop() noexcept;
+
+private:
+    bool active_ = true;
+};
+
 } // namespace aethermind::test
 
 #endif

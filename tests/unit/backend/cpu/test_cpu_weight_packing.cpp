@@ -8,6 +8,7 @@
 #include "aethermind/base/tensor.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/operators/op_type.h"
+#include "inference/test_malloc_interposer.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -74,6 +75,27 @@ TEST(CpuWeightPacking, PackBuildsPackedWeightWithCpuStorageAndSelectorMetadata) 
     EXPECT_GT((*packed)->storage().nbytes(), 0U);
     EXPECT_EQ((*packed)->recipe(), CpuIdentityPackingRecipe());
     EXPECT_TRUE(IsValidPackingLayout((*packed)->recipe().layout));
+}
+
+TEST(CpuWeightPacking, BufferMetadataFailureReturnsResourceExhaustedAndReleasesPayload) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    const Tensor logical_weight = MakeLogicalWeightTensor(4, 8);
+    ASSERT_TRUE(logical_weight.is_initialized());
+    const std::array<TensorView, 1> components{logical_weight.view()};
+    const KernelSelector selector = MakePackedCpuSelector();
+
+    test::ScopedMallocFailure failure(sizeof(BufferImpl));
+    const auto packed = cpu::internal::PackWeightsWithRecipe(
+            OpType::kLinear, components, selector, CpuIdentityPackingRecipe());
+    const auto result = failure.Stop();
+
+    ASSERT_FALSE(packed.ok());
+    EXPECT_EQ(packed.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_TRUE(result.allocation_failed);
+    EXPECT_EQ(result.aligned_allocation_calls, 1U);
+    EXPECT_TRUE(result.last_aligned_allocation_released);
 }
 
 TEST(CpuWeightPacking, IdentityPackingPreservesStrongerSourceAlignment) {

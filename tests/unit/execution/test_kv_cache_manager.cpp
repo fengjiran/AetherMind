@@ -1,4 +1,5 @@
 #include "aethermind/runtime/kv_cache_manager.h"
+#include "inference/test_malloc_interposer.h"
 
 #include <gtest/gtest.h>
 
@@ -102,6 +103,24 @@ TEST(KVCacheManager, InitAndReserveCreatesValidView) {
     EXPECT_TRUE(view->awaiting_prefill());
     EXPECT_EQ(view->prompt_len(), 8U);
     EXPECT_GT(manager.total_bytes(), 0U);
+}
+
+TEST(KVCacheManager, BufferMetadataFailureReturnsResourceExhaustedAndReleasesPayload) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    KVCacheManager manager;
+
+    test::ScopedMallocFailure failure(sizeof(BufferImpl));
+    const Status status = manager.Init(1, 1, 16, 8, MakeKVType(), 64);
+    const auto result = failure.Stop();
+
+    EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+    EXPECT_FALSE(manager.is_initialized());
+    EXPECT_TRUE(result.allocation_failed);
+    EXPECT_EQ(result.aligned_allocation_calls, 1U);
+    EXPECT_TRUE(result.last_aligned_allocation_released);
+    EXPECT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
 }
 
 TEST(KVCacheManager, InitAlignsTokenRowsToLayoutAlignment) {

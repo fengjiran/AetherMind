@@ -25,10 +25,37 @@ constinit std::atomic_size_t g_aligned_alloc_calls{0};
 constinit std::atomic_size_t g_posix_memalign_calls{0};
 constinit std::atomic_size_t g_memalign_calls{0};
 
+struct MallocFailureState {
+    bool enabled = false;
+    size_t allocation_size = 0;
+    void* last_aligned_allocation = nullptr;
+    MallocFailureResult result{};
+};
+
+constinit thread_local MallocFailureState g_malloc_failure{};
+
 } // namespace
 
 bool MallocInterposerAvailable() noexcept {
     return true;
+}
+
+ScopedMallocFailure::ScopedMallocFailure(size_t allocation_size) noexcept {
+    g_malloc_failure = {.enabled = true, .allocation_size = allocation_size};
+}
+
+ScopedMallocFailure::~ScopedMallocFailure() noexcept {
+    Stop();
+}
+
+MallocFailureResult ScopedMallocFailure::Stop() noexcept {
+    if (!active_) {
+        return {};
+    }
+    active_ = false;
+    const MallocFailureResult result = g_malloc_failure.result;
+    g_malloc_failure = {};
+    return result;
 }
 
 void BeginMallocCallCounting() noexcept {
@@ -66,6 +93,13 @@ void CountMallocCall(std::atomic_size_t& count) noexcept {
 
 extern "C" void* malloc(size_t size) noexcept {
     aethermind::test::CountMallocCall(aethermind::test::g_malloc_calls);
+    auto& failure = aethermind::test::g_malloc_failure;
+    if (failure.enabled && !failure.result.allocation_failed &&
+        size == failure.allocation_size) {
+        failure.result.allocation_failed = true;
+        errno = ENOMEM;
+        return nullptr;
+    }
     return __libc_malloc(size);
 }
 
@@ -81,6 +115,10 @@ extern "C" void* realloc(void* ptr, size_t size) noexcept {
 
 extern "C" void free(void* ptr) noexcept {
     aethermind::test::CountMallocCall(aethermind::test::g_free_calls);
+    auto& failure = aethermind::test::g_malloc_failure;
+    if (failure.enabled && ptr != nullptr && ptr == failure.last_aligned_allocation) {
+        failure.result.last_aligned_allocation_released = true;
+    }
     __libc_free(ptr);
 }
 
@@ -107,6 +145,12 @@ extern "C" int posix_memalign(void** result, size_t alignment, size_t size) noex
     }
     errno = saved_errno;
     *result = data;
+    auto& failure = aethermind::test::g_malloc_failure;
+    if (failure.enabled) {
+        ++failure.result.aligned_allocation_calls;
+        failure.last_aligned_allocation = data;
+        failure.result.last_aligned_allocation_released = false;
+    }
     return 0;
 }
 
@@ -125,6 +169,15 @@ namespace aethermind::test {
 
 bool MallocInterposerAvailable() noexcept {
     return false;
+}
+
+ScopedMallocFailure::ScopedMallocFailure(size_t) noexcept {}
+
+ScopedMallocFailure::~ScopedMallocFailure() noexcept = default;
+
+MallocFailureResult ScopedMallocFailure::Stop() noexcept {
+    active_ = false;
+    return {};
 }
 
 void BeginMallocCallCounting() noexcept {}

@@ -189,38 +189,46 @@ StatusOr<std::unique_ptr<PackedWeight>> PackWeightsWithRecipe(
                 return Status::InvalidArgument(
                         "CPU weight packing requires valid weight component views");
             }
+
             if (!component.is_contiguous()) {
                 return Status::InvalidArgument(
                         "weight components must be contiguous row-major views");
             }
+
             if (component.rank() != 2) {
                 return Status::InvalidArgument("weight components must be rank 2");
             }
+
             if (component.dtype() != dtype) {
                 return Status::InvalidArgument(
                         "weight components must share one dtype");
             }
+
             if (feature_count < 0) {
                 feature_count = component.dim(1);
             } else if (component.dim(1) != feature_count) {
                 return Status::InvalidArgument(
                         "weight components must share a feature count");
             }
+
             const int64_t rows = component.dim(0);
             if (rows < 0) {
                 return Status::InvalidArgument(
                         "weight component row count is negative");
             }
+
             if (rows > std::numeric_limits<int64_t>::max() - total_rows) {
                 return Status::InvalidArgument(
                         "fused weight row count overflows");
             }
+
             total_rows += rows;
             const size_t nbytes = component.logical_nbytes();
             if (nbytes > std::numeric_limits<size_t>::max() - total_bytes) {
                 return Status::InvalidArgument(
                         "fused weight byte count overflows");
             }
+
             total_bytes += nbytes;
             alignment = std::max(alignment, component.alignment());
         }
@@ -260,12 +268,15 @@ StatusOr<std::unique_ptr<PackedWeight>> PackWeightsWithRecipe(
             return Status::InvalidArgument(
                     "cpu_bpanel_f32 requires contiguous rank-2 float32 weights with equal K");
         }
+
         if (component.dim(0) > std::numeric_limits<int64_t>::max() - total_rows) {
             return Status::Overflow("cpu_bpanel_f32 logical N overflows int64_t");
         }
+
         total_rows += component.dim(0);
         alignment = std::max(alignment, component.alignment());
     }
+
     if (feature_count < 0) {
         return Status::InvalidArgument("cpu_bpanel_f32 requires a non-negative K dimension");
     }
@@ -276,27 +287,24 @@ StatusOr<std::unique_ptr<PackedWeight>> PackWeightsWithRecipe(
                         AllocateCpuPackedBuffer(packed_nbytes, alignment));
     if (packed_nbytes != 0) {
         std::memset(packed_storage.mutable_data(), 0, packed_nbytes);
-        float* const packed_data = static_cast<float*>(packed_storage.mutable_data());
-        const size_t n_blocks = static_cast<size_t>(
-                total_rows / cpu::kCpuBPanelF32V1NR +
-                (total_rows % cpu::kCpuBPanelF32V1NR != 0));
+        auto* const packed_data = static_cast<float*>(packed_storage.mutable_data());
+        const auto n_blocks = static_cast<size_t>(total_rows / kCpuBPanelF32V1NR +
+                                                  (total_rows % kCpuBPanelF32V1NR != 0));
         size_t row_offset = 0;
         for (const TensorView& component: components) {
-            const float* const src = component.data<float>();
+            const auto* const src = component.data<float>();
             for (int64_t row = 0; row < component.dim(0); ++row) {
                 const size_t logical_row = row_offset + static_cast<size_t>(row);
                 for (int64_t k = 0; k < feature_count; ++k) {
-                    const size_t panel = static_cast<size_t>(k / cpu::kCpuBPanelF32V1KC);
-                    const size_t block = logical_row /
-                                         static_cast<size_t>(cpu::kCpuBPanelF32V1NR);
-                    const size_t panel_row = static_cast<size_t>(k % cpu::kCpuBPanelF32V1KC);
-                    const size_t column = logical_row %
-                                          static_cast<size_t>(cpu::kCpuBPanelF32V1NR);
+                    const auto panel = static_cast<size_t>(k / kCpuBPanelF32V1KC);
+                    const size_t block = logical_row / static_cast<size_t>(kCpuBPanelF32V1NR);
+                    const auto panel_row = static_cast<size_t>(k % kCpuBPanelF32V1KC);
+                    const size_t column = logical_row % static_cast<size_t>(kCpuBPanelF32V1NR);
                     const size_t packed_index =
                             (((panel * n_blocks + block) *
-                                      static_cast<size_t>(cpu::kCpuBPanelF32V1KC) +
+                                      static_cast<size_t>(kCpuBPanelF32V1KC) +
                               panel_row) *
-                             static_cast<size_t>(cpu::kCpuBPanelF32V1NR)) +
+                             static_cast<size_t>(kCpuBPanelF32V1NR)) +
                             column;
                     packed_data[packed_index] =
                             src[static_cast<size_t>(row) *

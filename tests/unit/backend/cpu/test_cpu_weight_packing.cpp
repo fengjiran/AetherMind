@@ -1,6 +1,6 @@
 #include "aethermind/backend/cpu/cpu_bpanel_packing.h"
 #include "aethermind/backend/cpu/cpu_identity_packing.h"
-#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
+#include "backend/cpu/cpu_backend_internal.h"
 
 #include "aethermind/backend/packed_weight.h"
 #include "aethermind/base/kernel_selector.h"
@@ -56,15 +56,14 @@ KernelSelector MakePackedCpuSelector() {
     };
 }
 
-TEST(CpuWeightPrepacker, PackBuildsPackedWeightWithCpuStorageAndSelectorMetadata) {
-    CpuWeightPrepacker prepacker;
+TEST(CpuWeightPacking, PackBuildsPackedWeightWithCpuStorageAndSelectorMetadata) {
     const Tensor logical_weight = MakeLogicalWeightTensor(4, 8);
     ASSERT_TRUE(logical_weight.is_initialized());
     ASSERT_TRUE(logical_weight.device().is_cpu());
     const std::array<TensorView, 1> components{logical_weight.view()};
     const KernelSelector selector = MakePackedCpuSelector();
 
-    const auto packed = prepacker.Pack(OpType::kLinear, components, selector, CpuIdentityPackingRecipe());
+    const auto packed = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, CpuIdentityPackingRecipe());
 
     ASSERT_TRUE(packed.ok());
     ASSERT_NE(*packed, nullptr);
@@ -77,7 +76,7 @@ TEST(CpuWeightPrepacker, PackBuildsPackedWeightWithCpuStorageAndSelectorMetadata
     EXPECT_TRUE(IsValidPackingLayout((*packed)->recipe().layout));
 }
 
-TEST(CpuWeightPrepacker, IdentityPackingPreservesStrongerSourceAlignment) {
+TEST(CpuWeightPacking, IdentityPackingPreservesStrongerSourceAlignment) {
     constexpr std::array<int64_t, 2> shape = {2, 4};
     ShapeAndStride shape_and_stride;
     shape_and_stride.set_contiguous(shape);
@@ -89,8 +88,7 @@ TEST(CpuWeightPrepacker, IdentityPackingPreservesStrongerSourceAlignment) {
     ASSERT_TRUE(logical_weight.device().is_cpu());
     const std::array<TensorView, 1> components{logical_weight.view()};
 
-    CpuWeightPrepacker prepacker;
-    const auto packed = prepacker.Pack(
+    const auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kLinear, components, MakePackedCpuSelector(), CpuIdentityPackingRecipe());
 
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
@@ -100,15 +98,14 @@ TEST(CpuWeightPrepacker, IdentityPackingPreservesStrongerSourceAlignment) {
     EXPECT_GE((*packed)->storage().alignment(), size_t{128});
 }
 
-TEST(CpuWeightPrepacker, IdentityPackingAcceptsRankOneNormWeight) {
+TEST(CpuWeightPacking, IdentityPackingAcceptsRankOneNormWeight) {
     const std::array<float, 4> data = {1.0F, 2.0F, 3.0F, 4.0F};
     constexpr int64_t shape[] = {4};
     constexpr int64_t strides[] = {1};
     const std::array<TensorView, 1> components{
             TensorView(data.data(), DataType::Float32(), shape, strides)};
-    CpuWeightPrepacker prepacker;
 
-    const auto packed = prepacker.Pack(
+    const auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kRmsNorm, components, MakePackedCpuSelector(), CpuIdentityPackingRecipe());
 
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
@@ -117,13 +114,12 @@ TEST(CpuWeightPrepacker, IdentityPackingAcceptsRankOneNormWeight) {
     EXPECT_EQ(std::memcmp((*packed)->storage().data(), data.data(), sizeof(data)), 0);
 }
 
-TEST(CpuWeightPrepacker, IdentityPackingAcceptsScalarWeight) {
+TEST(CpuWeightPacking, IdentityPackingAcceptsScalarWeight) {
     const float data = 2.5F;
     const std::array<TensorView, 1> components{
             TensorView(&data, DataType::Float32(), {}, {})};
-    CpuWeightPrepacker prepacker;
 
-    const auto packed = prepacker.Pack(
+    const auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kLinear, components, MakePackedCpuSelector(), CpuIdentityPackingRecipe());
 
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
@@ -132,14 +128,13 @@ TEST(CpuWeightPrepacker, IdentityPackingAcceptsScalarWeight) {
     EXPECT_EQ(std::memcmp((*packed)->storage().data(), &data, sizeof(data)), 0);
 }
 
-TEST(CpuWeightPrepacker, IdentityPackingAcceptsZeroSizedWeightWithNullData) {
+TEST(CpuWeightPacking, IdentityPackingAcceptsZeroSizedWeightWithNullData) {
     constexpr int64_t shape[] = {0};
     constexpr int64_t strides[] = {1};
     const std::array<TensorView, 1> components{
             TensorView(nullptr, DataType::Float32(), shape, strides)};
-    CpuWeightPrepacker prepacker;
 
-    const auto packed = prepacker.Pack(
+    const auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kLinear, components, MakePackedCpuSelector(), CpuIdentityPackingRecipe());
 
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
@@ -147,7 +142,7 @@ TEST(CpuWeightPrepacker, IdentityPackingAcceptsZeroSizedWeightWithNullData) {
     EXPECT_EQ((*packed)->storage().nbytes(), 0U);
 }
 
-TEST(CpuWeightPrepacker, IdentityPackingRejectsNonContiguousSingleComponent) {
+TEST(CpuWeightPacking, IdentityPackingRejectsNonContiguousSingleComponent) {
     const std::array<float, 6> data = {1.0F, 2.0F, -1.0F, 3.0F, 4.0F, -1.0F};
     constexpr int64_t shape[] = {2, 2};
     constexpr int64_t strides[] = {3, 1};
@@ -155,9 +150,8 @@ TEST(CpuWeightPrepacker, IdentityPackingRejectsNonContiguousSingleComponent) {
             TensorView(data.data(), DataType::Float32(), shape, strides)};
     ASSERT_TRUE(components.front().is_valid());
     ASSERT_FALSE(components.front().is_contiguous());
-    CpuWeightPrepacker prepacker;
 
-    const auto packed = prepacker.Pack(
+    const auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kLinear, components, MakePackedCpuSelector(), CpuIdentityPackingRecipe());
 
     ASSERT_FALSE(packed.ok());
@@ -165,18 +159,17 @@ TEST(CpuWeightPrepacker, IdentityPackingRejectsNonContiguousSingleComponent) {
     EXPECT_NE(packed.status().message().find("contiguous"), std::string::npos);
 }
 
-TEST(CpuWeightPrepacker, PackRejectsInvalidSingleComponent) {
+TEST(CpuWeightPacking, PackRejectsInvalidSingleComponent) {
     const std::array<TensorView, 1> components{};
-    CpuWeightPrepacker prepacker;
 
-    const auto packed = prepacker.Pack(
+    const auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kLinear, components, MakePackedCpuSelector(), CpuIdentityPackingRecipe());
 
     ASSERT_FALSE(packed.ok());
     EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(CpuWeightPrepacker, BpanelPacksLogicalMatrixAndZeroPadsEveryTail) {
+TEST(CpuWeightPacking, BpanelPacksLogicalMatrixAndZeroPadsEveryTail) {
     constexpr int64_t n = 17;
     constexpr int64_t k = 513;
     constexpr int64_t shape[2] = {n, k};
@@ -195,8 +188,7 @@ TEST(CpuWeightPrepacker, BpanelPacksLogicalMatrixAndZeroPadsEveryTail) {
     ASSERT_TRUE(required_bytes.ok()) << required_bytes.status().ToString();
     EXPECT_EQ(*required_bytes, size_t{131072});
 
-    CpuWeightPrepacker prepacker;
-    const auto packed = prepacker.Pack(
+    const auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kLinear, components, selector, recipe);
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     ASSERT_NE(*packed, nullptr);
@@ -228,21 +220,19 @@ TEST(CpuWeightPrepacker, BpanelPacksLogicalMatrixAndZeroPadsEveryTail) {
     }
 }
 
-TEST(CpuWeightPrepacker, BpanelRejectsUnknownRecipe) {
-    CpuWeightPrepacker prepacker;
+TEST(CpuWeightPacking, BpanelRejectsUnknownRecipe) {
     const Tensor logical_weight = MakeLogicalWeightTensor(2, 4);
     ASSERT_TRUE(logical_weight.is_initialized());
     ASSERT_TRUE(logical_weight.device().is_cpu());
     const std::array<TensorView, 1> components{logical_weight.view()};
     PackingRecipe unknown{.layout = static_cast<PackingLayout>(0xFF), .alignment = 64};
-    const auto packed = prepacker.Pack(
+    const auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kLinear, components, MakePackedCpuSelector(), unknown);
     ASSERT_FALSE(packed.ok());
     EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(CpuWeightPrepacker, PackRejectsNonPackedWeightFormatRequests) {
-    CpuWeightPrepacker prepacker;
+TEST(CpuWeightPacking, PackRejectsNonPackedWeightFormatRequests) {
     const Tensor logical_weight = MakeLogicalWeightTensor(2, 4);
     ASSERT_TRUE(logical_weight.is_initialized());
     ASSERT_TRUE(logical_weight.device().is_cpu());
@@ -250,28 +240,27 @@ TEST(CpuWeightPrepacker, PackRejectsNonPackedWeightFormatRequests) {
     KernelSelector selector = MakePackedCpuSelector();
     selector.weight_format = WeightFormat::kPlain;
 
-    const auto packed = prepacker.Pack(OpType::kLinear, components, selector, CpuIdentityPackingRecipe());
+    const auto packed = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, CpuIdentityPackingRecipe());
 
     ASSERT_FALSE(packed.ok());
     EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(CpuWeightPrepacker, PackRejectsUnknownOpType) {
+TEST(CpuWeightPacking, PackRejectsUnknownOpType) {
     const std::array<float, 4> data{};
     constexpr int64_t shape[] = {2, 2};
     constexpr int64_t strides[] = {2, 1};
     const std::array<TensorView, 1> components{
             TensorView(data.data(), DataType::Float32(), shape, strides)};
-    CpuWeightPrepacker prepacker;
 
-    const auto packed = prepacker.Pack(
+    const auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kUnknown, components, MakePackedCpuSelector(), CpuIdentityPackingRecipe());
 
     ASSERT_FALSE(packed.ok());
     EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(CpuWeightPrepacker, PackRejectsNonCpuSelector) {
+TEST(CpuWeightPacking, PackRejectsNonCpuSelector) {
     const std::array<float, 4> data{};
     constexpr int64_t shape[] = {2, 2};
     constexpr int64_t strides[] = {2, 1};
@@ -279,17 +268,15 @@ TEST(CpuWeightPrepacker, PackRejectsNonCpuSelector) {
             TensorView(data.data(), DataType::Float32(), shape, strides)};
     KernelSelector selector = MakePackedCpuSelector();
     selector.device_type = DeviceType::kCUDA;
-    CpuWeightPrepacker prepacker;
 
-    const auto packed = prepacker.Pack(
+    const auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kLinear, components, selector, CpuIdentityPackingRecipe());
 
     ASSERT_FALSE(packed.ok());
     EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(CpuWeightPrepacker, PackSingleComponentCopiesLogicalBytes) {
-    CpuWeightPrepacker prepacker;
+TEST(CpuWeightPacking, PackSingleComponentCopiesLogicalBytes) {
     Tensor logical_weight = MakeLogicalWeightTensor(2, 4);
     ASSERT_TRUE(logical_weight.is_initialized());
     ASSERT_TRUE(logical_weight.device().is_cpu());
@@ -298,7 +285,7 @@ TEST(CpuWeightPrepacker, PackSingleComponentCopiesLogicalBytes) {
     const std::array<float, 8> values = {1.0F, 2.0F, 3.0F, 4.0F, 5.0F, 6.0F, 7.0F, 8.0F};
     std::memcpy(logical_weight.mutable_data(), values.data(), sizeof(values));
 
-    const auto packed = prepacker.Pack(OpType::kLinear, components, selector, CpuIdentityPackingRecipe());
+    const auto packed = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, CpuIdentityPackingRecipe());
 
     ASSERT_TRUE(packed.ok());
     ASSERT_NE(*packed, nullptr);
@@ -308,8 +295,7 @@ TEST(CpuWeightPrepacker, PackSingleComponentCopiesLogicalBytes) {
     EXPECT_EQ(std::memcmp((*packed)->storage().data(), values.data(), sizeof(values)), 0);
 }
 
-TEST(CpuWeightPrepacker, PackComponentsConcatenatesRecipeOrderedViews) {
-    CpuWeightPrepacker prepacker;
+TEST(CpuWeightPacking, PackComponentsConcatenatesRecipeOrderedViews) {
     const KernelSelector selector = MakePackedCpuSelector();
 
     std::vector<float> q_data(8), k_data(12), v_data(4);
@@ -327,7 +313,7 @@ TEST(CpuWeightPrepacker, PackComponentsConcatenatesRecipeOrderedViews) {
             TensorView(v_data.data(), DataType::Float32(), v_shape, strides),
     };
 
-    const auto packed = prepacker.Pack(OpType::kQkvLinear, components, selector, CpuIdentityPackingRecipe());
+    const auto packed = cpu::internal::PackWeightsWithRecipe(OpType::kQkvLinear, components, selector, CpuIdentityPackingRecipe());
 
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     ASSERT_NE(*packed, nullptr);
@@ -348,8 +334,7 @@ TEST(CpuWeightPrepacker, PackComponentsConcatenatesRecipeOrderedViews) {
     }
 }
 
-TEST(CpuWeightPrepacker, PackComponentsRejectsDtypeMismatch) {
-    CpuWeightPrepacker prepacker;
+TEST(CpuWeightPacking, PackComponentsRejectsDtypeMismatch) {
     const KernelSelector selector = MakePackedCpuSelector();
 
     std::vector<float> f32_data(8);
@@ -361,7 +346,7 @@ TEST(CpuWeightPrepacker, PackComponentsRejectsDtypeMismatch) {
             TensorView(i32_data.data(), DataType::Int(32), shape, strides),
     };
 
-    const auto packed = prepacker.Pack(OpType::kQkvLinear, components, selector, CpuIdentityPackingRecipe());
+    const auto packed = cpu::internal::PackWeightsWithRecipe(OpType::kQkvLinear, components, selector, CpuIdentityPackingRecipe());
 
     ASSERT_FALSE(packed.ok());
     EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
@@ -369,7 +354,7 @@ TEST(CpuWeightPrepacker, PackComponentsRejectsDtypeMismatch) {
               std::string::npos);
 }
 
-TEST(CpuWeightPrepacker, PackComponentsAcceptsZeroSizedComponentWithNullData) {
+TEST(CpuWeightPacking, PackComponentsAcceptsZeroSizedComponentWithNullData) {
     const std::array<float, 4> data = {1.0F, 2.0F, 3.0F, 4.0F};
     constexpr int64_t empty_shape[] = {0, 4};
     constexpr int64_t shape[] = {1, 4};
@@ -377,9 +362,8 @@ TEST(CpuWeightPrepacker, PackComponentsAcceptsZeroSizedComponentWithNullData) {
     const std::array<TensorView, 2> components{
             TensorView(nullptr, DataType::Float32(), empty_shape, strides),
             TensorView(data.data(), DataType::Float32(), shape, strides)};
-    CpuWeightPrepacker prepacker;
 
-    const auto packed = prepacker.Pack(
+    const auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kGateUpLinear, components, MakePackedCpuSelector(), CpuIdentityPackingRecipe());
 
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
@@ -388,8 +372,7 @@ TEST(CpuWeightPrepacker, PackComponentsAcceptsZeroSizedComponentWithNullData) {
     EXPECT_EQ(std::memcmp((*packed)->storage().data(), data.data(), sizeof(data)), 0);
 }
 
-TEST(CpuWeightPrepacker, PackComponentsRejectsFeatureCountMismatch) {
-    CpuWeightPrepacker prepacker;
+TEST(CpuWeightPacking, PackComponentsRejectsFeatureCountMismatch) {
     const KernelSelector selector = MakePackedCpuSelector();
 
     std::vector<float> first(8), second(16);
@@ -402,7 +385,7 @@ TEST(CpuWeightPrepacker, PackComponentsRejectsFeatureCountMismatch) {
             TensorView(second.data(), DataType::Float32(), second_shape, second_strides),
     };
 
-    const auto packed = prepacker.Pack(OpType::kGateUpLinear, components, selector, CpuIdentityPackingRecipe());
+    const auto packed = cpu::internal::PackWeightsWithRecipe(OpType::kGateUpLinear, components, selector, CpuIdentityPackingRecipe());
 
     ASSERT_FALSE(packed.ok());
     EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
@@ -410,8 +393,7 @@ TEST(CpuWeightPrepacker, PackComponentsRejectsFeatureCountMismatch) {
               std::string::npos);
 }
 
-TEST(CpuWeightPrepacker, PackComponentsRejectsNonRank2View) {
-    CpuWeightPrepacker prepacker;
+TEST(CpuWeightPacking, PackComponentsRejectsNonRank2View) {
     const KernelSelector selector = MakePackedCpuSelector();
 
     // Composite bindings demand rank-2 components; a rank-1 partner must be
@@ -426,18 +408,17 @@ TEST(CpuWeightPrepacker, PackComponentsRejectsNonRank2View) {
             TensorView(rank_one.data(), DataType::Float32(), vector_shape, vector_strides),
     };
 
-    const auto packed = prepacker.Pack(OpType::kQkvLinear, components, selector, CpuIdentityPackingRecipe());
+    const auto packed = cpu::internal::PackWeightsWithRecipe(OpType::kQkvLinear, components, selector, CpuIdentityPackingRecipe());
 
     ASSERT_FALSE(packed.ok());
     EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
     EXPECT_NE(packed.status().message().find("rank 2"), std::string::npos);
 }
 
-TEST(CpuWeightPrepacker, PackComponentsRejectsEmptyComponentList) {
-    CpuWeightPrepacker prepacker;
+TEST(CpuWeightPacking, PackComponentsRejectsEmptyComponentList) {
     const KernelSelector selector = MakePackedCpuSelector();
 
-    const auto packed = prepacker.Pack(
+    const auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kLinear, std::span<const TensorView>{}, selector, CpuIdentityPackingRecipe());
 
     ASSERT_FALSE(packed.ok());

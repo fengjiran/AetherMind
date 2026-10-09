@@ -24,8 +24,8 @@ inline constexpr size_t kCpuIdentityPackingAlignment = 64;
 /// @brief Returns the canonical CPU identity-packing recipe.
 /// @return Identity layout name and required alignment.
 inline PackingRecipe CpuIdentityPackingRecipe() {
-    return PackingRecipe{.layout = cpu::kCpuIdentityPackingLayout,
-                         .alignment = cpu::kCpuIdentityPackingAlignment};
+    return {.layout = cpu::kCpuIdentityPackingLayout,
+            .alignment = cpu::kCpuIdentityPackingAlignment};
 }
 
 } // namespace aethermind

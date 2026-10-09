@@ -8,7 +8,7 @@
 - **架构基线**: [架构总览](../../designs/architecture/architecture_overview.md)
 - **优化方法基线**: [算子开发与优化工作流 §7 优化方法](../../guides/operator-development-workflow.md#7-优化方法)
 - **工作流规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
-- **关联代码**: `src/backend/cpu/kernels/gemm/`、`src/backend/cpu/cpu_backend.cpp`、`src/backend/cpu/cpu_weight_prepacker.cpp`
+- **关联代码**: `src/backend/cpu/kernels/gemm/`、`src/backend/cpu/cpu_backend.cpp`、`src/backend/cpu/cpu_backend_internal.h`
 - **关联测试**: `tests/unit/backend/cpu/kernels/`、`tests/benchmark/cpu_kernels/`
 - **关联 ADR**: [ADR-0002: CPU GEMM packed-weight recipe](../../decisions/0002-cpu-gemm-packed-weight.md)
 - **关联模块**: backend / execution / model / benchmark
@@ -215,12 +215,12 @@ AVX-512、NEON/SVE 使用同一 driver contract、不同 microkernel 与 recipe�
 
 例如 recipe 名可以采用 `cpu_f32_bpanel_v1_avx2_nr8_kr1`，但具体 tile 只有测量后才能冻结。
 
-当前生产路径已经按以下职责传递 exact recipe（见 [Packed Weight 提案](cpu-gemm-packed-weight.md)）；`CpuWeightPrepacker` 仅保留显式传入 components 与 recipe 的 `Pack` 入口：
+当前生产路径已经按以下职责传递 exact recipe（见 [Packed Weight 提案](cpu-gemm-packed-weight.md)）；`CpuBackend::PackWeights` 校验选中的 recipe 后，调用显式传入 components 与 recipe 的内部 `cpu::internal::PackWeightsWithRecipe`：
 
 1. `KernelDef` 提供其精确 packing recipe；
 2. `CpuBackend::PrepareKernel` 把 descriptor recipe 复制到 `ResolvedKernel`；
 3. compiler 保持 backend-independent packing request；inference 按每个 consumer 的 op/selector 调 backend recipe query 并注入 exact recipe，coalesce 前检查共享 weight 冲突；
-4. backend 提供按 recipe pack 的服务，model 层不直接实例化具体 `CpuWeightPrepacker`；
+4. backend 提供按 recipe pack 的服务，model 层经 `Backend::PackWeights` 调用，不依赖 CPU 打包内部实现；
 5. `PackedWeightCollection` 继续以 binding + selector + exact recipe 区分 artifact。
 
 新增布局仍须贯穿 descriptor、request、artifact 和 Store 的 exact recipe 合同；optimized descriptor 消费的物理布局必须与打包产物的显式 recipe 一致。

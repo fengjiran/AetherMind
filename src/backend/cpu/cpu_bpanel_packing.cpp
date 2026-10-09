@@ -4,12 +4,6 @@
 
 namespace aethermind::cpu {
 
-PackingRecipe CpuBPanelF32V1Avx2Recipe() {
-    return PackingRecipe{
-            .layout = kCpuBPanelF32V1Avx2Layout,
-            .alignment = kCpuBPanelF32V1Alignment};
-}
-
 StatusOr<size_t> CpuBPanelF32V1PackedByteSize(int64_t n, int64_t k) noexcept {
     if (n < 0 || k < 0) {
         return Status::InvalidArgument(

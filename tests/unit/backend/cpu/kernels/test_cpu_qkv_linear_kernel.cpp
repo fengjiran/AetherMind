@@ -1,6 +1,5 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/cpu_identity_packing.h"
-#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/compiler/graph_lowering.h"
@@ -15,6 +14,7 @@
 #include "aethermind/model/weight/weight_packing_request.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
+#include "backend/cpu/cpu_backend_internal.h"
 #include "backend/cpu/kernels/qkv_linear/qkv_linear_internal.h"
 
 #include <gtest/gtest.h>
@@ -469,8 +469,7 @@ TEST(CPUKernelQkvLinear, PackedArtifactParticipatesInDeferredShapeChecks) {
     constexpr int64_t logical_strides[2] = {3, 1};
     const std::array<TensorView, 1> components{
             TensorView(logical_weight, DataType::Float32(), logical_shape, logical_strides, 64)};
-    CpuWeightPrepacker prepacker;
-    auto packed = prepacker.Pack(
+    auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kQkvLinear, components, MakeQkvSelector(), CpuIdentityPackingRecipe());
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     PackedWeightCollection collection;

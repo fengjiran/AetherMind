@@ -18,7 +18,10 @@ inline constexpr int64_t kCpuBPanelF32V1NR = 16;
 inline constexpr int64_t kCpuBPanelF32V1KC = 512;
 
 /// @brief Returns the recipe identifying the v1 AVX2 FP32 B-panel candidate.
-PackingRecipe CpuBPanelF32V1Avx2Recipe();
+inline PackingRecipe CpuBPanelF32V1Avx2Recipe() {
+    return {.layout = kCpuBPanelF32V1Avx2Layout,
+            .alignment = kCpuBPanelF32V1Alignment};
+}
 
 /// @brief Computes exact artifact bytes for the padded v1 B-panel layout.
 StatusOr<size_t> CpuBPanelF32V1PackedByteSize(int64_t n, int64_t k) noexcept;

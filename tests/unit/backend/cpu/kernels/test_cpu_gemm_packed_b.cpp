@@ -1,7 +1,6 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/cpu_bpanel_packing.h"
 #include "aethermind/backend/cpu/cpu_info.h"
-#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/kernel_context.h"
 #include "backend/cpu/cpu_backend_internal.h"
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
@@ -47,8 +46,7 @@ std::unique_ptr<PackedWeight> PackBpanel(int64_t n,
     const TensorView weight_view(
             weights.data(), DataType::Float32(), shape, strides);
     const std::array<TensorView, 1> components{weight_view};
-    CpuWeightPrepacker prepacker;
-    auto packed = prepacker.Pack(
+    auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kLinear, components, selector,
             cpu::CpuBPanelF32V1Avx2Recipe());
     if (!packed.ok()) {
@@ -221,8 +219,7 @@ TEST(CpuGemmPackedB, RegisteredCandidateDescriptorPacksAndExecutes) {
     const TensorView weight_view(
             weights.data(), DataType::Float32(), weight_shape, weight_strides);
     const std::array<TensorView, 1> components{weight_view};
-    CpuWeightPrepacker prepacker;
-    auto packed = prepacker.Pack(
+    auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kLinear, components, selector, *candidate_recipe);
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     ASSERT_EQ((*packed)->recipe(), *candidate_recipe);

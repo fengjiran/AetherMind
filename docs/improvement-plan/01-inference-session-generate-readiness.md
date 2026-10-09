@@ -100,7 +100,7 @@ M1–M4 已闭环，M5 已提供基于真实 `CpuBackend` 的同步 `InferenceSe
 - bpanel 成为默认选择（需 benchmark 证据后调整 priority/eligibility，见 [GEMM 提案](../operators/gemm/cpu-gemm-packed-weight.md) §5 M5）；
 - `enable_packed_weights=true` 的 unfused e2e 数值验证。
 
-`CpuWeightPrepacker::Pack(op, components, selector, recipe)` 是唯一打包入口，按显式 recipe 分派 identity 与 `cpu_bpanel_f32_v1_avx2` 两种 layout；单权重使用单元素 components，生产 recipe 选择以 `Backend::GetPackingRecipe` 为准。QkvLinear/GateUpLinear/Linear 的 packed 契约已有全链路数值测试覆盖；bpanel 是否升为默认仍取决于 benchmark 结论。
+`Backend::PackWeights(op, components, selector, recipe)` 是生产打包入口；CPU backend 核对 descriptor recipe 后，调用内部 `cpu::internal::PackWeightsWithRecipe` 分派 identity 与 `cpu_bpanel_f32_v1_avx2` 两种 layout；单权重使用单元素 components，生产 recipe 选择以 `Backend::GetPackingRecipe` 为准。QkvLinear/GateUpLinear/Linear 的 packed 契约已有全链路数值测试覆盖；bpanel 是否升为默认仍取决于 benchmark 结论。
 
 ## 3. 必须先闭环的阻塞项
 

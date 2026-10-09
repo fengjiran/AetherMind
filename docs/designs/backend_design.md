@@ -265,7 +265,7 @@ Phase 1 CPU Backend 需实现以下关键组件以支持高性能推理：
 
 - **CpuCapabilities / CpuFeaturePolicy**：负责检测 AVX2、AVX512、AMX 等指令集支持，并生成三层 capability 快照（hardware/usable/effective）。模型详见 `cpu_capability_design.md`。
 - **执行资源接缝（预留）**：线程池 / NUMA / ISA 辅助信息等后端专属执行资源为后续扩展预留；当前 CPU kernels 直接消费 `KernelContext` 中的窄资源。
-- **CpuWeightPrepacker**：负责将逻辑权重转换为符合 CPU 指令集与缓存友好布局的 packed 格式。
+- **CpuBackend::PackWeights**：校验当前 descriptor 选中的 recipe 后，调用内部 `cpu::internal::PackWeightsWithRecipe` 完成逻辑权重到 packed 格式的转换。打包算法、对齐分配与私有 `CpuPackedWeight` 实现归 `cpu_backend.cpp`。
 - **PackedWeight**：预打包权重的存储实体，**由 `PackedWeightCollection` 持有**；CPU backend 只定义 packed 格式与构建逻辑。
 - **CpuWorkspaceArena**：实现基于预分配 buffer 的切片借用与按 offset 绑定逻辑。
 
@@ -329,7 +329,7 @@ Phase 1 中 `Stream` 为最小占位接口。CPU 提供 `CpuInlineStream` 实现
 - `CpuCapabilities` 与指令集探测（`cpu_info.cpp`）
 - 执行资源接缝（线程池 / NUMA / ISA 辅助，预留）
 - `CpuWorkspaceArena`
-- `CpuWeightPrepacker`
+- `CpuBackend::PackWeights` 与内部 recipe 打包实现
 
 #### 阶段 C：ExecutionPlan 冻结
 - `ExecutionPlan` 与 `ResolvedKernel`/`ExecutionStep` 定义

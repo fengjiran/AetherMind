@@ -1,6 +1,5 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/cpu_info.h"
-#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/kernel_context.h"
 #include "backend/cpu/cpu_backend_internal.h"
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
@@ -163,8 +162,7 @@ TEST(CpuQkvLinearPackedB, UnalignedComponentBoundariesUseCorrectSlices) {
     std::vector<std::byte> attrs;
     ASSERT_TRUE((*descriptor)->metadata_builder(OpParams{op_params}, attrs).ok());
 
-    CpuWeightPrepacker prepacker;
-    auto packed = prepacker.Pack(
+    auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kQkvLinear, components, selector, *recipe);
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     const PackedWeightView packed_view{
@@ -272,8 +270,7 @@ TEST(CpuGateUpLinearPackedB, UnalignedComponentBoundaryUsesCorrectSlices) {
     std::vector<std::byte> attrs;
     ASSERT_TRUE((*descriptor)->metadata_builder(OpParams{op_params}, attrs).ok());
 
-    CpuWeightPrepacker prepacker;
-    auto packed = prepacker.Pack(
+    auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kGateUpLinear, components, selector, *recipe);
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     const PackedWeightView packed_view{

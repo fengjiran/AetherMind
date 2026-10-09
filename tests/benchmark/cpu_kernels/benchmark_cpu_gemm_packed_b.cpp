@@ -1,7 +1,6 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/cpu_bpanel_packing.h"
 #include "aethermind/backend/cpu/cpu_info.h"
-#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/kernel_context.h"
 #include "backend/cpu/cpu_backend_internal.h"
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
@@ -240,7 +239,6 @@ void BenchmarkPackedLinear(benchmark::State& state, CacheMode mode) {
     const MutableTensorView output_view(
             output.data(), DataType::Float32(), output_shape, output_strides);
 
-    CpuWeightPrepacker prepacker;
     std::vector<std::unique_ptr<PackedWeight>> artifacts;
     std::vector<PreparedInvocation> prepared(replica_count);
     std::vector<float> first_logical_weights;
@@ -255,7 +253,7 @@ void BenchmarkPackedLinear(benchmark::State& state, CacheMode mode) {
                 weight_shape, weight_strides);
         const std::array<TensorView, 1> components{logical_view};
         const auto pack_begin = std::chrono::steady_clock::now();
-        auto packed = prepacker.Pack(
+        auto packed = cpu::internal::PackWeightsWithRecipe(
                 OpType::kLinear, components, selector, *recipe);
         pack_time += std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now() - pack_begin);
@@ -416,9 +414,8 @@ void BM_WeightPackingCpuBpanel(benchmark::State& state) {
             .weight_format = WeightFormat::kPacked,
             .phase = ExecPhase::kBoth,
     };
-    CpuWeightPrepacker prepacker;
     const PackingRecipe recipe = cpu::CpuBPanelF32V1Avx2Recipe();
-    auto checked = prepacker.Pack(OpType::kLinear, components, selector, recipe);
+    auto checked = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, recipe);
     if (!checked.ok()) {
         state.SkipWithError(checked.status().ToString());
         return;
@@ -435,7 +432,7 @@ void BM_WeightPackingCpuBpanel(benchmark::State& state) {
     state.counters["logical bytes"] = static_cast<double>(logical_bytes);
     state.counters["packed bytes"] = static_cast<double>(packed_bytes);
     for (auto _: state) {
-        auto packed = prepacker.Pack(OpType::kLinear, components, selector, recipe);
+        auto packed = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, recipe);
         if (!packed.ok()) {
             state.SkipWithError(packed.status().ToString());
             break;

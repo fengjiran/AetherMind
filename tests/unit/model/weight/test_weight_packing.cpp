@@ -6,7 +6,6 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/packed_weight.h"
 #include "aethermind/base/device.h"
@@ -27,6 +26,7 @@
 #include "aethermind/operators/ops/rmsnorm_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/shape_inference/tensor_spec.h"
+#include "backend/cpu/cpu_backend_internal.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -79,7 +79,7 @@ void SetIdentityPackingRecipes(std::vector<WeightPackingRequest>& requests) {
     }
 }
 
-// Packs through the real CPU identity prepacker so model-level prepack tests
+// Packs through the real CPU identity packing implementation so model-level prepack tests
 // exercise the Backend::PackWeights contract end to end.
 StatusOr<std::unique_ptr<PackedWeight>> PackViaCpuIdentity(
         OpType op_type,
@@ -89,12 +89,11 @@ StatusOr<std::unique_ptr<PackedWeight>> PackViaCpuIdentity(
     if (recipe != CpuIdentityPackingRecipe()) {
         return Status::InvalidArgument("Test backend requires the CPU identity packing recipe");
     }
-    CpuWeightPrepacker prepacker;
-    return prepacker.Pack(op_type, components, selector, recipe);
+    return cpu::internal::PackWeightsWithRecipe(op_type, components, selector, recipe);
 }
 
 // Minimal backend for prepack-only tests: resolves nothing, packs everything
-// through the CPU identity prepacker.
+// through the CPU identity packing implementation.
 class PackingOnlyTestBackend final : public Backend {
 public:
     DeviceType device_type() const noexcept override {
@@ -1071,7 +1070,7 @@ TEST(WeightPacking, BuildWeightPackingRequestsPreservesSharedWeightConsumers) {
         EXPECT_EQ(request.recipe.layout, PackingLayout::kNone);
     }
 }
-// Packs a contiguous FP32 test weight via the CPU identity prepacker.
+// Packs a contiguous FP32 test weight via the CPU identity packing implementation.
 std::shared_ptr<const PackedWeight> PackTestArtifact(OpType op_type,
                                                      const KernelSelector& selector,
                                                      std::vector<int64_t> shape) {
@@ -1088,8 +1087,7 @@ std::shared_ptr<const PackedWeight> PackTestArtifact(OpType op_type,
     const TensorView components[] = {
             TensorView(data.data(), DataType::Float32(),
                        IntArrayView(shape), IntArrayView(strides), 0)};
-    CpuWeightPrepacker prepacker;
-    auto packed = prepacker.Pack(
+    auto packed = cpu::internal::PackWeightsWithRecipe(
             op_type, components, selector, CpuIdentityPackingRecipe());
     EXPECT_TRUE(packed.ok());
     if (!packed.ok()) return nullptr;

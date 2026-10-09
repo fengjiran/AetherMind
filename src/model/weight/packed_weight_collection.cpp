@@ -191,11 +191,18 @@ PrepackWeightRequests(const Backend& backend,
                     "PrepackWeightRequests requires an explicit packing recipe");
         }
 
+        if (req.components.empty()) {
+            return Status::InvalidArgument(
+                    "PrepackWeightRequests requires non-empty weight components");
+        }
+
         // Validate byte sizes up front so a mismatch fails eagerly here with a
         // view-level message instead of surfacing deep inside the backend.
         std::vector<TensorView> components;
         std::vector<std::vector<int64_t>> strides_storage;
-        const auto append_component = [&](const RawWeightView& raw) {
+        components.reserve(req.components.size());
+        strides_storage.reserve(req.components.size());
+        auto append_component = [&](const RawWeightView& raw) {
             strides_storage.emplace_back();
             auto view = MakeRowMajorView(raw, strides_storage.back());
             if (!view.ok()) {
@@ -205,12 +212,8 @@ PrepackWeightRequests(const Backend& backend,
             return Status::Ok();
         };
 
-        if (req.components.empty()) {
-            AM_RETURN_IF_ERROR(append_component(req.raw_weight));
-        } else {
-            for (const RawWeightView& component: req.components) {
-                AM_RETURN_IF_ERROR(append_component(component));
-            }
+        for (const auto& component: req.components) {
+            AM_RETURN_IF_ERROR(append_component(component));
         }
 
         auto packed = backend.PackWeights(

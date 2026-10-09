@@ -16,7 +16,6 @@
 #include "aethermind/operators/op_params.h"
 
 #include <span>
-#include <utility>
 
 namespace aethermind {
 
@@ -68,64 +67,36 @@ public:
                 "Backend does not expose descriptor packing recipes");
     }
 
-    /// @brief Packs logical weight views into a backend-layout artifact.
+    /// @brief Packs logical weight views using an explicit consumer recipe.
     ///
-    /// `components` carries the recipe-ordered raw weight views: exactly one
+    /// `components` carries weight views in logical binding order: exactly one
     /// for direct bindings, several (Q/K/V or Gate/Up) for composite bindings.
     /// The backend owns the packing layout authority: it validates
     /// rank/dtype/feature-count agreement, materializes any composite
     /// concatenation, allocates aligned storage, and returns an artifact whose
     /// `recipe()` the caller must use when building the `WeightArtifactKey`.
     ///
-    /// Compatibility overload for backends with a canonical packing policy.
-    /// Production preparation uses the explicit-recipe overload below.
+    /// Callers supply the recipe selected for the consumer through
+    /// GetPackingRecipe. This is the only packing entry; packing support is
+    /// optional, and the default returns Unimplemented.
     ///
     /// @param op_type Operator the packed weight serves.
-    /// @param components Recipe-ordered logical weight views to pack.
-    /// @param selector Selector describing device, dtype, and layout
-    ///        constraints. Must request `WeightFormat::kPacked`.
-    /// @return Packed artifact, or an error when the backend does not support
-    ///         packing or the views violate the packing contract.
-    virtual StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
-            OpType op_type,
-            std::span<const TensorView> components,
-            const KernelSelector& selector) const {
-        UNUSED(op_type);
-        UNUSED(components);
-        UNUSED(selector);
-        return Status::Unimplemented(
-                "Backend does not implement weight packing");
-    }
-
-    /// @brief Packs using a recipe already selected from the consumer
-    /// descriptor. The default preserves old backends only when they produce
-    /// the requested exact recipe.
+    /// @param components Weight views in logical binding order.
+    /// @param selector Selector requesting WeightFormat::kPacked.
+    /// @param recipe Exact physical layout and alignment selected for the consumer.
+    /// @return An artifact produced with the requested recipe, or an error when
+    ///         the backend cannot satisfy the packing contract.
     virtual StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector,
             const PackingRecipe& recipe) const {
-        const auto selected_recipe = GetPackingRecipe(op_type, selector);
-        if (selected_recipe.ok() && *selected_recipe != recipe) {
-            return Status::InvalidArgument(
-                    "Requested packing recipe is not selected by this backend");
-        }
-
-        if (!selected_recipe.ok() &&
-            selected_recipe.status().code() != StatusCode::kUnimplemented) {
-            return selected_recipe.status();
-        }
-
-        auto packed = PackWeights(op_type, components, selector);
-        if (!packed.ok()) {
-            return packed.status();
-        }
-
-        if ((*packed)->recipe() != recipe) {
-            return Status::InvalidArgument(
-                    "Backend packed artifact recipe differs from the requested recipe");
-        }
-        return std::move(*packed);
+        UNUSED(op_type);
+        UNUSED(components);
+        UNUSED(selector);
+        UNUSED(recipe);
+        return Status::Unimplemented(
+                "Backend does not implement weight packing");
     }
 
     /// @brief Returns the kernel registry for debug inspection, if available.

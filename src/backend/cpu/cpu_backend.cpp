@@ -62,9 +62,12 @@ StatusOr<PackingRecipe> ResolvePackingRecipeFromRegistry(const KernelRegistry& r
         return Status::InvalidArgument(
                 "CPU packing recipe query requires a packed CPU selector");
     }
-    AM_ASSIGN_OR_RETURN(const KernelDef* descriptor,
-                        ResolveEligibleDescriptor(registry, op_type, selector, effective_features));
-    if (!IsValidPackingLayout(descriptor->packing_recipe.layout) || descriptor->packing_recipe.alignment == 0) {
+
+    AM_ASSIGN_OR_RETURN(
+            const KernelDef* descriptor,
+            ResolveEligibleDescriptor(registry, op_type, selector, effective_features));
+    if (!IsValidPackingLayout(descriptor->packing_recipe.layout) ||
+        descriptor->packing_recipe.alignment == 0) {
         return Status::Internal(
                 "Packed CPU descriptor is missing its packing recipe");
     }
@@ -133,23 +136,15 @@ StatusOr<PackingRecipe> CpuBackend::GetPackingRecipe(
 StatusOr<std::unique_ptr<PackedWeight>> CpuBackend::PackWeights(
         OpType op_type,
         std::span<const TensorView> components,
-        const KernelSelector& selector) const {
-    AM_ASSIGN_OR_RETURN(const PackingRecipe recipe,
-                        GetPackingRecipe(op_type, selector));
-    return PackWeights(op_type, components, selector, recipe);
-}
-
-StatusOr<std::unique_ptr<PackedWeight>> CpuBackend::PackWeights(
-        OpType op_type,
-        std::span<const TensorView> components,
         const KernelSelector& selector,
         const PackingRecipe& recipe) const {
-    AM_ASSIGN_OR_RETURN(const PackingRecipe selected_recipe,
-                        GetPackingRecipe(op_type, selector));
+    AM_ASSIGN_OR_RETURN(
+            const PackingRecipe selected_recipe, GetPackingRecipe(op_type, selector));
     if (recipe != selected_recipe) {
         return Status::InvalidArgument(
                 "Requested packing recipe is not selected by this CPU backend");
     }
+
     CpuWeightPrepacker prepacker;
     return prepacker.Pack(op_type, components, selector, recipe);
 }

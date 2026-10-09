@@ -122,3 +122,27 @@ Cold packing：`N=4096,K=4096` median 66.83 ms，packed size 64 MiB（amplificat
 - 结果：构建成功，57/57 聚焦测试和 4/4 UBSan 测试通过，无 sanitizer 诊断。直接权重与 composite component 的 `{0, INT64_MAX, 2}` 在 backend 打包前返回 `Overflow`，调用次数为 0；`{0, INT64_MAX, 1}` 与正常零尺寸输入仍可打包。
 - raw：`benchmark-results/operators/gemm/20261009T055145Z_3836d79cffd8_54h5mmi_stride-overflow/`（`metadata.json`、`patch.diff`、`focused.log`、`ubsan.log`）。
 - 结论：Accepted（准备期 stride 正确性修复）。性能未测量，无 kernel priority 调整。
+
+## WeightPackingRequest 统一 components
+
+- commit：`9b5b7ff52376`（dirty，含本次迁移与既有 collection 实现局部修改）。
+- 命令：`cmake --build build --target aethermind_unit_tests -j 4`；先运行 `--gtest_filter=WeightPacking.PrepackWeightRequestsRejectsEmptyComponentsBeforeBackendCall`，再运行 `--gtest_filter='WeightPacking.*:PackedWeightCollectionOwnership.*:ZeroDimensions/PackedWeightCollectionZeroSize.*:PackingRequestResolution.*:CpuWeightPrepacker.*:ExternalReadRequirements.*:ExecutableModel.*:LoadAndPrepareExecutableModel.*:DirectPrefillDecode.*:InferenceSession.*:CPUKernelQkvLinear.*:CPUKernelGateUpLinear.*:CPUKernelAddRmsNorm.*'`。另对 request builder、collection 实现和 weight-packing 测试启用 `-fsanitize=undefined -fno-sanitize-recover=undefined`，运行 `--gtest_filter='WeightPacking.*'`；完整编译命令见 raw `metadata.json`。
+- 结果：构建成功，126/126 聚焦测试和 27/27 UBSan 测试通过，无 sanitizer 诊断。直接绑定统一为单组件，rank-1 norm、Q/K/V 与 Gate/Up 顺序、tied embedding、backing 生命周期、空批次、零尺寸与溢出拒绝均验证通过；空组件列表在 backend 调用前拒绝。tiny Llama Prefill→Decode 与同步生成符合 scalar oracle，稳态零分配测试通过。
+- raw：`benchmark-results/operators/gemm/20261009T063154Z_9b5b7ff52376_54h5mmi_components-only/`（`metadata.json`、`patch.diff`、`focused.log`、`ubsan.log`）。
+- 结论：Accepted（请求表示迁移）。删除 `raw_weight` 改变 C++ 请求结构的 API/ABI，调用方须迁移初始化并重新编译；性能未测量，物理布局与 kernel priority 无调整。
+
+## Backend 打包扩展点收敛
+
+- commit：`9b5b7ff52376`（dirty，含 components 迁移与本次 backend 接口修改）。
+- 命令：`cmake --build build --target aethermind_unit_tests -j 4`；先运行 `--gtest_filter=BackendWeightPacking.ConvenienceForwardsSelectedRecipeAndInputsToVirtualPacking`，再运行 `--gtest_filter='BackendWeightPacking.*:CpuBackend.*:CpuBackendFactory.*:WeightPacking.*:PackedWeightCollectionOwnership.*:ZeroDimensions/PackedWeightCollectionZeroSize.*:PackingRequestResolution.*:CpuWeightPrepacker.*:ExternalReadRequirements.*:ExecutableModel.*:LoadAndPrepareExecutableModel.*:DirectPrefillDecode.*:InferenceSession.*:CPUKernelQkvLinear.*:CPUKernelGateUpLinear.*:CPUKernelAddRmsNorm.*'`。另对 Backend 协议测试、weight-packing 测试及请求构建/执行实现启用 `-fsanitize=undefined -fno-sanitize-recover=undefined`，运行 `--gtest_filter='BackendWeightPacking.*:WeightPacking.*'`；完整编译命令见 raw `metadata.json`。
+- 结果：构建成功，140/140 聚焦测试和 32/32 UBSan 测试通过，无 sanitizer 诊断。三参数便利函数查询并转发所选 recipe，查询失败（含 Unimplemented）在打包前传播；四参数默认实现返回 Unimplemented，显式调用直接虚派发。CPU 实例的三参数调用可见且成功，recipe policy 校验、tiny Llama Prefill→Decode 与稳态零分配测试通过。
+- raw：`benchmark-results/operators/gemm/20261009T072256Z_9b5b7ff52376_54h5mmi_backend-pack-entry/`（`metadata.json`、`patch.diff`、`focused.log`、`ubsan.log`，补丁包含新增 Backend 协议测试）。
+- 结论：Accepted（打包入口收敛）。packing 仍为可选能力；三参数版本由 virtual 改为 non-virtual 会改变 C++ vtable/ABI，原三参数实现须迁移到四参数入口，并重新编译调用方。性能未测量，物理布局与 kernel priority 无调整。
+
+## Backend 仅保留显式 recipe 打包入口
+
+- commit：`9b5b7ff52376`（dirty，含此前 components/backend 迁移与本次便利重载删除）。
+- 命令：`cmake --build build --target aethermind_unit_tests -j 4`；先运行 `--gtest_filter=BackendWeightPacking.ExplicitPackingForwardsRecipeAndInputsToVirtualImplementation`，再运行 `--gtest_filter='BackendWeightPacking.*:CpuBackend.*:CpuBackendFactory.*:WeightPacking.*:PackedWeightCollectionOwnership.*:ZeroDimensions/PackedWeightCollectionZeroSize.*:PackingRequestResolution.*:CpuWeightPrepacker.*:ExternalReadRequirements.*:ExecutableModel.*:LoadAndPrepareExecutableModel.*:DirectPrefillDecode.*:InferenceSession.*:CPUKernelQkvLinear.*:CPUKernelGateUpLinear.*:CPUKernelAddRmsNorm.*'`。另对协议与 weight-packing 测试及相关构建/执行实现启用 `-fsanitize=undefined -fno-sanitize-recover=undefined`，运行 `--gtest_filter='BackendWeightPacking.*:WeightPacking.*'`；完整编译命令见 raw `metadata.json`。
+- 结果：构建成功，137/137 聚焦测试和 29/29 UBSan 测试通过，无 sanitizer 诊断。代码只保留带 recipe 的四参数 `PackWeights`，CPU 不再需要 using 声明；独立 `GetPackingRecipe` 查询保留。显式参数/错误传递、默认 Unimplemented、CPU recipe policy、tiny Llama Prefill→Decode 与稳态零分配验证通过。
+- raw：`benchmark-results/operators/gemm/20261009T074302Z_9b5b7ff52376_54h5mmi_explicit-pack-only/`（`metadata.json`、`patch.diff`、`focused.log`、`ubsan.log`，补丁包含协议测试最终版本）。
+- 结论：Accepted（单一打包入口）。三参数源码调用须改为显式传入 recipe；相对此前单虚入口版本，删除非虚便利函数不再调整 vtable。性能未测量，物理布局与 kernel priority 无调整。

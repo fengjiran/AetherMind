@@ -25,14 +25,10 @@ struct WeightPackingRequest {
     /// Logical weight binding (layer index + role) used as artifact
     /// identity together with the selector.
     WeightBinding binding{};
-    /// Raw weight view for direct bindings. Composite bindings
-    /// (QkvWeightBinding / GateUpWeightBinding) leave this empty and carry
-    /// the recipe-ordered components instead; the backend materializes the
-    /// fused artifact from `components`.
-    RawWeightView raw_weight{};
-    /// Recipe-ordered raw components of a composite binding: Q, K, V for
-    /// QkvWeightBinding; Gate, Up for GateUpWeightBinding. Empty for
-    /// direct bindings, whose single view lives in `raw_weight`.
+    /// Non-empty raw weight views in logical binding order: one view for a
+    /// direct binding, Q/K/V for QkvWeightBinding, Gate/Up for GateUpWeightBinding.
+    /// Each view retains its backing storage; the backend materializes any
+    /// composite artifact and owns the physical packing layout.
     std::vector<RawWeightView> components{};
     KernelSelector selector{};
     /// Empty when compilation builds the request. Preparation selects the

@@ -124,7 +124,8 @@ private:
 /// @param backend Packing service provider. Must implement PackWeights for
 ///        the requests' selectors.
 /// @param requests Requests to execute. Every request must carry the same
-///        source_id; a mixed batch is rejected before any weight is packed.
+///        source_id and a non-empty list of raw components; a mixed-source
+///        batch is rejected before any weight is packed.
 /// @return The bound collection on success, or the first validation, packing,
 ///         or insertion error. An empty batch returns an unbound empty collection.
 StatusOr<PackedWeightCollection> PrepackWeightRequests(

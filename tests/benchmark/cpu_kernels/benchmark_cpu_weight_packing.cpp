@@ -1,3 +1,4 @@
+#include "aethermind/backend/cpu/cpu_identity_packing.h"
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/packed_weight.h"
 #include "aethermind/base/tensor_view.h"
@@ -65,13 +66,13 @@ void BM_WeightPackingCpuIdentity(benchmark::State& state) {
     const std::array<int64_t, 2> strides = {k, 1};
     const TensorView logical_weight{
             weight.data(), DataType::Float32(), shape, strides};
+    const std::array<TensorView, 1> components{logical_weight};
+    const PackingRecipe recipe = CpuIdentityPackingRecipe();
     const KernelSelector selector = MakePackedLinearSelector();
     const CpuWeightPrepacker prepacker;
 
-    // Validate the current identity recipe once before timing. This benchmark
-    // is intentionally a cold pack measurement, not a packed Linear kernel
-    // benchmark: no packed Linear descriptor exists yet.
-    const auto checked_packed = prepacker.Pack(OpType::kLinear, logical_weight, selector);
+    // Validate byte preservation before timing the cold identity pack.
+    const auto checked_packed = prepacker.Pack(OpType::kLinear, components, selector, recipe);
     if (!checked_packed.ok()) {
         state.SkipWithError(checked_packed.status().ToString().c_str());
         return;
@@ -87,7 +88,7 @@ void BM_WeightPackingCpuIdentity(benchmark::State& state) {
                    std::string{ToString((*checked_packed)->recipe().layout)} +
                    " mode=cold-packing");
     for (auto _: state) {
-        const auto packed = prepacker.Pack(OpType::kLinear, logical_weight, selector);
+        const auto packed = prepacker.Pack(OpType::kLinear, components, selector, recipe);
         if (!packed.ok()) {
             state.SkipWithError(packed.status().ToString().c_str());
             break;

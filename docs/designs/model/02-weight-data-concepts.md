@@ -19,6 +19,10 @@ weight 相关概念横跨 graph / model / compiler / backend / execution / infer
 
 数据流按生命周期分为六段，依次为：**resolve → bind → request → pack → store → specialize**。
 
+`WeightPackingRequest` 统一以非空 `components` 承载 raw views：直接绑定为一个组件，QKV 为 Q/K/V 三个组件，Gate-Up 为 Gate/Up 两个组件。组件顺序由逻辑 binding 确定，各 view 持有共享 backing；compiler 生成组件列表，model/weight 在打包前拒绝空列表并验证各组件，backend 负责 composite 物化与物理 layout。空请求批仍返回未绑定的空 collection。
+
+`Backend::PackWeights(op, components, selector, recipe)` 是唯一打包入口；packing 为可选能力，默认返回 `Unimplemented`。`GetPackingRecipe` 保留为独立查询接口，准备层先解析 recipe 并检查 consumer 兼容性，再显式传入打包函数。具体 backend 实现四参数入口，产物 recipe 的一致性继续由 prepack/collection 校验。
+
 | 阶段（动词） | 概念 | 权威文件 | 所属层 |
 |---|---|---|---|
 | **resolve**（按张量名） | `hf::ResolveWeights`：HF 张量名 → 逻辑权重树（含 tied embedding 别名）；`ResolvedModelWeights`；`RawWeightView`/`RawStorage`（借用视图 + 共享 backing） | [hf_tensor_resolver.h](../../../include/aethermind/model/formats/hf/hf_tensor_resolver.h)、[resolved_model_weights.h](../../../include/aethermind/model/resolved_model_weights.h)、[raw_weight.h](../../../include/aethermind/model/raw_weight.h) | model |

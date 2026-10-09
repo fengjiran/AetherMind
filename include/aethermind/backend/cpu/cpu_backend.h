@@ -70,16 +70,10 @@ public:
     AM_NODISCARD StatusOr<PackingRecipe> GetPackingRecipe(
             OpType op_type, const KernelSelector& selector) const override;
 
-    /// @brief Packs recipe-ordered weight views through the CPU identity
-    ///        prepacker.
+    /// @brief Packs logical weight views using the selected CPU layout recipe.
     ///
     /// See `Backend::PackWeights` for the component contract; the CPU backend
     /// fuses composites along axis 0 and stores one aligned artifact per call.
-    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
-            OpType op_type,
-            std::span<const TensorView> components,
-            const KernelSelector& selector) const override;
-
     AM_NODISCARD StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
             OpType op_type,
             std::span<const TensorView> components,

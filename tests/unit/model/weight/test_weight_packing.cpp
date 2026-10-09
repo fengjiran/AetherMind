@@ -84,9 +84,13 @@ void SetIdentityPackingRecipes(std::vector<WeightPackingRequest>& requests) {
 StatusOr<std::unique_ptr<PackedWeight>> PackViaCpuIdentity(
         OpType op_type,
         std::span<const TensorView> components,
-        const KernelSelector& selector) {
+        const KernelSelector& selector,
+        const PackingRecipe& recipe) {
+    if (recipe != CpuIdentityPackingRecipe()) {
+        return Status::InvalidArgument("Test backend requires the CPU identity packing recipe");
+    }
     CpuWeightPrepacker prepacker;
-    return prepacker.Pack(op_type, components, selector);
+    return prepacker.Pack(op_type, components, selector, recipe);
 }
 
 // Minimal backend for prepack-only tests: resolves nothing, packs everything
@@ -107,9 +111,10 @@ public:
     StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
             OpType op_type,
             std::span<const TensorView> components,
-            const KernelSelector& selector) const override {
+            const KernelSelector& selector,
+            const PackingRecipe& recipe) const override {
         ++pack_calls;
-        return PackViaCpuIdentity(op_type, components, selector);
+        return PackViaCpuIdentity(op_type, components, selector, recipe);
     }
 
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override {
@@ -149,7 +154,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsBackendWithoutPacking) {
             .op_type = OpType::kLinear,
             .source_id = 1,
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
-            .raw_weight = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1}),
+            .components = {MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1})},
             .selector = MakeExpectedSelector(),
             .recipe = CpuIdentityPackingRecipe(),
     };
@@ -160,13 +165,42 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsBackendWithoutPacking) {
     EXPECT_EQ(prepacked.status().code(), StatusCode::kUnimplemented);
 }
 
+TEST(WeightPacking, PrepackWeightRequestsRejectsEmptyComponentsBeforeBackendCall) {
+    PackingOnlyTestBackend backend;
+    const WeightPackingRequest request{
+            .op_type = OpType::kLinear,
+            .source_id = 1,
+            .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
+            .components = {},
+            .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
+    };
+
+    const auto prepacked = PrepackWeightRequests(backend, {request});
+
+    EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(prepacked.status().message().find("non-empty weight components"), std::string::npos);
+    EXPECT_EQ(backend.pack_calls, 0U);
+}
+
+TEST(WeightPacking, PrepackWeightRequestsAcceptsEmptyBatch) {
+    PackingOnlyTestBackend backend;
+
+    const auto prepacked = PrepackWeightRequests(backend, {});
+
+    ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
+    EXPECT_TRUE(prepacked->empty());
+    EXPECT_EQ(prepacked->source_id(), 0U);
+    EXPECT_EQ(backend.pack_calls, 0U);
+}
+
 TEST(WeightPacking, PrepackWeightRequestsRejectsUnspecifiedLayoutBeforeBackendCall) {
     auto storage = std::make_shared<TestStorage>(8);
     const WeightPackingRequest request{
             .op_type = OpType::kLinear,
             .source_id = 1,
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
-            .raw_weight = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1}),
+            .components = {MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1})},
             .selector = MakeExpectedSelector(),
             .recipe = {.layout = PackingLayout::kNone, .alignment = 64},
     };
@@ -185,7 +219,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsUnknownLayoutBeforeBackendCall) 
             .op_type = OpType::kLinear,
             .source_id = 1,
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
-            .raw_weight = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1}),
+            .components = {MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1})},
             .selector = MakeExpectedSelector(),
             .recipe = {.layout = static_cast<PackingLayout>(0xFF), .alignment = 64},
     };
@@ -206,7 +240,7 @@ TEST(WeightPacking, PrepackWeightRequestsMakesWeightsFindable) {
     const std::vector<WeightPackingRequest> requests{
             {.op_type = OpType::kLinear,
              .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
-             .raw_weight = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1}),
+             .components = {MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1})},
              .selector = MakeExpectedSelector(),
              .recipe = CpuIdentityPackingRecipe()},
     };
@@ -219,8 +253,7 @@ TEST(WeightPacking, PrepackWeightRequestsMakesWeightsFindable) {
     const KernelSelector expected_selector = MakeExpectedSelector();
     const WeightArtifactKey key{.binding = requests.front().binding,
                                 .selector = requests.front().selector,
-                                .recipe = CpuWeightPrepacker::RecipeFor(
-                                        requests.front().selector)};
+                                .recipe = requests.front().recipe};
     const auto found = packed_weight_collection.Find(key);
     ASSERT_NE(found, nullptr);
     EXPECT_EQ(found->op_type(), OpType::kLinear);
@@ -237,11 +270,11 @@ TEST(WeightPacking, PrepackWeightRequestsAcceptsZeroSizedWeights) {
             .op_type = OpType::kLinear,
             .source_id = 9,
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
-            .raw_weight = {.data = nullptr,
-                           .bytes = 0,
-                           .dtype = DataType::Float32(),
-                           .shape = {4, 0},
-                           .storage = std::make_shared<TestStorage>(0)},
+            .components = {{.data = nullptr,
+                            .bytes = 0,
+                            .dtype = DataType::Float32(),
+                            .shape = {4, 0},
+                            .storage = std::make_shared<TestStorage>(0)}},
             .selector = selector,
             .recipe = *recipe,
     };
@@ -256,7 +289,7 @@ TEST(WeightPacking, PrepackWeightRequestsAcceptsZeroSizedWeights) {
                                          .recipe = *recipe});
     ASSERT_NE(packed, nullptr);
     EXPECT_EQ(packed->storage().nbytes(), 0U);
-    EXPECT_EQ(packed->logical_shape(), request.raw_weight.shape);
+    EXPECT_EQ(packed->logical_shape(), request.components.front().shape);
 }
 
 TEST(WeightPacking, PrepackWeightRequestsRejectsStrideOverflowBeforeBackendCall) {
@@ -265,15 +298,15 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsStrideOverflowBeforeBackendCall)
             .op_type = OpType::kLinear,
             .source_id = 9,
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
-            .raw_weight = {.data = nullptr,
-                           .bytes = 0,
-                           .dtype = DataType::Float32(),
-                           .shape = {0, std::numeric_limits<int64_t>::max(), 2},
-                           .storage = std::make_shared<TestStorage>(0)},
+            .components = {{.data = nullptr,
+                            .bytes = 0,
+                            .dtype = DataType::Float32(),
+                            .shape = {0, std::numeric_limits<int64_t>::max(), 2},
+                            .storage = std::make_shared<TestStorage>(0)}},
             .selector = MakeExpectedSelector(),
             .recipe = CpuIdentityPackingRecipe(),
     };
-    EXPECT_TRUE(ValidateRawWeightView(request.raw_weight).ok());
+    EXPECT_TRUE(ValidateRawWeightView(request.components.front()).ok());
 
     const auto prepacked = PrepackWeightRequests(backend, {request});
 
@@ -314,11 +347,11 @@ TEST(WeightPacking, PrepackWeightRequestsAcceptsLargestRepresentableStride) {
             .op_type = OpType::kLinear,
             .source_id = 9,
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
-            .raw_weight = {.data = nullptr,
-                           .bytes = 0,
-                           .dtype = DataType::Float32(),
-                           .shape = {0, std::numeric_limits<int64_t>::max(), 1},
-                           .storage = std::make_shared<TestStorage>(0)},
+            .components = {{.data = nullptr,
+                            .bytes = 0,
+                            .dtype = DataType::Float32(),
+                            .shape = {0, std::numeric_limits<int64_t>::max(), 1},
+                            .storage = std::make_shared<TestStorage>(0)}},
             .selector = MakeExpectedSelector(),
             .recipe = CpuIdentityPackingRecipe(),
     };
@@ -339,7 +372,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsMixedSourceIds) {
             .op_type = OpType::kLinear,
             .source_id = 1,
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
-            .raw_weight = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1}),
+            .components = {MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1})},
             .selector = MakeExpectedSelector(),
             .recipe = CpuIdentityPackingRecipe(),
     };
@@ -372,8 +405,8 @@ TEST(WeightPacking, PrepackWeightRequestsStoresAllLayerWeightsDistinctly) {
             requests.push_back(
                     {.op_type = OpType::kLinear,
                      .binding = MakeTransformerWeightBinding(layer, roles[role]),
-                     .raw_weight = MakeWeightView(storage, (layer * roles.size() + role) * 8U,
-                                                  8, DataType::Float32(), {2, 1}),
+                     .components = {MakeWeightView(storage, (layer * roles.size() + role) * 8U,
+                                                   8, DataType::Float32(), {2, 1})},
                      .selector = MakeExpectedSelector(),
                      .recipe = CpuIdentityPackingRecipe()});
         }
@@ -391,9 +424,34 @@ TEST(WeightPacking, PrepackWeightRequestsStoresAllLayerWeightsDistinctly) {
     for (const auto& req: requests) {
         const WeightArtifactKey key{.binding = req.binding,
                                     .selector = req.selector,
-                                    .recipe = CpuWeightPrepacker::RecipeFor(req.selector)};
+                                    .recipe = req.recipe};
         EXPECT_NE(packed_weight_collection.Find(key), nullptr) << "missing key for layer";
     }
+}
+
+TEST(WeightPacking, RequestComponentsRetainBackingStorage) {
+    WeightPackingRequest request{
+            .op_type = OpType::kLinear,
+            .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
+            .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
+    };
+    std::weak_ptr<TestStorage> backing;
+    {
+        auto storage = std::make_shared<TestStorage>(8);
+        backing = storage;
+        request.components.push_back(MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1}));
+    }
+    EXPECT_FALSE(backing.expired());
+    std::vector<WeightPackingRequest> requests;
+    requests.push_back(std::move(request));
+    PackingOnlyTestBackend backend;
+
+    const auto prepacked = PrepackWeightRequests(backend, requests);
+
+    EXPECT_TRUE(prepacked.ok()) << prepacked.status().ToString();
+    requests.clear();
+    EXPECT_TRUE(backing.expired());
 }
 
 TEST(WeightPacking, RawViewsRemainAccessibleAfterPrepack) {
@@ -405,7 +463,7 @@ TEST(WeightPacking, RawViewsRemainAccessibleAfterPrepack) {
     const std::vector<WeightPackingRequest> requests{
             {.op_type = OpType::kLinear,
              .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
-             .raw_weight = raw_weight,
+             .components = {raw_weight},
              .selector = MakeExpectedSelector(),
              .recipe = CpuIdentityPackingRecipe()},
     };
@@ -447,7 +505,7 @@ public:
                 .fn = &PlannerPackedKernel,
                 .attrs = {},
                 .name = "test::planner_packed_kernel",
-                .expected_packing_recipe = CpuWeightPrepacker::RecipeFor(selector),
+                .expected_packing_recipe = CpuIdentityPackingRecipe(),
         };
     }
 
@@ -525,11 +583,14 @@ TEST(WeightPacking, LoweredDrivenPrepackAndResolve) {
     for (const auto& req: *requests) {
         EXPECT_EQ(req.source_id, lowered->artifact_id());
         EXPECT_EQ(req.selector.weight_format, WeightFormat::kPacked);
+        ASSERT_EQ(req.components.size(), 1U);
     }
     // Requests appear in lowered order: embedding value, norm0 value, norm1.
     EXPECT_EQ((*requests)[0].value_index, embedding_weight.index);
     EXPECT_EQ((*requests)[1].value_index, norm0_weight.index);
     EXPECT_EQ((*requests)[2].value_index, norm1_weight.index);
+    EXPECT_EQ((*requests)[1].components.front().shape, std::vector<int64_t>{8});
+    EXPECT_EQ((*requests)[2].components.front().shape, std::vector<int64_t>{8});
 
     PackingOnlyTestBackend prepack_backend;
     const auto prepacked = PrepackWeightRequests(prepack_backend, *requests);
@@ -705,8 +766,8 @@ TEST(WeightPacking, LoweredDrivenPrepackResolvesCompositeBindings) {
                 return req.op_type == OpType::kEmbedding;
             });
     ASSERT_NE(embedding_request, requests->end());
-    EXPECT_TRUE(embedding_request->components.empty());
-    EXPECT_EQ(embedding_request->raw_weight.data, resolved.embed_tokens.data);
+    ASSERT_EQ(embedding_request->components.size(), 1U);
+    EXPECT_EQ(embedding_request->components.front().data, resolved.embed_tokens.data);
 
     PackingOnlyTestBackend prepack_backend;
     const auto prepacked = PrepackWeightRequests(prepack_backend, *requests);
@@ -722,8 +783,7 @@ TEST(WeightPacking, LoweredDrivenPrepackResolvesCompositeBindings) {
                                     .value_index = req.value_index,
                                     .binding = req.binding,
                                     .selector = req.selector,
-                                    .recipe = CpuWeightPrepacker::RecipeFor(
-                                            req.selector)};
+                                    .recipe = req.recipe};
         const auto found = packed_weight_collection.Find(key);
         ASSERT_NE(found, nullptr);
         ASSERT_EQ(found->logical_shape().size(), 2U);
@@ -790,7 +850,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsDirectWeightWithUndersizedBytes)
             .op_type = OpType::kLinear,
             .source_id = 1,
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
-            .raw_weight = MakeWeightView(storage, 0, 4, DataType::Float32(), {2, 1}),
+            .components = {MakeWeightView(storage, 0, 4, DataType::Float32(), {2, 1})},
             .selector = MakeExpectedSelector(),
             .recipe = CpuIdentityPackingRecipe(),
     };
@@ -808,7 +868,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsDirectWeightWithOversizedBytes) 
             .op_type = OpType::kLinear,
             .source_id = 1,
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
-            .raw_weight = MakeWeightView(storage, 0, 12, DataType::Float32(), {2, 1}),
+            .components = {MakeWeightView(storage, 0, 12, DataType::Float32(), {2, 1})},
             .selector = MakeExpectedSelector(),
             .recipe = CpuIdentityPackingRecipe(),
     };
@@ -848,7 +908,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsNegativeWeightDimension) {
             .op_type = OpType::kLinear,
             .source_id = 1,
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
-            .raw_weight = MakeWeightView(storage, 0, 0, DataType::Float32(), {-3}),
+            .components = {MakeWeightView(storage, 0, 0, DataType::Float32(), {-3})},
             .selector = MakeExpectedSelector(),
             .recipe = CpuIdentityPackingRecipe(),
     };
@@ -866,7 +926,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsOverflowingWeightByteSize) {
             .op_type = OpType::kLinear,
             .source_id = 1,
             .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
-            .raw_weight = RawWeightView{
+            .components = {RawWeightView{
                     .data = storage->data.data(),
                     .bytes = 64,
                     .dtype = DataType::Float32(),
@@ -875,7 +935,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsOverflowingWeightByteSize) {
                               static_cast<int64_t>(1) << 30,
                               static_cast<int64_t>(1) << 30},
                     .storage = storage,
-            },
+            }},
             .selector = MakeExpectedSelector(),
             .recipe = CpuIdentityPackingRecipe(),
     };
@@ -931,8 +991,9 @@ TEST(WeightPacking, BuildWeightPackingRequestsFallsBackToEmbedTokensForTiedLmHea
     // Both values resolve to the same embed_tokens bytes: the embedding
     // weight and the tied lm_head weight.
     for (const auto& req: *requests) {
-        EXPECT_EQ(req.raw_weight.data, resolved.embed_tokens.data);
-        EXPECT_EQ(req.raw_weight.bytes, resolved.embed_tokens.bytes);
+        ASSERT_EQ(req.components.size(), 1U);
+        EXPECT_EQ(req.components.front().data, resolved.embed_tokens.data);
+        EXPECT_EQ(req.components.front().bytes, resolved.embed_tokens.bytes);
     }
     EXPECT_EQ((*requests)[0].op_type, OpType::kEmbedding);
     EXPECT_EQ((*requests)[1].op_type, OpType::kLinear);
@@ -1024,12 +1085,12 @@ std::shared_ptr<const PackedWeight> PackTestArtifact(OpType op_type,
             strides[i] = strides[i + 1] * shape[i + 1];
         }
     }
+    const TensorView components[] = {
+            TensorView(data.data(), DataType::Float32(),
+                       IntArrayView(shape), IntArrayView(strides), 0)};
     CpuWeightPrepacker prepacker;
     auto packed = prepacker.Pack(
-            op_type,
-            TensorView(data.data(), DataType::Float32(),
-                       IntArrayView(shape), IntArrayView(strides), 0),
-            selector);
+            op_type, components, selector, CpuIdentityPackingRecipe());
     EXPECT_TRUE(packed.ok());
     if (!packed.ok()) return nullptr;
     return std::shared_ptr<const PackedWeight>(std::move(*packed));
@@ -1060,7 +1121,7 @@ TEST(WeightPacking, UntrustedBuildBindsDistinctPackedArtifacts) {
     // (activation id 0, weight id 1) before the next node's operands.
     PackedWeightCollection collection;
     const KernelSelector selector = MakeExpectedSelector();
-    const PackingRecipe recipe = CpuWeightPrepacker::RecipeFor(selector);
+    const PackingRecipe recipe = CpuIdentityPackingRecipe();
     for (const uint32_t value_index: {1U, 4U}) {
         auto artifact = PackTestArtifact(OpType::kLinear, selector, {4, 8});
         ASSERT_NE(artifact, nullptr);
@@ -1096,7 +1157,7 @@ TEST(WeightPacking, UntrustedBuildRejectsArtifactOpTypeMismatch) {
                                    .value_index = 1,
                                    .binding = {},
                                    .selector = selector,
-                                   .recipe = CpuWeightPrepacker::RecipeFor(selector)},
+                                   .recipe = CpuIdentityPackingRecipe()},
                                   std::move(artifact))
                         .ok());
 
@@ -1120,7 +1181,7 @@ TEST(WeightPacking, UntrustedBuildRejectsArtifactShapeMismatch) {
                                    .value_index = 1,
                                    .binding = {},
                                    .selector = selector,
-                                   .recipe = CpuWeightPrepacker::RecipeFor(selector)},
+                                   .recipe = CpuIdentityPackingRecipe()},
                                   std::move(artifact))
                         .ok());
 

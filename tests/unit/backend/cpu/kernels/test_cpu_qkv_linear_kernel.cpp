@@ -1,4 +1,5 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/cpu/cpu_identity_packing.h"
 #include "aethermind/backend/cpu/cpu_weight_prepacker.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_types.h"
@@ -466,12 +467,11 @@ TEST(CPUKernelQkvLinear, PackedArtifactParticipatesInDeferredShapeChecks) {
     alignas(64) float logical_weight[12]{};
     constexpr int64_t logical_shape[2] = {4, 3};
     constexpr int64_t logical_strides[2] = {3, 1};
+    const std::array<TensorView, 1> components{
+            TensorView(logical_weight, DataType::Float32(), logical_shape, logical_strides, 64)};
     CpuWeightPrepacker prepacker;
     auto packed = prepacker.Pack(
-            OpType::kQkvLinear,
-            TensorView(logical_weight, DataType::Float32(), logical_shape,
-                       logical_strides, 64),
-            MakeQkvSelector());
+            OpType::kQkvLinear, components, MakeQkvSelector(), CpuIdentityPackingRecipe());
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     PackedWeightCollection collection;
     const WeightArtifactKey key{
@@ -479,7 +479,7 @@ TEST(CPUKernelQkvLinear, PackedArtifactParticipatesInDeferredShapeChecks) {
             .value_index = 1,
             .binding = {},
             .selector = MakeQkvSelector(),
-            .recipe = CpuWeightPrepacker::RecipeFor(MakeQkvSelector()),
+            .recipe = CpuIdentityPackingRecipe(),
     };
     ASSERT_TRUE(collection.Insert(key, std::shared_ptr<const PackedWeight>(std::move(*packed))).ok());
 

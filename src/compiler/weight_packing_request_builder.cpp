@@ -132,11 +132,7 @@ StatusOr<std::vector<WeightPackingRequest>> BuildWeightPackingRequests(
                 return components.status();
             }
 
-            if (IsCompositeWeightBinding(weight->binding)) {
-                request.components = std::move(*components);
-            } else {
-                request.raw_weight = std::move(components->front());
-            }
+            request.components = std::move(*components);
             requests.push_back(std::move(request));
         }
     }

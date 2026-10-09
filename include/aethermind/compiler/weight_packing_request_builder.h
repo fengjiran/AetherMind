@@ -17,9 +17,9 @@ namespace aethermind {
 ///
 /// Pure data mapping: reads only the lowered graph and resolved weights, and
 /// produces WeightPackingRequest entries carrying the artifact
-/// identity (source_id + value_index), the logical binding, its raw weight,
-/// and the step selector. It never touches a backend; packing is executed by
-/// PrepackWeightRequests.
+/// identity (source_id + value_index), the logical binding, its non-empty
+/// ordered raw components, and the step selector. It never touches a backend;
+/// packing is executed by PrepackWeightRequests.
 ///
 /// @param lowered Finalized compiler artifact.
 /// @param resolved Resolved raw weights backing the artifact.

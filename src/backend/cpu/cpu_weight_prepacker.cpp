@@ -5,7 +5,6 @@
 #include "aethermind/base/tensor_view.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -101,68 +100,19 @@ private:
 
 StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
         OpType op_type,
-        const Tensor& logical_weight,
-        const KernelSelector& selector) const noexcept {
-    if (op_type == OpType::kUnknown) {
-        return Status::InvalidArgument("CpuWeightPrepacker requires a concrete op type");
-    }
-
-    if (selector.device_type != DeviceType::kCPU) {
-        return Status::InvalidArgument("CpuWeightPrepacker only supports CPU selectors");
-    }
-
-    if (selector.weight_format != WeightFormat::kPacked) {
-        return Status::InvalidArgument("CpuWeightPrepacker requires WeightFormat::kPacked");
-    }
-
-    if (!logical_weight.is_initialized()) {
-        return Status::InvalidArgument("CpuWeightPrepacker requires initialized logical weights");
-    }
-
-    if (!logical_weight.device().is_cpu()) {
-        return Status::InvalidArgument("CpuWeightPrepacker only supports CPU logical weights");
-    }
-
-    return Pack(op_type, logical_weight.view(), selector);
-}
-
-StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
-        OpType op_type,
-        TensorView logical_weight,
-        const KernelSelector& selector) const noexcept {
-    if (op_type == OpType::kUnknown) {
-        return Status::InvalidArgument("CpuWeightPrepacker requires a concrete op type");
-    }
-
-    if (selector.device_type != DeviceType::kCPU) {
-        return Status::InvalidArgument("CpuWeightPrepacker only supports CPU selectors");
-    }
-
-    if (selector.weight_format != WeightFormat::kPacked) {
-        return Status::InvalidArgument("CpuWeightPrepacker requires WeightFormat::kPacked");
-    }
-
-    if (!logical_weight.is_valid()) {
-        return Status::InvalidArgument("CpuWeightPrepacker requires a valid logical weight TensorView");
-    }
-
-    return Pack(op_type, logical_weight, selector, RecipeFor(selector));
-}
-
-StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
-        OpType op_type,
         std::span<const TensorView> components,
-        const KernelSelector& selector) const noexcept {
-    if (op_type == OpType::kUnknown) {
-        return Status::InvalidArgument("CpuWeightPrepacker requires a concrete op type");
+        const KernelSelector& selector,
+        const PackingRecipe& recipe) const noexcept {
+    if (recipe != CpuIdentityPackingRecipe() &&
+        recipe != cpu::CpuBPanelF32V1Avx2Recipe()) {
+        return Status::InvalidArgument(
+                "CpuWeightPrepacker does not support the requested recipe");
     }
 
-    if (selector.device_type != DeviceType::kCPU) {
-        return Status::InvalidArgument("CpuWeightPrepacker only supports CPU selectors");
-    }
-
-    if (selector.weight_format != WeightFormat::kPacked) {
-        return Status::InvalidArgument("CpuWeightPrepacker requires WeightFormat::kPacked");
+    if (op_type == OpType::kUnknown || selector.device_type != DeviceType::kCPU ||
+        selector.weight_format != WeightFormat::kPacked) {
+        return Status::InvalidArgument(
+                "CpuWeightPrepacker requires a packed CPU request");
     }
 
     if (components.empty()) {
@@ -170,76 +120,36 @@ StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
                 "CpuWeightPrepacker requires at least one weight component");
     }
 
-    return Pack(op_type, components, selector, RecipeFor(selector));
-}
-
-StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
-        OpType op_type,
-        TensorView logical_weight,
-        const KernelSelector& selector,
-        const PackingRecipe& recipe) const noexcept {
-    if (recipe != CpuIdentityPackingRecipe() &&
-        recipe != cpu::CpuBPanelF32V1Avx2Recipe()) {
-        return Status::InvalidArgument(
-                "CpuWeightPrepacker does not support the requested recipe");
-    }
-
-    if (op_type == OpType::kUnknown || selector.device_type != DeviceType::kCPU ||
-        selector.weight_format != WeightFormat::kPacked ||
-        !logical_weight.is_valid()) {
-        return Status::InvalidArgument(
-                "CpuWeightPrepacker requires a packed CPU request and a valid "
-                "logical weight");
-    }
-
-    if (recipe == cpu::CpuBPanelF32V1Avx2Recipe()) {
-        const std::array<TensorView, 1> components{logical_weight};
-        return Pack(op_type, components, selector, recipe);
-    }
-
-    // cpu_identity: exact byte copy into recipe-aligned storage.
-    const size_t packed_nbytes = logical_weight.logical_nbytes();
-    // Identity consumers require at least the recipe alignment, while a
-    // source view may carry a stronger alignment contract that callers retain.
-    AM_ASSIGN_OR_RETURN(Buffer packed_storage,
-                        AllocateCpuPackedBuffer(
-                                packed_nbytes,
-                                std::max(logical_weight.alignment(), recipe.alignment)));
-
-    if (packed_nbytes > 0) {
-        std::memcpy(packed_storage.mutable_data(), logical_weight.data(), packed_nbytes);
-    }
-
-    std::vector<int64_t> logical_shape(logical_weight.shape().begin(),
-                                       logical_weight.shape().end());
-    return std::make_unique<CpuPackedWeight>(
-            op_type, selector, recipe,
-            logical_weight.dtype(), std::move(logical_shape),
-            std::move(packed_storage));
-}
-
-StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
-        OpType op_type,
-        std::span<const TensorView> components,
-        const KernelSelector& selector,
-        const PackingRecipe& recipe) const noexcept {
-    if (recipe != CpuIdentityPackingRecipe() &&
-        recipe != cpu::CpuBPanelF32V1Avx2Recipe()) {
-        return Status::InvalidArgument(
-                "CpuWeightPrepacker does not support the requested recipe");
-    }
-
-    if (op_type == OpType::kUnknown || selector.device_type != DeviceType::kCPU ||
-        selector.weight_format != WeightFormat::kPacked || components.empty()) {
-        return Status::InvalidArgument(
-                "CpuWeightPrepacker requires a packed CPU request and weight components");
-    }
-
     if (recipe == CpuIdentityPackingRecipe()) {
         // A single component keeps the unrestricted single-view contract: direct
         // bindings pack any valid rank (e.g. rank-1 norm weights).
         if (components.size() == 1U) {
-            return Pack(op_type, components.front(), selector, recipe);
+            const TensorView& logical_weight = components.front();
+            if (!logical_weight.is_valid()) {
+                return Status::InvalidArgument(
+                        "CpuWeightPrepacker requires a valid logical weight TensorView");
+            }
+            if (!logical_weight.is_contiguous()) {
+                return Status::InvalidArgument(
+                        "logical weights must be contiguous row-major views");
+            }
+
+            const size_t packed_nbytes = logical_weight.logical_nbytes();
+            // Preserve a stronger source alignment while satisfying the recipe.
+            AM_ASSIGN_OR_RETURN(Buffer packed_storage,
+                                AllocateCpuPackedBuffer(
+                                        packed_nbytes,
+                                        std::max(logical_weight.alignment(), recipe.alignment)));
+            if (packed_nbytes > 0) {
+                std::memcpy(packed_storage.mutable_data(), logical_weight.data(), packed_nbytes);
+            }
+
+            std::vector<int64_t> logical_shape(logical_weight.shape().begin(),
+                                               logical_weight.shape().end());
+            return std::make_unique<CpuPackedWeight>(
+                    op_type, selector, recipe,
+                    logical_weight.dtype(), std::move(logical_shape),
+                    std::move(packed_storage));
         }
 
         // The backend owns the fused layout authority for composite bindings:
@@ -296,8 +206,11 @@ StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
 
         char* out = static_cast<char*>(packed_storage.mutable_data());
         for (const TensorView& component: components) {
-            std::memcpy(out, component.data(), component.logical_nbytes());
-            out += component.logical_nbytes();
+            const size_t nbytes = component.logical_nbytes();
+            if (nbytes > 0) {
+                std::memcpy(out, component.data(), nbytes);
+                out += nbytes;
+            }
         }
 
         return std::make_unique<CpuPackedWeight>(
@@ -374,11 +287,6 @@ StatusOr<std::unique_ptr<PackedWeight>> CpuWeightPrepacker::Pack(
     return std::make_unique<CpuPackedWeight>(
             op_type, selector, recipe, DataType::Float32(),
             std::move(logical_shape), std::move(packed_storage));
-}
-
-PackingRecipe CpuWeightPrepacker::RecipeFor(const KernelSelector& selector) noexcept {
-    (void) selector;
-    return CpuIdentityPackingRecipe();
 }
 
 } // namespace aethermind

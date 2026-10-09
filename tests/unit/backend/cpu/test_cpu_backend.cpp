@@ -51,6 +51,27 @@ TEST(CpuBackend, PrepareKernelFindsConfiguredLinearDescriptor) {
     EXPECT_EQ(resolved->name, "cpu::linear_f32_reference");
 }
 
+TEST(CpuBackend, PacksUsingExplicitSelectedRecipe) {
+    CpuBackend backend;
+    KernelSelector selector = MakeCpuSelector();
+    selector.weight_format = WeightFormat::kPacked;
+    const auto selected = backend.GetPackingRecipe(OpType::kLinear, selector);
+    ASSERT_TRUE(selected.ok()) << selected.status().ToString();
+
+    constexpr std::array<float, 4> weights{1.0F, 2.0F, 3.0F, 4.0F};
+    constexpr std::array<int64_t, 2> shape{2, 2};
+    constexpr std::array<int64_t, 2> strides{2, 1};
+    const std::array<TensorView, 1> components{
+            TensorView(weights.data(), DataType::Float32(), shape, strides)};
+
+    const auto packed = backend.PackWeights(OpType::kLinear, components, selector, *selected);
+
+    ASSERT_TRUE(packed.ok()) << packed.status().ToString();
+    ASSERT_NE(*packed, nullptr);
+    EXPECT_EQ((*packed)->recipe(), *selected);
+    EXPECT_EQ((*packed)->storage().nbytes(), sizeof(weights));
+}
+
 TEST(CpuBackend, RejectsRecipeNotSelectedByItsFeaturePolicy) {
     CpuBackend backend;
     KernelSelector selector = MakeCpuSelector();

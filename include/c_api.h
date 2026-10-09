@@ -1,7 +1,3 @@
-//
-// Created by richard on 9/29/25.
-//
-
 #ifndef AETHERMIND_C_API_H
 #define AETHERMIND_C_API_H
 

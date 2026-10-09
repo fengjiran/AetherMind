@@ -1,7 +1,3 @@
-//
-// Created by richard on 10/12/25.
-//
-
 #ifndef AETHERMIND_LAYOUT_H
 #define AETHERMIND_LAYOUT_H
 

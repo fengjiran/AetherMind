@@ -1,7 +1,3 @@
-//
-// Created by 赵丹 on 2025/8/22.
-//
-
 #ifndef AETHERMIND_CONTAINER_STRING_H
 #define AETHERMIND_CONTAINER_STRING_H
 

@@ -1,7 +1,3 @@
-//
-// Created by richard on 10/23/25.
-//
-
 #ifndef AETHERMIND_ANY_UTILS_H
 #define AETHERMIND_ANY_UTILS_H
 

@@ -1,7 +1,3 @@
-//
-// Created by richard on 9/29/25.
-//
-
 #ifndef AETHERMIND_REGISTRY_H
 #define AETHERMIND_REGISTRY_H
 

@@ -1,7 +1,3 @@
-//
-// Created by richard on 6/25/25.
-//
-
 #ifndef AETHERMIND_BASE_ENV_H
 #define AETHERMIND_BASE_ENV_H
 

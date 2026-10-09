@@ -1,7 +1,3 @@
-//
-// Created by 赵丹 on 25-6-25.
-//
-
 #ifndef AETHERMIND_CPU_ALLOCATOR_H
 #define AETHERMIND_CPU_ALLOCATOR_H
 

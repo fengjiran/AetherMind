@@ -1,7 +1,3 @@
-//
-// Created by richard on 11/25/25.
-//
-
 #ifndef AETHERMIND_BASE_OBJECT_ALLOCATOR_H
 #define AETHERMIND_BASE_OBJECT_ALLOCATOR_H
 

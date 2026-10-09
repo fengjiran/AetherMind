@@ -1,7 +1,3 @@
-//
-// Created by richard on 1/13/26.
-//
-
 #ifndef AETHERMIND_CONTAINER_MAP_V1_H
 #define AETHERMIND_CONTAINER_MAP_V1_H
 

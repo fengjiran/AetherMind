@@ -1,7 +1,3 @@
-//
-// Created by 赵丹 on 25-7-16.
-//
-
 #ifndef AETHERMIND_BASE_MACROS_H
 #define AETHERMIND_BASE_MACROS_H
 

@@ -1,7 +1,3 @@
-//
-// Created by richard on 10/4/25.
-//
-
 #ifndef AETHERMIND_BASE_SCALAR_H
 #define AETHERMIND_BASE_SCALAR_H
 

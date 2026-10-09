@@ -1,7 +1,3 @@
-//
-// Created by 赵丹 on 25-7-19.
-//
-
 #ifndef AETHERMIND_FUNCTION_TRAITS_H
 #define AETHERMIND_FUNCTION_TRAITS_H
 

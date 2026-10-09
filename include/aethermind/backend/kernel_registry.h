@@ -1,7 +1,3 @@
-//
-// Created by richard on 4/15/26.
-//
-
 #ifndef AETHERMIND_BACKEND_KERNEL_REGISTRY_H
 #define AETHERMIND_BACKEND_KERNEL_REGISTRY_H
 

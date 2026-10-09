@@ -1,7 +1,3 @@
-//
-// Created by richard on 6/25/25.
-//
-
 #ifndef AETHERMIND_ALIGNMENT_H
 #define AETHERMIND_ALIGNMENT_H
 

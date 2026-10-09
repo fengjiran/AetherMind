@@ -1,7 +1,3 @@
-//
-// Created by richard on 9/24/25.
-//
-
 #ifndef AETHERMIND_FUNCTION_H
 #define AETHERMIND_FUNCTION_H
 

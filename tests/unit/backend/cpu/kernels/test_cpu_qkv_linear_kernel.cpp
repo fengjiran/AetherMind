@@ -92,7 +92,7 @@ PackedWeightView MakeIdentityPackedWeight(const float* data,
             .nbytes = nbytes,
             .logical_dtype = DataType::Float32(),
             .logical_shape = shape,
-            .recipe_layout = "cpu_identity",
+            .recipe_layout = PackingLayout::kCpuIdentity,
             .recipe_alignment = 64,
             .alignment = 64,
     };
@@ -381,7 +381,7 @@ TEST(CPUKernelQkvLinear, RejectsMalformedPackedMetadataAndTensorViews) {
 
     PackedWeightView wrong_recipe =
             MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape);
-    wrong_recipe.recipe_layout = "different_layout";
+    wrong_recipe.recipe_layout = PackingLayout::kCpuBPanelF32V1Avx2;
     EXPECT_EQ(RunQkvEntry(*kernel, views, wrong_recipe).code(), StatusCode::kInvalidArgument);
 
     EXPECT_EQ(RunQkvEntry(*kernel, views,

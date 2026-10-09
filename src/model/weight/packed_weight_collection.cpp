@@ -1,5 +1,4 @@
 #include "aethermind/model/weight/packed_weight_collection.h"
-
 #include "aethermind/backend/backend.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/base/tensor_view.h"
@@ -105,6 +104,12 @@ Status PackedWeightCollection::Insert(const WeightArtifactKey& key,
                 "selector");
     }
 
+    if (key.recipe.layout != PackingLayout::kNone &&
+        !IsValidPackingLayout(key.recipe.layout)) {
+        return Status::InvalidArgument(
+                "Packed weight key has an unknown packing layout");
+    }
+
     if (key.recipe != artifact->recipe()) {
         return Status::InvalidArgument(
                 "Packed weight key recipe does not match the artifact recipe");
@@ -177,7 +182,7 @@ StatusOr<PackedWeightCollection> PrepackWeightRequests(
     }
 
     for (const auto& req: requests) {
-        if (req.recipe.layout.empty() || req.recipe.alignment == 0) {
+        if (!IsValidPackingLayout(req.recipe.layout) || req.recipe.alignment == 0) {
             return Status::InvalidArgument(
                     "PrepackWeightRequests requires an explicit packing recipe");
         }

@@ -84,7 +84,7 @@ void BM_WeightPackingCpuIdentity(benchmark::State& state) {
     }
 
     state.SetLabel(std::string{"recipe="} +
-                   std::string{(*checked_packed)->recipe().layout} +
+                   std::string{ToString((*checked_packed)->recipe().layout)} +
                    " mode=cold-packing");
     for (auto _: state) {
         const auto packed = prepacker.Pack(OpType::kLinear, logical_weight, selector);

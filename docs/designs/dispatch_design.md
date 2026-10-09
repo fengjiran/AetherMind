@@ -8,6 +8,7 @@
 | v1.1 | 2026-06-04 | **设计偏离**：实际实现采用全局 singleton KernelRegistry + `AM_REGISTER_KERNEL` 静态注册宏。原因见第 7、9、16.11 节。本文档其余部分保持原始设计论证，但在冲突处已标注实际实现。                                                                           |
 | v1.2 | 2026-08-31 | **设计偏离**：`IsaLevel` 与 `KernelSelector.isa` 从实现中移除；CPU 指令集要求改由 `KernelDef.cpu_requirements`（特征集）声明，`CpuBackend` 在 resolve 时按 `CpuCapabilities.effective_features` 做子集过滤。详见 4.3 节 CPU 能力模型。 |
 | v1.3 | 2026-09-24 | **设计偏离**：`KernelDef.name` 与 `PackingRecipe.layout` 由持有型字符串改为 `std::string_view`，借用字面量/静态常量存储，注册期不再产生字符串分配（`KernelDef` 成为可平凡拷贝的纯数据记录）；`ResolvedKernel.name` 同步为 `std::string_view`。见第 6 节。 |
+| v1.4 | 2026-10-09 | PackingRecipe.layout 与 PackedWeightView.recipe_layout 使用 PackingLayout 枚举；未知 ID 拒绝，布局诊断名称由 ToString 返回。KernelDef/ResolvedKernel 的 name 仍借用静态字符串，布局不再借用字符串。 |
 
 ***
 
@@ -269,7 +270,7 @@ struct KernelDef {
 };
 ```
 
-> **v1.3 偏离**：v1.0 草案中的 `KernelFn fn` / `const char* name` 已演进为 `KernelFunc kernel_func` 与 `std::string_view name`（`PackingRecipe::layout` 同步改为 `std::string_view`）。`name` 与 `layout` 都**借用**调用方存储，必须引用字符串字面量或 `constexpr` 常量（如 `cpu::kCpuIdentityPackingLayout`），注册表与 `ResolvedKernel` 都不复制字符串——因此 `KernelDef` 成为可平凡拷贝的纯数据记录，注册期（含静态初始化）不再产生字符串分配，代价是常量的生存期须覆盖注册表与已构建的执行计划。字段集相对 v1.0 的其余扩展：`packing_recipe` 见 [ADR-0002](../decisions/0002-cpu-gemm-packed-weight.md)，`params_*` / `metadata_builder` 的契约见 [kernel_types.h](../../include/aethermind/backend/kernel_types.h) 的 `KernelParamsBuilder` 文档注释。
+> **当前实现（v1.4）**：`KernelDef.name` 与 `ResolvedKernel.name` 为 `std::string_view`，仍借用字符串字面量或静态常量，其生存期须覆盖注册表和计划。`PackingRecipe::layout` 与 `PackedWeightView::recipe_layout` 则为 `PackingLayout` 枚举，默认 `kNone`，packed descriptor 必须声明已知非空布局；字符串由 `ToString(PackingLayout)` 提供，仅用于诊断。`KernelDef` 仍为可平凡拷贝的纯数据记录，注册期不分配名称字符串；layout ID 不再具有借用存储的生命周期要求。每个布局 ID 冻结其字节格式，修改 tile、panel 顺序或 padding 须新增 ID。`params_*` / `metadata_builder` 的契约见 [kernel_types.h](../../include/aethermind/backend/kernel_types.h)。
 
 `priority` 用来解决多个 kernel 都匹配时的优先级问题。例如：
 

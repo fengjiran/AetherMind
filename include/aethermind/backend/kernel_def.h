@@ -91,13 +91,13 @@ inline Status ValidateKernelDef(const KernelDef& def) noexcept {
     }
 
     if (def.selector.weight_format == WeightFormat::kPacked) {
-        if (def.packing_recipe.layout.empty() ||
+        if (!IsValidPackingLayout(def.packing_recipe.layout) ||
             def.packing_recipe.alignment < alignof(void*) ||
             !std::has_single_bit(def.packing_recipe.alignment)) {
             return Status::InvalidArgument("Packed kernel definition requires "
-                                           "a named recipe with power-of-two alignment");
+                                           "a valid packing layout with power-of-two alignment");
         }
-    } else if (!def.packing_recipe.layout.empty() ||
+    } else if (def.packing_recipe.layout != PackingLayout::kNone ||
                def.packing_recipe.alignment != 0) {
         return Status::InvalidArgument("Plain kernel definition cannot "
                                        "declare a packing recipe");

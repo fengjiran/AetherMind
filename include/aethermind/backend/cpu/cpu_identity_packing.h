@@ -7,7 +7,6 @@
 #include "aethermind/backend/packing_recipe.h"
 
 #include <cstddef>
-#include <string_view>
 
 namespace aethermind {
 
@@ -18,7 +17,7 @@ namespace aethermind {
 /// kernel consumers validate it before interpreting storage. Tiled layouts
 /// use their own versioned recipes in cpu_bpanel_packing.h.
 namespace cpu {
-inline constexpr std::string_view kCpuIdentityPackingLayout = "cpu_identity";
+inline constexpr PackingLayout kCpuIdentityPackingLayout = PackingLayout::kCpuIdentity;
 inline constexpr size_t kCpuIdentityPackingAlignment = 64;
 } // namespace cpu
 

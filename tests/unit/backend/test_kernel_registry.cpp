@@ -47,7 +47,7 @@ TEST(KernelRegistry, PackedDefRequiresValidRecipeAlignment) {
     KernelDef descriptor = MakeTestKernelDef();
     descriptor.selector.weight_format = WeightFormat::kPacked;
     descriptor.packing_recipe = PackingRecipe{
-            .layout = "test_layout",
+            .layout = PackingLayout::kCpuIdentity,
             .alignment = alignof(void*) / 2U,
     };
     EXPECT_EQ(ValidateKernelDef(descriptor).code(),
@@ -59,6 +59,45 @@ TEST(KernelRegistry, PackedDefRequiresValidRecipeAlignment) {
     descriptor.selector.weight_format = WeightFormat::kPlain;
     EXPECT_EQ(ValidateKernelDef(descriptor).code(),
               StatusCode::kInvalidArgument);
+}
+
+TEST(PackingRecipe, DiagnosticNamesPreserveExistingLayoutLabels) {
+    EXPECT_EQ(ToString(PackingLayout::kCpuIdentity), "cpu_identity");
+    EXPECT_EQ(ToString(PackingLayout::kCpuBPanelF32V1Avx2),
+              "cpu_bpanel_f32_v1_avx2_kc512_candidate");
+}
+
+TEST(PackingRecipe, DiagnosticNamesHandleUnspecifiedAndUnknownLayouts) {
+    EXPECT_EQ(ToString(PackingLayout::kNone), "none");
+    EXPECT_EQ(ToString(static_cast<PackingLayout>(0xFF)), "unknown");
+}
+
+TEST(KernelRegistry, RegisterRejectsUnspecifiedPackedLayout) {
+    KernelRegistry registry;
+    KernelDef descriptor = MakeTestKernelDef();
+    descriptor.selector.weight_format = WeightFormat::kPacked;
+    descriptor.packing_recipe = {.layout = PackingLayout::kNone, .alignment = 64};
+
+    EXPECT_EQ(registry.Register(descriptor).code(), StatusCode::kInvalidArgument);
+}
+
+TEST(KernelRegistry, RegisterRejectsUnknownPackedLayout) {
+    KernelRegistry registry;
+    KernelDef descriptor = MakeTestKernelDef();
+    descriptor.selector.weight_format = WeightFormat::kPacked;
+    descriptor.packing_recipe = {
+            .layout = static_cast<PackingLayout>(0xFF),
+            .alignment = 64};
+
+    EXPECT_EQ(registry.Register(descriptor).code(), StatusCode::kInvalidArgument);
+}
+
+TEST(KernelRegistry, RegisterRejectsUnknownLayoutForPlainWeights) {
+    KernelRegistry registry;
+    KernelDef descriptor = MakeTestKernelDef();
+    descriptor.packing_recipe.layout = static_cast<PackingLayout>(0xFF);
+
+    EXPECT_EQ(registry.Register(descriptor).code(), StatusCode::kInvalidArgument);
 }
 
 TEST(KernelRegistry, FindCandidatesReturnsStructuralMatches) {

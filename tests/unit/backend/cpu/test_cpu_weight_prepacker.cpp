@@ -71,14 +71,14 @@ TEST(CpuWeightPrepacker, PackBuildsPackedWeightWithCpuStorageAndSelectorMetadata
     EXPECT_TRUE((*packed)->storage().device().is_cpu());
     EXPECT_GT((*packed)->storage().nbytes(), 0U);
     EXPECT_EQ((*packed)->recipe(), CpuWeightPrepacker::RecipeFor(selector));
-    EXPECT_FALSE((*packed)->recipe().layout.empty());
+    EXPECT_TRUE(IsValidPackingLayout((*packed)->recipe().layout));
 }
 
 TEST(CpuWeightPrepacker, RecipeForIsDeterministicPerSelector) {
     const KernelSelector selector = MakePackedCpuSelector();
     EXPECT_EQ(CpuWeightPrepacker::RecipeFor(selector),
               CpuWeightPrepacker::RecipeFor(selector));
-    EXPECT_FALSE(CpuWeightPrepacker::RecipeFor(selector).layout.empty());
+    EXPECT_TRUE(IsValidPackingLayout(CpuWeightPrepacker::RecipeFor(selector).layout));
 }
 
 TEST(CpuWeightPrepacker, IdentityPackingPreservesStrongerSourceAlignment) {
@@ -156,7 +156,7 @@ TEST(CpuWeightPrepacker, BpanelPacksLogicalMatrixAndZeroPadsEveryTail) {
 TEST(CpuWeightPrepacker, BpanelRejectsUnknownRecipe) {
     CpuWeightPrepacker prepacker;
     const Tensor logical_weight = MakeLogicalWeightTensor(2, 4);
-    PackingRecipe unknown{.layout = "unknown_layout", .alignment = 64};
+    PackingRecipe unknown{.layout = static_cast<PackingLayout>(0xFF), .alignment = 64};
     const auto packed = prepacker.Pack(
             OpType::kLinear, logical_weight.view(), MakePackedCpuSelector(), unknown);
     ASSERT_FALSE(packed.ok());

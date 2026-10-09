@@ -156,6 +156,44 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsBackendWithoutPacking) {
     EXPECT_EQ(prepacked.status().code(), StatusCode::kUnimplemented);
 }
 
+TEST(WeightPacking, PrepackWeightRequestsRejectsUnspecifiedLayoutBeforeBackendCall) {
+    auto storage = std::make_shared<TestStorage>(8);
+    const WeightPackingRequest request{
+            .op_type = OpType::kLinear,
+            .source_id = 1,
+            .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
+            .raw_weight = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1}),
+            .selector = MakeExpectedSelector(),
+            .recipe = {.layout = PackingLayout::kNone, .alignment = 64},
+    };
+    NoPackingTestBackend backend;
+
+    const auto prepacked = PrepackWeightRequests(backend, {request});
+
+    EXPECT_FALSE(prepacked.ok());
+    EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(prepacked.status().message().find("explicit packing recipe"), std::string::npos);
+}
+
+TEST(WeightPacking, PrepackWeightRequestsRejectsUnknownLayoutBeforeBackendCall) {
+    auto storage = std::make_shared<TestStorage>(8);
+    const WeightPackingRequest request{
+            .op_type = OpType::kLinear,
+            .source_id = 1,
+            .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
+            .raw_weight = MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1}),
+            .selector = MakeExpectedSelector(),
+            .recipe = {.layout = static_cast<PackingLayout>(0xFF), .alignment = 64},
+    };
+    NoPackingTestBackend backend;
+
+    const auto prepacked = PrepackWeightRequests(backend, {request});
+
+    EXPECT_FALSE(prepacked.ok());
+    EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(prepacked.status().message().find("explicit packing recipe"), std::string::npos);
+}
+
 TEST(WeightPacking, PrepackWeightRequestsMakesWeightsFindable) {
     auto storage = std::make_shared<TestStorage>(256);
     // Fill with zeros so Pack can safely memcpy.
@@ -864,7 +902,7 @@ TEST(WeightPacking, BuildWeightPackingRequestsPreservesSharedWeightConsumers) {
     for (const WeightPackingRequest& request: *requests) {
         EXPECT_EQ(request.value_index, weight.index);
         EXPECT_EQ(request.op_type, OpType::kLinear);
-        EXPECT_TRUE(request.recipe.layout.empty());
+        EXPECT_EQ(request.recipe.layout, PackingLayout::kNone);
     }
 }
 // Packs a contiguous FP32 test weight via the CPU identity prepacker.

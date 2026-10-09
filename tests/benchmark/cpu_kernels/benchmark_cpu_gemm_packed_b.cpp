@@ -428,7 +428,7 @@ void BM_WeightPackingCpuBpanel(benchmark::State& state) {
         return;
     }
     const size_t packed_bytes = (*checked)->storage().nbytes();
-    state.SetLabel(std::string{"recipe="} + std::string{recipe.layout} +
+    state.SetLabel(std::string{"recipe="} + std::string{ToString(recipe.layout)} +
                    " mode=cold-packing");
     state.counters["size amplification"] =
             static_cast<double>(packed_bytes) / static_cast<double>(logical_bytes);

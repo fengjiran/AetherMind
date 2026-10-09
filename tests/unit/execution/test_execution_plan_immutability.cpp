@@ -66,7 +66,7 @@ Status ImmutableKernel(const KernelContext&) noexcept {
 }
 
 // Recipe the ImmutableTestBackend declares; packed test stores must match.
-const PackingRecipe kTestPackedRecipe{.layout = "test_packed", .alignment = 64};
+const PackingRecipe kTestPackedRecipe{.layout = PackingLayout::kCpuIdentity, .alignment = 64};
 
 class ImmutablePackedWeight final : public PackedWeight {
 public:

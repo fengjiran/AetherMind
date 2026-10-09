@@ -10,6 +10,7 @@
 /// (`KernelParamsBuilder`), the params size limit (`kMaxKernelParamsSize`), and
 /// the metadata builder (`KernelMetadataBuilder`).
 
+#include "aethermind/backend/packing_recipe.h"
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/operators/op_params.h"
@@ -18,7 +19,6 @@
 #include <cstdint>
 #include <optional>
 #include <span>
-#include <string_view>
 #include <vector>
 
 namespace aethermind {
@@ -36,7 +36,7 @@ struct PackedWeightView {
     size_t nbytes = 0;
     DataType logical_dtype{};
     std::span<const int64_t> logical_shape{};
-    std::string_view recipe_layout{};
+    PackingLayout recipe_layout = PackingLayout::kNone;
     size_t recipe_alignment = 0;
     size_t alignment = 0;
 };

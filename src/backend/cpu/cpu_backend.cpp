@@ -64,7 +64,7 @@ StatusOr<PackingRecipe> ResolvePackingRecipeFromRegistry(const KernelRegistry& r
     }
     AM_ASSIGN_OR_RETURN(const KernelDef* descriptor,
                         ResolveEligibleDescriptor(registry, op_type, selector, effective_features));
-    if (descriptor->packing_recipe.layout.empty() || descriptor->packing_recipe.alignment == 0) {
+    if (!IsValidPackingLayout(descriptor->packing_recipe.layout) || descriptor->packing_recipe.alignment == 0) {
         return Status::Internal(
                 "Packed CPU descriptor is missing its packing recipe");
     }
@@ -109,7 +109,7 @@ StatusOr<ResolvedKernel> CpuBackend::PrepareKernel(OpType op_type,
     };
 
     if (selector.weight_format == WeightFormat::kPacked) {
-        if ((*descriptor)->packing_recipe.layout.empty() ||
+        if (!IsValidPackingLayout((*descriptor)->packing_recipe.layout) ||
             (*descriptor)->packing_recipe.alignment == 0) {
             return Status::Internal(
                     "Packed CPU descriptor is missing its packing recipe");

@@ -52,6 +52,8 @@
 
 **权重命名约定**：`packed_weight_*` / `PackedWeight*` 表示已打包产物及其视图、存储和校验；`weight_packing_*` / `WeightPacking*` 表示打包过程、请求及其构建/解析，文件名应保留完整词组（如 `compiler/weight_packing_request_builder.h`）。`Prepack` / `Prepacker` 限定模型准备期、执行前的打包时机，归入过程组；具体布局仍由 recipe 指定。
 
+**打包布局身份约定**：`PackingRecipe::layout` 与 `PackedWeightView::recipe_layout` 共用 backend 纯数据枚举 `PackingLayout`，`kNone` 表示未指定。生产 packed descriptor/request 必须携带已知非空布局，未知枚举值须在边界校验；布局 ID 对应不可变的物理字节格式，改变 tile、panel 顺序或 padding 须新增 ID。`ToString(PackingLayout)` 仅用于诊断，不参与身份匹配，alignment 与 ISA eligibility 仍按各自契约处理。
+
 ## 3. 构建命令
 ```bash
 # 默认配置（单元测试和 benchmark 默认 ON）

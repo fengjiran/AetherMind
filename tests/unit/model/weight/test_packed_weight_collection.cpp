@@ -229,8 +229,8 @@ TEST(PackedWeightCollectionOwnership, DistinctRecipesCoexistForSameBindingAndSel
     const WeightBinding binding =
             MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ);
     const WeightArtifactKey base_key{.binding = binding, .selector = selector};
-    const PackingRecipe recipe_a{.layout = "recipe_a", .alignment = 16};
-    const PackingRecipe recipe_b{.layout = "recipe_b", .alignment = 32};
+    const PackingRecipe recipe_a{.layout = PackingLayout::kCpuIdentity, .alignment = 64};
+    const PackingRecipe recipe_b{.layout = PackingLayout::kCpuBPanelF32V1Avx2, .alignment = 64};
 
     // Two packing variants of the same logical weight coexist: the recipe
     // discriminates artifacts within one {binding, selector}.
@@ -261,6 +261,27 @@ TEST(PackedWeightCollectionOwnership, DistinctRecipesCoexistForSameBindingAndSel
                                         .selector = selector,
                                         .recipe = recipe_b}),
               nullptr);
+}
+
+TEST(PackedWeightCollectionOwnership, InsertRejectsUnknownLayoutWithoutBindingSource) {
+    PackedWeightCollection collection;
+    const KernelSelector selector = MakePackedCpuSelector();
+    const PackingRecipe recipe{
+            .layout = static_cast<PackingLayout>(0xFF),
+            .alignment = 64};
+    const WeightArtifactKey key{
+            .source_id = 9,
+            .binding = MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ),
+            .selector = selector,
+            .recipe = recipe};
+
+    const auto status = collection.Insert(
+            key, std::make_shared<CountingPackedWeight>(
+                         OpType::kLinear, selector, MakeTestBuffer(64), nullptr, recipe));
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_TRUE(collection.empty());
+    EXPECT_EQ(collection.source_id(), 0U);
 }
 
 TEST(PackedWeightCollectionOwnership, DistinctBindingsShareSelectorWithoutCollision) {

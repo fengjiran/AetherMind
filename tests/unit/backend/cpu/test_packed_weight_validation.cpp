@@ -63,6 +63,26 @@ TEST(CpuBpanelPackedWeight, RequiresExactLayoutSizeAndRealAlignment) {
               StatusCode::kInvalidArgument);
 }
 
+TEST(CpuBpanelPackedWeight, RejectsUnknownLayoutIdentity) {
+    alignas(64) std::array<std::byte, 32768> storage{};
+    constexpr std::array<int64_t, 2> shape{1, 1};
+    PackedWeightView packed = MakeBpanelPackedWeight(storage.data(), storage.size(), shape);
+    packed.recipe_layout = static_cast<PackingLayout>(0xFF);
+
+    EXPECT_EQ(cpu::detail::ValidateBPanelF32PackedWeight(packed, shape, "LayoutTest").code(),
+              StatusCode::kInvalidArgument);
+}
+
+TEST(CpuIdentityPackedWeight, RejectsUnspecifiedLayoutIdentity) {
+    alignas(64) float storage[3]{};
+    constexpr std::array<int64_t, 1> shape{3};
+    PackedWeightView packed = MakeIdentityPackedWeight(storage, sizeof(storage), shape);
+    packed.recipe_layout = PackingLayout::kNone;
+
+    EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(packed, shape, "LayoutTest").code(),
+              StatusCode::kInvalidArgument);
+}
+
 TEST(CpuIdentityPackedWeight, ValidatesRankOneAndRankTwoShapes) {
     alignas(64) float rank_one_storage[3]{};
     constexpr std::array<int64_t, 1> rank_one_shape{3};
@@ -109,7 +129,7 @@ TEST(CpuIdentityPackedWeight, RejectsMalformedMetadataRecipeAndStorage) {
 
     PackedWeightView wrong_recipe =
             MakeIdentityPackedWeight(storage, sizeof(storage), expected_shape);
-    wrong_recipe.recipe_layout = "different_recipe";
+    wrong_recipe.recipe_layout = PackingLayout::kCpuBPanelF32V1Avx2;
     EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
                       wrong_recipe, expected_shape, "PackedWeightUtilsTest")
                       .code(),

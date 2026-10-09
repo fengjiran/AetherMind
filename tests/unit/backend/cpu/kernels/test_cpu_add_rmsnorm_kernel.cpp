@@ -397,7 +397,7 @@ TEST(CPUKernelAddRmsNorm, ZeroRowsValidateMetadataButNeedNoStorage) {
 
     PackedWeightView wrong_recipe =
             MakeIdentityPackedWeight(nullptr, 3 * sizeof(float), weight_shape);
-    wrong_recipe.recipe_layout = "different_recipe";
+    wrong_recipe.recipe_layout = PackingLayout::kCpuBPanelF32V1Avx2;
     EXPECT_EQ(BuildPackedPreparedParams(*packed, views, wrong_recipe).status().code(),
               StatusCode::kInvalidArgument);
 

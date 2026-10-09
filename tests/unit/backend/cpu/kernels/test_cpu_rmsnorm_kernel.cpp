@@ -288,7 +288,7 @@ TEST(CPUKernelRmsNorm, PackedIdentityBuilderChecksZeroSizeMetadataAndAlias) {
     const MutableTensorView output(output_data, DataType::Float32(),
                                    input_shape, io_strides);
     PackedWeightView wrong_recipe = packed_view;
-    wrong_recipe.recipe_layout = "wrong_recipe";
+    wrong_recipe.recipe_layout = PackingLayout::kCpuBPanelF32V1Avx2;
     EXPECT_EQ(build(input, output, wrong_recipe).code(),
               StatusCode::kInvalidArgument);
     constexpr std::array<int64_t, 1> wrong_shape{3};

@@ -96,3 +96,13 @@ Cold packing：`N=4096,K=4096` median 66.83 ms，packed size 64 MiB（amplificat
 
 - raw：`benchmark-results/operators/gemm/20260923T103216Z_3d36700d_DESKTOP-54H5MMI_candidate/results.json`
 - 结论：**Needs More Data**。本次在 WSL2 运行，case 间 CV 约 2–12%，且没有当前同实现进程噪声 floor、KC=256 对照或完整端到端 Generate 数据；K=768 的 1.33× padding 已验证，其他形状放大率需按真实模型继续检查。保持 identity descriptor 默认，KC512 仍是候选命名，不据此宣称性能收益。
+
+## PackingLayout 枚举身份迁移
+
+- commit：`46627feb7c42`（dirty，含已有 include 间距修改）。
+- 命令：`cmake --build build --target AetherMind aethermind_unit_tests aethermind_benchmark -j 8`；单测先运行 `--gtest_filter=KernelRegistry.RegisterRejectsUnknownPackedLayout`，再运行 PackingRecipe / KernelRegistry / CpuBackend / CpuWeightPrepacker / PackedWeightCollectionOwnership / WeightPacking / PackingRequestResolution / ExecutionPlanBuilder / ExecutionPlanImmutability / ExternalReadRequirements / ExecutableModel / LoadAndPrepareExecutableModel / DirectPrefillDecode / InferenceSession 与 CPU packed consumer 的聚焦 filter（252 例）。
+- smoke 命令：`./build/tests/benchmark/aethermind_benchmark --benchmark_filter='^(BM_LinearPackedBpanelHot/M:1/K:4096/N:4096|BM_WeightPackingCpuIdentity/N:4096/K:4096|BM_WeightPackingCpuBpanel/N:4096/K:768)$' --benchmark_min_time=0.01s --benchmark_repetitions=1`，JSON 与完整输出归档在 raw 目录。
+- 结果：三类目标构建成功；252/252 测试通过，含两种布局的 production-path 数值/尾部 padding、生命周期与 tiny Llama Prefill→Decode/稳态零分配验证。三个 smoke 用例成功：registered/prepared B-panel Linear 的 packed size amplification=1；identity 的诊断 recipe 名和 amplification=1 保持；B-panel N=4096/K=768 的 12 MiB logical → 16 MiB packed 与原字节公式一致。枚举与视图使用同一布局身份，未知值在边界拒绝。
+- 输出复核：第一次检查脚本错误地要求 prepared case 带 recipe label；基准本身成功，prepared label 实际为 kernel/cache_mode。按各 case 的既有标签合同复核原始 JSON 通过；未修改实现或重跑取样。复核信息保存在 `validation.json`。
+- raw：`benchmark-results/operators/gemm/20261009T024252Z_46627feb7c42_54h5mmi_packing-layout-enum/`（`metadata.json`、`smoke.json`、`smoke.log`、`validation.json`）。
+- 结论：Accepted（布局身份/正确性迁移）。单次短 smoke 仅验证接通与标签，不作性能改善、回退或 priority 调整结论；tile、padding、物理字节格式、alignment 与 ISA policy 保持。

@@ -107,7 +107,7 @@ Status PackedTestKernel(const KernelContext&) noexcept {
 
 // Recipe the PackedTestBackend declares it consumes; test collections must
 // contain artifacts with the same recipe so exact-key resolution succeeds.
-const PackingRecipe kTestPackedRecipe{.layout = "test_packed", .alignment = 64};
+const PackingRecipe kTestPackedRecipe{.layout = PackingLayout::kCpuIdentity, .alignment = 64};
 
 class PackedTestBackend final : public Backend {
 public:

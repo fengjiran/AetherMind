@@ -7,8 +7,8 @@ performance issues, hard bugs, API design, memory management,
 and problems where the implementation direction is unclear.
 """
 
-model = "gpt-6-astra"
-model_reasoning_effort = "xhigh"
+model = "gpt-6.1-sol"
+model_reasoning_effort = "ultra"
 
 # 使用 1M 上下文
 model_context_window = 1050000

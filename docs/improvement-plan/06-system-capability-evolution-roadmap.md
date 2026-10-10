@@ -1,8 +1,9 @@
 # AetherMind 系统能力演进路线图
 
 - **状态**: Draft
-- **版本**: 1.1
+- **版本**: 1.2
 - **日期**: 2026-09-16
+- **最近更新**: 2026-10-10
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **工程质量基线**: [工程质量体系建设方案](02-engineering-quality-system.md)
@@ -57,7 +58,7 @@ AetherMind 当前不需要再次进行顶层架构重写。`model → graph/oper
 | compiler/lowering | 基础已闭环 | 1:1 step 限制；仅在真实 1→N 需求出现后引入 ImplementationPlan | P1/P2 | §8 |
 | execution planning | 部分闭环 | ExecutableModel preparation、shape-aware prepare、activation liveness | P0/P1 | [07](07-executable-model-preparation.md)、[01](01-inference-session-generate-readiness.md)、§9 |
 | runtime | 部分闭环 | KV transaction、resource budget、线程/topology、metrics | P0/P1 | [05](05-kv-cache-manager-evolution.md)、§10 |
-| backend dispatch | 基础已闭环 | prepare request 缺 concrete shape/layout；packing service 边界 | P1 | §11 |
+| backend dispatch | 基础已闭环 | prepare request 缺 concrete shape/layout；packing service 边界；单权重 identity 条件式零复制（待实施） | P1/P2 | §11 |
 | CPU kernels | 部分闭环 | reference 主链已齐备（6/6）；量化和优化覆盖不足 | P0/P1 | [01](01-inference-session-generate-readiness.md)、[04](../operators/gemm/cpu-gemm-optimization.md)、§12 |
 | memory/allocator | 基础已闭环 | activation/workspace/KV provider 统一、budget/NUMA policy | P1 | §13 |
 | shape inference | 基础已闭环 | specialization 诊断与 runtime constraint 证据；不需通用动态 shape engine | P1 | §14 |
@@ -449,6 +450,39 @@ Kernel descriptor/resolve 需要逐步表达：
 - kernel 只消费与自身 resolved recipe 精确匹配的 artifact；
 - 不在 `ModelLoader` prepack。
 
+### 11.4 P2：单权重 identity 的条件式零复制
+
+**状态：待实施。** 本项优化模型准备期的数据移动和额外权重副本，不属于当前 correctness 缺陷；尚无性能收益证据。
+
+**当前事实（2026-10-10 核验）**：CPU 单组件 identity 分支在校验输入后，无条件分配 aligned buffer，并在 payload 非空时复制数据，保留 dtype、shape 与元素顺序，见 [`PackWeightsWithRecipe`](../../src/backend/cpu/cpu_backend.cpp)。[`RawWeightView`](../../include/aethermind/model/raw_weight.h) 已持有共享 backing，但 [`PrepackWeightRequests`](../../src/model/weight/packed_weight_collection.cpp) 转成 borrowed `TensorView` 后，没有把 owner 传给 backend，alignment 也设为 0。当前 identity recipe/consumer 要求至少 64-byte 对齐；HF tensor 地址由 mmap 基址加 offset 得到，不能假定每个 tensor 满足该要求。ExecutionPlan 可独立持有 packed artifact，不能仅依赖外层 ExecutableModel 保有 raw backing。
+
+**目标与约束**：仅对合法、连续、CPU 可访问的单组件 identity 权重考虑复用源存储，且必须同时满足：
+
+- 实际源地址满足选定 recipe 的 alignment；alignment 声明必须可验证，不能把未知值改写为 64；
+- artifact 自身保留共享 backing owner，数据与自持的 shape 元数据覆盖 artifact/plan 的整个生命周期；
+- 源数据在 artifact 使用期间保持不可变；`const TensorView` 或共享 owner 本身不构成不可变性证明。
+
+满足条件时省去 payload 分配和复制；合法输入若对齐不足、owner 缺失或不可变性合同不满足，继续使用现有复制路径。非法或非连续输入仍拒绝。Composite identity 的组装与 B-panel 的布局转换保持既有 materialization；不改变 recipe/layout 身份、consumer 选择、artifact key 或当前对齐要求。
+
+**推荐方案与边界**：扩展既有 model → backend packing 数据契约，传递通用共享 owner 与可验证的存储属性；backend 决定复用或复制，packed artifact 保留 owner。优先复用 base/backend 的 storage 契约，backend 不得依赖 model 的 `RawStorage` 类型。明确只读存储的表达，避免将只读 mmap 暴露成可写 `Buffer`；仅用 no-op deleter 包装裸指针不能保证 lifetime。旧 borrowed-view 调用在没有额外合同保证时继续复制，以保留独立快照语义。上层仍经 `Backend::PackWeights` 准备权重，ModelLoader 不承担此优化。
+
+**实施顺序与依赖**：
+
+1. 冻结 owner、只读存储、alignment、zero-size 与复制/复用语义，确定最小公共合同变更。
+2. 打通 raw backing → packing 输入 → artifact 的 ownership 链，再实现有条件的复用分支与复制路径。
+3. 先完成生命周期与数值验收，再测量真实模型准备路径；遵循 [算子开发与优化工作流](../guides/operator-development-workflow.md)，证据写入对应机器记录。
+
+**验收标准**：
+
+- 满足条件的单权重 identity artifact 与源数据地址相同，无新增 payload 分配或 payload 复制；元数据分配单独统计。
+- 调用方、packing request 与 collection 销毁后，持有 artifact 的 plan 仍可安全读取权重；shape 元数据不借用临时对象，backing 最后一个 owner 释放后才销毁。
+- 对齐不足、无 owner 或允许修改的源数据走复制路径；修改可写源数据不会改变已复制 artifact。空权重、scalar、rank-1 和强 alignment 行为保持正确。
+- recipe、dtype、shape、alignment、字节数及 alias 校验继续成立；composite 顺序与 B-panel padding 不回归。
+- 真实 CpuBackend → PrepareExecutableModel → Prefill/Decode 数值与复制基线一致，Decode 稳态分配合同保持。
+- 在同一模型、配置和机器上比较准备耗时、payload 分配/复制字节、保留的 mmap backing 字节与峰值 RSS；不能把减少副本字节直接等同于 RSS 收益，也不能用 packing microbenchmark 代替 production-path 证据。
+
+**风险**：复用会让 artifact 依赖源存储的不可变性与共享 lifetime，也可能延长整个 mmap shard 的存活时间；这些成本必须与省去的分配和复制一起评估。该项不引入新的并发能力，准备过程继续遵守既有同步合同。
+
 ## 12. CPU Kernel 演进
 
 ### 12.1 P0：完整 reference chain
@@ -693,6 +727,7 @@ microkernel
 
 - `KernelPrepareRequest`；
 - descriptor exact packing recipe；
+- P2：单权重 identity 条件式零复制（§11.4，先完善 ownership/只读存储合同）；
 - activation liveness plan；
 - workspace lifetime-aware planning；
 - unified resource budget/dump；
@@ -768,3 +803,4 @@ microkernel
 |---|---|---|
 | 2026-09-16 | 1.0 | 首次建立全仓库 capability gap、模块演进裁决、依赖顺序和 Batch A–F 路线图 |
 | 2026-09-17 | 1.1 | 同步 Attention/KVCacheUpdate reference kernel 落地：§3 模块总表、§6.3、§12.1 状态更新 |
+| 2026-10-10 | 1.2 | 新增 §11.4 单权重 identity 条件式零复制待优化项：明确 ownership、不可变性、alignment、复制路径与 production 验收；纳入 Batch C |

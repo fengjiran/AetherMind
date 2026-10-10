@@ -148,7 +148,7 @@
   - **`operators/`（顶层）**：OpType、OperatorSchema、OpParams（typed variant）、`Infer*` 自由函数、OpParams serde — 语义层，不允许包含执行/图容器细节。
   - **`compiler/`（顶层）**：默认 semantic pipeline composition、`ModelCompiler`、`ModelCompileOptions`、`LowerModelGraph`、`LoweredGraph`/`LoweredStepSpec`/`LoweredModelArtifact` 与结构验证。可携带 base `KernelSelector`，但不依赖 execution/backend/runtime。
   - **`execution/`（顶层）**：ExecutionPlan、仅供 untrusted 手工/低层请求的 ExecutionPlanNodeSpec、StateAliasPlan、LayerRunner、ExecutionPlanBuilder。Public headers 不依赖 compiler；实现层消费 compiler artifact，负责 state alias runtime conversion、workspace 和 kernel planning。
-  - **`model/`**：HF 加载/校验、`LoadedModel`、ModelLoader、**模型家族识别与图构建**（`ParseModelArchitecture` 是家族判定唯一权威；`BuildModelGraph` 是前端→语义图的唯一转换权威入口，按家族分发到 `BuildLlamaDense` 等 per-family builder，HF RoPE 字段在其中规范化为 typed `RoPEAlgorithmParams`，unknown type 拒绝）。ModelCompiler 归 compiler；ModelLoader 不执行 graph build、kernel resolve 或 prepack。权重重排/materialization 必须由优化图的具体 weight binding 驱动。`PackedWeightCollection`/`PrepackWeightRequests` 仅为现有 ExecutionPlan packed-weight API 的兼容设施。
+  - **`model/`**：HF 加载/校验、`LoadedModel`、ModelLoader、**模型家族识别与图构建**（`ParseModelArchitecture` 是家族判定唯一权威；`BuildModelGraph` 是前端→语义图的唯一转换权威入口，按家族分发到 `BuildLlamaDense` 等 per-family builder，HF RoPE 字段在其中规范化为 typed `RoPEAlgorithmParams`，unknown type 拒绝）。ModelCompiler 归 compiler；ModelLoader 不执行 graph build、kernel resolve 或 prepack。权重重排/materialization 必须由优化图的具体 weight binding 驱动。`PackedWeightCollection`/`PrepackWeightRequests` 负责 packed 产物所有权与批量打包，生产准备由 inference 的 `PrepareExecutableModel` 编排。
   - 构建目标保持单一 `AetherMind` shared（`src/**` 由 GLOB_RECURSE 收集），无 graph/operators 专用 target。
 - 无请求调度器：当前产品不引入 `Request Scheduler`，不承担请求排队、批处理、连续批处理或多会话仲裁职责。
 - 无虚函数开销：使用 C++20 Concepts + 静态分发

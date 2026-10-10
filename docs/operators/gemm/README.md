@@ -20,7 +20,7 @@
 | 能力 | 状态 | 说明 |
 |---|---|---|
 | exact recipe 生产链 | Implemented | descriptor → backend query → inference request → pack artifact → exact-key store / plan |
-| graph-wide packed preparation | Implemented | Linear、Embedding、RmsNorm、QKV、GateUp、AddRmsNorm identity consumers 已覆盖；tiny-Llama packed preparation test 通过 |
+| graph-wide packed preparation / execution | Implemented | Linear、Embedding、RmsNorm、QKV、GateUp、AddRmsNorm identity consumers 已覆盖；tiny tied-GQA Llama 的 O1 plain / O2 packed 全模型回归覆盖 scalar-oracle logits/KV、Prefill→Decode、重复 Generate 与 prepared Decode 零 malloc；HF 目录加载入口亦覆盖两种准备路径 |
 | AVX2 bpanel | Candidate / correctness verified | KC512 layout、Linear/QKV/GateUp scan/blocked 与尾块测试已落地；global identity descriptor 保持默认 |
 | 性能与 KC 选择 | **Needs More Data** | 当前 WSL2 小样本不能量化可信噪声 floor；无 KC256 同机对照，不提升 candidate priority |
 

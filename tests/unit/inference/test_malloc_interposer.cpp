@@ -28,6 +28,8 @@ constinit std::atomic_size_t g_memalign_calls{0};
 struct MallocFailureState {
     bool enabled = false;
     size_t allocation_size = 0;
+    size_t skip_matching_allocations = 0;
+    bool after_aligned_allocation = false;
     void* last_aligned_allocation = nullptr;
     MallocFailureResult result{};
 };
@@ -40,8 +42,13 @@ bool MallocInterposerAvailable() noexcept {
     return true;
 }
 
-ScopedMallocFailure::ScopedMallocFailure(size_t allocation_size) noexcept {
-    g_malloc_failure = {.enabled = true, .allocation_size = allocation_size};
+ScopedMallocFailure::ScopedMallocFailure(size_t allocation_size,
+                                         size_t skip_matching_allocations,
+                                         bool after_aligned_allocation) noexcept {
+    g_malloc_failure = {.enabled = true,
+                        .allocation_size = allocation_size,
+                        .skip_matching_allocations = skip_matching_allocations,
+                        .after_aligned_allocation = after_aligned_allocation};
 }
 
 ScopedMallocFailure::~ScopedMallocFailure() noexcept {
@@ -95,10 +102,15 @@ extern "C" void* malloc(size_t size) noexcept {
     aethermind::test::CountMallocCall(aethermind::test::g_malloc_calls);
     auto& failure = aethermind::test::g_malloc_failure;
     if (failure.enabled && !failure.result.allocation_failed &&
-        size == failure.allocation_size) {
-        failure.result.allocation_failed = true;
-        errno = ENOMEM;
-        return nullptr;
+        (!failure.after_aligned_allocation || failure.last_aligned_allocation != nullptr) &&
+        (failure.allocation_size == 0 || size == failure.allocation_size)) {
+        if (failure.skip_matching_allocations > 0) {
+            --failure.skip_matching_allocations;
+        } else {
+            failure.result.allocation_failed = true;
+            errno = ENOMEM;
+            return nullptr;
+        }
     }
     return __libc_malloc(size);
 }
@@ -171,7 +183,7 @@ bool MallocInterposerAvailable() noexcept {
     return false;
 }
 
-ScopedMallocFailure::ScopedMallocFailure(size_t) noexcept {}
+ScopedMallocFailure::ScopedMallocFailure(size_t, size_t, bool) noexcept {}
 
 ScopedMallocFailure::~ScopedMallocFailure() noexcept = default;
 

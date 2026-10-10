@@ -23,11 +23,11 @@ fs::path TinyLlamaModelDir() {
     return fs::path(AETHERMIND_TEST_MODELS_DIR) / "tiny-random-LlamaForCausalLM";
 }
 
-ModelCompileOptions CpuPlainCompileOptions() {
+ModelCompileOptions CpuCompileOptions(bool packed = false) {
     ModelCompileOptions options;
     // The CPU kernels for fused O2 operators currently require packed weights.
-    options.optimization.opt_level = 1;
-    options.lowering.enable_packed_weights = false;
+    options.optimization.opt_level = packed ? 2 : 1;
+    options.lowering.enable_packed_weights = packed;
     return options;
 }
 
@@ -57,12 +57,14 @@ Runtime MakeCpuRuntimeWithoutBackend() {
     return builder.Build();
 }
 
-TEST(LoadAndPrepareExecutableModel, LoadsPreparesAndGeneratesFromHfDirectory) {
+class LoadAndPrepareExecutableModelPath : public ::testing::TestWithParam<bool> {};
+
+TEST_P(LoadAndPrepareExecutableModelPath, LoadsPreparesAndGeneratesFromHfDirectory) {
     // Runtime outlives the prepared model and session because both borrow its
     // backend resources. These dimensions match the checked-in fixture config.
     Runtime runtime = MakeTinyLlamaRuntime();
     auto executable = LoadAndPrepareExecutableModel(
-            runtime, TinyLlamaModelDir(), CpuPlainCompileOptions());
+            runtime, TinyLlamaModelDir(), CpuCompileOptions(GetParam()));
     ASSERT_TRUE(executable.ok()) << executable.status().ToString();
     EXPECT_TRUE(executable->IsPreparedFor(runtime));
     EXPECT_EQ(executable->context_limit(), 2048U);
@@ -81,6 +83,9 @@ TEST(LoadAndPrepareExecutableModel, LoadsPreparesAndGeneratesFromHfDirectory) {
     for (const uint32_t token: *generated) {
         EXPECT_LT(token, 32000U);
     }
+    const auto repeated = session->Generate(prompt, GenerationConfig{.max_new_tokens = 3});
+    ASSERT_TRUE(repeated.ok()) << repeated.status().ToString();
+    EXPECT_EQ(*repeated, *generated);
 
     Runtime other_runtime = MakeCpuRuntimeWithoutBackend();
     const auto mismatched_session =
@@ -90,10 +95,14 @@ TEST(LoadAndPrepareExecutableModel, LoadsPreparesAndGeneratesFromHfDirectory) {
               StatusCode::kFailedPrecondition);
 }
 
+INSTANTIATE_TEST_SUITE_P(
+        PreparationPaths, LoadAndPrepareExecutableModelPath, ::testing::Bool(),
+        [](const ::testing::TestParamInfo<bool>& info) { return info.param ? "O2Packed" : "O1Plain"; });
+
 TEST(LoadAndPrepareExecutableModel, PreservesLoadCompileErrorCodeAndAddsContext) {
     Runtime runtime = MakeTinyLlamaRuntime();
     const fs::path missing_dir = TinyLlamaModelDir() / "missing-model-directory";
-    const ModelCompileOptions options = CpuPlainCompileOptions();
+    const ModelCompileOptions options = CpuCompileOptions();
 
     const auto compile_result = ModelCompiler::LoadAndCompile(missing_dir, options);
     ASSERT_FALSE(compile_result.ok());
@@ -109,7 +118,7 @@ TEST(LoadAndPrepareExecutableModel, PreservesLoadCompileErrorCodeAndAddsContext)
 
 TEST(LoadAndPrepareExecutableModel, PreservesPreparationErrorCodeAndAddsContext) {
     Runtime runtime = MakeCpuRuntimeWithoutBackend();
-    const ModelCompileOptions options = CpuPlainCompileOptions();
+    const ModelCompileOptions options = CpuCompileOptions();
 
     auto artifact = ModelCompiler::LoadAndCompile(TinyLlamaModelDir(), options);
     ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();

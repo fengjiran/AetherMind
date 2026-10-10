@@ -5,6 +5,7 @@
 #include "aethermind/base/device.h"
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/memory/buffer.h"
+#include "inference/test_malloc_interposer.h"
 
 #include <cstddef>
 #include <cstdlib>
@@ -126,6 +127,34 @@ TEST(PackedWeightCollectionOwnership, CollectionOwnsPackedWeightUntilItIsDestroy
     }
 
     EXPECT_TRUE(destroyed);
+}
+
+TEST(PackedWeightCollectionOwnership, AllocationFailureReleasesArtifactAndDoesNotBindSource) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    PackedWeightCollection collection;
+    const KernelSelector selector = MakePackedCpuSelector();
+    WeightArtifactKey key{.source_id = 9, .selector = selector, .recipe = CpuIdentityPackingRecipe()};
+    bool destroyed = false;
+    auto artifact = std::make_shared<CountingPackedWeight>(
+            OpType::kLinear, selector, MakeTestBuffer(64), &destroyed);
+
+    test::ScopedMallocFailure failure(sizeof(std::pair<WeightArtifactKey, std::shared_ptr<const PackedWeight>>));
+    const Status status = collection.Insert(key, std::move(artifact));
+    const auto result = failure.Stop();
+
+    EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+    EXPECT_TRUE(result.allocation_failed);
+    EXPECT_TRUE(destroyed);
+    EXPECT_TRUE(collection.empty());
+    EXPECT_EQ(collection.source_id(), 0U);
+    EXPECT_TRUE(collection.SetSourceId(7).ok());
+    key.source_id = 7;
+    EXPECT_TRUE(collection.Insert(key, std::make_shared<CountingPackedWeight>(
+                                               OpType::kLinear, selector, MakeTestBuffer(64), nullptr))
+                        .ok());
+    EXPECT_EQ(collection.size(), 1U);
 }
 
 TEST(PackedWeightCollectionOwnership, StoredPackedWeightOutlivesBackendInstance) {
@@ -341,7 +370,9 @@ INSTANTIATE_TEST_SUITE_P(ZeroDimensions, PackedWeightCollectionZeroSize,
                          ::testing::Values(std::vector<int64_t>{0},
                                            std::vector<int64_t>{4, 0},
                                            std::vector<int64_t>{0, 4},
-                                           std::vector<int64_t>{4, 0, 2}));
+                                           std::vector<int64_t>{4, 0, 2},
+                                           std::vector<int64_t>{std::numeric_limits<int64_t>::max(),
+                                                                std::numeric_limits<int64_t>::max(), 0}));
 
 TEST(PackedWeightCollectionOwnership, InsertRejectsNegativeDimensionAfterZero) {
     PackedWeightCollection collection;

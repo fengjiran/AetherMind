@@ -1,19 +1,19 @@
+#include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
-#include "backend/cpu/cpu_backend_internal.h"
-
 #include "aethermind/backend/packed_weight.h"
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/operators/op_type.h"
+#include "backend/cpu/cpu_backend_internal.h"
 #include "inference/test_malloc_interposer.h"
 
+#include <array>
 #include <cstdlib>
 #include <cstring>
 #include <gtest/gtest.h>
-
-#include <array>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -39,7 +39,7 @@ Tensor MakeLogicalWeightTensor(int64_t rows, int64_t cols) {
     ShapeAndStride shape_and_stride;
     shape_and_stride.set_contiguous(shape);
 
-    const size_t element_count = static_cast<size_t>(rows * cols);
+    const auto element_count = static_cast<size_t>(rows * cols);
     return Tensor(MakeTestBuffer(element_count * sizeof(float)),
                   0,
                   DataType::Float32(),
@@ -95,6 +95,129 @@ TEST(CpuWeightPacking, BufferMetadataFailureReturnsResourceExhaustedAndReleasesP
     EXPECT_TRUE(result.allocation_failed);
     EXPECT_EQ(result.aligned_allocation_calls, 1U);
     EXPECT_TRUE(result.last_aligned_allocation_released);
+}
+
+enum class PackingPath {
+    kPublicIdentity,
+    kCompositeIdentity,
+    kBpanel,
+    kCompositeBpanel,
+};
+
+struct MetadataFailureCase {
+    PackingPath path;
+    bool fail_artifact;
+    const char* name;
+};
+
+class CpuWeightPackingMetadataFailure : public ::testing::TestWithParam<MetadataFailureCase> {};
+
+TEST_P(CpuWeightPackingMetadataFailure, ReturnsResourceExhaustedAndReleasesPayload) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    const Tensor logical_weight = MakeLogicalWeightTensor(4, 8);
+    ASSERT_TRUE(logical_weight.is_initialized());
+    const std::array<TensorView, 2> components{logical_weight.view(), logical_weight.view()};
+    const KernelSelector selector = MakePackedCpuSelector();
+    const auto& param = GetParam();
+    const bool composite = param.path == PackingPath::kCompositeIdentity ||
+                           param.path == PackingPath::kCompositeBpanel;
+    const PackingRecipe recipe = param.path == PackingPath::kBpanel ||
+                                                 param.path == PackingPath::kCompositeBpanel
+                                         ? cpu::CpuBPanelF32Kc512Nr16Recipe()
+                                         : CpuIdentityPackingRecipe();
+    CpuBackend backend;
+
+    // After payload allocation, the producer allocates BufferImpl, shape, then
+    // the artifact. Inject into the latter two without a production test hook.
+    test::ScopedMallocFailure failure(0, param.fail_artifact ? 2 : 1, true);
+    const std::span<const TensorView> views(components.data(), composite ? 2U : 1U);
+    const auto packed = param.path == PackingPath::kPublicIdentity
+                                ? backend.PackWeights(OpType::kLinear, views, selector, recipe)
+                                : cpu::internal::PackWeightsWithRecipe(
+                                          OpType::kLinear, views, selector, recipe);
+    const auto result = failure.Stop();
+
+    ASSERT_FALSE(packed.ok());
+    EXPECT_EQ(packed.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_TRUE(result.allocation_failed);
+    EXPECT_EQ(result.aligned_allocation_calls, 1U);
+    EXPECT_TRUE(result.last_aligned_allocation_released);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        ProducerMetadata, CpuWeightPackingMetadataFailure,
+        ::testing::Values(
+                MetadataFailureCase{PackingPath::kPublicIdentity, false, "PublicIdentityShape"},
+                MetadataFailureCase{PackingPath::kPublicIdentity, true, "PublicIdentityArtifact"},
+                MetadataFailureCase{PackingPath::kCompositeIdentity, false, "CompositeIdentityShape"},
+                MetadataFailureCase{PackingPath::kCompositeIdentity, true, "CompositeIdentityArtifact"},
+                MetadataFailureCase{PackingPath::kBpanel, false, "BpanelShape"},
+                MetadataFailureCase{PackingPath::kBpanel, true, "BpanelArtifact"},
+                MetadataFailureCase{PackingPath::kCompositeBpanel, false, "CompositeBpanelShape"},
+                MetadataFailureCase{PackingPath::kCompositeBpanel, true, "CompositeBpanelArtifact"}),
+        [](const ::testing::TestParamInfo<MetadataFailureCase>& info) { return info.param.name; });
+
+struct WeightOverflowCase {
+    std::vector<int64_t> shape;
+    std::vector<int64_t> strides;
+    const char* name;
+};
+
+class CpuWeightPackingOverflow : public ::testing::TestWithParam<WeightOverflowCase> {};
+
+TEST_P(CpuWeightPackingOverflow, PublicAndInternalPackingReturnOverflowBeforeReadingData) {
+    const auto& param = GetParam();
+    const float data = 1.0F;
+    const std::array<TensorView, 1> components{
+            TensorView(&data, DataType::Float32(), param.shape, param.strides)};
+    ASSERT_TRUE(components.front().is_valid());
+    const KernelSelector selector = MakePackedCpuSelector();
+    CpuBackend backend;
+    const auto public_packed = backend.PackWeights(
+            OpType::kLinear, components, selector, CpuIdentityPackingRecipe());
+    EXPECT_EQ(public_packed.status().code(), StatusCode::kOverflow);
+    const auto internal_packed = cpu::internal::PackWeightsWithRecipe(
+            OpType::kLinear, components, selector, CpuIdentityPackingRecipe());
+    EXPECT_EQ(internal_packed.status().code(), StatusCode::kOverflow);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        CheckedSizes, CpuWeightPackingOverflow,
+        ::testing::Values(
+                WeightOverflowCase{{int64_t{1} << 62, 1}, {1, 1}, "Bytes"},
+                WeightOverflowCase{{std::numeric_limits<int64_t>::max(), 2}, {2, 1}, "Elements"},
+                WeightOverflowCase{{0, std::numeric_limits<int64_t>::max(), 2}, {0, 2, 1}, "ZeroPrefixStride"}),
+        [](const ::testing::TestParamInfo<WeightOverflowCase>& info) { return info.param.name; });
+
+TEST(CpuWeightPacking, BpanelRejectsLogicalByteOverflowBeforeReadingData) {
+    const float data = 1.0F;
+    constexpr int64_t shape[] = {int64_t{1} << 62, 1};
+    constexpr int64_t strides[] = {1, 1};
+    const std::array<TensorView, 1> components{
+            TensorView(&data, DataType::Float32(), shape, strides)};
+
+    const auto packed = cpu::internal::PackWeightsWithRecipe(
+            OpType::kLinear, components, MakePackedCpuSelector(), cpu::CpuBPanelF32Kc512Nr16Recipe());
+
+    EXPECT_EQ(packed.status().code(), StatusCode::kOverflow);
+}
+
+TEST(CpuWeightPacking, IdentityPackingAcceptsHugeLeadingDimensionsBeforeZeroSuffix) {
+    constexpr int64_t shape[] = {std::numeric_limits<int64_t>::max(),
+                                 std::numeric_limits<int64_t>::max(), 0};
+    constexpr int64_t strides[] = {0, 0, 1};
+    const std::array<TensorView, 1> components{
+            TensorView(nullptr, DataType::Float32(), shape, strides)};
+    CpuBackend backend;
+
+    const auto packed = backend.PackWeights(
+            OpType::kLinear, components, MakePackedCpuSelector(), CpuIdentityPackingRecipe());
+
+    ASSERT_TRUE(packed.ok()) << packed.status().ToString();
+    EXPECT_EQ((*packed)->storage().nbytes(), 0U);
+    EXPECT_EQ((*packed)->logical_shape(), (std::vector<int64_t>(std::begin(shape), std::end(shape))));
 }
 
 TEST(CpuWeightPacking, IdentityPackingPreservesStrongerSourceAlignment) {
@@ -218,7 +341,7 @@ TEST(CpuWeightPacking, BpanelPacksLogicalMatrixAndZeroPadsEveryTail) {
     EXPECT_EQ((*packed)->storage().nbytes(), *required_bytes);
     ASSERT_EQ((*packed)->storage().alignment(), recipe.alignment);
 
-    const float* const data = static_cast<const float*>((*packed)->storage().data());
+    const auto* const data = static_cast<const float*>((*packed)->storage().data());
     constexpr int64_t n_blocks = 2;
     for (int64_t padded_k = 0; padded_k < 2 * cpu::kCpuBPanelF32Kc512Nr16KC;
          ++padded_k) {

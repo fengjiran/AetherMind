@@ -1,4 +1,5 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/backend/cpu/cpu_workspace_arena.h"
 #include "aethermind/base/device.h"
 #include "aethermind/compiler/model_compiler.h"
@@ -110,7 +111,8 @@ Runtime MakeCpuRuntimeWithKVCache(size_t kv_heads = kKvHeads,
 
 StatusOr<ExecutableModel> PrepareTinyExecutableModel(
         Runtime& runtime,
-        ResolvedModelWeights* reference_weights) {
+        ResolvedModelWeights* reference_weights,
+        bool packed) {
     const HfModelConfig config = MakeTinyLlamaConfig(/*num_layers=*/1,
                                                      /*tie_word_embeddings=*/true);
     TinyLlamaCheckpoint checkpoint = MakeTinyLlamaCheckpoint(config);
@@ -119,8 +121,8 @@ StatusOr<ExecutableModel> PrepareTinyExecutableModel(
 
     auto loaded = std::make_unique<LoadedModel>(config, std::move(checkpoint.weights));
     ModelCompileOptions options;
-    options.optimization.opt_level = 1;
-    options.lowering.enable_packed_weights = false;
+    options.optimization.opt_level = packed ? 2 : 1;
+    options.lowering.enable_packed_weights = packed;
     auto artifact = ModelCompiler::Compile(std::move(loaded), options);
     if (!artifact.ok()) {
         return artifact.status();
@@ -359,8 +361,9 @@ private:
 
 StatusOr<InferenceSession> PrepareTinySession(
         Runtime& runtime,
-        ResolvedModelWeights* reference_weights) {
-    auto executable = PrepareTinyExecutableModel(runtime, reference_weights);
+        ResolvedModelWeights* reference_weights,
+        bool packed) {
+    auto executable = PrepareTinyExecutableModel(runtime, reference_weights, packed);
     if (!executable.ok()) {
         return executable.status();
     }
@@ -888,10 +891,12 @@ void ExpectSameStage(const StageSnapshot& lhs, const StageSnapshot& rhs) {
     EXPECT_EQ(lhs.values, rhs.values);
 }
 
-TEST(DirectPrefillDecode, TinyTiedGqaLlamaMatchesScalarOracleAndReusesDecodeBindings) {
+class TinyLlamaExecution : public ::testing::TestWithParam<bool> {};
+
+TEST_P(TinyLlamaExecution, TinyTiedGqaLlamaMatchesScalarOracleAndReusesDecodeBindings) {
     Runtime runtime = MakeCpuRuntimeWithKVCache();
     ResolvedModelWeights reference_weights;
-    auto executable_result = PrepareTinyExecutableModel(runtime, &reference_weights);
+    auto executable_result = PrepareTinyExecutableModel(runtime, &reference_weights, GetParam());
     ASSERT_TRUE(executable_result.ok()) << executable_result.status().ToString();
     ExecutableModel executable(std::move(*executable_result));
 
@@ -931,17 +936,49 @@ TEST(DirectPrefillDecode, TinyTiedGqaLlamaMatchesScalarOracleAndReusesDecodeBind
     ASSERT_EQ(plan.values()[logits_id.index].spec.dtype, DataType::Float32());
     ASSERT_EQ(plan.values()[tokens_id.index].spec.dtype, DataType::Int(64));
 
+    std::vector<OpType> packed_consumers;
+    for (const ExecutionStep& step: plan.steps()) {
+        if (step.selector.weight_format != WeightFormat::kPacked) {
+            EXPECT_EQ(step.packed_weights, nullptr);
+            continue;
+        }
+        ASSERT_NE(step.packed_weights, nullptr);
+        EXPECT_EQ(step.packed_weights->op_type(), step.kernel.op_type);
+        EXPECT_EQ(step.packed_weights->selector(), step.selector);
+        EXPECT_EQ(step.packed_weights->recipe(), step.kernel.expected_packing_recipe);
+        EXPECT_EQ(step.packed_weights->recipe(), CpuIdentityPackingRecipe());
+        for (const uint32_t port: step.kernel_input_ports) {
+            EXPECT_NE(plan.values()[step.inputs[port].index].kind, ExecutionValueKind::kWeight)
+                    << "packed consumers must read their artifact instead of a raw weight tensor";
+        }
+        packed_consumers.push_back(step.kernel.op_type);
+    }
+    if (GetParam()) {
+        for (const OpType required: {OpType::kEmbedding, OpType::kRmsNorm,
+                                     OpType::kQkvLinear, OpType::kGateUpLinear,
+                                     OpType::kAddRmsNorm, OpType::kLinear}) {
+            EXPECT_NE(std::find(packed_consumers.begin(), packed_consumers.end(), required),
+                      packed_consumers.end())
+                    << "O2 packed must exercise " << ToString(required);
+        }
+    } else {
+        EXPECT_TRUE(packed_consumers.empty());
+    }
+
     const auto immutable_bindings_result = executable.immutable_weight_bindings(ExecPhase::kBoth);
     ASSERT_TRUE(immutable_bindings_result.ok()) << immutable_bindings_result.status().ToString();
     const ExternalTensorBindings& immutable_bindings = **immutable_bindings_result;
     size_t embedding_backing_bindings = 0;
     for (const ExternalReadOnlyValueBinding& binding: immutable_bindings.readable) {
+        if (GetParam()) {
+            EXPECT_NE(plan.values()[binding.value.index].kind, ExecutionValueKind::kWeight);
+        }
         if (binding.tensor.data() == reference_weights.embed_tokens.data) {
             ++embedding_backing_bindings;
         }
     }
-    EXPECT_EQ(embedding_backing_bindings, 2U)
-            << "tied lm-head must reuse the embedding backing";
+    EXPECT_EQ(embedding_backing_bindings, GetParam() ? 0U : 2U)
+            << "plain tied weights reuse embedding backing; packed weights have no raw bindings";
 
     constexpr std::array<int64_t, 3> prompt = {1, 7, 3};
     const auto first_run = RunSuccessfulSession(
@@ -964,11 +1001,11 @@ TEST(DirectPrefillDecode, TinyTiedGqaLlamaMatchesScalarOracleAndReusesDecodeBind
     EXPECT_TRUE(RunFailureCleanupScenario(runtime, plan, immutable_bindings, prompt));
 }
 
-TEST(InferenceSession, RejectsRuntimeDifferentFromPreparationRuntime) {
+TEST_P(TinyLlamaExecution, RejectsRuntimeDifferentFromPreparationRuntime) {
     Runtime preparation_runtime = MakeCpuRuntimeWithKVCache();
     ResolvedModelWeights reference_weights;
     auto executable = PrepareTinyExecutableModel(
-            preparation_runtime, &reference_weights);
+            preparation_runtime, &reference_weights, GetParam());
     ASSERT_TRUE(executable.ok()) << executable.status().ToString();
     auto shared_model =
             std::make_shared<ExecutableModel>(std::move(*executable));
@@ -979,10 +1016,10 @@ TEST(InferenceSession, RejectsRuntimeDifferentFromPreparationRuntime) {
     EXPECT_EQ(session.status().code(), StatusCode::kFailedPrecondition);
 }
 
-TEST(InferenceSession, TinyGenerateMatchesScalarOracleAndStartsFreshEachCall) {
+TEST_P(TinyLlamaExecution, TinyGenerateMatchesScalarOracleAndStartsFreshEachCall) {
     Runtime runtime = MakeCpuRuntimeWithKVCache();
     ResolvedModelWeights reference_weights;
-    auto session_result = PrepareTinySession(runtime, &reference_weights);
+    auto session_result = PrepareTinySession(runtime, &reference_weights, GetParam());
     ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
     InferenceSession session = std::move(*session_result);
 
@@ -1000,10 +1037,10 @@ TEST(InferenceSession, TinyGenerateMatchesScalarOracleAndStartsFreshEachCall) {
     EXPECT_EQ(*repeated, expected);
 }
 
-TEST(InferenceSession, HandlesZeroOneEosAndExactKvCapacity) {
+TEST_P(TinyLlamaExecution, HandlesZeroOneEosAndExactKvCapacity) {
     Runtime runtime = MakeCpuRuntimeWithKVCache();
     ResolvedModelWeights reference_weights;
-    auto session_result = PrepareTinySession(runtime, &reference_weights);
+    auto session_result = PrepareTinySession(runtime, &reference_weights, GetParam());
     ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
     InferenceSession session = std::move(*session_result);
 
@@ -1067,10 +1104,10 @@ TEST(InferenceSession, HandlesZeroOneEosAndExactKvCapacity) {
     EXPECT_EQ(over.status().code(), StatusCode::kOutOfRange);
 }
 
-TEST(InferenceSession, RejectsContextLimitAndArithmeticOverflowBeforeReservation) {
+TEST_P(TinyLlamaExecution, RejectsContextLimitAndArithmeticOverflowBeforeReservation) {
     Runtime runtime = MakeCpuRuntimeWithKVCache(kKvHeads, 200);
     ResolvedModelWeights reference_weights;
-    auto session_result = PrepareTinySession(runtime, &reference_weights);
+    auto session_result = PrepareTinySession(runtime, &reference_weights, GetParam());
     ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
     InferenceSession session = std::move(*session_result);
 
@@ -1094,10 +1131,10 @@ TEST(InferenceSession, RejectsContextLimitAndArithmeticOverflowBeforeReservation
     ReleaseTestSession(*manager, *available);
 }
 
-TEST(InferenceSession, ZeroLimitDoesNotRequireKvAndInputsAreValidated) {
+TEST_P(TinyLlamaExecution, ZeroLimitDoesNotRequireKvAndInputsAreValidated) {
     Runtime runtime = MakeCpuRuntime();
     ResolvedModelWeights reference_weights;
-    auto session_result = PrepareTinySession(runtime, &reference_weights);
+    auto session_result = PrepareTinySession(runtime, &reference_weights, GetParam());
     ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
     InferenceSession session = std::move(*session_result);
 
@@ -1134,11 +1171,11 @@ TEST(InferenceSession, ZeroLimitDoesNotRequireKvAndInputsAreValidated) {
     EXPECT_EQ(bad_eos.status().code(), StatusCode::kOutOfRange);
 }
 
-TEST(InferenceSession, MissingCpuAllocatorReturnsStatusBeforeReservation) {
+TEST_P(TinyLlamaExecution, MissingCpuAllocatorReturnsStatusBeforeReservation) {
     Runtime runtime =
             MakeCpuRuntimeWithKVCache(kKvHeads, kCacheCapacity, false);
     ResolvedModelWeights reference_weights;
-    auto session_result = PrepareTinySession(runtime, &reference_weights);
+    auto session_result = PrepareTinySession(runtime, &reference_weights, GetParam());
     ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
     InferenceSession session = std::move(*session_result);
 
@@ -1155,11 +1192,11 @@ TEST(InferenceSession, MissingCpuAllocatorReturnsStatusBeforeReservation) {
     ReleaseTestSession(*manager, *available);
 }
 
-TEST(InferenceSession, HandlesPromptSizedCapacityAndReservationCleanup) {
+TEST_P(TinyLlamaExecution, HandlesPromptSizedCapacityAndReservationCleanup) {
     constexpr std::array<uint32_t, 3> prompt{1, 7, 3};
     Runtime exact_runtime = MakeCpuRuntimeWithKVCache(kKvHeads, prompt.size());
     ResolvedModelWeights exact_weights;
-    auto exact_session_result = PrepareTinySession(exact_runtime, &exact_weights);
+    auto exact_session_result = PrepareTinySession(exact_runtime, &exact_weights, GetParam());
     ASSERT_TRUE(exact_session_result.ok())
             << exact_session_result.status().ToString();
     InferenceSession exact_session = std::move(*exact_session_result);
@@ -1177,7 +1214,7 @@ TEST(InferenceSession, HandlesPromptSizedCapacityAndReservationCleanup) {
     Runtime mismatch_runtime = MakeCpuRuntimeWithKVCache(kKvHeads - 1);
     ResolvedModelWeights mismatch_weights;
     auto mismatch_session_result =
-            PrepareTinySession(mismatch_runtime, &mismatch_weights);
+            PrepareTinySession(mismatch_runtime, &mismatch_weights, GetParam());
     ASSERT_TRUE(mismatch_session_result.ok())
             << mismatch_session_result.status().ToString();
     InferenceSession mismatch_session = std::move(*mismatch_session_result);
@@ -1198,7 +1235,7 @@ TEST(InferenceSession, HandlesPromptSizedCapacityAndReservationCleanup) {
     ReleaseTestSession(*manager, *after_failure);
 }
 
-TEST(InferenceSession, SharedDecodeLoopHasNoMallocFamilyCallsAfterPreparation) {
+TEST_P(TinyLlamaExecution, SharedDecodeLoopHasNoMallocFamilyCallsAfterPreparation) {
 #if !defined(__GLIBC__) || !defined(__linux__)
     GTEST_SKIP() << "The malloc interposer requires glibc/Linux";
 #else
@@ -1206,7 +1243,7 @@ TEST(InferenceSession, SharedDecodeLoopHasNoMallocFamilyCallsAfterPreparation) {
     Runtime runtime = MakeCpuRuntimeWithKVCache();
     ResolvedModelWeights reference_weights;
     auto executable_result =
-            PrepareTinyExecutableModel(runtime, &reference_weights);
+            PrepareTinyExecutableModel(runtime, &reference_weights, GetParam());
     ASSERT_TRUE(executable_result.ok())
             << executable_result.status().ToString();
     ExecutableModel executable(std::move(*executable_result));
@@ -1296,6 +1333,10 @@ TEST(InferenceSession, SharedDecodeLoopHasNoMallocFamilyCallsAfterPreparation) {
     EXPECT_EQ(counts.memalign_calls, 0U);
 #endif
 }
+
+INSTANTIATE_TEST_SUITE_P(
+        PreparationPaths, TinyLlamaExecution, ::testing::Bool(),
+        [](const ::testing::TestParamInfo<bool>& info) { return info.param ? "O2Packed" : "O1Plain"; });
 
 TEST(DirectPrefillDecode, MallocInterposerObservesCpuAllocatorCalls) {
 #if !defined(__GLIBC__) || !defined(__linux__)

@@ -27,6 +27,7 @@
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/shape_inference/tensor_spec.h"
 #include "backend/cpu/cpu_backend_internal.h"
+#include "inference/test_malloc_interposer.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -96,6 +97,9 @@ StatusOr<std::unique_ptr<PackedWeight>> PackViaCpuIdentity(
 // through the CPU identity packing implementation.
 class PackingOnlyTestBackend final : public Backend {
 public:
+    explicit PackingOnlyTestBackend(bool return_null_artifact = false)
+        : return_null_artifact_(return_null_artifact) {}
+
     DeviceType device_type() const noexcept override {
         return DeviceType::kCPU;
     }
@@ -113,6 +117,9 @@ public:
             const KernelSelector& selector,
             const PackingRecipe& recipe) const override {
         ++pack_calls;
+        if (return_null_artifact_) {
+            return std::unique_ptr<PackedWeight>{};
+        }
         return PackViaCpuIdentity(op_type, components, selector, recipe);
     }
 
@@ -121,6 +128,9 @@ public:
     }
 
     mutable size_t pack_calls = 0;
+
+private:
+    bool return_null_artifact_ = false;
 };
 
 // Backend that relies on the default Backend::PackWeights implementation, so
@@ -179,6 +189,76 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsEmptyComponentsBeforeBackendCall
 
     EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
     EXPECT_NE(prepacked.status().message().find("non-empty weight components"), std::string::npos);
+    EXPECT_EQ(backend.pack_calls, 0U);
+}
+
+class WeightPackingNonContiguous : public ::testing::TestWithParam<bool> {};
+
+TEST_P(WeightPackingNonContiguous, RejectsRawComponentBeforeBackendCall) {
+    auto storage = std::make_shared<TestStorage>(16);
+    RawWeightView non_contiguous = MakeWeightView(storage, 0, 16, DataType::Float32(), {2, 2});
+    non_contiguous.is_contiguous = false;
+    WeightPackingRequest request{
+            .op_type = GetParam() ? OpType::kQkvLinear : OpType::kLinear,
+            .source_id = 9,
+            .components = {non_contiguous},
+            .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
+    };
+    if (GetParam()) {
+        request.components.insert(request.components.begin(),
+                                  MakeWeightView(storage, 0, 16, DataType::Float32(), {2, 2}));
+    }
+    PackingOnlyTestBackend backend;
+
+    const auto prepacked = PrepackWeightRequests(backend, {request});
+
+    EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(prepacked.status().message().find("contiguous"), std::string::npos);
+    EXPECT_EQ(backend.pack_calls, 0U);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        RawComponents, WeightPackingNonContiguous, ::testing::Bool(),
+        [](const ::testing::TestParamInfo<bool>& info) { return info.param ? "Composite" : "Direct"; });
+
+TEST(WeightPacking, PrepackWeightRequestsRejectsSuccessfulNullBackendArtifact) {
+    auto storage = std::make_shared<TestStorage>(8);
+    const WeightPackingRequest request{
+            .op_type = OpType::kLinear,
+            .source_id = 9,
+            .components = {MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1})},
+            .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
+    };
+    PackingOnlyTestBackend backend(/*return_null_artifact=*/true);
+
+    const auto prepacked = PrepackWeightRequests(backend, {request});
+
+    EXPECT_EQ(prepacked.status().code(), StatusCode::kInternal);
+    EXPECT_EQ(backend.pack_calls, 1U);
+}
+
+TEST(WeightPacking, PrepackMetadataAllocationFailureReturnsResourceExhaustedBeforeBackendCall) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    auto storage = std::make_shared<TestStorage>(8);
+    const std::vector<WeightPackingRequest> requests{{
+            .op_type = OpType::kLinear,
+            .source_id = 9,
+            .components = {MakeWeightView(storage, 0, 8, DataType::Float32(), {2, 1})},
+            .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
+    }};
+    PackingOnlyTestBackend backend;
+
+    test::ScopedMallocFailure failure(sizeof(TensorView));
+    const auto prepacked = PrepackWeightRequests(backend, requests);
+    const auto result = failure.Stop();
+
+    EXPECT_EQ(prepacked.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_TRUE(result.allocation_failed);
     EXPECT_EQ(backend.pack_calls, 0U);
 }
 

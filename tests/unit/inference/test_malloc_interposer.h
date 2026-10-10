@@ -30,13 +30,19 @@ struct MallocFailureResult {
     bool last_aligned_allocation_released = false;
 };
 
-/// @brief Fails the next matching malloc call on this thread, at most once.
+/// @brief Fails one matching malloc call on this thread, at most once.
 ///
 /// Requires MallocInterposerAvailable(). Scopes must not nest. Tracking the last
 /// successful posix_memalign pointer verifies cleanup after metadata failure.
 class ScopedMallocFailure {
 public:
-    explicit ScopedMallocFailure(size_t allocation_size) noexcept;
+    /// @param allocation_size Matching byte count, or zero to match any malloc.
+    /// @param skip_matching_allocations Number of matching calls to allow first.
+    /// @param after_aligned_allocation Start matching after a successful
+    ///        posix_memalign, so public-API setup allocations remain unaffected.
+    explicit ScopedMallocFailure(size_t allocation_size,
+                                 size_t skip_matching_allocations = 0,
+                                 bool after_aligned_allocation = false) noexcept;
     ~ScopedMallocFailure() noexcept;
 
     ScopedMallocFailure(const ScopedMallocFailure&) = delete;

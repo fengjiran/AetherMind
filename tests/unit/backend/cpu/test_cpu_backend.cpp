@@ -1,6 +1,5 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/cpu/cpu_bpanel_packing.h"
-#include "aethermind/backend/cpu/cpu_identity_packing.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/base/device.h"
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"
@@ -87,7 +86,7 @@ TEST(CpuBackend, RejectsRecipeNotSelectedByItsFeaturePolicy) {
     const std::array<TensorView, 1> components{weight};
     const auto packed = backend.PackWeights(
             OpType::kLinear, components, selector,
-            cpu::CpuBPanelF32V1Avx2Recipe());
+            cpu::CpuBPanelF32Kc512Nr16Recipe());
     ASSERT_FALSE(packed.ok());
     EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
     EXPECT_NE(packed.status().message().find("not selected"), std::string::npos);

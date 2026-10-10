@@ -1,6 +1,6 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/cpu/cpu_bpanel_packing.h"
 #include "aethermind/backend/cpu/cpu_info.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/backend/kernel_context.h"
 #include "backend/cpu/cpu_backend_internal.h"
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
@@ -262,7 +262,7 @@ void BenchmarkPackedLinear(benchmark::State& state, CacheMode mode) {
             return;
         }
         if ((*packed)->storage().nbytes() !=
-            *cpu::CpuBPanelF32V1PackedByteSize(n, k)) {
+            *cpu::CpuBPanelF32Kc512Nr16PackedByteSize(n, k)) {
             state.SkipWithError("packed Linear artifact size disagrees with recipe");
             return;
         }
@@ -414,13 +414,13 @@ void BM_WeightPackingCpuBpanel(benchmark::State& state) {
             .weight_format = WeightFormat::kPacked,
             .phase = ExecPhase::kBoth,
     };
-    const PackingRecipe recipe = cpu::CpuBPanelF32V1Avx2Recipe();
+    const PackingRecipe recipe = cpu::CpuBPanelF32Kc512Nr16Recipe();
     auto checked = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, recipe);
     if (!checked.ok()) {
         state.SkipWithError(checked.status().ToString());
         return;
     }
-    if ((*checked)->storage().nbytes() != *cpu::CpuBPanelF32V1PackedByteSize(n, k)) {
+    if ((*checked)->storage().nbytes() != *cpu::CpuBPanelF32Kc512Nr16PackedByteSize(n, k)) {
         state.SkipWithError("packed size amplification correctness guard failed");
         return;
     }

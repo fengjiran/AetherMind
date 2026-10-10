@@ -1,4 +1,4 @@
-#include "aethermind/backend/cpu/cpu_identity_packing.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/backend/packed_weight.h"
 #include "aethermind/base/tensor_view.h"
 #include "backend/cpu/cpu_backend_internal.h"

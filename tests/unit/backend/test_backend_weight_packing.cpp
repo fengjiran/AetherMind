@@ -92,7 +92,7 @@ TEST(BackendWeightPacking, ExplicitPackingForwardsRecipeAndInputsToVirtualImplem
     const Backend& abstract_backend = backend;
     const std::array<TensorView, 1> components{MakeWeightView()};
     const KernelSelector selector = MakePackedSelector();
-    const PackingRecipe recipe{.layout = PackingLayout::kCpuBPanelF32V1Avx2, .alignment = 64};
+    const PackingRecipe recipe{.layout = PackingLayout::kCpuBPanelF32Kc512Nr16, .alignment = 64};
 
     const auto packed = abstract_backend.PackWeights(OpType::kLinear, components, selector, recipe);
 

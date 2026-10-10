@@ -51,7 +51,7 @@ AetherMind 不应新增 semantic `Gemm` operator。当前 GEMM 是 CPU backend �
 | kernel resolve | `CpuBackend::PrepareKernel` 按 selector、CPU feature 和 priority 选 descriptor | resolve 时尚无 concrete shape/layout，不能按 `M/N/K` 选择算法 |
 | binding specialization | `KernelParamsBuilder` 可看到固定的 pointer/shape/stride/dtype | 可在 cold path 选择 GEMV/skinny/blocked driver，并把函数指针写入 prepared params |
 | workspace | `ResolvedKernel.workspace_requirement` 在 binding 前规划 | 不能表达依赖 concrete `M/N/K` 的 transient A/B packing scratch |
-| packing recipe | descriptor 声明 recipe；backend query 与 prepare 共用 eligibility resolver；inference 注入 request，recipe、artifact、store key 和 resolved kernel exact-match；共享权重 recipe/op 冲突在准备期拒绝 | recipe 传递链已实现。bpanel 物理 layout 为 `cpu_bpanel_f32_v1_avx2_kc512_candidate`，KC512 未完成性能选择 |
+| packing recipe | descriptor 声明 recipe；backend query 与 prepare 共用 eligibility resolver；inference 注入 request，recipe、artifact、store key 和 resolved kernel exact-match；共享权重 recipe/op 冲突在准备期拒绝 | recipe 传递链已实现。bpanel 物理 layout 为 `cpu_bpanel_f32_kc512_nr16`，KC512 未完成性能选择 |
 | CPU dispatch | 已有 AVX2/FMA/AVX-512/VNNI/AMX、NEON/DotProd/I8MM/SVE 等 capability model | RMSNorm 有 AVX2+FMA optimized descriptor；GEMM 有 AVX2/FMA packed-B candidates，但默认 identity dispatch 不变 |
 | threading | 当前产品边界为单请求、单线程，现有 kernel 也保持单线程 | 首轮优化保持单线程；并行化属于 runtime 级后续工作 |
 | benchmark | Google Benchmark 包含 plain Linear prepared-path、bpanel candidate prepared hot/streaming Decode/Prefill、cold packing、size amplification 与诊断 break-even estimate | 当前 WSL2 仅有小样本；噪声 floor 和 KC256 对照未完成，production priority 仍为 identity。机器级证据按机成立，见 [GEMM 证据记录](README.md) |
@@ -213,7 +213,7 @@ AVX-512、NEON/SVE 使用同一 driver contract、不同 microkernel 与 recipe�
 - alignment；
 - 量化路径需要的 scale/zero-point/group metadata 布局。
 
-例如 recipe 名可以采用 `cpu_f32_bpanel_v1_avx2_nr8_kr1`，但具体 tile 只有测量后才能冻结。
+布局标识应描述具体格式，例如当前的 `cpu_bpanel_f32_kc512_nr16`；同一 blocking 下若 panel 顺序或 padding 不同，应增加相应的明确标识。格式身份固定不代表该 tile 已证明具有最佳性能。
 
 当前生产路径已经按以下职责传递 exact recipe（见 [Packed Weight 提案](cpu-gemm-packed-weight.md)）；`CpuBackend::PackWeights` 校验选中的 recipe 后，调用显式传入 components 与 recipe 的内部 `cpu::internal::PackWeightsWithRecipe`：
 

@@ -1,4 +1,4 @@
-#include "aethermind/backend/cpu/cpu_identity_packing.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/model/weight/packed_weight_collection.h"
 #include "aethermind/model/weight/weight_packing_request.h"
 #include "model/weight/test_weight_helpers.h"

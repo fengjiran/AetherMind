@@ -1,6 +1,5 @@
-#include "aethermind/backend/cpu/cpu_bpanel_packing.h"
 #include "aethermind/backend/cpu/cpu_capabilities.h"
-#include "aethermind/backend/cpu/cpu_identity_packing.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/backend/cpu/kernels/common/alias_utils.h"
 #include "aethermind/backend/cpu/kernels/common/layout_utils.h"
 #include "aethermind/backend/cpu/packed_weight_validation.h"
@@ -279,8 +278,8 @@ Status BuildLinearF32BpanelArgs(const KernelParamsBuildContext& context,
     AM_ASSIGN_OR_RETURN(const LinearF32KernelArgs base,
                         BuildLinearF32PackedBase(context, true));
     const int64_t n_blocks = base.out_features /
-                                     cpu::kCpuBPanelF32V1NR +
-                             (base.out_features % cpu::kCpuBPanelF32V1NR != 0);
+                                     cpu::kCpuBPanelF32Kc512Nr16NR +
+                             (base.out_features % cpu::kCpuBPanelF32Kc512Nr16NR != 0);
     const PackedGemmF32Args args{
             .gemm = GemmF32Args{
                     .lhs = base.input,
@@ -375,7 +374,7 @@ AM_REGISTER_KERNEL(
                         .weight_format = WeightFormat::kPacked,
                         .phase = ExecPhase::kBoth,
                 },
-                .packing_recipe = cpu::CpuBPanelF32V1Avx2Recipe(),
+                .packing_recipe = cpu::CpuBPanelF32Kc512Nr16Recipe(),
                 .cpu_requirements = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
                 .kernel_func = &LinearF32PackedBEntry,
                 .priority = 10,

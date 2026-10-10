@@ -1,6 +1,5 @@
 #include "aethermind/backend/cpu/packed_weight_validation.h"
-#include "aethermind/backend/cpu/cpu_bpanel_packing.h"
-#include "aethermind/backend/cpu/cpu_identity_packing.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "utils/overflow_check.h"
 
 #include <cstddef>
@@ -97,17 +96,17 @@ Status ValidateBPanelF32PackedWeight(
         }
     }
 
-    if (packed.recipe_layout != kCpuBPanelF32V1Avx2Layout ||
-        packed.recipe_alignment != kCpuBPanelF32V1Alignment ||
-        packed.alignment < kCpuBPanelF32V1Alignment ||
+    if (packed.recipe_layout != kCpuBPanelF32Kc512Nr16Layout ||
+        packed.recipe_alignment != kCpuBPanelF32Kc512Nr16Alignment ||
+        packed.alignment < kCpuBPanelF32Kc512Nr16Alignment ||
         (packed.data != nullptr &&
-         reinterpret_cast<std::uintptr_t>(packed.data) % kCpuBPanelF32V1Alignment != 0)) {
+         reinterpret_cast<std::uintptr_t>(packed.data) % kCpuBPanelF32Kc512Nr16Alignment != 0)) {
         return Status::InvalidArgument(std::string(kernel_name) +
-                                       " requires the cpu_bpanel_f32_v1_avx2 candidate recipe");
+                                       " requires the cpu_bpanel_f32_kc512_nr16 recipe");
     }
 
     AM_ASSIGN_OR_RETURN(const size_t required_bytes,
-                        cpu::CpuBPanelF32V1PackedByteSize(
+                        cpu::CpuBPanelF32Kc512Nr16PackedByteSize(
                                 expected_shape[0], expected_shape[1]));
     if (packed.nbytes != required_bytes || (required_bytes != 0 && packed.data == nullptr)) {
         return Status::InvalidArgument(std::string(kernel_name) +

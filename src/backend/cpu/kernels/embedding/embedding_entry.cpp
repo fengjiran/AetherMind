@@ -1,4 +1,4 @@
-#include "aethermind/backend/cpu/cpu_identity_packing.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/backend/cpu/kernels/common/alias_utils.h"
 #include "aethermind/backend/cpu/packed_weight_validation.h"
 #include "aethermind/backend/kernel_context.h"

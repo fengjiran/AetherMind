@@ -1,5 +1,5 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/cpu/cpu_identity_packing.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/compiler/graph_lowering.h"
@@ -422,7 +422,7 @@ TEST(CPUKernelGateUpLinear, RejectsMalformedPackedMetadataAndTensorViews) {
     wrong_recipe.logical_dtype = DataType::Float(16);
     EXPECT_EQ(RunGateUpEntry(*kernel, views, wrong_recipe).code(), StatusCode::kInvalidArgument);
     wrong_recipe = MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape);
-    wrong_recipe.recipe_layout = PackingLayout::kCpuBPanelF32V1Avx2;
+    wrong_recipe.recipe_layout = PackingLayout::kCpuBPanelF32Kc512Nr16;
     EXPECT_EQ(RunGateUpEntry(*kernel, views, wrong_recipe).code(), StatusCode::kInvalidArgument);
     wrong_recipe = MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape);
     wrong_recipe.recipe_alignment = 32;

@@ -1,6 +1,5 @@
 #include "aethermind/backend/backend.h"
-#include "aethermind/backend/cpu/cpu_bpanel_packing.h"
-#include "aethermind/backend/cpu/cpu_identity_packing.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/model/weight/weight_packing_request.h"
 #include "aethermind/operators/op_params.h"
 #include "inference/inference_internal.h"
@@ -34,7 +33,7 @@ public:
             return CpuIdentityPackingRecipe();
         }
         if (op_type == OpType::kQkvLinear) {
-            return cpu::CpuBPanelF32V1Avx2Recipe();
+            return cpu::CpuBPanelF32Kc512Nr16Recipe();
         }
         return Status::NotFound("test recipe is not registered for this op");
     }
@@ -96,7 +95,7 @@ TEST(PackingRequestResolution, KeepsDistinctWeightValuesSeparate) {
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
     ASSERT_EQ(resolved->size(), 2U);
     EXPECT_EQ((*resolved)[0].recipe, CpuIdentityPackingRecipe());
-    EXPECT_EQ((*resolved)[1].recipe, cpu::CpuBPanelF32V1Avx2Recipe());
+    EXPECT_EQ((*resolved)[1].recipe, cpu::CpuBPanelF32Kc512Nr16Recipe());
 }
 
 } // namespace

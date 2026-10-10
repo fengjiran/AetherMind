@@ -30,7 +30,7 @@ struct GemmF32Args {
     int64_t output_n_stride{};
 };
 
-/// @brief Pre-validated FP32 GEMM whose B operand is an opaque v1 B-panel.
+/// @brief Pre-validated FP32 GEMM whose B operand is an opaque KC=512, NR=16 B-panel.
 ///
 /// `gemm.n` is the output slice width, `weight_n_offset` selects its first
 /// logical row in the packed [N,K] weight, and `logical_n`/`n_blocks` describe
@@ -51,7 +51,7 @@ struct PackedGemmF32Args {
 /// element without reading `lhs` or `rhs`.
 Status RunGemmF32Reference(const GemmF32Args& args) noexcept;
 
-/// @brief Runs the double-accumulation oracle over the v1 packed-B layout.
+/// @brief Runs the double-accumulation oracle over the KC=512, NR=16 packed-B layout.
 Status RunGemmF32PackedBReference(const PackedGemmF32Args& args) noexcept;
 
 /// @brief Runs the scalar-optimized FP32 GEMM candidate.

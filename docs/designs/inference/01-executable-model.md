@@ -135,7 +135,7 @@ model inputs 不进绑定表：token/position 由 Session 按 phase 追加，重
 | shape/stride 借用被后续改动破坏 | §3.2 明确禁止内联缓冲；移动与扩容后的有效性有回归测试 |
 | 单 plan 阻碍后续 phase 拆分 | 对外保持按 phase 查询的形状，未来拆分双 plan 不改调用方 |
 | 完整 packed Llama 的可解析性依赖描述符覆盖 | `enable_packed_weights=true` 会把所有含权重的 step 标为 packed，因此每个含权重算子都必须有 packed 描述符。`kEmbedding`/`kRmsNorm`/`kLinear` 的 packed identity 变体已补齐，完整 Llama 的 packed 配置现可 prepare（`ExecutableModel.PackedLoweringPreparesAllWeightConsumers`）；新增含权重算子时若漏掉 packed 变体，会在 kernel resolve 期以 `kNotFound` 失败 |
-| packed recipe 选举 | `cpu_bpanel_f32_v1_avx2` 候选与 identity 同 priority，当前选举仍落 identity；升为默认需 benchmark 证据，见 [GEMM packed weight 提案](../../operators/gemm/cpu-gemm-packed-weight.md) |
+| packed recipe 选举 | `cpu_bpanel_f32_kc512_nr16` 候选与 identity 同 priority，当前选举仍落 identity；升为默认需 benchmark 证据，见 [GEMM packed weight 提案](../../operators/gemm/cpu-gemm-packed-weight.md) |
 | phase 匹配语义 | 单 phase artifact 对 `kBoth` 查询返回错误（不声称覆盖两个 phase），与 `PhaseMatches` 一致 |
 
 ## 9. 测试要点

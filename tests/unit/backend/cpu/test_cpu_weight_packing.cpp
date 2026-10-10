@@ -1,5 +1,4 @@
-#include "aethermind/backend/cpu/cpu_bpanel_packing.h"
-#include "aethermind/backend/cpu/cpu_identity_packing.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "backend/cpu/cpu_backend_internal.h"
 
 #include "aethermind/backend/packed_weight.h"
@@ -204,9 +203,9 @@ TEST(CpuWeightPacking, BpanelPacksLogicalMatrixAndZeroPadsEveryTail) {
             logical.data(), DataType::Float32(), shape, strides);
     const std::array<TensorView, 1> components{logical_view};
     const KernelSelector selector = MakePackedCpuSelector();
-    const PackingRecipe recipe = cpu::CpuBPanelF32V1Avx2Recipe();
+    const PackingRecipe recipe = cpu::CpuBPanelF32Kc512Nr16Recipe();
 
-    const auto required_bytes = cpu::CpuBPanelF32V1PackedByteSize(n, k);
+    const auto required_bytes = cpu::CpuBPanelF32Kc512Nr16PackedByteSize(n, k);
     ASSERT_TRUE(required_bytes.ok()) << required_bytes.status().ToString();
     EXPECT_EQ(*required_bytes, size_t{131072});
 
@@ -221,18 +220,18 @@ TEST(CpuWeightPacking, BpanelPacksLogicalMatrixAndZeroPadsEveryTail) {
 
     const float* const data = static_cast<const float*>((*packed)->storage().data());
     constexpr int64_t n_blocks = 2;
-    for (int64_t padded_k = 0; padded_k < 2 * cpu::kCpuBPanelF32V1KC;
+    for (int64_t padded_k = 0; padded_k < 2 * cpu::kCpuBPanelF32Kc512Nr16KC;
          ++padded_k) {
-        for (int64_t padded_n = 0; padded_n < n_blocks * cpu::kCpuBPanelF32V1NR;
+        for (int64_t padded_n = 0; padded_n < n_blocks * cpu::kCpuBPanelF32Kc512Nr16NR;
              ++padded_n) {
             const size_t index =
-                    (((static_cast<size_t>(padded_k / cpu::kCpuBPanelF32V1KC) *
+                    (((static_cast<size_t>(padded_k / cpu::kCpuBPanelF32Kc512Nr16KC) *
                                static_cast<size_t>(n_blocks) +
-                       static_cast<size_t>(padded_n / cpu::kCpuBPanelF32V1NR)) *
-                              static_cast<size_t>(cpu::kCpuBPanelF32V1KC) +
-                      static_cast<size_t>(padded_k % cpu::kCpuBPanelF32V1KC)) *
-                     static_cast<size_t>(cpu::kCpuBPanelF32V1NR)) +
-                    static_cast<size_t>(padded_n % cpu::kCpuBPanelF32V1NR);
+                       static_cast<size_t>(padded_n / cpu::kCpuBPanelF32Kc512Nr16NR)) *
+                              static_cast<size_t>(cpu::kCpuBPanelF32Kc512Nr16KC) +
+                      static_cast<size_t>(padded_k % cpu::kCpuBPanelF32Kc512Nr16KC)) *
+                     static_cast<size_t>(cpu::kCpuBPanelF32Kc512Nr16NR)) +
+                    static_cast<size_t>(padded_n % cpu::kCpuBPanelF32Kc512Nr16NR);
             const float expected = padded_n < n && padded_k < k
                                            ? logical[static_cast<size_t>(padded_n * k + padded_k)]
                                            : 0.0F;

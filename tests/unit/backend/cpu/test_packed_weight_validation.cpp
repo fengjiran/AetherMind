@@ -1,5 +1,4 @@
-#include "aethermind/backend/cpu/cpu_bpanel_packing.h"
-#include "aethermind/backend/cpu/cpu_identity_packing.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/backend/cpu/packed_weight_validation.h"
 
 #include <gtest/gtest.h>
@@ -37,9 +36,9 @@ PackedWeightView MakeBpanelPackedWeight(const void* data,
             .nbytes = nbytes,
             .logical_dtype = DataType::Float32(),
             .logical_shape = shape,
-            .recipe_layout = cpu::kCpuBPanelF32V1Avx2Layout,
-            .recipe_alignment = cpu::kCpuBPanelF32V1Alignment,
-            .alignment = cpu::kCpuBPanelF32V1Alignment,
+            .recipe_layout = cpu::kCpuBPanelF32Kc512Nr16Layout,
+            .recipe_alignment = cpu::kCpuBPanelF32Kc512Nr16Alignment,
+            .alignment = cpu::kCpuBPanelF32Kc512Nr16Alignment,
     };
 }
 
@@ -129,7 +128,7 @@ TEST(CpuIdentityPackedWeight, RejectsMalformedMetadataRecipeAndStorage) {
 
     PackedWeightView wrong_recipe =
             MakeIdentityPackedWeight(storage, sizeof(storage), expected_shape);
-    wrong_recipe.recipe_layout = PackingLayout::kCpuBPanelF32V1Avx2;
+    wrong_recipe.recipe_layout = PackingLayout::kCpuBPanelF32Kc512Nr16;
     EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
                       wrong_recipe, expected_shape, "PackedWeightUtilsTest")
                       .code(),

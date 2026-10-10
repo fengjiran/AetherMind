@@ -1,5 +1,4 @@
-#include "aethermind/backend/cpu/cpu_bpanel_packing.h"
-#include "aethermind/backend/cpu/cpu_identity_packing.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/backend/cpu/kernels/common/alias_utils.h"
 #include "aethermind/backend/cpu/kernels/common/layout_utils.h"
 #include "aethermind/backend/cpu/packed_weight_validation.h"
@@ -260,8 +259,8 @@ Status BuildGateUpLinearF32BpanelArgs(
             "CPU GateUpLinear", gate_analysis.footprint(), "gate output",
             up_analysis.footprint(), "up output"));
 
-    const int64_t n_blocks = total_n / cpu::kCpuBPanelF32V1NR +
-                             (total_n % cpu::kCpuBPanelF32V1NR != 0);
+    const int64_t n_blocks = total_n / cpu::kCpuBPanelF32Kc512Nr16NR +
+                             (total_n % cpu::kCpuBPanelF32Kc512Nr16NR != 0);
     const float* const packed_data =
             static_cast<const float*>(context.packed_weight->data);
     const auto build_gemm = [&](const MutableTensorView& output,
@@ -419,7 +418,7 @@ AM_REGISTER_KERNEL(
                         .weight_format = WeightFormat::kPacked,
                         .phase = ExecPhase::kBoth,
                 },
-                .packing_recipe = cpu::CpuBPanelF32V1Avx2Recipe(),
+                .packing_recipe = cpu::CpuBPanelF32Kc512Nr16Recipe(),
                 .cpu_requirements = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
                 .kernel_func = &GateUpLinearF32PackedBEntry,
                 .priority = 10,

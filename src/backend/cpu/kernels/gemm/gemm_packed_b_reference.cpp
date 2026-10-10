@@ -1,4 +1,4 @@
-#include "aethermind/backend/cpu/cpu_bpanel_packing.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/base/macros.h"
 #include "gemm_internal.h"
 
@@ -9,14 +9,14 @@ namespace aethermind::cpu::detail {
 namespace {
 
 size_t PackedBIndex(int64_t n, int64_t k, int64_t n_blocks) noexcept {
-    const size_t panel = static_cast<size_t>(k / cpu::kCpuBPanelF32V1KC);
-    const size_t block = static_cast<size_t>(n / cpu::kCpuBPanelF32V1NR);
-    const size_t panel_row = static_cast<size_t>(k % cpu::kCpuBPanelF32V1KC);
-    const size_t column = static_cast<size_t>(n % cpu::kCpuBPanelF32V1NR);
+    const size_t panel = static_cast<size_t>(k / cpu::kCpuBPanelF32Kc512Nr16KC);
+    const size_t block = static_cast<size_t>(n / cpu::kCpuBPanelF32Kc512Nr16NR);
+    const size_t panel_row = static_cast<size_t>(k % cpu::kCpuBPanelF32Kc512Nr16KC);
+    const size_t column = static_cast<size_t>(n % cpu::kCpuBPanelF32Kc512Nr16NR);
     return (((panel * static_cast<size_t>(n_blocks) + block) *
-                     static_cast<size_t>(cpu::kCpuBPanelF32V1KC) +
+                     static_cast<size_t>(cpu::kCpuBPanelF32Kc512Nr16KC) +
              panel_row) *
-            static_cast<size_t>(cpu::kCpuBPanelF32V1NR)) +
+            static_cast<size_t>(cpu::kCpuBPanelF32Kc512Nr16NR)) +
            column;
 }
 
@@ -33,20 +33,20 @@ Status RunGemmF32PackedBReference(const PackedGemmF32Args& packed) noexcept {
                 "Packed GEMM received invalid logical dimensions or output slice");
     }
     const int64_t expected_blocks =
-            packed.logical_n / cpu::kCpuBPanelF32V1NR +
-            (packed.logical_n % cpu::kCpuBPanelF32V1NR != 0);
+            packed.logical_n / cpu::kCpuBPanelF32Kc512Nr16NR +
+            (packed.logical_n % cpu::kCpuBPanelF32Kc512Nr16NR != 0);
     if (packed.n_blocks != expected_blocks) {
         return Status::InvalidArgument(
                 "Packed GEMM n_blocks does not match its logical N dimension");
     }
     AM_ASSIGN_OR_RETURN(const size_t required_bytes,
-                        cpu::CpuBPanelF32V1PackedByteSize(
+                        cpu::CpuBPanelF32Kc512Nr16PackedByteSize(
                                 packed.logical_n, packed.logical_k));
     if (packed.packed_nbytes != required_bytes ||
         (required_bytes != 0 &&
          (packed.packed_b == nullptr ||
           reinterpret_cast<std::uintptr_t>(packed.packed_b) %
-                          cpu::kCpuBPanelF32V1Alignment !=
+                          cpu::kCpuBPanelF32Kc512Nr16Alignment !=
                   0))) {
         return Status::InvalidArgument(
                 "Packed GEMM artifact does not match its bpanel byte/alignment contract");

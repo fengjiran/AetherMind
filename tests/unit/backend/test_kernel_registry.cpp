@@ -61,10 +61,10 @@ TEST(KernelRegistry, PackedDefRequiresValidRecipeAlignment) {
               StatusCode::kInvalidArgument);
 }
 
-TEST(PackingRecipe, DiagnosticNamesPreserveExistingLayoutLabels) {
+TEST(PackingRecipe, DiagnosticNamesDescribePhysicalLayouts) {
     EXPECT_EQ(ToString(PackingLayout::kCpuIdentity), "cpu_identity");
-    EXPECT_EQ(ToString(PackingLayout::kCpuBPanelF32V1Avx2),
-              "cpu_bpanel_f32_v1_avx2_kc512_candidate");
+    EXPECT_EQ(ToString(PackingLayout::kCpuBPanelF32Kc512Nr16),
+              "cpu_bpanel_f32_kc512_nr16");
 }
 
 TEST(PackingRecipe, DiagnosticNamesHandleUnspecifiedAndUnknownLayouts) {

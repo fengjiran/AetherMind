@@ -1,7 +1,7 @@
 #include "aethermind/model/weight/packed_weight_collection.h"
 
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/cpu/cpu_identity_packing.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/base/device.h"
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/memory/buffer.h"
@@ -244,7 +244,7 @@ TEST(PackedWeightCollectionOwnership, DistinctRecipesCoexistForSameBindingAndSel
             MakeTransformerWeightBinding(0, TransformerWeightRole::kAttentionQ);
     const WeightArtifactKey base_key{.binding = binding, .selector = selector};
     const PackingRecipe recipe_a{.layout = PackingLayout::kCpuIdentity, .alignment = 64};
-    const PackingRecipe recipe_b{.layout = PackingLayout::kCpuBPanelF32V1Avx2, .alignment = 64};
+    const PackingRecipe recipe_b{.layout = PackingLayout::kCpuBPanelF32Kc512Nr16, .alignment = 64};
 
     // Two packing variants of the same logical weight coexist: the recipe
     // discriminates artifacts within one {binding, selector}.

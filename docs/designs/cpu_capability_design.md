@@ -195,7 +195,7 @@ FindCandidates(op_type, selector)          // 结构匹配
 
 ### 7.3 与打包的关系
 
-生产准备通过 `Backend::GetPackingRecipe(op_type, selector)` 查询符合当前 feature policy 的 descriptor，并与 `PrepareKernel` 复用相同 eligibility/priority 策略；选出的 recipe 随 request、artifact 与 `WeightArtifactKey` 传递。`CpuBackend::PackWeights(op, components, selector, recipe)` 核对当前 descriptor 的 recipe 后，委托 `cpu::internal::PackWeightsWithRecipe`；该内部函数不查询 registry，单权重使用单元素 components。identity 与 B-panel 的布局身份均由显式 recipe 表达；直接使用 identity 的测试通过 `cpu_identity_packing.h` 中的 `CpuIdentityPackingRecipe()` 指定布局，不能据此推断生产布局或跨 ISA 的产物可复用性。
+生产准备通过 `Backend::GetPackingRecipe(op_type, selector)` 查询符合当前 feature policy 的 descriptor，并与 `PrepareKernel` 复用相同 eligibility/priority 策略；选出的 recipe 随 request、artifact 与 `WeightArtifactKey` 传递。`CpuBackend::PackWeights(op, components, selector, recipe)` 核对当前 descriptor 的 recipe 后，委托 `cpu::internal::PackWeightsWithRecipe`；该内部函数不查询 registry，单权重使用单元素 components。identity 与 B-panel 的布局身份均由显式 recipe 表达；直接使用 identity 的测试通过 `cpu_packed_weight_layout.h` 中的 `CpuIdentityPackingRecipe()` 指定布局，不能据此推断生产布局或跨 ISA 的产物可复用性。
 
 ## 8. 平台差异与边界
 

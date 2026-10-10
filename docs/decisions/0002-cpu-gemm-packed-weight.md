@@ -16,7 +16,7 @@ GEMM B-panel layout 另外需要固定 `NR/KC` 和 padded byte size。`KC` 会�
 1. `KernelDef` 拥有 packed descriptor 的精确 `PackingRecipe`；plain descriptor 不得声明 recipe。recipe 继续只含 `{layout, alignment}`，shape 和尺寸从 artifact logical metadata 计算。
 2. backend 的 recipe query 与 kernel prepare 共用 descriptor eligibility、CPU feature 过滤和 priority resolver。Inference 在获得 backend 后把 recipe 注入每个 packing request；共享权重只有在 consumer op、binding、selector 和 recipe 一致时才 coalesce，否则准备期明确失败。
 3. packing service 接收显式 recipe，artifact、`WeightArtifactKey` 与 `ResolvedKernel.expected_packing_recipe` 必须相等。`CpuBackend::PackWeights(..., recipe)` 还会校验 recipe 等于同一 backend/feature policy 当前解析出的 descriptor recipe。隔离 candidate 测试/benchmark 直接调用内部 `cpu::internal::PackWeightsWithRecipe` primitive，不伪装成 global backend 选择结果。CPU identity recipe 和已有 plain 路径保留。
-4. 实现 `cpu_bpanel_f32_v1_avx2_kc512_candidate` 作为可独立验证的物理布局候选：`NR=16`、`KC=512`、64-byte 对齐，存储顺序为 `[K-panel][N-block][KC][NR]`，K/N 尾部补零，artifact 字节数严格为 `ceil(N/NR) * ceil(K/KC) * KC * NR * sizeof(float)`。不对齐的 QKV/GateUp component slice 使用 packed scan/reference driver。
+4. 实现 `cpu_bpanel_f32_kc512_nr16` 作为可独立验证的物理布局候选：`NR=16`、`KC=512`、64-byte 对齐，存储顺序为 `[K-panel][N-block][KC][NR]`，K/N 尾部补零，artifact 字节数严格为 `ceil(N/NR) * ceil(K/KC) * KC * NR * sizeof(float)`。不对齐的 QKV/GateUp component slice 使用 packed scan/reference driver。
 5. 当前 identity descriptor 与 bpanel descriptor 保持相同 priority，identity 先注册，因此常规全局 dispatch 继续使用 identity。只有完成目标机器的噪声 floor、KC 候选比较、prepared Decode/Prefill 和 break-even 门禁后，才讨论提升 bpanel priority。benchmark 的短 setup break-even 数值仅用于诊断。
 
 ## 权衡

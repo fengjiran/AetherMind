@@ -1,6 +1,6 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/backend/cpu/cpu_bpanel_packing.h"
 #include "aethermind/backend/cpu/cpu_info.h"
+#include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/backend/kernel_context.h"
 #include "backend/cpu/cpu_backend_internal.h"
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
@@ -48,7 +48,7 @@ std::unique_ptr<PackedWeight> PackBpanel(int64_t n,
     const std::array<TensorView, 1> components{weight_view};
     auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kLinear, components, selector,
-            cpu::CpuBPanelF32V1Avx2Recipe());
+            cpu::CpuBPanelF32Kc512Nr16Recipe());
     if (!packed.ok()) {
         ADD_FAILURE() << packed.status().ToString();
         return nullptr;
@@ -81,8 +81,8 @@ void ExpectPackedDriverMatchesReference(int64_t m,
     auto artifact = PackBpanel(logical_n, k, weights, selector);
     ASSERT_NE(artifact, nullptr);
     const auto* const packed_data = static_cast<const float*>(artifact->storage().data());
-    const int64_t n_blocks = logical_n / cpu::kCpuBPanelF32V1NR +
-                             (logical_n % cpu::kCpuBPanelF32V1NR != 0);
+    const int64_t n_blocks = logical_n / cpu::kCpuBPanelF32Kc512Nr16NR +
+                             (logical_n % cpu::kCpuBPanelF32Kc512Nr16NR != 0);
     const cpu::detail::PackedGemmF32Args packed_args{
             .gemm = cpu::detail::GemmF32Args{
                     .lhs = lhs.data(),

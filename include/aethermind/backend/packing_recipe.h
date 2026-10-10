@@ -14,14 +14,14 @@ namespace aethermind {
 
 /// @brief Engine-owned identities of exact physical weight layouts.
 ///
-/// Every non-empty identity describes an immutable layout version. Changes to
+/// Every non-empty identity describes an immutable physical layout. Changes to
 /// tile dimensions, panel order or padding require a new identity; backend
 /// layout contract headers remain the authority for the physical formulas.
 enum class PackingLayout : uint8_t {
     /// No packing layout, or a request awaiting preparation-time resolution.
     kNone = 0,
-    kCpuIdentity = 1,
-    kCpuBPanelF32V1Avx2 = 2,
+    kCpuIdentity,
+    kCpuBPanelF32Kc512Nr16,
 };
 
 /// @brief Checks whether a value identifies a supported, explicit layout.
@@ -29,7 +29,7 @@ enum class PackingLayout : uint8_t {
 /// @return True for a known physical layout; false for kNone or unknown values.
 AM_NODISCARD constexpr bool IsValidPackingLayout(PackingLayout layout) noexcept {
     return layout == PackingLayout::kCpuIdentity ||
-           layout == PackingLayout::kCpuBPanelF32V1Avx2;
+           layout == PackingLayout::kCpuBPanelF32Kc512Nr16;
 }
 
 /// @brief Returns the diagnostic name of a packing layout.
@@ -41,8 +41,8 @@ AM_NODISCARD constexpr std::string_view ToString(PackingLayout layout) noexcept 
             return "none";
         case PackingLayout::kCpuIdentity:
             return "cpu_identity";
-        case PackingLayout::kCpuBPanelF32V1Avx2:
-            return "cpu_bpanel_f32_v1_avx2_kc512_candidate";
+        case PackingLayout::kCpuBPanelF32Kc512Nr16:
+            return "cpu_bpanel_f32_kc512_nr16";
     }
     return "unknown";
 }

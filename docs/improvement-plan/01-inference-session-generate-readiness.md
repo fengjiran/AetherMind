@@ -57,7 +57,7 @@ M1–M4 已闭环，M5 已提供基于真实 `CpuBackend` 的同步 `InferenceSe
 
 ### 2.2 当前 CPU kernel 覆盖
 
-真实 CPU registry 当前有（截至 2026-09-24，共 15 类、27 个描述符，其中 9 个声明 `weight_format = kPacked`——含 QkvLinear/GateUpLinear 的 packed-only reference、Embedding/RMSNorm/Linear/AddRmsNorm 的 packed identity，以及 Linear/QkvLinear/GateUpLinear 的 `cpu_bpanel_f32_v1_avx2` 候选；reference 命名统一为 `cpu::<op>_f32_reference`）：
+真实 CPU registry 当前有（截至 2026-09-24，共 15 类、27 个描述符，其中 9 个声明 `weight_format = kPacked`——含 QkvLinear/GateUpLinear 的 packed-only reference、Embedding/RMSNorm/Linear/AddRmsNorm 的 packed identity，以及 Linear/QkvLinear/GateUpLinear 的 `cpu_bpanel_f32_kc512_nr16` 候选；reference 命名统一为 `cpu::<op>_f32_reference`）：
 
 | OpType | Reference kernel | Optimized kernel | Generate baseline 状态 |
 |---|---:|---:|---|
@@ -85,7 +85,7 @@ M1–M4 已闭环，M5 已提供基于真实 `CpuBackend` 的同步 `InferenceSe
 - binding-aware `WeightArtifactKey`；
 - graph-driven packing request（compiler）+ 编排期 recipe 注入（`Backend::GetPackingRecipe` → `WeightPackingRequest::recipe`）；
 - direct/QKV/Gate-Up composite weight materialization（backend 经 `Backend::PackWeights` 落实，含对齐与分配）；
-- QkvLinear/GateUpLinear packed-only reference kernel（cpu_identity 与 cpu_bpanel_f32_v1_avx2 双 recipe 契约：logical shape/recipe/alignment 校验、行切分、与输出的 disjoint 校验）；
+- QkvLinear/GateUpLinear packed-only reference kernel（cpu_identity 与 cpu_bpanel_f32_kc512_nr16 双 recipe 契约：logical shape/recipe/alignment 校验、行切分、与输出的 disjoint 校验）；
 - `RawWeightView` byte-size 验证；
 - tied lm-head fallback；
 - plain-step filtering和 exact recipe lookup。
@@ -93,14 +93,14 @@ M1–M4 已闭环，M5 已提供基于真实 `CpuBackend` 的同步 `InferenceSe
 已补齐（2026-09-23）：
 
 - kLinear/kEmbedding/kRmsNorm 的 kPacked identity 变体（unfused packed 路径可解析）；`enable_packed_weights=true` 的完整 Llama 已可 prepare，由 `ExecutableModel.PackedLoweringPreparesAllWeightConsumers` 正向覆盖（此前的 `PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 缺口测试已移除）；
-- QkvLinear/GateUpLinear/Linear 的 `cpu_bpanel_f32_v1_avx2` 候选 descriptor（AVX2+FMA 特化；与 identity 同 priority，选举当前仍落 identity，测试 `CPUKernelLinear.PreparesPackedIdentityFallback` 固化）。
+- QkvLinear/GateUpLinear/Linear 的 `cpu_bpanel_f32_kc512_nr16` 候选 descriptor（AVX2+FMA 特化；与 identity 同 priority，选举当前仍落 identity，测试 `CPUKernelLinear.PreparesPackedIdentityFallback` 固化）。
 
 仍未具备：
 
 - bpanel 成为默认选择（需 benchmark 证据后调整 priority/eligibility，见 [GEMM 提案](../operators/gemm/cpu-gemm-packed-weight.md) §5 M5）；
 - `enable_packed_weights=true` 的 unfused e2e 数值验证。
 
-`Backend::PackWeights(op, components, selector, recipe)` 是生产打包入口；CPU backend 核对 descriptor recipe 后，调用内部 `cpu::internal::PackWeightsWithRecipe` 分派 identity 与 `cpu_bpanel_f32_v1_avx2` 两种 layout；单权重使用单元素 components，生产 recipe 选择以 `Backend::GetPackingRecipe` 为准。QkvLinear/GateUpLinear/Linear 的 packed 契约已有全链路数值测试覆盖；bpanel 是否升为默认仍取决于 benchmark 结论。
+`Backend::PackWeights(op, components, selector, recipe)` 是生产打包入口；CPU backend 核对 descriptor recipe 后，调用内部 `cpu::internal::PackWeightsWithRecipe` 分派 identity 与 `cpu_bpanel_f32_kc512_nr16` 两种 layout；单权重使用单元素 components，生产 recipe 选择以 `Backend::GetPackingRecipe` 为准。QkvLinear/GateUpLinear/Linear 的 packed 契约已有全链路数值测试覆盖；bpanel 是否升为默认仍取决于 benchmark 结论。
 
 ## 3. 必须先闭环的阻塞项
 

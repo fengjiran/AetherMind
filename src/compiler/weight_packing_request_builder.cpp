@@ -134,6 +134,12 @@ StatusOr<std::vector<WeightPackingRequest>> BuildWeightPackingRequests(
 
             request.components = std::move(*components);
             requests.push_back(std::move(request));
+
+            // ValidateLoweredGraph admits a kPacked step only with exactly one
+            // kWeight port, and execution derives that step's single packed key
+            // from the same port. Stopping here keeps one request per packed
+            // consumer instead of implying multi-weight steps are packable.
+            break;
         }
     }
     return requests;

@@ -83,7 +83,8 @@ public:
     /// @return Ok on success, InvalidArgument if the artifact is null or its
     ///         key comes from a different source artifact or violates the recipe
     ///         contract, or AlreadyExists if
-    ///         an entry with the same key is already present.
+    ///         an entry with the same key is already present. Allocation failure
+    ///         returns ResourceExhausted and leaves the collection unchanged.
     Status Insert(const WeightArtifactKey& key,
                   std::shared_ptr<const PackedWeight> artifact) noexcept;
 
@@ -124,8 +125,8 @@ private:
 /// @param backend Packing service provider. Must implement PackWeights for
 ///        the requests' selectors.
 /// @param requests Requests to execute. Every request must carry the same
-///        source_id and a non-empty list of raw components; a mixed-source
-///        batch is rejected before any weight is packed.
+///        source_id and a non-empty list of contiguous row-major raw components;
+///        a mixed-source batch is rejected before any weight is packed.
 /// @return The bound collection on success, or the first validation, packing,
 ///         or insertion error. An empty batch returns an unbound empty collection.
 StatusOr<PackedWeightCollection> PrepackWeightRequests(

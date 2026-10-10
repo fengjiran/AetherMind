@@ -28,7 +28,8 @@ struct WeightPackingRequest {
     /// Non-empty raw weight views in logical binding order: one view for a
     /// direct binding, Q/K/V for QkvWeightBinding, Gate/Up for GateUpWeightBinding.
     /// Each view retains its backing storage; the backend materializes any
-    /// composite artifact and owns the physical packing layout.
+    /// composite artifact and owns the physical packing layout. Components must
+    /// be contiguous row-major weights; RawWeightView carries no stride metadata.
     std::vector<RawWeightView> components{};
     KernelSelector selector{};
     /// Empty when compilation builds the request. Preparation selects the

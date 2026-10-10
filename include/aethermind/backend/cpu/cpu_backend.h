@@ -74,6 +74,8 @@ public:
     ///
     /// See `Backend::PackWeights` for the component contract; the CPU backend
     /// fuses composites along axis 0 and stores one aligned artifact per call.
+    /// Shape, row-major stride and byte-size overflow returns Overflow before
+    /// reading data; allocation failure returns ResourceExhausted.
     AM_NODISCARD StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
             OpType op_type,
             std::span<const TensorView> components,

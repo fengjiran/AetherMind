@@ -7,6 +7,7 @@
 
 #include <limits>
 #include <memory>
+#include <new>
 #include <utility>
 #include <vector>
 
@@ -18,6 +19,9 @@ namespace {
 StatusOr<TensorView> MakeRowMajorView(const RawWeightView& raw,
                                       std::vector<int64_t>& strides) {
     AM_RETURN_IF_ERROR(ValidateRawWeightView(raw));
+    if (!raw.is_contiguous) {
+        return Status::InvalidArgument("Raw weight components must be contiguous row-major views");
+    }
     strides.resize(raw.shape.size());
     if (!strides.empty()) {
         strides.back() = 1;
@@ -34,20 +38,27 @@ StatusOr<TensorView> MakeRowMajorView(const RawWeightView& raw,
 
 /// Expected byte payload of the logical weight an artifact claims to pack.
 /// Undefined or zero-byte dtypes yield 0 (no size premise).
-StatusOr<size_t> LogicalByteSize(const PackedWeight& artifact) noexcept {
+StatusOr<size_t> LogicalByteSize(const PackedWeight& artifact) {
     if (artifact.logical_dtype().IsUndefined() ||
         artifact.logical_dtype().nbytes() == 0) {
         return 0U;
     }
 
-    size_t elements = 1;
+    bool has_zero_dimension = false;
     for (const int64_t dimension: artifact.logical_shape()) {
         if (dimension < 0) {
             return Status::InvalidArgument(
                     "Packed artifact logical shape contains a negative "
                     "dimension");
         }
+        has_zero_dimension |= dimension == 0;
+    }
+    if (has_zero_dimension) {
+        return 0U;
+    }
 
+    size_t elements = 1;
+    for (const int64_t dimension: artifact.logical_shape()) {
         if (static_cast<uint64_t>(dimension) > std::numeric_limits<size_t>::max() ||
             CheckOverflowMul(elements, static_cast<size_t>(dimension), &elements)) {
             return Status::Overflow(
@@ -66,7 +77,7 @@ StatusOr<size_t> LogicalByteSize(const PackedWeight& artifact) noexcept {
 
 } // namespace
 
-Status PackedWeightCollection::SetSourceId(uint64_t source_id) noexcept {
+Status PackedWeightCollection::SetSourceId(uint64_t source_id) noexcept try {
     if (source_frozen_ && source_id != source_id_) {
         return Status::InvalidArgument("PackedWeightCollection is already frozen to "
                                        "a different source artifact");
@@ -75,6 +86,8 @@ Status PackedWeightCollection::SetSourceId(uint64_t source_id) noexcept {
     source_id_ = source_id;
     source_frozen_ = true;
     return Status::Ok();
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 uint64_t PackedWeightCollection::source_id() const noexcept {
@@ -82,7 +95,7 @@ uint64_t PackedWeightCollection::source_id() const noexcept {
 }
 
 Status PackedWeightCollection::Insert(const WeightArtifactKey& key,
-                                      std::shared_ptr<const PackedWeight> artifact) noexcept {
+                                      std::shared_ptr<const PackedWeight> artifact) noexcept try {
     if (artifact == nullptr) {
         return Status::InvalidArgument(
                 "PackedWeightCollection cannot insert null packed weights");
@@ -135,6 +148,7 @@ Status PackedWeightCollection::Insert(const WeightArtifactKey& key,
                 "Packed artifact storage is smaller than its logical weight");
     }
 
+    entries_.emplace_back(key, std::move(artifact));
     if (!source_frozen_) {
         // Binding on the first successful Insert keeps source_id_ consistent
         // with the entries, so a collection populated without an explicit
@@ -143,8 +157,9 @@ Status PackedWeightCollection::Insert(const WeightArtifactKey& key,
         source_frozen_ = true;
     }
 
-    entries_.emplace_back(key, std::move(artifact));
     return Status::Ok();
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 std::shared_ptr<const PackedWeight>
@@ -167,7 +182,7 @@ bool PackedWeightCollection::empty() const noexcept {
 
 StatusOr<PackedWeightCollection>
 PrepackWeightRequests(const Backend& backend,
-                      const std::vector<WeightPackingRequest>& requests) {
+                      const std::vector<WeightPackingRequest>& requests) try {
     PackedWeightCollection packed_weight_collection;
     const uint64_t source_id = requests.empty() ? 0U : requests.front().source_id;
     // Validate the whole batch before packing anything: a mixed batch would
@@ -221,6 +236,9 @@ PrepackWeightRequests(const Backend& backend,
         if (!packed.ok()) {
             return packed.status();
         }
+        if (*packed == nullptr) {
+            return Status::Internal("Backend weight packing returned a null artifact");
+        }
 
         if ((*packed)->recipe() != req.recipe) {
             return Status::InvalidArgument(
@@ -240,6 +258,8 @@ PrepackWeightRequests(const Backend& backend,
     }
 
     return packed_weight_collection;
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 } // namespace aethermind

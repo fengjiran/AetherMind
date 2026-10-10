@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <new>
 #include <span>
@@ -52,8 +53,7 @@ StatusOr<Buffer> AllocateCpuPackedBuffer(size_t nbytes, size_t alignment) {
                                    Device::CPU(),
                                    effective_alignment)};
     } catch (const std::bad_alloc&) {
-        return Status::ResourceExhausted(
-                "Failed to allocate packed CPU weight buffer metadata");
+        return Status::ResourceExhausted({});
     }
 }
 
@@ -123,28 +123,55 @@ namespace cpu::internal {
 
 namespace {
 
+// TensorView's size/contiguity queries assume representable products. Packing
+// accepts borrowed views directly, so validate both suffix strides and bytes
+// here before any allocation or access to the logical payload.
+StatusOr<size_t> ContiguousWeightByteSize(const TensorView& weight) {
+    if (!weight.is_valid()) {
+        return Status::InvalidArgument("CPU weight packing requires valid weight views");
+    }
+
+    int64_t elements = 1;
+    for (size_t i = weight.shape().size(); i > 0; --i) {
+        const int64_t dim = weight.shape()[i - 1];
+        if (dim == 1) {
+            continue;
+        }
+
+        if (weight.strides()[i - 1] != elements) {
+            return Status::InvalidArgument(
+                    "logical weights must be contiguous row-major views");
+        }
+
+        // Evaluate right to left: a zero suffix permits enormous leading
+        // dimensions, whereas a zero prefix cannot repair an overflowing stride.
+        if (CheckOverflowMul(elements, dim, &elements)) {
+            return Status::Overflow(
+                    "CPU weight shape or row-major stride overflows int64_t");
+        }
+    }
+
+    size_t bytes = 0;
+    if (static_cast<uint64_t>(elements) > std::numeric_limits<size_t>::max() ||
+        CheckOverflowMul(static_cast<size_t>(elements), weight.itemsize(), &bytes)) {
+        return Status::Overflow("CPU weight byte size overflows size_t");
+    }
+    return bytes;
+}
+
 // The dispatcher validates requests and matches the complete recipe before
 // entering these helpers with non-empty components.
 StatusOr<std::unique_ptr<PackedWeight>> PackIdentityWeights(
         OpType op_type,
         std::span<const TensorView> components,
-        const KernelSelector& selector) noexcept {
+        const KernelSelector& selector) {
     const PackingRecipe recipe = CpuIdentityPackingRecipe();
     // A single component keeps the single-component rank contract: direct
     // bindings pack any valid rank (e.g. rank-1 norm weights).
     if (components.size() == 1U) {
         const TensorView& logical_weight = components.front();
-        if (!logical_weight.is_valid()) {
-            return Status::InvalidArgument(
-                    "CPU weight packing requires a valid logical weight TensorView");
-        }
-
-        if (!logical_weight.is_contiguous()) {
-            return Status::InvalidArgument(
-                    "logical weights must be contiguous row-major views");
-        }
-
-        const size_t packed_nbytes = logical_weight.logical_nbytes();
+        AM_ASSIGN_OR_RETURN(const size_t packed_nbytes,
+                            ContiguousWeightByteSize(logical_weight));
         // Preserve a stronger source alignment while satisfying the recipe.
         AM_ASSIGN_OR_RETURN(
                 Buffer packed_storage,
@@ -173,15 +200,7 @@ StatusOr<std::unique_ptr<PackedWeight>> PackIdentityWeights(
     size_t total_bytes = 0;
     size_t alignment = recipe.alignment;
     for (const auto& component: components) {
-        if (!component.is_valid()) {
-            return Status::InvalidArgument(
-                    "CPU weight packing requires valid weight component views");
-        }
-
-        if (!component.is_contiguous()) {
-            return Status::InvalidArgument(
-                    "weight components must be contiguous row-major views");
-        }
+        AM_ASSIGN_OR_RETURN(const size_t nbytes, ContiguousWeightByteSize(component));
 
         if (component.rank() != 2) {
             return Status::InvalidArgument("weight components must be rank 2");
@@ -206,17 +225,21 @@ StatusOr<std::unique_ptr<PackedWeight>> PackIdentityWeights(
         }
 
         if (CheckOverflowAdd(total_rows, rows, &total_rows)) {
-            return Status::InvalidArgument(
+            return Status::Overflow(
                     "fused weight row count overflows");
         }
 
-        const size_t nbytes = component.logical_nbytes();
         if (CheckOverflowAdd(total_bytes, nbytes, &total_bytes)) {
-            return Status::InvalidArgument(
+            return Status::Overflow(
                     "fused weight byte count overflows");
         }
 
         alignment = std::max(alignment, component.alignment());
+    }
+
+    int64_t total_elements = 0;
+    if (CheckOverflowMul(total_rows, in_features, &total_elements)) {
+        return Status::Overflow("fused weight element count overflows int64_t");
     }
 
     AM_ASSIGN_OR_RETURN(Buffer packed_storage,
@@ -224,7 +247,7 @@ StatusOr<std::unique_ptr<PackedWeight>> PackIdentityWeights(
 
     auto* out = static_cast<char*>(packed_storage.mutable_data());
     for (const auto& component: components) {
-        const size_t nbytes = component.logical_nbytes();
+        AM_ASSIGN_OR_RETURN(const size_t nbytes, ContiguousWeightByteSize(component));
         if (nbytes > 0) {
             std::memcpy(out, component.data(), nbytes);
             out += nbytes;
@@ -240,7 +263,7 @@ StatusOr<std::unique_ptr<PackedWeight>> PackIdentityWeights(
 StatusOr<std::unique_ptr<PackedWeight>> PackBPanelF32Kc512Nr16Weights(
         OpType op_type,
         std::span<const TensorView> components,
-        const KernelSelector& selector) noexcept {
+        const KernelSelector& selector) {
     const PackingRecipe recipe = CpuBPanelF32Kc512Nr16Recipe();
     if (!components.front().is_valid() || components.front().rank() != 2) {
         return Status::InvalidArgument(
@@ -251,10 +274,13 @@ StatusOr<std::unique_ptr<PackedWeight>> PackBPanelF32Kc512Nr16Weights(
     int64_t total_rows = 0;
     size_t alignment = kCpuBPanelF32Kc512Nr16Alignment;
     for (const auto& component: components) {
-        if (!component.is_valid() || !component.is_contiguous() ||
-            component.rank() != 2 || component.dtype() != DataType::Float32() ||
-            component.dim(1) != in_features || component.dim(0) < 0 ||
-            (component.logical_nbytes() != 0 && component.data() == nullptr)) {
+        const auto logical_bytes = ContiguousWeightByteSize(component);
+        if (!logical_bytes.ok()) {
+            return logical_bytes.status();
+        }
+
+        if (component.rank() != 2 || component.dtype() != DataType::Float32() ||
+            component.dim(1) != in_features) {
             return Status::InvalidArgument(
                     "cpu_bpanel_f32 requires contiguous rank-2 float32 weights with equal K");
         }
@@ -319,7 +345,7 @@ StatusOr<std::unique_ptr<PackedWeight>> PackWeightsWithRecipe(
         OpType op_type,
         std::span<const TensorView> components,
         const KernelSelector& selector,
-        const PackingRecipe& recipe) noexcept {
+        const PackingRecipe& recipe) noexcept try {
     if (op_type == OpType::kUnknown || selector.device_type != DeviceType::kCPU ||
         selector.weight_format != WeightFormat::kPacked) {
         return Status::InvalidArgument(
@@ -341,6 +367,9 @@ StatusOr<std::unique_ptr<PackedWeight>> PackWeightsWithRecipe(
 
     return Status::InvalidArgument(
             "CPU weight packing does not support the requested recipe");
+} catch (const std::bad_alloc&) {
+    // Reporting allocation failure must not allocate another diagnostic string.
+    return Status::ResourceExhausted({});
 }
 
 StatusOr<const KernelDef*> ResolveEligibleDescriptor(
@@ -457,7 +486,7 @@ StatusOr<std::unique_ptr<PackedWeight>> CpuBackend::PackWeights(
         OpType op_type,
         std::span<const TensorView> components,
         const KernelSelector& selector,
-        const PackingRecipe& recipe) const {
+        const PackingRecipe& recipe) const try {
     AM_ASSIGN_OR_RETURN(
             const PackingRecipe selected_recipe, GetPackingRecipe(op_type, selector));
     if (recipe != selected_recipe) {
@@ -466,6 +495,8 @@ StatusOr<std::unique_ptr<PackedWeight>> CpuBackend::PackWeights(
     }
 
     return cpu::internal::PackWeightsWithRecipe(op_type, components, selector, recipe);
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 StatusOr<std::unique_ptr<Backend>> CpuBackendFactory::Create() const {

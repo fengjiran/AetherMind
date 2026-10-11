@@ -27,9 +27,10 @@ struct GenerationConfig {
 /// @brief Synchronous, single-request orchestration over an ExecutableModel.
 ///
 /// The session borrows Runtime, which must outlive it, and shares ownership
-/// of the immutable executable model. Generate calls are not thread-safe. Each
+/// of the immutable executable model. All Generate calls sharing a Runtime
+/// require external serialization, including calls on different sessions. Each
 /// call starts with a fresh Prefill and releases its KV reservation before it
-/// returns, including on execution failure.
+/// returns, including on execution or allocation failure.
 class InferenceSession {
 public:
     /// @brief Creates a session for a model prepared by PrepareExecutableModel.
@@ -53,7 +54,10 @@ public:
     /// without reserving KV or executing the model. For a positive limit, the
     /// Prefill prediction is the first generated token, so at most
     /// max_new_tokens - 1 Decode KV appends are needed.
-    AM_NODISCARD StatusOr<std::vector<uint32_t>> Generate(
+    /// std::bad_alloc propagated from request buffer, binding, workspace or
+    /// activation allocation returns ResourceExhausted with an empty message,
+    /// so reporting the failure does not allocate additional memory.
+    StatusOr<std::vector<uint32_t>> Generate(
             std::span<const uint32_t> prompt_tokens,
             const GenerationConfig& config);
 

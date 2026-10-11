@@ -25,79 +25,6 @@
 namespace aethermind {
 namespace {
 
-struct ValidatedPhaseContract {
-    uint32_t token_input = 0;
-    uint32_t position_input = 0;
-    uint32_t token_output = 0;
-};
-
-StatusOr<ValidatedPhaseContract> ValidatePlanContract(const ExecutionPlan& plan) {
-    if (plan.model_inputs().size() != 2 || plan.model_outputs().size() != 1) {
-        return Status::Unimplemented(
-                "InferenceSession requires one token output and token_ids/position_ids inputs");
-    }
-
-    ValidatedPhaseContract contract;
-    // The Llama graph builder appends token_ids then position_ids, and lowering
-    // preserves this ordered model_inputs contract independently of debug names.
-    contract.token_input = plan.model_inputs()[0].index;
-    contract.position_input = plan.model_inputs()[1].index;
-    if (contract.token_input == contract.position_input) {
-        return Status::InvalidArgument(
-                "InferenceSession token and position inputs must be distinct");
-    }
-    for (const uint32_t index:
-         {contract.token_input, contract.position_input}) {
-        if (index >= plan.values().size()) {
-            return Status::InvalidArgument(
-                    "InferenceSession model input references an invalid execution value");
-        }
-        const ExecutionValueDesc& value = plan.values()[index];
-        const auto rank = value.spec.shape.rank();
-        if (value.kind != ExecutionValueKind::kModelInput ||
-            value.spec.dtype != DataType::Int(64) || !rank.has_value() || *rank != 1) {
-            return Status::Unimplemented(
-                    "InferenceSession model inputs must be rank-one Int64 tensors");
-        }
-    }
-
-    const ExecutionValueId output = plan.model_outputs().front();
-    if (output.index >= plan.values().size()) {
-        return Status::InvalidArgument(
-                "InferenceSession model output references an invalid execution value");
-    }
-    const ExecutionValueDesc& output_value = plan.values()[output.index];
-    const auto output_rank = output_value.spec.shape.rank();
-    if (output_value.kind != ExecutionValueKind::kActivation ||
-        output_value.spec.dtype != DataType::Int(64) ||
-        !output_rank.has_value() || *output_rank != 1) {
-        return Status::Unimplemented(
-                "InferenceSession requires a rank-one Int64 token output");
-    }
-
-    size_t argmax_count = 0;
-    bool output_is_argmax = false;
-    for (const ExecutionStep& step: plan.steps()) {
-        if (step.selector.device_type != DeviceType::kCPU) {
-            return Status::Unimplemented(
-                    "InferenceSession currently supports CPU execution plans only");
-        }
-        if (step.kernel.op_type != OpType::kArgmax) {
-            continue;
-        }
-        ++argmax_count;
-        output_is_argmax = step.outputs.size() == 1 && step.outputs.front() == output;
-    }
-    if (argmax_count != 1 || !output_is_argmax) {
-        return Status::Unimplemented(
-                "InferenceSession requires its sole model output to be the Argmax result");
-    }
-
-    contract.token_output = output.index;
-    return contract;
-}
-
-
 class SessionWorkspaceArena final : public WorkspaceArena {
 public:
     void SetBuffer(void* base, size_t size) noexcept {
@@ -143,7 +70,7 @@ public:
         if (!reservation.ok()) {
             return reservation.status();
         }
-        cache_view_ = std::move(*reservation);
+        cache_view_ = *reservation;
         has_reservation_ = true;
         return Status::Ok();
     }
@@ -168,8 +95,8 @@ public:
                     "InferenceSession could not allocate execution workspace");
         }
 
-        const uintptr_t address = reinterpret_cast<uintptr_t>(storage_.get());
-        const size_t remainder = static_cast<size_t>(address % alignment);
+        const auto address = reinterpret_cast<uintptr_t>(storage_.get());
+        const size_t remainder = address % alignment;
         const size_t padding = remainder == 0 ? 0 : alignment - remainder;
         workspace_base_ = storage_.get() + padding;
         workspace_size_ = bytes;
@@ -342,11 +269,11 @@ StatusOr<InferenceSession> InferenceSession::Create(
         return decode_plan.status();
     }
 
-    auto prefill_contract = ValidatePlanContract(**prefill_plan);
+    auto prefill_contract = inference::internal::ValidatePlanContract(**prefill_plan);
     if (!prefill_contract.ok()) {
         return prefill_contract.status();
     }
-    auto decode_contract = ValidatePlanContract(**decode_plan);
+    auto decode_contract = inference::internal::ValidatePlanContract(**decode_plan);
     if (!decode_contract.ok()) {
         return decode_contract.status();
     }
@@ -365,7 +292,7 @@ StatusOr<InferenceSession> InferenceSession::Create(
 
 StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
         std::span<const uint32_t> prompt_tokens,
-        const GenerationConfig& config) {
+        const GenerationConfig& config) try {
     if (runtime_ == nullptr || model_ == nullptr) {
         return Status::FailedPrecondition(
                 "InferenceSession is moved from or has no Runtime");
@@ -517,9 +444,79 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
             vocab_size, config.max_new_tokens, config.eos_token_id,
             request.generated_tokens));
     return request.Finish();
+} catch (const std::bad_alloc&) {
+    // Request-local owners have already unwound, clearing contexts before KV
+    // release. An empty message avoids allocating while reporting this failure.
+    return Status::ResourceExhausted({});
 }
 
 namespace inference::internal {
+
+StatusOr<ValidatedPhaseContract> ValidatePlanContract(const ExecutionPlan& plan) {
+    if (plan.model_inputs().size() != 2 || plan.model_outputs().size() != 1) {
+        return Status::Unimplemented(
+                "InferenceSession requires one token output and token_ids/position_ids inputs");
+    }
+
+    ValidatedPhaseContract contract;
+    // The Llama graph builder appends token_ids then position_ids, and lowering
+    // preserves this ordered model_inputs contract independently of debug names.
+    contract.token_input = plan.model_inputs()[0].index;
+    contract.position_input = plan.model_inputs()[1].index;
+    if (contract.token_input == contract.position_input) {
+        return Status::InvalidArgument(
+                "InferenceSession token and position inputs must be distinct");
+    }
+    for (const uint32_t index:
+         {contract.token_input, contract.position_input}) {
+        if (index >= plan.values().size()) {
+            return Status::InvalidArgument(
+                    "InferenceSession model input references an invalid execution value");
+        }
+        const ExecutionValueDesc& value = plan.values()[index];
+        const auto rank = value.spec.shape.rank();
+        if (value.kind != ExecutionValueKind::kModelInput ||
+            value.spec.dtype != DataType::Int(64) || !rank.has_value() || *rank != 1) {
+            return Status::Unimplemented(
+                    "InferenceSession model inputs must be rank-one Int64 tensors");
+        }
+    }
+
+    const ExecutionValueId output = plan.model_outputs().front();
+    if (output.index >= plan.values().size()) {
+        return Status::InvalidArgument(
+                "InferenceSession model output references an invalid execution value");
+    }
+    const ExecutionValueDesc& output_value = plan.values()[output.index];
+    const auto output_rank = output_value.spec.shape.rank();
+    if (output_value.kind != ExecutionValueKind::kActivation ||
+        output_value.spec.dtype != DataType::Int(64) ||
+        !output_rank.has_value() || *output_rank != 1) {
+        return Status::Unimplemented(
+                "InferenceSession requires a rank-one Int64 token output");
+    }
+
+    size_t argmax_count = 0;
+    bool output_is_argmax = false;
+    for (const ExecutionStep& step: plan.steps()) {
+        if (step.selector.device_type != DeviceType::kCPU) {
+            return Status::Unimplemented(
+                    "InferenceSession currently supports CPU execution plans only");
+        }
+        if (step.kernel.op_type != OpType::kArgmax) {
+            continue;
+        }
+        ++argmax_count;
+        output_is_argmax = step.outputs.size() == 1 && step.outputs.front() == output;
+    }
+    if (argmax_count != 1 || !output_is_argmax) {
+        return Status::Unimplemented(
+                "InferenceSession requires its sole model output to be the Argmax result");
+    }
+
+    contract.token_output = output.index;
+    return contract;
+}
 
 Status RunDecodeLoop(const ExecutionPlan& plan,
                      ExecutionContext& context,

@@ -3,6 +3,7 @@
 #include "aethermind/runtime/workspace.h"
 
 #include <cstdlib>
+#include <limits>
 #include <new>
 
 namespace aethermind {
@@ -59,7 +60,9 @@ Status KVCacheManager::Init(size_t num_layers,
                             size_t alignment) {
     layout_ = {};
     storage_ = {};
-    slot_ = {};
+    // Preserve the epoch so a later reserve cannot revive a view borrowed
+    // before this re-initialization, including when initialization fails.
+    slot_ = SessionKVSlot{.generation = slot_.generation};
     total_bytes_ = 0;
     initialized_ = false;
 
@@ -114,7 +117,7 @@ Status KVCacheManager::Init(size_t num_layers,
 }
 
 StatusOr<KVCacheView> KVCacheManager::ReserveForSession(size_t prompt_len,
-                                                        size_t future_kv_appends) noexcept {
+                                                        size_t future_kv_appends) noexcept try {
     if (!initialized_) {
         return Status::FailedPrecondition("KVCacheManager is not initialized");
     }
@@ -137,6 +140,10 @@ StatusOr<KVCacheView> KVCacheManager::ReserveForSession(size_t prompt_len,
         return Status::OutOfRange("KV session reservation exceeds physical KV capacity");
     }
 
+    if (slot_.generation == std::numeric_limits<uint64_t>::max()) {
+        return Status::Overflow("KV session generation is exhausted");
+    }
+
     ++slot_.generation;
     slot_.in_use = true;
     slot_.capacity_tokens = requested_tokens;
@@ -145,11 +152,17 @@ StatusOr<KVCacheView> KVCacheManager::ReserveForSession(size_t prompt_len,
     slot_.progress = SessionKVSlot::Progress::kAwaitingPrefill;
 
     return KVCacheView(&layout_, &storage_, &slot_);
+} catch (const std::bad_alloc&) {
+    // Error diagnostics may allocate; reporting OOM must not allocate again.
+    return Status::ResourceExhausted({});
 }
 
-Status KVCacheManager::ResetSession(KVCacheView& view) noexcept {
+Status KVCacheManager::ResetSession(KVCacheView& view) noexcept try {
     if (!initialized_) {
         return Status::FailedPrecondition("KVCacheManager is not initialized");
+    }
+    if (view.layout_ != &layout_ || view.storage_ != &storage_ || view.slot_ != &slot_) {
+        return Status::FailedPrecondition("KVCacheView does not belong to this manager");
     }
     if (!view.valid()) {
         return Status::FailedPrecondition("Cannot reset an invalid or stale KVCacheView");
@@ -158,11 +171,16 @@ Status KVCacheManager::ResetSession(KVCacheView& view) noexcept {
     slot_.current_pos = 0;
     slot_.progress = SessionKVSlot::Progress::kAwaitingPrefill;
     return Status::Ok();
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
-Status KVCacheManager::ReleaseSession(KVCacheView& view) noexcept {
+Status KVCacheManager::ReleaseSession(KVCacheView& view) noexcept try {
     if (!initialized_) {
         return Status::FailedPrecondition("KVCacheManager is not initialized");
+    }
+    if (view.layout_ != &layout_ || view.storage_ != &storage_ || view.slot_ != &slot_) {
+        return Status::FailedPrecondition("KVCacheView does not belong to this manager");
     }
     if (!view.valid()) {
         return Status::FailedPrecondition("Cannot release an invalid or stale KVCacheView");
@@ -173,9 +191,15 @@ Status KVCacheManager::ReleaseSession(KVCacheView& view) noexcept {
     slot_.prompt_len = 0;
     slot_.current_pos = 0;
     slot_.progress = SessionKVSlot::Progress::kAwaitingPrefill;
-    ++slot_.generation;
+    // Cleanup must succeed even for the last representable reservation.
+    // Leaving the epoch saturated makes subsequent reservations fail safely.
+    if (slot_.generation != std::numeric_limits<uint64_t>::max()) {
+        ++slot_.generation;
+    }
     view.Invalidate();
     return Status::Ok();
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 const KVCacheLayout& KVCacheManager::layout() const noexcept { return layout_; }

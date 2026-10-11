@@ -7,6 +7,8 @@
 #include "alignment.h"
 #include "utils/memory_utils.h"
 
+#include <cerrno>
+#include <new>
 #include <spdlog/spdlog.h>
 
 #if defined(__linux__) || defined(__APPLE__)
@@ -51,6 +53,9 @@ void* alloc_cpu(size_t nbytes) {
 
     void* data = nullptr;
     int err = posix_memalign(&data, get_alignment(nbytes), nbytes);
+    if (err == ENOMEM) {
+        throw std::bad_alloc();
+    }
     AM_CHECK(err == 0, "Try allocate {} bytes memory failed.", nbytes);
 
     if (is_thp_alloc(nbytes)) {

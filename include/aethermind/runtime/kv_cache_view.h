@@ -66,8 +66,9 @@ struct KVCacheStorage {
 
 /// @brief State of the active session reservation inside a KVCacheManager.
 ///
-/// `generation` is bumped on every reserve/release so stale views can be
-/// detected.
+/// `generation` is retained across re-initialization and advances on reserve
+/// and release. At its maximum value, release still succeeds but no further
+/// reservations are allowed, so stale views can never become live again.
 struct SessionKVSlot {
     uint64_t generation = 0;
     bool in_use = false;
@@ -85,7 +86,8 @@ struct SessionKVSlot {
 /// Holds non-owning pointers to the manager's layout, storage, and slot.
 /// The view is stale (invalid) after the session is released or the slot's
 /// generation changes. Reads and writes target the shared storage in place;
-/// no copies are made. Not thread-safe.
+/// no copies are made. The manager must outlive every view, including stale
+/// copies, and must not be moved or assigned while they exist. Not thread-safe.
 class KVCacheView {
 public:
     KVCacheView() = default;
@@ -215,6 +217,8 @@ public:
     void Invalidate() noexcept;
 
 private:
+    friend class KVCacheManager;
+
     /// @brief Returns whether the bound slot is still live at this generation.
     AM_NODISCARD bool IsSlotAlive() const noexcept;
     /// @brief Validates that the view is bound to live, initialized state.

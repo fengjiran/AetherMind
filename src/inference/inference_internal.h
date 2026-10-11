@@ -24,6 +24,21 @@ enum class DeviceType : uint8_t;
 
 namespace aethermind::inference::internal {
 
+/// @brief Validated token/position input and token output value indices.
+struct ValidatedPhaseContract {
+    uint32_t token_input = 0;
+    uint32_t position_input = 0;
+    uint32_t token_output = 0;
+};
+
+/// @brief Validates a plan against the Llama session I/O contract.
+///
+/// Shape/kind mismatches return kUnimplemented; structurally impossible value
+/// ids return kInvalidArgument. Exposed in this header so focused tests can
+/// exercise the failure branches with synthetic plans.
+StatusOr<ValidatedPhaseContract> ValidatePlanContract(
+        const ExecutionPlan& plan);
+
 /// @brief Injects descriptor recipes and coalesces compatible packed consumers.
 /// @param backend Provider of descriptor-owned packing recipes.
 /// @param requests Compiler requests whose recipes have not yet been selected.

@@ -42,7 +42,7 @@ public:
     ///
     /// \param nbytes Number of bytes to allocate. May be zero.
     /// \return A Buffer owning the allocated memory.
-    /// \throws RuntimeError if allocation fails.
+    /// \throws std::bad_alloc if storage or Buffer metadata allocation fails.
     virtual Buffer Allocate(size_t nbytes) = 0;
 
     /// Returns the Device this allocator is associated with.

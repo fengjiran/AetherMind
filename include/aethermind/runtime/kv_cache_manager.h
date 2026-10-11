@@ -13,8 +13,18 @@ namespace aethermind {
 /// The manager holds one active session reservation at a time; a new
 /// ReserveForSession fails while a session is in use. KVCacheView objects
 /// borrow manager-owned state and become stale when the session is released.
+/// The manager must outlive all borrowed views, including stale copies, and
+/// must not be moved or assigned while any such views exist. It may be moved
+/// during resource assembly before views are borrowed. Access to the manager
+/// and its views must be serialized by the caller.
 class KVCacheManager {
 public:
+    KVCacheManager() = default;
+    KVCacheManager(const KVCacheManager&) = delete;
+    KVCacheManager& operator=(const KVCacheManager&) = delete;
+    KVCacheManager(KVCacheManager&&) noexcept = default;
+    KVCacheManager& operator=(KVCacheManager&&) noexcept = default;
+
     /// @brief (Re)initializes the cache with the given geometry.
     ///
     /// @param num_layers Number of decoder layers.
@@ -25,7 +35,8 @@ public:
     /// @param alignment Byte alignment for the backing buffers.
     /// @return Status::Ok() on success.
     /// @note Re-initializing releases the previous storage and any active
-    ///       session reservation.
+    ///       session reservation, even if initialization fails. All previous
+    ///       views remain stale after subsequent reservations.
     Status Init(size_t num_layers,
                 size_t num_kv_heads,
                 size_t max_tokens,
@@ -46,13 +57,14 @@ public:
                                             size_t future_kv_appends) noexcept;
     /// @brief Clears the committed position while retaining its reservation.
     ///
-    /// @param view Active session view to reset.
+    /// @param view Active session view belonging to this manager.
     /// @return Status::Ok() on success. The next append must run Prefill again;
     ///         this does not preserve prompt KV for repeated Decode.
     Status ResetSession(KVCacheView& view) noexcept;
     /// @brief Releases the active reservation and invalidates the view.
     ///
-    /// @param view Active session view; invalidated on success.
+    /// @param view Active session view belonging to this manager; invalidated
+    ///             on success.
     /// @return Status::Ok() on success.
     Status ReleaseSession(KVCacheView& view) noexcept;
 

@@ -3,8 +3,10 @@
 #include "aethermind/memory/cpu_allocator.h"
 #include "aethermind/runtime/runtime.h"
 #include "aethermind/runtime/runtime_builder.h"
+#include "inference/test_malloc_interposer.h"
 
 #include <gtest/gtest.h>
+#include <new>
 
 namespace {
 using namespace aethermind;
@@ -33,6 +35,28 @@ TEST(CPUAllocator, ZeroByteAllocation) {
     ASSERT_TRUE(buffer.is_initialized());
     EXPECT_EQ(buffer.nbytes(), 0);
     EXPECT_NE(buffer.data(), nullptr);
+}
+
+TEST(CPUAllocator, SystemAllocationFailureThrowsBadAllocAndCanRetry) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    CPUAllocator allocator(Device::CPU());
+    bool caught_bad_alloc = false;
+    test::ScopedMallocFailure failure(0, 0, false,
+                                      test::MallocFailureTarget::kPosixMemalign);
+    try {
+        static_cast<void>(allocator.Allocate(128));
+    } catch (const std::bad_alloc&) {
+        caught_bad_alloc = true;
+    }
+    const auto result = failure.Stop();
+
+    EXPECT_TRUE(result.allocation_failed);
+    EXPECT_TRUE(caught_bad_alloc);
+    Buffer retry = allocator.Allocate(128);
+    EXPECT_TRUE(retry.is_initialized());
+    EXPECT_EQ(retry.nbytes(), 128U);
 }
 
 TEST(CPUAllocator, ProviderAndRegistry) {

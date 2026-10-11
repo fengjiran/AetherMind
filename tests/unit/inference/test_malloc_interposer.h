@@ -30,19 +30,27 @@ struct MallocFailureResult {
     bool last_aligned_allocation_released = false;
 };
 
-/// @brief Fails one matching malloc call on this thread, at most once.
+enum class MallocFailureTarget {
+    kMalloc,
+    kPosixMemalign,
+};
+
+/// @brief Fails one matching allocation call on this thread, at most once.
 ///
 /// Requires MallocInterposerAvailable(). Scopes must not nest. Tracking the last
 /// successful posix_memalign pointer verifies cleanup after metadata failure.
 class ScopedMallocFailure {
 public:
-    /// @param allocation_size Matching byte count, or zero to match any malloc.
+    /// @param allocation_size Matching byte count, or zero to match any size.
     /// @param skip_matching_allocations Number of matching calls to allow first.
     /// @param after_aligned_allocation Start matching after a successful
     ///        posix_memalign, so public-API setup allocations remain unaffected.
+    /// @param target Allocation function to fail. posix_memalign returns ENOMEM
+    ///        without modifying its result pointer or errno.
     explicit ScopedMallocFailure(size_t allocation_size,
                                  size_t skip_matching_allocations = 0,
-                                 bool after_aligned_allocation = false) noexcept;
+                                 bool after_aligned_allocation = false,
+                                 MallocFailureTarget target = MallocFailureTarget::kMalloc) noexcept;
     ~ScopedMallocFailure() noexcept;
 
     ScopedMallocFailure(const ScopedMallocFailure&) = delete;

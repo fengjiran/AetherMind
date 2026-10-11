@@ -4,10 +4,17 @@
 #include <gtest/gtest.h>
 
 #include <cstdlib>
+#include <type_traits>
+#include <utility>
 
 namespace {
 
 using namespace aethermind;
+
+static_assert(!std::is_copy_constructible_v<KVCacheManager>);
+static_assert(!std::is_copy_assignable_v<KVCacheManager>);
+static_assert(std::is_nothrow_move_constructible_v<KVCacheManager>);
+static_assert(std::is_nothrow_move_assignable_v<KVCacheManager>);
 
 DataType MakeKVType() {
     return DataType(DLDataTypeCode::kFloat, 16, 1);
@@ -105,6 +112,38 @@ TEST(KVCacheManager, InitAndReserveCreatesValidView) {
     EXPECT_GT(manager.total_bytes(), 0U);
 }
 
+TEST(KVCacheManager, MoveBeforeBorrowingPreservesStorageForReservation) {
+    KVCacheManager source;
+    ASSERT_TRUE(source.Init(2, 4, 32, 16, MakeKVType(), 64).ok());
+    const size_t total_bytes = source.total_bytes();
+
+    KVCacheManager manager(std::move(source));
+    auto view = manager.ReserveForSession(8, 8);
+
+    ASSERT_TRUE(view.ok());
+    EXPECT_TRUE(view->valid());
+    EXPECT_EQ(view->token_capacity(), 16U);
+    EXPECT_EQ(manager.total_bytes(), total_bytes);
+    EXPECT_TRUE(manager.ReleaseSession(*view).ok());
+}
+
+TEST(KVCacheManager, MoveAssignmentBeforeBorrowingPreservesStorageForReservation) {
+    KVCacheManager source;
+    ASSERT_TRUE(source.Init(2, 4, 32, 16, MakeKVType(), 64).ok());
+    KVCacheManager manager;
+    ASSERT_TRUE(manager.Init(1, 1, 8, 8, MakeKVType(), 64).ok());
+    const size_t total_bytes = source.total_bytes();
+
+    manager = std::move(source);
+    auto view = manager.ReserveForSession(8, 8);
+
+    ASSERT_TRUE(view.ok());
+    EXPECT_TRUE(view->valid());
+    EXPECT_EQ(view->token_capacity(), 16U);
+    EXPECT_EQ(manager.total_bytes(), total_bytes);
+    EXPECT_TRUE(manager.ReleaseSession(*view).ok());
+}
+
 TEST(KVCacheManager, BufferMetadataFailureReturnsResourceExhaustedAndReleasesPayload) {
     if (!test::MallocInterposerAvailable()) {
         GTEST_SKIP() << "Requires the glibc malloc interposer";
@@ -184,6 +223,31 @@ TEST(KVCacheManager, ReserveRejectsSecondActiveSession) {
     EXPECT_EQ(second.status().code(), StatusCode::kFailedPrecondition);
 }
 
+TEST(KVCacheManager, OccupiedReserveDiagnosticFailurePreservesReservation) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    KVCacheManager manager;
+    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    auto view = manager.ReserveForSession(2, 4);
+    ASSERT_TRUE(view.ok());
+    ASSERT_TRUE(view->CommitUntil(2).ok());
+
+    test::ScopedMallocFailure failure(0);
+    const auto second = manager.ReserveForSession(1, 1);
+    const auto result = failure.Stop();
+
+    EXPECT_TRUE(result.allocation_failed);
+    EXPECT_EQ(second.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_TRUE(second.status().message().empty());
+    EXPECT_TRUE(view->valid());
+    EXPECT_EQ(view->current_pos(), 2U);
+    EXPECT_EQ(view->token_capacity(), 6U);
+    EXPECT_FALSE(view->awaiting_prefill());
+    EXPECT_FALSE(manager.ReserveForSession(1, 1).ok());
+    EXPECT_TRUE(manager.ReleaseSession(*view).ok());
+}
+
 TEST(KVCacheManager, CommitAndReadWritePointersRespectBounds) {
     KVCacheManager manager;
     ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
@@ -220,6 +284,213 @@ TEST(KVCacheManager, ResetSessionClearsCommittedPosition) {
     EXPECT_EQ(view->prompt_len(), 6U);
     EXPECT_EQ(view->token_capacity(), 16U);
     EXPECT_TRUE(view->awaiting_prefill());
+}
+
+TEST(KVCacheManager, ResetRejectsForeignViewWithoutChangingEitherReservation) {
+    KVCacheManager owner;
+    KVCacheManager other;
+    ASSERT_TRUE(owner.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(other.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    auto owner_view = owner.ReserveForSession(2, 4);
+    auto other_view = other.ReserveForSession(3, 5);
+    ASSERT_TRUE(owner_view.ok());
+    ASSERT_TRUE(other_view.ok());
+    ASSERT_TRUE(owner_view->CommitUntil(2).ok());
+    ASSERT_TRUE(other_view->CommitUntil(3).ok());
+
+    const Status status = other.ResetSession(*owner_view);
+
+    EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
+    EXPECT_TRUE(owner_view->valid());
+    EXPECT_TRUE(other_view->valid());
+    EXPECT_EQ(owner_view->current_pos(), 2U);
+    EXPECT_EQ(other_view->current_pos(), 3U);
+    EXPECT_EQ(owner_view->token_capacity(), 6U);
+    EXPECT_EQ(other_view->token_capacity(), 8U);
+    EXPECT_FALSE(owner_view->awaiting_prefill());
+    EXPECT_FALSE(other_view->awaiting_prefill());
+    EXPECT_FALSE(owner.ReserveForSession(1, 1).ok());
+    EXPECT_FALSE(other.ReserveForSession(1, 1).ok());
+    EXPECT_TRUE(owner.ReleaseSession(*owner_view).ok());
+    EXPECT_TRUE(other.ReleaseSession(*other_view).ok());
+}
+
+TEST(KVCacheManager, ForeignResetDiagnosticFailurePreservesBothReservations) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    KVCacheManager owner;
+    KVCacheManager other;
+    ASSERT_TRUE(owner.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(other.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    auto owner_view = owner.ReserveForSession(2, 4);
+    auto other_view = other.ReserveForSession(3, 5);
+    ASSERT_TRUE(owner_view.ok());
+    ASSERT_TRUE(other_view.ok());
+    ASSERT_TRUE(owner_view->CommitUntil(2).ok());
+    ASSERT_TRUE(other_view->CommitUntil(3).ok());
+
+    test::ScopedMallocFailure failure(0);
+    const Status status = other.ResetSession(*owner_view);
+    const auto result = failure.Stop();
+
+    EXPECT_TRUE(result.allocation_failed);
+    EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+    EXPECT_TRUE(status.message().empty());
+    EXPECT_TRUE(owner_view->valid());
+    EXPECT_TRUE(other_view->valid());
+    EXPECT_EQ(owner_view->current_pos(), 2U);
+    EXPECT_EQ(other_view->current_pos(), 3U);
+    EXPECT_EQ(owner_view->token_capacity(), 6U);
+    EXPECT_EQ(other_view->token_capacity(), 8U);
+    EXPECT_FALSE(owner_view->awaiting_prefill());
+    EXPECT_FALSE(other_view->awaiting_prefill());
+    EXPECT_FALSE(owner.ReserveForSession(1, 1).ok());
+    EXPECT_FALSE(other.ReserveForSession(1, 1).ok());
+    EXPECT_TRUE(owner.ReleaseSession(*owner_view).ok());
+    EXPECT_TRUE(other.ReleaseSession(*other_view).ok());
+}
+
+TEST(KVCacheManager, ReleaseRejectsForeignViewWithoutChangingEitherReservation) {
+    KVCacheManager owner;
+    KVCacheManager other;
+    ASSERT_TRUE(owner.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(other.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    auto owner_view = owner.ReserveForSession(2, 4);
+    auto other_view = other.ReserveForSession(3, 5);
+    ASSERT_TRUE(owner_view.ok());
+    ASSERT_TRUE(other_view.ok());
+    ASSERT_TRUE(owner_view->CommitUntil(2).ok());
+    ASSERT_TRUE(other_view->CommitUntil(3).ok());
+
+    const Status status = other.ReleaseSession(*owner_view);
+
+    EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
+    EXPECT_TRUE(owner_view->valid());
+    EXPECT_TRUE(other_view->valid());
+    EXPECT_EQ(owner_view->current_pos(), 2U);
+    EXPECT_EQ(other_view->current_pos(), 3U);
+    EXPECT_EQ(owner_view->token_capacity(), 6U);
+    EXPECT_EQ(other_view->token_capacity(), 8U);
+    EXPECT_FALSE(owner_view->awaiting_prefill());
+    EXPECT_FALSE(other_view->awaiting_prefill());
+    EXPECT_FALSE(owner.ReserveForSession(1, 1).ok());
+    EXPECT_FALSE(other.ReserveForSession(1, 1).ok());
+    EXPECT_TRUE(owner.ReleaseSession(*owner_view).ok());
+    EXPECT_TRUE(other.ReleaseSession(*other_view).ok());
+}
+
+TEST(KVCacheManager, ForeignReleaseDiagnosticFailurePreservesBothReservations) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    KVCacheManager owner;
+    KVCacheManager other;
+    ASSERT_TRUE(owner.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(other.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    auto owner_view = owner.ReserveForSession(2, 4);
+    auto other_view = other.ReserveForSession(3, 5);
+    ASSERT_TRUE(owner_view.ok());
+    ASSERT_TRUE(other_view.ok());
+    ASSERT_TRUE(owner_view->CommitUntil(2).ok());
+    ASSERT_TRUE(other_view->CommitUntil(3).ok());
+
+    test::ScopedMallocFailure failure(0);
+    const Status status = other.ReleaseSession(*owner_view);
+    const auto result = failure.Stop();
+
+    EXPECT_TRUE(result.allocation_failed);
+    EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+    EXPECT_TRUE(status.message().empty());
+    EXPECT_TRUE(owner_view->valid());
+    EXPECT_TRUE(other_view->valid());
+    EXPECT_EQ(owner_view->current_pos(), 2U);
+    EXPECT_EQ(other_view->current_pos(), 3U);
+    EXPECT_EQ(owner_view->token_capacity(), 6U);
+    EXPECT_EQ(other_view->token_capacity(), 8U);
+    EXPECT_FALSE(owner_view->awaiting_prefill());
+    EXPECT_FALSE(other_view->awaiting_prefill());
+    EXPECT_FALSE(owner.ReserveForSession(1, 1).ok());
+    EXPECT_FALSE(other.ReserveForSession(1, 1).ok());
+    EXPECT_TRUE(owner.ReleaseSession(*owner_view).ok());
+    EXPECT_TRUE(other.ReleaseSession(*other_view).ok());
+}
+
+TEST(KVCacheManager, ReinitializationPermanentlyInvalidatesActiveViewCopies) {
+    KVCacheManager manager;
+    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    auto old_view = manager.ReserveForSession(3, 5);
+    ASSERT_TRUE(old_view.ok());
+    KVCacheView old_copy = *old_view;
+    ASSERT_TRUE(old_view->CommitUntil(3).ok());
+
+    ASSERT_TRUE(manager.Init(1, 2, 24, 16, MakeKVType(), 64).ok());
+    EXPECT_FALSE(old_view->valid());
+    EXPECT_FALSE(old_copy.valid());
+    auto fresh_view = manager.ReserveForSession(2, 4);
+    ASSERT_TRUE(fresh_view.ok());
+    ASSERT_TRUE(fresh_view->CommitUntil(2).ok());
+
+    EXPECT_FALSE(old_view->valid());
+    EXPECT_FALSE(old_copy.valid());
+    EXPECT_FALSE(old_copy.MutableKeyData(0, 0, 0).ok());
+    EXPECT_EQ(manager.ResetSession(old_copy).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(manager.ReleaseSession(old_copy).code(), StatusCode::kFailedPrecondition);
+    EXPECT_TRUE(fresh_view->valid());
+    EXPECT_EQ(fresh_view->current_pos(), 2U);
+    EXPECT_EQ(fresh_view->token_capacity(), 6U);
+    EXPECT_FALSE(manager.ReserveForSession(1, 1).ok());
+    EXPECT_TRUE(manager.ReleaseSession(*fresh_view).ok());
+}
+
+TEST(KVCacheManager, FailedReinitializationPermanentlyInvalidatesActiveViewCopies) {
+    KVCacheManager manager;
+    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    auto old_view = manager.ReserveForSession(3, 5);
+    ASSERT_TRUE(old_view.ok());
+    KVCacheView old_copy = *old_view;
+    ASSERT_TRUE(old_view->CommitUntil(3).ok());
+
+    const Status status = manager.Init(1, 1, 0, 8, MakeKVType(), 64);
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_FALSE(manager.is_initialized());
+    EXPECT_EQ(manager.total_bytes(), 0U);
+    EXPECT_FALSE(old_view->valid());
+    EXPECT_FALSE(old_copy.valid());
+    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    auto fresh_view = manager.ReserveForSession(2, 4);
+    ASSERT_TRUE(fresh_view.ok());
+    ASSERT_TRUE(fresh_view->CommitUntil(2).ok());
+
+    EXPECT_FALSE(old_view->valid());
+    EXPECT_FALSE(old_copy.valid());
+    EXPECT_EQ(manager.ResetSession(old_copy).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(manager.ReleaseSession(old_copy).code(), StatusCode::kFailedPrecondition);
+    EXPECT_TRUE(fresh_view->valid());
+    EXPECT_EQ(fresh_view->current_pos(), 2U);
+    EXPECT_FALSE(manager.ReserveForSession(1, 1).ok());
+    EXPECT_TRUE(manager.ReleaseSession(*fresh_view).ok());
+}
+
+TEST(KVCacheManager, ReleasedViewCopyRemainsStaleAfterReinitialization) {
+    KVCacheManager manager;
+    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    auto old_view = manager.ReserveForSession(3, 5);
+    ASSERT_TRUE(old_view.ok());
+    KVCacheView old_copy = *old_view;
+    ASSERT_TRUE(manager.ReleaseSession(*old_view).ok());
+    EXPECT_FALSE(old_copy.valid());
+
+    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    auto fresh_view = manager.ReserveForSession(3, 5);
+    ASSERT_TRUE(fresh_view.ok());
+
+    EXPECT_FALSE(old_copy.valid());
+    EXPECT_TRUE(fresh_view->valid());
+    EXPECT_EQ(manager.ReleaseSession(old_copy).code(), StatusCode::kFailedPrecondition);
+    EXPECT_TRUE(fresh_view->valid());
+    EXPECT_TRUE(manager.ReleaseSession(*fresh_view).ok());
 }
 
 TEST(KVCacheManager, ReleaseInvalidatesViewAndAllowsNewReservation) {

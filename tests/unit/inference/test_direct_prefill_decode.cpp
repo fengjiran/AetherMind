@@ -1,15 +1,20 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/backend/cpu/cpu_workspace_arena.h"
+#include "aethermind/backend/kernel_types.h"
+#include "aethermind/backend/resolved_kernel.h"
 #include "aethermind/base/device.h"
 #include "aethermind/compiler/model_compiler.h"
 #include "aethermind/execution/execution_context.h"
+#include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/inference/executable_model.h"
 #include "aethermind/inference/inference_session.h"
 #include "aethermind/memory/cpu_allocator.h"
 #include "aethermind/model/loaded_model.h"
+#include "aethermind/operators/op_type.h"
 #include "aethermind/runtime/runtime_builder.h"
+#include "aethermind/shape_inference/tensor_spec.h"
 #include "execution/test_tensor_buffer_helpers.h"
 #include "inference/inference_internal.h"
 #include "inference/test_malloc_interposer.h"
@@ -21,6 +26,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <gtest/gtest.h>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <new>
@@ -414,6 +420,38 @@ std::vector<uint32_t> ScalarGenerate(
 void ReleaseTestSession(KVCacheManager& manager, KVCacheView& cache_view) {
     const Status status = manager.ReleaseSession(cache_view);
     EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+void ExpectGenerateRecoversFromAllocationFailure(
+        Runtime& runtime,
+        InferenceSession& session,
+        const ResolvedModelWeights& reference_weights,
+        ScopedMallocFailure& failure,
+        bool expect_payload_release = false) {
+    constexpr std::array<uint32_t, 3> prompt{1, 7, 3};
+    const GenerationConfig config{.max_new_tokens = 3};
+    const auto failed = session.Generate(prompt, config);
+    const MallocFailureResult failure_result = failure.Stop();
+
+    EXPECT_TRUE(failure_result.allocation_failed);
+    if (expect_payload_release) {
+        EXPECT_GE(failure_result.aligned_allocation_calls, 1U);
+        EXPECT_TRUE(failure_result.last_aligned_allocation_released);
+    }
+    ASSERT_FALSE(failed.ok());
+    EXPECT_EQ(failed.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_TRUE(failed.status().message().empty());
+
+    KVCacheManager* const manager = runtime.GetKVCacheManager();
+    ASSERT_NE(manager, nullptr);
+    auto reservation = manager->ReserveForSession(prompt.size(), config.max_new_tokens - 1);
+    ASSERT_TRUE(reservation.ok()) << reservation.status().ToString();
+    EXPECT_EQ(reservation->current_pos(), 0U);
+    ReleaseTestSession(*manager, *reservation);
+
+    auto retry = session.Generate(prompt, config);
+    ASSERT_TRUE(retry.ok()) << retry.status().ToString();
+    EXPECT_EQ(*retry, ScalarGenerate(reference_weights, prompt, config));
 }
 
 StatusOr<ExecutionContext> PrepareContext(Runtime& runtime,
@@ -1037,6 +1075,91 @@ TEST_P(TinyLlamaExecution, TinyGenerateMatchesScalarOracleAndStartsFreshEachCall
     EXPECT_EQ(*repeated, expected);
 }
 
+TEST_P(TinyLlamaExecution, GenerateReturnsResourceExhaustedForRequestBufferAllocationFailure) {
+    if (!MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    Runtime runtime = MakeCpuRuntimeWithKVCache();
+    ResolvedModelWeights reference_weights;
+    auto session_result = PrepareTinySession(runtime, &reference_weights, GetParam());
+    ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
+    InferenceSession session = std::move(*session_result);
+
+    struct FailureCase {
+        const char* name;
+        size_t allocation_size;
+        size_t skip_matching_allocations;
+    };
+    constexpr std::array<FailureCase, 3> cases{{
+            {"PrefillTokens", 3 * sizeof(int64_t), 0},
+            {"PrefillPositions", 3 * sizeof(int64_t), 1},
+            {"GeneratedTokens", 3 * sizeof(uint32_t), 0},
+    }};
+    for (const auto& failure_case: cases) {
+        SCOPED_TRACE(failure_case.name);
+        ScopedMallocFailure failure(failure_case.allocation_size,
+                                    failure_case.skip_matching_allocations);
+        ExpectGenerateRecoversFromAllocationFailure(
+                runtime, session, reference_weights, failure);
+    }
+}
+
+TEST_P(TinyLlamaExecution, GenerateReturnsResourceExhaustedForBindingAllocationFailure) {
+    if (!MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    Runtime runtime = MakeCpuRuntimeWithKVCache();
+    ResolvedModelWeights reference_weights;
+    auto executable_result = PrepareTinyExecutableModel(runtime, &reference_weights, GetParam());
+    ASSERT_TRUE(executable_result.ok()) << executable_result.status().ToString();
+    auto model = std::make_shared<ExecutableModel>(std::move(*executable_result));
+    const auto immutable = model->immutable_weight_bindings(ExecPhase::kPrefill);
+    ASSERT_TRUE(immutable.ok()) << immutable.status().ToString();
+    const size_t binding_bytes =
+            ((**immutable).readable.size() + 2) * sizeof(ExternalReadOnlyValueBinding);
+    auto session_result = InferenceSession::Create(runtime, model);
+    ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
+    InferenceSession session = std::move(*session_result);
+
+    ScopedMallocFailure failure(binding_bytes);
+    ExpectGenerateRecoversFromAllocationFailure(
+            runtime, session, reference_weights, failure);
+}
+
+TEST_P(TinyLlamaExecution, GenerateReturnsResourceExhaustedForActivationMetadataFailure) {
+    if (!MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    Runtime runtime = MakeCpuRuntimeWithKVCache();
+    ResolvedModelWeights reference_weights;
+    auto session_result = PrepareTinySession(runtime, &reference_weights, GetParam());
+    ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
+    InferenceSession session = std::move(*session_result);
+
+    ScopedMallocFailure failure(sizeof(BufferImpl), 0, true);
+    ExpectGenerateRecoversFromAllocationFailure(
+            runtime, session, reference_weights, failure, true);
+}
+
+TEST_P(TinyLlamaExecution, GenerateReturnsResourceExhaustedForPrefillAndDecodeActivationFailure) {
+    if (!MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    Runtime runtime = MakeCpuRuntimeWithKVCache();
+    ResolvedModelWeights reference_weights;
+    auto session_result = PrepareTinySession(runtime, &reference_weights, GetParam());
+    ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
+    InferenceSession session = std::move(*session_result);
+
+    for (const size_t successful_activations: {size_t{0}, size_t{1}}) {
+        SCOPED_TRACE(successful_activations == 0 ? "Prefill" : "Decode");
+        ScopedMallocFailure failure(0, successful_activations, false,
+                                    MallocFailureTarget::kPosixMemalign);
+        ExpectGenerateRecoversFromAllocationFailure(
+                runtime, session, reference_weights, failure);
+    }
+}
+
 TEST_P(TinyLlamaExecution, HandlesZeroOneEosAndExactKvCapacity) {
     Runtime runtime = MakeCpuRuntimeWithKVCache();
     ResolvedModelWeights reference_weights;
@@ -1358,6 +1481,228 @@ TEST(DirectPrefillDecode, MallocInterposerObservesCpuAllocatorCalls) {
             << "the probe runs through alloc_cpu() in the AetherMind shared library";
     EXPECT_GE(counts.free_calls, 1U);
 #endif
+}
+
+// Synthetic plans exercise the ValidatePlanContract failure branches directly.
+// ExecutionPlan::Create rejects duplicate or out-of-range model input ids and
+// non-kModelInput input kinds before the contract runs, so those defensive
+// kInvalidArgument guards are unreachable through the validated factory and
+// only the kUnimplemented branches are covered here.
+SymbolicShape ContractStaticShape(std::initializer_list<int64_t> dimensions) {
+    const std::vector<int64_t> copied(dimensions);
+    return SymbolicShape(IntArrayView{copied});
+}
+
+TensorSpec ContractInt64Spec(std::initializer_list<int64_t> dimensions) {
+    return TensorSpec{.dtype = DataType::Int(64),
+                      .shape = ContractStaticShape(dimensions)};
+}
+
+Status ContractTestKernel(const KernelContext&) noexcept {
+    return Status::Ok();
+}
+
+ExecutionStep MakeContractStep(OpType op_type,
+                               std::vector<ExecutionValueId> inputs,
+                               std::vector<ExecutionValueId> outputs,
+                               DeviceType device_type = DeviceType::kCPU) {
+    ExecutionStep step;
+    step.selector = KernelSelector{.device_type = device_type,
+                                   .weight_format = WeightFormat::kPlain,
+                                   .phase = ExecPhase::kBoth};
+    step.kernel = ResolvedKernel{.op_type = op_type,
+                                 .fn = &ContractTestKernel,
+                                 .attrs = {},
+                                 .name = "test::contract_kernel"};
+    step.inputs = std::move(inputs);
+    step.outputs = std::move(outputs);
+    for (size_t port = 0; port < step.inputs.size(); ++port) {
+        step.kernel_input_ports.push_back(static_cast<uint32_t>(port));
+    }
+    for (size_t port = 0; port < step.outputs.size(); ++port) {
+        step.kernel_output_ports.push_back(static_cast<uint32_t>(port));
+    }
+    return step;
+}
+
+struct ContractPlanParts {
+    std::vector<ExecutionValueDesc> values;
+    std::vector<ExecutionValueId> model_inputs;
+    std::vector<ExecutionValueId> model_outputs;
+    std::vector<ExecutionStep> steps;
+};
+
+ContractPlanParts MakeValidContractPlanParts() {
+    ContractPlanParts parts;
+    parts.values = {
+            {.spec = ContractInt64Spec({2}),
+             .kind = ExecutionValueKind::kModelInput,
+             .name = "token_ids"},
+            {.spec = ContractInt64Spec({2}),
+             .kind = ExecutionValueKind::kModelInput,
+             .name = "position_ids"},
+            {.spec = ContractInt64Spec({2}),
+             .kind = ExecutionValueKind::kActivation,
+             .name = "tokens"},
+    };
+    parts.model_inputs = {{.index = 0}, {.index = 1}};
+    parts.model_outputs = {{.index = 2}};
+    parts.steps.push_back(
+            MakeContractStep(OpType::kArgmax, {{.index = 0}}, {{.index = 2}}));
+    return parts;
+}
+
+StatusOr<inference::internal::ValidatedPhaseContract> BuildAndValidateContract(
+        ContractPlanParts parts) {
+    auto plan = ExecutionPlan::Create(std::move(parts.values),
+                                      std::move(parts.model_inputs),
+                                      std::move(parts.model_outputs),
+                                      std::move(parts.steps));
+    if (!plan.ok()) {
+        return plan.status();
+    }
+    return inference::internal::ValidatePlanContract(*plan);
+}
+
+void ExpectContractUnimplemented(ContractPlanParts parts) {
+    auto contract = BuildAndValidateContract(std::move(parts));
+    ASSERT_FALSE(contract.ok()) << "expected the plan contract to be rejected";
+    EXPECT_EQ(contract.status().code(), StatusCode::kUnimplemented)
+            << contract.status().ToString();
+}
+
+TEST(PlanContractValidation, AcceptsCanonicalLlamaStylePlan) {
+    auto contract = BuildAndValidateContract(MakeValidContractPlanParts());
+    ASSERT_TRUE(contract.ok()) << contract.status().ToString();
+    EXPECT_EQ(contract->token_input, 0U);
+    EXPECT_EQ(contract->position_input, 1U);
+    EXPECT_EQ(contract->token_output, 2U);
+}
+
+TEST(PlanContractValidation, RejectsInvalidInputOutputCounts) {
+    struct Case {
+        const char* name;
+        void (*mutate)(ContractPlanParts&);
+    };
+    const std::array<Case, 3> cases{{
+            {"SingleModelInput",
+             [](ContractPlanParts& parts) {
+                 parts.values[1].kind = ExecutionValueKind::kConstant;
+                 parts.model_inputs = {{.index = 0}};
+             }},
+            {"ThreeModelInputs",
+             [](ContractPlanParts& parts) {
+                 parts.values.push_back({.spec = ContractInt64Spec({2}),
+                                         .kind = ExecutionValueKind::kModelInput,
+                                         .name = "extra_input"});
+                 parts.model_inputs.push_back({.index = 3});
+             }},
+            {"TwoModelOutputs",
+             [](ContractPlanParts& parts) {
+                 parts.model_outputs.push_back({.index = 0});
+             }},
+    }};
+    for (const Case& test_case: cases) {
+        SCOPED_TRACE(test_case.name);
+        ContractPlanParts parts = MakeValidContractPlanParts();
+        test_case.mutate(parts);
+        ExpectContractUnimplemented(std::move(parts));
+    }
+}
+
+TEST(PlanContractValidation, RejectsInvalidInputSpecs) {
+    struct Case {
+        const char* name;
+        void (*mutate)(ContractPlanParts&);
+    };
+    const std::array<Case, 2> cases{{
+            {"Int32Dtype",
+             [](ContractPlanParts& parts) {
+                 parts.values[0].spec.dtype = DataType::Int(32);
+             }},
+            {"RankTwoShape",
+             [](ContractPlanParts& parts) {
+                 parts.values[0].spec = ContractInt64Spec({2, 2});
+             }},
+    }};
+    for (const Case& test_case: cases) {
+        SCOPED_TRACE(test_case.name);
+        ContractPlanParts parts = MakeValidContractPlanParts();
+        test_case.mutate(parts);
+        ExpectContractUnimplemented(std::move(parts));
+    }
+}
+
+TEST(PlanContractValidation, RejectsInvalidOutputSpecs) {
+    struct Case {
+        const char* name;
+        void (*mutate)(ContractPlanParts&);
+    };
+    const std::array<Case, 3> cases{{
+            {"OutputIsModelInput",
+             [](ContractPlanParts& parts) {
+                 parts.model_outputs = {{.index = 0}};
+             }},
+            {"Float32Dtype",
+             [](ContractPlanParts& parts) {
+                 parts.values[2].spec.dtype = DataType::Float32();
+             }},
+            {"RankTwoShape",
+             [](ContractPlanParts& parts) {
+                 parts.values[2].spec = ContractInt64Spec({2, 2});
+             }},
+    }};
+    for (const Case& test_case: cases) {
+        SCOPED_TRACE(test_case.name);
+        ContractPlanParts parts = MakeValidContractPlanParts();
+        test_case.mutate(parts);
+        ExpectContractUnimplemented(std::move(parts));
+    }
+}
+
+TEST(PlanContractValidation, RejectsNonCpuSteps) {
+    ContractPlanParts parts = MakeValidContractPlanParts();
+    parts.steps[0].selector.device_type = DeviceType::kCUDA;
+    ExpectContractUnimplemented(std::move(parts));
+}
+
+TEST(PlanContractValidation, RejectsNonArgmaxTokenProducers) {
+    struct Case {
+        const char* name;
+        void (*mutate)(ContractPlanParts&);
+    };
+    const std::array<Case, 3> cases{{
+            {"MissingArgmax",
+             [](ContractPlanParts& parts) {
+                 parts.steps = {MakeContractStep(
+                         OpType::kAdd, {{.index = 0}, {.index = 1}}, {{.index = 2}})};
+             }},
+            {"TwoArgmaxSteps",
+             [](ContractPlanParts& parts) {
+                 parts.values.push_back({.spec = ContractInt64Spec({2}),
+                                         .kind = ExecutionValueKind::kActivation,
+                                         .name = "second_tokens"});
+                 parts.steps.push_back(MakeContractStep(
+                         OpType::kArgmax, {{.index = 1}}, {{.index = 3}}));
+             }},
+            {"ArgmaxNotTheModelOutput",
+             [](ContractPlanParts& parts) {
+                 parts.values.push_back({.spec = ContractInt64Spec({2}),
+                                         .kind = ExecutionValueKind::kActivation,
+                                         .name = "derived_tokens"});
+                 parts.steps.push_back(MakeContractStep(
+                         OpType::kAdd,
+                         {{.index = 1}, {.index = 0}},
+                         {{.index = 3}}));
+                 parts.model_outputs = {{.index = 3}};
+             }},
+    }};
+    for (const Case& test_case: cases) {
+        SCOPED_TRACE(test_case.name);
+        ContractPlanParts parts = MakeValidContractPlanParts();
+        test_case.mutate(parts);
+        ExpectContractUnimplemented(std::move(parts));
+    }
 }
 
 } // namespace

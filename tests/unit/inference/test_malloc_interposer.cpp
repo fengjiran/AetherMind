@@ -30,6 +30,7 @@ struct MallocFailureState {
     size_t allocation_size = 0;
     size_t skip_matching_allocations = 0;
     bool after_aligned_allocation = false;
+    MallocFailureTarget target = MallocFailureTarget::kMalloc;
     void* last_aligned_allocation = nullptr;
     MallocFailureResult result{};
 };
@@ -44,11 +45,13 @@ bool MallocInterposerAvailable() noexcept {
 
 ScopedMallocFailure::ScopedMallocFailure(size_t allocation_size,
                                          size_t skip_matching_allocations,
-                                         bool after_aligned_allocation) noexcept {
+                                         bool after_aligned_allocation,
+                                         MallocFailureTarget target) noexcept {
     g_malloc_failure = {.enabled = true,
                         .allocation_size = allocation_size,
                         .skip_matching_allocations = skip_matching_allocations,
-                        .after_aligned_allocation = after_aligned_allocation};
+                        .after_aligned_allocation = after_aligned_allocation,
+                        .target = target};
 }
 
 ScopedMallocFailure::~ScopedMallocFailure() noexcept {
@@ -101,7 +104,8 @@ void CountMallocCall(std::atomic_size_t& count) noexcept {
 extern "C" void* malloc(size_t size) noexcept {
     aethermind::test::CountMallocCall(aethermind::test::g_malloc_calls);
     auto& failure = aethermind::test::g_malloc_failure;
-    if (failure.enabled && !failure.result.allocation_failed &&
+    if (failure.enabled && failure.target == aethermind::test::MallocFailureTarget::kMalloc &&
+        !failure.result.allocation_failed &&
         (!failure.after_aligned_allocation || failure.last_aligned_allocation != nullptr) &&
         (failure.allocation_size == 0 || size == failure.allocation_size)) {
         if (failure.skip_matching_allocations > 0) {
@@ -150,6 +154,18 @@ extern "C" int posix_memalign(void** result, size_t alignment, size_t size) noex
         (alignment & (alignment - 1)) != 0) {
         return EINVAL;
     }
+    auto& failure = aethermind::test::g_malloc_failure;
+    if (failure.enabled && failure.target == aethermind::test::MallocFailureTarget::kPosixMemalign &&
+        !failure.result.allocation_failed &&
+        (!failure.after_aligned_allocation || failure.last_aligned_allocation != nullptr) &&
+        (failure.allocation_size == 0 || size == failure.allocation_size)) {
+        if (failure.skip_matching_allocations > 0) {
+            --failure.skip_matching_allocations;
+        } else {
+            failure.result.allocation_failed = true;
+            return ENOMEM;
+        }
+    }
     const int saved_errno = errno;
     void* const data = __libc_memalign(alignment, size);
     if (data == nullptr) {
@@ -157,7 +173,6 @@ extern "C" int posix_memalign(void** result, size_t alignment, size_t size) noex
     }
     errno = saved_errno;
     *result = data;
-    auto& failure = aethermind::test::g_malloc_failure;
     if (failure.enabled) {
         ++failure.result.aligned_allocation_calls;
         failure.last_aligned_allocation = data;
@@ -183,7 +198,7 @@ bool MallocInterposerAvailable() noexcept {
     return false;
 }
 
-ScopedMallocFailure::ScopedMallocFailure(size_t, size_t, bool) noexcept {}
+ScopedMallocFailure::ScopedMallocFailure(size_t, size_t, bool, MallocFailureTarget) noexcept {}
 
 ScopedMallocFailure::~ScopedMallocFailure() noexcept = default;
 

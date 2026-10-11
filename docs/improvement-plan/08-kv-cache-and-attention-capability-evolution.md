@@ -1,8 +1,8 @@
 # KV Cache 与 CPU Attention 能力演进方案
 
 - **状态**: Draft
-- **版本**: 1.0
-- **日期**: 2026-09-24
+- **版本**: 1.1
+- **日期**: 2026-10-11
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)；CPU-only、单请求、同步 Generate、静态 KV
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1；runtime 拥有 KV 物理资源，execution 建立窄绑定，backend 执行 kernel
 - **相关历史草案**: [05 号 KVCache Manager 演进方案](05-kv-cache-manager-evolution.md)（已被本提案取代；其接口草图不得视为当前实现）
@@ -14,13 +14,13 @@
 
 | 能力 | 当前裁决 | 实施前提 |
 |---|---|---|
-| KV Cache ownership、epoch 与资源合同 | **P0 correctness**；先修现有静态实现 | 不改变单请求、连续预分配产品边界 |
+| KV Cache ownership、epoch 与资源合同 | owner/epoch 实现已修复；publish/resource 合同仍为 **P0 correctness** 工作 | 不改变单请求、连续预分配产品边界 |
 | CPU Attention 的 I/O 与计算优化 | **P1 候选**；先建真实负载基线 | 完整 O0–O4 证据，保持 FP32 reference 独立 |
 | Paged KV / PagedAttention | **长期条件项**；当前不实施 | 产品进入多请求或反复前缀复用，并测得容量/吞吐收益可覆盖 indirection 成本 |
 
 这里的 PagedAttention 指非连续 KV block 的寻址与其配套 kernel；FlashAttention 指 exact Attention 的 I/O-aware 分块计算。二者分别改变**物理 KV 管理**和**Attention 算法/数据移动**，可以组合，但不互为前置条件。当前产品不需要引入第二套 Graph IR、在 operators 中表达 page/block id，或以 GPU FlashAttention 的结果推断 CPU 收益。
 
-本提案记录已核对事实、可复现缺陷、准入门槛和实施顺序；**不表示代码已修复或性能收益已测得**。
+本提案记录已核对事实、历史缺陷、准入门槛和实施顺序。2026-10-11 已修复下述 owner/epoch 实现并加入正式回归；其余发布权、资源预算与优化工作仍未完成，**没有据此宣称性能收益**。
 
 ## 2. 现状分析与证据边界
 
@@ -29,22 +29,22 @@
 | 事实 | 代码/测试依据 | 边界 |
 |---|---|---|
 | `Runtime` 持有单个 `KVCacheManager`；Manager 使用 K/V 两块连续 `Buffer` 和单个 `SessionKVSlot` | [KV manager](../../include/aethermind/runtime/kv_cache_manager.h)、[实现](../../src/runtime/kv_cache_manager.cpp) | 同一时刻只允许一个 reservation；没有 block table、prefix cache 或多请求调度 |
-| `KVCacheView` 借用 Manager 的 layout/storage/slot，`valid()` 检查 slot generation | [KV view](../../src/runtime/kv_cache_view.cpp) | view 可复制；generation/owner 目前不能充分证明属于当前 reservation |
+| `KVCacheView` 借用 Manager 的 layout/storage/slot，`valid()` 检查 slot generation；Manager 在 Reset/Release 校验三个借用指针的身份 | [KV view](../../src/runtime/kv_cache_view.cpp)、[KV manager](../../src/runtime/kv_cache_manager.cpp) | view 可复制；Manager 必须长于所有 view、保持地址稳定，访问由调用方串行化 |
 | `LayerRunner` 完整 plan 成功后提交 KV watermark；`KVCacheUpdate`/`Attention` 已有窄绑定与真实 tiny Llama 执行证据 | [LayerRunner](../../src/execution/layer_runner.cpp)、[M4/M5 测试](../../tests/unit/inference/test_direct_prefill_decode.cpp) | 这是正确性 baseline；不等于 KV 生命周期全部边界已经验证 |
 | CPU KVCacheUpdate 与 Attention descriptor 只接受 FP32 KV storage | [KVCacheUpdate entry](../../src/backend/cpu/kernels/kvcache_update/kvcache_update_entry.cpp)、[Attention entry](../../src/backend/cpu/kernels/attention/attention_entry.cpp) | PRD 的 FP16/BF16 KV 图示尚无 production kernel 证据 |
 | FP32 Attention reference 对每个 query/head 扫描 K 两遍，第二遍读 V；不物化完整 score 矩阵 | [reference 实现](../../src/backend/cpu/kernels/attention/attention_f32_reference.cpp) | CPU blocked/online 方案的收益仍需 benchmark；不可直接套用 GPU 结论 |
 
-`tests/unit/execution/test_kv_cache_manager.cpp` 覆盖基本 reserve/reset/release 与越界；本轮未发现 re-init 后旧 view 或 cross-manager Reset/Release 的回归用例。本文的缺陷判断以下述代码路径及一次临时最小程序为依据，**尚未形成仓库内自动回归测试**。
+[tests/unit/execution/test_kv_cache_manager.cpp](../../tests/unit/execution/test_kv_cache_manager.cpp) 覆盖基本 reserve/reset/release、越界、cross-manager Reset/Release 拒绝、成功或失败 re-init 后旧 view 永不复活，以及未借用 view 时的 Manager 移动。下述旧行为保留为缺陷背景，当前实现与验证边界分别说明。
 
 ### 2.2 P0：re-init 后旧 view 可复活
 
-[`KVCacheManager::Init`](../../src/runtime/kv_cache_manager.cpp) 将 `slot_` 赋为默认值，generation 重新从 0 开始；[`ReserveForSession`](../../src/runtime/kv_cache_manager.cpp) 随后将其增至 1。旧 view 保存的仍是同一个 Manager 成员 `slot_` 地址和第一次 reservation 的 generation 1，因此 `Init → 再次 Reserve` 后，旧 view 可通过 `valid()` 并指向**新的** KV storage。`Init` 的公开合同允许重新初始化，故不能把调用方不这样做当作修复。
+旧实现中，[`KVCacheManager::Init`](../../src/runtime/kv_cache_manager.cpp) 将 `slot_` 赋为默认值，generation 重新从 0 开始；[`ReserveForSession`](../../src/runtime/kv_cache_manager.cpp) 随后将其增至 1。旧 view 保存的同一个 slot 地址与 generation 1 因此重新匹配，使其可访问新 KV storage。
 
-2026-09-24 在 `41ce89fa` + 未提交 M5 工作树构建的 `libAetherMind.so` 上运行仓库外临时复现程序，结果为 `old_view_revalidated=1 fresh_view_valid=1`。该结果证明当前构建中的行为；复现程序位于临时目录，后续实施必须将场景纳入正式回归测试。
+2026-09-24 的临时复现结果为 `old_view_revalidated=1 fresh_view_valid=1`。2026-10-11 的修复在 Init 清空 reservation 时保留 generation，成功预约前检查上限并递增；Release 在上限仍完成清理，后续预约返回 `kOverflow`。Init 继续释放原 storage 与 active reservation，包括初始化失败的情形。自动回归覆盖 active view 副本、已释放副本，以及失败 re-init 后再初始化/预约；generation 耗尽分支仅作静态审查，未引入私有状态测试 hook。
 
 ### 2.3 P0：跨 Manager view 可操作错误 slot
 
-[`ResetSession` 与 `ReleaseSession`](../../src/runtime/kv_cache_manager.cpp) 仅检查传入 `view.valid()`，未验证 view 的 owner/slot 是 `this`。以 Manager A 的有效 view 调用 Manager B 的 `ReleaseSession`，B 会清空自己的 slot 并使 A 的这个 view 失效；A 的 slot 仍处于 in-use。临时程序实测 `cross_release_ok=1 a_view_valid=0 b_view_valid=0`，这不是允许的 Session 释放语义。
+旧实现的 [`ResetSession` 与 `ReleaseSession`](../../src/runtime/kv_cache_manager.cpp) 仅检查 `view.valid()`；A 的 view 可被 B 接受并错误修改 B 的 slot。历史复现为 `cross_release_ok=1 a_view_valid=0 b_view_valid=0`。2026-10-11 的修复先验证 view 的 layout/storage/slot 指针均属于当前 Manager，再验证 reservation 是否仍有效；foreign 或 stale view 被拒绝，两个 Manager 的 reservation、watermark 与 view 均保持原状态。Manager 禁止复制，移动仅允许在没有任何 borrowed view（包括 stale 副本）时进行；它不承诺 Manager 销毁或非法移动后访问 view 的安全性。
 
 ### 2.4 发布权与资源合同
 
@@ -75,7 +75,7 @@ CPU backend          只消费已解析的 geometry、layout 与数据指针
 
 ### 4.1 当前静态 KV：最小正确性修复
 
-推荐保留 contiguous pool 和现有 `KVCacheView` 调用边界，先补**Manager owner/slot 验证**与**跨 re-init 单调 epoch**。实现可比较稳定 slot identity，或引入受控 owner token；选型时必须覆盖 Manager 移动/销毁合同及 epoch 溢出。`Init` 继续满足现有“重新初始化释放旧 reservation”的公开语义，但必须先使全部旧 view 永久失效；若选择改变该语义为拒绝 active re-init，应作为独立 API 决策并更新调用方。
+已落地方案保留 contiguous pool 和现有 `KVCacheView` 边界，使用借用指针身份校验与跨 re-init 保留的 generation，没有新增 heap owner token 或热路径间接寻址。`Init` 保持“重新初始化释放旧 reservation”的公开语义。Manager/view 的 lifetime、地址稳定和外部串行化属于调用方合同；不扩展为并发资源仲裁。
 
 `CommitUntil` 的收窄可采用只向 execution transaction 暴露的提交入口，或由 Manager 验证一次 append 的完整性；在变更前先清点手工 plan/测试调用者，不让测试便利接口成为 production 发布后门。
 
@@ -99,12 +99,19 @@ PagedAttention 的目标是让 Attention 消费非连续物理 KV blocks；它�
 
 | 工作包 | 最小改动范围 | 必须通过的证据 | 状态 |
 |---|---|---|---|
-| **KV owner/epoch correctness** | `KVCacheManager`/`KVCacheView` 的 owner、slot、epoch 校验；re-init 与回绕策略 | cross-manager Reset/Release 拒绝；re-init/re-reserve 后旧 view 永不复活；ASAN/TSAN 目标测试；既有 M4/M5 Generate 测试继续通过 | 待实施，P0 |
+| **KV owner/epoch correctness** | `KVCacheManager`/`KVCacheView` 的 owner、slot、epoch 校验；re-init 与回绕策略 | cross-manager Reset/Release 拒绝；re-init/re-reserve 后旧 view 永不复活；ASAN/TSAN 目标测试；既有 M4/M5 Generate 测试继续通过 | 实现与正式回归已加入；验证结果见下方记录 |
 | **KV publish/resource contract** | 收窄 commit 权威；汇总模型、activation、workspace、KV 预算；明确 KV dtype 可执行集合 | plan 中途失败不推进 watermark；提前 commit 拒绝；预算与实际分配字节一致；超限可恢复失败；真实模型配置下的容量/精度证据 | 待设计，P0/P1 |
 | **CPU Attention baseline 与候选** | 增加按 Prefill/Decode、context depth、GQA、KV dtype/layout 分组的 benchmark；候选在独立 optimized descriptor | O0/O1 数值、O2 registered/prepared 基线、O4 同机交错测量；production `ExecutionStep` 与端到端结果；误差、bytes、latency 同报 | 待测，P1 |
 | **Paged KV 准入审查** | 需求、预算和多请求 workload 研究；获批后另设 block manager 与 paged kernel 专题 | 证明 contiguous 静态策略的真实资源损失，并同时测得 paged 方案收益足以覆盖额外 metadata/寻址成本 | 未触发，长期 |
 
 每项应记录“已验证事实 / 机制推断 / 待测结果”。`verify_docs.py` 只证明文档结构与链接，不能替代 runtime 回归、数值或性能证据。
+
+### 5.1 2026-10-11 owner/epoch 修复验证
+
+- 当前工作树的 Debug 与 Release `aethermind_unit_tests` 均构建通过；聚焦 `CPUAllocator`、`Buffer`、`MemoryHandle`、KV、tiny Llama O1/plain 与 O2/packed、HF load/prepare、CPU weight packing，共 111/111 测试分别通过。包含新增 owner/re-init/诊断 OOM 回归、Generate OOM 清理与重试，以及 Decode 零分配检查。
+- 焦点 sanitizer executable 直接编译受影响的 KV、CPU allocator、Session 源码及相关测试，链接 Debug 核心库；并非全库 sanitizer 验收。ASAN/UBSAN 的 32/32 测试通过，KV TSAN 的 19/19 测试通过；TSAN 使用 non-PIE executable 和 `setarch x86_64 -R` 避免本机随机地址映射启动失败。
+- sanitizer 验证禁用 glibc malloc interposer，避免绕过 sanitizer allocator；故障注入用例在正常 Debug/Release target 验证。LSAN 受到当前执行环境 ptrace 限制，不能完成扫描；ASAN/UBSAN 运行使用 `detect_leaks=0`，不据此宣称泄漏验收通过。
+- generation 耗尽策略已静态审查；未用私有状态 hook 构造回绕。Manager 必须长于全部 borrowed views、持有 view 时不可移动，所有请求仍由调用方串行化；上述验证不构成并发支持承诺。
 
 ## 6. 风险与依赖
 
@@ -126,4 +133,5 @@ PagedAttention 的目标是让 Attention 消费非连续物理 KV blocks；它�
 
 | 日期 | 版本 | 变更 |
 |---|---|---|
+| 2026-10-11 | 1.1 | 修复 owner/epoch 实现，加入正式回归并明确 Manager 的 move/lifetime/串行访问合同；publish/resource 与 Attention 优化仍保持待办 |
 | 2026-09-24 | 1.0 | 以当前代码和临时复现证据重新划分 KV correctness、CPU Attention 优化与 Paged KV 长期准入；取代过期的 05 号当前状态叙述，未修改代码 |

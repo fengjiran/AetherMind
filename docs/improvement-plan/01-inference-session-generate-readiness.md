@@ -138,7 +138,7 @@ LoweredGraph StateBinding
 
 ### 3.3 immutable external weight binding 已落地
 
-模型准备阶段通过结构化 `WeightBinding` identity 将权重和常量绑定到 `ExecutionValueId`。`WeightBindingStorage` 保有 view 所借用的 shape/stride metadata，artifact 保有原始 backing；plain tensors 与 packed artifacts 按 plan requirements 区分。Tied lm-head 由准备阶段解析为与 embedding 相同的 backing。
+模型准备阶段通过结构化 `WeightBinding` identity 将权重和常量绑定到 `ExecutionValueId`。`WeightBindingMetadata` 保有 view 所借用的 shape/stride metadata，artifact 保有原始 backing；plain tensors 与 packed artifacts 按 plan requirements 区分。Tied lm-head 由准备阶段解析为与 embedding 相同的 backing。
 
 已有 `BindingsMatchExternalReadRequirementsExactly`、`TiedLmHeadSharesEmbeddingBacking` 和 packed preparation 测试验证 binding 完整性与 ownership。M4 配置额外断言 immutable table 中 embedding backing 恰好被 embedding 和 tied lm-head 两个 value 引用。
 

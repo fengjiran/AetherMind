@@ -51,7 +51,8 @@ constexpr float kRmsNormEpsilon = 1.0e-5F;
 constexpr float kLogitTolerance = 2.0e-5F;
 constexpr float kKvTolerance = 2.0e-6F;
 
-void FillWeight(RawWeightView& weight, int seed, bool is_norm = false, bool is_embedding = false) {
+void FillWeight(RawWeightView& weight, int seed, bool is_norm = false,
+                bool is_embedding = false) {
     const int64_t count = weight.shape[0] *
                           (weight.shape.size() > 1 ? weight.shape[1] : 1);
     const int64_t columns = weight.shape.size() > 1 ? weight.shape[1] : 1;
@@ -373,8 +374,8 @@ StatusOr<InferenceSession> PrepareTinySession(
     if (!executable.ok()) {
         return executable.status();
     }
-    auto shared_model =
-            std::make_shared<ExecutableModel>(std::move(*executable));
+
+    auto shared_model = std::make_shared<ExecutableModel>(std::move(*executable));
     return InferenceSession::Create(runtime, std::move(shared_model));
 }
 

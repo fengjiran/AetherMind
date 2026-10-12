@@ -251,10 +251,12 @@ StatusOr<InferenceSession> InferenceSession::Create(
         return Status::InvalidArgument(
                 "InferenceSession requires a non-null ExecutableModel");
     }
+
     if (!model->IsPreparedFor(runtime)) {
         return Status::FailedPrecondition(
                 "InferenceSession Runtime must match the model preparation Runtime");
     }
+
     if (model->context_limit() == 0 || model->vocab_size() == 0) {
         return Status::FailedPrecondition(
                 "InferenceSession ExecutableModel has no validated token limits");
@@ -264,24 +266,30 @@ StatusOr<InferenceSession> InferenceSession::Create(
     if (!prefill_plan.ok()) {
         return prefill_plan.status();
     }
+
     auto decode_plan = model->plan(ExecPhase::kDecode);
     if (!decode_plan.ok()) {
         return decode_plan.status();
     }
 
-    auto prefill_contract = inference::internal::ValidatePlanContract(**prefill_plan);
+    auto prefill_contract =
+            inference::internal::ValidatePlanContract(**prefill_plan);
     if (!prefill_contract.ok()) {
         return prefill_contract.status();
     }
-    auto decode_contract = inference::internal::ValidatePlanContract(**decode_plan);
+
+    auto decode_contract =
+            inference::internal::ValidatePlanContract(**decode_plan);
     if (!decode_contract.ok()) {
         return decode_contract.status();
     }
+
     const PhaseContract prefill{
             .token_input = prefill_contract->token_input,
             .position_input = prefill_contract->position_input,
             .token_output = prefill_contract->token_output,
     };
+
     const PhaseContract decode{
             .token_input = decode_contract->token_input,
             .position_input = decode_contract->position_input,
@@ -292,11 +300,12 @@ StatusOr<InferenceSession> InferenceSession::Create(
 
 StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
         std::span<const uint32_t> prompt_tokens,
-        const GenerationConfig& config) try {
+        const GenerationConfig& config) const try {
     if (runtime_ == nullptr || model_ == nullptr) {
         return Status::FailedPrecondition(
                 "InferenceSession is moved from or has no Runtime");
     }
+
     if (prompt_tokens.empty()) {
         return Status::InvalidArgument(
                 "InferenceSession prompt must contain at least one token");
@@ -309,6 +318,7 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
                     "InferenceSession prompt token is outside the model vocabulary");
         }
     }
+
     if (config.eos_token_id.has_value() &&
         static_cast<size_t>(*config.eos_token_id) >= vocab_size) {
         return Status::OutOfRange(
@@ -319,18 +329,19 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
         return Status::OutOfRange(
                 "InferenceSession prompt exceeds the model context limit");
     }
+
     if (config.max_new_tokens == 0) {
         return std::vector<uint32_t>{};
     }
 
     const size_t future_kv_appends = config.max_new_tokens - 1;
-    size_t required_context_positions = 0;
-    if (CheckOverflowAdd(prompt_tokens.size(), future_kv_appends,
-                         &required_context_positions)) {
+    size_t required_context_pos = 0;
+    if (CheckOverflowAdd(prompt_tokens.size(), future_kv_appends, &required_context_pos)) {
         return Status::Overflow(
                 "InferenceSession requested token count overflowed size_t");
     }
-    if (required_context_positions > model_->context_limit()) {
+
+    if (required_context_pos > model_->context_limit()) {
         return Status::OutOfRange(
                 "InferenceSession prompt and generation exceed the model context limit");
     }
@@ -340,6 +351,7 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
         return Status::FailedPrecondition(
                 "InferenceSession Generate requires a Runtime KVCacheManager");
     }
+
     if (!runtime_->HasAllocatorProvider(DeviceType::kCPU)) {
         return Status::FailedPrecondition(
                 "InferenceSession Generate requires a CPU activation allocator");
@@ -349,10 +361,12 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
     if (!prefill_plan_result.ok()) {
         return prefill_plan_result.status();
     }
+
     auto decode_plan_result = model_->plan(ExecPhase::kDecode);
     if (!decode_plan_result.ok()) {
         return decode_plan_result.status();
     }
+
     const ExecutionPlan& prefill_plan = **prefill_plan_result;
     const ExecutionPlan& decode_plan = **decode_plan_result;
 
@@ -361,6 +375,7 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
     if (!prefill_bindings_result.ok()) {
         return prefill_bindings_result.status();
     }
+
     auto decode_bindings_result =
             model_->immutable_weight_bindings(ExecPhase::kDecode);
     if (!decode_bindings_result.ok()) {
@@ -454,8 +469,8 @@ namespace inference::internal {
 
 StatusOr<ValidatedPhaseContract> ValidatePlanContract(const ExecutionPlan& plan) {
     if (plan.model_inputs().size() != 2 || plan.model_outputs().size() != 1) {
-        return Status::Unimplemented(
-                "InferenceSession requires one token output and token_ids/position_ids inputs");
+        return Status::Unimplemented("InferenceSession requires one token "
+                                     "output and token_ids/position_ids inputs");
     }
 
     ValidatedPhaseContract contract;
@@ -467,15 +482,16 @@ StatusOr<ValidatedPhaseContract> ValidatePlanContract(const ExecutionPlan& plan)
         return Status::InvalidArgument(
                 "InferenceSession token and position inputs must be distinct");
     }
-    for (const uint32_t index:
-         {contract.token_input, contract.position_input}) {
+
+    for (const uint32_t index: {contract.token_input, contract.position_input}) {
         if (index >= plan.values().size()) {
             return Status::InvalidArgument(
                     "InferenceSession model input references an invalid execution value");
         }
+
         const ExecutionValueDesc& value = plan.values()[index];
-        const auto rank = value.spec.shape.rank();
-        if (value.kind != ExecutionValueKind::kModelInput ||
+        if (const auto rank = value.spec.shape.rank();
+            value.kind != ExecutionValueKind::kModelInput ||
             value.spec.dtype != DataType::Int(64) || !rank.has_value() || *rank != 1) {
             return Status::Unimplemented(
                     "InferenceSession model inputs must be rank-one Int64 tensors");
@@ -487,9 +503,10 @@ StatusOr<ValidatedPhaseContract> ValidatePlanContract(const ExecutionPlan& plan)
         return Status::InvalidArgument(
                 "InferenceSession model output references an invalid execution value");
     }
+
     const ExecutionValueDesc& output_value = plan.values()[output.index];
-    const auto output_rank = output_value.spec.shape.rank();
-    if (output_value.kind != ExecutionValueKind::kActivation ||
+    if (const auto output_rank = output_value.spec.shape.rank();
+        output_value.kind != ExecutionValueKind::kActivation ||
         output_value.spec.dtype != DataType::Int(64) ||
         !output_rank.has_value() || *output_rank != 1) {
         return Status::Unimplemented(
@@ -498,17 +515,20 @@ StatusOr<ValidatedPhaseContract> ValidatePlanContract(const ExecutionPlan& plan)
 
     size_t argmax_count = 0;
     bool output_is_argmax = false;
-    for (const ExecutionStep& step: plan.steps()) {
+    for (const auto& step: plan.steps()) {
         if (step.selector.device_type != DeviceType::kCPU) {
             return Status::Unimplemented(
                     "InferenceSession currently supports CPU execution plans only");
         }
+
         if (step.kernel.op_type != OpType::kArgmax) {
             continue;
         }
+
         ++argmax_count;
         output_is_argmax = step.outputs.size() == 1 && step.outputs.front() == output;
     }
+
     if (argmax_count != 1 || !output_is_argmax) {
         return Status::Unimplemented(
                 "InferenceSession requires its sole model output to be the Argmax result");
@@ -555,6 +575,7 @@ Status RunDecodeLoop(const ExecutionPlan& plan,
             return Status::Overflow(
                     "InferenceSession Decode position overflowed size_t");
         }
+
         if (context.kv_cache_view().current_pos() != expected_position) {
             return Status::Internal(
                     "InferenceSession Decode did not commit exactly one KV position");
@@ -569,12 +590,13 @@ Status RunDecodeLoop(const ExecutionPlan& plan,
         if (eos_token_id.has_value() && *token == *eos_token_id) {
             return Status::Ok();
         }
+
         if (generated_tokens.size() < max_new_tokens) {
             if (*next_position == std::numeric_limits<int64_t>::max()) {
                 return Status::Overflow(
                         "InferenceSession Decode position exceeds Int64 range");
             }
-            ++(*next_position);
+            ++*next_position;
         }
     }
     return Status::Ok();

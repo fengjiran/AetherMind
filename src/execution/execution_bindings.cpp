@@ -237,26 +237,27 @@ Status ValidatePackedWeightLogicalBindings(
 
 } // namespace
 
-StatusOr<std::vector<bool>> ComputeExternalReadRequirements(
-        const ExecutionPlan& plan) {
+StatusOr<std::vector<bool>> ComputeExternalReadRequirements(const ExecutionPlan& plan) {
     std::vector<bool> required(plan.values().size(), false);
     for (size_t i = 0; i < plan.values().size(); ++i) {
-        const ExecutionValueKind kind = plan.values()[i].kind;
+        const auto kind = plan.values()[i].kind;
         required[i] = kind == ExecutionValueKind::kModelInput ||
                       kind == ExecutionValueKind::kConstant;
     }
 
-    for (const ExecutionStep& step: plan.steps()) {
+    for (const auto& step: plan.steps()) {
         for (const uint32_t port: step.kernel_input_ports) {
             if (port >= step.inputs.size()) {
                 return Status::InvalidArgument(
                         "Execution step kernel input port exceeds semantic inputs");
             }
+
             const ExecutionValueId value = step.inputs[port];
             if (value.index >= required.size()) {
                 return Status::InvalidArgument(
                         "Execution step kernel input references an invalid value");
             }
+
             if (plan.values()[value.index].kind == ExecutionValueKind::kWeight) {
                 required[value.index] = true;
             }

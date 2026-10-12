@@ -1,7 +1,7 @@
-#ifndef AETHERMIND_INFERENCE_WEIGHT_BINDING_STORAGE_H
-#define AETHERMIND_INFERENCE_WEIGHT_BINDING_STORAGE_H
+#ifndef AETHERMIND_INFERENCE_WEIGHT_BINDING_METADATA_H
+#define AETHERMIND_INFERENCE_WEIGHT_BINDING_METADATA_H
 
-/// @file weight_binding_storage.h
+/// @file weight_binding_metadata.h
 /// @brief Stable shape/stride metadata for long-lived external tensor bindings.
 
 #include "aethermind/base/tensor_view.h"
@@ -17,8 +17,8 @@ namespace aethermind {
 ///
 /// A TensorView borrows its shape and stride arrays, and an immutable binding
 /// table is handed out repeatedly — once per PrepareExecutionBindings call, for
-/// prefill and again for decode. This storage owns one entry per bound value so
-/// every view it issued stays readable for as long as the storage lives.
+/// prefill and again for decode. This object owns one entry per bound value so
+/// every view it issued stays readable for as long as it lives.
 ///
 /// Stability contract:
 /// - views issued earlier stay valid across later Add() calls, because growing
@@ -37,25 +37,27 @@ namespace aethermind {
 /// backing storage, which must outlive this object.
 ///
 /// Move-only. Not thread-safe: callers must serialize concurrent access.
-class WeightBindingStorage {
+class WeightBindingMetadata {
 public:
-    WeightBindingStorage() = default;
-    WeightBindingStorage(WeightBindingStorage&&) noexcept = default;
-    WeightBindingStorage& operator=(WeightBindingStorage&&) noexcept = default;
-    WeightBindingStorage(const WeightBindingStorage&) = delete;
-    WeightBindingStorage& operator=(const WeightBindingStorage&) = delete;
-    ~WeightBindingStorage() = default;
+    WeightBindingMetadata() = default;
+    WeightBindingMetadata(WeightBindingMetadata&&) noexcept = default;
+    WeightBindingMetadata& operator=(WeightBindingMetadata&&) noexcept = default;
+    WeightBindingMetadata(const WeightBindingMetadata&) = delete;
+    WeightBindingMetadata& operator=(const WeightBindingMetadata&) = delete;
+    ~WeightBindingMetadata() = default;
 
     /// @brief Appends one entry for borrowed data and returns a view of it.
     ///
     /// Strides are derived as compact row-major. Alignment is left unspecified
     /// because the raw weight source carries none.
     ///
-    /// @param data Borrowed element data; must outlive this storage.
+    /// @param data Borrowed element data; must outlive this object.
     /// @param dtype Element type of `data`.
-    /// @param shape Logical dimensions with non-negative extents, copied into
-    ///        owned storage.
-    /// @return View borrowing `data` and this storage's metadata.
+    /// @param shape Logical dimensions with non-negative extents whose product
+    ///        fits in `int64_t`, copied into owned storage. A violating shape is
+    ///        a fatal check rather than a returned error, because callers
+    ///        validate the shape product against the backing byte size first.
+    /// @return View borrowing `data` and this object's metadata arrays.
     TensorView Add(const void* data, DataType dtype, std::vector<int64_t> shape);
 
     AM_NODISCARD size_t size() const noexcept;

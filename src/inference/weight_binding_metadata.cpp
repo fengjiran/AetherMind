@@ -1,4 +1,5 @@
-#include "aethermind/inference/weight_binding_storage.h"
+#include "aethermind/inference/weight_binding_metadata.h"
+#include "utils/overflow_check.h"
 
 #include <utility>
 
@@ -10,26 +11,28 @@ std::vector<int64_t> CompactRowMajorStrides(const std::vector<int64_t>& shape) {
     int64_t stride = 1;
     for (size_t i = shape.size(); i-- > 0;) {
         strides[i] = stride;
-        stride *= shape[i];
+        AM_CHECK(!CheckOverflowMul(stride, shape[i], &stride),
+                 "Compact row-major stride calculation overflow");
     }
     return strides;
 }
 
 } // namespace
 
-TensorView WeightBindingStorage::Add(const void* data, DataType dtype,
-                                     std::vector<int64_t> shape) {
+TensorView WeightBindingMetadata::Add(const void* data, DataType dtype,
+                                      std::vector<int64_t> shape) {
     entries_.push_back(Entry{.shape = std::move(shape)});
     Entry& entry = entries_.back();
     entry.strides = CompactRowMajorStrides(entry.shape);
-    return TensorView(data, dtype, IntArrayView{entry.shape}, IntArrayView{entry.strides});
+    return {data, dtype, IntArrayView{entry.shape},
+            IntArrayView{entry.strides}};
 }
 
-size_t WeightBindingStorage::size() const noexcept {
+size_t WeightBindingMetadata::size() const noexcept {
     return entries_.size();
 }
 
-bool WeightBindingStorage::empty() const noexcept {
+bool WeightBindingMetadata::empty() const noexcept {
     return entries_.empty();
 }
 

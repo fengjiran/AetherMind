@@ -9,7 +9,7 @@
 #include "aethermind/compiler/model_compiler.h"
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_plan.h"
-#include "aethermind/inference/weight_binding_storage.h"
+#include "aethermind/inference/weight_binding_metadata.h"
 #include "aethermind/model/weight/packed_weight_collection.h"
 
 #include <cstddef>
@@ -100,7 +100,7 @@ private:
     ExecutableModel(Runtime& runtime,
                     LoweredModelArtifact artifact,
                     PackedWeightCollection packed_weights,
-                    WeightBindingStorage binding_storage,
+                    WeightBindingMetadata binding_metadata,
                     ExternalTensorBindings bindings,
                     ExecutionPlan plan,
                     ExecPhase phase,
@@ -115,7 +115,7 @@ private:
     Runtime* runtime_ = nullptr;
     LoweredModelArtifact artifact_{};
     PackedWeightCollection packed_weights_{};
-    WeightBindingStorage binding_storage_{};
+    WeightBindingMetadata binding_metadata_{};
     ExternalTensorBindings bindings_{};
     ExecutionPlan plan_{};
     ExecPhase phase_ = ExecPhase::kBoth;

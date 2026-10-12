@@ -1,14 +1,14 @@
 # ExecutableModel 模块设计
 
 - **状态**: Current（描述已验证实现；只写仓库事实）
-- **版本**: 1.3
+- **版本**: 1.4
 - **日期**: 2026-09-23
-- **最近更新**: 2026-10-05
+- **最近更新**: 2026-10-12
 - **来源提案**: [07 号提案：ExecutableModel 生产准备入口方案](../../improvement-plan/07-executable-model-preparation.md)（Implemented）
-- **关联代码**: [include/aethermind/inference/](../../../include/aethermind/inference/)（`executable_model.h`、`weight_binding_storage.h`）/[src/inference/](../../../src/inference/)
+- **关联代码**: [include/aethermind/inference/](../../../include/aethermind/inference/)（`executable_model.h`、`weight_binding_metadata.h`）/[src/inference/](../../../src/inference/)
 - **上游依赖**: compiler（`LoweredModelArtifact`、`BuildWeightPackingRequests`）、model（`LoadedModel`/`ResolvedModelWeights`、`ResolveWeightBinding`、`PrepackWeightRequests`、`PackedWeightCollection`）、execution（`ExecutionPlanBuilder`、`ComputeExternalReadRequirements`、`ExternalTensorBindings`）、runtime（`Runtime` 提供 backends/allocator）、graph/operators 纯数据 payload 契约（`WeightValue`/`ConstantValue`）
 - **下游消费者**: [`InferenceSession`](02-inference-session.md)（同步 greedy `Generate`，已落地；[01 号计划](../../improvement-plan/01-inference-session-generate-readiness.md) M5）
-- **关联测试**: [tests/unit/inference/test_executable_model.cpp](../../../tests/unit/inference/test_executable_model.cpp)（20 例）、[test_weight_binding_storage.cpp](../../../tests/unit/inference/test_weight_binding_storage.cpp)（8 例）、[test_load_prepare_executable_model.cpp](../../../tests/unit/inference/test_load_prepare_executable_model.cpp)（3 例）；权重解析权威测试见 [tests/unit/model/weight/test_weight_binding_resolver.cpp](../../../tests/unit/model/weight/test_weight_binding_resolver.cpp)（`WeightBindingResolver` 套件），需求查询测试见 [test_execution_bindings.cpp](../../../tests/unit/execution/test_execution_bindings.cpp)
+- **关联测试**: [tests/unit/inference/test_executable_model.cpp](../../../tests/unit/inference/test_executable_model.cpp)（20 例）、[test_weight_binding_metadata.cpp](../../../tests/unit/inference/test_weight_binding_metadata.cpp)（9 例）、[test_load_prepare_executable_model.cpp](../../../tests/unit/inference/test_load_prepare_executable_model.cpp)（3 例）；权重解析权威测试见 [tests/unit/model/weight/test_weight_binding_resolver.cpp](../../../tests/unit/model/weight/test_weight_binding_resolver.cpp)（`WeightBindingResolver` 套件），需求查询测试见 [test_execution_bindings.cpp](../../../tests/unit/execution/test_execution_bindings.cpp)
 
 ## 1. 背景与目标
 
@@ -24,7 +24,7 @@
 
 - **提供**：`LoadAndPrepareExecutableModel(runtime, model_dir, options)` 文件到可执行模型的编排、`PrepareExecutableModel(runtime, artifact)` artifact 准备、`ExecutableModel::plan(phase)`、`ExecutableModel::immutable_weight_bindings(phase)`、`artifact_id()`、`phase()`。
 - **请求**：`Runtime`（backend 解析与 workspace 规划）、compiler 的 request builder、model 的 resolver/prepack planner/store、execution 的 plan builder 与需求查询。
-- **所有权**：`ExecutableModel` 按值持有 artifact、`PackedWeightCollection`、`WeightBindingStorage`、`ExternalTensorBindings`、`ExecutionPlan`；绑定表只借用其中数据，不复制权重。
+- **所有权**：`ExecutableModel` 按值持有 artifact、`PackedWeightCollection`、`WeightBindingMetadata`、`ExternalTensorBindings`、`ExecutionPlan`；绑定表只借用其中数据，不复制权重。
 - **明确不做**：不承担算子语义、kernel resolve 算法、weight materialization 算法（packing recipe）或 KV 物理存储；不提供 model inputs 绑定（由 Session 按 phase 追加）；不暴露 packed store 访问器。
 - **生命周期**：`LoadAndPrepareExecutableModel` 借用调用方的 `Runtime`，不创建或拥有 Runtime/Session；Runtime 必须保持原地址并长于返回的 `ExecutableModel`。整体顺序为 `Runtime` > `ExecutableModel` > `InferenceSession` > `ExecutionContext`；`PreparedExecutionBindings` 借用模型数据指针，必须先于 `ExecutableModel` 释放。
 
@@ -36,20 +36,21 @@
 |---|---|---|
 | `artifact_` | `LoweredModelArtifact`（间接持有 `LoadedModel`/`ResolvedModelWeights`/`RawStorage`） | 最先声明、最后销毁，保证绑定借用的权重 backing 与常量 `inline_data` 全程有效 |
 | `packed_weights_` | `PackedWeightCollection` | 与 plan 之间通过 `shared_ptr` 共享所有权；保留它是为了维持 `source_id` 与 artifact 的对账能力 |
-| `binding_storage_` | `WeightBindingStorage` | 被绑定表借用的 shape/stride 元数据 |
-| `bindings_` | `ExternalTensorBindings`（只含 weight/constant） | `TensorView` 借用 `binding_storage_` 的元数据与 artifact 的数据 |
+| `binding_metadata_` | `WeightBindingMetadata` | 被绑定表借用的 shape/stride 元数据 |
+| `bindings_` | `ExternalTensorBindings`（只含 weight/constant） | `TensorView` 借用 `binding_metadata_` 的元数据与 artifact 的数据 |
 | `plan_` | `ExecutionPlan` | 构建后自持，不借用 `LoweredGraph`；packed artifact 以 `shared_ptr` 持有 |
 | `phase_` | artifact 的唯一 `ExecPhase` | 由 plan 各 step 的 `selector.phase` 推导 |
 
 成员声明顺序即销毁顺序的逆序，是头文件写明的 teardown contract。
 
-### 3.2 WeightBindingStorage
+### 3.2 WeightBindingMetadata
 
 `std::vector<Entry>`，`Entry{std::vector<int64_t> shape, strides}`：
 
-- 元数据指针稳定性由两个独立机制保证——(a) 外层 vector 扩容时 `Entry` 被 move 构造，但内层 vector 的 `data()` 跨 move 不变；(b) `ExecutableModel`/storage 整体移动时外层缓冲指针直接移交。
+- 元数据指针稳定性由两个独立机制保证——(a) 外层 vector 扩容时 `Entry` 被 move 构造，但内层 vector 的 `data()` 跨 move 不变；(b) `ExecutableModel`/元数据对象整体移动时外层缓冲指针直接移交。
 - 因此**禁止**把 shape/stride 换成内联存储（`std::array`、small-buffer）——任何一次扩容或移动都会让已发出的 `IntArrayView` 悬垂。
 - stride 按行主序紧凑推导（权重连续性由 HF 校验器与 prepack 路径保证）；`alignment` 统一以 0（未指定）交付，因为 `RawWeightView` 不携带对齐信息。
+- stride 累加以 `CheckOverflowMul` 检测 `int64_t` 乘积溢出，溢出即 `AM_CHECK` 致命失败（不是返回 `Status`）：调用方已先按 backing 字节数校验过形状乘积，越界形状属前置条件违反，而静默产出错误 stride 会在执行期变成越界索引。
 
 ## 4. 并发模型
 
@@ -92,7 +93,7 @@ class ExecutableModel {
    - 结构化身份只能取自 `artifact.graph.values()[i].payload`（`ExecutionValueDesc` 不含 payload），下标同一性由 `PrepareTrustedGraph` 1:1 push 保证；
    - `kWeight` → 取 `WeightValue` 的 `binding` 字段交给 `ResolveWeightBinding` 解析（model 层单一权威，含 tied lm-head 回退）；
    - `kConstant` → `ConstantValue::inline_data` 按值 spec 包成 `TensorView`，并校验 inline 字节数与形状推导一致；
-   - shape/stride 数组写入 `binding_storage_` 并被 `TensorView` 借用。
+   - shape/stride 数组写入 `binding_metadata_` 并被 `TensorView` 借用。
 7. 双向对账：`{required 且非 kModelInput}` 与 `{已生成绑定}` 必须完全相等，任一方向不匹配即 `kInternal`。
 8. 组装 `ExecutableModel`（成员按 §3.1 顺序，失败路径不泄漏半成品对象）。
 
@@ -146,7 +147,7 @@ model inputs 不进绑定表：token/position 由 Session 按 phase 追加，重
 - 常量：物化成功、无 inline 数据、字节数不符三条路径。
 - packed：`AddRmsNorm` 子图权重不进绑定表且 `step.packed_weights` 非空；完整 Llama 在 `enable_packed_weights=true` 下所有含权重 step 均可解析（`PackedLoweringPreparesAllWeightConsumers`）。
 - phase：`kBoth` artifact 三查询同 plan；单 phase artifact 拒绝不匹配查询；混合 phase artifact prepare 期拒绝。
-- 元数据稳定性：移动后、扩容后已发出的 `TensorView` 仍有效；绑定表先于模型释放的 teardown 顺序在 ASAN/TSAN 下验证。
+- 元数据稳定性：移动后、扩容后已发出的 `TensorView` 仍有效；绑定表先于模型释放的 teardown 顺序在 ASAN/TSAN 下验证；形状乘积超出 `int64_t` 时 `Add` 致命失败（`ShapeProductOverflowDeath`）。
 - 契约钉住：`IsMoveConstructibleButNotAssignable` 断言只可移动构造、不可赋值/复制。
 
 ## 10. 变更记录
@@ -157,3 +158,4 @@ model inputs 不进绑定表：token/position 由 Session 按 phase 追加，重
 | 2026-09-24 | 1.1 | 修正两处过期断言：下游消费者 `InferenceSession` 已落地（改指 [02-inference-session.md](02-inference-session.md)）；`kEmbedding`/`kRmsNorm`/`kLinear` 的 packed identity 变体已补齐，完整 Llama 的 packed 配置现可 prepare，原"完整 packed Llama 不可解析"风险行改为描述符覆盖依赖，并新增 packed recipe 选举一行 |
 | 2026-09-26 | 1.2 | 记录 `LoadAndPrepareExecutableModel` 的职责、显式编译配置与 Runtime 生命周期；区分 O1+plain 文件到 Generate 的覆盖范围和 O2+packed 的 prepare 证据 |
 | 2026-10-05 | 1.3 | `PrepackWeightRequests` 签名改为返回 `StatusOr<PackedWeightStore>`：store 由函数创建并绑定批内 source，失败全有或全无（不再存在部分打包的调用方 store）；生产准备不再显式 `SetSourceId`，§6 第 3 步同步 |
+| 2026-10-12 | 1.4 | `WeightBindingStorage` 更名为 `WeightBindingMetadata`（文件同步为 `weight_binding_metadata.{h,cpp}`、测试为 `test_weight_binding_metadata.cpp`）：原名暗示它拥有权重数据，实际只拥有绑定所借用的 shape/stride 数组；`ExecutableModel` 成员与准备期局部变量随之改为 `binding_metadata_`/`binding_metadata`。同时记录 stride 累加改用 `CheckOverflowMul` + `AM_CHECK`（§3.2），消除 `int64_t` 有符号溢出 UB，新增死亡测试 `ShapeProductOverflowDeath`（该文件 8 例 → 9 例） |

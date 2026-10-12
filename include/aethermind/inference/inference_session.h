@@ -57,9 +57,9 @@ public:
     /// std::bad_alloc propagated from request buffer, binding, workspace or
     /// activation allocation returns ResourceExhausted with an empty message,
     /// so reporting the failure does not allocate additional memory.
-    StatusOr<std::vector<uint32_t>> Generate(
+    AM_NODISCARD StatusOr<std::vector<uint32_t>> Generate(
             std::span<const uint32_t> prompt_tokens,
-            const GenerationConfig& config);
+            const GenerationConfig& config) const;
 
 private:
     struct PhaseContract {

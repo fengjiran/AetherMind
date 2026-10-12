@@ -85,7 +85,7 @@ std::string DescribeWeightBinding(const WeightBinding& binding) {
 StatusOr<ExecPhase> ResolveArtifactPhase(const ExecutionPlan& plan) {
     ExecPhase phase = ExecPhase::kBoth;
     bool first = true;
-    for (const ExecutionStep& step: plan.steps()) {
+    for (const auto& step: plan.steps()) {
         if (first) {
             phase = step.selector.phase;
             first = false;
@@ -105,36 +105,38 @@ StatusOr<ExecPhase> ResolveArtifactPhase(const ExecutionPlan& plan) {
 /// external binding for every constant, so preparation has to turn the payload
 /// bytes into a view. The bytes are owned by the artifact payload and stay alive
 /// because the artifact is owned by the model being prepared.
-StatusOr<TensorView> MaterializeConstant(WeightBindingStorage& storage,
+StatusOr<TensorView> MaterializeConstant(WeightBindingMetadata& metadata,
                                          const ConstantValue& constant,
                                          const TensorSpec& spec,
                                          uint32_t value_index) {
     if (constant.binding.inline_data == nullptr) {
         return Status::FailedPrecondition(
-                "PrepareExecutableModel: constant value " + std::to_string(value_index) +
-                " carries no inline data");
+                "PrepareExecutableModel: constant value " +
+                std::to_string(value_index) + " carries no inline data");
     }
+
     if (!spec.shape.IsStatic()) {
         return Status::FailedPrecondition(
-                "PrepareExecutableModel: constant value " + std::to_string(value_index) +
-                " has a non-static shape");
+                "PrepareExecutableModel: constant value " +
+                std::to_string(value_index) + " has a non-static shape");
     }
 
     std::vector<int64_t> dims;
     dims.reserve(spec.shape.rank().value_or(0));
     uint64_t elements = 1;
-    for (const ShapeSymbol& dim: spec.shape) {
+    for (const auto& dim: spec.shape) {
         const int64_t extent = dim.GetStaticValue();
         if (extent < 0) {
             return Status::FailedPrecondition(
-                    "PrepareExecutableModel: constant value " + std::to_string(value_index) +
-                    " has a negative dimension");
+                    "PrepareExecutableModel: constant value " +
+                    std::to_string(value_index) + " has a negative dimension");
         }
+
         dims.push_back(extent);
         if (CheckOverflowMul(elements, static_cast<uint64_t>(extent), &elements)) {
             return Status::FailedPrecondition(
-                    "PrepareExecutableModel: constant value " + std::to_string(value_index) +
-                    " shape product overflows");
+                    "PrepareExecutableModel: constant value " +
+                    std::to_string(value_index) + " shape product overflows");
         }
     }
 
@@ -147,11 +149,11 @@ StatusOr<TensorView> MaterializeConstant(WeightBindingStorage& storage,
                 " inline data size does not match its logical shape");
     }
 
-    return storage.Add(constant.binding.inline_data->data(), spec.dtype, std::move(dims));
+    return metadata.Add(constant.binding.inline_data->data(), spec.dtype, std::move(dims));
 }
 
 /// @brief Materializes one required weight or constant value as a tensor view.
-StatusOr<TensorView> MaterializeBinding(WeightBindingStorage& storage,
+StatusOr<TensorView> MaterializeBinding(WeightBindingMetadata& metadata,
                                         const LoweredValueDesc& value,
                                         const ResolvedModelWeights& resolved,
                                         ExecutionValueKind kind,
@@ -160,11 +162,12 @@ StatusOr<TensorView> MaterializeBinding(WeightBindingStorage& storage,
         const auto* constant = std::get_if<ConstantValue>(&value.payload);
         if (constant == nullptr) {
             return Status::Internal(
-                    "PrepareExecutableModel: constant value " + std::to_string(value_index) +
-                    " has no ConstantValue payload");
+                    "PrepareExecutableModel: constant value " +
+                    std::to_string(value_index) + " has no ConstantValue payload");
         }
-        return MaterializeConstant(storage, *constant, value.spec, value_index);
+        return MaterializeConstant(metadata, *constant, value.spec, value_index);
     }
+
     if (kind != ExecutionValueKind::kWeight) {
         return Status::Internal(
                 "PrepareExecutableModel: value " + std::to_string(value_index) +
@@ -174,23 +177,24 @@ StatusOr<TensorView> MaterializeBinding(WeightBindingStorage& storage,
     const auto* weight = std::get_if<WeightValue>(&value.payload);
     if (weight == nullptr) {
         return Status::Internal(
-                "PrepareExecutableModel: weight value " + std::to_string(value_index) +
-                " has no WeightValue payload");
+                "PrepareExecutableModel: weight value " +
+                std::to_string(value_index) + " has no WeightValue payload");
     }
+
     const RawWeightView* raw = ResolveWeightBinding(weight->binding, resolved);
     if (raw == nullptr) {
         return Status::FailedPrecondition(
                 "PrepareExecutableModel: weight value " + std::to_string(value_index) +
-                " (" + DescribeWeightBinding(weight->binding) +
-                ") has no resolvable raw weight");
+                " (" + DescribeWeightBinding(weight->binding) + ") has no resolvable raw weight");
     }
+
     AM_RETURN_IF_ERROR(ValidateRawWeightView(*raw));
     if (!raw->is_contiguous) {
         return Status::FailedPrecondition(
-                "PrepareExecutableModel: weight value " + std::to_string(value_index) +
-                " is not contiguous");
+                "PrepareExecutableModel: weight value " +
+                std::to_string(value_index) + " is not contiguous");
     }
-    return storage.Add(raw->data, raw->dtype, raw->shape);
+    return metadata.Add(raw->data, raw->dtype, raw->shape);
 }
 
 } // namespace
@@ -198,7 +202,7 @@ StatusOr<TensorView> MaterializeBinding(WeightBindingStorage& storage,
 ExecutableModel::ExecutableModel(Runtime& runtime,
                                  LoweredModelArtifact artifact,
                                  PackedWeightCollection packed_weights,
-                                 WeightBindingStorage binding_storage,
+                                 WeightBindingMetadata binding_metadata,
                                  ExternalTensorBindings bindings,
                                  ExecutionPlan plan,
                                  ExecPhase phase,
@@ -207,7 +211,7 @@ ExecutableModel::ExecutableModel(Runtime& runtime,
     : runtime_(&runtime),
       artifact_(std::move(artifact)),
       packed_weights_(std::move(packed_weights)),
-      binding_storage_(std::move(binding_storage)),
+      binding_metadata_(std::move(binding_metadata)),
       bindings_(std::move(bindings)),
       plan_(std::move(plan)),
       phase_(phase),
@@ -217,8 +221,8 @@ ExecutableModel::ExecutableModel(Runtime& runtime,
 Status ExecutableModel::CheckPhase(ExecPhase phase) const noexcept {
     if (!PhaseMatches(phase_, phase)) {
         return Status::FailedPrecondition(
-                std::string("ExecutableModel was compiled for phase ") + ToString(phase_) +
-                ", but phase " + ToString(phase) + " was requested");
+                std::string("ExecutableModel was compiled for phase ") +
+                ToString(phase_) + ", but phase " + ToString(phase) + " was requested");
     }
     return Status::Ok();
 }
@@ -343,35 +347,36 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
         return required.status();
     }
 
-    WeightBindingStorage binding_storage;
+    WeightBindingMetadata binding_metadata;
     ExternalTensorBindings bindings;
     std::vector<bool> bound(plan->values().size(), false);
-    for (uint32_t index = 0; index < required->size(); ++index) {
-        if (!(*required)[index]) {
+    for (uint32_t i = 0; i < required->size(); ++i) {
+        if (!(*required)[i]) {
             continue;
         }
 
-        const ExecutionValueKind kind = plan->values()[index].kind;
+        const auto kind = plan->values()[i].kind;
         // Model inputs are session-supplied per phase; preparation holds no data
         // for them.
         if (kind == ExecutionValueKind::kModelInput) {
             continue;
         }
 
-        if (index >= artifact.graph.values().size()) {
+        if (i >= artifact.graph.values().size()) {
             return Status::Internal(
-                    "PrepareExecutableModel: plan value " + std::to_string(index) +
+                    "PrepareExecutableModel: plan value " + std::to_string(i) +
                     " is beyond the artifact's values");
         }
 
-        const auto view = MaterializeBinding(binding_storage, artifact.graph.values()[index],
-                                             resolved, kind, index);
+        auto view = MaterializeBinding(binding_metadata,
+                                       artifact.graph.values()[i],
+                                       resolved, kind, i);
         if (!view.ok()) {
             return view.status();
         }
 
-        bindings.readable.push_back({.value = {.index = index}, .tensor = *view});
-        bound[index] = true;
+        bindings.readable.push_back({.value = {.index = i}, .tensor = *view});
+        bound[i] = true;
     }
 
     // Reconcile in both directions. A binding the plan does not require would
@@ -388,7 +393,7 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
     }
 
     return ExecutableModel(runtime, std::move(artifact), std::move(packed_weights),
-                           std::move(binding_storage), std::move(bindings),
+                           std::move(binding_metadata), std::move(bindings),
                            std::move(*plan), *phase,
                            context_limit,
                            vocab_size);

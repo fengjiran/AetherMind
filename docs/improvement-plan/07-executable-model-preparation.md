@@ -91,7 +91,7 @@ inference → execution + compiler + model + runtime
 ExecutableModel                            模型生命周期（move-only）
 ├── owns LoweredModelArtifact              → 间接 owns LoadedModel / ResolvedModelWeights / RawStorage
 ├── owns PackedWeightCollection                 → 与 plan 共享 shared_ptr 所有权
-├── owns WeightBindingStorage              → 每个绑定的 shape/stride 数组（堆稳定）
+├── owns WeightBindingMetadata             → 每个绑定的 shape/stride 数组（堆稳定）
 ├── owns ExternalTensorBindings            → 仅 weight/constant 只读子集，数据指针借用上面两项
 └── owns ExecutionPlan                     → 构建后自持，不借用 LoweredGraph
 ```
@@ -147,7 +147,7 @@ PrepareExecutableModel(runtime, artifact)
        payload = artifact.graph.values()[i].payload    // 取值来源见下方说明
        kWeight    → ResolveWeightBinding(get<WeightValue>(payload).binding, resolved)
        kConstant  → get<ConstantValue>(payload).inline_data
-     二者包成 TensorView；shape/stride 数组写入 WeightBindingStorage 并被 TensorView 借用
+     二者包成 TensorView；shape/stride 数组写入 WeightBindingMetadata 并被 TensorView 借用
   7. 完整性对账：{required 且非 kModelInput} 与 {已生成绑定} 两个集合必须完全相等，
      缺失或多余即 FailedPrecondition（错误信息含 value index）
   8. 组装 ExecutableModel（成员按 §3.2 顺序）
@@ -193,7 +193,7 @@ AM_NODISCARD const RawWeightView* ResolveWeightBinding(
 
 `TensorView(data, dtype, IntArrayView shape, IntArrayView strides, alignment)` **借用** shape/stride 数组（`tensor_view.h:49-61`），而 `RawWeightView` 只有 shape、没有 stride。因此 `ExecutableModel` 必须自有每个绑定的元数据：
 
-- `WeightBindingStorage` 为 `std::vector<Entry>`，`Entry` 内含 `std::vector<int64_t> shape, strides`；
+- `WeightBindingMetadata` 为 `std::vector<Entry>`，`Entry` 内含 `std::vector<int64_t> shape, strides`；
 - 元数据指针稳定性由两个**独立**机制保证，二者缺一即悬垂：(a) `ExecutableModel` 整体移动时，外层 vector 的堆缓冲指针直接移交，`Entry` 不重定位；(b) 构建期 `push_back` 触发外层扩容时 `Entry` 被 move 构造，但 `Entry` 内层 `std::vector<int64_t>` 的 `data()` 跨 move 不变（移动只转移缓冲所有权）；
 - 因此禁止把 shape/stride 换成内联存储（`std::array`、small-buffer 优化、`absl::InlinedVector` 之类）：那会同时破坏 (a) 与 (b)，任何一次扩容或移动都会让已发出的 `IntArrayView` 悬垂；
 - stride 按行主序紧凑推导（连续性由 §2.3 保证），`alignment` 透传实际对齐。
@@ -274,7 +274,7 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 
 范围调整：`ExecutableModel` 本体不在本步交付，改与 `PrepareExecutableModel` 一起在 M2.4 落地。先定义一个没有任何构造入口的类型会留下无法使用的半成品；而 `WeightBindingStorage` 契约完整、可独立测试，又正是 §4.4 悬垂风险最高的一环，适合作为本步的完整交付物。
 
-新增 `include/aethermind/inference/` 与 `src/inference/`；定义 `WeightBindingStorage` 并写明 §4.4/§4.6 契约；`ExecutableModel` 随 M2.4 落地；更新根 `AGENTS.md` §2.1 ownership 表与跨模块依赖规则。
+新增 `include/aethermind/inference/` 与 `src/inference/`；定义 `WeightBindingMetadata` 并写明 §4.4/§4.6 契约；`ExecutableModel` 随 M2.4 落地；更新根 `AGENTS.md` §2.1 ownership 表与跨模块依赖规则。
 
 **CMake 无需改动**：`src/CMakeLists.txt:1-4` 与 `tests/unit/CMakeLists.txt:4-6` 均为 `file(GLOB_RECURSE ... CONFIGURE_DEPENDS)`，新目录自动收录；`include/` 已在 `AetherMind` 的 PUBLIC 头路径上。因此本步唯一的仓库级登记动作是 `AGENTS.md`。
 
@@ -332,7 +332,7 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 - 完整性/物化失败返回可定位的 `FailedPrecondition`（含 value index），不进入执行期，且不留下半成品 `ExecutableModel`（`RejectsConstantWithoutInlineData`、`RejectsConstantWhoseInlineSizeDisagreesWithShape`）；
 - 权重解析返回 `nullptr` 时转 `FailedPrecondition`，消息含 value index 与 `role=<label>, layer=<n>`（`RejectsWeightWithNoDenseStorageRole` 覆盖 `kMoERouter`，`RejectsWeightWhoseLayerIndexHasNoStorage` 覆盖越界 layer）；
 - `plan(phase)` 对 phase 不匹配的 artifact 返回错误而非静默复用（`PhaseSpecificArtifactRejectsUnmatchedPhaseQueries`）；step 间 phase 不一致的 artifact 在 prepare 期即被拒绝（`RejectsArtifactWhoseStepsMixPhases`，经 `LoweredGraph::Builder` 测试缝构造 mixed 形态）；
-- 元数据堆稳定性有回归测试（`SurvivesBeingMoved` 与 `test_weight_binding_storage.cpp`：移动后、以及绑定数量增长触发外层扩容后，已发出的 `TensorView.shape()`/`strides()` 仍有效）。
+- 元数据堆稳定性有回归测试（`SurvivesBeingMoved` 与 `test_weight_binding_metadata.cpp`：移动后、以及绑定数量增长触发外层扩容后，已发出的 `TensorView.shape()`/`strides()` 仍有效）。
 
 ## 8. 风险与依赖
 
@@ -359,7 +359,8 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 
 - [`include/aethermind/inference/executable_model.h`](../../include/aethermind/inference/executable_model.h)
 - [`src/inference/executable_model.cpp`](../../src/inference/executable_model.cpp)
-- [`include/aethermind/inference/weight_binding_storage.h`](../../include/aethermind/inference/weight_binding_storage.h)
+- [`include/aethermind/inference/weight_binding_metadata.h`](../../include/aethermind/inference/weight_binding_metadata.h)
+- [`src/inference/weight_binding_metadata.cpp`](../../src/inference/weight_binding_metadata.cpp)
 - [`include/aethermind/model/weight/packed_weight_collection.h`](../../include/aethermind/model/weight/packed_weight_collection.h)
 - [`src/model/weight/packed_weight_collection.cpp`](../../src/model/weight/packed_weight_collection.cpp)
 - [`include/aethermind/model/weight/weight_binding_resolver.h`](../../include/aethermind/model/weight/weight_binding_resolver.h)
@@ -396,3 +397,4 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 | 2026-09-23 | 1.11 | packed 缺口闭环同步：§2.2 末行与 M2.4/M2.5 两处不再把"完整模型 packed 不可解析"记为现状——`Embedding`/`RmsNorm`/`Linear` 的 packed identity descriptor 已落地，缺口测试 `PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 被正向的 `PackedLoweringPreparesAllWeightConsumers` 取代；同时 recipe 传递链（`KernelDef::packing_recipe` → `Backend::GetPackingRecipe` → `WeightPackingRequest::recipe` → `PackWeights(..., recipe)`）与 bpanel 打包/消费链已落地，详见 [GEMM 提案](../operators/gemm/cpu-gemm-packed-weight.md) 与 01 §2.3 |
 | 2026-10-05 | 1.12 | `PrepackWeightRequests` 签名同步为 `StatusOr<PackedWeightStore> PrepackWeightRequests(const Backend&, const std::vector<WeightPackingRequest>&)`：store 由函数创建、绑定批内 source 并作为返回值（失败全有或全无；空批返回未绑定空 store），§2.1 表与 §3.4 第 3 步同步，生产准备不再显式 `SetSourceId`。全量 3574 例通过 |
 | 2026-10-08 | 1.13 | 按调用方依赖拆分 resolver/request，Store 与 PrepackWeightRequests 置于同一单元；recipe 查询与 consumer 合并定义在 executable_model.cpp，声明集中到 inference_internal.h；Store 与 resolver 现有测试分别迁移，现有接口和所有权合同保持 |
+| 2026-10-12 | 1.14 | `WeightBindingStorage` 更名为 `WeightBindingMetadata`，文件同步为 `weight_binding_metadata.{h,cpp}` 与 `test_weight_binding_metadata.cpp`：该类型只拥有绑定所借用的 shape/stride 数组，不拥有权重数据，原名的 `Storage` 后缀名实不符。§3.1/§3.2/§4.4/§7/§10 与根 `AGENTS.md` §2.1 同步；M2.3 的带日期状态段与既有变更记录行按历史记录保留原名。同批：stride 累加改用 `CheckOverflowMul` + `AM_CHECK` 消除 `int64_t` 有符号溢出 UB，新增死亡测试 `ShapeProductOverflowDeath` |

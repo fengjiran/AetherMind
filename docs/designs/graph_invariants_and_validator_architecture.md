@@ -199,7 +199,7 @@ KV 池隔离是构造性的：`KVCacheManager` 独占静态存储，所有权与
 | DCE 可达性 | DCE pass | [ComputeRetainedNodes](../../src/graph/optimization/graph_rewrite.cpp:906) 内部计算 | 图不变量不要求"无死节点"，裁剪是 pass 行为 |
 | 静态形状解析 | 模型构建/规划 | `TensorSpec` + `ShapeConstraint` | 动态维度解析是阶段行为，非图校验职责 |
 | kernel 解析/预打包 | 执行计划构建 | [PrepareKernelChecked](../../src/execution/execution_plan_builder.cpp:251)、`PrepackWeightRequests` | backend 域，graph 层不得涉及 |
-| workspace 对齐/偏移 | 执行计划构建 | [PlanWorkspaceRequirements](../../include/aethermind/runtime/workspace.h:121) | 顺序规划：对齐合法性 + 溢出检查，无生命周期复用 |
+| workspace 对齐/偏移 | 执行计划构建 | [PlanWorkspaceRequirements](../../src/runtime/workspace_planner.cpp:29) | 顺序规划：完整验证后提交 offsets，失败保持输入不变；无生命周期复用 |
 | 内存计划 | 规划阶段 | 无全面校验器 | activation 池、临时池、KV 池的分配与复用规划，见 §7.2 行 16、17 |
 
 区分意义：这些条件不能作为 graph 校验的通用断言，否则会把 pass 内部策略误当图契约；但一旦进入对应阶段，各自必须有本地校验，不能因为"不是图不变量"就放任不验。
@@ -219,7 +219,7 @@ KV 池隔离是构造性的：`KVCacheManager` 独占静态存储，所有权与
 | `ResolveStateAliasesForExecution` | [execution/execution_plan_builder.cpp](../../src/execution/execution_plan_builder.cpp) | 已实现 | execution trust boundary 重查 artifact 后，将 aliases 映射为 runtime step/port 并按完整坐标排序 |
 | `ExecutionPlanBuilder::Build` | [execution_plan_builder.cpp](../../src/execution/execution_plan_builder.cpp:395) | 已实现 | 信任路径不重推断；未信任路径 `ValidateCallerMetadata` 严格相等、`DeriveSelectorDTypes` 交叉校验 selector dtype；拒绝 monostate `op_params` |
 | `ExecutionPlan::Create` | [execution_plan.cpp](../../src/execution/execution_plan.cpp:94) | 已实现 | 每步：op 非空、resolved kernel fn 非空、workspace 对齐为 2 的幂、kernel/step workspace 需求一致、runtime_checks 端口引用静态校验；`StateAliasPlan` 排序并拒绝越界 step 引用 |
-| `PlanWorkspaceRequirements` | [workspace.h](../../include/aethermind/runtime/workspace.h:121) | 已实现 | 对齐校验、偏移溢出检查；顺序分配，不做跨步骤生命周期复用 |
+| `PlanWorkspaceRequirements` | [workspace_planner.cpp](../../src/runtime/workspace_planner.cpp:29) | 已实现 | 对齐与溢出校验后才写 offsets；诊断 OOM 返回 `ResourceExhausted`；顺序分配，不做跨步骤生命周期复用 |
 | `LayerRunner::ValidateStateAliasesForStep` | [layer_runner.cpp](../../src/execution/layer_runner.cpp:70) | 部分覆盖 | 仅要求 KV 别名存在 `KVCacheView`；通用别名指针比较留 TODO（[layer_runner.cpp](../../src/execution/layer_runner.cpp:93)） |
 | `LayerRunner::ValidateTensorBindingPremises` | [shape_constraint_evaluator.cpp](../../src/shape_inference/shape_constraint_evaluator.cpp:482) | 已实现 | 每步 kernel 调用前校验运行时绑定保持 plan-time TensorSpec 前提（dtype/rank/静态维度/符号 identity），防止 kSatisfied 约束被裁剪后证明前提漂移 |
 | `KVCacheManager` / `KVCacheView` | [kv_cache_manager.h](../../include/aethermind/runtime/kv_cache_manager.h:16)、[kv_cache_view.h](../../include/aethermind/runtime/kv_cache_view.h:84) | 已实现 | 静态存储独占、布局/stride 校验（token 对齐与覆盖关系）、buffer 尺寸校验、读写边界、会话 generation；池隔离为构造性，见 §5.7 |

@@ -71,7 +71,7 @@ return cpu::detail::RmsNormKernel_CPU_FP32_AVX2(kernel_args);
 
 - `include/aethermind/operators/operator.h:104`
 - `src/execution/execution_plan_builder.cpp:113`
-- `include/aethermind/runtime/workspace.h:191`
+- `include/aethermind/runtime/workspace_planner.h:191`
 
 `Operator::ComputeWorkspaceRequirement()` 当前没有调用者。执行计划构建器直接采用调用方预填的 `ExecutionPlanNodeSpec::workspace_requirement`，没有根据已创建的 Operator 计算 workspace。
 

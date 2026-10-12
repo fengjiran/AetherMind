@@ -522,7 +522,7 @@ if (!status.ok()) {
 | 加载 | 12 | `WeightPrepackPlanner::BuildRequests` | `src/model/weight_prepack_planner.cpp` |
 | 加载 | 13 | `WeightPrepackPlanner::PrepackAndStore` | `src/model/weight_prepack_planner.cpp` |
 | 编译 | 14 | `ExecutionPlanBuilder::Build` | `src/execution/execution_plan_builder.cpp` |
-| 编译 | 15 | `PlanWorkspaceRequirements` | `src/runtime/workspace.cpp` |
+| 编译 | 15 | `PlanWorkspaceRequirements` | `src/runtime/workspace_planner.cpp` |
 | 编译 | 16 | `runtime.GetBackend` | `src/runtime/runtime_context.cpp` |
 | 编译 | 17 | `CreateAndPrepareOperator` | `src/execution/execution_plan_builder.cpp` |
 | 编译 | 17a | `MakeOperatorParamsForNode` | `src/execution/execution_plan_builder.cpp` |

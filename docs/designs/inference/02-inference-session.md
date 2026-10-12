@@ -1,8 +1,8 @@
 # InferenceSession 模块设计
 
 - **状态**: Current（描述已验证实现；只写仓库事实）
-- **版本**: 1.2
-- **日期**: 2026-10-11
+- **版本**: 1.3
+- **日期**: 2026-10-12
 - **来源提案**: [01 号计划：InferenceSession / Generate 前置闭环计划](../../improvement-plan/01-inference-session-generate-readiness.md)（Implemented，§3.6）
 - **关联代码**: [include/aethermind/inference/inference_session.h](../../../include/aethermind/inference/inference_session.h) / [src/inference/inference_session.cpp](../../../src/inference/inference_session.cpp)、[src/inference/inference_internal.h](../../../src/inference/inference_internal.h)
 - **上游依赖**: inference（`ExecutableModel` 提供 phase plan、immutable 绑定表、`vocab_size()`/`context_limit()`/`IsPreparedFor()`）、execution（`PrepareExecutionBindings`、`ExecutionContext`、`Executor`、`ExecutionPlan` workspace 需求）、runtime（Runtime 的 `GetKVCacheManager`、`HasAllocatorProvider`/`GetAllocator`，`KVCacheManager::ReserveForSession`/`ReleaseSession`）、base（`WorkspaceArena`、`TensorView`、`CheckOverflowAdd`）、operators（`OpType::kArgmax` 合同校验）
@@ -66,12 +66,12 @@
 | `prefill_tokens` / `prefill_positions` | Prefill 输入，`std::vector<int64_t>`，地址在整个请求内稳定 |
 | `decode_tokens` / `decode_positions` | 长度 1 的 Decode 稳定输入 buffer，循环内只写内容 |
 | `generated_tokens` | 结果序列，循环前 `reserve(max_new_tokens)` |
-| `storage_` / `workspace_base_` / `workspace_size_` | `unique_ptr<std::byte[]>`，按 alignment 留出 padding 后取对齐基址 |
-| `workspace_arena_` | `SessionWorkspaceArena`，绑定到上面这块 buffer |
+| `storage_` | `unique_ptr<std::byte[]>`，拥有工作区分配；为空时没有 workspace |
+| `workspace_arena_` | `SessionWorkspaceArena`，保存工作区对齐基址与逻辑字节数；基址仅在初始化时计算，不在 RequestResources 中重复保存 |
 | `cache_view_` / `has_reservation_` | KV 预约句柄与标志 |
 | `context_` | `std::optional<ExecutionContext>`，同一时刻至多一个 |
 
-清理契约：`~RequestResources` → `Close()` → `ClearContext()`（`Clear()` 后 `reset()`）→ 若持有预约则 `ReleaseSession(cache_view_)`。`Finish()` 先 `Close()`，成功后移出 `generated_tokens`。`ClearContext()` 也在 Prefill 结束后显式调用，使 Decode context 成为当时唯一的 context。
+清理契约：`~RequestResources` → `Close()` → `ClearContext()`（`context_.reset()` 销毁阶段 context，由 RAII 释放其 owned bindings）→ 若持有预约则 `ReleaseSession(cache_view_)`。`Finish()` 先 `Close()`，成功后移出 `generated_tokens`。`ClearContext()` 也在 Prefill 结束后显式调用，使 Decode context 成为当时唯一的 context。请求级 KV 句柄与预约标志独立于 context，在准备失败及两个阶段之间仍负责预约清理。
 
 ### 3.4 SessionWorkspaceArena
 
@@ -209,6 +209,7 @@ CPU allocator 探测的存在理由：Runtime 的 `GetAllocator` 在缺 provider
 
 | 日期 | 版本 | 变更 |
 |---|---|---|
+| 2026-10-12 | 1.3 | 简化 RequestResources：移除重复 workspace 基址/大小和未使用的 view getter，以 optional reset 销毁 context，保留请求级 KV 清理责任 |
 | 2026-10-11 | 1.2 | `ValidatePlanContract` 移入 internal 头，新增 `PlanContractValidation` 合成 plan 测试覆盖全部 kUnimplemented 失败分支 |
 | 2026-10-11 | 1.1 | 修复 Generate OOM Status 通路；明确共享 Runtime 的请求串行化、输入角色顺序与析构清理错误传播边界；区分编排成本和 Attention 计算量；更新参数化测试说明 |
 | 2026-09-24 | 1.0 | 从 [01 号计划](../../improvement-plan/01-inference-session-generate-readiness.md) §3.6 落地实现承接：Create/Generate 契约、plan I/O 合同校验、请求级 RAII 与清理顺序、KV 预约算术（prompt + N−1）、workspace 适配、错误码表、并发边界与测试要点 |

@@ -40,7 +40,7 @@ public:
             return {};
         }
 
-        std::byte* const data = base_ + requirement.offset;
+        auto* const data = base_ + requirement.offset;
         if (reinterpret_cast<uintptr_t>(data) % requirement.alignment != 0) {
             return {};
         }
@@ -98,18 +98,13 @@ public:
         const auto address = reinterpret_cast<uintptr_t>(storage_.get());
         const size_t remainder = address % alignment;
         const size_t padding = remainder == 0 ? 0 : alignment - remainder;
-        workspace_base_ = storage_.get() + padding;
-        workspace_size_ = bytes;
-        workspace_arena_.SetBuffer(workspace_base_, workspace_size_);
+        auto* const workspace_base = storage_.get() + padding;
+        workspace_arena_.SetBuffer(workspace_base, bytes);
         return Status::Ok();
     }
 
     WorkspaceArena* workspace_arena() noexcept {
-        return workspace_size_ == 0 ? nullptr : &workspace_arena_;
-    }
-
-    KVCacheView cache_view() const noexcept {
-        return cache_view_;
+        return storage_ != nullptr ? &workspace_arena_ : nullptr;
     }
 
     Status PrepareContext(Runtime& runtime,
@@ -159,10 +154,7 @@ public:
     }
 
     void ClearContext() noexcept {
-        if (context_.has_value()) {
-            context_->Clear();
-            context_.reset();
-        }
+        context_.reset();
     }
 
     Status Close() noexcept {
@@ -196,8 +188,6 @@ private:
     KVCacheView cache_view_{};
     bool has_reservation_ = false;
     std::unique_ptr<std::byte[]> storage_{};
-    std::byte* workspace_base_ = nullptr;
-    size_t workspace_size_ = 0;
     SessionWorkspaceArena workspace_arena_{};
     std::optional<ExecutionContext> context_{};
 };

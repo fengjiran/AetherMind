@@ -45,6 +45,70 @@ TEST(WorkspaceRequirementPlanning, ZeroByteRequirementDoesNotConsumeWorkspace) {
     EXPECT_EQ(layout->required_alignment, 64U);
 }
 
+TEST(WorkspaceRequirementPlanning, EmptyRequirementsUseEmptyLayout) {
+    const StatusOr<WorkspacePlanLayout> layout = PlanWorkspaceRequirements({});
+
+    ASSERT_TRUE(layout.ok());
+    EXPECT_EQ(layout->total_bytes, 0U);
+    EXPECT_EQ(layout->required_alignment, 1U);
+}
+
+TEST(WorkspaceRequirementPlanning, ZeroByteRequirementsTrackLargestAlignment) {
+    constexpr size_t kLargestAlignment = size_t{1} << (std::numeric_limits<size_t>::digits - 1);
+    std::array<WorkspaceRequirement, 2> requirements = {{
+            {.bytes = 0, .alignment = 64, .offset = 11},
+            {.bytes = 0, .alignment = kLargestAlignment, .offset = 22},
+    }};
+
+    const StatusOr<WorkspacePlanLayout> layout = PlanWorkspaceRequirements(requirements);
+
+    ASSERT_TRUE(layout.ok());
+    EXPECT_EQ(requirements[0].offset, 0U);
+    EXPECT_EQ(requirements[1].offset, 0U);
+    EXPECT_EQ(layout->total_bytes, 0U);
+    EXPECT_EQ(layout->required_alignment, kLargestAlignment);
+}
+
+TEST(WorkspaceRequirementPlanning, AcceptsExactSizeCapacityAndTrailingZeroByteRequirement) {
+    constexpr size_t kMaxSize = std::numeric_limits<size_t>::max();
+    std::array<WorkspaceRequirement, 2> requirements = {{
+            {.bytes = kMaxSize, .alignment = 1},
+            {.bytes = 0, .alignment = 64},
+    }};
+
+    const StatusOr<WorkspacePlanLayout> layout = PlanWorkspaceRequirements(requirements);
+
+    ASSERT_TRUE(layout.ok());
+    EXPECT_EQ(requirements[0].offset, 0U);
+    EXPECT_EQ(requirements[1].offset, kMaxSize);
+    EXPECT_EQ(layout->total_bytes, kMaxSize);
+    EXPECT_EQ(layout->required_alignment, 64U);
+}
+
+TEST(WorkspaceRequirementPlanning, SuccessfulPlanningDoesNotAllocate) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    std::array<WorkspaceRequirement, 3> requirements = {{
+            {.bytes = 32, .alignment = 16},
+            {.bytes = 0, .alignment = 64},
+            {.bytes = 7, .alignment = 8},
+    }};
+
+    test::BeginMallocCallCounting();
+    const StatusOr<WorkspacePlanLayout> layout = PlanWorkspaceRequirements(requirements);
+    const test::MallocCallCounts counts = test::EndMallocCallCounting();
+
+    EXPECT_TRUE(layout.ok());
+    EXPECT_EQ(counts.malloc_calls, 0U);
+    EXPECT_EQ(counts.calloc_calls, 0U);
+    EXPECT_EQ(counts.realloc_calls, 0U);
+    EXPECT_EQ(counts.free_calls, 0U);
+    EXPECT_EQ(counts.aligned_alloc_calls, 0U);
+    EXPECT_EQ(counts.posix_memalign_calls, 0U);
+    EXPECT_EQ(counts.memalign_calls, 0U);
+}
+
 TEST(WorkspaceRequirementPlanning, RequirementDefaultsMatchOperatorContract) {
     const WorkspaceRequirement requirement;
 
@@ -93,14 +157,198 @@ TEST(WorkspaceRequirementPlanning, RejectsInvalidAlignment) {
 
 TEST(WorkspaceRequirementPlanning, DetectsOffsetOverflowDuringPlanning) {
     std::vector<WorkspaceRequirement> requirements = {
-            {.bytes = std::numeric_limits<size_t>::max() - 3, .alignment = 1},
-            {.bytes = 8, .alignment = 8},
+            {.bytes = std::numeric_limits<size_t>::max() - 3, .alignment = 1, .offset = 11},
+            {.bytes = 0, .alignment = 64, .offset = 22},
+            {.bytes = 8, .alignment = 8, .offset = 33},
     };
 
     const StatusOr<WorkspacePlanLayout> layout = PlanWorkspaceRequirements(requirements);
 
     ASSERT_FALSE(layout.ok());
     EXPECT_EQ(layout.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(requirements[0].offset, 11U);
+    EXPECT_EQ(requirements[1].offset, 22U);
+    EXPECT_EQ(requirements[2].offset, 33U);
 }
+
+TEST(WorkspaceRequirementPlanning, ByteOverflowPreservesAllOffsets) {
+    std::array<WorkspaceRequirement, 3> requirements = {{
+            {.bytes = 8, .alignment = 1, .offset = 11},
+            {.bytes = 0, .alignment = 64, .offset = 22},
+            {.bytes = std::numeric_limits<size_t>::max(), .alignment = 1, .offset = 33},
+    }};
+
+    const StatusOr<WorkspacePlanLayout> layout = PlanWorkspaceRequirements(requirements);
+
+    ASSERT_FALSE(layout.ok());
+    EXPECT_EQ(layout.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(requirements[0].offset, 11U);
+    EXPECT_EQ(requirements[1].offset, 22U);
+    EXPECT_EQ(requirements[2].offset, 33U);
+}
+
+TEST(WorkspaceRequirementPlanning, LateInvalidAlignmentPreservesAllOffsets) {
+    std::array<WorkspaceRequirement, 3> requirements = {{
+            {.bytes = 8, .alignment = 1, .offset = 11},
+            {.bytes = 0, .alignment = 64, .offset = 22},
+            {.bytes = 8, .alignment = 24, .offset = 33},
+    }};
+
+    const StatusOr<WorkspacePlanLayout> layout = PlanWorkspaceRequirements(requirements);
+
+    ASSERT_FALSE(layout.ok());
+    EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(requirements[0].offset, 11U);
+    EXPECT_EQ(requirements[1].offset, 22U);
+    EXPECT_EQ(requirements[2].offset, 33U);
+}
+
+TEST(WorkspaceRequirementPlanning, InvalidAlignmentTakesPrecedenceOverEarlierOverflow) {
+    std::array<WorkspaceRequirement, 3> requirements = {{
+            {.bytes = std::numeric_limits<size_t>::max(), .alignment = 1, .offset = 11},
+            {.bytes = 1, .alignment = 1, .offset = 22},
+            {.bytes = 0, .alignment = 0, .offset = 33},
+    }};
+
+    const StatusOr<WorkspacePlanLayout> layout = PlanWorkspaceRequirements(requirements);
+
+    ASSERT_FALSE(layout.ok());
+    EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(requirements[0].offset, 11U);
+    EXPECT_EQ(requirements[1].offset, 22U);
+    EXPECT_EQ(requirements[2].offset, 33U);
+}
+
+enum class PlanningFailure {
+    kInvalidAlignment,
+    kAlignmentOverflow,
+    kByteOverflow,
+};
+
+class WorkspaceRequirementPlanningDiagnosticFailure : public ::testing::TestWithParam<PlanningFailure> {};
+
+TEST_P(WorkspaceRequirementPlanningDiagnosticFailure, ReturnsResourceExhaustedAndPreservesOffsets) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    std::array<WorkspaceRequirement, 3> requirements = {{
+            {.bytes = 8, .alignment = 1, .offset = 11},
+            {.bytes = 0, .alignment = 64, .offset = 22},
+            {.bytes = 8, .alignment = 1, .offset = 33},
+    }};
+    switch (GetParam()) {
+        case PlanningFailure::kInvalidAlignment:
+            requirements[2].alignment = 24;
+            break;
+        case PlanningFailure::kAlignmentOverflow:
+            requirements[0].bytes = std::numeric_limits<size_t>::max() - 3;
+            requirements[2].alignment = 8;
+            break;
+        case PlanningFailure::kByteOverflow:
+            requirements[2].bytes = std::numeric_limits<size_t>::max();
+            break;
+    }
+
+    test::ScopedMallocFailure failure(0);
+    const StatusOr<WorkspacePlanLayout> layout = PlanWorkspaceRequirements(requirements);
+    const test::MallocFailureResult injection = failure.Stop();
+
+    EXPECT_TRUE(injection.allocation_failed);
+    ASSERT_FALSE(layout.ok());
+    EXPECT_EQ(layout.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_TRUE(layout.status().message().empty());
+    EXPECT_EQ(requirements[0].offset, 11U);
+    EXPECT_EQ(requirements[1].offset, 22U);
+    EXPECT_EQ(requirements[2].offset, 33U);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        FailurePaths,
+        WorkspaceRequirementPlanningDiagnosticFailure,
+        ::testing::Values(PlanningFailure::kInvalidAlignment,
+                          PlanningFailure::kAlignmentOverflow,
+                          PlanningFailure::kByteOverflow),
+        [](const ::testing::TestParamInfo<PlanningFailure>& info) {
+            switch (info.param) {
+                case PlanningFailure::kInvalidAlignment:
+                    return "InvalidAlignment";
+                case PlanningFailure::kAlignmentOverflow:
+                    return "AlignmentOverflow";
+                case PlanningFailure::kByteOverflow:
+                    return "ByteOverflow";
+            }
+            return "Unknown";
+        });
+
+TEST(WorkspaceOffsetAlignment, AlignsOffsetUpToBoundary) {
+    const StatusOr<size_t> offset = AlignWorkspaceOffset(17, 16);
+
+    ASSERT_TRUE(offset.ok());
+    EXPECT_EQ(*offset, 32U);
+}
+
+TEST(WorkspaceOffsetAlignment, AcceptsMaximumOffsetAtByteAlignment) {
+    constexpr size_t kMaxSize = std::numeric_limits<size_t>::max();
+
+    const StatusOr<size_t> offset = AlignWorkspaceOffset(kMaxSize, 1);
+
+    ASSERT_TRUE(offset.ok());
+    EXPECT_EQ(*offset, kMaxSize);
+}
+
+TEST(WorkspaceOffsetAlignment, AcceptsLargestPowerOfTwoAlignment) {
+    constexpr size_t kLargestAlignment = size_t{1} << (std::numeric_limits<size_t>::digits - 1);
+
+    const StatusOr<size_t> offset = AlignWorkspaceOffset(1, kLargestAlignment);
+
+    ASSERT_TRUE(offset.ok());
+    EXPECT_EQ(*offset, kLargestAlignment);
+}
+
+TEST(WorkspaceOffsetAlignment, RejectsInvalidAlignment) {
+    static_assert(noexcept(AlignWorkspaceOffset(0, 1)));
+    static_assert(noexcept(PlanWorkspaceRequirements({})));
+
+    for (const size_t alignment: {0U, 24U}) {
+        const StatusOr<size_t> offset = AlignWorkspaceOffset(8, alignment);
+
+        ASSERT_FALSE(offset.ok());
+        EXPECT_EQ(offset.status().code(), StatusCode::kInvalidArgument);
+    }
+}
+
+TEST(WorkspaceOffsetAlignment, DetectsAlignmentOverflow) {
+    const StatusOr<size_t> offset = AlignWorkspaceOffset(std::numeric_limits<size_t>::max() - 3, 8);
+
+    ASSERT_FALSE(offset.ok());
+    EXPECT_EQ(offset.status().code(), StatusCode::kOverflow);
+}
+
+class WorkspaceOffsetAlignmentDiagnosticFailure : public ::testing::TestWithParam<bool> {};
+
+TEST_P(WorkspaceOffsetAlignmentDiagnosticFailure, ReturnsResourceExhausted) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    const size_t input_offset = GetParam() ? std::numeric_limits<size_t>::max() - 3 : 8;
+    const size_t alignment = GetParam() ? 8 : 24;
+
+    test::ScopedMallocFailure failure(0);
+    const StatusOr<size_t> offset = AlignWorkspaceOffset(input_offset, alignment);
+    const test::MallocFailureResult injection = failure.Stop();
+
+    EXPECT_TRUE(injection.allocation_failed);
+    ASSERT_FALSE(offset.ok());
+    EXPECT_EQ(offset.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_TRUE(offset.status().message().empty());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        FailurePaths,
+        WorkspaceOffsetAlignmentDiagnosticFailure,
+        ::testing::Bool(),
+        [](const ::testing::TestParamInfo<bool>& info) {
+            return info.param ? "AlignmentOverflow" : "InvalidAlignment";
+        });
 
 } // namespace

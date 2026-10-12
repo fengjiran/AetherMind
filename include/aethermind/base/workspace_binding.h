@@ -1,11 +1,11 @@
-#ifndef AETHERMIND_BASE_WORKSPACE_H
-#define AETHERMIND_BASE_WORKSPACE_H
+#ifndef AETHERMIND_BASE_WORKSPACE_BINDING_H
+#define AETHERMIND_BASE_WORKSPACE_BINDING_H
 
-/// @file workspace.h
+/// @file workspace_binding.h
 /// @brief Base-layer workspace binding types shared by backend and execution.
 ///
 /// WorkspaceRequirement lives in `base/workspace_types.h`; planning (offset
-/// assignment) lives in `runtime/workspace.h`. WorkspaceBinding sits in the
+/// assignment) lives in `runtime/workspace_planner.h`. WorkspaceBinding sits in the
 /// base layer so that backend and execution contract headers can carry it
 /// without depending on each other or on runtime headers.
 
@@ -36,4 +36,4 @@ struct WorkspaceBinding {
 
 } // namespace aethermind
 
-#endif // AETHERMIND_BASE_WORKSPACE_H
+#endif // AETHERMIND_BASE_WORKSPACE_BINDING_H

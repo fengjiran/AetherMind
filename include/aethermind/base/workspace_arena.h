@@ -4,7 +4,7 @@
 /// @file workspace_arena.h
 /// @brief Abstract workspace allocation arena for execution-time buffers.
 
-#include "aethermind/base/workspace.h"
+#include "aethermind/base/workspace_binding.h"
 #include "aethermind/base/workspace_types.h"
 
 namespace aethermind {

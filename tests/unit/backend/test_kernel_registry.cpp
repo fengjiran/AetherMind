@@ -1,6 +1,6 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_registry.h"
-#include "aethermind/runtime/workspace.h"
+#include "aethermind/runtime/workspace_planner.h"
 
 #include "aethermind/dtypes/data_type.h"
 

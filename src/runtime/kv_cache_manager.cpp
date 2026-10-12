@@ -1,6 +1,7 @@
 #include "aethermind/runtime/kv_cache_manager.h"
 
-#include "aethermind/runtime/workspace.h"
+#include "aethermind/runtime/workspace_planner.h"
+#include "utils/overflow_check.h"
 
 #include <cstdlib>
 #include <limits>

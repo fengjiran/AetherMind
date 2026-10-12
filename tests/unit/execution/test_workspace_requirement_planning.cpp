@@ -1,5 +1,7 @@
-#include "aethermind/runtime/workspace.h"
+#include "aethermind/runtime/workspace_planner.h"
+#include "inference/test_malloc_interposer.h"
 
+#include <array>
 #include <gtest/gtest.h>
 #include <limits>
 #include <vector>

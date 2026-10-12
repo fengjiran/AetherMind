@@ -4,8 +4,8 @@
 #include "aethermind/backend/stream.h"
 #include "aethermind/base/device.h"
 #include "aethermind/base/kv_cache_binding.h"
-#include "aethermind/base/workspace.h"
 #include "aethermind/base/workspace_arena.h"
+#include "aethermind/base/workspace_binding.h"
 
 #include <cstddef>
 #include <span>

@@ -6,7 +6,7 @@
 #include "aethermind/runtime/kv_cache_manager.h"
 #include "aethermind/runtime/runtime.h"
 #include "aethermind/runtime/runtime_builder.h"
-#include "aethermind/runtime/workspace.h"
+#include "aethermind/runtime/workspace_planner.h"
 #include <gtest/gtest.h>
 
 namespace {

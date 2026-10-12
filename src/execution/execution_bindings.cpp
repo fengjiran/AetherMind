@@ -2,7 +2,7 @@
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/memory/allocator.h"
 #include "aethermind/operators/operator_schema.h"
-#include "aethermind/runtime/workspace.h"
+#include "aethermind/runtime/workspace_planner.h"
 #include "aethermind/shape_inference/shape_constraint_evaluator.h"
 #include "utils/overflow_check.h"
 

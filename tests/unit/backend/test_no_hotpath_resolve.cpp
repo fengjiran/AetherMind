@@ -7,7 +7,7 @@
 #include "aethermind/operators/op_params.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
-#include "aethermind/runtime/workspace.h"
+#include "aethermind/runtime/workspace_planner.h"
 #include "execution/test_execution_binding_helpers.h"
 
 #include <gtest/gtest.h>

@@ -1,5 +1,6 @@
 #include "aethermind/runtime/kv_cache_view.h"
-#include "aethermind/runtime/workspace.h"
+#include "aethermind/runtime/workspace_planner.h"
+#include "utils/overflow_check.h"
 
 #include <limits>
 

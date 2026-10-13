@@ -131,7 +131,7 @@ class MutableTensorView; // void* data
 
 **理由**:
 - `ArrayView` 明确不适合作为长期存储字段；直接保存借用 view 容易悬垂
-- `slice()` / `KVCacheView` 这类按值返回新 view 的 API 需要派生后的 shape/stride 元数据
+- `slice()` / `KVCacheSessionView` 这类按值返回新 view 的 API 需要派生后的 shape/stride 元数据
 - 现有仓库已有 `ShapeAndStride`，且对小 rank 做了 inline 优化，适合作为内部元数据承载
 
 ```cpp

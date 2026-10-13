@@ -5,7 +5,7 @@
 /// @brief Assembles a Runtime from options and custom provider registrations.
 
 #include "aethermind/base/device.h"
-#include "aethermind/runtime/kv_cache_manager.h"
+#include "aethermind/kv_cache/kv_cache_manager.h"
 #include "runtime.h"
 #include "runtime_options.h"
 

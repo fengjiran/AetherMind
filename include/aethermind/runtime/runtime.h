@@ -5,8 +5,8 @@
 /// @brief Long-lived owner of backend, allocator, and KV-cache resources.
 
 #include "aethermind/backend/backend_registry.h"
+#include "aethermind/kv_cache/kv_cache_manager.h"
 #include "aethermind/memory/allocator.h"
-#include "aethermind/runtime/kv_cache_manager.h"
 
 namespace aethermind {
 

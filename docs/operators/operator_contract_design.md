@@ -66,7 +66,7 @@ backend/kernels → operators（OpParams/OpType 及纯数据 dtype 契约头）
 - **统一逻辑签名**：Reference / Optimized 路径共享一致的算子语义
 - **轻量化数据视图**：热路径以 borrowed view 为主，不传 owning tensor
 - **执行期依赖显式传递**：通过 `OpContext` 提供线程、workspace、profiling、dispatch 信息
-- **KV 边界清晰**：Attention 通过 `KVCacheView` 访问历史 KV
+- **KV 边界清晰**：Attention 通过 `KVCacheSessionView` 访问历史 KV
 - **零分配友好**：算子不在 Decode 热路径申请堆内存
 
 ### 2.2 非目标
@@ -234,7 +234,7 @@ Status RmsNorm(
 
 ### 8.1 KV 访问边界
 
-Attention 算子必须通过 `KVCacheView` 访问 KV：
+Attention 算子必须通过 `KVCacheSessionView` 访问 KV：
 
 - 不得直接耦合到底层线性静态缓冲区实现
 - 不得在算子签名中暴露物理布局常量
@@ -296,7 +296,7 @@ struct DispatchTable {
 
 #### 4. KV Access Contract
 
-- 验证 Attention 只能通过 `KVCacheView` 访问 KV
+- 验证 Attention 只能通过 `KVCacheSessionView` 访问 KV
 - 验证算子不依赖底层物理布局常量
 
 ---

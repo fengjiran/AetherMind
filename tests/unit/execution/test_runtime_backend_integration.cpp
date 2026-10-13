@@ -2,8 +2,8 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/base/device.h"
 #include "aethermind/base/kernel_selector.h"
+#include "aethermind/kv_cache/kv_cache_manager.h"
 #include "aethermind/operators/op_type.h"
-#include "aethermind/runtime/kv_cache_manager.h"
 #include "aethermind/runtime/runtime.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/runtime/workspace_planner.h"
@@ -129,7 +129,7 @@ TEST(RuntimeBackendIntegration, KVCacheManagerCanBeBuiltFromRuntimeOptions) {
     EXPECT_TRUE(manager->is_initialized());
     EXPECT_EQ(manager->capacity_tokens(), 32U);
 
-    const StatusOr<KVCacheView> view = manager->ReserveForSession(8, 8);
+    const StatusOr<KVCacheSessionView> view = manager->ReserveForSession(8, 8);
     ASSERT_TRUE(view.ok());
     EXPECT_EQ(view->current_pos(), 0U);
     EXPECT_EQ(view->token_capacity(), 16U);

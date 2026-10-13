@@ -113,7 +113,7 @@ Kernel 的最终执行形态必须是 plan-build time resolve 后的函数指针
 | `ExecutionPlan`                 | 调用方/模型管理侧       | 模型级、只读       | 保存解析后的 `ExecutionStep` 与静态执行元数据；其 resolve Runtime/backend 必须仍存活 |
 | `PackedWeight`                 | `PackedWeightCollection`     | 与模型级 artifact 一致 | 由 Backend 定义格式并构建，但不由 Backend 持有 |
 | `PreparedExecutionBindings`     | `ExecutionContext`      | plan specialization | 拥有 activation、metadata 与 prepared params；借用 external tensor backing |
-| `ExecutionContext`              | `Session` / `Request`  | 会话级             | 按值拥有 prepared bindings，借用 workspace arena，保存 KVCacheView；不保存临时输出 buffer 或 sequence state |
+| `ExecutionContext`              | `Session` / `Request`  | 会话级             | 按值拥有 prepared bindings，借用 workspace arena，保存 KVCacheSessionView；不保存临时输出 buffer 或 sequence state |
 | `KernelContext`                 | 执行栈帧                | 短生命周期          | 单次调用的窄执行上下文 |
 
 #### 5.1.1 所有权约束

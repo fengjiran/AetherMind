@@ -27,6 +27,9 @@ public:
     /// @param plan Plan to execute.
     /// @param context Prepared tensor bindings and runtime resources.
     /// @return Status::Ok() on success, or the first failing step's error.
+    /// @pre No Init, ReserveForSession, ResetSession, or ReleaseSession on the
+    ///      borrowed KV manager may interleave this call, including kernel
+    ///      reentry. KV append transactions are local to this synchronous call.
     static Status Run(const ExecutionPlan& plan,
                       ExecutionContext& context) noexcept;
 

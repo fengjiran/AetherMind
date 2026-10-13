@@ -8,7 +8,7 @@
 #include "aethermind/base/status.h"
 #include "aethermind/base/workspace_arena.h"
 #include "aethermind/execution/execution_bindings.h"
-#include "aethermind/runtime/kv_cache_view.h"
+#include "aethermind/kv_cache/kv_cache_session_view.h"
 
 #include <cstdint>
 #include <span>
@@ -19,7 +19,7 @@ namespace aethermind {
 /// @brief Aggregates the resources needed to execute one specialized plan.
 ///
 /// The context owns PreparedExecutionBindings and borrows a WorkspaceArena.
-/// KVCacheView is a non-owning view of Runtime-owned KV storage. Use Create()
+/// KVCacheSessionView is a non-owning view of Runtime-owned KV storage. Use Create()
 /// before Execute() so plan identity, required workspace, and state-alias KV
 /// presence are checked on the cold path.
 class ExecutionContext {
@@ -32,8 +32,8 @@ public:
     /// @param prepared_bindings Cold-path bindings prepared for `plan`.
     /// @param workspace_arena Borrowed workspace arena; required when `plan`
     ///                        has non-zero workspace requirements.
-    /// @param kv_cache_view Borrowed KV storage view; required when `plan`
-    ///                      contains state aliases.
+    /// @param kv_cache_session_view Borrowed KV storage view; required when `plan`
+    ///                              contains state aliases.
     /// @return A complete context, or an error if its resources cannot serve
     ///         the plan. Workspace capacity and KV geometry are checked when
     ///         their individual steps bind them.
@@ -41,7 +41,7 @@ public:
             const ExecutionPlan& plan,
             PreparedExecutionBindings prepared_bindings,
             WorkspaceArena* workspace_arena,
-            KVCacheView kv_cache_view = {});
+            KVCacheSessionView kv_cache_session_view = {});
 
     ExecutionContext(const ExecutionContext&) = delete;
     ExecutionContext& operator=(const ExecutionContext&) = delete;
@@ -61,10 +61,10 @@ public:
             const WorkspaceRequirement& requirement) const noexcept;
 
     /// @brief Returns the current borrowed KV cache view.
-    AM_NODISCARD const KVCacheView& kv_cache_view() const noexcept;
+    AM_NODISCARD const KVCacheSessionView& kv_cache_session_view() const noexcept;
 
     /// @brief Returns whether a valid KV cache view is present.
-    AM_NODISCARD bool HasKVCacheView() const noexcept;
+    AM_NODISCARD bool HasKVCacheSessionView() const noexcept;
 
     /// @brief Returns prepared tensor and kernel bindings, or nullptr when
     /// the context has been cleared or was not created for execution.
@@ -88,7 +88,7 @@ private:
         : workspace_arena_(workspace_arena) {}
 
     WorkspaceArena* workspace_arena_ = nullptr;
-    KVCacheView kv_cache_view_{};
+    KVCacheSessionView kv_cache_session_view_{};
     PreparedExecutionBindings prepared_bindings_{};
     std::vector<uint8_t> kv_layer_transaction_scratch_{};
 };

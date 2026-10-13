@@ -225,7 +225,7 @@ TEST(ExecutionContext, ClearDoesNotResetBorrowedWorkspaceArena) {
     EXPECT_EQ(arena.reset_calls(), 0);
     EXPECT_EQ(context->prepared_bindings(), nullptr);
     EXPECT_EQ(context->workspace_arena(), nullptr);
-    EXPECT_FALSE(context->HasKVCacheView());
+    EXPECT_FALSE(context->HasKVCacheSessionView());
 }
 
 TEST(ExecutionContext, InvalidAlignmentIsRejectedBeforeArenaBinding) {

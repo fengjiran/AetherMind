@@ -49,7 +49,7 @@
 | [graph_lowering_design.md](designs/graph_lowering_design.md) | 图降低设计（存量，待归位 compiler/） | 待迁移 |
 | [graph_invariants_and_validator_architecture.md](designs/graph_invariants_and_validator_architecture.md) | 图不变量与验证器架构（存量，待归位 graph/） | 待迁移 |
 | [executor_design.md](designs/executor_design.md) | Executor 设计（存量，待归位 execution/） | 待迁移 |
-| [kv_cache_design.md](designs/kv_cache_design.md) | KV Cache 设计（存量，待归位 execution/） | 待迁移 |
+| [kv_cache_design.md](designs/kv_cache_design.md) | KV Cache 设计（存量，待归位 kv_cache/） | 待迁移 |
 | [model_graph_design.md](designs/model_graph_design.md) | ModelGraph 设计（存量，待归位 graph/） | 待迁移 |
 | [tensor_view_design.md](designs/tensor_view_design.md) | TensorView 设计（存量，待归位 base/） | 待迁移 |
 | [unified_allocator_design.md](designs/unified_allocator_design.md) | 统一分配器设计（存量，待归位 memory/） | 待迁移 |
@@ -159,7 +159,7 @@
 | LayerRunner | 逐步骤执行器：workspace 绑定、shape 校验后调用算子 kernel |
 | WorkspaceArena | 可复用 workspace buffer（Bind/Reset），Session 生命周期 |
 | KVCacheManager | 静态 KV 缓存管理（Init + ReserveForSession） |
-| KVCacheView | KV 缓存逻辑访问视图（可复制，底层状态可变） |
+| KVCacheSessionView | KV 缓存逻辑访问视图（可复制，底层状态可变） |
 | semantic pass | backend-independent 图变换（ConstantFolding / DCE / SiluMul / AddRmsNorm / QkvLinearFusion） |
 | GraphRewrite / GraphPassManager | 语义 pass 框架（graph 模块） |
 | OpType / OperatorSchema / OpParams | 算子语义契约层：端口顺序为语义 ABI；OpParams 为 typed variant |
@@ -167,6 +167,6 @@
 | PackedWeightCollection | packed weights 存储（legacy backend artifact，调用方持有） |
 | RuntimeBuilder / Runtime | 运行时装配与上下文（AllocatorRegistry + BackendRegistry + KVCacheManager） |
 | PreparedExecutionBindings | `ExecutionPlan` 的 cold-path tensor specialization：拥有 activation/metadata/prepared params，借用 external backing |
-| ExecutionContext | 单 plan 的窄执行资源：拥有 prepared bindings，借用 WorkspaceArena，保存 KVCacheView |
+| ExecutionContext | 单 plan 的窄执行资源：拥有 prepared bindings，借用 WorkspaceArena，保存 KVCacheSessionView |
 | ammalloc | 自研用户态分配器（ThreadCache/CentralCache/PageCache） |
 | Argmax | 贪婪采样（当前产品唯一采样策略） |

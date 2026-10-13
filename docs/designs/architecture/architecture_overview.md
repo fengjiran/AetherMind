@@ -237,7 +237,7 @@ sequenceDiagram
     Note over Exec: PrepareSession: 绑定 KV slot + workspace
 
     Exec->>KV: KVCacheManager::ReserveForSession(prompt_len, max_new_tokens)
-    KV-->>Exec: KVCacheView (逻辑视图)
+    KV-->>Exec: KVCacheSessionView (逻辑视图)
 
     rect rgb(200, 230, 200)
         Note over Exec,LR: Prefill (当前产品目标, 层间消息示意)
@@ -290,7 +290,7 @@ flowchart LR
         direction LR
         C1["WorkspaceArena<br/>(可复用 buffer)"] -->|"Bind + Borrow"| A4
         C2["KVCacheManager<br/>(静态 KV 存储)"] -->|"Bind + Borrow"| A4
-        C3["KVCacheView<br/>(逻辑访问视图)"] -->|"Bind + Borrow"| A4
+        C3["KVCacheSessionView<br/>(逻辑访问视图)"] -->|"Bind + Borrow"| A4
         C4["PackedWeightCollection<br/>packed weights"] -->|"只读引用 (ptr)"| A4
     end
 
@@ -328,7 +328,7 @@ flowchart LR
 | `Runtime`（AllocatorRegistry + BackendRegistry + KVCacheManager） | Runtime 生命周期（最长） | 装配后基本不可变 | 调用方持有 `RuntimeBuilder::Build()` 返回的值对象；必须比由其 backend resolve 的 plan 活得久，因为 `ResolvedKernel::name` 借用 backend-owned storage |
 | `PreparedExecutionBindings` | plan specialization 生命周期（中） | 构建后只读 | `ExecutionContext` 按值拥有 activation storage、metadata 与 prepared params；external TensorView 的 data backing 由调用方借出且必须保持有效 |
 | Workspace arena | Session 生命周期（中） | 可变（session 显式 reset 后复用） | Session/调用方持有；`ExecutionContext` 仅借用，`Clear()` 不得 reset |
-| `KVCacheView` | Session 生命周期（中） | 视图可复制，底层 KV 状态可变 | `ExecutionContext` 保存 view；存储由 `Runtime` 的 `KVCacheManager` 持有，`Clear()` 不得 release reservation |
+| `KVCacheSessionView` | Session 生命周期（中） | 视图可复制，底层 KV 状态可变 | `ExecutionContext` 保存 view；存储由 `Runtime` 的 `KVCacheManager` 持有，`Clear()` 不得 release reservation |
 | 单次 kernel 调用的 tensor view / binding | step 执行期间（短） | 可变（不拥有存储） | 栈帧 / `KernelContext` |
 
 ---
@@ -440,7 +440,7 @@ flowchart TB
 | **图编译** | `ModelCompiler`、`BuildModelGraph`/`BuildLlamaDense`、`OptimizeModelGraph` + `LowerModelGraph`、`LoweredModelArtifact` | production `LoweredModelArtifact → ExecutionPlan` 自动入口（weight artifact identity + kernel 覆盖） | - |
 | **计划构建** | `ExecutionPlanBuilder::Build`（kernel resolve + packed weight bind + workspace plan） | - | - |
 | **执行引擎** | `Executor::Execute` → `LayerRunner::Run`（单一 plan 按步执行） | PrefillPath / DecodePath 状态机、Generate 编排 | Continuous batching、request scheduling |
-| **KV Cache** | `KVCacheManager`（静态预分配 Init + ReserveForSession）、`KVCacheView`（逻辑读写） | 接入 Generate 的完整 Prefill/Decode KV 读写流 | PagedAttention、动态扩容 |
+| **KV Cache** | `kv_cache`：`KVCacheManager`（静态预分配 Init + ReserveForSession）、`KVCacheSessionView`（逻辑读写）；Runtime 按值拥有 Manager | 接入 Generate 的完整 Prefill/Decode KV 读写流 | PagedAttention、动态扩容 |
 | **采样** | Argmax（通过算子体系） | 集成到 Generate 循环 | Temperature / top-k / top-p |
 | **Backend** | CPU Backend（`CpuBackend` factory/freeze/resolve、`KernelRegistry` 全局 singleton + `AM_REGISTER_KERNEL`） | 更完整的 Llama-layer 算子覆盖与 SIMD kernel | GPU/CUDA、CANN |
 | **内存** | `ammalloc`（ThreadCache/CentralCache/PageCache）、`WorkspaceArena`（Bind/Reset） | Decode 稳态零分配验证 | - |
@@ -493,7 +493,7 @@ flowchart TB
 | 类别 | 生命周期 | 特征 | 管理者 |
 |---|---|---|---|
 | Model Weights | 模型级（长） | 只读、大块、长期驻留（mmap 或加载后驻留） | `LoadedModel` / `PackedWeightCollection` |
-| KV Cache | Session 级（中） | 静态预分配、按 token 位置递增写入、不动态扩容 | `KVCacheManager` |
+| KV Cache | Session 级（中） | 静态预分配、按 token 位置递增写入、不动态扩容 | `KVCacheManager`（kv_cache 模块；由 `Runtime` 按值拥有） |
 | Workspace / Scratch | 执行期（短/中） | 预留、复用（Bind/Reset） | `WorkspaceArena`（可经 ammalloc） |
 
 ### 11.2 稳态零分配定义
@@ -528,7 +528,7 @@ flowchart TB
 4. **算子策略**：reference first, optimized second。
 5. **分发策略**：plan-build-time resolve，热路径函数指针，无虚调用与热路径查找。
 6. **对象模型**：`LoadedModel`（config + resolved weights）→ `LoweredModelArtifact`（owns LoadedModel + LoweredGraph）→ `ExecutionPlan`（不可变，调用方持有）。
-7. **KV 访问边界**：Execution / Operator 通过 `KVCacheView` 访问 KV，不耦合底层线性存储实现。
+7. **KV 访问边界**：`kv_cache` 拥有物理 layout/storage/reservation；Runtime 聚合 Manager；Execution / Operator 通过 `KVCacheSessionView` 和 base 窄 binding 访问 KV，不耦合底层线性存储实现。提交入口不属于公开 View API，仅由 execution 的 `LayerRunner` 在完整 plan transaction 成功后经 source-private access 调用。
 8. **算子契约**：Reference 与 Optimized 路径共享统一逻辑签名（OpParams 为 typed variant）。
 
 ## 十四、参考来源
@@ -549,7 +549,9 @@ flowchart TB
 | [`include/aethermind/execution/executor.h`](../../../include/aethermind/execution/executor.h) / [`src/execution/executor.cpp`](../../../src/execution/executor.cpp) | `Executor::Execute` |
 | [`src/execution/layer_runner.h`](../../../src/execution/layer_runner.h) / [`src/execution/layer_runner.cpp`](../../../src/execution/layer_runner.cpp) | `LayerRunner::Run`（执行私有，公开入口为 `Executor::Execute`） |
 | [`include/aethermind/runtime/runtime_builder.h`](../../../include/aethermind/runtime/runtime_builder.h) / [`src/runtime/runtime_builder.cpp`](../../../src/runtime/runtime_builder.cpp) | `RuntimeBuilder::Build` |
-| [`include/aethermind/runtime/kv_cache_manager.h`](../../../include/aethermind/runtime/kv_cache_manager.h) / [`src/runtime/kv_cache_manager.cpp`](../../../src/runtime/kv_cache_manager.cpp) | `KVCacheManager` |
+| [`include/aethermind/kv_cache/kv_cache_layout.h`](../../../include/aethermind/kv_cache/kv_cache_layout.h) / [`src/kv_cache/kv_cache_layout.cpp`](../../../src/kv_cache/kv_cache_layout.cpp) | `KVCacheLayout` |
+| [`include/aethermind/kv_cache/kv_cache_session_view.h`](../../../include/aethermind/kv_cache/kv_cache_session_view.h) / [`src/kv_cache/kv_cache_session_view.cpp`](../../../src/kv_cache/kv_cache_session_view.cpp) | `KVCacheSessionView` |
+| [`include/aethermind/kv_cache/kv_cache_manager.h`](../../../include/aethermind/kv_cache/kv_cache_manager.h) / [`src/kv_cache/kv_cache_manager.cpp`](../../../src/kv_cache/kv_cache_manager.cpp) | `KVCacheManager`（按值持有 layout/storage/session state；由 `Runtime` 按值拥有） |
 | [`include/aethermind/compiler/model_compiler.h`](../../../include/aethermind/compiler/model_compiler.h) / [`src/compiler/model_compiler.cpp`](../../../src/compiler/model_compiler.cpp) | `ModelCompiler::Compile` / `LoadAndCompile` |
 | [`include/aethermind/model/weight/weight_binding_resolver.h`](../../../include/aethermind/model/weight/weight_binding_resolver.h) / [`src/model/weight/weight_binding_resolver.cpp`](../../../src/model/weight/weight_binding_resolver.cpp) | `ResolveWeightBinding` |
 | [`include/aethermind/model/weight/weight_packing_request.h`](../../../include/aethermind/model/weight/weight_packing_request.h) | `WeightPackingRequest` |

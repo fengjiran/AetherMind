@@ -5,7 +5,7 @@
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/inference/executable_model.h"
-#include "aethermind/runtime/kv_cache_manager.h"
+#include "aethermind/kv_cache/kv_cache_manager.h"
 #include "aethermind/runtime/runtime.h"
 #include "inference_internal.h"
 #include "utils/overflow_check.h"
@@ -185,7 +185,7 @@ public:
 
 private:
     KVCacheManager* manager_ = nullptr;
-    KVCacheView cache_view_{};
+    KVCacheSessionView cache_view_{};
     bool has_reservation_ = false;
     std::unique_ptr<std::byte[]> storage_{};
     SessionWorkspaceArena workspace_arena_{};
@@ -407,7 +407,7 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
         workspace->Reset();
     }
     AM_RETURN_IF_ERROR(Executor::Execute(prefill_plan, *prefill_context));
-    if (prefill_context->kv_cache_view().current_pos() != prompt_tokens.size()) {
+    if (prefill_context->kv_cache_session_view().current_pos() != prompt_tokens.size()) {
         return Status::Internal(
                 "InferenceSession Prefill did not commit the complete prompt");
     }
@@ -566,7 +566,7 @@ Status RunDecodeLoop(const ExecutionPlan& plan,
                     "InferenceSession Decode position overflowed size_t");
         }
 
-        if (context.kv_cache_view().current_pos() != expected_position) {
+        if (context.kv_cache_session_view().current_pos() != expected_position) {
             return Status::Internal(
                     "InferenceSession Decode did not commit exactly one KV position");
         }

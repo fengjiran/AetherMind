@@ -4,6 +4,7 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/runtime/runtime_builder.h"
+#include "kv_cache/test_kv_cache_helpers.h"
 
 #include <gtest/gtest.h>
 
@@ -124,7 +125,7 @@ Runtime MakeRuntime(uint32_t layer_count) {
 
 StatusOr<ExecutionContext> MakeContext(Runtime& runtime,
                                        const ExecutionPlan& plan,
-                                       KVCacheView view,
+                                       KVCacheSessionView view,
                                        std::span<const TensorView> inputs) {
     ExternalTensorBindings external;
     if (inputs.size() != plan.model_inputs().size()) {
@@ -265,13 +266,13 @@ StatusOr<ExecutionPlan> BuildPureAttentionPlan(int64_t query_sequence_length) {
               .kernel_output_ports = {0}}});
 }
 
-float ReadKey(const KVCacheView& view, size_t layer, size_t head, size_t token, size_t dim) {
+float ReadKey(const KVCacheSessionView& view, size_t layer, size_t head, size_t token, size_t dim) {
     const auto ptr = view.KeyData(layer, head, token, dim);
     EXPECT_TRUE(ptr.ok()) << ptr.status().ToString();
     return *static_cast<const float*>(ptr.value());
 }
 
-float ReadValue(const KVCacheView& view, size_t layer, size_t head, size_t token, size_t dim) {
+float ReadValue(const KVCacheSessionView& view, size_t layer, size_t head, size_t token, size_t dim) {
     const auto ptr = view.ValueData(layer, head, token, dim);
     EXPECT_TRUE(ptr.ok()) << ptr.status().ToString();
     return *static_cast<const float*>(ptr.value());
@@ -486,7 +487,7 @@ TEST(KVCacheUpdateKernel, PureReadPlanUsesCommittedRangeWithoutCommit) {
     ASSERT_NE(manager, nullptr);
     auto view = manager->ReserveForSession(2, 1);
     ASSERT_TRUE(view.ok());
-    ASSERT_TRUE(view->CommitUntil(2).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 2).ok());
 
     const TensorSpec activation = F32Spec({1, 4});
     const TensorSpec cache = F32Spec({2, 8, 2});
@@ -603,7 +604,7 @@ TEST(KVCacheUpdateKernel, AttentionRejectsPureReadQueryLengthPastVisibleRange) {
     ASSERT_NE(manager, nullptr);
     auto view = manager->ReserveForSession(2, 1);
     ASSERT_TRUE(view.ok());
-    ASSERT_TRUE(view->CommitUntil(2).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 2).ok());
     const auto plan = BuildPureAttentionPlan(3);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
 
@@ -674,13 +675,13 @@ TEST(KVCacheUpdateKernel, FP32AttentionReferenceRunsPrefillThenDecode) {
     EXPECT_FLOAT_EQ(ReadValue(*view, 0, 1, 2, 1), 61.0F);
 }
 
-TEST(KVCacheUpdateKernel, AttentionRejectsStateGeometryThatDiffersFromKVCacheView) {
+TEST(KVCacheUpdateKernel, AttentionRejectsStateGeometryThatDiffersFromKVCacheSessionView) {
     Runtime runtime = MakeRuntime(1);
     KVCacheManager* const manager = runtime.GetKVCacheManager();
     ASSERT_NE(manager, nullptr);
     auto view = manager->ReserveForSession(2, 1);
     ASSERT_TRUE(view.ok());
-    ASSERT_TRUE(view->CommitUntil(2).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 2).ok());
 
     const TensorSpec activation = F32Spec({1, 4});
     const TensorSpec wrong_cache = F32Spec({2, 7, 2});
@@ -727,7 +728,7 @@ TEST(KVCacheUpdateKernel, AttentionRejectsMismatchedStaticKvHeadsAndHeadDimensio
     ASSERT_NE(manager, nullptr);
     auto view = manager->ReserveForSession(2, 1);
     ASSERT_TRUE(view.ok());
-    ASSERT_TRUE(view->CommitUntil(2).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 2).ok());
 
     const TensorSpec activation = F32Spec({1, 4});
     constexpr std::array<std::array<int64_t, 3>, 2> kInvalidCacheShapes = {

@@ -1,104 +1,45 @@
-#ifndef AETHERMIND_RUNTIME_KV_CACHE_VIEW_H
-#define AETHERMIND_RUNTIME_KV_CACHE_VIEW_H
+#ifndef AETHERMIND_KV_CACHE_KV_CACHE_SESSION_VIEW_H
+#define AETHERMIND_KV_CACHE_KV_CACHE_SESSION_VIEW_H
 
-/// @file kv_cache_view.h
-/// @brief Borrowed views into KV cache storage with validation and offsets.
+/// @file kv_cache/kv_cache_session_view.h
+/// @brief Borrowed session view into KV cache storage with validation and offsets.
 
 #include "aethermind/base/kv_cache_binding.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"
 #include "aethermind/dtypes/data_type.h"
-#include "aethermind/memory/buffer.h"
+
+#include <cstddef>
+#include <cstdint>
 
 namespace aethermind {
 
-/// @brief Cache geometry and byte-offset computation for one key/value plane.
-///
-/// Each plane stores `num_layers * num_kv_heads * max_tokens * head_dim`
-/// elements. `head_dim_stride` may exceed `head_dim` to allow alignment
-/// padding between heads.
-struct KVCacheLayout {
-    size_t num_layers = 0;
-    size_t num_kv_heads = 0;
-    size_t max_tokens = 0;
-    size_t head_dim = 0;
-    /// Element stride within a head; >= head_dim when padding is used.
-    size_t head_dim_stride = 0;
-    /// Byte offset between consecutive sequence positions.
-    size_t token_stride = 0;
-    /// Byte offset between consecutive KV heads.
-    size_t head_stride = 0;
-    /// Byte offset between consecutive layers.
-    size_t layer_stride = 0;
-    DataType kv_dtype{};
-    size_t alignment = 64;
+namespace detail {
+class KVCacheCommitAccess;
+}
 
-    /// @brief Returns the element size of the KV dtype.
-    AM_NODISCARD size_t ElementBytes() const noexcept;
-    /// @brief Validates the layout geometry and alignment.
-    Status Validate() const noexcept;
-    /// @brief Computes the byte offset of an element within the plane.
-    ///
-    /// @param layer_idx Layer index.
-    /// @param kv_head_idx KV head index.
-    /// @param seq_pos Sequence position.
-    /// @param dim_idx Dimension index within the head.
-    /// @return The element's byte offset, or an error if an index or stride
-    ///         computation is out of range or overflows.
-    AM_NODISCARD StatusOr<size_t> Offset(size_t layer_idx,
-                                         size_t kv_head_idx,
-                                         size_t seq_pos,
-                                         size_t dim_idx) const noexcept;
-    /// @brief Returns the total bytes of one key/value plane.
-    AM_NODISCARD StatusOr<size_t> BytesPerPlane() const noexcept;
-};
-
-/// @brief Key and value backing buffers for one cache.
-struct KVCacheStorage {
-    Buffer key_buffer{};
-    Buffer value_buffer{};
-    DataType kv_dtype{};
-    size_t alignment = 64;
-
-    /// @brief Returns whether both backing buffers are initialized.
-    AM_NODISCARD bool is_initialized() const noexcept;
-};
-
-/// @brief State of the active session reservation inside a KVCacheManager.
-///
-/// `generation` is retained across re-initialization and advances on reserve
-/// and release. At its maximum value, release still succeeds but no further
-/// reservations are allowed, so stale views can never become live again.
-struct SessionKVSlot {
-    uint64_t generation = 0;
-    bool in_use = false;
-    size_t capacity_tokens = 0;
-    size_t prompt_len = 0;
-    size_t current_pos = 0;
-    enum class Progress : uint8_t {
-        kAwaitingPrefill,
-        kDecodeReady,
-    } progress = Progress::kAwaitingPrefill;
-};
+struct KVCacheLayout;
+struct KVCacheStorage;
+struct KVCacheSessionState;
 
 /// @brief Borrowed, validated view into manager-owned KV cache state.
 ///
-/// Holds non-owning pointers to the manager's layout, storage, and slot.
-/// The view is stale (invalid) after the session is released or the slot's
+/// Holds non-owning pointers to the manager's layout, storage, and session state.
+/// The view is stale (invalid) after the session is released or its state
 /// generation changes. Reads and writes target the shared storage in place;
 /// no copies are made. The manager must outlive every view, including stale
 /// copies, and must not be moved or assigned while they exist. Not thread-safe.
-class KVCacheView {
+class KVCacheSessionView {
 public:
-    KVCacheView() = default;
+    KVCacheSessionView() = default;
     /// @brief Binds the view to manager-owned state.
     ///
     /// @param layout Cache geometry, borrowed.
     /// @param storage Key/value buffers, borrowed.
-    /// @param slot Active session slot, borrowed.
-    KVCacheView(const KVCacheLayout* layout,
-                KVCacheStorage* storage,
-                SessionKVSlot* slot) noexcept;
+    /// @param session_state Active session state, borrowed.
+    KVCacheSessionView(const KVCacheLayout* layout,
+                       KVCacheStorage* storage,
+                       KVCacheSessionState* session_state) noexcept;
 
     /// @brief Returns whether the view is bound to live, initialized state.
     AM_NODISCARD bool valid() const noexcept;
@@ -207,20 +148,15 @@ public:
                                                  size_t seq_pos,
                                                  size_t dim_idx = 0) const noexcept;
 
-    /// @brief Advances the commit watermark to `new_pos`.
-    ///
-    /// @param new_pos New commit position; must not move backwards or exceed
-    ///                the reserved session capacity.
-    /// @return Status::Ok() on success.
-    Status CommitUntil(size_t new_pos) noexcept;
     /// @brief Unbinds the view from all manager state, making it invalid.
     void Invalidate() noexcept;
 
 private:
     friend class KVCacheManager;
+    friend class detail::KVCacheCommitAccess;
 
-    /// @brief Returns whether the bound slot is still live at this generation.
-    AM_NODISCARD bool IsSlotAlive() const noexcept;
+    /// @brief Returns whether the bound session state is live at this generation.
+    AM_NODISCARD bool IsSessionAlive() const noexcept;
     /// @brief Validates that the view is bound to live, initialized state.
     Status ValidateBaseState() const noexcept;
     /// @brief Computes a validated element offset within the key/value plane.
@@ -236,13 +172,16 @@ private:
                             size_t dim_idx) const noexcept;
     AM_NODISCARD StatusOr<KVCacheLayerStorageBinding> BindLayerStorage(
             size_t layer_idx) const noexcept;
+    /// Commits one fully completed append transaction through the private
+    /// KVCacheCommitAccess capability.
+    Status CommitAppend(size_t begin, size_t end) noexcept;
 
     const KVCacheLayout* layout_ = nullptr;
     KVCacheStorage* storage_ = nullptr;
-    SessionKVSlot* slot_ = nullptr;
+    KVCacheSessionState* session_state_ = nullptr;
     uint64_t generation_ = 0;
 };
 
 } // namespace aethermind
 
-#endif
+#endif // AETHERMIND_KV_CACHE_KV_CACHE_SESSION_VIEW_H

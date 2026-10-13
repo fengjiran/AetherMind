@@ -43,6 +43,8 @@ Place tests under `tests/unit/` mirroring the source layout:
 | `include/aethermind/model/`         | `tests/unit/model/`                    |
 | `src/model/`                        | `tests/unit/model/`                    |
 | `src/operators/`                    | `tests/unit/operators/`                |
+| `include/aethermind/kv_cache/`      | `tests/unit/kv_cache/`                 |
+| `src/kv_cache/`                     | `tests/unit/kv_cache/`                 |
 | `include/aethermind/execution/`     | `tests/unit/execution/`                |
 | `src/execution/`                    | `tests/unit/execution/`                |
 | `src/backend/cpu/kernels/`          | `tests/unit/backend/cpu/kernels/`      |

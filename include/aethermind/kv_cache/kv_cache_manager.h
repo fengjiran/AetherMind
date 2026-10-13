@@ -1,22 +1,28 @@
-#ifndef AETHERMIND_RUNTIME_KV_CACHE_MANAGER_H
-#define AETHERMIND_RUNTIME_KV_CACHE_MANAGER_H
+#ifndef AETHERMIND_KV_CACHE_KV_CACHE_MANAGER_H
+#define AETHERMIND_KV_CACHE_KV_CACHE_MANAGER_H
 
 /// @file kv_cache_manager.h
 /// @brief Owner of the physical KV cache and the single session reservation.
 
-#include "aethermind/runtime/kv_cache_view.h"
+#include "aethermind/kv_cache/detail/kv_cache_state.h"
+#include "aethermind/kv_cache/kv_cache_layout.h"
+#include "aethermind/kv_cache/kv_cache_session_view.h"
 
 namespace aethermind {
 
 /// @brief Manages the physical KV cache storage and session lifecycle.
 ///
 /// The manager holds one active session reservation at a time; a new
-/// ReserveForSession fails while a session is in use. KVCacheView objects
+/// ReserveForSession fails while a session is in use. KVCacheSessionView objects
 /// borrow manager-owned state and become stale when the session is released.
 /// The manager must outlive all borrowed views, including stale copies, and
 /// must not be moved or assigned while any such views exist. It may be moved
 /// during resource assembly before views are borrowed. Access to the manager
 /// and its views must be serialized by the caller.
+///
+/// Init, ReserveForSession, ResetSession, and ReleaseSession must not be
+/// interleaved with Execute() on this manager's views, including through kernel
+/// reentry. Execution owns append-transaction commit until it returns.
 class KVCacheManager {
 public:
     KVCacheManager() = default;
@@ -53,20 +59,20 @@ public:
     /// @return A view over the reserved slot, or an error if the manager is
     ///         uninitialized, already reserved, or the request exceeds
     ///         physical capacity.
-    StatusOr<KVCacheView> ReserveForSession(size_t prompt_len,
-                                            size_t future_kv_appends) noexcept;
+    StatusOr<KVCacheSessionView> ReserveForSession(size_t prompt_len,
+                                                   size_t future_kv_appends) noexcept;
     /// @brief Clears the committed position while retaining its reservation.
     ///
     /// @param view Active session view belonging to this manager.
     /// @return Status::Ok() on success. The next append must run Prefill again;
     ///         this does not preserve prompt KV for repeated Decode.
-    Status ResetSession(KVCacheView& view) noexcept;
+    Status ResetSession(KVCacheSessionView& view) noexcept;
     /// @brief Releases the active reservation and invalidates the view.
     ///
     /// @param view Active session view belonging to this manager; invalidated
     ///             on success.
     /// @return Status::Ok() on success.
-    Status ReleaseSession(KVCacheView& view) noexcept;
+    Status ReleaseSession(KVCacheSessionView& view) noexcept;
 
     /// @brief Returns the cache geometry.
     AM_NODISCARD const KVCacheLayout& layout() const noexcept;
@@ -87,11 +93,11 @@ private:
 
     KVCacheLayout layout_{};
     KVCacheStorage storage_{};
-    SessionKVSlot slot_{};
+    KVCacheSessionState session_state_{};
     size_t total_bytes_ = 0;
     bool initialized_ = false;
 };
 
 } // namespace aethermind
 
-#endif
+#endif // AETHERMIND_KV_CACHE_KV_CACHE_MANAGER_H

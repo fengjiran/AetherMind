@@ -130,7 +130,7 @@ AM_NODISCARD StatusOr<ExecutableModel> PrepareExecutableModel(
 相对 01 §4.2 与本提案初版轮廓的四处落地偏差：
 
 1. **去掉 `ExecutableModelOptions`**：`enable_packed_weights` 与 `selector.phase` 已在编译期固化进 artifact 的 step selector，准备阶段无可配置项。
-2. **两个 phase 访问器改为可失败**（`StatusOr<const T*>`，与 `Runtime::GetBackend`、`KVCacheView::KeyData` 同风格）：§4.5 要求 phase 不匹配时报错而非静默复用，返回引用的签名无法表达该失败。仓库无 `std::reference_wrapper` 先例。
+2. **两个 phase 访问器改为可失败**（`StatusOr<const T*>`，与 `Runtime::GetBackend`、`KVCacheSessionView::KeyData` 同风格）：§4.5 要求 phase 不匹配时报错而非静默复用，返回引用的签名无法表达该失败。仓库无 `std::reference_wrapper` 先例。
 3. **不暴露 `packed_weights()`**：Session 不需要它，packed/plain 正确性可由绑定表与 plan step 的 `packed_weights` 指针验证，保留只读访问器只会扩大公共表面。
 4. **删除移动赋值**（只可移动构造）：就地替换一个已 prepare 的模型会作废此前交出的 `plan()`/`immutable_weight_bindings()` 借用指针与派生的 `PreparedExecutionBindings`；且默认的逐成员赋值按声明顺序执行，会先释放 `artifact_` 再替换借用它的 `bindings_`，与 §3.2/§4.6 的逆序销毁契约相反。换模型应构造新对象。该改动同时把 base 层 `StatusOr` 的 `is_nothrow_move_assignable_v<T>` 断言移除（保留 move-constructible 断言）：赋值运算符保持 `= default`，对不可赋值的 `T` 变为 deleted，`StatusOr<ExecutableModel>` 的返回路径只依赖 nothrow 移动构造。
 
@@ -270,7 +270,7 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 
 ### M2.3 inference：模块骨架与 ownership 登记
 
-**状态（2026-09-23）**：已落地，范围有一处调整。新增 [`weight_binding_storage.h`](../../include/aethermind/inference/weight_binding_storage.h) / [`weight_binding_storage.cpp`](../../src/inference/weight_binding_storage.cpp)；根 `AGENTS.md` §2.1 已新增 inference 行，跨模块依赖规则已新增 `inference → execution + compiler + model + runtime`。CMake 确认无需改动：两处 `GLOB_RECURSE ... CONFIGURE_DEPENDS` 实测自动收录新目录，`AetherMind.dir/inference/weight_binding_storage.cpp.o` 与 `aethermind_unit_tests.dir/inference/test_weight_binding_storage.cpp.o` 均进入构建。新增 [`test_weight_binding_storage.cpp`](../../tests/unit/inference/test_weight_binding_storage.cpp)（8 例）覆盖视图内容、rank-1/rank-0 形状、以及扩容后与移动构造/移动赋值后已发出视图仍有效；全量 3511 测试通过。
+**状态（2026-09-23）**：已落地，范围有一处调整。新增 [`weight_binding_storage.h`](../../include/aethermind/inference/weight_binding_metadata.h) / [`weight_binding_storage.cpp`](../../src/inference/weight_binding_metadata.cpp)；根 `AGENTS.md` §2.1 已新增 inference 行，跨模块依赖规则已新增 `inference → execution + compiler + model + runtime`。CMake 确认无需改动：两处 `GLOB_RECURSE ... CONFIGURE_DEPENDS` 实测自动收录新目录，`AetherMind.dir/inference/weight_binding_storage.cpp.o` 与 `aethermind_unit_tests.dir/inference/test_weight_binding_storage.cpp.o` 均进入构建。新增 [`test_weight_binding_storage.cpp`](../../tests/unit/inference/test_weight_binding_metadata.cpp)（8 例）覆盖视图内容、rank-1/rank-0 形状、以及扩容后与移动构造/移动赋值后已发出视图仍有效；全量 3511 测试通过。
 
 范围调整：`ExecutableModel` 本体不在本步交付，改与 `PrepareExecutableModel` 一起在 M2.4 落地。先定义一个没有任何构造入口的类型会留下无法使用的半成品；而 `WeightBindingStorage` 契约完整、可独立测试，又正是 §4.4 悬垂风险最高的一环，适合作为本步的完整交付物。
 

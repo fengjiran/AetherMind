@@ -24,7 +24,7 @@ public:
 
     StatusOr<ExecutionContext> CreateContext(
             WorkspaceArena* workspace_arena = nullptr,
-            KVCacheView kv_cache_view = {}) const {
+            KVCacheSessionView kv_cache_session_view = {}) const {
         ExternalTensorBindings external;
         std::vector<bool> readable_seen(plan_.values().size());
         std::vector<bool> writable_seen(plan_.values().size());
@@ -54,7 +54,7 @@ public:
         auto table = PrepareExecutionBindings(plan_, external, allocator_);
         if (!table.ok()) return std::move(table).status();
         return ExecutionContext::Create(
-                plan_, std::move(*table), workspace_arena, kv_cache_view);
+                plan_, std::move(*table), workspace_arena, kv_cache_session_view);
     }
 
 private:

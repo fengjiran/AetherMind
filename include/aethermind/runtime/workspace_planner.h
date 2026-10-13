@@ -22,6 +22,7 @@
 ///
 /// @see WorkspaceArena, ExecutionContext, ExecutionPlanBuilder
 
+#include "aethermind/base/alignment.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"
 #include "aethermind/base/workspace_types.h"
@@ -53,7 +54,7 @@ struct WorkspacePlanLayout {
 /// @param alignment The alignment value to validate.
 /// @return True if alignment is valid, false otherwise.
 AM_NODISCARD constexpr bool IsValidWorkspaceAlignment(size_t alignment) noexcept {
-    return alignment != 0 && (alignment & alignment - 1) == 0;
+    return IsValidAlignment(alignment);
 }
 
 /// @brief Aligns an offset up to the specified alignment boundary.

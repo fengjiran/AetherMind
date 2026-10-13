@@ -197,7 +197,7 @@ TEST(KVCacheUpdateInference, AcceptsSymbolicSequenceLength) {
 
 TEST(KVCacheUpdateInference, AcceptsSymbolicSequenceLengthWithStaticCache) {
     // Symbolic T cannot be proven <= cache_len at graph time; acceptance is
-    // deferred to the runtime capacity check (KVCacheView::ValidateWrite).
+    // deferred to the runtime capacity check (KVCacheSessionView::ValidateWrite).
     auto inputs = MakeConsistentInputs(DataType::Float32(), /*t=*/1024, 8, /*cache_len=*/512);
     const ShapeSymbol sym_t = ShapeSymbol::Create();
     const SymbolicShape kv_shape{sym_t, ShapeSymbol::CreateFromValue(512)};

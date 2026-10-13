@@ -418,7 +418,7 @@ std::vector<uint32_t> ScalarGenerate(
     return generated;
 }
 
-void ReleaseTestSession(KVCacheManager& manager, KVCacheView& cache_view) {
+void ReleaseTestSession(KVCacheManager& manager, KVCacheSessionView& cache_view) {
     const Status status = manager.ReleaseSession(cache_view);
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
@@ -461,7 +461,7 @@ StatusOr<ExecutionContext> PrepareContext(Runtime& runtime,
                                           const TestBuffer& tokens,
                                           const TestBuffer& positions,
                                           WorkspaceArena* workspace,
-                                          KVCacheView cache_view) {
+                                          KVCacheSessionView cache_view) {
     if (plan.model_inputs().size() != 2) {
         return Status::Internal("tiny Llama plan must have token and position inputs");
     }
@@ -511,7 +511,7 @@ std::optional<StageSnapshot> CaptureStage(const ExecutionContext& context,
                                           ExecutionValueId logits_id,
                                           ExecutionValueId tokens_id,
                                           size_t sequence_length,
-                                          KVCacheView cache_view) {
+                                          KVCacheSessionView cache_view) {
     const MutableTensorView logits_view = FindOutput(context, plan, logits_id);
     const MutableTensorView tokens_view = FindOutput(context, plan, tokens_id);
     if (!logits_view.is_valid() || !tokens_view.is_valid()) {
@@ -639,7 +639,7 @@ std::optional<DirectRunResult> RunSuccessfulSession(
         ADD_FAILURE() << reserved.status().ToString();
         return std::nullopt;
     }
-    KVCacheView cache_view = std::move(*reserved);
+    KVCacheSessionView cache_view = std::move(*reserved);
 
     WorkspaceStorage workspace_storage(plan.total_workspace_bytes(),
                                        plan.workspace_alignment());
@@ -843,7 +843,7 @@ bool RunFailureCleanupScenario(Runtime& runtime,
         ADD_FAILURE() << reserved.status().ToString();
         return false;
     }
-    KVCacheView cache_view = std::move(*reserved);
+    KVCacheSessionView cache_view = std::move(*reserved);
 
     WorkspaceStorage workspace_storage(plan.total_workspace_bytes(),
                                        plan.workspace_alignment());
@@ -912,7 +912,7 @@ bool RunFailureCleanupScenario(Runtime& runtime,
     auto next_reservation = manager->ReserveForSession(prompt.size(), 2);
     EXPECT_TRUE(next_reservation.ok()) << next_reservation.status().ToString();
     if (next_reservation.ok()) {
-        KVCacheView next_view = std::move(*next_reservation);
+        KVCacheSessionView next_view = std::move(*next_reservation);
         const Status next_release = manager->ReleaseSession(next_view);
         EXPECT_TRUE(next_release.ok()) << next_release.ToString();
     }
@@ -1385,7 +1385,7 @@ TEST_P(TinyLlamaExecution, SharedDecodeLoopHasNoMallocFamilyCallsAfterPreparatio
     ASSERT_NE(manager, nullptr);
     auto reservation = manager->ReserveForSession(prompt.size(), 2);
     ASSERT_TRUE(reservation.ok()) << reservation.status().ToString();
-    KVCacheView cache_view = std::move(*reservation);
+    KVCacheSessionView cache_view = std::move(*reservation);
 
     WorkspaceStorage workspace_storage(
             plan.total_workspace_bytes(), plan.workspace_alignment());

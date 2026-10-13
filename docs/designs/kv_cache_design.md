@@ -1,6 +1,6 @@
 # AetherMind Phase 1 KV Cache 设计文档
 
-> **文档关系**：本文保留存量静态 KV Cache 的设计背景；其中历史缺口叙述不代表当前代码状态。KV owner/epoch 缺陷、CPU Attention 优化准入与 Paged KV 长期边界以 [08 号演进提案](../improvement-plan/08-kv-cache-and-attention-capability-evolution.md) 为当前计划入口；[05 号草案](../improvement-plan/05-kv-cache-manager-evolution.md) 已被取代。
+> **文档关系**：本文保留存量静态 KV Cache 的设计背景；其中历史缺口叙述不代表当前代码状态。当前源码归属为 `include/aethermind/kv_cache/` 与 `src/kv_cache/`：`kv_cache_layout.h` 公开 `KVCacheLayout`，`kv_cache_session_view.h` 公开 `KVCacheSessionView` 并只前置声明其借用的内部对象；`KVCacheStorage` 与 `KVCacheSessionState` 位于 `detail/kv_cache_state.h`，由 `KVCacheManager` 按值持有。`Runtime` 按值聚合 Manager，并不拥有本模块的实现职责。KV owner/epoch 缺陷、CPU Attention 优化准入与 Paged KV 长期边界以 [08 号演进提案](../improvement-plan/08-kv-cache-and-attention-capability-evolution.md) 为当前计划入口；[05 号草案](../improvement-plan/05-kv-cache-manager-evolution.md) 已被取代。
 
 **版本**: v1.1  
 **日期**: 2026-03-25  
@@ -52,27 +52,27 @@ Phase 1 的 KV Cache 采用：
 
 ### 1.3 在整体架构中的位置
 
-KV Cache 子系统在整体架构中处于 Execution Layer 与 Operator Layer 之间：
+KV Cache 是独立的 `kv_cache` 源模块；`Runtime` 仅聚合并按值拥有 `KVCacheManager`。它在运行时数据流中位于 Execution Layer 与 Operator Layer 之间：
 
 ```text
 Executor / PrefillPath / DecodePath
                 │
                 ▼
-           KVCacheView
+           KVCacheSessionView
                 │
                 ▼
          KVCacheManager
           ├─ KVCacheStorage
-          ├─ KVLayoutContract
-          └─ (optional) SessionKVSlot
+          ├─ KVCacheLayout
+          └─ (optional) KVCacheSessionState
 ```
 
 其中：
 
 - `KVCacheManager` 负责 Session 级生命周期与逻辑绑定
-- `KVCacheView` 是 Execution / Attention 的稳定访问边界
+- `KVCacheSessionView` 是 Execution / Attention 的稳定访问边界
 - `KVCacheStorage` 持有底层物理存储
-- `KVLayoutContract` 冻结布局、stride、alignment 与 offset 规则；`Validate()` 强制 `token_stride` 为元素大小倍数且对齐 `alignment`，并要求 `head_stride`/`layer_stride` 覆盖全部 token/head（防重叠），`KVCacheView` 校验 layout 不超过 backing buffer
+- `KVCacheLayout` 冻结布局、stride、alignment 与 offset 规则；`Validate()` 强制 `token_stride` 为元素大小倍数且对齐 `alignment`，并要求 `head_stride`/`layer_stride` 覆盖全部 token/head（防重叠），`KVCacheSessionView` 校验 layout 不超过 backing buffer
 
 ---
 
@@ -82,13 +82,13 @@ Executor / PrefillPath / DecodePath
 
 KVCacheManager 在 Phase 1 中承担以下核心职责：
 
-- **静态持有**：在 Runtime / Session Preparation 阶段一次性预留 K/V 存储
+- **静态持有**：由 `KVCacheManager` 在初始化阶段一次性预留 K/V 存储；`Runtime` 负责聚合其生命周期
 - **逻辑绑定**：将当前 Session 与底层存储建立逻辑绑定
 - **逻辑索引**：为执行层提供按 `layer / kv_head / position / dim` 的稳定访问方式
 - **追加写入**：支持 Prefill 与 Decode 阶段按 token position 单调递增写入
 - **只读回看**：支持 Attention 在当前步读取历史 K/V
 - **边界保护**：检查层范围、head 范围、位置范围与提交上限合法性
-- **视图构造**：通过 `KVCacheView` 向上层暴露轻量 borrowed view
+- **视图构造**：通过 `KVCacheSessionView` 向上层暴露轻量 borrowed view
 - **会话复用**：Session Reset 后复用底层存储，不重新申请物理内存
 
 ### 2.2 非目标
@@ -139,8 +139,8 @@ K 与 V 使用两块独立的线性连续区域，而不是交错存储。这样
 
 ### 3.3 View 边界稳定
 
-Execution Layer 与 Operator Layer 一律通过 `KVCacheView` 访问 KV 数据，而不是直接依赖底层物理布局。  
-`Attention` 必须通过 `KVCacheView` 读取历史 KV，并通过写视图写入当前步 KV。
+Execution Layer 与 Operator Layer 一律通过 `KVCacheSessionView` 访问 KV 数据，而不是直接依赖底层物理布局。
+`Attention` 必须通过 `KVCacheSessionView` 读取历史 KV，并通过写视图写入当前步 KV。
 
 ### 3.4 逻辑位置与物理地址分离
 
@@ -154,10 +154,10 @@ KVCacheManager 负责：
 - Reserve
 - Reset
 - Release
-- 构造 `KVCacheView`
+- 构造 `KVCacheSessionView`
 - 合法性检查
 
-真正的热路径访问尽量通过 `KVCacheView` 直接完成，而不是在 Decode 每步反复回调 manager。
+真正的热路径访问尽量通过 `KVCacheSessionView` 直接完成，而不是在 Decode 每步反复回调 manager。
 
 ### 3.6 单请求场景下避免无意义并发设施
 
@@ -168,6 +168,8 @@ Phase 1 是 `single-request + synchronous execution`。
 - 不引入无必要的原子同步
 - 不为多请求共享预埋复杂状态机
 
+同一 Manager 的 `Init`、`ReserveForSession`、`ResetSession` 与 `ReleaseSession` 不得在一次 `Execute()` 内插入，包括 kernel 重入；append transaction 也不得逃离执行栈。当前因此不引入 reset revision/token。该限制不是并发安全保证；若未来需要重入或并发，必须另行定义 transaction identity 与同步协议。
+
 ---
 
 ## 4. 核心概念与对象
@@ -177,11 +179,10 @@ Phase 1 是 `single-request + synchronous execution`。
 | 对象 | 职责 | 生命周期 |
 |------|------|----------|
 | **KVCacheManager** | 对外统一管理 KV 生命周期、Reserve / Reset / Release 与 View 构造 | Runtime / Engine 生命周期 |
-| **KVCacheStorage** | 持有 K/V 底层线性存储 | Runtime / Engine 生命周期 |
-| **KVLayoutContract** | 定义布局、stride、alignment 与 offset 计算规则 | Runtime / Engine 生命周期 |
-| **SessionKVSlot** | 可选的 Session 逻辑占用状态记录 | Session 生命周期 |
-| **SessionKVHandle** | 可选的 Session 逻辑持有句柄 | Session 生命周期 |
-| **KVCacheView** | 面向 Executor / Attention 的逻辑访问视图 | Session 执行期 |
+| **KVCacheStorage** | Manager-owned 的 K/V 底层线性存储（`detail/`） | Runtime / Engine 生命周期 |
+| **KVCacheLayout** | 定义布局、stride、alignment 与 offset 计算规则 | Runtime / Engine 生命周期 |
+| **KVCacheSessionState** | Manager-owned 的 Session 逻辑占用状态记录（`detail/`） | Session 生命周期 |
+| **KVCacheSessionView** | 面向 Executor / Attention 的逻辑访问视图 | Session 执行期 |
 
 ### 4.2 KVCacheManager
 
@@ -190,7 +191,7 @@ Phase 1 中的统一入口，职责包括：
 - 根据模型配置构建 KV Layout
 - 申请并持有底层 K / V 存储
 - 为 Session 执行前准备逻辑绑定信息
-- 构造 `KVCacheView`
+- 构造 `KVCacheSessionView`
 - 处理 Reset / Release
 - 返回容量与内存统计信息
 
@@ -205,13 +206,13 @@ public:
                 DataType kv_dtype,
                 std::size_t alignment = 64);
 
-    StatusOr<KVCacheView> ReserveForSession(std::size_t prompt_len,
+    StatusOr<KVCacheSessionView> ReserveForSession(std::size_t prompt_len,
                                             std::size_t max_new_tokens);
 
-    Status ResetSession(KVCacheView& view) noexcept;
-    Status ReleaseSession(KVCacheView& view) noexcept;
+    Status ResetSession(KVCacheSessionView& view) noexcept;
+    Status ReleaseSession(KVCacheSessionView& view) noexcept;
 
-    const KVLayoutContract& layout() const noexcept;
+    const KVCacheLayout& layout() const noexcept;
     std::size_t capacity_tokens() const noexcept;
     std::size_t total_bytes() const noexcept;
 };
@@ -238,7 +239,7 @@ struct KVCacheStorage {
 
 > 注：KV 元素格式以 PRD 为准，Phase 1 支持 `FP16 / BF16` 作为 KV 存储格式；此处仅以 `kF16` 作为默认示意值。
 
-### 4.4 KVLayoutContract
+### 4.4 KVCacheLayout
 
 布局契约负责冻结以下信息：
 
@@ -256,7 +257,7 @@ struct KVCacheStorage {
 推荐接口：
 
 ```cpp
-struct KVLayoutContract {
+struct KVCacheLayout {
     std::size_t num_layers{0};
     std::size_t num_kv_heads{0};
     std::size_t max_tokens{0};
@@ -278,38 +279,36 @@ struct KVLayoutContract {
 };
 ```
 
-### 4.5 SessionKVSlot / SessionKVHandle（可选内部机制）
+### 4.5 KVCacheSessionState（内部状态）
 
-若实现需要防止 stale view 在 Reset / Release 后继续被误用，可引入轻量 slot / handle 概念。它们是 **Phase 1 的可选内部安全增强机制**，而不是必须先冻结的公开对象体系。
-
-推荐结构：
+`KVCacheSessionState` 是 `KVCacheManager` 按值拥有的 `detail/` 类型，不是公开 handle。当前状态以生命周期枚举表达互斥的 reservation 与执行阶段：
 
 ```cpp
-struct SessionKVSlot {
-    std::uint64_t generation{0};
-    bool in_use{false};
+struct KVCacheSessionState {
+    enum class Lifecycle : std::uint8_t {
+        kIdle,
+        kAwaitingPrefill,
+        kPrefillCommitted,
+    };
 
+    std::uint64_t generation{0};
     std::size_t capacity_tokens{0};
     std::size_t prompt_len{0};
-    std::size_t current_pos{0};
-};
-
-struct SessionKVHandle {
-    SessionKVSlot* slot{nullptr};
-    std::uint64_t generation{0};
+    std::size_t committed_tokens{0};
+    Lifecycle lifecycle{Lifecycle::kIdle};
 };
 ```
 
-`generation` 的目标是防止 stale view 在 Reset / Release 后继续被误用；若初版实现希望保持最小复杂度，也可先不引入该机制。
+`generation` 是 manager-owned epoch：`Init` 保留它，Reserve/Release 推进它，从而令旧 view 永不复活。`ResetSession` 保留 epoch、reservation 和 view 有效性，只将 `committed_tokens` 归零并回到 `AwaitingPrefill`。`capacity_tokens`、`prompt_len` 和 `committed_tokens` 分别表达 reservation 上限、首次 Prefill 长度和跨 plan 已发布 watermark，不能互相推导。
 
-### 4.6 KVCacheView
+### 4.6 KVCacheSessionView
 
 Execution / Operator 看到的是轻量 borrowed view，而不是 manager 本体。
 
 推荐能力：
 
 ```cpp
-class KVCacheView {
+class KVCacheSessionView {
 public:
     bool valid() const noexcept;
 
@@ -344,18 +343,19 @@ public:
                                        std::size_t seq_begin,
                                        std::size_t seq_end) const noexcept;
 
-    Status CommitUntil(std::size_t new_pos) noexcept;
 };
 ```
 
+View 不公开提交接口；`current_pos()` 仅返回 canonical `committed_tokens`。`LayerRunner` 在完整 plan 成功后，经 source-private `detail::KVCacheCommitAccess::CommitAppend(begin, end)` 发布同一 append range；该 private header 不安装、不构成公开 test API。
+
 ### 4.7 Phase 1 简化原则
 
-虽然保留 `KVCacheStorage / KVLayoutContract / SessionKVSlot / KVCacheView` 这些边界，但 Phase 1 实现要求仍然克制：
+虽然保留 `KVCacheStorage / KVCacheLayout / KVCacheSessionState / KVCacheSessionView` 这些边界，但 Phase 1 实现要求仍然克制：
 
 - 不要求设计复杂 allocator
 - 不要求 block table
 - 不要求分页式 slot 管理
-- 可以只有单个 `SessionKVSlot`
+- 可以只有单个 `KVCacheSessionState`
 - 只要能稳定暴露视图、正确维护逻辑位置并满足零分配，即满足 Phase 1 目标
 
 ---
@@ -412,10 +412,10 @@ Phase 1 推荐在 Runtime / Model 初始化阶段固定 `max_tokens` 上限，�
 推荐流程：
 
 1. Runtime / LoadedModel 初始化
-2. KVCacheManager 根据模型维度构建 `KVLayoutContract`
+2. KVCacheManager 根据模型维度构建 `KVCacheLayout`
 3. 一次性申请 K / V 线性存储
 4. Executor 在 `PrepareSession()` 中调用 `ReserveForSession(prompt_len, max_new_tokens)`
-5. 返回 `KVCacheView`
+5. 返回 `KVCacheSessionView`
 6. Session 进入 Prefill / Decode
 
 ### 5.5 Decode 稳态零分配
@@ -424,7 +424,7 @@ Phase 1 的 KV 设计必须满足：
 
 - Prefill 前允许一次性预分配
 - Decode 循环中不允许新增堆分配
-- `KVCacheView` 的获取与使用不触发新的 owning allocation
+- `KVCacheSessionView` 的获取与使用不触发新的 owning allocation
 - Reset 仅重置逻辑状态，不重新申请物理内存
 
 ---
@@ -469,7 +469,7 @@ offset =
  * head_dim_stride + dim_idx)
 ```
 
-该公式可由 `KVLayoutContract::Offset(...)` 统一提供。执行层与算子层不得散落硬编码的魔法常量，但这并不要求 Phase 1 将某一个物理 offset 公式写死为唯一合法实现。
+该公式可由 `KVCacheLayout::Offset(...)` 统一提供。执行层与算子层不得散落硬编码的魔法常量，但这并不要求 Phase 1 将某一个物理 offset 公式写死为唯一合法实现。
 
 ### 6.4 布局要求
 
@@ -481,27 +481,27 @@ Phase 1 必须满足以下要求：
 - 布局可支撑按层访问与按历史区间读取
 - 允许通过 `head_dim_stride` 实现对齐与 padding
 
-### 6.5 KVCacheView 访问原则
+### 6.5 KVCacheSessionView 访问原则
 
-- 执行层与算子层通过 `KVCacheView` 访问 KV 数据
+- 执行层与算子层通过 `KVCacheSessionView` 访问 KV 数据
 - 算子签名中不直接暴露底层物理偏移常量
 - `seq_pos` 表示逻辑 token 位置
 - `KeyWriteView` / `ValueWriteView` 返回当前写窗口
 - `KeyReadView` / `ValueReadView` 返回历史区间视图
-- `CommitUntil(new_pos)` 只在 Prefill / Decode 成功后推进逻辑位置
+- `LayerRunner` 只在 Prefill / Decode 的完整 plan 成功后，经 source-private commit access 推进逻辑位置
 - `KVCacheAppendBinding` / `KVCacheReadBinding` 是 kernel invocation-only 的 borrowed
   contract；其物理指针不能缓存进 prepared params，也不能跨 Execute() 保存
 
 ### 6.6 历史读取与当前写入语义
 
 - Prefill：批量写入 `[0, prompt_len)`
-- Decode：每步写入 `[current_pos, current_pos + 1)`
+- Decode：每步写入 `[committed_tokens, committed_tokens + 1)`
 - 历史读取区间统一采用左闭右开表示 `[seq_begin, seq_end)`
 
 ### 6.7 对 Future Paged KV 的兼容边界
 
 Phase 1 当前采用静态线性布局，但算子和执行层看到的永远是逻辑视图。  
-后续如果切换到分页式实现，应优先替换底层存储与 offset 解析逻辑，并尽量保持 `KVCacheView` 上层语义稳定。
+后续如果切换到分页式实现，应优先替换底层存储与 offset 解析逻辑，并尽量保持 `KVCacheSessionView` 上层语义稳定。
 
 ---
 
@@ -513,9 +513,9 @@ KV Cache 与单次生成 Session 逻辑绑定：
 
 - Runtime / Engine 生命周期内持有底层物理存储
 - Session 创建后在 `PrepareSession()` 阶段完成逻辑 Reserve
-- Prefill / Decode 期间通过 `KVCacheView` 读写
-- Session Reset 时清空逻辑状态
-- Session Release 时解除逻辑占用；若启用了 generation 机制，则使旧 view 失效
+- Prefill / Decode 期间通过 `KVCacheSessionView` 读写
+- Session Reset 时清空已提交位置、保留 reservation 与现有 view 的有效性
+- Session Release 时解除逻辑占用并推进 generation，使旧 view 失效
 
 ### 7.2 状态阶段
 
@@ -528,9 +528,9 @@ Initialized
     -> ReserveForSession
 AwaitingPrefill
     -> Prefill transaction succeeds
-DecodeReady
+PrefillCommitted
     -> Decode transaction succeeds
-DecodeReady
+PrefillCommitted
     -> ResetSession
 AwaitingPrefill
     -> ReleaseSession
@@ -544,13 +544,13 @@ Initialized
 - 校验 manager 已初始化
 - 校验 `prompt_len + max_new_tokens <= max_tokens`
 - Phase 1 拒绝空 `prompt_len`；BOS/空上下文策略属于更高层输入语义
-- 校验当前 slot 未被占用
-- 标记 slot `in_use = true`
+- 校验 lifecycle 为 `Idle`
+- 将 lifecycle 设为 `AwaitingPrefill`
 - 记录 `prompt_len`
-- 设置 `current_pos = 0`
+- 设置 `committed_tokens = 0`
 - 记录 `AwaitingPrefill`；`prompt_len` 和 reservation capacity 是 immutable metadata，
-  不能由 `current_pos` 代替
-- 返回 `KVCacheView`
+  不能由 `committed_tokens` 代替
+- 返回 `KVCacheSessionView`
 
 ### 7.4 Append
 
@@ -558,17 +558,16 @@ Initialized
 
 - 以批量方式写入 `0 .. prompt_len-1`
 - 一个 execution plan 的所有 decoder layer 必须恰好写入一次相同区间
-  `[0, prompt_len)`；仅当整个 plan 成功后调用一次 `CommitUntil(prompt_len)`
+  `[0, prompt_len)`；仅当整个 plan 成功后由 `LayerRunner` 通过 private commit access 发布该区间
 
 #### Decode
 
-- 每步写入当前 `current_pos`
-- Phase 1 每个 Decode transaction 只接受一个 token；仅当整个 plan 成功后调用一次
-  `CommitUntil(current_pos + 1)`
+- 每步写入当前 `committed_tokens`
+- Phase 1 每个 Decode transaction 只接受一个 token；仅当整个 plan 成功后由 `LayerRunner` 通过 private commit access 发布 `[committed_tokens, committed_tokens + 1)`
 
 ### 7.5 Read
 
-- `[0, committed_end)` 是跨 plan 已提交范围，可由普通 `KVCacheView` read API 读取
+- `[0, committed_end)` 是跨 plan 已提交范围，可由普通 `KVCacheSessionView` read API 读取
 - `[committed_end, visible_end)` 是当前同步 plan 已写但尚未提交的范围；只允许同一
   transaction 内、且本 layer 的 KVCacheUpdate 已成功之后的 Attention 读取
 - `[visible_end, capacity)` 不可读取。Attention-before-update 不能通过扩大
@@ -579,9 +578,10 @@ Initialized
 `ResetSession()` 的语义：
 
 - 清空逻辑位置
-- 将 `current_pos` 设为 0 并回到 `AwaitingPrefill`
+- 将 `committed_tokens` 设为 0 并回到 `AwaitingPrefill`
 - 保留 `prompt_len` 和 reservation capacity；下一次执行必须重新 Prefill，
   Reset 不表达“保留 prompt KV 后重跑 Decode”
+- 不推进 generation；同一 session 的既有 view 副本仍有效
 - 保留已分配的底层 K/V 存储
 - 不触发新的堆分配
 - 不强制对底层存储做 `memset`
@@ -591,8 +591,8 @@ Initialized
 `ReleaseSession()` 的语义：
 
 - 解除当前 Session 的逻辑占用
-- 若实现启用了 generation 机制，则递增 `generation`
-- 若实现启用了 generation 机制，则使已有 `KVCacheView` 自动失效
+- 递增 `generation`
+- 使已有 `KVCacheSessionView` 自动失效
 - 回到可再次 Reserve 的状态
 
 ### 7.8 为什么不强制清零物理内存
@@ -615,22 +615,22 @@ Executor 不应直接操作底层物理内存。推荐交互方式如下：
 
 - `PrepareSession()` 阶段：
   - 调用 `KVCacheManager::ReserveForSession(...)`
-  - 获取 `KVCacheView`
-  - 将 `KVCacheView` 放入 `SessionExecutionState`
+  - 获取 `KVCacheSessionView`
+  - 将 `KVCacheSessionView` 放入 `SessionExecutionState`
 - `Prefill()` 阶段：
   - 通过 `KeyWriteView / ValueWriteView` 写入整段 Prompt 的 KV
-  - 成功后 `CommitUntil(prompt_len)`
+  - 完整 plan 成功后由 `LayerRunner` 经 private commit access 发布 `[0, prompt_len)`
 - `DecodeStep()` 阶段：
   - 通过写视图写入当前 step 的 KV
   - 通过读视图读取历史 KV
-  - 成功后 `CommitUntil(current_pos + 1)`
+  - 完整 plan 成功后由 `LayerRunner` 经 private commit access 发布单 token append range
 
 ### 8.2 与 PrefillPath / DecodePath 的边界
 
 - `PrefillPath` 关心批量写入区间
 - `DecodePath` 关心当前单步位置与历史读取区间
 - 二者都不应自行计算底层 offset
-- 二者都只通过 `KVCacheView` 读写 KV
+- 二者都只通过 `KVCacheSessionView` 读写 KV
 
 ### 8.3 与 Attention 的交互
 
@@ -659,7 +659,7 @@ Attention 算子需要：
 
 ### 8.5 与 Layout Contract 的配合
 
-Execution / Operator 不应自行维护 stride 常量。所有布局相关信息均从 `KVLayoutContract` 获取：
+Execution / Operator 不应自行维护 stride 常量。所有布局相关信息均从 `KVCacheLayout` 获取：
 
 - 层步长
 - 头步长
@@ -721,7 +721,7 @@ enum class KVErrorCode : std::uint8_t {
 - `kv_head_idx` 越界
 - `seq_pos` 越界
 - 读取超出已提交范围
-- `CommitUntil()` 回退
+- private commit access 的 begin/end、epoch 或 lifecycle 校验失败
 - stale view 被继续使用
 
 ### 9.5 测试与验证
@@ -737,7 +737,7 @@ enum class KVErrorCode : std::uint8_t {
 #### 2. Prefill / Decode 语义正确性
 
 - Prefill 后提交位置为 `prompt_len`
-- Decode 第一步写入 `current_pos = prompt_len`
+- Decode 第一步写入 `committed_tokens = prompt_len`
 - 历史读取范围与已提交位置一致
 
 #### 3. 越界保护
@@ -760,7 +760,7 @@ enum class KVErrorCode : std::uint8_t {
 #### 6. 与 Attention 的集成验证
 
 - 验证 Attention 对历史 KV 的读取与当前步写入一致
-- 验证通过 `KVCacheView` 读写的控制流与 reference kernel 预期一致
+- 验证通过 `KVCacheSessionView` 读写的控制流与 reference kernel 预期一致
 
 ---
 
@@ -779,8 +779,8 @@ Phase 1 的 KV 设计应为以下能力保留兼容边界：
 
 更合理的演进方式是：
 
-1. 保持 `KVCacheView` 上层访问语义稳定
-2. 保持 `KVLayoutContract` 作为布局契约入口
+1. 保持 `KVCacheSessionView` 上层访问语义稳定
+2. 保持 `KVCacheLayout` 作为布局契约入口
 3. 在 Phase 2 替换底层 `KVCacheStorage` 实现
 4. 再逐步引入 block / page 管理与共享策略
 5. 最后扩展到多 Session / batching 场景
@@ -802,8 +802,8 @@ Phase 1 的 KV 设计应为以下能力保留兼容边界：
 - **静态线性底层存储**
 - **单 Session 逻辑独占**
 - **K/V split**
-- **通过 KVCacheView 暴露访问边界**
-- **通过 KVLayoutContract 冻结逻辑布局契约，而非唯一物理布局实现**
+- **通过 KVCacheSessionView 暴露访问边界**
+- **通过 KVCacheLayout 冻结逻辑布局契约，而非唯一物理布局实现**
 - **Decode 稳态零分配**
 - **后续优先替换底层存储实现，而不是改动上层执行语义**
 

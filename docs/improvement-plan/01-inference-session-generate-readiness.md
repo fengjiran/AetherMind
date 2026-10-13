@@ -51,7 +51,7 @@ M1–M4 已闭环，M5 已提供基于真实 `CpuBackend` 的同步 `InferenceSe
 | tensor specialization | 已实现 | `PrepareExecutionBindings` 校验 concrete binding、分配 activation、准备 kernel params |
 | 窄执行上下文 | 已实现 | `ExecutionContext` 拥有 prepared bindings，借用 workspace，保存 KV view |
 | 执行热路径 | 已实现 | `Executor → LayerRunner → InvokePreparedKernel`，无 registry lookup 和 params rebuild |
-| KV storage/session view | 已实现（静态 contiguous baseline） | `KVCacheManager` 支持 reserve/reset/release；`KVCacheView` 支持 generation 检查和 commit watermark，watermark 由 `Executor` 在完整 plan 成功后自动推进；M4/M5 端到端复用该路径。KV owner/epoch 修复与 Paged KV 长期准入见 [08 号演进提案](08-kv-cache-and-attention-capability-evolution.md)（Draft，Paged KV 非当前承诺） |
+| KV storage/session view | 已实现（静态 contiguous baseline） | `KVCacheManager` 支持 reserve/reset/release；`KVCacheSessionView` 支持 generation 检查和 commit watermark，watermark 由 `Executor` 在完整 plan 成功后自动推进；M4/M5 端到端复用该路径。KV owner/epoch 修复与 Paged KV 长期准入见 [08 号演进提案](08-kv-cache-and-attention-capability-evolution.md)（Draft，Paged KV 非当前承诺） |
 | semantic Llama graph | 已实现 | `BuildModelGraph` 家族分发到 `BuildLlamaDense`，生成完整 decoder-only semantic graph |
 | compiler/lowering | 已实现 | `ModelCompiler` 生成结构验证过的 `LoweredModelArtifact` |
 
@@ -152,13 +152,13 @@ reference baseline 编译为一个 `kBoth` lowered graph；`ExecutableModel::pla
 
 2026-09-24，`DirectPrefillDecode.TinyTiedGqaLlamaMatchesScalarOracleAndReusesDecodeBindings` 通过真实 `CpuBackend` 执行 tiny Llama，配置为 1 layer、hidden size 8、4 query heads / 2 KV heads、head_dim 2、tied lm-head、3-token prompt。权重由确定性 fixture 填为非零值。独立 scalar oracle 覆盖 Embedding、RMSNorm、Linear、RoPE、causal GQA Attention、SwiGLU MLP、tied lm-head 与 Argmax。
 
-测试逐 stage 比较 logits、tokens、完整已提交 key/value 内容和 commit position；重复运行新的 Prefill→Decode 链并逐项比较结果。Prefill 后和每次 Decode 成功后由 `Executor` 自动推进 commit watermark，测试不手动调用 `CommitUntil`。同一 Decode bindings 执行两步；输入/输出地址与 prepared kernel params 保持稳定。
+测试逐 stage 比较 logits、tokens、完整已提交 key/value 内容和 commit position；重复运行新的 Prefill→Decode 链并逐项比较结果。Prefill 后和每次 Decode 成功后由 execution transaction 自动推进 commit watermark；测试不直接调用提交入口。提交权已进一步收窄为 `LayerRunner` 的 source-private access，见 [08 号演进提案](08-kv-cache-and-attention-capability-evolution.md)。同一 Decode bindings 执行两步；输入/输出地址与 prepared kernel params 保持稳定。
 
 错误路径将 Decode `position_ids` 设为 -1，验证执行失败且 watermark 不前进；先 `ExecutionContext::Clear()`，再 `ReleaseSession()`，随后成功重新 reserve，证明资源释放顺序可用。
 
 零分配计数覆盖每个 steady-state Decode body：写入稳定 token/position buffer、存在 workspace 时调用 `WorkspaceArena::Reset()`、执行 `Executor::Execute` 并读取输出 token。scalar oracle、断言、KV snapshot 和计数结果检查都在窗口外。glibc/Linux interposer 对窗口内的 `malloc/calloc/realloc/free/aligned_alloc/posix_memalign/memalign` 计数；C++ `operator new` 经 malloc-family 入口计入。`MallocInterposerObservesCpuAllocatorCalls` 通过共享库内的 `CPUAllocator::Allocate` 校准 `posix_memalign/free` 符号拦截。Debug 和 Release 均观察到两次 Decode 各 0 次分配与释放。
 
-该测试还发现并修复两个成功路径分配：KVCacheUpdate 和 Attention 的 KV footprint 验证原先每次为诊断参数动态拼接 `std::string`，现在传入固定 `string_view` 错误标签。执行层也已接受模型图中符号化的 cache_len 轴，同时继续要求静态 KV heads/head_dim 与 `KVCacheView` 匹配；显式静态容量仍须等于 runtime capacity，并有错误几何回归覆盖。
+该测试还发现并修复两个成功路径分配：KVCacheUpdate 和 Attention 的 KV footprint 验证原先每次为诊断参数动态拼接 `std::string`，现在传入固定 `string_view` 错误标签。执行层也已接受模型图中符号化的 cache_len 轴，同时继续要求静态 KV heads/head_dim 与 `KVCacheSessionView` 匹配；显式静态容量仍须等于 runtime capacity，并有错误几何回归覆盖。
 
 Allocation interposer 目前为 glibc/Linux 专用；其他平台仍运行数值、KV、确定性和失败清理证明，跳过仅有的 malloc-family 计数证据。
 
@@ -210,7 +210,7 @@ InferenceSession                             Generate/session 生命周期
 ExecutionContext                             plan specialization 生命周期
 ├── owns PreparedExecutionBindings
 ├── borrows WorkspaceArena
-└── holds KVCacheView
+└── holds KVCacheSessionView
 ```
 
 生命周期 invariant：
@@ -517,6 +517,6 @@ Decode 循环中不得变化：
 | 2026-09-23 | 1.7 | 07 号提案 M2.4 落地后同步：§9 勾选 "baseline pipeline 可通过真实 CpuBackend 构建完整 plan"、"`PrepareExecutableModel` 可从真实 artifact 构建"、"real weights 可自动生成完整 external bindings" 三项；§2.3 补记 kEmbedding 亦无 kPacked 变体，并写明其后果——`enable_packed_weights=true` 的完整 Llama 在 kernel resolve 即失败，packed 取证只能走子图 |
 | 2026-09-23 | 1.8 | 07 号提案 M2.5 落地后同步：§9 勾选 "Prefill/Decode phase-plan 合同已验证"（共享单 plan、phase 不匹配报错、混合 phase prepare 期拒绝三项由 M2.5 测试覆盖，见 07 §4.5/§7）；07 转 Implemented，实现描述由 [designs/inference/01-executable-model.md](../designs/inference/01-executable-model.md) 承接。剩余五项门禁（Prefill/Decode 数值、KV content/commit、重复 decode、malloc-hook、KV reservation teardown）属 M4/M5，未勾选 |
 | 2026-09-23 | 1.9 | 按当前代码状态同步 packed-weight 能力：§2.2 描述符计数 21→27（新增 kLinear/kEmbedding/kRmsNorm 的 packed identity 与 Qkv/GateUp/Linear 的 `cpu_bpanel_f32_v1_avx2` 候选），表格 packed 相关行更新，段末"剩余准入项"改为端到端数值证据；§2.3 "仍未具备" 重写——kLinear/kEmbedding kPacked 变体与 tile/block recipe 已补齐（`PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 缺口测试已由 `PackedLoweringPreparesAllWeightConsumers` 取代），仅剩"bpanel 升为默认（待 benchmark）"与 unfused e2e 数值验证；§9 括注同步。另注：§3.2–§3.5 的缺口叙述（如"缺少 ExecutableModel 准备入口"）早于本次同步即已过期，待该文件自身维护时重写 |
-| 2026-09-24 | 1.10 | 更正 §3.2–§3.4 中过期的 M2 缺口描述；记录 M4 真实 CpuBackend tiny Llama Prefill + 两步 Decode 的数值、KV、确定性、失败清理与 glibc/Linux steady-state allocation 证据。M4 修复符号化 cache_len 与 KVCacheView geometry 的执行校验冲突，并将 KVCacheUpdate/Attention 热路径的 eager diagnostic string 改为固定 string_view；§7 同步说明 commit 由 Executor 在完整 plan 成功后自动推进，§9 五项 M4 门禁全部勾选。M5 public Generate 仍未实现。|
+| 2026-09-24 | 1.10 | 更正 §3.2–§3.4 中过期的 M2 缺口描述；记录 M4 真实 CpuBackend tiny Llama Prefill + 两步 Decode 的数值、KV、确定性、失败清理与 glibc/Linux steady-state allocation 证据。M4 修复符号化 cache_len 与 KVCacheSessionView geometry 的执行校验冲突，并将 KVCacheUpdate/Attention 热路径的 eager diagnostic string 改为固定 string_view；§7 同步说明 commit 由 Executor 在完整 plan 成功后自动推进，§9 五项 M4 门禁全部勾选。M5 public Generate 仍未实现。|
 | 2026-09-24 | 1.11 | 落地 M5 public C++ `InferenceSession::Generate`：冻结 ExecutableModel 的词表/context 元数据，精确按 prompt + N−1 预约 KV，增加请求级 RAII、Decode loop 复用和 Session oracle/边界/清理/分配测试，并校验 preparation Runtime 身份与 CPU allocator；状态更新为 Implemented。|
 | 2026-09-24 | 1.12 | 修正三处过期表述：§2.2 packed 计数 6 → 实测 9 个描述符声明 `weight_format = kPacked`（并列明其构成）；§2.1 KV 行由"部分实现"改为"已实现（静态 contiguous baseline）"并指向 05 号提案的演进范围；§4.2 由"推荐接口轮廓"改为"已落地接口"，替换为实际签名、删除"落地 M2 前需更新 AGENTS.md"的过期句并记录与初版示意的三处差异。M5 实现描述另由 [InferenceSession 模块设计](../designs/inference/02-inference-session.md) 承接 |

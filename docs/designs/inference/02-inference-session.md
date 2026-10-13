@@ -109,7 +109,7 @@
   → InitializeWorkspace(max(两 phase bytes), max(两 phase alignment))
   → PrepareContext(Prefill)：复制 immutable 表 + 追加两个输入绑定 → PrepareExecutionBindings → ExecutionContext::Create
   → workspace->Reset()（存在时）→ Executor::Execute
-  → 校验 kv_cache_view().current_pos() == prompt_len，否则 kInternal
+  → 校验 kv_cache_session_view().current_pos() == prompt_len，否则 kInternal
   → ReadOutputToken(最后一个位置) → push 进 generated_tokens → ClearContext()
   → 若已达 N 或首 token 即 EOS：Finish() 返回（不创建 Decode context）
   → 写 decode buffer（token = 首 token，position = prompt_len）

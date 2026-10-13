@@ -45,7 +45,7 @@ Status ValidateKVCacheUpdateDTypes(std::span<const TensorSpec> inputs) {
 //   cache_len static-zero rejected; static seq_len > cache_len rejected.
 //   The latter is the graph-level necessary part of the capacity contract
 //   (seq_len <= cache_len); the runtime sufficient part
-//   (current_pos + seq_len <= capacity) lives in KVCacheView::ValidateWrite
+//   (current_pos + seq_len <= capacity) lives in KVCacheSessionView::ValidateWrite
 //   and is not expressible in the graph.
 Status ValidateKVCacheUpdateShapes(std::span<const TensorSpec> inputs) {
     const SymbolicShape& k_shape = inputs[0].shape;

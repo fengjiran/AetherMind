@@ -44,7 +44,7 @@ struct KVCacheAppendBinding {
 /// may be read only by a later, validated step in this same synchronous plan.
 /// `query_begin` and `query_end` identify the absolute token interval of the
 /// attention query rows. They are execution-transaction semantics filled by
-/// LayerRunner; KVCacheView only supplies storage and visibility frontiers.
+/// LayerRunner; KVCacheSessionView only supplies storage and visibility frontiers.
 struct KVCacheReadBinding {
     KVCacheLayerStorageBinding storage{};
     size_t committed_end = 0;

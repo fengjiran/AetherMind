@@ -53,7 +53,7 @@
 - **同步流控**：管理单次生成任务的生命周期，确保 Session Preparation、Prefill 与 Decode 阶段有序转换。
 - **执行组织**：按照 decoder-only Transformer 的层级结构驱动 Embedding、Norm、Linear、Attention、LM Head 与 Argmax。
 - **状态维护**：在生成过程中，维护 `SessionState` 与 `SessionExecutionState` 中的当前位置、已生成 Token 与停止状态。
-- **KV Cache 驱动**：通过 `KVCacheView` 协调 Prefill / Decode 的 KV 写入和历史 KV 读取。
+- **KV Cache 驱动**：通过 `KVCacheSessionView` 协调 Prefill / Decode 的 KV 写入和历史 KV 读取。
 - **Workspace 复用**：确保 Decode 稳态路径复用已绑定的工作区，不发生新的堆分配。
 - **执行结果提交**：将生成 Token、停止原因和运行时状态回写到 Session。
 
@@ -135,7 +135,7 @@ Reference / Optimized 的差异应通过 init-time resolve 的函数指针表体
 | **DecodePath** | Decode 单步路径 | 处理 steady-state 单 token 前向 |
 | **LayerRunner** | 单层执行骨架 | 复用 Transformer Block 固定流程 |
 | **OpContext** | 算子执行上下文 | 线程策略、workspace、profiling、dispatch |
-| **KVCacheView** | KV 的逻辑访问视图 | 供 Executor 与 Attention 访问 |
+| **KVCacheSessionView** | KV 的逻辑访问视图 | 供 Executor 与 Attention 访问 |
 | **WorkspaceBinding** | Session 级工作区绑定 | 提供复用的临时 buffer |
 | **DecodeStepOutput** | 单步输出结果 | 包括 next token 与 stop 信息 |
 
@@ -171,7 +171,7 @@ Phase 1 中建议在 Session 创建时预留 `output_tokens` 容量，以避免 
 
 `SessionExecutionState` 是 `SessionState` 的执行侧补充，表示仅在 Executor 内部使用的绑定信息，至少包括：
 
-- `KVCacheView kv`
+- `KVCacheSessionView kv`
 - `WorkspaceBinding workspace`
 - `bool prepared`
 - `bool prefill_done`
@@ -314,7 +314,7 @@ public:
                const LayerWeightsView& weights,
                HiddenStateView hidden_in,
                HiddenStateView hidden_out,
-               KVCacheView& kv,
+               KVCacheSessionView& kv,
                OpContext& op_ctx,
                std::size_t position_begin,
                std::size_t token_count);
@@ -333,7 +333,7 @@ Preparation 至少应包括：
 
 - 校验 Prompt 长度与 `max_new_tokens`
 - 预留或验证输出 token 容量
-- 绑定 `KVCacheView`
+- 绑定 `KVCacheSessionView`
 - 绑定 `WorkspaceBinding`
 - 初始化 `current_pos / prompt_len / generated_len`
 - 将执行状态切换为 `kPrepared`
@@ -348,7 +348,7 @@ Prefill 负责将 Prompt 编码进 KV Cache，并生成第一个输出 token。
 2. **Embedding**：将 Prompt Token 序列转换为隐向量。
 3. **逐层前向**：逐层执行 Transformer Block。
    - 在 Attention 算子中一次性计算 Prompt 区间的 K / V。
-   - 将 KV 写入 `KVCacheView` 的起始位置（`0 .. prompt_len - 1`）。
+   - 将 KV 写入 `KVCacheSessionView` 的起始位置（`0 .. prompt_len - 1`）。
    - 所有 layer 必须恰好使用一次同一 append range；只有整个 plan 成功才将该 range commit。
 4. **Final Norm + LM Head**：对最后位置的 hidden state 计算 logits。
 5. **Argmax**：从最后位置 logits 中选出第一个输出 token。
@@ -356,7 +356,7 @@ Prefill 负责将 Prompt 编码进 KV Cache，并生成第一个输出 token。
 7. **状态更新**：
    - 更新 `SessionState.output_tokens`
    - 更新 `generated_len`
-   - 更新 `current_pos = prompt_len`
+   - 由完整 plan transaction 发布 KV committed watermark 至 `prompt_len`
    - 设置 `prefill_done = true`
 
 特别说明：
@@ -374,7 +374,7 @@ Decode 是 steady-state 热路径，目标是在最小控制开销下逐步生�
 2. **Embedding**：将单个 token 转换为隐向量。
 3. **逐层执行**：
    - 对每层执行 norm / linear / rope / attention / mlp / residual
-   - Attention 通过 `KVCacheView` 读取历史 KV，并在当前位置追加当前 token 的 K / V
+   - Attention 通过 `KVCacheSessionView` 读取历史 KV，并在当前位置追加当前 token 的 K / V
    - 当前 plan 内 Attention 可见本 layer 已完成的未提交 append；其他 layer 或
      Attention-before-update 不得读取该范围。
 4. **Final Norm + LM Head**：得到当前步 logits
@@ -404,7 +404,7 @@ Status ExecutorImpl::Generate(SessionState& session) {
 ### 6.5 特殊情况约定
 
 - **空 Prompt**：Phase 1 的 KV reservation 拒绝；支持 BOS/空上下文前必须先定义
-  无 Prefill 如何进入 DecodeReady 的独立语义。
+  无 Prefill 如何进入 `PrefillCommitted` 的独立语义。
 - **`max_new_tokens == 0`**：不进入 Decode；是否在 Prefill 后直接结束应由产品语义明确。Phase 1 推荐在 Preparation 或 Prefill 后直接返回 finished。
 - **首 token 即 EOS**：视为正常停止，不应返回错误。
 
@@ -477,11 +477,11 @@ struct DispatchTable {
 
 ## 8. KV Cache、Workspace 与内存约束
 
-### 8.1 与 KVCacheView 的交互
+### 8.1 与 KVCacheSessionView 的交互
 
-- Executor 不直接操作底层 KV 物理内存，而是通过 `KVCacheView` 访问。
-- `KVCacheView` 负责提供按 `layer / kv_head / seq_pos` 的逻辑访问能力。
-- Attention 通过 `KVCacheView` 读取历史 KV，并追加写入当前位置 KV。
+- Executor 不直接操作底层 KV 物理内存，而是通过 `KVCacheSessionView` 访问。
+- `KVCacheSessionView` 负责提供按 `layer / kv_head / seq_pos` 的逻辑访问能力。
+- Attention 通过 `KVCacheSessionView` 读取历史 KV，并追加写入当前位置 KV。
 - Executor 不得把底层静态线性布局常量硬编码进控制流。
 
 ### 8.2 KV 写入与读取语义
@@ -533,7 +533,7 @@ Executor 应在 Session Preparation 阶段为当前 Session 绑定工作区，�
 
 ### 8.5 生命周期
 
-- `KVCacheView` 与 `WorkspaceBinding` 的逻辑绑定由 Session / Executor 管理
+- `KVCacheSessionView` 与 `WorkspaceBinding` 的逻辑绑定由 Session / Executor 管理
 - 物理内存由各自的 Manager 或 Runtime 持有
 - Session 结束后，逻辑绑定解除；是否立即归还底层物理资源由上层策略决定
 
@@ -643,7 +643,7 @@ Phase 1 应优先保持单一主导的 intra-op 线程策略，并避免 oversub
 
 ### 11.1 向 Paged KV 演进
 
-- 保持 `KVCacheView` 作为上层访问边界
+- 保持 `KVCacheSessionView` 作为上层访问边界
 - Phase 2 替换底层 `KVCacheStorage` 即可
 - Executor / LayerRunner 尽量不感知底层物理布局变化
 

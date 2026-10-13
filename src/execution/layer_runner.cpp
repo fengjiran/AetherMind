@@ -1,7 +1,8 @@
 #include "execution/layer_runner.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/kernel_invoker.h"
-#include "aethermind/runtime/kv_cache_view.h"
+#include "aethermind/kv_cache/kv_cache_session_view.h"
+#include "kv_cache/kv_cache_commit_access.h"
 #include "utils/overflow_check.h"
 
 #include <optional>
@@ -54,11 +55,11 @@ StatusOr<ExecutionKVCacheStateIdentity> GetKVStateIdentity(
 }
 
 Status ValidateKVCacheStateSpec(const TensorSpec& spec,
-                                const KVCacheView& view,
+                                const KVCacheSessionView& view,
                                 std::string_view role) noexcept {
     if (spec.dtype != view.kv_dtype()) {
         return Status::InvalidArgument("KV state " + std::string(role) +
-                                       " dtype does not match the KVCacheView element dtype");
+                                       " dtype does not match the KVCacheSessionView element dtype");
     }
 
     if (const auto rank = spec.shape.rank(); !rank.has_value() || *rank != 3) {
@@ -71,7 +72,7 @@ Status ValidateKVCacheStateSpec(const TensorSpec& spec,
                                        " requires static KV head and head dimension");
     }
 
-    // Model graphs keep cache_len symbolic; KVCacheView owns the physical
+    // Model graphs keep cache_len symbolic; KVCacheSessionView owns the physical
     // capacity and supplies its runtime value.
     const bool cache_capacity_mismatch =
             spec.shape[1].IsStatic() &&
@@ -80,7 +81,7 @@ Status ValidateKVCacheStateSpec(const TensorSpec& spec,
         cache_capacity_mismatch ||
         spec.shape[2].GetStaticValue() != static_cast<int64_t>(view.head_dim())) {
         return Status::InvalidArgument("KV state " + std::string(role) +
-                                       " geometry does not match the KVCacheView");
+                                       " geometry does not match the KVCacheSessionView");
     }
     return Status::Ok();
 }
@@ -88,7 +89,7 @@ Status ValidateKVCacheStateSpec(const TensorSpec& spec,
 Status ValidateKVCacheStatePair(const std::vector<ExecutionValueDesc>& values,
                                 ExecutionValueId key_id,
                                 ExecutionValueId value_id,
-                                const KVCacheView& view,
+                                const KVCacheSessionView& view,
                                 std::string_view role) noexcept {
     if (key_id.index >= values.size() || value_id.index >= values.size()) {
         return Status::InvalidArgument("KV state " + std::string(role) +
@@ -107,7 +108,7 @@ Status ValidateKVCacheStatePair(const std::vector<ExecutionValueDesc>& values,
 StatusOr<uint32_t> ValidateKVCacheUpdateStateIdentity(
         const ExecutionStep& step,
         const std::vector<ExecutionValueDesc>& values,
-        const KVCacheView& view) noexcept {
+        const KVCacheSessionView& view) noexcept {
     if (step.inputs.size() != 4 || step.outputs.size() != 2) {
         return Status::InvalidArgument(
                 "KVCacheUpdate requires its complete semantic K/V state ports");
@@ -145,7 +146,7 @@ StatusOr<uint32_t> ValidateKVCacheUpdateStateIdentity(
 StatusOr<uint32_t> ValidateAttentionStateIdentity(
         const ExecutionStep& step,
         const std::vector<ExecutionValueDesc>& values,
-        const KVCacheView& view) noexcept {
+        const KVCacheSessionView& view) noexcept {
     if (step.inputs.size() != 3) {
         return Status::InvalidArgument(
                 "Attention requires complete key/value state ports");
@@ -203,13 +204,13 @@ Status PrepareKVAppendTransaction(const ExecutionPlan& plan,
                                   ExecutionContext& context,
                                   const PreparedExecutionBindings& prepared_bindings,
                                   KVAppendTransaction& transaction) noexcept {
-    const KVCacheView& view = context.kv_cache_view();
+    const KVCacheSessionView& view = context.kv_cache_session_view();
     std::optional<size_t> sequence_length;
-    if (context.HasKVCacheView()) {
+    if (context.HasKVCacheSessionView()) {
         transaction.layer_progress = context.ResetKVLayerTransactionScratch();
         if (transaction.layer_progress.size() != view.num_layers()) {
             return Status::Internal("ExecutionContext KV transaction scratch "
-                                    "does not match KVCacheView layers");
+                                    "does not match KVCacheSessionView layers");
         }
     }
 
@@ -219,16 +220,16 @@ Status PrepareKVAppendTransaction(const ExecutionPlan& plan,
             continue;
         }
 
-        if (!context.HasKVCacheView()) {
+        if (!context.HasKVCacheSessionView()) {
             return Status::FailedPrecondition(
-                    "KVCacheUpdate requires a valid KVCacheView");
+                    "KVCacheUpdate requires a valid KVCacheSessionView");
         }
 
         AM_ASSIGN_OR_RETURN(const uint32_t layer,
                             ValidateKVCacheUpdateStateIdentity(step, plan.values(), view));
         if (layer >= transaction.layer_progress.size()) {
             return Status::OutOfRange(
-                    "KVCacheUpdate state layer exceeds KVCacheView layer count");
+                    "KVCacheUpdate state layer exceeds KVCacheSessionView layer count");
         }
 
         if (transaction.layer_progress[layer] !=
@@ -249,7 +250,7 @@ Status PrepareKVAppendTransaction(const ExecutionPlan& plan,
         sequence_length = current_sequence_length;
     }
 
-    transaction.committed_begin = context.HasKVCacheView() ? view.current_pos() : 0;
+    transaction.committed_begin = context.HasKVCacheSessionView() ? view.current_pos() : 0;
     transaction.visible_end = transaction.committed_begin;
     if (!sequence_length.has_value()) {
         return Status::Ok();
@@ -279,7 +280,7 @@ Status PrepareKVAppendTransaction(const ExecutionPlan& plan,
         if (transaction.layer_progress[layer] !=
             static_cast<uint8_t>(KVAppendTransaction::LayerProgress::kScheduled)) {
             return Status::InvalidArgument("KV append transaction must update "
-                                           "every KVCacheView layer exactly once");
+                                           "every KVCacheSessionView layer exactly once");
         }
 
         if (const auto binding =
@@ -323,8 +324,15 @@ Status LayerRunner::Run(const ExecutionPlan& plan,
     }
 
     if (kv_transaction.has_append) {
-        KVCacheView view = context.kv_cache_view();
-        AM_RETURN_IF_ERROR(view.CommitUntil(kv_transaction.visible_end));
+        for (const uint8_t progress: kv_transaction.layer_progress) {
+            if (progress != static_cast<uint8_t>(KVAppendTransaction::LayerProgress::kWritten)) {
+                return Status::FailedPrecondition(
+                        "KV append cannot publish before every layer write completes");
+            }
+        }
+        KVCacheSessionView view = context.kv_cache_session_view();
+        AM_RETURN_IF_ERROR(detail::KVCacheCommitAccess::CommitAppend(
+                view, kv_transaction.committed_begin, kv_transaction.visible_end));
     }
     return Status::Ok();
 }
@@ -357,18 +365,18 @@ Status LayerRunner::RunStep(size_t step_index,
     if (step.kernel.op_type == OpType::kKVCacheUpdate) {
         AM_ASSIGN_OR_RETURN(const uint32_t layer,
                             ValidateKVCacheUpdateStateIdentity(
-                                    step, values, context.kv_cache_view()));
+                                    step, values, context.kv_cache_session_view()));
         if (!kv_transaction.has_append) {
             return Status::Internal("KVCacheUpdate is absent from its append transaction");
         }
 
-        const KVCacheView& view = context.kv_cache_view();
+        const KVCacheSessionView& view = context.kv_cache_session_view();
         AM_ASSIGN_OR_RETURN(append_binding,
                             view.BindLayerForAppend(layer, kv_transaction.committed_begin,
                                                     kv_transaction.visible_end));
     } else if (step.kernel.op_type == OpType::kAttention) {
-        if (!context.HasKVCacheView()) {
-            return Status::FailedPrecondition("Attention requires a valid KVCacheView");
+        if (!context.HasKVCacheSessionView()) {
+            return Status::FailedPrecondition("Attention requires a valid KVCacheSessionView");
         }
 
         if (tensor_binding.inputs.size() != 1 || tensor_binding.inputs[0].rank() != 2 ||
@@ -378,12 +386,12 @@ Status LayerRunner::RunStep(size_t step_index,
         }
 
         const auto query_sequence_length = static_cast<size_t>(tensor_binding.inputs[0].dim(0));
-        const KVCacheView& view = context.kv_cache_view();
+        const KVCacheSessionView& view = context.kv_cache_session_view();
         AM_ASSIGN_OR_RETURN(const uint32_t layer,
                             ValidateAttentionStateIdentity(step, values, view));
         if (layer >= kv_transaction.layer_progress.size()) {
             return Status::OutOfRange(
-                    "Attention state layer exceeds KVCacheView layer count");
+                    "Attention state layer exceeds KVCacheSessionView layer count");
         }
 
         if (kv_transaction.has_append &&
@@ -433,7 +441,7 @@ Status LayerRunner::RunStep(size_t step_index,
     if (step.kernel.op_type == OpType::kKVCacheUpdate) {
         AM_ASSIGN_OR_RETURN(const uint32_t layer,
                             ValidateKVCacheUpdateStateIdentity(
-                                    step, values, context.kv_cache_view()));
+                                    step, values, context.kv_cache_session_view()));
         kv_transaction.layer_progress[layer] = static_cast<uint8_t>(
                 KVAppendTransaction::LayerProgress::kWritten);
     }
@@ -451,18 +459,18 @@ Status LayerRunner::ValidateStateAliasesForStep(
         return Status::Ok();
     }
 
-    // Phase 1: all state aliases are KV cache updates. The KVCacheView is the
+    // Phase 1: all state aliases are KV cache updates. The KVCacheSessionView is the
     // shared physical storage that the operator reads and writes in place, so
     // its presence is the runtime invariant for must-alias state updates.
-    if (!context.HasKVCacheView()) {
+    if (!context.HasKVCacheSessionView()) {
         return Status::InvalidArgument(
-                "State alias requires a valid KVCacheView");
+                "State alias requires a valid KVCacheSessionView");
     }
 
     // Cross-check each alias against the bound view: the update is must-alias,
     // so input/output specs must agree, and the static geometry (dtype,
     // kv_heads, head_dim) must match the KV cache backing it.
-    const KVCacheView& view = context.kv_cache_view();
+    const KVCacheSessionView& view = context.kv_cache_session_view();
     for (const ResolvedStateAlias& alias: aliases) {
         const TensorSpec& input_spec = values[step.inputs[alias.input_port].index].spec;
         const TensorSpec& output_spec = values[step.outputs[alias.output_port].index].spec;
@@ -484,7 +492,7 @@ Status LayerRunner::ValidateStateAliasesForStep(
 
         if (input_spec.dtype != view.kv_dtype()) {
             return Status::InvalidArgument(
-                    "State alias dtype does not match the KVCacheView element dtype");
+                    "State alias dtype does not match the KVCacheSessionView element dtype");
         }
 
         const SymbolicShape& shape = input_spec.shape;
@@ -506,18 +514,18 @@ Status LayerRunner::ValidateStateAliasesForStep(
 
         if (static_cast<size_t>(kv_heads.GetStaticValue()) != view.num_kv_heads()) {
             return Status::InvalidArgument(
-                    "State alias kv_heads does not match the KVCacheView head count");
+                    "State alias kv_heads does not match the KVCacheSessionView head count");
         }
 
         if (static_cast<size_t>(head_dim.GetStaticValue()) != view.head_dim()) {
             return Status::InvalidArgument(
-                    "State alias head_dim does not match the KVCacheView head dimension");
+                    "State alias head_dim does not match the KVCacheSessionView head dimension");
         }
 
         if (cache_len.IsStatic() &&
             static_cast<size_t>(cache_len.GetStaticValue()) != view.max_tokens()) {
             return Status::InvalidArgument(
-                    "State alias cache_len does not match the KVCacheView capacity");
+                    "State alias cache_len does not match the KVCacheSessionView capacity");
         }
     }
 

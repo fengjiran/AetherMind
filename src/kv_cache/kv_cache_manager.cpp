@@ -1,6 +1,5 @@
-#include "aethermind/runtime/kv_cache_manager.h"
-
-#include "aethermind/runtime/workspace_planner.h"
+#include "aethermind/kv_cache/kv_cache_manager.h"
+#include "aethermind/base/alignment.h"
 #include "utils/overflow_check.h"
 
 #include <cstdlib>
@@ -15,19 +14,21 @@ void FreeAlignedMemory(void*, void* ptr) noexcept {
 }
 
 StatusOr<Buffer> AllocateAlignedCpuBuffer(size_t nbytes, size_t alignment) {
-    if (!IsValidWorkspaceAlignment(alignment)) {
-        return Status::InvalidArgument("KV buffer alignment must be a non-zero power of two");
+    if (!IsValidAlignment(alignment)) {
+        return Status::InvalidArgument(
+                "KV buffer alignment must be a non-zero power of two");
     }
 
     void* ptr = nullptr;
-    const int rc = posix_memalign(&ptr, alignment, nbytes == 0 ? 1 : nbytes);
-    if (rc != 0 || ptr == nullptr) {
+    if (const int rc = posix_memalign(&ptr, alignment, nbytes == 0 ? 1 : nbytes);
+        rc != 0 || ptr == nullptr) {
         return Status::ResourceExhausted("Failed to allocate aligned KV buffer");
     }
 
     try {
         return Buffer{nbytes,
-                      MemoryHandle(ptr, nullptr, &FreeAlignedMemory, Device::CPU(), alignment)};
+                      MemoryHandle(ptr, nullptr, &FreeAlignedMemory,
+                                   Device::CPU(), alignment)};
     } catch (const std::bad_alloc&) {
         return Status::ResourceExhausted("Failed to allocate KV buffer metadata");
     }
@@ -36,12 +37,14 @@ StatusOr<Buffer> AllocateAlignedCpuBuffer(size_t nbytes, size_t alignment) {
 } // namespace
 
 Status KVCacheManager::AllocateStorage(size_t bytes_per_plane, size_t alignment) {
-    const StatusOr<Buffer> key_buffer = AllocateAlignedCpuBuffer(bytes_per_plane, alignment);
+    const StatusOr<Buffer> key_buffer = AllocateAlignedCpuBuffer(
+            bytes_per_plane, alignment);
     if (!key_buffer.ok()) {
         return key_buffer.status();
     }
 
-    const StatusOr<Buffer> value_buffer = AllocateAlignedCpuBuffer(bytes_per_plane, alignment);
+    const StatusOr<Buffer> value_buffer = AllocateAlignedCpuBuffer(
+            bytes_per_plane, alignment);
     if (!value_buffer.ok()) {
         return value_buffer.status();
     }
@@ -63,7 +66,7 @@ Status KVCacheManager::Init(size_t num_layers,
     storage_ = {};
     // Preserve the epoch so a later reserve cannot revive a view borrowed
     // before this re-initialization, including when initialization fails.
-    slot_ = SessionKVSlot{.generation = slot_.generation};
+    session_state_ = KVCacheSessionState{.generation = session_state_.generation};
     total_bytes_ = 0;
     initialized_ = false;
 
@@ -117,85 +120,98 @@ Status KVCacheManager::Init(size_t num_layers,
     return Status::Ok();
 }
 
-StatusOr<KVCacheView> KVCacheManager::ReserveForSession(size_t prompt_len,
-                                                        size_t future_kv_appends) noexcept try {
+StatusOr<KVCacheSessionView> KVCacheManager::ReserveForSession(
+        size_t prompt_len,
+        size_t future_kv_appends) noexcept try {
     if (!initialized_) {
         return Status::FailedPrecondition("KVCacheManager is not initialized");
     }
-    if (slot_.in_use) {
-        return Status::FailedPrecondition("KVCacheManager already has an active session reservation");
+
+    if (session_state_.lifecycle != KVCacheSessionState::Lifecycle::kIdle) {
+        return Status::FailedPrecondition(
+                "KVCacheManager already has an active session reservation");
     }
 
     if (prompt_len == 0) {
-        return Status::InvalidArgument("KV session reservation requires a non-empty prompt");
+        return Status::InvalidArgument(
+                "KV session reservation requires a non-empty prompt");
     }
 
     size_t requested_tokens = 0;
     if (CheckOverflowAdd(prompt_len, future_kv_appends, &requested_tokens)) {
         return Status::Overflow("KV session reservation overflowed size_t");
     }
+
     if (requested_tokens == 0) {
-        return Status::InvalidArgument("KV session reservation must request at least one token");
+        return Status::InvalidArgument(
+                "KV session reservation must request at least one token");
     }
+
     if (requested_tokens > layout_.max_tokens) {
         return Status::OutOfRange("KV session reservation exceeds physical KV capacity");
     }
 
-    if (slot_.generation == std::numeric_limits<uint64_t>::max()) {
+    if (session_state_.generation == std::numeric_limits<uint64_t>::max()) {
         return Status::Overflow("KV session generation is exhausted");
     }
 
-    ++slot_.generation;
-    slot_.in_use = true;
-    slot_.capacity_tokens = requested_tokens;
-    slot_.prompt_len = prompt_len;
-    slot_.current_pos = 0;
-    slot_.progress = SessionKVSlot::Progress::kAwaitingPrefill;
-
-    return KVCacheView(&layout_, &storage_, &slot_);
+    ++session_state_.generation;
+    session_state_.capacity_tokens = requested_tokens;
+    session_state_.prompt_len = prompt_len;
+    session_state_.committed_tokens = 0;
+    session_state_.lifecycle = KVCacheSessionState::Lifecycle::kAwaitingPrefill;
+    return KVCacheSessionView(&layout_, &storage_, &session_state_);
 } catch (const std::bad_alloc&) {
     // Error diagnostics may allocate; reporting OOM must not allocate again.
     return Status::ResourceExhausted({});
 }
 
-Status KVCacheManager::ResetSession(KVCacheView& view) noexcept try {
+Status KVCacheManager::ResetSession(KVCacheSessionView& view) noexcept try {
     if (!initialized_) {
         return Status::FailedPrecondition("KVCacheManager is not initialized");
     }
-    if (view.layout_ != &layout_ || view.storage_ != &storage_ || view.slot_ != &slot_) {
-        return Status::FailedPrecondition("KVCacheView does not belong to this manager");
-    }
-    if (!view.valid()) {
-        return Status::FailedPrecondition("Cannot reset an invalid or stale KVCacheView");
+
+    if (view.layout_ != &layout_ || view.storage_ != &storage_ || view.session_state_ != &session_state_) {
+        return Status::FailedPrecondition(
+                "KVCacheSessionView does not belong to this manager");
     }
 
-    slot_.current_pos = 0;
-    slot_.progress = SessionKVSlot::Progress::kAwaitingPrefill;
+    if (!view.valid()) {
+        return Status::FailedPrecondition(
+                "Cannot reset an invalid or stale KVCacheSessionView");
+    }
+
+    session_state_.committed_tokens = 0;
+    session_state_.lifecycle = KVCacheSessionState::Lifecycle::kAwaitingPrefill;
     return Status::Ok();
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});
 }
 
-Status KVCacheManager::ReleaseSession(KVCacheView& view) noexcept try {
+Status KVCacheManager::ReleaseSession(KVCacheSessionView& view) noexcept try {
     if (!initialized_) {
         return Status::FailedPrecondition("KVCacheManager is not initialized");
     }
-    if (view.layout_ != &layout_ || view.storage_ != &storage_ || view.slot_ != &slot_) {
-        return Status::FailedPrecondition("KVCacheView does not belong to this manager");
-    }
-    if (!view.valid()) {
-        return Status::FailedPrecondition("Cannot release an invalid or stale KVCacheView");
+
+    if (view.layout_ != &layout_ || view.storage_ != &storage_ ||
+        view.session_state_ != &session_state_) {
+        return Status::FailedPrecondition(
+                "KVCacheSessionView does not belong to this manager");
     }
 
-    slot_.in_use = false;
-    slot_.capacity_tokens = 0;
-    slot_.prompt_len = 0;
-    slot_.current_pos = 0;
-    slot_.progress = SessionKVSlot::Progress::kAwaitingPrefill;
+    if (!view.valid()) {
+        return Status::FailedPrecondition(
+                "Cannot release an invalid or stale KVCacheSessionView");
+    }
+
+    session_state_.capacity_tokens = 0;
+    session_state_.prompt_len = 0;
+    session_state_.committed_tokens = 0;
+    session_state_.lifecycle = KVCacheSessionState::Lifecycle::kIdle;
     // Cleanup must succeed even for the last representable reservation.
     // Leaving the epoch saturated makes subsequent reservations fail safely.
-    if (slot_.generation != std::numeric_limits<uint64_t>::max()) {
-        ++slot_.generation;
+    if (session_state_.generation != std::numeric_limits<uint64_t>::max()) {
+        ++session_state_.generation;
     }
     view.Invalidate();
     return Status::Ok();

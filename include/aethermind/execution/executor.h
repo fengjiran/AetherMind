@@ -22,6 +22,9 @@ public:
     /// @param context Prepared tensor bindings and borrowed execution
     ///                resources that must remain valid for the call.
     /// @return Status::Ok() on success, or the first failing step's error.
+    /// @pre No Init, ReserveForSession, ResetSession, or ReleaseSession on the
+    ///      borrowed KV manager may interleave this call, including kernel
+    ///      reentry. KV append transactions are local to this synchronous call.
     static Status Execute(const ExecutionPlan& plan,
                           ExecutionContext& context) noexcept;
 };

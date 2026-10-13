@@ -1,5 +1,8 @@
-#include "aethermind/runtime/kv_cache_manager.h"
+#include "aethermind/kv_cache/detail/kv_cache_state.h"
+#include "aethermind/kv_cache/kv_cache_layout.h"
+#include "aethermind/kv_cache/kv_cache_manager.h"
 #include "inference/test_malloc_interposer.h"
+#include "test_kv_cache_helpers.h"
 
 #include <gtest/gtest.h>
 
@@ -97,7 +100,7 @@ TEST(KVCacheManager, InitAndReserveCreatesValidView) {
     KVCacheManager manager;
     ASSERT_TRUE(manager.Init(2, 4, 32, 16, MakeKVType(), 64).ok());
 
-    const StatusOr<KVCacheView> view = manager.ReserveForSession(8, 8);
+    const StatusOr<KVCacheSessionView> view = manager.ReserveForSession(8, 8);
 
     ASSERT_TRUE(view.ok());
     EXPECT_TRUE(view->valid());
@@ -179,7 +182,7 @@ TEST(KVCacheManager, InitAlignsTokenRowsToLayoutAlignment) {
     EXPECT_EQ(manager.layout().token_stride % manager.layout().alignment, 0U);
 }
 
-TEST(KVCacheView, RejectsStorageSmallerThanLayout) {
+TEST(KVCacheSessionView, RejectsStorageSmallerThanLayout) {
     // BytesPerPlane == 1024 for this geometry; back it with 512-byte buffers.
     const KVCacheLayout layout{
             .num_layers = 1,
@@ -199,12 +202,12 @@ TEST(KVCacheView, RejectsStorageSmallerThanLayout) {
             .kv_dtype = MakeKVType(),
             .alignment = 64,
     };
-    SessionKVSlot slot{.generation = 1,
-                       .in_use = true,
-                       .capacity_tokens = 8,
-                       .prompt_len = 4,
-                       .current_pos = 4};
-    KVCacheView view(&layout, &storage, &slot);
+    KVCacheSessionState slot{.generation = 1,
+                             .capacity_tokens = 8,
+                             .prompt_len = 4,
+                             .committed_tokens = 4,
+                             .lifecycle = KVCacheSessionState::Lifecycle::kPrefillCommitted};
+    KVCacheSessionView view(&layout, &storage, &slot);
 
     const auto key = view.KeyData(0, 0, 0);
 
@@ -217,7 +220,7 @@ TEST(KVCacheManager, ReserveRejectsSecondActiveSession) {
     ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
     ASSERT_TRUE(manager.ReserveForSession(4, 4).ok());
 
-    const StatusOr<KVCacheView> second = manager.ReserveForSession(2, 2);
+    const StatusOr<KVCacheSessionView> second = manager.ReserveForSession(2, 2);
 
     ASSERT_FALSE(second.ok());
     EXPECT_EQ(second.status().code(), StatusCode::kFailedPrecondition);
@@ -231,7 +234,7 @@ TEST(KVCacheManager, OccupiedReserveDiagnosticFailurePreservesReservation) {
     ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
     auto view = manager.ReserveForSession(2, 4);
     ASSERT_TRUE(view.ok());
-    ASSERT_TRUE(view->CommitUntil(2).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 2).ok());
 
     test::ScopedMallocFailure failure(0);
     const auto second = manager.ReserveForSession(1, 1);
@@ -251,7 +254,7 @@ TEST(KVCacheManager, OccupiedReserveDiagnosticFailurePreservesReservation) {
 TEST(KVCacheManager, CommitAndReadWritePointersRespectBounds) {
     KVCacheManager manager;
     ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
-    StatusOr<KVCacheView> view = manager.ReserveForSession(4, 4);
+    StatusOr<KVCacheSessionView> view = manager.ReserveForSession(4, 4);
     ASSERT_TRUE(view.ok());
 
     const StatusOr<void*> key_ptr = view->MutableKeyData(0, 0, 0);
@@ -261,7 +264,7 @@ TEST(KVCacheManager, CommitAndReadWritePointersRespectBounds) {
     EXPECT_NE(key_ptr.value(), value_ptr.value());
 
     EXPECT_FALSE(view->KeyData(0, 0, 0).ok());
-    ASSERT_TRUE(view->CommitUntil(4).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 4).ok());
     EXPECT_EQ(view->current_pos(), 4U);
     EXPECT_FALSE(view->awaiting_prefill());
 
@@ -273,10 +276,10 @@ TEST(KVCacheManager, CommitAndReadWritePointersRespectBounds) {
 TEST(KVCacheManager, ResetSessionClearsCommittedPosition) {
     KVCacheManager manager;
     ASSERT_TRUE(manager.Init(1, 1, 32, 8, MakeKVType(), 64).ok());
-    StatusOr<KVCacheView> view = manager.ReserveForSession(6, 10);
+    StatusOr<KVCacheSessionView> view = manager.ReserveForSession(6, 10);
     ASSERT_TRUE(view.ok());
-    ASSERT_TRUE(view->CommitUntil(6).ok());
-    ASSERT_TRUE(view->CommitUntil(10).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 6).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 10).ok());
 
     ASSERT_TRUE(manager.ResetSession(*view).ok());
 
@@ -284,6 +287,75 @@ TEST(KVCacheManager, ResetSessionClearsCommittedPosition) {
     EXPECT_EQ(view->prompt_len(), 6U);
     EXPECT_EQ(view->token_capacity(), 16U);
     EXPECT_TRUE(view->awaiting_prefill());
+}
+
+TEST(KVCacheManager, ResetKeepsEveryViewCopyLiveInTheSameReservation) {
+    KVCacheManager manager;
+    ASSERT_TRUE(manager.Init(2, 3, 16, 8, MakeKVType(), 64).ok());
+    auto view = manager.ReserveForSession(3, 4);
+    ASSERT_TRUE(view.ok());
+    KVCacheSessionView copy = *view;
+    KVCacheSessionView another_copy = copy;
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 5).ok());
+
+    ASSERT_TRUE(manager.ResetSession(copy).ok());
+
+    for (const auto* current: {&*view, &copy, &another_copy}) {
+        EXPECT_TRUE(current->valid());
+        EXPECT_EQ(current->current_pos(), 0U);
+        EXPECT_EQ(current->committed_tokens(), 0U);
+        EXPECT_EQ(current->prompt_len(), 3U);
+        EXPECT_EQ(current->token_capacity(), 7U);
+        EXPECT_TRUE(current->awaiting_prefill());
+    }
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(another_copy, 3).ok());
+    EXPECT_EQ(view->committed_tokens(), 3U);
+    EXPECT_EQ(copy.committed_tokens(), 3U);
+    EXPECT_FALSE(view->awaiting_prefill());
+    EXPECT_FALSE(copy.awaiting_prefill());
+}
+
+TEST(KVCacheManager, ResetRequiresTheEntirePrefillBeforeDecode) {
+    KVCacheManager manager;
+    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    auto view = manager.ReserveForSession(3, 4);
+    ASSERT_TRUE(view.ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 5).ok());
+    ASSERT_TRUE(manager.ResetSession(*view).ok());
+
+    EXPECT_FALSE(detail::KVCacheCommitAccess::CommitAppend(*view, 0, 1).ok());
+    EXPECT_EQ(view->committed_tokens(), 0U);
+    EXPECT_TRUE(view->awaiting_prefill());
+    EXPECT_FALSE(view->KeyData(0, 0, 0).ok());
+
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 3).ok());
+    EXPECT_EQ(view->committed_tokens(), 3U);
+    EXPECT_FALSE(view->awaiting_prefill());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 4).ok());
+    EXPECT_EQ(view->committed_tokens(), 4U);
+}
+
+TEST(KVCacheManager, ReleasedCopyCannotCommitIntoANewReservation) {
+    KVCacheManager manager;
+    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    auto view = manager.ReserveForSession(2, 4);
+    ASSERT_TRUE(view.ok());
+    KVCacheSessionView copy = *view;
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 2).ok());
+    ASSERT_TRUE(manager.ReleaseSession(*view).ok());
+
+    EXPECT_FALSE(detail::KVCacheCommitAccess::CommitAppend(copy, 2, 3).ok());
+    auto fresh = manager.ReserveForSession(3, 2);
+    ASSERT_TRUE(fresh.ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*fresh, 3).ok());
+
+    EXPECT_FALSE(detail::KVCacheCommitAccess::CommitAppend(copy, 3, 4).ok());
+    EXPECT_FALSE(copy.valid());
+    EXPECT_TRUE(fresh->valid());
+    EXPECT_EQ(fresh->committed_tokens(), 3U);
+    EXPECT_EQ(fresh->prompt_len(), 3U);
+    EXPECT_EQ(fresh->token_capacity(), 5U);
+    EXPECT_FALSE(fresh->awaiting_prefill());
 }
 
 TEST(KVCacheManager, ResetRejectsForeignViewWithoutChangingEitherReservation) {
@@ -295,8 +367,8 @@ TEST(KVCacheManager, ResetRejectsForeignViewWithoutChangingEitherReservation) {
     auto other_view = other.ReserveForSession(3, 5);
     ASSERT_TRUE(owner_view.ok());
     ASSERT_TRUE(other_view.ok());
-    ASSERT_TRUE(owner_view->CommitUntil(2).ok());
-    ASSERT_TRUE(other_view->CommitUntil(3).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*owner_view, 2).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*other_view, 3).ok());
 
     const Status status = other.ResetSession(*owner_view);
 
@@ -327,8 +399,8 @@ TEST(KVCacheManager, ForeignResetDiagnosticFailurePreservesBothReservations) {
     auto other_view = other.ReserveForSession(3, 5);
     ASSERT_TRUE(owner_view.ok());
     ASSERT_TRUE(other_view.ok());
-    ASSERT_TRUE(owner_view->CommitUntil(2).ok());
-    ASSERT_TRUE(other_view->CommitUntil(3).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*owner_view, 2).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*other_view, 3).ok());
 
     test::ScopedMallocFailure failure(0);
     const Status status = other.ResetSession(*owner_view);
@@ -360,8 +432,8 @@ TEST(KVCacheManager, ReleaseRejectsForeignViewWithoutChangingEitherReservation) 
     auto other_view = other.ReserveForSession(3, 5);
     ASSERT_TRUE(owner_view.ok());
     ASSERT_TRUE(other_view.ok());
-    ASSERT_TRUE(owner_view->CommitUntil(2).ok());
-    ASSERT_TRUE(other_view->CommitUntil(3).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*owner_view, 2).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*other_view, 3).ok());
 
     const Status status = other.ReleaseSession(*owner_view);
 
@@ -392,8 +464,8 @@ TEST(KVCacheManager, ForeignReleaseDiagnosticFailurePreservesBothReservations) {
     auto other_view = other.ReserveForSession(3, 5);
     ASSERT_TRUE(owner_view.ok());
     ASSERT_TRUE(other_view.ok());
-    ASSERT_TRUE(owner_view->CommitUntil(2).ok());
-    ASSERT_TRUE(other_view->CommitUntil(3).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*owner_view, 2).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*other_view, 3).ok());
 
     test::ScopedMallocFailure failure(0);
     const Status status = other.ReleaseSession(*owner_view);
@@ -421,15 +493,15 @@ TEST(KVCacheManager, ReinitializationPermanentlyInvalidatesActiveViewCopies) {
     ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
     auto old_view = manager.ReserveForSession(3, 5);
     ASSERT_TRUE(old_view.ok());
-    KVCacheView old_copy = *old_view;
-    ASSERT_TRUE(old_view->CommitUntil(3).ok());
+    KVCacheSessionView old_copy = *old_view;
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*old_view, 3).ok());
 
     ASSERT_TRUE(manager.Init(1, 2, 24, 16, MakeKVType(), 64).ok());
     EXPECT_FALSE(old_view->valid());
     EXPECT_FALSE(old_copy.valid());
     auto fresh_view = manager.ReserveForSession(2, 4);
     ASSERT_TRUE(fresh_view.ok());
-    ASSERT_TRUE(fresh_view->CommitUntil(2).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*fresh_view, 2).ok());
 
     EXPECT_FALSE(old_view->valid());
     EXPECT_FALSE(old_copy.valid());
@@ -448,8 +520,8 @@ TEST(KVCacheManager, FailedReinitializationPermanentlyInvalidatesActiveViewCopie
     ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
     auto old_view = manager.ReserveForSession(3, 5);
     ASSERT_TRUE(old_view.ok());
-    KVCacheView old_copy = *old_view;
-    ASSERT_TRUE(old_view->CommitUntil(3).ok());
+    KVCacheSessionView old_copy = *old_view;
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*old_view, 3).ok());
 
     const Status status = manager.Init(1, 1, 0, 8, MakeKVType(), 64);
 
@@ -461,7 +533,7 @@ TEST(KVCacheManager, FailedReinitializationPermanentlyInvalidatesActiveViewCopie
     ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
     auto fresh_view = manager.ReserveForSession(2, 4);
     ASSERT_TRUE(fresh_view.ok());
-    ASSERT_TRUE(fresh_view->CommitUntil(2).ok());
+    ASSERT_TRUE(test::InitializeAndCommitKVForTest(*fresh_view, 2).ok());
 
     EXPECT_FALSE(old_view->valid());
     EXPECT_FALSE(old_copy.valid());
@@ -478,7 +550,7 @@ TEST(KVCacheManager, ReleasedViewCopyRemainsStaleAfterReinitialization) {
     ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
     auto old_view = manager.ReserveForSession(3, 5);
     ASSERT_TRUE(old_view.ok());
-    KVCacheView old_copy = *old_view;
+    KVCacheSessionView old_copy = *old_view;
     ASSERT_TRUE(manager.ReleaseSession(*old_view).ok());
     EXPECT_FALSE(old_copy.valid());
 
@@ -496,14 +568,14 @@ TEST(KVCacheManager, ReleasedViewCopyRemainsStaleAfterReinitialization) {
 TEST(KVCacheManager, ReleaseInvalidatesViewAndAllowsNewReservation) {
     KVCacheManager manager;
     ASSERT_TRUE(manager.Init(1, 2, 24, 8, MakeKVType(), 64).ok());
-    StatusOr<KVCacheView> view = manager.ReserveForSession(3, 5);
+    StatusOr<KVCacheSessionView> view = manager.ReserveForSession(3, 5);
     ASSERT_TRUE(view.ok());
 
     ASSERT_TRUE(manager.ReleaseSession(*view).ok());
     EXPECT_FALSE(view->valid());
     EXPECT_FALSE(view->BindLayerForAppend(0, 0, 1).ok());
 
-    StatusOr<KVCacheView> next = manager.ReserveForSession(2, 4);
+    StatusOr<KVCacheSessionView> next = manager.ReserveForSession(2, 4);
     ASSERT_TRUE(next.ok());
     EXPECT_TRUE(next->valid());
     EXPECT_EQ(next->current_pos(), 0U);
@@ -513,7 +585,7 @@ TEST(KVCacheManager, ReserveRejectsRequestsBeyondPhysicalCapacity) {
     KVCacheManager manager;
     ASSERT_TRUE(manager.Init(1, 1, 8, 8, MakeKVType(), 64).ok());
 
-    const StatusOr<KVCacheView> view = manager.ReserveForSession(6, 4);
+    const StatusOr<KVCacheSessionView> view = manager.ReserveForSession(6, 4);
 
     ASSERT_FALSE(view.ok());
     EXPECT_EQ(view.status().code(), StatusCode::kOutOfRange);
@@ -523,13 +595,13 @@ TEST(KVCacheManager, ReserveRejectsEmptyPrompt) {
     KVCacheManager manager;
     ASSERT_TRUE(manager.Init(1, 1, 8, 8, MakeKVType(), 64).ok());
 
-    const StatusOr<KVCacheView> view = manager.ReserveForSession(0, 1);
+    const StatusOr<KVCacheSessionView> view = manager.ReserveForSession(0, 1);
 
     ASSERT_FALSE(view.ok());
     EXPECT_EQ(view.status().code(), StatusCode::kInvalidArgument);
 }
 
-TEST(KVCacheView, AppendBindingRequiresTheCommittedFrontier) {
+TEST(KVCacheSessionView, AppendBindingRequiresTheCommittedFrontier) {
     KVCacheManager manager;
     ASSERT_TRUE(manager.Init(1, 1, 8, 8, MakeKVType(), 64).ok());
     const auto view = manager.ReserveForSession(2, 2);

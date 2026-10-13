@@ -69,13 +69,15 @@ InferenceSession
 
 关联代码：
 
-- [`KVCacheManager`](../../include/aethermind/runtime/kv_cache_manager.h)
-- [`KVCacheView` / `KVCacheLayout`](../../include/aethermind/runtime/kv_cache_view.h)
-- [`kv_cache_manager.cpp`](../../src/runtime/kv_cache_manager.cpp)
-- [`kv_cache_view.cpp`](../../src/runtime/kv_cache_view.cpp)
+- [`KVCacheManager`](../../include/aethermind/kv_cache/kv_cache_manager.h)
+- [`KVCacheView`](../../include/aethermind/kv_cache/kv_cache_session_view.h) / [`KVCacheLayout`](../../include/aethermind/kv_cache/kv_cache_layout.h)
+- [`kv_cache_manager.cpp`](../../src/kv_cache/kv_cache_manager.cpp)
+- [`kv_cache_session_view.cpp`](../../src/kv_cache/kv_cache_session_view.cpp)
 - [`ExecutionContext`](../../include/aethermind/execution/execution_context.h)
 - [`LayerRunner`](../../src/execution/layer_runner.cpp)
-- [KV Cache 单元测试](../../tests/unit/execution/test_kv_cache_manager.cpp)
+- [KV Cache 单元测试](../../tests/unit/kv_cache/test_kv_cache_manager.cpp)
+
+本节其余 `KVCacheView`、`SessionKVSlot` 等名称是该历史草案的原始术语；上面的链接指向当前源码中的 `KVCacheSessionView`、`KVCacheSessionState` 与独立 `KVCacheLayout`。
 
 ## 3. 当前 correctness 阻塞项
 

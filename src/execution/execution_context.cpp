@@ -8,7 +8,7 @@ StatusOr<ExecutionContext> ExecutionContext::Create(
         const ExecutionPlan& plan,
         PreparedExecutionBindings prepared_bindings,
         WorkspaceArena* workspace_arena,
-        KVCacheView kv_cache_view) {
+        KVCacheSessionView kv_cache_session_view) {
     if (!prepared_bindings.IsCompatible(plan)) {
         return Status::InvalidArgument(
                 "PreparedExecutionBindings are not compatible with ExecutionPlan");
@@ -23,15 +23,15 @@ StatusOr<ExecutionContext> ExecutionContext::Create(
             plan.values(), [](const ExecutionValueDesc& value) {
                 return value.kind == ExecutionValueKind::kState;
             });
-    if (requires_kv_cache && !kv_cache_view.valid()) {
+    if (requires_kv_cache && !kv_cache_session_view.valid()) {
         return Status::FailedPrecondition(
-                "ExecutionPlan state values require a valid KVCacheView");
+                "ExecutionPlan state values require a valid KVCacheSessionView");
     }
 
     ExecutionContext context(workspace_arena);
-    context.kv_cache_view_ = kv_cache_view;
+    context.kv_cache_session_view_ = kv_cache_session_view;
     if (requires_kv_cache) {
-        context.kv_layer_transaction_scratch_.resize(kv_cache_view.num_layers());
+        context.kv_layer_transaction_scratch_.resize(kv_cache_session_view.num_layers());
     }
     context.prepared_bindings_ = std::move(prepared_bindings);
     return context;
@@ -65,12 +65,12 @@ StatusOr<WorkspaceBinding> ExecutionContext::BindWorkspace(
     return binding;
 }
 
-const KVCacheView& ExecutionContext::kv_cache_view() const noexcept {
-    return kv_cache_view_;
+const KVCacheSessionView& ExecutionContext::kv_cache_session_view() const noexcept {
+    return kv_cache_session_view_;
 }
 
-bool ExecutionContext::HasKVCacheView() const noexcept {
-    return kv_cache_view_.valid();
+bool ExecutionContext::HasKVCacheSessionView() const noexcept {
+    return kv_cache_session_view_.valid();
 }
 
 const PreparedExecutionBindings* ExecutionContext::prepared_bindings() const noexcept {
@@ -84,7 +84,7 @@ std::span<uint8_t> ExecutionContext::ResetKVLayerTransactionScratch() noexcept {
 
 void ExecutionContext::Clear() noexcept {
     prepared_bindings_ = {};
-    kv_cache_view_ = {};
+    kv_cache_session_view_ = {};
     kv_layer_transaction_scratch_.clear();
     workspace_arena_ = nullptr;
 }

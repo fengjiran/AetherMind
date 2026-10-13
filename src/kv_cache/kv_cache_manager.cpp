@@ -87,11 +87,12 @@ Status KVCacheManager::Init(size_t num_layers,
     // aligned too. alignment and element_bytes are powers of two, so
     // alignment / element_bytes is exact whenever element_bytes <= alignment;
     // otherwise the element size already guarantees token_stride alignment.
-    const size_t dims_per_alignment =
-            alignment > element_bytes ? alignment / element_bytes : 1;
+    size_t dims_per_alignment = alignment > element_bytes
+                                        ? alignment / element_bytes
+                                        : 1;
     layout_.padded_head_dim =
             dims_per_alignment > 1
-                    ? ((head_dim + dims_per_alignment - 1) / dims_per_alignment) *
+                    ? (head_dim + dims_per_alignment - 1) / dims_per_alignment *
                               dims_per_alignment
                     : head_dim;
 
@@ -171,7 +172,8 @@ Status KVCacheManager::ResetSession(KVCacheSessionView& view) noexcept try {
         return Status::FailedPrecondition("KVCacheManager is not initialized");
     }
 
-    if (view.layout_ != &layout_ || view.storage_ != &storage_ || view.session_state_ != &session_state_) {
+    if (view.layout_ != &layout_ || view.storage_ != &storage_ ||
+        view.session_state_ != &session_state_) {
         return Status::FailedPrecondition(
                 "KVCacheSessionView does not belong to this manager");
     }

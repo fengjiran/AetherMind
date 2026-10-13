@@ -40,13 +40,13 @@ KVCacheLayout MakeTestLayout(size_t token_stride = 16,
                              size_t head_stride = 64,
                              size_t layer_stride = 192,
                              size_t alignment = 16,
-                             size_t head_dim_stride = 8) {
+                             size_t padded_head_dim = 8) {
     return KVCacheLayout{
             .num_layers = 2,
             .num_kv_heads = 3,
             .max_tokens = 4,
             .head_dim = 5,
-            .head_dim_stride = head_dim_stride,
+            .padded_head_dim = padded_head_dim,
             .token_stride = token_stride,
             .head_stride = head_stride,
             .layer_stride = layer_stride,
@@ -166,18 +166,18 @@ TEST(KVCacheManager, BufferMetadataFailureReturnsResourceExhaustedAndReleasesPay
 }
 
 TEST(KVCacheManager, InitAlignsTokenRowsToLayoutAlignment) {
-    // head_dim=16 fp16 with 64-byte alignment: head_dim_stride is padded to
-    // 32 elements so every token row (64 bytes) starts at an alignment
+    // head_dim=16 fp16 with 64-byte alignment: padded_head_dim is 32
+    // elements so every token row (64 bytes) starts at an alignment
     // boundary; a non-divisible head_dim is rounded up the same way.
     KVCacheManager manager;
     ASSERT_TRUE(manager.Init(2, 4, 32, 16, MakeKVType(), 64).ok());
-    EXPECT_EQ(manager.layout().head_dim_stride, 32U);
+    EXPECT_EQ(manager.layout().padded_head_dim, 32U);
     EXPECT_EQ(manager.layout().token_stride, 64U);
     EXPECT_EQ(manager.layout().token_stride % manager.layout().alignment, 0U);
-    EXPECT_GE(manager.layout().head_dim_stride, manager.layout().head_dim);
+    EXPECT_GE(manager.layout().padded_head_dim, manager.layout().head_dim);
 
     ASSERT_TRUE(manager.Init(1, 1, 16, 20, MakeKVType(), 64).ok());
-    EXPECT_EQ(manager.layout().head_dim_stride, 32U);
+    EXPECT_EQ(manager.layout().padded_head_dim, 32U);
     EXPECT_EQ(manager.layout().token_stride, 64U);
     EXPECT_EQ(manager.layout().token_stride % manager.layout().alignment, 0U);
 }
@@ -189,7 +189,7 @@ TEST(KVCacheSessionView, RejectsStorageSmallerThanLayout) {
             .num_kv_heads = 1,
             .max_tokens = 16,
             .head_dim = 8,
-            .head_dim_stride = 32,
+            .padded_head_dim = 32,
             .token_stride = 64,
             .head_stride = 1024,
             .layer_stride = 1024,

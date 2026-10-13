@@ -15,15 +15,16 @@ namespace aethermind {
 /// @brief Cache geometry and byte-offset computation for one key/value plane.
 ///
 /// Each plane stores `num_layers * num_kv_heads * max_tokens * head_dim`
-/// elements. `head_dim_stride` may exceed `head_dim` to allow alignment
+/// elements. `padded_head_dim` may exceed `head_dim` to allow alignment
 /// padding between heads.
 struct KVCacheLayout {
     size_t num_layers = 0;
     size_t num_kv_heads = 0;
     size_t max_tokens = 0;
     size_t head_dim = 0;
-    /// Element stride within a head; >= head_dim when padding is used.
-    size_t head_dim_stride = 0;
+    /// Padded head width in elements; >= head_dim when alignment padding
+    /// widens each token row.
+    size_t padded_head_dim = 0;
     /// Byte offset between consecutive sequence positions.
     size_t token_stride = 0;
     /// Byte offset between consecutive KV heads.

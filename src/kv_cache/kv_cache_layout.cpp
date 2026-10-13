@@ -36,8 +36,8 @@ Status KVCacheLayout::Validate() const noexcept try {
         return Status::InvalidArgument("KV layout dtype must be initialized");
     }
 
-    if (head_dim_stride < head_dim) {
-        return Status::InvalidArgument("KV head_dim_stride must be >= head_dim");
+    if (padded_head_dim < head_dim) {
+        return Status::InvalidArgument("KV padded_head_dim must be >= head_dim");
     }
 
     const size_t element_bytes = ElementBytes();
@@ -47,7 +47,7 @@ Status KVCacheLayout::Validate() const noexcept try {
 
     // Stride consistency: a token row must cover the head without overlap,
     // and token/head/layer strides must keep every row and plane start
-    // aligned to the layout alignment (the manager pads head_dim_stride so
+    // aligned to the layout alignment (the manager pads padded_head_dim so
     // token_stride is an alignment multiple; hand-built layouts are checked
     // here). head/layer strides are integer multiples of token_stride by
     // construction, so token_stride alignment implies their alignment.
@@ -62,9 +62,10 @@ Status KVCacheLayout::Validate() const noexcept try {
     }
 
     size_t min_token_stride = 0;
-    if (CheckOverflowMul(head_dim_stride, element_bytes, &min_token_stride)) {
+    if (CheckOverflowMul(padded_head_dim, element_bytes, &min_token_stride)) {
         return Status::Overflow("KV token_stride computation overflowed size_t");
     }
+
     if (token_stride < min_token_stride) {
         return Status::InvalidArgument(
                 "KV token_stride must cover the full head row");
@@ -74,6 +75,7 @@ Status KVCacheLayout::Validate() const noexcept try {
     if (CheckOverflowMul(token_stride, max_tokens, &min_head_stride)) {
         return Status::Overflow("KV head_stride computation overflowed size_t");
     }
+
     if (head_stride < min_head_stride) {
         return Status::InvalidArgument(
                 "KV head_stride must cover all tokens of a head");
@@ -83,11 +85,11 @@ Status KVCacheLayout::Validate() const noexcept try {
     if (CheckOverflowMul(head_stride, num_kv_heads, &min_layer_stride)) {
         return Status::Overflow("KV layer_stride computation overflowed size_t");
     }
+
     if (layer_stride < min_layer_stride) {
         return Status::InvalidArgument(
                 "KV layer_stride must cover all heads of a layer");
     }
-
     return Status::Ok();
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});

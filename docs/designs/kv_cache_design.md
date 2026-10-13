@@ -247,7 +247,7 @@ struct KVCacheStorage {
 - `num_kv_heads`
 - `max_tokens`
 - `head_dim`
-- `head_dim_stride`
+- `padded_head_dim`
 - `token_stride`
 - `head_stride`
 - `layer_stride`
@@ -263,7 +263,7 @@ struct KVCacheLayout {
     std::size_t max_tokens{0};
 
     std::size_t head_dim{0};
-    std::size_t head_dim_stride{0};
+    std::size_t padded_head_dim{0};
     std::size_t token_stride{0};
     std::size_t head_stride{0};
     std::size_t layer_stride{0};
@@ -378,7 +378,7 @@ KV Cache 采用 **Session 执行前一次性预分配** 模式：
 - `L = num_layers`
 - `Hkv = num_kv_heads`
 - `T = max_tokens`
-- `D = head_dim_stride`
+- `D = padded_head_dim`
 - `B = sizeof(kv_dtype)`
 
 则：
@@ -399,9 +399,9 @@ max_tokens = prompt_len_limit + max_new_tokens_limit
 
 Phase 1 推荐在 Runtime / Model 初始化阶段固定 `max_tokens` 上限，而不是为不同 Session 动态申请不同大小的 KV 池。
 
-### 5.3 head_dim_stride
+### 5.3 padded_head_dim
 
-引入 `head_dim_stride`；初版即按 `alignment` 对 token 行做对齐：`head_dim_stride = AlignUp(head_dim, alignment / element_bytes)`（`element_bytes > alignment` 时保持 `head_dim`），使 `token_stride` 为 alignment 倍数、每个 token 行起始对齐，`head_stride`/`layer_stride` 因其整数倍关系自动对齐。这样做的原因是：
+引入 `padded_head_dim`；初版即按 `alignment` 对 token 行做对齐：`padded_head_dim = AlignUp(head_dim, alignment / element_bytes)`（`element_bytes > alignment` 时保持 `head_dim`），使 `token_stride` 为 alignment 倍数、每个 token 行起始对齐，`head_stride`/`layer_stride` 因其整数倍关系自动对齐。这样做的原因是：
 
 - 为 SIMD / cache line 对齐留空间
 - 为后续优化 kernel 保留 padding 能力
@@ -466,7 +466,7 @@ V: [layer][kv_head][seq_pos][head_dim_padded]
 ```text
 offset =
 (((layer_idx * num_kv_heads + kv_head_idx) * max_tokens + seq_pos)
- * head_dim_stride + dim_idx)
+ * padded_head_dim + dim_idx)
 ```
 
 该公式可由 `KVCacheLayout::Offset(...)` 统一提供。执行层与算子层不得散落硬编码的魔法常量，但这并不要求 Phase 1 将某一个物理 offset 公式写死为唯一合法实现。
@@ -479,7 +479,7 @@ Phase 1 必须满足以下要求：
 - 写入顺序按 `seq_pos` 单调递增
 - 相同 Session 的历史范围可连续读取
 - 布局可支撑按层访问与按历史区间读取
-- 允许通过 `head_dim_stride` 实现对齐与 padding
+- 允许通过 `padded_head_dim` 实现对齐与 padding
 
 ### 6.5 KVCacheSessionView 访问原则
 
@@ -732,7 +732,7 @@ enum class KVErrorCode : std::uint8_t {
 
 - 验证 `layer / kv_head / pos / dim` 的 offset 计算正确
 - 验证 K / V 的独立区域不重叠
-- 验证 `head_dim_stride` / padding 生效
+- 验证 `padded_head_dim` / padding 生效
 
 #### 2. Prefill / Decode 语义正确性
 

@@ -315,8 +315,8 @@ TEST(KVCacheUpdateKernel, ExecutesThroughCpuBackendPlanAndPreservesPadding) {
 
     auto* const key_row = static_cast<float*>(view->MutableKeyData(0, 0, 0).value());
     auto* const value_row = static_cast<float*>(view->MutableValueData(0, 0, 0).value());
-    std::fill(key_row + 2, key_row + manager->layout().head_dim_stride, -123.0F);
-    std::fill(value_row + 2, value_row + manager->layout().head_dim_stride, -456.0F);
+    std::fill(key_row + 2, key_row + manager->layout().padded_head_dim, -123.0F);
+    std::fill(value_row + 2, value_row + manager->layout().padded_head_dim, -456.0F);
     auto* const untouched_token = static_cast<float*>(view->MutableKeyData(0, 0, 3).value());
     untouched_token[0] = 999.0F;
 

@@ -59,7 +59,7 @@ protected:
             .num_kv_heads = 3,
             .max_tokens = 8,
             .head_dim = 5,
-            .head_dim_stride = 8,
+            .padded_head_dim = 8,
             .token_stride = 16,
             .head_stride = 128,
             .layer_stride = 384,

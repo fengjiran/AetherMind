@@ -302,7 +302,7 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
     }
 
     const size_t vocab_size = model_->vocab_size();
-    for (const uint32_t token: prompt_tokens) {
+    for (const auto token: prompt_tokens) {
         if (static_cast<size_t>(token) >= vocab_size) {
             return Status::OutOfRange(
                     "InferenceSession prompt token is outside the model vocabulary");

@@ -43,15 +43,18 @@ AllocatorRegistry RuntimeBuilder::BuildAllocatorRegistry() {
     const auto& [enable_cpu, enable_cuda, enable_cann] = options_.allocator;
 
     if (enable_cpu) {
-        registry.SetProvider(DeviceType::kCPU, std::make_unique<CPUAllocatorProvider>());
+        registry.SetProvider(DeviceType::kCPU,
+                             std::make_unique<CPUAllocatorProvider>());
     }
 
     if (enable_cuda) {
-        registry.SetProvider(DeviceType::kCUDA, std::make_unique<CUDAAllocatorProvider>());
+        registry.SetProvider(DeviceType::kCUDA,
+                             std::make_unique<CUDAAllocatorProvider>());
     }
 
     if (enable_cann) {
-        registry.SetProvider(DeviceType::kCANN, std::make_unique<CANNAllocatorProvider>());
+        registry.SetProvider(DeviceType::kCANN,
+                             std::make_unique<CANNAllocatorProvider>());
     }
 
     for (auto& [type, provider]: pending_custom_allocator_providers_) {

@@ -35,7 +35,9 @@ void AllocatorRegistry::SetProvider(DeviceType type, std::unique_ptr<AllocatorPr
 
     // Clear cached instances for the replaced provider's device type.
     // New instances will be created on next GetAllocator call.
-    std::erase_if(instances_, [type](const auto& pair) { return pair.first.type() == type; });
+    std::erase_if(instances_, [type](const auto& pair) {
+        return pair.first.type() == type;
+    });
 }
 
 Allocator& AllocatorRegistry::GetAllocator(Device device) {

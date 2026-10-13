@@ -45,12 +45,12 @@ struct KVCacheLayout {
     /// @param dim_idx Dimension index within the head.
     /// @return The element's byte offset, or an error if an index or stride
     ///         computation is out of range or overflows.
-    StatusOr<size_t> Offset(size_t layer_idx,
-                            size_t kv_head_idx,
-                            size_t seq_pos,
-                            size_t dim_idx) const noexcept;
+    AM_NODISCARD StatusOr<size_t> Offset(size_t layer_idx,
+                                         size_t kv_head_idx,
+                                         size_t seq_pos,
+                                         size_t dim_idx) const noexcept;
     /// @brief Returns the total bytes of one key/value plane.
-    StatusOr<size_t> BytesPerPlane() const noexcept;
+    AM_NODISCARD StatusOr<size_t> BytesPerPlane() const noexcept;
 };
 
 /// @brief Key and value backing buffers for one cache.

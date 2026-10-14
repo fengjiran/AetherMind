@@ -6,6 +6,7 @@
 #include "aethermind/execution/executor.h"
 #include "aethermind/inference/executable_model.h"
 #include "aethermind/kv_cache/kv_cache_manager.h"
+#include "aethermind/memory/allocator.h"
 #include "aethermind/runtime/runtime.h"
 #include "inference_internal.h"
 #include "utils/overflow_check.h"
@@ -75,7 +76,8 @@ public:
         return Status::Ok();
     }
 
-    Status InitializeWorkspace(size_t bytes, size_t alignment) {
+    Status InitializeWorkspace(Allocator& allocator, size_t bytes,
+                               size_t alignment) {
         if (bytes == 0) {
             return Status::Ok();
         }
@@ -84,30 +86,26 @@ public:
                     "InferenceSession plan has an invalid workspace alignment");
         }
 
-        size_t allocation_bytes = 0;
-        if (CheckOverflowAdd(bytes, alignment - 1, &allocation_bytes)) {
-            return Status::Overflow(
-                    "InferenceSession workspace allocation size overflowed size_t");
-        }
-        storage_.reset(new (std::nothrow) std::byte[allocation_bytes]);
-        if (storage_ == nullptr) {
-            return Status::ResourceExhausted(
-                    "InferenceSession could not allocate execution workspace");
+        // The plan's alignment is a floor: the allocator may return stronger,
+        // and every planned offset stays valid against a stronger base.
+        auto storage = allocator.TryAllocate({.nbytes = bytes,
+                                              .alignment = alignment,
+                                              .tag = AllocationTag::Workspace()});
+        if (!storage.ok()) {
+            return storage.status();
         }
 
-        const auto address = reinterpret_cast<uintptr_t>(storage_.get());
-        const size_t remainder = address % alignment;
-        const size_t padding = remainder == 0 ? 0 : alignment - remainder;
-        auto* const workspace_base = storage_.get() + padding;
-        workspace_arena_.SetBuffer(workspace_base, bytes);
+        storage_ = std::move(storage).value();
+        workspace_arena_.SetBuffer(
+                static_cast<std::byte*>(storage_.mutable_data()), bytes);
         return Status::Ok();
     }
 
     WorkspaceArena* workspace_arena() noexcept {
-        return storage_ != nullptr ? &workspace_arena_ : nullptr;
+        return storage_.is_initialized() ? &workspace_arena_ : nullptr;
     }
 
-    Status PrepareContext(Runtime& runtime,
+    Status PrepareContext(Allocator& allocator,
                           const ExecutionPlan& plan,
                           const ExternalTensorBindings& immutable_bindings,
                           uint32_t token_input,
@@ -135,8 +133,7 @@ public:
                                      alignof(int64_t)),
         });
 
-        auto prepared = PrepareExecutionBindings(
-                plan, external, runtime.GetAllocator(Device::CPU()));
+        auto prepared = PrepareExecutionBindings(plan, external, allocator);
         if (!prepared.ok()) {
             return prepared.status();
         }
@@ -187,7 +184,9 @@ private:
     KVCacheManager* manager_ = nullptr;
     KVCacheSessionView cache_view_{};
     bool has_reservation_ = false;
-    std::unique_ptr<std::byte[]> storage_{};
+    // Owns the workspace backing storage; the arena borrows its memory and
+    // context_ is cleared in the destructor before this releases it.
+    Buffer storage_{};
     SessionWorkspaceArena workspace_arena_{};
     std::optional<ExecutionContext> context_{};
 };
@@ -342,10 +341,11 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
                 "InferenceSession Generate requires a Runtime KVCacheManager");
     }
 
-    if (!runtime_->HasAllocatorProvider(DeviceType::kCPU)) {
-        return Status::FailedPrecondition(
-                "InferenceSession Generate requires a CPU activation allocator");
-    }
+    // One allocator serves both the workspace backing storage and the two
+    // activation arenas, so resolve it once and report a missing provider here
+    // rather than aborting inside the registry lookup.
+    AM_ASSIGN_OR_RETURN(Allocator * allocator,
+                        runtime_->TryGetAllocator(Device::CPU()));
 
     auto prefill_plan_result = model_->plan(ExecPhase::kPrefill);
     if (!prefill_plan_result.ok()) {
@@ -389,11 +389,11 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
     const size_t workspace_alignment =
             std::max(prefill_plan.workspace_alignment(),
                      decode_plan.workspace_alignment());
-    AM_RETURN_IF_ERROR(
-            request.InitializeWorkspace(workspace_bytes, workspace_alignment));
+    AM_RETURN_IF_ERROR(request.InitializeWorkspace(*allocator, workspace_bytes,
+                                                   workspace_alignment));
 
     AM_RETURN_IF_ERROR(request.PrepareContext(
-            *runtime_, prefill_plan, **prefill_bindings_result,
+            *allocator, prefill_plan, **prefill_bindings_result,
             prefill_contract_.token_input, prefill_contract_.position_input,
             request.prefill_tokens, request.prefill_positions));
 
@@ -433,7 +433,7 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
     request.decode_positions[0] = static_cast<int64_t>(prompt_tokens.size());
 
     AM_RETURN_IF_ERROR(request.PrepareContext(
-            *runtime_, decode_plan, **decode_bindings_result,
+            *allocator, decode_plan, **decode_bindings_result,
             decode_contract_.token_input, decode_contract_.position_input,
             request.decode_tokens, request.decode_positions));
 

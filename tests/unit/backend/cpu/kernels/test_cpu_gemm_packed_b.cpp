@@ -4,6 +4,7 @@
 #include "aethermind/backend/kernel_context.h"
 #include "backend/cpu/cpu_backend_internal.h"
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
+#include "test_utils/test_allocator.h"
 
 #include <algorithm>
 #include <array>
@@ -48,7 +49,7 @@ std::unique_ptr<PackedWeight> PackBpanel(int64_t n,
     const std::array<TensorView, 1> components{weight_view};
     auto packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kLinear, components, selector,
-            cpu::CpuBPanelF32Kc512Nr16Recipe());
+            cpu::CpuBPanelF32Kc512Nr16Recipe(), test::TestCpuAllocator());
     if (!packed.ok()) {
         ADD_FAILURE() << packed.status().ToString();
         return nullptr;
@@ -220,7 +221,7 @@ TEST(CpuGemmPackedB, RegisteredCandidateDescriptorPacksAndExecutes) {
             weights.data(), DataType::Float32(), weight_shape, weight_strides);
     const std::array<TensorView, 1> components{weight_view};
     auto packed = cpu::internal::PackWeightsWithRecipe(
-            OpType::kLinear, components, selector, *candidate_recipe);
+            OpType::kLinear, components, selector, *candidate_recipe, test::TestCpuAllocator());
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     ASSERT_EQ((*packed)->recipe(), *candidate_recipe);
     const PackedWeightView packed_view{

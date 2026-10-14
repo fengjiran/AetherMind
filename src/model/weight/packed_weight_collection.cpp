@@ -182,7 +182,8 @@ bool PackedWeightCollection::empty() const noexcept {
 
 StatusOr<PackedWeightCollection>
 PrepackWeightRequests(const Backend& backend,
-                      const std::vector<WeightPackingRequest>& requests) try {
+                      const std::vector<WeightPackingRequest>& requests,
+                      Allocator& allocator) try {
     PackedWeightCollection packed_weight_collection;
     const uint64_t source_id = requests.empty() ? 0U : requests.front().source_id;
     // Validate the whole batch before packing anything: a mixed batch would
@@ -232,7 +233,7 @@ PrepackWeightRequests(const Backend& backend,
         }
 
         auto packed = backend.PackWeights(
-                req.op_type, components, req.selector, req.recipe);
+                req.op_type, components, req.selector, req.recipe, allocator);
         if (!packed.ok()) {
             return packed.status();
         }

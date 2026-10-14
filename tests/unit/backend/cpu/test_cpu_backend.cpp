@@ -4,6 +4,7 @@
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/runtime/runtime_builder.h"
+#include "test_utils/test_allocator.h"
 
 #include <gtest/gtest.h>
 
@@ -63,7 +64,8 @@ TEST(CpuBackend, PacksUsingExplicitSelectedRecipe) {
     const std::array<TensorView, 1> components{
             TensorView(weights.data(), DataType::Float32(), shape, strides)};
 
-    const auto packed = backend.PackWeights(OpType::kLinear, components, selector, *selected);
+    const auto packed = backend.PackWeights(OpType::kLinear, components, selector, *selected,
+                                            test::TestCpuAllocator());
 
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     ASSERT_NE(*packed, nullptr);
@@ -86,7 +88,7 @@ TEST(CpuBackend, RejectsRecipeNotSelectedByItsFeaturePolicy) {
     const std::array<TensorView, 1> components{weight};
     const auto packed = backend.PackWeights(
             OpType::kLinear, components, selector,
-            cpu::CpuBPanelF32Kc512Nr16Recipe());
+            cpu::CpuBPanelF32Kc512Nr16Recipe(), test::TestCpuAllocator());
     ASSERT_FALSE(packed.ok());
     EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
     EXPECT_NE(packed.status().message().find("not selected"), std::string::npos);

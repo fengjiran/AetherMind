@@ -84,9 +84,10 @@ RuntimeBuilder
   ├─ .WithOptions(options)        → 配置运行时选项
   ├─ .RegisterBackendFactory(...)  → [可选] 注册自定义后端
   └─ .Build()                     → RuntimeContext
-       ├─ BuildAllocatorRegistry()  → AllocatorRegistry
-       ├─ BuildBackendRegistry()    → BackendRegistry
-       └─ BuildKVCacheManager()     → KVCacheManager
+       └─ TryBuild()               → StatusOr<Runtime>
+            ├─ BuildAllocatorRegistry()      → AllocatorRegistry
+            ├─ BuildBackendRegistry()        → BackendRegistry
+            └─ TryBuildKVCacheManager(...)   → StatusOr<KVCacheManager>
 ```
 
 ### 3.2 函数调用序列
@@ -94,10 +95,10 @@ RuntimeBuilder
 | # | 函数 | 参数 | 返回值 | 作用 |
 |---|------|------|--------|------|
 | 1.1 | `RuntimeBuilder::WithOptions` | `const RuntimeOptions&` | `RuntimeBuilder&` | 配置运行时选项 |
-| 1.2 | `RuntimeBuilder::Build` | 无 | `RuntimeContext` | 构建完整运行时上下文 |
+| 1.2 | `RuntimeBuilder::Build` | 无 | `RuntimeContext` | 构建完整运行时上下文；委托 `TryBuild` 并在失败时 abort |
 | 1.2a | `BuildAllocatorRegistry` | 无 | `AllocatorRegistry` | 注册内存分配器 |
 | 1.2b | `BuildBackendRegistry` | 无 | `BackendRegistry` | 注册后端工厂 |
-| 1.2c | `BuildKVCacheManager` | 无 | `KVCacheManager` | 初始化 KV cache 管理器 |
+| 1.2c | `TryBuildKVCacheManager` | `AllocatorRegistry&` | `StatusOr<KVCacheManager>` | 初始化 KV cache 管理器；KV plane 经该 registry 的 CPU allocator 分配，缺少 CPU allocator 时返回失败而非 abort |
 
 ### 3.3 代码示例
 
@@ -509,7 +510,7 @@ if (!status.ok()) {
 | 初始化 | 2 | `RuntimeBuilder::Build` | `src/runtime/runtime_builder.cpp` |
 | 初始化 | 2a | `BuildAllocatorRegistry` | `src/runtime/runtime_builder.cpp` |
 | 初始化 | 2b | `BuildBackendRegistry` | `src/runtime/runtime_builder.cpp` |
-| 初始化 | 2c | `BuildKVCacheManager` | `src/runtime/runtime_builder.cpp` |
+| 初始化 | 2c | `TryBuildKVCacheManager` | `src/runtime/runtime_builder.cpp` |
 | 加载 | 3 | `ModelLoader::Load` | `src/model/model_loader.cpp` |
 | 加载 | 4 | `HfDirectoryReader::Open` | `src/model/formats/hf/hf_directory_reader.cpp` |
 | 加载 | 5 | `reader.ParseConfig` | `src/model/formats/hf/hf_directory_reader.cpp` |

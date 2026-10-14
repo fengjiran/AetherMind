@@ -18,7 +18,6 @@ struct KVCacheStorage {
     Buffer key_buffer{};
     Buffer value_buffer{};
     DataType kv_dtype{};
-    size_t alignment = 64;
 
     /// @brief Returns whether both backing buffers are initialized.
     AM_NODISCARD bool is_initialized() const noexcept {

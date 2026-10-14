@@ -13,6 +13,12 @@
 #include <memory>
 #include <span>
 
+namespace aethermind {
+
+class Allocator;
+
+} // namespace aethermind
+
 namespace aethermind::cpu::internal {
 
 /// @brief Shared eligibility/priority resolver used by recipe and kernel queries.
@@ -45,6 +51,8 @@ StatusOr<PackingRecipe> ResolvePackingRecipeFromRegistry(
 ///        for composites such as Q/K/V or Gate/Up.
 /// @param selector Selector requesting packed CPU weights.
 /// @param recipe Explicit identity or supported tiled layout.
+/// @param allocator Source of the artifact's backing storage. Borrowed for this
+///        call only; the artifact's Buffer outlives it.
 /// @return Packed artifact, or a validation/allocation error.
 /// @pre Component data must be CPU-accessible. When borrowing from Tensor,
 ///      the caller must validate initialization and CPU device before
@@ -53,7 +61,8 @@ AM_NODISCARD StatusOr<std::unique_ptr<PackedWeight>> PackWeightsWithRecipe(
         OpType op_type,
         std::span<const TensorView> components,
         const KernelSelector& selector,
-        const PackingRecipe& recipe) noexcept;
+        const PackingRecipe& recipe,
+        Allocator& allocator) noexcept;
 
 } // namespace aethermind::cpu::internal
 

@@ -1,6 +1,7 @@
 #include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/backend/packed_weight.h"
 #include "aethermind/base/tensor_view.h"
+#include "aethermind/memory/cpu_allocator.h"
 #include "backend/cpu/cpu_backend_internal.h"
 
 #include <benchmark/benchmark.h>
@@ -71,7 +72,10 @@ void BM_WeightPackingCpuIdentity(benchmark::State& state) {
     const KernelSelector selector = MakePackedLinearSelector();
 
     // Validate byte preservation before timing the cold identity pack.
-    const auto checked_packed = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, recipe);
+    // Constructed outside the timed loop: packing now allocates through an
+    // Allocator, and building one per iteration would be measured as pack cost.
+    CPUAllocator allocator(Device::CPU());
+    const auto checked_packed = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, recipe, allocator);
     if (!checked_packed.ok()) {
         state.SkipWithError(checked_packed.status().ToString().c_str());
         return;
@@ -87,7 +91,7 @@ void BM_WeightPackingCpuIdentity(benchmark::State& state) {
                    std::string{ToString((*checked_packed)->recipe().layout)} +
                    " mode=cold-packing");
     for (auto _: state) {
-        const auto packed = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, recipe);
+        const auto packed = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, recipe, allocator);
         if (!packed.ok()) {
             state.SkipWithError(packed.status().ToString().c_str());
             break;

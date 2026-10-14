@@ -3,6 +3,7 @@
 #include "aethermind/backend/kernel_context.h"
 #include "backend/cpu/cpu_backend_internal.h"
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
+#include "test_utils/test_allocator.h"
 
 #include <algorithm>
 #include <array>
@@ -163,7 +164,7 @@ TEST(CpuQkvLinearPackedB, UnalignedComponentBoundariesUseCorrectSlices) {
     ASSERT_TRUE((*descriptor)->metadata_builder(OpParams{op_params}, attrs).ok());
 
     auto packed = cpu::internal::PackWeightsWithRecipe(
-            OpType::kQkvLinear, components, selector, *recipe);
+            OpType::kQkvLinear, components, selector, *recipe, test::TestCpuAllocator());
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     const PackedWeightView packed_view{
             .data = (*packed)->storage().data(),
@@ -271,7 +272,7 @@ TEST(CpuGateUpLinearPackedB, UnalignedComponentBoundaryUsesCorrectSlices) {
     ASSERT_TRUE((*descriptor)->metadata_builder(OpParams{op_params}, attrs).ok());
 
     auto packed = cpu::internal::PackWeightsWithRecipe(
-            OpType::kGateUpLinear, components, selector, *recipe);
+            OpType::kGateUpLinear, components, selector, *recipe, test::TestCpuAllocator());
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     const PackedWeightView packed_view{
             .data = (*packed)->storage().data(),

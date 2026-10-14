@@ -1,5 +1,6 @@
 #include "aethermind/backend/backend.h"
 #include "aethermind/base/tensor_view.h"
+#include "test_utils/test_allocator.h"
 
 #include <gtest/gtest.h>
 
@@ -57,7 +58,8 @@ public:
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector,
-            const PackingRecipe& recipe) const override {
+            const PackingRecipe& recipe,
+            Allocator&) const override {
         ++pack_calls;
         received_op_type = op_type;
         received_components = components.data();
@@ -81,7 +83,7 @@ TEST(BackendWeightPacking, DefaultExplicitPackingReturnsUnimplementedWithoutReci
     const PackingRecipe recipe{.layout = PackingLayout::kCpuIdentity, .alignment = 64};
 
     const auto packed = backend.PackWeights(
-            OpType::kLinear, components, MakePackedSelector(), recipe);
+            OpType::kLinear, components, MakePackedSelector(), recipe, test::TestCpuAllocator());
 
     EXPECT_EQ(packed.status().code(), StatusCode::kUnimplemented);
     EXPECT_EQ(backend.recipe_queries, 0U);
@@ -94,7 +96,8 @@ TEST(BackendWeightPacking, ExplicitPackingForwardsRecipeAndInputsToVirtualImplem
     const KernelSelector selector = MakePackedSelector();
     const PackingRecipe recipe{.layout = PackingLayout::kCpuBPanelF32Kc512Nr16, .alignment = 64};
 
-    const auto packed = abstract_backend.PackWeights(OpType::kLinear, components, selector, recipe);
+    const auto packed = abstract_backend.PackWeights(
+            OpType::kLinear, components, selector, recipe, test::TestCpuAllocator());
 
     EXPECT_EQ(packed.status().code(), StatusCode::kResourceExhausted);
     EXPECT_EQ(packed.status().message(), "Test packing failure");

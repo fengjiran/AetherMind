@@ -68,7 +68,6 @@ protected:
     };
     KVCacheStorage storage_{
             .kv_dtype = layout_.kv_dtype,
-            .alignment = 64,
     };
     KVCacheSessionState state_{
             .generation = 1,

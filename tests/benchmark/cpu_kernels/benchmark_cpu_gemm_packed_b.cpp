@@ -2,6 +2,7 @@
 #include "aethermind/backend/cpu/cpu_info.h"
 #include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/memory/cpu_allocator.h"
 #include "backend/cpu/cpu_backend_internal.h"
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
 
@@ -223,6 +224,9 @@ void BenchmarkPackedLinear(benchmark::State& state, CacheMode mode) {
             .expected_packing_recipe = *recipe,
     };
     CpuBackend pack_backend(*capabilities);
+    // Constructed outside every timed region: packing now allocates through an
+    // Allocator, and building one per iteration would be measured as pack cost.
+    CPUAllocator allocator(Device::CPU());
 
     std::vector<float> input(static_cast<size_t>(m * k));
     std::vector<float> output(static_cast<size_t>(m * n),
@@ -254,7 +258,7 @@ void BenchmarkPackedLinear(benchmark::State& state, CacheMode mode) {
         const std::array<TensorView, 1> components{logical_view};
         const auto pack_begin = std::chrono::steady_clock::now();
         auto packed = cpu::internal::PackWeightsWithRecipe(
-                OpType::kLinear, components, selector, *recipe);
+                OpType::kLinear, components, selector, *recipe, allocator);
         pack_time += std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now() - pack_begin);
         if (!packed.ok()) {
@@ -415,7 +419,8 @@ void BM_WeightPackingCpuBpanel(benchmark::State& state) {
             .phase = ExecPhase::kBoth,
     };
     const PackingRecipe recipe = cpu::CpuBPanelF32Kc512Nr16Recipe();
-    auto checked = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, recipe);
+    CPUAllocator allocator(Device::CPU());
+    auto checked = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, recipe, allocator);
     if (!checked.ok()) {
         state.SkipWithError(checked.status().ToString());
         return;
@@ -432,7 +437,7 @@ void BM_WeightPackingCpuBpanel(benchmark::State& state) {
     state.counters["logical bytes"] = static_cast<double>(logical_bytes);
     state.counters["packed bytes"] = static_cast<double>(packed_bytes);
     for (auto _: state) {
-        auto packed = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, recipe);
+        auto packed = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, recipe, allocator);
         if (!packed.ok()) {
             state.SkipWithError(packed.status().ToString());
             break;

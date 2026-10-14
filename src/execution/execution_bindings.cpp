@@ -475,11 +475,17 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(const ExecutionPlan
         }
     }
 
-    storage->act_storage = act_allocator.Allocate(act_bytes);
-    if (!storage->act_storage.is_initialized()) {
-        return Status::ResourceExhausted(
-                "Activation allocator returned an uninitialized Buffer");
+    // The arena's internal offsets are aligned to kActivationAlignment, so the
+    // backing storage only needs to guarantee at least that; the allocator may
+    // return stronger and every offset stays valid.
+    const auto act_storage = act_allocator.TryAllocate(
+            {.nbytes = act_bytes,
+             .alignment = kActivationAlignment,
+             .tag = AllocationTag::Activation()});
+    if (!act_storage.ok()) {
+        return act_storage.status();
     }
+    storage->act_storage = act_storage.value();
 
     for (size_t i = 0; i < plan.values().size(); ++i) {
         if (act_offsets[i] == kUnassignedOffset) {

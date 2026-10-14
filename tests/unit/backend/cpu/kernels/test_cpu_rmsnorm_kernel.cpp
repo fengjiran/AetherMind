@@ -10,6 +10,7 @@
 #include "aethermind/runtime/runtime_builder.h"
 #include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
 #include "execution/test_execution_binding_helpers.h"
+#include "test_utils/test_allocator.h"
 
 #include <gtest/gtest.h>
 
@@ -186,7 +187,7 @@ TEST(CPUKernelRmsNorm, PackedIdentityDescriptorExecutesRankTwoInput) {
     ASSERT_TRUE(recipe.ok()) << recipe.status().ToString();
     const std::array<TensorView, 1> components{weight};
     auto packed = backend.PackWeights(OpType::kRmsNorm, components,
-                                      selector, *recipe);
+                                      selector, *recipe, test::TestCpuAllocator());
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     const auto kernel = backend.PrepareKernel(
             OpType::kRmsNorm, selector,
@@ -242,7 +243,8 @@ TEST(CPUKernelRmsNorm, PackedIdentityBuilderChecksZeroSizeMetadataAndAlias) {
     const auto recipe = backend.GetPackingRecipe(OpType::kRmsNorm, selector);
     ASSERT_TRUE(recipe.ok()) << recipe.status().ToString();
     auto packed = backend.PackWeights(
-            OpType::kRmsNorm, std::array<TensorView, 1>{weight}, selector, *recipe);
+            OpType::kRmsNorm, std::array<TensorView, 1>{weight}, selector, *recipe,
+            test::TestCpuAllocator());
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     const auto kernel = backend.PrepareKernel(
             OpType::kRmsNorm, selector,

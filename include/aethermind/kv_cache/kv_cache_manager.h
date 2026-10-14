@@ -10,6 +10,8 @@
 
 namespace aethermind {
 
+class Allocator;
+
 /// @brief Manages the physical KV cache storage and session lifecycle.
 ///
 /// The manager holds one active session reservation at a time; a new
@@ -33,17 +35,25 @@ public:
 
     /// @brief (Re)initializes the cache with the given geometry.
     ///
+    /// Both key and value planes are allocated through `allocator`, so they
+    /// charge the ledger that allocator reports. The allocator is borrowed only
+    /// for the duration of this call; the manager keeps no reference to it, and
+    /// the resulting Buffers stay valid after the allocator is destroyed.
+    ///
+    /// @param allocator Source of the key and value plane storage.
     /// @param num_layers Number of decoder layers.
     /// @param num_kv_heads Number of KV heads per layer.
     /// @param max_tokens Maximum physical token capacity.
     /// @param head_dim Head dimension of the key/value vectors.
     /// @param kv_dtype Element type stored in the cache.
-    /// @param alignment Byte alignment for the backing buffers.
+    /// @param alignment Minimum byte alignment for the backing buffers, and the
+    ///        row-layout guarantee recorded in the layout.
     /// @return Status::Ok() on success.
     /// @note Re-initializing releases the previous storage and any active
     ///       session reservation, even if initialization fails. All previous
     ///       views remain stale after subsequent reservations.
-    Status Init(size_t num_layers,
+    Status Init(Allocator& allocator,
+                size_t num_layers,
                 size_t num_kv_heads,
                 size_t max_tokens,
                 size_t head_dim,
@@ -86,10 +96,16 @@ public:
 private:
     /// @brief Allocates the key and value backing buffers for one plane.
     ///
+    /// Both planes are held in locals until both allocations succeed, so a
+    /// failure releases the first one and refunds its charge.
+    ///
+    /// @param allocator Source of the plane storage.
     /// @param bytes_per_plane Bytes per key/value plane.
-    /// @param alignment Byte alignment for both buffers.
+    /// @param alignment Minimum byte alignment for both buffers.
     /// @return Status::Ok() on success.
-    Status AllocateStorage(size_t bytes_per_plane, size_t alignment);
+    Status AllocateStorage(Allocator& allocator,
+                           size_t bytes_per_plane,
+                           size_t alignment);
 
     KVCacheLayout layout_{};
     KVCacheStorage storage_{};

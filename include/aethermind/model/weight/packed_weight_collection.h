@@ -16,6 +16,7 @@
 
 namespace aethermind {
 
+class Allocator;
 class Backend;
 struct WeightPackingRequest;
 
@@ -127,11 +128,15 @@ private:
 /// @param requests Requests to execute. Every request must carry the same
 ///        source_id and a non-empty list of contiguous row-major raw components;
 ///        a mixed-source batch is rejected before any weight is packed.
+/// @param allocator Source of every artifact's backing storage, forwarded to
+///        Backend::PackWeights so packed weights charge the caller's ledger.
+///        Borrowed for this call only; the returned artifacts outlive it.
 /// @return The bound collection on success, or the first validation, packing,
 ///         or insertion error. An empty batch returns an unbound empty collection.
 StatusOr<PackedWeightCollection> PrepackWeightRequests(
         const Backend& backend,
-        const std::vector<WeightPackingRequest>& requests);
+        const std::vector<WeightPackingRequest>& requests,
+        Allocator& allocator);
 
 } // namespace aethermind
 

@@ -3,6 +3,7 @@
 #include "aethermind/kv_cache/kv_cache_manager.h"
 #include "inference/test_malloc_interposer.h"
 #include "test_kv_cache_helpers.h"
+#include "test_utils/test_allocator.h"
 
 #include <gtest/gtest.h>
 
@@ -98,7 +99,7 @@ TEST(KVLayoutContract, RejectsStridesInconsistentWithGeometry) {
 
 TEST(KVCacheManager, InitAndReserveCreatesValidView) {
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(2, 4, 32, 16, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 2, 4, 32, 16, MakeKVType(), 64).ok());
 
     const StatusOr<KVCacheSessionView> view = manager.ReserveForSession(8, 8);
 
@@ -115,15 +116,22 @@ TEST(KVCacheManager, InitAndReserveCreatesValidView) {
     EXPECT_GT(manager.total_bytes(), 0U);
 }
 
-TEST(KVCacheManager, InitRejectsAlignmentBelowPosixRequirementAndCanRetry) {
+TEST(KVCacheManager, InitPromotesAlignmentBelowPointerSize) {
     KVCacheManager manager;
 
-    const Status status = manager.Init(1, 1, 16, 8, MakeKVType(), sizeof(void*) / 2);
+    // A layout alignment below sizeof(void*) is a floor the allocator promotes
+    // rather than rejects, so Init succeeds. The row-layout guarantee is stated
+    // against the requested alignment, not the stronger one actually obtained.
+    const size_t requested = sizeof(void*) / 2;
+    const Status status = manager.Init(test::TestCpuAllocator(), 1, 1, 16, 8,
+                                       MakeKVType(), requested);
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
-    EXPECT_FALSE(manager.is_initialized());
-    EXPECT_EQ(manager.total_bytes(), 0U);
-    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), sizeof(void*)).ok());
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    EXPECT_TRUE(manager.is_initialized());
+    EXPECT_GT(manager.total_bytes(), 0U);
+    EXPECT_EQ(manager.layout().alignment, requested);
+    EXPECT_EQ(manager.layout().token_stride % requested, 0U);
+
     auto view = manager.ReserveForSession(2, 2);
     ASSERT_TRUE(view.ok());
     EXPECT_TRUE(view->valid());
@@ -131,7 +139,7 @@ TEST(KVCacheManager, InitRejectsAlignmentBelowPosixRequirementAndCanRetry) {
 
 TEST(KVCacheManager, MoveBeforeBorrowingPreservesStorageForReservation) {
     KVCacheManager source;
-    ASSERT_TRUE(source.Init(2, 4, 32, 16, MakeKVType(), 64).ok());
+    ASSERT_TRUE(source.Init(test::TestCpuAllocator(), 2, 4, 32, 16, MakeKVType(), 64).ok());
     const size_t total_bytes = source.total_bytes();
 
     KVCacheManager manager(std::move(source));
@@ -146,9 +154,9 @@ TEST(KVCacheManager, MoveBeforeBorrowingPreservesStorageForReservation) {
 
 TEST(KVCacheManager, MoveAssignmentBeforeBorrowingPreservesStorageForReservation) {
     KVCacheManager source;
-    ASSERT_TRUE(source.Init(2, 4, 32, 16, MakeKVType(), 64).ok());
+    ASSERT_TRUE(source.Init(test::TestCpuAllocator(), 2, 4, 32, 16, MakeKVType(), 64).ok());
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(1, 1, 8, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 8, 8, MakeKVType(), 64).ok());
     const size_t total_bytes = source.total_bytes();
 
     manager = std::move(source);
@@ -168,7 +176,7 @@ TEST(KVCacheManager, BufferMetadataFailureReturnsResourceExhaustedAndReleasesPay
     KVCacheManager manager;
 
     test::ScopedMallocFailure failure(sizeof(BufferImpl));
-    const Status status = manager.Init(1, 1, 16, 8, MakeKVType(), 64);
+    const Status status = manager.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64);
     const auto result = failure.Stop();
 
     EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
@@ -176,7 +184,7 @@ TEST(KVCacheManager, BufferMetadataFailureReturnsResourceExhaustedAndReleasesPay
     EXPECT_TRUE(result.allocation_failed);
     EXPECT_EQ(result.aligned_allocation_calls, 1U);
     EXPECT_TRUE(result.last_aligned_allocation_released);
-    EXPECT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    EXPECT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
 }
 
 TEST(KVCacheManager, InitAlignsTokenRowsToLayoutAlignment) {
@@ -184,13 +192,13 @@ TEST(KVCacheManager, InitAlignsTokenRowsToLayoutAlignment) {
     // elements so every token row (64 bytes) starts at an alignment
     // boundary; a non-divisible head_dim is rounded up the same way.
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(2, 4, 32, 16, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 2, 4, 32, 16, MakeKVType(), 64).ok());
     EXPECT_EQ(manager.layout().padded_head_dim, 32U);
     EXPECT_EQ(manager.layout().token_stride, 64U);
     EXPECT_EQ(manager.layout().token_stride % manager.layout().alignment, 0U);
     EXPECT_GE(manager.layout().padded_head_dim, manager.layout().head_dim);
 
-    ASSERT_TRUE(manager.Init(1, 1, 16, 20, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 16, 20, MakeKVType(), 64).ok());
     EXPECT_EQ(manager.layout().padded_head_dim, 32U);
     EXPECT_EQ(manager.layout().token_stride, 64U);
     EXPECT_EQ(manager.layout().token_stride % manager.layout().alignment, 0U);
@@ -214,7 +222,6 @@ TEST(KVCacheSessionView, RejectsStorageSmallerThanLayout) {
             .key_buffer = MakeTestBuffer(512),
             .value_buffer = MakeTestBuffer(512),
             .kv_dtype = MakeKVType(),
-            .alignment = 64,
     };
     KVCacheSessionState slot{.generation = 1,
                              .capacity_tokens = 8,
@@ -231,7 +238,7 @@ TEST(KVCacheSessionView, RejectsStorageSmallerThanLayout) {
 
 TEST(KVCacheManager, ReserveRejectsSecondActiveSession) {
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
     ASSERT_TRUE(manager.ReserveForSession(4, 4).ok());
 
     const StatusOr<KVCacheSessionView> second = manager.ReserveForSession(2, 2);
@@ -245,7 +252,7 @@ TEST(KVCacheManager, OccupiedReserveDiagnosticFailurePreservesReservation) {
         GTEST_SKIP() << "Requires the glibc malloc interposer";
     }
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
     auto view = manager.ReserveForSession(2, 4);
     ASSERT_TRUE(view.ok());
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 2).ok());
@@ -267,7 +274,7 @@ TEST(KVCacheManager, OccupiedReserveDiagnosticFailurePreservesReservation) {
 
 TEST(KVCacheManager, CommitAndReadWritePointersRespectBounds) {
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
     StatusOr<KVCacheSessionView> view = manager.ReserveForSession(4, 4);
     ASSERT_TRUE(view.ok());
 
@@ -289,7 +296,7 @@ TEST(KVCacheManager, CommitAndReadWritePointersRespectBounds) {
 
 TEST(KVCacheManager, ResetSessionClearsCommittedPosition) {
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(1, 1, 32, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 32, 8, MakeKVType(), 64).ok());
     StatusOr<KVCacheSessionView> view = manager.ReserveForSession(6, 10);
     ASSERT_TRUE(view.ok());
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 6).ok());
@@ -305,7 +312,7 @@ TEST(KVCacheManager, ResetSessionClearsCommittedPosition) {
 
 TEST(KVCacheManager, ResetKeepsEveryViewCopyLiveInTheSameReservation) {
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(2, 3, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 2, 3, 16, 8, MakeKVType(), 64).ok());
     auto view = manager.ReserveForSession(3, 4);
     ASSERT_TRUE(view.ok());
     KVCacheSessionView copy = *view;
@@ -331,7 +338,7 @@ TEST(KVCacheManager, ResetKeepsEveryViewCopyLiveInTheSameReservation) {
 
 TEST(KVCacheManager, ResetRequiresTheEntirePrefillBeforeDecode) {
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
     auto view = manager.ReserveForSession(3, 4);
     ASSERT_TRUE(view.ok());
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 5).ok());
@@ -351,7 +358,7 @@ TEST(KVCacheManager, ResetRequiresTheEntirePrefillBeforeDecode) {
 
 TEST(KVCacheManager, ReleasedCopyCannotCommitIntoANewReservation) {
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
     auto view = manager.ReserveForSession(2, 4);
     ASSERT_TRUE(view.ok());
     KVCacheSessionView copy = *view;
@@ -375,8 +382,8 @@ TEST(KVCacheManager, ReleasedCopyCannotCommitIntoANewReservation) {
 TEST(KVCacheManager, ResetRejectsForeignViewWithoutChangingEitherReservation) {
     KVCacheManager owner;
     KVCacheManager other;
-    ASSERT_TRUE(owner.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
-    ASSERT_TRUE(other.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(owner.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(other.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
     auto owner_view = owner.ReserveForSession(2, 4);
     auto other_view = other.ReserveForSession(3, 5);
     ASSERT_TRUE(owner_view.ok());
@@ -407,8 +414,8 @@ TEST(KVCacheManager, ForeignResetDiagnosticFailurePreservesBothReservations) {
     }
     KVCacheManager owner;
     KVCacheManager other;
-    ASSERT_TRUE(owner.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
-    ASSERT_TRUE(other.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(owner.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(other.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
     auto owner_view = owner.ReserveForSession(2, 4);
     auto other_view = other.ReserveForSession(3, 5);
     ASSERT_TRUE(owner_view.ok());
@@ -440,8 +447,8 @@ TEST(KVCacheManager, ForeignResetDiagnosticFailurePreservesBothReservations) {
 TEST(KVCacheManager, ReleaseRejectsForeignViewWithoutChangingEitherReservation) {
     KVCacheManager owner;
     KVCacheManager other;
-    ASSERT_TRUE(owner.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
-    ASSERT_TRUE(other.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(owner.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(other.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
     auto owner_view = owner.ReserveForSession(2, 4);
     auto other_view = other.ReserveForSession(3, 5);
     ASSERT_TRUE(owner_view.ok());
@@ -472,8 +479,8 @@ TEST(KVCacheManager, ForeignReleaseDiagnosticFailurePreservesBothReservations) {
     }
     KVCacheManager owner;
     KVCacheManager other;
-    ASSERT_TRUE(owner.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
-    ASSERT_TRUE(other.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(owner.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(other.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
     auto owner_view = owner.ReserveForSession(2, 4);
     auto other_view = other.ReserveForSession(3, 5);
     ASSERT_TRUE(owner_view.ok());
@@ -504,13 +511,13 @@ TEST(KVCacheManager, ForeignReleaseDiagnosticFailurePreservesBothReservations) {
 
 TEST(KVCacheManager, ReinitializationPermanentlyInvalidatesActiveViewCopies) {
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
     auto old_view = manager.ReserveForSession(3, 5);
     ASSERT_TRUE(old_view.ok());
     KVCacheSessionView old_copy = *old_view;
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(*old_view, 3).ok());
 
-    ASSERT_TRUE(manager.Init(1, 2, 24, 16, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 2, 24, 16, MakeKVType(), 64).ok());
     EXPECT_FALSE(old_view->valid());
     EXPECT_FALSE(old_copy.valid());
     auto fresh_view = manager.ReserveForSession(2, 4);
@@ -531,20 +538,20 @@ TEST(KVCacheManager, ReinitializationPermanentlyInvalidatesActiveViewCopies) {
 
 TEST(KVCacheManager, FailedReinitializationPermanentlyInvalidatesActiveViewCopies) {
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
     auto old_view = manager.ReserveForSession(3, 5);
     ASSERT_TRUE(old_view.ok());
     KVCacheSessionView old_copy = *old_view;
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(*old_view, 3).ok());
 
-    const Status status = manager.Init(1, 1, 0, 8, MakeKVType(), 64);
+    const Status status = manager.Init(test::TestCpuAllocator(), 1, 1, 0, 8, MakeKVType(), 64);
 
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
     EXPECT_FALSE(manager.is_initialized());
     EXPECT_EQ(manager.total_bytes(), 0U);
     EXPECT_FALSE(old_view->valid());
     EXPECT_FALSE(old_copy.valid());
-    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
     auto fresh_view = manager.ReserveForSession(2, 4);
     ASSERT_TRUE(fresh_view.ok());
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(*fresh_view, 2).ok());
@@ -561,14 +568,14 @@ TEST(KVCacheManager, FailedReinitializationPermanentlyInvalidatesActiveViewCopie
 
 TEST(KVCacheManager, ReleasedViewCopyRemainsStaleAfterReinitialization) {
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
     auto old_view = manager.ReserveForSession(3, 5);
     ASSERT_TRUE(old_view.ok());
     KVCacheSessionView old_copy = *old_view;
     ASSERT_TRUE(manager.ReleaseSession(*old_view).ok());
     EXPECT_FALSE(old_copy.valid());
 
-    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
     auto fresh_view = manager.ReserveForSession(3, 5);
     ASSERT_TRUE(fresh_view.ok());
 
@@ -581,7 +588,7 @@ TEST(KVCacheManager, ReleasedViewCopyRemainsStaleAfterReinitialization) {
 
 TEST(KVCacheManager, ReleaseInvalidatesViewAndAllowsNewReservation) {
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(1, 2, 24, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 2, 24, 8, MakeKVType(), 64).ok());
     StatusOr<KVCacheSessionView> view = manager.ReserveForSession(3, 5);
     ASSERT_TRUE(view.ok());
 
@@ -597,7 +604,7 @@ TEST(KVCacheManager, ReleaseInvalidatesViewAndAllowsNewReservation) {
 
 TEST(KVCacheManager, ReserveRejectsRequestsBeyondPhysicalCapacity) {
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(1, 1, 8, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 8, 8, MakeKVType(), 64).ok());
 
     const StatusOr<KVCacheSessionView> view = manager.ReserveForSession(6, 4);
 
@@ -607,7 +614,7 @@ TEST(KVCacheManager, ReserveRejectsRequestsBeyondPhysicalCapacity) {
 
 TEST(KVCacheManager, ReserveRejectsEmptyPrompt) {
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(1, 1, 8, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 8, 8, MakeKVType(), 64).ok());
 
     const StatusOr<KVCacheSessionView> view = manager.ReserveForSession(0, 1);
 
@@ -617,7 +624,7 @@ TEST(KVCacheManager, ReserveRejectsEmptyPrompt) {
 
 TEST(KVCacheSessionView, AppendBindingRequiresTheCommittedFrontier) {
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(1, 1, 8, 8, MakeKVType(), 64).ok());
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 8, 8, MakeKVType(), 64).ok());
     const auto view = manager.ReserveForSession(2, 2);
     ASSERT_TRUE(view.ok());
 

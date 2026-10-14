@@ -80,7 +80,8 @@ public:
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector,
-            const PackingRecipe& recipe) const override;
+            const PackingRecipe& recipe,
+            Allocator& allocator) const override;
 
     /// @brief Returns the global kernel registry for debug inspection.
     ///

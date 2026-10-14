@@ -10,6 +10,7 @@
 #include "aethermind/operators/ops/embedding_op.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "execution/test_execution_binding_helpers.h"
+#include "test_utils/test_allocator.h"
 
 #include <algorithm>
 #include <array>
@@ -137,7 +138,7 @@ TEST(EmbeddingKernel, PackedIdentityDescriptorComputesExpectedRows) {
     ASSERT_TRUE(recipe.ok()) << recipe.status().ToString();
     const std::array<TensorView, 1> components{weight_view};
     auto packed = backend.PackWeights(
-            OpType::kEmbedding, components, selector, *recipe);
+            OpType::kEmbedding, components, selector, *recipe, test::TestCpuAllocator());
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     const auto kernel = backend.PrepareKernel(
             OpType::kEmbedding, selector, OpParams{EmbeddingParams{}});
@@ -197,7 +198,7 @@ TEST(EmbeddingKernel, PackedIdentityBuilderChecksZeroSizeMetadataAndAlias) {
     ASSERT_TRUE(recipe.ok()) << recipe.status().ToString();
     auto packed = backend.PackWeights(
             OpType::kEmbedding, std::array<TensorView, 1>{weight_view},
-            selector, *recipe);
+            selector, *recipe, test::TestCpuAllocator());
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     const auto kernel = backend.PrepareKernel(
             OpType::kEmbedding, selector, OpParams{EmbeddingParams{}});

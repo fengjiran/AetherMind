@@ -16,6 +16,7 @@
 #include "aethermind/runtime/runtime_builder.h"
 #include "backend/cpu/cpu_backend_internal.h"
 #include "backend/cpu/kernels/gate_up_linear/gate_up_linear_internal.h"
+#include "test_utils/test_allocator.h"
 
 #include <array>
 #include <cstddef>
@@ -503,7 +504,8 @@ TEST(CPUKernelGateUpLinear, PackedArtifactParticipatesInDeferredShapeChecks) {
     const std::array<TensorView, 1> components{
             TensorView(logical_weight, DataType::Float32(), logical_shape, logical_strides, 64)};
     auto packed = cpu::internal::PackWeightsWithRecipe(
-            OpType::kGateUpLinear, components, MakeGateUpSelector(), CpuIdentityPackingRecipe());
+            OpType::kGateUpLinear, components, MakeGateUpSelector(), CpuIdentityPackingRecipe(),
+            test::TestCpuAllocator());
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     PackedWeightCollection collection;
     const WeightArtifactKey key{
@@ -656,7 +658,8 @@ TEST(CPUKernelGateUpLinear, FusedPackedExecutionRequiresNoExternalGateUpWeightBi
         ASSERT_TRUE(recipe.ok()) << recipe.status().ToString();
         request.recipe = *recipe;
     }
-    const auto prepacked = PrepackWeightRequests(**prepack_backend, *requests);
+    const auto prepacked = PrepackWeightRequests(**prepack_backend, *requests,
+                                                 test::TestCpuAllocator());
     ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
     const auto plan = ExecutionPlanBuilder::Build(runtime, *prepacked, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();

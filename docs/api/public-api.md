@@ -92,17 +92,19 @@
 | `WithOptions` | `RuntimeBuilder& WithOptions(const RuntimeOptions& options)` | 设置运行时装配选项；返回 `*this` 支持链式调用 |
 | `RegisterCustomAllocatorProvider` | `RuntimeBuilder& RegisterCustomAllocatorProvider(DeviceType, std::unique_ptr<AllocatorProvider>)` | 注册自定义分配器提供者；所有权转移 |
 | `RegisterBackendFactory` | `RuntimeBuilder& RegisterBackendFactory(DeviceType, std::unique_ptr<BackendFactory>)` | 注册后端工厂；所有权转移 |
-| `Build` | `Runtime Build()` | 装配 AllocatorRegistry + BackendRegistry + KVCacheManager 为 `Runtime` |
+| `Build` | `Runtime Build()` | 装配 AllocatorRegistry + BackendRegistry + KVCacheManager 为 `Runtime`；初始化失败（含分配失败）时 abort |
+| `TryBuild` | `StatusOr<Runtime> TryBuild()` | 与 `Build` 相同的装配，但把 KV 初始化失败与注册阶段的分配失败作为 Status 返回（分配失败为空 message 的 `kResourceExhausted`）。成功后消费 pending 注册；失败时两个 pending 列表只保留从未转移的项，builder 仍可复用而不会 abort，但已转入被丢弃 registry 的注册项不可恢复 |
 
-### `TryAllocateAlignedCpuBuffer`（include/aethermind/memory/cpu_allocator.h）
+### `Allocator::TryAllocate`（include/aethermind/memory/allocator.h）
 
 | 项 | 内容 |
 |---|---|
-| 签名 | `StatusOr<Buffer> TryAllocateAlignedCpuBuffer(size_t nbytes, size_t explicit_alignment) noexcept` |
-| 简介 | 创建一个由 `MemoryHandle` 管理、使用 `free` 释放的 aligned CPU `Buffer`；供 KV storage 与 CPU packed-weight storage 复用。 |
-| 对齐契约 | `explicit_alignment` 必须为非零、2 的幂且为 `sizeof(void*)` 的倍数；无效值返回 `kInvalidArgument`。 |
-| 零字节语义 | 返回 visible bytes 为 0 的有效 `Buffer`，实际申请 1 byte 以维持可释放的 owning handle。 |
-| 失败语义 | 系统分配失败或 Buffer/handle 元数据分配失败返回空 message 的 `kResourceExhausted`。该 helper 不采用 `CPUAllocator` 的 THP、junk-fill、异常或 fatal 策略，也不查询 Runtime 的 `Allocator`。 |
+| 签名 | `StatusOr<Buffer> TryAllocate(const AllocationRequest& request) noexcept` |
+| 简介 | 受管 backing storage 的唯一分配入口。基类以 NVI 实现：校验请求 → 调用派生类的 protected `AllocateStorage` hook → 附加计账记录 → 构造 `Buffer`。KV storage、packed weights、workspace 与 activation 四类存储都经此入口，派生类因此无需各自记账。 |
+| 请求契约 | `AllocationRequest{nbytes, alignment, tag}`。`nbytes` 是 `Buffer` 的可见大小，布局 padding 由资源所属模块计入这个值。`alignment == 0` 使用 allocator 默认策略；非零值必须为 2 的幂，且表示**最低**对齐而非精确对齐——返回的 `Buffer` 可能声明更强对齐，调用方必须读取实际值。CPU 实现会把弱于 `sizeof(void*)` 的请求提升而不是拒绝。`tag` 为不透明分类标签，仅用于统计，不携带模型/graph/kernel 对象。 |
+| 计账与生命周期 | 成功分配按 `max(nbytes, 1)` 计入共享 `AllocationState`（零字节 `Buffer` 仍向系统申请 1 byte）。计费记录由 `MemoryHandle` 的 deleter 拥有并强持 `AllocationState`，不借用 `Allocator*` 或 `Runtime*`，因此 allocator 实例或 provider 被销毁后，存活的 `Buffer` 仍能安全释放并正确退还。共享同一 `BufferImpl` 的多个副本只在最终释放时退还一次；deleter 先释放底层存储再退还额度，且全程不分配、不抛出。 |
+| 失败语义 | 非零且非 2 的幂的 alignment 返回 `kInvalidArgument`，且校验先于任何分配；系统分配失败或计账/Buffer 元数据分配失败返回空 message 的 `kResourceExhausted`；所有失败路径都释放已取得的存储且不改变计账。`Allocate(size_t)` 保留为 wrapper，内部转调本入口，把 `kResourceExhausted` 映射为 `std::bad_alloc`，其余映射为 `Error`，因此无法绕过计账。 |
+| 统计边界 | `AllocationState` 只覆盖受管 backing storage 的申请量，不含 mmap raw weights、普通 STL 分配、`BufferImpl` 与计费记录本身、libc 内部开销。**这不是进程 RSS 上限，也不能单独证明满足 PRD 的总内存目标。** 当前只统计不拒绝，预算强制属于后续阶段。 |
 
 ### `Executor::Execute`（include/aethermind/execution/executor.h）
 

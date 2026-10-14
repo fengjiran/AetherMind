@@ -116,6 +116,97 @@ Runtime MakeCpuRuntimeWithKVCache(size_t kv_heads = kKvHeads,
     return builder.Build();
 }
 
+// Delegates every query to CpuBackend but forces a non-zero workspace
+// requirement onto each resolved kernel. No production CPU kernel declares
+// one, so without this the session's workspace allocation path stays dead.
+class WorkspaceDeclaringBackend final : public Backend {
+public:
+    WorkspaceDeclaringBackend(size_t bytes, size_t alignment)
+        : bytes_(bytes), alignment_(alignment) {}
+
+    AM_NODISCARD DeviceType device_type() const noexcept override {
+        return delegate_.device_type();
+    }
+
+    AM_NODISCARD StatusOr<ResolvedKernel> PrepareKernel(
+            OpType op_type,
+            const KernelSelector& selector,
+            const OpParams& params) const override {
+        auto kernel = delegate_.PrepareKernel(op_type, selector, params);
+        if (!kernel.ok()) {
+            return kernel.status();
+        }
+        kernel->workspace_requirement = WorkspaceRequirement{
+                .bytes = bytes_,
+                .alignment = alignment_,
+                .lifetime = WorkspaceLifetime::kPerSequence,
+        };
+        return std::move(kernel).value();
+    }
+
+    AM_NODISCARD StatusOr<PackingRecipe> GetPackingRecipe(
+            OpType op_type, const KernelSelector& selector) const override {
+        return delegate_.GetPackingRecipe(op_type, selector);
+    }
+
+    AM_NODISCARD StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
+            OpType op_type,
+            std::span<const TensorView> components,
+            const KernelSelector& selector,
+            const PackingRecipe& recipe,
+            Allocator& allocator) const override {
+        return delegate_.PackWeights(op_type, components, selector, recipe, allocator);
+    }
+
+    AM_NODISCARD const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override {
+        return delegate_.TryGetKernelRegistryForDebug();
+    }
+
+private:
+    CpuBackend delegate_{};
+    size_t bytes_;
+    size_t alignment_;
+};
+
+class WorkspaceDeclaringBackendFactory final : public BackendFactory {
+public:
+    WorkspaceDeclaringBackendFactory(size_t bytes, size_t alignment)
+        : bytes_(bytes), alignment_(alignment) {}
+
+    AM_NODISCARD DeviceType device_type() const noexcept override {
+        return DeviceType::kCPU;
+    }
+
+    AM_NODISCARD StatusOr<std::unique_ptr<Backend>> Create() const override {
+        return std::unique_ptr<Backend>(
+                std::make_unique<WorkspaceDeclaringBackend>(bytes_, alignment_));
+    }
+
+private:
+    size_t bytes_;
+    size_t alignment_;
+};
+
+Runtime MakeCpuRuntimeDeclaringWorkspace(size_t workspace_bytes,
+                                         size_t workspace_alignment) {
+    RuntimeOptions options;
+    options.kv_cache.enable_manager = true;
+    options.kv_cache.num_layers = 1;
+    options.kv_cache.num_kv_heads = static_cast<size_t>(kKvHeads);
+    options.kv_cache.max_tokens = kCacheCapacity;
+    options.kv_cache.head_dim = static_cast<size_t>(kHeadDim);
+    options.kv_cache.kv_dtype = DataType::Float32();
+    options.kv_cache.alignment = 64;
+
+    RuntimeBuilder builder;
+    builder.WithOptions(options);
+    builder.RegisterBackendFactory(
+            DeviceType::kCPU,
+            std::make_unique<WorkspaceDeclaringBackendFactory>(
+                    workspace_bytes, workspace_alignment));
+    return builder.Build();
+}
+
 StatusOr<ExecutableModel> PrepareTinyExecutableModel(
         Runtime& runtime,
         ResolvedModelWeights* reference_weights,
@@ -1295,25 +1386,31 @@ TEST_P(TinyLlamaExecution, ZeroLimitDoesNotRequireKvAndInputsAreValidated) {
     EXPECT_EQ(bad_eos.status().code(), StatusCode::kOutOfRange);
 }
 
-TEST_P(TinyLlamaExecution, MissingCpuAllocatorReturnsStatusBeforeReservation) {
-    Runtime runtime =
-            MakeCpuRuntimeWithKVCache(kKvHeads, kCacheCapacity, false);
-    ResolvedModelWeights reference_weights;
-    auto session_result = PrepareTinySession(runtime, &reference_weights, GetParam());
-    ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
-    InferenceSession session = std::move(*session_result);
+// KV planes are now allocated through the Runtime allocator, so a KV-enabled
+// Runtime without a CPU allocator provider fails at build time instead of
+// surfacing later during Generate.
+TEST(TinyLlamaSession, KvCacheWithoutCpuAllocatorFailsAtBuild) {
+    RuntimeOptions options;
+    options.allocator.enable_cpu = false;
+    options.kv_cache.enable_manager = true;
+    options.kv_cache.num_layers = 1;
+    options.kv_cache.num_kv_heads = static_cast<size_t>(kKvHeads);
+    options.kv_cache.max_tokens = kCacheCapacity;
+    options.kv_cache.head_dim = static_cast<size_t>(kHeadDim);
+    options.kv_cache.kv_dtype = DataType::Float32();
+    options.kv_cache.alignment = 64;
 
-    constexpr std::array<uint32_t, 3> prompt{1, 7, 3};
-    auto result = session.Generate(
-            prompt, GenerationConfig{.max_new_tokens = 1});
+    RuntimeBuilder builder;
+    builder.WithOptions(options);
+    builder.RegisterBackendFactory(DeviceType::kCPU, std::make_unique<CpuBackendFactory>());
+    auto result = builder.TryBuild();
     ASSERT_FALSE(result.ok());
     EXPECT_EQ(result.status().code(), StatusCode::kFailedPrecondition);
 
-    KVCacheManager* const manager = runtime.GetKVCacheManager();
-    ASSERT_NE(manager, nullptr);
-    auto available = manager->ReserveForSession(prompt.size(), 0);
-    ASSERT_TRUE(available.ok()) << available.status().ToString();
-    ReleaseTestSession(*manager, *available);
+    RuntimeBuilder death_builder;
+    death_builder.WithOptions(options);
+    death_builder.RegisterBackendFactory(DeviceType::kCPU, std::make_unique<CpuBackendFactory>());
+    EXPECT_DEATH(static_cast<void>(death_builder.Build()), "Check failed");
 }
 
 TEST_P(TinyLlamaExecution, HandlesPromptSizedCapacityAndReservationCleanup) {
@@ -1363,7 +1460,9 @@ TEST_P(TinyLlamaExecution, SharedDecodeLoopHasNoMallocFamilyCallsAfterPreparatio
 #if !defined(__GLIBC__) || !defined(__linux__)
     GTEST_SKIP() << "The malloc interposer requires glibc/Linux";
 #else
-    ASSERT_TRUE(MallocInterposerAvailable());
+    if (!MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
     Runtime runtime = MakeCpuRuntimeWithKVCache();
     ResolvedModelWeights reference_weights;
     auto executable_result =
@@ -1462,11 +1561,64 @@ INSTANTIATE_TEST_SUITE_P(
         PreparationPaths, TinyLlamaExecution, ::testing::Bool(),
         [](const ::testing::TestParamInfo<bool>& info) { return info.param ? "O2Packed" : "O1Plain"; });
 
+TEST(TinyWorkspaceSession, GenerateSatisfiesAlignmentBeyondAllocatorDefault) {
+    // 4096 exceeds both the CPU allocator's 64-byte default and sizeof(void*).
+    // SessionWorkspaceArena::Bind rejects a base that misses a requirement's
+    // alignment and ExecutionContext reports that as FailedPrecondition, so a
+    // successful Generate proves the session honored the plan's alignment.
+    constexpr size_t kWorkspaceBytes = 64;
+    constexpr size_t kWorkspaceAlignment = 4096;
+
+    Runtime runtime = MakeCpuRuntimeDeclaringWorkspace(kWorkspaceBytes,
+                                                       kWorkspaceAlignment);
+    ResolvedModelWeights reference_weights;
+    auto executable = PrepareTinyExecutableModel(runtime, &reference_weights, false);
+    ASSERT_TRUE(executable.ok()) << executable.status().ToString();
+
+    // Guard the fixture: the decorator must actually make the plan request
+    // workspace, otherwise this test proves nothing about the allocation.
+    const auto plan_result = executable->plan(ExecPhase::kPrefill);
+    ASSERT_TRUE(plan_result.ok()) << plan_result.status().ToString();
+    ASSERT_NE(*plan_result, nullptr);
+    EXPECT_GE((*plan_result)->total_workspace_bytes(), kWorkspaceBytes);
+    EXPECT_EQ((*plan_result)->workspace_alignment(), kWorkspaceAlignment);
+
+    auto shared_model = std::make_shared<ExecutableModel>(std::move(*executable));
+    auto session_result = InferenceSession::Create(runtime, std::move(shared_model));
+    ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
+    InferenceSession session = std::move(*session_result);
+
+    constexpr std::array<uint32_t, 3> prompt{1, 7, 3};
+    const GenerationConfig config{.max_new_tokens = 3};
+    const auto generated = session.Generate(prompt, config);
+    ASSERT_TRUE(generated.ok()) << generated.status().ToString();
+    EXPECT_EQ(*generated, ScalarGenerate(reference_weights, prompt, config));
+}
+
+TEST(TinyWorkspaceSession, GenerateReturnsResourceExhaustedForWorkspaceAllocationFailure) {
+    if (!MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    Runtime runtime = MakeCpuRuntimeDeclaringWorkspace(64, 4096);
+    ResolvedModelWeights reference_weights;
+    auto session_result = PrepareTinySession(runtime, &reference_weights, false);
+    ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
+    InferenceSession session = std::move(*session_result);
+
+    // The workspace is the first posix_memalign inside Generate, ahead of both
+    // activation arenas, so skip 0 targets it.
+    ScopedMallocFailure failure(0, 0, false, MallocFailureTarget::kPosixMemalign);
+    ExpectGenerateRecoversFromAllocationFailure(
+            runtime, session, reference_weights, failure);
+}
+
 TEST(DirectPrefillDecode, MallocInterposerObservesCpuAllocatorCalls) {
 #if !defined(__GLIBC__) || !defined(__linux__)
     GTEST_SKIP() << "The malloc interposer calibration requires glibc/Linux";
 #else
-    ASSERT_TRUE(MallocInterposerAvailable());
+    if (!MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
     Runtime runtime = MakeCpuRuntimeWithKVCache();
     Allocator& allocator = runtime.GetAllocator(Device::CPU());
 
@@ -1479,7 +1631,8 @@ TEST(DirectPrefillDecode, MallocInterposerObservesCpuAllocatorCalls) {
     const MallocCallCounts counts = EndMallocCallCounting();
     EXPECT_TRUE(allocated);
     EXPECT_EQ(counts.posix_memalign_calls, 1U)
-            << "the probe runs through alloc_cpu() in the AetherMind shared library";
+            << "the probe runs through CPUAllocator::AllocateStorage() in the "
+               "AetherMind shared library";
     EXPECT_GE(counts.free_calls, 1U);
 #endif
 }

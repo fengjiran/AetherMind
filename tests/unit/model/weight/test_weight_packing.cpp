@@ -28,6 +28,7 @@
 #include "aethermind/shape_inference/tensor_spec.h"
 #include "backend/cpu/cpu_backend_internal.h"
 #include "inference/test_malloc_interposer.h"
+#include "test_utils/test_allocator.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -44,6 +45,7 @@ namespace {
 
 using namespace aethermind;
 
+using aethermind::test::TestCpuAllocator;
 using aethermind::test::TestStorage;
 
 SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
@@ -86,11 +88,12 @@ StatusOr<std::unique_ptr<PackedWeight>> PackViaCpuIdentity(
         OpType op_type,
         std::span<const TensorView> components,
         const KernelSelector& selector,
-        const PackingRecipe& recipe) {
+        const PackingRecipe& recipe,
+        Allocator& allocator) {
     if (recipe != CpuIdentityPackingRecipe()) {
         return Status::InvalidArgument("Test backend requires the CPU identity packing recipe");
     }
-    return cpu::internal::PackWeightsWithRecipe(op_type, components, selector, recipe);
+    return cpu::internal::PackWeightsWithRecipe(op_type, components, selector, recipe, allocator);
 }
 
 // Minimal backend for prepack-only tests: resolves nothing, packs everything
@@ -115,12 +118,13 @@ public:
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector,
-            const PackingRecipe& recipe) const override {
+            const PackingRecipe& recipe,
+            Allocator& allocator) const override {
         ++pack_calls;
         if (return_null_artifact_) {
             return std::unique_ptr<PackedWeight>{};
         }
-        return PackViaCpuIdentity(op_type, components, selector, recipe);
+        return PackViaCpuIdentity(op_type, components, selector, recipe, allocator);
     }
 
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override {
@@ -169,7 +173,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsBackendWithoutPacking) {
     };
 
     NoPackingTestBackend backend;
-    const auto prepacked = PrepackWeightRequests(backend, {request});
+    const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
     EXPECT_FALSE(prepacked.ok());
     EXPECT_EQ(prepacked.status().code(), StatusCode::kUnimplemented);
 }
@@ -185,7 +189,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsEmptyComponentsBeforeBackendCall
             .recipe = CpuIdentityPackingRecipe(),
     };
 
-    const auto prepacked = PrepackWeightRequests(backend, {request});
+    const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
     EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
     EXPECT_NE(prepacked.status().message().find("non-empty weight components"), std::string::npos);
@@ -211,7 +215,7 @@ TEST_P(WeightPackingNonContiguous, RejectsRawComponentBeforeBackendCall) {
     }
     PackingOnlyTestBackend backend;
 
-    const auto prepacked = PrepackWeightRequests(backend, {request});
+    const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
     EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
     EXPECT_NE(prepacked.status().message().find("contiguous"), std::string::npos);
@@ -233,7 +237,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsSuccessfulNullBackendArtifact) {
     };
     PackingOnlyTestBackend backend(/*return_null_artifact=*/true);
 
-    const auto prepacked = PrepackWeightRequests(backend, {request});
+    const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
     EXPECT_EQ(prepacked.status().code(), StatusCode::kInternal);
     EXPECT_EQ(backend.pack_calls, 1U);
@@ -254,7 +258,7 @@ TEST(WeightPacking, PrepackMetadataAllocationFailureReturnsResourceExhaustedBefo
     PackingOnlyTestBackend backend;
 
     test::ScopedMallocFailure failure(sizeof(TensorView));
-    const auto prepacked = PrepackWeightRequests(backend, requests);
+    const auto prepacked = PrepackWeightRequests(backend, requests, TestCpuAllocator());
     const auto result = failure.Stop();
 
     EXPECT_EQ(prepacked.status().code(), StatusCode::kResourceExhausted);
@@ -265,7 +269,7 @@ TEST(WeightPacking, PrepackMetadataAllocationFailureReturnsResourceExhaustedBefo
 TEST(WeightPacking, PrepackWeightRequestsAcceptsEmptyBatch) {
     PackingOnlyTestBackend backend;
 
-    const auto prepacked = PrepackWeightRequests(backend, {});
+    const auto prepacked = PrepackWeightRequests(backend, {}, TestCpuAllocator());
 
     ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
     EXPECT_TRUE(prepacked->empty());
@@ -285,7 +289,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsUnspecifiedLayoutBeforeBackendCa
     };
     NoPackingTestBackend backend;
 
-    const auto prepacked = PrepackWeightRequests(backend, {request});
+    const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
     EXPECT_FALSE(prepacked.ok());
     EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
@@ -304,7 +308,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsUnknownLayoutBeforeBackendCall) 
     };
     NoPackingTestBackend backend;
 
-    const auto prepacked = PrepackWeightRequests(backend, {request});
+    const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
     EXPECT_FALSE(prepacked.ok());
     EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
@@ -325,7 +329,7 @@ TEST(WeightPacking, PrepackWeightRequestsMakesWeightsFindable) {
     };
 
     PackingOnlyTestBackend backend;
-    const auto prepacked = PrepackWeightRequests(backend, requests);
+    const auto prepacked = PrepackWeightRequests(backend, requests, TestCpuAllocator());
     ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
     const PackedWeightCollection& packed_weight_collection = *prepacked;
 
@@ -358,7 +362,7 @@ TEST(WeightPacking, PrepackWeightRequestsAcceptsZeroSizedWeights) {
             .recipe = *recipe,
     };
 
-    const auto prepacked = PrepackWeightRequests(backend, {request});
+    const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
     ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
     const auto packed = prepacked->Find({.source_id = request.source_id,
@@ -387,7 +391,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsStrideOverflowBeforeBackendCall)
     };
     EXPECT_TRUE(ValidateRawWeightView(request.components.front()).ok());
 
-    const auto prepacked = PrepackWeightRequests(backend, {request});
+    const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
     EXPECT_EQ(prepacked.status().code(), StatusCode::kOverflow);
     EXPECT_EQ(backend.pack_calls, 0U);
@@ -414,7 +418,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsCompositeStrideOverflowBeforeBac
     };
     EXPECT_TRUE(ValidateRawWeightView(overflowing_component).ok());
 
-    const auto prepacked = PrepackWeightRequests(backend, {request});
+    const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
     EXPECT_EQ(prepacked.status().code(), StatusCode::kOverflow);
     EXPECT_EQ(backend.pack_calls, 0U);
@@ -435,7 +439,7 @@ TEST(WeightPacking, PrepackWeightRequestsAcceptsLargestRepresentableStride) {
             .recipe = CpuIdentityPackingRecipe(),
     };
 
-    const auto prepacked = PrepackWeightRequests(backend, {request});
+    const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
     EXPECT_TRUE(prepacked.ok()) << prepacked.status().ToString();
     EXPECT_EQ(backend.pack_calls, 1U);
@@ -460,7 +464,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsMixedSourceIds) {
     second.binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionK);
 
     PackingOnlyTestBackend backend;
-    const auto prepacked = PrepackWeightRequests(backend, {first, second});
+    const auto prepacked = PrepackWeightRequests(backend, {first, second}, TestCpuAllocator());
 
     ASSERT_FALSE(prepacked.ok());
     EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
@@ -493,7 +497,7 @@ TEST(WeightPacking, PrepackWeightRequestsStoresAllLayerWeightsDistinctly) {
     ASSERT_EQ(requests.size(), 14U);
 
     PackingOnlyTestBackend backend;
-    const auto prepacked = PrepackWeightRequests(backend, requests);
+    const auto prepacked = PrepackWeightRequests(backend, requests, TestCpuAllocator());
     ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
     const PackedWeightCollection& packed_weight_collection = *prepacked;
 
@@ -526,7 +530,7 @@ TEST(WeightPacking, RequestComponentsRetainBackingStorage) {
     requests.push_back(std::move(request));
     PackingOnlyTestBackend backend;
 
-    const auto prepacked = PrepackWeightRequests(backend, requests);
+    const auto prepacked = PrepackWeightRequests(backend, requests, TestCpuAllocator());
 
     EXPECT_TRUE(prepacked.ok()) << prepacked.status().ToString();
     requests.clear();
@@ -548,7 +552,7 @@ TEST(WeightPacking, RawViewsRemainAccessibleAfterPrepack) {
     };
 
     PackingOnlyTestBackend backend;
-    const auto prepacked = PrepackWeightRequests(backend, requests);
+    const auto prepacked = PrepackWeightRequests(backend, requests, TestCpuAllocator());
     ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
 
     // Prepacking borrows the request's raw view; the caller's view stays valid.
@@ -672,7 +676,7 @@ TEST(WeightPacking, LoweredDrivenPrepackAndResolve) {
     EXPECT_EQ((*requests)[2].components.front().shape, std::vector<int64_t>{8});
 
     PackingOnlyTestBackend prepack_backend;
-    const auto prepacked = PrepackWeightRequests(prepack_backend, *requests);
+    const auto prepacked = PrepackWeightRequests(prepack_backend, *requests, TestCpuAllocator());
     ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
     const PackedWeightCollection& packed_weight_collection = *prepacked;
     ASSERT_EQ(packed_weight_collection.size(), 3U);
@@ -849,7 +853,7 @@ TEST(WeightPacking, LoweredDrivenPrepackResolvesCompositeBindings) {
     EXPECT_EQ(embedding_request->components.front().data, resolved.embed_tokens.data);
 
     PackingOnlyTestBackend prepack_backend;
-    const auto prepacked = PrepackWeightRequests(prepack_backend, *requests);
+    const auto prepacked = PrepackWeightRequests(prepack_backend, *requests, TestCpuAllocator());
     ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
     const PackedWeightCollection& packed_weight_collection = *prepacked;
     ASSERT_EQ(packed_weight_collection.size(), 3U);
@@ -914,7 +918,7 @@ TEST(WeightPacking, LoweredDrivenPrepackResolvesCompositeBindings) {
 
 Status PrepackSingleRequest(const WeightPackingRequest& request) {
     PackingOnlyTestBackend backend;
-    return PrepackWeightRequests(backend, {request}).status();
+    return PrepackWeightRequests(backend, {request}, TestCpuAllocator()).status();
 }
 
 // RawWeightView::bytes must exactly match shape × dtype byte size: the
@@ -1168,7 +1172,7 @@ std::shared_ptr<const PackedWeight> PackTestArtifact(OpType op_type,
             TensorView(data.data(), DataType::Float32(),
                        IntArrayView(shape), IntArrayView(strides), 0)};
     auto packed = cpu::internal::PackWeightsWithRecipe(
-            op_type, components, selector, CpuIdentityPackingRecipe());
+            op_type, components, selector, CpuIdentityPackingRecipe(), TestCpuAllocator());
     EXPECT_TRUE(packed.ok());
     if (!packed.ok()) return nullptr;
     return std::shared_ptr<const PackedWeight>(std::move(*packed));

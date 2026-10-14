@@ -1,5 +1,5 @@
 #include "aethermind/kv_cache/kv_cache_manager.h"
-#include "aethermind/memory/cpu_allocator.h"
+#include "aethermind/memory/allocator.h"
 #include "utils/overflow_check.h"
 
 #include <limits>
@@ -7,15 +7,21 @@
 
 namespace aethermind {
 
-Status KVCacheManager::AllocateStorage(size_t bytes_per_plane, size_t alignment) {
-    const StatusOr<Buffer> key_buffer = TryAllocateAlignedCpuBuffer(
-            bytes_per_plane, alignment);
+Status KVCacheManager::AllocateStorage(Allocator& allocator,
+                                       size_t bytes_per_plane,
+                                       size_t alignment) {
+    const AllocationRequest request{.nbytes = bytes_per_plane,
+                                    .alignment = alignment,
+                                    .tag = AllocationTag::KVCache()};
+
+    // Both planes stay in locals until both succeed: if the second allocation
+    // fails, the first is released here and its charge is refunded.
+    const StatusOr<Buffer> key_buffer = allocator.TryAllocate(request);
     if (!key_buffer.ok()) {
         return key_buffer.status();
     }
 
-    const StatusOr<Buffer> value_buffer = TryAllocateAlignedCpuBuffer(
-            bytes_per_plane, alignment);
+    const StatusOr<Buffer> value_buffer = allocator.TryAllocate(request);
     if (!value_buffer.ok()) {
         return value_buffer.status();
     }
@@ -23,11 +29,11 @@ Status KVCacheManager::AllocateStorage(size_t bytes_per_plane, size_t alignment)
     storage_.key_buffer = key_buffer.value();
     storage_.value_buffer = value_buffer.value();
     storage_.kv_dtype = layout_.kv_dtype;
-    storage_.alignment = alignment;
     return Status::Ok();
 }
 
-Status KVCacheManager::Init(size_t num_layers,
+Status KVCacheManager::Init(Allocator& allocator,
+                            size_t num_layers,
                             size_t num_kv_heads,
                             size_t max_tokens,
                             size_t head_dim,
@@ -85,7 +91,7 @@ Status KVCacheManager::Init(size_t num_layers,
         return Status::Overflow("KV total bytes overflowed size_t");
     }
 
-    AM_RETURN_IF_ERROR(AllocateStorage(bytes_per_plane.value(), alignment));
+    AM_RETURN_IF_ERROR(AllocateStorage(allocator, bytes_per_plane.value(), alignment));
 
     total_bytes_ = total_bytes;
     initialized_ = true;

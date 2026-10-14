@@ -5,6 +5,7 @@
 /// @brief Assembles a Runtime from options and custom provider registrations.
 
 #include "aethermind/base/device.h"
+#include "aethermind/base/status.h"
 #include "aethermind/kv_cache/kv_cache_manager.h"
 #include "runtime.h"
 #include "runtime_options.h"
@@ -58,8 +59,25 @@ public:
     /// @return The assembled Runtime, which owns all created resources.
     /// @note Consumes the pending custom registrations; a later Build() reuses
     ///       only the current options and registrations added after this call.
-    ///       Aborts when KV cache initialization fails.
+    ///       Aborts when initialization fails, including on allocation failure.
+    ///       Prefer TryBuild() when the failure must be recoverable.
     Runtime Build();
+
+    /// @brief Builds a Runtime, reporting failures instead of aborting.
+    ///
+    /// Initializes the KV cache manager when KV caching is enabled in the
+    /// options. A KV cache initialization failure and any allocation failure
+    /// during registry assembly are returned to the caller; allocation failure
+    /// reports ResourceExhausted with an empty message. Partially built
+    /// registries are discarded.
+    ///
+    /// @return The assembled Runtime, or the first initialization failure.
+    /// @note On success this consumes the pending custom registrations, as
+    ///       Build() does. On failure the builder stays reusable: every pending
+    ///       list is left holding only registrations that were never
+    ///       transferred. A registration already moved into a discarded
+    ///       registry is unrecoverable, so a retry proceeds without it.
+    AM_NODISCARD StatusOr<Runtime> TryBuild();
 
 private:
     struct PendingCustomAllocatorProvider {
@@ -78,7 +96,9 @@ private:
 
     AllocatorRegistry BuildAllocatorRegistry();
     BackendRegistry BuildBackendRegistry();
-    KVCacheManager BuildKVCacheManager();
+    /// @brief Initializes the KV cache manager, allocating its planes through
+    ///        `allocator_registry` so they charge the Runtime's ledger.
+    StatusOr<KVCacheManager> TryBuildKVCacheManager(AllocatorRegistry& allocator_registry);
 };
 
 

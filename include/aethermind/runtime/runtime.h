@@ -37,12 +37,35 @@ public:
         return allocator_registry_.GetAllocator(device);
     }
 
+    /// @brief Returns the allocator for a device, or a status when unavailable.
+    ///
+    /// Same lookup and caching as GetAllocator, but reports a missing provider
+    /// instead of aborting. Prefer this wherever the caller can propagate a
+    /// Status.
+    ///
+    /// @param device Device to get an allocator for.
+    /// @return Borrowed pointer to the cached allocator owned by the Runtime.
+    StatusOr<Allocator*> TryGetAllocator(Device device) {
+        return allocator_registry_.TryGetAllocator(device);
+    }
+
     /// @brief Returns whether Runtime has an allocator provider for a device.
     ///
     /// @param type Device type to check.
     /// @return True if a provider is registered for the device type.
     AM_NODISCARD bool HasAllocatorProvider(DeviceType type) const noexcept {
         return allocator_registry_.HasProvider(type);
+    }
+
+    /// @brief Returns the ledger shared by every allocator this Runtime creates.
+    ///
+    /// All CPU allocator instances charge this one state, including instances
+    /// created after a provider is replaced, so Buffers that outlive their
+    /// allocator still refund the ledger reported here. The state stays alive
+    /// as long as any such Buffer does, but this accessor stops being usable
+    /// once the Runtime is destroyed.
+    AM_NODISCARD const std::shared_ptr<AllocationState>& allocation_state() const noexcept {
+        return allocator_registry_.allocation_state();
     }
 
     /// @brief Returns the backend for a device type, creating it on first use.

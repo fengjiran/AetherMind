@@ -16,6 +16,7 @@
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "backend/cpu/kernels/add_rmsnorm/add_rmsnorm_internal.h"
+#include "test_utils/test_allocator.h"
 
 #include <gtest/gtest.h>
 
@@ -743,7 +744,8 @@ TEST(CPUKernelAddRmsNorm, FusedPackedExecutionRunsThroughLoweringAndBindings) {
         ASSERT_TRUE(recipe.ok()) << recipe.status().ToString();
         request.recipe = *recipe;
     }
-    const auto prepacked = PrepackWeightRequests(**prepack_backend, *requests);
+    const auto prepacked = PrepackWeightRequests(**prepack_backend, *requests,
+                                                 test::TestCpuAllocator());
     ASSERT_TRUE(prepacked.ok()) << prepacked.status().ToString();
     const auto plan = ExecutionPlanBuilder::Build(runtime, *prepacked, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();

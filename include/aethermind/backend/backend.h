@@ -19,6 +19,7 @@
 
 namespace aethermind {
 
+class Allocator;
 class TensorView;
 
 /// @brief Abstract backend for planning-time kernel selection and preparation.
@@ -80,21 +81,30 @@ public:
     /// GetPackingRecipe. This is the only packing entry; packing support is
     /// optional, and the default returns Unimplemented.
     ///
+    /// Artifact storage must come from `allocator` rather than a device-specific
+    /// allocation primitive, so packed weights charge the caller's ledger like
+    /// every other managed storage. The backend borrows it for this call only
+    /// and must not retain it; the returned artifact's Buffer stays valid after
+    /// the allocator is destroyed.
+    ///
     /// @param op_type Operator the packed weight serves.
     /// @param components Weight views in logical binding order.
     /// @param selector Selector requesting WeightFormat::kPacked.
     /// @param recipe Exact physical layout and alignment selected for the consumer.
+    /// @param allocator Source of the artifact's backing storage.
     /// @return An artifact produced with the requested recipe, or an error when
     ///         the backend cannot satisfy the packing contract.
     virtual StatusOr<std::unique_ptr<PackedWeight>> PackWeights(
             OpType op_type,
             std::span<const TensorView> components,
             const KernelSelector& selector,
-            const PackingRecipe& recipe) const {
+            const PackingRecipe& recipe,
+            Allocator& allocator) const {
         UNUSED(op_type);
         UNUSED(components);
         UNUSED(selector);
         UNUSED(recipe);
+        UNUSED(allocator);
         return Status::Unimplemented(
                 "Backend does not implement weight packing");
     }

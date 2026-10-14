@@ -5,9 +5,12 @@
 #include "aethermind/execution/executor.h"
 #include "aethermind/execution/kernel_invoker.h"
 #include "aethermind/memory/cpu_allocator.h"
+#include "aethermind/memory/memory_handle.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <gtest/gtest.h>
 
 namespace {
@@ -59,17 +62,30 @@ Status CountingInvokeKernel(const KernelContext& context) noexcept {
                    : Status::Ok();
 }
 
+void FreeCountingStorage(void*, void* ptr) noexcept {
+    free(ptr);
+}
+
 class CountingAllocator final : public Allocator {
 public:
-    CountingAllocator() : allocator_(Device::CPU()) {}
+    CountingAllocator() : Allocator(nullptr) {}
 
-    Buffer Allocate(size_t bytes) override {
+    AM_NODISCARD StatusOr<MemoryHandle> AllocateStorage(
+            const AllocationRequest& request) override {
         ++allocation_count_;
-        return allocator_.Allocate(bytes);
+        const size_t requested =
+                request.alignment == 0 ? alignof(std::max_align_t) : request.alignment;
+        const size_t alignment = std::max(requested, sizeof(void*));
+        const size_t nbytes = request.nbytes == 0 ? 1 : request.nbytes;
+        void* data = nullptr;
+        if (posix_memalign(&data, alignment, nbytes) != 0) {
+            return Status::ResourceExhausted({});
+        }
+        return MemoryHandle(data, nullptr, &FreeCountingStorage, Device::CPU(), alignment);
     }
 
     AM_NODISCARD Device device() const noexcept override {
-        return allocator_.device();
+        return Device::CPU();
     }
 
     AM_NODISCARD size_t allocation_count() const noexcept {
@@ -77,7 +93,6 @@ public:
     }
 
 private:
-    CPUAllocator allocator_;
     size_t allocation_count_ = 0;
 };
 

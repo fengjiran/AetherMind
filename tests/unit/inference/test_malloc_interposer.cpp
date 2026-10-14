@@ -5,7 +5,19 @@
 #include <cstdint>
 #include <cstdlib>
 
-#if defined(__GLIBC__) && defined(__linux__)
+// ThreadSanitizer installs its own malloc-family interceptors and cannot
+// tolerate a user override that forwards straight to __libc_*: that bypasses its
+// allocation bookkeeping and the test binary segfaults during startup, before
+// any test runs. Fall back to the inert stubs below so a TSAN build can still
+// run the rest of the suite; MallocInterposerAvailable() reports false there and
+// the injection tests skip themselves.
+#if defined(__SANITIZE_THREAD__) || \
+        (defined(__has_feature) && __has_feature(thread_sanitizer))
+#define AETHERMIND_TEST_MALLOC_INTERPOSER_DISABLED 1
+#endif
+
+#if defined(__GLIBC__) && defined(__linux__) && \
+        !defined(AETHERMIND_TEST_MALLOC_INTERPOSER_DISABLED)
 
 extern "C" void* __libc_malloc(size_t size) noexcept;
 extern "C" void* __libc_calloc(size_t count, size_t size) noexcept;

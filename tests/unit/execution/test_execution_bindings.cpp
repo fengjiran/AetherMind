@@ -18,6 +18,7 @@
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/shape_inference/tensor_spec.h"
 #include "execution/test_tensor_buffer_helpers.h"
+#include "test_utils/test_allocator.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -201,7 +202,7 @@ StatusOr<PackedFixture> MakePackedAddRmsNormPlan(Runtime& runtime) {
         if (!recipe.ok()) return recipe.status();
         request.recipe = std::move(*recipe);
     }
-    auto packed_store = PrepackWeightRequests(**prepack_backend, *requests);
+    auto packed_store = PrepackWeightRequests(**prepack_backend, *requests, test::TestCpuAllocator());
     if (!packed_store.ok()) return packed_store.status();
     auto plan = ExecutionPlanBuilder::Build(runtime, *packed_store, *lowered);
     if (!plan.ok()) return plan.status();

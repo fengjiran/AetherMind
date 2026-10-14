@@ -32,6 +32,10 @@ struct KVCacheLayout {
     /// Byte offset between consecutive layers.
     size_t layer_stride = 0;
     DataType kv_dtype{};
+    /// Row-layout alignment in bytes. `token_stride` must be a multiple of it,
+    /// so every token row starts aligned relative to its plane base. This
+    /// constrains the layout only: the backing buffer's own base alignment may
+    /// be stronger without strengthening any individual row.
     size_t alignment = 64;
 
     /// @brief Returns the element size of the KV dtype.

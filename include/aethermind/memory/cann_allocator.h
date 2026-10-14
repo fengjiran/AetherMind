@@ -3,11 +3,14 @@
 
 #include "allocator.h"
 
+#include <memory>
+
 namespace aethermind {
 
 class CANNAllocatorProvider final : public AllocatorProvider {
 public:
-    std::unique_ptr<Allocator> CreateAllocator(Device device) override;
+    std::unique_ptr<Allocator> CreateAllocator(
+            Device device, std::shared_ptr<AllocationState> state) override;
 };
 
 } // namespace aethermind

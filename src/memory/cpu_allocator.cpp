@@ -3,11 +3,14 @@
 //
 
 #include "aethermind/memory/cpu_allocator.h"
+
+#include "aethermind/base/alignment.h"
 #include "aethermind/base/env.h"
 #include "alignment.h"
 #include "utils/memory_utils.h"
 
 #include <cerrno>
+#include <cstdlib>
 #include <new>
 #include <spdlog/spdlog.h>
 
@@ -74,6 +77,42 @@ void* alloc_cpu(size_t nbytes) {
 
 void free_cpu(void* data) {
     free(data);
+}
+
+StatusOr<Buffer> TryAllocateAlignedCpuBuffer(size_t nbytes,
+                                             size_t alignment) noexcept try {
+    if (alignment == 0 || !IsValidAlignment(alignment) ||
+        alignment % sizeof(void*) != 0) {
+        return Status::InvalidArgument("CPU buffer alignment must be a non-zero "
+                                       "power of two and a multiple of sizeof(void*)");
+    }
+
+    void* data = nullptr;
+    const int rc = posix_memalign(&data, alignment, nbytes == 0 ? 1 : nbytes);
+    if (rc == EINVAL) {
+        return Status::InvalidArgument(
+                "CPU buffer alignment is invalid for posix_memalign");
+    }
+
+    if (rc == ENOMEM) {
+        return Status::ResourceExhausted({});
+    }
+
+    if (rc != 0) {
+        return Status::Internal(
+                "posix_memalign failed with an unexpected error");
+    }
+
+    if (data == nullptr) {
+        return Status::Internal(
+                "posix_memalign succeeded with a null pointer");
+    }
+
+    return Buffer{nbytes,
+                  MemoryHandle(data, nullptr, &cpu_buffer_deleter,
+                               Device::CPU(), alignment)};
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 Buffer CPUAllocator::Allocate(size_t nbytes) {

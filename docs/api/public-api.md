@@ -94,6 +94,16 @@
 | `RegisterBackendFactory` | `RuntimeBuilder& RegisterBackendFactory(DeviceType, std::unique_ptr<BackendFactory>)` | 注册后端工厂；所有权转移 |
 | `Build` | `Runtime Build()` | 装配 AllocatorRegistry + BackendRegistry + KVCacheManager 为 `Runtime` |
 
+### `TryAllocateAlignedCpuBuffer`（include/aethermind/memory/cpu_allocator.h）
+
+| 项 | 内容 |
+|---|---|
+| 签名 | `StatusOr<Buffer> TryAllocateAlignedCpuBuffer(size_t nbytes, size_t explicit_alignment) noexcept` |
+| 简介 | 创建一个由 `MemoryHandle` 管理、使用 `free` 释放的 aligned CPU `Buffer`；供 KV storage 与 CPU packed-weight storage 复用。 |
+| 对齐契约 | `explicit_alignment` 必须为非零、2 的幂且为 `sizeof(void*)` 的倍数；无效值返回 `kInvalidArgument`。 |
+| 零字节语义 | 返回 visible bytes 为 0 的有效 `Buffer`，实际申请 1 byte 以维持可释放的 owning handle。 |
+| 失败语义 | 系统分配失败或 Buffer/handle 元数据分配失败返回空 message 的 `kResourceExhausted`。该 helper 不采用 `CPUAllocator` 的 THP、junk-fill、异常或 fatal 策略，也不查询 Runtime 的 `Allocator`。 |
+
 ### `Executor::Execute`（include/aethermind/execution/executor.h）
 
 | 项 | 内容 |

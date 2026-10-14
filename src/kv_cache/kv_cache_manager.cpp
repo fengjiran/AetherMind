@@ -1,49 +1,20 @@
 #include "aethermind/kv_cache/kv_cache_manager.h"
-#include "aethermind/base/alignment.h"
+#include "aethermind/memory/cpu_allocator.h"
 #include "utils/overflow_check.h"
 
-#include <cstdlib>
 #include <limits>
 #include <new>
 
 namespace aethermind {
-namespace {
-
-void FreeAlignedMemory(void*, void* ptr) noexcept {
-    std::free(ptr);
-}
-
-StatusOr<Buffer> AllocateAlignedCpuBuffer(size_t nbytes, size_t alignment) {
-    if (!IsValidAlignment(alignment)) {
-        return Status::InvalidArgument(
-                "KV buffer alignment must be a non-zero power of two");
-    }
-
-    void* ptr = nullptr;
-    if (const int rc = posix_memalign(&ptr, alignment, nbytes == 0 ? 1 : nbytes);
-        rc != 0 || ptr == nullptr) {
-        return Status::ResourceExhausted("Failed to allocate aligned KV buffer");
-    }
-
-    try {
-        return Buffer{nbytes,
-                      MemoryHandle(ptr, nullptr, &FreeAlignedMemory,
-                                   Device::CPU(), alignment)};
-    } catch (const std::bad_alloc&) {
-        return Status::ResourceExhausted("Failed to allocate KV buffer metadata");
-    }
-}
-
-} // namespace
 
 Status KVCacheManager::AllocateStorage(size_t bytes_per_plane, size_t alignment) {
-    const StatusOr<Buffer> key_buffer = AllocateAlignedCpuBuffer(
+    const StatusOr<Buffer> key_buffer = TryAllocateAlignedCpuBuffer(
             bytes_per_plane, alignment);
     if (!key_buffer.ok()) {
         return key_buffer.status();
     }
 
-    const StatusOr<Buffer> value_buffer = AllocateAlignedCpuBuffer(
+    const StatusOr<Buffer> value_buffer = TryAllocateAlignedCpuBuffer(
             bytes_per_plane, alignment);
     if (!value_buffer.ok()) {
         return value_buffer.status();

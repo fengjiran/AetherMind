@@ -2,12 +2,12 @@
 #include "aethermind/backend/cpu/cpu_info.h"
 #include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/base/macros.h"
+#include "aethermind/memory/cpu_allocator.h"
 #include "backend/cpu/cpu_backend_internal.h"
 #include "utils/logging.h"
 #include "utils/overflow_check.h"
 
 #include <algorithm>
-#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -19,43 +19,6 @@
 
 namespace aethermind {
 namespace {
-
-void FreePackedCpuBuffer(void*, void* ptr) noexcept {
-    std::free(ptr);
-}
-
-StatusOr<Buffer> AllocateCpuPackedBuffer(size_t nbytes, size_t alignment) {
-    constexpr size_t kDefaultAlignment = 64;
-    const size_t effective_alignment = alignment == 0 ? kDefaultAlignment : alignment;
-    // posix_memalign requires a power-of-two alignment; any power of two at
-    // least sizeof(void*) is also a multiple of sizeof(void*), satisfying both
-    // constraints. Rejecting invalid values here keeps an EINVAL from being
-    // misreported as resource exhaustion.
-    if (effective_alignment < sizeof(void*) ||
-        (effective_alignment & (effective_alignment - 1)) != 0) {
-        return Status::InvalidArgument(
-                "Packed CPU weight alignment must be a power of two and at "
-                "least sizeof(void*)");
-    }
-
-    void* data = nullptr;
-    if (const int rc = posix_memalign(&data, effective_alignment, nbytes == 0 ? 1 : nbytes);
-        rc != 0 || data == nullptr) {
-        return Status::ResourceExhausted(
-                "Failed to allocate packed CPU weight storage");
-    }
-
-    try {
-        return Buffer{nbytes,
-                      MemoryHandle(data,
-                                   nullptr,
-                                   &FreePackedCpuBuffer,
-                                   Device::CPU(),
-                                   effective_alignment)};
-    } catch (const std::bad_alloc&) {
-        return Status::ResourceExhausted({});
-    }
-}
 
 class CpuPackedWeight final : public PackedWeight {
 public:
@@ -175,7 +138,7 @@ StatusOr<std::unique_ptr<PackedWeight>> PackIdentityWeights(
         // Preserve a stronger source alignment while satisfying the recipe.
         AM_ASSIGN_OR_RETURN(
                 Buffer packed_storage,
-                AllocateCpuPackedBuffer(
+                TryAllocateAlignedCpuBuffer(
                         packed_nbytes,
                         std::max(logical_weight.alignment(), recipe.alignment)));
         if (packed_nbytes > 0) {
@@ -243,7 +206,7 @@ StatusOr<std::unique_ptr<PackedWeight>> PackIdentityWeights(
     }
 
     AM_ASSIGN_OR_RETURN(Buffer packed_storage,
-                        AllocateCpuPackedBuffer(total_bytes, alignment));
+                        TryAllocateAlignedCpuBuffer(total_bytes, alignment));
 
     auto* out = static_cast<char*>(packed_storage.mutable_data());
     for (const auto& component: components) {
@@ -300,7 +263,7 @@ StatusOr<std::unique_ptr<PackedWeight>> PackBPanelF32Kc512Nr16Weights(
     AM_ASSIGN_OR_RETURN(const size_t packed_nbytes,
                         cpu::CpuBPanelF32Kc512Nr16PackedByteSize(total_rows, in_features));
     AM_ASSIGN_OR_RETURN(Buffer packed_storage,
-                        AllocateCpuPackedBuffer(packed_nbytes, alignment));
+                        TryAllocateAlignedCpuBuffer(packed_nbytes, alignment));
     if (packed_nbytes != 0) {
         std::memset(packed_storage.mutable_data(), 0, packed_nbytes);
         auto* const packed_data = static_cast<float*>(packed_storage.mutable_data());

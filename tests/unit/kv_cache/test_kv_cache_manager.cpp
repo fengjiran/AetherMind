@@ -115,6 +115,20 @@ TEST(KVCacheManager, InitAndReserveCreatesValidView) {
     EXPECT_GT(manager.total_bytes(), 0U);
 }
 
+TEST(KVCacheManager, InitRejectsAlignmentBelowPosixRequirementAndCanRetry) {
+    KVCacheManager manager;
+
+    const Status status = manager.Init(1, 1, 16, 8, MakeKVType(), sizeof(void*) / 2);
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_FALSE(manager.is_initialized());
+    EXPECT_EQ(manager.total_bytes(), 0U);
+    ASSERT_TRUE(manager.Init(1, 1, 16, 8, MakeKVType(), sizeof(void*)).ok());
+    auto view = manager.ReserveForSession(2, 2);
+    ASSERT_TRUE(view.ok());
+    EXPECT_TRUE(view->valid());
+}
+
 TEST(KVCacheManager, MoveBeforeBorrowingPreservesStorageForReservation) {
     KVCacheManager source;
     ASSERT_TRUE(source.Init(2, 4, 32, 16, MakeKVType(), 64).ok());

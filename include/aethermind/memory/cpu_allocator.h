@@ -1,8 +1,10 @@
 #ifndef AETHERMIND_CPU_ALLOCATOR_H
 #define AETHERMIND_CPU_ALLOCATOR_H
 
+#include "aethermind/base/status.h"
 #include "aethermind/memory/buffer.h"
 #include "allocator.h"
+
 #include <cstddef>
 
 namespace aethermind {
@@ -14,6 +16,20 @@ namespace aethermind {
 void* alloc_cpu(size_t nbytes);
 
 void free_cpu(void* data);
+
+/// @brief Allocates an owning CPU Buffer with an explicit alignment contract.
+///
+/// Unlike CPUAllocator::Allocate, this helper does not select a THP policy or
+/// initialize the allocation. It reports allocation and Buffer metadata
+/// failures through Status rather than exceptions.
+///
+/// @param nbytes Visible byte count. Zero creates a valid zero-byte Buffer.
+/// @param alignment Required non-zero power-of-two alignment that is also a
+///        multiple of sizeof(void*).
+/// @return An owning Buffer, or a status for an invalid alignment, allocation
+///         failure, unexpected posix_memalign failure, or metadata OOM.
+StatusOr<Buffer> TryAllocateAlignedCpuBuffer(
+        size_t nbytes, size_t alignment) noexcept;
 
 class CPUAllocator final : public Allocator {
 public:

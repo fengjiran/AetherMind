@@ -81,6 +81,7 @@ public:
         if (bytes == 0) {
             return Status::Ok();
         }
+
         if (!IsValidWorkspaceAlignment(alignment)) {
             return Status::InvalidArgument(
                     "InferenceSession plan has an invalid workspace alignment");
@@ -95,8 +96,7 @@ public:
         }
 
         storage_ = std::move(storage).value();
-        workspace_arena_.SetBuffer(
-                static_cast<std::byte*>(storage_.mutable_data()), bytes);
+        workspace_arena_.SetBuffer(storage_.mutable_data(), bytes);
         return Status::Ok();
     }
 
@@ -126,6 +126,7 @@ public:
                 .tensor = TensorView(tokens.data(), DataType::Int(64), shape, strides,
                                      alignof(int64_t)),
         });
+
         external.readable.push_back({
                 .value = {.index = position_input},
                 .tensor = TensorView(positions.data(), DataType::Int(64), shape, strides,
@@ -136,11 +137,13 @@ public:
         if (!prepared.ok()) {
             return prepared.status();
         }
+
         auto context = ExecutionContext::Create(
                 plan, std::move(*prepared), workspace_arena(), cache_view_);
         if (!context.ok()) {
             return context.status();
         }
+
         context_.emplace(std::move(*context));
         return Status::Ok();
     }
@@ -158,6 +161,7 @@ public:
         if (!has_reservation_) {
             return Status::Ok();
         }
+
         const Status status = manager_->ReleaseSession(cache_view_);
         if (status.ok()) {
             has_reservation_ = false;
@@ -222,11 +226,10 @@ StatusOr<uint32_t> ReadOutputToken(const ExecutionContext& context,
 
 } // namespace
 
-InferenceSession::InferenceSession(
-        Runtime& runtime,
-        std::shared_ptr<const ExecutableModel> model,
-        PhaseContract prefill_contract,
-        PhaseContract decode_contract) noexcept
+InferenceSession::InferenceSession(Runtime& runtime,
+                                   std::shared_ptr<const ExecutableModel> model,
+                                   PhaseContract prefill_contract,
+                                   PhaseContract decode_contract) noexcept
     : runtime_(&runtime),
       model_(std::move(model)),
       prefill_contract_(prefill_contract),

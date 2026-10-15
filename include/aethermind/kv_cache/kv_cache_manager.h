@@ -76,6 +76,7 @@ public:
     /// @return Status::Ok() on success. The next append must run Prefill again;
     ///         this does not preserve prompt KV for repeated Decode.
     Status ResetSession(KVCacheSessionView& view) noexcept;
+
     /// @brief Releases the active reservation and invalidates the view.
     ///
     /// @param view Active session view belonging to this manager; invalidated

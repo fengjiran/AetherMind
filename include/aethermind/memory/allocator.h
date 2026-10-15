@@ -122,7 +122,7 @@ struct AllocationStats {
     size_t live_allocations = 0;
     /// Highest `live_bytes` observed since the state was created.
     size_t peak_live_bytes = 0;
-    /// Allocations that completed successfully.
+    /// Buffers constructed and successfully committed to this ledger.
     size_t total_allocations = 0;
     /// Releases that returned capacity to the ledger.
     size_t total_releases = 0;
@@ -148,8 +148,8 @@ struct AllocationTagStats {
 ///
 /// Thread-safety: every entry point is safe to call concurrently. Distinct
 /// Buffer copies may be destroyed on different threads, so releases are
-/// synchronized with acquisitions. The mutex is held only to update counters;
-/// no system allocation or release runs under it.
+/// synchronized with acquisitions. Backing storage allocation and release run
+/// outside the mutex; inserting a first-seen tag may allocate counter metadata.
 class AllocationState {
 public:
     AllocationState() = default;
@@ -172,8 +172,7 @@ public:
     /// @brief Returns `bytes` charged to `tag`.
     ///
     /// Never inserts, so it cannot allocate; safe to call from a deleter.
-    /// A tag with no entry contributes nothing, which keeps a failed Acquire
-    /// from being double-counted.
+    /// @pre Matches a successful Acquire that has not already been released.
     void Release(size_t bytes, AllocationTag tag) noexcept;
 
     /// @brief Counts one storage-hook failure reported as ResourceExhausted.
@@ -225,8 +224,10 @@ public:
     ///         alignment that is not a power of two, ResourceExhausted with an
     ///         empty message when the system cannot satisfy the request or the
     ///         accounting record cannot be created, and whatever the storage
-    ///         hook reports otherwise. Every failure path releases storage it
-    ///         already obtained and leaves the ledger unchanged.
+    ///         hook reports otherwise. Invalid hook ownership, device, or
+    ///         alignment is reported as Internal. Every failure releases storage
+    ///         already obtained without updating successful-allocation counters
+    ///         or peaks; storage-hook exhaustion updates its failure counter.
     /// @note Does not throw; allocation failures arrive as a status.
     StatusOr<Buffer> TryAllocate(const AllocationRequest& request) noexcept;
 
@@ -268,8 +269,7 @@ protected:
     /// @param request Validated request. `alignment` may be zero, meaning the
     ///        implementation's default policy applies.
     /// @return An owning handle, or a status describing the failure.
-    AM_NODISCARD virtual StatusOr<MemoryHandle> AllocateStorage(
-            const AllocationRequest& request) = 0;
+    virtual StatusOr<MemoryHandle> AllocateStorage(const AllocationRequest& request) = 0;
 
 private:
     std::shared_ptr<AllocationState> state_;

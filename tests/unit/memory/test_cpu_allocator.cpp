@@ -12,6 +12,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <new>
@@ -169,6 +170,40 @@ TEST_F(AlignedCpuBuffer, MetadataFailureReleasesPayloadAndCanRetry) {
     ASSERT_TRUE(retry.ok()) << retry.status().ToString();
     EXPECT_TRUE(retry->is_initialized());
     EXPECT_EQ(retry->nbytes(), 128U);
+}
+
+// A fresh exec isolates both the cached THP environment gate and spdlog's
+// first logger initialization from every other test in the parent process.
+TEST(CPUAllocatorDeathTest, HugePageWarningOutOfMemoryReleasesStorage) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    ::testing::GTEST_FLAG(death_test_style) = "threadsafe";
+    EXPECT_EXIT(
+            {
+                if (setenv("THP_MEM_ALLOC_ENABLE", "1", 1) != 0) {
+                    std::_Exit(1);
+                }
+                constexpr size_t kBytes = 2 * 1024 * 1024;
+                CPUAllocator allocator(Device::CPU(),
+                                       {.junk_fill = false, .allow_thp = true});
+                test::ScopedHugePageAdviceFailure advice(kBytes);
+                test::ScopedMallocFailure failure(0, 0, true);
+                const auto allocation = allocator.TryAllocate(
+                        {.nbytes = kBytes, .alignment = 64});
+                const auto injection = failure.Stop();
+                const bool advice_failed = advice.Stop();
+                const auto stats = allocator.allocation_state()->Snapshot();
+                const bool recovered = advice_failed && injection.allocation_failed &&
+                                       injection.aligned_allocation_calls == 1 &&
+                                       injection.last_aligned_allocation_released &&
+                                       !allocation.ok() &&
+                                       allocation.status().code() == StatusCode::kResourceExhausted &&
+                                       allocation.status().message().empty() &&
+                                       stats.live_bytes == 0 && stats.total_allocations == 0;
+                std::_Exit(recovered ? 0 : 2);
+            },
+            ::testing::ExitedWithCode(0), "");
 }
 
 TEST_F(AlignedCpuBuffer, SharedBufferRemainsWritableAfterRuntimeDestruction) {
@@ -504,6 +539,237 @@ TEST(AllocationAccounting, CustomTagIdsStayOutOfTheReservedRange) {
     ASSERT_TRUE(allocation.ok()) << allocation.status().ToString();
     EXPECT_EQ(state->TagSnapshot(custom).live_bytes, 64U);
     EXPECT_EQ(state->TagSnapshot(AllocationTag::General()).live_bytes, 0U);
+}
+
+class AllocationMetadataFailure : public ::testing::TestWithParam<size_t> {};
+
+TEST_P(AllocationMetadataFailure, FailureDoesNotChangeSuccessfulCounters) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    auto state = AllocationState::Create();
+    CPUAllocator allocator(Device::CPU(), {}, state);
+    // Keep a smaller successful allocation alive. A failed larger request must
+    // preserve both its charge and the previously observed peak.
+    auto live = allocator.TryAllocate({.nbytes = 64});
+    ASSERT_TRUE(live.ok()) << live.status().ToString();
+    const AllocationStats before = state->Snapshot();
+    const AllocationTagStats tag_before = state->TagSnapshot(AllocationTag::General());
+
+    test::ScopedMallocFailure failure(0, GetParam(), true);
+    const auto failed = allocator.TryAllocate({.nbytes = 128, .alignment = 64});
+    const auto injection = failure.Stop();
+
+    EXPECT_TRUE(injection.allocation_failed);
+    EXPECT_EQ(injection.aligned_allocation_calls, 1U);
+    EXPECT_TRUE(injection.last_aligned_allocation_released);
+    EXPECT_FALSE(failed.ok());
+    EXPECT_EQ(failed.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_TRUE(failed.status().message().empty());
+    const auto after = state->Snapshot();
+    EXPECT_EQ(after.live_bytes, before.live_bytes);
+    EXPECT_EQ(after.live_allocations, before.live_allocations);
+    EXPECT_EQ(after.peak_live_bytes, before.peak_live_bytes);
+    EXPECT_EQ(after.total_allocations, before.total_allocations);
+    EXPECT_EQ(after.total_releases, before.total_releases);
+    EXPECT_EQ(after.system_allocation_failures, before.system_allocation_failures);
+    const auto tag_after = state->TagSnapshot(AllocationTag::General());
+    EXPECT_EQ(tag_after.live_bytes, tag_before.live_bytes);
+    EXPECT_EQ(tag_after.live_allocations, tag_before.live_allocations);
+    EXPECT_EQ(tag_after.peak_live_bytes, tag_before.peak_live_bytes);
+    EXPECT_EQ(tag_after.total_allocations, tag_before.total_allocations);
+
+    auto retry = allocator.TryAllocate({.nbytes = 128});
+    ASSERT_TRUE(retry.ok()) << retry.status().ToString();
+    EXPECT_EQ(state->Snapshot().live_bytes, 192U);
+    EXPECT_EQ(state->Snapshot().total_allocations, before.total_allocations + 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        MetadataStages, AllocationMetadataFailure, ::testing::Values(size_t{0}, size_t{1}),
+        [](const ::testing::TestParamInfo<size_t>& info) {
+            return info.param == 0 ? "ReleaseRecord" : "BufferMetadata";
+        });
+
+TEST(AllocationAccounting, FirstTagCounterFailureDoesNotCommitOrRefund) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    for (const size_t skipped_allocations: std::array<size_t, 2>{2, 3}) {
+        SCOPED_TRACE(skipped_allocations);
+        auto state = AllocationState::Create();
+        CPUAllocator allocator(Device::CPU(), {}, state);
+        // The first two malloc calls after the payload build its release record
+        // and Buffer metadata. The next two create the first tag node and buckets.
+        test::ScopedMallocFailure failure(0, skipped_allocations, true);
+        const auto failed = allocator.TryAllocate({.nbytes = 128, .alignment = 64});
+        const auto injection = failure.Stop();
+        EXPECT_TRUE(injection.allocation_failed);
+        EXPECT_TRUE(injection.last_aligned_allocation_released);
+        EXPECT_FALSE(failed.ok());
+        EXPECT_EQ(failed.status().code(), StatusCode::kResourceExhausted);
+        const auto after = state->Snapshot();
+        EXPECT_EQ(after.live_bytes, 0U);
+        EXPECT_EQ(after.live_allocations, 0U);
+        EXPECT_EQ(after.peak_live_bytes, 0U);
+        EXPECT_EQ(after.total_allocations, 0U);
+        EXPECT_EQ(after.total_releases, 0U);
+        EXPECT_EQ(state->TagSnapshot(AllocationTag::General()).total_allocations, 0U);
+
+        auto retry = allocator.TryAllocate({.nbytes = 128});
+        ASSERT_TRUE(retry.ok()) << retry.status().ToString();
+        EXPECT_EQ(state->Snapshot().total_allocations, 1U);
+    }
+}
+
+enum class StorageViolation {
+    kEmpty,
+    kNullDeleter,
+    kNoOpDeleter,
+    kWrongDevice,
+    kUndefinedDevice,
+    kZeroAlignment,
+    kNonPowerOfTwoAlignment,
+    kWeakAlignment,
+    kMisalignedPointer,
+};
+
+struct InvalidStorageCase {
+    const char* name;
+    StorageViolation violation;
+    bool owns_storage;
+};
+
+class InvalidStorageAllocator final : public Allocator {
+public:
+    InvalidStorageAllocator(StorageViolation violation, size_t& releases)
+        : Allocator(nullptr), violation_(violation), releases_(&releases) {}
+
+    Device device() const noexcept override { return Device::CPU(); }
+
+protected:
+    StatusOr<MemoryHandle> AllocateStorage(const AllocationRequest& request) override {
+        if (violation_ == StorageViolation::kEmpty) {
+            return MemoryHandle{};
+        }
+        if (violation_ == StorageViolation::kNullDeleter ||
+            violation_ == StorageViolation::kNoOpDeleter) {
+            return MemoryHandle(borrowed_.data(), nullptr,
+                                violation_ == StorageViolation::kNullDeleter
+                                        ? nullptr
+                                        : &NoOpMemoryDeleter,
+                                Device::CPU(), 64);
+        }
+
+        auto context = std::make_unique<StorageContext>();
+        context->releases = releases_;
+        if (posix_memalign(&context->base, 64, request.nbytes + 1) != 0) {
+            return Status::ResourceExhausted({});
+        }
+        void* data = context->base;
+        size_t alignment = 64;
+        Device storage_device = Device::CPU();
+        switch (violation_) {
+            case StorageViolation::kWrongDevice:
+                storage_device = Device(kCUDA, 0);
+                break;
+            case StorageViolation::kUndefinedDevice:
+                storage_device = Device(kUndefined);
+                break;
+            case StorageViolation::kZeroAlignment:
+                alignment = 0;
+                break;
+            case StorageViolation::kNonPowerOfTwoAlignment:
+                alignment = 24;
+                break;
+            case StorageViolation::kWeakAlignment:
+                alignment = sizeof(void*);
+                break;
+            case StorageViolation::kMisalignedPointer:
+                data = static_cast<std::byte*>(data) + 1;
+                break;
+            default:
+                break;
+        }
+        return MemoryHandle(data, context.release(), &ReleaseStorage,
+                            storage_device, alignment);
+    }
+
+private:
+    struct StorageContext {
+        void* base = nullptr;
+        size_t* releases = nullptr;
+    };
+
+    static void ReleaseStorage(void* context, void*) noexcept {
+        auto* owned = static_cast<StorageContext*>(context);
+        std::free(owned->base);
+        ++*owned->releases;
+        delete owned;
+    }
+
+    StorageViolation violation_;
+    size_t* releases_;
+    alignas(64) std::array<std::byte, 128> borrowed_{};
+};
+
+class AllocatorHookContract : public ::testing::TestWithParam<InvalidStorageCase> {};
+
+TEST_P(AllocatorHookContract, RejectsInvalidStorageWithoutCharging) {
+    const auto& test_case = GetParam();
+    size_t releases = 0;
+    InvalidStorageAllocator allocator(test_case.violation, releases);
+    const auto result = allocator.TryAllocate({.nbytes = 128, .alignment = 64});
+
+    EXPECT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInternal);
+    EXPECT_EQ(releases, test_case.owns_storage ? 1U : 0U);
+    const auto stats = allocator.allocation_state()->Snapshot();
+    EXPECT_EQ(stats.live_bytes, 0U);
+    EXPECT_EQ(stats.live_allocations, 0U);
+    EXPECT_EQ(stats.total_allocations, 0U);
+    EXPECT_EQ(stats.total_releases, 0U);
+    EXPECT_EQ(stats.peak_live_bytes, 0U);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        InvalidResults, AllocatorHookContract,
+        ::testing::Values(
+                InvalidStorageCase{"Empty", StorageViolation::kEmpty, false},
+                InvalidStorageCase{"NullDeleter", StorageViolation::kNullDeleter, false},
+                InvalidStorageCase{"NoOpDeleter", StorageViolation::kNoOpDeleter, false},
+                InvalidStorageCase{"WrongDevice", StorageViolation::kWrongDevice, true},
+                InvalidStorageCase{"UndefinedDevice", StorageViolation::kUndefinedDevice, true},
+                InvalidStorageCase{"ZeroAlignment", StorageViolation::kZeroAlignment, true},
+                InvalidStorageCase{"NonPowerOfTwoAlignment", StorageViolation::kNonPowerOfTwoAlignment, true},
+                InvalidStorageCase{"WeakAlignment", StorageViolation::kWeakAlignment, true},
+                InvalidStorageCase{"MisalignedPointer", StorageViolation::kMisalignedPointer, true}),
+        [](const ::testing::TestParamInfo<InvalidStorageCase>& info) { return info.param.name; });
+
+class IndependentStateProvider final : public AllocatorProvider {
+public:
+    std::unique_ptr<Allocator> CreateAllocator(
+            Device device, std::shared_ptr<AllocationState>) override {
+        return std::make_unique<CPUAllocator>(device);
+    }
+};
+
+TEST(AllocationAccounting, RegistryRejectsProviderWithAnIndependentLedger) {
+    AllocatorRegistry registry;
+    registry.SetProvider(DeviceType::kCPU, std::make_unique<IndependentStateProvider>());
+    const auto result = registry.TryGetAllocator(Device::CPU());
+
+    EXPECT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInternal);
+    EXPECT_EQ(registry.allocation_state()->Snapshot().total_allocations, 0U);
+
+    registry.SetProvider(DeviceType::kCPU, std::make_unique<CPUAllocatorProvider>());
+    auto retry = registry.TryGetAllocator(Device::CPU());
+    ASSERT_TRUE(retry.ok()) << retry.status().ToString();
+    EXPECT_EQ((*retry)->allocation_state(), registry.allocation_state());
+    auto buffer = (*retry)->TryAllocate({.nbytes = 128});
+    ASSERT_TRUE(buffer.ok()) << buffer.status().ToString();
+    EXPECT_EQ(registry.allocation_state()->Snapshot().live_bytes, 128U);
 }
 
 } // namespace

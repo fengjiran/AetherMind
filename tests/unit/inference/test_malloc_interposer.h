@@ -64,6 +64,25 @@ private:
     bool active_ = true;
 };
 
+/// @brief Fails one matching MADV_HUGEPAGE call on this thread.
+///
+/// Requires MallocInterposerAvailable(). Other advice and lengths are forwarded
+/// normally. Scopes must not nest.
+class ScopedHugePageAdviceFailure {
+public:
+    explicit ScopedHugePageAdviceFailure(size_t expected_bytes) noexcept;
+    ~ScopedHugePageAdviceFailure() noexcept;
+
+    ScopedHugePageAdviceFailure(const ScopedHugePageAdviceFailure&) = delete;
+    ScopedHugePageAdviceFailure& operator=(const ScopedHugePageAdviceFailure&) = delete;
+
+    /// @brief Stops injection and reports whether the matching call failed.
+    bool Stop() noexcept;
+
+private:
+    bool active_ = true;
+};
+
 } // namespace aethermind::test
 
 #endif

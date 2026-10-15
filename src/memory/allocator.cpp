@@ -14,7 +14,6 @@
 
 #include <format>
 #include <memory>
-#include <new>
 #include <utility>
 
 namespace aethermind {
@@ -32,6 +31,7 @@ struct ReleaseRecord {
     MemoryHandle storage;
     size_t charged_bytes = 0;
     AllocationTag tag{};
+    bool accounted = false;
 };
 
 /// @brief Frees the storage, then refunds the ledger, then destroys the record.
@@ -43,37 +43,11 @@ void ReleaseAccountedStorage(void* deleter_ctx, void* ptr) noexcept {
     UNUSED(ptr);
     auto* record = static_cast<ReleaseRecord*>(deleter_ctx);
     record->storage.reset();
-    record->state->Release(record->charged_bytes, record->tag);
+    if (record->accounted) {
+        record->state->Release(record->charged_bytes, record->tag);
+    }
     delete record;
 }
-
-/// @brief Refunds a charge unless the caller takes ownership of it.
-///
-/// Covers the window between charging the ledger and installing the record that
-/// will refund it, so a failure there cannot leak accounted capacity.
-class ChargeGuard {
-public:
-    ChargeGuard(AllocationState& state, size_t bytes, AllocationTag tag) noexcept
-        : state_(&state), bytes_(bytes), tag_(tag) {}
-
-    ~ChargeGuard() {
-        if (state_ != nullptr) {
-            state_->Release(bytes_, tag_);
-        }
-    }
-
-    ChargeGuard(const ChargeGuard&) = delete;
-    ChargeGuard& operator=(const ChargeGuard&) = delete;
-
-    void Dismiss() noexcept {
-        state_ = nullptr;
-    }
-
-private:
-    AllocationState* state_;
-    size_t bytes_;
-    AllocationTag tag_;
-};
 
 } // namespace
 
@@ -85,7 +59,8 @@ void AllocationState::Acquire(size_t bytes, AllocationTag tag) {
     const std::lock_guard<std::mutex> lock(mutex_);
     // Insert before touching any total: a first-seen tag is the only step that
     // can allocate, so doing it first keeps Acquire strongly exception-safe.
-    auto& [live_bytes, live_allocations, peak_live_bytes, total_allocations] = tags_[tag.id()];
+    auto& [live_bytes, live_allocations,
+           peak_live_bytes, total_allocations] = tags_[tag.id()];
     live_bytes += bytes;
     ++live_allocations;
     ++total_allocations;
@@ -153,28 +128,44 @@ StatusOr<Buffer> Allocator::TryAllocate(const AllocationRequest& request) noexce
                 "Allocator storage hook returned an empty handle");
     }
 
+    if (owned.deleter() == nullptr || owned.deleter() == &NoOpMemoryDeleter) {
+        return Status::Internal("Allocator storage hook returned borrowed memory");
+    }
+
+    const Device storage_device = owned.device();
+    const DeviceType type = storage_device.type();
+    if ((type != kCPU && type != kCUDA && type != kCANN) ||
+        storage_device != device()) {
+        return Status::Internal("Allocator storage hook returned an invalid or mismatched device");
+    }
+
+    const size_t alignment = owned.alignment();
+    if (!IsValidAlignment(alignment) || alignment < request.alignment) {
+        return Status::Internal("Allocator storage hook returned an invalid or insufficient alignment");
+    }
+    if (type == kCPU && reinterpret_cast<uintptr_t>(owned.get()) % alignment != 0) {
+        return Status::Internal("Allocator storage pointer does not satisfy its declared alignment");
+    }
+
     // Metadata first: the pointer, device, and declared alignment outlive the
     // move of `owned` into the release record.
     void* const data = owned.get();
-    const Device device = owned.device();
-    const size_t alignment = owned.alignment();
 
     // A zero-byte Buffer still reserves one byte from the system, so the ledger
     // reports what the process actually holds rather than the visible size.
     const size_t charged_bytes = request.nbytes == 0 ? 1 : request.nbytes;
 
-    state_->Acquire(charged_bytes, request.tag);
-    ChargeGuard guard{*state_, charged_bytes, request.tag};
     auto* record = new ReleaseRecord{state_, std::move(owned), charged_bytes,
                                      request.tag};
-    guard.Dismiss();
 
-    // If Buffer metadata allocation throws, the handle parameter is destroyed
-    // during unwinding, which runs the deleter: storage is freed and the charge
-    // is refunded.
-    return Buffer{request.nbytes,
-                  MemoryHandle(data, record, &ReleaseAccountedStorage, device,
-                               alignment)};
+    // The handle immediately owns the record. Until Acquire succeeds its
+    // deleter releases storage without refunding a charge that never existed.
+    Buffer buffer{request.nbytes,
+                  MemoryHandle(data, record, &ReleaseAccountedStorage,
+                               storage_device, alignment)};
+    state_->Acquire(charged_bytes, request.tag);
+    record->accounted = true;
+    return buffer;
 } catch (const std::bad_alloc&) {
     // Error diagnostics may allocate; reporting OOM must not allocate again.
     return Status::ResourceExhausted({});
@@ -192,6 +183,7 @@ Buffer Allocator::Allocate(size_t nbytes) {
     }
     AM_THROW(RuntimeError) << "Allocation of " << nbytes << " bytes failed: "
                            << status.ToString();
+    AM_UNREACHABLE();
 }
 
 void MemoryReportingInfoBase::reportOutOfMemory(int64_t alloc_size,
@@ -263,6 +255,10 @@ StatusOr<Allocator*> AllocatorRegistry::TryGetAllocator(Device device) {
         return Status::Internal(std::format(
                 "Created allocator device mismatch: expected {}, got {}",
                 device.ToString(), allocator->device().ToString()));
+    }
+    if (allocator->allocation_state() != state_) {
+        return Status::Internal(
+                "Allocator provider did not forward the registry allocation state");
     }
 
     auto [new_it, inserted] = instances_.emplace(device, std::move(allocator));

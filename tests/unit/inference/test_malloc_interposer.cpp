@@ -11,13 +11,20 @@
 // any test runs. Fall back to the inert stubs below so a TSAN build can still
 // run the rest of the suite; MallocInterposerAvailable() reports false there and
 // the injection tests skip themselves.
-#if defined(__SANITIZE_THREAD__) || \
-        (defined(__has_feature) && __has_feature(thread_sanitizer))
+#if defined(__SANITIZE_THREAD__)
 #define AETHERMIND_TEST_MALLOC_INTERPOSER_DISABLED 1
+#elif defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define AETHERMIND_TEST_MALLOC_INTERPOSER_DISABLED 1
+#endif
 #endif
 
 #if defined(__GLIBC__) && defined(__linux__) && \
         !defined(AETHERMIND_TEST_MALLOC_INTERPOSER_DISABLED)
+
+#include <sys/mman.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 
 extern "C" void* __libc_malloc(size_t size) noexcept;
 extern "C" void* __libc_calloc(size_t count, size_t size) noexcept;
@@ -49,6 +56,14 @@ struct MallocFailureState {
 
 constinit thread_local MallocFailureState g_malloc_failure{};
 
+struct HugePageAdviceFailureState {
+    bool enabled = false;
+    size_t expected_bytes = 0;
+    bool failed = false;
+};
+
+constinit thread_local HugePageAdviceFailureState g_advice_failure{};
+
 } // namespace
 
 bool MallocInterposerAvailable() noexcept {
@@ -78,6 +93,24 @@ MallocFailureResult ScopedMallocFailure::Stop() noexcept {
     const MallocFailureResult result = g_malloc_failure.result;
     g_malloc_failure = {};
     return result;
+}
+
+ScopedHugePageAdviceFailure::ScopedHugePageAdviceFailure(size_t expected_bytes) noexcept {
+    g_advice_failure = {.enabled = true, .expected_bytes = expected_bytes};
+}
+
+ScopedHugePageAdviceFailure::~ScopedHugePageAdviceFailure() noexcept {
+    Stop();
+}
+
+bool ScopedHugePageAdviceFailure::Stop() noexcept {
+    if (!active_) {
+        return false;
+    }
+    active_ = false;
+    const bool failed = g_advice_failure.failed;
+    g_advice_failure = {};
+    return failed;
 }
 
 void BeginMallocCallCounting() noexcept {
@@ -202,6 +235,17 @@ extern "C" void* memalign(size_t alignment, size_t size) noexcept {
     return __libc_memalign(alignment, size);
 }
 
+extern "C" int madvise(void* address, size_t length, int advice) noexcept {
+    auto& failure = aethermind::test::g_advice_failure;
+    if (failure.enabled && !failure.failed && advice == MADV_HUGEPAGE &&
+        length == failure.expected_bytes) {
+        failure.failed = true;
+        errno = EINVAL;
+        return -1;
+    }
+    return static_cast<int>(syscall(SYS_madvise, address, length, advice));
+}
+
 #else
 
 namespace aethermind::test {
@@ -217,6 +261,15 @@ ScopedMallocFailure::~ScopedMallocFailure() noexcept = default;
 MallocFailureResult ScopedMallocFailure::Stop() noexcept {
     active_ = false;
     return {};
+}
+
+ScopedHugePageAdviceFailure::ScopedHugePageAdviceFailure(size_t) noexcept {}
+
+ScopedHugePageAdviceFailure::~ScopedHugePageAdviceFailure() noexcept = default;
+
+bool ScopedHugePageAdviceFailure::Stop() noexcept {
+    active_ = false;
+    return false;
 }
 
 void BeginMallocCallCounting() noexcept {}

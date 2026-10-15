@@ -1,6 +1,7 @@
 #include "aethermind/execution/execution_bindings.h"
 
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/kernel_context.h"
 #include "aethermind/base/device.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/compiler/graph_lowering.h"
@@ -9,6 +10,7 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/graph/graph.h"
 #include "aethermind/memory/cpu_allocator.h"
+#include "aethermind/memory/memory_handle.h"
 #include "aethermind/model/resolved_model_weights.h"
 #include "aethermind/model/weight/packed_weight_collection.h"
 #include "aethermind/model/weight/weight_packing_request.h"
@@ -20,8 +22,10 @@
 #include "execution/test_tensor_buffer_helpers.h"
 #include "test_utils/test_allocator.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <gtest/gtest.h>
 #include <initializer_list>
 #include <memory>
@@ -42,6 +46,61 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dimensions) {
 
 TensorSpec FloatSpec(std::initializer_list<int64_t> dimensions) {
     return TensorSpec{.dtype = DataType::Float32(), .shape = StaticShape(dimensions)};
+}
+
+Status NoOpKernel(const KernelContext&) noexcept {
+    return Status::Ok();
+}
+
+void FreeStrongAlignedStorage(void*, void* ptr) noexcept {
+    std::free(ptr);
+}
+
+class StrongAlignedCpuAllocator final : public Allocator {
+public:
+    StrongAlignedCpuAllocator() : Allocator(nullptr) {}
+
+    AM_NODISCARD Device device() const noexcept override {
+        return Device::CPU();
+    }
+
+protected:
+    StatusOr<MemoryHandle> AllocateStorage(const AllocationRequest& request) override {
+        constexpr size_t kAlignment = 4096;
+        if (request.alignment > kAlignment) {
+            return Status::InvalidArgument("test allocator cannot meet requested alignment");
+        }
+
+        void* data = nullptr;
+        if (posix_memalign(&data, kAlignment, request.nbytes == 0 ? 1 : request.nbytes) != 0 ||
+            data == nullptr) {
+            return Status::ResourceExhausted({});
+        }
+        return MemoryHandle(data, nullptr, &FreeStrongAlignedStorage,
+                            Device::CPU(), kAlignment);
+    }
+};
+
+StatusOr<ExecutionPlan> MakeTwoActivationSoftmaxPlan() {
+    const TensorSpec spec = FloatSpec({17});
+    const ResolvedKernel kernel{.op_type = OpType::kSoftmax, .fn = &NoOpKernel};
+    return ExecutionPlan::Create(
+            {{.spec = spec, .kind = ExecutionValueKind::kModelInput},
+             {.spec = spec, .kind = ExecutionValueKind::kActivation},
+             {.spec = spec, .kind = ExecutionValueKind::kActivation}},
+            {{.index = 0}}, {{.index = 2}},
+            {{.selector = {.device_type = DeviceType::kCPU},
+              .kernel = kernel,
+              .inputs = {{.index = 0}},
+              .outputs = {{.index = 1}},
+              .kernel_input_ports = {0},
+              .kernel_output_ports = {0}},
+             {.selector = {.device_type = DeviceType::kCPU},
+              .kernel = kernel,
+              .inputs = {{.index = 1}},
+              .outputs = {{.index = 2}},
+              .kernel_input_ports = {0},
+              .kernel_output_ports = {0}}});
 }
 
 class FloatRawStorage final : public RawStorage {
@@ -331,6 +390,29 @@ TEST(ExternalReadRequirements, QueryAgreesWithPrepareExecutionBindings) {
         ASSERT_FALSE(rejected.ok()) << "dropping entry " << dropped << " was accepted";
         EXPECT_EQ(rejected.status().code(), StatusCode::kFailedPrecondition);
     }
+}
+
+TEST(PreparedExecutionBindings, DoesNotOverstateActivationSubviewAlignment) {
+    const auto plan = MakeTwoActivationSoftmaxPlan();
+    ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+
+    alignas(64) const std::array<float, 17> input{};
+    const std::array<int64_t, 1> shape{17};
+    const std::array<int64_t, 1> strides{1};
+    StrongAlignedCpuAllocator allocator;
+    const auto bindings = PrepareExecutionBindings(
+            *plan,
+            {.readable = {{.value = {.index = 0},
+                           .tensor = TensorView(input.data(), DataType::Float32(),
+                                                shape, strides, alignof(float))}}},
+            allocator);
+    ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
+
+    const auto values = bindings->values();
+    ASSERT_EQ(values.size(), 3U);
+    EXPECT_EQ(values[1].readable.alignment(), 64U);
+    EXPECT_EQ(values[2].readable.alignment(), 64U);
+    EXPECT_NE(reinterpret_cast<uintptr_t>(values[2].readable.data()) % 4096U, 0U);
 }
 
 } // namespace

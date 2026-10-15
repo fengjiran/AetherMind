@@ -29,7 +29,7 @@ void CpuBufferDeleter(void*, void* ptr) noexcept {
 
 bool IsThpAllocEnabled() {
     static const bool value = [] {
-        auto env = check_env("THP_MEM_ALLOC_ENABLE");
+        const auto env = check_env("THP_MEM_ALLOC_ENABLE");
         return env.has_value() ? env.value() != 0 : false;
     }();
     return value;
@@ -89,6 +89,9 @@ StatusOr<MemoryHandle> CPUAllocator::AllocateStorage(const AllocationRequest& re
                 "posix_memalign succeeded with a null pointer");
     }
 
+    // Advisory logging may allocate, so storage must already have an owner.
+    MemoryHandle storage(data, nullptr, &CpuBufferDeleter, device_, alignment);
+
     if (thp) {
 #ifdef __linux__
         if (madvise(data, bytes, MADV_HUGEPAGE) != 0) {
@@ -101,7 +104,7 @@ StatusOr<MemoryHandle> CPUAllocator::AllocateStorage(const AllocationRequest& re
         FillMemoryJunk(data, bytes);
     }
 
-    return MemoryHandle(data, nullptr, &CpuBufferDeleter, device_, alignment);
+    return storage;
 }
 
 Device CPUAllocator::device() const noexcept {

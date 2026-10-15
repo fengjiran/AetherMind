@@ -495,10 +495,13 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(const ExecutionPlan
         const auto& value = plan.values()[i];
         const auto& [shape, strides] = storage->metadata[i];
         auto* data = static_cast<std::byte*>(storage->act_storage.mutable_data()) + act_offsets[i];
+        // Individual arena offsets preserve only kActivationAlignment. A backing
+        // buffer may be more strongly aligned, but that does not extend to a
+        // subview whose offset is not a multiple of the stronger alignment.
         storage->values[i].readable = TensorView(data, value.spec.dtype, shape, strides,
-                                                 storage->act_storage.alignment());
+                                                 kActivationAlignment);
         storage->values[i].writable = MutableTensorView(data, value.spec.dtype, shape, strides,
-                                                        storage->act_storage.alignment());
+                                                        kActivationAlignment);
         storage->values[i].has_writable = true;
     }
 

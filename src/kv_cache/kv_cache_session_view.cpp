@@ -43,7 +43,8 @@ bool KVCacheSessionView::IsSessionAlive() const noexcept {
 }
 
 bool KVCacheSessionView::valid() const noexcept {
-    return layout_ != nullptr && storage_ != nullptr && storage_->is_initialized() && IsSessionAlive();
+    return layout_ != nullptr && storage_ != nullptr &&
+           storage_->is_initialized() && IsSessionAlive();
 }
 
 size_t KVCacheSessionView::max_tokens() const noexcept {
@@ -83,20 +84,24 @@ size_t KVCacheSessionView::prompt_len() const noexcept {
 }
 
 bool KVCacheSessionView::awaiting_prefill() const noexcept {
-    return valid() && session_state_->lifecycle == KVCacheSessionState::Lifecycle::kAwaitingPrefill;
+    return valid() && session_state_->lifecycle ==
+                              KVCacheSessionState::Lifecycle::kAwaitingPrefill;
 }
 
 Status KVCacheSessionView::ValidateBaseState() const noexcept try {
     if (layout_ == nullptr || storage_ == nullptr || session_state_ == nullptr) {
-        return Status::FailedPrecondition("KVCacheSessionView is not bound to manager-owned state");
+        return Status::FailedPrecondition(
+                "KVCacheSessionView is not bound to manager-owned state");
     }
 
     if (!storage_->is_initialized()) {
-        return Status::FailedPrecondition("KVCacheSessionView storage is not initialized");
+        return Status::FailedPrecondition(
+                "KVCacheSessionView storage is not initialized");
     }
 
     if (session_state_->generation != generation_) {
-        return Status::FailedPrecondition("KVCacheSessionView is stale or released");
+        return Status::FailedPrecondition(
+                "KVCacheSessionView is stale or released");
     }
 
     AM_RETURN_IF_ERROR(layout_->Validate());
@@ -104,27 +109,30 @@ Status KVCacheSessionView::ValidateBaseState() const noexcept try {
     if (session_state_->prompt_len == 0 ||
         session_state_->prompt_len > session_state_->capacity_tokens ||
         session_state_->capacity_tokens > layout_->max_tokens) {
-        return Status::FailedPrecondition("KVCacheSessionView has invalid session capacity");
+        return Status::FailedPrecondition(
+                "KVCacheSessionView has invalid session capacity");
     }
 
     switch (session_state_->lifecycle) {
         case KVCacheSessionState::Lifecycle::kAwaitingPrefill:
             if (session_state_->committed_tokens != 0) {
-                return Status::FailedPrecondition(
-                        "KVCacheSessionView awaiting Prefill must have zero committed tokens");
+                return Status::FailedPrecondition("KVCacheSessionView awaiting Prefill "
+                                                  "must have zero committed tokens");
             }
             break;
         case KVCacheSessionState::Lifecycle::kPrefillCommitted:
             if (session_state_->committed_tokens < session_state_->prompt_len ||
                 session_state_->committed_tokens > session_state_->capacity_tokens) {
-                return Status::FailedPrecondition(
-                        "KVCacheSessionView committed tokens violate the session reservation");
+                return Status::FailedPrecondition("KVCacheSessionView committed tokens "
+                                                  "violate the session reservation");
             }
             break;
         case KVCacheSessionState::Lifecycle::kIdle:
-            return Status::FailedPrecondition("KVCacheSessionView is not reserved");
+            return Status::FailedPrecondition(
+                    "KVCacheSessionView is not reserved");
         default:
-            return Status::FailedPrecondition("KVCacheSessionView has unknown lifecycle state");
+            return Status::FailedPrecondition(
+                    "KVCacheSessionView has unknown lifecycle state");
     }
 
     // The layout must fit the backing buffers; a mismatched pair would let
@@ -133,6 +141,7 @@ Status KVCacheSessionView::ValidateBaseState() const noexcept try {
     if (!bytes_per_plane.ok()) {
         return bytes_per_plane.status();
     }
+
     if (*bytes_per_plane > storage_->key_buffer.nbytes() ||
         *bytes_per_plane > storage_->value_buffer.nbytes()) {
         return Status::FailedPrecondition(
@@ -149,10 +158,14 @@ Status KVCacheSessionView::ValidateWrite(size_t layer_idx,
                                          size_t seq_pos,
                                          size_t token_count) const noexcept {
     AM_RETURN_IF_ERROR(ValidateBaseState());
-    AM_RETURN_IF_ERROR(ValidateIndexRange(layer_idx, layout_->num_layers, "layer"));
-    AM_RETURN_IF_ERROR(ValidateIndexRange(kv_head_idx, layout_->num_kv_heads, "kv_head"));
+    AM_RETURN_IF_ERROR(ValidateIndexRange(
+            layer_idx, layout_->num_layers, "layer"));
+    AM_RETURN_IF_ERROR(ValidateIndexRange(
+            kv_head_idx, layout_->num_kv_heads, "kv_head"));
+
     if (token_count == 0) {
-        return Status::InvalidArgument("KV write token_count must be non-zero");
+        return Status::InvalidArgument(
+                "KV write token_count must be non-zero");
     }
 
     size_t seq_end = 0;
@@ -161,11 +174,13 @@ Status KVCacheSessionView::ValidateWrite(size_t layer_idx,
     }
 
     if (seq_end > session_state_->capacity_tokens) {
-        return Status::OutOfRange("KV write exceeds reserved session token capacity");
+        return Status::OutOfRange(
+                "KV write exceeds reserved session token capacity");
     }
 
     if (seq_end > layout_->max_tokens) {
-        return Status::OutOfRange("KV write exceeds physical KV capacity");
+        return Status::OutOfRange(
+                "KV write exceeds physical KV capacity");
     }
 
     return Status::Ok();
@@ -176,11 +191,15 @@ Status KVCacheSessionView::ValidateRead(size_t layer_idx,
                                         size_t seq_begin,
                                         size_t seq_end) const noexcept {
     AM_RETURN_IF_ERROR(ValidateBaseState());
-    AM_RETURN_IF_ERROR(ValidateIndexRange(layer_idx, layout_->num_layers, "layer"));
-    AM_RETURN_IF_ERROR(ValidateIndexRange(kv_head_idx, layout_->num_kv_heads, "kv_head"));
+    AM_RETURN_IF_ERROR(ValidateIndexRange(
+            layer_idx, layout_->num_layers, "layer"));
+    AM_RETURN_IF_ERROR(ValidateIndexRange(
+            kv_head_idx, layout_->num_kv_heads, "kv_head"));
+
     if (seq_begin > seq_end) {
         return Status::InvalidArgument("KV read seq_begin must be <= seq_end");
     }
+
     if (seq_end > session_state_->committed_tokens) {
         return Status::OutOfRange("KV read exceeds committed token range");
     }
@@ -190,16 +209,22 @@ Status KVCacheSessionView::ValidateRead(size_t layer_idx,
 StatusOr<KVCacheLayerStorageBinding> KVCacheSessionView::BindLayerStorage(
         size_t layer_idx) const noexcept {
     AM_RETURN_IF_ERROR(ValidateBaseState());
-    AM_RETURN_IF_ERROR(ValidateIndexRange(layer_idx, layout_->num_layers, "layer"));
+    AM_RETURN_IF_ERROR(ValidateIndexRange(
+            layer_idx, layout_->num_layers, "layer"));
+
     if (layer_idx > std::numeric_limits<uint32_t>::max()) {
-        return Status::OutOfRange("KV layer index exceeds kernel binding range");
+        return Status::OutOfRange(
+                "KV layer index exceeds kernel binding range");
     }
 
-    const auto key_offset = layout_->Offset(layer_idx, 0, 0, 0);
+    const auto key_offset = layout_->Offset(
+            layer_idx, 0, 0, 0);
     if (!key_offset.ok()) {
         return key_offset.status();
     }
-    const auto value_offset = layout_->Offset(layer_idx, 0, 0, 0);
+
+    const auto value_offset = layout_->Offset(
+            layer_idx, 0, 0, 0);
     if (!value_offset.ok()) {
         return value_offset.status();
     }
@@ -207,7 +232,8 @@ StatusOr<KVCacheLayerStorageBinding> KVCacheSessionView::BindLayerStorage(
     auto* const key_base = static_cast<std::byte*>(storage_->key_buffer.mutable_data());
     auto* const value_base = static_cast<std::byte*>(storage_->value_buffer.mutable_data());
     if (key_base == nullptr || value_base == nullptr) {
-        return Status::FailedPrecondition("KVCacheSessionView storage has a null backing pointer");
+        return Status::FailedPrecondition(
+                "KVCacheSessionView storage has a null backing pointer");
     }
 
     return KVCacheLayerStorageBinding{
@@ -230,14 +256,20 @@ StatusOr<KVCacheAppendBinding> KVCacheSessionView::BindLayerForAppend(
         return Status::InvalidArgument(
                 "KV append begin must equal the committed token position");
     }
+
     if (end <= begin) {
-        return Status::InvalidArgument("KV append end must be greater than begin");
+        return Status::InvalidArgument(
+                "KV append end must be greater than begin");
     }
+
     if (end > session_state_->capacity_tokens) {
-        return Status::OutOfRange("KV append exceeds reserved session token capacity");
+        return Status::OutOfRange(
+                "KV append exceeds reserved session token capacity");
     }
+
     if (end > layout_->max_tokens) {
-        return Status::OutOfRange("KV append exceeds physical KV capacity");
+        return Status::OutOfRange(
+                "KV append exceeds physical KV capacity");
     }
 
     AM_ASSIGN_OR_RETURN(KVCacheLayerStorageBinding storage, BindLayerStorage(layer_idx));
@@ -251,14 +283,20 @@ StatusOr<KVCacheReadBinding> KVCacheSessionView::BindLayerForRead(
         return Status::InvalidArgument(
                 "KV read committed_end must equal the current commit position");
     }
+
     if (visible_end < committed_end) {
-        return Status::InvalidArgument("KV read visible_end must not precede committed_end");
+        return Status::InvalidArgument(
+                "KV read visible_end must not precede committed_end");
     }
+
     if (visible_end > session_state_->capacity_tokens) {
-        return Status::OutOfRange("KV read visible range exceeds reserved session token capacity");
+        return Status::OutOfRange(
+                "KV read visible range exceeds reserved session token capacity");
     }
+
     if (visible_end > layout_->max_tokens) {
-        return Status::OutOfRange("KV read visible range exceeds physical KV capacity");
+        return Status::OutOfRange(
+                "KV read visible range exceeds physical KV capacity");
     }
 
     AM_ASSIGN_OR_RETURN(KVCacheLayerStorageBinding storage, BindLayerStorage(layer_idx));
@@ -280,7 +318,7 @@ StatusOr<size_t> KVCacheSessionView::Offset(size_t layer_idx,
 StatusOr<void*> KVCacheSessionView::MutableKeyData(size_t layer_idx,
                                                    size_t kv_head_idx,
                                                    size_t seq_pos,
-                                                   size_t dim_idx) noexcept {
+                                                   size_t dim_idx) const noexcept {
     AM_RETURN_IF_ERROR(ValidateWrite(layer_idx, kv_head_idx, seq_pos, 1));
     const StatusOr<size_t> offset = Offset(layer_idx, kv_head_idx, seq_pos, dim_idx);
     if (!offset.ok()) {
@@ -292,7 +330,7 @@ StatusOr<void*> KVCacheSessionView::MutableKeyData(size_t layer_idx,
 StatusOr<void*> KVCacheSessionView::MutableValueData(size_t layer_idx,
                                                      size_t kv_head_idx,
                                                      size_t seq_pos,
-                                                     size_t dim_idx) noexcept {
+                                                     size_t dim_idx) const noexcept {
     AM_RETURN_IF_ERROR(ValidateWrite(layer_idx, kv_head_idx, seq_pos, 1));
     const StatusOr<size_t> offset = Offset(layer_idx, kv_head_idx, seq_pos, dim_idx);
     if (!offset.ok()) {
@@ -325,19 +363,26 @@ StatusOr<const void*> KVCacheSessionView::ValueData(size_t layer_idx,
     return static_cast<const std::byte*>(storage_->value_buffer.data()) + offset.value();
 }
 
-Status KVCacheSessionView::CommitAppend(size_t begin, size_t end) noexcept try {
+Status KVCacheSessionView::CommitAppend(size_t begin, size_t end) const noexcept try {
     AM_RETURN_IF_ERROR(ValidateBaseState());
     if (begin != session_state_->committed_tokens) {
-        return Status::InvalidArgument("KV append commit must begin at the committed position");
+        return Status::InvalidArgument(
+                "KV append commit must begin at the committed position");
     }
+
     if (end <= begin) {
-        return Status::InvalidArgument("KV append commit range must be non-empty");
+        return Status::InvalidArgument(
+                "KV append commit range must be non-empty");
     }
+
     if (end > session_state_->capacity_tokens) {
-        return Status::OutOfRange("KV append commit exceeds reserved session capacity");
+        return Status::OutOfRange(
+                "KV append commit exceeds reserved session capacity");
     }
+
     if (end > layout_->max_tokens) {
-        return Status::OutOfRange("KV append commit exceeds physical KV capacity");
+        return Status::OutOfRange(
+                "KV append commit exceeds physical KV capacity");
     }
 
     KVCacheSessionState::Lifecycle next_lifecycle{};
@@ -347,18 +392,22 @@ Status KVCacheSessionView::CommitAppend(size_t begin, size_t end) noexcept try {
                 return Status::FailedPrecondition(
                         "KV initial commit must complete the reserved Prefill range");
             }
+
             next_lifecycle = KVCacheSessionState::Lifecycle::kPrefillCommitted;
             break;
         case KVCacheSessionState::Lifecycle::kPrefillCommitted:
             if (end - begin != 1) {
-                return Status::InvalidArgument("KV Decode commit must append exactly one token");
+                return Status::InvalidArgument(
+                        "KV Decode commit must append exactly one token");
             }
             next_lifecycle = KVCacheSessionState::Lifecycle::kPrefillCommitted;
             break;
         case KVCacheSessionState::Lifecycle::kIdle:
-            return Status::FailedPrecondition("KV append commit requires an active session");
+            return Status::FailedPrecondition(
+                    "KV append commit requires an active session");
         default:
-            return Status::FailedPrecondition("KV append commit has unknown lifecycle state");
+            return Status::FailedPrecondition(
+                    "KV append commit has unknown lifecycle state");
     }
 
     session_state_->committed_tokens = end;

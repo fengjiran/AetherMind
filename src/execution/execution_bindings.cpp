@@ -480,8 +480,7 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(const ExecutionPlan
     // return stronger and every offset stays valid.
     const auto act_storage = act_allocator.TryAllocate(
             {.nbytes = act_bytes,
-             .alignment = kActivationAlignment,
-             .tag = AllocationTag::Activation()});
+             .alignment = kActivationAlignment});
     if (!act_storage.ok()) {
         return act_storage.status();
     }

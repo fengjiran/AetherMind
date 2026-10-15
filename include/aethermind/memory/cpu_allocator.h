@@ -26,7 +26,7 @@ struct CPUAllocatorPolicy {
     bool allow_thp = true;
 };
 
-/// @brief Allocates owning CPU storage through the counted allocation entry point.
+/// @brief Allocates owning CPU storage through the validated allocation entry point.
 ///
 /// Storage comes from posix_memalign, so a Buffer always satisfies the
 /// alignment its handle declares.
@@ -35,10 +35,8 @@ public:
     /// @param device CPU device this allocator reports.
     /// @param policy Storage policy. Defaults preserve the historical behavior
     ///        of junk filling and env-gated THP.
-    /// @param state Ledger to charge, or null to create a private one.
     explicit CPUAllocator(Device device,
-                          CPUAllocatorPolicy policy = {},
-                          std::shared_ptr<AllocationState> state = nullptr);
+                          CPUAllocatorPolicy policy = {});
 
     AM_NODISCARD Device device() const noexcept override;
 
@@ -64,8 +62,7 @@ private:
 
 class CPUAllocatorProvider final : public AllocatorProvider {
 public:
-    std::unique_ptr<Allocator> CreateAllocator(
-            Device device, std::shared_ptr<AllocationState> state) override;
+    std::unique_ptr<Allocator> CreateAllocator(Device device) override;
 };
 
 } // namespace aethermind

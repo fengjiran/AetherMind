@@ -82,8 +82,7 @@ public:
     /// optional, and the default returns Unimplemented.
     ///
     /// Artifact storage must come from `allocator` rather than a device-specific
-    /// allocation primitive, so packed weights charge the caller's ledger like
-    /// every other managed storage. The backend borrows it for this call only
+    /// allocation primitive, so packed weights follow the caller's storage policy. The backend borrows it for this call only
     /// and must not retain it; the returned artifact's Buffer stays valid after
     /// the allocator is destroyed.
     ///

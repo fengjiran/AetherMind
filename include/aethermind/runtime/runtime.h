@@ -57,17 +57,6 @@ public:
         return allocator_registry_.HasProvider(type);
     }
 
-    /// @brief Returns the ledger shared by every allocator this Runtime creates.
-    ///
-    /// All CPU allocator instances charge this one state, including instances
-    /// created after a provider is replaced, so Buffers that outlive their
-    /// allocator still refund the ledger reported here. The state stays alive
-    /// as long as any such Buffer does, but this accessor stops being usable
-    /// once the Runtime is destroyed.
-    AM_NODISCARD const std::shared_ptr<AllocationState>& allocation_state() const noexcept {
-        return allocator_registry_.allocation_state();
-    }
-
     /// @brief Returns the backend for a device type, creating it on first use.
     ///
     /// @param type Device type to look up.

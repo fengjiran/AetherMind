@@ -97,7 +97,7 @@ private:
     AllocatorRegistry BuildAllocatorRegistry();
     BackendRegistry BuildBackendRegistry();
     /// @brief Initializes the KV cache manager, allocating its planes through
-    ///        `allocator_registry` so they charge the Runtime's ledger.
+    ///        `allocator_registry` so they follow the Runtime's allocation policy.
     StatusOr<KVCacheManager> TryBuildKVCacheManager(AllocatorRegistry& allocator_registry);
 };
 

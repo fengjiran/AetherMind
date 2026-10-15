@@ -4,8 +4,7 @@
 namespace aethermind {
 
 std::unique_ptr<Allocator> CUDAAllocatorProvider::CreateAllocator(
-        Device device, std::shared_ptr<AllocationState> state) {
-    UNUSED(state);
+        Device device) {
     AM_CHECK(false, "CUDA allocator is not implemented in this build configuration. "
                     "Device: {}",
              device.ToString().c_str());

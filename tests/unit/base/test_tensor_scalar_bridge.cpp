@@ -14,7 +14,7 @@ using namespace aethermind::test_utils;
 
 inline Allocator& GetCPUAllocator() {
     static CPUAllocatorProvider provider;
-    static std::unique_ptr<Allocator> alloc = provider.CreateAllocator(Device::CPU(), nullptr);
+    static std::unique_ptr<Allocator> alloc = provider.CreateAllocator(Device::CPU());
     return *alloc;
 }
 

@@ -33,8 +33,7 @@ RuntimeOptions MakeKvOptions() {
 
 class StubAllocator final : public Allocator {
 public:
-    StubAllocator(Device device, std::shared_ptr<AllocationState> state)
-        : Allocator(std::move(state)), device_(device) {}
+    explicit StubAllocator(Device device) : device_(device) {}
 
     AM_NODISCARD Device device() const noexcept override {
         return device_;
@@ -52,9 +51,8 @@ private:
 
 class StubAllocatorProvider final : public AllocatorProvider {
 public:
-    std::unique_ptr<Allocator> CreateAllocator(
-            Device device, std::shared_ptr<AllocationState> state) override {
-        return std::make_unique<StubAllocator>(device, std::move(state));
+    std::unique_ptr<Allocator> CreateAllocator(Device device) override {
+        return std::make_unique<StubAllocator>(device);
     }
 };
 
@@ -79,14 +77,6 @@ RuntimeOptions MakeEmptyRuntimeOptions() {
     options.kv_cache.enable_manager = false;
     return options;
 }
-
-/// @brief Mallocs TryBuild performs before transferring a pending registration.
-///
-/// AllocatorRegistry's constructor creates the shared AllocationState, costing
-/// one allocation for the object and one for the shared_ptr control block. The
-/// transfer's own registry node insert therefore comes third. The assertions in
-/// the tests below fail loudly if that ever drifts.
-constexpr size_t kMallocsBeforeRegistrationTransfer = 2;
 
 } // namespace
 
@@ -183,7 +173,7 @@ TEST(RuntimeBuilderTryBuild, AllocatorProviderTransferOutOfMemoryStaysReusable) 
             DeviceType::kCUDA, std::make_unique<StubAllocatorProvider>());
 
     {
-        test::ScopedMallocFailure failure(0, kMallocsBeforeRegistrationTransfer,
+        test::ScopedMallocFailure failure(0, 0,
                                           false,
                                           test::MallocFailureTarget::kMalloc);
         const auto first = builder.TryBuild();
@@ -213,7 +203,7 @@ TEST(RuntimeBuilderTryBuild, BackendFactoryTransferOutOfMemoryStaysReusable) {
                                    std::make_unique<StubBackendFactory>());
 
     {
-        test::ScopedMallocFailure failure(0, kMallocsBeforeRegistrationTransfer,
+        test::ScopedMallocFailure failure(0, 0,
                                           false,
                                           test::MallocFailureTarget::kMalloc);
         const auto first = builder.TryBuild();

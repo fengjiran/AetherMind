@@ -68,7 +68,7 @@ void FreeCountingStorage(void*, void* ptr) noexcept {
 
 class CountingAllocator final : public Allocator {
 public:
-    CountingAllocator() : Allocator(nullptr) {}
+    CountingAllocator() = default;
 
     AM_NODISCARD StatusOr<MemoryHandle> AllocateStorage(
             const AllocationRequest& request) override {

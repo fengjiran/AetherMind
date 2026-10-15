@@ -58,7 +58,7 @@ void FreeStrongAlignedStorage(void*, void* ptr) noexcept {
 
 class StrongAlignedCpuAllocator final : public Allocator {
 public:
-    StrongAlignedCpuAllocator() : Allocator(nullptr) {}
+    StrongAlignedCpuAllocator() = default;
 
     AM_NODISCARD Device device() const noexcept override {
         return Device::CPU();

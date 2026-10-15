@@ -11,8 +11,8 @@ namespace aethermind::test {
 ///
 /// Shared so a test does not have to construct one, and deliberately
 /// long-lived: every Buffer taken from it is released before the allocator dies.
-/// A test that needs to observe release-after-destruction, inspect ledger
-/// counters, or control CPUAllocatorPolicy must construct its own CPUAllocator
+/// A test that needs to observe release-after-destruction or control
+/// CPUAllocatorPolicy must construct its own CPUAllocator
 /// instead of using this one.
 inline Allocator& TestCpuAllocator() {
     static CPUAllocator allocator(Device::CPU());

@@ -35,8 +35,7 @@ public:
 
     /// @brief (Re)initializes the cache with the given geometry.
     ///
-    /// Both key and value planes are allocated through `allocator`, so they
-    /// charge the ledger that allocator reports. The allocator is borrowed only
+    /// Both key and value planes follow `allocator` storage policy. It is borrowed only
     /// for the duration of this call; the manager keeps no reference to it, and
     /// the resulting Buffers stay valid after the allocator is destroyed.
     ///
@@ -97,7 +96,7 @@ private:
     /// @brief Allocates the key and value backing buffers for one plane.
     ///
     /// Both planes are held in locals until both allocations succeed, so a
-    /// failure releases the first one and refunds its charge.
+    /// failure releases the first one.
     ///
     /// @param allocator Source of the plane storage.
     /// @param bytes_per_plane Bytes per key/value plane.

@@ -329,7 +329,7 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
                         inference::internal::ResolveWeightPackingRequests(
                                 **backend, std::move(*requests), device));
     // Packed artifacts are managed storage, so they are allocated through the
-    // Runtime's allocator and charge its ledger like every other class.
+    // Runtime's allocator and follow its storage policy.
     AM_ASSIGN_OR_RETURN(Allocator * pack_allocator,
                         runtime.TryGetAllocator(Device(device)));
     AM_ASSIGN_OR_RETURN(PackedWeightCollection packed_weights,

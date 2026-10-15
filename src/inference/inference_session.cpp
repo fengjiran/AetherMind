@@ -89,8 +89,7 @@ public:
         // The plan's alignment is a floor: the allocator may return stronger,
         // and every planned offset stays valid against a stronger base.
         auto storage = allocator.TryAllocate({.nbytes = bytes,
-                                              .alignment = alignment,
-                                              .tag = AllocationTag::Workspace()});
+                                              .alignment = alignment});
         if (!storage.ok()) {
             return storage.status();
         }

@@ -12,7 +12,6 @@
 #include <cerrno>
 #include <cstdlib>
 #include <spdlog/spdlog.h>
-#include <utility>
 
 #if defined(__linux__) || defined(__APPLE__)
 #include <sys/mman.h>
@@ -50,9 +49,8 @@ bool ThpApplies(const CPUAllocatorPolicy& policy, size_t bytes) {
 } // namespace
 
 CPUAllocator::CPUAllocator(Device device,
-                           CPUAllocatorPolicy policy,
-                           std::shared_ptr<AllocationState> state)
-    : Allocator(std::move(state)), device_(device), policy_(policy) {}
+                           CPUAllocatorPolicy policy)
+    : device_(device), policy_(policy) {}
 
 StatusOr<MemoryHandle> CPUAllocator::AllocateStorage(const AllocationRequest& request) {
     // A zero-byte Buffer still needs a distinct, freeable pointer.
@@ -111,11 +109,10 @@ Device CPUAllocator::device() const noexcept {
     return device_;
 }
 
-std::unique_ptr<Allocator> CPUAllocatorProvider::CreateAllocator(
-        Device device, std::shared_ptr<AllocationState> state) {
-    AM_CHECK(device.type() == DeviceType::kCPU, "CPUAllocatorProvider only supports CPU devices.");
-    return std::make_unique<CPUAllocator>(device, CPUAllocatorPolicy{},
-                                          std::move(state));
+std::unique_ptr<Allocator> CPUAllocatorProvider::CreateAllocator(Device device) {
+    AM_CHECK(device.type() == DeviceType::kCPU,
+             "CPUAllocatorProvider only supports CPU devices.");
+    return std::make_unique<CPUAllocator>(device);
 }
 
 } // namespace aethermind

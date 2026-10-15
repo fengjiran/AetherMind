@@ -100,11 +100,11 @@
 | 项 | 内容 |
 |---|---|
 | 签名 | `StatusOr<Buffer> TryAllocate(const AllocationRequest& request) noexcept` |
-| 简介 | 受管 backing storage 的唯一分配入口。基类以 NVI 实现：校验请求 → 调用派生类的 protected `AllocateStorage` hook → 校验返回的 ownership、device 和 alignment → 完成计费记录及 `Buffer` 构造 → 提交计账。KV storage、packed weights、workspace 与 activation 四类存储都经此入口，派生类因此无需各自记账。 |
-| 请求契约 | `AllocationRequest{nbytes, alignment, tag}`。`nbytes` 是 `Buffer` 的可见大小，布局 padding 由资源所属模块计入这个值。`alignment == 0` 使用 allocator 默认策略；非零值必须为 2 的幂，且表示**最低**对齐而非精确对齐——返回的 `Buffer` 可能声明更强对齐，调用方必须读取实际值。CPU 实现会把弱于 `sizeof(void*)` 的请求提升而不是拒绝。`tag` 为不透明分类标签，仅用于统计，不携带模型/graph/kernel 对象。 |
-| 计账与生命周期 | 成功分配按 `max(nbytes, 1)` 计入共享 `AllocationState`（零字节 `Buffer` 仍向系统申请 1 byte）。只有完整构造成功后才提交成功计数和峰值。计费记录由 `MemoryHandle` 的 deleter 拥有并强持 `AllocationState`，不借用 `Allocator*` 或 `Runtime*`，因此 allocator 实例或 provider 被销毁后，存活的 `Buffer` 仍能安全释放并正确退还。共享同一 `BufferImpl` 的多个副本只在最终释放时退还一次；deleter 先释放底层存储再退还额度，且全程不分配、不抛出。Registry 会拒绝未转发其共享状态的 provider 产物，避免 Runtime 账本漏记。 |
-| 失败语义 | 非零且非 2 的幂的 alignment 返回 `kInvalidArgument`，且校验先于任何分配；hook 返回借用内存、错误 device、无效或不足的 alignment、CPU 指针不满足声明对齐时返回 `kInternal`。系统分配失败或计账/Buffer 元数据分配失败返回空 message 的 `kResourceExhausted`；失败路径释放已取得的 owning storage，不改变存活量、成功次数、释放次数或峰值。hook 返回 `kResourceExhausted` 时增加系统失败计数。`Allocate(size_t)` 保留为 wrapper，内部转调本入口，把 `kResourceExhausted` 映射为 `std::bad_alloc`，其余映射为 `Error`，因此无法绕过计账。 |
-| 统计边界 | `AllocationState` 只覆盖受管 backing storage 的申请量，不含 mmap raw weights、普通 STL 分配、`BufferImpl` 与计费记录本身、libc 内部开销。**这不是进程 RSS 上限，也不能单独证明满足 PRD 的总内存目标。** 当前只统计不拒绝，预算强制属于后续阶段。 |
+| 简介 | 统一的 owning storage 分配入口。基类以 NVI 实现：校验请求 → 调用派生类 protected `AllocateStorage` hook → 校验 ownership、device 和 alignment → 将原始 `MemoryHandle` 直接移入 `Buffer`。KV、packed weights、workspace 与 activation 均接受 Runtime 配置的 allocator 策略。 |
+| 请求契约 | `AllocationRequest{nbytes, alignment}`。`nbytes` 为可见大小，布局 padding 由所属模块计入。零字节请求仍产生有效 owning `Buffer`，CPU 实际申请至少 1 byte。`alignment == 0` 使用默认策略；非零值须为 2 的幂，表示最低对齐。返回值可以更强，子视图需按自身 offset 确定对齐保证。CPU 会提升弱于 `sizeof(void*)` 的对齐。 |
+| 生命周期 | `BufferImpl` 直接持有 allocator 返回的原始 `MemoryHandle`。自定义 deleter 及其 context 必须独立维持所需资源的生命周期，不能借用会提前销毁的 allocator。共享副本在最后一个 owner 释放时执行一次原始 deleter；Buffer 可晚于 allocator、Runtime 或被替换的 provider 销毁。 |
+| 失败语义 | 非零且非 2 的幂的 alignment 返回 `kInvalidArgument`；hook 返回借用内存、错误 device、无效或不足的 alignment，或 CPU 指针不满足声明对齐时返回 `kInternal`。存储或 `BufferImpl` 元数据 OOM 返回空 message 的 `kResourceExhausted`，已有 owning storage 自动释放。`Allocate(size_t)` 转调本入口，将 `kResourceExhausted` 映射为 `std::bad_alloc`，其余错误映射为 `Error`。 |
+| 扩展点 | `AllocatorProvider::CreateAllocator(Device)` 只创建对应设备的 allocator；`CPUAllocator(Device, CPUAllocatorPolicy)` 控制默认对齐、junk fill 和 THP。当前不附带分类标签、内存账本或额外释放包装，也不提供预算限制。 |
 
 ### `Executor::Execute`（include/aethermind/execution/executor.h）
 

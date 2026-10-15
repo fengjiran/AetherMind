@@ -125,16 +125,15 @@ StatusOr<size_t> ContiguousWeightByteSize(const TensorView& weight) {
 // The dispatcher validates requests and matches the complete recipe before
 // entering these helpers with non-empty components.
 
-/// @brief Allocates packed artifact storage through the caller's ledger.
+/// @brief Allocates packed artifact storage through the caller's allocator.
 ///
 /// Packing must not reach for a CPU-specific allocation primitive: the artifact
-/// is managed backing storage and has to be accounted like the rest.
+/// is managed backing storage and must follow the caller's allocation policy.
 StatusOr<Buffer> AllocatePackedStorage(Allocator& allocator,
                                        size_t nbytes,
                                        size_t alignment) {
     return allocator.TryAllocate({.nbytes = nbytes,
-                                  .alignment = alignment,
-                                  .tag = AllocationTag::PackedWeight()});
+                                  .alignment = alignment});
 }
 
 StatusOr<std::unique_ptr<PackedWeight>> PackIdentityWeights(

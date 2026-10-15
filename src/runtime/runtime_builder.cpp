@@ -115,8 +115,8 @@ StatusOr<KVCacheManager> RuntimeBuilder::TryBuildKVCacheManager(
         return manager;
     }
 
-    // KV planes are charged to the Runtime ledger, so a CPU allocator must
-    // exist before the manager can be initialized. Reported rather than
+    // KV planes use the configured allocator, which must be available before
+    // the manager can be initialized. Reported rather than
     // aborted: this is a configuration error the caller can act on.
     AM_ASSIGN_OR_RETURN(Allocator * allocator,
                         allocator_registry.TryGetAllocator(Device::CPU()));

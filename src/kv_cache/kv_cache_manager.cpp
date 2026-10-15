@@ -11,11 +11,10 @@ Status KVCacheManager::AllocateStorage(Allocator& allocator,
                                        size_t bytes_per_plane,
                                        size_t alignment) {
     const AllocationRequest request{.nbytes = bytes_per_plane,
-                                    .alignment = alignment,
-                                    .tag = AllocationTag::KVCache()};
+                                    .alignment = alignment};
 
-    // Both planes stay in locals until both succeed: if the second allocation
-    // fails, the first is released here and its charge is refunded.
+    // Both planes stay in locals until both succeed, so a second-allocation
+    // failure releases the first buffer.
     const StatusOr<Buffer> key_buffer = allocator.TryAllocate(request);
     if (!key_buffer.ok()) {
         return key_buffer.status();

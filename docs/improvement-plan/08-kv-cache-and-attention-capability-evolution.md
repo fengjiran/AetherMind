@@ -28,7 +28,7 @@
 
 | 事实 | 代码/测试依据 | 边界 |
 |---|---|---|
-| `Runtime` 按值持有单个 `KVCacheManager`；Manager 属于 `kv_cache` 源模块，使用 K/V 两块连续 `Buffer` 和单个 `KVCacheSessionState`，Buffer 由 `Init` 收到的 `Allocator&` 分配 | [KV manager](../../include/aethermind/kv_cache/kv_cache_manager.h)、[实现](../../src/kv_cache/kv_cache_manager.cpp)、[分配入口](../../include/aethermind/memory/allocator.h) | 同一时刻只允许一个 reservation；Manager 只借用该 allocator 引用、不保存它，plane 存储与其余受管存储共用同一计账入口，没有 block table、prefix cache 或多请求调度 |
+| `Runtime` 按值持有单个 `KVCacheManager`；Manager 属于 `kv_cache` 源模块，使用 K/V 两块连续 `Buffer` 和单个 `KVCacheSessionState`，Buffer 由 `Init` 收到的 `Allocator&` 分配 | [KV manager](../../include/aethermind/kv_cache/kv_cache_manager.h)、[实现](../../src/kv_cache/kv_cache_manager.cpp)、[分配入口](../../include/aethermind/memory/allocator.h) | 同一时刻只允许一个 reservation；Manager 只借用该 allocator 引用、不保存它，plane 存储与其余受管存储使用统一分配策略，没有 block table、prefix cache 或多请求调度 |
 | `KVCacheSessionView` 借用 Manager 的 layout/storage/session state，`valid()` 检查 generation；Manager 在 Reset/Release 校验三个借用指针的身份 | [KV view](../../src/kv_cache/kv_cache_session_view.cpp)、[KV manager](../../src/kv_cache/kv_cache_manager.cpp) | view 可复制；Manager 必须长于所有 view、保持地址稳定，访问由调用方串行化 |
 | `LayerRunner` 完整 plan 成功后提交 KV watermark；`KVCacheUpdate`/`Attention` 已有窄绑定与真实 tiny Llama 执行证据 | [LayerRunner](../../src/execution/layer_runner.cpp)、[M4/M5 测试](../../tests/unit/inference/test_direct_prefill_decode.cpp) | 这是正确性 baseline；不等于 KV 生命周期全部边界已经验证 |
 | CPU KVCacheUpdate 与 Attention descriptor 只接受 FP32 KV storage | [KVCacheUpdate entry](../../src/backend/cpu/kernels/kvcache_update/kvcache_update_entry.cpp)、[Attention entry](../../src/backend/cpu/kernels/attention/attention_entry.cpp) | PRD 的 FP16/BF16 KV 图示尚无 production kernel 证据 |

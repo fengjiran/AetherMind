@@ -58,8 +58,9 @@ Status ValidateKVCacheStateSpec(const TensorSpec& spec,
                                 const KVCacheSessionView& view,
                                 std::string_view role) noexcept {
     if (spec.dtype != view.kv_dtype()) {
-        return Status::InvalidArgument("KV state " + std::string(role) +
-                                       " dtype does not match the KVCacheSessionView element dtype");
+        return Status::InvalidArgument(
+                "KV state " + std::string(role) +
+                " dtype does not match the KVCacheSessionView element dtype");
     }
 
     if (const auto rank = spec.shape.rank(); !rank.has_value() || *rank != 3) {
@@ -113,6 +114,7 @@ StatusOr<uint32_t> ValidateKVCacheUpdateStateIdentity(
         return Status::InvalidArgument(
                 "KVCacheUpdate requires its complete semantic K/V state ports");
     }
+
     AM_ASSIGN_OR_RETURN(const ExecutionKVCacheStateIdentity key_input,
                         GetKVStateIdentity(values, step.inputs[2], "key input"));
     AM_ASSIGN_OR_RETURN(const ExecutionKVCacheStateIdentity value_input,
@@ -200,11 +202,12 @@ struct KVAppendTransaction {
 
 namespace {
 
-Status PrepareKVAppendTransaction(const ExecutionPlan& plan,
-                                  ExecutionContext& context,
-                                  const PreparedExecutionBindings& prepared_bindings,
-                                  KVAppendTransaction& transaction) noexcept {
-    const KVCacheSessionView& view = context.kv_cache_session_view();
+StatusOr<KVAppendTransaction> PrepareKVAppendTransaction(
+        const ExecutionPlan& plan,
+        ExecutionContext& context,
+        const PreparedExecutionBindings& prepared_bindings) noexcept {
+    KVAppendTransaction transaction;
+    const auto& view = context.kv_cache_session_view();
     std::optional<size_t> sequence_length;
     if (context.HasKVCacheSessionView()) {
         transaction.layer_progress = context.ResetKVLayerTransactionScratch();
@@ -215,7 +218,7 @@ Status PrepareKVAppendTransaction(const ExecutionPlan& plan,
     }
 
     for (size_t i = 0; i < plan.size(); ++i) {
-        const ExecutionStep& step = plan.steps()[i];
+        const auto& step = plan.steps()[i];
         if (step.kernel.op_type != OpType::kKVCacheUpdate) {
             continue;
         }
@@ -253,7 +256,7 @@ Status PrepareKVAppendTransaction(const ExecutionPlan& plan,
     transaction.committed_begin = context.HasKVCacheSessionView() ? view.current_pos() : 0;
     transaction.visible_end = transaction.committed_begin;
     if (!sequence_length.has_value()) {
-        return Status::Ok();
+        return transaction;
     }
 
     if (view.awaiting_prefill()) {
@@ -291,7 +294,7 @@ Status PrepareKVAppendTransaction(const ExecutionPlan& plan,
     }
     transaction.has_append = true;
     transaction.visible_end = end;
-    return Status::Ok();
+    return transaction;
 }
 
 } // namespace
@@ -311,9 +314,8 @@ Status LayerRunner::Run(const ExecutionPlan& plan,
                                        "is not compatible with ExecutionPlan");
     }
 
-    KVAppendTransaction kv_transaction;
-    AM_RETURN_IF_ERROR(PrepareKVAppendTransaction(
-            plan, context, *prepared_bindings, kv_transaction));
+    AM_ASSIGN_OR_RETURN(KVAppendTransaction kv_transaction,
+                        PrepareKVAppendTransaction(plan, context, *prepared_bindings));
 
     for (size_t i = 0; i < steps.size(); ++i) {
         if (const auto status = RunStep(i, steps[i], context, *prepared_bindings,

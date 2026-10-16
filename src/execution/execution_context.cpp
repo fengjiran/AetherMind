@@ -8,7 +8,7 @@ StatusOr<ExecutionContext> ExecutionContext::Create(
         const ExecutionPlan& plan,
         PreparedExecutionBindings prepared_bindings,
         WorkspaceArena* workspace_arena,
-        KVCacheSessionView kv_cache_session_view) {
+        const KVCacheSessionView& kv_cache_session_view) {
     if (!prepared_bindings.IsCompatible(plan)) {
         return Status::InvalidArgument(
                 "PreparedExecutionBindings are not compatible with ExecutionPlan");
@@ -16,7 +16,8 @@ StatusOr<ExecutionContext> ExecutionContext::Create(
 
     if (plan.total_workspace_bytes() != 0 && workspace_arena == nullptr) {
         return Status::FailedPrecondition(
-                "ExecutionPlan requires a WorkspaceArena for non-zero workspace requirements");
+                "ExecutionPlan requires a WorkspaceArena for"
+                " non-zero workspace requirements");
     }
 
     const bool requires_kv_cache = std::ranges::any_of(

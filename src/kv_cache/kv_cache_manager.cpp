@@ -90,7 +90,8 @@ Status KVCacheManager::Init(Allocator& allocator,
         return Status::Overflow("KV total bytes overflowed size_t");
     }
 
-    AM_RETURN_IF_ERROR(AllocateStorage(allocator, bytes_per_plane.value(), alignment));
+    AM_RETURN_IF_ERROR(
+            AllocateStorage(allocator, bytes_per_plane.value(), alignment));
 
     total_bytes_ = total_bytes;
     initialized_ = true;
@@ -125,7 +126,8 @@ StatusOr<KVCacheSessionView> KVCacheManager::ReserveForSession(
     }
 
     if (requested_tokens > layout_.max_tokens) {
-        return Status::OutOfRange("KV session reservation exceeds physical KV capacity");
+        return Status::OutOfRange(
+                "KV session reservation exceeds physical KV capacity");
     }
 
     if (session_state_.generation == std::numeric_limits<uint64_t>::max()) {

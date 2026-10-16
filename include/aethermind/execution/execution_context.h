@@ -41,7 +41,7 @@ public:
             const ExecutionPlan& plan,
             PreparedExecutionBindings prepared_bindings,
             WorkspaceArena* workspace_arena,
-            KVCacheSessionView kv_cache_session_view = {});
+            const KVCacheSessionView& kv_cache_session_view = {});
 
     ExecutionContext(const ExecutionContext&) = delete;
     ExecutionContext& operator=(const ExecutionContext&) = delete;

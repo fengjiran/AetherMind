@@ -62,6 +62,8 @@ public:
             const GenerationConfig& config) const;
 
 private:
+    /// @brief Value indices of the token/position inputs and token output
+    ///        within one phase plan.
     struct PhaseContract {
         uint32_t token_input = 0;
         uint32_t position_input = 0;

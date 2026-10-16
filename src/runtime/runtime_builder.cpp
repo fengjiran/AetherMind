@@ -108,7 +108,7 @@ BackendRegistry RuntimeBuilder::BuildBackendRegistry() {
 }
 
 StatusOr<KVCacheManager> RuntimeBuilder::TryBuildKVCacheManager(
-        AllocatorRegistry& allocator_registry) {
+        AllocatorRegistry& allocator_registry) const {
     KVCacheManager manager;
     const KVCacheRuntimeOptions& options = options_.kv_cache;
     if (!options.enable_manager) {

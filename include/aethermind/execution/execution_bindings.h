@@ -117,7 +117,7 @@ private:
 /// @param plan Validated plan to inspect.
 /// @return Per-value requirement flags, or an error when the plan's kernel port
 ///         metadata is inconsistent with its semantic inputs.
-AM_NODISCARD StatusOr<std::vector<bool>> ComputeExternalReadRequirements(
+StatusOr<std::vector<bool>> ComputeExternalReadRequirements(
         const ExecutionPlan& plan);
 
 /// @brief Resolves external tensors and allocates internal activations.

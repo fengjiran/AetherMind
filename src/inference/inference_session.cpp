@@ -67,10 +67,12 @@ public:
     }
 
     Status Reserve(size_t prompt_len, size_t future_kv_appends) {
-        auto reservation = manager_->ReserveForSession(prompt_len, future_kv_appends);
+        auto reservation =
+                manager_->ReserveForSession(prompt_len, future_kv_appends);
         if (!reservation.ok()) {
             return reservation.status();
         }
+
         cache_view_ = *reservation;
         has_reservation_ = true;
         return Status::Ok();
@@ -81,6 +83,7 @@ public:
         if (bytes == 0) {
             return Status::Ok();
         }
+
         if (!IsValidWorkspaceAlignment(alignment)) {
             return Status::InvalidArgument(
                     "InferenceSession plan has an invalid workspace alignment");
@@ -95,8 +98,7 @@ public:
         }
 
         storage_ = std::move(storage).value();
-        workspace_arena_.SetBuffer(
-                static_cast<std::byte*>(storage_.mutable_data()), bytes);
+        workspace_arena_.SetBuffer(storage_.mutable_data(), bytes);
         return Status::Ok();
     }
 
@@ -113,14 +115,14 @@ public:
                           std::span<const int64_t> positions) {
         if (tokens.empty() || tokens.size() != positions.size() ||
             tokens.size() > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
-            return Status::InvalidArgument(
-                    "InferenceSession token and position inputs must have equal non-zero lengths");
+            return Status::InvalidArgument("InferenceSession token and position "
+                                           "inputs must have equal non-zero lengths");
         }
 
         ExternalTensorBindings external = immutable_bindings;
         external.readable.reserve(external.readable.size() + 2);
         const std::array<int64_t, 1> shape{static_cast<int64_t>(tokens.size())};
-        const std::array<int64_t, 1> strides{1};
+        constexpr std::array<int64_t, 1> strides{1};
         external.readable.push_back({
                 .value = {.index = token_input},
                 .tensor = TensorView(tokens.data(), DataType::Int(64), shape, strides,
@@ -132,10 +134,12 @@ public:
                                      alignof(int64_t)),
         });
 
-        auto prepared = PrepareExecutionBindings(plan, external, allocator);
+        auto prepared = PrepareExecutionBindings(
+                plan, external, allocator);
         if (!prepared.ok()) {
             return prepared.status();
         }
+
         auto context = ExecutionContext::Create(
                 plan, std::move(*prepared), workspace_arena(), cache_view_);
         if (!context.ok()) {
@@ -158,6 +162,7 @@ public:
         if (!has_reservation_) {
             return Status::Ok();
         }
+
         const Status status = manager_->ReleaseSession(cache_view_);
         if (status.ok()) {
             has_reservation_ = false;
@@ -166,8 +171,7 @@ public:
     }
 
     StatusOr<std::vector<uint32_t>> Finish() {
-        const Status status = Close();
-        if (!status.ok()) {
+        if (auto status = Close(); !status.ok()) {
             return status;
         }
         return std::move(generated_tokens);
@@ -356,8 +360,8 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
         return decode_plan_result.status();
     }
 
-    const ExecutionPlan& prefill_plan = **prefill_plan_result;
-    const ExecutionPlan& decode_plan = **decode_plan_result;
+    const auto& prefill_plan = **prefill_plan_result;
+    const auto& decode_plan = **decode_plan_result;
 
     auto prefill_bindings_result =
             model_->immutable_weight_bindings(ExecPhase::kPrefill);
@@ -376,9 +380,9 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
 
     request.prefill_tokens.resize(prompt_tokens.size());
     request.prefill_positions.resize(prompt_tokens.size());
-    for (size_t index = 0; index < prompt_tokens.size(); ++index) {
-        request.prefill_tokens[index] = static_cast<int64_t>(prompt_tokens[index]);
-        request.prefill_positions[index] = static_cast<int64_t>(index);
+    for (size_t i = 0; i < prompt_tokens.size(); ++i) {
+        request.prefill_tokens[i] = static_cast<int64_t>(prompt_tokens[i]);
+        request.prefill_positions[i] = static_cast<int64_t>(i);
     }
     request.generated_tokens.reserve(config.max_new_tokens);
 
@@ -401,10 +405,12 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
         return Status::Internal(
                 "InferenceSession failed to create its Prefill context");
     }
+
     if (WorkspaceArena* const workspace = prefill_context->workspace_arena();
         workspace != nullptr) {
         workspace->Reset();
     }
+
     AM_RETURN_IF_ERROR(Executor::Execute(prefill_plan, *prefill_context));
     if (prefill_context->kv_cache_session_view().current_pos() != prompt_tokens.size()) {
         return Status::Internal(
@@ -472,13 +478,13 @@ StatusOr<ValidatedPhaseContract> ValidatePlanContract(const ExecutionPlan& plan)
                 "InferenceSession token and position inputs must be distinct");
     }
 
-    for (const uint32_t index: {contract.token_input, contract.position_input}) {
-        if (index >= plan.values().size()) {
-            return Status::InvalidArgument(
-                    "InferenceSession model input references an invalid execution value");
+    for (const uint32_t idx: {contract.token_input, contract.position_input}) {
+        if (idx >= plan.values().size()) {
+            return Status::InvalidArgument("InferenceSession model input references"
+                                           " an invalid execution value");
         }
 
-        const ExecutionValueDesc& value = plan.values()[index];
+        const auto& value = plan.values()[idx];
         if (const auto rank = value.spec.shape.rank();
             value.kind != ExecutionValueKind::kModelInput ||
             value.spec.dtype != DataType::Int(64) || !rank.has_value() || *rank != 1) {
@@ -487,13 +493,13 @@ StatusOr<ValidatedPhaseContract> ValidatePlanContract(const ExecutionPlan& plan)
         }
     }
 
-    const ExecutionValueId output = plan.model_outputs().front();
+    const auto output = plan.model_outputs().front();
     if (output.index >= plan.values().size()) {
         return Status::InvalidArgument(
                 "InferenceSession model output references an invalid execution value");
     }
 
-    const ExecutionValueDesc& output_value = plan.values()[output.index];
+    const auto& output_value = plan.values()[output.index];
     if (const auto output_rank = output_value.spec.shape.rank();
         output_value.kind != ExecutionValueKind::kActivation ||
         output_value.spec.dtype != DataType::Int(64) ||

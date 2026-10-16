@@ -341,9 +341,10 @@ bool PreparedExecutionBindings::IsCompatible(const ExecutionPlan& plan) const no
            storage_->plan_key == plan.binding_key() && storage_->steps.size() == plan.size();
 }
 
-StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(const ExecutionPlan& plan,
-                                                             const ExternalTensorBindings& external,
-                                                             Allocator& act_allocator) {
+StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
+        const ExecutionPlan& plan,
+        const ExternalTensorBindings& external,
+        Allocator& act_allocator) {
     auto storage = std::make_unique<PreparedExecutionBindingsStorage>();
     storage->plan_key = plan.binding_key();
     storage->values.resize(plan.values().size());
@@ -576,6 +577,7 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(const ExecutionPlan
         if (!schema.ok()) {
             return schema.status();
         }
+
         std::vector<TensorView> runtime_check_inputs;
         std::vector<std::vector<int64_t>> packed_constraint_strides;
         runtime_check_inputs.reserve(schema->input_ports.size());

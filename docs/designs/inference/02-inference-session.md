@@ -1,8 +1,8 @@
 # InferenceSession 模块设计
 
 - **状态**: Current（描述已验证实现；只写仓库事实）
-- **版本**: 1.3
-- **日期**: 2026-10-12
+- **版本**: 1.4
+- **日期**: 2026-10-17
 - **来源提案**: [01 号计划：InferenceSession / Generate 前置闭环计划](../../improvement-plan/01-inference-session-generate-readiness.md)（Implemented，§3.6）
 - **关联代码**: [include/aethermind/inference/inference_session.h](../../../include/aethermind/inference/inference_session.h) / [src/inference/inference_session.cpp](../../../src/inference/inference_session.cpp)、[src/inference/inference_internal.h](../../../src/inference/inference_internal.h)
 - **上游依赖**: inference（`ExecutableModel` 提供 phase plan、immutable 绑定表、`vocab_size()`/`context_limit()`/`IsPreparedFor()`）、execution（`PrepareExecutionBindings`、`ExecutionContext`、`Executor`、`ExecutionPlan` workspace 需求）、runtime（Runtime 的 `GetKVCacheManager`、`HasAllocatorProvider`/`GetAllocator`，`KVCacheManager::ReserveForSession`/`ReleaseSession`）、base（`WorkspaceArena`、`TensorView`、`CheckOverflowAdd`）、operators（`OpType::kArgmax` 合同校验）
@@ -39,11 +39,13 @@
 |---|---|---|
 | `runtime_` | 借用的 `Runtime*` | 非拥有；地址必须稳定 |
 | `model_` | `shared_ptr<const ExecutableModel>` | 保活模型，从而保活权重 backing 与绑定表借用的元数据 |
-| `prefill_contract_` / `decode_contract_` | `PhaseContract{token_input, position_input, token_output}` | 两份独立的 value id 合同，Decode 的 id 可不同于 Prefill |
+| `prefill_contract_` / `decode_contract_` | `inference::detail::PhaseContract{token_input, position_input, token_output}` | 两份独立的 value id 合同，Decode 的 id 可不同于 Prefill |
 
 只可移动、不可复制（移动为 defaulted，复制被删除）。`Generate` 首行检查 `runtime_ == nullptr || model_ == nullptr` 并返回 `kFailedPrecondition`；被移动过的 Session 由 `model_` 为空触发该分支（裸指针 `runtime_` 在默认移动下不会置空，故守卫实际由 `model_` 承担）。
 
 ### 3.2 PhaseContract 与 plan I/O 合同
+
+字段只在 [inference_session.h](../../../include/aethermind/inference/inference_session.h) 的 `aethermind::inference::detail` 命名空间中定义一次，不单独建文件。`InferenceSession` 的私有 `PhaseContract` 是该类型的别名，`ValidatePlanContract` 直接返回同一类型，`Create` 在两阶段校验成功后按值保存结果，无逐字段转换。定义放在会话头的原因：Session 按值成员需要完整类型，而 `inference_internal.h` 位于 src 下不能被公共头包含，故唯一单点定义位置是 `inference_session.h`；`detail` 类型不作为稳定公开 API。
 
 `ValidatePlanContract(plan)` 在 `Create` 时对 Prefill 与 Decode plan **各校验一次**：
 
@@ -92,7 +94,7 @@
 | `InferenceSession::Generate` | `StatusOr<std::vector<uint32_t>> Generate(std::span<const uint32_t>, const GenerationConfig&)` | 返回本次新生成的 token，**含** Prefill 预测的首 token，也**含**触发停止的 EOS；空 prompt 非法；`max_new_tokens == 0` 在校验 prompt/config 后返回空结果，不要求 KV manager、不执行模型 | ✅（内含 Decode 循环） |
 | `GenerationConfig` | `struct { size_t max_new_tokens = 0; std::optional<uint32_t> eos_token_id; }` | 只有生成上限与停止 token，无采样参数 | — |
 | `inference::internal::RunDecodeLoop` | 见 [inference_internal.h](../../../src/inference/inference_internal.h) | 内部函数，非公共 API；单独成函数是为了让 malloc-family 计数窗口只覆盖 Decode 循环本体 | ✅ |
-| `inference::internal::ValidatePlanContract` | `StatusOr<ValidatedPhaseContract>(const ExecutionPlan&)` | 内部函数，非公共 API；位于 internal 头是为了让聚焦测试用合成 ExecutionPlan 直接覆盖全部 kUnimplemented 失败分支（`ExecutionPlan::Create` 已在生产路径拒绝重复/越界输入 id 与 kModelInput kind 不符等结构性不可能，故 kInvalidArgument 守卫经公共路径不可达） | ❌ |
+| `inference::internal::ValidatePlanContract` | `StatusOr<inference::detail::PhaseContract>(const ExecutionPlan&)` | 内部函数，非公共 API；位于 internal 头是为了让聚焦测试用合成 ExecutionPlan 直接覆盖全部 kUnimplemented 失败分支（`ExecutionPlan::Create` 已在生产路径拒绝重复/越界输入 id 与 kModelInput kind 不符等结构性不可能，故 kInvalidArgument 守卫经公共路径不可达） | ❌ |
 
 ## 6. 算法与流程
 
@@ -209,6 +211,7 @@ CPU allocator 探测的存在理由：Runtime 的 `GetAllocator` 在缺 provider
 
 | 日期 | 版本 | 变更 |
 |---|---|---|
+| 2026-10-17 | 1.4 | Session 与 plan 校验共享 `inference_session.h` 内单一 PhaseContract 定义（不单独建文件），删除重复结构及 Create 的逐字段转换 |
 | 2026-10-12 | 1.3 | 简化 RequestResources：移除重复 workspace 基址/大小和未使用的 view getter，以 optional reset 销毁 context，保留请求级 KV 清理责任 |
 | 2026-10-11 | 1.2 | `ValidatePlanContract` 移入 internal 头，新增 `PlanContractValidation` 合成 plan 测试覆盖全部 kUnimplemented 失败分支 |
 | 2026-10-11 | 1.1 | 修复 Generate OOM Status 通路；明确共享 Runtime 的请求串行化、输入角色顺序与析构清理错误传播边界；区分编排成本和 Attention 计算量；更新参数化测试说明 |

@@ -195,28 +195,38 @@ Phase 1 中的统一入口，职责包括：
 - 处理 Reset / Release
 - 返回容量与内存统计信息
 
-推荐接口形态：
+当前实现接口（与 `include/aethermind/kv_cache/kv_cache_manager.h` 同步）：
 
 ```cpp
 class KVCacheManager {
 public:
-    Status Init(const LoadedModel& model,
-                const Runtime& runtime,
-                std::size_t max_tokens,
+    KVCacheManager(const KVCacheManager&) = delete;
+    KVCacheManager& operator=(const KVCacheManager&) = delete;
+    KVCacheManager(KVCacheManager&&) noexcept = default;
+    KVCacheManager& operator=(KVCacheManager&&) noexcept = default;
+
+    Status Init(Allocator& allocator,      // 只借用：构造期间使用，不保存引用
+                size_t num_layers,
+                size_t num_kv_heads,
+                size_t max_tokens,
+                size_t head_dim,
                 DataType kv_dtype,
-                std::size_t alignment = 64);
+                size_t alignment = 64);
 
-    StatusOr<KVCacheSessionView> ReserveForSession(std::size_t prompt_len,
-                                            std::size_t max_new_tokens);
+    StatusOr<KVCacheSessionView> ReserveForSession(size_t prompt_len,
+                                                   size_t future_kv_appends) noexcept;
 
-    Status ResetSession(KVCacheSessionView& view) noexcept;
+    Status ResetSession(const KVCacheSessionView& view) noexcept;
     Status ReleaseSession(KVCacheSessionView& view) noexcept;
 
     const KVCacheLayout& layout() const noexcept;
-    std::size_t capacity_tokens() const noexcept;
-    std::size_t total_bytes() const noexcept;
+    size_t capacity_tokens() const noexcept;
+    size_t total_bytes() const noexcept;
+    bool is_initialized() const noexcept;
 };
 ```
+
+与历史草图的差异：`Init` 接收几何参数与 `Allocator&`（而非 `LoadedModel`/`Runtime`）；预约按 `prompt_len + future_kv_appends` 精确预留；Re-init 会释放旧 reservation 并保留 generation 使旧 view 永不复活。
 
 ### 4.3 KVCacheStorage
 
@@ -305,46 +315,46 @@ struct KVCacheSessionState {
 
 Execution / Operator 看到的是轻量 borrowed view，而不是 manager 本体。
 
-推荐能力：
+当前实现能力（与 `include/aethermind/kv_cache/kv_cache_session_view.h` 同步，省略 `AM_NODISCARD` 等细节）：
 
 ```cpp
 class KVCacheSessionView {
 public:
     bool valid() const noexcept;
 
-    std::size_t max_tokens() const noexcept;
-    std::size_t current_pos() const noexcept;
-    std::size_t num_layers() const noexcept;
-    std::size_t num_kv_heads() const noexcept;
-    std::size_t head_dim() const noexcept;
+    size_t max_tokens() const noexcept;
+    size_t current_pos() const noexcept;
+    size_t num_layers() const noexcept;
+    size_t num_kv_heads() const noexcept;
+    size_t head_dim() const noexcept;
+    DataType kv_dtype() const noexcept;
+    size_t token_capacity() const noexcept;
+    size_t committed_tokens() const noexcept;
+    size_t prompt_len() const noexcept;
+    bool awaiting_prefill() const noexcept;
 
-    Status ValidateWrite(std::size_t layer_idx,
-                         std::size_t kv_head_idx,
-                         std::size_t seq_pos,
-                         std::size_t token_count) const noexcept;
+    Status ValidateWrite(size_t layer_idx, size_t kv_head_idx,
+                         size_t seq_pos, size_t token_count) const noexcept;
 
-    StatusOr<MutableTensorView> KeyWriteView(std::size_t layer_idx,
-                                             std::size_t kv_head_idx,
-                                             std::size_t seq_pos,
-                                             std::size_t token_count) noexcept;
+    Status ValidateRead(size_t layer_idx, size_t kv_head_idx,
+                        size_t seq_begin, size_t seq_end) const noexcept;
 
-    StatusOr<MutableTensorView> ValueWriteView(std::size_t layer_idx,
-                                               std::size_t kv_head_idx,
-                                               std::size_t seq_pos,
-                                               std::size_t token_count) noexcept;
+    StatusOr<KVCacheAppendBinding> BindLayerForAppend(
+            size_t layer_idx, size_t begin, size_t end) const noexcept;
 
-    StatusOr<TensorView> KeyReadView(std::size_t layer_idx,
-                                     std::size_t kv_head_idx,
-                                     std::size_t seq_begin,
-                                     std::size_t seq_end) const noexcept;
+    StatusOr<KVCacheReadBinding> BindLayerForRead(
+            size_t layer_idx, size_t committed_end, size_t visible_end) const noexcept;
 
-    StatusOr<TensorView> ValueReadView(std::size_t layer_idx,
-                                       std::size_t kv_head_idx,
-                                       std::size_t seq_begin,
-                                       std::size_t seq_end) const noexcept;
+    StatusOr<const void*> KeyData(size_t layer_idx, size_t kv_head_idx,
+                                  size_t seq_pos, size_t dim_idx = 0) const noexcept;
+    StatusOr<const void*> ValueData(size_t layer_idx, size_t kv_head_idx,
+                                    size_t seq_pos, size_t dim_idx = 0) const noexcept;
 
+    void Invalidate() noexcept;
 };
 ```
+
+与历史草图的差异：历史 `KeyWriteView / ValueWriteView / KeyReadView / ValueReadView` 未落地；写路径统一为 `BindLayerForAppend`（强制 `begin == committed` 前沿），元素访问器只读，`ValidateWrite` 也仅做容量/范围校验。CPU plane 还会校验 base 地址满足 layout alignment（见 §6.5）。
 
 View 不公开提交接口；`current_pos()` 仅返回 canonical `committed_tokens`。`LayerRunner` 在完整 plan 成功后，经 source-private `detail::KVCacheCommitAccess::CommitAppend(begin, end)` 发布同一 append range；该 private header 不安装、不构成公开 test API。
 
@@ -414,7 +424,7 @@ Phase 1 推荐在 Runtime / Model 初始化阶段固定 `max_tokens` 上限，�
 1. Runtime / LoadedModel 初始化
 2. KVCacheManager 根据模型维度构建 `KVCacheLayout`
 3. 一次性申请 K / V 线性存储
-4. Executor 在 `PrepareSession()` 中调用 `ReserveForSession(prompt_len, max_new_tokens)`
+4. InferenceSession 在会话准备阶段调用 `ReserveForSession(prompt_len, future_kv_appends)`
 5. 返回 `KVCacheSessionView`
 6. Session 进入 Prefill / Decode
 
@@ -484,10 +494,12 @@ Phase 1 必须满足以下要求：
 ### 6.5 KVCacheSessionView 访问原则
 
 - 执行层与算子层通过 `KVCacheSessionView` 访问 KV 数据
+- View 对 CPU plane 校验 base 地址满足 layout alignment，使 token 行相对进程地址
+  空间绝对对齐；layout 本身只保证行相对 plane base 的 stride 对齐
 - 算子签名中不直接暴露底层物理偏移常量
 - `seq_pos` 表示逻辑 token 位置
-- `KeyWriteView` / `ValueWriteView` 返回当前写窗口
-- `KeyReadView` / `ValueReadView` 返回历史区间视图
+- `BindLayerForAppend` 返回当前 append 写窗口
+- `BindLayerForRead` 返回历史区间读窗口
 - `LayerRunner` 只在 Prefill / Decode 的完整 plan 成功后，经 source-private commit access 推进逻辑位置
 - `KVCacheAppendBinding` / `KVCacheReadBinding` 是 kernel invocation-only 的 borrowed
   contract；其物理指针不能缓存进 prepared params，也不能跨 Execute() 保存
@@ -539,10 +551,10 @@ Initialized
 
 ### 7.3 ReserveForSession
 
-`ReserveForSession(prompt_len, max_new_tokens)` 需要完成：
+`ReserveForSession(prompt_len, future_kv_appends)` 需要完成：
 
 - 校验 manager 已初始化
-- 校验 `prompt_len + max_new_tokens <= max_tokens`
+- 校验 `prompt_len + future_kv_appends <= max_tokens`
 - Phase 1 拒绝空 `prompt_len`；BOS/空上下文策略属于更高层输入语义
 - 校验 lifecycle 为 `Idle`
 - 将 lifecycle 设为 `AwaitingPrefill`
@@ -618,11 +630,11 @@ Executor 不应直接操作底层物理内存。推荐交互方式如下：
   - 获取 `KVCacheSessionView`
   - 将 `KVCacheSessionView` 放入 `SessionExecutionState`
 - `Prefill()` 阶段：
-  - 通过 `KeyWriteView / ValueWriteView` 写入整段 Prompt 的 KV
+  - 通过 `BindLayerForAppend` 的写窗口写入整段 Prompt 的 KV
   - 完整 plan 成功后由 `LayerRunner` 经 private commit access 发布 `[0, prompt_len)`
 - `DecodeStep()` 阶段：
-  - 通过写视图写入当前 step 的 KV
-  - 通过读视图读取历史 KV
+  - 通过 `BindLayerForAppend` 写入当前 step 的 KV
+  - 通过 `BindLayerForRead` 读取历史 KV
   - 完整 plan 成功后由 `LayerRunner` 经 private commit access 发布单 token append range
 
 ### 8.2 与 PrefillPath / DecodePath 的边界
@@ -708,7 +720,7 @@ enum class KVErrorCode : std::uint8_t {
 
 典型包括：
 
-- `prompt_len + max_new_tokens > max_tokens`
+- `prompt_len + future_kv_appends > max_tokens`
 - manager 未初始化
 - 当前 slot 已占用
 - 参数为 0 或非法上限

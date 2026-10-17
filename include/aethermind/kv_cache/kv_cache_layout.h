@@ -42,8 +42,10 @@ struct KVCacheLayout {
 
     /// @brief Returns the element size of the KV dtype.
     AM_NODISCARD size_t ElementBytes() const noexcept;
+
     /// @brief Validates the layout geometry and alignment.
     Status Validate() const noexcept;
+
     /// @brief Computes the byte offset of an element within the plane.
     ///
     /// @param layer_idx Layer index.
@@ -56,6 +58,7 @@ struct KVCacheLayout {
                                          size_t kv_head_idx,
                                          size_t seq_pos,
                                          size_t dim_idx) const noexcept;
+
     /// @brief Returns the total bytes of one key/value plane.
     AM_NODISCARD StatusOr<size_t> BytesPerPlane() const noexcept;
 

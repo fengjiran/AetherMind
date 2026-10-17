@@ -119,20 +119,20 @@ StatusOr<size_t> KVCacheLayout::OffsetValidated(size_t layer_idx,
         return Status::Overflow("KV layer offset overflowed size_t");
     }
 
-    size_t head_offset = 0;
-    if (CheckOverflowMul(kv_head_idx, head_stride, &head_offset) ||
+    if (size_t head_offset = 0;
+        CheckOverflowMul(kv_head_idx, head_stride, &head_offset) ||
         CheckOverflowAdd(offset, head_offset, &offset)) {
         return Status::Overflow("KV head offset overflowed size_t");
     }
 
-    size_t token_offset = 0;
-    if (CheckOverflowMul(seq_pos, token_stride, &token_offset) ||
+    if (size_t token_offset = 0;
+        CheckOverflowMul(seq_pos, token_stride, &token_offset) ||
         CheckOverflowAdd(offset, token_offset, &offset)) {
         return Status::Overflow("KV token offset overflowed size_t");
     }
 
-    size_t dim_offset = 0;
-    if (CheckOverflowMul(dim_idx, ElementBytes(), &dim_offset) ||
+    if (size_t dim_offset = 0;
+        CheckOverflowMul(dim_idx, ElementBytes(), &dim_offset) ||
         CheckOverflowAdd(offset, dim_offset, &offset)) {
         return Status::Overflow("KV dim offset overflowed size_t");
     }

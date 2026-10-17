@@ -22,10 +22,9 @@ Status ValidateIndexRange(size_t index, size_t upper_bound, const char* label) {
 
 } // namespace
 
-KVCacheSessionView::KVCacheSessionView(const KVCacheLayout* layout,
-                                       KVCacheStorage* storage,
+KVCacheSessionView::KVCacheSessionView(KVCacheStorage* storage,
                                        KVCacheSessionState* session_state) noexcept
-    : layout_(layout), storage_(storage), session_state_(session_state),
+    : storage_(storage), session_state_(session_state),
       generation_(session_state != nullptr ? session_state->generation : 0) {}
 
 bool KVCacheSessionView::IsSessionAlive() const noexcept {
@@ -44,12 +43,12 @@ bool KVCacheSessionView::IsSessionAlive() const noexcept {
 }
 
 bool KVCacheSessionView::valid() const noexcept {
-    return layout_ != nullptr && storage_ != nullptr &&
+    return storage_ != nullptr &&
            storage_->is_initialized() && IsSessionAlive();
 }
 
 size_t KVCacheSessionView::max_tokens() const noexcept {
-    return layout_ != nullptr ? layout_->max_tokens : 0;
+    return storage_ != nullptr ? storage_->layout.max_tokens : 0;
 }
 
 size_t KVCacheSessionView::current_pos() const noexcept {
@@ -57,19 +56,19 @@ size_t KVCacheSessionView::current_pos() const noexcept {
 }
 
 size_t KVCacheSessionView::num_layers() const noexcept {
-    return layout_ != nullptr ? layout_->num_layers : 0;
+    return storage_ != nullptr ? storage_->layout.num_layers : 0;
 }
 
 size_t KVCacheSessionView::num_kv_heads() const noexcept {
-    return layout_ != nullptr ? layout_->num_kv_heads : 0;
+    return storage_ != nullptr ? storage_->layout.num_kv_heads : 0;
 }
 
 size_t KVCacheSessionView::head_dim() const noexcept {
-    return layout_ != nullptr ? layout_->head_dim : 0;
+    return storage_ != nullptr ? storage_->layout.head_dim : 0;
 }
 
 DataType KVCacheSessionView::kv_dtype() const noexcept {
-    return layout_ != nullptr ? layout_->kv_dtype : DataType{};
+    return storage_ != nullptr ? storage_->layout.kv_dtype : DataType{};
 }
 
 size_t KVCacheSessionView::token_capacity() const noexcept {
@@ -90,7 +89,7 @@ bool KVCacheSessionView::awaiting_prefill() const noexcept {
 }
 
 Status KVCacheSessionView::ValidateBaseState() const noexcept try {
-    if (layout_ == nullptr || storage_ == nullptr || session_state_ == nullptr) {
+    if (storage_ == nullptr || session_state_ == nullptr) {
         return Status::FailedPrecondition(
                 "KVCacheSessionView is not bound to manager-owned state");
     }
@@ -105,11 +104,11 @@ Status KVCacheSessionView::ValidateBaseState() const noexcept try {
                 "KVCacheSessionView is stale or released");
     }
 
-    AM_RETURN_IF_ERROR(layout_->Validate());
+    AM_RETURN_IF_ERROR(storage_->layout.Validate());
 
     if (session_state_->prompt_len == 0 ||
         session_state_->prompt_len > session_state_->capacity_tokens ||
-        session_state_->capacity_tokens > layout_->max_tokens) {
+        session_state_->capacity_tokens > storage_->layout.max_tokens) {
         return Status::FailedPrecondition(
                 "KVCacheSessionView has invalid session capacity");
     }
@@ -138,7 +137,7 @@ Status KVCacheSessionView::ValidateBaseState() const noexcept try {
 
     // The layout must fit the backing buffers; a mismatched pair would let
     // validated offsets escape the allocation.
-    const auto bytes_per_plane = layout_->BytesPerPlaneValidated();
+    const auto bytes_per_plane = storage_->layout.BytesPerPlaneValidated();
     if (!bytes_per_plane.ok()) {
         return bytes_per_plane.status();
     }
@@ -154,9 +153,9 @@ Status KVCacheSessionView::ValidateBaseState() const noexcept try {
     // alignment; the layout alone only constrains row offsets relative to the
     // plane base. Non-CPU planes have no host-address row-alignment semantics.
     if ((storage_->key_buffer.device().is_cpu() &&
-         reinterpret_cast<uintptr_t>(storage_->key_buffer.data()) % layout_->alignment != 0) ||
+         reinterpret_cast<uintptr_t>(storage_->key_buffer.data()) % storage_->layout.alignment != 0) ||
         (storage_->value_buffer.device().is_cpu() &&
-         reinterpret_cast<uintptr_t>(storage_->value_buffer.data()) % layout_->alignment != 0)) {
+         reinterpret_cast<uintptr_t>(storage_->value_buffer.data()) % storage_->layout.alignment != 0)) {
         return Status::FailedPrecondition(
                 "KVCacheSessionView CPU plane base breaks the layout row alignment");
     }
@@ -172,9 +171,9 @@ Status KVCacheSessionView::ValidateWrite(size_t layer_idx,
                                          size_t token_count) const noexcept try {
     AM_RETURN_IF_ERROR(ValidateBaseState());
     AM_RETURN_IF_ERROR(ValidateIndexRange(
-            layer_idx, layout_->num_layers, "layer"));
+            layer_idx, storage_->layout.num_layers, "layer"));
     AM_RETURN_IF_ERROR(ValidateIndexRange(
-            kv_head_idx, layout_->num_kv_heads, "kv_head"));
+            kv_head_idx, storage_->layout.num_kv_heads, "kv_head"));
 
     if (token_count == 0) {
         return Status::InvalidArgument(
@@ -191,7 +190,7 @@ Status KVCacheSessionView::ValidateWrite(size_t layer_idx,
                 "KV write exceeds reserved session token capacity");
     }
 
-    if (seq_end > layout_->max_tokens) {
+    if (seq_end > storage_->layout.max_tokens) {
         return Status::OutOfRange(
                 "KV write exceeds physical KV capacity");
     }
@@ -207,9 +206,9 @@ Status KVCacheSessionView::ValidateRead(size_t layer_idx,
                                         size_t seq_end) const noexcept try {
     AM_RETURN_IF_ERROR(ValidateBaseState());
     AM_RETURN_IF_ERROR(ValidateIndexRange(
-            layer_idx, layout_->num_layers, "layer"));
+            layer_idx, storage_->layout.num_layers, "layer"));
     AM_RETURN_IF_ERROR(ValidateIndexRange(
-            kv_head_idx, layout_->num_kv_heads, "kv_head"));
+            kv_head_idx, storage_->layout.num_kv_heads, "kv_head"));
 
     if (seq_begin > seq_end) {
         return Status::InvalidArgument("KV read seq_begin must be <= seq_end");
@@ -226,14 +225,14 @@ Status KVCacheSessionView::ValidateRead(size_t layer_idx,
 StatusOr<KVCacheLayerStorageBinding> KVCacheSessionView::BindLayerStorageValidated(
         size_t layer_idx) const {
     AM_RETURN_IF_ERROR(ValidateIndexRange(
-            layer_idx, layout_->num_layers, "layer"));
+            layer_idx, storage_->layout.num_layers, "layer"));
 
     if (layer_idx > std::numeric_limits<uint32_t>::max()) {
         return Status::OutOfRange(
                 "KV layer index exceeds kernel binding range");
     }
 
-    const auto layer_offset = layout_->OffsetValidated(
+    const auto layer_offset = storage_->layout.OffsetValidated(
             layer_idx, 0, 0, 0);
     if (!layer_offset.ok()) {
         return layer_offset.status();
@@ -249,13 +248,13 @@ StatusOr<KVCacheLayerStorageBinding> KVCacheSessionView::BindLayerStorageValidat
     return KVCacheLayerStorageBinding{
             .key_data = key_base + *layer_offset,
             .value_data = value_base + *layer_offset,
-            .dtype = layout_->kv_dtype,
+            .dtype = storage_->layout.kv_dtype,
             .layer_index = static_cast<uint32_t>(layer_idx),
-            .num_kv_heads = layout_->num_kv_heads,
-            .head_dim = layout_->head_dim,
+            .num_kv_heads = storage_->layout.num_kv_heads,
+            .head_dim = storage_->layout.head_dim,
             .token_capacity = session_state_->capacity_tokens,
-            .token_stride_bytes = layout_->token_stride,
-            .head_stride_bytes = layout_->head_stride,
+            .token_stride_bytes = storage_->layout.token_stride,
+            .head_stride_bytes = storage_->layout.head_stride,
     };
 }
 
@@ -277,7 +276,7 @@ StatusOr<KVCacheAppendBinding> KVCacheSessionView::BindLayerForAppend(
                 "KV append exceeds reserved session token capacity");
     }
 
-    if (end > layout_->max_tokens) {
+    if (end > storage_->layout.max_tokens) {
         return Status::OutOfRange(
                 "KV append exceeds physical KV capacity");
     }
@@ -306,7 +305,7 @@ StatusOr<KVCacheReadBinding> KVCacheSessionView::BindLayerForRead(
                 "KV read visible range exceeds reserved session token capacity");
     }
 
-    if (visible_end > layout_->max_tokens) {
+    if (visible_end > storage_->layout.max_tokens) {
         return Status::OutOfRange(
                 "KV read visible range exceeds physical KV capacity");
     }
@@ -326,7 +325,7 @@ StatusOr<const void*> KVCacheSessionView::KeyData(size_t layer_idx,
                                                   size_t seq_pos,
                                                   size_t dim_idx) const noexcept try {
     AM_RETURN_IF_ERROR(ValidateRead(layer_idx, kv_head_idx, seq_pos, seq_pos + 1));
-    const StatusOr<size_t> offset = layout_->OffsetValidated(layer_idx, kv_head_idx, seq_pos, dim_idx);
+    const StatusOr<size_t> offset = storage_->layout.OffsetValidated(layer_idx, kv_head_idx, seq_pos, dim_idx);
     if (!offset.ok()) {
         return offset.status();
     }
@@ -340,7 +339,7 @@ StatusOr<const void*> KVCacheSessionView::ValueData(size_t layer_idx,
                                                     size_t seq_pos,
                                                     size_t dim_idx) const noexcept try {
     AM_RETURN_IF_ERROR(ValidateRead(layer_idx, kv_head_idx, seq_pos, seq_pos + 1));
-    const StatusOr<size_t> offset = layout_->OffsetValidated(layer_idx, kv_head_idx, seq_pos, dim_idx);
+    const StatusOr<size_t> offset = storage_->layout.OffsetValidated(layer_idx, kv_head_idx, seq_pos, dim_idx);
     if (!offset.ok()) {
         return offset.status();
     }
@@ -366,7 +365,7 @@ Status KVCacheSessionView::CommitAppend(size_t begin, size_t end) const noexcept
                 "KV append commit exceeds reserved session capacity");
     }
 
-    if (end > layout_->max_tokens) {
+    if (end > storage_->layout.max_tokens) {
         return Status::OutOfRange(
                 "KV append commit exceeds physical KV capacity");
     }
@@ -404,7 +403,6 @@ Status KVCacheSessionView::CommitAppend(size_t begin, size_t end) const noexcept
 }
 
 void KVCacheSessionView::Invalidate() noexcept {
-    layout_ = nullptr;
     storage_ = nullptr;
     session_state_ = nullptr;
     generation_ = 0;

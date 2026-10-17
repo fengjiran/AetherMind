@@ -98,7 +98,7 @@ protected:
         if (!test::MallocInterposerAvailable()) {
             GTEST_SKIP() << "Requires the glibc malloc interposer";
         }
-        ASSERT_TRUE(layout_.Validate().ok());
+        ASSERT_TRUE(storage_.layout.Validate().ok());
         storage_.key_buffer = MakeTestBuffer(kPlaneBytes);
         storage_.value_buffer = MakeTestBuffer(kPlaneBytes);
         ASSERT_TRUE(storage_.is_initialized());
@@ -148,26 +148,27 @@ protected:
     }
 
     static constexpr size_t kPlaneBytes = 768;
-    const KVCacheLayout layout_{
-            .num_layers = 2,
-            .num_kv_heads = 3,
-            .max_tokens = 8,
-            .head_dim = 5,
-            .padded_head_dim = 8,
-            .token_stride = 16,
-            .head_stride = 128,
-            .layer_stride = 384,
-            .kv_dtype = DataType(DLDataTypeCode::kFloat, 16, 1),
-            .alignment = 16,
+    KVCacheStorage storage_{
+            .layout = {
+                    .num_layers = 2,
+                    .num_kv_heads = 3,
+                    .max_tokens = 8,
+                    .head_dim = 5,
+                    .padded_head_dim = 8,
+                    .token_stride = 16,
+                    .head_stride = 128,
+                    .layer_stride = 384,
+                    .kv_dtype = DataType(DLDataTypeCode::kFloat, 16, 1),
+                    .alignment = 16,
+            },
     };
-    KVCacheStorage storage_{.kv_dtype = layout_.kv_dtype};
     KVCacheSessionState state_{
             .generation = 1,
             .capacity_tokens = 6,
             .prompt_len = 2,
             .lifecycle = KVCacheSessionState::Lifecycle::kAwaitingPrefill,
     };
-    KVCacheSessionView view_{&layout_, &storage_, &state_};
+    KVCacheSessionView view_{&storage_, &state_};
     KVCacheSessionState state_before_{};
     const void* key_address_ = nullptr;
     const void* value_address_ = nullptr;
@@ -178,7 +179,7 @@ protected:
 TEST_P(KVCacheSessionViewOomTest, DiagnosticAllocationFailureReturnsResourceExhausted) {
     const auto& diagnostic = GetParam();
     test::BeginMallocCallCounting();
-    const Status original = diagnostic.invoke(view_, layout_);
+    const Status original = diagnostic.invoke(view_, storage_.layout);
     const auto counts = test::EndMallocCallCounting();
     EXPECT_EQ(original.code(), diagnostic.code);
     EXPECT_FALSE(original.message().empty());
@@ -188,12 +189,12 @@ TEST_P(KVCacheSessionViewOomTest, DiagnosticAllocationFailureReturnsResourceExha
     // propagation copies, without assuming a standard library's string layout.
     for (size_t skip = 0; skip < counts.malloc_calls; ++skip) {
         SCOPED_TRACE(skip);
-        const Status before_failure = diagnostic.invoke(view_, layout_);
+        const Status before_failure = diagnostic.invoke(view_, storage_.layout);
         EXPECT_EQ(before_failure.code(), diagnostic.code);
         EXPECT_FALSE(before_failure.message().empty());
 
         test::ScopedMallocFailure failure(0, skip);
-        const Status status = diagnostic.invoke(view_, layout_);
+        const Status status = diagnostic.invoke(view_, storage_.layout);
         const auto result = failure.Stop();
 
         EXPECT_TRUE(result.allocation_failed);

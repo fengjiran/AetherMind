@@ -97,7 +97,6 @@ public:
     AM_NODISCARD bool is_initialized() const noexcept;
 
 private:
-    KVCacheLayout layout_{};
     KVCacheStorage storage_{};
     KVCacheSessionState session_state_{};
     size_t total_bytes_ = 0;

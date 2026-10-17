@@ -18,13 +18,12 @@ namespace detail {
 class KVCacheCommitAccess;
 }
 
-struct KVCacheLayout;
 struct KVCacheStorage;
 struct KVCacheSessionState;
 
 /// @brief Borrowed, validated view into manager-owned KV cache state.
 ///
-/// Holds non-owning pointers to the manager's layout, storage, and session state.
+/// Borrows the manager's storage (including its layout) and session state.
 /// The view is stale (invalid) after the session is released or its state
 /// generation changes. Reads and writes target the shared storage in place;
 /// no copies are made. The manager must outlive every view, including stale
@@ -45,11 +44,9 @@ public:
     /// Captures the current session-state generation, so a later release or
     /// re-reservation makes this view stale.
     ///
-    /// @param layout Cache geometry, borrowed.
-    /// @param storage Key/value buffers, borrowed.
+    /// @param storage Physical layout and key/value buffers, borrowed.
     /// @param session_state Active session state, borrowed.
-    KVCacheSessionView(const KVCacheLayout* layout,
-                       KVCacheStorage* storage,
+    KVCacheSessionView(KVCacheStorage* storage,
                        KVCacheSessionState* session_state) noexcept;
 
     /// @brief Returns whether the view is bound to live, initialized state.
@@ -218,11 +215,10 @@ private:
     /// @return Status::Ok() on success.
     Status CommitAppend(size_t begin, size_t end) const noexcept;
 
-    // Borrowed manager state. The three pointers are set together on binding
+    // Borrowed manager state. Both pointers are set together on binding
     // and cleared together by Invalidate(); `generation_` records the session
     // generation at binding, so a stale view keeps its pointers but reports
     // `valid() == false` once the generation or lifecycle changes.
-    const KVCacheLayout* layout_ = nullptr;
     KVCacheStorage* storage_ = nullptr;
     KVCacheSessionState* session_state_ = nullptr;
     uint64_t generation_ = 0;

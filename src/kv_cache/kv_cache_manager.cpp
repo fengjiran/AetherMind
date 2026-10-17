@@ -16,7 +16,6 @@ Status KVCacheManager::Init(Allocator& allocator,
                             size_t head_dim,
                             DataType kv_dtype,
                             size_t alignment) try {
-    layout_ = {};
     storage_ = {};
     // Preserve the epoch so a later reserve cannot revive a view borrowed
     // before this re-initialization, including when initialization fails.
@@ -24,14 +23,17 @@ Status KVCacheManager::Init(Allocator& allocator,
     total_bytes_ = 0;
     initialized_ = false;
 
-    KVCacheLayout candidate_layout{
-            .num_layers = num_layers,
-            .num_kv_heads = num_kv_heads,
-            .max_tokens = max_tokens,
-            .head_dim = head_dim,
-            .kv_dtype = kv_dtype,
-            .alignment = alignment,
+    KVCacheStorage candidate_storage{
+            .layout = {
+                    .num_layers = num_layers,
+                    .num_kv_heads = num_kv_heads,
+                    .max_tokens = max_tokens,
+                    .head_dim = head_dim,
+                    .kv_dtype = kv_dtype,
+                    .alignment = alignment,
+            },
     };
+    KVCacheLayout& candidate_layout = candidate_storage.layout;
 
     const size_t element_bytes = candidate_layout.ElementBytes();
     if (element_bytes == 0) {
@@ -72,17 +74,12 @@ Status KVCacheManager::Init(Allocator& allocator,
 
     const AllocationRequest request{.nbytes = bytes_per_plane.value(),
                                     .alignment = alignment};
-    AM_ASSIGN_OR_RETURN(Buffer key_buffer, allocator.TryAllocate(request));
-    AM_ASSIGN_OR_RETURN(Buffer value_buffer, allocator.TryAllocate(request));
-    KVCacheStorage candidate_storage{.key_buffer = std::move(key_buffer),
-                                     .value_buffer = std::move(value_buffer),
-                                     .kv_dtype = kv_dtype};
+    AM_ASSIGN_OR_RETURN(candidate_storage.key_buffer, allocator.TryAllocate(request));
+    AM_ASSIGN_OR_RETURN(candidate_storage.value_buffer, allocator.TryAllocate(request));
 
     // Publish only after both allocations succeed. These transfers cannot
     // throw, so no failure can expose a partially initialized manager.
-    static_assert(std::is_nothrow_move_assignable_v<KVCacheLayout>);
     static_assert(std::is_nothrow_move_assignable_v<KVCacheStorage>);
-    layout_ = std::move(candidate_layout);
     storage_ = std::move(candidate_storage);
     total_bytes_ = total_bytes;
     initialized_ = true;
@@ -118,7 +115,7 @@ StatusOr<KVCacheSessionView> KVCacheManager::ReserveForSession(
                 "KV session reservation must request at least one token");
     }
 
-    if (requested_tokens > layout_.max_tokens) {
+    if (requested_tokens > storage_.layout.max_tokens) {
         return Status::OutOfRange(
                 "KV session reservation exceeds physical KV capacity");
     }
@@ -132,7 +129,7 @@ StatusOr<KVCacheSessionView> KVCacheManager::ReserveForSession(
     session_state_.prompt_len = prompt_len;
     session_state_.committed_tokens = 0;
     session_state_.lifecycle = KVCacheSessionState::Lifecycle::kAwaitingPrefill;
-    return KVCacheSessionView(&layout_, &storage_, &session_state_);
+    return KVCacheSessionView(&storage_, &session_state_);
 } catch (const std::bad_alloc&) {
     // Error diagnostics may allocate; reporting OOM must not allocate again.
     return Status::ResourceExhausted({});
@@ -143,8 +140,7 @@ Status KVCacheManager::ResetSession(const KVCacheSessionView& view) noexcept try
         return Status::FailedPrecondition("KVCacheManager is not initialized");
     }
 
-    if (view.layout_ != &layout_ || view.storage_ != &storage_ ||
-        view.session_state_ != &session_state_) {
+    if (view.storage_ != &storage_ || view.session_state_ != &session_state_) {
         return Status::FailedPrecondition(
                 "KVCacheSessionView does not belong to this manager");
     }
@@ -166,8 +162,7 @@ Status KVCacheManager::ReleaseSession(KVCacheSessionView& view) noexcept try {
         return Status::FailedPrecondition("KVCacheManager is not initialized");
     }
 
-    if (view.layout_ != &layout_ || view.storage_ != &storage_ ||
-        view.session_state_ != &session_state_) {
+    if (view.storage_ != &storage_ || view.session_state_ != &session_state_) {
         return Status::FailedPrecondition(
                 "KVCacheSessionView does not belong to this manager");
     }
@@ -192,8 +187,8 @@ Status KVCacheManager::ReleaseSession(KVCacheSessionView& view) noexcept try {
     return Status::ResourceExhausted({});
 }
 
-const KVCacheLayout& KVCacheManager::layout() const noexcept { return layout_; }
-size_t KVCacheManager::capacity_tokens() const noexcept { return layout_.max_tokens; }
+const KVCacheLayout& KVCacheManager::layout() const noexcept { return storage_.layout; }
+size_t KVCacheManager::capacity_tokens() const noexcept { return storage_.layout.max_tokens; }
 size_t KVCacheManager::total_bytes() const noexcept { return total_bytes_; }
 bool KVCacheManager::is_initialized() const noexcept { return initialized_; }
 

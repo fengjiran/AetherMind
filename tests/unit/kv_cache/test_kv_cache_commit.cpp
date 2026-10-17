@@ -7,6 +7,7 @@
 
 #include <cstdlib>
 #include <limits>
+#include <type_traits>
 
 namespace {
 
@@ -36,6 +37,11 @@ TEST(KVCacheSessionView, ExposesNoPublicElementWriteAccess) {
     static_assert(!HasPublicMutableValueAccess<KVCacheSessionView>);
 }
 
+TEST(KVCacheSessionView, BindsStorageAndSessionWithoutSeparateLayout) {
+    static_assert(std::is_nothrow_constructible_v<KVCacheSessionView, KVCacheStorage*, KVCacheSessionState*>);
+    static_assert(!std::is_constructible_v<KVCacheSessionView, const KVCacheLayout*, KVCacheStorage*, KVCacheSessionState*>);
+}
+
 void FreeTestBuffer(void*, void* ptr) noexcept {
     std::free(ptr);
 }
@@ -59,26 +65,25 @@ void ExpectStateUnchanged(const KVCacheSessionState& state, const KVCacheSession
 class KVCacheCommitTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        ASSERT_TRUE(layout_.Validate().ok());
+        ASSERT_TRUE(storage_.layout.Validate().ok());
         storage_.key_buffer = MakeTestBuffer(768);
         storage_.value_buffer = MakeTestBuffer(768);
         ASSERT_TRUE(storage_.is_initialized());
     }
 
-    const KVCacheLayout layout_{
-            .num_layers = 2,
-            .num_kv_heads = 3,
-            .max_tokens = 8,
-            .head_dim = 5,
-            .padded_head_dim = 8,
-            .token_stride = 16,
-            .head_stride = 128,
-            .layer_stride = 384,
-            .kv_dtype = DataType(DLDataTypeCode::kFloat, 16, 1),
-            .alignment = 16,
-    };
     KVCacheStorage storage_{
-            .kv_dtype = layout_.kv_dtype,
+            .layout = {
+                    .num_layers = 2,
+                    .num_kv_heads = 3,
+                    .max_tokens = 8,
+                    .head_dim = 5,
+                    .padded_head_dim = 8,
+                    .token_stride = 16,
+                    .head_stride = 128,
+                    .layer_stride = 384,
+                    .kv_dtype = DataType(DLDataTypeCode::kFloat, 16, 1),
+                    .alignment = 16,
+            },
     };
     KVCacheSessionState state_{
             .generation = 1,
@@ -86,7 +91,7 @@ protected:
             .prompt_len = 2,
             .lifecycle = Lifecycle::kAwaitingPrefill,
     };
-    KVCacheSessionView view_{&layout_, &storage_, &state_};
+    KVCacheSessionView view_{&storage_, &state_};
 };
 
 TEST_F(KVCacheCommitTest, PartialPrefillDoesNotPublishState) {
@@ -154,7 +159,7 @@ TEST_F(KVCacheCommitTest, AppendBeyondReservationDoesNotPublishState) {
 
 TEST_F(KVCacheCommitTest, WrongEpochCannotChangeTheFreshReservation) {
     ++state_.generation;
-    KVCacheSessionView fresh_view(&layout_, &storage_, &state_);
+    KVCacheSessionView fresh_view(&storage_, &state_);
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(fresh_view, 2).ok());
     const auto before = state_;
 
@@ -168,7 +173,7 @@ TEST_F(KVCacheCommitTest, WrongEpochCannotChangeTheFreshReservation) {
 
 TEST_F(KVCacheCommitTest, SaturatedGenerationDoesNotReviveAnIdleView) {
     state_.generation = std::numeric_limits<uint64_t>::max();
-    KVCacheSessionView last_view(&layout_, &storage_, &state_);
+    KVCacheSessionView last_view(&storage_, &state_);
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(last_view, 2).ok());
     EXPECT_TRUE(last_view.valid());
 
@@ -240,9 +245,9 @@ TEST_F(KVCacheCommitTest, InvalidLayoutDiagnosticFailurePreservesTheEntireState)
     if (!test::MallocInterposerAvailable()) {
         GTEST_SKIP() << "Requires the glibc malloc interposer";
     }
-    KVCacheLayout malformed_layout = layout_;
-    malformed_layout.token_stride = 0;
-    KVCacheSessionView malformed_view(&malformed_layout, &storage_, &state_);
+    KVCacheStorage malformed_storage = storage_;
+    malformed_storage.layout.token_stride = 0;
+    KVCacheSessionView malformed_view(&malformed_storage, &state_);
     const auto before = state_;
 
     test::ScopedMallocFailure failure(0);

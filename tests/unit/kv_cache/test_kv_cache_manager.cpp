@@ -407,29 +407,28 @@ TEST(KVCacheManager, InitAlignsTokenRowsToLayoutAlignment) {
 
 TEST(KVCacheSessionView, RejectsStorageSmallerThanLayout) {
     // BytesPerPlane == 1024 for this geometry; back it with 512-byte buffers.
-    const KVCacheLayout layout{
-            .num_layers = 1,
-            .num_kv_heads = 1,
-            .max_tokens = 16,
-            .head_dim = 8,
-            .padded_head_dim = 32,
-            .token_stride = 64,
-            .head_stride = 1024,
-            .layer_stride = 1024,
-            .kv_dtype = MakeKVType(),
-            .alignment = 64,
-    };
     KVCacheStorage storage{
+            .layout = {
+                    .num_layers = 1,
+                    .num_kv_heads = 1,
+                    .max_tokens = 16,
+                    .head_dim = 8,
+                    .padded_head_dim = 32,
+                    .token_stride = 64,
+                    .head_stride = 1024,
+                    .layer_stride = 1024,
+                    .kv_dtype = MakeKVType(),
+                    .alignment = 64,
+            },
             .key_buffer = MakeTestBuffer(512),
             .value_buffer = MakeTestBuffer(512),
-            .kv_dtype = MakeKVType(),
     };
     KVCacheSessionState slot{.generation = 1,
                              .capacity_tokens = 8,
                              .prompt_len = 4,
                              .committed_tokens = 4,
                              .lifecycle = KVCacheSessionState::Lifecycle::kPrefillCommitted};
-    KVCacheSessionView view(&layout, &storage, &slot);
+    KVCacheSessionView view(&storage, &slot);
 
     const auto key = view.KeyData(0, 0, 0);
 
@@ -440,24 +439,23 @@ TEST(KVCacheSessionView, RejectsStorageSmallerThanLayout) {
 TEST(KVCacheSessionView, RejectsCpuPlaneBaseBreakingRowAlignment) {
     // Mirrors RejectsStorageSmallerThanLayout but keeps the buffers large
     // enough; only the plane base alignment violates the layout contract.
-    const KVCacheLayout layout{
-            .num_layers = 1,
-            .num_kv_heads = 1,
-            .max_tokens = 16,
-            .head_dim = 8,
-            .padded_head_dim = 32,
-            .token_stride = 64,
-            .head_stride = 1024,
-            .layer_stride = 1024,
-            .kv_dtype = MakeKVType(),
-            .alignment = 64,
-    };
-    ASSERT_TRUE(layout.Validate().ok());
     KVCacheStorage storage{
+            .layout = {
+                    .num_layers = 1,
+                    .num_kv_heads = 1,
+                    .max_tokens = 16,
+                    .head_dim = 8,
+                    .padded_head_dim = 32,
+                    .token_stride = 64,
+                    .head_stride = 1024,
+                    .layer_stride = 1024,
+                    .kv_dtype = MakeKVType(),
+                    .alignment = 64,
+            },
             .key_buffer = MakeMisalignedBaseTestBuffer(1024),
             .value_buffer = MakeMisalignedBaseTestBuffer(1024),
-            .kv_dtype = MakeKVType(),
     };
+    ASSERT_TRUE(storage.layout.Validate().ok());
     ASSERT_TRUE(storage.is_initialized());
     // Over-allocation guarantees every base lands exactly 16 bytes past a
     // 64-byte boundary, so the fixture is deterministic on any malloc.
@@ -468,7 +466,7 @@ TEST(KVCacheSessionView, RejectsCpuPlaneBaseBreakingRowAlignment) {
                              .prompt_len = 4,
                              .committed_tokens = 4,
                              .lifecycle = KVCacheSessionState::Lifecycle::kPrefillCommitted};
-    KVCacheSessionView view(&layout, &storage, &slot);
+    KVCacheSessionView view(&storage, &slot);
 
     const auto key = view.KeyData(0, 0, 0);
 
@@ -479,24 +477,23 @@ TEST(KVCacheSessionView, RejectsCpuPlaneBaseBreakingRowAlignment) {
 TEST(KVCacheSessionView, AcceptsUnderDeclaredBasesWhenActuallyAligned) {
     // The layout contract checks the base addresses, not the declared minimum
     // alignment, so a weakly declared but actually aligned plane is accepted.
-    const KVCacheLayout layout{
-            .num_layers = 1,
-            .num_kv_heads = 1,
-            .max_tokens = 16,
-            .head_dim = 8,
-            .padded_head_dim = 32,
-            .token_stride = 64,
-            .head_stride = 1024,
-            .layer_stride = 1024,
-            .kv_dtype = MakeKVType(),
-            .alignment = 64,
-    };
-    ASSERT_TRUE(layout.Validate().ok());
     KVCacheStorage storage{
+            .layout = {
+                    .num_layers = 1,
+                    .num_kv_heads = 1,
+                    .max_tokens = 16,
+                    .head_dim = 8,
+                    .padded_head_dim = 32,
+                    .token_stride = 64,
+                    .head_stride = 1024,
+                    .layer_stride = 1024,
+                    .kv_dtype = MakeKVType(),
+                    .alignment = 64,
+            },
             .key_buffer = MakeUnderDeclaredBaseTestBuffer(1024),
             .value_buffer = MakeUnderDeclaredBaseTestBuffer(1024),
-            .kv_dtype = MakeKVType(),
     };
+    ASSERT_TRUE(storage.layout.Validate().ok());
     ASSERT_TRUE(storage.is_initialized());
     EXPECT_EQ(storage.key_buffer.alignment(), 16U);
     EXPECT_EQ(storage.key_buffer.device().type(), DeviceType::kCPU);
@@ -506,7 +503,7 @@ TEST(KVCacheSessionView, AcceptsUnderDeclaredBasesWhenActuallyAligned) {
                              .prompt_len = 4,
                              .committed_tokens = 4,
                              .lifecycle = KVCacheSessionState::Lifecycle::kPrefillCommitted};
-    KVCacheSessionView view(&layout, &storage, &slot);
+    KVCacheSessionView view(&storage, &slot);
 
     EXPECT_TRUE(view.ValidateWrite(0, 0, 4, 1).ok());
     EXPECT_TRUE(view.KeyData(0, 0, 0).ok());

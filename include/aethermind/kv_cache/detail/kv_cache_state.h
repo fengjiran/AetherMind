@@ -5,7 +5,7 @@
 /// @brief Manager-owned KV storage and single-session state.
 
 #include "aethermind/base/macros.h"
-#include "aethermind/dtypes/data_type.h"
+#include "aethermind/kv_cache/kv_cache_layout.h"
 #include "aethermind/memory/buffer.h"
 
 #include <cstddef>
@@ -13,11 +13,11 @@
 
 namespace aethermind {
 
-/// @brief Key and value backing buffers for one cache.
+/// @brief Physical layout and its key/value backing buffers for one cache.
 struct KVCacheStorage {
+    KVCacheLayout layout{};
     Buffer key_buffer{};
     Buffer value_buffer{};
-    DataType kv_dtype{};
 
     /// @brief Returns whether both backing buffers are initialized.
     AM_NODISCARD bool is_initialized() const noexcept {

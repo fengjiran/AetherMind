@@ -28,7 +28,7 @@ Buffer MakeBindingTestBuffer(size_t nbytes) {
 class KVCacheBindingValidationTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        ASSERT_TRUE(layout_.Validate().ok());
+        ASSERT_TRUE(storage_.layout.Validate().ok());
         storage_.key_buffer = MakeBindingTestBuffer(kBufferBytes);
         storage_.value_buffer = MakeBindingTestBuffer(kBufferBytes);
         ASSERT_TRUE(storage_.is_initialized());
@@ -38,15 +38,15 @@ protected:
     }
 
     void ExpectStorage(const KVCacheLayerStorageBinding& binding, size_t layer) const {
-        EXPECT_EQ(binding.key_data, static_cast<const std::byte*>(storage_.key_buffer.data()) + layer * layout_.layer_stride);
-        EXPECT_EQ(binding.value_data, static_cast<const std::byte*>(storage_.value_buffer.data()) + layer * layout_.layer_stride);
-        EXPECT_EQ(binding.dtype, layout_.kv_dtype);
+        EXPECT_EQ(binding.key_data, static_cast<const std::byte*>(storage_.key_buffer.data()) + layer * storage_.layout.layer_stride);
+        EXPECT_EQ(binding.value_data, static_cast<const std::byte*>(storage_.value_buffer.data()) + layer * storage_.layout.layer_stride);
+        EXPECT_EQ(binding.dtype, storage_.layout.kv_dtype);
         EXPECT_EQ(binding.layer_index, layer);
-        EXPECT_EQ(binding.num_kv_heads, layout_.num_kv_heads);
-        EXPECT_EQ(binding.head_dim, layout_.head_dim);
+        EXPECT_EQ(binding.num_kv_heads, storage_.layout.num_kv_heads);
+        EXPECT_EQ(binding.head_dim, storage_.layout.head_dim);
         EXPECT_EQ(binding.token_capacity, state_.capacity_tokens);
-        EXPECT_EQ(binding.token_stride_bytes, layout_.token_stride);
-        EXPECT_EQ(binding.head_stride_bytes, layout_.head_stride);
+        EXPECT_EQ(binding.token_stride_bytes, storage_.layout.token_stride);
+        EXPECT_EQ(binding.head_stride_bytes, storage_.layout.head_stride);
     }
 
     void ExpectAccessRejected(StatusCode code) const {
@@ -59,30 +59,31 @@ protected:
     }
 
     static constexpr size_t kBufferBytes = 3072;
-    KVCacheLayout layout_{
-            .num_layers = 3,
-            .num_kv_heads = 2,
-            .max_tokens = 8,
-            .head_dim = 5,
-            .padded_head_dim = 8,
-            .token_stride = 32,
-            .head_stride = 288,
-            .layer_stride = 640,
-            .kv_dtype = DataType(DLDataTypeCode::kFloat, 16, 1),
-            .alignment = 16,
+    KVCacheStorage storage_{
+            .layout = {
+                    .num_layers = 3,
+                    .num_kv_heads = 2,
+                    .max_tokens = 8,
+                    .head_dim = 5,
+                    .padded_head_dim = 8,
+                    .token_stride = 32,
+                    .head_stride = 288,
+                    .layer_stride = 640,
+                    .kv_dtype = DataType(DLDataTypeCode::kFloat, 16, 1),
+                    .alignment = 16,
+            },
     };
-    KVCacheStorage storage_{.kv_dtype = layout_.kv_dtype};
     KVCacheSessionState state_{
             .generation = 1,
             .capacity_tokens = 6,
             .prompt_len = 2,
             .lifecycle = KVCacheSessionState::Lifecycle::kAwaitingPrefill,
     };
-    KVCacheSessionView view_{&layout_, &storage_, &state_};
+    KVCacheSessionView view_{&storage_, &state_};
 };
 
 TEST_F(KVCacheBindingValidationTest, BindingsPreservePaddedLayerGeometry) {
-    for (size_t layer = 0; layer < layout_.num_layers; ++layer) {
+    for (size_t layer = 0; layer < storage_.layout.num_layers; ++layer) {
         SCOPED_TRACE(layer);
         const auto append = view_.BindLayerForAppend(layer, 2, 3);
         ASSERT_TRUE(append.ok()) << append.status().ToString();
@@ -117,31 +118,31 @@ TEST_F(KVCacheBindingValidationTest, ElementReadsPreservePaddedOffsetsAndIndexCh
 }
 
 TEST_F(KVCacheBindingValidationTest, RevalidatesLayoutOnEveryCall) {
-    const auto original = layout_;
+    const auto original = storage_.layout;
     for (bool invalid_alignment: {false, true}) {
         SCOPED_TRACE(invalid_alignment);
-        layout_ = original;
+        storage_.layout = original;
         EXPECT_TRUE(view_.BindLayerForAppend(2, 2, 3).ok());
         EXPECT_TRUE(view_.BindLayerForRead(2, 2, 2).ok());
         if (invalid_alignment) {
-            layout_.alignment = 3;
+            storage_.layout.alignment = 3;
         } else {
-            layout_.head_stride = layout_.token_stride * layout_.max_tokens - 1;
+            storage_.layout.head_stride = storage_.layout.token_stride * storage_.layout.max_tokens - 1;
         }
 
         ExpectAccessRejected(StatusCode::kInvalidArgument);
-        EXPECT_EQ(layout_.Offset(2, 1, 1, 4).status().code(), StatusCode::kInvalidArgument);
-        EXPECT_EQ(layout_.BytesPerPlane().status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(storage_.layout.Offset(2, 1, 1, 4).status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(storage_.layout.BytesPerPlane().status().code(), StatusCode::kInvalidArgument);
     }
 }
 
 TEST_F(KVCacheBindingValidationTest, RefreshesBindingsAfterValidLayoutChange) {
     const auto before = view_.BindLayerForAppend(2, 2, 3);
     ASSERT_TRUE(before.ok()) << before.status().ToString();
-    layout_.token_stride = 48;
-    layout_.head_stride = 416;
-    layout_.layer_stride = 896;
-    ASSERT_TRUE(layout_.Validate().ok());
+    storage_.layout.token_stride = 48;
+    storage_.layout.head_stride = 416;
+    storage_.layout.layer_stride = 896;
+    ASSERT_TRUE(storage_.layout.Validate().ok());
 
     const auto append = view_.BindLayerForAppend(2, 2, 3);
     const auto read = view_.BindLayerForRead(2, 2, 2);
@@ -157,11 +158,11 @@ TEST_F(KVCacheBindingValidationTest, RefreshesBindingsAfterValidLayoutChange) {
 }
 
 TEST_F(KVCacheBindingValidationTest, RejectsPlaneSizeOverflowAfterLayoutChange) {
-    layout_.num_layers = std::numeric_limits<size_t>::max();
-    ASSERT_TRUE(layout_.Validate().ok());
+    storage_.layout.num_layers = std::numeric_limits<size_t>::max();
+    ASSERT_TRUE(storage_.layout.Validate().ok());
 
     ExpectAccessRejected(StatusCode::kOverflow);
-    EXPECT_EQ(layout_.BytesPerPlane().status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(storage_.layout.BytesPerPlane().status().code(), StatusCode::kOverflow);
 }
 
 TEST_F(KVCacheBindingValidationTest, RevalidatesReplacedBackingBuffers) {
@@ -169,7 +170,7 @@ TEST_F(KVCacheBindingValidationTest, RevalidatesReplacedBackingBuffers) {
         EXPECT_TRUE(view_.BindLayerForAppend(2, 2, 3).ok());
         EXPECT_TRUE(view_.BindLayerForRead(2, 2, 2).ok());
         Buffer original = std::move(*buffer);
-        *buffer = MakeBindingTestBuffer(layout_.num_layers * layout_.layer_stride - 1);
+        *buffer = MakeBindingTestBuffer(storage_.layout.num_layers * storage_.layout.layer_stride - 1);
         ASSERT_TRUE(buffer->is_initialized());
 
         ExpectAccessRejected(StatusCode::kFailedPrecondition);

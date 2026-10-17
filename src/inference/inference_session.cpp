@@ -9,6 +9,7 @@
 #include "aethermind/memory/allocator.h"
 #include "aethermind/runtime/runtime.h"
 #include "inference_internal.h"
+#include "utils/logging.h"
 #include "utils/overflow_check.h"
 
 #include <algorithm>
@@ -113,6 +114,9 @@ public:
                           uint32_t position_input,
                           std::span<const int64_t> tokens,
                           std::span<const int64_t> positions) {
+        AM_CHECK(!context_.has_value(),
+                 "PrepareContext requires the previous execution context to be cleared");
+
         if (tokens.empty() || tokens.size() != positions.size() ||
             tokens.size() > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
             return Status::InvalidArgument("InferenceSession token and position "
@@ -277,18 +281,8 @@ StatusOr<InferenceSession> InferenceSession::Create(
         return decode_contract.status();
     }
 
-    const PhaseContract prefill{
-            .token_input = prefill_contract->token_input,
-            .position_input = prefill_contract->position_input,
-            .token_output = prefill_contract->token_output,
-    };
-
-    const PhaseContract decode{
-            .token_input = decode_contract->token_input,
-            .position_input = decode_contract->position_input,
-            .token_output = decode_contract->token_output,
-    };
-    return InferenceSession(runtime, std::move(model), prefill, decode);
+    return InferenceSession(runtime, std::move(model), *prefill_contract,
+                            *decode_contract);
 }
 
 StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
@@ -463,13 +457,13 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
 
 namespace inference::internal {
 
-StatusOr<ValidatedPhaseContract> ValidatePlanContract(const ExecutionPlan& plan) {
+StatusOr<detail::PhaseContract> ValidatePlanContract(const ExecutionPlan& plan) {
     if (plan.model_inputs().size() != 2 || plan.model_outputs().size() != 1) {
         return Status::Unimplemented("InferenceSession requires one token "
                                      "output and token_ids/position_ids inputs");
     }
 
-    ValidatedPhaseContract contract;
+    detail::PhaseContract contract;
     // The Llama graph builder appends token_ids then position_ids, and lowering
     // preserves this ordered model_inputs contract independently of debug names.
     contract.token_input = plan.model_inputs()[0].index;

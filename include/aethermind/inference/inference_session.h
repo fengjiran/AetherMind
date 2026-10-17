@@ -13,6 +13,18 @@
 #include <span>
 #include <vector>
 
+namespace aethermind::inference::detail {
+
+/// @brief Value indices of the token/position inputs and token output within
+///        one phase plan. Filled in by ValidatePlanContract.
+struct PhaseContract {
+    uint32_t token_input = 0;
+    uint32_t position_input = 0;
+    uint32_t token_output = 0;
+};
+
+} // namespace aethermind::inference::detail
+
 namespace aethermind {
 
 class ExecutableModel;
@@ -62,13 +74,7 @@ public:
             const GenerationConfig& config) const;
 
 private:
-    /// @brief Value indices of the token/position inputs and token output
-    ///        within one phase plan.
-    struct PhaseContract {
-        uint32_t token_input = 0;
-        uint32_t position_input = 0;
-        uint32_t token_output = 0;
-    };
+    using PhaseContract = inference::detail::PhaseContract;
 
     InferenceSession(Runtime& runtime,
                      std::shared_ptr<const ExecutableModel> model,

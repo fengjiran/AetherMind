@@ -1706,7 +1706,7 @@ ContractPlanParts MakeValidContractPlanParts() {
     return parts;
 }
 
-StatusOr<inference::internal::ValidatedPhaseContract> BuildAndValidateContract(
+StatusOr<inference::detail::PhaseContract> BuildAndValidateContract(
         ContractPlanParts parts) {
     auto plan = ExecutionPlan::Create(std::move(parts.values),
                                       std::move(parts.model_inputs),

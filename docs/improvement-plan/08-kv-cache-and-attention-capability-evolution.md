@@ -29,7 +29,7 @@
 | 事实 | 代码/测试依据 | 边界 |
 |---|---|---|
 | `Runtime` 按值持有单个 `KVCacheManager`；Manager 属于 `kv_cache` 源模块，使用 K/V 两块连续 `Buffer` 和单个 `KVCacheSessionState`，Buffer 由 `Init` 收到的 `Allocator&` 分配 | [KV manager](../../include/aethermind/kv_cache/kv_cache_manager.h)、[实现](../../src/kv_cache/kv_cache_manager.cpp)、[分配入口](../../include/aethermind/memory/allocator.h) | 同一时刻只允许一个 reservation；Manager 只借用该 allocator 引用、不保存它，plane 存储与其余受管存储使用统一分配策略，没有 block table、prefix cache 或多请求调度 |
-| `KVCacheSessionView` 借用 Manager 的 layout/storage/session state，`valid()` 检查 generation；Manager 在 Reset/Release 校验三个借用指针的身份 | [KV view](../../src/kv_cache/kv_cache_session_view.cpp)、[KV manager](../../src/kv_cache/kv_cache_manager.cpp) | view 可复制；Manager 必须长于所有 view、保持地址稳定，访问由调用方串行化 |
+| `KVCacheStorage` 按值拥有 layout 与 K/V Buffer；`KVCacheSessionView` 仅借用 Manager 的 storage/session state 并经 storage 读取布局，`valid()` 检查 generation；Manager 在 Reset/Release 校验这两个借用指针的身份 | [KV view](../../src/kv_cache/kv_cache_session_view.cpp)、[KV manager](../../src/kv_cache/kv_cache_manager.cpp) | view 可复制；Manager 必须长于所有 view、保持地址稳定，访问由调用方串行化 |
 | `LayerRunner` 完整 plan 成功后提交 KV watermark；`KVCacheUpdate`/`Attention` 已有窄绑定与真实 tiny Llama 执行证据 | [LayerRunner](../../src/execution/layer_runner.cpp)、[M4/M5 测试](../../tests/unit/inference/test_direct_prefill_decode.cpp) | 这是正确性 baseline；不等于 KV 生命周期全部边界已经验证 |
 | CPU KVCacheUpdate 与 Attention descriptor 只接受 FP32 KV storage | [KVCacheUpdate entry](../../src/backend/cpu/kernels/kvcache_update/kvcache_update_entry.cpp)、[Attention entry](../../src/backend/cpu/kernels/attention/attention_entry.cpp) | PRD 的 FP16/BF16 KV 图示尚无 production kernel 证据 |
 | FP32 Attention reference 对每个 query/head 扫描 K 两遍，第二遍读 V；不物化完整 score 矩阵 | [reference 实现](../../src/backend/cpu/kernels/attention/attention_f32_reference.cpp) | CPU blocked/online 方案的收益仍需 benchmark；不可直接套用 GPU 结论 |
@@ -44,7 +44,7 @@
 
 ### 2.3 P0：跨 Manager view 可操作错误 slot
 
-旧实现的 [`ResetSession` 与 `ReleaseSession`](../../src/kv_cache/kv_cache_manager.cpp) 仅检查 `view.valid()`；A 的 view 可被 B 接受并错误修改 B 的 slot。历史复现为 `cross_release_ok=1 a_view_valid=0 b_view_valid=0`。2026-10-11 的修复先验证 view 的 layout/storage/slot 指针均属于当前 Manager，再验证 reservation 是否仍有效；foreign 或 stale view 被拒绝，两个 Manager 的 reservation、watermark 与 view 均保持原状态。Manager 禁止复制，移动仅允许在没有任何 borrowed view（包括 stale 副本）时进行；它不承诺 Manager 销毁或非法移动后访问 view 的安全性。
+旧实现的 [`ResetSession` 与 `ReleaseSession`](../../src/kv_cache/kv_cache_manager.cpp) 仅检查 `view.valid()`；A 的 view 可被 B 接受并错误修改 B 的 slot。历史复现为 `cross_release_ok=1 a_view_valid=0 b_view_valid=0`。2026-10-11 的修复增加了 borrowed owner 指针身份检查，再验证 reservation 是否仍有效；当前 layout 归 storage 持有，因此检查 view 的 storage/session-state 指针均属于当前 Manager。foreign 或 stale view 被拒绝，两个 Manager 的 reservation、watermark 与 view 均保持原状态。Manager 禁止复制，移动仅允许在没有任何 borrowed view（包括 stale 副本）时进行；它不承诺 Manager 销毁或非法移动后访问 view 的安全性。
 
 ### 2.4 发布权与资源合同
 

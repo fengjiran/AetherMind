@@ -1,6 +1,6 @@
 # AetherMind Phase 1 KV Cache 设计文档
 
-> **文档关系**：本文保留存量静态 KV Cache 的设计背景；其中历史缺口叙述不代表当前代码状态。当前源码归属为 `include/aethermind/kv_cache/` 与 `src/kv_cache/`：`kv_cache_layout.h` 公开 `KVCacheLayout`，`kv_cache_session_view.h` 公开 `KVCacheSessionView` 并只前置声明其借用的内部对象；`KVCacheStorage` 与 `KVCacheSessionState` 位于 `detail/kv_cache_state.h`，由 `KVCacheManager` 按值持有。`Runtime` 按值聚合 Manager，并不拥有本模块的实现职责。KV owner/epoch 缺陷、CPU Attention 优化准入与 Paged KV 长期边界以 [08 号演进提案](../improvement-plan/08-kv-cache-and-attention-capability-evolution.md) 为当前计划入口；[05 号草案](../improvement-plan/05-kv-cache-manager-evolution.md) 已被取代。
+> **文档关系**：本文保留存量静态 KV Cache 的设计背景；其中历史缺口叙述不代表当前代码状态。当前源码归属为 `include/aethermind/kv_cache/` 与 `src/kv_cache/`：`kv_cache_layout.h` 公开独立的布局值类型 `KVCacheLayout`，`kv_cache_session_view.h` 公开 `KVCacheSessionView` 并只前置声明其借用的 storage/session state；`KVCacheStorage` 与 `KVCacheSessionState` 位于 `detail/kv_cache_state.h`，由 `KVCacheManager` 按值持有，storage 按值拥有 layout 与 K/V Buffer。`Runtime` 按值聚合 Manager，并不拥有本模块的实现职责。KV owner/epoch 缺陷、CPU Attention 优化准入与 Paged KV 长期边界以 [08 号演进提案](../improvement-plan/08-kv-cache-and-attention-capability-evolution.md) 为当前计划入口；[05 号草案](../improvement-plan/05-kv-cache-manager-evolution.md) 已被取代。
 
 **版本**: v1.1  
 **日期**: 2026-03-25  
@@ -63,15 +63,17 @@ Executor / PrefillPath / DecodePath
                 ▼
          KVCacheManager
           ├─ KVCacheStorage
-          ├─ KVCacheLayout
-          └─ (optional) KVCacheSessionState
+          │   ├─ KVCacheLayout
+          │   ├─ key_buffer
+          │   └─ value_buffer
+          └─ KVCacheSessionState
 ```
 
 其中：
 
 - `KVCacheManager` 负责 Session 级生命周期与逻辑绑定
 - `KVCacheSessionView` 是 Execution / Attention 的稳定访问边界
-- `KVCacheStorage` 持有底层物理存储
+- `KVCacheStorage` 将布局与对应 K/V Buffer 成套持有，View 借用 storage 与 session state
 - `KVCacheLayout` 冻结布局、stride、alignment 与 offset 规则；`Validate()` 强制 `token_stride` 为元素大小倍数且对齐 `alignment`，并要求 `head_stride`/`layer_stride` 覆盖全部 token/head（防重叠），`KVCacheSessionView` 校验 layout 不超过 backing buffer
 
 ---
@@ -179,8 +181,8 @@ Phase 1 是 `single-request + synchronous execution`。
 | 对象 | 职责 | 生命周期 |
 |------|------|----------|
 | **KVCacheManager** | 对外统一管理 KV 生命周期、Reserve / Reset / Release 与 View 构造 | Runtime / Engine 生命周期 |
-| **KVCacheStorage** | Manager-owned 的 K/V 底层线性存储（`detail/`） | Runtime / Engine 生命周期 |
-| **KVCacheLayout** | 定义布局、stride、alignment 与 offset 计算规则 | Runtime / Engine 生命周期 |
+| **KVCacheStorage** | Manager-owned 的布局与 K/V 底层线性存储（`detail/`） | Runtime / Engine 生命周期 |
+| **KVCacheLayout** | 独立布局值类型，定义 dtype、stride、alignment 与 offset 计算规则；物理存储对应实例由 storage 按值拥有 | 与所属 storage 一致；也可在分配前独立构造验证 |
 | **KVCacheSessionState** | Manager-owned 的 Session 逻辑占用状态记录（`detail/`） | Session 生命周期 |
 | **KVCacheSessionView** | 面向 Executor / Attention 的逻辑访问视图 | Session 执行期 |
 
@@ -228,30 +230,27 @@ public:
 
 与历史草图的差异：`Init` 接收几何参数与 `Allocator&`（而非 `LoadedModel`/`Runtime`）；预约按 `prompt_len + future_kv_appends` 精确预留；Re-init 会释放旧 reservation 并保留 generation 使旧 view 永不复活。
 
+Manager 按值持有 `storage_` 与 `session_state_`，不单独保存 layout；`layout()` 返回 `storage_.layout` 的 const 引用。`Init` 在局部构造完整 candidate storage，布局验证与两个 plane 分配均成功后，以不抛异常的移动整体发布。失败时 Manager 保持默认空 layout、零容量与零已分配字节，旧 view 持续失效；诊断分配 OOM 返回 `ResourceExhausted`。
+
 ### 4.3 KVCacheStorage
 
-底层物理存储持有者，仅负责内存，不表达高层语义。
+底层物理存储持有者，按值拥有一份布局及其对应的 K/V Buffer，不承载 Session 生命周期或提交权限。
 
-建议字段：
+当前字段：
 
 ```cpp
 struct KVCacheStorage {
-    void* key_base{nullptr};
-    void* value_base{nullptr};
-
-    std::size_t bytes_per_plane{0};
-    std::size_t total_bytes{0};
-
-    DataType kv_dtype{DataType::kF16};
-    std::size_t alignment{64};
+    KVCacheLayout layout{};
+    Buffer key_buffer{};
+    Buffer value_buffer{};
 };
 ```
 
-> 注：KV 元素格式以 PRD 为准，Phase 1 支持 `FP16 / BF16` 作为 KV 存储格式；此处仅以 `kF16` 作为默认示意值。
+字节数和分配对齐信息由 Buffer 提供；dtype 以 `layout.kv_dtype` 为唯一权威，供 view 投影到 kernel binding，storage 不另存一份。组合将 layout 与 backing buffers 的所有权收束在一起；View 仍需校验布局、容量和 CPU plane 实际地址对齐。
 
 ### 4.4 KVCacheLayout
 
-布局契约负责冻结以下信息：
+`KVCacheLayout` 保持独立的公开值类型，不依赖 Buffer，可在物理分配前构造、验证和计算字节数。它作为 storage 的成员负责冻结以下信息：
 
 - `num_layers`
 - `num_kv_heads`
@@ -320,6 +319,10 @@ Execution / Operator 看到的是轻量 borrowed view，而不是 manager 本体
 ```cpp
 class KVCacheSessionView {
 public:
+    KVCacheSessionView() = default;
+    KVCacheSessionView(KVCacheStorage* storage,
+                       KVCacheSessionState* session_state) noexcept;
+
     bool valid() const noexcept;
 
     size_t max_tokens() const noexcept;
@@ -355,6 +358,8 @@ public:
 ```
 
 与历史草图的差异：历史 `KeyWriteView / ValueWriteView / KeyReadView / ValueReadView` 未落地；写路径统一为 `BindLayerForAppend`（强制 `begin == committed` 前沿），元素访问器只读，`ValidateWrite` 也仅做容量/范围校验。CPU plane 还会校验 base 地址满足 layout alignment（见 §6.5）。
+
+View 仅保存 borrowed storage/session-state 指针及捕获的 generation，从 `storage.layout` 读取几何信息，不独立接收或保存 layout 指针，也不在公开头文件暴露 Buffer。Manager 必须长于全部 view（含 stale 副本）且保持地址稳定；同一 Manager 与 view 的访问仍由调用方串行化。
 
 View 不公开提交接口；`current_pos()` 仅返回 canonical `committed_tokens`。`LayerRunner` 在完整 plan 成功后，经 source-private `detail::KVCacheCommitAccess::CommitAppend(begin, end)` 发布同一 append range；该 private header 不安装、不构成公开 test API。
 
@@ -422,8 +427,8 @@ Phase 1 推荐在 Runtime / Model 初始化阶段固定 `max_tokens` 上限，�
 推荐流程：
 
 1. Runtime / LoadedModel 初始化
-2. KVCacheManager 根据模型维度构建 `KVCacheLayout`
-3. 一次性申请 K / V 线性存储
+2. KVCacheManager 根据模型维度构建局部 candidate storage 的 `KVCacheLayout`
+3. 一次性申请 K / V 线性存储，成功后整体发布 candidate storage
 4. InferenceSession 在会话准备阶段调用 `ReserveForSession(prompt_len, future_kv_appends)`
 5. 返回 `KVCacheSessionView`
 6. Session 进入 Prefill / Decode

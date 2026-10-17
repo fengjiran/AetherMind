@@ -8,7 +8,7 @@
 namespace aethermind {
 namespace {
 
-Status ValidateIndexRange(size_t index, size_t upper_bound, const char* label) noexcept {
+Status ValidateIndexRange(size_t index, size_t upper_bound, const char* label) {
     if (index >= upper_bound) {
         return Status::OutOfRange(
                 std::string(label) + " index out of range");
@@ -98,8 +98,17 @@ Status KVCacheLayout::Validate() const noexcept try {
 StatusOr<size_t> KVCacheLayout::Offset(size_t layer_idx,
                                        size_t kv_head_idx,
                                        size_t seq_pos,
-                                       size_t dim_idx) const noexcept {
+                                       size_t dim_idx) const noexcept try {
     AM_RETURN_IF_ERROR(Validate());
+    return OffsetValidated(layer_idx, kv_head_idx, seq_pos, dim_idx);
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
+}
+
+StatusOr<size_t> KVCacheLayout::OffsetValidated(size_t layer_idx,
+                                                size_t kv_head_idx,
+                                                size_t seq_pos,
+                                                size_t dim_idx) const {
     AM_RETURN_IF_ERROR(ValidateIndexRange(layer_idx, num_layers, "layer"));
     AM_RETURN_IF_ERROR(ValidateIndexRange(kv_head_idx, num_kv_heads, "kv_head"));
     AM_RETURN_IF_ERROR(ValidateIndexRange(seq_pos, max_tokens, "seq_pos"));
@@ -133,13 +142,17 @@ StatusOr<size_t> KVCacheLayout::Offset(size_t layer_idx,
 
 StatusOr<size_t> KVCacheLayout::BytesPerPlane() const noexcept try {
     AM_RETURN_IF_ERROR(Validate());
+    return BytesPerPlaneValidated();
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
+}
+
+StatusOr<size_t> KVCacheLayout::BytesPerPlaneValidated() const {
     size_t bytes = 0;
     if (CheckOverflowMul(num_layers, layer_stride, &bytes)) {
         return Status::Overflow("KV bytes-per-plane overflowed size_t");
     }
     return bytes;
-} catch (const std::bad_alloc&) {
-    return Status::ResourceExhausted({});
 }
 
 

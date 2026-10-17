@@ -32,6 +32,10 @@ struct KVCacheSessionState;
 ///
 /// Committed state advances only through the source-private
 /// detail::KVCacheCommitAccess capability after a complete plan transaction.
+/// Element accessors are read-only; execution writes use append bindings.
+/// For CPU plane storage, validation additionally requires each plane base to
+/// be aligned to the layout alignment, so kernels observe absolutely aligned
+/// token rows.
 class KVCacheSessionView {
 public:
     /// @brief Constructs an unbound view that reports `valid() == false`.
@@ -150,30 +154,6 @@ public:
     AM_NODISCARD StatusOr<KVCacheReadBinding> BindLayerForRead(
             size_t layer_idx, size_t committed_end, size_t visible_end) const noexcept;
 
-    /// @brief Returns a mutable pointer to key data for one token element.
-    ///
-    /// @param layer_idx Layer index.
-    /// @param kv_head_idx KV head index.
-    /// @param seq_pos Sequence position.
-    /// @param dim_idx Dimension index within the head.
-    /// @return Pointer into the shared key buffer after write validation.
-    AM_NODISCARD StatusOr<void*> MutableKeyData(size_t layer_idx,
-                                                size_t kv_head_idx,
-                                                size_t seq_pos,
-                                                size_t dim_idx = 0) const noexcept;
-
-    /// @brief Returns a mutable pointer to value data for one token element.
-    ///
-    /// @param layer_idx Layer index.
-    /// @param kv_head_idx KV head index.
-    /// @param seq_pos Sequence position.
-    /// @param dim_idx Dimension index within the head.
-    /// @return Pointer into the shared value buffer after write validation.
-    AM_NODISCARD StatusOr<void*> MutableValueData(size_t layer_idx,
-                                                  size_t kv_head_idx,
-                                                  size_t seq_pos,
-                                                  size_t dim_idx = 0) const noexcept;
-
     /// @brief Returns a const pointer to key data for one token element.
     ///
     /// @param layer_idx Layer index.
@@ -218,25 +198,13 @@ private:
     /// @return Status::Ok() when all binding and session invariants hold.
     Status ValidateBaseState() const noexcept;
 
-    /// @brief Computes a validated element offset within the key/value plane.
-    ///
-    /// @param layer_idx Layer index.
-    /// @param kv_head_idx KV head index.
-    /// @param seq_pos Sequence position.
-    /// @param dim_idx Dimension index within the head.
-    /// @return The element's byte offset.
-    AM_NODISCARD StatusOr<size_t> Offset(size_t layer_idx,
-                                         size_t kv_head_idx,
-                                         size_t seq_pos,
-                                         size_t dim_idx) const noexcept;
-
     /// @brief Builds the per-layer key/value storage binding for kernels.
     ///
+    /// @pre ValidateBaseState() succeeded in the current public operation.
     /// @param layer_idx Layer index.
-    /// @return The layer storage binding, or an error when the view is stale,
-    ///         unbound, or the layer index is out of range.
-    AM_NODISCARD StatusOr<KVCacheLayerStorageBinding> BindLayerStorage(
-            size_t layer_idx) const noexcept;
+    /// @return The layer storage binding, or an index/arithmetic error.
+    AM_NODISCARD StatusOr<KVCacheLayerStorageBinding> BindLayerStorageValidated(
+            size_t layer_idx) const;
 
     /// @brief Commits one fully completed append transaction through the
     ///        private KVCacheCommitAccess capability.

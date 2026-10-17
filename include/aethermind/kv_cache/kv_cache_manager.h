@@ -50,7 +50,9 @@ public:
     /// @return Status::Ok() on success.
     /// @note Re-initializing releases the previous storage and any active
     ///       session reservation, even if initialization fails. All previous
-    ///       views remain stale after subsequent reservations.
+    ///       views remain stale after subsequent reservations. On failure the
+    ///       manager has a default empty layout, zero capacity and allocated
+    ///       bytes, and is_initialized() is false.
     Status Init(Allocator& allocator,
                 size_t num_layers,
                 size_t num_kv_heads,
@@ -70,12 +72,13 @@ public:
     ///         physical capacity.
     StatusOr<KVCacheSessionView> ReserveForSession(size_t prompt_len,
                                                    size_t future_kv_appends) noexcept;
+
     /// @brief Clears the committed position while retaining its reservation.
     ///
     /// @param view Active session view belonging to this manager.
     /// @return Status::Ok() on success. The next append must run Prefill again;
     ///         this does not preserve prompt KV for repeated Decode.
-    Status ResetSession(KVCacheSessionView& view) noexcept;
+    Status ResetSession(const KVCacheSessionView& view) noexcept;
 
     /// @brief Releases the active reservation and invalidates the view.
     ///
@@ -84,9 +87,9 @@ public:
     /// @return Status::Ok() on success.
     Status ReleaseSession(KVCacheSessionView& view) noexcept;
 
-    /// @brief Returns the cache geometry.
+    /// @brief Returns the cache geometry, or a default empty layout when uninitialized.
     AM_NODISCARD const KVCacheLayout& layout() const noexcept;
-    /// @brief Returns the maximum physical token capacity.
+    /// @brief Returns the maximum physical token capacity, or zero when uninitialized.
     AM_NODISCARD size_t capacity_tokens() const noexcept;
     /// @brief Returns the total allocated bytes across key and value planes.
     AM_NODISCARD size_t total_bytes() const noexcept;
@@ -94,19 +97,6 @@ public:
     AM_NODISCARD bool is_initialized() const noexcept;
 
 private:
-    /// @brief Allocates the key and value backing buffers for one plane.
-    ///
-    /// Both planes are held in locals until both allocations succeed, so a
-    /// failure releases the first one.
-    ///
-    /// @param allocator Source of the plane storage.
-    /// @param bytes_per_plane Bytes per key/value plane.
-    /// @param alignment Minimum byte alignment for both buffers.
-    /// @return Status::Ok() on success.
-    Status AllocateStorage(Allocator& allocator,
-                           size_t bytes_per_plane,
-                           size_t alignment);
-
     KVCacheLayout layout_{};
     KVCacheStorage storage_{};
     KVCacheSessionState session_state_{};

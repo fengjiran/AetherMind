@@ -313,12 +313,18 @@ TEST(KVCacheUpdateKernel, ExecutesThroughCpuBackendPlanAndPreservesPadding) {
     const int64_t key_strides[2] = {8, 2};
     const int64_t value_strides[2] = {10, 2};
 
-    auto* const key_row = static_cast<float*>(view->MutableKeyData(0, 0, 0).value());
-    auto* const value_row = static_cast<float*>(view->MutableValueData(0, 0, 0).value());
-    std::fill(key_row + 2, key_row + manager->layout().padded_head_dim, -123.0F);
-    std::fill(value_row + 2, value_row + manager->layout().padded_head_dim, -456.0F);
-    auto* const untouched_token = static_cast<float*>(view->MutableKeyData(0, 0, 3).value());
-    untouched_token[0] = 999.0F;
+    {
+        const auto append = view->BindLayerForAppend(0, 0, 2);
+        ASSERT_TRUE(append.ok()) << append.status().ToString();
+        // Seed raw storage outside the append window solely as preservation sentinels.
+        auto* const key_row = reinterpret_cast<float*>(append->storage.key_data);
+        auto* const value_row = reinterpret_cast<float*>(append->storage.value_data);
+        std::fill(key_row + 2, key_row + manager->layout().padded_head_dim, -123.0F);
+        std::fill(value_row + 2, value_row + manager->layout().padded_head_dim, -456.0F);
+        auto* const untouched_token = reinterpret_cast<float*>(
+                append->storage.key_data + 3 * append->storage.token_stride_bytes);
+        untouched_token[0] = 999.0F;
+    }
 
     const std::array<TensorView, 2> inputs = {
             TensorView(key_storage.data(), DataType::Float32(), shape, key_strides),
@@ -338,6 +344,12 @@ TEST(KVCacheUpdateKernel, ExecutesThroughCpuBackendPlanAndPreservesPadding) {
     EXPECT_FLOAT_EQ(ReadKey(*view, 0, 1, 1, 1), 8.0F);
     EXPECT_FLOAT_EQ(ReadValue(*view, 0, 0, 0, 0), 11.0F);
     EXPECT_FLOAT_EQ(ReadValue(*view, 0, 1, 1, 1), 18.0F);
+    const auto read = view->BindLayerForRead(0, 2, 2);
+    ASSERT_TRUE(read.ok()) << read.status().ToString();
+    const auto* const key_row = reinterpret_cast<const float*>(read->storage.key_data);
+    const auto* const value_row = reinterpret_cast<const float*>(read->storage.value_data);
+    const auto* const untouched_token = reinterpret_cast<const float*>(
+            read->storage.key_data + 3 * read->storage.token_stride_bytes);
     EXPECT_FLOAT_EQ(key_row[2], -123.0F);
     EXPECT_FLOAT_EQ(value_row[2], -456.0F);
     EXPECT_FLOAT_EQ(untouched_token[0], 999.0F);
@@ -461,16 +473,21 @@ TEST(KVCacheUpdateKernel, AliasFailureDoesNotCommitTheTransaction) {
     const auto plan = ExecutionPlanBuilder::Build(runtime, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
 
-    auto* const aliased_key = static_cast<float*>(view->MutableKeyData(0, 0, 0).value());
     float value[8] = {};
     const int64_t shape[2] = {2, 4};
     const int64_t aliased_strides[2] = {
             static_cast<int64_t>(manager->layout().token_stride / sizeof(float)), 1};
     const int64_t contiguous_strides[2] = {4, 1};
-    const std::array<TensorView, 2> inputs = {
-            TensorView(aliased_key, DataType::Float32(), shape, aliased_strides),
-            TensorView(value, DataType::Float32(), shape, contiguous_strides),
-    };
+    std::array<TensorView, 2> inputs;
+    {
+        const auto append = view->BindLayerForAppend(0, 0, 2);
+        ASSERT_TRUE(append.ok()) << append.status().ToString();
+        // Deliberately construct an invalid model input that aliases raw KV storage.
+        inputs = {
+                TensorView(append->storage.key_data, DataType::Float32(), shape, aliased_strides),
+                TensorView(value, DataType::Float32(), shape, contiguous_strides),
+        };
+    }
     auto context = MakeContext(runtime, *plan, *view, inputs);
     ASSERT_TRUE(context.ok()) << context.status().ToString();
 
@@ -797,7 +814,6 @@ TEST(KVCacheUpdateKernel, LaterStepFailureLeavesWrittenRangeUncommitted) {
     float value[8] = {51, 52, 53, 54, 55, 56, 57, 58};
     const int64_t shape[2] = {2, 4};
     const int64_t strides[2] = {4, 1};
-    auto* const key_cache = static_cast<float*>(view->MutableKeyData(0, 0, 0).value());
     auto context = MakeContext(runtime, *plan, *view,
                                std::array<TensorView, 2>{
                                        TensorView(key, DataType::Float32(), shape, strides),
@@ -812,6 +828,9 @@ TEST(KVCacheUpdateKernel, LaterStepFailureLeavesWrittenRangeUncommitted) {
     EXPECT_EQ(g_last_read_binding->visible_end, 2U);
     EXPECT_EQ(g_last_read_binding->query_begin, 0U);
     EXPECT_EQ(g_last_read_binding->query_end, 2U);
+    const auto append = view->BindLayerForAppend(0, 0, 2);
+    ASSERT_TRUE(append.ok()) << append.status().ToString();
+    const auto* const key_cache = reinterpret_cast<const float*>(append->storage.key_data);
     EXPECT_FLOAT_EQ(key_cache[0], 41.0F);
     EXPECT_EQ(view->current_pos(), 0U);
     EXPECT_FALSE(view->KeyData(0, 0, 0).ok());

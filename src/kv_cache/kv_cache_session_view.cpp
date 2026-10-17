@@ -4,6 +4,7 @@
 #include "aethermind/kv_cache/kv_cache_layout.h"
 #include "utils/overflow_check.h"
 
+#include <cstdint>
 #include <limits>
 #include <new>
 #include <string>
@@ -11,7 +12,7 @@
 namespace aethermind {
 namespace {
 
-Status ValidateIndexRange(size_t index, size_t upper_bound, const char* label) noexcept {
+Status ValidateIndexRange(size_t index, size_t upper_bound, const char* label) {
     if (index >= upper_bound) {
         return Status::OutOfRange(
                 std::string(label) + " index out of range");
@@ -137,7 +138,7 @@ Status KVCacheSessionView::ValidateBaseState() const noexcept try {
 
     // The layout must fit the backing buffers; a mismatched pair would let
     // validated offsets escape the allocation.
-    const auto bytes_per_plane = layout_->BytesPerPlane();
+    const auto bytes_per_plane = layout_->BytesPerPlaneValidated();
     if (!bytes_per_plane.ok()) {
         return bytes_per_plane.status();
     }
@@ -148,6 +149,18 @@ Status KVCacheSessionView::ValidateBaseState() const noexcept try {
                 "KVCacheSessionView layout exceeds the backing buffer size");
     }
 
+    // CPU kernels consume the bound base pointers directly, so absolute token
+    // row alignment also requires each plane base to satisfy the layout
+    // alignment; the layout alone only constrains row offsets relative to the
+    // plane base. Non-CPU planes have no host-address row-alignment semantics.
+    if ((storage_->key_buffer.device().is_cpu() &&
+         reinterpret_cast<uintptr_t>(storage_->key_buffer.data()) % layout_->alignment != 0) ||
+        (storage_->value_buffer.device().is_cpu() &&
+         reinterpret_cast<uintptr_t>(storage_->value_buffer.data()) % layout_->alignment != 0)) {
+        return Status::FailedPrecondition(
+                "KVCacheSessionView CPU plane base breaks the layout row alignment");
+    }
+
     return Status::Ok();
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});
@@ -156,7 +169,7 @@ Status KVCacheSessionView::ValidateBaseState() const noexcept try {
 Status KVCacheSessionView::ValidateWrite(size_t layer_idx,
                                          size_t kv_head_idx,
                                          size_t seq_pos,
-                                         size_t token_count) const noexcept {
+                                         size_t token_count) const noexcept try {
     AM_RETURN_IF_ERROR(ValidateBaseState());
     AM_RETURN_IF_ERROR(ValidateIndexRange(
             layer_idx, layout_->num_layers, "layer"));
@@ -184,12 +197,14 @@ Status KVCacheSessionView::ValidateWrite(size_t layer_idx,
     }
 
     return Status::Ok();
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 Status KVCacheSessionView::ValidateRead(size_t layer_idx,
                                         size_t kv_head_idx,
                                         size_t seq_begin,
-                                        size_t seq_end) const noexcept {
+                                        size_t seq_end) const noexcept try {
     AM_RETURN_IF_ERROR(ValidateBaseState());
     AM_RETURN_IF_ERROR(ValidateIndexRange(
             layer_idx, layout_->num_layers, "layer"));
@@ -204,11 +219,12 @@ Status KVCacheSessionView::ValidateRead(size_t layer_idx,
         return Status::OutOfRange("KV read exceeds committed token range");
     }
     return Status::Ok();
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
-StatusOr<KVCacheLayerStorageBinding> KVCacheSessionView::BindLayerStorage(
-        size_t layer_idx) const noexcept {
-    AM_RETURN_IF_ERROR(ValidateBaseState());
+StatusOr<KVCacheLayerStorageBinding> KVCacheSessionView::BindLayerStorageValidated(
+        size_t layer_idx) const {
     AM_RETURN_IF_ERROR(ValidateIndexRange(
             layer_idx, layout_->num_layers, "layer"));
 
@@ -217,16 +233,10 @@ StatusOr<KVCacheLayerStorageBinding> KVCacheSessionView::BindLayerStorage(
                 "KV layer index exceeds kernel binding range");
     }
 
-    const auto key_offset = layout_->Offset(
+    const auto layer_offset = layout_->OffsetValidated(
             layer_idx, 0, 0, 0);
-    if (!key_offset.ok()) {
-        return key_offset.status();
-    }
-
-    const auto value_offset = layout_->Offset(
-            layer_idx, 0, 0, 0);
-    if (!value_offset.ok()) {
-        return value_offset.status();
+    if (!layer_offset.ok()) {
+        return layer_offset.status();
     }
 
     auto* const key_base = static_cast<std::byte*>(storage_->key_buffer.mutable_data());
@@ -237,8 +247,8 @@ StatusOr<KVCacheLayerStorageBinding> KVCacheSessionView::BindLayerStorage(
     }
 
     return KVCacheLayerStorageBinding{
-            .key_data = key_base + *key_offset,
-            .value_data = value_base + *value_offset,
+            .key_data = key_base + *layer_offset,
+            .value_data = value_base + *layer_offset,
             .dtype = layout_->kv_dtype,
             .layer_index = static_cast<uint32_t>(layer_idx),
             .num_kv_heads = layout_->num_kv_heads,
@@ -250,7 +260,7 @@ StatusOr<KVCacheLayerStorageBinding> KVCacheSessionView::BindLayerStorage(
 }
 
 StatusOr<KVCacheAppendBinding> KVCacheSessionView::BindLayerForAppend(
-        size_t layer_idx, size_t begin, size_t end) const noexcept {
+        size_t layer_idx, size_t begin, size_t end) const noexcept try {
     AM_RETURN_IF_ERROR(ValidateBaseState());
     if (begin != session_state_->committed_tokens) {
         return Status::InvalidArgument(
@@ -272,12 +282,14 @@ StatusOr<KVCacheAppendBinding> KVCacheSessionView::BindLayerForAppend(
                 "KV append exceeds physical KV capacity");
     }
 
-    AM_ASSIGN_OR_RETURN(KVCacheLayerStorageBinding storage, BindLayerStorage(layer_idx));
+    AM_ASSIGN_OR_RETURN(KVCacheLayerStorageBinding storage, BindLayerStorageValidated(layer_idx));
     return KVCacheAppendBinding{.storage = storage, .begin = begin, .end = end};
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 StatusOr<KVCacheReadBinding> KVCacheSessionView::BindLayerForRead(
-        size_t layer_idx, size_t committed_end, size_t visible_end) const noexcept {
+        size_t layer_idx, size_t committed_end, size_t visible_end) const noexcept try {
     AM_RETURN_IF_ERROR(ValidateBaseState());
     if (committed_end != session_state_->committed_tokens) {
         return Status::InvalidArgument(
@@ -299,68 +311,42 @@ StatusOr<KVCacheReadBinding> KVCacheSessionView::BindLayerForRead(
                 "KV read visible range exceeds physical KV capacity");
     }
 
-    AM_ASSIGN_OR_RETURN(KVCacheLayerStorageBinding storage, BindLayerStorage(layer_idx));
+    AM_ASSIGN_OR_RETURN(KVCacheLayerStorageBinding storage, BindLayerStorageValidated(layer_idx));
     return KVCacheReadBinding{
             .storage = storage,
             .committed_end = committed_end,
             .visible_end = visible_end,
     };
-}
-
-StatusOr<size_t> KVCacheSessionView::Offset(size_t layer_idx,
-                                            size_t kv_head_idx,
-                                            size_t seq_pos,
-                                            size_t dim_idx) const noexcept {
-    AM_RETURN_IF_ERROR(ValidateBaseState());
-    return layout_->Offset(layer_idx, kv_head_idx, seq_pos, dim_idx);
-}
-
-StatusOr<void*> KVCacheSessionView::MutableKeyData(size_t layer_idx,
-                                                   size_t kv_head_idx,
-                                                   size_t seq_pos,
-                                                   size_t dim_idx) const noexcept {
-    AM_RETURN_IF_ERROR(ValidateWrite(layer_idx, kv_head_idx, seq_pos, 1));
-    const StatusOr<size_t> offset = Offset(layer_idx, kv_head_idx, seq_pos, dim_idx);
-    if (!offset.ok()) {
-        return offset.status();
-    }
-    return static_cast<std::byte*>(storage_->key_buffer.mutable_data()) + offset.value();
-}
-
-StatusOr<void*> KVCacheSessionView::MutableValueData(size_t layer_idx,
-                                                     size_t kv_head_idx,
-                                                     size_t seq_pos,
-                                                     size_t dim_idx) const noexcept {
-    AM_RETURN_IF_ERROR(ValidateWrite(layer_idx, kv_head_idx, seq_pos, 1));
-    const StatusOr<size_t> offset = Offset(layer_idx, kv_head_idx, seq_pos, dim_idx);
-    if (!offset.ok()) {
-        return offset.status();
-    }
-    return static_cast<std::byte*>(storage_->value_buffer.mutable_data()) + offset.value();
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 StatusOr<const void*> KVCacheSessionView::KeyData(size_t layer_idx,
                                                   size_t kv_head_idx,
                                                   size_t seq_pos,
-                                                  size_t dim_idx) const noexcept {
+                                                  size_t dim_idx) const noexcept try {
     AM_RETURN_IF_ERROR(ValidateRead(layer_idx, kv_head_idx, seq_pos, seq_pos + 1));
-    const StatusOr<size_t> offset = Offset(layer_idx, kv_head_idx, seq_pos, dim_idx);
+    const StatusOr<size_t> offset = layout_->OffsetValidated(layer_idx, kv_head_idx, seq_pos, dim_idx);
     if (!offset.ok()) {
         return offset.status();
     }
     return static_cast<const std::byte*>(storage_->key_buffer.data()) + offset.value();
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 StatusOr<const void*> KVCacheSessionView::ValueData(size_t layer_idx,
                                                     size_t kv_head_idx,
                                                     size_t seq_pos,
-                                                    size_t dim_idx) const noexcept {
+                                                    size_t dim_idx) const noexcept try {
     AM_RETURN_IF_ERROR(ValidateRead(layer_idx, kv_head_idx, seq_pos, seq_pos + 1));
-    const StatusOr<size_t> offset = Offset(layer_idx, kv_head_idx, seq_pos, dim_idx);
+    const StatusOr<size_t> offset = layout_->OffsetValidated(layer_idx, kv_head_idx, seq_pos, dim_idx);
     if (!offset.ok()) {
         return offset.status();
     }
     return static_cast<const std::byte*>(storage_->value_buffer.data()) + offset.value();
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 Status KVCacheSessionView::CommitAppend(size_t begin, size_t end) const noexcept try {

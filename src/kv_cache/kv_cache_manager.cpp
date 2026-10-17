@@ -4,32 +4,10 @@
 
 #include <limits>
 #include <new>
+#include <type_traits>
+#include <utility>
 
 namespace aethermind {
-
-Status KVCacheManager::AllocateStorage(Allocator& allocator,
-                                       size_t bytes_per_plane,
-                                       size_t alignment) {
-    const AllocationRequest request{.nbytes = bytes_per_plane,
-                                    .alignment = alignment};
-
-    // Both planes stay in locals until both succeed, so a second-allocation
-    // failure releases the first buffer.
-    const StatusOr<Buffer> key_buffer = allocator.TryAllocate(request);
-    if (!key_buffer.ok()) {
-        return key_buffer.status();
-    }
-
-    const StatusOr<Buffer> value_buffer = allocator.TryAllocate(request);
-    if (!value_buffer.ok()) {
-        return value_buffer.status();
-    }
-
-    storage_.key_buffer = key_buffer.value();
-    storage_.value_buffer = value_buffer.value();
-    storage_.kv_dtype = layout_.kv_dtype;
-    return Status::Ok();
-}
 
 Status KVCacheManager::Init(Allocator& allocator,
                             size_t num_layers,
@@ -37,7 +15,7 @@ Status KVCacheManager::Init(Allocator& allocator,
                             size_t max_tokens,
                             size_t head_dim,
                             DataType kv_dtype,
-                            size_t alignment) {
+                            size_t alignment) try {
     layout_ = {};
     storage_ = {};
     // Preserve the epoch so a later reserve cannot revive a view borrowed
@@ -46,14 +24,16 @@ Status KVCacheManager::Init(Allocator& allocator,
     total_bytes_ = 0;
     initialized_ = false;
 
-    layout_.num_layers = num_layers;
-    layout_.num_kv_heads = num_kv_heads;
-    layout_.max_tokens = max_tokens;
-    layout_.head_dim = head_dim;
-    layout_.kv_dtype = kv_dtype;
-    layout_.alignment = alignment;
+    KVCacheLayout candidate_layout{
+            .num_layers = num_layers,
+            .num_kv_heads = num_kv_heads,
+            .max_tokens = max_tokens,
+            .head_dim = head_dim,
+            .kv_dtype = kv_dtype,
+            .alignment = alignment,
+    };
 
-    const size_t element_bytes = layout_.ElementBytes();
+    const size_t element_bytes = candidate_layout.ElementBytes();
     if (element_bytes == 0) {
         return Status::InvalidArgument("KV dtype must have non-zero element bytes");
     }
@@ -66,21 +46,21 @@ Status KVCacheManager::Init(Allocator& allocator,
     size_t dims_per_alignment = alignment > element_bytes
                                         ? alignment / element_bytes
                                         : 1;
-    layout_.padded_head_dim =
+    candidate_layout.padded_head_dim =
             dims_per_alignment > 1
                     ? (head_dim + dims_per_alignment - 1) / dims_per_alignment *
                               dims_per_alignment
                     : head_dim;
 
-    if (CheckOverflowMul(layout_.padded_head_dim, element_bytes, &layout_.token_stride) ||
-        CheckOverflowMul(layout_.max_tokens, layout_.token_stride, &layout_.head_stride) ||
-        CheckOverflowMul(layout_.num_kv_heads, layout_.head_stride, &layout_.layer_stride)) {
+    if (CheckOverflowMul(candidate_layout.padded_head_dim, element_bytes, &candidate_layout.token_stride) ||
+        CheckOverflowMul(candidate_layout.max_tokens, candidate_layout.token_stride, &candidate_layout.head_stride) ||
+        CheckOverflowMul(candidate_layout.num_kv_heads, candidate_layout.head_stride, &candidate_layout.layer_stride)) {
         return Status::Overflow("KV layout stride computation overflowed size_t");
     }
 
-    AM_RETURN_IF_ERROR(layout_.Validate());
+    AM_RETURN_IF_ERROR(candidate_layout.Validate());
 
-    const StatusOr<size_t> bytes_per_plane = layout_.BytesPerPlane();
+    const StatusOr<size_t> bytes_per_plane = candidate_layout.BytesPerPlane();
     if (!bytes_per_plane.ok()) {
         return bytes_per_plane.status();
     }
@@ -90,12 +70,25 @@ Status KVCacheManager::Init(Allocator& allocator,
         return Status::Overflow("KV total bytes overflowed size_t");
     }
 
-    AM_RETURN_IF_ERROR(
-            AllocateStorage(allocator, bytes_per_plane.value(), alignment));
+    const AllocationRequest request{.nbytes = bytes_per_plane.value(),
+                                    .alignment = alignment};
+    AM_ASSIGN_OR_RETURN(Buffer key_buffer, allocator.TryAllocate(request));
+    AM_ASSIGN_OR_RETURN(Buffer value_buffer, allocator.TryAllocate(request));
+    KVCacheStorage candidate_storage{.key_buffer = std::move(key_buffer),
+                                     .value_buffer = std::move(value_buffer),
+                                     .kv_dtype = kv_dtype};
 
+    // Publish only after both allocations succeed. These transfers cannot
+    // throw, so no failure can expose a partially initialized manager.
+    static_assert(std::is_nothrow_move_assignable_v<KVCacheLayout>);
+    static_assert(std::is_nothrow_move_assignable_v<KVCacheStorage>);
+    layout_ = std::move(candidate_layout);
+    storage_ = std::move(candidate_storage);
     total_bytes_ = total_bytes;
     initialized_ = true;
     return Status::Ok();
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 StatusOr<KVCacheSessionView> KVCacheManager::ReserveForSession(
@@ -145,7 +138,7 @@ StatusOr<KVCacheSessionView> KVCacheManager::ReserveForSession(
     return Status::ResourceExhausted({});
 }
 
-Status KVCacheManager::ResetSession(KVCacheSessionView& view) noexcept try {
+Status KVCacheManager::ResetSession(const KVCacheSessionView& view) noexcept try {
     if (!initialized_) {
         return Status::FailedPrecondition("KVCacheManager is not initialized");
     }

@@ -71,6 +71,14 @@ public:
 
     /// @brief Returns the KV cache manager, or nullptr when it is disabled.
     ///
+    /// The returned pointer borrows Runtime-owned state: it stays valid only
+    /// while this Runtime is alive and not moved, and the Runtime must
+    /// outlive every KVCacheSessionView obtained through it. Manager mutation
+    /// (Init, ReserveForSession, ResetSession, ReleaseSession) must be
+    /// externally serialized with every Execute() over borrowed views and with
+    /// any other access to the manager; the manager performs no internal
+    /// locking, and at most one session reservation is active at a time.
+    ///
     /// @return Borrowed pointer owned by the Runtime, or nullptr when KV
     ///         caching is not enabled.
     AM_NODISCARD KVCacheManager* GetKVCacheManager() noexcept {
@@ -78,6 +86,10 @@ public:
     }
 
     /// @brief Returns the KV cache manager, or nullptr when it is disabled.
+    ///
+    /// Same borrowing and serialization contract as the non-const overload;
+    /// reads must also be externally serialized with any manager mutation and
+    /// Execute() over borrowed views.
     ///
     /// @return Borrowed pointer owned by the Runtime, or nullptr when KV
     ///         caching is not enabled.

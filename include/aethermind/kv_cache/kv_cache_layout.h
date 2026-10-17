@@ -33,9 +33,11 @@ struct KVCacheLayout {
     size_t layer_stride = 0;
     DataType kv_dtype{};
     /// Row-layout alignment in bytes. `token_stride` must be a multiple of it,
-    /// so every token row starts aligned relative to its plane base. This
-    /// constrains the layout only: the backing buffer's own base alignment may
-    /// be stronger without strengthening any individual row.
+    /// so every token row starts aligned relative to its plane base. Views
+    /// binding this layout additionally require CPU plane bases to be aligned
+    /// to it, so kernels observe absolutely aligned token rows. The backing
+    /// buffer's own declared alignment may be lower than the actual address
+    /// alignment; only the base addresses are checked.
     size_t alignment = 64;
 
     /// @brief Returns the element size of the KV dtype.
@@ -56,6 +58,17 @@ struct KVCacheLayout {
                                          size_t dim_idx) const noexcept;
     /// @brief Returns the total bytes of one key/value plane.
     AM_NODISCARD StatusOr<size_t> BytesPerPlane() const noexcept;
+
+private:
+    friend class KVCacheSessionView;
+
+    // The caller must validate this layout in the current operation. These
+    // helpers retain index and arithmetic checks; they cache no validation state.
+    AM_NODISCARD StatusOr<size_t> OffsetValidated(size_t layer_idx,
+                                                  size_t kv_head_idx,
+                                                  size_t seq_pos,
+                                                  size_t dim_idx) const;
+    AM_NODISCARD StatusOr<size_t> BytesPerPlaneValidated() const;
 };
 
 } // namespace aethermind

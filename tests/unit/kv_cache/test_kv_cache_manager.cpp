@@ -7,7 +7,9 @@
 
 #include <gtest/gtest.h>
 
+#include <cstddef>
 #include <cstdlib>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -24,8 +26,184 @@ DataType MakeKVType() {
     return DataType(DLDataTypeCode::kFloat, 16, 1);
 }
 
+void ExpectEmptyManager(const KVCacheManager& manager) {
+    EXPECT_FALSE(manager.is_initialized());
+    EXPECT_EQ(manager.capacity_tokens(), 0U);
+    EXPECT_EQ(manager.total_bytes(), 0U);
+    const auto& layout = manager.layout();
+    EXPECT_EQ(layout.num_layers, 0U);
+    EXPECT_EQ(layout.num_kv_heads, 0U);
+    EXPECT_EQ(layout.max_tokens, 0U);
+    EXPECT_EQ(layout.head_dim, 0U);
+    EXPECT_EQ(layout.padded_head_dim, 0U);
+    EXPECT_EQ(layout.token_stride, 0U);
+    EXPECT_EQ(layout.head_stride, 0U);
+    EXPECT_EQ(layout.layer_stride, 0U);
+    EXPECT_EQ(layout.kv_dtype, DataType{});
+    EXPECT_EQ(layout.alignment, KVCacheLayout{}.alignment);
+}
+
+void ExpectEmptyManagerCanRetry(KVCacheManager& manager,
+                                const KVCacheSessionView& old_view) {
+    ExpectEmptyManager(manager);
+    EXPECT_EQ(manager.ReserveForSession(1, 1).status().code(),
+              StatusCode::kFailedPrecondition);
+    EXPECT_FALSE(old_view.valid());
+
+    ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 2, 3, 24, 8, MakeKVType(), 16).ok());
+    EXPECT_EQ(manager.capacity_tokens(), 24U);
+    EXPECT_GT(manager.total_bytes(), 0U);
+    auto fresh = manager.ReserveForSession(2, 4);
+    ASSERT_TRUE(fresh.ok());
+    EXPECT_TRUE(fresh->valid());
+    EXPECT_EQ(fresh->num_layers(), 2U);
+    EXPECT_EQ(fresh->num_kv_heads(), 3U);
+    EXPECT_FALSE(old_view.valid());
+    EXPECT_EQ(manager.ResetSession(old_view).code(), StatusCode::kFailedPrecondition);
+    EXPECT_TRUE(fresh->valid());
+    EXPECT_TRUE(manager.ReleaseSession(*fresh).ok());
+}
+
+struct InitFailureCase {
+    const char* name;
+    size_t num_layers = 1;
+    size_t num_kv_heads = 1;
+    size_t max_tokens = 16;
+    size_t head_dim = 8;
+    DataType dtype = MakeKVType();
+    size_t alignment = 64;
+    StatusCode expected_code = StatusCode::kInvalidArgument;
+};
+
+class KVCacheManagerInitFailure : public testing::TestWithParam<InitFailureCase> {};
+
+TEST_P(KVCacheManagerInitFailure, LeavesEmptyStateAndCanRetry) {
+    const auto& param = GetParam();
+    for (const bool reinitialize: {false, true}) {
+        SCOPED_TRACE(reinitialize);
+        KVCacheManager manager;
+        KVCacheSessionView old_view;
+        if (reinitialize) {
+            ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 8, 8, MakeKVType(), 64).ok());
+            auto reservation = manager.ReserveForSession(2, 2);
+            ASSERT_TRUE(reservation.ok());
+            old_view = *reservation;
+        }
+
+        const Status status = manager.Init(test::TestCpuAllocator(), param.num_layers,
+                                           param.num_kv_heads, param.max_tokens,
+                                           param.head_dim, param.dtype, param.alignment);
+
+        EXPECT_EQ(status.code(), param.expected_code);
+        ExpectEmptyManagerCanRetry(manager, old_view);
+    }
+}
+
+constexpr size_t kMaxSize = std::numeric_limits<size_t>::max();
+
+INSTANTIATE_TEST_SUITE_P(
+        Validation, KVCacheManagerInitFailure,
+        testing::Values(
+                InitFailureCase{.name = "UndefinedDtype", .dtype = {}},
+                InitFailureCase{.name = "ZeroLayers", .num_layers = 0},
+                InitFailureCase{.name = "ZeroHeads", .num_kv_heads = 0},
+                InitFailureCase{.name = "ZeroTokens", .max_tokens = 0},
+                InitFailureCase{.name = "ZeroHeadDimension", .head_dim = 0},
+                InitFailureCase{.name = "ZeroAlignment", .alignment = 0},
+                InitFailureCase{.name = "NonPowerOfTwoAlignment", .alignment = 3},
+                InitFailureCase{.name = "TokenStrideOverflow", .head_dim = kMaxSize / 2 + 1, .alignment = 2, .expected_code = StatusCode::kOverflow},
+                InitFailureCase{.name = "HeadStrideOverflow", .max_tokens = kMaxSize / 64 + 1, .expected_code = StatusCode::kOverflow},
+                InitFailureCase{.name = "LayerStrideOverflow", .num_kv_heads = kMaxSize / 64 + 1, .max_tokens = 1, .expected_code = StatusCode::kOverflow},
+                InitFailureCase{.name = "PlaneBytesOverflow", .num_layers = kMaxSize / 64 + 1, .max_tokens = 1, .expected_code = StatusCode::kOverflow},
+                InitFailureCase{.name = "TotalBytesOverflow", .num_layers = kMaxSize / 128 + 1, .max_tokens = 1, .expected_code = StatusCode::kOverflow}),
+        [](const testing::TestParamInfo<InitFailureCase>& info) { return info.param.name; });
+
+struct InitAllocationFailureCase {
+    const char* name;
+    test::MallocFailureTarget target;
+    size_t skip_matching_allocations;
+};
+
+class KVCacheManagerInitAllocationFailure : public testing::TestWithParam<InitAllocationFailureCase> {};
+
+TEST_P(KVCacheManagerInitAllocationFailure, LeavesEmptyStateAndCanRetry) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    const auto& param = GetParam();
+    auto& allocator = test::TestCpuAllocator();
+    for (const bool reinitialize: {false, true}) {
+        SCOPED_TRACE(reinitialize);
+        KVCacheManager manager;
+        KVCacheSessionView old_view;
+        if (reinitialize) {
+            ASSERT_TRUE(manager.Init(allocator, 1, 1, 8, 8, MakeKVType(), 64).ok());
+            auto reservation = manager.ReserveForSession(2, 2);
+            ASSERT_TRUE(reservation.ok());
+            old_view = *reservation;
+        }
+
+        const bool metadata_failure = param.target == test::MallocFailureTarget::kMalloc;
+        test::ScopedMallocFailure failure(metadata_failure ? sizeof(BufferImpl) : 0,
+                                          param.skip_matching_allocations, false, param.target);
+        const Status status = manager.Init(allocator, 2, 3, 16, 8, MakeKVType(), 64);
+        const auto result = failure.Stop();
+
+        EXPECT_TRUE(result.allocation_failed);
+        EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+        const size_t allocated_planes = param.skip_matching_allocations + (metadata_failure ? 1 : 0);
+        EXPECT_EQ(result.aligned_allocation_calls, allocated_planes);
+        if (allocated_planes != 0) {
+            EXPECT_TRUE(result.last_aligned_allocation_released);
+        }
+        ExpectEmptyManagerCanRetry(manager, old_view);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        Allocation, KVCacheManagerInitAllocationFailure,
+        testing::Values(
+                InitAllocationFailureCase{"FirstPlaneStorage", test::MallocFailureTarget::kPosixMemalign, 0},
+                InitAllocationFailureCase{"SecondPlaneStorage", test::MallocFailureTarget::kPosixMemalign, 1},
+                InitAllocationFailureCase{"FirstPlaneMetadata", test::MallocFailureTarget::kMalloc, 0},
+                InitAllocationFailureCase{"SecondPlaneMetadata", test::MallocFailureTarget::kMalloc, 1}),
+        [](const testing::TestParamInfo<InitAllocationFailureCase>& info) { return info.param.name; });
+
+TEST(KVCacheManager, InitDiagnosticAllocationFailureLeavesEmptyStateAndCanRetry) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+    auto& allocator = test::TestCpuAllocator();
+    for (const bool reinitialize: {false, true}) {
+        SCOPED_TRACE(reinitialize);
+        KVCacheManager manager;
+        KVCacheSessionView old_view;
+        if (reinitialize) {
+            ASSERT_TRUE(manager.Init(allocator, 1, 1, 8, 8, MakeKVType(), 64).ok());
+            auto reservation = manager.ReserveForSession(2, 2);
+            ASSERT_TRUE(reservation.ok());
+            old_view = *reservation;
+        }
+
+        test::ScopedMallocFailure failure(0);
+        const Status status = manager.Init(allocator, 1, 1, 16, 8, DataType{}, 64);
+        const auto result = failure.Stop();
+
+        EXPECT_TRUE(result.allocation_failed);
+        EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+        EXPECT_TRUE(status.message().empty());
+        ExpectEmptyManagerCanRetry(manager, old_view);
+    }
+}
+
 void FreeTestBuffer(void*, void* ptr) noexcept {
     std::free(ptr);
+}
+
+// Frees the original 64-byte-aligned block. Used with an interior pointer so
+// the handle's data pointer differs from the block the deleter releases.
+void FreeOwnedBaseBlock(void* block, void*) noexcept {
+    std::free(block);
 }
 
 Buffer MakeTestBuffer(size_t nbytes, size_t alignment = 64) {
@@ -35,6 +213,29 @@ Buffer MakeTestBuffer(size_t nbytes, size_t alignment = 64) {
         return {};
     }
     return Buffer{nbytes, MemoryHandle(ptr, nullptr, &FreeTestBuffer, Device::CPU(), alignment)};
+}
+
+// Allocates a 64-byte-aligned block and returns an interior pointer exactly 16
+// bytes past it: 16-byte aligned by construction, but provably not 64-byte
+// aligned. The declared 16-byte alignment passes BufferImpl's self-check while
+// breaking a 64-byte layout row alignment.
+Buffer MakeMisalignedBaseTestBuffer(size_t nbytes) {
+    void* raw = nullptr;
+    if (posix_memalign(&raw, 64, nbytes + 64) != 0 || raw == nullptr) {
+        return {};
+    }
+    void* const ptr = static_cast<std::byte*>(raw) + 16;
+    return Buffer{nbytes, MemoryHandle(ptr, raw, &FreeOwnedBaseBlock, Device::CPU(), 16)};
+}
+
+// Backs the buffer with a 64-byte-aligned block but declares only 16 bytes,
+// exercising the fact-based base check against an under-declared handle.
+Buffer MakeUnderDeclaredBaseTestBuffer(size_t nbytes) {
+    void* ptr = nullptr;
+    if (posix_memalign(&ptr, 64, nbytes) != 0 || ptr == nullptr) {
+        return {};
+    }
+    return Buffer{nbytes, MemoryHandle(ptr, nullptr, &FreeTestBuffer, Device::CPU(), 16)};
 }
 
 KVCacheLayout MakeTestLayout(size_t token_stride = 16,
@@ -236,6 +437,82 @@ TEST(KVCacheSessionView, RejectsStorageSmallerThanLayout) {
     EXPECT_EQ(key.status().code(), StatusCode::kFailedPrecondition);
 }
 
+TEST(KVCacheSessionView, RejectsCpuPlaneBaseBreakingRowAlignment) {
+    // Mirrors RejectsStorageSmallerThanLayout but keeps the buffers large
+    // enough; only the plane base alignment violates the layout contract.
+    const KVCacheLayout layout{
+            .num_layers = 1,
+            .num_kv_heads = 1,
+            .max_tokens = 16,
+            .head_dim = 8,
+            .padded_head_dim = 32,
+            .token_stride = 64,
+            .head_stride = 1024,
+            .layer_stride = 1024,
+            .kv_dtype = MakeKVType(),
+            .alignment = 64,
+    };
+    ASSERT_TRUE(layout.Validate().ok());
+    KVCacheStorage storage{
+            .key_buffer = MakeMisalignedBaseTestBuffer(1024),
+            .value_buffer = MakeMisalignedBaseTestBuffer(1024),
+            .kv_dtype = MakeKVType(),
+    };
+    ASSERT_TRUE(storage.is_initialized());
+    // Over-allocation guarantees every base lands exactly 16 bytes past a
+    // 64-byte boundary, so the fixture is deterministic on any malloc.
+    ASSERT_EQ(reinterpret_cast<uintptr_t>(storage.key_buffer.data()) % 64U, 16U);
+    ASSERT_EQ(reinterpret_cast<uintptr_t>(storage.value_buffer.data()) % 64U, 16U);
+    KVCacheSessionState slot{.generation = 1,
+                             .capacity_tokens = 8,
+                             .prompt_len = 4,
+                             .committed_tokens = 4,
+                             .lifecycle = KVCacheSessionState::Lifecycle::kPrefillCommitted};
+    KVCacheSessionView view(&layout, &storage, &slot);
+
+    const auto key = view.KeyData(0, 0, 0);
+
+    ASSERT_FALSE(key.ok());
+    EXPECT_EQ(key.status().code(), StatusCode::kFailedPrecondition);
+}
+
+TEST(KVCacheSessionView, AcceptsUnderDeclaredBasesWhenActuallyAligned) {
+    // The layout contract checks the base addresses, not the declared minimum
+    // alignment, so a weakly declared but actually aligned plane is accepted.
+    const KVCacheLayout layout{
+            .num_layers = 1,
+            .num_kv_heads = 1,
+            .max_tokens = 16,
+            .head_dim = 8,
+            .padded_head_dim = 32,
+            .token_stride = 64,
+            .head_stride = 1024,
+            .layer_stride = 1024,
+            .kv_dtype = MakeKVType(),
+            .alignment = 64,
+    };
+    ASSERT_TRUE(layout.Validate().ok());
+    KVCacheStorage storage{
+            .key_buffer = MakeUnderDeclaredBaseTestBuffer(1024),
+            .value_buffer = MakeUnderDeclaredBaseTestBuffer(1024),
+            .kv_dtype = MakeKVType(),
+    };
+    ASSERT_TRUE(storage.is_initialized());
+    EXPECT_EQ(storage.key_buffer.alignment(), 16U);
+    EXPECT_EQ(storage.key_buffer.device().type(), DeviceType::kCPU);
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(storage.key_buffer.data()) % 64U, 0U);
+    KVCacheSessionState slot{.generation = 1,
+                             .capacity_tokens = 8,
+                             .prompt_len = 4,
+                             .committed_tokens = 4,
+                             .lifecycle = KVCacheSessionState::Lifecycle::kPrefillCommitted};
+    KVCacheSessionView view(&layout, &storage, &slot);
+
+    EXPECT_TRUE(view.ValidateWrite(0, 0, 4, 1).ok());
+    EXPECT_TRUE(view.KeyData(0, 0, 0).ok());
+    EXPECT_TRUE(view.BindLayerForRead(0, 4, 4).ok());
+}
+
 TEST(KVCacheManager, ReserveRejectsSecondActiveSession) {
     KVCacheManager manager;
     ASSERT_TRUE(manager.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64).ok());
@@ -278,11 +555,9 @@ TEST(KVCacheManager, CommitAndReadWritePointersRespectBounds) {
     StatusOr<KVCacheSessionView> view = manager.ReserveForSession(4, 4);
     ASSERT_TRUE(view.ok());
 
-    const StatusOr<void*> key_ptr = view->MutableKeyData(0, 0, 0);
-    const StatusOr<void*> value_ptr = view->MutableValueData(0, 0, 0);
-    ASSERT_TRUE(key_ptr.ok());
-    ASSERT_TRUE(value_ptr.ok());
-    EXPECT_NE(key_ptr.value(), value_ptr.value());
+    const auto append = view->BindLayerForAppend(0, 0, 4);
+    ASSERT_TRUE(append.ok()) << append.status().ToString();
+    EXPECT_NE(append->storage.key_data, append->storage.value_data);
 
     EXPECT_FALSE(view->KeyData(0, 0, 0).ok());
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 4).ok());
@@ -290,8 +565,14 @@ TEST(KVCacheManager, CommitAndReadWritePointersRespectBounds) {
     EXPECT_FALSE(view->awaiting_prefill());
 
     const StatusOr<const void*> key_read = view->KeyData(0, 0, 0);
+    const StatusOr<const void*> value_read = view->ValueData(0, 0, 0);
     ASSERT_TRUE(key_read.ok());
-    EXPECT_EQ(key_read.value(), key_ptr.value());
+    ASSERT_TRUE(value_read.ok());
+    EXPECT_EQ(key_read.value(), append->storage.key_data);
+    EXPECT_EQ(value_read.value(), append->storage.value_data);
+    EXPECT_FALSE(view->KeyData(0, 0, 4).ok());
+    EXPECT_FALSE(view->ValueData(0, 0, 4).ok());
+    EXPECT_FALSE(view->BindLayerForAppend(0, 0, 4).ok());
 }
 
 TEST(KVCacheManager, ResetSessionClearsCommittedPosition) {
@@ -526,7 +807,9 @@ TEST(KVCacheManager, ReinitializationPermanentlyInvalidatesActiveViewCopies) {
 
     EXPECT_FALSE(old_view->valid());
     EXPECT_FALSE(old_copy.valid());
-    EXPECT_FALSE(old_copy.MutableKeyData(0, 0, 0).ok());
+    EXPECT_FALSE(old_copy.BindLayerForAppend(0, 0, 3).ok());
+    EXPECT_FALSE(old_copy.KeyData(0, 0, 0).ok());
+    EXPECT_FALSE(old_copy.ValueData(0, 0, 0).ok());
     EXPECT_EQ(manager.ResetSession(old_copy).code(), StatusCode::kFailedPrecondition);
     EXPECT_EQ(manager.ReleaseSession(old_copy).code(), StatusCode::kFailedPrecondition);
     EXPECT_TRUE(fresh_view->valid());

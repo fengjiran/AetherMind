@@ -20,9 +20,20 @@ concept HasPublicCommitUntil = requires(View& view) { view.CommitUntil(size_t{1}
 template<typename View>
 concept HasPublicCommitAppend = requires(View& view) { view.CommitAppend(size_t{0}, size_t{1}); };
 
+template<typename View>
+concept HasPublicMutableKeyAccess = requires(View& view) { view.MutableKeyData(size_t{0}, size_t{0}, size_t{0}, size_t{0}); };
+
+template<typename View>
+concept HasPublicMutableValueAccess = requires(View& view) { view.MutableValueData(size_t{0}, size_t{0}, size_t{0}, size_t{0}); };
+
 TEST(KVCacheSessionView, ExposesNoPublicCommitMutation) {
     static_assert(!HasPublicCommitUntil<KVCacheSessionView>);
     static_assert(!HasPublicCommitAppend<KVCacheSessionView>);
+}
+
+TEST(KVCacheSessionView, ExposesNoPublicElementWriteAccess) {
+    static_assert(!HasPublicMutableKeyAccess<KVCacheSessionView>);
+    static_assert(!HasPublicMutableValueAccess<KVCacheSessionView>);
 }
 
 void FreeTestBuffer(void*, void* ptr) noexcept {
@@ -260,8 +271,8 @@ TEST_P(KVCacheInvalidStateTest, ReadWriteAndCommitFailClosed) {
     EXPECT_FALSE(view_.ValidateRead(0, 0, 0, 1).ok());
     EXPECT_FALSE(view_.BindLayerForAppend(0, state_.committed_tokens, state_.committed_tokens + 1).ok());
     EXPECT_FALSE(view_.BindLayerForRead(0, state_.committed_tokens, state_.committed_tokens).ok());
-    EXPECT_FALSE(view_.MutableKeyData(0, 0, 0).ok());
     EXPECT_FALSE(view_.KeyData(0, 0, 0).ok());
+    EXPECT_FALSE(view_.ValueData(0, 0, 0).ok());
     EXPECT_FALSE(detail::KVCacheCommitAccess::CommitAppend(view_, state_.committed_tokens, state_.committed_tokens + 1).ok());
 
     ExpectStateUnchanged(state_, before);

@@ -91,7 +91,7 @@ public:
     AM_NODISCARD const KVCacheLayout& layout() const noexcept;
     /// @brief Returns the maximum physical token capacity, or zero when uninitialized.
     AM_NODISCARD size_t capacity_tokens() const noexcept;
-    /// @brief Returns the total allocated bytes across key and value planes.
+    /// @brief Returns the total visible bytes across key and value plane buffers.
     AM_NODISCARD size_t total_bytes() const noexcept;
     /// @brief Returns whether the manager has been initialized.
     AM_NODISCARD bool is_initialized() const noexcept;
@@ -99,7 +99,6 @@ public:
 private:
     KVCacheStorage storage_{};
     KVCacheSessionState session_state_{};
-    size_t total_bytes_ = 0;
     bool initialized_ = false;
 };
 

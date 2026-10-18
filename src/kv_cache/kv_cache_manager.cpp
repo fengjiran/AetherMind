@@ -4,7 +4,6 @@
 
 #include <limits>
 #include <new>
-#include <type_traits>
 #include <utility>
 
 namespace aethermind {
@@ -20,10 +19,9 @@ Status KVCacheManager::Init(Allocator& allocator,
     // Preserve the epoch so a later reserve cannot revive a view borrowed
     // before this re-initialization, including when initialization fails.
     session_state_ = KVCacheSessionState{.generation = session_state_.generation};
-    total_bytes_ = 0;
     initialized_ = false;
 
-    KVCacheStorage candidate_storage{
+    KVCacheStorage storage{
             .layout = {
                     .num_layers = num_layers,
                     .num_kv_heads = num_kv_heads,
@@ -33,9 +31,9 @@ Status KVCacheManager::Init(Allocator& allocator,
                     .alignment = alignment,
             },
     };
-    KVCacheLayout& candidate_layout = candidate_storage.layout;
+    auto& layout = storage.layout;
 
-    const size_t element_bytes = candidate_layout.ElementBytes();
+    const size_t element_bytes = layout.ElementBytes();
     if (element_bytes == 0) {
         return Status::InvalidArgument("KV dtype must have non-zero element bytes");
     }
@@ -48,40 +46,38 @@ Status KVCacheManager::Init(Allocator& allocator,
     size_t dims_per_alignment = alignment > element_bytes
                                         ? alignment / element_bytes
                                         : 1;
-    candidate_layout.padded_head_dim =
+    layout.padded_head_dim =
             dims_per_alignment > 1
                     ? (head_dim + dims_per_alignment - 1) / dims_per_alignment *
                               dims_per_alignment
                     : head_dim;
 
-    if (CheckOverflowMul(candidate_layout.padded_head_dim, element_bytes, &candidate_layout.token_stride) ||
-        CheckOverflowMul(candidate_layout.max_tokens, candidate_layout.token_stride, &candidate_layout.head_stride) ||
-        CheckOverflowMul(candidate_layout.num_kv_heads, candidate_layout.head_stride, &candidate_layout.layer_stride)) {
+    if (CheckOverflowMul(layout.padded_head_dim, element_bytes, &layout.token_stride) ||
+        CheckOverflowMul(layout.max_tokens, layout.token_stride, &layout.head_stride) ||
+        CheckOverflowMul(layout.num_kv_heads, layout.head_stride, &layout.layer_stride)) {
         return Status::Overflow("KV layout stride computation overflowed size_t");
     }
 
-    AM_RETURN_IF_ERROR(candidate_layout.Validate());
+    AM_RETURN_IF_ERROR(layout.Validate());
 
-    const StatusOr<size_t> bytes_per_plane = candidate_layout.BytesPerPlane();
+    const StatusOr<size_t> bytes_per_plane = layout.BytesPerPlane();
     if (!bytes_per_plane.ok()) {
         return bytes_per_plane.status();
     }
 
-    size_t total_bytes = 0;
-    if (CheckOverflowMul(bytes_per_plane.value(), size_t{2}, &total_bytes)) {
+    if (size_t total_bytes = 0;
+        CheckOverflowMul(bytes_per_plane.value(), size_t{2}, &total_bytes)) {
         return Status::Overflow("KV total bytes overflowed size_t");
     }
 
     const AllocationRequest request{.nbytes = bytes_per_plane.value(),
                                     .alignment = alignment};
-    AM_ASSIGN_OR_RETURN(candidate_storage.key_buffer, allocator.TryAllocate(request));
-    AM_ASSIGN_OR_RETURN(candidate_storage.value_buffer, allocator.TryAllocate(request));
+    AM_ASSIGN_OR_RETURN(storage.key_buffer, allocator.TryAllocate(request));
+    AM_ASSIGN_OR_RETURN(storage.value_buffer, allocator.TryAllocate(request));
 
     // Publish only after both allocations succeed. These transfers cannot
     // throw, so no failure can expose a partially initialized manager.
-    static_assert(std::is_nothrow_move_assignable_v<KVCacheStorage>);
-    storage_ = std::move(candidate_storage);
-    total_bytes_ = total_bytes;
+    storage_ = std::move(storage);
     initialized_ = true;
     return Status::Ok();
 } catch (const std::bad_alloc&) {
@@ -187,9 +183,20 @@ Status KVCacheManager::ReleaseSession(KVCacheSessionView& view) noexcept try {
     return Status::ResourceExhausted({});
 }
 
-const KVCacheLayout& KVCacheManager::layout() const noexcept { return storage_.layout; }
-size_t KVCacheManager::capacity_tokens() const noexcept { return storage_.layout.max_tokens; }
-size_t KVCacheManager::total_bytes() const noexcept { return total_bytes_; }
-bool KVCacheManager::is_initialized() const noexcept { return initialized_; }
+const KVCacheLayout& KVCacheManager::layout() const noexcept {
+    return storage_.layout;
+}
+
+size_t KVCacheManager::capacity_tokens() const noexcept {
+    return storage_.layout.max_tokens;
+}
+
+size_t KVCacheManager::total_bytes() const noexcept {
+    return storage_.key_buffer.nbytes() + storage_.value_buffer.nbytes();
+}
+
+bool KVCacheManager::is_initialized() const noexcept {
+    return initialized_;
+}
 
 } // namespace aethermind

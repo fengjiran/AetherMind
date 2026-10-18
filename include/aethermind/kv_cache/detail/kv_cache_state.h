@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 namespace aethermind {
 
@@ -24,6 +25,9 @@ struct KVCacheStorage {
         return key_buffer.is_initialized() && value_buffer.is_initialized();
     }
 };
+
+// The manager relies on non-throwing move assignment to publish initialized storage.
+static_assert(std::is_nothrow_move_assignable_v<KVCacheStorage>);
 
 /// @brief State of the active session reservation inside a KVCacheManager.
 ///

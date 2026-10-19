@@ -14,7 +14,7 @@
 - InferenceSession 与 plan 校验共享 `inference::detail::PhaseContract`，移除重复结构和逐字段转换；C++ 调用方需重新编译。
 - `docs/designs/architecture/architecture_overview.md` 确立为全系统唯一架构总览；`docs/designs/aethermind_arch_design.md` 标记 Deprecated 并归档。
 - `KVCacheManager` 禁止复制；移动仅限没有 borrowed view 的资源装配阶段，并明确共享 Runtime 请求须由调用方串行化。
-- Workspace 公共头文件按职责改名为 `base/workspace_binding.h` 与 `runtime/workspace_planner.h`；调用方需更新 include 路径，类型及行为保持不变。
+- Workspace 纯数据契约统一放入 `base/workspace_types.h`，移除 `base/workspace_binding.h`；原调用方需更新 include 路径。类型、字段布局及行为保持不变，arena 接口与布局规划分别保留在 `base/workspace_arena.h` 和 `runtime/workspace_planner.h`。
 - Workspace 对齐及布局规划的实现移入 `src/runtime/workspace_planner.cpp`；头文件保留公共声明和 `constexpr` 对齐校验，调用方需链接核心库。
 
 ### Deprecated

@@ -5,7 +5,7 @@
 #include "aethermind/base/device.h"
 #include "aethermind/base/kv_cache_binding.h"
 #include "aethermind/base/workspace_arena.h"
-#include "aethermind/base/workspace_binding.h"
+#include "aethermind/base/workspace_types.h"
 
 #include <cstddef>
 #include <span>

@@ -33,7 +33,7 @@ struct ExternalWritableValueBinding {
 /// State values intentionally are not represented here: KV and other opaque
 /// runtime state remain owned by ExecutionContext.
 struct ExternalTensorBindings {
-    std::vector<ExternalReadOnlyValueBinding> readable{};
+    std::vector<ExternalReadOnlyValueBinding> read_only{};
     std::vector<ExternalWritableValueBinding> writable{};
 };
 

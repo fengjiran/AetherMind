@@ -14,7 +14,7 @@
 ///   (pure data type, defined in `base/workspace_types.h`)
 /// - `PlanWorkspaceRequirements()`: Plans offsets for all requirements into a unified layout
 /// - `WorkspaceBinding`: Actual slice handed to a kernel at execution time
-///   (defined in `base/workspace_binding.h`)
+///   (defined in `base/workspace_types.h`)
 /// - `WorkspacePlanLayout`: Summary of the total workspace size and alignment needs
 ///
 /// The planning phase is done before execution. The binding phase happens when

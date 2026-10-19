@@ -380,7 +380,7 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
             return view.status();
         }
 
-        bindings.readable.push_back({.value = {.index = i}, .tensor = *view});
+        bindings.read_only.push_back({.value = {.index = i}, .tensor = *view});
         bound[i] = true;
     }
 

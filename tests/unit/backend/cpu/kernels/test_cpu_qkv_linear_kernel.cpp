@@ -506,9 +506,9 @@ TEST(CPUKernelQkvLinear, PackedArtifactParticipatesInDeferredShapeChecks) {
     constexpr int64_t input_strides[2] = {4, 1};
     const auto bindings = PrepareExecutionBindings(
             *plan,
-            {.readable = {{.value = plan->steps().front().inputs[0],
-                           .tensor = TensorView(input, DataType::Float32(), input_shape,
-                                                input_strides, 64)}}},
+            {.read_only = {{.value = plan->steps().front().inputs[0],
+                            .tensor = TensorView(input, DataType::Float32(), input_shape,
+                                                 input_strides, 64)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_FALSE(bindings.ok());
     EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
@@ -670,12 +670,12 @@ TEST(CPUKernelQkvLinear, FusedPackedExecutionRequiresNoExternalQkvWeightBinding)
     constexpr int64_t key_value_strides[2] = {2, 1};
     auto prepared = PrepareExecutionBindings(
             *plan,
-            {.readable = {{.value = add_step->inputs[0],
-                           .tensor = TensorView(input, DataType::Float32(), input_shape,
-                                                input_strides, 64)},
-                          {.value = add_step->inputs[1],
-                           .tensor = TensorView(input, DataType::Float32(), input_shape,
-                                                input_strides, 64)}},
+            {.read_only = {{.value = add_step->inputs[0],
+                            .tensor = TensorView(input, DataType::Float32(), input_shape,
+                                                 input_strides, 64)},
+                           {.value = add_step->inputs[1],
+                            .tensor = TensorView(input, DataType::Float32(), input_shape,
+                                                 input_strides, 64)}},
              .writable = {{.value = qkv_step->outputs[0],
                            .tensor = MutableTensorView(query_output, DataType::Float32(), query_shape,
                                                        query_strides, 64)},

@@ -34,14 +34,14 @@ using SymbolValueMap = std::unordered_map<int64_t, int64_t>;
 /// @param shape  Concrete shape.
 /// @param role   Human-readable label used in error messages (e.g. "input").
 /// @param port_index Port index used in error messages.
-/// @param symbol_values Shared symbol-to-value map (across ports of one step).
+/// @param symbol_value_map Shared symbol-to-value map (across ports of one step).
 /// @return OkStatus, or kInvalidArgument on the first drift.
 Status ValidateConcreteShapeAgainstSpec(const TensorSpec& spec,
                                         DataType dtype,
                                         IntArrayView shape,
                                         std::string_view role,
                                         size_t port_index,
-                                        SymbolValueMap& symbol_values);
+                                        SymbolValueMap& symbol_value_map);
 
 /// @brief Evaluates a shape constraint against symbolic tensor shapes.
 ///

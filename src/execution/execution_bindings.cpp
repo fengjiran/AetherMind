@@ -56,24 +56,26 @@ void SnapshotMetadata(ConcreteTensorMetadata& destination,
 
 Status ValidateExternalView(const TensorView& view,
                             const TensorSpec& spec,
-                            std::unordered_map<int64_t, int64_t>& symbol_values) {
+                            SymbolValueMap& symbol_value_map) {
     if (!view.is_valid()) {
         return Status::InvalidArgument(
                 "External read-only tensor view is invalid");
     }
     return ValidateConcreteShapeAgainstSpec(
-            spec, view.dtype(), view.shape(), "external input", 0, symbol_values);
+            spec, view.dtype(), view.shape(), "external input",
+            0, symbol_value_map);
 }
 
 Status ValidateExternalView(const MutableTensorView& view,
                             const TensorSpec& spec,
-                            std::unordered_map<int64_t, int64_t>& symbol_values) {
+                            SymbolValueMap& symbol_value_map) {
     if (!view.is_valid()) {
         return Status::InvalidArgument(
                 "External writable tensor view is invalid");
     }
     return ValidateConcreteShapeAgainstSpec(
-            spec, view.dtype(), view.shape(), "external output", 0, symbol_values);
+            spec, view.dtype(), view.shape(), "external output",
+            0, symbol_value_map);
 }
 
 StatusOr<ConcreteTensorMetadata> ResolveConcreteMetadata(
@@ -177,15 +179,16 @@ StatusOr<uint32_t> FindPackedWeightPort(const ExecutionStep& step) {
     }
 
     std::optional<uint32_t> weight_port;
-    for (size_t port = 0; port < schema->input_ports.size(); ++port) {
-        if (schema->input_ports[port].kind != OperatorPortKind::kWeight) {
+    for (size_t i = 0; i < schema->input_ports.size(); ++i) {
+        if (schema->input_ports[i].kind != OperatorPortKind::kWeight) {
             continue;
         }
+
         if (weight_port.has_value()) {
             return Status::InvalidArgument(
                     "Packed execution step has more than one kWeight input");
         }
-        weight_port = static_cast<uint32_t>(port);
+        weight_port = static_cast<uint32_t>(i);
     }
 
     if (!weight_port.has_value() || step.packed_weights == nullptr) {
@@ -195,8 +198,7 @@ StatusOr<uint32_t> FindPackedWeightPort(const ExecutionStep& step) {
     return *weight_port;
 }
 
-StatusOr<PackedWeightView> MakePackedWeightView(
-        const ExecutionStep& step) {
+StatusOr<PackedWeightView> MakePackedWeightView(const ExecutionStep& step) {
     if (step.packed_weights == nullptr ||
         step.packed_weights->storage().data() == nullptr) {
         return Status::InvalidArgument(
@@ -215,10 +217,9 @@ StatusOr<PackedWeightView> MakePackedWeightView(
     };
 }
 
-Status ValidatePackedWeightLogicalBindings(
-        const ExecutionPlan& plan,
-        SymbolValueMap& symbol_values) {
-    for (const ExecutionStep& step: plan.steps()) {
+Status ValidatePackedWeightLogicalBindings(const ExecutionPlan& plan,
+                                           SymbolValueMap& symbol_value_map) {
+    for (const auto& step: plan.steps()) {
         if (step.selector.weight_format != WeightFormat::kPacked) {
             continue;
         }
@@ -230,7 +231,7 @@ Status ValidatePackedWeightLogicalBindings(
         AM_RETURN_IF_ERROR(ValidateConcreteShapeAgainstSpec(
                 plan.values()[value.index].spec, packed.logical_dtype,
                 IntArrayView(packed.logical_shape), "packed weight", weight_port,
-                symbol_values));
+                symbol_value_map));
     }
     return Status::Ok();
 }
@@ -351,9 +352,9 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
     storage->metadata.resize(plan.values().size());
     std::vector<const TensorView*> readable(plan.values().size(), nullptr);
     std::vector<const MutableTensorView*> writable(plan.values().size(), nullptr);
-    std::unordered_map<int64_t, int64_t> symbol_values;
+    SymbolValueMap symbol_value_map;
 
-    for (const auto& [value, tensor]: external.readable) {
+    for (const auto& [value, tensor]: external.read_only) {
         if (value.index >= plan.values().size()) {
             return Status::InvalidArgument(
                     "External readable binding references an invalid ExecutionValueId");
@@ -371,7 +372,7 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
         }
 
         AM_RETURN_IF_ERROR(ValidateExternalView(tensor, plan.values()[value.index].spec,
-                                                symbol_values));
+                                                symbol_value_map));
         readable[value.index] = &tensor;
     }
 
@@ -392,11 +393,11 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
         }
 
         AM_RETURN_IF_ERROR(ValidateExternalView(
-                tensor, plan.values()[value.index].spec, symbol_values));
+                tensor, plan.values()[value.index].spec, symbol_value_map));
         writable[value.index] = &tensor;
     }
 
-    AM_RETURN_IF_ERROR(ValidatePackedWeightLogicalBindings(plan, symbol_values));
+    AM_RETURN_IF_ERROR(ValidatePackedWeightLogicalBindings(plan, symbol_value_map));
     AM_ASSIGN_OR_RETURN(const std::vector<bool> requires_external_read,
                         ComputeExternalReadRequirements(plan));
 
@@ -446,7 +447,7 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
 
                 {
                     auto metadata =
-                            ResolveConcreteMetadata(value.spec, symbol_values);
+                            ResolveConcreteMetadata(value.spec, symbol_value_map);
                     if (!metadata.ok()) {
                         return metadata.status();
                     }

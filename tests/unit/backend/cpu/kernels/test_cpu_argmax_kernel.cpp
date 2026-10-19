@@ -1159,9 +1159,9 @@ TEST(CPUKernelArgmaxEntry, OverlappingOutputFailsAtPrepareExecutionBindings) {
     // output layout must be rejected here, before any kernel execution.
     const auto table = PrepareExecutionBindings(
             *plan,
-            {.readable = {{.value = step.inputs[0],
-                           .tensor = TensorView(input, DataType::Float32(), input_shape,
-                                                input_strides)}},
+            {.read_only = {{.value = step.inputs[0],
+                            .tensor = TensorView(input, DataType::Float32(), input_shape,
+                                                 input_strides)}},
              .writable = {{.value = step.outputs[0],
                            .tensor = MutableTensorView(output.data(), DataType::Int(64),
                                                        output_shape,

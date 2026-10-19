@@ -9,7 +9,6 @@
 #include "aethermind/memory/allocator.h"
 #include "aethermind/runtime/runtime.h"
 #include "inference_internal.h"
-#include "utils/logging.h"
 #include "utils/overflow_check.h"
 
 #include <algorithm>
@@ -64,7 +63,7 @@ public:
     RequestResources(const RequestResources&) = delete;
     RequestResources& operator=(const RequestResources&) = delete;
     ~RequestResources() {
-        static_cast<void>(Close());
+        UNUSED(Close());
     }
 
     Status Reserve(size_t prompt_len, size_t future_kv_appends) {
@@ -79,8 +78,7 @@ public:
         return Status::Ok();
     }
 
-    Status InitializeWorkspace(Allocator& allocator, size_t bytes,
-                               size_t alignment) {
+    Status InitializeWorkspace(Allocator& allocator, size_t bytes, size_t alignment) {
         if (bytes == 0) {
             return Status::Ok();
         }
@@ -92,8 +90,9 @@ public:
 
         // The plan's alignment is a floor: the allocator may return stronger,
         // and every planned offset stays valid against a stronger base.
-        auto storage = allocator.TryAllocate({.nbytes = bytes,
-                                              .alignment = alignment});
+        auto storage = allocator.TryAllocate(
+                {.nbytes = bytes,
+                 .alignment = alignment});
         if (!storage.ok()) {
             return storage.status();
         }
@@ -124,16 +123,16 @@ public:
         }
 
         ExternalTensorBindings external = immutable_bindings;
-        external.readable.reserve(external.readable.size() + 2);
+        external.read_only.reserve(external.read_only.size() + 2);
         const std::array<int64_t, 1> shape{static_cast<int64_t>(tokens.size())};
         constexpr std::array<int64_t, 1> strides{1};
-        external.readable.push_back({
+        external.read_only.push_back({
                 .value = {.index = token_input},
                 .tensor = TensorView(tokens.data(), DataType::Int(64), shape, strides,
                                      alignof(int64_t)),
         });
 
-        external.readable.push_back({
+        external.read_only.push_back({
                 .value = {.index = position_input},
                 .tensor = TensorView(positions.data(), DataType::Int(64), shape, strides,
                                      alignof(int64_t)),
@@ -480,8 +479,12 @@ StatusOr<detail::PhaseContract> ValidatePlanContract(const ExecutionPlan& plan) 
         }
 
         const auto& value = plan.values()[idx];
+        if (value.kind != ExecutionValueKind::kModelInput) {
+            return Status::InvalidArgument(
+                    "InferenceSession model input must have kModelInput kind");
+        }
+
         if (const auto rank = value.spec.shape.rank();
-            value.kind != ExecutionValueKind::kModelInput ||
             value.spec.dtype != DataType::Int(64) || !rank.has_value() || *rank != 1) {
             return Status::Unimplemented(
                     "InferenceSession model inputs must be rank-one Int64 tensors");
@@ -503,7 +506,7 @@ StatusOr<detail::PhaseContract> ValidatePlanContract(const ExecutionPlan& plan) 
                 "InferenceSession requires a rank-one Int64 token output");
     }
 
-    size_t argmax_count = 0;
+    size_t argmax_op_count = 0;
     bool output_is_argmax = false;
     for (const auto& step: plan.steps()) {
         if (step.selector.device_type != DeviceType::kCPU) {
@@ -515,11 +518,13 @@ StatusOr<detail::PhaseContract> ValidatePlanContract(const ExecutionPlan& plan) 
             continue;
         }
 
-        ++argmax_count;
-        output_is_argmax = step.outputs.size() == 1 && step.outputs.front() == output;
+        ++argmax_op_count;
+        if (step.outputs.size() == 1 && step.outputs.front() == output) {
+            output_is_argmax = true;
+        }
     }
 
-    if (argmax_count != 1 || !output_is_argmax) {
+    if (argmax_op_count != 1 || !output_is_argmax) {
         return Status::Unimplemented(
                 "InferenceSession requires its sole model output to be the Argmax result");
     }

@@ -733,7 +733,7 @@ TEST(WeightPacking, LoweredDrivenPrepackAndResolve) {
 
     auto table = PrepareExecutionBindings(
             *plan,
-            ExternalTensorBindings{.readable = std::move(readable)},
+            ExternalTensorBindings{.read_only = std::move(readable)},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_TRUE(table.ok()) << table.status().ToString();
     auto context = ExecutionContext::Create(*plan, std::move(*table), nullptr);

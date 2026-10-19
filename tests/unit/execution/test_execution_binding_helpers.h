@@ -39,7 +39,7 @@ public:
                 const ExecutionValueId value = step.inputs[step.kernel_input_ports[index]];
                 if (plan_.values()[value.index].kind == ExecutionValueKind::kActivation) continue;
                 if (!readable_seen[value.index]) {
-                    external.readable.push_back({.value = value, .tensor = binding.inputs[index]});
+                    external.read_only.push_back({.value = value, .tensor = binding.inputs[index]});
                     readable_seen[value.index] = true;
                 }
             }

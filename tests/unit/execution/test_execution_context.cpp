@@ -195,10 +195,10 @@ TEST(ExecutionContext, CreateRequiresKVViewForStateAliases) {
     CPUAllocator allocator(Device::CPU());
     auto prepared = PrepareExecutionBindings(
             *plan,
-            {.readable = {{.value = {.index = 0},
-                           .tensor = TensorView(input, DataType::Float32(), shape, strides)},
-                          {.value = {.index = 1},
-                           .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
+            {.read_only = {{.value = {.index = 0},
+                            .tensor = TensorView(input, DataType::Float32(), shape, strides)},
+                           {.value = {.index = 1},
+                            .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
             allocator);
     ASSERT_TRUE(prepared.ok()) << prepared.status().ToString();
 

@@ -501,7 +501,7 @@ Status ValidateConcreteShapeAgainstSpec(const TensorSpec& spec,
                                         IntArrayView shape,
                                         std::string_view role,
                                         size_t port_index,
-                                        SymbolValueMap& symbol_values) {
+                                        SymbolValueMap& symbol_value_map) {
     const std::string port_label = std::string(role) + " " + std::to_string(port_index);
     if (dtype != spec.dtype) {
         return Status::InvalidArgument(
@@ -522,29 +522,29 @@ Status ValidateConcreteShapeAgainstSpec(const TensorSpec& spec,
                 std::to_string(*spec_rank));
     }
 
-    for (size_t d = 0; d < shape.size(); ++d) {
-        const int64_t concrete = shape[d];
+    for (size_t i = 0; i < shape.size(); ++i) {
+        const int64_t concrete = shape[i];
         if (concrete < 0) {
             return Status::InvalidArgument(
                     "Runtime tensor binding for " + port_label + " dimension " +
-                    std::to_string(d) + " is negative");
+                    std::to_string(i) + " is negative");
         }
 
-        if (const ShapeSymbol& dim = spec.shape[d]; dim.IsStatic()) {
+        if (const auto& dim = spec.shape[i]; dim.IsStatic()) {
             if (concrete != dim.GetStaticValue()) {
                 return Status::InvalidArgument(
                         "Runtime tensor binding for " + port_label + " dimension " +
-                        std::to_string(d) + " (value " + std::to_string(concrete) +
+                        std::to_string(i) + " (value " + std::to_string(concrete) +
                         ") does not match plan spec static dimension " +
                         std::to_string(dim.GetStaticValue()));
             }
         } else if (dim.IsSymbolic()) {
             if (const auto [it, inserted] =
-                        symbol_values.emplace(dim.value(), concrete);
+                        symbol_value_map.emplace(dim.value(), concrete);
                 !inserted && it->second != concrete) {
                 return Status::InvalidArgument(
                         "Runtime tensor binding for " + port_label + " dimension " +
-                        std::to_string(d) + " (value " + std::to_string(concrete) +
+                        std::to_string(i) + " (value " + std::to_string(concrete) +
                         ") conflicts with another binding of the same symbolic "
                         "dimension (value " +
                         std::to_string(it->second) + ")");

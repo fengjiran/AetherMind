@@ -1086,10 +1086,10 @@ TEST(CPUKernelRmsNormEntry, OverlappingOutputRowsFailAtPrepareExecutionBindings)
     // output rows must be rejected here, before any kernel execution.
     const auto table = PrepareExecutionBindings(
             *plan,
-            {.readable = {{.value = step.inputs[0],
-                           .tensor = TensorView(input, DataType::Float32(), io_shape, io_strides)},
-                          {.value = step.inputs[1],
-                           .tensor = TensorView(weight, DataType::Float32(), raw_weight_shape, raw_weight_strides)}},
+            {.read_only = {{.value = step.inputs[0],
+                            .tensor = TensorView(input, DataType::Float32(), io_shape, io_strides)},
+                           {.value = step.inputs[1],
+                            .tensor = TensorView(weight, DataType::Float32(), raw_weight_shape, raw_weight_strides)}},
              .writable = {{.value = step.outputs[0],
                            .tensor = MutableTensorView(output, DataType::Float32(), io_shape,
                                                        overlapping_output_strides)}}},

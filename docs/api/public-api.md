@@ -106,6 +106,18 @@
 | 失败语义 | 非零且非 2 的幂的 alignment 返回 `kInvalidArgument`；hook 返回借用内存、错误 device、无效或不足的 alignment，或 CPU 指针不满足声明对齐时返回 `kInternal`。存储或 `BufferImpl` 元数据 OOM 返回空 message 的 `kResourceExhausted`，已有 owning storage 自动释放。`Allocate(size_t)` 转调本入口，将 `kResourceExhausted` 映射为 `std::bad_alloc`，其余错误映射为 `Error`。 |
 | 扩展点 | `AllocatorProvider::CreateAllocator(Device)` 只创建对应设备的 allocator；`CPUAllocator(Device, CPUAllocatorPolicy)` 控制默认对齐、junk fill 和 THP。当前不附带分类标签、内存账本或额外释放包装，也不提供预算限制。 |
 
+### Workspace 数据契约（include/aethermind/base/workspace_types.h）
+
+`WorkspaceLifetime`、`WorkspaceRequirement`、`WorkspaceBinding` 统一定义在 [workspace_types.h](../../include/aethermind/base/workspace_types.h)。原先包含 `base/workspace_binding.h` 的调用方需改为包含 `base/workspace_types.h`；类型名、字段布局与行为不变。
+
+| 类型 | 语义与生命周期 |
+|---|---|
+| `WorkspaceLifetime` | 描述 scratch-memory 需求的生命周期范围 |
+| `WorkspaceRequirement` | backend 提供 `bytes`、`alignment`、`lifetime`、`reusable`；planner 填写相对 workspace base 的 `offset`，不持有内存地址 |
+| `WorkspaceBinding` | `WorkspaceArena::Bind` 产生的借用切片；`data` 已满足 requirement 对齐，`size` 不小于需求字节数；仅供单次 kernel 调用，不得保存到调用结束之后 |
+
+资源接口 `WorkspaceArena` 仍定义于 [workspace_arena.h](../../include/aethermind/base/workspace_arena.h)，布局规划仍定义于 [workspace_planner.h](../../include/aethermind/runtime/workspace_planner.h)。
+
 ### `Executor::Execute`（include/aethermind/execution/executor.h）
 
 | 项 | 内容 |

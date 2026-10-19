@@ -2,14 +2,13 @@
 #define AETHERMIND_BASE_WORKSPACE_TYPES_H
 
 /// @file workspace_types.h
-/// @brief Workspace requirement data types shared by backend preparation and
-/// execution planning.
+/// @brief Workspace data contracts shared by backend preparation, execution
+/// planning, and kernel invocation.
 ///
-/// Pure data: `WorkspaceRequirement` only describes how much scratch memory a
-/// step needs and how it may be reused. Planning (offset assignment) happens
-/// in the runtime workspace header. The types live in the base layer so
-/// execution contract headers can carry them without depending on runtime
-/// headers.
+/// WorkspaceRequirement describes scratch-memory needs and planned offsets;
+/// WorkspaceBinding borrows the corresponding execution-time slice. Planning
+/// lives in runtime/workspace_planner.h and storage binding in WorkspaceArena.
+/// Both data types stay in base so consumers need no runtime implementation.
 
 #include "aethermind/base/macros.h"
 
@@ -61,6 +60,23 @@ struct WorkspaceRequirement {
     AM_NODISCARD bool empty() const noexcept {
         return bytes == 0;
     }
+};
+
+/// Actual workspace slice bound to a kernel at execution time.
+///
+/// Produced by WorkspaceArena::Bind() using a WorkspaceRequirement's offset.
+///
+/// Lifetime:
+/// - Borrowed from the underlying WorkspaceArena
+/// - Valid only during that step's execution
+/// - Do not store beyond a single kernel invocation
+struct WorkspaceBinding {
+    /// Pointer to the step's workspace slice.
+    /// Already aligned according to WorkspaceRequirement.alignment.
+    void* data = nullptr;
+
+    /// Size of the slice in bytes. At least WorkspaceRequirement.bytes.
+    size_t size = 0;
 };
 
 } // namespace aethermind

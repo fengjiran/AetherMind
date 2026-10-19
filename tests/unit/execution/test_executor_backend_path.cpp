@@ -95,7 +95,7 @@ TEST(ExecutorBackendPath, ExecutesFrozenKernelWithCachedValueBindings) {
     const ExecutionStep& step = plan->steps().front();
     auto table = PrepareExecutionBindings(
             *plan,
-            {.readable = {{.value = step.inputs[0], .tensor = TensorView(input, DataType::Float32(), shape, strides)}},
+            {.read_only = {{.value = step.inputs[0], .tensor = TensorView(input, DataType::Float32(), shape, strides)}},
              .writable = {{.value = step.outputs[0], .tensor = MutableTensorView(output, DataType::Float32(), shape, strides)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_TRUE(table.ok()) << table.status().ToString();
@@ -135,7 +135,7 @@ TEST(ExecutorBackendPath, PropagatesFrozenKernelFailure) {
     const ExecutionStep& step = plan->steps().front();
     auto table = PrepareExecutionBindings(
             *plan,
-            {.readable = {{.value = step.inputs[0], .tensor = TensorView(input, DataType::Float32(), input_shape, input_strides)}},
+            {.read_only = {{.value = step.inputs[0], .tensor = TensorView(input, DataType::Float32(), input_shape, input_strides)}},
              .writable = {{.value = step.outputs[0], .tensor = MutableTensorView(output, DataType::Int(64), output_shape, output_strides)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_TRUE(table.ok()) << table.status().ToString();
@@ -153,8 +153,8 @@ TEST(ExecutorBackendPath, CreateRequiresWorkspaceForNonZeroPlanRequirement) {
     const int64_t strides[2] = {4, 1};
     auto table = PrepareExecutionBindings(
             *plan,
-            {.readable = {{.value = plan->steps()[0].inputs[0],
-                           .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
+            {.read_only = {{.value = plan->steps()[0].inputs[0],
+                            .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_TRUE(table.ok()) << table.status().ToString();
     const auto bindings = ExecutionContext::Create(*plan, std::move(*table), nullptr);
@@ -193,10 +193,10 @@ TEST(ExecutorBackendPath, PrepareRejectsViolatedRuntimeShapeConstraintBeforeRun)
     const int64_t weight_strides[1] = {1};
     auto table = PrepareExecutionBindings(
             *plan,
-            {.readable = {{.value = plan->steps()[0].inputs[0],
-                           .tensor = TensorView(input, DataType::Float32(), input_shape, input_strides)},
-                          {.value = plan->steps()[0].inputs[1],
-                           .tensor = TensorView(weight, DataType::Float32(), weight_shape, weight_strides)}}},
+            {.read_only = {{.value = plan->steps()[0].inputs[0],
+                            .tensor = TensorView(input, DataType::Float32(), input_shape, input_strides)},
+                           {.value = plan->steps()[0].inputs[1],
+                            .tensor = TensorView(weight, DataType::Float32(), weight_shape, weight_strides)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_FALSE(table.ok());
     EXPECT_EQ(table.status().code(), StatusCode::kInvalidArgument);
@@ -234,10 +234,10 @@ TEST(ExecutorBackendPath, ExecuteRunsWhenRuntimeShapeConstraintIsSatisfied) {
     const int64_t weight_strides[1] = {1};
     auto table = PrepareExecutionBindings(
             *plan,
-            {.readable = {{.value = plan->steps()[0].inputs[0],
-                           .tensor = TensorView(input, DataType::Float32(), input_shape, input_strides)},
-                          {.value = plan->steps()[0].inputs[1],
-                           .tensor = TensorView(weight, DataType::Float32(), weight_shape, weight_strides)}},
+            {.read_only = {{.value = plan->steps()[0].inputs[0],
+                            .tensor = TensorView(input, DataType::Float32(), input_shape, input_strides)},
+                           {.value = plan->steps()[0].inputs[1],
+                            .tensor = TensorView(weight, DataType::Float32(), weight_shape, weight_strides)}},
              .writable = {{.value = plan->steps()[0].outputs[0],
                            .tensor = MutableTensorView(output, DataType::Float32(), input_shape, input_strides)}}},
             runtime.GetAllocator(Device::CPU()));

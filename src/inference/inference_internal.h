@@ -27,8 +27,16 @@ namespace aethermind::inference::internal {
 
 /// @brief Validates a plan against the Llama session I/O contract.
 ///
-/// Shape/kind mismatches return kUnimplemented; structurally impossible value
-/// ids return kInvalidArgument. Exposed in this header so focused tests can
+/// Input roles are positional: `model_inputs()[0]` is bound as token_ids and
+/// `model_inputs()[1]` as position_ids, matching the Llama graph builder's
+/// append order and lowering's order preservation. Both inputs share the same
+/// dtype/rank, so a swapped pair is not detectable here; adding model families
+/// or changing input order requires updating this contract.
+///
+/// Contract mismatches (I/O counts, dtype/rank, non-CPU device, Argmax topology,
+/// or a non-activation model output) return kUnimplemented. Violations of
+/// ExecutionPlan construction invariants (value ids, duplicate inputs, input
+/// kinds) return kInvalidArgument. Exposed in this header so focused tests can
 /// exercise the failure branches with synthetic plans.
 StatusOr<detail::PhaseContract> ValidatePlanContract(
         const ExecutionPlan& plan);

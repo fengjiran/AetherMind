@@ -132,7 +132,7 @@ StatusOr<ExecutionContext> MakeContext(Runtime& runtime,
         return Status::InvalidArgument("test input count does not match model inputs");
     }
     for (size_t i = 0; i < inputs.size(); ++i) {
-        external.readable.push_back({.value = plan.model_inputs()[i], .tensor = inputs[i]});
+        external.read_only.push_back({.value = plan.model_inputs()[i], .tensor = inputs[i]});
     }
     AM_ASSIGN_OR_RETURN(PreparedExecutionBindings prepared,
                         PrepareExecutionBindings(plan, external,

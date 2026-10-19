@@ -156,6 +156,8 @@ Kernel 的最终执行形态必须是 plan-build time resolve 后的函数指针
 
 ### 7.1 WorkspaceRequirement 与 WorkspaceBinding
 
+`WorkspaceLifetime`、`WorkspaceRequirement` 和 `WorkspaceBinding` 共享 base 层纯数据头 [workspace_types.h](../../include/aethermind/base/workspace_types.h)。资源接口 `WorkspaceArena` 和 runtime 布局规划保持独立；文件合并不改变类型、布局或借用生命周期。完整字段与迁移说明见 [公共 API 参考](../api/public-api.md)。
+
 ```cpp
 struct WorkspaceRequirement {
     size_t bytes = 0;

@@ -372,9 +372,9 @@ TEST(ExternalReadRequirements, QueryAgreesWithPrepareExecutionBindings) {
             }
         }
         ASSERT_NE(source, nullptr) << "required value " << i << " has no test buffer";
-        external.readable.push_back({.value = {.index = i}, .tensor = source->view()});
+        external.read_only.push_back({.value = {.index = i}, .tensor = source->view()});
     }
-    ASSERT_EQ(external.readable.size(), 4U);
+    ASSERT_EQ(external.read_only.size(), 4U);
 
     CPUAllocator allocator(Device::CPU());
     const auto complete = PrepareExecutionBindings(plan, external, allocator);
@@ -382,10 +382,10 @@ TEST(ExternalReadRequirements, QueryAgreesWithPrepareExecutionBindings) {
 
     // Dropping any single reported value must be rejected, which is what makes
     // the query and the prepare-time completeness check one authority.
-    for (size_t dropped = 0; dropped < external.readable.size(); ++dropped) {
+    for (size_t dropped = 0; dropped < external.read_only.size(); ++dropped) {
         ExternalTensorBindings incomplete = external;
-        incomplete.readable.erase(incomplete.readable.begin() +
-                                  static_cast<ptrdiff_t>(dropped));
+        incomplete.read_only.erase(incomplete.read_only.begin() +
+                                   static_cast<ptrdiff_t>(dropped));
         const auto rejected = PrepareExecutionBindings(plan, incomplete, allocator);
         ASSERT_FALSE(rejected.ok()) << "dropping entry " << dropped << " was accepted";
         EXPECT_EQ(rejected.status().code(), StatusCode::kFailedPrecondition);
@@ -402,9 +402,9 @@ TEST(PreparedExecutionBindings, DoesNotOverstateActivationSubviewAlignment) {
     StrongAlignedCpuAllocator allocator;
     const auto bindings = PrepareExecutionBindings(
             *plan,
-            {.readable = {{.value = {.index = 0},
-                           .tensor = TensorView(input.data(), DataType::Float32(),
-                                                shape, strides, alignof(float))}}},
+            {.read_only = {{.value = {.index = 0},
+                            .tensor = TensorView(input.data(), DataType::Float32(),
+                                                 shape, strides, alignof(float))}}},
             allocator);
     ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
 

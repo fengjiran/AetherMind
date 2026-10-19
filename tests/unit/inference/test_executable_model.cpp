@@ -141,7 +141,7 @@ StatusOr<LoweredModelArtifact> MakeArtifact(const ModelGraph& graph,
 std::vector<uint32_t> BindingsSharingData(const ExternalTensorBindings& bindings,
                                           const void* data) {
     std::vector<uint32_t> indices;
-    for (const ExternalReadOnlyValueBinding& entry: bindings.readable) {
+    for (const ExternalReadOnlyValueBinding& entry: bindings.read_only) {
         if (entry.tensor.data() == data) {
             indices.push_back(entry.value.index);
         }
@@ -178,8 +178,8 @@ TEST(ExecutableModel, PreparesPlainUnfusedLlamaArtifact) {
     const auto bindings = model->immutable_weight_bindings(ExecPhase::kBoth);
     ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
     EXPECT_TRUE((*bindings)->writable.empty());
-    ASSERT_FALSE((*bindings)->readable.empty());
-    for (const ExternalReadOnlyValueBinding& entry: (*bindings)->readable) {
+    ASSERT_FALSE((*bindings)->read_only.empty());
+    for (const ExternalReadOnlyValueBinding& entry: (*bindings)->read_only) {
         EXPECT_NE(entry.tensor.data(), nullptr) << "value " << entry.value.index;
         EXPECT_TRUE(entry.tensor.is_valid()) << "value " << entry.value.index;
     }
@@ -208,7 +208,7 @@ TEST(ExecutableModel, BindingsMatchExternalReadRequirementsExactly) {
                       (*plan)->values()[i].kind != ExecutionValueKind::kModelInput;
     }
     std::vector<bool> bound(expected.size(), false);
-    for (const ExternalReadOnlyValueBinding& entry: (*bindings)->readable) {
+    for (const ExternalReadOnlyValueBinding& entry: (*bindings)->read_only) {
         ASSERT_LT(entry.value.index, bound.size());
         EXPECT_FALSE(bound[entry.value.index])
                 << "value " << entry.value.index << " is bound twice";
@@ -239,7 +239,7 @@ TEST(ExecutableModel, PlainLlamaBindsEveryWeightAndNoModelInput) {
     // One unfused decoder layer: embed_tokens, final_norm, lm_head, and nine
     // per-layer weights.
     EXPECT_EQ(weight_values, 12U);
-    EXPECT_EQ((*bindings)->readable.size(), weight_values);
+    EXPECT_EQ((*bindings)->read_only.size(), weight_values);
 }
 
 TEST(ExecutableModel, MultiLayerLlamaBindsEveryWeightToItsOwnBacking) {
@@ -259,7 +259,7 @@ TEST(ExecutableModel, MultiLayerLlamaBindsEveryWeightToItsOwnBacking) {
     // index mixed up during resolution would show up as a duplicated or missing
     // pointer rather than as a plausible-looking binding.
     std::vector<const void*> bound;
-    for (const ExternalReadOnlyValueBinding& entry: (*bindings)->readable) {
+    for (const ExternalReadOnlyValueBinding& entry: (*bindings)->read_only) {
         bound.push_back(entry.tensor.data());
     }
     ASSERT_EQ(bound.size(), expected.size());
@@ -339,8 +339,8 @@ TEST(ExecutableModel, OneBindingTableSpecializesBothPrefillAndDecode) {
 
     const auto specialize = [&](TensorView tokens, TensorView positions) {
         ExternalTensorBindings external = **table;
-        external.readable.push_back({.value = tokens_id, .tensor = tokens});
-        external.readable.push_back({.value = positions_id, .tensor = positions});
+        external.read_only.push_back({.value = tokens_id, .tensor = tokens});
+        external.read_only.push_back({.value = positions_id, .tensor = positions});
         return PrepareExecutionBindings(plan, external, allocator);
     };
 
@@ -351,9 +351,9 @@ TEST(ExecutableModel, OneBindingTableSpecializesBothPrefillAndDecode) {
 
     // Both specializations reuse the same immutable weight bytes, so a session
     // never re-materializes weights when it switches phase.
-    ASSERT_FALSE((*table)->readable.empty());
-    const ExecutionValueId weight_id = (*table)->readable.front().value;
-    const void* const weight_data = (*table)->readable.front().tensor.data();
+    ASSERT_FALSE((*table)->read_only.empty());
+    const ExecutionValueId weight_id = (*table)->read_only.front().value;
+    const void* const weight_data = (*table)->read_only.front().tensor.data();
     EXPECT_EQ(prefill->values()[weight_id.index].readable.data(), weight_data);
     EXPECT_EQ(decode->values()[weight_id.index].readable.data(), weight_data);
     EXPECT_EQ(prefill_tokens.view().data(), prefill_tokens.data());
@@ -376,7 +376,7 @@ TEST(ExecutableModel, SurvivesBeingMoved) {
     // The binding table borrows the metadata owned by the moved storage, so the
     // views must still describe the original weight bytes.
     ASSERT_EQ(BindingsSharingData(**bindings, embed_data).size(), 2U);
-    for (const ExternalReadOnlyValueBinding& entry: (*bindings)->readable) {
+    for (const ExternalReadOnlyValueBinding& entry: (*bindings)->read_only) {
         EXPECT_TRUE(entry.tensor.is_valid()) << "value " << entry.value.index;
     }
 }
@@ -431,10 +431,10 @@ TEST(ExecutableModel, MaterializesConstantFromInlineData) {
 
     // Execution never reads ConstantBinding::inline_data itself, so preparation
     // must turn those payload bytes into a bound view.
-    ASSERT_EQ((*bindings)->readable.size(), 2U);
+    ASSERT_EQ((*bindings)->read_only.size(), 2U);
     bool found_constant = false;
     bool found_weight = false;
-    for (const ExternalReadOnlyValueBinding& entry: (*bindings)->readable) {
+    for (const ExternalReadOnlyValueBinding& entry: (*bindings)->read_only) {
         if (entry.tensor.data() == inline_data->data()) {
             found_constant = true;
             EXPECT_EQ(entry.tensor.dtype(), DataType::Float32());
@@ -555,7 +555,7 @@ TEST(ExecutableModel, PackedSubgraphKeepsWeightOutOfBindingTable) {
     // artifact and must not also appear as an external binding.
     const auto bindings = model->immutable_weight_bindings(ExecPhase::kBoth);
     ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
-    ASSERT_EQ((*bindings)->readable.size(), 2U);
+    ASSERT_EQ((*bindings)->read_only.size(), 2U);
     EXPECT_TRUE(BindingsSharingData(**bindings, weight_data).empty());
     EXPECT_EQ(BindingsSharingData(**bindings, input_bytes->data()).size(), 1U);
     EXPECT_EQ(BindingsSharingData(**bindings, residual_bytes->data()).size(), 1U);
@@ -769,16 +769,16 @@ TEST(ExecutableModel, PreparedBindingsAreReleasedBeforeTheModel) {
         ASSERT_TRUE(plan.ok()) << plan.status().ToString();
         const auto table = model->immutable_weight_bindings(ExecPhase::kBoth);
         ASSERT_TRUE(table.ok()) << table.status().ToString();
-        ASSERT_FALSE((*table)->readable.empty());
-        const ExecutionValueId weight_value = (*table)->readable.front().value;
-        weight_data = (*table)->readable.front().tensor.data();
+        ASSERT_FALSE((*table)->read_only.empty());
+        const ExecutionValueId weight_value = (*table)->read_only.front().value;
+        weight_data = (*table)->read_only.front().tensor.data();
 
         const TestBuffer tokens(DataType::Int(64), {1});
         const TestBuffer positions(DataType::Int(64), {1});
         ExternalTensorBindings external = **table;
-        external.readable.push_back(
+        external.read_only.push_back(
                 {.value = (*plan)->model_inputs()[0], .tensor = tokens.view()});
-        external.readable.push_back(
+        external.read_only.push_back(
                 {.value = (*plan)->model_inputs()[1], .tensor = positions.view()});
 
         CPUAllocator allocator(Device::CPU());
@@ -789,8 +789,8 @@ TEST(ExecutableModel, PreparedBindingsAreReleasedBeforeTheModel) {
 
     const auto table = model->immutable_weight_bindings(ExecPhase::kBoth);
     ASSERT_TRUE(table.ok()) << table.status().ToString();
-    ASSERT_FALSE((*table)->readable.empty());
-    EXPECT_EQ((*table)->readable.front().tensor.data(), weight_data);
+    ASSERT_FALSE((*table)->read_only.empty());
+    EXPECT_EQ((*table)->read_only.front().tensor.data(), weight_data);
 }
 
 } // namespace

@@ -965,8 +965,8 @@ TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure)
     const ExecutionStep& step = plan->steps().front();
     const auto bindings = PrepareExecutionBindings(
             *plan,
-            {.readable = {{.value = step.inputs[0], .tensor = act_storage.View()},
-                          {.value = step.inputs[1], .tensor = weight_storage.View()}},
+            {.read_only = {{.value = step.inputs[0], .tensor = act_storage.View()},
+                           {.value = step.inputs[1], .tensor = weight_storage.View()}},
              .writable = {{.value = step.outputs[0], .tensor = out_storage.MutableView()}}},
             runtime.GetAllocator(Device::CPU()));
     const Status status = bindings.status();

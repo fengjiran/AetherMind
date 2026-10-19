@@ -557,8 +557,8 @@ StatusOr<ExecutionContext> PrepareContext(Runtime& runtime,
         return Status::Internal("tiny Llama plan must have token and position inputs");
     }
     ExternalTensorBindings external = immutable_bindings;
-    external.readable.push_back({.value = plan.model_inputs()[0], .tensor = tokens.view()});
-    external.readable.push_back({.value = plan.model_inputs()[1], .tensor = positions.view()});
+    external.read_only.push_back({.value = plan.model_inputs()[0], .tensor = tokens.view()});
+    external.read_only.push_back({.value = plan.model_inputs()[1], .tensor = positions.view()});
 
     auto prepared = PrepareExecutionBindings(
             plan, external, runtime.GetAllocator(Device::CPU()));
@@ -1099,7 +1099,7 @@ TEST_P(TinyLlamaExecution, TinyTiedGqaLlamaMatchesScalarOracleAndReusesDecodeBin
     ASSERT_TRUE(immutable_bindings_result.ok()) << immutable_bindings_result.status().ToString();
     const ExternalTensorBindings& immutable_bindings = **immutable_bindings_result;
     size_t embedding_backing_bindings = 0;
-    for (const ExternalReadOnlyValueBinding& binding: immutable_bindings.readable) {
+    for (const ExternalReadOnlyValueBinding& binding: immutable_bindings.read_only) {
         if (GetParam()) {
             EXPECT_NE(plan.values()[binding.value.index].kind, ExecutionValueKind::kWeight);
         }
@@ -1208,7 +1208,7 @@ TEST_P(TinyLlamaExecution, GenerateReturnsResourceExhaustedForBindingAllocationF
     const auto immutable = model->immutable_weight_bindings(ExecPhase::kPrefill);
     ASSERT_TRUE(immutable.ok()) << immutable.status().ToString();
     const size_t binding_bytes =
-            ((**immutable).readable.size() + 2) * sizeof(ExternalReadOnlyValueBinding);
+            ((**immutable).read_only.size() + 2) * sizeof(ExternalReadOnlyValueBinding);
     auto session_result = InferenceSession::Create(runtime, model);
     ASSERT_TRUE(session_result.ok()) << session_result.status().ToString();
     InferenceSession session = std::move(*session_result);
@@ -1769,7 +1769,7 @@ TEST(PlanContractValidation, RejectsInvalidInputSpecs) {
         const char* name;
         void (*mutate)(ContractPlanParts&);
     };
-    const std::array<Case, 2> cases{{
+    const std::array<Case, 3> cases{{
             {"Int32Dtype",
              [](ContractPlanParts& parts) {
                  parts.values[0].spec.dtype = DataType::Int(32);
@@ -1777,6 +1777,12 @@ TEST(PlanContractValidation, RejectsInvalidInputSpecs) {
             {"RankTwoShape",
              [](ContractPlanParts& parts) {
                  parts.values[0].spec = ContractInt64Spec({2, 2});
+             }},
+            {"UnrankedShape",
+             [](ContractPlanParts& parts) {
+                 parts.values[0].spec = TensorSpec{
+                         .dtype = DataType::Int(64),
+                         .shape = SymbolicShape(std::nullopt)};
              }},
     }};
     for (const Case& test_case: cases) {
@@ -1792,10 +1798,24 @@ TEST(PlanContractValidation, RejectsInvalidOutputSpecs) {
         const char* name;
         void (*mutate)(ContractPlanParts&);
     };
-    const std::array<Case, 3> cases{{
+    const std::array<Case, 6> cases{{
             {"OutputIsModelInput",
              [](ContractPlanParts& parts) {
                  parts.model_outputs = {{.index = 0}};
+             }},
+            {"OutputIsConstant",
+             [](ContractPlanParts& parts) {
+                 parts.values.push_back({.spec = ContractInt64Spec({2}),
+                                         .kind = ExecutionValueKind::kConstant,
+                                         .name = "constant_output"});
+                 parts.model_outputs = {{.index = 3}};
+             }},
+            {"OutputIsWeight",
+             [](ContractPlanParts& parts) {
+                 parts.values.push_back({.spec = ContractInt64Spec({2}),
+                                         .kind = ExecutionValueKind::kWeight,
+                                         .name = "weight_output"});
+                 parts.model_outputs = {{.index = 3}};
              }},
             {"Float32Dtype",
              [](ContractPlanParts& parts) {
@@ -1804,6 +1824,12 @@ TEST(PlanContractValidation, RejectsInvalidOutputSpecs) {
             {"RankTwoShape",
              [](ContractPlanParts& parts) {
                  parts.values[2].spec = ContractInt64Spec({2, 2});
+             }},
+            {"UnrankedShape",
+             [](ContractPlanParts& parts) {
+                 parts.values[2].spec = TensorSpec{
+                         .dtype = DataType::Int(64),
+                         .shape = SymbolicShape(std::nullopt)};
              }},
     }};
     for (const Case& test_case: cases) {

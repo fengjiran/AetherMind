@@ -1,13 +1,13 @@
 # AetherMind 系统能力演进路线图
 
 - **状态**: Draft
-- **版本**: 1.2
+- **版本**: 1.3
 - **日期**: 2026-09-16
-- **最近更新**: 2026-10-10
+- **最近更新**: 2026-10-19
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **工程质量基线**: [工程质量体系建设方案](02-engineering-quality-system.md)
-- **定位**: 全仓库 capability gap 总表与实施排序；专题细节由 01–05 号提案承载
+- **定位**: 全仓库 capability gap 总表与实施排序；专题细节见 [提案索引](README.md)，多架构/MoE 扩展由 [09 号提案](09-qwen-and-moe-architecture-support.md) 承载
 
 ## 1. 结论
 
@@ -22,6 +22,8 @@ AetherMind 当前不需要再次进行顶层架构重写。`model → graph/oper
 5. **再做系统性能演进**：GEMM/Attention、线程池与 topology、NUMA、AArch64；
 6. **最后冻结 public API/ABI 与发布门禁**：C++ Session、C ABI、错误模型、版本与兼容测试。
 
+针对用户要求的多架构/MoE 扩展，采用 [09 号提案](09-qwen-and-moe-architecture-support.md) 的独立主线：公共合同→Qwen3 Dense→Qwen3 MoE。MoE 语义与专家准备可以并行推进；支持 Qwen2/2.5、Mixtral 或完成全部量化工作不是该主线的前置。该提案为 Draft，不改变当前已实现能力的判定。
+
 本路线图将模块分为三类：
 
 - **交付阻塞模块**：不演进就无法完成当前产品；
@@ -31,6 +33,8 @@ AetherMind 当前不需要再次进行顶层架构重写。`model → graph/oper
 ## 2. 盘点方法与事实边界
 
 本路线图基于 2026-09-17 当前源码、测试、PRD 和现有 01–05 号提案。状态含义：
+
+本节及存量表格是建立路线图时的基线，不能作为全部能力的最新验证结果；后续专题以各自日期和证据为准。2026-10-19 新增的模型扩展范围及静态源码核对见 [09](09-qwen-and-moe-architecture-support.md)，本次未重新验证其余模块。
 
 | 状态 | 含义 |
 |---|---|
@@ -52,7 +56,7 @@ AetherMind 当前不需要再次进行顶层架构重写。`model → graph/oper
 | 模块 | 当前状态 | 主要缺口 | 优先级 | 对应提案/章节 |
 |---|---|---|---:|---|
 | public C++ / C API | 未闭环 | `Session::Generate`、`am_session_*`、ABI/version/error ownership | P0 | [01](01-inference-session-generate-readiness.md)、§15 |
-| model loader / HF adapter | 部分闭环 | 支持范围真值、activation 漂移、量化格式、模型 fingerprint | P0/P1 | §5 |
+| model loader / HF adapter | 部分闭环 | 支持范围真值、activation 漂移、量化格式、模型 fingerprint；Qwen/MoE 扩展待实施 | P0/P1 | §5、[09](09-qwen-and-moe-architecture-support.md) |
 | operators | 部分闭环 | semantic/capability matrix 漂移（KV/Attention 契约已闭环） | P0 | §6 |
 | graph | 基础已闭环 | pass outcome 验证、contract drift；无需 target-aware 重写 | P1 | §7 |
 | compiler/lowering | 基础已闭环 | 1:1 step 限制；仅在真实 1→N 需求出现后引入 ImplementationPlan | P1/P2 | §8 |
@@ -179,10 +183,14 @@ HF quantization config/tensor schema
 
 当前产品不需要跨进程 artifact cache，但同一进程内必须能证明 packed store、execution plan 和原始 model artifact 属于同一模型实例。
 
-### 5.5 当前不做
+### 5.5 模型范围扩展与其余边界
+
+Qwen/MoE 已按用户需求纳入 [09 号提案](09-qwen-and-moe-architecture-support.md)，当前实现仍只支持 Llama Dense。首个目标是 Qwen3 Dense→Qwen3 MoE；家族、dtype、packing 与端到端证据分开验收，实施时同步修订 PRD 支持矩阵。
+
+以下范围继续延后：
 
 - tokenizer；
-- MoE、encoder-decoder、sliding-window attention；
+- encoder-decoder、sliding-window attention、分布式专家并行；
 - LoRA/adapters；
 - 在线模型热更新；
 - 多模型 serving cache。
@@ -692,13 +700,15 @@ microkernel
 - Paged KV/prefix cache/continuous batching；
 - HTTP/gRPC server；
 - GPU/CUDA/CANN production execution；
-- MoE、multimodal、LoRA；
+- multimodal、LoRA、分布式专家并行；
 - 通用动态 shape runtime；
 - 多模型/多租户调度；
 - speculative decoding；
 - distributed inference。
 
 进入条件必须是 PRD 范围更新、独立设计评审和可验证 workload，而不是为未来预埋大量无消费者 abstraction。
+
+本地 CPU MoE 的范围扩展另见 [09](09-qwen-and-moe-architecture-support.md)，不再归入本节的统一延后列表；其余运行边界与上述准入规则保持不变。
 
 ## 19. 分阶段实施路线
 
@@ -766,6 +776,10 @@ microkernel
 
 退出条件：满足 PRD hard gates，并能以受支持的公开入口复现。
 
+### 模型扩展主线：按 09 独立推进
+
+公共配置/权重合同完成后，Qwen3 Dense 基线、MoE semantic/reference、专家 bank/多 packed bindings/资源规划可以并行。Qwen3 MoE 集成以这些能力和真实生产入口数值证据为门禁；量化、其他家族和性能优化按具体部署需求推进，不机械地等待 Batch A–F 全部结束。
+
 ## 20. 专题拆分规则
 
 本路线图是总索引，不应无限增长。满足以下任一条件时，从本文件拆出独立编号提案并反向链接：
@@ -804,3 +818,4 @@ microkernel
 | 2026-09-16 | 1.0 | 首次建立全仓库 capability gap、模块演进裁决、依赖顺序和 Batch A–F 路线图 |
 | 2026-09-17 | 1.1 | 同步 Attention/KVCacheUpdate reference kernel 落地：§3 模块总表、§6.3、§12.1 状态更新 |
 | 2026-10-10 | 1.2 | 新增 §11.4 单权重 identity 条件式零复制待优化项：明确 ownership、不可变性、alignment、复制路径与 production 验收；纳入 Batch C |
+| 2026-10-19 | 1.3 | 关联 09 号 Qwen/MoE 提案，调整 MoE 的延后表述，明确独立主线与并行依赖；其余历史能力表未重新验证 |

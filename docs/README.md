@@ -79,6 +79,7 @@
 | [06-system-capability-evolution-roadmap.md](improvement-plan/06-system-capability-evolution-roadmap.md) | 全仓库 capability gap、模块演进裁决与实施顺序 | Draft |
 | [07-executable-model-preparation.md](improvement-plan/07-executable-model-preparation.md) | `LoweredModelArtifact → ExecutableModel` 生产准备入口、权重绑定映射与模块归属 | Implemented |
 | [08-kv-cache-and-attention-capability-evolution.md](improvement-plan/08-kv-cache-and-attention-capability-evolution.md) | KV owner/epoch 正确性、CPU Attention 优化准入与 Paged KV 长期触发条件 | Draft |
+| [09-qwen-and-moe-architecture-support.md](improvement-plan/09-qwen-and-moe-architecture-support.md) | 公共合同→Qwen3 Dense→Qwen3 MoE 主线：R1–R8 改造、binding 冷路径 workspace、统一 decoder I/O、多 packed bindings 与验收 | Draft |
 | [10-upper-level-runtime-assembly.md](improvement-plan/10-upper-level-runtime-assembly.md) | 模型配置到 Runtime/模型/Session 的独立 C++ 组装入口、生命周期与分阶段 C ABI 验收 | Draft |
 | [11-fp16-bf16-execution-support.md](improvement-plan/11-fp16-bf16-execution-support.md) | FP32 兼容执行、W16/A32、独立 KV16 与 A16 的精度合同、所有权、实施阶段与验收门禁 | Draft |
 

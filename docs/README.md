@@ -80,6 +80,7 @@
 | [07-executable-model-preparation.md](improvement-plan/07-executable-model-preparation.md) | `LoweredModelArtifact → ExecutableModel` 生产准备入口、权重绑定映射与模块归属 | Implemented |
 | [08-kv-cache-and-attention-capability-evolution.md](improvement-plan/08-kv-cache-and-attention-capability-evolution.md) | KV owner/epoch 正确性、CPU Attention 优化准入与 Paged KV 长期触发条件 | Draft |
 | [10-upper-level-runtime-assembly.md](improvement-plan/10-upper-level-runtime-assembly.md) | 模型配置到 Runtime/模型/Session 的独立 C++ 组装入口、生命周期与分阶段 C ABI 验收 | Draft |
+| [11-fp16-bf16-execution-support.md](improvement-plan/11-fp16-bf16-execution-support.md) | FP32 兼容执行、W16/A32、独立 KV16 与 A16 的精度合同、所有权、实施阶段与验收门禁 | Draft |
 
 > 算子专项提案不再建在本目录：按 [算子开发工作流 O3](guides/operator-development-workflow.md) 建在 `docs/operators/<op>/<op>-optimization.md`（原 04 号 GEMM 专项已迁至 [operators/gemm/cpu-gemm-optimization.md](operators/gemm/cpu-gemm-optimization.md)）。
 

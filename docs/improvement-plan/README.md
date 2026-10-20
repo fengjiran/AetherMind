@@ -18,6 +18,7 @@
 | 08 | [KV Cache 与 CPU Attention 能力演进方案](08-kv-cache-and-attention-capability-evolution.md) | Draft | 2026-09-24 |
 | 09 | [Qwen 与 MoE 模型架构支持方案](09-qwen-and-moe-architecture-support.md) | Draft | 2026-10-20 |
 | 10 | [上层 Runtime 组装与推理入口实施方案](10-upper-level-runtime-assembly.md) | Draft | 2026-10-19 |
+| 11 | [FP16 / BF16 执行支持方案](11-fp16-bf16-execution-support.md) | Draft | 2026-10-20 |
 
 ## 推荐阅读路径
 
@@ -30,4 +31,5 @@
 - [08-kv-cache-and-attention-capability-evolution.md](08-kv-cache-and-attention-capability-evolution.md)：当前 KV owner/epoch correctness、CPU Attention 优化证据门禁和 Paged KV 长期准入。
 - [09-qwen-and-moe-architecture-support.md](09-qwen-and-moe-architecture-support.md)：公共合同→Qwen3 Dense→Qwen3 MoE 主线；含 R1–R8 改造、binding 冷路径 workspace specialization、统一 decoder I/O、多 packed bindings 与验收，另列其他家族优先级和独立分支。
 - [10-upper-level-runtime-assembly.md](10-upper-level-runtime-assembly.md)：从模型配置派生 Runtime、一次编译准备 kBoth plan 的独立 C++ 入口；包含生命周期、CPU preset、分阶段 C ABI 与集成验收门禁。
+- [11-fp16-bf16-execution-support.md](11-fp16-bf16-execution-support.md)：显式 FP32 兼容执行→W16/A32→独立 KV16→A16 的分阶段提案；包含 logical weight ownership、构图精度、数值/ISA 合同、selector/layout 迁移与 production 验收。
 - 原 04 号 GEMM 专项提案已于 2026-09-19 迁出本目录：方案、路线与工作包状态见 [CPU GEMM 优化方案](../operators/gemm/cpu-gemm-optimization.md)，机器级证据见 [GEMM 算子索引](../operators/gemm/README.md)；算子专项提案的位置见 [算子开发与优化工作流](../guides/operator-development-workflow.md)。

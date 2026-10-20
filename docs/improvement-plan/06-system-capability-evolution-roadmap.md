@@ -1,13 +1,13 @@
 # AetherMind 系统能力演进路线图
 
 - **状态**: Draft
-- **版本**: 1.3
+- **版本**: 1.4
 - **日期**: 2026-09-16
-- **最近更新**: 2026-10-19
+- **最近更新**: 2026-10-20
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **工程质量基线**: [工程质量体系建设方案](02-engineering-quality-system.md)
-- **定位**: 全仓库 capability gap 总表与实施排序；专题细节见 [提案索引](README.md)，多架构/MoE 扩展由 [09 号提案](09-qwen-and-moe-architecture-support.md) 承载
+- **定位**: 全仓库 capability gap 总表与实施排序；专题细节见 [提案索引](README.md)，多架构/MoE 扩展由 [09 号提案](09-qwen-and-moe-architecture-support.md) 承载，FP16/BF16 执行由 [11 号提案](11-fp16-bf16-execution-support.md) 承载
 
 ## 1. 结论
 
@@ -23,6 +23,8 @@ AetherMind 当前不需要再次进行顶层架构重写。`model → graph/oper
 6. **最后冻结 public API/ABI 与发布门禁**：C++ Session、C ABI、错误模型、版本与兼容测试。
 
 针对用户要求的多架构/MoE 扩展，采用 [09 号提案](09-qwen-and-moe-architecture-support.md) 的独立主线：公共合同→Qwen3 Dense→Qwen3 MoE。MoE 语义与专家准备可以并行推进；支持 Qwen2/2.5、Mixtral 或完成全部量化工作不是该主线的前置。该提案为 Draft，不改变当前已实现能力的判定。
+
+FP16/BF16 执行采用 [11 号提案](11-fp16-bf16-execution-support.md) 的独立精度主线：显式转换为 FP32 的兼容执行→保留 16-bit 权重的 W16/A32→独立 KV16→A16。该提案为 Draft，加载 dtype、语义许可和完整 production execution 分别验收；不要求先完成 INT8/INT4，也不使 09 的其他模型家族自动获得 dtype 支持。
 
 本路线图将模块分为三类：
 
@@ -588,6 +590,8 @@ GEMM 细节见 [CPU GEMM 优化方案](../operators/gemm/cpu-gemm-optimization.m
 - FP16/BF16 转换与数值测试；
 - 避免把 backend layout、quantization storage 或 Session state塞入通用 Tensor。
 
+FP16/BF16 的跨模块执行与数值合同详见 [11 号提案](11-fp16-bf16-execution-support.md)，不局限为新增 dtype 枚举或转换 helper；当前事实与分阶段准入以该专题的日期和证据边界为准。
+
 ### 14.3 Containers
 
 `amstring`/Array/Map 等通用容器不是当前推理闭环的阻塞项。除非 profile 证明它们位于模型加载或热路径瓶颈，不进行与 Generate 无关的重构。
@@ -780,6 +784,10 @@ microkernel
 
 公共配置/权重合同完成后，Qwen3 Dense 基线、MoE semantic/reference、专家 bank/多 packed bindings/资源规划可以并行。Qwen3 MoE 集成以这些能力和真实生产入口数值证据为门禁；量化、其他家族和性能优化按具体部署需求推进，不机械地等待 Batch A–F 全部结束。
 
+### 浮点精度主线：按 11 分阶段推进
+
+[11 号提案](11-fp16-bf16-execution-support.md) 先冻结数值与构图 dtype 合同，建立 FP32 兼容基线，再交付 W16/A32。KV16 和 A16 分别需要 state/端口签名、算子数值与完整生成证据；P2 的 SIMD/packing 优化无需等待 A16。该主线不更改 Batch D 的量化格式语义，也不以其他模型家族或线程池实现为首批前置。
+
 ## 20. 专题拆分规则
 
 本路线图是总索引，不应无限增长。满足以下任一条件时，从本文件拆出独立编号提案并反向链接：
@@ -819,3 +827,4 @@ microkernel
 | 2026-09-17 | 1.1 | 同步 Attention/KVCacheUpdate reference kernel 落地：§3 模块总表、§6.3、§12.1 状态更新 |
 | 2026-10-10 | 1.2 | 新增 §11.4 单权重 identity 条件式零复制待优化项：明确 ownership、不可变性、alignment、复制路径与 production 验收；纳入 Batch C |
 | 2026-10-19 | 1.3 | 关联 09 号 Qwen/MoE 提案，调整 MoE 的延后表述，明确独立主线与并行依赖；其余历史能力表未重新验证 |
+| 2026-10-20 | 1.4 | 关联 11 号 FP16/BF16 Draft，补充独立精度主线与 dtype 准入边界；其余历史能力表未重新验证 |

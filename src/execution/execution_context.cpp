@@ -56,7 +56,8 @@ StatusOr<WorkspaceBinding> ExecutionContext::BindWorkspace(
 
     if (workspace_arena_ == nullptr) {
         return Status::FailedPrecondition(
-                "ExecutionContext requires a WorkspaceArena for non-zero workspace requirements");
+                "ExecutionContext requires a WorkspaceArena "
+                "for non-zero workspace requirements");
     }
 
     const WorkspaceBinding binding = workspace_arena_->Bind(requirement);

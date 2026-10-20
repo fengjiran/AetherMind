@@ -388,8 +388,8 @@ Status LayerRunner::RunStep(size_t step_index,
                                            "query TensorView with positive rank-2 sequence length");
         }
 
-        const auto query_sequence_length = static_cast<size_t>(tensor_binding.inputs[0].dim(0));
-        const KVCacheSessionView& view = context.kv_cache_session_view();
+        const auto query_seq_len = static_cast<size_t>(tensor_binding.inputs[0].dim(0));
+        const auto& view = context.kv_cache_session_view();
         AM_ASSIGN_OR_RETURN(const uint32_t layer,
                             ValidateAttentionStateIdentity(step, values, view));
         if (layer >= kv_transaction.layer_progress.size()) {
@@ -413,7 +413,7 @@ Status LayerRunner::RunStep(size_t step_index,
         if (kv_transaction.has_append) {
             const size_t append_length =
                     kv_transaction.visible_end - kv_transaction.committed_begin;
-            if (query_sequence_length != append_length) {
+            if (query_seq_len != append_length) {
                 return Status::FailedPrecondition("Attention query sequence length "
                                                   "must match this plan's KV append length");
             }
@@ -421,11 +421,11 @@ Status LayerRunner::RunStep(size_t step_index,
             read_binding->query_begin = kv_transaction.committed_begin;
             read_binding->query_end = kv_transaction.visible_end;
         } else {
-            if (query_sequence_length > visible_end) {
+            if (query_seq_len > visible_end) {
                 return Status::FailedPrecondition("Attention pure-read query "
                                                   "sequence length exceeds the visible KV range");
             }
-            read_binding->query_begin = visible_end - query_sequence_length;
+            read_binding->query_begin = visible_end - query_seq_len;
             read_binding->query_end = visible_end;
         }
     }
@@ -473,8 +473,8 @@ Status LayerRunner::ValidateStateAliasesForStep(
     // Cross-check each alias against the bound view: the update is must-alias,
     // so input/output specs must agree, and the static geometry (dtype,
     // kv_heads, head_dim) must match the KV cache backing it.
-    const KVCacheSessionView& view = context.kv_cache_session_view();
-    for (const ResolvedStateAlias& alias: aliases) {
+    const auto& view = context.kv_cache_session_view();
+    for (const auto& alias: aliases) {
         const TensorSpec& input_spec = values[step.inputs[alias.input_port].index].spec;
         const TensorSpec& output_spec = values[step.outputs[alias.output_port].index].spec;
         if (input_spec != output_spec) {
@@ -498,9 +498,8 @@ Status LayerRunner::ValidateStateAliasesForStep(
                     "State alias dtype does not match the KVCacheSessionView element dtype");
         }
 
-        const SymbolicShape& shape = input_spec.shape;
-        const auto rank = shape.rank();
-        if (!rank.has_value() || *rank != 3) {
+        const auto& shape = input_spec.shape;
+        if (const auto rank = shape.rank(); !rank.has_value() || *rank != 3) {
             return Status::InvalidArgument(
                     "State alias value must be rank 3 [kv_heads, cache_len, head_dim]");
         }

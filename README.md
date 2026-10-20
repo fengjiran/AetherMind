@@ -207,6 +207,14 @@ Key guidelines:
 - Tests use PascalCase names; death-test function names end with `Death`; seed RNGs explicitly; use `EXPECT_FLOAT_EQ` for floats. See the [test writing guide](docs/guides/test_writing_guidelines.md).
 - Graph node retrieval APIs return `std::vector<GraphNodeId>` with a `Find` prefix; ID-based access is preferred over raw pointers.
 
+## Execution Binding API
+
+`BoundValue` represents an unbound, read-only, or writable tensor binding. Use `ReadView()` for a read-only descriptor returned by value and `TryGetWritableView()` for a borrowed writable descriptor. These replace the former `readable`, `writable`, and `has_writable` fields; C++ consumers must migrate and rebuild. See the [public API reference](docs/api/public-api.md) for backing-storage lifetimes and empty-state behavior.
+
+## Alignment API
+
+Use `IsValidAlignment(alignment)` and `AlignOffsetUp(offset, alignment)` from `aethermind/base/alignment.h` for alignment validation and checked offset alignment. A valid alignment is a nonzero power of two. `AlignOffsetUp` reports invalid alignment, overflow, and diagnostic allocation failure through `StatusOr<size_t>`. The former `IsValidWorkspaceAlignment()` and `AlignWorkspaceOffset()` APIs have been removed without forwarding wrappers; update callers and rebuild. See the [public API reference](docs/api/public-api.md).
+
 ## Documentation
 
 | Document | Description |

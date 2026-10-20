@@ -134,6 +134,8 @@ TEST(WorkspaceRequirementPlanning, RequirementCanDescribeLifetimeAndReuse) {
 }
 
 TEST(WorkspaceRequirementPlanning, RejectsInvalidAlignment) {
+    static_assert(noexcept(PlanWorkspaceRequirements({})));
+
     std::vector<WorkspaceRequirement> zero_alignment = {
             {.bytes = 32, .alignment = 0},
     };
@@ -278,77 +280,6 @@ INSTANTIATE_TEST_SUITE_P(
                     return "ByteOverflow";
             }
             return "Unknown";
-        });
-
-TEST(WorkspaceOffsetAlignment, AlignsOffsetUpToBoundary) {
-    const StatusOr<size_t> offset = AlignWorkspaceOffset(17, 16);
-
-    ASSERT_TRUE(offset.ok());
-    EXPECT_EQ(*offset, 32U);
-}
-
-TEST(WorkspaceOffsetAlignment, AcceptsMaximumOffsetAtByteAlignment) {
-    constexpr size_t kMaxSize = std::numeric_limits<size_t>::max();
-
-    const StatusOr<size_t> offset = AlignWorkspaceOffset(kMaxSize, 1);
-
-    ASSERT_TRUE(offset.ok());
-    EXPECT_EQ(*offset, kMaxSize);
-}
-
-TEST(WorkspaceOffsetAlignment, AcceptsLargestPowerOfTwoAlignment) {
-    constexpr size_t kLargestAlignment = size_t{1} << (std::numeric_limits<size_t>::digits - 1);
-
-    const StatusOr<size_t> offset = AlignWorkspaceOffset(1, kLargestAlignment);
-
-    ASSERT_TRUE(offset.ok());
-    EXPECT_EQ(*offset, kLargestAlignment);
-}
-
-TEST(WorkspaceOffsetAlignment, RejectsInvalidAlignment) {
-    static_assert(noexcept(AlignWorkspaceOffset(0, 1)));
-    static_assert(noexcept(PlanWorkspaceRequirements({})));
-
-    for (const size_t alignment: {0U, 24U}) {
-        const StatusOr<size_t> offset = AlignWorkspaceOffset(8, alignment);
-
-        ASSERT_FALSE(offset.ok());
-        EXPECT_EQ(offset.status().code(), StatusCode::kInvalidArgument);
-    }
-}
-
-TEST(WorkspaceOffsetAlignment, DetectsAlignmentOverflow) {
-    const StatusOr<size_t> offset = AlignWorkspaceOffset(std::numeric_limits<size_t>::max() - 3, 8);
-
-    ASSERT_FALSE(offset.ok());
-    EXPECT_EQ(offset.status().code(), StatusCode::kOverflow);
-}
-
-class WorkspaceOffsetAlignmentDiagnosticFailure : public ::testing::TestWithParam<bool> {};
-
-TEST_P(WorkspaceOffsetAlignmentDiagnosticFailure, ReturnsResourceExhausted) {
-    if (!test::MallocInterposerAvailable()) {
-        GTEST_SKIP() << "Requires the glibc malloc interposer";
-    }
-    const size_t input_offset = GetParam() ? std::numeric_limits<size_t>::max() - 3 : 8;
-    const size_t alignment = GetParam() ? 8 : 24;
-
-    test::ScopedMallocFailure failure(0);
-    const StatusOr<size_t> offset = AlignWorkspaceOffset(input_offset, alignment);
-    const test::MallocFailureResult injection = failure.Stop();
-
-    EXPECT_TRUE(injection.allocation_failed);
-    ASSERT_FALSE(offset.ok());
-    EXPECT_EQ(offset.status().code(), StatusCode::kResourceExhausted);
-    EXPECT_TRUE(offset.status().message().empty());
-}
-
-INSTANTIATE_TEST_SUITE_P(
-        FailurePaths,
-        WorkspaceOffsetAlignmentDiagnosticFailure,
-        ::testing::Bool(),
-        [](const ::testing::TestParamInfo<bool>& info) {
-            return info.param ? "AlignmentOverflow" : "InvalidAlignment";
         });
 
 } // namespace

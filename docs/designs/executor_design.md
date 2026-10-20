@@ -125,6 +125,12 @@ Reference / Optimized 的差异应通过 init-time resolve 的函数指针表体
 
 ### 4.1 关键对象
 
+当前 execution 的规范 value 绑定采用 [execution_bindings.h](../../include/aethermind/execution/execution_bindings.h) 中的 `BoundValue`：私有三分支 variant 表示未绑定、只读 view 或可写 view。可写绑定通过 `ReadView()` 派生只读 descriptor，不重复保存两份 view 或额外权限标志；state 与 packed-only weight 可保持未绑定。`TryGetWritableView()` 仅为可写分支提供借用指针，具体空状态、无效 view 和生命周期合同见 [公共 API 参考](../api/public-api.md)。
+
+准备阶段将这些 view 固化到 `StepTensorBinding` 和 kernel params；执行器继续消费缓存 operands，不为每次 kernel 调用增加 variant 分派。
+
+Workspace、activation 与 kernel params 的 checked align-up 共同使用 base 层的 `AlignOffsetUp()`，对齐合法性直接由 `IsValidAlignment()` 判定，声明见 [alignment.h](../../include/aethermind/base/alignment.h)。execution 准备实现直接消费这些基础接口，kernel params 的对齐参数仍为 `alignof(std::max_align_t)`；workspace planner 保留全量验证后提交 offsets 的两遍流程，失败不留下部分布局。错误码和诊断分配失败合同见 [公共 API 参考](../api/public-api.md)。
+
 | 对象 | 职责 | 备注 |
 |------|------|------|
 | **Executor** | 顶层执行控制器 | 对外优先暴露 `Generate`；细粒度步骤接口更适合作为内部或测试入口 |

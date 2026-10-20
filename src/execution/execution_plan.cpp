@@ -1,4 +1,5 @@
 #include "aethermind/execution/execution_plan.h"
+#include "aethermind/base/alignment.h"
 #include "aethermind/operators/operator_schema.h"
 #include "utils/variant_utils.h"
 
@@ -320,7 +321,7 @@ Status ExecutionPlan::AddStep(ExecutionStep step) {
                 "Execution step kernel params_size is outside the supported range");
     }
 
-    if (!IsValidWorkspaceAlignment(step.workspace_requirement.alignment)) {
+    if (!IsValidAlignment(step.workspace_requirement.alignment)) {
         return Status::InvalidArgument(
                 "Execution step workspace alignment must be a non-zero power of two");
     }

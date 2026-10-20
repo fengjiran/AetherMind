@@ -340,6 +340,31 @@ TEST(ExternalReadRequirements, PackedWeightIsNotRequired) {
     EXPECT_EQ(CountRequired(*required), 2U);
 }
 
+TEST(PreparedExecutionBindings, PackedOnlyWeightHasNoDenseBinding) {
+    Runtime runtime = MakeCpuRuntime();
+    const auto fixture = MakePackedAddRmsNormPlan(runtime);
+    ASSERT_TRUE(fixture.ok()) << fixture.status().ToString();
+
+    const TestBuffer input(DataType::Float32(), {2, 3});
+    const TestBuffer residual(DataType::Float32(), {2, 3});
+    ExternalTensorBindings external{
+            .read_only = {{.value = fixture->input, .tensor = input.view()},
+                          {.value = fixture->residual, .tensor = residual.view()}}};
+    CPUAllocator allocator(Device::CPU());
+    const auto prepared = PrepareExecutionBindings(fixture->plan, external, allocator);
+    ASSERT_TRUE(prepared.ok()) << prepared.status().ToString();
+
+    const BoundValue& packed_weight = prepared->values()[fixture->weight.index];
+    EXPECT_FALSE(packed_weight.ReadView().is_valid());
+    EXPECT_EQ(packed_weight.TryGetWritableView(), nullptr);
+    for (const uint32_t activation:
+         ValueIndicesOfKind(fixture->plan, ExecutionValueKind::kActivation)) {
+        ASSERT_LT(activation, prepared->values().size());
+        EXPECT_TRUE(prepared->values()[activation].ReadView().is_valid());
+        EXPECT_NE(prepared->values()[activation].TryGetWritableView(), nullptr);
+    }
+}
+
 TEST(ExternalReadRequirements, QueryAgreesWithPrepareExecutionBindings) {
     Runtime runtime = MakeCpuRuntime();
     const auto fixture = MakeSharedWeightPlainPlan(runtime);
@@ -410,9 +435,74 @@ TEST(PreparedExecutionBindings, DoesNotOverstateActivationSubviewAlignment) {
 
     const auto values = bindings->values();
     ASSERT_EQ(values.size(), 3U);
-    EXPECT_EQ(values[1].readable.alignment(), 64U);
-    EXPECT_EQ(values[2].readable.alignment(), 64U);
-    EXPECT_NE(reinterpret_cast<uintptr_t>(values[2].readable.data()) % 4096U, 0U);
+    EXPECT_EQ(values[1].ReadView().alignment(), 64U);
+    EXPECT_EQ(values[2].ReadView().alignment(), 64U);
+    EXPECT_NE(reinterpret_cast<uintptr_t>(values[2].ReadView().data()) % 4096U, 0U);
+}
+
+TEST(BoundValue, DefaultsToUnbound) {
+    BoundValue empty;
+    EXPECT_FALSE(empty.ReadView().is_valid());
+    EXPECT_EQ(empty.TryGetWritableView(), nullptr);
+}
+
+TEST(BoundValue, NormalizesInvalidViewsToUnbound) {
+    const BoundValue invalid_read_only(TensorView{});
+    const BoundValue invalid_writable(MutableTensorView{});
+    EXPECT_FALSE(invalid_read_only.ReadView().is_valid());
+    EXPECT_FALSE(invalid_writable.ReadView().is_valid());
+    EXPECT_EQ(invalid_read_only.TryGetWritableView(), nullptr);
+    EXPECT_EQ(invalid_writable.TryGetWritableView(), nullptr);
+}
+
+TEST(BoundValue, ReadOnlyViewCannotBeWritten) {
+    const std::array<float, 2> input{1.0F, 2.0F};
+    const std::array<int64_t, 1> shape{2};
+    const std::array<int64_t, 1> strides{1};
+    const TensorView read_only(input.data(), DataType::Float32(), shape, strides);
+    const BoundValue read_only_value(read_only);
+    EXPECT_EQ(read_only_value.ReadView().data(), input.data());
+    EXPECT_EQ(read_only_value.TryGetWritableView(), nullptr);
+}
+
+TEST(BoundValue, MutableViewDerivesReadOnlyDescriptorByValue) {
+    std::array<float, 2> output{3.0F, 4.0F};
+    const std::array<int64_t, 1> shape{2};
+    const std::array<int64_t, 1> strides{1};
+    BoundValue writable_value(
+            MutableTensorView(output.data(), DataType::Float32(), shape, strides));
+    const TensorView derived = writable_value.ReadView();
+    ASSERT_NE(writable_value.TryGetWritableView(), nullptr);
+    EXPECT_EQ(derived.data(), output.data());
+    EXPECT_EQ(derived.shape().data(), writable_value.TryGetWritableView()->shape().data());
+    writable_value.TryGetWritableView()->data<float>()[0] = 9.0F;
+
+    const std::array<float, 2> replacement_data{5.0F, 6.0F};
+    const BoundValue replacement(TensorView(
+            replacement_data.data(), DataType::Float32(), shape, strides));
+    writable_value = replacement;
+
+    EXPECT_FLOAT_EQ(derived.data<float>()[0], 9.0F);
+    EXPECT_EQ(derived.shape().data(), shape.data());
+}
+
+TEST(BoundValue, PreservesValidZeroElementViewWithoutDataPointer) {
+    const std::array<int64_t, 1> shape{0};
+    const std::array<int64_t, 1> strides{1};
+    const TensorView view(nullptr, DataType::Float32(), shape, strides);
+    ASSERT_TRUE(view.is_valid());
+
+    const BoundValue value(view);
+    EXPECT_TRUE(value.ReadView().is_valid());
+    EXPECT_EQ(value.ReadView().data(), nullptr);
+    EXPECT_EQ(value.TryGetWritableView(), nullptr);
+
+    const BoundValue writable_value(
+            MutableTensorView(nullptr, DataType::Float32(), shape, strides));
+    EXPECT_TRUE(writable_value.ReadView().is_valid());
+    EXPECT_EQ(writable_value.ReadView().data(), nullptr);
+    ASSERT_NE(writable_value.TryGetWritableView(), nullptr);
+    EXPECT_TRUE(writable_value.TryGetWritableView()->is_valid());
 }
 
 } // namespace

@@ -1,8 +1,8 @@
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/backend/kernel_types.h"
+#include "aethermind/base/alignment.h"
 #include "aethermind/memory/allocator.h"
 #include "aethermind/operators/operator_schema.h"
-#include "aethermind/runtime/workspace_planner.h"
 #include "aethermind/shape_inference/shape_constraint_evaluator.h"
 #include "utils/overflow_check.h"
 
@@ -22,20 +22,6 @@ constexpr size_t kActivationAlignment = 64;
 constexpr size_t kUnassignedOffset = std::numeric_limits<size_t>::max();
 constexpr size_t kNoKernelParams = std::numeric_limits<size_t>::max();
 constexpr size_t kKernelParamsAlignment = alignof(std::max_align_t);
-
-StatusOr<size_t> AlignKernelParamsOffset(size_t offset) noexcept {
-    const size_t remainder = offset % kKernelParamsAlignment;
-    if (remainder == 0) {
-        return offset;
-    }
-
-    size_t aligned = 0;
-    if (CheckOverflowAdd(offset, kKernelParamsAlignment - remainder, &aligned)) {
-        return Status::Overflow(
-                "Kernel params arena alignment overflowed size_t");
-    }
-    return aligned;
-}
 
 struct ConcreteTensorMetadata {
     std::vector<int64_t> shape{};
@@ -80,7 +66,7 @@ Status ValidateExternalView(const MutableTensorView& view,
 
 StatusOr<ConcreteTensorMetadata> ResolveConcreteMetadata(
         const TensorSpec& spec,
-        const std::unordered_map<int64_t, int64_t>& symbol_values) {
+        const std::unordered_map<int64_t, int64_t>& symbol_value_map) {
     if (!spec.shape.IsRanked()) {
         return Status::FailedPrecondition(
                 "Cannot allocate an activation with unranked shape");
@@ -88,12 +74,12 @@ StatusOr<ConcreteTensorMetadata> ResolveConcreteMetadata(
 
     ConcreteTensorMetadata metadata;
     metadata.shape.reserve(*spec.shape.rank());
-    for (const ShapeSymbol symbol: spec.shape) {
+    for (const auto symbol: spec.shape) {
         if (symbol.IsStatic()) {
             metadata.shape.push_back(symbol.GetStaticValue());
         } else if (symbol.IsSymbolic()) {
-            const auto it = symbol_values.find(symbol.value());
-            if (it == symbol_values.end()) {
+            const auto it = symbol_value_map.find(symbol.value());
+            if (it == symbol_value_map.end()) {
                 return Status::FailedPrecondition(
                         "Cannot resolve an activation ShapeSymbol from external bindings");
             }
@@ -112,6 +98,7 @@ StatusOr<ConcreteTensorMetadata> ResolveConcreteMetadata(
             return Status::Overflow(
                     "Activation stride computation overflowed size_t");
         }
+
         if (product > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
             return Status::Overflow(
                     "Activation stride exceeds int64_t range");
@@ -237,6 +224,33 @@ Status ValidatePackedWeightLogicalBindings(const ExecutionPlan& plan,
 }
 
 } // namespace
+
+BoundValue::BoundValue(TensorView view) noexcept {
+    if (view.is_valid()) {
+        view_.emplace<TensorView>(view);
+    }
+}
+
+BoundValue::BoundValue(MutableTensorView view) noexcept {
+    if (view.is_valid()) {
+        view_.emplace<MutableTensorView>(view);
+    }
+}
+
+TensorView BoundValue::ReadView() const noexcept {
+    if (const auto* view = std::get_if<TensorView>(&view_)) {
+        return *view;
+    }
+
+    if (const auto* view = std::get_if<MutableTensorView>(&view_)) {
+        return MakeReadOnlyView(*view);
+    }
+    return {};
+}
+
+const MutableTensorView* BoundValue::TryGetWritableView() const noexcept {
+    return std::get_if<MutableTensorView>(&view_);
+}
 
 StatusOr<std::vector<bool>> ComputeExternalReadRequirements(const ExecutionPlan& plan) {
     std::vector<bool> required(plan.values().size(), false);
@@ -421,10 +435,10 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
 
                 SnapshotMetadata(storage->metadata[i], readable[i]->shape(),
                                  readable[i]->strides());
-                bound.readable = TensorView(
+                bound = BoundValue(TensorView(
                         readable[i]->data(), readable[i]->dtype(),
                         storage->metadata[i].shape, storage->metadata[i].strides,
-                        readable[i]->alignment());
+                        readable[i]->alignment()));
                 break;
             case ExecutionValueKind::kState:
                 if (readable[i] != nullptr || writable[i] != nullptr) {
@@ -436,12 +450,10 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
                 if (writable[i] != nullptr) {
                     SnapshotMetadata(storage->metadata[i], writable[i]->shape(),
                                      writable[i]->strides());
-                    bound.writable = MutableTensorView(
+                    bound = BoundValue(MutableTensorView(
                             writable[i]->data(), writable[i]->dtype(),
                             storage->metadata[i].shape, storage->metadata[i].strides,
-                            writable[i]->alignment());
-                    bound.readable = MakeReadOnlyView(bound.writable);
-                    bound.has_writable = true;
+                            writable[i]->alignment()));
                     break;
                 }
 
@@ -458,7 +470,7 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
                     }
 
                     const auto aligned_offset =
-                            AlignWorkspaceOffset(act_bytes, kActivationAlignment);
+                            AlignOffsetUp(act_bytes, kActivationAlignment);
                     if (!aligned_offset.ok()) {
                         return aligned_offset.status();
                     }
@@ -495,15 +507,13 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
 
         const auto& value = plan.values()[i];
         const auto& [shape, strides] = storage->metadata[i];
-        auto* data = static_cast<std::byte*>(storage->act_storage.mutable_data()) + act_offsets[i];
+        auto* data = static_cast<std::byte*>(storage->act_storage.mutable_data()) +
+                     act_offsets[i];
         // Individual arena offsets preserve only kActivationAlignment. A backing
         // buffer may be more strongly aligned, but that does not extend to a
         // subview whose offset is not a multiple of the stronger alignment.
-        storage->values[i].readable = TensorView(data, value.spec.dtype, shape, strides,
-                                                 kActivationAlignment);
-        storage->values[i].writable = MutableTensorView(data, value.spec.dtype, shape, strides,
-                                                        kActivationAlignment);
-        storage->values[i].has_writable = true;
+        storage->values[i] = BoundValue(MutableTensorView(
+                data, value.spec.dtype, shape, strides, kActivationAlignment));
     }
 
     // Plan the kernel params arena before building any step: align every
@@ -519,7 +529,7 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
             continue;
         }
 
-        const auto aligned = AlignKernelParamsOffset(params_bytes);
+        const auto aligned = AlignOffsetUp(params_bytes, kKernelParamsAlignment);
         if (!aligned.ok()) {
             return aligned.status();
         }
@@ -541,22 +551,22 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
         binding.inputs.reserve(step.kernel_input_ports.size());
         binding.outputs.reserve(step.kernel_output_ports.size());
         for (const uint32_t port: step.kernel_input_ports) {
-            const auto& value = storage->values[step.inputs[port].index];
-            if (!value.readable.is_valid()) {
+            const TensorView input = storage->values[step.inputs[port].index].ReadView();
+            if (!input.is_valid()) {
                 return Status::FailedPrecondition(
                         "ExecutionPlan kernel input has no canonical TensorView binding");
             }
-            binding.inputs.push_back(value.readable);
+            binding.inputs.push_back(input);
         }
 
         for (const uint32_t port: step.kernel_output_ports) {
-            const auto& value = storage->values[step.outputs[port].index];
-            if (!value.has_writable || !value.writable.is_valid()) {
+            const auto* output = storage->values[step.outputs[port].index].TryGetWritableView();
+            if (output == nullptr || !output->is_valid()) {
                 return Status::FailedPrecondition(
                         "ExecutionPlan kernel output has no "
                         "canonical writable TensorView binding");
             }
-            binding.outputs.push_back(value.writable);
+            binding.outputs.push_back(*output);
         }
 
         std::vector<TensorSpec> input_specs;
@@ -606,7 +616,7 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
                 continue;
             }
 
-            const TensorView& input = storage->values[value_id.index].readable;
+            const TensorView input = storage->values[value_id.index].ReadView();
             if (!input.is_valid()) {
                 return Status::FailedPrecondition(
                         "ExecutionPlan runtime check input has no canonical TensorView binding");

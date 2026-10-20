@@ -453,8 +453,9 @@ TEST(ExecutionBindings, BuildsCanonicalActivationStorageAndSurvivesMove) {
     PreparedExecutionBindings moved = std::move(*bindings);
     ASSERT_EQ(moved.step_count(), 1U);
     ASSERT_EQ(moved.values().size(), 2U);
-    EXPECT_TRUE(moved.values()[1].readable.is_valid());
-    EXPECT_TRUE(moved.values()[1].writable.is_valid());
+    EXPECT_TRUE(moved.values()[1].ReadView().is_valid());
+    ASSERT_NE(moved.values()[1].TryGetWritableView(), nullptr);
+    EXPECT_TRUE(moved.values()[1].TryGetWritableView()->is_valid());
     EXPECT_EQ(moved.step(0).inputs[0].data(), input);
     EXPECT_EQ(moved.step(0).inputs[0].shape()[0], 2);
     EXPECT_EQ(moved.step(0).inputs[0].strides()[0], 1);

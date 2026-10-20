@@ -1,4 +1,5 @@
 #include "aethermind/execution/execution_context.h"
+#include "aethermind/base/alignment.h"
 
 #include <algorithm>
 
@@ -44,7 +45,7 @@ WorkspaceArena* ExecutionContext::workspace_arena() const noexcept {
 
 StatusOr<WorkspaceBinding> ExecutionContext::BindWorkspace(
         const WorkspaceRequirement& requirement) const noexcept {
-    if (!IsValidWorkspaceAlignment(requirement.alignment)) {
+    if (!IsValidAlignment(requirement.alignment)) {
         return Status::InvalidArgument(
                 "Workspace requirement alignment must be a non-zero power of two");
     }

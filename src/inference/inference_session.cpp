@@ -1,4 +1,5 @@
 #include "aethermind/inference/inference_session.h"
+#include "aethermind/base/alignment.h"
 #include "aethermind/base/workspace_arena.h"
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_context.h"
@@ -35,7 +36,7 @@ public:
 
     WorkspaceBinding Bind(const WorkspaceRequirement& requirement) noexcept override {
         if (requirement.bytes == 0 || base_ == nullptr ||
-            !IsValidWorkspaceAlignment(requirement.alignment) ||
+            !IsValidAlignment(requirement.alignment) ||
             requirement.offset > size_ ||
             requirement.bytes > size_ - requirement.offset) {
             return {};
@@ -83,7 +84,7 @@ public:
             return Status::Ok();
         }
 
-        if (!IsValidWorkspaceAlignment(alignment)) {
+        if (!IsValidAlignment(alignment)) {
             return Status::InvalidArgument(
                     "InferenceSession plan has an invalid workspace alignment");
         }
@@ -209,7 +210,7 @@ StatusOr<uint32_t> ReadOutputToken(const ExecutionContext& context,
                 "InferenceSession token output has no prepared binding");
     }
 
-    const TensorView& tensor = prepared->values()[output.index].readable;
+    const TensorView tensor = prepared->values()[output.index].ReadView();
     if (!tensor.is_valid() || tensor.dtype() != DataType::Int(64) ||
         tensor.rank() != 1 ||
         tensor.dim(0) != static_cast<int64_t>(expected_length) ||

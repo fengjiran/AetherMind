@@ -1,5 +1,6 @@
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/backend/packed_weight.h"
+#include "aethermind/base/alignment.h"
 #include "aethermind/compiler/lowered_graph.h"
 #include "aethermind/model/weight/packed_weight_collection.h"
 #include "aethermind/operators/operator_inference.h"
@@ -36,7 +37,7 @@ Status ValidatePreparedWorkspaceRequirement(const ResolvedKernel& kernel) {
                 "Backend prepared a workspace requirement with a non-zero offset");
     }
 
-    if (!IsValidWorkspaceAlignment(kernel.workspace_requirement.alignment)) {
+    if (!IsValidAlignment(kernel.workspace_requirement.alignment)) {
         return Status::Internal(
                 "Backend prepared a workspace requirement with an invalid alignment");
     }

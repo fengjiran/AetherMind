@@ -106,6 +106,29 @@
 | 失败语义 | 非零且非 2 的幂的 alignment 返回 `kInvalidArgument`；hook 返回借用内存、错误 device、无效或不足的 alignment，或 CPU 指针不满足声明对齐时返回 `kInternal`。存储或 `BufferImpl` 元数据 OOM 返回空 message 的 `kResourceExhausted`，已有 owning storage 自动释放。`Allocate(size_t)` 转调本入口，将 `kResourceExhausted` 映射为 `std::bad_alloc`，其余错误映射为 `Error`。 |
 | 扩展点 | `AllocatorProvider::CreateAllocator(Device)` 只创建对应设备的 allocator；`CPUAllocator(Device, CPUAllocatorPolicy)` 控制默认对齐、junk fill 和 THP。当前不附带分类标签、内存账本或额外释放包装，也不提供预算限制。 |
 
+### `IsValidAlignment`（include/aethermind/base/alignment.h）
+
+| 项 | 内容 |
+|---|---|
+| 签名 | `constexpr bool IsValidAlignment(size_t alignment) noexcept` |
+| 简介 | 通用对齐合法性谓词；workspace、KV、allocator 等调用方直接使用 |
+| 参数 | `alignment` 为待校验的字节对齐值 |
+| 返回值 | 非零的 2 的幂返回 true（包括 1）；0 和非 2 的幂返回 false；不分配内存 |
+
+### `AlignOffsetUp`（include/aethermind/base/alignment.h）
+
+通用 offset 对齐接口定义于 [alignment.h](../../include/aethermind/base/alignment.h)，实现归 [alignment.cpp](../../src/base/alignment.cpp)。workspace、activation 和 kernel params 统一调用该接口；调用方需链接核心库。
+
+| 项 | 内容 |
+|---|---|
+| 签名 | `StatusOr<size_t> AlignOffsetUp(size_t offset, size_t alignment) noexcept` |
+| 简介 | 返回不小于 offset、满足 alignment 的最小对齐偏移 |
+| 参数 | `offset` 为待对齐偏移；`alignment` 必须是非零的 2 的幂，1 合法 |
+| 返回值 | 成功返回对齐偏移；非法 alignment 返回 `kInvalidArgument`，结果不可表示为 size_t 时返回 `kOverflow`；错误诊断分配失败返回空 message 的 `kResourceExhausted` |
+| 语义 | 先检查 alignment 再进行算术；已对齐值保持不变，`AlignOffsetUp(SIZE_MAX, 1)` 成功；成功路径不分配内存 |
+
+旧公开接口 `AlignWorkspaceOffset()` 和转发谓词 `IsValidWorkspaceAlignment()` 均已删除，没有兼容转发；旧调用方应直接包含 `aethermind/base/alignment.h`，分别改用 `AlignOffsetUp()` 和 `IsValidAlignment()`，重新编译、链接。Workspace planner 的布局、零字节和失败原子性合同保持不变。
+
 ### Workspace 数据契约（include/aethermind/base/workspace_types.h）
 
 `WorkspaceLifetime`、`WorkspaceRequirement`、`WorkspaceBinding` 统一定义在 [workspace_types.h](../../include/aethermind/base/workspace_types.h)。原先包含 `base/workspace_binding.h` 的调用方需改为包含 `base/workspace_types.h`；类型名、字段布局与行为不变。
@@ -117,6 +140,20 @@
 | `WorkspaceBinding` | `WorkspaceArena::Bind` 产生的借用切片；`data` 已满足 requirement 对齐，`size` 不小于需求字节数；仅供单次 kernel 调用，不得保存到调用结束之后 |
 
 资源接口 `WorkspaceArena` 仍定义于 [workspace_arena.h](../../include/aethermind/base/workspace_arena.h)，布局规划仍定义于 [workspace_planner.h](../../include/aethermind/runtime/workspace_planner.h)。
+
+### `BoundValue`（include/aethermind/execution/execution_bindings.h）
+
+`BoundValue` 是一个逻辑 execution value 的规范物理绑定，内部封装 `std::variant<std::monostate, TensorView, MutableTensorView>`。空状态表示没有普通 tensor binding，例如 state 值或仅由 packed artifact 提供的 weight；可写分支同时允许读取。该类型只借用 data/shape/stride 元数据，不拥有 tensor storage。
+
+| 接口 | 语义与生命周期 |
+|---|---|
+| `BoundValue()` | 创建未绑定值 |
+| `explicit BoundValue(TensorView view)` | 保存只读 descriptor；无效 view 规范化为未绑定值 |
+| `explicit BoundValue(MutableTensorView view)` | 保存可写 descriptor；无效 view 规范化为未绑定值；合法零元素 view 可使用 null data，不等于未绑定 |
+| `TensorView ReadView() const noexcept` | 按值返回只读 descriptor；可写分支从同一份 data/metadata 派生，空状态返回无效 view；不复制数据、不分配内存。返回值不借用 BoundValue 本体，但其底层 data 和 metadata 必须继续存活 |
+| `const MutableTensorView* TryGetWritableView() const noexcept` | 仅可写分支返回指向内部 descriptor 的借用指针，其余返回 nullptr；指针不得跨 BoundValue 修改、移动或析构使用 |
+
+原 `readable`、`writable`、`has_writable` 字段已移除，调用方需迁移到上述接口并重新编译，不能将新旧布局视为 ABI 兼容。`PrepareExecutionBindings` 仍在 cold path 构建 `StepTensorBinding.inputs/outputs` 和 prepared kernel params；执行器不在每次 kernel 调用时访问 variant。Session 读取 token 输出时使用 `ReadView()`。
 
 ### `Executor::Execute`（include/aethermind/execution/executor.h）
 

@@ -10,6 +10,7 @@
 
 #include <memory>
 #include <span>
+#include <variant>
 #include <vector>
 
 namespace aethermind {
@@ -39,13 +40,38 @@ struct ExternalTensorBindings {
 
 /// @brief Canonical physical binding for one ExecutionValueId.
 ///
-/// The views borrow either caller-owned storage or PreparedExecutionBindings-owned
+/// The view borrows either caller-owned storage or PreparedExecutionBindings-owned
 /// activation storage. Concrete shape and stride metadata are owned by the
 /// prepared bindings, but caller-owned tensor storage must outlive them.
-struct BoundValue {
-    TensorView readable{};
-    MutableTensorView writable{};
-    bool has_writable = false;
+/// An unbound value has no dense tensor view, as for state values or weights
+/// consumed only through packed artifacts. A writable binding also permits reads;
+/// its read-only descriptor is derived from the same view rather than stored twice.
+class BoundValue {
+public:
+    /// @brief Creates an unbound value.
+    BoundValue() noexcept = default;
+
+    /// @brief Creates a read-only binding, or an unbound value for an invalid view.
+    /// @param view Borrowed tensor data and metadata, which must outlive the binding.
+    explicit BoundValue(TensorView view) noexcept;
+
+    /// @brief Creates a writable binding, or an unbound value for an invalid view.
+    /// @param view Borrowed tensor data and metadata, which must outlive the binding.
+    explicit BoundValue(MutableTensorView view) noexcept;
+
+    /// @brief Returns a read-only descriptor without copying the tensor data.
+    /// @return A borrowed view of either binding kind, or an invalid view when unbound.
+    /// @note The returned descriptor borrows data and metadata, not this object;
+    ///       that backing storage must remain valid for the descriptor's lifetime.
+    AM_NODISCARD TensorView ReadView() const noexcept;
+
+    /// @brief Returns the writable descriptor when this binding permits writes.
+    /// @return A pointer into this object, or nullptr for unbound/read-only values.
+    ///         The pointer must not outlive this object's modification, move, or destruction.
+    AM_NODISCARD const MutableTensorView* TryGetWritableView() const noexcept;
+
+private:
+    std::variant<std::monostate, TensorView, MutableTensorView> view_{};
 };
 
 /// @brief Per-step compact TensorViews cached for the executor hot path.

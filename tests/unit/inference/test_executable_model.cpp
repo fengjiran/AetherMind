@@ -354,10 +354,20 @@ TEST(ExecutableModel, OneBindingTableSpecializesBothPrefillAndDecode) {
     ASSERT_FALSE((*table)->read_only.empty());
     const ExecutionValueId weight_id = (*table)->read_only.front().value;
     const void* const weight_data = (*table)->read_only.front().tensor.data();
-    EXPECT_EQ(prefill->values()[weight_id.index].readable.data(), weight_data);
-    EXPECT_EQ(decode->values()[weight_id.index].readable.data(), weight_data);
+    EXPECT_EQ(prefill->values()[weight_id.index].ReadView().data(), weight_data);
+    EXPECT_EQ(decode->values()[weight_id.index].ReadView().data(), weight_data);
     EXPECT_EQ(prefill_tokens.view().data(), prefill_tokens.data());
-    EXPECT_EQ(decode->values()[tokens_id.index].readable.data(), decode_tokens.data());
+    EXPECT_EQ(decode->values()[tokens_id.index].ReadView().data(), decode_tokens.data());
+
+    for (size_t i = 0; i < plan.values().size(); ++i) {
+        if (plan.values()[i].kind != ExecutionValueKind::kState) {
+            continue;
+        }
+        EXPECT_FALSE(prefill->values()[i].ReadView().is_valid());
+        EXPECT_EQ(prefill->values()[i].TryGetWritableView(), nullptr);
+        EXPECT_FALSE(decode->values()[i].ReadView().is_valid());
+        EXPECT_EQ(decode->values()[i].TryGetWritableView(), nullptr);
+    }
 }
 
 TEST(ExecutableModel, SurvivesBeingMoved) {
@@ -784,7 +794,7 @@ TEST(ExecutableModel, PreparedBindingsAreReleasedBeforeTheModel) {
         CPUAllocator allocator(Device::CPU());
         const auto prepared = PrepareExecutionBindings(**plan, external, allocator);
         ASSERT_TRUE(prepared.ok()) << prepared.status().ToString();
-        EXPECT_EQ(prepared->values()[weight_value.index].readable.data(), weight_data);
+        EXPECT_EQ(prepared->values()[weight_value.index].ReadView().data(), weight_data);
     }
 
     const auto table = model->immutable_weight_bindings(ExecPhase::kBoth);

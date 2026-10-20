@@ -1,4 +1,5 @@
 #include "aethermind/runtime/workspace_planner.h"
+#include "aethermind/base/alignment.h"
 #include "utils/overflow_check.h"
 
 #include <algorithm>
@@ -7,32 +8,13 @@
 
 namespace aethermind {
 
-StatusOr<size_t> AlignWorkspaceOffset(size_t offset,
-                                      size_t alignment) noexcept try {
-    if (!IsValidWorkspaceAlignment(alignment)) {
-        return Status::InvalidArgument(
-                "Workspace alignment must be a non-zero power of two");
-    }
-
-    size_t rounded_offset = 0;
-    if (CheckOverflowAdd(offset, alignment - 1, &rounded_offset)) {
-        return Status::Overflow(
-                "Workspace offset alignment overflowed size_t");
-    }
-
-    return rounded_offset & ~(alignment - 1);
-} catch (const std::bad_alloc&) {
-    // Error diagnostics may allocate; reporting OOM must not allocate again.
-    return Status::ResourceExhausted({});
-}
-
 StatusOr<WorkspacePlanLayout> PlanWorkspaceRequirements(
         std::span<WorkspaceRequirement> requirements) noexcept try {
     WorkspacePlanLayout layout;
 
     // Keep invalid alignment errors ahead of layout overflow errors.
     for (const WorkspaceRequirement& requirement: requirements) {
-        if (!IsValidWorkspaceAlignment(requirement.alignment)) {
+        if (!IsValidAlignment(requirement.alignment)) {
             return Status::InvalidArgument(
                     "Workspace requirement alignment must be a non-zero power of two");
         }
@@ -45,7 +27,7 @@ StatusOr<WorkspacePlanLayout> PlanWorkspaceRequirements(
             continue;
         }
 
-        StatusOr<size_t> aligned_offset = AlignWorkspaceOffset(
+        StatusOr<size_t> aligned_offset = AlignOffsetUp(
                 layout.total_bytes, requirement.alignment);
         if (!aligned_offset.ok()) {
             return std::move(aligned_offset).status();

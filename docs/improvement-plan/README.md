@@ -16,7 +16,7 @@
 | 06 | [AetherMind 系统能力演进路线图](06-system-capability-evolution-roadmap.md) | Draft | 2026-10-19 |
 | 07 | [ExecutableModel 生产准备入口方案](07-executable-model-preparation.md) | Implemented | 2026-09-23 |
 | 08 | [KV Cache 与 CPU Attention 能力演进方案](08-kv-cache-and-attention-capability-evolution.md) | Draft | 2026-09-24 |
-| 09 | [Qwen 与 MoE 模型架构支持方案](09-qwen-and-moe-architecture-support.md) | Draft | 2026-10-19 |
+| 09 | [Qwen 与 MoE 模型架构支持方案](09-qwen-and-moe-architecture-support.md) | Draft | 2026-10-20 |
 | 10 | [上层 Runtime 组装与推理入口实施方案](10-upper-level-runtime-assembly.md) | Draft | 2026-10-19 |
 
 ## 推荐阅读路径
@@ -28,6 +28,6 @@
 - [06-system-capability-evolution-roadmap.md](06-system-capability-evolution-roadmap.md)：全仓库 capability gap、模块级演进裁决与 Batch A–F 实施排序；关联 09 的 Qwen/MoE 独立主线，§11.4 记录单权重 identity 条件式零复制的待优化项与验收。
 - [07-executable-model-preparation.md](07-executable-model-preparation.md)：01 号计划 M2 的细化，`LoweredModelArtifact → ExecutableModel` 唯一生产准备入口、权重绑定映射与 inference 模块归属。
 - [08-kv-cache-and-attention-capability-evolution.md](08-kv-cache-and-attention-capability-evolution.md)：当前 KV owner/epoch correctness、CPU Attention 优化证据门禁和 Paged KV 长期准入。
-- [09-qwen-and-moe-architecture-support.md](09-qwen-and-moe-architecture-support.md)：公共合同→Qwen3 Dense→Qwen3 MoE 主线、专家权重与多 packed bindings、资源预算及端到端验收；另含 Mistral/Phi/SmolLM3/Gemma 的优先级、Mixtral/OLMoE 验证分支和底座兼容目标，均不构成主线前置。
+- [09-qwen-and-moe-architecture-support.md](09-qwen-and-moe-architecture-support.md)：公共合同→Qwen3 Dense→Qwen3 MoE 主线；含 R1–R8 改造、binding 冷路径 workspace specialization、统一 decoder I/O、多 packed bindings 与验收，另列其他家族优先级和独立分支。
 - [10-upper-level-runtime-assembly.md](10-upper-level-runtime-assembly.md)：从模型配置派生 Runtime、一次编译准备 kBoth plan 的独立 C++ 入口；包含生命周期、CPU preset、分阶段 C ABI 与集成验收门禁。
 - 原 04 号 GEMM 专项提案已于 2026-09-19 迁出本目录：方案、路线与工作包状态见 [CPU GEMM 优化方案](../operators/gemm/cpu-gemm-optimization.md)，机器级证据见 [GEMM 算子索引](../operators/gemm/README.md)；算子专项提案的位置见 [算子开发与优化工作流](../guides/operator-development-workflow.md)。

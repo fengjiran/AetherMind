@@ -341,19 +341,21 @@ StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeVolumeConstraint(
         const VolumeEqualConstraint& constraint,
         const std::span<const TensorView> inputs,
         const std::span<const MutableTensorView> outputs) {
-    const auto compute_volume = [&](const std::span<const DimLocator> dims) -> StatusOr<uint64_t> {
+    auto compute_volume = [&](const std::span<const DimLocator> dims) -> StatusOr<uint64_t> {
         uint64_t product = 1;
         for (const DimLocator& locator: dims) {
             const auto dim = ResolveRuntimeDim(locator, inputs, outputs);
             if (!dim.ok()) {
                 return dim.status();
             }
+
             // Negative dims are malformed runtime bindings; oversized products
             // surface as Overflow instead of aborting the runtime hot path.
             if (*dim < 0) {
                 return Status::InvalidArgument(
                         "Shape constraint volume received a negative dimension");
             }
+
             if (CheckOverflowMul(product, static_cast<uint64_t>(*dim), &product)) {
                 return Status::Overflow("Shape constraint volume overflows uint64_t");
             }
@@ -365,6 +367,7 @@ StatusOr<ShapeConstraintEvaluationResult> EvaluateRuntimeVolumeConstraint(
     if (!lhs.ok()) {
         return lhs.status();
     }
+
     const auto rhs = compute_volume(constraint.rhs_dims);
     if (!rhs.ok()) {
         return rhs.status();
@@ -470,8 +473,9 @@ Status ValidateShapeConstraints(const std::span<const ShapeConstraint> constrain
         }
 
         if (*result == ShapeConstraintEvaluationResult::kDeferred) {
-            return Status::Internal("Runtime shape constraint evaluation returned kDeferred; "
-                                    "all dimensions are concrete at runtime, this indicates a bug");
+            return Status::Internal(
+                    "Runtime shape constraint evaluation returned kDeferred; "
+                    "all dimensions are concrete at runtime, this indicates a bug");
         }
     }
     return Status::Ok();
@@ -559,15 +563,15 @@ Status ValidateTensorBindingPremises(const std::span<const TensorSpec> input_spe
                                      const std::span<const TensorSpec> output_specs,
                                      const std::span<const TensorView> inputs,
                                      const std::span<const MutableTensorView> outputs) {
-    SymbolValueMap symbol_values;
+    SymbolValueMap symbol_value_map;
     for (size_t i = 0; i < input_specs.size(); ++i) {
         AM_RETURN_IF_ERROR(ValidateSpecAgainstView(
-                input_specs[i], inputs[i], "input", i, symbol_values));
+                input_specs[i], inputs[i], "input", i, symbol_value_map));
     }
 
     for (size_t i = 0; i < output_specs.size(); ++i) {
         AM_RETURN_IF_ERROR(ValidateSpecAgainstView(
-                output_specs[i], outputs[i], "output", i, symbol_values));
+                output_specs[i], outputs[i], "output", i, symbol_value_map));
     }
     return Status::Ok();
 }

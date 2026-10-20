@@ -192,7 +192,7 @@ StatusOr<PackedWeightView> MakePackedWeightView(const ExecutionStep& step) {
                 "Packed execution step has an invalid packed weight artifact");
     }
 
-    const PackedWeight& packed = *step.packed_weights;
+    const auto& packed = *step.packed_weights;
     return PackedWeightView{
             .data = packed.storage().data(),
             .nbytes = packed.storage().nbytes(),
@@ -493,8 +493,7 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
     // backing storage only needs to guarantee at least that; the allocator may
     // return stronger and every offset stays valid.
     const auto act_storage = act_allocator.TryAllocate(
-            {.nbytes = act_bytes,
-             .alignment = kActivationAlignment});
+            {.nbytes = act_bytes, .alignment = kActivationAlignment});
     if (!act_storage.ok()) {
         return act_storage.status();
     }
@@ -533,6 +532,7 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
         if (!aligned.ok()) {
             return aligned.status();
         }
+
         params_bytes = *aligned;
         storage->kernel_params_offsets[i] = params_bytes;
 
@@ -543,15 +543,14 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
 
     constexpr size_t word_size = sizeof(std::max_align_t);
     storage->kernel_params_storage.resize((params_bytes + word_size - 1) / word_size);
-
     storage->steps.reserve(plan.size());
-    for (size_t step_index = 0; step_index < plan.size(); ++step_index) {
-        const auto& step = plan.steps()[step_index];
+    for (size_t i = 0; i < plan.size(); ++i) {
+        const auto& step = plan.steps()[i];
         StepTensorBinding binding;
         binding.inputs.reserve(step.kernel_input_ports.size());
         binding.outputs.reserve(step.kernel_output_ports.size());
         for (const uint32_t port: step.kernel_input_ports) {
-            const TensorView input = storage->values[step.inputs[port].index].ReadView();
+            const auto input = storage->values[step.inputs[port].index].ReadView();
             if (!input.is_valid()) {
                 return Status::FailedPrecondition(
                         "ExecutionPlan kernel input has no canonical TensorView binding");
@@ -598,10 +597,10 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
                 continue;
             }
 
-            const ExecutionValueId value_id = step.inputs[port];
+            const auto [index] = step.inputs[port];
             if (step.selector.weight_format == WeightFormat::kPacked &&
                 schema->input_ports[port].kind == OperatorPortKind::kWeight) {
-                AM_ASSIGN_OR_RETURN(const PackedWeightView packed,
+                AM_ASSIGN_OR_RETURN(const auto packed,
                                     MakePackedWeightView(step));
                 AM_ASSIGN_OR_RETURN(auto strides,
                                     MakeContiguousStrides(packed.logical_shape,
@@ -616,21 +615,24 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
                 continue;
             }
 
-            const TensorView input = storage->values[value_id.index].ReadView();
+            const auto input = storage->values[index].ReadView();
             if (!input.is_valid()) {
-                return Status::FailedPrecondition(
-                        "ExecutionPlan runtime check input has no canonical TensorView binding");
+                return Status::FailedPrecondition("ExecutionPlan runtime check input "
+                                                  "has no canonical TensorView binding");
             }
             runtime_check_inputs.push_back(input);
         }
+
         AM_RETURN_IF_ERROR(ValidateShapeConstraints(
                 step.runtime_checks, runtime_check_inputs, binding.outputs));
+
         if (step.kernel.params_builder != nullptr) {
-            void* params_buffer = MutableKernelParamsPointer(*storage, step_index);
+            void* params_buffer = MutableKernelParamsPointer(*storage, i);
             std::optional<PackedWeightView> packed_weight;
             if (step.selector.weight_format == WeightFormat::kPacked) {
                 AM_ASSIGN_OR_RETURN(packed_weight, MakePackedWeightView(step));
             }
+
             AM_RETURN_IF_ERROR(step.kernel.params_builder(
                     KernelParamsBuildContext{
                             .inputs = binding.inputs,

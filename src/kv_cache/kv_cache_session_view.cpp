@@ -116,15 +116,17 @@ Status KVCacheSessionView::ValidateBaseState() const noexcept try {
     switch (session_state_->lifecycle) {
         case KVCacheSessionState::Lifecycle::kAwaitingPrefill:
             if (session_state_->committed_tokens != 0) {
-                return Status::FailedPrecondition("KVCacheSessionView awaiting Prefill "
-                                                  "must have zero committed tokens");
+                return Status::FailedPrecondition(
+                        "KVCacheSessionView awaiting Prefill "
+                        "must have zero committed tokens");
             }
             break;
         case KVCacheSessionState::Lifecycle::kPrefillCommitted:
             if (session_state_->committed_tokens < session_state_->prompt_len ||
                 session_state_->committed_tokens > session_state_->capacity_tokens) {
-                return Status::FailedPrecondition("KVCacheSessionView committed tokens "
-                                                  "violate the session reservation");
+                return Status::FailedPrecondition(
+                        "KVCacheSessionView committed tokens "
+                        "violate the session reservation");
             }
             break;
         case KVCacheSessionState::Lifecycle::kIdle:
@@ -281,7 +283,8 @@ StatusOr<KVCacheAppendBinding> KVCacheSessionView::BindLayerForAppend(
                 "KV append exceeds physical KV capacity");
     }
 
-    AM_ASSIGN_OR_RETURN(KVCacheLayerStorageBinding storage, BindLayerStorageValidated(layer_idx));
+    AM_ASSIGN_OR_RETURN(const KVCacheLayerStorageBinding storage,
+                        BindLayerStorageValidated(layer_idx));
     return KVCacheAppendBinding{.storage = storage, .begin = begin, .end = end};
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});

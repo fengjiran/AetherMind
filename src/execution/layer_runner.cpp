@@ -40,7 +40,7 @@ StatusOr<ExecutionKVCacheStateIdentity> GetKVStateIdentity(
                                        " references a value beyond the plan table");
     }
 
-    const ExecutionValueDesc& value = values[id.index];
+    const auto& value = values[id.index];
     if (value.kind != ExecutionValueKind::kState) {
         return Status::InvalidArgument("KV state " + std::string(role) +
                                        " must refer to a kState value");
@@ -135,7 +135,8 @@ StatusOr<uint32_t> ValidateKVCacheUpdateStateIdentity(
     if (key_input.decoder_layer_index != value_input.decoder_layer_index ||
         key_input != key_output || value_input != value_output) {
         return Status::InvalidArgument(
-                "KVCacheUpdate state inputs and outputs must identify one decoder layer");
+                "KVCacheUpdate state inputs and outputs "
+                "must identify one decoder layer");
     }
 
     AM_RETURN_IF_ERROR(ValidateKVCacheStatePair(
@@ -174,15 +175,15 @@ StatusOr<size_t> KVCacheUpdateSequenceLength(
         size_t step_index,
         const ExecutionStep& step,
         const PreparedExecutionBindings& prepared_bindings) noexcept {
-    const StepTensorBinding& tensors = prepared_bindings.step(step_index);
-    if (tensors.inputs.size() != 2 || step.kernel_input_ports.size() != 2 ||
-        tensors.inputs[0].rank() != 2 || tensors.inputs[1].rank() != 2 ||
-        tensors.inputs[0].shape() != tensors.inputs[1].shape() ||
-        tensors.inputs[0].dim(0) <= 0) {
+    const auto& inputs = prepared_bindings.step(step_index).inputs;
+    if (inputs.size() != 2 || step.kernel_input_ports.size() != 2 ||
+        inputs[0].rank() != 2 || inputs[1].rank() != 2 ||
+        inputs[0].shape() != inputs[1].shape() ||
+        inputs[0].dim(0) <= 0) {
         return Status::InvalidArgument("KVCacheUpdate requires prepared K/V "
                                        "tensors with matching positive [T, hidden] shapes");
     }
-    return static_cast<size_t>(tensors.inputs[0].dim(0));
+    return static_cast<size_t>(inputs[0].dim(0));
 }
 
 } // namespace
@@ -208,7 +209,7 @@ StatusOr<KVAppendTransaction> PrepareKVAppendTransaction(
         const PreparedExecutionBindings& prepared_bindings) noexcept {
     KVAppendTransaction transaction;
     const auto& view = context.kv_cache_session_view();
-    std::optional<size_t> sequence_length;
+    std::optional<size_t> seq_len;
     if (context.HasKVCacheSessionView()) {
         transaction.layer_progress = context.ResetKVLayerTransactionScratch();
         if (transaction.layer_progress.size() != view.num_layers()) {
@@ -244,34 +245,34 @@ StatusOr<KVAppendTransaction> PrepareKVAppendTransaction(
         transaction.layer_progress[layer] =
                 static_cast<uint8_t>(KVAppendTransaction::LayerProgress::kScheduled);
 
-        AM_ASSIGN_OR_RETURN(const size_t current_sequence_length,
+        AM_ASSIGN_OR_RETURN(const size_t cur_seq_len,
                             KVCacheUpdateSequenceLength(i, step, prepared_bindings));
-        if (sequence_length.has_value() && *sequence_length != current_sequence_length) {
+        if (seq_len.has_value() && *seq_len != cur_seq_len) {
             return Status::InvalidArgument("All KVCacheUpdate steps in one plan "
                                            "must have the same sequence length");
         }
-        sequence_length = current_sequence_length;
+        seq_len = cur_seq_len;
     }
 
     transaction.committed_begin = context.HasKVCacheSessionView() ? view.current_pos() : 0;
     transaction.visible_end = transaction.committed_begin;
-    if (!sequence_length.has_value()) {
+    if (!seq_len.has_value()) {
         return transaction;
     }
 
     if (view.awaiting_prefill()) {
-        if (*sequence_length != view.prompt_len() || transaction.committed_begin != 0) {
+        if (*seq_len != view.prompt_len() || transaction.committed_begin != 0) {
             return Status::FailedPrecondition(
                     "KV initial append must write "
                     "exactly the reserved Prefill length from position zero");
         }
-    } else if (*sequence_length != 1) {
+    } else if (*seq_len != 1) {
         return Status::InvalidArgument(
                 "Phase 1 KV Decode append must contain exactly one token");
     }
 
     size_t end = 0;
-    if (CheckOverflowAdd(transaction.committed_begin, *sequence_length, &end)) {
+    if (CheckOverflowAdd(transaction.committed_begin, *seq_len, &end)) {
         return Status::Overflow("KV append transaction range overflowed size_t");
     }
 
@@ -279,15 +280,15 @@ StatusOr<KVAppendTransaction> PrepareKVAppendTransaction(
         return Status::OutOfRange("KV append transaction exceeds cache capacity");
     }
 
-    for (size_t layer = 0; layer < transaction.layer_progress.size(); ++layer) {
-        if (transaction.layer_progress[layer] !=
+    for (size_t i = 0; i < transaction.layer_progress.size(); ++i) {
+        if (transaction.layer_progress[i] !=
             static_cast<uint8_t>(KVAppendTransaction::LayerProgress::kScheduled)) {
             return Status::InvalidArgument("KV append transaction must update "
                                            "every KVCacheSessionView layer exactly once");
         }
 
         if (const auto binding =
-                    view.BindLayerForAppend(layer, transaction.committed_begin, end);
+                    view.BindLayerForAppend(i, transaction.committed_begin, end);
             !binding.ok()) {
             return binding.status();
         }
@@ -303,7 +304,7 @@ Status LayerRunner::Run(const ExecutionPlan& plan,
                         ExecutionContext& context) noexcept {
     const auto& steps = plan.steps();
     const auto& alias_plan = plan.state_alias_plan();
-    const PreparedExecutionBindings* const prepared_bindings = context.prepared_bindings();
+    const auto* const prepared_bindings = context.prepared_bindings();
     if (prepared_bindings == nullptr) {
         return Status::FailedPrecondition("ExecutionContext requires a"
                                           " PreparedExecutionBindings before execution");

@@ -504,6 +504,21 @@ TEST(LlamaDenseGraphBuilder, RejectsInvalidConfig) {
     EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
 }
 
+TEST(LlamaDenseGraphBuilder, RejectsUnsupportedHiddenActivation) {
+    HfModelConfig config = MakeLlamaConfig(1);
+    const ResolvedModelWeights weights = MakeWeights(config);
+
+    for (const char* activation: {"gelu", "relu"}) {
+        SCOPED_TRACE(activation);
+        config.hidden_act = activation;
+
+        const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
+
+        EXPECT_FALSE(graph.ok());
+        EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+    }
+}
+
 TEST(LlamaDenseGraphBuilder, RejectsResolvedLayerCountMismatch) {
     const HfModelConfig config = MakeLlamaConfig(2);
     ResolvedModelWeights weights = MakeWeights(config);

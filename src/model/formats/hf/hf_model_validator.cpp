@@ -39,13 +39,7 @@ bool HasUnsupportedNamedDTypeHint(const HfModelConfig& config) {
 }
 
 bool IsSupportedActivation(std::string_view act) {
-    constexpr std::string_view kSupported[] = {
-            "silu",
-            "gelu",
-            "relu",
-    };
-
-    return std::ranges::any_of(kSupported, [act](std::string_view s) { return act == s; });
+    return act == "silu";
 }
 
 bool HasRopeScaling(const HfRopeConfig& rope) {
@@ -559,7 +553,8 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
 
     if (!IsSupportedActivation(config.hidden_act)) {
         return Status::InvalidArgument(
-                "Model config field 'hidden_act' must be one of: silu, gelu, relu");
+                "Model config field 'hidden_act' must be 'silu' for the supported SwiGLU path, got '" +
+                config.hidden_act + "'");
     }
 
     if (!options.allow_bias && (config.attention_bias || config.mlp_bias)) {

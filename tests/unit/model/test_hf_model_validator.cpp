@@ -272,22 +272,30 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsUnsupportedHiddenActivation) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
-TEST(ModelLoader_HfModelValidatorTest, AcceptsGeluActivation) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsGeluActivation) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.hidden_act = "gelu";
 
     const Status status = HfModelValidator::ValidateConfig(config);
 
-    EXPECT_TRUE(status.ok()) << status.ToString();
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("hidden_act"), std::string::npos);
+    EXPECT_NE(status.message().find("'silu'"), std::string::npos);
+    EXPECT_NE(status.message().find("'gelu'"), std::string::npos);
 }
 
-TEST(ModelLoader_HfModelValidatorTest, AcceptsReluActivation) {
+TEST(ModelLoader_HfModelValidatorTest, RejectsReluActivation) {
     HfModelConfig config = MakeValidLlamaConfig();
     config.hidden_act = "relu";
 
     const Status status = HfModelValidator::ValidateConfig(config);
 
-    EXPECT_TRUE(status.ok()) << status.ToString();
+    EXPECT_FALSE(status.ok());
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("hidden_act"), std::string::npos);
+    EXPECT_NE(status.message().find("'silu'"), std::string::npos);
+    EXPECT_NE(status.message().find("'relu'"), std::string::npos);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsBiasByDefault) {

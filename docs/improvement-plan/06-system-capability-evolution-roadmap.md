@@ -1,13 +1,13 @@
 # AetherMind 系统能力演进路线图
 
 - **状态**: Draft
-- **版本**: 1.4
+- **版本**: 1.5
 - **日期**: 2026-09-16
-- **最近更新**: 2026-10-20
+- **最近更新**: 2026-10-21
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **工程质量基线**: [工程质量体系建设方案](02-engineering-quality-system.md)
-- **定位**: 全仓库 capability gap 总表与实施排序；专题细节见 [提案索引](README.md)，多架构/MoE 扩展由 [09 号提案](09-qwen-and-moe-architecture-support.md) 承载，FP16/BF16 执行由 [11 号提案](11-fp16-bf16-execution-support.md) 承载
+- **定位**: 全仓库 capability gap 总表与实施排序；专题细节见 [提案索引](README.md)，多架构/MoE 扩展由 [09 号提案](09-qwen-and-moe-architecture-support.md) 承载，FP16/BF16 执行由 [11 号提案](11-fp16-bf16-execution-support.md) 承载，未来 CUDA 执行由 [12 号提案](12-cuda-backend-execution-support.md) 承载
 
 ## 1. 结论
 
@@ -25,6 +25,8 @@ AetherMind 当前不需要再次进行顶层架构重写。`model → graph/oper
 针对用户要求的多架构/MoE 扩展，采用 [09 号提案](09-qwen-and-moe-architecture-support.md) 的独立主线：公共合同→Qwen3 Dense→Qwen3 MoE。MoE 语义与专家准备可以并行推进；支持 Qwen2/2.5、Mixtral 或完成全部量化工作不是该主线的前置。该提案为 Draft，不改变当前已实现能力的判定。
 
 FP16/BF16 执行采用 [11 号提案](11-fp16-bf16-execution-support.md) 的独立精度主线：显式转换为 FP32 的兼容执行→保留 16-bit 权重的 W16/A32→独立 KV16→A16。该提案为 Draft，加载 dtype、语义许可和完整 production execution 分别验收；不要求先完成 INT8/INT4，也不使 09 的其他模型家族自动获得 dtype 支持。
+
+未来 CUDA 支持采用 [12 号提案](12-cuda-backend-execution-support.md) 的独立设备执行主线：设备/存储/完成合同→可选 CUDA 基础设施→单 GPU FP32 完整生成→FP16/BF16 presets→有证据的性能优化。该提案为 Draft，不改变当前 CPU-only 产品合同；复用现有模块边界、静态 KV 与同步 API，不以服务化、多 GPU、Paged KV 或 CPU/GPU 自动分图为前置。精度策略与 11 共享，shape-dependent workspace 若采用 09 的准备合同则保留单一布局权威。
 
 本路线图将模块分为三类：
 
@@ -788,6 +790,10 @@ microkernel
 
 [11 号提案](11-fp16-bf16-execution-support.md) 先冻结数值与构图 dtype 合同，建立 FP32 兼容基线，再交付 W16/A32。KV16 和 A16 分别需要 state/端口签名、算子数值与完整生成证据；P2 的 SIMD/packing 优化无需等待 A16。该主线不更改 Batch D 的量化格式语义，也不以其他模型家族或线程池实现为首批前置。
 
+### CUDA 设备执行主线：按 12 独立推进
+
+[12 号提案](12-cuda-backend-execution-support.md) 先补齐 placement、显存 owner、stream 完成与 KV 提交合同，再交付单 GPU FP32 同步生成；FP16/BF16 和性能优化分别验收。该主线不要求先完成服务化、Paged KV、多 GPU 或其他模型家族，不改变当前 CPU 产品交付门禁；后续 workspace specialization 与 09 共享单一布局权威，精度策略与 11 保持一致。
+
 ## 20. 专题拆分规则
 
 本路线图是总索引，不应无限增长。满足以下任一条件时，从本文件拆出独立编号提案并反向链接：
@@ -828,3 +834,4 @@ microkernel
 | 2026-10-10 | 1.2 | 新增 §11.4 单权重 identity 条件式零复制待优化项：明确 ownership、不可变性、alignment、复制路径与 production 验收；纳入 Batch C |
 | 2026-10-19 | 1.3 | 关联 09 号 Qwen/MoE 提案，调整 MoE 的延后表述，明确独立主线与并行依赖；其余历史能力表未重新验证 |
 | 2026-10-20 | 1.4 | 关联 11 号 FP16/BF16 Draft，补充独立精度主线与 dtype 准入边界；其余历史能力表未重新验证 |
+| 2026-10-21 | 1.5 | 关联 12 号 CUDA Draft，补充独立设备执行主线及与 09/11 的 workspace/精度边界；不更改当前 CPU 产品合同，其余历史能力表未重新验证 |

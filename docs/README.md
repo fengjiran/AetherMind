@@ -82,6 +82,7 @@
 | [09-qwen-and-moe-architecture-support.md](improvement-plan/09-qwen-and-moe-architecture-support.md) | 公共合同→Qwen3 Dense→Qwen3 MoE 主线：R1–R8 改造、binding 冷路径 workspace、统一 decoder I/O、多 packed bindings 与验收 | Draft |
 | [10-upper-level-runtime-assembly.md](improvement-plan/10-upper-level-runtime-assembly.md) | 模型配置到 Runtime/模型/Session 的独立 C++ 组装入口、生命周期与分阶段 C ABI 验收 | Draft |
 | [11-fp16-bf16-execution-support.md](improvement-plan/11-fp16-bf16-execution-support.md) | FP32 兼容执行、W16/A32、独立 KV16 与 A16 的精度合同、所有权、实施阶段与验收门禁 | Draft |
+| [12-cuda-backend-execution-support.md](improvement-plan/12-cuda-backend-execution-support.md) | 单 GPU 同步基线、device placement、显存权重、stream 完成与 KV 事务，及 FP32→FP16/BF16→性能优化的实施与验收 | Draft |
 
 > 算子专项提案不再建在本目录：按 [算子开发工作流 O3](guides/operator-development-workflow.md) 建在 `docs/operators/<op>/<op>-optimization.md`（原 04 号 GEMM 专项已迁至 [operators/gemm/cpu-gemm-optimization.md](operators/gemm/cpu-gemm-optimization.md)）。
 

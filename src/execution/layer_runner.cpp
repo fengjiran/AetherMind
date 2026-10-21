@@ -331,8 +331,7 @@ Status LayerRunner::Run(const ExecutionPlan& plan,
             }
         }
 
-        KVCacheSessionView view = context.kv_cache_session_view();
-        AM_RETURN_IF_ERROR(view.CommitAppend(
+        AM_RETURN_IF_ERROR(context.kv_cache_session_view().CommitAppend(
                 kv_transaction.committed_begin, kv_transaction.visible_end));
     }
     return Status::Ok();

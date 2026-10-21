@@ -18,6 +18,7 @@
 - `KVCacheManager` 禁止复制；移动仅限没有 borrowed view 的资源装配阶段，并明确共享 Runtime 请求须由调用方串行化。
 - Workspace 纯数据契约统一放入 `base/workspace_types.h`，移除 `base/workspace_binding.h`；原调用方需更新 include 路径。类型、字段布局及行为保持不变，arena 接口与布局规划分别保留在 `base/workspace_arena.h` 和 `runtime/workspace_planner.h`。
 - Workspace、activation 和 kernel params 的 offset 对齐统一为 `base/alignment.h` 的 `AlignOffsetUp()`，实现位于 `src/base/alignment.cpp`；删除公开的 `AlignWorkspaceOffset()` 和转发谓词 `IsValidWorkspaceAlignment()`，直接使用 `IsValidAlignment()` 校验，不保留转发接口。调用方需迁移并重新编译、链接核心库；workspace 布局规划仍位于 `src/runtime/workspace_planner.cpp`。
+- `BuildKernelContext` 现在一次性填入 workspace binding、KV bindings 和 `PreparedExecutionBindings` 所拥有的 `kernel_params`；`InvokePreparedKernel` 收敛为 `const ResolvedKernel&` 与 `const KernelContext&` 两参数接口，只校验 params contract 后调用 kernel，不再修改 context。直接调用该低层接口的 caller 必须预设 `KernelContext::kernel_params` 并重新编译；`BuildAndInvokeKernelForTesting` 保持原有行为。
 
 ### Deprecated
 

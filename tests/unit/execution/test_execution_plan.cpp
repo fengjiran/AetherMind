@@ -256,12 +256,12 @@ TEST(KernelInvoker, InvokesPreparedParamsWithoutCallingBuilder) {
     g_invocations = 0;
     g_built_param = 0;
     alignas(std::max_align_t) int prepared = 23;
-    KernelContext context{};
+    const KernelContext context{.kernel_params = &prepared};
     ASSERT_TRUE(InvokePreparedKernel({.op_type = OpType::kAdd,
                                       .fn = &CaptureBuiltParamKernel,
                                       .params_builder = &BuildKernelParam,
                                       .params_size = sizeof(int)},
-                                     context, &prepared)
+                                     context)
                         .ok());
     EXPECT_EQ(g_invocations, 1);
     EXPECT_EQ(g_built_param, 23);
@@ -269,10 +269,10 @@ TEST(KernelInvoker, InvokesPreparedParamsWithoutCallingBuilder) {
 
 TEST(KernelInvoker, InvokesPreparedParamlessKernelWithNullParams) {
     g_invocations = 0;
-    KernelContext context{};
+    const KernelContext context{};
     ASSERT_TRUE(InvokePreparedKernel(
                         {.op_type = OpType::kAdd, .fn = &FakeKernel},
-                        context, nullptr)
+                        context)
                         .ok());
     EXPECT_EQ(g_invocations, 1);
 }

@@ -357,16 +357,21 @@ LayerRunner::RunStep(step_index, step, bindings)
 
 顺序：
 
-1. 绑定 workspace：
+1. 校验当前 step 的 state aliases，并绑定 workspace：
 
 ```cpp
-bindings.BindWorkspace(step.workspace_requirement)
+context.BindWorkspace(step.workspace_requirement)
 ```
 
-2. 构造 kernel context：
+2. 校验 prepared input/output arity，并按当前 step 的语义取得 KV append/read
+   binding；从 `PreparedExecutionBindings::kernel_params(step_index)` 读取缓存的
+   prepared params。runtime shape constraints 已在 `PrepareExecutionBindings` 冷路径校验。
+
+3. 一次性构造完整 kernel context：
 
 ```cpp
-BuildKernelContext(step, bindings)
+const KernelContext ctx = BuildKernelContext(
+        step, context, workspace_binding, prepared_params, kv_append, kv_read);
 ```
 
 写入：
@@ -374,28 +379,32 @@ BuildKernelContext(step, bindings)
 ```cpp
 KernelContext{
     .device_type = step.selector.device_type,
-    .workspace = bindings.GetWorkspaceArena(),
-    .packed_weights = step.packed_weights,
+    .stream = nullptr,
+    .workspace = context.workspace_arena(),
+    .workspace_binding = workspace_binding,
+    .packed_weights = step.packed_weights ? step.packed_weights->storage().data() : nullptr,
+    .kernel_params = prepared_params,
+    .kv_append = kv_append,
+    .kv_read = kv_read,
     .attrs = step.kernel.attrs,
 }
 ```
 
-3. 校验 runtime shape constraints：
-
-```cpp
-ValidateShapeConstraints(...)
-```
-
-4. 从 `ExecutionContext` 取得 `PreparedExecutionBindings`，校验 compact
-   input/output arity，并读取 `PreparedExecutionBindings::kernel_params(step_index)` 中缓存的
-   prepared params。
-
-5. 由通用 `InvokePreparedKernel(step.kernel, ctx, prepared_params)` 执行：
+4. 由通用 `InvokePreparedKernel(step.kernel, ctx)` 执行：
    params 已在 `PrepareExecutionBindings` 构建 `PreparedExecutionBindings` 时由 descriptor
    注册的 params builder 一次性构造（binding-time 冷路径，含 kernel-specific
-   layout/alias 验证）；Execute 热路径只把缓存写入 `ctx.kernel_params` 并调用
-   冻结的 `step.kernel.fn`。带 params builder 的 kernel 不会在每次执行时重新
-   构造 params；`BuildAndInvokeKernelForTesting` 仅为测试/诊断保留。
+   layout/alias 验证）；`BuildKernelContext` 在调用前将缓存指针预设到 context，
+   `InvokePreparedKernel` 只通过 `AM_DCHECK` 检查 kernel 的 params contract 并调用冻结的
+   `step.kernel.fn`，不会修改 context。带 params builder 的 kernel 不会在每次执行时
+   重新构造 params；`BuildAndInvokeKernelForTesting` 仅为测试/诊断保留。
+
+5. kernel 成功后标记本层 KV 写入完成；整计划成功后再发布 committed watermark。
+
+`KernelContext`、workspace binding、KV bindings 和 prepared params 均是本次调用的借用
+描述。params 的存储仍由 `PreparedExecutionBindings` 拥有；该对象必须在执行期间保持有效。
+正式调用路径不因这次接口收敛引入分配或所有权转移。外部低层 caller 若直接调用
+`InvokePreparedKernel`，必须先将 params 指针设置到 `KernelContext::kernel_params`，并按新
+签名重新编译。
 
 ## 6. 当前 Graph Compile 阶段边界
 

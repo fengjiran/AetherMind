@@ -17,10 +17,19 @@ using namespace aethermind;
 
 int g_kernel_calls = 0;
 WorkspaceBinding g_workspace{};
+const void* g_kernel_params = nullptr;
+int g_recorded_param = 0;
+
+Status BuildRecordingParams(const KernelParamsBuildContext&, void* params) noexcept {
+    *static_cast<int*>(params) = 37;
+    return Status::Ok();
+}
 
 Status RecordingKernel(const KernelContext& context) noexcept {
     ++g_kernel_calls;
     g_workspace = context.workspace_binding;
+    g_kernel_params = context.kernel_params;
+    g_recorded_param = context.kernel_params == nullptr ? 0 : *static_cast<const int*>(context.kernel_params);
     return Status::Ok();
 }
 
@@ -38,6 +47,8 @@ public:
         if (op_type == OpType::kSoftmax) {
             return ResolvedKernel{.op_type = op_type,
                                   .fn = &RecordingKernel,
+                                  .params_builder = &BuildRecordingParams,
+                                  .params_size = sizeof(int),
                                   .workspace_requirement = {.bytes = 64, .alignment = 64}};
         }
         if (op_type == OpType::kArgmax) return ResolvedKernel{.op_type = op_type, .fn = &FailingKernel};
@@ -99,14 +110,20 @@ TEST(ExecutorBackendPath, ExecutesFrozenKernelWithCachedValueBindings) {
              .writable = {{.value = step.outputs[0], .tensor = MutableTensorView(output, DataType::Float32(), shape, strides)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_TRUE(table.ok()) << table.status().ToString();
+    const void* const prepared_params = table->kernel_params(0);
+    ASSERT_NE(prepared_params, nullptr);
     auto bindings = ExecutionContext::Create(*plan, std::move(*table), &arena);
     ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
     g_kernel_calls = 0;
     g_workspace = {};
+    g_kernel_params = nullptr;
+    g_recorded_param = 0;
     ASSERT_TRUE(Executor::Execute(*plan, *bindings).ok());
     EXPECT_EQ(g_kernel_calls, 1);
     EXPECT_EQ(g_workspace.data, workspace);
     EXPECT_EQ(g_workspace.size, sizeof(workspace));
+    EXPECT_EQ(g_kernel_params, prepared_params);
+    EXPECT_EQ(g_recorded_param, 37);
 }
 
 TEST(ExecutorBackendPath, PropagatesFrozenKernelFailure) {

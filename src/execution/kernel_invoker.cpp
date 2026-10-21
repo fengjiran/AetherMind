@@ -5,19 +5,17 @@
 namespace aethermind {
 
 Status InvokePreparedKernel(const ResolvedKernel& kernel,
-                            KernelContext& context,
-                            const void* prepared_params) noexcept {
+                            const KernelContext& context) noexcept {
     AM_DCHECK(kernel.fn != nullptr);
 
     if (kernel.params_builder == nullptr) {
         AM_DCHECK(kernel.params_size == 0);
-        AM_DCHECK(prepared_params == nullptr);
+        AM_DCHECK(context.kernel_params == nullptr);
     } else {
         AM_DCHECK(kernel.params_size != 0);
-        AM_DCHECK(prepared_params != nullptr);
+        AM_DCHECK(context.kernel_params != nullptr);
     }
 
-    context.kernel_params = prepared_params;
     return kernel.fn(context);
 }
 

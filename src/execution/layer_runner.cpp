@@ -15,16 +15,19 @@ namespace {
 
 KernelContext BuildKernelContext(const ExecutionStep& step,
                                  const ExecutionContext& context,
+                                 WorkspaceBinding workspace_binding,
+                                 const void* prepared_params,
                                  const KVCacheAppendBinding* kv_append,
                                  const KVCacheReadBinding* kv_read) noexcept {
     return KernelContext{
             .device_type = step.selector.device_type,
             .stream = nullptr,
             .workspace = context.workspace_arena(),
+            .workspace_binding = workspace_binding,
             .packed_weights = step.packed_weights
                                       ? step.packed_weights->storage().data()
                                       : nullptr,
-            .kernel_params = nullptr,
+            .kernel_params = prepared_params,
             .kv_append = kv_append,
             .kv_read = kv_read,
             .attrs = step.kernel.attrs,
@@ -433,14 +436,13 @@ Status LayerRunner::RunStep(size_t step_index,
         }
     }
 
-    auto kernel_ctx = BuildKernelContext(step, context,
-                                         append_binding ? &*append_binding : nullptr,
-                                         read_binding ? &*read_binding : nullptr);
-    kernel_ctx.workspace_binding = workspace_binding.value();
+    const auto kernel_ctx = BuildKernelContext(
+            step, context, workspace_binding.value(),
+            prepared_bindings.kernel_params(step_index),
+            append_binding ? &*append_binding : nullptr,
+            read_binding ? &*read_binding : nullptr);
 
-    Status status = InvokePreparedKernel(
-            step.kernel, kernel_ctx, prepared_bindings.kernel_params(step_index));
-    if (!status.ok()) {
+    if (Status status = InvokePreparedKernel(step.kernel, kernel_ctx); !status.ok()) {
         return status;
     }
 

@@ -182,7 +182,7 @@ struct ResolvedKernel {
     KernelFunc fn = nullptr;
     std::vector<std::byte> attrs{};               // 规划期由语义参数构建的不变元数据
     const char* debug_name = nullptr;
-    KernelParamsBuilder params_builder = nullptr; // 执行期由 tensor 绑定构建 kernel 专属 params
+    KernelParamsBuilder params_builder = nullptr; // binding-time 构建 kernel 专属 params
     size_t params_size = 0;
     WorkspaceRequirement workspace_requirement{}; // 规划期冻结的 scratch 要求
     PackingRecipe expected_packing_recipe{};      // packed 权重所需的打包布局；非 packed 为空
@@ -247,14 +247,15 @@ struct KernelContext {
     WorkspaceArena* workspace = nullptr;        // 提供切片借用与绑定支持
     WorkspaceBinding workspace_binding{};        // 本次调用绑定的 workspace 切片
     const void* packed_weights = nullptr;        // packed 权重数据起始指针
-    const void* kernel_params = nullptr;         // kernel 专属 params（执行期构建）
+    const void* kernel_params = nullptr;         // PreparedExecutionBindings 拥有的 prepared params
     std::span<const std::byte> attrs{};          // 规划期冻结的不变元数据
 };
 ```
 
 #### 8.2.1 说明
 
-- `KernelContext` 只携带窄执行资源；stream、workspace、params/attrs、packed weights 均为执行所需的窄句柄。
+- `KernelContext` 只携带窄执行资源；stream、workspace、params/attrs、packed weights 均为执行所需的窄句柄。每次调用前由 `BuildKernelContext` 一次性填入完整字段。
+- `InvokePreparedKernel(const ResolvedKernel&, const KernelContext&) noexcept` 只校验既有 params contract 并调用 `KernelFunc`，不修改 context、不分配内存；`kernel_params` 由 `PreparedExecutionBindings` 拥有，调用期间仅借用。
 - 后端专属执行资源（线程池、NUMA/ISA 辅助等）为后续扩展预留接缝；当前 `CpuBackend` 仅持有能力快照。
 - 后续 CUDA / CANN backend 可复用同一通用接口，而无需向 `KernelContext` 追加后端专属字段（必要时再引入细分的执行资源传递通道）。
 

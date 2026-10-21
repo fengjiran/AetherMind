@@ -16,17 +16,17 @@ namespace aethermind {
 /// time.
 ///
 /// @param kernel Frozen kernel prepared by a backend.
-/// @param context Kernel execution context; workspace and packed weights are
-///                populated by the caller.
-/// @param prepared_params Params produced by `kernel.params_builder` while the
-///                        owning `PreparedExecutionBindings` was built. Must be nullptr when
-///                        the kernel registered no builder.
+/// @param context Complete kernel execution context, including workspace,
+///                packed weights, KV bindings, attrs, and prepared kernel params.
+///                The invoker does not modify the context.
 /// @return Status::Ok() on success, or the kernel's error status.
+/// @pre context.kernel_params points to params produced by kernel.params_builder
+///      while the owning PreparedExecutionBindings was built, or is nullptr
+///      when the kernel registered no builder.
 /// @note The prepared params are borrowed for the duration of this call only
 ///       and remain owned by the `PreparedExecutionBindings`.
 Status InvokePreparedKernel(const ResolvedKernel& kernel,
-                            KernelContext& context,
-                            const void* prepared_params) noexcept;
+                            const KernelContext& context) noexcept;
 
 /// @brief Builds params into stack storage and invokes one frozen kernel.
 ///

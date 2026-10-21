@@ -164,6 +164,19 @@
 | 返回值 | 成功返回 `Status::Ok()`；失败返回首个失败步骤的错误（对应 `@return`） |
 | 语义 | 同步单线程执行，委托 `LayerRunner`；不产生 Token IDs（对应 `@note`） |
 
+### `InvokePreparedKernel`（include/aethermind/execution/kernel_invoker.h）
+
+| 项 | 内容 |
+|---|---|
+| 签名 | `Status InvokePreparedKernel(const ResolvedKernel& kernel, const KernelContext& context) noexcept` |
+| 简介 | 调用已经由 `PreparedExecutionBindings` 构建 params 的冻结 kernel |
+| 参数 | `kernel`：backend resolve 后的不可变 kernel；`context`：调用前已完整填入 workspace binding、KV bindings、packed weights、attrs 和 `kernel_params` 的执行上下文 |
+| 语义 | 通过 `AM_DCHECK` 检查 `params_builder`/`params_size` 与 `context.kernel_params` 的契约，然后直接调用 `kernel.fn`；不修改 context，不产生分配 |
+| 生命周期 | `context.kernel_params` 是借用指针，存储仍由 `PreparedExecutionBindings` 拥有，必须覆盖调用期间 |
+| 调用方迁移 | 直接调用该低层接口的 caller 必须在调用前预设 `KernelContext::kernel_params`，并按新签名重新编译 |
+
+`BuildAndInvokeKernelForTesting` 仍保留原有签名和逐次构建 params 的行为，仅供测试与低层诊断使用，不属于生产执行路径。
+
 ### `PrepareExecutionBindings` / `ExecutionContext::Create`
 
 | 接口 | 语义要点 |

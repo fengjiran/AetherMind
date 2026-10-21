@@ -442,6 +442,33 @@ Status ExecutorImpl::Generate(SessionState& session) {
 - 将“执行路径组织”与“单层骨架”解耦
 - 为 Reference / Optimized 的一致签名提供锚点
 
+### 7.1.1 KernelContext 与 prepared params
+
+`LayerRunner::RunStep` 在调用 kernel 前一次性构造完整的 `KernelContext`。构造过程同时
+填入 workspace binding、packed weights、KV append/read binding、冻结的 attrs，以及从
+`PreparedExecutionBindings::kernel_params(step_index)` 取得的 prepared params 指针；执行
+阶段不再先构造 context、再由 invoker 补写字段。
+
+```cpp
+const KernelContext ctx = BuildKernelContext(
+        step, context, workspace_binding, prepared_params, kv_append, kv_read);
+const Status status = InvokePreparedKernel(step.kernel, ctx);
+```
+
+正式接口是：
+
+```cpp
+Status InvokePreparedKernel(const ResolvedKernel& kernel,
+                            const KernelContext& context) noexcept;
+```
+
+`InvokePreparedKernel` 只通过 `AM_DCHECK` 检查 `params_builder`/`params_size` 与
+`context.kernel_params` 的既有契约，然后调用冻结的 `kernel.fn`；它不修改 context，也不
+分配内存。prepared params 的所有权仍属于 `PreparedExecutionBindings`，其生命周期必须
+覆盖 kernel 调用。直接使用该低层接口的外部 caller 需要将 params 预设到
+`context.kernel_params` 并重新编译。`BuildAndInvokeKernelForTesting` 保持原有测试/诊断
+接口和行为，不属于生产路径。
+
 ### 7.2 OpContext
 
 算子层不得直接依赖全局单例。Executor 应向算子传入明确的 `OpContext`，典型内容包括：

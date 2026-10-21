@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 
+#include <concepts>
 #include <cstdlib>
 #include <limits>
 #include <type_traits>
@@ -19,7 +20,9 @@ template<typename View>
 concept HasPublicCommitUntil = requires(View& view) { view.CommitUntil(size_t{1}); };
 
 template<typename View>
-concept HasPublicCommitAppend = requires(View& view) { view.CommitAppend(size_t{0}, size_t{1}); };
+concept HasPublicConstCommitAppend = requires(const View& view) {
+    { view.CommitAppend(size_t{0}, size_t{1}) } noexcept -> std::same_as<Status>;
+};
 
 template<typename View>
 concept HasPublicMutableKeyAccess = requires(View& view) { view.MutableKeyData(size_t{0}, size_t{0}, size_t{0}, size_t{0}); };
@@ -27,9 +30,9 @@ concept HasPublicMutableKeyAccess = requires(View& view) { view.MutableKeyData(s
 template<typename View>
 concept HasPublicMutableValueAccess = requires(View& view) { view.MutableValueData(size_t{0}, size_t{0}, size_t{0}, size_t{0}); };
 
-TEST(KVCacheSessionView, ExposesNoPublicCommitMutation) {
+TEST(KVCacheSessionView, ExposesNoexceptCommitAppendOnConstView) {
     static_assert(!HasPublicCommitUntil<KVCacheSessionView>);
-    static_assert(!HasPublicCommitAppend<KVCacheSessionView>);
+    static_assert(HasPublicConstCommitAppend<KVCacheSessionView>);
 }
 
 TEST(KVCacheSessionView, ExposesNoPublicElementWriteAccess) {
@@ -97,7 +100,7 @@ protected:
 TEST_F(KVCacheCommitTest, PartialPrefillDoesNotPublishState) {
     const auto before = state_;
 
-    EXPECT_EQ(detail::KVCacheCommitAccess::CommitAppend(view_, 0, 1).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(view_.CommitAppend(0, 1).code(), StatusCode::kFailedPrecondition);
 
     ExpectStateUnchanged(state_, before);
     EXPECT_FALSE(view_.KeyData(0, 0, 0).ok());
@@ -106,7 +109,7 @@ TEST_F(KVCacheCommitTest, PartialPrefillDoesNotPublishState) {
 TEST_F(KVCacheCommitTest, PrefillCannotIncludeDecodePositions) {
     const auto before = state_;
 
-    EXPECT_EQ(detail::KVCacheCommitAccess::CommitAppend(view_, 0, 3).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(view_.CommitAppend(0, 3).code(), StatusCode::kFailedPrecondition);
 
     ExpectStateUnchanged(state_, before);
 }
@@ -115,7 +118,7 @@ TEST_F(KVCacheCommitTest, NoncontiguousBeginDoesNotPublishState) {
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(view_, 2).ok());
     const auto before = state_;
 
-    EXPECT_EQ(detail::KVCacheCommitAccess::CommitAppend(view_, 1, 3).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(view_.CommitAppend(1, 3).code(), StatusCode::kInvalidArgument);
 
     ExpectStateUnchanged(state_, before);
 }
@@ -124,7 +127,7 @@ TEST_F(KVCacheCommitTest, DecodeCannotSkipPositions) {
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(view_, 2).ok());
     const auto before = state_;
 
-    EXPECT_EQ(detail::KVCacheCommitAccess::CommitAppend(view_, 2, 4).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(view_.CommitAppend(2, 4).code(), StatusCode::kInvalidArgument);
 
     ExpectStateUnchanged(state_, before);
     EXPECT_FALSE(view_.KeyData(0, 0, 2).ok());
@@ -134,7 +137,7 @@ TEST_F(KVCacheCommitTest, DuplicateCommitDoesNotPublishState) {
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(view_, 3).ok());
     const auto before = state_;
 
-    EXPECT_EQ(detail::KVCacheCommitAccess::CommitAppend(view_, 2, 3).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(view_.CommitAppend(2, 3).code(), StatusCode::kInvalidArgument);
 
     ExpectStateUnchanged(state_, before);
 }
@@ -143,7 +146,7 @@ TEST_F(KVCacheCommitTest, EmptyAppendDoesNotPublishState) {
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(view_, 2).ok());
     const auto before = state_;
 
-    EXPECT_EQ(detail::KVCacheCommitAccess::CommitAppend(view_, 2, 2).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(view_.CommitAppend(2, 2).code(), StatusCode::kInvalidArgument);
 
     ExpectStateUnchanged(state_, before);
 }
@@ -152,7 +155,7 @@ TEST_F(KVCacheCommitTest, AppendBeyondReservationDoesNotPublishState) {
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(view_, 6).ok());
     const auto before = state_;
 
-    EXPECT_EQ(detail::KVCacheCommitAccess::CommitAppend(view_, 6, 7).code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(view_.CommitAppend(6, 7).code(), StatusCode::kOutOfRange);
 
     ExpectStateUnchanged(state_, before);
 }
@@ -163,7 +166,7 @@ TEST_F(KVCacheCommitTest, WrongEpochCannotChangeTheFreshReservation) {
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(fresh_view, 2).ok());
     const auto before = state_;
 
-    EXPECT_EQ(detail::KVCacheCommitAccess::CommitAppend(view_, 2, 3).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(view_.CommitAppend(2, 3).code(), StatusCode::kFailedPrecondition);
 
     ExpectStateUnchanged(state_, before);
     EXPECT_FALSE(view_.valid());
@@ -186,7 +189,7 @@ TEST_F(KVCacheCommitTest, SaturatedGenerationDoesNotReviveAnIdleView) {
     const auto before = state_;
 
     EXPECT_FALSE(last_view.valid());
-    EXPECT_EQ(detail::KVCacheCommitAccess::CommitAppend(last_view, 0, 2).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(last_view.CommitAppend(0, 2).code(), StatusCode::kFailedPrecondition);
     ExpectStateUnchanged(state_, before);
 }
 
@@ -198,7 +201,7 @@ TEST_F(KVCacheCommitTest, CommitDiagnosticFailurePreservesTheEntireState) {
     const auto before = state_;
 
     test::ScopedMallocFailure failure(0);
-    const Status status = detail::KVCacheCommitAccess::CommitAppend(view_, 2, 4);
+    const Status status = view_.CommitAppend(2, 4);
     const auto result = failure.Stop();
 
     EXPECT_TRUE(result.allocation_failed);
@@ -215,7 +218,7 @@ TEST_F(KVCacheCommitTest, StaleCommitDiagnosticFailurePreservesTheEntireState) {
     const auto before = state_;
 
     test::ScopedMallocFailure failure(0);
-    const Status status = detail::KVCacheCommitAccess::CommitAppend(view_, 0, 2);
+    const Status status = view_.CommitAppend(0, 2);
     const auto result = failure.Stop();
 
     EXPECT_TRUE(result.allocation_failed);
@@ -232,7 +235,7 @@ TEST_F(KVCacheCommitTest, MalformedReservationDiagnosticFailurePreservesTheEntir
     const auto before = state_;
 
     test::ScopedMallocFailure failure(0);
-    const Status status = detail::KVCacheCommitAccess::CommitAppend(view_, 0, 2);
+    const Status status = view_.CommitAppend(0, 2);
     const auto result = failure.Stop();
 
     EXPECT_TRUE(result.allocation_failed);
@@ -251,7 +254,7 @@ TEST_F(KVCacheCommitTest, InvalidLayoutDiagnosticFailurePreservesTheEntireState)
     const auto before = state_;
 
     test::ScopedMallocFailure failure(0);
-    const Status status = detail::KVCacheCommitAccess::CommitAppend(malformed_view, 0, 2);
+    const Status status = malformed_view.CommitAppend(0, 2);
     const auto result = failure.Stop();
 
     EXPECT_TRUE(result.allocation_failed);
@@ -278,7 +281,7 @@ TEST_P(KVCacheInvalidStateTest, ReadWriteAndCommitFailClosed) {
     EXPECT_FALSE(view_.BindLayerForRead(0, state_.committed_tokens, state_.committed_tokens).ok());
     EXPECT_FALSE(view_.KeyData(0, 0, 0).ok());
     EXPECT_FALSE(view_.ValueData(0, 0, 0).ok());
-    EXPECT_FALSE(detail::KVCacheCommitAccess::CommitAppend(view_, state_.committed_tokens, state_.committed_tokens + 1).ok());
+    EXPECT_FALSE(view_.CommitAppend(state_.committed_tokens, state_.committed_tokens + 1).ok());
 
     ExpectStateUnchanged(state_, before);
 }

@@ -622,7 +622,7 @@ TEST(KVCacheManager, ResetRequiresTheEntirePrefillBeforeDecode) {
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 5).ok());
     ASSERT_TRUE(manager.ResetSession(*view).ok());
 
-    EXPECT_FALSE(detail::KVCacheCommitAccess::CommitAppend(*view, 0, 1).ok());
+    EXPECT_FALSE(view->CommitAppend(0, 1).ok());
     EXPECT_EQ(view->committed_tokens(), 0U);
     EXPECT_TRUE(view->awaiting_prefill());
     EXPECT_FALSE(view->KeyData(0, 0, 0).ok());
@@ -643,12 +643,12 @@ TEST(KVCacheManager, ReleasedCopyCannotCommitIntoANewReservation) {
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(*view, 2).ok());
     ASSERT_TRUE(manager.ReleaseSession(*view).ok());
 
-    EXPECT_FALSE(detail::KVCacheCommitAccess::CommitAppend(copy, 2, 3).ok());
+    EXPECT_FALSE(copy.CommitAppend(2, 3).ok());
     auto fresh = manager.ReserveForSession(3, 2);
     ASSERT_TRUE(fresh.ok());
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(*fresh, 3).ok());
 
-    EXPECT_FALSE(detail::KVCacheCommitAccess::CommitAppend(copy, 3, 4).ok());
+    EXPECT_FALSE(copy.CommitAppend(3, 4).ok());
     EXPECT_FALSE(copy.valid());
     EXPECT_TRUE(fresh->valid());
     EXPECT_EQ(fresh->committed_tokens(), 3U);

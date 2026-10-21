@@ -48,7 +48,7 @@
 
 ### 2.4 发布权与资源合同
 
-旧的公开 `KVCacheSessionView::CommitUntil` 允许低层调用方绕过完整 layer 写入证明而提前发布 watermark。当前实现已移除该公开入口，提交收窄为 source-private `detail::KVCacheCommitAccess::CommitAppend`：仅 `LayerRunner` 在全部 layer 依序完成同一 append range 且整个 plan 成功后调用；该入口校验 epoch、append begin、range、首次完整 Prefill 与单 token Decode，失败不修改状态。本轮 Release 聚焦回归已覆盖该路径，证据见 §5.2。当前 Manager 的资源预算聚合与 KV dtype 可执行集合仍未闭环；不得把本次发布权收窄误报为这些问题已修复。
+旧的公开 `KVCacheSessionView::CommitUntil` 允许低层调用方绕过完整 layer 写入证明而提前发布 watermark。当前实现改为公开 `KVCacheSessionView::CommitAppend(begin, end) const noexcept`：调用方（生产中为 `LayerRunner`）必须在全部 layer 依序完成同一 append range 且整个 plan 成功后调用；该入口只校验 generation、lifecycle、append begin/end 与容量，不证明写入完成，失败不修改状态。提交校验实现的历史验证见 §5.2；本次公开接口的验证以更新后的提交合同测试与执行集成为准。当前 Manager 的资源预算聚合与 KV dtype 可执行集合仍未闭环；不得把本次提交接口变化误报为这些问题已修复。
 
 ## 3. 目标职责与不变量
 
@@ -75,7 +75,7 @@ CPU backend          只消费已解析的 geometry、layout 与数据指针
 
 ### 4.1 当前静态 KV：最小正确性修复
 
-已落地方案保留 contiguous pool 和现有 `KVCacheSessionView` 边界，使用借用指针身份校验与跨 re-init 保留的 generation，没有新增 heap owner token 或热路径间接寻址。`Init` 保持“重新初始化释放旧 reservation”的公开语义。公开 view 不再有提交 API；source-private commit access 不安装、不提供公开 test API，测试 fixture 通过同一内部 access 路径构造事务。Manager/view 的 lifetime、地址稳定和外部串行化属于调用方合同；不扩展为并发资源仲裁。
+已落地方案保留 contiguous pool 和现有 `KVCacheSessionView` 边界，使用借用指针身份校验与跨 re-init 保留的 generation，没有新增 heap owner token 或热路径间接寻址。`Init` 保持“重新初始化释放旧 reservation”的公开语义。公开 view 通过 `CommitAppend` 提交，但调用方必须先提供完整 plan 写入完成的证明；该方法只做 session/range/capacity 校验。Manager/view 的 lifetime、地址稳定和外部串行化属于调用方合同；不扩展为并发资源仲裁。
 
 当前同步合同要求同一 Manager 的 `Init`、`ReserveForSession`、`ResetSession` 与 `ReleaseSession` 不得插入一次 `Execute`，包括 kernel 重入；transaction 不得逃离执行栈。因此 Reset 不需要 revision/token 来使 view 失效。若未来需要重入或并发，必须另行设计同步与 transaction identity，不能把现有 generation 误称为覆盖所有 Reset ABA。
 
@@ -100,7 +100,7 @@ PagedAttention 的目标是让 Attention 消费非连续物理 KV blocks；它�
 | 工作包 | 最小改动范围 | 必须通过的证据 | 状态 |
 |---|---|---|---|
 | **KV owner/epoch correctness** | `KVCacheManager`/`KVCacheSessionView` 的 owner、slot、epoch 校验；re-init 与回绕策略 | cross-manager Reset/Release 拒绝；re-init/re-reserve 后旧 view 永不复活；ASAN/TSAN 目标测试；既有 M4/M5 Generate 测试继续通过 | 实现与正式回归已加入；验证结果见下方记录 |
-| **KV publish/resource contract** | commit 权威已收窄为 LayerRunner 的 source-private transaction access；汇总模型、activation、workspace、KV 预算及明确 KV dtype 可执行集合仍待完成 | Release 聚焦回归覆盖提交拒绝、失败不发布、诊断 OOM 与零分配；预算与实际分配字节一致、超限可恢复失败、真实模型配置下的容量/精度证据仍待设计 | 发布权已验证；资源/dtype 仍待设计 |
+| **KV publish/resource contract** | commit 权威为 `KVCacheSessionView::CommitAppend`；调用方必须先完成 LayerRunner 的完整 transaction proof，方法只做 generation/lifecycle/range/capacity 校验；汇总模型、activation、workspace、KV 预算及明确 KV dtype 可执行集合仍待完成 | Release 聚焦回归覆盖提交拒绝、失败不发布、诊断 OOM 与零分配；预算与实际分配字节一致、超限可恢复失败、真实模型配置下的容量/精度证据仍待设计 | 发布权已验证；资源/dtype 仍待设计 |
 | **CPU Attention baseline 与候选** | 增加按 Prefill/Decode、context depth、GQA、KV dtype/layout 分组的 benchmark；候选在独立 optimized descriptor | O0/O1 数值、O2 registered/prepared 基线、O4 同机交错测量；production `ExecutionStep` 与端到端结果；误差、bytes、latency 同报 | 待测，P1 |
 | **Paged KV 准入审查** | 需求、预算和多请求 workload 研究；获批后另设 block manager 与 paged kernel 专题 | 证明 contiguous 静态策略的真实资源损失，并同时测得 paged 方案收益足以覆盖额外 metadata/寻址成本 | 未触发，长期 |
 
@@ -113,11 +113,11 @@ PagedAttention 的目标是让 Attention 消费非连续物理 KV blocks；它�
 - sanitizer 验证禁用 glibc malloc interposer，避免绕过 sanitizer allocator；故障注入用例在正常 Debug/Release target 验证。LSAN 受到当前执行环境 ptrace 限制，不能完成扫描；ASAN/UBSAN 运行使用 `detect_leaks=0`，不据此宣称泄漏验收通过。
 - generation 耗尽策略已静态审查；未用私有状态 hook 构造回绕。Manager 必须长于全部 borrowed views、持有 view 时不可移动，所有请求仍由调用方串行化；上述验证不构成并发支持承诺。
 
-### 5.2 本轮发布权收窄：Release 聚焦验证
+### 5.2 历史发布权收窄：公开接口变更前的聚焦验证
 
-本轮将公开 `KVCacheSessionView::CommitUntil` 替换为 execution-only 的 source-private commit access，并将 session lifecycle 收敛为 `Idle`、`AwaitingPrefill`、`PrefillCommitted`。Release build 已通过；聚焦 filter 的 128/128 测试通过，覆盖 `KVLayoutContract`、KV manager/session view、commit transaction、invalid reservations、`ExecutionContext`、KV update kernel、Runtime、workspace 与 tiny Llama O1/O2 路径；其中包含 4 项 diagnostic OOM 回归和 Decode 稳态零分配证据。
+此前移除了公开 `KVCacheSessionView::CommitUntil`，改用源码私有的访问入口提交，并将 session lifecycle 收敛为 `Idle`、`AwaitingPrefill`、`PrefillCommitted`。当时 Release build 已通过；聚焦 filter 的 128/128 测试通过，覆盖 `KVLayoutContract`、KV manager/session view、commit transaction、invalid reservations、`ExecutionContext`、KV update kernel、Runtime、workspace 与 tiny Llama O1/O2 路径；其中包含 4 项 diagnostic OOM 回归和 Decode 稳态零分配证据。2026-10-21 的变更直接公开现有 `CommitAppend(begin, end) const noexcept`，保持提交校验实现不变；本节历史计数不作为这次公开接口变更的新验收记录。
 
-该结果支持提交入口的受控调用、首次完整 Prefill、单 token Decode、失败不发布和现有 epoch/lifetime 合同。source-private access 是 supported API 的权限收窄，不是不可伪造的安全边界；它也不覆盖不遵守当前同步合同的 Reset/重入。generation 的 `uint64_t` 饱和分支已静态核对，尚未通过黑盒状态构造覆盖。资源预算与 dtype 执行合同不在本轮范围内。
+该结果支持提交入口的受控调用、首次完整 Prefill、单 token Decode、失败不发布和现有 epoch/lifetime 合同。`CommitAppend` 的公开性不构成写入完成证明；调用方仍必须遵守完整 plan/layer 约束，也不覆盖不遵守当前同步合同的 Reset/重入。generation 的 `uint64_t` 饱和分支已静态核对，尚未通过黑盒状态构造覆盖。资源预算与 dtype 执行合同不在本轮范围内。
 
 本轮还以 `cmake --build build-tsan --target AetherMind -j8` 成功构建 TSAN core，并将聚焦 non-PIE executable 链接到该 instrumented core。为避免与 sanitizer allocator 冲突，测试临时禁用了 `malloc_interposer.cpp` 的 glibc hooks；首次普通启动遇到 TSAN 的 `unexpected memory mapping`（66），按既有非 PIE 运行方法用 `setarch x86_64 -R` 重试，在 `TSAN_OPTIONS=halt_on_error=1` 下通过。filter 为 `KVLayoutContract.*:KVCacheManager.*:KVCacheSessionView.*:KVCacheCommitTest.*:InvalidReservations/KVCacheInvalidStateTest.*:KVCacheUpdateKernel.*`，结果为 64 ran、56 passed、8 skipped，且无 TSAN race 报告；8 个跳过项为依赖已禁用 hook 的故障注入用例，包含 4 个新的 commit OOM 用例，它们已由上述 Release 128/128 覆盖。临时 compile command 和 stub 仅作为本轮证据，不是仓库长期 artifact。该 TSAN 结果不构成并发支持验收。
 - 本机以当前编译选项测得 `sizeof(KVCacheSessionState) == 40`，此前为 48 字节；这仅是对象布局变化，不构成推理性能收益证据。按值拥有该状态的 C++ 对象布局会受影响，调用方需重新编译。

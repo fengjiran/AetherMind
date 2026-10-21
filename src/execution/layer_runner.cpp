@@ -2,7 +2,6 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/execution/kernel_invoker.h"
 #include "aethermind/kv_cache/kv_cache_session_view.h"
-#include "kv_cache/kv_cache_commit_access.h"
 #include "utils/overflow_check.h"
 
 #include <optional>
@@ -333,8 +332,8 @@ Status LayerRunner::Run(const ExecutionPlan& plan,
         }
 
         KVCacheSessionView view = context.kv_cache_session_view();
-        AM_RETURN_IF_ERROR(detail::KVCacheCommitAccess::CommitAppend(
-                view, kv_transaction.committed_begin, kv_transaction.visible_end));
+        AM_RETURN_IF_ERROR(view.CommitAppend(
+                kv_transaction.committed_begin, kv_transaction.visible_end));
     }
     return Status::Ok();
 }

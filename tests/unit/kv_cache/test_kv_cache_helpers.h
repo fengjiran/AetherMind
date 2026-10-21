@@ -2,7 +2,6 @@
 #define AETHERMIND_TEST_KV_CACHE_HELPERS_H
 
 #include "aethermind/kv_cache/kv_cache_session_view.h"
-#include "kv_cache/kv_cache_commit_access.h"
 
 #include <cstring>
 
@@ -39,7 +38,7 @@ inline Status InitializeAndCommitKVForTest(KVCacheSessionView& view, size_t end)
                 }
             }
         }
-        const Status status = detail::KVCacheCommitAccess::CommitAppend(view, begin, append_end);
+        const Status status = view.CommitAppend(begin, append_end);
         if (!status.ok()) {
             return status;
         }

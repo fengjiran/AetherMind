@@ -39,7 +39,7 @@ P0 设备、存储与执行完成合同
 | Backend factories 和实例均按 `DeviceType` 保存；Allocator 实例已按 `Device` 缓存 | [backend_registry.h](../../include/aethermind/backend/backend_registry.h)、[allocator.h](../../include/aethermind/memory/allocator.h) | CUDA capability 与执行资源必须绑定具体 GPU |
 | `Buffer/MemoryHandle` 已携带 device 和释放合同；`TensorView/MutableTensorView` 没有 device | [buffer.h](../../include/aethermind/memory/buffer.h)、[memory_handle.h](../../include/aethermind/memory/memory_handle.h)、[tensor_view.h](../../include/aethermind/base/tensor_view.h) | 复用既有 owner，补齐 view/binding 的 placement 信息 |
 | `Stream` 是空接口；`LayerRunner` 构造的 `KernelContext.stream` 为 null | [stream.h](../../include/aethermind/backend/stream.h)、[layer_runner.cpp](../../src/execution/layer_runner.cpp) | 缺少 stream 来源、同步及错误传播合同 |
-| 全部 kernel 同步返回成功后，`LayerRunner` 立即提交 KV watermark | [layer_runner.cpp](../../src/execution/layer_runner.cpp)、[commit access](../../src/kv_cache/kv_cache_commit_access.h) | CUDA enqueue 成功不能替代设备完成确认 |
+| 全部 kernel 同步返回成功后，`LayerRunner` 调用 `KVCacheSessionView::CommitAppend` 提交 KV watermark | [layer_runner.cpp](../../src/execution/layer_runner.cpp)、[kv_cache_session_view.h](../../include/aethermind/kv_cache/kv_cache_session_view.h) | CUDA enqueue 成功不能替代设备完成确认；公开 CommitAppend 只校验 session/range/capacity，LayerRunner 仍须先证明所有 layer 写完 |
 | KV 是 Manager-owned K/V Buffer；binding 只有裸 pointer、dtype、geometry/stride | [kv_cache_state.h](../../include/aethermind/kv_cache/detail/kv_cache_state.h)、[kv_cache_binding.h](../../include/aethermind/base/kv_cache_binding.h) | 保留静态布局与提交权威，增加物理设备校验 |
 | plain 权重和常量绑定直接借用 raw host bytes；现有 packing layout 为 CPU 格式 | [executable_model.cpp](../../src/inference/executable_model.cpp)、[packing_recipe.h](../../include/aethermind/backend/packing_recipe.h) | 上传、普通显存存储和 opaque packing 必须分开 |
 | `InferenceSession` 固定 CPU allocator、host token/position 输入、host pointer 输出读取，并拒绝非 CPU plan | [inference_session.cpp](../../src/inference/inference_session.cpp) | 改造整条 I/O 链，不能只移除 CPU gate |
@@ -151,7 +151,7 @@ flowchart TD
 执行 invariant：
 
 1. `ExecutionContext` 借用的设备资源贯通 `LayerRunner → KernelContext → CUDA launcher`，不使用 null/default stream 隐式执行。
-2. CPU kernel 成功表示同步完成；CUDA launcher 成功表示入队和即时检查成功。所有步骤完成提交后，execution 等待 stream，检查异步错误，成功后才调用 source-private commit access。
+2. CPU kernel 成功表示同步完成；CUDA launcher 成功表示入队和即时检查成功。所有步骤完成提交后，execution 等待 stream，检查异步错误，成功且所有 layer 写入完成后才调用 `KVCacheSessionView::CommitAppend`。
 3. 当前 KV 的 `kWritten` 进度不能直接代表 CUDA completion；需明确 scheduled/enqueued 与 completed，最终完成屏障前不得发布 watermark。同 stream 保证 KVUpdate→Attention 顺序，Attention 可以读当前 transaction 的 local visible window。
 4. `kv_append/kv_read`、TensorView metadata、attrs 和 params 都是 host 描述符。launcher 在调用期间读取并按值形成 device 参数；不得把 RunStep 栈地址、host span 或 KernelContext 指针交给 GPU 延迟读取。
 5. device allocation、prepared owner、workspace 与异步 copy source/destination 保持到设备完成。失败时也不能先 `ClearContext`、释放 reservation 或覆盖输入 staging。

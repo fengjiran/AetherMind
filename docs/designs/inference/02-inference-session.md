@@ -1,13 +1,13 @@
 # InferenceSession 模块设计
 
 - **状态**: Current（描述已验证实现；只写仓库事实）
-- **版本**: 1.4
-- **日期**: 2026-10-17
+- **版本**: 1.5
+- **日期**: 2026-10-21
 - **来源提案**: [01 号计划：InferenceSession / Generate 前置闭环计划](../../improvement-plan/01-inference-session-generate-readiness.md)（Implemented，§3.6）
 - **关联代码**: [include/aethermind/inference/inference_session.h](../../../include/aethermind/inference/inference_session.h) / [src/inference/inference_session.cpp](../../../src/inference/inference_session.cpp)、[src/inference/inference_internal.h](../../../src/inference/inference_internal.h)
 - **上游依赖**: inference（`ExecutableModel` 提供 phase plan、immutable 绑定表、`vocab_size()`/`context_limit()`/`IsPreparedFor()`）、execution（`PrepareExecutionBindings`、`ExecutionContext`、`Executor`、`ExecutionPlan` workspace 需求）、runtime（Runtime 的 `GetKVCacheManager`、`HasAllocatorProvider`/`GetAllocator`，`KVCacheManager::ReserveForSession`/`ReleaseSession`）、base（`WorkspaceArena`、`TensorView`、`CheckOverflowAdd`）、operators（`OpType::kArgmax` 合同校验）
 - **下游消费者**: 当前只有单元测试；C ABI（`am_session_*`）仍为目标草案，未实现
-- **关联测试**: [tests/unit/inference/test_direct_prefill_decode.cpp](../../../tests/unit/inference/test_direct_prefill_decode.cpp)（`TinyLlamaExecution` 的 `O1Plain` / `O2Packed` 两种生产路径与 `DirectPrefillDecode`）
+- **关联测试**: [tests/unit/inference/test_direct_prefill_decode.cpp](../../../tests/unit/inference/test_direct_prefill_decode.cpp)（`TinyLlamaExecution` 的 `O1Plain` / `O2Packed` 两种生产路径与 `DirectPrefillDecode`）、[test_prefill.cpp](../../../tests/unit/inference/test_prefill.cpp)（Prefill helper 的阶段与提交合同）
 - **架构总览**: [architecture_overview.md](../architecture/architecture_overview.md)
 
 ## 1. 背景与目标
@@ -93,7 +93,8 @@
 | `InferenceSession::Create` | `static StatusOr<InferenceSession> Create(Runtime&, std::shared_ptr<const ExecutableModel>)` | 拒绝空模型（`kInvalidArgument`）、准备 Runtime 不匹配（`kFailedPrecondition`）、模型无已验证 token 上限（`kFailedPrecondition`）；随后取两个 phase plan 并各校验一次 I/O 合同。允许 Runtime 无 KVCacheManager——该缺失只在请求正数上限时报告 | ❌ |
 | `InferenceSession::Generate` | `StatusOr<std::vector<uint32_t>> Generate(std::span<const uint32_t>, const GenerationConfig&)` | 返回本次新生成的 token，**含** Prefill 预测的首 token，也**含**触发停止的 EOS；空 prompt 非法；`max_new_tokens == 0` 在校验 prompt/config 后返回空结果，不要求 KV manager、不执行模型 | ✅（内含 Decode 循环） |
 | `GenerationConfig` | `struct { size_t max_new_tokens = 0; std::optional<uint32_t> eos_token_id; }` | 只有生成上限与停止 token，无采样参数 | — |
-| `inference::internal::RunDecodeLoop` | 见 [inference_internal.h](../../../src/inference/inference_internal.h) | 内部函数，非公共 API；单独成函数是为了让 malloc-family 计数窗口只覆盖 Decode 循环本体 | ✅ |
+| `inference::internal::RunPrefill` | `StatusOr<uint32_t>(const ExecutionPlan&, ExecutionContext&, ExecutionValueId token_output, size_t prompt_length, size_t vocab_size)` | 内部函数，非公共 API；校验 Prefill/KV 前置条件，重置 workspace，执行完整 plan，校验 prompt watermark，并读取最后位置的首 token | ✅ |
+| `inference::internal::RunDecodeLoop` | 见 [inference_internal.h](../../../src/inference/inference_internal.h) | 内部函数，非公共 API；单独成函数是为了让 malloc-family 计数窗口只覆盖 Decode 循环本体；本轮签名不变 | ✅ |
 | `inference::internal::ValidatePlanContract` | `StatusOr<inference::detail::PhaseContract>(const ExecutionPlan&)` | 内部函数，非公共 API；位于 internal 头是为了让聚焦测试用合成 ExecutionPlan 直接覆盖全部 kUnimplemented 失败分支（`ExecutionPlan::Create` 已在生产路径拒绝重复/越界输入 id 与 kModelInput kind 不符等结构性不可能，故 kInvalidArgument 守卫经公共路径不可达） | ❌ |
 
 ## 6. 算法与流程
@@ -110,15 +111,33 @@
   → 填 prefill token/position buffer（position = 0..prompt_len-1），reserve 输出 capacity
   → InitializeWorkspace(max(两 phase bytes), max(两 phase alignment))
   → PrepareContext(Prefill)：复制 immutable 表 + 追加两个输入绑定 → PrepareExecutionBindings → ExecutionContext::Create
-  → workspace->Reset()（存在时）→ Executor::Execute
-  → 校验 kv_cache_session_view().current_pos() == prompt_len，否则 kInternal
-  → ReadOutputToken(最后一个位置) → push 进 generated_tokens → ClearContext()
+  → RunPrefill(prefill_plan, context, token_output, prompt_len, vocab_size)
+  → 返回首 token → push 进 generated_tokens → ClearContext()
   → 若已达 N 或首 token 即 EOS：Finish() 返回（不创建 Decode context）
   → 写 decode buffer（token = 首 token，position = prompt_len）
   → PrepareContext(Decode) 一次
   → RunDecodeLoop(...)
   → Finish()
 ```
+
+`RunPrefill` 是 `src/inference/inference_internal.h` 声明、仍定义在
+`inference_session.cpp` 的 private helper，不是公开 C++ API，也不产生 C ABI 变化。它执行
+以下固定合同：
+
+1. `prompt_length` 必须在 `[1, INT64_MAX]`，`vocab_size` 必须大于 0，否则返回
+   `kInvalidArgument`；
+2. `ExecutionContext` 必须带有效的 `KVCacheSessionView`，其 lifecycle 必须为
+   `AwaitingPrefill`，当前水位必须为 0，且 reservation 的 prompt length 必须等于
+   `prompt_length`，否则返回 `kFailedPrecondition`；
+3. 重置 workspace（存在时），调用 `Executor::Execute` 并原样传播执行错误；执行成功后
+   要求 KV committed watermark 等于 `prompt_length`，否则返回 `kInternal`；
+4. 使用 `ReadOutputToken` 读取输出 tensor 的最后一个位置并返回首 token。
+
+`RunPrefill` 不接收 `generated_tokens`、`PhaseContract` 或请求级输入 buffer；这些仍由
+`Generate` 负责准备和编排。若 plan 已经提交 KV、随后 output 校验失败，helper 不回滚
+watermark；`Generate` 通过 `RequestResources` 清除 context 并释放整个请求 reservation。
+该 helper 不声明 `noexcept`，前置检查或输出校验中可传播的 `std::bad_alloc` 仍由
+`Generate` 现有的 catch 边界转换为 `kResourceExhausted`。
 
 ### 6.2 Decode 稳态循环
 
@@ -160,6 +179,8 @@ Prefill 预测出的首 token 尚未写入 KV，因此生成上限 N 只需要 `
 | 容器、bindings/context 或 CPU activation 分配的 `std::bad_alloc` 传播至 `Generate` 函数边界 | `kResourceExhausted`（错误 message 为空，避免 OOM 处理再次分配） |
 | tokens 与 positions 长度不等或为空 | `kInvalidArgument` |
 | Prefill 未提交完整 prompt；Decode 未恰好提交一个 position | `kInternal` |
+| `RunPrefill` 的 prompt length 不在 `[1, INT64_MAX]` 或 vocab size 为 0 | `kInvalidArgument` |
+| `RunPrefill` 缺少有效 KV view、KV lifecycle 非 `AwaitingPrefill`、watermark 非 0 或 reservation prompt length 不一致 | `kFailedPrecondition` |
 | 输出 tensor 运行时 shape/dtype 与合同不符 | `kInternal` |
 | Argmax 结果为负、≥ vocab、或超 `uint32` 范围 | `kOutOfRange`（收窄失败即报错，不截断） |
 | Decode 循环收到无效预备状态（空结果、capacity 不足、position 为负等） | `kInvalidArgument` |
@@ -183,6 +204,8 @@ CPU allocator 探测的存在理由：Runtime 的 `GetAllocator` 在缺 provider
 | token 收窄 Int64 → uint32 | 越界报 `kOutOfRange` 而非截断，避免把模型错误当成合法 token |
 
 ## 9. 测试要点
+
+`Prefill` 与 `InvalidToken/PrefillInvalidToken` 套件（[test_prefill.cpp](../../../tests/unit/inference/test_prefill.cpp)）使用真实 CPU KV 更新与合成 token kernel，覆盖最后位置预测值、执行前拒绝非法参数及重复 Prefill、执行错误不提交、缺少 append 的后置水位错误，以及提交后输出校验失败保留 watermark。计数 workspace arena 同时验证前置拒绝不会重置 workspace 或调用 kernel。
 
 `TinyLlamaExecution` 参数化套件（[test_direct_prefill_decode.cpp](../../../tests/unit/inference/test_direct_prefill_decode.cpp)），分别覆盖 `O1Plain` 与 `O2Packed`：
 
@@ -211,6 +234,7 @@ CPU allocator 探测的存在理由：Runtime 的 `GetAllocator` 在缺 provider
 
 | 日期 | 版本 | 变更 |
 |---|---|---|
+| 2026-10-21 | 1.5 | 将 Prefill 执行与首 token 读取收敛到 private `RunPrefill` helper；Generate 保留请求资源、首 token 编排、Decode 准备与清理责任，RunDecodeLoop 签名保持不变 |
 | 2026-10-17 | 1.4 | Session 与 plan 校验共享 `inference_session.h` 内单一 PhaseContract 定义（不单独建文件），删除重复结构及 Create 的逐字段转换 |
 | 2026-10-12 | 1.3 | 简化 RequestResources：移除重复 workspace 基址/大小和未使用的 view getter，以 optional reset 销毁 context，保留请求级 KV 清理责任 |
 | 2026-10-11 | 1.2 | `ValidatePlanContract` 移入 internal 头，新增 `PlanContractValidation` 合成 plan 测试覆盖全部 kUnimplemented 失败分支 |

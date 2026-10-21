@@ -204,19 +204,20 @@ StatusOr<uint32_t> ReadOutputToken(const ExecutionContext& context,
                                    ExecutionValueId output,
                                    size_t expected_length,
                                    size_t vocab_size) {
-    const PreparedExecutionBindings* const prepared = context.prepared_bindings();
+    const auto* const prepared = context.prepared_bindings();
     if (prepared == nullptr || output.index >= prepared->values().size()) {
         return Status::Internal(
                 "InferenceSession token output has no prepared binding");
     }
 
-    const TensorView tensor = prepared->values()[output.index].ReadView();
+    const auto tensor = prepared->values()[output.index].ReadView();
     if (!tensor.is_valid() || tensor.dtype() != DataType::Int(64) ||
         tensor.rank() != 1 ||
         tensor.dim(0) != static_cast<int64_t>(expected_length) ||
         !tensor.is_contiguous()) {
         return Status::Internal(
-                "InferenceSession token output has an unexpected runtime shape or dtype");
+                "InferenceSession token output has "
+                "an unexpected runtime shape or dtype");
     }
 
     const auto* const data = static_cast<const int64_t*>(tensor.data());
@@ -401,24 +402,12 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
                 "InferenceSession failed to create its Prefill context");
     }
 
-    if (WorkspaceArena* const workspace = prefill_context->workspace_arena();
-        workspace != nullptr) {
-        workspace->Reset();
-    }
-
-    AM_RETURN_IF_ERROR(Executor::Execute(prefill_plan, *prefill_context));
-    if (prefill_context->kv_cache_session_view().current_pos() != prompt_tokens.size()) {
-        return Status::Internal(
-                "InferenceSession Prefill did not commit the complete prompt");
-    }
-
-    const auto first_token = ReadOutputToken(
-            *prefill_context, {.index = prefill_contract_.token_output},
-            prompt_tokens.size(), vocab_size);
-    if (!first_token.ok()) {
-        return first_token.status();
-    }
-    request.generated_tokens.push_back(*first_token);
+    AM_ASSIGN_OR_RETURN(const uint32_t first_token,
+                        inference::internal::RunPrefill(
+                                prefill_plan, *prefill_context,
+                                {.index = prefill_contract_.token_output},
+                                prompt_tokens.size(), vocab_size));
+    request.generated_tokens.push_back(first_token);
     request.ClearContext();
 
     const bool stop_on_eos = config.eos_token_id.has_value() &&
@@ -437,11 +426,12 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
             decode_contract_.token_input, decode_contract_.position_input,
             request.decode_tokens, request.decode_positions));
 
-    ExecutionContext* const decode_context = request.context();
+    auto* const decode_context = request.context();
     if (decode_context == nullptr) {
         return Status::Internal(
                 "InferenceSession failed to create its Decode context");
     }
+
     AM_RETURN_IF_ERROR(inference::internal::RunDecodeLoop(
             decode_plan, *decode_context,
             {.index = decode_contract_.token_output},
@@ -534,20 +524,55 @@ StatusOr<detail::PhaseContract> ValidatePlanContract(const ExecutionPlan& plan) 
     return contract;
 }
 
+StatusOr<uint32_t> RunPrefill(const ExecutionPlan& plan,
+                              ExecutionContext& context,
+                              ExecutionValueId token_output,
+                              size_t prompt_length,
+                              size_t vocab_size) {
+    if (prompt_length == 0 ||
+        prompt_length > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
+        vocab_size == 0) {
+        return Status::InvalidArgument(
+                "InferenceSession Prefill requires a positive Int64 prompt length "
+                "and non-zero vocabulary size");
+    }
+
+    const auto& view = context.kv_cache_session_view();
+    if (!context.HasKVCacheSessionView() || !view.awaiting_prefill() ||
+        view.current_pos() != 0 || view.prompt_len() != prompt_length) {
+        return Status::FailedPrecondition(
+                "InferenceSession Prefill requires a fresh KV reservation "
+                "matching the complete prompt length");
+    }
+
+    if (WorkspaceArena* const workspace = context.workspace_arena();
+        workspace != nullptr) {
+        workspace->Reset();
+    }
+
+    AM_RETURN_IF_ERROR(Executor::Execute(plan, context));
+    if (view.current_pos() != prompt_length) {
+        return Status::Internal(
+                "InferenceSession Prefill did not commit the complete prompt");
+    }
+
+    return ReadOutputToken(context, token_output, prompt_length, vocab_size);
+}
+
 Status RunDecodeLoop(const ExecutionPlan& plan,
                      ExecutionContext& context,
                      ExecutionValueId token_output,
                      int64_t* input_token,
-                     int64_t* next_position,
+                     int64_t* next_pos,
                      size_t vocab_size,
                      size_t max_new_tokens,
                      std::optional<uint32_t> eos_token_id,
                      std::vector<uint32_t>& generated_tokens) {
-    if (input_token == nullptr || next_position == nullptr ||
+    if (input_token == nullptr || next_pos == nullptr ||
         generated_tokens.empty() ||
         generated_tokens.capacity() < max_new_tokens ||
         generated_tokens.size() > max_new_tokens ||
-        max_new_tokens == 0 || vocab_size == 0 || *next_position < 0) {
+        max_new_tokens == 0 || vocab_size == 0 || *next_pos < 0) {
         return Status::InvalidArgument(
                 "InferenceSession Decode loop received invalid prepared state");
     }
@@ -565,19 +590,21 @@ Status RunDecodeLoop(const ExecutionPlan& plan,
         }
         AM_RETURN_IF_ERROR(Executor::Execute(plan, context));
 
-        size_t expected_position = 0;
-        if (CheckOverflowAdd(static_cast<size_t>(*next_position), size_t{1},
-                             &expected_position)) {
+        size_t expected_pos = 0;
+        if (CheckOverflowAdd(static_cast<size_t>(*next_pos), size_t{1},
+                             &expected_pos)) {
             return Status::Overflow(
                     "InferenceSession Decode position overflowed size_t");
         }
 
-        if (context.kv_cache_session_view().current_pos() != expected_position) {
+        if (context.kv_cache_session_view().current_pos() != expected_pos) {
             return Status::Internal(
-                    "InferenceSession Decode did not commit exactly one KV position");
+                    "InferenceSession Decode did not "
+                    "commit exactly one KV position");
         }
 
-        auto token = ReadOutputToken(context, token_output, 1, vocab_size);
+        auto token = ReadOutputToken(
+                context, token_output, 1, vocab_size);
         if (!token.ok()) {
             return token.status();
         }
@@ -588,11 +615,11 @@ Status RunDecodeLoop(const ExecutionPlan& plan,
         }
 
         if (generated_tokens.size() < max_new_tokens) {
-            if (*next_position == std::numeric_limits<int64_t>::max()) {
+            if (*next_pos == std::numeric_limits<int64_t>::max()) {
                 return Status::Overflow(
                         "InferenceSession Decode position exceeds Int64 range");
             }
-            ++*next_position;
+            ++*next_pos;
         }
     }
     return Status::Ok();

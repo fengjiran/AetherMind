@@ -361,7 +361,7 @@ public:
 
 View 仅保存 borrowed storage/session-state 指针及捕获的 generation，从 `storage.layout` 读取几何信息，不独立接收或保存 layout 指针，也不在公开头文件暴露 Buffer。Manager 必须长于全部 view（含 stale 副本）且保持地址稳定；同一 Manager 与 view 的访问仍由调用方串行化。
 
-View 不公开提交接口；`current_pos()` 仅返回 canonical `committed_tokens`。`LayerRunner` 在完整 plan 成功后，经 source-private `detail::KVCacheCommitAccess::CommitAppend(begin, end)` 发布同一 append range；该 private header 不安装、不构成公开 test API。
+View 的 `current_pos()` 返回 canonical `committed_tokens`；`CommitAppend(begin, end) const noexcept` 是公开提交接口。调用方必须在完整 append plan 成功且所有 layer 写完后调用它；方法只验证 view generation、lifecycle、`begin/end` 和 reservation/physical capacity，不证明 layer 写入完成。`LayerRunner` 仍负责整计划 transaction，在所有 layer 成功后发布同一 append range。View 只借用 manager-owned storage/session state，`const` 不表示提交不会修改被借用的 session state。
 
 ### 4.7 Phase 1 简化原则
 
@@ -505,7 +505,7 @@ Phase 1 必须满足以下要求：
 - `seq_pos` 表示逻辑 token 位置
 - `BindLayerForAppend` 返回当前 append 写窗口
 - `BindLayerForRead` 返回历史区间读窗口
-- `LayerRunner` 只在 Prefill / Decode 的完整 plan 成功后，经 source-private commit access 推进逻辑位置
+- `LayerRunner` 只在 Prefill / Decode 的完整 plan 成功后，经 `KVCacheSessionView::CommitAppend` 推进逻辑位置；调用前必须证明所有 layer 已写完
 - `KVCacheAppendBinding` / `KVCacheReadBinding` 是 kernel invocation-only 的 borrowed
   contract；其物理指针不能缓存进 prepared params，也不能跨 Execute() 保存
 
@@ -575,12 +575,13 @@ Initialized
 
 - 以批量方式写入 `0 .. prompt_len-1`
 - 一个 execution plan 的所有 decoder layer 必须恰好写入一次相同区间
-  `[0, prompt_len)`；仅当整个 plan 成功后由 `LayerRunner` 通过 private commit access 发布该区间
+  `[0, prompt_len)`；仅当整个 plan 成功且所有 layer 已写完后由 `LayerRunner` 调用
+  `KVCacheSessionView::CommitAppend` 发布该区间
 
 #### Decode
 
 - 每步写入当前 `committed_tokens`
-- Phase 1 每个 Decode transaction 只接受一个 token；仅当整个 plan 成功后由 `LayerRunner` 通过 private commit access 发布 `[committed_tokens, committed_tokens + 1)`
+- Phase 1 每个 Decode transaction 只接受一个 token；仅当整个 plan 成功且所有 layer 已写完后由 `LayerRunner` 调用 `KVCacheSessionView::CommitAppend` 发布 `[committed_tokens, committed_tokens + 1)`
 
 ### 7.5 Read
 
@@ -636,11 +637,11 @@ Executor 不应直接操作底层物理内存。推荐交互方式如下：
   - 将 `KVCacheSessionView` 放入 `SessionExecutionState`
 - `Prefill()` 阶段：
   - 通过 `BindLayerForAppend` 的写窗口写入整段 Prompt 的 KV
-  - 完整 plan 成功后由 `LayerRunner` 经 private commit access 发布 `[0, prompt_len)`
+  - 完整 plan 成功且所有 layer 写完后由 `LayerRunner` 调用 `KVCacheSessionView::CommitAppend` 发布 `[0, prompt_len)`
 - `DecodeStep()` 阶段：
   - 通过 `BindLayerForAppend` 写入当前 step 的 KV
   - 通过 `BindLayerForRead` 读取历史 KV
-  - 完整 plan 成功后由 `LayerRunner` 经 private commit access 发布单 token append range
+  - 完整 plan 成功且所有 layer 写完后由 `LayerRunner` 调用 `KVCacheSessionView::CommitAppend` 发布单 token append range
 
 ### 8.2 与 PrefillPath / DecodePath 的边界
 
@@ -738,7 +739,7 @@ enum class KVErrorCode : std::uint8_t {
 - `kv_head_idx` 越界
 - `seq_pos` 越界
 - 读取超出已提交范围
-- private commit access 的 begin/end、epoch 或 lifecycle 校验失败
+- `CommitAppend` 的 generation、begin/end、容量或 lifecycle 校验失败
 - stale view 被继续使用
 
 ### 9.5 测试与验证

@@ -14,10 +14,6 @@
 
 namespace aethermind {
 
-namespace detail {
-class KVCacheCommitAccess;
-}
-
 struct KVCacheStorage;
 struct KVCacheSessionState;
 
@@ -29,8 +25,8 @@ struct KVCacheSessionState;
 /// no copies are made. The manager must outlive every view, including stale
 /// copies, and must not be moved or assigned while they exist. Not thread-safe.
 ///
-/// Committed state advances only through the source-private
-/// detail::KVCacheCommitAccess capability after a complete plan transaction.
+/// CommitAppend publishes a completed append range. Callers must ensure the
+/// complete plan and every layer write succeeded before advancing this state.
 /// Element accessors are read-only; execution writes use append bindings.
 /// For CPU plane storage, validation additionally requires each plane base to
 /// be aligned to the layout alignment, so kernels observe absolutely aligned
@@ -175,6 +171,25 @@ public:
                                                  size_t seq_pos,
                                                  size_t dim_idx = 0) const noexcept;
 
+    /// @brief Publishes one fully completed append transaction.
+    ///
+    /// The first commit must complete the reserved Prefill range; each later
+    /// commit must append exactly one token.
+    ///
+    /// @param begin First committed sequence position. Must equal the current
+    ///        commit position.
+    /// @param end Exclusive commit end. Must be greater than `begin` and fit
+    ///        the reserved and physical capacity.
+    /// @return Status::Ok() on success, or a validation error. Diagnostic
+    ///         allocation failure returns ResourceExhausted. Failure leaves the
+    ///         committed watermark and lifecycle unchanged.
+    /// @pre The complete append plan succeeded and every KV layer finished
+    ///      writing [begin, end). The caller must prove this before committing;
+    ///      this method validates session state and range, not write completion.
+    /// @note Constness applies to the borrowed view descriptor; a successful
+    ///       commit updates manager-owned session state.
+    Status CommitAppend(size_t begin, size_t end) const noexcept;
+
     /// @brief Unbinds the view from all manager state, making it invalid.
     ///
     /// @note Only detaches this view; manager-owned storage is not modified.
@@ -182,7 +197,6 @@ public:
 
 private:
     friend class KVCacheManager;
-    friend class detail::KVCacheCommitAccess;
 
     /// @brief Returns whether the bound session state is live at this generation.
     ///
@@ -202,18 +216,6 @@ private:
     /// @return The layer storage binding, or an index/arithmetic error.
     AM_NODISCARD StatusOr<KVCacheLayerStorageBinding> BindLayerStorageValidated(
             size_t layer_idx) const;
-
-    /// @brief Commits one fully completed append transaction through the
-    ///        private KVCacheCommitAccess capability.
-    ///
-    /// The first commit must complete the reserved Prefill range; each later
-    /// commit must append exactly one token.
-    ///
-    /// @param begin First committed sequence position. Must equal the current
-    ///        commit position.
-    /// @param end Exclusive commit end. Must be greater than `begin`.
-    /// @return Status::Ok() on success.
-    Status CommitAppend(size_t begin, size_t end) const noexcept;
 
     // Borrowed manager state. Both pointers are set together on binding
     // and cleared together by Invalidate(); `generation_` records the session

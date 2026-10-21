@@ -2,7 +2,7 @@
 #define AETHERMIND_INFERENCE_INTERNAL_H
 
 /// @file inference_internal.h
-/// @brief Private preparation and Decode helpers shared with focused tests.
+/// @brief Private preparation and generation helpers shared with focused tests.
 
 #include "aethermind/base/status.h"
 #include "aethermind/inference/inference_session.h"
@@ -51,6 +51,25 @@ StatusOr<std::vector<WeightPackingRequest>> ResolveWeightPackingRequests(
         std::vector<WeightPackingRequest> requests,
         DeviceType expected_device);
 
+/// @brief Executes a prepared Prefill plan and returns its first predicted token.
+/// @param plan Immutable plan matching the prepared context.
+/// @param context Prepared resources borrowing a fresh KV reservation.
+/// @param token_output Value containing one predicted token per prompt position.
+/// @param prompt_length Non-zero prompt length, representable as Int64 and equal
+///                      to the reservation's prompt length.
+/// @param vocab_size Non-zero upper bound on valid token IDs.
+/// @return The prediction at the final prompt position, or a phase, execution,
+///         commit-position, or output-validation error.
+/// @note Does not clear the context or release the reservation. If execution
+///       commits before output validation fails, the committed watermark is
+///       retained; the caller remains responsible for request cleanup.
+/// @throws std::bad_alloc If error diagnostic allocation fails.
+StatusOr<uint32_t> RunPrefill(const ExecutionPlan& plan,
+                              ExecutionContext& context,
+                              ExecutionValueId token_output,
+                              size_t prompt_length,
+                              size_t vocab_size);
+
 /// @brief Runs the prepared Decode loop shared with InferenceSession.
 ///
 /// generated_tokens already contains the Prefill prediction and has capacity
@@ -60,7 +79,7 @@ Status RunDecodeLoop(const ExecutionPlan& plan,
                      ExecutionContext& context,
                      ExecutionValueId token_output,
                      int64_t* input_token,
-                     int64_t* next_position,
+                     int64_t* next_pos,
                      size_t vocab_size,
                      size_t max_new_tokens,
                      std::optional<uint32_t> eos_token_id,

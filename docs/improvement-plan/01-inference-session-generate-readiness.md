@@ -152,7 +152,7 @@ reference baseline 编译为一个 `kBoth` lowered graph；`ExecutableModel::pla
 
 2026-09-24，`DirectPrefillDecode.TinyTiedGqaLlamaMatchesScalarOracleAndReusesDecodeBindings` 通过真实 `CpuBackend` 执行 tiny Llama，配置为 1 layer、hidden size 8、4 query heads / 2 KV heads、head_dim 2、tied lm-head、3-token prompt。权重由确定性 fixture 填为非零值。独立 scalar oracle 覆盖 Embedding、RMSNorm、Linear、RoPE、causal GQA Attention、SwiGLU MLP、tied lm-head 与 Argmax。
 
-测试逐 stage 比较 logits、tokens、完整已提交 key/value 内容和 commit position；重复运行新的 Prefill→Decode 链并逐项比较结果。Prefill 后和每次 Decode 成功后由 execution transaction 自动推进 commit watermark；测试不直接调用提交入口。提交权已进一步收窄为 `LayerRunner` 的 source-private access，见 [08 号演进提案](08-kv-cache-and-attention-capability-evolution.md)。同一 Decode bindings 执行两步；输入/输出地址与 prepared kernel params 保持稳定。
+测试逐 stage 比较 logits、tokens、完整已提交 key/value 内容和 commit position；重复运行新的 Prefill→Decode 链并逐项比较结果。Prefill 后和每次 Decode 成功后由 execution transaction 自动推进 commit watermark；测试不直接调用提交入口。当前公开 `KVCacheSessionView::CommitAppend`，生产中由 `LayerRunner` 在完整 plan 与所有 layer 写入成功后调用；调用方负责完成证明，见 [08 号演进提案](08-kv-cache-and-attention-capability-evolution.md)。同一 Decode bindings 执行两步；输入/输出地址与 prepared kernel params 保持稳定。
 
 错误路径将 Decode `position_ids` 设为 -1，验证执行失败且 watermark 不前进；先 `ExecutionContext::Clear()`，再 `ReleaseSession()`，随后成功重新 reserve，证明资源释放顺序可用。
 

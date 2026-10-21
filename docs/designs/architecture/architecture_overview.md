@@ -528,7 +528,7 @@ flowchart TB
 4. **算子策略**：reference first, optimized second。
 5. **分发策略**：plan-build-time resolve，热路径函数指针，无虚调用与热路径查找。
 6. **对象模型**：`LoadedModel`（config + resolved weights）→ `LoweredModelArtifact`（owns LoadedModel + LoweredGraph）→ `ExecutionPlan`（不可变，调用方持有）。
-7. **KV 访问边界**：`kv_cache` 拥有物理 layout/storage/reservation；Runtime 聚合 Manager；Execution / Operator 通过 `KVCacheSessionView` 和 base 窄 binding 访问 KV，不耦合底层线性存储实现。提交入口不属于公开 View API，仅由 execution 的 `LayerRunner` 在完整 plan transaction 成功后经 source-private access 调用。
+7. **KV 访问边界**：`kv_cache` 拥有物理 layout/storage/reservation；Runtime 聚合 Manager；Execution / Operator 通过 `KVCacheSessionView` 和 base 窄 binding 访问 KV，不耦合底层线性存储实现。`KVCacheSessionView::CommitAppend` 是公开提交入口，但调用方必须先证明完整 plan transaction 成功且所有 layer 写完；方法自身只验证 generation、lifecycle、range 与容量，生产中仍由 execution 的 `LayerRunner` 在完整 plan 成功后调用。
 8. **算子契约**：Reference 与 Optimized 路径共享统一逻辑签名（OpParams 为 typed variant）。
 
 ## 十四、参考来源

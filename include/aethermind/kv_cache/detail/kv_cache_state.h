@@ -35,8 +35,9 @@ static_assert(std::is_nothrow_move_assignable_v<KVCacheStorage>);
 /// and release. At its maximum value, release still succeeds but no further
 /// reservations are allowed, so stale views can never become live again.
 /// Reset retains the reservation and generation, so all of its views observe
-/// the reset together. Production mutations belong to the manager and the
-/// private completed-append commit path.
+/// the reset together. Production mutations belong to the manager and
+/// KVCacheSessionView::CommitAppend; the commit caller must prove the complete
+/// append plan and all layer writes succeeded.
 ///
 /// Idle has zero capacity, prompt length, and committed tokens. Active states
 /// satisfy 0 < prompt_len <= capacity_tokens <= the physical token capacity.

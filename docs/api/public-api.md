@@ -188,6 +188,19 @@
 
 `KVAppendLayerState : uint8_t` 定义于 [execution_context.h](../../include/aethermind/execution/execution_context.h)，表示单次 plan 执行中的 `kNotScheduled`、`kScheduled`、`kWritten` 三种逐层 append 状态。context 拥有 `std::vector<KVAppendLayerState>`，`KVAppendTransaction::layer_states` 只借用其 span；`kWritten` 只表示本层写入成功，整计划成功后才发布 committed watermark。原来将 scratch 保存为 `std::span<uint8_t>` 或 `uint8_t*` 的调用方需迁移到枚举类型，并重新编译。
 
+### `KVCacheSessionView::CommitAppend`（include/aethermind/kv_cache/kv_cache_session_view.h）
+
+| 项 | 内容 |
+|---|---|
+| 签名 | `Status CommitAppend(size_t begin, size_t end) const noexcept` |
+| 简介 | 发布一个已经由完整 append plan 写入完成的 KV 区间，并推进 manager-owned committed watermark/lifecycle |
+| 前置条件 | 调用方必须先证明完整 append plan 成功，且每个 KV layer 都完成 `[begin, end)` 写入；该方法自身不证明 layer 写入完成 |
+| 校验 | 验证 view generation、session lifecycle、`begin/end` 关系与 reservation/physical capacity；失败时 committed watermark 和 lifecycle 不变 |
+| 语义 | `const` 只表示 borrowed view descriptor 不变；成功调用会修改其借用的 manager-owned session state。Prefill/Decode 的完整 plan transaction 仍由 `LayerRunner` 负责在所有 layer 成功后调用 |
+| 生命周期 | View 借用 `KVCacheManager` 的 storage/session state；Manager 必须保持地址稳定并长于 view |
+
+旧的 `CommitUntil` 与私有提交访问 header 不再是当前 API；不提供兼容别名或旧 header。
+
 ## 3. 语义约束
 
 - C ABI 句柄（`ObjectHandle`、`am_error_handle`）为不透明指针，不暴露内部布局；对象生命周期由引用计数/显式 destroy 管理。

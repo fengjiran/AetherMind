@@ -1,7 +1,7 @@
 # AetherMind 系统能力演进路线图
 
 - **状态**: Draft
-- **版本**: 1.5
+- **版本**: 1.6
 - **日期**: 2026-09-16
 - **最近更新**: 2026-10-21
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
@@ -22,6 +22,8 @@ AetherMind 当前不需要再次进行顶层架构重写。`model → graph/oper
 5. **再做系统性能演进**：GEMM/Attention、线程池与 topology、NUMA、AArch64；
 6. **最后冻结 public API/ABI 与发布门禁**：C++ Session、C ABI、错误模型、版本与兼容测试。
 
+截至 2026-10-21，第 1–2 项已基本闭环：`hidden_act` 已收窄为 `silu`，KV owner/epoch 与 `CommitAppend` 已落地，`PrepareExecutableModel`、tiny Llama Prefill→Decode 与同步 `InferenceSession::Generate` 已有实现和回归；ElementwiseMul broadcast 与 capability matrix 仍待完成。下一阶段进入第 3 项 physical planning，其中 KV 资源预算与 KV dtype 可执行集合按 [08 号提案](08-kv-cache-and-attention-capability-evolution.md) 列为 P0。
+
 针对用户要求的多架构/MoE 扩展，采用 [09 号提案](09-qwen-and-moe-architecture-support.md) 的独立主线：公共合同→Qwen3 Dense→Qwen3 MoE。MoE 语义与专家准备可以并行推进；支持 Qwen2/2.5、Mixtral 或完成全部量化工作不是该主线的前置。该提案为 Draft，不改变当前已实现能力的判定。
 
 FP16/BF16 执行采用 [11 号提案](11-fp16-bf16-execution-support.md) 的独立精度主线：显式转换为 FP32 的兼容执行→保留 16-bit 权重的 W16/A32→独立 KV16→A16。该提案为 Draft，加载 dtype、语义许可和完整 production execution 分别验收；不要求先完成 INT8/INT4，也不使 09 的其他模型家族自动获得 dtype 支持。
@@ -36,7 +38,7 @@ FP16/BF16 执行采用 [11 号提案](11-fp16-bf16-execution-support.md) 的独�
 
 ## 2. 盘点方法与事实边界
 
-本路线图基于 2026-09-17 当前源码、测试、PRD 和现有 01–05 号提案。状态含义：
+本路线图基于 2026-09-17 当前源码、测试、PRD 和现有 01–12 号提案；2026-10-21 对 §3、§12、§19 的已完成状态与 KV 资源/dtype 优先级做了增量校准，未全面重验其余历史能力表。状态含义：
 
 本节及存量表格是建立路线图时的基线，不能作为全部能力的最新验证结果；后续专题以各自日期和证据为准。2026-10-19 新增的模型扩展范围及静态源码核对见 [09](09-qwen-and-moe-architecture-support.md)，本次未重新验证其余模块。
 
@@ -59,19 +61,19 @@ FP16/BF16 执行采用 [11 号提案](11-fp16-bf16-execution-support.md) 的独�
 
 | 模块 | 当前状态 | 主要缺口 | 优先级 | 对应提案/章节 |
 |---|---|---|---:|---|
-| public C++ / C API | 未闭环 | `Session::Generate`、`am_session_*`、ABI/version/error ownership | P0 | [01](01-inference-session-generate-readiness.md)、§15 |
-| model loader / HF adapter | 部分闭环 | 支持范围真值、activation 漂移、量化格式、模型 fingerprint；Qwen/MoE 扩展待实施 | P0/P1 | §5、[09](09-qwen-and-moe-architecture-support.md) |
-| operators | 部分闭环 | semantic/capability matrix 漂移（KV/Attention 契约已闭环） | P0 | §6 |
+| public C++ / C API | 部分闭环 | `InferenceSession::Generate` 已实现；public C++ facade/ABI 冻结、`am_session_*`、version/error ownership 未闭环 | P0 | [01](01-inference-session-generate-readiness.md)、§15 |
+| model loader / HF adapter | 部分闭环 | `hidden_act` 已收窄为 `silu`；量化格式、模型 fingerprint；Qwen/MoE 扩展待实施 | P0/P1 | §5、[09](09-qwen-and-moe-architecture-support.md) |
+| operators | 部分闭环 | semantic/capability matrix 漂移；KV/Attention reference 契约已闭环，KV dtype 可执行集合待收口（[08](08-kv-cache-and-attention-capability-evolution.md)） | P0 | §6 |
 | graph | 基础已闭环 | pass outcome 验证、contract drift；无需 target-aware 重写 | P1 | §7 |
 | compiler/lowering | 基础已闭环 | 1:1 step 限制；仅在真实 1→N 需求出现后引入 ImplementationPlan | P1/P2 | §8 |
-| execution planning | 部分闭环 | ExecutableModel preparation、shape-aware prepare、activation liveness | P0/P1 | [07](07-executable-model-preparation.md)、[01](01-inference-session-generate-readiness.md)、§9 |
-| runtime | 部分闭环 | KV transaction、resource budget、线程/topology、metrics | P0/P1 | [05](05-kv-cache-manager-evolution.md)、§10 |
+| execution planning | 部分闭环 | shape-aware prepare、activation liveness（ExecutableModel preparation 已闭环） | P0/P1 | [07](07-executable-model-preparation.md)、[01](01-inference-session-generate-readiness.md)、§9 |
+| runtime | 部分闭环 | resource budget、KV dtype 可执行集合、线程/topology、metrics（KV owner/epoch 与 commit 已闭环） | P0/P1 | [08](08-kv-cache-and-attention-capability-evolution.md)、§10 |
 | backend dispatch | 基础已闭环 | prepare request 缺 concrete shape/layout；packing service 边界；单权重 identity 条件式零复制（待实施） | P1/P2 | §11 |
-| CPU kernels | 部分闭环 | reference 主链已齐备（6/6）；量化和优化覆盖不足 | P0/P1 | [01](01-inference-session-generate-readiness.md)、[04](../operators/gemm/cpu-gemm-optimization.md)、§12 |
+| CPU kernels | 部分闭环 | FP32 reference 主链已齐备（6/6）；FP16/BF16 KV 与量化/优化覆盖不足 | P0/P1 | [01](01-inference-session-generate-readiness.md)、[04](../operators/gemm/cpu-gemm-optimization.md)、§12、[08](08-kv-cache-and-attention-capability-evolution.md) |
 | memory/allocator | 基础已闭环 | activation/workspace/KV provider 统一、budget/NUMA policy | P1 | §13 |
 | shape inference | 基础已闭环 | specialization 诊断与 runtime constraint 证据；不需通用动态 shape engine | P1 | §14 |
 | base/dtypes/container | 当前足够 | 问题驱动维护；不作为推理主链重构目标 | P2 | §14 |
-| tests/benchmark/quality | 部分闭环 | vertical slice、allocation/determinism、真实模型基线 | P0/P1 | [02](02-engineering-quality-system.md)、§16 |
+| tests/benchmark/quality | 部分闭环 | tiny Llama vertical slice 已闭环；allocation/determinism、真实模型与性能基线 | P0/P1 | [02](02-engineering-quality-system.md)、§16 |
 | documentation | 治理中 | 存量漂移、PRD/实现矛盾、状态/命名迁移 | P1 | [03](03-documentation-stabilization.md)、§17 |
 
 ## 4. 跨模块目标数据流
@@ -92,7 +94,7 @@ HF directory
        -> plan activation/workspace/KV memory
   -> ExecutableModel
   -> CreateSession
-       -> KVCacheLease + workspace/activation specialization
+       -> KVCacheSessionView（reservation）+ workspace/activation specialization
        -> Prefill
        -> Decode loop
   -> Token IDs
@@ -130,13 +132,13 @@ HF directory
 - RoPE HF 配置已规范化到 typed `RoPEAlgorithmParams`；
 - ModelLoader 不构图、不 resolve kernel、不 prepack。
 
-### 5.2 P0：统一“接受的模型”和“实际语义”
+### 5.2 P0：统一“接受的模型”和“实际语义”（已闭环）
 
-当前 `HfModelValidator` 接受 `hidden_act = silu/gelu/relu`，而 `BuildLlamaDense` 的 MLP 固定生成 `SiluMul`。这会把接受的 GELU/ReLU 配置静默编译成错误语义。
+**状态（2026-10-21）：已闭环。** 原实现接受 `hidden_act = silu/gelu/relu`，而 `BuildLlamaDense` 的 MLP 固定生成 `SiluMul`，会把 GELU/ReLU 配置静默编译成错误语义。现将 validator 收窄为只接受 `silu`；`BuildLlamaDense` 经 `HfModelValidator::ValidateConfig` 走同一权威，模型加载与直接构图入口均拒绝 `gelu/relu`。回归覆盖 `RejectsGeluActivation`、`RejectsReluActivation` 与 `LlamaDenseGraphBuilder.RejectsUnsupportedHiddenActivation`。
 
-推荐裁决：
+当前裁决：
 
-- 当前产品只承诺 SwiGLU 时，validator 只接受与 Llama SwiGLU 对应的 `silu`；
+- 当前产品只承诺 SwiGLU，validator 只接受与 Llama SwiGLU 对应的 `silu`；
 - 如果未来支持 GELU/ReLU，先增加对应 typed operator/graph path/kernel，再扩大 validator；
 - 每个 accepted config variant 必须有 `config → semantic graph → execution` vertical test；
 - parser 能读出字段不等于产品支持该字段。
@@ -230,6 +232,8 @@ Operator inference 声明的支持范围可以宽于某个 backend，但必须�
 ### 6.3 P0：Attention / KVCacheUpdate execution contract
 
 **状态（2026-09-17）**：下列冻结项已随 reference chain 落地（`cpu::kvcache_update_f32_reference` / `cpu::attention_f32_reference` + `KVCache*Binding` 窄契约 + `KVCacheUpdateKernel.*`/`CPUKernelAttention.*` 测试）。
+
+当前 CPU 可执行集合仍是 FP32；operator 语义集合中的 FP16/BF16 不构成执行支持，KV dtype 收口由 [08 号提案](08-kv-cache-and-attention-capability-evolution.md) 负责。
 
 需要冻结：
 
@@ -388,7 +392,7 @@ Prefill/Decode shape 或 address 改变时必须重新 specialize，除非计划
 
 本节保留 2026-09-17 的路线图快照；KV owner/epoch correctness、已闭环的 execution binding、CPU Attention 优化与未来 Paged KV 的当前裁决见 [08 号演进提案](08-kv-cache-and-attention-capability-evolution.md)。
 
-### 10.2 P1：统一 resource plan
+### 10.2 P0：统一 resource plan
 
 Session 创建前应能汇总：
 
@@ -401,7 +405,7 @@ KV bytes
 runtime metadata bytes
 ```
 
-目标是 allocation 前报告 capacity failure，而不是在 Prefill 中途失败。resource plan 必须区分 reserved、committed、in-use、peak 和 reclaimable。
+目标是 allocation 前报告 capacity failure，而不是在 Prefill 中途失败。resource plan 必须区分 reserved、committed、in-use、peak 和 reclaimable。KV 资源预算与 KV dtype 可执行集合的现状和证据门禁由 [08 号提案](08-kv-cache-and-attention-capability-evolution.md) 维护；在预算聚合落地前，不得把 FP16/BF16 配置视为可执行。
 
 ### 10.3 P1：线程模型与 topology
 
@@ -501,7 +505,7 @@ Kernel descriptor/resolve 需要逐步表达：
 
 **状态（2026-09-17）：主链已齐备**——`KVCacheUpdate` 与 causal `Attention`（含 GQA、Prefill/Decode 与稳定 softmax）均已落地（`cpu::kvcache_update_f32_reference` / `cpu::attention_f32_reference`），layout/alias/bounds 与数值测试覆盖于 `KVCacheUpdateKernel.*` / `CPUKernelAttention.*`。
 
-后续：进入 production Executor vertical slice（ExecutableModel/真实绑定/端到端数值验收，见 [01](01-inference-session-generate-readiness.md) §3.2–§3.5），再谈 fused/paged/SIMD Attention。
+production Executor vertical slice 已由 `PrepareExecutableModel`、tiny Llama Prefill→Decode 与同步 `InferenceSession::Generate` 闭环（见 [01](01-inference-session-generate-readiness.md)、[07](07-executable-model-preparation.md)）。下一步按 [08 号提案](08-kv-cache-and-attention-capability-evolution.md) 先建立 Prefill/Decode 分组的 Attention 基线，再决定 fused/paged/SIMD 优化。
 
 ### 12.2 P1：性能优先级
 
@@ -680,6 +684,7 @@ microkernel
 - PRD 同时描述单线程与 OpenMP kernel 并行；
 - PRD 写 compile-time/static dispatch，而实现是 planning-time registry resolve + frozen function pointer；
 - PRD 承诺 INT8/INT4，但 loader/kernel 尚未支持；
+- PRD 内存图将 KV Cache 标为 FP16/BF16，而当前 CPU KVCacheUpdate/Attention 只接受 FP32；KV dtype 可执行集合由 [08 号提案](08-kv-cache-and-attention-capability-evolution.md) 收口；
 - PRD 包含多 Session 隔离验收，但当前产品边界为单请求/单 active KV slot；
 - 存量 KV/Graph/Dispatch 设计文档混有“已实现”和“推荐接口”。
 
@@ -728,6 +733,8 @@ microkernel
 
 退出条件：被 loader/graph 接受的输入不会静默编译成不同语义；KV 未写入数据不可读。
 
+**状态（2026-10-21）**：KV owner/epoch 与 commit 已闭环，`hidden_act` 已收窄为 `silu`；ElementwiseMul broadcast 合同与 capability matrix 仍未完成。
+
 ### Batch B：FP32 production vertical slice
 
 - execution-native KV state binding；
@@ -739,6 +746,8 @@ microkernel
 
 退出条件：真实 production path 数值闭环，无 fake backend/placeholder。
 
+**状态（2026-10-21）**：已闭环，依据 [01](01-inference-session-generate-readiness.md) 与 [07](07-executable-model-preparation.md) 的 Implemented 状态及既有 tiny Llama / Generate 回归。
+
 ### Batch C：physical planning 与内存
 
 - `KernelPrepareRequest`；
@@ -746,7 +755,7 @@ microkernel
 - P2：单权重 identity 条件式零复制（§11.4，先完善 ownership/只读存储合同）；
 - activation liveness plan；
 - workspace lifetime-aware planning；
-- unified resource budget/dump；
+- unified resource budget/dump，以及 KV 资源预算与 dtype 可执行集合（P0，见 [08 号提案](08-kv-cache-and-attention-capability-evolution.md)）；
 - binding specialization cache contract。
 
 退出条件：所有 physical memory/packing/kernel 选择在 execution 前冻结，Decode 无规划/分配。
@@ -811,7 +820,7 @@ microkernel
 3. Runtime thread pool/topology；
 4. C++ Session/C ABI v1 freeze。
 
-在进入实现前再创建专题文档，避免仅凭路线图重复现有 01/04/05 的详细设计。
+在进入实现前再创建专题文档，避免仅凭路线图重复现有专题提案的详细设计。
 
 ## 21. 验收标准
 
@@ -819,6 +828,7 @@ microkernel
 - P0 缺口全部映射到现有或新建专题提案；
 - semantic、compiler、execution、backend 支持范围不再相互矛盾；
 - accepted model config 能闭环到 production execution，或在 load/prepare 阶段明确拒绝；
+- KV dtype 在 prepare 前被收窄为当前 backend 可执行集合，不可执行配置明确拒绝；
 - FP32 tiny Llama Prefill→Decode 闭环后再开放 public Generate；
 - INT8/INT4 只有端到端格式、kernel 和精度证据齐全后才标记支持；
 - Decode steady-state 无 heap allocation、registry lookup、shape inference 或 repack；
@@ -835,3 +845,4 @@ microkernel
 | 2026-10-19 | 1.3 | 关联 09 号 Qwen/MoE 提案，调整 MoE 的延后表述，明确独立主线与并行依赖；其余历史能力表未重新验证 |
 | 2026-10-20 | 1.4 | 关联 11 号 FP16/BF16 Draft，补充独立精度主线与 dtype 准入边界；其余历史能力表未重新验证 |
 | 2026-10-21 | 1.5 | 关联 12 号 CUDA Draft，补充独立设备执行主线及与 09/11 的 workspace/精度边界；不更改当前 CPU 产品合同，其余历史能力表未重新验证 |
+| 2026-10-21 | 1.6 | 校准 §3/§12/§19 已完成状态：KV owner/epoch 与 commit、`PrepareExecutableModel`、FP32 Prefill→Decode 与同步 Generate 已闭环；将 KV 资源预算/dtype 执行集合列为 P0 并链接 08；移除已取代的 05 链接与 `KVCacheLease` 旧术语；补充 PRD KV dtype 漂移项；将 §5.2 `hidden_act` 收窄标记为已闭环 |

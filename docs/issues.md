@@ -6,7 +6,6 @@
 
 ## 未解决
 
-- [ ] `HfModelValidator` 接受 `gelu/relu`，但 `BuildLlamaDense` 固定生成 `SiluMul`，存在 accepted config 被静默编译为错误 MLP 语义的风险；当前产品应收窄到 `silu`，或先补齐对应 operator/graph/kernel（关联：[系统能力演进路线图 §5.2](improvement-plan/06-system-capability-evolution-roadmap.md#52-p0统一接受的模型和实际语义)）
 - [ ] `ElementwiseMul` operator inference 与 CPU kernel 支持 broadcast，但 `GraphOpBuilder::AddElementwiseMul` 拒绝不同完整 `TensorSpec`，三层语义不一致（关联：[系统能力演进路线图 §6.2](improvement-plan/06-system-capability-evolution-roadmap.md#62-p0修复-graphopbuilder-与-operator-semantic-漂移)）
 - [ ] `WorkspaceRequirement::lifetime/reusable` 尚未影响 offset 规划，`PlanWorkspaceRequirements` 仍顺序累加全部 requirement（关联：[系统能力演进路线图 §13.3](improvement-plan/06-system-capability-evolution-roadmap.md#133-p1workspace-lifetime-真正生效)）
 - [ ] activation arena 为所有 activation 顺序分配，尚无 producer/last-consumer liveness reuse，峰值接近全部 activation bytes 之和（关联：[系统能力演进路线图 §9.3](improvement-plan/06-system-capability-evolution-roadmap.md#93-p1activation-liveness-planning)）
@@ -20,6 +19,7 @@
 
 ## 已解决
 
+- [x] `HfModelValidator` 接受 `gelu/relu`，而 `BuildLlamaDense` 固定生成 `SiluMul`，存在 accepted config 被静默编译为错误 MLP 语义的风险（修复：2026-10-21 validator 收窄为仅 `silu`，模型加载与直接构图入口均拒绝 `gelu/relu`；回归 4/4 通过，关联：[系统能力演进路线图 §5.2](improvement-plan/06-system-capability-evolution-roadmap.md#52-p0统一接受的模型和实际语义已闭环)）
 - [x] `KVCacheManager::Init` 重置 generation 导致旧 view 复活（修复：2026-10-11 跨 re-init 保留 generation、拒绝回绕；正式回归覆盖成功/失败 re-init 与已释放副本，关联：[08 号 KV/Attention 演进提案](improvement-plan/08-kv-cache-and-attention-capability-evolution.md)）
 - [x] `KVCacheManager::ResetSession/ReleaseSession` 接受跨 Manager view（修复：2026-10-11 校验 layout/storage/slot owner，拒绝操作且保持双方 reservation；正式回归已通过，关联：[08 号 KV/Attention 演进提案](improvement-plan/08-kv-cache-and-attention-capability-evolution.md)）
 - [x] `InferenceSession::Generate` 请求分配 OOM 逃逸异常或因 CPU allocator abort 终止（修复：2026-10-11 将 CPU `ENOMEM` 上报为可恢复失败、在编排和 KV 冷路径边界转换 `bad_alloc`，验证 KV 清理和同 Session 重试，关联：[InferenceSession 设计](designs/inference/02-inference-session.md)）

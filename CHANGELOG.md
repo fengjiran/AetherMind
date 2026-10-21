@@ -28,6 +28,7 @@
 
 ### Fixed
 
+- `HfModelValidator` 的 `hidden_act` 支持范围收窄为仅 `silu`；`gelu/relu` 在模型加载与直接构图入口返回 `InvalidArgument`，不再被静默编译成 SwiGLU。
 - Kernel params 对齐在错误诊断分配失败时返回空 message 的 `ResourceExhausted`，避免从 `noexcept` 对齐函数传播 `std::bad_alloc`。
 - CPU activation 分配遇到 `ENOMEM` 时上报可恢复失败；`InferenceSession::Generate` 将可传播的 `std::bad_alloc` 转为 `ResourceExhausted`，清理 KV 后允许重试。
 - `KVCacheManager` 校验 Reset/Release 的 view owner，并在 re-init 时保留 generation、拒绝 generation 回绕，防止跨 Manager 操作和旧 view 复活。

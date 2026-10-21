@@ -1,6 +1,7 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/compiler/lowered_graph.h"
 #include "aethermind/execution/execution_bindings.h"
+#include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -567,14 +568,19 @@ TEST(KVCacheUpdateKernel, UpdateThenAttentionReadsVisibleRangeAndCommitsAtPlanEn
                                        TensorView(key, DataType::Float32(), shape, strides),
                                        TensorView(value, DataType::Float32(), shape, strides)});
     ASSERT_TRUE(context.ok()) << context.status().ToString();
-    const std::span<uint8_t> scratch_before = context->ResetKVLayerTransactionScratch();
+    const std::span<KVAppendLayerState> scratch_before = context->ResetKVLayerTransactionScratch();
     ASSERT_EQ(scratch_before.size(), 1U);
-    const uint8_t* const scratch_data = scratch_before.data();
+    EXPECT_EQ(scratch_before[0], KVAppendLayerState::kNotScheduled);
+    const KVAppendLayerState* const scratch_data = scratch_before.data();
     g_last_read_binding.reset();
 
     ASSERT_TRUE(Executor::Execute(*plan, *context).ok());
 
-    EXPECT_EQ(context->ResetKVLayerTransactionScratch().data(), scratch_data);
+    EXPECT_EQ(scratch_before[0], KVAppendLayerState::kWritten);
+    const std::span<KVAppendLayerState> scratch_after_reset = context->ResetKVLayerTransactionScratch();
+    ASSERT_EQ(scratch_after_reset.size(), 1U);
+    EXPECT_EQ(scratch_after_reset.data(), scratch_data);
+    EXPECT_EQ(scratch_after_reset[0], KVAppendLayerState::kNotScheduled);
     ASSERT_TRUE(g_last_read_binding.has_value());
     EXPECT_EQ(g_last_read_binding->committed_end, 0U);
     EXPECT_EQ(g_last_read_binding->visible_end, 2U);

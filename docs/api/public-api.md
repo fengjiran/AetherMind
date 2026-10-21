@@ -170,7 +170,10 @@
 |---|---|
 | `PrepareExecutionBindings(const ExecutionPlan&, const ExternalTensorBindings&, Allocator&)` | cold path specialization：校验 external dtype/shape/stride、runtime constraints 与 kernel-specific layout/aliasing，分配 activation 并构造 prepared params。external tensor backing 由调用方借出，改变其地址、shape、stride、dtype 或 alias 前必须重新 prepare。 |
 | `ExecutionContext::Create(const ExecutionPlan&, PreparedExecutionBindings, WorkspaceArena*, KVCacheSessionView)` | 消费 prepared bindings，校验 plan binding key、非零 workspace 的 arena presence 与 state aliases 的 KV view presence；不拥有 plan、arena 或 KV storage。 |
+| `ExecutionContext::ResetKVLayerTransactionScratch() noexcept` | 将逐层 append 状态重置为 `KVAppendLayerState::kNotScheduled`，返回 `std::span<KVAppendLayerState>`；借用 context 在 `Create()` 中预分配的存储，仅供当前同步执行使用，重置不分配内存。 |
 | `ExecutionContext::Clear()` | 释放 owned prepared bindings 并清除 borrowed handles；不 reset WorkspaceArena，也不 release KV reservation。 |
+
+`KVAppendLayerState : uint8_t` 定义于 [execution_context.h](../../include/aethermind/execution/execution_context.h)，表示单次 plan 执行中的 `kNotScheduled`、`kScheduled`、`kWritten` 三种逐层 append 状态。context 拥有 `std::vector<KVAppendLayerState>`，`KVAppendTransaction::layer_states` 只借用其 span；`kWritten` 只表示本层写入成功，整计划成功后才发布 committed watermark。原来将 scratch 保存为 `std::span<uint8_t>` 或 `uint8_t*` 的调用方需迁移到枚举类型，并重新编译。
 
 ## 3. 语义约束
 

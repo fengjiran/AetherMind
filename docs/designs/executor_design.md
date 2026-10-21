@@ -131,6 +131,8 @@ Reference / Optimized 的差异应通过 init-time resolve 的函数指针表体
 
 Workspace、activation 与 kernel params 的 checked align-up 共同使用 base 层的 `AlignOffsetUp()`，对齐合法性直接由 `IsValidAlignment()` 判定，声明见 [alignment.h](../../include/aethermind/base/alignment.h)。execution 准备实现直接消费这些基础接口，kernel params 的对齐参数仍为 `alignof(std::max_align_t)`；workspace planner 保留全量验证后提交 offsets 的两遍流程，失败不留下部分布局。错误码和诊断分配失败合同见 [公共 API 参考](../api/public-api.md)。
 
+逐层 append 状态使用 [execution_context.h](../../include/aethermind/execution/execution_context.h) 中的 `KVAppendLayerState : uint8_t`。`ExecutionContext` 在创建时预分配 typed vector，每次执行显式重置为 `kNotScheduled`；局部 `KVAppendTransaction` 的 `layer_states` 通过 `std::span<KVAppendLayerState>` 借用它，跟踪 `kScheduled` 与 `kWritten`，不在执行期申请存储。本层 `kWritten` 不等于整计划已提交，只有全部步骤成功后才发布 KV committed watermark。
+
 | 对象 | 职责 | 备注 |
 |------|------|------|
 | **Executor** | 顶层执行控制器 | 对外优先暴露 `Generate`；细粒度步骤接口更适合作为内部或测试入口 |

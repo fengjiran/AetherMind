@@ -33,7 +33,8 @@ StatusOr<ExecutionContext> ExecutionContext::Create(
     ExecutionContext context(workspace_arena);
     context.kv_cache_session_view_ = kv_cache_session_view;
     if (requires_kv_cache) {
-        context.kv_layer_transaction_scratch_.resize(kv_cache_session_view.num_layers());
+        context.kv_layer_transaction_scratch_.resize(
+                kv_cache_session_view.num_layers(), KVAppendLayerState::kNotScheduled);
     }
     context.prepared_bindings_ = std::move(prepared_bindings);
     return context;
@@ -60,7 +61,7 @@ StatusOr<WorkspaceBinding> ExecutionContext::BindWorkspace(
                 "for non-zero workspace requirements");
     }
 
-    const WorkspaceBinding binding = workspace_arena_->Bind(requirement);
+    const auto binding = workspace_arena_->Bind(requirement);
     if (binding.data == nullptr || binding.size < requirement.bytes) {
         return Status::FailedPrecondition(
                 "WorkspaceArena could not satisfy execution-time workspace binding");
@@ -80,8 +81,8 @@ const PreparedExecutionBindings* ExecutionContext::prepared_bindings() const noe
     return prepared_bindings_.empty() ? nullptr : &prepared_bindings_;
 }
 
-std::span<uint8_t> ExecutionContext::ResetKVLayerTransactionScratch() noexcept {
-    std::ranges::fill(kv_layer_transaction_scratch_, uint8_t{0});
+std::span<KVAppendLayerState> ExecutionContext::ResetKVLayerTransactionScratch() noexcept {
+    std::ranges::fill(kv_layer_transaction_scratch_, KVAppendLayerState::kNotScheduled);
     return kv_layer_transaction_scratch_;
 }
 

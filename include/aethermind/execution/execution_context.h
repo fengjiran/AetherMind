@@ -16,6 +16,14 @@
 
 namespace aethermind {
 
+/// @brief Per-layer append readiness within one synchronous plan execution.
+/// A completed layer write does not publish the whole-plan KV append.
+enum class KVAppendLayerState : uint8_t {
+    kNotScheduled,
+    kScheduled,
+    kWritten,
+};
+
 /// @brief Aggregates the resources needed to execute one specialized plan.
 ///
 /// The context owns PreparedExecutionBindings and borrows a WorkspaceArena.
@@ -70,12 +78,12 @@ public:
     /// the context has been cleared or was not created for execution.
     AM_NODISCARD const PreparedExecutionBindings* prepared_bindings() const noexcept;
 
-    /// @brief Clears and returns cold-path-allocated per-layer transaction scratch.
+    /// @brief Resets per-layer transaction scratch to kNotScheduled and returns it.
     ///
     /// The returned storage is valid for this synchronous Execute() call only.
     /// It is preallocated by Create() from the bound KV view geometry so Decode
     /// does not allocate while tracking per-layer append readiness.
-    AM_NODISCARD std::span<uint8_t> ResetKVLayerTransactionScratch() noexcept;
+    AM_NODISCARD std::span<KVAppendLayerState> ResetKVLayerTransactionScratch() noexcept;
 
     /// @brief Clears owned bindings and borrowed handles.
     ///
@@ -90,7 +98,7 @@ private:
     WorkspaceArena* workspace_arena_ = nullptr;
     KVCacheSessionView kv_cache_session_view_{};
     PreparedExecutionBindings prepared_bindings_{};
-    std::vector<uint8_t> kv_layer_transaction_scratch_{};
+    std::vector<KVAppendLayerState> kv_layer_transaction_scratch_{};
 };
 
 } // namespace aethermind

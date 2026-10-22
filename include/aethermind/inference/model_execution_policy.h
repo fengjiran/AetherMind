@@ -8,11 +8,32 @@
 #include "aethermind/runtime/runtime_options.h"
 
 #include <cstddef>
+#include <cstdint>
+#include <string>
+#include <string_view>
+#include <utility>
 
 namespace aethermind {
 
 class LoadedModel;
 struct HfModelConfig;
+
+/// @brief Converts a configuration field that must be strictly positive.
+/// @param value Raw configuration value.
+/// @param field Field name used in diagnostics.
+/// @return The value as size_t, InvalidArgument when non-positive, or
+///         OutOfRange when not representable as size_t.
+/// @note Diagnostic construction may throw std::bad_alloc.
+inline StatusOr<size_t> PositiveSize(int64_t value, std::string_view field) {
+    if (value <= 0) {
+        return Status::InvalidArgument(std::string(field) + " must be positive");
+    }
+    if (!std::in_range<size_t>(value)) {
+        return Status::OutOfRange(
+                std::string(field) + " is not representable as size_t");
+    }
+    return static_cast<size_t>(value);
+}
 
 /// @brief Applies the first-release scalar Float32 execution admission policy.
 /// @param model Loaded model whose metadata and required resolved roles are read.

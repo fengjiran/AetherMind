@@ -1,5 +1,4 @@
 #include "aethermind/inference/model_execution_policy.h"
-
 #include "aethermind/graph/graph_types.h"
 #include "aethermind/model/loaded_model.h"
 #include "aethermind/model/weight/weight_binding_resolver.h"
@@ -14,16 +13,6 @@
 
 namespace aethermind {
 namespace {
-
-StatusOr<size_t> PositiveSize(int64_t value, std::string_view field) {
-    if (value <= 0) {
-        return Status::InvalidArgument(std::string(field) + " must be positive");
-    }
-    if (!std::in_range<size_t>(value)) {
-        return Status::OutOfRange(std::string(field) + " is not representable as size_t");
-    }
-    return static_cast<size_t>(value);
-}
 
 struct RequiredRole {
     TransformerWeightRole role;

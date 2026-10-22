@@ -1,15 +1,16 @@
 # 上层 Runtime 组装与推理入口实施方案
 
 - **状态**: Draft
-- **版本**: 1.6
+- **版本**: 1.7
 - **日期**: 2026-10-19
-- **最近更新**: 2026-10-21
+- **最近更新**: 2026-10-22
 - **产品边界**: [当前产品 PRD](../products/aethermind_prd.md)
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联计划**: [01 Generate 闭环](01-inference-session-generate-readiness.md)、[02 工程质量](02-engineering-quality-system.md)、[06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[07 模型准备入口](07-executable-model-preparation.md)
 - **关联模块**: 应用入口 / inference / runtime / model / compiler / API
+- **验证专题**: [13 DeepInfer 生产验证与质量实施](13-deepinfer-quality-and-validation.md)
 
-本文是待实施方案。源码事实以 2026-10-19 的静态核对为基线，2026-10-21 补查 Load/Compile、Runtime/KV 分配和模型准备的依赖、失败边界、FP32 准入、KV 跨对象校验、C ABI 错误报告、依赖获取、日志与 fixture 来源及现有测试资产。本次仅修正文档，不新增运行入口，不修改公开 API，也不重新运行 C++ 测试。下文工具、选项和辅助函数均为拟新增内容。
+本文是待实施方案。源码事实以 2026-10-19 的静态核对为基线，2026-10-21 补查 Load/Compile、Runtime/KV 分配和模型准备的依赖、失败边界、FP32 准入、KV 跨对象校验、C ABI 错误报告、依赖获取、日志与 fixture 来源及现有测试资产；2026-10-22 将拟新增的独立应用入口归入 `apps/inference/`，同步路径、运行命令和目录约定。本次仅修正文档，不新增运行入口，不修改公开 API，也不重新运行 C++ 测试。下文工具、选项和辅助函数均为拟新增内容。
 
 ## 1. 现状分析
 
@@ -49,12 +50,14 @@
 
 | 所在层 | 负责 | 保持的边界 |
 |---|---|---|
-| 拟新增 `tools/inference/` | 参数解析、首版 FP32 准入、配置到 RuntimeOptions 的映射、CPU preset、对象生命周期、错误和 Token IDs I/O | FP32 准入只在 §2.4 的一个私有 helper 实现；仅消费 public headers，不 include `src/` 私有头或测试 helper |
+| 拟新增 `apps/inference/` | 参数解析、首版 FP32 准入、配置到 RuntimeOptions 的映射、CPU preset、对象生命周期、错误和 Token IDs I/O | FP32 准入只在 §2.4 的一个私有 helper 实现；仅消费 public headers，不 include `src/` 私有头或测试 helper |
 | model | HF I/O、模型配置/权重验证、家族识别、semantic graph 前端 | 模型支持判断继续以 model 的既有权威入口为准；不依赖 Runtime，不校验 Runtime/model 跨对象一致性 |
 | runtime | provider/factory、allocator/backend、静态 KV storage | 不依赖 model/compiler/inference，不读取 HF 配置 |
 | compiler | semantic pipeline 与 lowering | 不访问 backend registry，不内置产品 CPU preset |
 | inference | 模型准备、immutable 权重绑定、Session/Generate 编排 | 继续使用 `PrepareExecutableModel` 唯一准备入口 |
 | 后续 C ABI 适配层 | opaque handle、所有权、Runtime/model KV 一致性、异常边界、状态与输出缓冲区 | KV 跨对象规则集中在 adapter 私有 helper；复用上述能力，不复制 compiler、packing 或执行算法 |
+
+目录按职责划分：`apps/inference/` 承载独立推理应用，`src/inference/` 保持库内模型准备与会话编排职责，`tools/` 保留构建、测试、文档检查与 fixture 生成等开发辅助工具。应用源文件由独立 executable target 收集，不纳入 `AetherMind` shared library 的源文件集合。
 
 ### 2.2 控制与数据流
 
@@ -124,7 +127,7 @@ packing recipe 仍由 backend 选择。选择 O2 失败时传播错误，不静�
 
 当前 Llama builder 用 `weight_dtype_hint`（未定义时回退 Float32）确定 activation/state dtype，依据见 [llama_dense_graph_builder.cpp](../../src/model/llama_dense_graph_builder.cpp)。loader 的 dtype 支持集允许 F32/F16/BF16，linear dtype 一致性也不等于全部权重为 FP32；缺失或 `auto` hint 不能证明实际权重精度。图语义校验在 Compile，kernel resolve/packing 在 Prepare；当前 Session 路径的 external binding 校验在 Generate 内的 `PrepareExecutionBindings`，晚于 KV reservation。这些边界各自验证对应合同，不能代替分配 KV 前的产品准入，也不能假定所有 dtype 错误都会延迟到同一阶段。
 
-首版在 `tools/inference/inference_runner.cpp` 中拟新增唯一的工具私有策略入口：
+首版在 `apps/inference/inference_runner.cpp` 中拟新增唯一的工具私有策略入口：
 
 ```cpp
 Status ValidateFp32ExecutionInputs(const LoadedModel& model);
@@ -194,10 +197,10 @@ RunInference 作用域
 
 拟新增文件：
 
-- `tools/inference/inference_main.cpp`：先初始化 stderr logger，再执行参数解析与 runner，负责 stdout/stderr 和退出码。
-- `tools/inference/inference_runner.h/.cpp`：工具私有 RunOptions、配置映射、preset 和 RunInference。
-- `tools/inference/CMakeLists.txt`：拟新增 `aethermind_infer` 目标，链接 `AetherMind`，并因 main 直接使用日志 API 而显式 PRIVATE 链接已有的 `spdlog::spdlog`；不链接 GTest 或 benchmark。
-- 根 CMake：拟新增 `BUILD_INFERENCE_TOOL` 选项（默认 OFF），启用时添加上述子目录，不依赖 `BUILD_TESTS`；同时将 google_benchmark 的 `FetchContent_Declare` / `FetchContent_MakeAvailable` 收入 `if(BUILD_BENCHMARKS)`。spdlog 作为库与工具的正式依赖继续获取，不新增第二份依赖来源。
+- `apps/inference/inference_main.cpp`：先初始化 stderr logger，再执行参数解析与 runner，负责 stdout/stderr 和退出码。
+- `apps/inference/inference_runner.h/.cpp`：工具私有 RunOptions、配置映射、preset 和 RunInference。
+- `apps/inference/CMakeLists.txt`：拟新增 `aethermind_infer` 目标，链接 `AetherMind`，并因 main 直接使用日志 API 而显式 PRIVATE 链接已有的 `spdlog::spdlog`；不链接 GTest 或 benchmark。
+- 根 CMake：拟新增 `BUILD_INFERENCE_TOOL` 选项（默认 OFF），启用时通过 `add_subdirectory(apps/inference)` 添加应用，不依赖 `BUILD_TESTS`；同时将 google_benchmark 的 `FetchContent_Declare` / `FetchContent_MakeAvailable` 收入 `if(BUILD_BENCHMARKS)`。spdlog 作为库与工具的正式依赖继续获取，不新增第二份依赖来源。
 
 工具的目标链接关系拟为 `target_link_libraries(aethermind_infer PRIVATE AetherMind spdlog::spdlog)`。当前 AetherMind 已 PUBLIC 传递 spdlog 依赖，显式列出工具的直接依赖使 main 的 logger 配置不依赖隐含链接关系；两者使用同一个 CMake target。
 
@@ -273,12 +276,14 @@ C handle 内部为 Runtime 提供稳定地址；model/session handle 持有必�
 
 实施 P1 时，同步根 README 的构建/运行说明和工具参数；新增 public API 时再同步 [公共 API 参考](../api/public-api.md)、对应 design 与 CHANGELOG。本提案在仅写入方案时维持 Draft。
 
+固定 fixture、公开 Generate 回归、CTest/sanitizer/ISA 与模型性能证据的实施细化见 [13 号提案](13-deepinfer-quality-and-validation.md)。其中 teacher-forcing 和 logits/KV 观测仅属测试/开发诊断路径，不向本工具或公开 Generate 增加测试模式；本提案的产品入口与失败边界仍独立验收。
+
 以下是 P1 实施后的目标命令，目前选项和目标尚不存在；`MODEL_DIR` 必须指向由 CI/本地准备的合法、受支持的 FP32 HF fixture，并具有 §6.1 的来源与校验记录：
 
 ```bash
 cmake -S . -B build-infer -DBUILD_INFERENCE_TOOL=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF
 cmake --build build-infer --target aethermind_infer -j
-./build-infer/tools/inference/aethermind_infer --model "$MODEL_DIR" --tokens 7 --context-tokens 8 --max-new-tokens 3 --preset o1-plain
+./build-infer/apps/inference/aethermind_infer --model "$MODEL_DIR" --tokens 7 --context-tokens 8 --max-new-tokens 3 --preset o1-plain
 ```
 
 当前根 CMake 的 `FetchContent_MakeAvailable(spdlog google_benchmark)` 无条件执行，即使 `BUILD_BENCHMARKS=OFF` 也可能下载/配置 benchmark；上述命令本身不能证明依赖已收口。P1 必须完成 §4.2 的条件化修改，在干净构建目录验收 OFF 时不获取/配置 google_benchmark、ON 时 benchmark 目标仍可构建。spdlog 仍是正式依赖；A1 不承诺无需网络下载、install/export 或离线发行，这些沿 [02 工程质量方案](02-engineering-quality-system.md) 独立验收。

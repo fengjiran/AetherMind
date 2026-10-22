@@ -1,9 +1,9 @@
 # AetherMind 系统能力演进路线图
 
 - **状态**: Draft
-- **版本**: 1.6
+- **版本**: 1.7
 - **日期**: 2026-09-16
-- **最近更新**: 2026-10-21
+- **最近更新**: 2026-10-22
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
 - **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
 - **工程质量基线**: [工程质量体系建设方案](02-engineering-quality-system.md)
@@ -644,7 +644,7 @@ Session 同步、非线程安全；不同 Session 是否能并发取决于未来
 
 ## 16. Tests / Benchmark / Quality 演进
 
-详细治理框架见 [工程质量体系建设方案](02-engineering-quality-system.md)。本路线图要求以下 vertical slices：
+详细治理框架见 [工程质量体系建设方案](02-engineering-quality-system.md)。[13 号生产验证与质量实施提案](13-deepinfer-quality-and-validation.md) 将现有测试资产接入固定模型/teacher-forcing 数值回归、CTest/sanitizer/ISA 和模型级性能测量；复用本文的单一 capability matrix，不新增 runtime registry，不据局部测试自动提升能力成熟度。本次只补充该专题关联，未全面重验历史模块表。本路线图要求以下 vertical slices：
 
 ### 16.1 P0 correctness slices
 
@@ -813,6 +813,8 @@ microkernel
 - 存在两个以上可行架构方案；
 - PRD 当前承诺但实现跨度超过一个里程碑。
 
+质量实施细节已由 [13 号提案](13-deepinfer-quality-and-validation.md) 承载，复用 02 的治理框架与 10 的产品入口；模型数值、性能和交付证据按其 Q1–Q5 工作包实施，不改变本路线图已有 P0 资源/KV dtype 工作的优先级。
+
 下一批最可能需要独立提案的主题：
 
 1. INT8/INT4 weight-only format and execution；
@@ -846,3 +848,4 @@ microkernel
 | 2026-10-20 | 1.4 | 关联 11 号 FP16/BF16 Draft，补充独立精度主线与 dtype 准入边界；其余历史能力表未重新验证 |
 | 2026-10-21 | 1.5 | 关联 12 号 CUDA Draft，补充独立设备执行主线及与 09/11 的 workspace/精度边界；不更改当前 CPU 产品合同，其余历史能力表未重新验证 |
 | 2026-10-21 | 1.6 | 校准 §3/§12/§19 已完成状态：KV owner/epoch 与 commit、`PrepareExecutableModel`、FP32 Prefill→Decode 与同步 Generate 已闭环；将 KV 资源预算/dtype 执行集合列为 P0 并链接 08；移除已取代的 05 链接与 `KVCacheLease` 旧术语；补充 PRD KV dtype 漂移项；将 §5.2 `hidden_act` 收窄标记为已闭环 |
+| 2026-10-22 | 1.7 | 关联 13 号生产验证与质量实施 Draft，细化既有数值/性能/CI 证据建设的专题归属；复用 02/10 与算子工作流，不扩大能力声明，其余历史模块表未全面重验 |

@@ -17,11 +17,12 @@
 ## 2. 目录结构
 - `include/`：核心公共头文件
 - `src/`：核心实现
+- `apps/`：独立应用入口（规划中；首个入口为 `apps/inference/` 下的 `aethermind_infer`），仅消费库公共接口
 - `tests/unit/`：gtest 单元测试
 - `tests/benchmark/`：benchmark 性能基准测试
 - `cmake/`：CMake 辅助模块
 - `docs/`：架构与开发文档
-- `tools/`：辅助工具
+- `tools/`：开发与维护辅助工具
 - `3rdparty/`：第三方代码（非必要不要修改）
 
 ### 2.1 源码模块所有权（严格边界）
@@ -109,18 +110,18 @@ cmake --build build-tsan --target aethermind_unit_tests -j
 ## 6. Lint / 格式化
 代码格式以根目录 `.clang-format` 为准（基于 LLVM，缩进 4 空格，ColumnLimit 0）。
 ```bash
-# 格式检查（仅收集工作树改动文件，范围：include/ src/ tests/）
+# 格式检查（仅收集工作树改动文件，范围：include/ src/ apps/ tests/）
 {
   git diff --cached --name-only --diff-filter=d
   git diff --name-only --diff-filter=d
   git ls-files --others --exclude-standard
-} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|tests/)' | sort -u | xargs -r clang-format -n --Werror
+} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|apps/|tests/)' | sort -u | xargs -r clang-format -n --Werror
 # 自动格式化（同上收集逻辑，写入模式）
 {
   git diff --cached --name-only --diff-filter=d
   git diff --name-only --diff-filter=d
   git ls-files --others --exclude-standard
-} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|tests/)' | sort -u | xargs -r clang-format -i
+} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|apps/|tests/)' | sort -u | xargs -r clang-format -i
 ```
 若本地可用，可基于 `build/compile_commands.json` 运行 `clang-tidy`。
 

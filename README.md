@@ -75,6 +75,8 @@ AetherMind/
 │   ├── runtime/             # Runtime context, builder, workspace
 │   └── memory/              # Allocator abstractions (CPU/CUDA/CANN)
 ├── src/                     # Implementation (mirrors include/)
+├── apps/                    # Standalone applications (planned)
+│   └── inference/           # aethermind_infer CLI (planned)
 ├── tests/
 │   ├── unit/                # GoogleTest unit tests
 │   └── benchmark/           # Google Benchmark targets
@@ -85,8 +87,10 @@ AetherMind/
 │   ├── designs/              # Architecture & module designs
 │   ├── guides/               # Coding style & test writing guides
 │   └── reviews/              # Design and code reviews
-└── tools/                   # Auxiliary tools
+└── tools/                   # Development and maintenance tools
 ```
+
+The planned `apps/inference/` entrypoint is described in the [upper-level Runtime assembly proposal](docs/improvement-plan/10-upper-level-runtime-assembly.md); the application directory and `aethermind_infer` target are not implemented yet.
 
 ## Requirements
 
@@ -172,19 +176,19 @@ cmake --build build-tsan --target aethermind_unit_tests -j
 Code formatting is governed by [`.clang-format`](.clang-format) (LLVM-based, 4-space indent, `ColumnLimit: 0`).
 
 ```bash
-# Check formatting of changed files (staged + unstaged + untracked)
+# Check formatting of changed C/C++ files in include/, src/, apps/, and tests/ (staged + unstaged + untracked)
 {
   git diff --cached --name-only --diff-filter=d
   git diff --name-only --diff-filter=d
   git ls-files --others --exclude-standard
-} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|tests/)' | sort -u | xargs -r clang-format -n --Werror
+} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|apps/|tests/)' | sort -u | xargs -r clang-format -n --Werror
 
 # Auto-format
 {
   git diff --cached --name-only --diff-filter=d
   git diff --name-only --diff-filter=d
   git ls-files --others --exclude-standard
-} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|tests/)' | sort -u | xargs -r clang-format -i
+} | grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)$' | grep -E '^(include/|src/|apps/|tests/)' | sort -u | xargs -r clang-format -i
 ```
 
 If `build/compile_commands.json` is available, `clang-tidy` can be run against it.

@@ -11,13 +11,14 @@
 - 语言：C++20（`CMAKE_CXX_STANDARD 20`）
 - 构建系统：CMake >= 3.28
 - 核心库目标：`AetherMind`（shared）
+- 独立推理工具目标：`aethermind_infer`（`BUILD_INFERENCE_TOOL=ON`，默认 OFF；不依赖 tests/benchmark）
 - 单元测试目标：`aethermind_unit_tests`（GoogleTest，系统安装）
 - 性能基准目标：`aethermind_benchmark`（Google Benchmark，FetchContent）
 
 ## 2. 目录结构
 - `include/`：核心公共头文件
 - `src/`：核心实现
-- `apps/`：独立应用入口（规划中；首个入口为 `apps/inference/` 下的 `aethermind_infer`），仅消费库公共接口
+- `apps/`：独立应用源码，仅消费库公共接口；`apps/inference/` 提供可选的 `aethermind_infer` CLI、同步 runner 与私有输入/配置 helper；builder 注入入口仅在测试编译中启用
 - `tests/unit/`：gtest 单元测试
 - `tests/benchmark/`：benchmark 性能基准测试
 - `cmake/`：CMake 辅助模块
@@ -36,7 +37,8 @@
 | **kv_cache** | `include/aethermind/kv_cache/` | `src/kv_cache/` | 静态 KV 物理状态域：公开 `kv_cache_layout.h` 定义独立的布局值类型 `KVCacheLayout`，`kv_cache_session_view.h` 定义 generation-checked `KVCacheSessionView`；View 仅借用 storage/session state，不暴露 `Buffer`。`detail/kv_cache_state.h` 保留 Manager-owned 的 `KVCacheStorage`（按值拥有 layout 与 K/V Buffer）及 `KVCacheSessionState { generation, capacity_tokens, prompt_len, committed_tokens, Lifecycle }`，其中 `Lifecycle` 为 `Idle`/`AwaitingPrefill`/`PrefillCommitted`。`KVCacheManager` 按值持有 storage/session state，`layout()` 返回 `storage_.layout` 的 const 引用，管理连续 K/V storage、单 session reservation、commit watermark 与窄读写 binding，并通过 `Init` 收到的 `Allocator&` 获取 K/V plane Buffer（只借用、不保存该引用），使 KV storage 与其余受管存储使用统一分配策略。`KVCacheSessionView::CommitAppend(begin, end) const noexcept` 是公开提交入口；调用方必须先证明完整 append plan 成功且所有 layer 写完，方法自身只验证 generation、lifecycle、begin/end 与容量，不证明写入完成。只依赖 base、dtypes、memory；不依赖 runtime/execution/inference/model/backend，不承载算子语义或 whole-plan transaction；不提供旧 View 类型或头的兼容 alias。 |
 | **runtime** | `include/aethermind/runtime/` | `src/runtime/` | 执行期运行时资源聚合层：Runtime/RuntimeBuilder（backend、allocator 与按值拥有的 `KVCacheManager`）、workspace 规划（`PlanWorkspaceRequirements`/`WorkspacePlanLayout`）。**不得依赖 execution/compiler/graph/model**；依赖 kv_cache；execution 可直接依赖 runtime 和 kv_cache。 |
 | **model** | `include/aethermind/model/` | `src/model/` | 模型加载与前端适配：HfModelConfig/HfDirectoryReader/HfModelValidator、ResolvedModelWeights、**LoadedModel**（只持有 config + resolved raw weights/backing storage）、ModelLoader（仅 HF I/O/validation/resolution）、**模型家族识别与图构建**（`ParseModelArchitecture` 是家族判定唯一权威；`BuildModelGraph` 是 HF → semantic graph 唯一转换权威的 dispatch 入口，按家族路由到 per-family builder，如 `BuildLlamaDense` 将 HF RoPE 字段规范化为 typed `RoPEAlgorithmParams`，legacy `su` 映射为 `LongRoPE`，unknown type 拒绝）。ModelCompiler 归 compiler；ModelLoader 不调用 graph、backend 或 prepack。 |
-| **inference** | `include/aethermind/inference/` | `src/inference/` | 模型准备与会话编排层：`WeightBindingMetadata`（immutable 绑定所借用的 shape/stride 元数据所有权）、`ExecutableModel`（拥有 `LoweredModelArtifact`、packed artifacts、immutable external weight/constant bindings 与 phase ExecutionPlan）及其唯一生产准备入口 `PrepareExecutableModel`；后续 `InferenceSession`/`Generate` 的同步编排亦归本模块。**不得被 graph/operators/compiler/execution/runtime/model/backend 反向依赖**；只做编排与所有权聚合，不承担算子语义、kernel resolve、weight materialization 算法或 KV 物理存储职责。 |
+| **inference** | `include/aethermind/inference/` | `src/inference/` | 模型准备与会话编排层：`WeightBindingMetadata`（immutable 绑定所借用的 shape/stride 元数据所有权）、`ExecutableModel`（拥有 `LoweredModelArtifact`、packed artifacts、immutable external weight/constant bindings 与 phase ExecutionPlan）及其唯一生产准备入口 `PrepareExecutableModel`；`InferenceSession`/`Generate` 同步编排与 `model_execution_policy.h` 的共享 FP32 准入/模型 KV 配置映射，以及 `cpu_inference_options.h` 的共享 CPU 编译 preset 亦归本模块。共享策略仅只读 metadata，不转换 payload、不分配 KV、不校验既有 Runtime/model；后者归 C adapter 私有 helper。**不得被 graph/operators/compiler/execution/runtime/model/backend 反向依赖**；只做编排、产品准入与所有权聚合，不承担算子语义、kernel resolve、weight materialization 算法或 KV 物理存储职责。 |
+| **C runtime adapter** | `include/c_api.h` | `src/c_api_runtime.cpp` | 外部 C 入口：opaque handle 与 Runtime 稳定 owner 链、配置/version、Status/异常/error 适配、buffer 合同、私有 Runtime/model KV 一致性校验；复用 inference 共享准入/映射/preset 及既有 Compile/Prepare/Generate，不复制算法或修改宿主 logger，不被下层模块反向依赖。 |
 | **shape_inference** | `include/aethermind/shape_inference/` | `src/shape_inference/` | TensorSpec、ShapeSymbol、ShapeConstraint、InferenceResult 等通用形状推导基础设施。 |
 | **backend / kernels** | `include/aethermind/backend/` + per-ISA kernels | `src/backend/` | Backend 抽象、KernelRegistry、ExecutionStep 运行时执行（基于 base 层 `KernelSelector` 纯数据契约做内核匹配，见 `base/kernel_selector.h`），以及经 `Backend::PackWeights` 契约暴露的权重打包服务（layout 权威在 backend，composite 物化/对齐/分配由 backend 落实）。CPU packing 经 `Backend::PackWeights` 收到的 `Allocator&` 分配产物存储（只借用、不保存该引用），布局权威与打包职责仍归 backend，不借此改变 Runtime `Allocator` 的接口。不得依赖 Graph IR 或 OperatorSchema 的语义细节；可 include operators 的纯数据 dtype 契约头（`kXxxSupportedDTypes`/`IsXxxSupportedDType`）及 backend-independent 的 `rope_frequency_resolver.h`（RoPE 频率公式契约）。 |
 
@@ -87,8 +89,9 @@ cmake --build build-tsan --target aethermind_unit_tests -j
 - if `compile_commands.json` exists, prefer tools that use it
 
 ```bash
-# 全部单元测试
-./build/tests/unit/aethermind_unit_tests
+# 全部单元测试（先准备 HF fixtures 并构建独立 CLI，见 README）
+AETHERMIND_INFER_BINARY="$PWD/build-infer/apps/inference/aethermind_infer" \
+  ./build/tests/unit/aethermind_unit_tests
 
 # 单个测试套件
 ./build/tests/unit/aethermind_unit_tests --gtest_filter=TensorRandomNew.*
@@ -100,6 +103,8 @@ cmake --build build-tsan --target aethermind_unit_tests -j
 ./build/tests/unit/aethermind_unit_tests --gtest_filter=Device.* --gtest_break_on_failure
 ./build/tests/unit/aethermind_unit_tests --gtest_filter=TensorRandomNew.* --gtest_repeat=10
 ```
+
+`CliMatrix/InferenceCliIntegration.*` 为 Linux CLI/直接 Session 集成门禁，须提供上述绝对路径；缺少 CLI、fixture 或平台条件会显式失败。该环境变量仅供测试消费，不是工具运行配置。其他聚焦单测不需要 CLI；HF 资产准备与独立工具构建见根 README 和 `tests/fixtures/inference_admission/README.md`。
 
 ## 5. 性能基准命令
 ```bash

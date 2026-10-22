@@ -6,6 +6,8 @@
 
 ### Added
 
+- Runtime C ABI v1：M5 冻结配置/version、opaque handles、error/owner/buffer 合同，M6 实现 version 与 create/load/create/generate/destroy 链；支持 CPU FP32 Llama Dense、O1/plain 与 O2/packed、调用方输出缓冲区，模型/Session 保活必要 owner。
+- inference 公共 `model_execution_policy.h` 提供唯一的 `ValidateFp32ExecutionInputs` 和 `MakeFp32KVCacheOptions`；新增 `cpu_inference_options.h` 的 `CpuInferencePreset` / `MakeCpuCompileOptions`。CLI 与 C adapter 共用准入、模型 KV 映射及 preset，删除应用旧实现与旧类型。
 - 文档系统基础设施：`docs/README.md`（索引与术语表）、`docs/guides/documentation-guide.md`（文档系统规范）、`docs/templates/`（模块设计/ADR 模板）、`tools/verify_docs.py`（漂移检测脚本）。
 - `docs/decisions/` 决策记录目录与 `docs/archive/` 归档区建立。
 
@@ -28,6 +30,8 @@
 
 ### Fixed
 
+- C ABI 在 KV 分配前检查 FP32 行字节/64-byte 对齐溢出，极大 head_dim 返回 Overflow，不落入既有 KV padding 的无符号回绕错误路径。
+- `am_error_create` 的 message 构造抛出时自动释放已分配 error 对象；对象/message OOM 均返回 NULL，不传播异常。
 - `HfModelValidator` 的 `hidden_act` 支持范围收窄为仅 `silu`；`gelu/relu` 在模型加载与直接构图入口返回 `InvalidArgument`，不再被静默编译成 SwiGLU。
 - Kernel params 对齐在错误诊断分配失败时返回空 message 的 `ResourceExhausted`，避免从 `noexcept` 对齐函数传播 `std::bad_alloc`。
 - CPU activation 分配遇到 `ENOMEM` 时上报可恢复失败；`InferenceSession::Generate` 将可传播的 `std::bad_alloc` 转为 `ResourceExhausted`，清理 KV 后允许重试。

@@ -1,7 +1,7 @@
 # 上层 Runtime 组装与推理入口实施方案
 
-- **状态**: Draft
-- **版本**: 1.7
+- **状态**: Implemented
+- **版本**: 1.14
 - **日期**: 2026-10-19
 - **最近更新**: 2026-10-22
 - **产品边界**: [当前产品 PRD](../products/aethermind_prd.md)
@@ -10,7 +10,7 @@
 - **关联模块**: 应用入口 / inference / runtime / model / compiler / API
 - **验证专题**: [13 DeepInfer 生产验证与质量实施](13-deepinfer-quality-and-validation.md)
 
-本文是待实施方案。源码事实以 2026-10-19 的静态核对为基线，2026-10-21 补查 Load/Compile、Runtime/KV 分配和模型准备的依赖、失败边界、FP32 准入、KV 跨对象校验、C ABI 错误报告、依赖获取、日志与 fixture 来源及现有测试资产；2026-10-22 将拟新增的独立应用入口归入 `apps/inference/`，同步路径、运行命令和目录约定。本次仅修正文档，不新增运行入口，不修改公开 API，也不重新运行 C++ 测试。下文工具、选项和辅助函数均为拟新增内容。
+M0–M6 已按本方案限定的 CPU FP32 Llama Dense 范围完成：测试资产、共享策略、同步 runner、独立 CLI、C++ 验收、C ABI 合同与正式适配。C++ 证据见 §4.0–§4.2 和 [M4 报告](../tests/upper_level_runtime_assembly_m4_validation_2026-10-22.md)，合同迁移见 [M5 报告](../tests/upper_level_runtime_assembly_m5_validation_2026-10-22.md)，最终 C ABI、回归和 sanitizer 边界见 §4.3 与 [M6 报告](../tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md)。Implemented 不代表量化、其他家族、7B 性能、离线发行或全部 PRD hard gates 达成；既有 LSAN 基线未清零。
 
 ## 1. 现状分析
 
@@ -18,7 +18,7 @@
 
 `RuntimeBuilder::Build()` / `TryBuild()` 已有资源装配实现，作为公开 C++ 构建块由外部宿主调用是合理边界。库内部没有调用它们，本身不是 builder 的实现缺陷。
 
-当前缺口是：仓库没有非测试调用方，将模型配置、Runtime、模型准备、Session 与 Token IDs I/O 连成一个可独立运行的入口。已有测试中的组装链不能替代产品使用入口，也不能证明 PRD 中的 C ABI 已交付。
+原缺口是仓库没有非测试调用方，将模型配置、Runtime、模型准备、Session 与 Token IDs I/O 连成可独立运行的入口。M2 runner 和 M3 CLI 已接通这一入口；C ABI 仍需独立实施，不能由 C++ 工具结果推导为已交付。
 
 | 已核对事实 | 源码依据 | 对方案的约束 |
 |---|---|---|
@@ -30,13 +30,13 @@
 | `LoadAndPrepareExecutableModel` 已串起加载、编译、准备，但要求 Runtime 已存在 | [executable_model.cpp](../../src/inference/executable_model.cpp) | 保留该便利 API；本入口为读取模型配置而显式组合其下层 API |
 | 默认编译选项是 O2/plain，不能视为 CPU 通用可执行默认值；现有测试显式选择 O1/plain 或 O2/packed | [model_compiler.h](../../include/aethermind/compiler/model_compiler.h)、[graph_lowering.h](../../include/aethermind/compiler/graph_lowering.h)、[集成测试](../../tests/unit/inference/test_load_prepare_executable_model.cpp) | 入口必须有明确 CPU preset |
 | Runtime 按值拥有 KV manager；workspace 和 activation 在请求准备路径分配 | [runtime.h](../../include/aethermind/runtime/runtime.h)、[inference_session.cpp](../../src/inference/inference_session.cpp) | 不把 workspace storage 搬进 builder |
-| 当前 C API 仅有通用对象引用、错误处理等基础接口；PRD 的 runtime/model/session C ABI 仍是草案 | [c_api.h](../../include/c_api.h)、[PRD](../products/aethermind_prd.md) §3.4 | C++ 运行入口和 C ABI 分阶段验收 |
-| 构建系统提供 shared library、单元测试和 benchmark，尚无推理工具目标 | [根 CMake](../../CMakeLists.txt)、[库 CMake](../../src/CMakeLists.txt) | 入口应能在关闭测试时单独构建 |
-| 根 CMake 当前无条件获取 spdlog/google_benchmark，库 PUBLIC 链接 spdlog；`.models/` 被忽略 | [根 CMake](../../CMakeLists.txt)、[库 CMake](../../src/CMakeLists.txt)、[.gitignore](../../.gitignore) | A1 尚不能证明 benchmark 不被获取；HF fixture 由 CI/本地准备，不视为仓库自带文件 |
+| M5 冻结、M6 已实现 runtime/model/session C ABI，并由纯 C 调用方实际链接运行 | [c_api.h](../../include/c_api.h)、[c_api_runtime.cpp](../../src/c_api_runtime.cpp)、[C ABI 合同](../api/runtime-c-abi.md) | header/布局检查与动态 C 调用证据分别记录，不推导全部产品范围 |
+| M3 已新增默认关闭的独立推理工具目标 | [根 CMake](../../CMakeLists.txt)、[应用 CMake](../../apps/inference/CMakeLists.txt) | 可关闭 tests/benchmarks 单独构建工具，保留核心 shared library |
+| M3 将 google_benchmark 获取/配置收进 BUILD_BENCHMARKS 条件；库与工具共用正式 spdlog 依赖；`.models/` 被忽略 | [根 CMake](../../CMakeLists.txt)、[库 CMake](../../src/CMakeLists.txt)、[.gitignore](../../.gitignore) | A1 干净目录验收见 §4.2；HF fixture 由 CI/本地准备，不视为仓库自带文件，也不承诺离线依赖获取 |
 
 ### 1.2 首版交付范围
 
-推荐先实现独立 C++ 工具，复用现有公开构建块，建立受支持配置的可复现入口；之后再接 C ABI。
+独立 C++ 工具和 C ABI 已复用公开构建块接通首版入口，分别完成 M4/M6 验收矩阵。
 
 - CPU-only、同步、单模型、单请求、Llama Dense、FP32、greedy Argmax。
 - 输入是 HF 模型目录、Token IDs、KV capacity 和生成配置；输出仅为新 Token IDs。
@@ -50,14 +50,14 @@
 
 | 所在层 | 负责 | 保持的边界 |
 |---|---|---|
-| 拟新增 `apps/inference/` | 参数解析、首版 FP32 准入、配置到 RuntimeOptions 的映射、CPU preset、对象生命周期、错误和 Token IDs I/O | FP32 准入只在 §2.4 的一个私有 helper 实现；仅消费 public headers，不 include `src/` 私有头或测试 helper |
+| `apps/inference/`（M1 helper、M2 runner、M3 CLI 已实现） | 参数解析、调用共享 FP32 准入/模型 KV 映射、CPU 资源配置与 preset、对象生命周期、错误和 Token IDs I/O | M5 已将 §2.4 的唯一策略迁入 inference；应用仅消费 public headers，不 include `src/` 私有头或测试 helper |
 | model | HF I/O、模型配置/权重验证、家族识别、semantic graph 前端 | 模型支持判断继续以 model 的既有权威入口为准；不依赖 Runtime，不校验 Runtime/model 跨对象一致性 |
 | runtime | provider/factory、allocator/backend、静态 KV storage | 不依赖 model/compiler/inference，不读取 HF 配置 |
 | compiler | semantic pipeline 与 lowering | 不访问 backend registry，不内置产品 CPU preset |
-| inference | 模型准备、immutable 权重绑定、Session/Generate 编排 | 继续使用 `PrepareExecutableModel` 唯一准备入口 |
-| 后续 C ABI 适配层 | opaque handle、所有权、Runtime/model KV 一致性、异常边界、状态与输出缓冲区 | KV 跨对象规则集中在 adapter 私有 helper；复用上述能力，不复制 compiler、packing 或执行算法 |
+| inference | 模型准备、immutable 权重绑定、Session/Generate 编排、共享 FP32 准入与模型 KV 配置映射 | 继续使用 `PrepareExecutableModel` 唯一准备入口；策略只读 metadata，不承担 Runtime/model 跨对象比较 |
+| C ABI 适配层（M6） | opaque handle、所有权、Runtime/model KV 一致性、异常边界、状态与输出缓冲区 | KV 跨对象规则集中在 adapter 私有 helper；复用上述能力，不复制 compiler、packing 或执行算法 |
 
-目录按职责划分：`apps/inference/` 承载独立推理应用，`src/inference/` 保持库内模型准备与会话编排职责，`tools/` 保留构建、测试、文档检查与 fixture 生成等开发辅助工具。应用源文件由独立 executable target 收集，不纳入 `AetherMind` shared library 的源文件集合。
+目录按职责划分：`apps/inference/` 承载独立推理应用，`src/inference/` 保持库内模型准备与会话编排职责，`tools/` 保留构建、测试、文档检查与 fixture 生成等开发辅助工具。应用源文件不纳入 `AetherMind` shared library 的源文件集合；M1 由测试目标显式编译私有 helper，P1 再由独立 executable target 收集同一实现。
 
 ### 2.2 控制与数据流
 
@@ -97,16 +97,16 @@ flowchart TD
 | `prompt_tokens` | 非空 `uint32_t` 数组；严格解析整数，加载后检查词表范围 |
 | `context_tokens` | 必填的静态 KV capacity；正数且不超过模型 `max_position_embeddings` |
 | `generation` | 复用 `GenerationConfig{max_new_tokens, eos_token_id}`；EOS 不做隐式猜测 |
-| `preset` | 工具私有枚举 `O1Plain` / `O2Packed`，默认 `O1Plain` |
+| `preset` | inference 共享枚举 `CpuInferencePreset::kO1Plain` / `kO2Packed`，默认 `kO1Plain`；M6 已删除应用旧类型 |
 
-工具私有入口拟为 `StatusOr<std::vector<uint32_t>> RunInference(const RunOptions&)`：它在一个作用域内拥有 Runtime、模型和 Session，只返回拥有数据的 Token IDs，不返回借用局部 Runtime 的 Session。`main` 只处理参数、输出和退出码。
+工具私有入口已实现为 `StatusOr<std::vector<uint32_t>> RunInference(const RunOptions&, RunStage* failure_stage = nullptr)`：它在一个作用域内拥有 Runtime、模型和 Session，只返回拥有数据的 Token IDs，不返回借用局部 Runtime 的 Session。可选的 `RunStage` 输出只标识失败阶段，成功时为 `kNone`；原始 StatusCode/message 保持不变，`ToString(RunStage)` 返回不分配的静态诊断标签。它不是阶段计数或事件 hook。`main` 负责进程 logger、参数、输出、退出码及异常边界。
 
 CPU preset 必须逐项设置，不能直接转用 `ModelCompileOptions{}`：
 
 | preset | `optimization.opt_level` | `lowering.enable_packed_weights` | selector |
 |---|---:|---|---|
-| `O1Plain` | 1 | false | CPU、`WeightFormat::kPlain`、`ExecPhase::kBoth` |
-| `O2Packed` | 2 | true | CPU、`ExecPhase::kBoth`；具体消费权重的 step 由 lowering 标记 packed |
+| `CpuInferencePreset::kO1Plain` | 1 | false | CPU、`WeightFormat::kPlain`、`ExecPhase::kBoth` |
+| `CpuInferencePreset::kO2Packed` | 2 | true | CPU、`ExecPhase::kBoth`；具体消费权重的 step 由 lowering 标记 packed |
 
 packing recipe 仍由 backend 选择。选择 O2 失败时传播错误，不静默降到 O1，不强制指定 identity/B-panel 布局。
 
@@ -127,10 +127,12 @@ packing recipe 仍由 backend 选择。选择 O2 失败时传播错误，不静�
 
 当前 Llama builder 用 `weight_dtype_hint`（未定义时回退 Float32）确定 activation/state dtype，依据见 [llama_dense_graph_builder.cpp](../../src/model/llama_dense_graph_builder.cpp)。loader 的 dtype 支持集允许 F32/F16/BF16，linear dtype 一致性也不等于全部权重为 FP32；缺失或 `auto` hint 不能证明实际权重精度。图语义校验在 Compile，kernel resolve/packing 在 Prepare；当前 Session 路径的 external binding 校验在 Generate 内的 `PrepareExecutionBindings`，晚于 KV reservation。这些边界各自验证对应合同，不能代替分配 KV 前的产品准入，也不能假定所有 dtype 错误都会延迟到同一阶段。
 
-首版在 `apps/inference/inference_runner.cpp` 中拟新增唯一的工具私有策略入口：
+M1 原在应用内实现唯一 FP32 策略；M5 已将其迁入 [inference 实现](../../src/inference/model_execution_policy.cpp) 的 `aethermind` namespace，公共声明见 [model_execution_policy.h](../../include/aethermind/inference/model_execution_policy.h)。应用旧声明/实现已删除，无兼容转发：
 
 ```cpp
 Status ValidateFp32ExecutionInputs(const LoadedModel& model);
+StatusOr<KVCacheRuntimeOptions> MakeFp32KVCacheOptions(
+    const HfModelConfig& config, size_t context_tokens);
 ```
 
 runner 在 Load 成功后的请求/模型配置校验阶段调用一次，早于配置映射、Compile、TryBuild 和 KV reservation。它只读取 metadata，不依赖 Runtime，不读取权重 payload，不转换或分配权重，也不保存模型借用。`main`、preset 映射和后续 C ABI 不另写 dtype 遍历或准入分支。
@@ -144,7 +146,7 @@ runner 在 Load 成功后的请求/模型配置校验阶段调用一次，早于
 
 遍历范围覆盖 embedding、final norm、有效 lm-head，以及每层的 input/post-attention norm、Q/K/V/O projection、gate/up/down projection。按已有角色绑定使用 [ResolveWeightBinding](../../include/aethermind/model/weight/weight_binding_resolver.h)，不在工具建立第二套 role→field 映射；tied lm-head 缺失时沿用该 resolver 的 embedding fallback，缺失是否允许仍由 loader 验证。必需角色解析为空必须报错，不能跳过检查。Norm 也必须为 Float32，不能只检查 linear 或抽查首个 tensor。
 
-精度策略拒绝返回 `Unimplemented`，诊断包含 hint 或权重角色/layer、实际 dtype 与要求的 Float32；runner 标记为模型准入阶段，CLI 按模型不支持返回退出码 1。不得改写 hint 或把 KV 设置为 FP32 来伪装权重转换。到 P2 接入 C ABI 前，按 §4.3 将这一个策略实现迁入 inference 并由两种入口共用；11 号提案若扩展 precision preset，再显式扩展策略，不能使本 helper 自动成为 normalizer。
+精度策略拒绝返回 `Unimplemented`，诊断包含 hint 或权重角色/layer、实际 dtype 与要求的 Float32；runner 标记为模型准入阶段，CLI 按模型不支持返回退出码 1。不得改写 hint 或把 KV 设置为 FP32 来伪装权重转换。M5 已迁移唯一策略与几何映射，M6 adapter 必须复用；11 号提案若扩展 precision preset，再显式扩展策略，不能使本 helper 自动成为 normalizer。
 
 对正的 `max_new_tokens = N`，本请求所需 KV token 数为：
 
@@ -184,31 +186,121 @@ RunInference 作用域
 
 ## 4. 实施步骤
 
+### 4.0 M0：固定测试资产（已完成，2026-10-22）
+
+M0 只交付后续准入测试所需的 HF 资产，不实现 runner 或 FP32 执行准入。生成规则、固定来源、校验清单和复现命令见 [fixture 使用说明](../../tests/fixtures/inference_admission/README.md)；测试源码位于 `tests/unit/apps/inference/`，资产元数据位于 `tests/fixtures/inference_admission/`，生成的模型文件位于 gitignored 的 `.models/inference-admission/`。
+
+基准来源锁定为 `peft-internal-testing/tiny-random-LlamaForCausalLM` 的 revision `d0b81c5e23f2d61bb7a5f430a8cd6f3e711c0cb3`。已核对远程 config 字节和权重 Git LFS 指针与本地文件一致；实际 config/权重 SHA-256 和文件大小由 recipe 固定，不将本地目录名视为来源身份。
+
+M0 已交付 [转换脚本](../../tools/generate_fp32_admission_hf_fixtures.py)、[recipe](../../tests/fixtures/inference_admission/recipe.json)、[实测 checksums](../../tests/fixtures/inference_admission/checksums.json)、[Python 测试](../../tests/unit/apps/inference/test_generate_fp32_admission_hf_fixtures.py) 与 [真实 Loader 测试](../../tests/unit/apps/inference/test_inference_admission_fixtures.cpp)。验证记录如下：
+
+| 验证 | 结果与范围 |
+|---|---|
+| Python 聚焦测试 | 20 项通过；覆盖正负零、F16 subnormal、F16/BF16 RNE tie、非有限值/溢出、独立解码、源与规则身份、篡改和路径保护 |
+| 真实资产生成与校验 | 20 个 HF 变体生成成功；逐文件/逐 tensor 校验及临时目录重生成 `--check` 通过；基准两个文件的 SHA-256 保持不变 |
+| C++ 构建与 Loader 验收 | 重建 `aethermind_unit_tests`；先通过单个 F32Missing 用例，再通过全部 41 项 Loader 测试，覆盖 hint、所有角色 dtype/shape/bytes 与 tied head fallback |
+| 格式与文档 | 新 C++ 测试通过 clang-format 检查，`git diff --check` 通过；文档检查 0 problem、29 项既有 warning |
+
+M0 只证明测试资产可复现且被 Loader 接受，不证明 FP32 执行准入、CLI 或 C ABI 已交付。M1–M6 继续按下述 P0/P1/P2 及其门禁推进；未运行全量 C++ 测试、benchmark 或 sanitizer。
+
 ### 4.1 P0：固定配置与失败边界
+
+**M1 已完成（2026-10-22）**。以下记录 M1 当时在 [inference_runner.h](../../apps/inference/inference_runner.h) / [inference_runner.cpp](../../apps/inference/inference_runner.cpp) 的交付；M5 已将准入和模型 KV 映射迁入 inference，当前归属见 §2.4/§4.3，应用只保留请求、CPU 资源与 preset 配置：
+
+| 接口 | 已落实的合同 |
+|---|---|
+| `RunOptions` / `CpuPreset` | 拥有路径、Token IDs、显式容量与 GenerationConfig；默认 `kO1Plain` |
+| `ValidateRunOptions` | 参数/词表/EOS/model context 检查；正数生成按 checked `prompt + N - 1` 校验容量；零生成仍校验参数，但不要求 prompt 满足物理 KV capacity |
+| `ValidateFp32ExecutionInputs` | 只读 metadata，精确匹配 scalar Float32；通过既有 resolver 检查全部必需角色和层，保留 tied head fallback；非 FP32 返回含实际/要求 dtype 与 hint 或角色/layer 的 `Unimplemented` |
+| `MakeRuntimeOptions` | 检查有符号值与转换，规范化逻辑 head_dim，返回 CPU/FP32/64-byte alignment 的值对象；不创建 Runtime 或分配 KV |
+| `MakeCpuCompileOptions` | 显式选择 O1/plain 或 O2/packed、CPU、kBoth；未知枚举拒绝，dtype 留给 lowering 推导 |
+
+测试目标通过 [tests/unit/CMakeLists.txt](../../tests/unit/CMakeLists.txt) 显式编译同一份应用 helper，未将其加入 shared library，也未新增 executable/object/library target。M1 的 helper 直接返回 Status；完整 runner 的阶段标注、Compile→TryBuild 调用顺序与失败清理由 M2 接入（见 §4.2），CLI 退出码由 M3 实现。
+
+M1 验收记录：
+
+| 验证 | 结果与证据边界 |
+|---|---|
+| [请求/映射/preset 测试](../../tests/unit/apps/inference/test_inference_options.cpp) | 30 项通过；覆盖零生成、checked 容量、词表/EOS、非法 enum、head_dim 派生和独立值生命周期 |
+| [FP32 准入测试](../../tests/unit/apps/inference/test_fp32_execution_inputs.cpp) | 79 项通过：20 个真实 HF 变体先 Load 再准入（4 个通过、16 个 `Unimplemented`）；4 个通过变体 × 2 preset 的 8 项 Compile；21 个角色 × F16/BF16 的 42 项 synthetic 拒绝；9 项 tied、无效 metadata、层数与 lanes 等边界 |
+| 聚焦回归 | M0 的 41 项真实 Loader 测试及既有家族/RoPE/activation 6 项拒绝/委托测试通过，共 47 项；应用 helper 未复制这些模型语义规则 |
+| 构建与边界 | 重建 `aethermind_unit_tests` 后先通过单个 F32Missing 准入用例，再通过上述 109 项 M1 与 47 项回归；应用 helper 不出现在 shared library 导出符号中 |
+| 格式与文档 | 新 C++ 源/头通过 clang-format，`git diff --check` 通过；文档检查 0 problem、29 项既有 warning |
+
+Compile 用例不创建 Runtime，不证明 Prepare/Generate 可执行性；M1 不宣称 A12/A13 的 runner 调用位置、计数 allocator 零 KV 分配或 CLI 门禁已通过。本轮未运行全量测试、benchmark 或 sanitizer。
 
 1. 以由 CI/本地准备的 tiny Llama FP32 HF fixture 定义首版输入，固定来源/revision 与文件校验值，核对 `ParseModelArchitecture`、loader、graph 和 CPU 执行支持范围；不假定 clone 仓库即包含 `.models/` 数据。
 2. 落实已知行为字段的拒绝合同；例如模型声明的 activation 必须与实际构图一致。结构与算子语义修复归 model，参照 [06 路线图](06-system-capability-evolution-roadmap.md)；不在 CLI 复制 validator 的 schema/shape/bytes 规则。首版 FP32 产品准入按 §2.4 仅实现于 `ValidateFp32ExecutionInputs`，与 loader 支持集分开。
-3. 在工具私有 helper 中实现 RunOptions 校验、FP32 准入、KV 参数映射及 CPU preset；Load 后先完成实际权重遍历，再 Compile，成功后才 TryBuild。错误按参数/加载/模型准入/编译/Runtime 构建/准备/Session/生成阶段分类，同时保留底层 StatusCode。
+3. 工具私有 helper 校验 RunOptions、配置 CPU 资源/preset，调用 inference 唯一的 FP32 准入和模型 KV 映射；Load 后先完成实际权重遍历，再 Compile，成功后才 TryBuild。错误按参数/加载/模型准入/编译/Runtime 构建/准备/Session/生成阶段分类，同时保留底层 StatusCode。
 4. 明确零 token、EOS、容量边界和 dtype 拒绝规则，以合法权重 fixture 定义不支持家族和未知 RoPE 的拒绝用例，先验证既有 model/Compile 的拒绝合同；runner 的分配观测随 P1 的 A12 落实。
 
 退出条件：给定合法 FP32 配置能得出确定 RuntimeOptions，拒绝用例与失败阶段明确。P1 接入 runner 时，可在参数、加载、模型准入或编译阶段判定的非法输入、家族、activation、RoPE 及 dtype/preset/请求容量错误，必须在启动 KV 分配前失败；具体观测按 A12/A13 验收。依赖 Runtime 的 backend、packing、kernel resolve 和 plan 错误由 Prepare 拒绝，不将 Compile 成功视为 CPU 可执行证明；未支持的组合不得静默接受。
 
 ### 4.2 P1：提供独立 C++ 入口
 
-拟新增文件：
+**M2 已完成（2026-10-22）**。应用私有 runner 已接通一次 Load→请求校验/FP32 准入→配置映射→Compile→TryBuild→Prepare→Create→Generate。Runtime 在 Prepare 前移至最终局部地址，后续不再移动；配置借用在 Compile 消耗 LoadedModel 前结束，model/session 先于 Runtime 销毁，返回值仅拥有新 Token IDs。
 
-- `apps/inference/inference_main.cpp`：先初始化 stderr logger，再执行参数解析与 runner，负责 stdout/stderr 和退出码。
-- `apps/inference/inference_runner.h/.cpp`：工具私有 RunOptions、配置映射、preset 和 RunInference。
-- `apps/inference/CMakeLists.txt`：拟新增 `aethermind_infer` 目标，链接 `AetherMind`，并因 main 直接使用日志 API 而显式 PRIVATE 链接已有的 `spdlog::spdlog`；不链接 GTest 或 benchmark。
-- 根 CMake：拟新增 `BUILD_INFERENCE_TOOL` 选项（默认 OFF），启用时通过 `add_subdirectory(apps/inference)` 添加应用，不依赖 `BUILD_TESTS`；同时将 google_benchmark 的 `FetchContent_Declare` / `FetchContent_MakeAvailable` 收入 `if(BUILD_BENCHMARKS)`。spdlog 作为库与工具的正式依赖继续获取，不新增第二份依赖来源。
+runner 用 `RunStage` 区分参数、加载、模型准入、编译、Runtime 构建、准备、Session 和生成错误，原始 StatusCode/message 不加前缀或重新编码。escaping `std::bad_alloc` 在外层边界转为空 message 的 `ResourceExhausted`，同时记录阶段；其他异常在 RAII 清理后交给后续进程入口处理。底层 `noexcept`/`AM_CHECK` 终止不属于这一恢复保证。
 
-工具的目标链接关系拟为 `target_link_libraries(aethermind_infer PRIVATE AetherMind spdlog::spdlog)`。当前 AetherMind 已 PUBLIC 传递 spdlog 依赖，显式列出工具的直接依赖使 main 的 logger 配置不依赖隐含链接关系；两者使用同一个 CMake target。
+P1 的应用文件与实现状态：
+
+- `apps/inference/inference_main.cpp`：M3 已实现 stderr logger、严格参数解析、runner 调用、JSON 输出与退出码。
+- `apps/inference/inference_runner.h/.cpp`：M1 实现 RunOptions、请求校验、准入、配置与 preset，M2 接通 RunInference；M5 后共享准入/模型 KV 映射由 inference 公共头提供，应用保留请求/资源/preset 与阶段诊断。
+- `apps/inference/CMakeLists.txt`：M3 已新增 `aethermind_infer` 目标，链接 `AetherMind`，并因 main 直接使用日志 API 而显式 PRIVATE 链接已有的 `spdlog::spdlog`；不链接 GTest 或 benchmark。
+- 根 CMake：M3 已新增 `BUILD_INFERENCE_TOOL` 选项（默认 OFF），启用时通过 `add_subdirectory(apps/inference)` 添加应用，不依赖 `BUILD_TESTS`；google_benchmark 的 `FetchContent_Declare` / `FetchContent_MakeAvailable` 已收进 `if(BUILD_BENCHMARKS)`。spdlog 作为库与工具的正式依赖继续获取，不新增第二份依赖来源。
+
+工具的目标链接关系为 `target_link_libraries(aethermind_infer PRIVATE AetherMind spdlog::spdlog)`。当前 AetherMind 已 PUBLIC 传递 spdlog 依赖，显式列出工具的直接依赖使 main 的 logger 配置不依赖隐含链接关系；两者使用同一个 CMake target。
 
 入口中沿 §2.2 的顺序，Compile 成功后才显式调用 `RuntimeBuilder::TryBuild()`，再固定 Runtime 地址并执行 Prepare。不复制 Runtime 的默认 provider/factory 注册代码，不手动调用 allocator 的底层存储实现。
 
-配套 runner 单测与正式工具共用同一编排实现。测试构建提供工具私有的 RuntimeBuilder 配置注入点，供测试注册计数/失败 allocator provider 或失败 backend factory，验证 runner 的错误传播与清理，并观测 A12 的 KV 分配。正式 `RunInference` 使用默认 CPU 资源；不公开该注入接口，不增加 CLI 参数、环境变量开关或阶段计数 hook。测试替身不能作为数值、kernel 覆盖或 CLI 正常路径的证据。
+配套 runner 单测与正式工具共用同一编排实现。M2 在 [测试私有头](../../apps/inference/inference_runner_test.h) 提供 `testing::RunInferenceWithBuilder`：测试侧在加载前向 builder 注册计数/失败 allocator provider 或失败 backend factory，再调用与普通入口共用的 body/boundary；派生 RuntimeOptions 在 Compile 后设置，pending custom registrations 保持既有 builder 语义。`AETHERMIND_INFERENCE_RUNNER_TESTING` 仅对 runner 和故障测试源文件启用，正式编译不提供此入口。正式 `RunInference` 自建默认 builder；不增加 CLI 参数、环境变量开关或阶段计数 hook。测试替身不能作为数值、kernel 覆盖或 CLI 正常路径的证据。
 
-CLI 拟定合同：
+M2 验收记录：
+
+| 验证 | 结果与证据边界 |
+|---|---|
+| [真实 runner 成功测试](../../tests/unit/apps/inference/test_inference_runner_success.cpp) | 13 项通过：4 个 F32 fixture × 两种 preset 与独立配置的直接 Session 链比较完整 Token IDs；另覆盖默认 preset、重复请求、精确容量、零生成与 EOS |
+| [故障与分配顺序测试](../../tests/unit/apps/inference/test_inference_runner.cpp) | 26 项通过：16 个 Loader 接受的精度变体在准入阶段拒绝且 allocator 未创建；合法 FP32 权重的未知家族/RoPE 在 Compile 拒绝且零 KV 分配；加载/参数/容量错误、两块 KV plane 失败、lazy backend 失败、Prepare 的 escaping bad_alloc 和执行失败均验证阶段、状态与清理 |
+| 聚焦回归 | 109 项 M1、41 项 M0 Loader、4 项 TinyLlama scalar-oracle Prefill/多步 Decode/Generate 测试通过，共 154 项；真实 HF runner 等价性不替代底层数值/阶段证据 |
+| 生产编译边界 | 用公开库头和普通编译模式单独编译 runner；object 含 RunInference，不含 RunInferenceWithBuilder。源码核对 Load/Compile/TryBuild/Prepare 各一次，无生产计数 hook |
+| ASAN/UBSAN | 重建 instrumented core；独立的 M2 聚焦 harness 排除全局 malloc interposer，39 项通过（`detect_leaks=0`），无地址/UB 报告。开启 LSAN 的零用例基线和 39 项运行均报告 1384 bytes / 17 allocations，归一化泄漏栈完全相同，未增加报告；整体零泄漏门禁未清零 |
+| 格式与文档 | 应用与测试 C++ 源/头通过 clang-format，`git diff --check` 通过；文档检查 0 problem、29 项既有 warning |
+
+Sanitizer 限制须与通过项分开记录：现有完整单测 ASAN 进程在 `--gtest_list_tests` 阶段即退出 139，沙箱内外均复现。进一步从原 link.txt 保留相同的三个 M2 object 和链接参数，仅增删全局 malloc interposer object 作 A/B：不链接时正常列出测试，链接后启动退出 139，定位到现有 interposer 与 ASAN 的启动冲突。独立 harness 使用相同 M2 源码和本轮重建的 instrumented shared library，排除此 interposer。沙箱内 LSAN 另因 ptrace 环境无法结束检查，因此泄漏基线比较在沙箱外完成。两次泄漏报告均定位到 [GlobalFunctionTable 静态注册](../../src/function.cpp:38)；该代码未在 M2 修改，本轮只记录，不扩展修复范围。复现方法见 [fixture/runner 验证说明](../../tests/fixtures/inference_admission/README.md)。
+
+M2 完成 runner 接线及其故障证据，不代表独立 executable/CLI 的 A1/A7 或 C ABI 已交付，也不据此宣称全部 PRD hard gates 达成。本轮未运行全量测试、benchmark 或 TSAN。
+
+**M3 已完成（2026-10-22）**。独立工具与构建/CLI 验收记录如下；正式使用方式见 [根 README](../../README.md) 的 Run Inference 节。
+
+| 验证 | 结果与证据边界 |
+|---|---|
+| 干净独立构建 | 在新建 build-infer 中以 BUILD_INFERENCE_TOOL=ON、BUILD_TESTS=OFF、BUILD_BENCHMARKS=OFF 构建并运行工具；未查找 GTest，无 tests 子构建目录、google_benchmark 依赖目录或配置记录。本次复用本地缓存的固定版本 spdlog source，不将其视为离线发行证据 |
+| 构建选项回归 | 另一个干净配置省略工具选项，确认默认 OFF 且无 CLI target；BUILD_BENCHMARKS=ON 的既有构建成功生成 aethermind_benchmark，未运行性能基准 |
+| 正式目标隔离 | 检查生产 compile_commands、object 符号与链接信息；无测试宏、tests include path、RunInferenceWithBuilder、GTest 或 benchmark 依赖 |
+| [CLI 黑盒测试](../../tests/unit/apps/inference/test_inference_cli.py) | 31 项通过（数字/CSV 等矩阵以 subTests 展开）；覆盖严格参数、两种 preset、单行 JSON、退出码、EOS、容量/零生成、代表性精度拒绝与 stderr 隔离 |
+| 聚焦回归 | 重建并运行 193 项 M0/M1/M2 与 TinyLlama scalar-oracle 回归，全部通过；20 个 HF 变体再次通过 checksums 与重生成校验 |
+| 真实库日志 | Linux 测试侧编译 [madvise 故障 shim](../../tests/unit/apps/inference/fixtures/fail_hugepage_advice.c)，仅以 LD_PRELOAD 拒绝 MADV_HUGEPAGE；真实 CPUAllocator warning 写入 stderr，成功 stdout 仍仅为 JSON。未向正式工具添加测试参数、环境变量开关或 fake backend |
+| ASAN/UBSAN | 正式 sanitizer CLI 的 30 项普通黑盒测试通过，未报告地址/UB 错误；排除带外部 preload 的库 warning 用例，后者由普通构建独立验证。detect_leaks=0，既有 LSAN 基线限制沿 M2 记录，未宣称整体零泄漏通过 |
+| 格式与文档 | 新 C++/C 源通过 clang-format，Python 脚本与测试 shim 编译检查通过，git diff --check 通过；文档检查无新增问题或 warning |
+
+M3 提供独立构建与基础 CLI 合同，M4 完成 C++ 验收；M5 冻结 C ABI，M6 已独立完成正式适配与 C 调用验收。
+
+#### M4：C++ 首版验收收口（已完成，2026-10-22）
+
+完整来源、配置、门禁映射、命令、受测文件 hashes 和 sanitizer 限制见 [M4 验收报告](../tests/upper_level_runtime_assembly_m4_validation_2026-10-22.md)。本轮新增测试与文档，不改变生产 runner、kernel、packing 或并发合同。
+
+| 验证 | 结果与证据边界 |
+|---|---|
+| [CLI/直接 Session 对照](../../tests/unit/apps/inference/test_inference_cli_integration.cpp) | 48 项通过：4 个 F32 HF 变体 × 2 preset × 三 token、独立进程重复、精确容量、N=0、EOS、超容量六个行为。期望路径独立配置公开 API，不复用应用 helper，不跨 preset 比较或虚构 HF golden |
+| [CLI 黑盒矩阵](../../tests/unit/apps/inference/test_inference_cli.py) | 38 项通过，覆盖全部 16 个非 FP32 准入变体、合法 FP32 payload 的未知家族/RoPE 编译拒绝、activation 加载拒绝、路径空格与严格参数/输出合同；测试侧 Linux/glibc preload 验证 logger 初始化 OOM 先于模型加载且无 stdout |
+| 聚焦回归与 fixture | 271 项 C++ 回归通过，含 M0/M1/M2、Runtime/KV、Prepare/Prefill/请求分配故障与恢复、TinyLlama scalar oracle、Argmax；20 项 Python 转换测试及 20 个 HF 变体只读重生成校验通过。连同 CLI 对照共 319 项 C++，选中用例无跳过 |
+| ASAN/UBSAN | 独立 instrumented harness 的 48 项对照与正式 sanitizer CLI 的 36 项普通黑盒测试通过，无地址/UB 报告。排除全局 malloc interposer 与两个外部 preload 用例，限制沿前述 M2 记录 |
+| LSAN 基线 | 沙箱外零用例与 48 项运行均 exit 1，报告 1384 bytes / 17 allocations，归一化栈集合完全相同，未增加报告；既有 GlobalFunctionTable 静态注册泄漏未修复，整体零泄漏门禁未通过 |
+| 文档与构建边界 | 同步 README、AGENTS、公共 API、fixture 说明与索引；复核独立 tool 无测试依赖、正式 runner 接线次数和 Runtime 稳定地址。clang-format、git diff --check 通过，文档检查 0 problem / 29 项既有 warning |
+
+M4 完成 A1–A9、A11/A12 在首版 C++ 范围内的验收，A9 带上述 sanitizer 基线限制。M4 当时尚待的共享迁移/合同由 M5 完成，A10/A14 动态实现与 A13 第二消费者由 M6 完成。不据这些结果声明量化、其他家族、7B 性能或全部 PRD hard gates 已达成；未运行全量测试、TSAN 或 benchmark。
+
+CLI 合同（M3 实现，M4 回归）：
 
 ```text
 aethermind_infer --model <hf-directory>
@@ -217,9 +309,12 @@ aethermind_infer --model <hf-directory>
                  --max-new-tokens <nonnegative-integer>
                  [--eos-token-id <uint32>]
                  [--preset o1-plain|o2-packed]
+aethermind_infer --help
 ```
 
-stdout 只打印一行 JSON 整数数组（仅新生成 token，包含生成出的 EOS）；诊断写 stderr，工具进程中的库日志也须导向 stderr，避免污染机器可读输出。整数输入使用严格解析，拒绝负数、空项、尾随垃圾与越界，不新增 JSON/参数解析依赖。成功退出 0，参数错误退出 2，加载/模型准入/编译/Runtime 构建/准备/运行失败退出 1；这些是工具合同，不冻结内部 StatusCode 的数值表示。
+生成成功时 stdout 只打印一行 JSON 整数数组（仅新生成 token，包含生成出的 EOS）；独立 `--help` 是打印 usage 的成功例外，不能与其他选项混用。诊断与工具进程中的库日志写 stderr。选项仅支持独立 flag/value 参数，拒绝未知或重复选项；整数严格限制为无符号 ASCII 十进制，拒绝正负号、空白、CSV 空项、尾随垃圾与越界，不新增 JSON/参数解析依赖。模型路径保留字面值，含空格时由调用方引用。成功/help 退出 0，参数语法或 runner 的 `kParameters` 错误退出 2，加载/模型准入/编译/Runtime 构建/准备/运行失败退出 1；这些是工具合同，不冻结内部 StatusCode 的数值表示。
+
+生成结果先在内存完成 JSON 序列化，再一次写入并 flush stdout；参数、模型、运行或序列化失败不发布部分结果。系统 I/O 故障仍可能导致部分写入，工具不提供输出回滚保证。
 
 日志初始化是 main 的首项可失败操作，必须早于任何 Runtime/模型 API 调用：
 
@@ -233,13 +328,32 @@ runner 在入口边界捕获 `std::bad_alloc` 并返回空 message 的 ResourceE
 
 ### 4.3 P2：接通产品 C ABI
 
-在 P1 通过后，按 [PRD §3.4](../products/aethermind_prd.md#34-c-abi-规范) 冻结 runtime/model/session handle、错误所有权与输出 buffer 合同，再实施适配。接入 C ABI 的 FP32 模型加载路径前，必须将 `ValidateFp32ExecutionInputs` 的唯一实现迁入 inference，提供工具可消费的窄 C++ public header 声明，CLI 与 C ABI 适配层均调用该实现；删除工具中的规则副本，工具不 include inference 的 `src/` 私有头。C ABI 只转换 Status/错误表示，不重新枚举或检查权重 dtype。其他可复用的配置映射/preset helper 按第二个生产消费者的实际需求迁移，参数解析和 I/O 留在工具。
+#### M5：合同冻结与共享策略迁移（已完成，2026-10-22）
+
+- 新增三类 typed opaque handle、固定 v1 配置/version 与完整 owner/error/buffer 合同；统一 PRD 的 error out、错误命名及 Generate 返回码。仅声明新函数，不提供 stub，不声称 runtime C ABI 可链接。
+- 共享 `ValidateFp32ExecutionInputs` 与 `MakeFp32KVCacheOptions` 已归 inference，CLI 直接调用公共头，删除应用副本与旧声明；家族/RoPE 语义继续由 Compile 判定，Runtime/model 比较留 adapter。
+- 真实 C11 translation unit 与 C++20 检查签名、数值、layout 和 opaque 类型；C 编译调用既有 error ABI。修复 `am_error_create` message 构造抛出时的泄漏，确定性 OOM 用例验证命中与分配释放平衡，旧实现负向回归可检出原问题。
+- M5 的聚焦回归、CLI 验证与 sanitizer 证据见 [M5 验收报告](../tests/upper_level_runtime_assembly_m5_validation_2026-10-22.md)。M5 当时尚待的 A10/A14 动态 owner、buffer、error-out、KV 跨对象测试，以及 A13 第二生产消费者，现已由 M6 完成。
+
+#### M6：正式适配与独立 C 验收（已完成，2026-10-22）
+
+M6 在 [c_api_runtime.cpp](../../src/c_api_runtime.cpp) 实现全部冻结函数，Runtime 稳定 heap owner、Model/Session 强 owner 链与逆序销毁封装在 adapter 内，不增加 handle registry。CLI/C adapter 共用 inference 的准入、KV 映射和新增 [CPU preset](../../include/aethermind/inference/cpu_inference_options.h)；应用旧 preset 类型与映射已删除，无兼容转发，参数与 I/O 留在应用。
+
+| 验收 | 结果与范围 |
+|---|---|
+| C ABI | 100 项通过：52 项边界/失败/私有 KV 比较，48 项真实 C caller/独立 C++ Session 对照；含两种 preset、4 个 F32 fixture、重复请求、精确容量、N=0、EOS 和提前释放外部 owner |
+| 分层故障 | 13 项 interposer 用例实际命中，含 Runtime/KV plane/metadata、模型加载/packed Prepare、Session/request、error object/message；验证不发布部分 handle/输出、清理与重试。合法 F32 payload 的未知家族/RoPE 编译失败保留原状态，Runtime 仍可用 |
+| 独立 C 消费者 | 用 cc 编译链接 shared library，无 GTest；O1/plain 与 O2/packed 均成功，外部 Runtime/model handle 提前释放后重复生成一致 |
+| 回归 | 290 项既有聚焦回归、48 项 CLI/Session 对照、38 项 Python CLI 通过；共 438 项选中 C++/C ABI 测试，无跳过 |
+| sanitizer | 87 项普通 C ABI/矩阵 ASAN/UBSAN 通过；13 项 interposer 故障由普通构建独立验证。LSAN 零用例与 87 项均为既有 1384 bytes / 17 allocations、归一化栈相同；整体零泄漏门禁未通过 |
+
+完整命令、来源、受测源码身份、独立 C 程序和 sanitizer 限制见 [M6 验收报告](../tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md)。下面保留已实现的适配约束，作为后续维护合同。
 
 必须先处理 C ABI 中“Runtime 先创建、模型后加载”与 KV 几何来自模型之间的时序：保持当前 builder 行为的首版选择，是 runtime config 显式提供 KV 几何/容量，由 C ABI adapter 在模型加载/编译后执行跨对象校验。`ModelLoader` 与 model 模块不读取 Runtime。若要求模型加载后才能初始化 KV，需单独评审 Runtime 初始化 API，不能直接在 C wrapper 里更改已使用 Runtime 的 KV storage。
 
 这条 C ABI 路径的 Runtime 创建早于模型加载；FP32 模型准入在 Load 后、Compile/Prepare/Generate 前调用共享 helper。须独立记录 KV 分配前可完成的校验及后续 model load/admission/compile 失败的清理证据，不能沿用首版 C++ runner 的 A12/A13 零 KV 分配结论。
 
-**Runtime/model KV 校验的唯一入口**：P2 在 adapter 内拟新增私有 `ValidateRuntimeModelKV` helper，读取 `Runtime::GetKVCacheManager()->layout()` 和通过 Compile 验证的模型元数据。在 `am_model_load` 的 Compile 成功后、Prepare 与模型 handle 发布前调用；不修改 Runtime 或 KV storage。若 KV manager 缺失/未初始化，返回 `FailedPrecondition`。模型几何的规范化沿用 §2.4 的纯配置映射，在 P2 移入 inference 供 CLI/adapter 复用；字段比较只在 adapter helper 实现，不回填 model validator。
+**Runtime/model KV 校验的唯一入口**：M6 在 adapter 内新增私有 `ValidateRuntimeModelKV` helper，读取 `Runtime::GetKVCacheManager()->layout()` 和通过 Compile 验证的模型元数据。在 `am_model_load` 的 Compile 成功后、Prepare 与模型 handle 发布前调用；不修改 Runtime 或 KV storage。若 KV manager 缺失/未初始化，返回 `FailedPrecondition`。模型几何使用 M5 共享 `MakeFp32KVCacheOptions`，跨对象字段比较只在 adapter helper 实现，不回填 model validator；共享映射不代替所有层 compiled state dtype 扫描。
 
 | 字段 | 校验规则与阶段 |
 |---|---|
@@ -254,7 +368,7 @@ runner 在入口边界捕获 `std::bad_alloc` 并返回空 message 的 ResourceE
 
 `N == 0` 沿用 Generate 的参数验证与空输出语义，不计算 `N - 1`，请求路径不查询 KV manager、不预约 KV，也不因 `prompt_len > max_tokens` 拒绝该空生成；prompt 的非空、词表、EOS 和模型 context 校验仍保留。这不取消模型加载阶段的 Runtime/model KV 准入合同。
 
-**Runtime 创建失败的拟定 C ABI 合同**：本提案选择显式 error out，P2 实现前同步 PRD §3.4 的草案签名并冻结；该调整不是已发布 ABI 的兼容性承诺。使用现有 [C 错误接口](../../include/c_api.h) 的 `am_error_handle` 与 `am_error_destroy`，不建立隐式 last-error/TLS 或第二套错误对象实现：
+**Runtime 创建失败的冻结 C ABI 合同**：M5 已同步 PRD §3.4 与公共 C 声明，选择显式 error out；尚未发布 runtime ABI。使用现有 [C 错误接口](../../include/c_api.h) 的 `am_error_handle` 与 `am_error_destroy`，不建立隐式 last-error/TLS 或第二套错误对象实现：
 
 ```c
 am_runtime_t am_runtime_create(const am_config_t* config, am_error_handle* error);
@@ -266,19 +380,21 @@ am_runtime_t am_runtime_create(const am_config_t* config, am_error_handle* error
 - 允许 `error == NULL`，此时仅凭返回 handle 判定成功/失败，不提供隐式诊断通道。
 - 错误对象构造也可能分配失败；此时仍返回 `NULL` 并将提供的 `*error` 保持为 `NULL`，明确表示错误诊断不可用，不再次分配或抛出异常。`am_error_code(NULL)` 沿现有接口返回 UNKNOWN，不能把空错误 handle 当作成功。
 
-上述错误对象的 OOM 降级与所有权必须在 P2 专门测试；PRD 中的 `am_error_t`/`am_error_free` 草案命名须与现有错误接口统一后再冻结，不把这里的声明当作当前已实现接口。
+M5 统一 PRD 的错误命名并修复 error_create；M6 已动态验证 adapter 的 error out、原状态保留与诊断 OOM 降级，并实际链接冻结符号，不以声明通过代替运行证据。
 
-C handle 内部为 Runtime 提供稳定地址；model/session handle 持有必要的 owner 引用，使 destroy 顺序安全。逐一规定 null、长度/容量、required-size、失败时输出状态和重复 destroy 的合同；任何 C++ 异常都不能越过 C 边界，内部 STL/Status/TensorView 不成为 ABI。
+M5 冻结的固定 v1 配置大小为 runtime 48 bytes、session 24 bytes，均有 struct_size/abi_version；新函数签名与状态数值由 C11/C++20 合同检查锁定。C handle 内部为 Runtime 提供稳定地址，model/session 强 owner 链支持外部 runtime/model handle 先释放；重复释放非空 handle 为调用方违约，NULL destroy/unload 为 no-op。
+
+Generate 返回 `am_status_code`，与可选 error 诊断解耦。正数 N 的 output_capacity 须至少 N，短 buffer 在 Generate/预约前返回 OutOfRange，output_len=N 表示安全容量上界，不能称为已生成的实际长度；其他失败长度为零，token buffer 不变。成功后才复制完整结果、写实际长度，N=0 仍走既有语义校验。详细 null、检查优先级、memory 与异常规则以 [冻结合同](../api/runtime-c-abi.md) 为准。
 
 退出条件：C 调用方通过正式 create/load/create/generate/destroy 链得到与 C++ 基线一致的结果，ABI/version/error/buffer/lifetime 测试通过。完成 P1 不能标记 C ABI 已交付。
 
 ### 4.4 P3：文档与可复现命令
 
-实施 P1 时，同步根 README 的构建/运行说明和工具参数；新增 public API 时再同步 [公共 API 参考](../api/public-api.md)、对应 design 与 CHANGELOG。本提案在仅写入方案时维持 Draft。
+实施 P1 时，同步根 README 的构建/运行说明和工具参数；新增 public API 时再同步 [公共 API 参考](../api/public-api.md)、对应 design 与 CHANGELOG。本提案按里程碑证据更新状态，M0 测试资产完成不等同于 P1 入口或 P2 C ABI 交付。
 
 固定 fixture、公开 Generate 回归、CTest/sanitizer/ISA 与模型性能证据的实施细化见 [13 号提案](13-deepinfer-quality-and-validation.md)。其中 teacher-forcing 和 logits/KV 观测仅属测试/开发诊断路径，不向本工具或公开 Generate 增加测试模式；本提案的产品入口与失败边界仍独立验收。
 
-以下是 P1 实施后的目标命令，目前选项和目标尚不存在；`MODEL_DIR` 必须指向由 CI/本地准备的合法、受支持的 FP32 HF fixture，并具有 §6.1 的来源与校验记录：
+以下构建选项和目标已由 M3 实现；`MODEL_DIR` 必须指向由 CI/本地准备的合法、受支持的 FP32 HF fixture，并具有 §6.1 的来源与校验记录。用户说明以 [根 README](../../README.md) 的 Run Inference 节为准：
 
 ```bash
 cmake -S . -B build-infer -DBUILD_INFERENCE_TOOL=ON -DBUILD_TESTS=OFF -DBUILD_BENCHMARKS=OFF
@@ -286,7 +402,7 @@ cmake --build build-infer --target aethermind_infer -j
 ./build-infer/apps/inference/aethermind_infer --model "$MODEL_DIR" --tokens 7 --context-tokens 8 --max-new-tokens 3 --preset o1-plain
 ```
 
-当前根 CMake 的 `FetchContent_MakeAvailable(spdlog google_benchmark)` 无条件执行，即使 `BUILD_BENCHMARKS=OFF` 也可能下载/配置 benchmark；上述命令本身不能证明依赖已收口。P1 必须完成 §4.2 的条件化修改，在干净构建目录验收 OFF 时不获取/配置 google_benchmark、ON 时 benchmark 目标仍可构建。spdlog 仍是正式依赖；A1 不承诺无需网络下载、install/export 或离线发行，这些沿 [02 工程质量方案](02-engineering-quality-system.md) 独立验收。
+M3 已完成 benchmark FetchContent 条件化，并在干净构建目录验收 OFF 时不获取/配置 google_benchmark、ON 时 benchmark 目标仍可构建。spdlog 仍是正式依赖；A1 不承诺无需网络下载、install/export 或离线发行，这些沿 [02 工程质量方案](02-engineering-quality-system.md) 独立验收。
 
 ## 5. 风险与依赖
 
@@ -308,15 +424,15 @@ cmake --build build-infer --target aethermind_infer -j
 
 ## 6. 验收标准
 
-以下均为待执行门禁，不是本次文档编写的验证结果。
+以下为全计划验收门禁。M0 的生成、校验与 Loader 资产证据独立记录在 §4.0，不代表 runner/CLI 或 C ABI 门禁已通过。
 
 ### 6.1 证据分层与 fixture 边界
 
 | 层次 | 负责证明 | 资产与实施要求 |
 |---|---|---|
 | 底层数值与资源合同 | 实际 Prefill→两次 Decode、逐步 logits/Token IDs/KV/commit watermark、Generate 与 scalar oracle 对照、故障注入及资源恢复 | 复用 `TinyLlamaExecution`、Runtime/KV、preparation 和 Argmax 测试；按对应 suite/preset 记录执行结果 |
-| runner 编排单测 | 配置映射、先 Compile 后 TryBuild、StatusCode 传播、runner 边界异常处理和失败清理 | 待新增；链接工具私有 runner，共用正式编排，使用 §4.2 的 test-only provider/factory 注入点和既有分配故障测试设施 |
-| CLI 黑盒集成 | 参数解析、CLI→RunInference→Generate 接线、preset 选择、stdout/stderr/退出码，以及与直接 Session 的输出等价性 | 待新增；启动真实工具和默认 CpuBackend，对同一 HF fixture 与同一请求逐 preset 比较直接 `InferenceSession` 结果 |
+| 应用 helper 与 runner 编排单测 | 配置/请求/准入合同、先 Compile 后 TryBuild、StatusCode 传播、runner 边界异常处理和失败清理 | M1/M2 已实现 helper 与真实 runner 测试；共用正式实现，provider/factory 注入入口仅在测试构建启用 |
+| CLI 黑盒集成 | 参数解析、CLI→RunInference→Generate 接线、preset 选择、stdout/stderr/退出码，以及与直接 Session 的输出等价性 | M3 已实现基础黑盒测试；M4 已补齐同 HF fixture/请求逐 preset 的直接 `InferenceSession` 对照与完整验收矩阵，结果见 §4.2 与独立报告 |
 
 现有 [TinyLlama 执行测试](../../tests/unit/inference/test_direct_prefill_decode.cpp) 的 `TinyLlamaExecution` 使用内存构造的 synthetic checkpoint，并按 `O1Plain` / `O2Packed` 参数化。`TinyTiedGqaLlamaMatchesScalarOracleAndReusesDecodeBindings` 实际执行 Prefill 和两次 Decode，比较逐步 logits、tokens、KV 与提交位置；`TinyGenerateMatchesScalarOracleAndStartsFreshEachCall` 对照完整 Generate。这些是底层阶段与数值证据，不是 HF 目录或 CLI 的 golden。
 
@@ -328,7 +444,7 @@ CI 必须固定 HF fixture 来源/revision、config 与权重校验值、prompt 
 
 #### A13 HF fixture 生成与校验
 
-保留 §6.4 的 loader→runner 集成门禁。P1 的测试资产交付必须包含以下受版本控制的文件；目前均为拟新增文件，不能把路径列出或 helper 单测通过视为集成资产已就绪：
+保留 §6.4 的 loader→runner 集成门禁。以下受版本控制的文件归 M0 测试资产交付，P1 复用其产物；不能把资产生成或 Loader 接受等同于 runner 准入门禁通过：
 
 - `tools/generate_fp32_admission_hf_fixtures.py`：测试侧离线转换器，输入已准备的 FP32 HF 目录，输出完整 HF 变体目录；不属于模型加载或生产 normalizer。
 - `tests/fixtures/inference_admission/recipe.json`：锁定 base 的来源仓库与 revision（或归档 artifact ID）、`config.json` / `model.safetensors` 的 SHA-256、转换规则及变体清单。不以本地目录名或浮动 `main` 作为来源身份。
@@ -351,7 +467,7 @@ CI 必须固定 HF fixture 来源/revision、config 与权重校验值、prompt 
 
 转换器采用 Python 标准库实现这一窄格式，不引入 torch/safetensors 运行依赖：读取 Safetensors 的 header/offsets，F32→F16 使用 `struct.pack('<e', value)`，F32→BF16 对原始 float32 bits 做 round-to-nearest-even（`(bits + 0x7fff + ((bits >> 16) & 1)) >> 16`），以 little-endian 16-bit 元素写入。非有限源值、F16 越界或转换后非有限值拒绝，不饱和截断。按 tensor 名排序重写 dtype、连续 offsets 和真实 payload；header 使用 UTF-8、sort_keys、紧凑 JSON，空格补齐到 8-byte 边界，并以 little-endian uint64 写入补齐后的 header 长度。config 使用 sort_keys、2-space 缩进、UTF-8 与单个末尾 LF；不得只改 dtype 标签。脚本自身需测试正负零、精确可表示值、舍入 tie 与拒绝边界，并以独立读取校验输出 dtype、offsets、bytes；这些是资产生成测试，不代替执行 kernel 的数值验证。
 
-以下是脚本实现后的拟定命令，不代表当前已有脚本或生成结果：
+M0 的生成与只读校验命令如下：
 
 ```bash
 python3 tools/generate_fp32_admission_hf_fixtures.py \
@@ -364,6 +480,8 @@ python3 tools/generate_fp32_admission_hf_fixtures.py \
 ```
 
 生成操作不修改 base，只写 gitignored 的变体目录及 `.models/inference-admission/generated-manifest.json` 实际清单。开发者首次生成后评审该清单，将预期内容提交为 `tests/fixtures/inference_admission/checksums.json`；`--check` 复核 source、脚本/recipe 身份、输出文件与逐 tensor 校验值，并在临时目录重复生成对照，退出非零表示缺失或不一致，不更新预期清单。Python 版本、脚本/recipe 版本和每个变体的 config 变更也记入生成清单；文件排序、JSON 序列化、padding 固定规则须写入 recipe，输出不包含时间戳或绝对路径等机器相关内容。脚本或规则变化时，由开发者重新生成并评审提交新的 checksums，CI 不自动接受新值。
+
+Python implementation/version 作为生成环境记录保留；`--check` 不以该环境描述字段的差异拒绝字节一致的产物，其余来源、规则、文件与 tensor 内容仍须严格匹配。
 
 CI 顺序为准备锁定的 FP32 base → 生成变体 → `--check` → 对每个变体先断言 `ModelLoader::Load` 成功 → 运行 runner/CLI 的 A13 用例。拒绝变体须确认为模型准入阶段的 `Unimplemented`，且无 KV plane 分配；loader 提前失败不算 A13 通过。脚本、recipe 或实测 checksums 尚未交付时，将 loader→runner 证据标为未取得，不能降格成 synthetic helper 单测后仍宣称 A13 完成；不得填入未生成的占位校验值。
 
@@ -388,18 +506,19 @@ CI 顺序为准备锁定的 FP32 base → 生成变体 → `--check` → 对每�
 
 Argmax 的等值规则由 [reference 合同](../../src/backend/cpu/kernels/argmax/argmax_internal.h) 与 [CPUKernelArgmax 测试](../../tests/unit/backend/cpu/kernels/test_cpu_argmax_kernel.cpp) 约束。近似并列不属于等值 tie，仍按对应 preset 实际算出的 logits 取最大，不在 CLI 引入 epsilon 合并规则。
 
-### 6.3 A9 失败证据与待补项
+### 6.3 A9 失败证据与后续边界
 
-以下现有资产只表示源码中已有对应测试，本次未重新运行；runner/CLI 项全部待实施，不以底层通过替代新增编排代码的验证。
+以下既有资产保留其底层证据归属；M1 helper 验收见 §4.1，M2 runner、M3 基础 CLI 与 M4 完整 C++ 验收见 §4.2。不以底层或 helper 通过替代新增编排代码的验证；LSAN 未清零和完整 ASAN 单测的 interposer 启动限制继续保留。
 
 | 失败边界 | 现有底层资产 | 本入口新增的证据 |
 |---|---|---|
 | 加载与模型编译 | [ModelCompiler 测试](../../tests/unit/compiler/test_model_compiler.cpp) 的输入拒绝，以及 model 的配置/构图拒绝测试；HF 便利入口的缺路径用例只证明加载失败传播 | runner 用合法权重加不支持家族/未知 RoPE 触发真实 Compile 失败（A12）；CLI 测缺路径、非法模型与对应退出码 |
-| FP32 模型准入 | loader 对 F16/BF16 的接受不是首版执行支持证明，产品准入 helper 尚待实现 | 按 A13 检查真实权重 dtype，runner 在 Compile/TryBuild 前返回 Unimplemented；CLI 检查准入诊断与退出码 1 |
+| FP32 模型准入 | loader 对 F16/BF16 的接受不是首版执行支持证明；M1 已实现产品准入 helper 与 Load→helper 测试 | M2 已接入唯一 helper 并检查零 KV 分配；M4 已验证全部 16 个拒绝变体的 CLI 模型准入阶段、诊断、空 stdout 与退出码 1 |
 | Runtime 注册表与 KV 分配 | [RuntimeBuilderTryBuild](../../tests/unit/runtime/test_runtime_builder.cpp) 的注册表 OOM；[KVCacheManagerInitAllocationFailure](../../tests/unit/kv_cache/test_kv_cache_manager.cpp) 的首/第二 plane、metadata 分配失败及清理/重试 | runner 通过失败 allocator provider 确定性触发 KV 分配错误，检查原 StatusCode 和已有分配释放；不以超大 capacity 或系统 OOM 作为 CI 手段 |
 | 模型准备 | [HF 准备失败测试](../../tests/unit/inference/test_load_prepare_executable_model.cpp) 先成功编译，再以无 CPU backend 的 Runtime 验证 Prepare 失败及状态传播 | runner 测试注入失败 backend factory，在 Prepare 阶段确定性失败，验证状态传播及 Runtime/KV 清理；不要求默认 CLI 暴露 backend 开关 |
 | 执行与请求分配 | [TinyLlama 执行与 workspace 测试](../../tests/unit/inference/test_direct_prefill_decode.cpp) 的执行失败/commit 不前移/清理，及 request buffer、binding、activation、workspace 分配失败与恢复 | runner 用测试 backend 返回明确执行错误，验证已有 Generate 错误的传播和资源清理；所有数值与阶段证据仍使用真实 CpuBackend |
 | runner 自身异常边界 | 既有 `test_malloc_interposer` 提供限定分配故障设施；它不是 runner 测试已经完成的证明 | 在 runner 测试目标内确定性注入 `std::bad_alloc`，验证空消息 ResourceExhausted 和清理；CLI 独立测试参数错误、stdout 无部分结果、stderr 与退出码映射 |
+| 进程 logger 初始化 | main 的首项可失败操作，必须早于模型/Runtime 调用 | M4 测试侧 preload 在 static initialization 后拒绝下一次 malloc，三次验证 logger OOM 先于缺路径的 Load 失败，固定 stderr 诊断、空 stdout、退出 1；正式工具无注入开关 |
 
 runner 的失败测试与 CLI 黑盒成功测试共同覆盖新接线；底层故障资产仍负责具体分配点、KV transaction 和恢复合同。依赖 malloc interposer 的用例须记录平台适用性及实际注入命中；环境不支持或用例跳过应标为证据未取得。不得为本提案新增公开故障注入接口或把测试 allocator/backend 接入正式工具。
 
@@ -407,7 +526,7 @@ A12 复用 runner 的 test-only allocator 观测，不新增生产计数 API；�
 
 ### 6.4 A13 FP32 准入回归
 
-以下均为待新增测试。helper 单测定位 hint 分支与逐角色遍历；loader→runner 集成使用 §6.1 明确生成且通过 checksums 校验的 HF 变体，先证明 loader 成功，再检查模型准入阶段、`Unimplemented`、实际/要求 dtype 诊断及零 KV 分配。不能用手工修改的无来源目录、synthetic ResolvedModelWeights 单测或较晚的 Compile/Prepare/Generate 失败替代这一集成门禁。
+M1 已交付 helper 的 hint/逐角色回归及真实 M0 HF 变体的 Load→helper 准入测试；M2 已接入完整 loader→runner 集成，使用 §6.1 的变体先证明 loader 成功，再检查模型准入阶段、`Unimplemented` 和计数 allocator 零 KV 分配。M4 已收口全部 16 个拒绝变体的 CLI 黑盒矩阵，以及 4 个 F32 变体/两种 preset 的 CLI/Session 对照；P2 共用策略另行验收。helper 测试不替代 runner 调用位置或分配顺序证据；不能用手工修改的无来源目录、synthetic 单测或较晚的 Compile/Prepare/Generate 失败替代这一集成门禁。
 
 | hint / 实际权重 | 预期 |
 |---|---|
@@ -420,11 +539,11 @@ A12 复用 runner 的 test-only allocator 观测，不新增生产计数 API；�
 
 通过 loader 的 F16/BF16 fixture 必须具有匹配 dtype 的真实 payload、bytes 和一致的 linear dtype；仅改 `RawWeightView.dtype` 或制造混合 linear 使 loader 提前失败，不是准入测试。逐角色 helper 单测与 loader→runner 集成证据分开记录。未使用的额外 tensor 不纳入 FP32 执行准入；lm-head 缺失是否合法及其他结构错误继续由原 validator 测试负责。
 
-P2 迁移时复用同一组 helper 准入用例，并对 CLI/C ABI 的调用位置与错误表示适配分别回归，不保留两套 dtype 白名单或遍历实现。零 KV 分配是首版 runner 的顺序证据；C ABI 若已在模型加载前创建 Runtime，则按 §4.3 独立验收，不能从共用 helper 推导其分配顺序相同。
+M5 将唯一实现迁入 inference，M6 已回归两个生产消费者；应用不保留 dtype 白名单或转发实现。零 KV 分配是首版 runner 的顺序证据；C ABI 在模型加载前已创建 Runtime，M6 独立验收后续失败的资源保留/清理，不从共用 helper 推导分配顺序相同。
 
 ### 6.5 A14 P2 跨对象与错误报告回归
 
-以下全部待 P2 实施，不代表当前 C ABI 已交付。
+以下门禁已由 M6 在首版范围内实施和验证，数量与 sanitizer 限制见独立报告；不代表全部 PRD hard gates 已通过。
 
 - adapter helper 单测逐一改变 `num_layers`、`num_kv_heads`、逻辑 `head_dim` 和 `kv_dtype`，要求模型加载失败、诊断定位字段，且不发布 model handle 或改写已有 Runtime/KV；缺失 KV manager 单独拒绝，不能只检查首层 K/V state dtype。
 - 容量小于或等于模型 context 上限均可通过模型加载，超过上限拒绝；请求的 `prompt + N - 1` 等于容量成功、超过拒绝、算术溢出拒绝。`N == 0` 验证无减一溢出、无 reservation，且不会额外要求 prompt 满足物理 KV capacity。

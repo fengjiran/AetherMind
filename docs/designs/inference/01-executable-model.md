@@ -1,9 +1,9 @@
 # ExecutableModel 模块设计
 
 - **状态**: Current（描述已验证实现；只写仓库事实）
-- **版本**: 1.4
+- **版本**: 1.6
 - **日期**: 2026-09-23
-- **最近更新**: 2026-10-12
+- **最近更新**: 2026-10-22
 - **来源提案**: [07 号提案：ExecutableModel 生产准备入口方案](../../improvement-plan/07-executable-model-preparation.md)（Implemented）
 - **关联代码**: [include/aethermind/inference/](../../../include/aethermind/inference/)（`executable_model.h`、`weight_binding_metadata.h`）/[src/inference/](../../../src/inference/)
 - **上游依赖**: compiler（`LoweredModelArtifact`、`BuildWeightPackingRequests`）、model（`LoadedModel`/`ResolvedModelWeights`、`ResolveWeightBinding`、`PrepackWeightRequests`、`PackedWeightCollection`）、execution（`ExecutionPlanBuilder`、`ComputeExternalReadRequirements`、`ExternalTensorBindings`）、runtime（`Runtime` 提供 backends/allocator）、graph/operators 纯数据 payload 契约（`WeightValue`/`ConstantValue`）
@@ -27,6 +27,14 @@
 - **所有权**：`ExecutableModel` 按值持有 artifact、`PackedWeightCollection`、`WeightBindingMetadata`、`ExternalTensorBindings`、`ExecutionPlan`；绑定表只借用其中数据，不复制权重。
 - **明确不做**：不承担算子语义、kernel resolve 算法、weight materialization 算法（packing recipe）或 KV 物理存储；不提供 model inputs 绑定（由 Session 按 phase 追加）；不暴露 packed store 访问器。
 - **生命周期**：`LoadAndPrepareExecutableModel` 借用调用方的 `Runtime`，不创建或拥有 Runtime/Session；Runtime 必须保持原地址并长于返回的 `ExecutableModel`。整体顺序为 `Runtime` > `ExecutableModel` > `InferenceSession` > `ExecutionContext`；`PreparedExecutionBindings` 借用模型数据指针，必须先于 `ExecutableModel` 释放。
+
+### 2.1 上层共享 FP32 策略
+
+[model_execution_policy.h](../../../include/aethermind/inference/model_execution_policy.h) / [实现](../../../src/inference/model_execution_policy.cpp) 提供 `ValidateFp32ExecutionInputs(const LoadedModel&)` 和 `MakeFp32KVCacheOptions(const HfModelConfig&, size_t)`：前者只读 hint 与全部必需 resolved roles，后者返回已有 `KVCacheRuntimeOptions` owning 值，校验容量、正数/安全转换及逻辑 head_dim。策略不读/转换 payload、不分配 KV、不访问 backend、不保留借用；诊断 OOM 返回空 message 的 ResourceExhausted。
+
+该产品准入策略由上层入口显式调用，不改变通用 Loader/Compile/Prepare 的精度支持契约。M5 已移除应用中的实现副本，CLI 与 M6 C adapter 消费同一公共头。Runtime/model KV 跨对象比较和已编译图所有层 state dtype 扫描属于 adapter 私有 helper，不由此共享配置映射代替。完整边界见 [Runtime C ABI 合同](../../api/runtime-c-abi.md)。
+
+`cpu_inference_options.h` 进一步提供共享 `CpuInferencePreset` 与 `MakeCpuCompileOptions`，由 CLI/C adapter 选择 O1/plain 或 O2/packed、CPU/kBoth；原应用类型与映射实现已删除，无兼容转发。它只生成编译配置，不加载/准入、resolve 或物化权重，不将产品 preset 放进 compiler 或 Runtime。
 
 ## 3. 关键数据结构
 
@@ -159,3 +167,5 @@ model inputs 不进绑定表：token/position 由 Session 按 phase 追加，重
 | 2026-09-26 | 1.2 | 记录 `LoadAndPrepareExecutableModel` 的职责、显式编译配置与 Runtime 生命周期；区分 O1+plain 文件到 Generate 的覆盖范围和 O2+packed 的 prepare 证据 |
 | 2026-10-05 | 1.3 | `PrepackWeightRequests` 签名改为返回 `StatusOr<PackedWeightStore>`：store 由函数创建并绑定批内 source，失败全有或全无（不再存在部分打包的调用方 store）；生产准备不再显式 `SetSourceId`，§6 第 3 步同步 |
 | 2026-10-12 | 1.4 | `WeightBindingStorage` 更名为 `WeightBindingMetadata`（文件同步为 `weight_binding_metadata.{h,cpp}`、测试为 `test_weight_binding_metadata.cpp`）：原名暗示它拥有权重数据，实际只拥有绑定所借用的 shape/stride 数组；`ExecutableModel` 成员与准备期局部变量随之改为 `binding_metadata_`/`binding_metadata`。同时记录 stride 累加改用 `CheckOverflowMul` + `AM_CHECK`（§3.2），消除 `int64_t` 有符号溢出 UB，新增死亡测试 `ShapeProductOverflowDeath`（该文件 8 例 → 9 例） |
+| 2026-10-22 | 1.5 | M5 将 FP32 产品准入和模型 KV 配置映射的唯一实现迁入 inference 公共 model_execution_policy.h；明确其与通用 Prepare、C adapter 跨对象比较的职责边界。 |
+| 2026-10-22 | 1.6 | M6 C adapter 与 CLI 共用 FP32/KV 策略及新增 CPU preset 接口；跨对象比较仍归 adapter。 |

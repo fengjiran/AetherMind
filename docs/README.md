@@ -80,7 +80,7 @@
 | [07-executable-model-preparation.md](improvement-plan/07-executable-model-preparation.md) | `LoweredModelArtifact → ExecutableModel` 生产准备入口、权重绑定映射与模块归属 | Implemented |
 | [08-kv-cache-and-attention-capability-evolution.md](improvement-plan/08-kv-cache-and-attention-capability-evolution.md) | KV owner/epoch 正确性、CPU Attention 优化准入与 Paged KV 长期触发条件 | Draft |
 | [09-qwen-and-moe-architecture-support.md](improvement-plan/09-qwen-and-moe-architecture-support.md) | 公共合同→Qwen3 Dense→Qwen3 MoE 主线：R1–R8 改造、binding 冷路径 workspace、统一 decoder I/O、多 packed bindings 与验收 | Draft |
-| [10-upper-level-runtime-assembly.md](improvement-plan/10-upper-level-runtime-assembly.md) | 模型配置到 Runtime/模型/Session 的独立 C++ 组装入口、生命周期与分阶段 C ABI 验收 | Draft |
+| [10-upper-level-runtime-assembly.md](improvement-plan/10-upper-level-runtime-assembly.md) | CPU FP32 的独立 C++/C ABI 入口、生命周期、共享策略与分层验收（M0–M6） | Implemented |
 | [11-fp16-bf16-execution-support.md](improvement-plan/11-fp16-bf16-execution-support.md) | FP32 兼容执行、W16/A32、独立 KV16 与 A16 的精度合同、所有权、实施阶段与验收门禁 | Draft |
 | [12-cuda-backend-execution-support.md](improvement-plan/12-cuda-backend-execution-support.md) | 单 GPU 同步基线、device placement、显存权重、stream 完成与 KV 事务，及 FP32→FP16/BF16→性能优化的实施与验收 | Draft |
 | [13-deepinfer-quality-and-validation.md](improvement-plan/13-deepinfer-quality-and-validation.md) | 借鉴 DeepInfer 的模型 golden、teacher-forcing 数值等价、CTest/sanitizer/ISA、模型级 benchmark 与交付验证实施工作包 | Draft |
@@ -116,6 +116,7 @@
 ### API 参考（docs/api/）
 
 - [api/public-api.md](api/public-api.md)：公共 API（C ABI + 公开 C++ 构建块）语义参考，与头文件 Doxygen 同源同步。
+- [api/runtime-c-abi.md](api/runtime-c-abi.md)：M5 冻结、M6 实现的 Runtime C ABI v1（config/version、opaque owner、error、buffer）及 C 调用验证边界。
 
 ### 评审报告（docs/reviews/）
 
@@ -134,6 +135,9 @@
 | 文档 | 定位 | 状态 |
 |---|---|---|
 | [size_class_benchmark_20260310.md](tests/size_class_benchmark_20260310.md) | size_class 基准验证 | Current |
+| [upper_level_runtime_assembly_m4_validation_2026-10-22.md](tests/upper_level_runtime_assembly_m4_validation_2026-10-22.md) | 10 号方案 M4：C++ CLI/Session 对照、失败边界、fixture 与 sanitizer 基线 | Current |
+| [upper_level_runtime_assembly_m5_validation_2026-10-22.md](tests/upper_level_runtime_assembly_m5_validation_2026-10-22.md) | 10 号方案 M5：冻结 C ABI、共享准入/KV 映射、C11 合同与错误对象 OOM | Current |
+| [upper_level_runtime_assembly_m6_validation_2026-10-22.md](tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md) | 10 号方案 M6：正式 C ABI、纯 C caller、owner/buffer/KV/故障与 sanitizer 验收 | Current |
 
 ### 问题跟踪（docs/issues.md）
 

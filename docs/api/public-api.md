@@ -2,11 +2,21 @@
 
 > 本文件汇总 AetherMind 公共 API 的语义，与头文件 Doxygen 注释**同源同步**：修改头文件注释必须同步本文件，反之亦然（[文档系统规范](../guides/documentation-guide.md) §7.3）。
 >
-> 构建选项与运行配置以根 [README.md](../../README.md) 为单一事实源，本文件不复制其表格。当前产品目标 API（`am_session_generate`、`Session::Generate`）尚未实现，见 [PRD](../products/aethermind_prd.md)，不在此列。
+> 构建选项与运行配置以根 [README.md](../../README.md) 为单一事实源，本文件不复制其表格。C++ 已提供 `PrepareExecutableModel` 与 `InferenceSession::Generate`，M6 已接通 runtime/model/session C ABI。当前已验证范围为 CPU FP32 Llama Dense，不以 loader 接受范围推导执行支持；能力与产品目标见 [PRD](../products/aethermind_prd.md) 和 [10 号方案](../improvement-plan/10-upper-level-runtime-assembly.md)。
 
 ## 1. C ABI（include/c_api.h）
 
-> 当前 C ABI 仅提供对象引用计数、错误处理与 traceback 原语；`am_session_generate` 为当前产品冻结目标（PRD 定义）。
+> Runtime/model/session 的 v1 合同由 M5 冻结、M6 实现，声明见 `include/c_api.h`，实现见 `src/c_api_runtime.cpp`。完整 [Runtime C ABI 合同](runtime-c-abi.md) 规定 version/config、owner、error 与 buffer 规则；[M6 报告](../tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md) 记录纯 C 调用与验证边界。既有对象引用计数、错误处理和 traceback 原语保留。
+
+| Runtime C 接口 | 返回与生命周期 |
+|---|---|
+| `am_get_abi_version()` | 返回 `(major << 16) \| minor`，当前为 `0x00010000`；不分配 |
+| `am_runtime_create(config, error)` / `am_runtime_destroy(runtime)` | 显式 CPU/FP32 KV 几何与容量创建 Runtime，失败返回 NULL；destroy 释放调用方 handle，model/session owner 仍可保活资源 |
+| `am_model_load(runtime, path, error)` / `am_model_unload(model)` | Load→共享 FP32 准入→Compile→唯一跨对象 KV 校验→Prepare；失败不发布 model，已有 Runtime/KV 不变 |
+| `am_session_create(model, config, error)` / `am_session_destroy(session)` | 复制生成配置并保活 model/Runtime；非空 handle 仅释放一次，NULL destroy/unload 为 no-op |
+| `am_session_generate(session, input, len, output, capacity, output_len, error)` | 返回 am_status_code；短 buffer 返回 N 上界且不执行，成功才复制完整新 IDs 并写实际长度，其他失败长度为零/输出不变。详见完整合同的错误优先级与 N=0 规则 |
+
+所有创建的 error out 可省略，提供时入口先清空、不释放旧值；诊断 OOM 时可无 error 对象，Generate 仍保留失败码。共享 Runtime 的调用由宿主串行化；C wrapper 不更改宿主 logger 或增加并发支持。
 
 ### `int IncObjectRef(ObjectHandle obj_ptr)`
 
@@ -33,10 +43,10 @@
 | 项 | 内容 |
 |---|---|
 | 简介 | 创建带状态码与消息的错误对象（对应 `@brief`） |
-| 参数 | `code`：`am_status_code` 枚举；`message`：错误描述字符串（对应 `@param`） |
-| 返回值 | 错误句柄，必须由 `am_error_destroy` 释放（对应 `@return`） |
-| 语义 | 错误对象生命周期独立；句柄所有权转移给调用方（对应 `@note`） |
-| 前置条件 | `message` 指向有效 NUL 结尾字符串（对应 `@pre`） |
+| 参数 | `code`：`am_status_code` 枚举；`message`：复制的错误描述字符串，NULL 表示空字符串（对应 `@param`） |
+| 返回值 | 错误句柄，必须由 `am_error_destroy` 释放；对象或 message 分配失败返回 NULL（对应 `@return`） |
+| 语义 | 错误对象生命周期独立；句柄所有权转移给调用方；初始化失败自动释放部分构造对象，不传播异常（对应 `@note`） |
+| 前置条件 | 非 NULL `message` 指向有效 NUL 结尾字符串（对应 `@pre`） |
 
 ### `void am_error_destroy(am_error_handle error)`
 
@@ -85,6 +95,28 @@
 | 语义 | 不构建图、不 resolve kernel、不 prepack；所有失败通过 Status 返回（对应 `@note`） |
 | 前置条件 | `model_dir` 为有效可读目录（对应 `@pre`） |
 
+### 共享 FP32 执行策略（include/aethermind/inference/model_execution_policy.h）
+
+| 接口 | 语义与所有权 |
+|---|---|
+| `Status ValidateFp32ExecutionInputs(const LoadedModel&)` | 检查 scalar Float32 hint 与全部必需 resolved weight roles，支持 tied lm-head fallback；只读 metadata，不读/转换 payload、不保留借用。精度不支持返回 Unimplemented，非法 metadata 返回相应错误，诊断 OOM 返回空 message 的 ResourceExhausted。家族/算子语义仍由 Compile 判定。 |
+| `StatusOr<KVCacheRuntimeOptions> MakeFp32KVCacheOptions(const HfModelConfig&, size_t context_tokens)` | 将 Loader 已验证的模型几何与显式 capacity 映射为 owning KV 配置：CPU 首版 Float32、64-byte alignment、逻辑 head_dim；只有 absent head_dim=0 才按整除 fallback。校验正数、安全转换和模型 context 上限，不分配 KV、不访问 backend、不比较既有 Runtime/model。 |
+
+M5 将这两项规则归入 inference，CLI 与 M6 C adapter 消费同一实现，没有旧应用 namespace alias 或兼容转发。跨对象 KV 相等与 compiled state dtype 校验仍属于 adapter。
+
+### 共享 CPU preset（include/aethermind/inference/cpu_inference_options.h）
+
+`CpuInferencePreset::kO1Plain` / `kO2Packed` 和 `MakeCpuCompileOptions(CpuInferencePreset)` 为 CLI/C adapter 共用的显式编译策略。返回 owning ModelCompileOptions：O1/plain 或 O2/packed、CPU、kBoth，activation/weight dtype 由 lowering 推导；未知枚举返回 InvalidArgument，诊断 OOM 返回空 message 的 ResourceExhausted。该函数不加载/准入模型、不 resolve kernel、不分配 storage，也不暗含性能优劣。
+
+### `ModelCompiler`（include/aethermind/compiler/model_compiler.h）
+
+| 接口 | 语义与所有权 |
+|---|---|
+| `Compile(std::unique_ptr<LoadedModel>, const ModelCompileOptions& = {})` | 返回 `StatusOr<LoweredModelArtifact>`。消费模型，依次构建语义图、执行 semantic passes、lowering；artifact 拥有 `LoadedModel` 及原始权重 backing，不依赖 Runtime，不 resolve kernel 或物化权重。 |
+| `LoadAndCompile(const std::filesystem::path&, const ModelCompileOptions& = {})` | 加载目录后调用同一编译链，返回拥有模型的 artifact。 |
+
+`ModelCompileOptions` 包含 semantic optimization 与 lowering 配置。默认 O2/plain 组合当前不能直接作为 CPU 可执行默认值；入口使用上述共享 preset 显式选择 O1/plain 或 O2/packed，编译为 `ExecPhase::kBoth`。RunOptions、参数解析与 Token IDs I/O 仍属应用私有实现。
+
 ### `RuntimeBuilder`（include/aethermind/runtime/runtime_builder.h）
 
 | 接口 | 签名 | 语义要点 |
@@ -94,6 +126,31 @@
 | `RegisterBackendFactory` | `RuntimeBuilder& RegisterBackendFactory(DeviceType, std::unique_ptr<BackendFactory>)` | 注册后端工厂；所有权转移 |
 | `Build` | `Runtime Build()` | 装配 AllocatorRegistry + BackendRegistry + KVCacheManager 为 `Runtime`；初始化失败（含分配失败）时 abort |
 | `TryBuild` | `StatusOr<Runtime> TryBuild()` | 与 `Build` 相同的装配，但把 KV 初始化失败与注册阶段的分配失败作为 Status 返回（分配失败为空 message 的 `kResourceExhausted`）。成功后消费 pending 注册；失败时两个 pending 列表只保留从未转移的项，builder 仍可复用而不会 abort，但已转入被丢弃 registry 的注册项不可恢复 |
+
+### `PrepareExecutableModel` / `ExecutableModel`（include/aethermind/inference/executable_model.h）
+
+| 接口 | 语义与所有权 |
+|---|---|
+| `StatusOr<ExecutableModel> PrepareExecutableModel(Runtime&, LoweredModelArtifact)` | 唯一生产准备入口；消费 artifact，编排权重物化、执行计划构建与 immutable weight/constant bindings。失败不发布部分准备的模型。 |
+| `LoadAndPrepareExecutableModel(Runtime&, const std::filesystem::path&, const ModelCompileOptions&)` | 组合加载、编译、准备的便利入口，要求 Runtime 已存在且编译选项显式给出。CLI 为读取模型配置并在 Compile 成功后分配 KV，改用上述独立步骤。 |
+| `ExecutableModel::plan(ExecPhase)` / `immutable_weight_bindings(ExecPhase)` | 返回模型拥有的 plan/binding table 的借用指针，phase 不匹配报错；Prefill/Decode 当前共享一个不可变 plan。binding table 不含请求 token/position 输入。 |
+| `artifact_id()` / `phase()` / `context_limit()` / `vocab_size()` | 查询编译产物身份、phase、模型 context 上限与词表大小。 |
+| `IsPreparedFor(const Runtime&)` | 检查模型 resolve 的 kernels 是否属于该 Runtime。 |
+
+`ExecutableModel` 拥有 compiler artifact、packed artifacts、binding metadata、immutable bindings 与 plan，可 move-construct，不可复制或赋值。传给 Prepare 的 Runtime 从此必须保持地址稳定、不可移动，并长于模型和 Session；模型必须长于从其 plan/bindings 派生的 prepared bindings。底层权重 storage 由模型保活，resolved kernel 所借用的 backend 仍由 Runtime 保活。
+
+### `InferenceSession` / `GenerationConfig`（include/aethermind/inference/inference_session.h）
+
+| 接口 | 语义与所有权 |
+|---|---|
+| `static StatusOr<InferenceSession> Create(Runtime&, std::shared_ptr<const ExecutableModel>)` | 校验模型与 Runtime 身份、phase 及 plan I/O 合同；Session 借用 Runtime，共享拥有模型。无 KV manager 的 Runtime 可以创建 Session，正数生成请求时才报告资源缺失。 |
+| `StatusOr<std::vector<uint32_t>> Generate(std::span<const uint32_t>, const GenerationConfig&) const` | 同步 greedy 生成，返回拥有的新 Token IDs，包含 Prefill 预测的第一个 token，以及生成出的 EOS；不返回 prompt。每次调用重新 Prefill，并在成功、执行失败或分配失败返回前释放 KV reservation。 |
+| `GenerationConfig::max_new_tokens` | `size_t`，默认 0。正数 N 最多需要 N−1 次 Decode KV append；检查 `prompt.size() + N - 1` 溢出、模型 context 与物理 KV capacity。 |
+| `GenerationConfig::eos_token_id` | `std::optional<uint32_t>`，默认无 EOS；生成该 token 后停止，结果包含它。 |
+
+prompt 必须非空；prompt/EOS 必须在词表范围内，prompt 长度须满足模型 context。N=0 仍进行这些校验，随后返回空 vector，不预约 KV、不执行模型，也不要求 prompt 满足物理 KV capacity。request buffer、binding、workspace 或 activation 分配传播出的 `std::bad_alloc` 转为空 message 的 `ResourceExhausted`。
+
+共享同一 Runtime 的所有 Generate 调用必须由宿主串行化，包括不同 Session；当前接口不承诺并发 Session。推荐销毁顺序为 Session → ExecutableModel → Runtime。阶段执行与资源细节见 [Session 设计](../designs/inference/02-inference-session.md)。
 
 ### `Allocator::TryAllocate`（include/aethermind/memory/allocator.h）
 
@@ -205,12 +262,12 @@
 
 - C ABI 句柄（`ObjectHandle`、`am_error_handle`）为不透明指针，不暴露内部布局；对象生命周期由引用计数/显式 destroy 管理。
 - `am_status_code` 覆盖当前产品所需的错误类别（OK/CANCELLED/UNKNOWN/INVALID_ARGUMENT/.../UNAUTHENTICATED）。
-- `Executor::Execute` 是单计划一次性执行，不具备跨步骤状态管理（Prefill/Decode 状态机为当前产品目标，见[架构总览](../designs/architecture/architecture_overview.md) §八）。
-- `Session::Generate` 与 `am_session_generate` 尚未实现；当前公开 API 形态为底层构建块（PRD 定义的生成入口为冻结目标）。
+- `Executor::Execute` 执行一次单计划；跨 Prefill/Decode 的请求编排由已实现的 `InferenceSession::Generate` 负责。
+- `apps/inference/` 的 runner、参数校验与 I/O 为应用私有实现；FP32 准入、模型 KV 映射及 CPU preset 归 inference 共享接口，C ABI 适配有独立 C 调用验收。
 
 ## 4. 相关文档
 
-- 头文件：`include/c_api.h`、`include/aethermind/model/model_loader.h`、`include/aethermind/runtime/runtime_builder.h`、`include/aethermind/execution/executor.h`（Doxygen 注释为语义事实源）
+- 头文件：`include/c_api.h`、`include/aethermind/model/model_loader.h`、`include/aethermind/compiler/model_compiler.h`、`include/aethermind/runtime/runtime_builder.h`、`include/aethermind/inference/executable_model.h`、`include/aethermind/inference/inference_session.h`、`include/aethermind/execution/executor.h`（Doxygen 注释为语义事实源）
 - 架构总览：[docs/designs/architecture/architecture_overview.md](../designs/architecture/architecture_overview.md)（§一 API 服务层、§八 差距概要）
 - ModelLoader 模块设计：[docs/designs/model/01-model-loader.md](../designs/model/01-model-loader.md)
 - 注释规范：[docs/guides/cpp_comment_guidelines.md](../guides/cpp_comment_guidelines.md)

@@ -17,7 +17,7 @@
 | 07 | [ExecutableModel 生产准备入口方案](07-executable-model-preparation.md) | Implemented | 2026-09-23 |
 | 08 | [KV Cache 与 CPU Attention 能力演进方案](08-kv-cache-and-attention-capability-evolution.md) | Draft | 2026-09-24 |
 | 09 | [Qwen 与 MoE 模型架构支持方案](09-qwen-and-moe-architecture-support.md) | Draft | 2026-10-20 |
-| 10 | [上层 Runtime 组装与推理入口实施方案](10-upper-level-runtime-assembly.md) | Draft | 2026-10-22 |
+| 10 | [上层 Runtime 组装与推理入口实施方案](10-upper-level-runtime-assembly.md) | Implemented | 2026-10-22 |
 | 11 | [FP16 / BF16 执行支持方案](11-fp16-bf16-execution-support.md) | Draft | 2026-10-20 |
 | 12 | [CUDA 后端与执行支持方案](12-cuda-backend-execution-support.md) | Draft | 2026-10-21 |
 | 13 | [借鉴 DeepInfer 的生产验证与质量实施方案](13-deepinfer-quality-and-validation.md) | Draft | 2026-10-22 |
@@ -32,7 +32,7 @@
 - [07-executable-model-preparation.md](07-executable-model-preparation.md)：01 号计划 M2 的细化，`LoweredModelArtifact → ExecutableModel` 唯一生产准备入口、权重绑定映射与 inference 模块归属。
 - [08-kv-cache-and-attention-capability-evolution.md](08-kv-cache-and-attention-capability-evolution.md)：当前 KV owner/epoch correctness、CPU Attention 优化证据门禁和 Paged KV 长期准入。
 - [09-qwen-and-moe-architecture-support.md](09-qwen-and-moe-architecture-support.md)：公共合同→Qwen3 Dense→Qwen3 MoE 主线；含 R1–R8 改造、binding 冷路径 workspace specialization、统一 decoder I/O、多 packed bindings 与验收，另列其他家族优先级和独立分支。
-- [10-upper-level-runtime-assembly.md](10-upper-level-runtime-assembly.md)：从模型配置派生 Runtime、一次编译准备 kBoth plan 的独立 C++ 入口；包含生命周期、CPU preset、分阶段 C ABI 与集成验收门禁。
+- [10-upper-level-runtime-assembly.md](10-upper-level-runtime-assembly.md)：M0–M6 已完成，交付 CPU FP32 独立 C++ 入口和正式 C ABI、共享策略、owner/buffer/error 合同与分层验收；既有 LSAN 与全部产品 hard gates 仍单独记录。
 - [11-fp16-bf16-execution-support.md](11-fp16-bf16-execution-support.md)：显式 FP32 兼容执行→W16/A32→独立 KV16→A16 的分阶段提案；包含 logical weight ownership、构图精度、数值/ISA 合同、selector/layout 迁移与 production 验收。
 - [12-cuda-backend-execution-support.md](12-cuda-backend-execution-support.md)：单 GPU 同步生成基线；明确 device placement、显存权重所有权、stream 完成与 KV 事务，并按 FP32→FP16/BF16→性能优化分阶段验收。
 - [13-deepinfer-quality-and-validation.md](13-deepinfer-quality-and-validation.md)：复用 02 的质量模型、10 的产品入口和算子工作流，细化模型 golden、teacher-forcing 数值等价、CTest/sanitizer/ISA、模型级 benchmark 与交付验证的 Q1–Q5 工作包；不扩大当前产品能力。

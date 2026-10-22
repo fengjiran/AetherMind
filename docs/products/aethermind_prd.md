@@ -1,11 +1,11 @@
-# AetherMind 推理引擎产品需求文档 (PRD v1.2)
+# AetherMind 推理引擎产品需求文档 (PRD v1.4)
 
-| 文档版本 | V1.2 |
+| 文档版本 | V1.4 |
 |----------|----------------|
 | **项目名称** | **AetherMind** |
 | **核心目标** | 交付生产级桌面/服务器 CPU 本地推理引擎，并为服务化、异构计算和分布式演进保留可验证的架构边界 |
 | **关键技术** | C++20 (Concepts), Safetensors, INT8/INT4 Quantization, Static KV Cache |
-| **更新日期** | 2026年9月16日 |
+| **更新日期** | 2026年10月22日 |
 
 ---
 
@@ -58,7 +58,7 @@
 | **本地部署** | 面向桌面/服务器 CPU 的 INT8/INT4 量化推理，支持 7B 模型运行 | GPU 卸载与异构执行 |
 | **确定性输出** | 贪婪采样 + 数值稳定的 CPU 参考内核 | temperature/top-p 等采样策略 |
 | **低延迟启动** | 静态预分配，预热后稳态零分配 | PagedAttention 与动态缓存管理 |
-| **API 演进** | 定义中：版本化 C ABI (v1.0)，优先实现核心推理接口 | HTTP/API 服务层 |
+| **API 演进** | Runtime C ABI v1.0 已由 M5 冻结、M6 实现并完成限定范围的 C 调用验收；发行与全部产品门禁独立记录 | HTTP/API 服务层 |
 
 ### 1.3 目标用户
 
@@ -142,7 +142,7 @@
 - **前端语义分析**：算子输入验证、dtype/rank 校验、输出 shape 推导由 per-op 类型化自由函数 `Infer*`（位于 `src/operators/*_op.cpp`，如 `InferRoPE`、`InferSiluMul`、`InferRmsNorm`）统一完成；结果写入 semantic graph，compiler lowering 按值携带 output specs 与 deferred ShapeConstraints，execution 对 finalized `LoweredGraph` 不重复推理。
 - **图编译与绑定管道**：`ModelLoader` 只产生 backend-independent 的 `LoadedModel`（HF I/O、validation、resolved raw weights）；compiler 模块中的 `ModelCompiler` 串联 `BuildModelGraph`、`OptimizeModelGraph` 与 `LowerModelGraph`，产出拥有 `LoadedModel` 的 `LoweredModelArtifact`。`LoweredGraph` 是不可变且经结构验证的 compiler artifact，含 `LoweredStepSpec` steps、按 `GraphValueId` 稠密索引的 value metadata 和 unresolved state aliases；`ExecutionPlanBuilder::Build(Runtime, LoweredGraph)` 仅在 execution 内部将 aliases 转为 `StateAliasPlan` 并 resolve kernel。随后 `PrepareExecutionBindings` 在 cold path 绑定 external tensors、校验 runtime shape/layout/aliasing、分配 activation 并准备 kernel params；`ExecutionContext::Create` 聚合这些 bindings、borrowed workspace 和 KV view。`Execute` 仅消费已经冻结的 `ResolvedKernel` 与 prepared params，无运行时 dispatch 或 shape validation 开销。
 - **核心计算模型**：当前产品以 **decoder-only Transformer** 为执行核心，运行时显式区分 **Prefill** 与 **Decode** 两个执行阶段。
-- **核心组件**：当前已实现的底层组件为 `Runtime`（生命周期与资源聚合，按值拥有 `KVCacheManager`）、`kv_cache`（静态 KV layout/storage/session reservation/view）、`ExecutableModel`（模型准备与权重所有权）、`PreparedExecutionBindings`（plan 的物理 tensor specialization）、`ExecutionContext`（窄执行资源）与 `Executor`（同步执行已 specialize 的 `ExecutionPlan`）。真实 CpuBackend 的 tiny Llama Prefill→Decode 执行链已有数值与 KV 证据；C++ `InferenceSession::Generate` 已实现同步 greedy Argmax 编排，返回本次新 token（包含 EOS），每次调用重新 Prefill 并释放 KV reservation。C ABI 仍为目标接口草案。
+- **核心组件**：当前已实现的底层组件为 `Runtime`（生命周期与资源聚合，按值拥有 `KVCacheManager`）、`kv_cache`（静态 KV layout/storage/session reservation/view）、`ExecutableModel`（模型准备与权重所有权）、`PreparedExecutionBindings`（plan 的物理 tensor specialization）、`ExecutionContext`（窄执行资源）与 `Executor`（同步执行已 specialize 的 `ExecutionPlan`）。真实 CpuBackend 的 tiny Llama Prefill→Decode 执行链已有数值与 KV 证据；C++ `InferenceSession::Generate` 已实现同步 greedy Argmax 编排，返回本次新 token（包含 EOS），每次调用重新 Prefill 并释放 KV reservation。Runtime C ABI 的 M5 合同已冻结，M6 已实现适配及 CPU FP32 范围的 C 调用链；不代表全部产品 hard gates 通过。
 - **模块所有权（源码目录-职责冻结）**：
   - **`graph/`（顶层）**：通用 Graph IR、GraphOpBuilder、GraphRewrite/GraphPassManager 与 backend-independent semantic passes、诊断 dump — 设备/ISA 独立，不允许包含 compiler/execution/backend/model。
   - **`operators/`（顶层）**：OpType、OperatorSchema、OpParams（typed variant）、`Infer*` 自由函数、OpParams serde — 语义层，不允许包含执行/图容器细节。
@@ -161,7 +161,7 @@
 
 **核心原则：Token IDs 是唯一数据边界**
 
-> 注：以下 C++ API 与 C ABI 描述产品接口边界。`InferenceSession::Generate` 的当前 C++ 实现已落地；C ABI 仍是目标接口草案，尚未实现。
+> 注：`InferenceSession::Generate` 与下述 Runtime C ABI 均已实现。C ABI 合同由 M5 冻结、M6 接通；当前验证范围为 CPU FP32 Llama Dense，量化与全部产品 hard gates 不能由此推导。精确声明与合同见 [c_api.h](../../include/c_api.h) 和 [Runtime C ABI v1](../api/runtime-c-abi.md)。
 
 ```cpp
 // C++ API
@@ -182,18 +182,16 @@ public:
         const GenerationConfig& config);
 };
 
-// C ABI 伪代码
-typedef struct am_session* am_session_t;
-
+// C ABI v1 冻结签名；M6 已提供正式定义。
 // 输入/输出均为 uint32_t 数组，无文本处理
-int am_session_generate(
+am_status_code am_session_generate(
     am_session_t session,
     const uint32_t* input_tokens,
     size_t input_len,
     uint32_t* output_tokens,
     size_t output_capacity,
     size_t* output_len,
-    am_error_t* error
+    am_error_handle* error
 );
 ```
 
@@ -300,41 +298,47 @@ Output Tokens
 ### 3.4 C ABI 规范
 
 #### 版本化策略
-- **当前产品目标是发布 ABI v1.0**
-- 稳定性承诺以最终发布的 runtime C ABI 为准；在接口冻结前，本文中的函数签名视为目标契约而非既成实现
-- 向前兼容：v1.x 保持向后兼容，新增功能通过扩展接口
-- 破坏性变更：通过 `_v2` 后缀显式区分，不隐式兼容
+- **当前产品目标是发布 ABI v1.0**。M5 冻结 [公共 C 声明](../../include/c_api.h) 与 [完整合同](../api/runtime-c-abi.md)，M6 已提供 Runtime/model/session 与版本查询定义及纯 C 调用证据。实现完成不等于发行或全部 PRD 门禁通过，范围见 [M6 验收报告](../tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md)。
+- `AM_ABI_VERSION = (major << 16) | minor`，v1.0 为 `0x00010000`；`am_get_abi_version` 返回库实际实现的版本。
+- `am_config_t` / `am_session_config_t` 使用 `struct_size`、`abi_version` 与固定宽度字段；v1 大小分别为 48 / 24 bytes，原布局固定。拒绝不支持的 major、更高 minor、尺寸不符和非法字段，不隐式猜测默认配置。
+- v1.x 保持旧结构、字段 offset、常量数值和函数签名；扩展使用另命名的结构/函数，破坏性变更通过 `_v2` 显式区分。
 
 #### 核心接口
 
 ```c
-// 生命周期
-am_runtime_t am_runtime_create(const am_config_t* config);
+#include "c_api.h"
+
+// 生命周期；所有 create/load 的 error out 可为 NULL。
+am_runtime_t am_runtime_create(const am_config_t* config, am_error_handle* error);
 void am_runtime_destroy(am_runtime_t runtime);
 
 // 模型
-am_model_t am_model_load(am_runtime_t runtime, const char* path, am_error_t* error);
+am_model_t am_model_load(am_runtime_t runtime, const char* path, am_error_handle* error);
 void am_model_unload(am_model_t model);
 
 // 会话
-am_session_t am_session_create(am_model_t model, const am_session_config_t* config);
+am_session_t am_session_create(am_model_t model, const am_session_config_t* config,
+                               am_error_handle* error);
 void am_session_destroy(am_session_t session);
-int am_session_generate(
+am_status_code am_session_generate(
     am_session_t session,
     const uint32_t* input_tokens, size_t input_len,
     uint32_t* output_tokens, size_t output_capacity, size_t* output_len,
-    am_error_t* error
+    am_error_handle* error
 );
 
-// 错误处理
-const char* am_error_message(am_error_t error);
-void am_error_free(am_error_t error);
+// 已实现的错误接口继续复用。
+am_error_handle am_error_create(am_status_code code, const char* message);
+void am_error_destroy(am_error_handle error);
+am_status_code am_error_code(am_error_handle error);
+const char* am_error_message(am_error_handle error);
 ```
 
-**ABI 稳定性目标（v1.x 内，针对最终发布接口）**：
-- 结构体大小不变（仅添加字段到末尾）
-- 函数签名不变
-- 枚举值不变（新增追加到末尾）
+Runtime 创建时显式给出 KV 层数、KV heads、逻辑 head_dim、capacity、FP32 dtype 与 CPU preset；此时立即分配 KV。模型 Load→共享 FP32 准入→Compile 后，由 adapter 唯一的跨对象 helper 校验所有层 K/V state dtype、几何及 context 上限，再 Prepare/发布 model handle，不修改已有 Runtime/KV。
+
+model/session 保留必要 owner，支持外部 runtime/model handle 先释放；共享 Runtime 的所有访问由宿主串行化。destroy/unload(NULL) 为 no-op，非空 handle 仅释放一次，不承诺诊断伪造或已释放的 handle。
+
+Generate 的 output_len 必填；正数 N 要求 output_capacity 至少 N，短 buffer 在执行前返回 OutOfRange，output_len=N 表示安全容量上界。容量足够时才执行，成功后一次复制完整新 IDs 并写实际长度；其他失败长度为 0、token buffer 不变。N=0 仍验证 prompt/EOS/model context，但不预约/执行。错误对象是可选诊断：自身 OOM 时创建返回 NULL、error 为 NULL；Generate 仍返回原失败状态码，无异常越过 C 边界。完整的检查顺序、null、内存与所有权约束以 [冻结合同](../api/runtime-c-abi.md) 为准。
 
 ---
 

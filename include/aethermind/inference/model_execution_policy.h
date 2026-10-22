@@ -26,8 +26,10 @@ struct HfModelConfig;
 /// @note Diagnostic construction may throw std::bad_alloc.
 inline StatusOr<size_t> PositiveSize(int64_t value, std::string_view field) {
     if (value <= 0) {
-        return Status::InvalidArgument(std::string(field) + " must be positive");
+        return Status::InvalidArgument(
+                std::string(field) + " must be positive");
     }
+
     if (!std::in_range<size_t>(value)) {
         return Status::OutOfRange(
                 std::string(field) + " is not representable as size_t");

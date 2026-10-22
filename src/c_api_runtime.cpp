@@ -1,6 +1,3 @@
-#include "c_api.h"
-#include "c_api_runtime_internal.h"
-
 #include "aethermind/base/alignment.h"
 #include "aethermind/compiler/model_compiler.h"
 #include "aethermind/inference/cpu_inference_options.h"
@@ -9,6 +6,8 @@
 #include "aethermind/inference/model_execution_policy.h"
 #include "aethermind/model/model_loader.h"
 #include "aethermind/runtime/runtime_builder.h"
+#include "c_api.h"
+#include "c_api_runtime_internal.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -135,7 +134,7 @@ StatusOr<RuntimeConfiguration> ReadRuntimeConfiguration(const am_config_t* sourc
                         .head_dim = head_dim,
                         .kv_dtype = DataType::Float32(),
                         .alignment = 64};
-    return RuntimeConfiguration{std::move(options), preset};
+    return RuntimeConfiguration{options, preset};
 }
 
 StatusOr<GenerationConfig> ReadSessionConfiguration(const am_session_config_t* source) {
@@ -192,7 +191,7 @@ struct am_session {
                GenerationConfig generation_value,
                InferenceSession session_value) noexcept
         : owner(std::move(owner_value)),
-          generation(std::move(generation_value)),
+          generation(generation_value),
           session(std::move(session_value)) {}
 };
 

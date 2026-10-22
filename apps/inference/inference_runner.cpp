@@ -52,16 +52,19 @@ StatusOr<std::vector<uint32_t>> RunInferenceBody(
         AM_RETURN_IF_ERROR(ValidateFp32ExecutionInputs(**loaded));
 
         stage = RunStage::kParameters;
-        auto mapped_runtime = MakeRuntimeOptions(config, options.context_tokens);
+        auto mapped_runtime = MakeRuntimeOptions(
+                config, options.context_tokens);
         if (!mapped_runtime.ok()) {
             return std::move(mapped_runtime).status();
         }
+
         auto mapped_compile = MakeCpuCompileOptions(options.preset);
         if (!mapped_compile.ok()) {
             return std::move(mapped_compile).status();
         }
-        runtime_options = std::move(*mapped_runtime);
-        compile_options = std::move(*mapped_compile);
+
+        runtime_options = *mapped_runtime;
+        compile_options = *mapped_compile;
     }
 
     stage = RunStage::kCompile;
@@ -76,6 +79,7 @@ StatusOr<std::vector<uint32_t>> RunInferenceBody(
     if (!built_runtime.ok()) {
         return std::move(built_runtime).status();
     }
+
     // Prepare and every later borrower use this final Runtime address. Reverse
     // destruction releases session/model before their Runtime-owned resources.
     Runtime runtime = std::move(*built_runtime);
@@ -85,6 +89,7 @@ StatusOr<std::vector<uint32_t>> RunInferenceBody(
     if (!prepared.ok()) {
         return std::move(prepared).status();
     }
+
     std::shared_ptr<const ExecutableModel> model =
             std::make_shared<ExecutableModel>(std::move(*prepared));
 
@@ -98,12 +103,13 @@ StatusOr<std::vector<uint32_t>> RunInferenceBody(
     return session->Generate(options.prompt_tokens, options.generation);
 }
 
-StatusOr<std::vector<uint32_t>> RunInferenceBoundary(
+StatusOr<std::vector<uint32_t>> RunInferenceGuarded(
         const RunOptions& options, RuntimeBuilder& builder, RunStage* failure_stage) {
     if (failure_stage != nullptr) {
         *failure_stage = RunStage::kNone;
     }
-    RunStage stage = RunStage::kLoad;
+
+    auto stage = RunStage::kLoad;
     try {
         auto result = RunInferenceBody(options, builder, stage);
         if (!result.ok() && failure_stage != nullptr) {
@@ -223,7 +229,7 @@ StatusOr<RuntimeOptions> MakeRuntimeOptions(const HfModelConfig& config,
 StatusOr<std::vector<uint32_t>> RunInference(const RunOptions& options,
                                              RunStage* failure_stage) {
     RuntimeBuilder builder;
-    return RunInferenceBoundary(options, builder, failure_stage);
+    return RunInferenceGuarded(options, builder, failure_stage);
 }
 
 #ifdef AETHERMIND_INFERENCE_RUNNER_TESTING
@@ -231,7 +237,7 @@ namespace testing {
 
 StatusOr<std::vector<uint32_t>> RunInferenceWithBuilder(
         const RunOptions& options, RuntimeBuilder& builder, RunStage* failure_stage) {
-    return RunInferenceBoundary(options, builder, failure_stage);
+    return RunInferenceGuarded(options, builder, failure_stage);
 }
 
 } // namespace testing

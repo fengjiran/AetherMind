@@ -11,6 +11,7 @@ __pycache__/
 build/
 build-debug/
 build-release/
+build-infer/
 develop-eggs/
 dist/
 downloads/

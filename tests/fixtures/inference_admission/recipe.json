@@ -1,0 +1,184 @@
+{
+  "conversion": {
+    "BF16": "bits-plus-0x7fff-plus-lsb-round-to-nearest-even",
+    "F16": "struct.pack('<e')-round-to-nearest-even",
+    "F32": "preserve-original-bits",
+    "nonfinite_or_overflow": "reject"
+  },
+  "recipe_version": 1,
+  "request": {
+    "context_tokens": 8,
+    "eos_token_id": null,
+    "max_new_tokens": 3,
+    "presets": [
+      "o1-plain",
+      "o2-packed"
+    ],
+    "prompt_tokens": [
+      7
+    ]
+  },
+  "schema_version": 1,
+  "serialization": {
+    "config_json": "utf8-sort_keys-indent2-final-lf",
+    "payload_byte_order": "little-endian",
+    "safetensors_header": "utf8-sort_keys-compact-space-pad8-u64le",
+    "tensor_order": "lexicographic"
+  },
+  "source": {
+    "files": {
+      "config.json": {
+        "bytes": 720,
+        "sha256": "ea68007f47752b68f0f58e5fc2d51fa380bb730af51faff8c1df9fccbe608bc2"
+      },
+      "model.safetensors": {
+        "bytes": 4131280,
+        "sha256": "49c20f32c6c597480fcaec5df2f86c645eabea765cbea1e67886dbae45e5c992"
+      }
+    },
+    "repository": "peft-internal-testing/tiny-random-LlamaForCausalLM",
+    "revision": "d0b81c5e23f2d61bb7a5f430a8cd6f3e711c0cb3"
+  },
+  "variants": [
+    {
+      "dtype": "BF16",
+      "hint": "auto",
+      "name": "bf16-auto",
+      "norms": "none",
+      "tied": false
+    },
+    {
+      "dtype": "BF16",
+      "hint": "float32",
+      "name": "bf16-f32-hint",
+      "norms": "none",
+      "tied": false
+    },
+    {
+      "dtype": "BF16",
+      "hint": null,
+      "name": "bf16-missing",
+      "norms": "none",
+      "tied": false
+    },
+    {
+      "dtype": "F16",
+      "hint": "auto",
+      "name": "f16-auto",
+      "norms": "none",
+      "tied": false
+    },
+    {
+      "dtype": "F16",
+      "hint": "float32",
+      "name": "f16-f32-hint",
+      "norms": "none",
+      "tied": false
+    },
+    {
+      "dtype": "F16",
+      "hint": null,
+      "name": "f16-missing",
+      "norms": "none",
+      "tied": false
+    },
+    {
+      "dtype": "F32",
+      "hint": "auto",
+      "name": "f32-auto",
+      "norms": "none",
+      "tied": false
+    },
+    {
+      "dtype": "F32",
+      "hint": "bfloat16",
+      "name": "f32-bf16-hint",
+      "norms": "none",
+      "tied": false
+    },
+    {
+      "dtype": "F32",
+      "hint": "float32",
+      "name": "f32-explicit",
+      "norms": "none",
+      "tied": false
+    },
+    {
+      "dtype": "F32",
+      "hint": "float16",
+      "name": "f32-f16-hint",
+      "norms": "none",
+      "tied": false
+    },
+    {
+      "dtype": "F32",
+      "hint": null,
+      "name": "f32-missing",
+      "norms": "none",
+      "tied": false
+    },
+    {
+      "dtype": "F32",
+      "hint": "float32",
+      "name": "f32-tied",
+      "norms": "none",
+      "tied": true
+    },
+    {
+      "dtype": "BF16",
+      "hint": "auto",
+      "name": "mixed-norm-bf16-auto",
+      "norms": "all",
+      "tied": false
+    },
+    {
+      "dtype": "BF16",
+      "hint": null,
+      "name": "mixed-norm-bf16-missing",
+      "norms": "all",
+      "tied": false
+    },
+    {
+      "dtype": "F16",
+      "hint": "auto",
+      "name": "mixed-norm-f16-auto",
+      "norms": "all",
+      "tied": false
+    },
+    {
+      "dtype": "F16",
+      "hint": null,
+      "name": "mixed-norm-f16-missing",
+      "norms": "all",
+      "tied": false
+    },
+    {
+      "dtype": "BF16",
+      "hint": "auto",
+      "name": "single-norm-bf16-auto",
+      "norms": "last-post-attention",
+      "tied": false
+    },
+    {
+      "dtype": "BF16",
+      "hint": null,
+      "name": "single-norm-bf16-missing",
+      "norms": "last-post-attention",
+      "tied": false
+    },
+    {
+      "dtype": "F16",
+      "hint": "auto",
+      "name": "single-norm-f16-auto",
+      "norms": "last-post-attention",
+      "tied": false
+    },
+    {
+      "dtype": "F16",
+      "hint": null,
+      "name": "single-norm-f16-missing",
+      "norms": "last-post-attention",
+      "tied": false
+    }
+  ]
+}

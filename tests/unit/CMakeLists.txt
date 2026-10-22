@@ -8,6 +8,30 @@ file(GLOB_RECURSE TEST_SRC_FILES CONFIGURE_DEPENDS
 find_package(GTest REQUIRED)
 add_executable(${TEST_TARGET} ${TEST_SRC_FILES})
 
+# Compile the frozen ABI contract as C11, not as a C++ translation unit. New
+# runtime declarations are checked without providing placeholder definitions.
+target_sources(${TEST_TARGET} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/c_api/test_c_api_contract.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/c_api/test_c_api_runtime_consumer.c
+)
+set_target_properties(${TEST_TARGET} PROPERTIES
+        C_STANDARD 11
+        C_STANDARD_REQUIRED ON
+        C_EXTENSIONS OFF
+)
+
+# Compile the same private application helpers that the future CLI will use.
+# Keep application code out of the AetherMind shared library.
+target_sources(${TEST_TARGET} PRIVATE
+        ${PROJECT_SOURCE_DIR}/apps/inference/inference_runner.cpp
+)
+
+# The builder injection entry exists only in the runner's test compilation.
+set_property(SOURCE
+        ${PROJECT_SOURCE_DIR}/apps/inference/inference_runner.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS AETHERMIND_INFERENCE_RUNNER_TESTING=1
+)
+
 # Export the test executable's glibc malloc wrappers so calls from AetherMind's
 # shared library are interposed during the scoped steady-state allocation check.
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -18,6 +42,7 @@ target_include_directories(${TEST_TARGET}
         PRIVATE
         #        ${PROJECT_SOURCE_DIR}/include
         ${PROJECT_SOURCE_DIR}/src
+        ${PROJECT_SOURCE_DIR}/apps/inference
         ${PROJECT_SOURCE_DIR}/tests/unit
 )
 

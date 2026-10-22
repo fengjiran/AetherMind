@@ -14,12 +14,10 @@ set(KALLOC_ALIGNMENT "${KALLOC_ALIGNMENT_DEFAULT}" CACHE STRING "Memory allocati
 
 set(SPDLOG_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_PIC ON CACHE BOOL "" FORCE)
-set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
-set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
-set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 
 option(BUILD_TESTS "Adding test targets." ON)
 option(BUILD_BENCHMARKS "Adding benchmark targets." ON)
+option(BUILD_INFERENCE_TOOL "Build the standalone token-ID inference tool." OFF)
 option(USE_LIBBACKTRACE "Enable libbacktrace" ON)
 option(BACKTRACE_ON_SEGFAULT "Set signal handler to print traceback on segfault" ON)
 option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
@@ -50,14 +48,24 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/gabime/spdlog.git
         GIT_TAG v1.17.0
 )
-FetchContent_Declare(
-        google_benchmark
-        GIT_REPOSITORY https://github.com/google/benchmark.git
-        GIT_TAG v1.9.5
-)
-FetchContent_MakeAvailable(spdlog google_benchmark)
+FetchContent_MakeAvailable(spdlog)
+if (BUILD_BENCHMARKS)
+    set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+            google_benchmark
+            GIT_REPOSITORY https://github.com/google/benchmark.git
+            GIT_TAG v1.9.5
+    )
+    FetchContent_MakeAvailable(google_benchmark)
+endif ()
 
 add_subdirectory(src)
+if (BUILD_INFERENCE_TOOL)
+    add_subdirectory(apps/inference)
+endif ()
+
 if (BUILD_TESTS)
     message(STATUS "Enable Testing")
     add_subdirectory(tests/unit)

@@ -13,10 +13,9 @@ struct AMErrorObject {
 
 am_error_handle am_error_create(am_status_code code, const char* message) {
     try {
-        AMErrorObject* error = new AMErrorObject();
-        error->code = code;
-        error->message = message == nullptr ? "" : message;
-        return static_cast<am_error_handle>(error);
+        // The new-expression releases the object if message construction fails.
+        return static_cast<am_error_handle>(
+                new AMErrorObject{code, message == nullptr ? "" : message});
     } catch (...) {
         return nullptr;
     }

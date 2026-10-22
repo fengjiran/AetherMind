@@ -118,7 +118,7 @@ public:
                  "PrepareContext requires the previous execution context to be cleared");
 
         if (tokens.empty() || tokens.size() != positions.size() ||
-            tokens.size() > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+            !std::in_range<int64_t>(tokens.size())) {
             return Status::InvalidArgument("InferenceSession token and position "
                                            "inputs must have equal non-zero lengths");
         }
@@ -222,8 +222,8 @@ StatusOr<uint32_t> ReadOutputToken(const ExecutionContext& context,
 
     const auto* const data = static_cast<const int64_t*>(tensor.data());
     const int64_t raw_token = data[expected_length - 1];
-    if (raw_token < 0 || static_cast<uint64_t>(raw_token) >= vocab_size ||
-        static_cast<uint64_t>(raw_token) > std::numeric_limits<uint32_t>::max()) {
+    if (!std::in_range<uint32_t>(raw_token) ||
+        static_cast<uint64_t>(raw_token) >= vocab_size) {
         return Status::OutOfRange(
                 "InferenceSession Argmax result does not fit the token ID contract");
     }
@@ -530,7 +530,7 @@ StatusOr<uint32_t> RunPrefill(const ExecutionPlan& plan,
                               size_t prompt_length,
                               size_t vocab_size) {
     if (prompt_length == 0 ||
-        prompt_length > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
+        !std::in_range<int64_t>(prompt_length) ||
         vocab_size == 0) {
         return Status::InvalidArgument(
                 "InferenceSession Prefill requires a positive Int64 prompt length "

@@ -4,6 +4,8 @@
 
 #include "aethermind/base/scalar.h"
 
+#include <utility>
+
 namespace aethermind {
 
 Scalar::Scalar(int8_t val) {
@@ -47,7 +49,7 @@ Scalar::Scalar(uint32_t val) {
 }
 
 Scalar::Scalar(uint64_t val) {
-    if (val > static_cast<uint64_t>(INT64_MAX)) {
+    if (!std::in_range<int64_t>(val)) {
         v.u = val;
         dtype_ = DataType::UInt(64);
     } else {

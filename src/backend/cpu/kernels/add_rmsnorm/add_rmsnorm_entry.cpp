@@ -12,10 +12,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstring>
-#include <limits>
 #include <new>
 #include <span>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace aethermind::cpu::detail {
@@ -235,8 +235,7 @@ Status BuildAddRmsNormF32PackedIdentityArgs(
     AM_RETURN_IF_ERROR(ValidateIdentityPackedWeight(
             *context.packed_weight, std::array{hidden_size},
             "AddRmsNormKernelEntry"));
-    if (context.packed_weight->nbytes >
-        static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+    if (!std::in_range<int64_t>(context.packed_weight->nbytes)) {
         return Status::Overflow(
                 "AddRmsNormKernelEntry packed storage size exceeds int64_t");
     }

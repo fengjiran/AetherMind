@@ -5,9 +5,9 @@
 #include "utils/overflow_check.h"
 
 #include <cstdint>
-#include <limits>
 #include <new>
 #include <string>
+#include <utility>
 
 namespace aethermind {
 namespace {
@@ -229,7 +229,7 @@ StatusOr<KVCacheLayerStorageBinding> KVCacheSessionView::BindLayerStorageValidat
     AM_RETURN_IF_ERROR(ValidateIndexRange(
             layer_idx, storage_->layout.num_layers, "layer"));
 
-    if (layer_idx > std::numeric_limits<uint32_t>::max()) {
+    if (!std::in_range<uint32_t>(layer_idx)) {
         return Status::OutOfRange(
                 "KV layer index exceeds kernel binding range");
     }

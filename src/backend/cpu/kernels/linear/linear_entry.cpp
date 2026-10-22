@@ -10,9 +10,9 @@
 
 #include <array>
 #include <cstddef>
-#include <limits>
 #include <new>
 #include <type_traits>
+#include <utility>
 
 namespace aethermind::cpu::detail {
 namespace {
@@ -241,7 +241,7 @@ StatusOr<LinearF32KernelArgs> BuildLinearF32PackedBase(
     AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
             "CPU Linear", output_analysis.footprint(), "output",
             input_analysis.footprint(), "input"));
-    if (packed.nbytes > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+    if (!std::in_range<int64_t>(packed.nbytes)) {
         return Status::Overflow(
                 "Packed Linear artifact byte range exceeds int64_t");
     }

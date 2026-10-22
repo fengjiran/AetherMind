@@ -15,7 +15,6 @@
 #include "utils/overflow_check.h"
 
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -302,13 +301,14 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
                                        "invalid vocabulary or context limit");
     }
 
-    const auto vocab_size = static_cast<uint64_t>(model_config.vocab_size);
-    const auto context_limit = static_cast<uint64_t>(model_config.max_position_embeddings);
-    if (vocab_size > std::numeric_limits<size_t>::max() ||
-        context_limit > std::numeric_limits<size_t>::max()) {
+    if (!std::in_range<size_t>(model_config.vocab_size) ||
+        !std::in_range<size_t>(model_config.max_position_embeddings)) {
         return Status::Overflow("PrepareExecutableModel: vocabulary or "
                                 "context limit does not fit size_t");
     }
+
+    const auto vocab_size = static_cast<size_t>(model_config.vocab_size);
+    const auto context_limit = static_cast<size_t>(model_config.max_position_embeddings);
 
     const ResolvedModelWeights& resolved = artifact.loaded_model->GetResolvedWeights();
     auto requests = BuildWeightPackingRequests(

@@ -5,6 +5,8 @@
 #include "utils/overflow_check.h"
 #include "utils/variant_utils.h"
 
+#include <utility>
+
 namespace aethermind::detail {
 namespace {
 
@@ -97,7 +99,7 @@ Status TryResolveInferDim(const SymbolicShape& input_shape,
     }
 
     const uint64_t quotient = input_volume / non_infer_product;
-    if (quotient > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+    if (!std::in_range<int64_t>(quotient)) {
         return Status::Overflow("Reshape infer quotient overflows int64_t");
     }
     // Replace Unknown at infer_index with the static quotient. Zero is

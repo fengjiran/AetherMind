@@ -5,12 +5,12 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace aethermind {
@@ -222,7 +222,7 @@ StatusOr<ReshapeDim> ParseReshapeDimToken(std::string_view token) {
             return Status::InvalidArgument("ParseOpParams: invalid Reshape axis reference");
         }
 
-        if (axis_value > std::numeric_limits<uint32_t>::max()) {
+        if (!std::in_range<uint32_t>(axis_value)) {
             return Status::InvalidArgument(
                     "ParseOpParams: Reshape axis reference overflow");
         }
@@ -314,7 +314,7 @@ StatusOr<uint32_t> ParsePermuteAxisToken(std::string_view token) {
         return Status::InvalidArgument("ParseOpParams: invalid Permute axis");
     }
 
-    if (axis_value > std::numeric_limits<uint32_t>::max()) {
+    if (!std::in_range<uint32_t>(axis_value)) {
         return Status::InvalidArgument("ParseOpParams: Permute axis overflow");
     }
     return static_cast<uint32_t>(axis_value);

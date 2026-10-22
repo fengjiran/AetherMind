@@ -4,11 +4,11 @@
 #include <cerrno>
 #include <cstdint>
 #include <fcntl.h>
-#include <limits>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <system_error>
 #include <unistd.h>
+#include <utility>
 
 namespace aethermind {
 
@@ -145,7 +145,7 @@ StatusOr<MemoryMappedFile> MemoryMappedFile::Map(const std::filesystem::path& pa
     }
 
     const auto file_size = static_cast<std::uintmax_t>(sb.st_size);
-    if (file_size > std::numeric_limits<size_t>::max()) {
+    if (!std::in_range<size_t>(file_size)) {
         return CloseBeforeReturn(fd, path,
                                  Status::InvalidArgument("File is too large to map into this process: " + path.string()));
     }

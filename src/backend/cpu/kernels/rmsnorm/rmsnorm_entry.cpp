@@ -11,8 +11,8 @@
 #include <array>
 #include <cmath>
 #include <cstring>
-#include <limits>
 #include <type_traits>
+#include <utility>
 
 namespace aethermind::cpu::detail {
 namespace {
@@ -240,7 +240,7 @@ Status BuildRmsNormF32PackedIdentityArgs(
                 "CPU RmsNorm", output_analysis.footprint(), "output",
                 input_analysis.footprint(), "input"));
     }
-    if (packed.nbytes > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+    if (!std::in_range<int64_t>(packed.nbytes)) {
         return Status::Overflow("Packed RmsNorm artifact byte range exceeds int64_t");
     }
     AM_ASSIGN_OR_RETURN(const ByteAddressRange packed_range,

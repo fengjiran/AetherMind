@@ -12,7 +12,6 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
-#include <limits>
 #include <new>
 #include <span>
 #include <type_traits>
@@ -187,8 +186,7 @@ Status BuildQkvLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
             "CPU QkvLinear", value_analysis.footprint(), "v output",
             input_analysis.footprint(), "input"));
 
-    if (context.packed_weight->nbytes >
-        static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+    if (!std::in_range<int64_t>(context.packed_weight->nbytes)) {
         return Status::Overflow(
                 "QkvLinearKernelEntry packed storage size exceeds int64_t");
     }
@@ -353,8 +351,7 @@ Status BuildQkvLinearF32BpanelArgs(
                 "CPU QkvLinear", footprint, role,
                 input_analysis.footprint(), "input"));
     }
-    if (context.packed_weight->nbytes >
-        static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+    if (!std::in_range<int64_t>(context.packed_weight->nbytes)) {
         return Status::Overflow(
                 "QkvLinearKernelEntry packed storage size exceeds int64_t");
     }

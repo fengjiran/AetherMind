@@ -8,7 +8,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <span>
 #include <string>
 #include <string_view>
@@ -170,8 +169,7 @@ AM_NODISCARD InjectivityClassification ClassifyLayoutInjectivity(std::span<const
 }
 
 AM_NODISCARD bool TryConvertToUintptr(int64_t value, std::uintptr_t* result) noexcept {
-    if (value < 0 ||
-        static_cast<std::uintmax_t>(value) > std::numeric_limits<std::uintptr_t>::max()) {
+    if (!std::in_range<std::uintptr_t>(value)) {
         return false;
     }
 
@@ -257,7 +255,7 @@ StatusOr<RowwiseAddressFootprint> BuildRowwiseAddressFootprintImpl(
         !TryConvertToUintptr(column_count - 1, &column_count_minus_one) ||
         !TryConvertToUintptr(row_stride, &row_stride_elements) ||
         !TryConvertToUintptr(column_stride, &column_stride_elements) ||
-        element_size > std::numeric_limits<std::uintptr_t>::max()) {
+        !std::in_range<std::uintptr_t>(element_size)) {
         return AddressComputationOverflow(context);
     }
 
@@ -450,7 +448,7 @@ StatusOr<ByteAddressRange> BuildContiguousByteRange(const void* data,
 
     std::uintptr_t element_count_value = 0;
     if (!TryConvertToUintptr(element_count, &element_count_value) ||
-        element_size > std::numeric_limits<std::uintptr_t>::max()) {
+        !std::in_range<std::uintptr_t>(element_size)) {
         return AddressComputationOverflow(context);
     }
 
@@ -521,8 +519,7 @@ Status ValidateRowwiseDisjointFromContiguous(std::string_view kernel_name,
                                              const ByteAddressRange& input,
                                              std::string_view input_role) noexcept {
     if (input.begin > input.end ||
-        input.end - input.begin >
-                static_cast<std::uintptr_t>(std::numeric_limits<int64_t>::max())) {
+        !std::in_range<int64_t>(input.end - input.begin)) {
         return Status::Overflow(std::string(kernel_name) +
                                 " contiguous input range is not representable");
     }
@@ -595,7 +592,7 @@ StatusOr<StridedAddressFootprint> BuildStridedAddressFootprint(
 
     std::uintptr_t max_offset_value = 0;
     if (!TryConvertToUintptr(max_offset, &max_offset_value) ||
-        element_size > std::numeric_limits<std::uintptr_t>::max()) {
+        !std::in_range<std::uintptr_t>(element_size)) {
         return AddressComputationOverflow(context);
     }
 

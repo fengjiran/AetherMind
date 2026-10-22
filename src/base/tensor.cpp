@@ -11,7 +11,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
+#include <utility>
 
 namespace aethermind {
 
@@ -140,7 +140,7 @@ Tensor Tensor::slice(int32_t dim_idx, int64_t start, int64_t end, int64_t step) 
         AM_CHECK(elem_delta_i64 >= 0, "slice expects non-negative element offset delta.");
 
         const auto elem_delta = static_cast<uint64_t>(elem_delta_i64);
-        AM_CHECK(elem_delta <= std::numeric_limits<size_t>::max(),
+        AM_CHECK(std::in_range<size_t>(elem_delta),
                  "slice element offset exceeds size_t range.");
 
         size_t byte_delta = 0;

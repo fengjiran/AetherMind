@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <cstring>
-#include <limits>
 #include <memory>
 #include <new>
 #include <span>
@@ -115,7 +114,7 @@ StatusOr<size_t> ContiguousWeightByteSize(const TensorView& weight) {
     }
 
     size_t bytes = 0;
-    if (static_cast<uint64_t>(elements) > std::numeric_limits<size_t>::max() ||
+    if (!std::in_range<size_t>(elements) ||
         CheckOverflowMul(static_cast<size_t>(elements), weight.itemsize(), &bytes)) {
         return Status::Overflow("CPU weight byte size overflows size_t");
     }

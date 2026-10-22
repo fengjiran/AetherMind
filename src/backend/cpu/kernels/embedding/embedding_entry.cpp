@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
-#include <limits>
+#include <utility>
 
 namespace aethermind::cpu::detail {
 namespace {
@@ -240,7 +240,7 @@ Status BuildEmbeddingF32PackedIdentityArgs(
                                                  "Packed Embedding output"));
     AM_RETURN_IF_ERROR(ValidateContiguousDisjoint(
             "CPU Embedding", output_range, "output", token_range, "token ids"));
-    if (packed.nbytes > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+    if (!std::in_range<int64_t>(packed.nbytes)) {
         return Status::Overflow("Packed Embedding artifact byte range exceeds int64_t");
     }
     AM_ASSIGN_OR_RETURN(const ByteAddressRange packed_range,

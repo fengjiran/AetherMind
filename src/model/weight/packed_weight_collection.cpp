@@ -5,7 +5,6 @@
 #include "aethermind/model/weight/weight_packing_request.h"
 #include "utils/overflow_check.h"
 
-#include <limits>
 #include <memory>
 #include <new>
 #include <utility>
@@ -59,7 +58,7 @@ StatusOr<size_t> LogicalByteSize(const PackedWeight& artifact) {
 
     size_t elements = 1;
     for (const int64_t dimension: artifact.logical_shape()) {
-        if (static_cast<uint64_t>(dimension) > std::numeric_limits<size_t>::max() ||
+        if (!std::in_range<size_t>(dimension) ||
             CheckOverflowMul(elements, static_cast<size_t>(dimension), &elements)) {
             return Status::Overflow(
                     "Packed artifact logical size overflowed size_t");

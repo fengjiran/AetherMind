@@ -12,7 +12,7 @@
 
 #include <bit>
 #include <cstddef>
-#include <limits>
+#include <utility>
 
 namespace aethermind {
 
@@ -119,11 +119,9 @@ bool HasAnyElement(const IntArrayView shape) noexcept {
 int64_t ComputeNumel(const IntArrayView shape) noexcept {
     uint64_t product = 1;
     const bool overflow = SafeMultiplyU64(shape, &product);
-    constexpr auto kNumelMax = std::min<uint64_t>(
-            std::numeric_limits<int64_t>::max(),
-            std::numeric_limits<size_t>::max());
 
-    AM_DCHECK(!overflow && product <= kNumelMax,
+    AM_DCHECK(!overflow && std::in_range<int64_t>(product) &&
+                      std::in_range<size_t>(product),
               "Integer multiplication overflow when computing TensorView numel.");
     return static_cast<int64_t>(product);
 }

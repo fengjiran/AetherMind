@@ -4,8 +4,8 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <string>
+#include <utility>
 
 namespace aethermind::cpu::detail {
 namespace {
@@ -21,7 +21,7 @@ StatusOr<size_t> RequiredPackedBytes(std::span<const int64_t> shape,
                                            " packed shape has a negative dimension");
         }
 
-        if (static_cast<uint64_t>(dimension) > std::numeric_limits<size_t>::max()) {
+        if (!std::in_range<size_t>(dimension)) {
             return Status::Overflow(std::string(kernel_name) +
                                     " packed dimensions exceed size_t");
         }

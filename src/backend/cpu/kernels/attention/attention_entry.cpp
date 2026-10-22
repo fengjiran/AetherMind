@@ -11,12 +11,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <limits>
 #include <new>
 #include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace aethermind::cpu::detail {
@@ -143,11 +143,11 @@ StatusOr<StridedAddressFootprint> BuildKVFootprint(const KVCacheLayerStorageBind
                                                    std::string_view role) noexcept {
     const size_t token_stride = storage.token_stride_bytes / sizeof(float);
     const size_t head_stride = storage.head_stride_bytes / sizeof(float);
-    if (token_stride > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-        head_stride > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-        storage.num_kv_heads > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-        storage.head_dim > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-        visible_end > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+    if (!std::in_range<int64_t>(token_stride) ||
+        !std::in_range<int64_t>(head_stride) ||
+        !std::in_range<int64_t>(storage.num_kv_heads) ||
+        !std::in_range<int64_t>(storage.head_dim) ||
+        !std::in_range<int64_t>(visible_end)) {
         return Status::InvalidArgument(
                 std::string(kKernelName) + " " + std::string(role) +
                 " cache geometry exceeds int64 range");

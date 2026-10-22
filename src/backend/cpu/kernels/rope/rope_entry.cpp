@@ -15,6 +15,7 @@
 #include <cstring>
 #include <new>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace aethermind::cpu::detail {
@@ -125,8 +126,7 @@ StatusOr<RoPEF32KernelMetadata> MakeRoPEF32KernelMetadata(const RoPEParams& para
     const int64_t rotary_dim = EffectiveRoPERotaryDim(params);
     const int64_t pair_count = rotary_dim / 2;
     const RoPEAlgorithm rope_algorithm = GetRoPEAlgorithm(params.algorithm);
-    if (static_cast<uint64_t>(pair_count) >
-        static_cast<uint64_t>(std::numeric_limits<uint32_t>::max())) {
+    if (!std::in_range<uint32_t>(pair_count)) {
         return Status::InvalidArgument("CPU RoPE rotary pair count exceeds metadata range");
     }
 

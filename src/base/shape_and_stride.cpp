@@ -15,6 +15,7 @@
 #include "utils/overflow_check.h"
 
 #include <limits>
+#include <utility>
 
 namespace aethermind {
 
@@ -95,11 +96,8 @@ int64_t ShapeAndStride::numel() const noexcept {
 
     uint64_t numel = 0;
     bool overflow = SafeMultiplyU64(shape(), &numel);
-    constexpr auto kNumelMax = std::min<uint64_t>(
-            std::numeric_limits<int64_t>::max(),
-            std::numeric_limits<size_t>::max());
+    overflow |= !std::in_range<int64_t>(numel) || !std::in_range<size_t>(numel);
 
-    overflow |= numel > kNumelMax;
     AM_CHECK(!overflow, "Integer multiplication overflow when compute numel.");
     return static_cast<int64_t>(numel);
 }

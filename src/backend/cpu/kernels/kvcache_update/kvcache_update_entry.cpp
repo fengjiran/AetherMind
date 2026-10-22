@@ -8,10 +8,10 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 namespace aethermind::cpu::detail {
 namespace {
@@ -110,11 +110,11 @@ StatusOr<StridedAddressFootprint> BuildTargetFootprint(
 
     const size_t token_stride = storage.token_stride_bytes / sizeof(float);
     const size_t head_stride = storage.head_stride_bytes / sizeof(float);
-    if (token_stride > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-        head_stride > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-        storage.num_kv_heads > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-        storage.head_dim > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
-        end - begin > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+    if (!std::in_range<int64_t>(token_stride) ||
+        !std::in_range<int64_t>(head_stride) ||
+        !std::in_range<int64_t>(storage.num_kv_heads) ||
+        !std::in_range<int64_t>(storage.head_dim) ||
+        !std::in_range<int64_t>(end - begin)) {
         return Status::InvalidArgument(
                 std::string(kKernelName) + " " +
                 std::string(role) + " cache geometry exceeds int64 range");
@@ -221,7 +221,7 @@ Status ValidateAppend(const KVCacheUpdateF32KernelArgs& args,
 
     size_t hidden = 0;
     if (CheckOverflowMul(storage.num_kv_heads, storage.head_dim, &hidden) ||
-        hidden > static_cast<size_t>(std::numeric_limits<int64_t>::max()) ||
+        !std::in_range<int64_t>(hidden) ||
         args.hidden != static_cast<int64_t>(hidden)) {
         return Status::InvalidArgument(
                 "CPU KVCacheUpdate hidden size does not match KV cache geometry");

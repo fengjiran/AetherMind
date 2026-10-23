@@ -11,10 +11,26 @@
 
 #include <memory>
 #include <new>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace aethermind::apps::inference {
 namespace {
+
+StatusOr<size_t> PositiveSize(int64_t value, std::string_view field) {
+    if (value <= 0) {
+        return Status::InvalidArgument(
+                std::string(field) + " must be positive");
+    }
+
+    size_t result;
+    if (CheckNarrow(value, &result)) {
+        return Status::OutOfRange(
+                std::string(field) + " is not representable as size_t");
+    }
+    return result;
+}
 
 bool IsSupportedPreset(CpuInferencePreset preset) noexcept {
     return preset == CpuInferencePreset::kO1Plain || preset == CpuInferencePreset::kO2Packed;

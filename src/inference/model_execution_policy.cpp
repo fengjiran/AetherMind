@@ -2,6 +2,7 @@
 #include "aethermind/graph/graph_types.h"
 #include "aethermind/model/loaded_model.h"
 #include "aethermind/model/weight/weight_binding_resolver.h"
+#include "utils/overflow_check.h"
 
 #include <array>
 #include <cstdint>
@@ -13,6 +14,20 @@
 
 namespace aethermind {
 namespace {
+
+StatusOr<size_t> PositiveSize(int64_t value, std::string_view field) {
+    if (value <= 0) {
+        return Status::InvalidArgument(
+                std::string(field) + " must be positive");
+    }
+
+    size_t result;
+    if (CheckNarrow(value, &result)) {
+        return Status::OutOfRange(
+                std::string(field) + " is not representable as size_t");
+    }
+    return result;
+}
 
 struct RequiredRole {
     TransformerWeightRole role;

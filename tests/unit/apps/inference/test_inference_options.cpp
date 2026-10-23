@@ -171,10 +171,14 @@ TEST(InferenceRunOptions, RejectsNonpositiveModelBoundsBeforeUnsignedConversion)
         SCOPED_TRACE(value);
         HfModelConfig config = Configuration();
         config.vocab_size = value;
-        EXPECT_FALSE(ValidateRunOptions(Options(), config).ok());
+        const Status vocab_status = ValidateRunOptions(Options(), config);
+        EXPECT_EQ(vocab_status.code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(vocab_status.message(), "vocab_size must be positive");
         config = Configuration();
         config.max_position_embeddings = value;
-        EXPECT_FALSE(ValidateRunOptions(Options(), config).ok());
+        const Status context_status = ValidateRunOptions(Options(), config);
+        EXPECT_EQ(context_status.code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(context_status.message(), "max_position_embeddings must be positive");
     }
 }
 

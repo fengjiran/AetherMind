@@ -8,6 +8,7 @@
 #include "aethermind/runtime/runtime_builder.h"
 #include "c_api.h"
 #include "c_api_runtime_internal.h"
+#include "utils/overflow_check.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -81,10 +82,11 @@ StatusOr<size_t> ToSize(uint64_t value, const char* field, bool positive) {
     if (positive && value == 0) {
         return Status::InvalidArgument(std::string(field) + " must be positive");
     }
-    if (!std::in_range<size_t>(value)) {
+    size_t result;
+    if (CheckNarrow(value, &result)) {
         return Status::OutOfRange(std::string(field) + " is not representable as size_t");
     }
-    return static_cast<size_t>(value);
+    return result;
 }
 
 struct RuntimeConfiguration {

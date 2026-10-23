@@ -2,18 +2,55 @@
 #define AETHERMIND_UTILS_OVERFLOW_CHECK_H
 
 /// @file
-/// @brief Checked integer arithmetic and range-product utilities.
+/// @brief Checked integer arithmetic, conversions, and range-product utilities.
 ///
 /// Provides checked arithmetic operations that report overflow without relying
 /// on undefined signed-overflow behavior. Uses compiler builtins when available
 /// (GCC/Clang), otherwise falls back to portable implementations.
 
+#include "aethermind/base/macros.h"
 #include "utils/logging.h"
 
 #include <cstdint>
 #include <type_traits>
+#include <utility>
 
 namespace aethermind {
+
+namespace detail {
+
+template<typename T>
+concept CheckNarrowInteger =
+        std::is_same_v<T, signed char> ||
+        std::is_same_v<T, unsigned char> ||
+        std::is_same_v<T, short> ||
+        std::is_same_v<T, unsigned short> ||
+        std::is_same_v<T, int> ||
+        std::is_same_v<T, unsigned int> ||
+        std::is_same_v<T, long> ||
+        std::is_same_v<T, unsigned long> ||
+        std::is_same_v<T, long long> ||
+        std::is_same_v<T, unsigned long long>;
+
+} // namespace detail
+
+/// @brief Checks representability and converts between standard integer types.
+/// @tparam To Unqualified destination integer type.
+/// @tparam From Source integer type.
+/// @param value Value to convert.
+/// @param out Receives the converted value on success.
+/// @return True when value is not representable in To; false on success.
+/// @pre out is not null.
+/// @note Failure leaves *out unchanged. Widening conversions are also supported.
+template<detail::CheckNarrowInteger To, detail::CheckNarrowInteger From>
+AM_NODISCARD constexpr bool CheckNarrow(From value, To* out) noexcept {
+    if (!std::in_range<To>(value)) {
+        return true;
+    }
+
+    *out = static_cast<To>(value);
+    return false;
+}
 
 /// @brief Multiplies two integral values and reports whether the result overflowed.
 ///

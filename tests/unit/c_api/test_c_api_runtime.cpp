@@ -168,15 +168,20 @@ TEST(CAbiRuntime, RejectsUnknownPresetAndDtype) {
 }
 
 TEST(CAbiRuntime, RejectsEachZeroGeometryField) {
-    constexpr std::array fields{&am_config_t::num_layers, &am_config_t::num_kv_heads,
-                                &am_config_t::head_dim, &am_config_t::max_tokens};
-    for (const auto field: fields) {
+    constexpr std::array fields{
+            std::pair{&am_config_t::num_layers, "num_layers"},
+            std::pair{&am_config_t::num_kv_heads, "num_kv_heads"},
+            std::pair{&am_config_t::head_dim, "head_dim"},
+            std::pair{&am_config_t::max_tokens, "max_tokens"}};
+    for (const auto& [field, name]: fields) {
         auto config = ct::RuntimeConfig();
         config.*field = 0;
         ct::Error error;
         ct::RuntimeOwner runtime(am_runtime_create(&config, &error.value));
         EXPECT_EQ(runtime, nullptr);
         ExpectError(error, AM_STATUS_INVALID_ARGUMENT);
+        const std::string expected_message = std::string(name) + " must be positive";
+        EXPECT_STREQ(error.message(), expected_message.c_str());
     }
 }
 

@@ -1,22 +1,19 @@
 #include "inference_runner.h"
 
-#include <spdlog/sinks/stdout_sinks.h>
-#include <spdlog/spdlog.h>
-
 #include <algorithm>
 #include <array>
 #include <charconv>
 #include <concepts>
-#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <exception>
 #include <filesystem>
 #include <limits>
 #include <new>
+#include <spdlog/sinks/stdout_sinks.h>
+#include <spdlog/spdlog.h>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <utility>
 #include <vector>
 

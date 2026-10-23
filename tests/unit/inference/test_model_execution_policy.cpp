@@ -8,6 +8,8 @@
 #include <array>
 #include <cstdint>
 #include <limits>
+#include <string>
+#include <utility>
 
 namespace {
 
@@ -63,16 +65,17 @@ TEST(Fp32KVCacheOptions, RejectsNonintegralDerivedHeadDimension) {
 }
 
 TEST(Fp32KVCacheOptions, RejectsNonpositiveGeometryBeforeUnsignedConversion) {
-    constexpr std::array<int64_t HfModelConfig::*, 3> fields{
-            &HfModelConfig::num_hidden_layers,
-            &HfModelConfig::num_key_value_heads,
-            &HfModelConfig::max_position_embeddings};
-    for (const auto field: fields) {
+    constexpr std::array fields{
+            std::pair{&HfModelConfig::num_hidden_layers, "num_hidden_layers"},
+            std::pair{&HfModelConfig::num_key_value_heads, "num_key_value_heads"},
+            std::pair{&HfModelConfig::max_position_embeddings, "max_position_embeddings"}};
+    for (const auto& [field, name]: fields) {
         for (const int64_t value: {int64_t{0}, int64_t{-1}}) {
             auto config = Configuration();
             config.*field = value;
             const auto mapped = MakeFp32KVCacheOptions(config, 8);
             EXPECT_EQ(mapped.status().code(), StatusCode::kInvalidArgument);
+            EXPECT_EQ(mapped.status().message(), std::string(name) + " must be positive");
         }
     }
 }
@@ -130,6 +133,7 @@ TEST(Fp32KVCacheOptions, ChecksSizeRepresentabilityWithoutMaterializingPlanes) {
     const auto mapped = MakeFp32KVCacheOptions(config, 8);
     if constexpr (sizeof(size_t) < sizeof(int64_t)) {
         EXPECT_EQ(mapped.status().code(), StatusCode::kOutOfRange);
+        EXPECT_EQ(mapped.status().message(), "num_hidden_layers is not representable as size_t");
     } else {
         ASSERT_TRUE(mapped.ok()) << mapped.status().ToString();
         EXPECT_EQ(mapped->num_layers, static_cast<size_t>(config.num_hidden_layers));

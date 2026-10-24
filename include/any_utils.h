@@ -7,7 +7,9 @@
 #include "container/string.h"
 
 #include <cxxabi.h>
+#include <functional>
 #include <map>
+#include <memory>
 #include <unordered_map>
 
 #ifdef CPP20

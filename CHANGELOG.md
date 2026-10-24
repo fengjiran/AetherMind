@@ -13,6 +13,8 @@
 
 ### Changed
 
+- 清理公共 utils：删除未使用的 `lru.h`、`xxh3.h`、`bits.h` 及 DataType 的无效 include；`FillMemoryJunk` 移入 memory 私有实现，删除公共 `memory_utils.h` 与 pattern getters，不留转发。复合标准类型键改用显式 `aethermind::hash`，不再注入通用 `std::hash` 偏特化；Map 的 Fibonacci helper 归入 container detail。原 C++ 调用方需迁移并重新编译，C ABI 不变。
+- `logging.h` 只提供断言，不再传递包含 spdlog；实际日志调用方直接包含并链接 spdlog，核心库将该依赖设为 PRIVATE。
 - 整数可表示性检查统一复用 `utils/overflow_check.h` 的 `CheckNarrow`：失败时保留输出值；从 inference 公共头删除 `PositiveSize`，正值要求和字段诊断改由 policy、runner 与 C adapter 的私有包装保留，C ABI 错误合同保持不变。
 - `KVAppendTransaction` 的逐层 append 状态统一使用 execution 层的 `KVAppendLayerState : uint8_t`；`ExecutionContext` 拥有 typed vector，`ResetKVLayerTransactionScratch()` 返回 `std::span<KVAppendLayerState>`，事务的 `layer_states` 只借用该存储。原字节 span 调用方需迁移并重新编译，冷路径预分配与整计划提交行为保持不变。
 - `BoundValue` 使用私有 `variant<monostate, TensorView, MutableTensorView>` 表达未绑定/只读/可写状态，移除重复 view 和 `has_writable`；调用方改用按值返回的 `ReadView()` 与借用指针 `TryGetWritableView()`，需迁移并重新编译。
@@ -31,6 +33,9 @@
 
 ### Fixed
 
+- 修复 checked arithmetic portable fallback 的有符号溢出误报/漏报及窄整数提升 UB；修复 hash 头的 include 顺序依赖、定制点歧义和 pair 复制，以及 Map 的全位宽右移 UB。
+- 浮点解析的原生与 POSIX fallback 统一完整输入校验，失败保留输出；fallback 处理 locale/分配失败、可表示 subnormal 及宿主 rounding mode 的恢复。
+- memory junk-fill 支持任意字节对齐并保留原 pattern；断言宏限定 helper 命名空间，可在全局或其他命名空间调用。
 - C ABI 在 KV 分配前检查 FP32 行字节/64-byte 对齐溢出，极大 head_dim 返回 Overflow，不落入既有 KV padding 的无符号回绕错误路径。
 - `am_error_create` 的 message 构造抛出时自动释放已分配 error 对象；对象/message OOM 均返回 NULL，不传播异常。
 - `HfModelValidator` 的 `hidden_act` 支持范围收窄为仅 `silu`；`gelu/relu` 在模型加载与直接构图入口返回 `InvalidArgument`，不再被静默编译成 SwiGLU。

@@ -8,11 +8,13 @@
 /// Failed checks write a stable `Check failed: ...` prefix to standard error
 /// before terminating the process. Death tests depend on that prefix.
 
+#include <cstdlib>
 #include <format>
 #include <iostream>
 #include <source_location>
-#include <spdlog/spdlog.h>
+#include <string>
 #include <string_view>
+#include <utility>
 
 namespace aethermind {
 
@@ -54,11 +56,11 @@ void HandleCheckFailed(std::string_view condition,
 ///             message.
 /// @note This macro is active in every build. The `Check failed` output prefix
 ///       is part of the death-test contract.
-#define AM_CHECK(condition, ...)                                                                       \
-    do {                                                                                               \
-        if (!(condition)) [[unlikely]] {                                                               \
-            HandleCheckFailed(#condition, std::source_location::current() __VA_OPT__(, ) __VA_ARGS__); \
-        }                                                                                              \
+#define AM_CHECK(condition, ...)                                                                                     \
+    do {                                                                                                             \
+        if (!(condition)) [[unlikely]] {                                                                             \
+            ::aethermind::HandleCheckFailed(#condition, std::source_location::current() __VA_OPT__(, ) __VA_ARGS__); \
+        }                                                                                                            \
     } while (false)
 
 /// @brief Evaluates a debug-only invariant and aborts when it is false.

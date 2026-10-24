@@ -5,6 +5,7 @@
 #include "any_utils.h"
 
 #include <cstring>
+#include <memory>
 #include <optional>
 #include <typeindex>
 #include <variant>

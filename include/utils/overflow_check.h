@@ -12,6 +12,7 @@
 #include "utils/logging.h"
 
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -31,6 +32,67 @@ concept CheckNarrowInteger =
         std::is_same_v<T, unsigned long> ||
         std::is_same_v<T, long long> ||
         std::is_same_v<T, unsigned long long>;
+
+template<typename T>
+concept OverflowInteger = std::is_integral_v<T> &&
+                          !std::is_same_v<T, bool> &&
+                          std::is_same_v<T, std::remove_cv_t<T>>;
+
+// At least unsigned int is needed: unsigned short operands may otherwise be
+// promoted to signed int before multiplication, introducing signed overflow.
+template<OverflowInteger T>
+using OverflowUnsignedArithmetic = decltype(std::make_unsigned_t<T>{} + 0U);
+
+template<OverflowInteger T>
+constexpr bool CheckOverflowMulPortable(T a, T b, T* out) noexcept {
+    using Limits = std::numeric_limits<T>;
+    bool overflowed = false;
+    if constexpr (std::is_signed_v<T>) {
+        if (a > 0) {
+            overflowed = b > 0 ? a > Limits::max() / b : b < Limits::min() / a;
+        } else if (a < 0) {
+            overflowed = b > 0 ? a < Limits::min() / b : b < 0 && a < Limits::max() / b;
+        }
+    } else {
+        overflowed = b != 0 && a > Limits::max() / b;
+    }
+
+    using U = OverflowUnsignedArithmetic<T>;
+    *out = static_cast<T>(static_cast<U>(a) * static_cast<U>(b));
+    return overflowed;
+}
+
+template<OverflowInteger T>
+constexpr bool CheckOverflowAddPortable(T a, T b, T* out) noexcept {
+    using Limits = std::numeric_limits<T>;
+    bool overflowed = false;
+    if constexpr (std::is_signed_v<T>) {
+        overflowed = (b > 0 && a > Limits::max() - b) ||
+                     (b < 0 && a < Limits::min() - b);
+    } else {
+        overflowed = a > Limits::max() - b;
+    }
+
+    using U = OverflowUnsignedArithmetic<T>;
+    *out = static_cast<T>(static_cast<U>(a) + static_cast<U>(b));
+    return overflowed;
+}
+
+template<OverflowInteger T>
+constexpr bool CheckOverflowSubPortable(T a, T b, T* out) noexcept {
+    using Limits = std::numeric_limits<T>;
+    bool overflowed = false;
+    if constexpr (std::is_signed_v<T>) {
+        overflowed = (b > 0 && a < Limits::min() + b) ||
+                     (b < 0 && a > Limits::max() + b);
+    } else {
+        overflowed = a < b;
+    }
+
+    using U = OverflowUnsignedArithmetic<T>;
+    *out = static_cast<T>(static_cast<U>(a) - static_cast<U>(b));
+    return overflowed;
+}
 
 } // namespace detail
 
@@ -63,11 +125,13 @@ AM_NODISCARD constexpr bool CheckNarrow(From value, To* out) noexcept {
 /// @param out Destination for the representable result.
 /// @return True if the exact product is not representable in `T`; false otherwise.
 /// @pre `out` is not null.
-#if defined(__GNUC__) || defined(__clang__)
-template<typename T>
-    requires std::is_integral_v<T>
+template<detail::OverflowInteger T>
 bool CheckOverflowMul(T a, T b, T* out) noexcept {
+#if defined(__GNUC__) || defined(__clang__)
     return __builtin_mul_overflow(a, b, out);
+#else
+    return detail::CheckOverflowMulPortable(a, b, out);
+#endif
 }
 
 /// @brief Adds two integral values and reports whether the result overflowed.
@@ -81,10 +145,13 @@ bool CheckOverflowMul(T a, T b, T* out) noexcept {
 /// @param out Destination for the representable result.
 /// @return True if the exact sum is not representable in `T`; false otherwise.
 /// @pre `out` is not null.
-template<typename T>
-    requires std::is_integral_v<T>
+template<detail::OverflowInteger T>
 bool CheckOverflowAdd(T a, T b, T* out) noexcept {
+#if defined(__GNUC__) || defined(__clang__)
     return __builtin_add_overflow(a, b, out);
+#else
+    return detail::CheckOverflowAddPortable(a, b, out);
+#endif
 }
 
 /// @brief Subtracts two integral values and reports whether the result overflowed.
@@ -98,69 +165,14 @@ bool CheckOverflowAdd(T a, T b, T* out) noexcept {
 /// @param out Destination for the representable result.
 /// @return True if the exact difference is not representable in `T`; false otherwise.
 /// @pre `out` is not null.
-template<typename T>
-    requires std::is_integral_v<T>
+template<detail::OverflowInteger T>
 bool CheckOverflowSub(T a, T b, T* out) noexcept {
+#if defined(__GNUC__) || defined(__clang__)
     return __builtin_sub_overflow(a, b, out);
-}
-
 #else
-
-// Portable fallback implementations use unsigned arithmetic to avoid signed
-// overflow before checking whether the converted result changed sign.
-
-template<typename T>
-    requires std::is_integral_v<T>
-inline bool CheckOverflowMul(T a, T b, T* out) noexcept {
-    using U = std::make_unsigned_t<T>;
-    const U result = static_cast<U>(a) * static_cast<U>(b);
-    *out = static_cast<T>(result);
-
-    if (a == 0 || b == 0) {
-        return false;
-    }
-    return static_cast<T>(result / static_cast<U>(a)) != b;
-}
-
-template<typename T>
-    requires std::is_integral_v<T>
-inline bool CheckOverflowAdd(T a, T b, T* out) noexcept {
-    if constexpr (std::is_unsigned_v<T>) {
-        const T result = a + b;
-        *out = result;
-        return result < a;
-    } else {
-        using U = std::make_unsigned_t<T>;
-        const U result = static_cast<U>(a) + static_cast<U>(b);
-        *out = static_cast<T>(result);
-
-        // Positive overflow changes a positive result to a negative value.
-        // Negative overflow changes a negative result to a positive value.
-        return (a > 0 && b > 0 && static_cast<T>(result) < 0) ||
-               (a < 0 && b < 0 && static_cast<T>(result) > 0);
-    }
-}
-
-template<typename T>
-    requires std::is_integral_v<T>
-inline bool CheckOverflowSub(T a, T b, T* out) noexcept {
-    if constexpr (std::is_unsigned_v<T>) {
-        const T result = a - b;
-        *out = result;
-        return result > a;
-    } else {
-        using U = std::make_unsigned_t<T>;
-        const U result = static_cast<U>(a) - static_cast<U>(b);
-        *out = static_cast<T>(result);
-
-        // Subtracting a negative value from a non-negative value can overflow.
-        // Subtracting a positive value from a negative value can underflow.
-        return (a >= 0 && b < 0 && static_cast<T>(result) < 0) ||
-               (a < 0 && b > 0 && static_cast<T>(result) > 0);
-    }
-}
-
+    return detail::CheckOverflowSubPortable(a, b, out);
 #endif
+}
 
 /// @brief Multiplies a range of non-negative integers into `*out`.
 ///

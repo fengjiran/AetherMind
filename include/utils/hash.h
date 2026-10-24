@@ -8,8 +8,13 @@
 /// underlying values, or `std::hash`, and provides consistent support for
 /// common aggregate types.
 #include <complex>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <tuple>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace aethermind {
@@ -46,76 +51,41 @@ inline uint64_t twang_mix64(uint64_t key) noexcept {
 /// @param seed Existing combined hash seed.
 /// @param hash_value Hash value to incorporate.
 /// @return The updated combined hash value.
-#ifdef CPP20
 template<typename T>
     requires std::convertible_to<T, size_t>
-#else
-template<typename T, std::enable_if_t<std::is_convertible_v<T, size_t>>* = nullptr>
-#endif
 constexpr size_t hash_combine(size_t seed, const T& hash_value) noexcept {
-    return seed ^ (hash_value + 0x9e3779b9 + (seed << 6u) + (seed >> 2u));
+    const size_t value = static_cast<size_t>(hash_value);
+    return seed ^ (value + size_t{0x9e3779b9U} + (seed << 6u) + (seed >> 2u));
 }
 
 namespace details {
 
-#ifdef CPP20
-
 template<typename T>
-concept has_std_hash = requires(T v) {
-    typename std::hash<T>;
-    { std::hash<T>()(v) } -> std::same_as<size_t>;
+concept has_static_hash = requires(const T& value) {
+    { T::hash(value) } -> std::same_as<size_t>;
 };
 
 template<typename T>
-    requires requires(T v) {
-        T::hash;
-        { T::hash(v) } -> std::same_as<size_t>;
+concept has_std_hash = requires(const T& value) {
+    { std::hash<T>{}(value) } -> std::same_as<size_t>;
+};
+
+template<typename T>
+    requires(has_static_hash<T> || std::is_enum_v<T> || has_std_hash<T>)
+size_t dispatch_hash(const T& value) {
+    // A type's explicit customization wins even if std::hash is also provided.
+    if constexpr (has_static_hash<T>) {
+        return T::hash(value);
+    } else if constexpr (std::is_enum_v<T>) {
+        using R = std::underlying_type_t<T>;
+        return std::hash<R>{}(static_cast<R>(value));
+    } else {
+        return std::hash<T>{}(value);
     }
-size_t dispatch_hash(const T& o) {
-    return T::hash(o);
 }
 
 template<typename T>
-    requires has_std_hash<T> && std::is_enum_v<T>
-size_t dispatch_hash(const T& v) {
-    using R = std::underlying_type_t<T>;
-    return std::hash<R>()(static_cast<R>(v));
-}
-
-template<typename T>
-    requires has_std_hash<T>
-size_t dispatch_hash(const T& v) {
-    return std::hash<T>()(v);
-}
-
-template<typename T>
-size_t simple_get_hash(const T& v);
-
-#else
-
-template<typename T, typename V>
-using type_if_not_enum = std::enable_if_t<!std::is_enum_v<T>, V>;
-
-// Use SFINAE to dispatch to std::hash when possible, cast enum types to their
-// underlying type, and fall back to T::hash otherwise. Enum dispatch remains
-// separate because some compilers provide enum hashing as an extension.
-template<typename T>
-auto dispatch_hash(const T& o) -> decltype(std::hash<T>()(o), type_if_not_enum<T, size_t>()) {
-    return std::hash<T>()(o);
-}
-
-template<typename T>
-std::enable_if_t<std::is_enum_v<T>, size_t> dispatch_hash(const T& o) {
-    using R = std::underlying_type_t<T>;
-    return std::hash<R>()(static_cast<R>(o));
-}
-
-template<typename T>
-auto dispatch_hash(const T& o) -> decltype(T::hash(o), size_t()) {
-    return T::hash(o);
-}
-
-#endif
+size_t simple_get_hash(const T& value);
 
 } // namespace details
 
@@ -185,8 +155,8 @@ struct hash<std::pair<T1, T2>> {
     /// @param pair Pair to hash.
     /// @return The combined pair hash.
     size_t operator()(const std::pair<T1, T2>& pair) const {
-        std::tuple<T1, T2> tuple = std::make_tuple(pair.first, pair.second);
-        return details::simple_get_hash(tuple);
+        size_t seed = hash_combine(size_t{0}, details::simple_get_hash(pair.first));
+        return hash_combine(seed, details::simple_get_hash(pair.second));
     }
 };
 
@@ -211,11 +181,6 @@ namespace details {
 template<typename T>
 size_t simple_get_hash(const T& v) {
     return hash<T>()(v);
-}
-
-inline size_t FibonacciHash(size_t hash_value, uint32_t fib_shift) {
-    constexpr size_t coeff = 11400714819323198485ull;
-    return (coeff * hash_value) >> fib_shift;
 }
 
 } // namespace details
@@ -245,38 +210,5 @@ struct hash<std::complex<T>> {
     }
 };
 } // namespace aethermind
-
-/// @brief Standard-library hash specializations backed by `aethermind::hash`.
-namespace std {
-
-template<typename... Types>
-struct hash<std::tuple<Types...>> {
-    size_t operator()(const std::tuple<Types...>& t) const {
-        return aethermind::hash<std::tuple<Types...>>()(t);
-    }
-};
-
-template<typename T>
-struct hash<std::vector<T>> {
-    size_t operator()(const std::vector<T>& v) const {
-        return aethermind::hash<std::vector<T>>()(v);
-    }
-};
-
-template<typename T1, typename T2>
-struct hash<std::pair<T1, T2>> {
-    size_t operator()(const std::pair<T1, T2>& pair) const {
-        return aethermind::hash<std::pair<T1, T2>>()(pair);
-    }
-};
-
-template<typename T>
-struct hash<std::complex<T>> {
-    size_t operator()(const std::complex<T>& c) const {
-        return aethermind::hash<std::complex<T>>()(c);
-    }
-};
-
-} // namespace std
 
 #endif // AETHERMIND_UTILS_HASH_H

@@ -4,6 +4,7 @@
 #include "aethermind/base/error.h"
 #include "aethermind/base/object.h"
 #include "any_utils.h"
+#include "container/detail/fibonacci_hash.h"
 #include "utils/hash.h"
 
 #include <concepts>

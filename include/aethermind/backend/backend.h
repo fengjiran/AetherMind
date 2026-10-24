@@ -15,6 +15,7 @@
 #include "aethermind/base/macros.h"
 #include "aethermind/operators/op_params.h"
 
+#include <memory>
 #include <span>
 
 namespace aethermind {

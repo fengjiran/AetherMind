@@ -15,6 +15,7 @@
 #include "aethermind/backend/packed_weight.h"
 #include "aethermind/base/tensor_view.h"
 
+#include <memory>
 #include <span>
 
 namespace aethermind {

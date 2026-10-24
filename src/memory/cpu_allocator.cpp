@@ -5,8 +5,8 @@
 #include "aethermind/memory/cpu_allocator.h"
 #include "aethermind/base/env.h"
 #include "alignment.h"
+#include "memory_junk_fill.h"
 #include "utils/logging.h"
-#include "utils/memory_utils.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -99,7 +99,7 @@ StatusOr<MemoryHandle> CPUAllocator::AllocateStorage(const AllocationRequest& re
     }
 
     if (policy_.junk_fill) {
-        FillMemoryJunk(data, bytes);
+        memory::detail::FillMemoryJunk(data, bytes);
     }
 
     return storage;

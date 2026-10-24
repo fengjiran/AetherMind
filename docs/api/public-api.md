@@ -258,14 +258,26 @@ prompt 必须非空；prompt/EOS 必须在词表范围内，prompt 长度须满�
 
 旧的 `CommitUntil` 与私有提交访问 header 不再是当前 API；不提供兼容别名或旧 header。
 
-## 3. 语义约束
+## 3. 通用 C++ 工具（include/utils/）
+
+| 接口 | 合同 |
+|---|---|
+| `CheckNarrow(value, out)` | 检查标准 signed/unsigned 整数到目标整数类型的可表示性；`true` 表示失败且输出保持原值，`false` 表示已完成转换。目标须为无 cv 限定的标准整数类型，`bool`、普通字符类型、枚举及浮点数不参与重载。成功与失败均不分配，支持 constexpr。`out` 必须非空。 |
+| `CheckOverflowAdd/Mul/Sub(a, b, out)` | 对非 bool、无 cv 的整数类型检查算术结果，`true` 表示溢出。始终写入按目标位宽取模的结果；溢出时不得将该值视为精确结果。`out` 必须非空。GCC/Clang 使用 builtin，其余编译器使用同合同的 portable 实现。 |
+| `aethermind::hash<T>` / `get_hash(...)` | 定制优先级为 `T::hash`、enum underlying、`std::hash`；提供 tuple/pair/vector/complex 的显式复合 hasher。pair 按引用读取元素，不要求元素可复制。标准容器的复合键应显式传入 `aethermind::hash<Key>`，不再提供标准类型的通用 `std::hash` 偏特化。 |
+| `utils::ParseFloat/ParseDouble(text, out)` | 完整解析 `from_chars` general 格式的字面量；拒绝空串、前导空白/加号、十六进制形式及尾随垃圾。保留合法的 inf/nan，由所属领域检查是否允许非有限值；失败保留输出。POSIX fallback 使用局部 C numeric locale，恢复线程原 rounding mode，locale/分配失败返回 false，不传播异常。 |
+| `AM_CHECK` / `AM_DCHECK` | 可从任意命名空间调用；失败诊断保留 `Check failed` 前缀。`AM_DCHECK` 在 release 中不求值。头文件只提供断言，不传递包含 spdlog；日志调用方直接声明依赖。 |
+
+`numeric_utils.h`、`variant_utils.h` 和 Function 所用的 `qualified_name.h` 保留现有接口。未使用的 `lru.h`、`xxh3.h`、`bits.h` 已删除；DataType 枚举与已有 dtype 行为保留。原公共 `memory_utils.h` 与 pattern getters 已移除，junk-fill 属于 CPUAllocator 的私有实现，不提供兼容转发。
+
+## 4. 语义约束
 
 - C ABI 句柄（`ObjectHandle`、`am_error_handle`）为不透明指针，不暴露内部布局；对象生命周期由引用计数/显式 destroy 管理。
 - `am_status_code` 覆盖当前产品所需的错误类别（OK/CANCELLED/UNKNOWN/INVALID_ARGUMENT/.../UNAUTHENTICATED）。
 - `Executor::Execute` 执行一次单计划；跨 Prefill/Decode 的请求编排由已实现的 `InferenceSession::Generate` 负责。
 - `apps/inference/` 的 runner、参数校验与 I/O 为应用私有实现；FP32 准入、模型 KV 映射及 CPU preset 归 inference 共享接口，C ABI 适配有独立 C 调用验收。
 
-## 4. 相关文档
+## 5. 相关文档
 
 - 头文件：`include/c_api.h`、`include/aethermind/model/model_loader.h`、`include/aethermind/compiler/model_compiler.h`、`include/aethermind/runtime/runtime_builder.h`、`include/aethermind/inference/executable_model.h`、`include/aethermind/inference/inference_session.h`、`include/aethermind/execution/executor.h`（Doxygen 注释为语义事实源）
 - 架构总览：[docs/designs/architecture/architecture_overview.md](../designs/architecture/architecture_overview.md)（§一 API 服务层、§八 差距概要）

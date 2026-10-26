@@ -19,6 +19,7 @@
 
 ## 已解决
 
+- [x] HF reader 将 sliding_window 当作未知字段跳过，存在滑窗配置被静默构图为 full attention 的风险（修复：2026-10-26 显式解析，缺失/null 接受，所有显式窗口值拒绝；覆盖加载、直接构图和 runner 分配前失败边界，关联：[第一批验收记录](tests/sliding_window_admission_validation_2026-10-26.md)）
 - [x] `HfModelValidator` 接受 `gelu/relu`，而 `BuildLlamaDense` 固定生成 `SiluMul`，存在 accepted config 被静默编译为错误 MLP 语义的风险（修复：2026-10-21 validator 收窄为仅 `silu`，模型加载与直接构图入口均拒绝 `gelu/relu`；回归 4/4 通过，关联：[系统能力演进路线图 §5.2](improvement-plan/06-system-capability-evolution-roadmap.md#52-p0统一接受的模型和实际语义已闭环)）
 - [x] `KVCacheManager::Init` 重置 generation 导致旧 view 复活（修复：2026-10-11 跨 re-init 保留 generation、拒绝回绕；正式回归覆盖成功/失败 re-init 与已释放副本，关联：[08 号 KV/Attention 演进提案](improvement-plan/08-kv-cache-and-attention-capability-evolution.md)）
 - [x] `KVCacheManager::ResetSession/ReleaseSession` 接受跨 Manager view（修复：2026-10-11 校验 layout/storage/slot owner，拒绝操作且保持双方 reservation；正式回归已通过，关联：[08 号 KV/Attention 演进提案](improvement-plan/08-kv-cache-and-attention-capability-evolution.md)）

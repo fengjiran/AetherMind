@@ -147,6 +147,10 @@ struct HfModelConfig {
     int64_t max_position_embeddings = 0;
     int64_t head_dim = 0; // 0 = derive from hidden_size / num_attention_heads.
 
+    // Missing/null means full attention; any explicit window is rejected until
+    // sliding-window attention has an executable semantic contract.
+    std::optional<int64_t> sliding_window{};
+
     double rms_norm_eps = 0.0;
     std::string hidden_act = "silu";
 

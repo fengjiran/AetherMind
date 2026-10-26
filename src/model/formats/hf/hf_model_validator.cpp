@@ -522,6 +522,16 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
     AM_RETURN_IF_ERROR(RequirePositive(config.vocab_size, "vocab_size"));
     AM_RETURN_IF_ERROR(RequirePositive(config.max_position_embeddings, "max_position_embeddings"));
 
+    if (config.sliding_window.has_value()) {
+        if (*config.sliding_window <= 0) {
+            return Status::InvalidArgument(
+                    "Model config field 'sliding_window' must be positive when present; "
+                    "omit it or use null for full attention");
+        }
+        return Status::InvalidArgument(
+                "Model config field 'sliding_window' enables sliding-window attention, which is not supported");
+    }
+
     if (config.rms_norm_eps <= 0.0) {
         return Status::InvalidArgument("Model config field 'rms_norm_eps' must be positive");
     }

@@ -188,6 +188,41 @@ TEST(ModelLoader_PipelineTest, ValidShardedDirectoryReachesLoadedModelBoundary) 
     EXPECT_TRUE(resolved_weights.layers[0].mlp.down_proj.IsValid());
 }
 
+TEST(ModelLoader_PipelineTest, AcceptsNullSlidingWindowAsFullAttention) {
+    TempDirectory temp_dir;
+    std::string config = MakeMinimalLlamaConfigJson();
+    config.insert(1, R"("sliding_window": null,)");
+    WriteTextFile(temp_dir.path() / "config.json", config);
+    WriteSafetensorsFile(temp_dir.path() / "model.safetensors",
+                         MakeCompleteTensorHeader(1),
+                         FloatArrayToBytes(std::array<float, 12>{}));
+
+    const auto model = ModelLoader::Load(temp_dir.path());
+
+    ASSERT_TRUE(model.ok()) << model.status().ToString();
+    EXPECT_FALSE((*model)->GetConfig().sliding_window.has_value());
+}
+
+class ModelLoaderSlidingWindow : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(ModelLoaderSlidingWindow, RejectsBeforeReadingWeights) {
+    TempDirectory temp_dir;
+    std::string config = MakeMinimalLlamaConfigJson();
+    config.insert(1, std::string("\"sliding_window\": ") + GetParam() + ",");
+    WriteTextFile(temp_dir.path() / "config.json", config);
+    // A malformed artifact distinguishes config rejection from weight loading.
+    WriteTextFile(temp_dir.path() / "model.safetensors", "invalid safetensors");
+
+    const auto model = ModelLoader::Load(temp_dir.path());
+
+    ASSERT_FALSE(model.ok());
+    EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(model.status().message().find("sliding_window"), std::string::npos);
+}
+
+INSTANTIATE_TEST_SUITE_P(WindowValues, ModelLoaderSlidingWindow,
+                         ::testing::Values("0", "-1", "128"));
+
 TEST(ModelLoader_PipelineTest, AllowsStructurallyValidRopeScalingForModelCompiler) {
     TempDirectory temp_dir;
     WriteTextFile(temp_dir.path() / "config.json", R"({

@@ -1,7 +1,9 @@
 #include "aethermind/model/formats/hf/hf_model_validator.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <gtest/gtest.h>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -172,6 +174,38 @@ TEST(ModelLoader_HfModelValidatorTest, AcceptsValidLlamaConfigWithOptions) {
 
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
+
+TEST(ModelLoader_HfModelValidatorTest, AcceptsAbsentSlidingWindow) {
+    const HfModelConfig config = MakeValidLlamaConfig();
+    ASSERT_FALSE(config.sliding_window.has_value());
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_TRUE(status.ok()) << status.ToString();
+}
+
+class HfSlidingWindowValidatorTest : public ::testing::TestWithParam<int64_t> {};
+
+TEST_P(HfSlidingWindowValidatorTest, RejectsDeclaredSlidingWindow) {
+    HfModelConfig config = MakeValidLlamaConfig();
+    config.sliding_window = GetParam();
+
+    const Status status = HfModelValidator::ValidateConfig(config);
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("sliding_window"), std::string::npos);
+    if (GetParam() <= 0) {
+        EXPECT_NE(status.message().find("positive"), std::string::npos);
+    } else {
+        EXPECT_NE(status.message().find("not supported"), std::string::npos);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        SlidingWindow, HfSlidingWindowValidatorTest,
+        ::testing::Values(int64_t{0}, int64_t{-1}, int64_t{1}, int64_t{128},
+                          std::numeric_limits<int64_t>::min(),
+                          std::numeric_limits<int64_t>::max()));
 
 TEST(ModelLoader_HfModelValidatorTest, AcceptsMissingArchitecturesWhenModelTypeIsLlama) {
     HfModelConfig config = MakeValidLlamaConfig();

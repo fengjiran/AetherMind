@@ -143,6 +143,22 @@ private:
                               config.head_dim);
         }
 
+        if (key == "sliding_window") {
+            if (TryConsumeLiteral("null")) {
+                config.sliding_window.reset();
+            } else {
+                AM_RETURN_IF_ERROR(parse_into([&] { return ParseInt64(); },
+                                              config.sliding_window));
+            }
+            // ParseInt64 consumes only the integer prefix. Reject fractional
+            // and exponent suffixes here so diagnostics retain the field name.
+            SkipWhitespace();
+            if (AtEnd() || (input_[position_] != ',' && input_[position_] != '}')) {
+                return FieldParseError(key, Status::InvalidArgument("Expected an integer or null"));
+            }
+            return Status::Ok();
+        }
+
         if (key == "rms_norm_eps") {
             return parse_into([&] { return ParseDouble(); },
                               config.rms_norm_eps);

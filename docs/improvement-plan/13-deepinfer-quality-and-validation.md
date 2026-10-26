@@ -1,8 +1,8 @@
 # 借鉴 DeepInfer 的生产验证与质量实施方案
 
-- **状态**: Draft
-- **版本**: 1.0
-- **日期**: 2026-10-22
+- **状态**: In Progress
+- **版本**: 1.1
+- **日期**: 2026-10-26
 - **产品边界**: [当前产品 PRD](../products/aethermind_prd.md)
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联计划**: [02 工程质量](02-engineering-quality-system.md)、[06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[10 产品推理入口](10-upper-level-runtime-assembly.md)
@@ -10,7 +10,7 @@
 
 本文将 DeepInfer 中适合当前产品的验证方法，细化为 AetherMind 的实施工作包。质量属性、风险台账、证据等级与 build profiles 以 02 号提案为准；算子、fusion、packing 与性能实验继续遵循[算子开发与优化工作流](../guides/operator-development-workflow.md)。本文不建立第二套质量规范、kernel registry 或模型运行入口。
 
-源码基线为 2026-10-22 的静态核对。本文新增的报告格式、测试工具、CTest labels 和模型 benchmark 均为拟实施内容；本次文档落地没有运行 C++ 构建、单元测试或 benchmark，不构成新增 capability 或性能收益证据。
+§1 保留 2026-10-22 的静态核对快照。当前实施进度以 §4 对应工作包为准；2026-10-26 已完成 Q1 的 sliding_window 准入子项。其余拟新增报告格式、数值工具、CTest labels 和模型 benchmark 不能据此视为已实现。
 
 ## 1. 现状分析
 
@@ -146,11 +146,11 @@ Decode 上下文随生成增长。固定上下文实验应在计时区外用独�
 
 ## 4. 实施步骤
 
-以下编号仅为工作包追踪，不定义产品阶段、API 或模块身份；所有工作包当前均待实施。语义修正、入口、验证基础设施和性能优化分别提交，避免将收益验证与 correctness 修复混为一项。
+以下编号仅为工作包追踪，不定义产品阶段、API 或模块身份；实施状态在各工作包中单独记录。语义修正、入口、验证基础设施和性能优化分别提交，避免将收益验证与 correctness 修复混为一项。
 
 ### 4.1 Q1：模型准入与公开入口证据（P0）
 
-- model 中解析 sliding_window，缺失/null 保持当前全注意力语义，对启用的滑动窗口显式拒绝；0/非法类型等值须冻结解释并测试，不靠 unknown-field skip。覆盖 reader→validator→直接 BuildModelGraph 路径，沿用已有 activation 与 RoPE 权威。
+- **准入子项已实现（2026-10-26）**：model 显式解析 sliding_window，缺失/null 保持当前全注意力语义；正整数因不支持滑动窗口而拒绝，0/负数因非法值而拒绝，非法类型、小数/指数、非法后缀和整数溢出在解析时拒绝。覆盖 reader→validator→loader、直接 BuildModelGraph/BuildLlamaDense 与 runner 的 Runtime 分配前失败边界，沿用已有 activation 与 RoPE 权威。实现和限定验证证据见 [第一批验收记录](../tests/sliding_window_admission_validation_2026-10-26.md)。本子项不表示 Q1 全部退出条件或 Q2–Q5 已完成。
 - 按 10 实施 apps/inference 下的独立入口，默认 O1/plain，O2/packed 显式选择；完成模型和请求失败边界、Runtime 稳定地址、stderr/stdout 与退出码合同。
 - 固定 fixture 来源、checksum、命令和预期样本集合；复用已有 LoadAndPrepareExecutableModel/Generate 测试。输出第一版能力证据记录，尚未运行的组合明确标记。
 

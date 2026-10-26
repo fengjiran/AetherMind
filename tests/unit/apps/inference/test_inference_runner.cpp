@@ -274,6 +274,31 @@ TEST(InferenceRunnerFailure, ReportsLoadingFailureBeforeCreatingRuntimeResources
     ExpectReleasedResources(*resources);
 }
 
+TEST(InferenceRunnerFailure, RejectsSlidingWindowBeforeCreatingRuntimeResources) {
+    TempDirectory directory;
+    ASSERT_TRUE(CopyModelWithConfigReplacement(
+                        directory.path(), "{", R"({"sliding_window": 128,)")
+                        .ok());
+    RunOptions options = RunnerOptions();
+    options.model_dir = directory.path();
+    auto resources = std::make_shared<RunnerResources>();
+    {
+        RuntimeBuilder builder;
+        RegisterRecordingAllocator(builder, resources);
+        RunStage stage = RunStage::kNone;
+        const auto result = runner_test::RunInferenceWithBuilder(options, builder, &stage);
+
+        ASSERT_FALSE(result.ok());
+        EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_NE(result.status().message().find("sliding_window"), std::string::npos);
+        EXPECT_EQ(stage, RunStage::kLoad);
+        EXPECT_EQ(resources->allocator_creations, 0U);
+        EXPECT_EQ(resources->allocation_attempts, 0U);
+        EXPECT_EQ(resources->backend_creations, 0U);
+    }
+    ExpectReleasedResources(*resources);
+}
+
 TEST(InferenceRunnerFailure, ReportsInvalidRequestBeforeCreatingRuntimeResources) {
     RunOptions options = RunnerOptions();
     options.prompt_tokens.clear();

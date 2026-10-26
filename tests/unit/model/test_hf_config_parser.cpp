@@ -3,9 +3,11 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -100,6 +102,12 @@ std::string MakeConfigWithoutRequiredField(std::string_view omitted_field) {
     return config;
 }
 
+std::string MakeConfigWithSlidingWindow(std::string_view json_value) {
+    std::string config = MakeConfigWithoutRequiredField("");
+    config.insert(config.rfind('}'), ", \"sliding_window\": " + std::string(json_value));
+    return config;
+}
+
 StatusOr<HfDirectoryReader> OpenTempDir(const TempDirectory& temp_dir) {
     return HfDirectoryReader::Open(temp_dir.Path());
 }
@@ -181,6 +189,7 @@ TEST(ModelLoader_HfConfigTest, DefaultsOptionalFields) {
     ASSERT_TRUE(config.ok()) << config.status().ToString();
     EXPECT_EQ(config->num_key_value_heads, config->num_attention_heads);
     EXPECT_EQ(config->head_dim, 0);
+    EXPECT_FALSE(config->sliding_window.has_value());
     EXPECT_EQ(config->hidden_act, "silu");
     EXPECT_FALSE(config->tie_word_embeddings);
     EXPECT_FALSE(config->attention_bias);
@@ -190,6 +199,79 @@ TEST(ModelLoader_HfConfigTest, DefaultsOptionalFields) {
     EXPECT_TRUE(config->weight_dtype_hint_name.empty());
     EXPECT_EQ(config->weight_dtype_hint, DataType{});
 }
+
+TEST(ModelLoader_HfConfigTest, ParsesNullSlidingWindowAsAbsent) {
+    TempDirectory temp_dir;
+    WriteConfig(temp_dir.Path(), MakeConfigWithSlidingWindow("null"));
+    WriteMinimalSafetensors(temp_dir.Path());
+
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
+
+    ASSERT_TRUE(config.ok()) << config.status().ToString();
+    EXPECT_FALSE(config->sliding_window.has_value());
+}
+
+TEST(ModelLoader_HfConfigTest, ParsesNullSlidingWindowBeforeAnotherField) {
+    TempDirectory temp_dir;
+    std::string config_json = MakeConfigWithSlidingWindow("\n null \t ");
+    config_json.insert(config_json.rfind('}'), ", \"head_dim\": 128");
+    WriteConfig(temp_dir.Path(), config_json);
+    WriteMinimalSafetensors(temp_dir.Path());
+
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
+
+    ASSERT_TRUE(config.ok()) << config.status().ToString();
+    EXPECT_FALSE(config->sliding_window.has_value());
+    EXPECT_EQ(config->head_dim, 128);
+}
+
+class HfSlidingWindowIntegerParserTest : public ::testing::TestWithParam<int64_t> {};
+
+TEST_P(HfSlidingWindowIntegerParserTest, PreservesDeclaredIntegerForValidation) {
+    TempDirectory temp_dir;
+    WriteConfig(temp_dir.Path(), MakeConfigWithSlidingWindow(std::to_string(GetParam())));
+    WriteMinimalSafetensors(temp_dir.Path());
+
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
+
+    ASSERT_TRUE(config.ok()) << config.status().ToString();
+    ASSERT_TRUE(config->sliding_window.has_value());
+    EXPECT_EQ(*config->sliding_window, GetParam());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        SlidingWindow, HfSlidingWindowIntegerParserTest,
+        ::testing::Values(int64_t{0}, int64_t{128}, int64_t{-1},
+                          std::numeric_limits<int64_t>::min(),
+                          std::numeric_limits<int64_t>::max()));
+
+class HfSlidingWindowInvalidParserTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(HfSlidingWindowInvalidParserTest, RejectsInvalidValueWithFieldContext) {
+    TempDirectory temp_dir;
+    WriteConfig(temp_dir.Path(), MakeConfigWithSlidingWindow(GetParam()));
+    WriteMinimalSafetensors(temp_dir.Path());
+
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
+
+    ASSERT_FALSE(config.ok());
+    EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(config.status().message().find("sliding_window"), std::string::npos);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        SlidingWindow, HfSlidingWindowInvalidParserTest,
+        ::testing::Values("true", "false", R"("128")", "[]", "{}", "1.5", "1e2",
+                          "nullx", "null.0", "128true", "9223372036854775808",
+                          "-9223372036854775809"));
 
 TEST_P(HfConfigMissingRequiredFieldTest, DefersMissingRequiredFieldToValidator) {
     TempDirectory temp_dir;

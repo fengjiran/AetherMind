@@ -20,9 +20,6 @@ namespace aethermind {
 
 class Tensor;
 class Tensor_BK;
-class Function;
-template<typename FType>
-class TypedFunction;
 class Any;
 
 namespace details {
@@ -179,14 +176,6 @@ DEFINE_TYPE_NAME(_, _, _, Any*, Any*);
 DEFINE_TYPE_NAME(_, _, _, const Any*, const Any*);
 DEFINE_TYPE_NAME(_, _, _, const Any&, const Any&);
 DEFINE_TYPE_NAME(_, _, _, void, void);
-DEFINE_TYPE_NAME(_, _, _, Function, Function);
-
-template<typename FType>
-struct TypeName<TypedFunction<FType>> {
-    static String value() {
-        return "Function";
-    }
-};
 
 #undef DEFINE_TYPE_NAME
 

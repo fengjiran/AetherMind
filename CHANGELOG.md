@@ -13,6 +13,7 @@
 
 ### Changed
 
+- 删除未使用的公共 `function.h`、`function_traits.h`、`registry.h` 与 `src/function.cpp`：移除 `Function`/`TypedFunction`/`Registry`、`DEFINE_STATIC_FUNCTION`/`REG_VAR_DEF` 宏及 Any 的 `Function` 类型名；`qualified_name.h` 保留。原 C++ 调用方需迁移并重新编译，C ABI 不变。
 - 清理公共 utils：删除未使用的 `lru.h`、`xxh3.h`、`bits.h` 及 DataType 的无效 include；`FillMemoryJunk` 移入 memory 私有实现，删除公共 `memory_utils.h` 与 pattern getters，不留转发。复合标准类型键改用显式 `aethermind::hash`，不再注入通用 `std::hash` 偏特化；Map 的 Fibonacci helper 归入 container detail。原 C++ 调用方需迁移并重新编译，C ABI 不变。
 - `logging.h` 只提供断言，不再传递包含 spdlog；实际日志调用方直接包含并链接 spdlog，核心库将该依赖设为 PRIVATE。
 - 整数可表示性检查统一复用 `utils/overflow_check.h` 的 `CheckNarrow`：失败时保留输出值；从 inference 公共头删除 `PositiveSize`，正值要求和字段诊断改由 policy、runner 与 C adapter 的私有包装保留，C ABI 错误合同保持不变。

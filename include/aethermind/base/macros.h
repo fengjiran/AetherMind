@@ -114,8 +114,6 @@
 #define AM_STR_CONCAT_(__x, __y) __x##__y
 #define AM_STR_CONCAT(__x, __y) AM_STR_CONCAT_(__x, __y)
 
-#define REG_VAR_DEF static ATTRIBUTE_UNUSED uint32_t _make_unique_tid_
-
 #if defined(__GNUC__) || defined(__clang__)
 #define FUNC_SIG __PRETTY_FUNCTION__
 #elif defined(_MSC_VER)
@@ -137,13 +135,4 @@
         }                                                \
     };
 
-#define DEFINE_STATIC_FUNCTION_(FuncName)          \
-    static void FuncName();                        \
-    AM_STR_CONCAT(REG_VAR_DEF, __COUNTER__) = [] { \
-        FuncName();                                \
-        return 0;                                  \
-    }();                                           \
-    static void FuncName()
-
-#define DEFINE_STATIC_FUNCTION() DEFINE_STATIC_FUNCTION_(AM_STR_CONCAT(_static_func_tid_, __COUNTER__))
 #endif // AETHERMIND_BASE_MACROS_H

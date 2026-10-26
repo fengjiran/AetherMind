@@ -268,7 +268,7 @@ prompt 必须非空；prompt/EOS 必须在词表范围内，prompt 长度须满�
 | `utils::ParseFloat/ParseDouble(text, out)` | 完整解析 `from_chars` general 格式的字面量；拒绝空串、前导空白/加号、十六进制形式及尾随垃圾。保留合法的 inf/nan，由所属领域检查是否允许非有限值；失败保留输出。POSIX fallback 使用局部 C numeric locale，恢复线程原 rounding mode，locale/分配失败返回 false，不传播异常。 |
 | `AM_CHECK` / `AM_DCHECK` | 可从任意命名空间调用；失败诊断保留 `Check failed` 前缀。`AM_DCHECK` 在 release 中不求值。头文件只提供断言，不传递包含 spdlog；日志调用方直接声明依赖。 |
 
-`numeric_utils.h`、`variant_utils.h` 和 Function 所用的 `qualified_name.h` 保留现有接口。未使用的 `lru.h`、`xxh3.h`、`bits.h` 已删除；DataType 枚举与已有 dtype 行为保留。原公共 `memory_utils.h` 与 pattern getters 已移除，junk-fill 属于 CPUAllocator 的私有实现，不提供兼容转发。
+`numeric_utils.h`、`variant_utils.h` 与 `qualified_name.h` 保留现有接口。未使用的 `lru.h`、`xxh3.h`、`bits.h`、`function.h`、`function_traits.h`、`registry.h` 及 `Function`/`Registry` 已删除；DataType 枚举与已有 dtype 行为保留。原公共 `memory_utils.h` 与 pattern getters 已移除，junk-fill 属于 CPUAllocator 的私有实现，不提供兼容转发。
 
 ## 4. 语义约束
 

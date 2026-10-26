@@ -102,6 +102,8 @@ M6 passed 100 C ABI cases (52 boundary/failure cases and 48 pure-C/direct-Sessio
 
 ## Sanitizer validation boundary
 
+The [CTest/sanitizer second-batch validation](../../../docs/tests/ctest_sanitizer_validation_2026-10-26.md) provides the current reproducible presets. The full test executable now compiles inert interposer helpers under ASAN/TSAN; incompatible fault-injection cases are explicitly excluded from those gates. The current ASAN/UBSAN slice also passed with leak detection enabled. The historical startup conflict and removed function-registry leak baseline below describe their original snapshots and are not current failure claims.
+
 The M2 run rebuilt `build-asan` with ASAN/UBSAN. The full unit executable exited 139 before listing tests, including outside the sandbox. An A/B link using the same three M2 objects and otherwise identical link arguments started normally without the global malloc interposer object and exited 139 with it. An isolated Linux harness uses the same runner/test sources and the instrumented core while excluding that interposer:
 
 ```bash

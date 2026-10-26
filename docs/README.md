@@ -139,6 +139,7 @@
 | [upper_level_runtime_assembly_m5_validation_2026-10-22.md](tests/upper_level_runtime_assembly_m5_validation_2026-10-22.md) | 10 号方案 M5：冻结 C ABI、共享准入/KV 映射、C11 合同与错误对象 OOM | Current |
 | [upper_level_runtime_assembly_m6_validation_2026-10-22.md](tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md) | 10 号方案 M6：正式 C ABI、纯 C caller、owner/buffer/KV/故障与 sanitizer 验收 | Current |
 | [utils_cleanup_validation_2026-10-23.md](tests/utils_cleanup_validation_2026-10-23.md) | utils 清理：checked arithmetic、hash、解析、断言与 memory 私有化及消费者回归 | Current |
+| [ctest_sanitizer_validation_2026-10-26.md](tests/ctest_sanitizer_validation_2026-10-26.md) | 13 号方案 Q2 第二批：CTest 逐 case 发现、label、fixture 门禁、target-scoped ASAN/UBSAN 与独立 TSAN presets | Current |
 
 ### 问题跟踪（docs/issues.md）
 

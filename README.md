@@ -122,7 +122,10 @@ cmake --build build --target aethermind_benchmark -j  # Benchmarks
 | `BUILD_INFERENCE_TOOL` | `OFF` | Build the standalone `aethermind_infer` CLI |
 | `USE_LIBBACKTRACE` | `ON` | Enable libbacktrace for stack traces |
 | `BACKTRACE_ON_SEGFAULT` | `ON` | Install a SIGSEGV traceback handler |
-| `ENABLE_TSAN` | `OFF` | Enable ThreadSanitizer |
+| `AETHERMIND_SANITIZER` | `none` | Project-target instrumentation: `none`, `asan-ubsan`, or `tsan` |
+| `AETHERMIND_VALIDATION_REQUIRED_ASSETS` | `OFF` | Require checked model fixtures and a CLI for the validation gates |
+| `AETHERMIND_TEST_MODELS_DIR` | source `.models` | Absolute root of externally prepared test models; tests only |
+| `AETHERMIND_INFER_BINARY` | empty | Absolute external CLI for CTest; an in-build CLI takes precedence |
 | `USE_ALLOC_ALIGNMENT` | `ON` | Apply `KALLOC_ALIGNMENT` to allocations |
 | `KALLOC_ALIGNMENT` | `64` | Memory alignment in bytes |
 
@@ -169,6 +172,20 @@ cc -std=c11 -Iinclude -Itests/unit/c_api \
 
 Tests use [GoogleTest](https://google.github.io/googletest/) and live under `tests/unit/`.
 
+CTest discovers the existing GoogleTest cases and runs the Python fixture/CLI checks. After preparing the fixtures below, use the same configure, build, and test presets locally and in automation:
+
+```bash
+cmake --preset validation-release
+cmake --build --preset validation-release
+ctest --preset validation-release
+```
+
+This preset runs a bounded `validation` slice. Additional labels include `smoke`, `numerical`, `lifecycle`, `context_boundary`, `thread-smoke`, `model`, `cli`, `interposer`, and `isa-avx2`. For example, `ctest --test-dir build/validation/validation-release -L numerical --output-on-failure` selects numerical cases. Context-capacity tests do not establish long-context coverage.
+
+The validation presets require checked model assets and build their own CLI. Missing assets fail the fixture gate. Ordinary test configurations explicitly disable cases whose model assets or CLI are unavailable; CTest reports them as not run. Sanitizer builds disable incompatible interposer/preload cases, which remain covered in the ordinary Linux/glibc build. Required validation cases fail if they attempt to skip. Configure and build before testing; a missing C++ test executable cannot pass the validation entrypoint.
+
+New cases that use the malloc counting/failure helpers must update the explicit `interposer` classification in `cmake/AetherMindTests.cmake` and its classification contract.
+
 The inference admission fixture tests require generated HF variants. Follow the [fixture preparation and validation instructions](tests/fixtures/inference_admission/README.md) before running them; missing fixtures fail the tests rather than being skipped. The generator and its Python tests use only the standard library.
 
 The Linux CLI/direct-Session integration suite additionally requires the standalone executable from Run Inference above. Set `AETHERMIND_INFER_BINARY` to its absolute path; missing executables or unsupported platforms fail this integration gate explicitly. This variable is consumed by tests only. The Python CLI tests also require the existing C toolchain for Linux/glibc failure injection. Commands and scoped results are recorded in the [M4 validation report](docs/tests/upper_level_runtime_assembly_m4_validation_2026-10-22.md).
@@ -199,12 +216,20 @@ python3 tests/unit/apps/inference/test_inference_cli.py \
 ### Sanitizer Builds
 
 ```bash
-# ThreadSanitizer variant
-cmake -S . -B build-tsan -DENABLE_TSAN=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF
-cmake --build build-tsan --target aethermind_unit_tests -j
-AETHERMIND_INFER_BINARY="$PWD/build-infer/apps/inference/aethermind_infer" \
-  ./build-tsan/tests/unit/aethermind_unit_tests
+# AddressSanitizer + UndefinedBehaviorSanitizer, including leak detection
+cmake --preset validation-asan-ubsan
+cmake --build --preset validation-asan-ubsan
+ctest --preset validation-asan-ubsan
+
+# Separate ThreadSanitizer build
+cmake --preset validation-tsan
+cmake --build --preset validation-tsan
+ctest --preset validation-tsan
 ```
+
+Sanitizer flags apply to AetherMind's targets, including the C++ tests and CLI, and do not propagate to third-party targets. ASAN/UBSAN and TSAN are mutually exclusive. The presets save JUnit results in their build directories. Passing a TSAN slice of the synchronous engine and thread primitives does not establish concurrent Session support.
+
+On Linux hosts where TSAN exits before `main` with `unexpected memory mapping`, a supported process-local workaround is `setarch "$(uname -m)" -R ctest --preset validation-tsan`. This requires permission to change the process personality; the command does not change system-wide ASLR settings. Report startup failures separately from executed test results.
 
 ## Benchmarks
 

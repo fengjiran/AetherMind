@@ -77,7 +77,7 @@ cmake --build build --target aethermind_unit_tests -j
 cmake --build build --target aethermind_benchmark -j
 
 # TSAN 变体
-cmake -S . -B build-tsan -DENABLE_TSAN=ON -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF
+cmake -S . -B build-tsan -DAETHERMIND_SANITIZER=tsan -DBUILD_TESTS=ON -DBUILD_BENCHMARKS=OFF
 cmake --build build-tsan --target aethermind_unit_tests -j
 ```
 

@@ -1,7 +1,7 @@
 # 借鉴 DeepInfer 的生产验证与质量实施方案
 
 - **状态**: In Progress
-- **版本**: 1.1
+- **版本**: 1.2
 - **日期**: 2026-10-26
 - **产品边界**: [当前产品 PRD](../products/aethermind_prd.md)
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
@@ -158,6 +158,7 @@ Decode 上下文随生成增长。固定上下文实验应在计时区外用独�
 
 ### 4.2 Q2：CTest、sanitizer 与 ISA 基础设施（P0）
 
+- **第二批已实施（2026-10-26）**：CTest 逐 case 发现既有 GTest，注册 Python fixture/CLI 检查与模型 checksum fixture；新增 target-scoped ASAN/UBSAN、独立 TSAN 和正式验证 presets；旧的 ENABLE_TSAN 入口已迁移到 AETHERMIND_SANITIZER 并移除。ASAN/TSAN 下移除测试程序的全局 malloc interposer 覆盖，正常构建保留故障注入；必需 skip、缺二进制和空 discovery 不再返回假通过。限定验收结果与平台边界见 [第二批验收记录](../tests/ctest_sanitizer_validation_2026-10-26.md)。warnings profile、第三批 ISA 编译隔离以及完整平台门禁仍未完成，Q2 保持部分实施状态。
 - 根 CMake 接入 CTest 和 GoogleTest 发现，按 02 的 target-scoped helper 实施 warnings、ASAN+UBSAN、独立 TSAN；ASAN/UBSAN 与 TSAN 不合并，第三方不继承项目 Werror。
 - 建立 smoke、numerical、lifecycle、long-context、performance labels，明确 build profile 与 test label 是两个维度。缺数据的本地可选测试可报告 skip；发布必需 fixture 由 CI 准备，缺失即失败。
 - 移除单测 target 全局 AVX2/FMA flags，仅对需要的 translation units 启用；baseline 构建配合已有有效 feature 控制验证 fallback，另用具备硬件的节点验证 AVX2。

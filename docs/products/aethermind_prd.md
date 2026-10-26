@@ -353,8 +353,8 @@ Generate 的 output_len 必填；正数 N 要求 output_capacity 至少 N，短 
 | 功能正确性 | 100% | 与 HF 参考实现对比 | `--gtest_filter=LlamaDecode.*` |
 | 稳态零分配 | 100% | Decode 循环 (排除 weight mapping) | 自定义 malloc 钩子统计 |
 | 确定性 | 100% | 同平台相同输入输出 | 100 次重复测试 hash 一致 |
-| 无数据竞争 | 100% | TSAN 检测 | `cmake -DENABLE_TSAN=ON` |
-| 内存无泄漏 | 100% | ASAN/LSAN 检测 | `cmake -DENABLE_ASAN=ON` |
+| 无数据竞争 | 100% | TSAN 检测 | 配置/构建后 `ctest --preset validation-tsan`；主机限制见根 README |
+| 内存无泄漏 | 100% | ASAN/LSAN 检测 | 配置/构建后 `ctest --preset validation-asan-ubsan` |
 
 **目标基准（Target Benchmarks，允许基于量化误差进行经评审的小幅校准）**：
 

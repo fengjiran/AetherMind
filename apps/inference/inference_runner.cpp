@@ -49,8 +49,9 @@ Status ValidateContextCapacity(size_t capacity, size_t model_context) {
     return Status::Ok();
 }
 
-StatusOr<std::vector<uint32_t>> RunInferenceBody(
-        const RunOptions& options, RuntimeBuilder& builder, RunStage& stage) {
+StatusOr<std::vector<uint32_t>> RunInferenceBody(const RunOptions& options,
+                                                 RuntimeBuilder& builder,
+                                                 RunStage& stage) {
     stage = RunStage::kLoad;
     auto loaded = ModelLoader::Load(options.model_dir);
     if (!loaded.ok()) {
@@ -84,7 +85,8 @@ StatusOr<std::vector<uint32_t>> RunInferenceBody(
     }
 
     stage = RunStage::kCompile;
-    auto artifact = ModelCompiler::Compile(std::move(*loaded), compile_options);
+    auto artifact = ModelCompiler::Compile(
+            std::move(*loaded), compile_options);
     if (!artifact.ok()) {
         return std::move(artifact).status();
     }

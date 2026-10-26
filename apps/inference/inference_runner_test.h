@@ -22,7 +22,7 @@ namespace aethermind::apps::inference::testing {
 /// @return Owning token IDs or the unchanged production failure status.
 /// @note The builder is borrowed only for this call. Pending registrations may
 ///       be consumed by TryBuild; no Runtime or model borrow escapes.
-AM_NODISCARD StatusOr<std::vector<uint32_t>> RunInferenceWithBuilder(
+StatusOr<std::vector<uint32_t>> RunInferenceWithBuilder(
         const RunOptions& options, RuntimeBuilder& builder,
         RunStage* failure_stage = nullptr);
 

@@ -81,6 +81,16 @@ class InferenceCliTests(unittest.TestCase):
                               text=True, timeout=TIMEOUT_SECONDS,
                               env=environment, cwd=ROOT)
 
+    def invoke_with_closed_stdout(self, arguments):
+        read_fd, write_fd = os.pipe()
+        os.close(read_fd)
+        try:
+            return subprocess.run([str(self.binary), *arguments], stdout=write_fd,
+                                  stderr=subprocess.PIPE, text=True,
+                                  timeout=TIMEOUT_SECONDS, cwd=ROOT)
+        finally:
+            os.close(write_fd)
+
     def generate(self, arguments):
         result = self.invoke(arguments)
         return self.expect_success(result)
@@ -211,6 +221,14 @@ class InferenceCliTests(unittest.TestCase):
                           [*self.arguments(), "--help"], ["--help", "--help"]):
             with self.subTest(arguments=arguments):
                 self.expect_error(arguments)
+
+    @unittest.skipUnless(os.name == "posix", "Requires POSIX SIGPIPE semantics")
+    def test_closed_stdout_pipe_uses_output_error_exit(self):
+        for arguments in (["--help"], self.arguments()):
+            with self.subTest(arguments=arguments):
+                result = self.invoke_with_closed_stdout(arguments)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("failed to write stdout", result.stderr)
 
     def test_options_require_separate_flag_value_arguments(self):
         for option, value in (("--model", str(self.model)), ("--tokens", "7"),

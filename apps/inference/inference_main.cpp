@@ -4,7 +4,7 @@
 #include <array>
 #include <charconv>
 #include <concepts>
-#include <cstdint>
+#include <csignal>
 #include <cstdio>
 #include <exception>
 #include <filesystem>
@@ -61,27 +61,32 @@ constexpr std::array kFlags{
 
 template<std::unsigned_integral T>
 StatusOr<T> ParseUnsigned(std::string_view value, std::string_view flag) {
-    if (value.empty() || std::ranges::any_of(value, [](char character) {
-            return character < '0' || character > '9';
+    if (value.empty() || std::ranges::any_of(value, [](char c) {
+            return c < '0' || c > '9';
         })) {
-        return Status::InvalidArgument(std::string(flag) + " requires an unsigned decimal integer");
+        return Status::InvalidArgument(
+                std::string(flag) + " requires an unsigned decimal integer");
     }
 
-    T number = 0;
-    const auto result = std::from_chars(value.data(), value.data() + value.size(), number);
-    if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
-        return Status::InvalidArgument(std::string(flag) + " integer is out of range");
+    T num = 0;
+    if (auto result = std::from_chars(value.data(), value.data() + value.size(), num);
+        result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
+        return Status::InvalidArgument(
+                std::string(flag) + " integer is out of range");
     }
-    return number;
+    return num;
 }
 
 StatusOr<std::vector<uint32_t>> ParseTokens(std::string_view value) {
     std::vector<uint32_t> tokens;
     size_t begin = 0;
-    for (;;) {
+    while (true) {
         const size_t comma = value.find(',', begin);
         const size_t end = comma == std::string_view::npos ? value.size() : comma;
-        AM_ASSIGN_OR_RETURN(const uint32_t token, ParseUnsigned<uint32_t>(value.substr(begin, end - begin), "--tokens"));
+        AM_ASSIGN_OR_RETURN(const uint32_t token,
+                            ParseUnsigned<uint32_t>(
+                                    value.substr(begin, end - begin),
+                                    "--tokens"));
         tokens.push_back(token);
         if (comma == std::string_view::npos) {
             return tokens;
@@ -93,24 +98,33 @@ StatusOr<std::vector<uint32_t>> ParseTokens(std::string_view value) {
 StatusOr<RunOptions> ParseArguments(int argc, char* argv[]) {
     RunOptions options;
     std::array<bool, kFlags.size()> seen{};
-    for (int index = 1; index < argc; ++index) {
-        const std::string_view flag(argv[index]);
-        const auto spec = std::ranges::find_if(kFlags, [flag](const FlagSpec& candidate) {
-            return candidate.name == flag;
-        });
+    for (int i = 1; i < argc; ++i) {
+        const std::string_view flag(argv[i]);
+        const auto spec = std::ranges::find_if(
+                kFlags, [flag](const FlagSpec& candidate) {
+                    return candidate.name == flag;
+                });
+
         if (spec == kFlags.end()) {
-            return Status::InvalidArgument("Unknown option: " + std::string(flag));
+            return Status::InvalidArgument(
+                    "Unknown option: " + std::string(flag));
         }
-        const size_t option_index = static_cast<size_t>(spec->option);
+
+        const auto option_index = static_cast<size_t>(spec->option);
         if (seen[option_index]) {
-            return Status::InvalidArgument("Duplicate option: " + std::string(flag));
+            return Status::InvalidArgument(
+                    "Duplicate option: " + std::string(flag));
         }
-        if (index + 1 >= argc) {
-            return Status::InvalidArgument("Missing value for " + std::string(flag));
+
+        if (i + 1 >= argc) {
+            return Status::InvalidArgument(
+                    "Missing value for " + std::string(flag));
         }
-        const std::string_view value(argv[++index]);
+
+        const std::string_view value(argv[++i]);
         if (value.empty() || value.starts_with("--")) {
-            return Status::InvalidArgument("Missing value for " + std::string(flag));
+            return Status::InvalidArgument(
+                    "Missing value for " + std::string(flag));
         }
 
         switch (spec->option) {
@@ -123,20 +137,24 @@ StatusOr<RunOptions> ParseArguments(int argc, char* argv[]) {
                 break;
             }
             case Option::kContextTokens: {
-                AM_ASSIGN_OR_RETURN(const size_t capacity, ParseUnsigned<size_t>(value, flag));
+                AM_ASSIGN_OR_RETURN(const size_t capacity,
+                                    ParseUnsigned<size_t>(value, flag));
                 if (capacity == 0) {
-                    return Status::InvalidArgument("--context-tokens must be positive");
+                    return Status::InvalidArgument(
+                            "--context-tokens must be positive");
                 }
                 options.context_tokens = capacity;
                 break;
             }
             case Option::kMaxNewTokens: {
-                AM_ASSIGN_OR_RETURN(const size_t limit, ParseUnsigned<size_t>(value, flag));
+                AM_ASSIGN_OR_RETURN(const size_t limit,
+                                    ParseUnsigned<size_t>(value, flag));
                 options.generation.max_new_tokens = limit;
                 break;
             }
             case Option::kEosTokenId: {
-                AM_ASSIGN_OR_RETURN(const uint32_t eos, ParseUnsigned<uint32_t>(value, flag));
+                AM_ASSIGN_OR_RETURN(const uint32_t eos,
+                                    ParseUnsigned<uint32_t>(value, flag));
                 options.generation.eos_token_id = eos;
                 break;
             }
@@ -146,16 +164,18 @@ StatusOr<RunOptions> ParseArguments(int argc, char* argv[]) {
                 } else if (value == "o2-packed") {
                     options.preset = CpuInferencePreset::kO2Packed;
                 } else {
-                    return Status::InvalidArgument("--preset must be o1-plain or o2-packed");
+                    return Status::InvalidArgument(
+                            "--preset must be o1-plain or o2-packed");
                 }
                 break;
         }
         seen[option_index] = true;
     }
 
-    for (const auto& flag: kFlags) {
-        if (flag.required && !seen[static_cast<size_t>(flag.option)]) {
-            return Status::InvalidArgument("Missing required option: " + std::string(flag.name));
+    for (const auto& [name, option, required]: kFlags) {
+        if (required && !seen[static_cast<size_t>(option)]) {
+            return Status::InvalidArgument(
+                    "Missing required option: " + std::string(name));
         }
     }
     return options;
@@ -172,6 +192,7 @@ void ReportStatus(const Status& status, RunStage stage) noexcept {
         std::fputs(": memory allocation failed\n", stderr);
         return;
     }
+
     if (!message.empty()) {
         std::fputs(": ", stderr);
         std::fwrite(message.data(), 1, message.size(), stderr);
@@ -198,7 +219,9 @@ std::string SerializeTokens(const std::vector<uint32_t>& tokens) {
         first = false;
         // This buffer holds every uint32_t, including its ten-digit maximum.
         std::array<char, std::numeric_limits<uint32_t>::digits10 + 1> digits{};
-        const auto result = std::to_chars(digits.data(), digits.data() + digits.size(), token);
+        const auto result = std::to_chars(digits.data(),
+                                          digits.data() + digits.size(),
+                                          token);
         output.append(digits.data(), static_cast<size_t>(result.ptr - digits.data()));
     }
     output += "]\n";
@@ -220,7 +243,8 @@ int RunCommandLine(int argc, char* argv[]) {
         ReportStatus(parsed.status(), RunStage::kParameters);
         return 2;
     }
-    RunStage failure_stage = RunStage::kNone;
+
+    auto failure_stage = RunStage::kNone;
     auto generated = RunInference(*parsed, &failure_stage);
     if (!generated.ok()) {
         ReportStatus(generated.status(), failure_stage);
@@ -241,6 +265,14 @@ int RunCommandLine(int argc, char* argv[]) {
 } // namespace
 
 int main(int argc, char* argv[]) {
+#if defined(SIGPIPE)
+    // Let closed stdout pipes report EPIPE through the normal output-error path.
+    if (std::signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
+        std::fputs("aethermind_infer: failed to configure SIGPIPE handling\n", stderr);
+        return 1;
+    }
+#endif
+
     try {
         auto logger = spdlog::stderr_logger_mt("aethermind_infer");
         spdlog::set_default_logger(std::move(logger));

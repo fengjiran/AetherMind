@@ -11,7 +11,7 @@ BUILD_TESTS="ON"
 BUILD_BENCHMARKS="ON"
 USE_LIBBACKTRACE="ON"
 BACKTRACE_ON_SEGFAULT="ON"
-ENABLE_TSAN="OFF"
+AETHERMIND_SANITIZER="none"
 CONFIGURE_ONLY="false"
 
 usage() {
@@ -34,7 +34,7 @@ Options:
   --skip-benchmarks         Configure with BUILD_BENCHMARKS=OFF
   --disable-libbacktrace    Configure with USE_LIBBACKTRACE=OFF
   --disable-segfault-hook   Configure with BACKTRACE_ON_SEGFAULT=OFF
-  --tsan                    Configure with ENABLE_TSAN=ON
+  --tsan                    Configure with AETHERMIND_SANITIZER=tsan
   --configure-only          Only run cmake configure
   -h, --help                Show this help message
 
@@ -94,7 +94,7 @@ while [[ $# -gt 0 ]]; do
         shift
         ;;
     --tsan)
-        ENABLE_TSAN="ON"
+        AETHERMIND_SANITIZER="tsan"
         shift
         ;;
     --configure-only)
@@ -133,7 +133,7 @@ echo "BUILD_TESTS             : $BUILD_TESTS"
 echo "BUILD_BENCHMARKS        : $BUILD_BENCHMARKS"
 echo "USE_LIBBACKTRACE        : $USE_LIBBACKTRACE"
 echo "BACKTRACE_ON_SEGFAULT   : $BACKTRACE_ON_SEGFAULT"
-echo "ENABLE_TSAN             : $ENABLE_TSAN"
+echo "AETHERMIND_SANITIZER    : $AETHERMIND_SANITIZER"
 echo "CONFIGURE_ONLY          : $CONFIGURE_ONLY"
 echo
 
@@ -143,7 +143,7 @@ cmake -S "$ROOT_DIR" -B "$ROOT_DIR/$BUILD_DIR" \
     -DBUILD_BENCHMARKS="$BUILD_BENCHMARKS" \
     -DUSE_LIBBACKTRACE="$USE_LIBBACKTRACE" \
     -DBACKTRACE_ON_SEGFAULT="$BACKTRACE_ON_SEGFAULT" \
-    -DENABLE_TSAN="$ENABLE_TSAN"
+    -DAETHERMIND_SANITIZER="$AETHERMIND_SANITIZER"
 
 if [[ "$CONFIGURE_ONLY" == "true" ]]; then
     echo

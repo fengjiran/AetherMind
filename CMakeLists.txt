@@ -20,25 +20,13 @@ option(BUILD_BENCHMARKS "Adding benchmark targets." ON)
 option(BUILD_INFERENCE_TOOL "Build the standalone token-ID inference tool." OFF)
 option(USE_LIBBACKTRACE "Enable libbacktrace" ON)
 option(BACKTRACE_ON_SEGFAULT "Set signal handler to print traceback on segfault" ON)
-option(ENABLE_TSAN "Enable ThreadSanitizer" OFF)
 option(USE_ALLOC_ALIGNMENT "Enable alloc alignment" ON)
 option(BUILD_DOCS "Build Doxygen documentation (requires doxygen)" OFF)
+option(AETHERMIND_VALIDATION_REQUIRED_ASSETS "Require model fixtures and a CLI for CTest validation" OFF)
 
 find_package(Threads REQUIRED)
 
-if (ENABLE_TSAN)
-    message(STATUS "ThreadSanitizer enabled")
-    # 1. 添加编译选项
-    add_compile_options(-fsanitize=thread -g -O1)
-    # -g:  保留调试信息，让 TSAN 能打印出行号
-    # -O1: 适度优化，TSAN 建议在 O1 或 O2 下运行，O0 可能会太慢或误报
-
-    # 2. 添加链接选项 (这一步非常重要，否则链接会失败)
-    add_link_options(-fsanitize=thread)
-
-    # 可选：为了获得更好的堆栈回溯，建议加上这个
-    add_compile_options(-fno-omit-frame-pointer)
-endif ()
+include(cmake/AetherMindSanitizers.cmake)
 
 add_compile_definitions(SPDLOG_USE_STD_FORMAT)
 # add spdlog
@@ -68,6 +56,7 @@ endif ()
 
 if (BUILD_TESTS)
     message(STATUS "Enable Testing")
+    enable_testing()
     add_subdirectory(tests/unit)
 endif ()
 

@@ -154,7 +154,9 @@ private:
             // and exponent suffixes here so diagnostics retain the field name.
             SkipWhitespace();
             if (AtEnd() || (input_[position_] != ',' && input_[position_] != '}')) {
-                return FieldParseError(key, Status::InvalidArgument("Expected an integer or null"));
+                return FieldParseError(
+                        key,
+                        Status::InvalidArgument("Expected an integer or null"));
             }
             return Status::Ok();
         }

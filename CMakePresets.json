@@ -1,0 +1,128 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "validation-common",
+      "hidden": true,
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/validation/${presetName}",
+      "cacheVariables": {
+        "BUILD_TESTS": "ON",
+        "BUILD_BENCHMARKS": "OFF",
+        "BUILD_INFERENCE_TOOL": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "AETHERMIND_VALIDATION_REQUIRED_ASSETS": "ON"
+      }
+    },
+    {
+      "name": "validation-release",
+      "inherits": "validation-common",
+      "displayName": "CPU production and lifecycle validation",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "AETHERMIND_SANITIZER": "none"
+      }
+    },
+    {
+      "name": "validation-asan-ubsan",
+      "inherits": "validation-common",
+      "displayName": "Address, undefined behavior, and leak validation",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "AETHERMIND_SANITIZER": "asan-ubsan",
+        "BACKTRACE_ON_SEGFAULT": "OFF",
+        "USE_LIBBACKTRACE": "OFF"
+      }
+    },
+    {
+      "name": "validation-tsan",
+      "inherits": "validation-common",
+      "displayName": "ThreadSanitizer validation of applicable existing tests",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "AETHERMIND_SANITIZER": "tsan",
+        "BACKTRACE_ON_SEGFAULT": "OFF",
+        "USE_LIBBACKTRACE": "OFF"
+      }
+    },
+    {
+      "name": "validation-cli-only",
+      "inherits": "validation-common",
+      "displayName": "Standalone CLI without test or benchmark dependencies",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTS": "OFF",
+        "AETHERMIND_SANITIZER": "none",
+        "AETHERMIND_VALIDATION_REQUIRED_ASSETS": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "validation-release",
+      "configurePreset": "validation-release",
+      "targets": ["aethermind_unit_tests", "aethermind_infer"],
+      "jobs": 4
+    },
+    {
+      "name": "validation-asan-ubsan",
+      "configurePreset": "validation-asan-ubsan",
+      "targets": ["aethermind_unit_tests", "aethermind_infer"],
+      "jobs": 4
+    },
+    {
+      "name": "validation-tsan",
+      "configurePreset": "validation-tsan",
+      "targets": ["aethermind_unit_tests", "aethermind_infer"],
+      "jobs": 4
+    },
+    {
+      "name": "validation-cli-only",
+      "configurePreset": "validation-cli-only",
+      "targets": ["aethermind_infer"],
+      "jobs": 4
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "validation-release",
+      "configurePreset": "validation-release",
+      "filter": {
+        "include": {"label": "^validation$"},
+        "exclude": {"label": "^isa-avx2$"}
+      },
+      "output": {"outputOnFailure": true, "outputJUnitFile": "${sourceDir}/build/validation/validation-release/junit.xml"},
+      "execution": {"jobs": 2, "noTestsAction": "error"}
+    },
+    {
+      "name": "validation-asan-ubsan",
+      "configurePreset": "validation-asan-ubsan",
+      "filter": {
+        "include": {"label": "^validation$"},
+        "exclude": {"label": "^(interposer|isa-avx2|preload)$"}
+      },
+      "environment": {
+        "ASAN_OPTIONS": "halt_on_error=1:detect_leaks=1",
+        "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
+      },
+      "output": {"outputOnFailure": true, "outputJUnitFile": "${sourceDir}/build/validation/validation-asan-ubsan/junit.xml"},
+      "execution": {"jobs": 2, "noTestsAction": "error"}
+    },
+    {
+      "name": "validation-tsan",
+      "configurePreset": "validation-tsan",
+      "filter": {
+        "include": {"label": "^(validation|thread-smoke)$"},
+        "exclude": {"label": "^(interposer|isa-avx2|preload|cli)$"}
+      },
+      "environment": {"TSAN_OPTIONS": "halt_on_error=1"},
+      "output": {"outputOnFailure": true, "outputJUnitFile": "${sourceDir}/build/validation/validation-tsan/junit.xml"},
+      "execution": {"jobs": 2, "noTestsAction": "error"}
+    }
+  ]
+}

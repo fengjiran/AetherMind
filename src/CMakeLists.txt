@@ -4,6 +4,7 @@ file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS
 )
 
 add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
+aethermind_apply_sanitizer(${PROJECT_NAME})
 
 target_include_directories(${PROJECT_NAME}
         PUBLIC

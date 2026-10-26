@@ -1,22 +1,18 @@
 #include "test_malloc_interposer.h"
+#include "aethermind/base/macros.h"
 
 #include <atomic>
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
 
-// ThreadSanitizer installs its own malloc-family interceptors and cannot
-// tolerate a user override that forwards straight to __libc_*: that bypasses its
-// allocation bookkeeping and the test binary segfaults during startup, before
-// any test runs. Fall back to the inert stubs below so a TSAN build can still
-// run the rest of the suite; MallocInterposerAvailable() reports false there and
-// the injection tests skip themselves.
-#if defined(__SANITIZE_THREAD__)
+// Sanitizer runtimes own malloc-family interception. Forwarding directly to
+// __libc_* bypasses their allocation bookkeeping and can crash before tests
+// start. Compile only inert helpers in these builds; filtering test cases would
+// leave the conflicting process-wide override symbols in the executable.
+#if defined(AM_SANITIZE_ADDRESS) || defined(AM_SANITIZE_THREAD) || \
+        defined(__SANITIZE_THREAD__) || AM_HAS_FEATURE(thread_sanitizer)
 #define AETHERMIND_TEST_MALLOC_INTERPOSER_DISABLED 1
-#elif defined(__has_feature)
-#if __has_feature(thread_sanitizer)
-#define AETHERMIND_TEST_MALLOC_INTERPOSER_DISABLED 1
-#endif
 #endif
 
 #if defined(__GLIBC__) && defined(__linux__) && \

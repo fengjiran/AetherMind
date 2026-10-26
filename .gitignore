@@ -147,5 +147,7 @@ build-g1v-scalar/
 build-g1v-avx2/
 build-g1v-invalid/
 benchmark-results/
+# CMake 4.3 writes PRE_TEST GoogleTest discovery JSON into WORKING_DIRECTORY
+/cmake_test_discovery_*.json
 .DS_Store
 3rdparty/

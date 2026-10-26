@@ -142,7 +142,12 @@ function(aethermind_set_discovered_test_properties tests_variable sanitizer mode
             list(APPEND labels "${reason}")
             set_tests_properties("${name}" PROPERTIES DISABLED TRUE)
         endif()
-        set_tests_properties("${name}" PROPERTIES LABELS "${labels}" TIMEOUT 60)
+        if(ARGV9)
+            set_tests_properties("${name}" PROPERTIES LABELS "${labels}" TIMEOUT 60
+                WORKING_DIRECTORY "${ARGV9}")
+        else()
+            set_tests_properties("${name}" PROPERTIES LABELS "${labels}" TIMEOUT 60)
+        endif()
         if("validation" IN_LIST labels AND NOT reason)
             # CTest appends environment entries, retaining the CLI path supplied
             # by discovery. GTest converts required skips before printing status.
@@ -198,18 +203,23 @@ function(aethermind_register_tests target)
         message(FATAL_ERROR "Required validation needs BUILD_INFERENCE_TOOL=ON or an existing absolute AETHERMIND_INFER_BINARY")
     endif()
 
+    # CMake 4.3 writes the PRE_TEST discovery JSON into WORKING_DIRECTORY, so
+    # discover from the build tree. The discovered tests still run from the
+    # repository root, restored by aethermind_set_discovered_test_properties.
+    # A WORKING_DIRECTORY entry under PROPERTIES is not an option here: CMake
+    # parses it as this keyword and overrides the discovery directory.
     gtest_discover_tests(${target}
         DISCOVERY_MODE PRE_TEST
         DISCOVERY_TIMEOUT 60
         NO_PRETTY_TYPES NO_PRETTY_VALUES
         TEST_LIST AETHERMIND_DISCOVERED_TESTS
-        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
         PROPERTIES
             ENVIRONMENT "AETHERMIND_INFER_BINARY=${cli_binary}"
     )
     set(properties_script "${CMAKE_CURRENT_BINARY_DIR}/AetherMindTestProperties.cmake")
     set(properties_content
-        "include(\"${PROJECT_SOURCE_DIR}/cmake/AetherMindTests.cmake\")\naethermind_set_discovered_test_properties(AETHERMIND_DISCOVERED_TESTS \"${AETHERMIND_SANITIZER}\" \"${models_ready}\" \"${cli_ready}\" \"${AETHERMIND_TEST_HAS_GLIBC}\" \"${AETHERMIND_VALIDATION_REQUIRED_ASSETS}\" \"${target}\" \"$<TARGET_FILE:${target}>\" \"${CMAKE_COMMAND}\")\n")
+        "include(\"${PROJECT_SOURCE_DIR}/cmake/AetherMindTests.cmake\")\naethermind_set_discovered_test_properties(AETHERMIND_DISCOVERED_TESTS \"${AETHERMIND_SANITIZER}\" \"${models_ready}\" \"${cli_ready}\" \"${AETHERMIND_TEST_HAS_GLIBC}\" \"${AETHERMIND_VALIDATION_REQUIRED_ASSETS}\" \"${target}\" \"$<TARGET_FILE:${target}>\" \"${CMAKE_COMMAND}\" \"${PROJECT_SOURCE_DIR}\")\n")
     if(CMAKE_CONFIGURATION_TYPES)
         foreach(config IN LISTS CMAKE_CONFIGURATION_TYPES)
             file(GENERATE OUTPUT "${properties_script}-${config}" CONTENT "${properties_content}" CONDITION "$<CONFIG:${config}>")

@@ -116,13 +116,14 @@ AM_NODISCARD constexpr bool CheckNarrow(From value, To* out) noexcept {
 
 /// @brief Multiplies two integral values and reports whether the result overflowed.
 ///
-/// The result is always written to `out`. If overflow occurs, the stored value
-/// is the representable result for `T` and must not be used as an exact product.
+/// The result is always written to `out`. It is the unique value of `T`
+/// congruent to the exact product modulo 2^N, where N is the width of `T`.
+/// On overflow, this wrapping result must not be used as an exact product.
 ///
 /// @tparam T Integral operand and result type.
 /// @param a First operand.
 /// @param b Second operand.
-/// @param out Destination for the representable result.
+/// @param out Destination for the exact or wrapping result.
 /// @return True if the exact product is not representable in `T`; false otherwise.
 /// @pre `out` is not null.
 template<detail::OverflowInteger T>
@@ -136,13 +137,14 @@ bool CheckOverflowMul(T a, T b, T* out) noexcept {
 
 /// @brief Adds two integral values and reports whether the result overflowed.
 ///
-/// The result is always written to `out`. If overflow occurs, the stored value
-/// is the representable result for `T` and must not be used as an exact sum.
+/// The result is always written to `out`. It is the unique value of `T`
+/// congruent to the exact sum modulo 2^N, where N is the width of `T`.
+/// On overflow, this wrapping result must not be used as an exact sum.
 ///
 /// @tparam T Integral operand and result type.
 /// @param a First operand.
 /// @param b Second operand.
-/// @param out Destination for the representable result.
+/// @param out Destination for the exact or wrapping result.
 /// @return True if the exact sum is not representable in `T`; false otherwise.
 /// @pre `out` is not null.
 template<detail::OverflowInteger T>
@@ -156,13 +158,14 @@ bool CheckOverflowAdd(T a, T b, T* out) noexcept {
 
 /// @brief Subtracts two integral values and reports whether the result overflowed.
 ///
-/// The result is always written to `out`. If overflow occurs, the stored value
-/// is the representable result for `T` and must not be used as an exact difference.
+/// The result is always written to `out`. It is the unique value of `T`
+/// congruent to the exact difference modulo 2^N, where N is the width of `T`.
+/// On overflow, this wrapping result must not be used as an exact difference.
 ///
 /// @tparam T Integral operand and result type.
 /// @param a First operand.
 /// @param b Second operand.
-/// @param out Destination for the representable result.
+/// @param out Destination for the exact or wrapping result.
 /// @return True if the exact difference is not representable in `T`; false otherwise.
 /// @pre `out` is not null.
 template<detail::OverflowInteger T>
@@ -177,18 +180,20 @@ bool CheckOverflowSub(T a, T b, T* out) noexcept {
 /// @brief Multiplies a range of non-negative integers into `*out`.
 ///
 /// Every element in `[first, last)` is processed, and overflow is checked after
-/// each multiplication.
+/// each multiplication. An empty range writes 1 to `out` and returns false.
 ///
 /// @tparam Iter Input iterator type whose values are convertible to `uint64_t`.
 /// @param first Start of the half-open range.
 /// @param last End of the half-open range.
-/// @param out Destination for the final product.
-/// @return True if any multiplication overflowed; false otherwise.
+/// @param out Always receives the final wrapping product modulo 2^64.
+/// @return True if any intermediate multiplication overflowed; false otherwise.
 ///
 /// @pre `out` is not null.
 /// @pre Every element is non-negative and convertible to `uint64_t`.
-/// @note On overflow, processing continues and `*out` contains the final
-///       representable product; callers must ignore that value.
+/// @pre All iterator operations and element validation/conversion used by this
+///      function must not throw.
+/// @note Overflow remains reported even if a later zero makes the final product
+///       zero. After overflow, `*out` must not be relied on as an exact product.
 template<typename Iter>
 bool SafeMultiplyU64(Iter first, Iter last, uint64_t* out) noexcept {
     AM_DCHECK(out != nullptr);
@@ -209,11 +214,16 @@ bool SafeMultiplyU64(Iter first, Iter last, uint64_t* out) noexcept {
 
 /// @brief Multiplies all elements in a container into `*out`.
 ///
+/// Uses the iterator overload's empty-range and wrapping-result semantics.
+///
 /// @tparam Container Container type providing `begin()` and `end()`.
 /// @param c Container whose elements are multiplied.
-/// @param out Destination for the final product.
-/// @return True if any multiplication overflowed; false otherwise.
+/// @param out Always receives the final wrapping product modulo 2^64.
+/// @return True if any intermediate multiplication overflowed; false otherwise.
+/// @pre `out` is not null.
 /// @pre Every element is non-negative and convertible to `uint64_t`.
+/// @pre `begin()`, `end()`, all iterator operations, and element validation/
+///      conversion used by this function must not throw.
 template<typename Container>
 bool SafeMultiplyU64(const Container& c, uint64_t* out) noexcept {
     return SafeMultiplyU64(c.begin(), c.end(), out);

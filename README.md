@@ -127,7 +127,24 @@ cmake --build build --target aethermind_benchmark -j  # Benchmarks
 | `AETHERMIND_TEST_MODELS_DIR` | source `.models` | Absolute root of externally prepared test models; tests only |
 | `AETHERMIND_INFER_BINARY` | empty | Absolute external CLI for CTest; an in-build CLI takes precedence |
 | `USE_ALLOC_ALIGNMENT` | `ON` | Apply `KALLOC_ALIGNMENT` to allocations |
-| `KALLOC_ALIGNMENT` | `64` | Memory alignment in bytes |
+| `KALLOC_ALIGNMENT` | `64` | Canonical positive decimal power of two, representable as target `size_t`; checked when alignment is enabled |
+
+The `AetherMind` CMake target propagates its C++20 requirement to C++ consumers.
+When configuring spdlog itself, the project defaults `SPDLOG_USE_STD_FORMAT` to
+`ON`, unless external fmt was selected. Explicit settings and an existing
+`spdlog::spdlog` target supplied by a parent project are respected. The format
+backend and its required definitions come from the spdlog target.
+
+Older build directories may cache `SPDLOG_USE_STD_FORMAT=OFF`. This now selects
+fmt consistently instead of being overridden by a directory-wide macro. To
+retain the previous effective `std::format` backend, reconfigure with
+`-DSPDLOG_USE_STD_FORMAT=ON`. Rebuild the affected targets after reconfiguration.
+
+With `USE_ALLOC_ALIGNMENT=ON`, invalid values such as `0`, `24`, `08`, negative
+numbers, or target-size overflow fail during configuration. Byte alignment `1`
+is valid; the CPU allocator raises it to the platform's pointer-alignment floor.
+Large valid alignments can still fail at allocation time. With alignment disabled,
+`KALLOC_ALIGNMENT` is ignored.
 
 ## Run Inference
 

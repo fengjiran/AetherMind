@@ -242,6 +242,32 @@ function(aethermind_register_tests target)
         -P "${PROJECT_SOURCE_DIR}/tests/cmake/test_ctest_skip_policy.cmake")
     set_tests_properties(cmake.validation_skip_policy PROPERTIES LABELS "smoke;validation;build" TIMEOUT 30)
 
+    set(build_contract_config "${CMAKE_CURRENT_BINARY_DIR}/AetherMindBuildContractConfig-$<CONFIG>.cmake")
+    string(CONCAT build_contract_content
+        "set(AETHERMIND_SOURCE_DIR [==[${PROJECT_SOURCE_DIR}]==])\n"
+        "set(AETHERMIND_CONTRACT_BINARY_DIR [==[${CMAKE_CURRENT_BINARY_DIR}/build contracts]==])\n"
+        "set(AETHERMIND_SPDLOG_SOURCE_DIR [==[${spdlog_SOURCE_DIR}]==])\n"
+        "set(AETHERMIND_GENERATOR [==[${CMAKE_GENERATOR}]==])\n"
+        "set(AETHERMIND_GENERATOR_PLATFORM [==[${CMAKE_GENERATOR_PLATFORM}]==])\n"
+        "set(AETHERMIND_GENERATOR_TOOLSET [==[${CMAKE_GENERATOR_TOOLSET}]==])\n"
+        "set(AETHERMIND_BUILD_CONFIG [==[$<CONFIG>]==])\n")
+    foreach(variable CMAKE_MAKE_PROGRAM CMAKE_TOOLCHAIN_FILE CMAKE_C_COMPILER CMAKE_CXX_COMPILER
+            CMAKE_C_FLAGS CMAKE_CXX_FLAGS CMAKE_SYSROOT CMAKE_C_COMPILER_TARGET CMAKE_CXX_COMPILER_TARGET)
+        string(APPEND build_contract_content "set(AETHERMIND_${variable} [==[${${variable}}]==])\n")
+    endforeach()
+    file(GENERATE OUTPUT "${build_contract_config}" CONTENT "${build_contract_content}")
+    foreach(case alignment std fmt existing-std existing-fmt)
+        set(name "cmake.build_contract.${case}")
+        add_test(NAME "${name}" COMMAND "${CMAKE_COMMAND}"
+            "-DAETHERMIND_CONTRACT_CONFIG=${build_contract_config}"
+            "-DAETHERMIND_CONTRACT_CASE=${case}"
+            -P "${PROJECT_SOURCE_DIR}/tests/cmake/test_build_contract.cmake")
+        set_tests_properties("${name}" PROPERTIES LABELS "smoke;validation;build" TIMEOUT 600 RUN_SERIAL TRUE)
+        if(NOT case STREQUAL "alignment" AND NOT EXISTS "${spdlog_SOURCE_DIR}/CMakeLists.txt")
+            set_tests_properties("${name}" PROPERTIES DISABLED TRUE LABELS "build;missing_dependency_source")
+        endif()
+    endforeach()
+
     if(Python3_Interpreter_FOUND)
         add_test(NAME python.fixture_converter COMMAND "${Python3_EXECUTABLE}" -m unittest discover
             -s "${PROJECT_SOURCE_DIR}/tests/unit/apps/inference"

@@ -4,6 +4,7 @@ file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS
 )
 
 add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 aethermind_apply_sanitizer(${PROJECT_NAME})
 
 target_include_directories(${PROJECT_NAME}
@@ -25,7 +26,7 @@ endif ()
 
 if (USE_ALLOC_ALIGNMENT)
     message(STATUS "KALLOC_ALIGNMENT set to ${KALLOC_ALIGNMENT}")
-    target_compile_definitions(${PROJECT_NAME} PRIVATE KALLOC_ALIGNMENT=${KALLOC_ALIGNMENT})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE KALLOC_ALIGNMENT=${KALLOC_ALIGNMENT}ULL)
 endif ()
 
 if (USE_LIBBACKTRACE)

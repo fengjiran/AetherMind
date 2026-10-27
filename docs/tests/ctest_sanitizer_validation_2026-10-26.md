@@ -6,6 +6,8 @@
 - **基线**: `d448e36fbaa50984bd5eced49b0f8652d079c62b` 加本批工作树补丁；执行时 dirty，尚未创建提交。
 - **环境**: Linux x86_64、GCC 14.2.0、CMake/CTest 3.28.3、系统 GoogleTest 1.16.0。
 
+2026-10-27 的 [第三批验收](cpu_isa_isolation_validation_2026-10-27.md) 已补齐 ISA 编译隔离及 baseline/AVX 候选验证；本文保留第二批当时的构建边界和原始结果。
+
 ## 1. 实现范围
 
 [CMakePresets.json](../../CMakePresets.json) 提供 Release、ASAN/UBSAN、独立 TSAN 和关闭测试依赖的 CLI 配置。[sanitizer helper](../../cmake/AetherMindSanitizers.cmake) 只向项目 targets 注入编译/链接 flags，覆盖共享库、CLI、C/C++ 单测和测试 probe；第三方 targets 保持原有选项。旧 `ENABLE_TSAN` 选项已移除且不提供兼容映射；非法 `AETHERMIND_SANITIZER` 值在 configure 时拒绝，ASAN/UBSAN 与 TSAN 不能合并。

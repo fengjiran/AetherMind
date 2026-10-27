@@ -20,7 +20,7 @@
 | 10 | [上层 Runtime 组装与推理入口实施方案](10-upper-level-runtime-assembly.md) | Implemented | 2026-10-22 |
 | 11 | [FP16 / BF16 执行支持方案](11-fp16-bf16-execution-support.md) | Draft | 2026-10-20 |
 | 12 | [CUDA 后端与执行支持方案](12-cuda-backend-execution-support.md) | Draft | 2026-10-21 |
-| 13 | [借鉴 DeepInfer 的生产验证与质量实施方案](13-deepinfer-quality-and-validation.md) | In Progress | 2026-10-26 |
+| 13 | [借鉴 DeepInfer 的生产验证与质量实施方案](13-deepinfer-quality-and-validation.md) | In Progress | 2026-10-27 |
 
 ## 推荐阅读路径
 

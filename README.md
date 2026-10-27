@@ -113,6 +113,22 @@ cmake --build build --target aethermind_unit_tests -j  # Unit tests
 cmake --build build --target aethermind_benchmark -j  # Benchmarks
 ```
 
+### Model Measurements
+
+The Linux developer target `aethermind_model_benchmark` separates preparation, internal prepared Prefill/Decode, and public `Generate` measurements. The Release presets build it with `BUILD_TESTS=OFF`; the current `BUILD_BENCHMARKS` option still configures the existing Google Benchmark dependency.
+
+```bash
+cmake --preset benchmark-model
+cmake --build --preset benchmark-model
+python3 tools/run_model_benchmark.py \
+  --binary build/validation/benchmark-model/tests/benchmark/aethermind_model_benchmark \
+  --model .models/inference-numerical/mha-untied/model \
+  --prompt 1,7,3 --max-new-tokens 3 --preset o1-plain \
+  --warmup 1 --repetitions 20 --mode timing
+```
+
+Prepare the [numerical fixtures](tests/fixtures/inference_numerical/README.md) first. The [model measurement guide](tests/benchmark/models/README.md) defines timing boundaries, separate profiling/allocation modes, baseline builds, complete raw artifacts, report checks, and same-implementation noise observations. Raw runs go under gitignored `benchmark-results/models/`; identity collection reads model files before execution, so loading times are not cold-cache startup measurements. Performance capture is explicit and does not run in the default correctness presets.
+
 ### CMake Options
 
 | Option | Default | Description |
@@ -120,11 +136,13 @@ cmake --build build --target aethermind_benchmark -j  # Benchmarks
 | `BUILD_TESTS` | `ON` | Build unit test targets |
 | `BUILD_BENCHMARKS` | `ON` | Build benchmark targets |
 | `BUILD_INFERENCE_TOOL` | `OFF` | Build the standalone `aethermind_infer` CLI |
+| `AETHERMIND_ENABLE_AVX2` | `ON` | Build optional x86 AVX2/FMA implementations when the compiler supports them |
 | `USE_LIBBACKTRACE` | `ON` | Enable libbacktrace for stack traces |
 | `BACKTRACE_ON_SEGFAULT` | `ON` | Install a SIGSEGV traceback handler |
 | `AETHERMIND_SANITIZER` | `none` | Project-target instrumentation: `none`, `asan-ubsan`, or `tsan` |
 | `AETHERMIND_VALIDATION_REQUIRED_ASSETS` | `OFF` | Require checked model fixtures and a CLI for the validation gates |
 | `AETHERMIND_TEST_MODELS_DIR` | source `.models` | Absolute root of externally prepared test models; tests only |
+| `AETHERMIND_TEST_NUMERICAL_DIR` | test-model root `/inference-numerical` | Absolute root of the checked offline HF numerical bundle; tests only |
 | `AETHERMIND_INFER_BINARY` | empty | Absolute external CLI for CTest; an in-build CLI takes precedence |
 | `USE_ALLOC_ALIGNMENT` | `ON` | Apply `KALLOC_ALIGNMENT` to allocations |
 | `KALLOC_ALIGNMENT` | `64` | Canonical positive decimal power of two, representable as target `size_t`; checked when alignment is enabled |
@@ -205,6 +223,8 @@ New cases that use the malloc counting/failure helpers must update the explicit 
 
 The inference admission fixture tests require generated HF variants. Follow the [fixture preparation and validation instructions](tests/fixtures/inference_admission/README.md) before running them; missing fixtures fail the tests rather than being skipped. The generator and its Python tests use only the standard library.
 
+The [independent HF numerical reference instructions](tests/fixtures/inference_numerical/README.md) describe pinned CPU FP32 golden generation, asset verification, and candidate review. Prepare that bundle before the numerical model tests. Only offline reference generation needs PyTorch/transformers; the checker uses standard-library Python and the C++ tests read serialized tensors. Run `ctest --preset validation-numerical` after configuring and building `validation-avx2` to include fixed Prefill/Decode, independent greedy Token IDs, and near-context-limit coverage for the listed MHA/GQA/MQA fixtures. Set the absolute `AETHERMIND_TEST_NUMERICAL_DIR` cache path to test an externally prepared bundle.
+
 The Linux CLI/direct-Session integration suite additionally requires the standalone executable from Run Inference above. Set `AETHERMIND_INFER_BINARY` to its absolute path; missing executables or unsupported platforms fail this integration gate explicitly. This variable is consumed by tests only. The Python CLI tests also require the existing C toolchain for Linux/glibc failure injection. Commands and scoped results are recorded in the [M4 validation report](docs/tests/upper_level_runtime_assembly_m4_validation_2026-10-22.md).
 
 ```bash
@@ -229,6 +249,24 @@ python3 tests/unit/apps/inference/test_inference_cli.py \
 # Repeat a test for flakiness checks
 ./build/tests/unit/aethermind_unit_tests --gtest_filter=Device.* --gtest_repeat=10
 ```
+
+### CPU ISA Validation
+
+Optional AVX2/FMA implementations are compiled in isolated translation units. Test entry points, dispatch, and ordinary library/application code use baseline compiler options. `AETHERMIND_ENABLE_AVX2=OFF` excludes the optional implementations and their availability macros.
+
+```bash
+cmake --preset validation-baseline
+cmake --build --preset validation-baseline
+ctest --preset validation-baseline
+
+cmake --preset validation-avx2
+cmake --build --preset validation-avx2
+ctest --preset validation-avx2
+```
+
+The baseline preset runs the production/lifecycle slice with reference and packed-identity kernels. The AVX2 preset requires both compiled candidates and OS-usable AVX2/FMA hardware, then runs the direct candidate tests. Missing binaries, empty ISA discovery, unavailable hardware, and required skips cannot pass this gate. Pure metadata and backend-policy tests remain runnable without AVX2.
+
+`fixture.cpu_isa_build` checks `compile_commands.json` for target-wide ISA uplift and per-file isolation; ISA implementation files also stay outside Unity and LTO merging. Update the explicit source manifest and its negative tests when adding an ISA implementation. Backend feature policy controls descriptor eligibility; internal dot-product dispatch independently detects host features. The baseline build excludes those optional implementations at compile time. Physical non-AVX hardware execution remains a separate platform qualification.
 
 ### Sanitizer Builds
 

@@ -140,6 +140,13 @@
 | [upper_level_runtime_assembly_m6_validation_2026-10-22.md](tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md) | 10 号方案 M6：正式 C ABI、纯 C caller、owner/buffer/KV/故障与 sanitizer 验收 | Current |
 | [utils_cleanup_validation_2026-10-23.md](tests/utils_cleanup_validation_2026-10-23.md) | utils 清理：checked arithmetic、hash、解析、断言与 memory 私有化及消费者回归 | Current |
 | [ctest_sanitizer_validation_2026-10-26.md](tests/ctest_sanitizer_validation_2026-10-26.md) | 13 号方案 Q2 第二批：CTest 逐 case 发现、label、fixture 门禁、target-scoped ASAN/UBSAN 与独立 TSAN presets | Current |
+| [cpu_isa_isolation_validation_2026-10-27.md](tests/cpu_isa_isolation_validation_2026-10-27.md) | 13 号方案 Q2 第三批：AVX2/FMA TU 隔离、baseline/AVX presets、host probe 与 compile_commands 门禁 | Current |
+| [hf_numerical_reference_validation_2026-10-27.md](tests/hf_numerical_reference_validation_2026-10-27.md) | 13 号方案 Q3：HF/PyTorch 外部数值参考、固定轨迹、checksum fixture 与 O1/O2 对比 | Current |
+
+### 模型基准验证记录
+
+- [第五批模型 benchmark 验收](tests/model_benchmark_validation_2026-10-27.md)：阶段计时、实际 token/KV 计数、独立进程采集与报告完整性合同。
+- [desktop-54h5mmi 模型基准记录](tests/benchmarks/models/desktop-54h5mmi-model.md)：同一机器的原始观测摘要，完整 repetitions 保存在 benchmark-results/models。
 
 ### 问题跟踪（docs/issues.md）
 

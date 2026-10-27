@@ -52,8 +52,10 @@ struct QkvLinearF32PackedBKernelArgs {
     PackedGemmF32Args value{};
 };
 
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status RunQkvLinearF32PackedB(
         const QkvLinearF32PackedBKernelArgs& args) noexcept;
+#endif
 
 } // namespace aethermind::cpu::detail
 

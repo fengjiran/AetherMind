@@ -46,8 +46,10 @@ struct GateUpLinearF32PackedBKernelArgs {
     PackedGemmF32Args up{};
 };
 
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status RunGateUpLinearF32PackedB(
         const GateUpLinearF32PackedBKernelArgs& args) noexcept;
+#endif
 
 } // namespace aethermind::cpu::detail
 

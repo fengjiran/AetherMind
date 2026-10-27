@@ -29,6 +29,7 @@ endif ()
 find_package(Threads REQUIRED)
 
 include(cmake/AetherMindSanitizers.cmake)
+include(cmake/AetherMindCpuIsa.cmake)
 
 include(FetchContent)
 if (TARGET spdlog::spdlog)
@@ -102,10 +103,10 @@ if (BUILD_DOCS)
     set(DOXYGEN_OUTPUT_DIR "${CMAKE_BINARY_DIR}/docs")
     file(MAKE_DIRECTORY "${DOXYGEN_OUTPUT_DIR}")
     add_custom_target(aethermind_docs
-        COMMAND ${DOXYGEN_EXECUTABLE} "${CMAKE_SOURCE_DIR}/Doxyfile"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        COMMENT "Generating Doxygen docs; warnings -> ${DOXYGEN_OUTPUT_DIR}/doxygen_warnings.log"
-        VERBATIM
+            COMMAND ${DOXYGEN_EXECUTABLE} "${CMAKE_SOURCE_DIR}/Doxyfile"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            COMMENT "Generating Doxygen docs; warnings -> ${DOXYGEN_OUTPUT_DIR}/doxygen_warnings.log"
+            VERBATIM
     )
     message(STATUS "Docs target enabled: cmake --build build --target aethermind_docs")
 endif ()

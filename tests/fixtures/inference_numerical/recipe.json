@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "generator_version": 1,
+  "seed": 20261027,
+  "short_prompt": [1, 7, 3],
+  "decode_inputs": [17, 23],
+  "greedy_steps": 3,
+  "tolerance": {
+    "logits": [0.00002, 0.0002],
+    "kv": [0.000002, 0.0002]
+  },
+  "cases": [
+    {"id": "mha-untied", "source_variant": "f32-explicit"},
+    {"id": "mha-tied", "source_variant": "f32-tied"},
+    {"id": "gqa-tail", "seed": 20261027, "hidden_size": 24, "intermediate_size": 37, "vocab_size": 31, "num_hidden_layers": 2, "num_attention_heads": 4, "num_key_value_heads": 2, "head_dim": 6, "max_position_embeddings": 32},
+    {"id": "mqa-tail", "seed": 20261028, "hidden_size": 18, "intermediate_size": 22, "vocab_size": 29, "num_hidden_layers": 1, "num_attention_heads": 3, "num_key_value_heads": 1, "head_dim": 6, "max_position_embeddings": 32},
+    {"id": "mha-near-limit", "source_variant": "f32-explicit", "near_limit": true}
+  ]
+}

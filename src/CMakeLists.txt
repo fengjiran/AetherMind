@@ -3,6 +3,16 @@ file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS
         ${PROJECT_SOURCE_DIR}/src/*.cc
 )
 
+set(AETHERMIND_AVX2_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/common/dot_product_f32_avx2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_f32_avx2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_f32_avx2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_packed_b_avx2.cpp
+)
+if(NOT AETHERMIND_HAS_AVX2_FMA)
+    list(REMOVE_ITEM SRC_FILES ${AETHERMIND_AVX2_SOURCES})
+endif()
+
 add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 aethermind_apply_sanitizer(${PROJECT_NAME})
@@ -47,25 +57,11 @@ else ()
     target_compile_definitions(${PROJECT_NAME} PRIVATE BACKTRACE_ON_SEGFAULT=0)
 endif (BACKTRACE_ON_SEGFAULT)
 
-# AVX2+FMA flags for SIMD-optimized translation units. RMSNorm and the GEMM
-# AVX2/FMA kernel are built only when the compiler supports the flags. The GEMM
-# definition is PUBLIC because tests and benchmarks call the AVX2 entry point
-# directly; linking this library is what tells them the translation unit exists.
-include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag("-mavx2" CXX_SUPPORTS_AVX2)
-check_cxx_compiler_flag("-mfma" CXX_SUPPORTS_FMA)
-if (CXX_SUPPORTS_AVX2 AND CXX_SUPPORTS_FMA)
-    set_source_files_properties(
-            ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/common/dot_product_f32_avx2.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_f32_avx2.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_f32_avx2.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_packed_b_avx2.cpp
-            PROPERTIES COMPILE_FLAGS "-mavx2 -mfma"
-    )
+# Consumers use these definitions to know which optional symbols exist. Runtime
+# eligibility still comes from CPU/OS detection and descriptor requirements.
+if(AETHERMIND_HAS_AVX2_FMA)
+    aethermind_configure_avx2_sources(${AETHERMIND_AVX2_SOURCES})
     target_compile_definitions(${PROJECT_NAME} PUBLIC RMSNORM_HAS_AVX2_FMA_KERNEL=1)
     target_compile_definitions(${PROJECT_NAME} PUBLIC GEMM_HAS_AVX2_FMA_KERNEL=1)
     target_compile_definitions(${PROJECT_NAME} PUBLIC DOT_PRODUCT_HAS_AVX2_FMA_KERNEL=1)
-    message(STATUS "AVX2/FMA enabled")
-else ()
-    message(STATUS "AVX2/FMA not supported by compiler")
-endif ()
+endif()

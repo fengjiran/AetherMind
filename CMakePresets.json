@@ -16,6 +16,7 @@
         "BUILD_BENCHMARKS": "OFF",
         "BUILD_INFERENCE_TOOL": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "AETHERMIND_ENABLE_AVX2": "ON",
         "AETHERMIND_VALIDATION_REQUIRED_ASSETS": "ON"
       }
     },
@@ -27,6 +28,19 @@
         "CMAKE_BUILD_TYPE": "Release",
         "AETHERMIND_SANITIZER": "none"
       }
+    },
+    {
+      "name": "validation-baseline",
+      "inherits": "validation-release",
+      "displayName": "CPU validation without optional AVX2/FMA implementations",
+      "cacheVariables": {
+        "AETHERMIND_ENABLE_AVX2": "OFF"
+      }
+    },
+    {
+      "name": "validation-avx2",
+      "inherits": "validation-release",
+      "displayName": "AVX2/FMA kernel validation on eligible hardware"
     },
     {
       "name": "validation-asan-ubsan",
@@ -51,6 +65,30 @@
       }
     },
     {
+      "name": "benchmark-model",
+      "displayName": "Release model measurements without test dependencies",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/validation/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTS": "OFF",
+        "BUILD_BENCHMARKS": "ON",
+        "BUILD_INFERENCE_TOOL": "OFF",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "AETHERMIND_SANITIZER": "none",
+        "AETHERMIND_ENABLE_AVX2": "ON",
+        "AETHERMIND_VALIDATION_REQUIRED_ASSETS": "OFF"
+      }
+    },
+    {
+      "name": "benchmark-model-baseline",
+      "inherits": "benchmark-model",
+      "displayName": "Release model measurements without optional AVX2/FMA implementations",
+      "cacheVariables": {
+        "AETHERMIND_ENABLE_AVX2": "OFF"
+      }
+    },
+    {
       "name": "validation-cli-only",
       "inherits": "validation-common",
       "displayName": "Standalone CLI without test or benchmark dependencies",
@@ -70,6 +108,18 @@
       "jobs": 4
     },
     {
+      "name": "validation-baseline",
+      "configurePreset": "validation-baseline",
+      "targets": ["aethermind_unit_tests", "aethermind_infer"],
+      "jobs": 4
+    },
+    {
+      "name": "validation-avx2",
+      "configurePreset": "validation-avx2",
+      "targets": ["aethermind_unit_tests", "aethermind_infer"],
+      "jobs": 4
+    },
+    {
       "name": "validation-asan-ubsan",
       "configurePreset": "validation-asan-ubsan",
       "targets": ["aethermind_unit_tests", "aethermind_infer"],
@@ -82,6 +132,18 @@
       "jobs": 4
     },
     {
+      "name": "benchmark-model",
+      "configurePreset": "benchmark-model",
+      "targets": ["aethermind_model_benchmark"],
+      "jobs": 4
+    },
+    {
+      "name": "benchmark-model-baseline",
+      "configurePreset": "benchmark-model-baseline",
+      "targets": ["aethermind_model_benchmark"],
+      "jobs": 4
+    },
+    {
       "name": "validation-cli-only",
       "configurePreset": "validation-cli-only",
       "targets": ["aethermind_infer"],
@@ -89,6 +151,30 @@
     }
   ],
   "testPresets": [
+    {
+      "name": "validation-baseline",
+      "configurePreset": "validation-baseline",
+      "filter": {
+        "include": {"label": "^validation$"},
+        "exclude": {"label": "^isa-avx2$"}
+      },
+      "output": {"outputOnFailure": true, "outputJUnitFile": "${sourceDir}/build/validation/validation-baseline/junit.xml"},
+      "execution": {"jobs": 2, "noTestsAction": "error"}
+    },
+    {
+      "name": "validation-avx2",
+      "configurePreset": "validation-avx2",
+      "filter": {"include": {"label": "^isa-avx2$"}},
+      "output": {"outputOnFailure": true, "outputJUnitFile": "${sourceDir}/build/validation/validation-avx2/junit.xml"},
+      "execution": {"jobs": 2, "noTestsAction": "error"}
+    },
+    {
+      "name": "validation-numerical",
+      "configurePreset": "validation-avx2",
+      "filter": {"include": {"label": "^numerical-model$"}},
+      "output": {"outputOnFailure": true, "outputJUnitFile": "${sourceDir}/build/validation/validation-avx2/numerical-junit.xml"},
+      "execution": {"jobs": 2, "noTestsAction": "error"}
+    },
     {
       "name": "validation-release",
       "configurePreset": "validation-release",

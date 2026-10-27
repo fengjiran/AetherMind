@@ -6,6 +6,11 @@ aethermind_configure_test_options()
 file(GLOB_RECURSE TEST_SRC_FILES CONFIGURE_DEPENDS
         ${PROJECT_SOURCE_DIR}/tests/unit/*.cpp
 )
+set(AETHERMIND_AVX2_TEST_SOURCE
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/avx_learning/test_avx_learning_avx2.cpp)
+if(NOT AETHERMIND_HAS_AVX2_FMA)
+    list(REMOVE_ITEM TEST_SRC_FILES "${AETHERMIND_AVX2_TEST_SOURCE}")
+endif()
 
 find_package(GTest REQUIRED)
 add_executable(${TEST_TARGET} ${TEST_SRC_FILES})
@@ -68,19 +73,16 @@ target_compile_definitions(${TEST_TARGET} PRIVATE
         AETHERMIND_TEST_MODELS_DIR="${AETHERMIND_TEST_MODELS_DIR}"
 )
 
-# SIMD learning tests (test_avx_learning.cpp): add -mavx2 -mfma so the
-# intrinsics compile.  The test file uses #ifdef guards + GTEST_SKIP for
-# portability, so this is safe even on non-x86 (the option is ignored by
-# the #ifdef).  We check compiler support anyway for robustness.
-include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag("-mavx2" CXX_SUPPORTS_AVX2)
-check_cxx_compiler_flag("-mfma" CXX_SUPPORTS_FMA)
-if (CXX_SUPPORTS_AVX2 AND CXX_SUPPORTS_FMA)
-    target_compile_options(${TEST_TARGET} PRIVATE -mavx2 -mfma)
-    message(STATUS "AVX2/FMA enabled for unit tests")
-else ()
-    message(STATUS "AVX2/FMA not supported by compiler — SIMD learning tests will GTEST_SKIP")
-endif ()
+set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/inference/test_hf_fixed_trajectory.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        "AETHERMIND_TEST_NUMERICAL_DIR=\"${AETHERMIND_TEST_NUMERICAL_DIR}\"")
+
+# GTest registration and runtime guards remain baseline code. Only the helper
+# that executes intrinsics receives ISA flags.
+if(AETHERMIND_HAS_AVX2_FMA)
+    aethermind_configure_avx2_sources("${AETHERMIND_AVX2_TEST_SOURCE}")
+    target_compile_definitions(${TEST_TARGET} PRIVATE AETHERMIND_TEST_HAS_AVX2_FMA=1)
+endif()
 
 if (BUILD_WITH_TORCH)
     message(STATUS "Setting C++ macro BUILD_WITH_TORCH - 1")

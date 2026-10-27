@@ -273,6 +273,7 @@ Status BuildLinearF32PackedIdentityArgs(
     return Status::Ok();
 }
 
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status BuildLinearF32BpanelArgs(const KernelParamsBuildContext& context,
                                 void* params_buffer) noexcept {
     AM_ASSIGN_OR_RETURN(const LinearF32KernelArgs base,
@@ -303,7 +304,6 @@ Status BuildLinearF32BpanelArgs(const KernelParamsBuildContext& context,
     return Status::Ok();
 }
 
-#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status LinearF32PackedBEntry(const KernelContext& ctx) noexcept {
     const auto* args = static_cast<const PackedGemmF32Args*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);

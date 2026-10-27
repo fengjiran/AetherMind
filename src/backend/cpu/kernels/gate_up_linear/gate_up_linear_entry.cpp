@@ -204,6 +204,7 @@ Status BuildGateUpLinearF32ReferenceArgs(const KernelParamsBuildContext& context
     return Status::Ok();
 }
 
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status BuildGateUpLinearF32BpanelArgs(
         const KernelParamsBuildContext& context,
         void* params_buffer) noexcept {
@@ -341,6 +342,7 @@ Status GateUpLinearF32PackedBEntry(const KernelContext& context) noexcept {
     AM_DCHECK(args != nullptr);
     return RunGateUpLinearF32PackedB(*args);
 }
+#endif
 
 Status BuildGateUpLinearF32Metadata(const OpParams& params,
                                     std::vector<std::byte>& attrs) {
@@ -369,11 +371,13 @@ Status GateUpLinearF32ReferenceEntry(const KernelContext& ctx) noexcept {
 
 } // namespace
 
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status RunGateUpLinearF32PackedB(
         const GateUpLinearF32PackedBKernelArgs& args) noexcept {
     AM_RETURN_IF_ERROR(RunGemmF32PackedB(args.gate));
     return RunGemmF32PackedB(args.up);
 }
+#endif
 
 static_assert(std::is_trivially_copyable_v<GateUpLinearF32KernelMetadata>);
 static_assert(std::is_trivially_destructible_v<GateUpLinearF32KernelArgs>);

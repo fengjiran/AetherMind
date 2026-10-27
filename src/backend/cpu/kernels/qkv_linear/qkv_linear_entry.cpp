@@ -226,6 +226,7 @@ Status BuildQkvLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
     return Status::Ok();
 }
 
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status BuildQkvLinearF32BpanelArgs(
         const KernelParamsBuildContext& context,
         void* params_buffer) noexcept {
@@ -386,6 +387,7 @@ Status QkvLinearF32PackedBEntry(const KernelContext& context) noexcept {
     AM_DCHECK(args != nullptr);
     return RunQkvLinearF32PackedB(*args);
 }
+#endif
 
 Status BuildQkvLinearF32Metadata(const OpParams& params,
                                  std::vector<std::byte>& attrs) {
@@ -415,12 +417,14 @@ Status QkvLinearF32ReferenceEntry(const KernelContext& ctx) noexcept {
 
 } // namespace
 
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status RunQkvLinearF32PackedB(
         const QkvLinearF32PackedBKernelArgs& args) noexcept {
     AM_RETURN_IF_ERROR(RunGemmF32PackedB(args.query));
     AM_RETURN_IF_ERROR(RunGemmF32PackedB(args.key));
     return RunGemmF32PackedB(args.value);
 }
+#endif
 
 static_assert(std::is_trivially_copyable_v<QkvLinearF32KernelMetadata>);
 static_assert(std::is_trivially_destructible_v<QkvLinearF32KernelArgs>);

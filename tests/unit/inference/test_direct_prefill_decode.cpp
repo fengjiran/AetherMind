@@ -17,6 +17,7 @@
 #include "aethermind/shape_inference/tensor_spec.h"
 #include "execution/test_tensor_buffer_helpers.h"
 #include "inference/inference_internal.h"
+#include "inference/test_execution_observation_helpers.h"
 #include "inference/test_malloc_interposer.h"
 #include "model/test_llama_checkpoint_helpers.h"
 
@@ -39,6 +40,8 @@ namespace {
 
 using namespace aethermind;
 using namespace aethermind::test;
+using aethermind::test::observation::FindOutput;
+using aethermind::test::observation::PrepareContext;
 
 constexpr int64_t kHiddenSize = 8;
 constexpr int64_t kIntermediateSize = 16;
@@ -544,49 +547,6 @@ void ExpectGenerateRecoversFromAllocationFailure(
     auto retry = session.Generate(prompt, config);
     ASSERT_TRUE(retry.ok()) << retry.status().ToString();
     EXPECT_EQ(*retry, ScalarGenerate(reference_weights, prompt, config));
-}
-
-StatusOr<ExecutionContext> PrepareContext(Runtime& runtime,
-                                          const ExecutionPlan& plan,
-                                          const ExternalTensorBindings& immutable_bindings,
-                                          const TestBuffer& tokens,
-                                          const TestBuffer& positions,
-                                          WorkspaceArena* workspace,
-                                          KVCacheSessionView cache_view) {
-    if (plan.model_inputs().size() != 2) {
-        return Status::Internal("tiny Llama plan must have token and position inputs");
-    }
-    ExternalTensorBindings external = immutable_bindings;
-    external.read_only.push_back({.value = plan.model_inputs()[0], .tensor = tokens.view()});
-    external.read_only.push_back({.value = plan.model_inputs()[1], .tensor = positions.view()});
-
-    auto prepared = PrepareExecutionBindings(
-            plan, external, runtime.GetAllocator(Device::CPU()));
-    if (!prepared.ok()) {
-        return prepared.status();
-    }
-    return ExecutionContext::Create(plan, std::move(*prepared), workspace,
-                                    std::move(cache_view));
-}
-
-MutableTensorView FindOutput(const ExecutionContext& context,
-                             const ExecutionPlan& plan,
-                             ExecutionValueId value) {
-    const PreparedExecutionBindings* const prepared = context.prepared_bindings();
-    if (prepared == nullptr) {
-        return {};
-    }
-    for (size_t step_index = 0; step_index < plan.steps().size(); ++step_index) {
-        const ExecutionStep& step = plan.steps()[step_index];
-        for (size_t compact_output = 0;
-             compact_output < step.kernel_output_ports.size(); ++compact_output) {
-            const uint32_t port = step.kernel_output_ports[compact_output];
-            if (port < step.outputs.size() && step.outputs[port] == value) {
-                return prepared->step(step_index).outputs[compact_output];
-            }
-        }
-    }
-    return {};
 }
 
 struct StageSnapshot {

@@ -178,7 +178,7 @@ AETHERMIND_INFER_BINARY="$PWD/build-infer/apps/inference/aethermind_infer" TMPDI
   > /tmp/aethermind-m4-lsan-tests.log 2>&1
 ```
 
-两次均 exit 1，分别显示 0 和 48 tests passed，随后均报告 1384 bytes / 17 allocations。按各 Direct/Indirect allocation block 去除地址、按栈排序后集合完全相同；报告定位于未修改的 [GlobalFunctionTable 静态注册](../../src/function.cpp:38)。未添加 suppressions，不将相同基线标为 LSAN pass，未扩展修复该既有问题。上述第二条命令需在第一条非零后仍独立执行，不使用遇错退出的 shell 批处理。
+两次均 exit 1，分别显示 0 和 48 tests passed，随后均报告 1384 bytes / 17 allocations。按各 Direct/Indirect allocation block 去除地址、按栈排序后集合完全相同；报告定位于未修改的 当时的 GlobalFunctionTable 静态注册（历史路径 `src/function.cpp:38`，已在后续清理中移除）。未添加 suppressions，不将相同基线标为 LSAN pass，未扩展修复该既有问题。上述第二条命令需在第一条非零后仍独立执行，不使用遇错退出的 shell 批处理。
 
 本轮不改变并发/同步合同，未运行 TSAN、全量测试或性能基准。`AM_CHECK` 或 `noexcept` 导致的底层终止不能由 runner 的异常捕获恢复；已覆盖的可恢复分配错误不意味着全面 recoverable OOM。
 

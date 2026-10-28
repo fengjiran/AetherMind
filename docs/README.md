@@ -93,6 +93,7 @@
 |---|---|---|
 | [documentation-guide.md](guides/documentation-guide.md) | 文档系统规范：命名、交叉引用、质量、维护流程 | Current |
 | [operator-development-workflow.md](guides/operator-development-workflow.md) | 算子开发的单一规范文档：O0–O4 证据门禁、Benchmark 规范（§5）、记录文件格式（§4）与优化方法（§7） | Current |
+| [final-validation.md](guides/final-validation.md) | 已实现五批的统一构建、资产准备、冻结用例与最终验收入口 | Current |
 | [cpp_coding_style_guidelines.md](guides/cpp_coding_style_guidelines.md) | C++ 编码风格 | Current |
 | [cpp_comment_guidelines.md](guides/cpp_comment_guidelines.md) | 注释与 Doxygen 规范 | Current |
 | [test_writing_guidelines.md](guides/test_writing_guidelines.md) | GoogleTest 测试编写规范 | Current |
@@ -142,6 +143,10 @@
 | [ctest_sanitizer_validation_2026-10-26.md](tests/ctest_sanitizer_validation_2026-10-26.md) | 13 号方案 Q2 第二批：CTest 逐 case 发现、label、fixture 门禁、target-scoped ASAN/UBSAN 与独立 TSAN presets | Current |
 | [cpu_isa_isolation_validation_2026-10-27.md](tests/cpu_isa_isolation_validation_2026-10-27.md) | 13 号方案 Q2 第三批：AVX2/FMA TU 隔离、baseline/AVX presets、host probe 与 compile_commands 门禁 | Current |
 | [hf_numerical_reference_validation_2026-10-27.md](tests/hf_numerical_reference_validation_2026-10-27.md) | 13 号方案 Q3：HF/PyTorch 外部数值参考、固定轨迹、checksum fixture 与 O1/O2 对比 | Current |
+
+### 集成验收
+
+- [第一至第五批集成与最终验收](tests/final_validation_2026-10-28.md)：冻结清单、七个 profile、资产/源码身份及 sanitizer 的限定最终结果。
 
 ### 模型基准验证记录
 

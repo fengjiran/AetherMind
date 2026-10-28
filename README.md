@@ -205,6 +205,15 @@ cc -std=c11 -Iinclude -Itests/unit/c_api \
 
 ## Testing
 
+For the integrated five-batch matrix, prepare the checked external assets and run the single entrypoint:
+
+```bash
+python3 tools/prepare_validation_assets.py
+python3 tools/run_final_validation.py --jobs 4 --build-concurrency 2
+```
+
+The [final validation guide](docs/guides/final-validation.md) defines all seven profiles, frozen test inventories, source/asset identity checks, TSAN startup handling, fresh builds and CI artifacts. A successful subset does not mark the complete milestone accepted.
+
 Tests use [GoogleTest](https://google.github.io/googletest/) and live under `tests/unit/`.
 
 CTest discovers the existing GoogleTest cases and runs the Python fixture/CLI checks. After preparing the fixtures below, use the same configure, build, and test presets locally and in automation:

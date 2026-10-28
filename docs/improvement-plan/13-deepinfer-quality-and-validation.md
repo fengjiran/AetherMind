@@ -1,8 +1,8 @@
 # 借鉴 DeepInfer 的生产验证与质量实施方案
 
 - **状态**: In Progress
-- **版本**: 1.5
-- **日期**: 2026-10-27
+- **版本**: 1.6
+- **日期**: 2026-10-28
 - **产品边界**: [当前产品 PRD](../products/aethermind_prd.md)
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联计划**: [02 工程质量](02-engineering-quality-system.md)、[06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[10 产品推理入口](10-upper-level-runtime-assembly.md)
@@ -195,7 +195,12 @@ Decode 上下文随生成增长。固定上下文实验应在计时区外用独�
 
 退出条件：依赖违规可机械检测；安装产物在源码树外可消费，测试/benchmark 不是正式 consumer 的链接依赖；C++ 入口通过不自动标记 C ABI 已交付。
 
-### 4.6 依赖与实施批次
+### 4.6 五批集成与限定最终验收
+
+- **集成入口已实施（2026-10-28）**：统一运行已实现五批的 baseline、AVX、外部数值、ASAN/UBSAN/LSAN、独立 TSAN、独立 CLI 和模型 benchmark 行为合同；冻结发现清单及 unittest 方法摘要，核对 JUnit 的完整执行、源码/资产前后身份，并保留失败与进程级 TSAN 启动适配证据。使用方式见 [统一验收指南](../guides/final-validation.md)，限定验收结果见 [集成记录](../tests/final_validation_2026-10-28.md)。
+- 本入口的 milestone_complete 仅指所选环境中已实现的五批验收矩阵；不会将 Q1–Q5 全部关闭。warnings profile、物理无 AVX 平台、其余分层定位/模型质量/优化推广、机械架构依赖检查与 install/export consumer 等继续按原工作包推进，本提案保持 In Progress。
+
+### 4.7 依赖与实施批次
 
 | 批次 | 工作包 | 顺序与可并行内容 |
 |---|---|---|

@@ -266,7 +266,7 @@ M2 验收记录：
 | ASAN/UBSAN | 重建 instrumented core；独立的 M2 聚焦 harness 排除全局 malloc interposer，39 项通过（`detect_leaks=0`），无地址/UB 报告。开启 LSAN 的零用例基线和 39 项运行均报告 1384 bytes / 17 allocations，归一化泄漏栈完全相同，未增加报告；整体零泄漏门禁未清零 |
 | 格式与文档 | 应用与测试 C++ 源/头通过 clang-format，`git diff --check` 通过；文档检查 0 problem、29 项既有 warning |
 
-Sanitizer 限制须与通过项分开记录：现有完整单测 ASAN 进程在 `--gtest_list_tests` 阶段即退出 139，沙箱内外均复现。进一步从原 link.txt 保留相同的三个 M2 object 和链接参数，仅增删全局 malloc interposer object 作 A/B：不链接时正常列出测试，链接后启动退出 139，定位到现有 interposer 与 ASAN 的启动冲突。独立 harness 使用相同 M2 源码和本轮重建的 instrumented shared library，排除此 interposer。沙箱内 LSAN 另因 ptrace 环境无法结束检查，因此泄漏基线比较在沙箱外完成。两次泄漏报告均定位到 [GlobalFunctionTable 静态注册](../../src/function.cpp:38)；该代码未在 M2 修改，本轮只记录，不扩展修复范围。复现方法见 [fixture/runner 验证说明](../../tests/fixtures/inference_admission/README.md)。
+Sanitizer 限制须与通过项分开记录：现有完整单测 ASAN 进程在 `--gtest_list_tests` 阶段即退出 139，沙箱内外均复现。进一步从原 link.txt 保留相同的三个 M2 object 和链接参数，仅增删全局 malloc interposer object 作 A/B：不链接时正常列出测试，链接后启动退出 139，定位到现有 interposer 与 ASAN 的启动冲突。独立 harness 使用相同 M2 源码和本轮重建的 instrumented shared library，排除此 interposer。沙箱内 LSAN 另因 ptrace 环境无法结束检查，因此泄漏基线比较在沙箱外完成。两次泄漏报告均定位到 当时的 GlobalFunctionTable 静态注册（历史路径 `src/function.cpp:38`，已在后续清理中移除）；该代码未在 M2 修改，本轮只记录，不扩展修复范围。复现方法见 [fixture/runner 验证说明](../../tests/fixtures/inference_admission/README.md)。
 
 M2 完成 runner 接线及其故障证据，不代表独立 executable/CLI 的 A1/A7 或 C ABI 已交付，也不据此宣称全部 PRD hard gates 达成。本轮未运行全量测试、benchmark 或 TSAN。
 

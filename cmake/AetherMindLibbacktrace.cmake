@@ -52,6 +52,7 @@ function(_libbacktrace_compile)
             "--host=${MACHINE_NAME}"
             INSTALL_DIR ${_libbacktrace_prefix}
             BUILD_COMMAND make
+            BUILD_ALWAYS TRUE
             INSTALL_COMMAND make install
             BUILD_BYPRODUCTS "${_libbacktrace_prefix}/lib/libbacktrace.a"
             "${_libbacktrace_prefix}/include/backtrace.h"

@@ -12,11 +12,16 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(KALLOC_ALIGNMENT_DEFAULT 64 CACHE INTERNAL "Default alignment value")
 set(KALLOC_ALIGNMENT "${KALLOC_ALIGNMENT_DEFAULT}" CACHE STRING "Memory allocation alignment in bytes")
 
+include(CMakeDependentOption)
+cmake_dependent_option(
+        USE_LIBBACKTRACE "Enable libbacktrace" ON
+        "NOT MSVC" OFF
+)
+option(BACKTRACE_ON_SEGFAULT "Set signal handler to print traceback on segfault" ON)
 option(BUILD_TESTS "Adding test targets." ON)
 option(BUILD_BENCHMARKS "Adding benchmark targets." ON)
 option(BUILD_INFERENCE_TOOL "Build the standalone token-ID inference tool." OFF)
-option(USE_LIBBACKTRACE "Enable libbacktrace" ON)
-option(BACKTRACE_ON_SEGFAULT "Set signal handler to print traceback on segfault" ON)
+
 option(USE_ALLOC_ALIGNMENT "Enable alloc alignment" ON)
 option(BUILD_DOCS "Build Doxygen documentation (requires doxygen)" OFF)
 option(AETHERMIND_VALIDATION_REQUIRED_ASSETS "Require model fixtures and a CLI for CTest validation" OFF)
@@ -30,8 +35,8 @@ find_package(Threads REQUIRED)
 
 include(cmake/AetherMindSanitizers.cmake)
 include(cmake/AetherMindCpuIsa.cmake)
-
 include(FetchContent)
+
 if (TARGET spdlog::spdlog)
     message(STATUS "AetherMind spdlog: reusing provided spdlog::spdlog target")
 else ()
@@ -70,6 +75,7 @@ else ()
         message(STATUS "AetherMind spdlog: using dependency-provider target configuration")
     endif ()
 endif ()
+
 if (BUILD_BENCHMARKS)
     set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
     set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)

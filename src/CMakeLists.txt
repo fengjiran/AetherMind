@@ -31,7 +31,7 @@ target_link_libraries(${PROJECT_NAME}
 
 if (USE_LIBBACKTRACE)
     set(BACKTRACE_PATH "3rdparty/libbacktrace")
-    include(${PROJECT_SOURCE_DIR}/cmake/AddLibbacktrace.cmake)
+    include(${PROJECT_SOURCE_DIR}/cmake/AetherMindLibbacktrace.cmake)
 endif ()
 
 if (USE_ALLOC_ALIGNMENT)

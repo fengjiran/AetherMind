@@ -214,6 +214,7 @@ function(aethermind_set_discovered_test_properties
         set_tests_properties(aethermind.gtest_numerical_empty PROPERTIES LABELS "numerical-model;build")
         return()
     endif ()
+
     set(isa_case_count 0)
     set(numerical_case_count 0)
     foreach (name IN LISTS ${tests_variable})
@@ -231,6 +232,7 @@ function(aethermind_set_discovered_test_properties
         elseif ("cli" IN_LIST labels AND NOT cli_ready AND NOT required_assets)
             set(reason missing_cli)
         endif ()
+
         if (reason)
             list(APPEND labels "${reason}")
             if (reason STREQUAL "not_compiled_avx2")
@@ -238,18 +240,21 @@ function(aethermind_set_discovered_test_properties
             endif ()
             set_tests_properties("${name}" PROPERTIES DISABLED TRUE)
         endif ()
+
         if (ARGV9)
             set_tests_properties("${name}" PROPERTIES LABELS "${labels}" TIMEOUT 60
                     WORKING_DIRECTORY "${ARGV9}")
         else ()
             set_tests_properties("${name}" PROPERTIES LABELS "${labels}" TIMEOUT 60)
         endif ()
+
         if (("validation" IN_LIST labels OR "isa-avx2" IN_LIST labels OR
                 "numerical-model" IN_LIST labels) AND NOT reason)
             # CTest appends environment entries, retaining the CLI path supplied
             # by discovery. GTest converts required skips before printing status.
             set_tests_properties("${name}" PROPERTIES ENVIRONMENT "AETHERMIND_REQUIRED_VALIDATION=1")
         endif ()
+
         if ("numerical-model" IN_LIST labels)
             set_tests_properties("${name}" PROPERTIES FIXTURES_REQUIRED aethermind_numerical_assets)
             math(EXPR numerical_case_count "${numerical_case_count} + 1")
@@ -259,6 +264,7 @@ function(aethermind_set_discovered_test_properties
         elseif ("model" IN_LIST labels)
             set_tests_properties("${name}" PROPERTIES FIXTURES_REQUIRED aethermind_model_assets)
         endif ()
+
         if ("isa-avx2" IN_LIST labels)
             set_tests_properties("${name}" PROPERTIES FIXTURES_REQUIRED aethermind_avx2_host)
             if (NOT reason)
@@ -506,7 +512,7 @@ function(aethermind_register_tests target)
         endif ()
     endforeach ()
 
-    foreach(contract final_validation verify_ctest_report prepare_validation_assets)
+    foreach (contract final_validation verify_ctest_report prepare_validation_assets)
         set(contract_name "python.${contract}_contract")
         if (Python3_Interpreter_FOUND)
             add_test(NAME "${contract_name}" COMMAND "${Python3_EXECUTABLE}"
@@ -518,7 +524,7 @@ function(aethermind_register_tests target)
             set_tests_properties("${contract_name}" PROPERTIES
                     DISABLED TRUE LABELS "python;smoke;validation;build;missing_python")
         endif ()
-    endforeach()
+    endforeach ()
 
     if (Python3_Interpreter_FOUND)
         add_test(NAME python.model_benchmark_runner_contract COMMAND "${Python3_EXECUTABLE}"

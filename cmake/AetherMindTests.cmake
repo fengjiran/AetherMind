@@ -2,6 +2,8 @@ include_guard(GLOBAL)
 cmake_policy(PUSH)
 cmake_policy(SET CMP0057 NEW)
 
+include("${CMAKE_CURRENT_LIST_DIR}/AetherMindFindPython.cmake")
+
 function(aethermind_configure_test_options)
     set(AETHERMIND_TEST_MODELS_DIR "${PROJECT_SOURCE_DIR}/.models" CACHE PATH
             "Root of the pinned, externally prepared HF test models")
@@ -284,9 +286,10 @@ function(aethermind_register_tests target)
         check_cxx_symbol_exists(__GLIBC__ "features.h" AETHERMIND_TEST_HAS_GLIBC)
     endif ()
 
-    find_package(Python3 COMPONENTS Interpreter QUIET)
-    if (AETHERMIND_VALIDATION_REQUIRED_ASSETS AND NOT Python3_Interpreter_FOUND)
-        message(FATAL_ERROR "Required validation assets need a Python3 interpreter for checksum verification")
+    if (AETHERMIND_VALIDATION_REQUIRED_ASSETS)
+        aethermind_find_python(MIN_VERSION 3.12 REQUIRED)
+    else ()
+        aethermind_find_python(MIN_VERSION 3.12)
     endif ()
 
     # Presence only: the independent checker owns manifest/provenance/tensor
@@ -456,6 +459,19 @@ function(aethermind_register_tests target)
             -DAETHERMIND_SOURCE_DIR=${PROJECT_SOURCE_DIR}
             -P "${PROJECT_SOURCE_DIR}/tests/cmake/test_test_classification.cmake")
     set_tests_properties(cmake.test_classification PROPERTIES LABELS "smoke;validation;build" TIMEOUT 30)
+    if (Python3_Interpreter_FOUND)
+        add_test(NAME cmake.python_discovery COMMAND "${CMAKE_COMMAND}"
+                "-DAETHERMIND_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DAETHERMIND_TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}"
+                "-DAETHERMIND_TEST_PYTHON_EXECUTABLE=${Python3_EXECUTABLE}"
+                -P "${PROJECT_SOURCE_DIR}/tests/cmake/test_python_discovery.cmake")
+        set_tests_properties(cmake.python_discovery PROPERTIES LABELS "smoke;validation;build" TIMEOUT 180)
+    else ()
+        add_test(NAME cmake.python_discovery COMMAND "${CMAKE_COMMAND}" -E false)
+        set_tests_properties(cmake.python_discovery PROPERTIES
+                DISABLED TRUE LABELS "smoke;validation;build;missing_python")
+    endif ()
+
     add_test(NAME cmake.validation_skip_policy COMMAND "${CMAKE_COMMAND}"
             -DAETHERMIND_SOURCE_DIR=${PROJECT_SOURCE_DIR}
             -DAETHERMIND_CTEST_COMMAND=${CMAKE_CTEST_COMMAND}

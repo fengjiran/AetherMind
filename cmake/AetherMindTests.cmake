@@ -490,6 +490,20 @@ function(aethermind_register_tests target)
         endif ()
     endforeach ()
 
+    foreach(contract final_validation verify_ctest_report prepare_validation_assets)
+        set(contract_name "python.${contract}_contract")
+        if (Python3_Interpreter_FOUND)
+            add_test(NAME "${contract_name}" COMMAND "${Python3_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/unit/inference/test_${contract}.py" -v)
+            set_tests_properties("${contract_name}" PROPERTIES
+                    LABELS "python;smoke;validation;build" TIMEOUT 60)
+        else ()
+            add_test(NAME "${contract_name}" COMMAND "${CMAKE_COMMAND}" -E false)
+            set_tests_properties("${contract_name}" PROPERTIES
+                    DISABLED TRUE LABELS "python;smoke;validation;build;missing_python")
+        endif ()
+    endforeach()
+
     if (Python3_Interpreter_FOUND)
         add_test(NAME python.model_benchmark_runner_contract COMMAND "${Python3_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/tests/unit/inference/test_run_model_benchmark.py" -v)

@@ -1,0 +1,51 @@
+{
+  "ctest_slices": {
+    "asan-isa": {
+      "expected_count": 62,
+      "names_sha256": "0a9d28c697a719dec439a18f086a55a97c3a9432542c007b899e607a57b4cc58"
+    },
+    "asan-numerical": {
+      "expected_count": 20,
+      "names_sha256": "24ceb9fcd18c347462093924e04d6bcc51aaa363de251d93369b06db19d6d989"
+    },
+    "asan-production": {
+      "expected_count": 317,
+      "names_sha256": "b05b4f7737b25b148cbf1cc130ed69bb75e9006237632c3048340a78fa175873"
+    },
+    "avx-isa": {
+      "expected_count": 62,
+      "names_sha256": "0a9d28c697a719dec439a18f086a55a97c3a9432542c007b899e607a57b4cc58"
+    },
+    "avx-numerical": {
+      "expected_count": 20,
+      "names_sha256": "24ceb9fcd18c347462093924e04d6bcc51aaa363de251d93369b06db19d6d989"
+    },
+    "avx-production": {
+      "expected_count": 411,
+      "names_sha256": "7f4c7fab5773389cafbfabd3b6076b4657bb16245c2c18cf62cf4ed0d7612eaf"
+    },
+    "baseline-numerical": {
+      "expected_count": 20,
+      "names_sha256": "24ceb9fcd18c347462093924e04d6bcc51aaa363de251d93369b06db19d6d989"
+    },
+    "baseline-production": {
+      "expected_count": 411,
+      "names_sha256": "7f4c7fab5773389cafbfabd3b6076b4657bb16245c2c18cf62cf4ed0d7612eaf"
+    },
+    "tsan-applicable": {
+      "expected_count": 239,
+      "names_sha256": "b6e71c4b8c3f05c917604ba142f36e0ee16ce4a9ff802edcc5136a1aca67a036"
+    }
+  },
+  "schema_version": 1,
+  "unittest_suites": {
+    "benchmark": {
+      "expected_count": 14,
+      "names_sha256": "f142b0f0124acb3da95d773a772e01a4de3afce58203e4295496d295fa2eeaac"
+    },
+    "cli": {
+      "expected_count": 39,
+      "names_sha256": "7c1ba1a37fc1c152b6edfbe8f442078c92a68fb0bb073d2a0297fd20928fcaa0"
+    }
+  }
+}

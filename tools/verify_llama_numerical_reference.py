@@ -15,7 +15,6 @@ import re
 import struct
 import sys
 
-
 CASE_IDS = {"mha-untied", "mha-tied", "gqa-tail", "mqa-tail", "mha-near-limit"}
 STAGES = ("prefill", "decode_0", "decode_1")
 MODEL_FILES = {"model/config.json", "model/model.safetensors"}
@@ -145,7 +144,7 @@ def read_safetensors(data, context="safetensors"):
     metadata = header.pop("__metadata__", None)
     require(metadata is None or isinstance(metadata, dict) and all(
         isinstance(key, str) and isinstance(value, str) for key, value in metadata.items()),
-        f"{context}: invalid safetensors metadata")
+            f"{context}: invalid safetensors metadata")
     payload = memoryview(data)[8 + header_bytes:]
     tensors = {}
     spans = []
@@ -192,7 +191,7 @@ def validate_provenance(manifest):
     reference = manifest["reference"]
     exact_keys(reference, {"versions", "execution", "source_files"}, "reference")
     exact_keys(reference["versions"], {"torch", "transformers", "numpy", "safetensors", "python",
-                                      "python_implementation"}, "reference.versions")
+                                       "python_implementation"}, "reference.versions")
     require(all(isinstance(value, str) and value for value in reference["versions"].values()),
             "reference.versions: versions must be nonempty strings")
     execution = reference["execution"]
@@ -251,7 +250,7 @@ def validate_geometry(case_id, record, config):
             config.get("hidden_act", "silu") == "silu", f"{case_id}: unsupported model config")
     for key, value in geometry.items():
         actual = config.get(key, geometry["hidden_size"] // geometry["num_attention_heads"]
-                            if key == "head_dim" else None)
+        if key == "head_dim" else None)
         require(type(actual) is type(value) and actual == value,
                 f"{case_id}: config/geometry mismatch for {key}")
     rope_parameters = config.get("rope_parameters")
@@ -338,7 +337,7 @@ def validate_reference_tensors(case_id, record, tensors, geometry):
     margins = trajectory["greedy_margins"]
     require(isinstance(margins, list) and len(margins) == 3 and all(
         type(value) in (int, float) and math.isfinite(value) and value >= 0 for value in margins),
-        f"{case_id}: invalid greedy margins")
+            f"{case_id}: invalid greedy margins")
     for name, values in (("prompt", prompt), ("decode_inputs", [17, 23]), ("greedy_tokens", greedy)):
         require_values(require_tensor(tensors, name, "I64", [len(values)], case_id), values, f"{case_id}:{name}")
     margin_tensor = require_tensor(tensors, "greedy_margins", "F32", [3], case_id)
@@ -390,15 +389,17 @@ def validate_case(root, case_id, record):
     require(record["kind"] == ("synthetic_hf" if synthetic else "hf_admission") and
             (type(record["synthetic_seed"]) is int if synthetic else record["synthetic_seed"] is None) and
             record["synthetic_seed"] == (seed if synthetic else None) and
-            record["source_variant"] == (None if synthetic else "f32-tied" if case_id == "mha-tied" else "f32-explicit"),
+            record["source_variant"] == (
+                None if synthetic else "f32-tied" if case_id == "mha-tied" else "f32-explicit"),
             f"{case_id}: wrong source variant/seed identity")
     case_root = safe_path(root, case_id)
     require(case_root.is_dir(), f"Missing case directory: {case_id}")
     require({path.name for path in case_root.iterdir()} == {"model", *REFERENCE_FILES},
             f"{case_id}: unexpected/missing case files")
     model_root = safe_path(root, f"{case_id}/model")
-    require(model_root.is_dir() and {path.name for path in model_root.iterdir()} == {"config.json", "model.safetensors"},
-            f"{case_id}: unexpected/missing model files")
+    require(
+        model_root.is_dir() and {path.name for path in model_root.iterdir()} == {"config.json", "model.safetensors"},
+        f"{case_id}: unexpected/missing model files")
     exact_keys(record["model_files"], MODEL_FILES, f"{case_id}.model_files")
     exact_keys(record["files"], REFERENCE_FILES, f"{case_id}.files")
     model_data = {name: verify_file(root, f"{case_id}/{name}", value)
@@ -409,7 +410,8 @@ def validate_case(root, case_id, record):
     require(not differences({key: value for key, value in record.items() if key != "files"}, reference_json),
             f"{case_id}: reference.json/manifest record mismatch")
     geometry = validate_geometry(case_id, record, parse_json(model_data["model/config.json"]))
-    validate_model_tensors(read_safetensors(model_data["model/model.safetensors"], f"{case_id}:model"), geometry, case_id)
+    validate_model_tensors(read_safetensors(model_data["model/model.safetensors"], f"{case_id}:model"), geometry,
+                           case_id)
     tensors = read_safetensors(reference_data["reference.safetensors"], f"{case_id}:reference")
     validate_reference_tensors(case_id, record, tensors, geometry)
     return tensors
@@ -490,11 +492,13 @@ def tensor_difference(case_id, name, baseline, candidate):
 def compare_bundles(baseline, candidate):
     baseline_manifest, baseline_tensors = baseline
     candidate_manifest, candidate_tensors = candidate
+
     def metadata(manifest):
         result = {key: value for key, value in manifest.items() if key != "cases"}
         result["cases"] = {case: {key: value for key, value in record.items() if key not in {"files", "tensors"}}
                            for case, record in manifest["cases"].items()}
         return result
+
     metadata_diff = differences(metadata(baseline_manifest), metadata(candidate_manifest))
     asset_diff = []
     numerical_diff = []

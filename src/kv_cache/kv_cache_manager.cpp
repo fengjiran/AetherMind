@@ -21,56 +21,13 @@ Status KVCacheManager::Init(Allocator& allocator,
     session_state_ = KVCacheSessionState{.generation = session_state_.generation};
     initialized_ = false;
 
-    KVCacheStorage storage{
-            .layout = {
-                    .num_layers = num_layers,
-                    .num_kv_heads = num_kv_heads,
-                    .max_tokens = max_tokens,
-                    .head_dim = head_dim,
-                    .kv_dtype = kv_dtype,
-                    .alignment = alignment,
-            },
-    };
-    auto& layout = storage.layout;
+    AM_ASSIGN_OR_RETURN(const KVCacheLayout layout,
+                        PlanKVCacheLayout(num_layers, num_kv_heads, max_tokens,
+                                          head_dim, kv_dtype, alignment));
+    KVCacheStorage storage{.layout = layout};
+    AM_ASSIGN_OR_RETURN(const size_t bytes_per_plane, layout.BytesPerPlane());
 
-    const size_t element_bytes = layout.ElementBytes();
-    if (element_bytes == 0) {
-        return Status::InvalidArgument("KV dtype must have non-zero element bytes");
-    }
-
-    // Pad padded_head_dim up so every token row starts at an alignment
-    // boundary; head/layer strides derived from token_stride then stay
-    // aligned too. alignment and element_bytes are powers of two, so
-    // alignment / element_bytes is exact whenever element_bytes <= alignment;
-    // otherwise the element size already guarantees token_stride alignment.
-    size_t dims_per_alignment = alignment > element_bytes
-                                        ? alignment / element_bytes
-                                        : 1;
-    layout.padded_head_dim =
-            dims_per_alignment > 1
-                    ? (head_dim + dims_per_alignment - 1) / dims_per_alignment *
-                              dims_per_alignment
-                    : head_dim;
-
-    if (CheckOverflowMul(layout.padded_head_dim, element_bytes, &layout.token_stride) ||
-        CheckOverflowMul(layout.max_tokens, layout.token_stride, &layout.head_stride) ||
-        CheckOverflowMul(layout.num_kv_heads, layout.head_stride, &layout.layer_stride)) {
-        return Status::Overflow("KV layout stride computation overflowed size_t");
-    }
-
-    AM_RETURN_IF_ERROR(layout.Validate());
-
-    const StatusOr<size_t> bytes_per_plane = layout.BytesPerPlane();
-    if (!bytes_per_plane.ok()) {
-        return bytes_per_plane.status();
-    }
-
-    if (size_t total_bytes = 0;
-        CheckOverflowMul(bytes_per_plane.value(), size_t{2}, &total_bytes)) {
-        return Status::Overflow("KV total bytes overflowed size_t");
-    }
-
-    const AllocationRequest request{.nbytes = bytes_per_plane.value(),
+    const AllocationRequest request{.nbytes = bytes_per_plane,
                                     .alignment = alignment};
     AM_ASSIGN_OR_RETURN(storage.key_buffer, allocator.TryAllocate(request));
     AM_ASSIGN_OR_RETURN(storage.value_buffer, allocator.TryAllocate(request));

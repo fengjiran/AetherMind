@@ -40,7 +40,8 @@ struct KVCacheLayout {
     /// alignment; only the base addresses are checked.
     size_t alignment = 64;
 
-    /// @brief Returns the element size of the KV dtype.
+    /// @brief Returns the fixed element size, or zero for an uninitialized or
+    ///        non-fixed-length dtype.
     AM_NODISCARD size_t ElementBytes() const noexcept;
 
     /// @brief Validates the layout geometry and alignment.
@@ -62,6 +63,11 @@ struct KVCacheLayout {
     /// @brief Returns the total bytes of one key/value plane.
     AM_NODISCARD StatusOr<size_t> BytesPerPlane() const noexcept;
 
+    /// @brief Returns the checked total bytes across both key/value planes.
+    /// @return Twice BytesPerPlane(), or a layout/overflow error. Successful
+    ///         calls allocate no memory; diagnostic OOM returns ResourceExhausted.
+    AM_NODISCARD StatusOr<size_t> TotalBytes() const noexcept;
+
 private:
     friend class KVCacheSessionView;
 
@@ -71,8 +77,27 @@ private:
                                                   size_t kv_head_idx,
                                                   size_t seq_pos,
                                                   size_t dim_idx) const;
+
     AM_NODISCARD StatusOr<size_t> BytesPerPlaneValidated() const;
 };
+
+/// @brief Plans the contiguous KV layout without allocating storage.
+/// @param num_layers Positive number of decoder layers.
+/// @param num_kv_heads Positive number of KV heads per layer.
+/// @param capacity_tokens Positive physical token capacity.
+/// @param head_dim Positive logical width of each head in complete dtype elements.
+/// @param dtype Fixed-length element type; physical storage does not imply kernel support.
+/// @param alignment Non-zero power-of-two row and plane alignment in bytes.
+/// @return A validated layout whose two-plane byte size fits size_t, or
+///         InvalidArgument/Overflow. Diagnostic OOM returns ResourceExhausted.
+/// @note Successful planning allocates no memory. Padding preserves complete
+///       elements and aligns every row, including non-power-of-two element sizes.
+StatusOr<KVCacheLayout> PlanKVCacheLayout(size_t num_layers,
+                                          size_t num_kv_heads,
+                                          size_t capacity_tokens,
+                                          size_t head_dim,
+                                          DataType dtype,
+                                          size_t alignment = 64) noexcept;
 
 } // namespace aethermind
 

@@ -10,6 +10,7 @@ function(aethermind_configure_test_options)
     if (DEFINED AETHERMIND_TEST_NUMERICAL_DIR AND NOT IS_ABSOLUTE "${AETHERMIND_TEST_NUMERICAL_DIR}")
         message(FATAL_ERROR "AETHERMIND_TEST_NUMERICAL_DIR must be an absolute path")
     endif ()
+
     set(AETHERMIND_TEST_NUMERICAL_DIR "${AETHERMIND_TEST_MODELS_DIR}/inference-numerical" CACHE PATH
             "Root of the reviewed, offline-generated HF numerical reference bundle")
     set(AETHERMIND_INFER_BINARY "" CACHE FILEPATH
@@ -46,6 +47,8 @@ function(aethermind_test_labels name output)
             WorkspaceRequirementPlanningDiagnosticFailure.ReturnsResourceExhaustedAndPreservesOffsets
             OffsetAlignment.SuccessfulAlignmentDoesNotAllocate
             OffsetAlignmentDiagnosticFailure.ReturnsResourceExhaustedWithEmptyMessage
+            KVCacheLayoutPlanningNoAllocation.SucceedsWithoutHeapAllocation
+            KVCacheLayoutPlanningDiagnosticFailure.ReturnsResourceExhaustedWithoutPublishingLayout
             ParseNumber.FallbackAllocationFailurePreservesOutputAndCanRetry
             KVCacheManagerInitAllocationFailure.LeavesEmptyStateAndCanRetry
             KVCacheManager.InitDiagnosticAllocationFailureLeavesEmptyStateAndCanRetry
@@ -181,7 +184,7 @@ function(aethermind_test_labels name output)
     string(CONCAT validation_pattern
             "(^|/)(TinyLlamaExecution|TinyWorkspaceSession|DirectPrefillDecode|Prefill|"
             "PrefillInvalidToken|KVCacheCommitTest|KVCacheSessionView|KVCacheInvalidStateTest|"
-            "KernelInvoker|ExecutionContext|RuntimeBuilderTryBuild|"
+            "KernelInvoker|ExecutionContext|RuntimeBuilderTryBuild|KVCacheLayoutPlanning|"
             "LoadAndPrepareExecutableModel(Path)?|InferenceRunnerFailure|InferenceRunnerEquivalence|"
             "InferenceCliIntegration|CAbiRuntimeIntegration|MallocInterposerContract|"
             "GlobalFunctionTable|FunctionRegistryOwnership)\\.")

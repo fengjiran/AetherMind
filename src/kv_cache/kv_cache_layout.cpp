@@ -2,7 +2,9 @@
 #include "aethermind/base/alignment.h"
 #include "utils/overflow_check.h"
 
+#include <limits>
 #include <new>
+#include <numeric>
 #include <string>
 
 namespace aethermind {
@@ -16,34 +18,44 @@ Status ValidateIndexRange(size_t index, size_t upper_bound, const char* label) {
     return Status::Ok();
 }
 
-} // namespace
-
-size_t KVCacheLayout::ElementBytes() const noexcept {
-    return static_cast<size_t>(kv_dtype.nbytes());
-}
-
-Status KVCacheLayout::Validate() const noexcept try {
-    if (num_layers == 0 || num_kv_heads == 0 || max_tokens == 0 || head_dim == 0) {
+Status ValidateGeometry(const KVCacheLayout& layout) {
+    if (layout.num_layers == 0 || layout.num_kv_heads == 0 ||
+        layout.max_tokens == 0 || layout.head_dim == 0) {
         return Status::InvalidArgument("KV layout dimensions must be non-zero");
     }
 
-    if (!IsValidAlignment(alignment)) {
+    if (!IsValidAlignment(layout.alignment)) {
         return Status::InvalidArgument(
                 "KV layout alignment must be a non-zero power of two");
     }
 
-    if (kv_dtype.bits() == 0 || kv_dtype.lanes() == 0) {
-        return Status::InvalidArgument("KV layout dtype must be initialized");
+    if (layout.ElementBytes() == 0) {
+        return Status::InvalidArgument(
+                "KV layout dtype must have a fixed non-zero element size");
     }
+    return Status::Ok();
+}
+
+} // namespace
+
+size_t KVCacheLayout::ElementBytes() const noexcept {
+    // nbytes()/lanes() require a fixed-length lane encoding. Reject scalable
+    // and reserved encodings before either assertion-bearing dtype query.
+    if (kv_dtype.IsUndefined() || kv_dtype.bits() == 0 || kv_dtype.raw_lanes() == 0 ||
+        kv_dtype.raw_lanes() > std::numeric_limits<int16_t>::max()) {
+        return 0;
+    }
+    return static_cast<size_t>(kv_dtype.nbytes());
+}
+
+Status KVCacheLayout::Validate() const noexcept try {
+    AM_RETURN_IF_ERROR(ValidateGeometry(*this));
 
     if (padded_head_dim < head_dim) {
         return Status::InvalidArgument("KV padded_head_dim must be >= head_dim");
     }
 
     const size_t element_bytes = ElementBytes();
-    if (element_bytes == 0) {
-        return Status::InvalidArgument("KV dtype must have non-zero element bytes");
-    }
 
     // Stride consistency: a token row must cover the head without overlap,
     // and token/head/layer strides must keep every row and plane start
@@ -155,5 +167,53 @@ StatusOr<size_t> KVCacheLayout::BytesPerPlaneValidated() const {
     return bytes;
 }
 
+StatusOr<size_t> KVCacheLayout::TotalBytes() const noexcept try {
+    AM_ASSIGN_OR_RETURN(const size_t plane_bytes, BytesPerPlane());
+    size_t bytes = 0;
+    if (CheckOverflowMul(plane_bytes, size_t{2}, &bytes)) {
+        return Status::Overflow("KV total bytes overflowed size_t");
+    }
+    return bytes;
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
+}
+
+StatusOr<KVCacheLayout> PlanKVCacheLayout(size_t num_layers,
+                                          size_t num_kv_heads,
+                                          size_t capacity_tokens,
+                                          size_t head_dim,
+                                          DataType dtype,
+                                          size_t alignment) noexcept try {
+    KVCacheLayout layout{
+            .num_layers = num_layers,
+            .num_kv_heads = num_kv_heads,
+            .max_tokens = capacity_tokens,
+            .head_dim = head_dim,
+            .kv_dtype = dtype,
+            .alignment = alignment,
+    };
+    AM_RETURN_IF_ERROR(ValidateGeometry(layout));
+
+    const size_t element_bytes = layout.ElementBytes();
+    // This element-count grain is a power of two because alignment is one.
+    // It makes row bytes divisible by alignment without splitting an element.
+    const size_t elements_per_alignment =
+            alignment / std::gcd(alignment, element_bytes);
+    AM_ASSIGN_OR_RETURN(layout.padded_head_dim,
+                        AlignOffsetUp(head_dim, elements_per_alignment));
+
+    if (CheckOverflowMul(layout.padded_head_dim, element_bytes, &layout.token_stride) ||
+        CheckOverflowMul(capacity_tokens, layout.token_stride, &layout.head_stride) ||
+        CheckOverflowMul(num_kv_heads, layout.head_stride, &layout.layer_stride)) {
+        return Status::Overflow("KV layout stride computation overflowed size_t");
+    }
+
+    if (const auto total_bytes = layout.TotalBytes(); !total_bytes.ok()) {
+        return total_bytes.status();
+    }
+    return layout;
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
+}
 
 } // namespace aethermind

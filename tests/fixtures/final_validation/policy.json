@@ -9,8 +9,8 @@
       "names_sha256": "24ceb9fcd18c347462093924e04d6bcc51aaa363de251d93369b06db19d6d989"
     },
     "asan-production": {
-      "expected_count": 318,
-      "names_sha256": "3de7fb3b0e5e610b717b555c9029c7e7913e8e39dca63a985be6037d183b8a52"
+      "expected_count": 329,
+      "names_sha256": "eaac1e0d0e65a61d13f281333d35bb1bdac072eee4715e8d37b9dcca16198b86"
     },
     "avx-isa": {
       "expected_count": 62,
@@ -21,20 +21,20 @@
       "names_sha256": "24ceb9fcd18c347462093924e04d6bcc51aaa363de251d93369b06db19d6d989"
     },
     "avx-production": {
-      "expected_count": 412,
-      "names_sha256": "7e299369c0f48dcf9bc21a7c04e45a40c97cb0e1d3e1c567fa91fb1e0d21e0b1"
+      "expected_count": 425,
+      "names_sha256": "2292337135aa33565eb620d746676e97cc1e2401c7a1cec81ee09aad578c9e03"
     },
     "baseline-numerical": {
       "expected_count": 20,
       "names_sha256": "24ceb9fcd18c347462093924e04d6bcc51aaa363de251d93369b06db19d6d989"
     },
     "baseline-production": {
-      "expected_count": 412,
-      "names_sha256": "7e299369c0f48dcf9bc21a7c04e45a40c97cb0e1d3e1c567fa91fb1e0d21e0b1"
+      "expected_count": 425,
+      "names_sha256": "2292337135aa33565eb620d746676e97cc1e2401c7a1cec81ee09aad578c9e03"
     },
     "tsan-applicable": {
-      "expected_count": 240,
-      "names_sha256": "fc29826769f3885ff86ab7ff7993f0edba49b1113070943f09c6bee2d2e8139f"
+      "expected_count": 251,
+      "names_sha256": "8053c2459ac5fa693168b8db0c82fe7812a385f1ddda8535f76c5b859b3b8c73"
     }
   },
   "schema_version": 1,

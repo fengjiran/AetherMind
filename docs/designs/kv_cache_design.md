@@ -75,6 +75,7 @@ Executor / PrefillPath / DecodePath
 - `KVCacheSessionView` 是 Execution / Attention 的稳定访问边界
 - `KVCacheStorage` 将布局与对应 K/V Buffer 成套持有，View 借用 storage 与 session state
 - `KVCacheLayout` 冻结布局、stride、alignment 与 offset 规则；`Validate()` 强制 `token_stride` 为元素大小倍数且对齐 `alignment`，并要求 `head_stride`/`layer_stride` 覆盖全部 token/head（防重叠），`KVCacheSessionView` 校验 layout 不超过 backing buffer
+- `PlanKVCacheLayout` 是连续布局的纯规划入口，成功路径不分配内存，统一计算完整元素的行 padding、stride 与可表示的两 plane 总字节；`BytesPerPlane()`/`TotalBytes()` 可在 storage 分配前查询。`KVCacheManager::Init` 清理旧状态后复用该入口，再分配 K/V；物理 dtype 合法性不等于对应 CPU kernel 可执行。
 
 ---
 

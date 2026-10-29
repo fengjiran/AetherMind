@@ -15,7 +15,7 @@
 | 05 | [KVCache Manager 演进方案](05-kv-cache-manager-evolution.md) | Superseded | 2026-09-24 |
 | 06 | [AetherMind 系统能力演进路线图](06-system-capability-evolution-roadmap.md) | Draft | 2026-10-22 |
 | 07 | [ExecutableModel 生产准备入口方案](07-executable-model-preparation.md) | Implemented | 2026-09-23 |
-| 08 | [KV Cache 与 CPU Attention 能力演进方案](08-kv-cache-and-attention-capability-evolution.md) | Draft | 2026-09-24 |
+| 08 | [KV Cache 与 CPU Attention 能力演进方案](08-kv-cache-and-attention-capability-evolution.md) | In Progress | 2026-10-29 |
 | 09 | [Qwen 与 MoE 模型架构支持方案](09-qwen-and-moe-architecture-support.md) | Draft | 2026-10-20 |
 | 10 | [上层 Runtime 组装与推理入口实施方案](10-upper-level-runtime-assembly.md) | Implemented | 2026-10-22 |
 | 11 | [FP16 / BF16 执行支持方案](11-fp16-bf16-execution-support.md) | Draft | 2026-10-20 |

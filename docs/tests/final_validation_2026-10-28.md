@@ -30,7 +30,7 @@
 | 独立 CLI 黑盒 | 39 个方法 | 通过 |
 | AVX2 / baseline 模型 benchmark 行为合同 | 各 14 个方法 | 通过 |
 
-2026-10-28 后续提交新增 `cmake.python_discovery` 构建合同，使每个 production/TSAN 切片增加 1 项；冻结策略已同步为 baseline/AVX production 412、ASAN 318、TSAN 240。本文表格保留 `dea2cf94` 运行时的实际数量，新一轮完整矩阵须按更新后的策略重新认证，不能把本记录的数量直接套到新策略上。
+本文表格保留 `dea2cf94` 运行时的实际数量。此后新增的 Python discovery 构建合同与静态 KV 规划测试等用例已同步更新冻结策略；新一轮完整矩阵须按更新后的策略重新认证，不能把本记录的数量直接套到新策略上。
 
 每个 CTest 切片的 expected/discovered/executed/passed 均一致，failed/skipped/disabled/not_run 均为零；全部确切名称 SHA256 与冻结策略一致。根代理已独立重新解析所有 inventory/JUnit 及 unittest 方法清单，并核对实际 library/binary/cache/compile database 身份。
 

@@ -147,6 +147,7 @@
 ### 集成验收
 
 - [第一至第五批集成与最终验收](tests/final_validation_2026-10-28.md)：冻结清单、七个 profile、资产/源码身份及 sanitizer 的限定最终结果。
+- [静态 KV 布局与字节规划验证](tests/kv_layout_planning_validation_2026-10-29.md)：纯 planner、实际分配一致性、溢出和 Init 生命周期的聚焦回归。
 
 ### 模型基准验证记录
 

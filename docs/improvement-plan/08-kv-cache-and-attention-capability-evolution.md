@@ -1,8 +1,8 @@
 # KV Cache 与 CPU Attention 能力演进方案
 
-- **状态**: Draft
-- **版本**: 1.1
-- **日期**: 2026-10-11
+- **状态**: In Progress
+- **版本**: 1.2
+- **日期**: 2026-10-29
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)；CPU-only、单请求、同步 Generate、静态 KV
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1；`kv_cache` 拥有 KV 物理状态域，Runtime 按值聚合 Manager，execution 建立窄绑定，backend 执行 kernel
 - **相关历史草案**: [05 号 KVCache Manager 演进方案](05-kv-cache-manager-evolution.md)（已被本提案取代；其接口草图不得视为当前实现）
@@ -100,7 +100,7 @@ PagedAttention 的目标是让 Attention 消费非连续物理 KV blocks；它�
 | 工作包 | 最小改动范围 | 必须通过的证据 | 状态 |
 |---|---|---|---|
 | **KV owner/epoch correctness** | `KVCacheManager`/`KVCacheSessionView` 的 owner、slot、epoch 校验；re-init 与回绕策略 | cross-manager Reset/Release 拒绝；re-init/re-reserve 后旧 view 永不复活；ASAN/TSAN 目标测试；既有 M4/M5 Generate 测试继续通过 | 实现与正式回归已加入；验证结果见下方记录 |
-| **KV publish/resource contract** | commit 权威为 `KVCacheSessionView::CommitAppend`；调用方必须先完成 LayerRunner 的完整 transaction proof，方法只做 generation/lifecycle/range/capacity 校验；汇总模型、activation、workspace、KV 预算及明确 KV dtype 可执行集合仍待完成 | Release 聚焦回归覆盖提交拒绝、失败不发布、诊断 OOM 与零分配；预算与实际分配字节一致、超限可恢复失败、真实模型配置下的容量/精度证据仍待设计 | 发布权已验证；资源/dtype 仍待设计 |
+| **KV publish/resource contract** | commit 权威为 `KVCacheSessionView::CommitAppend`；调用方必须先完成 LayerRunner 的完整 transaction proof，方法只做 generation/lifecycle/range/capacity 校验；`PlanKVCacheLayout` 已提供不分配 storage 的字节规划，模型/activation/workspace/KV 预算及明确 KV dtype 可执行集合仍待完成 | 发布权沿既有聚焦回归；纯规划须与实际 K/V 请求一致，覆盖 checked padding/stride/total bytes、诊断 OOM、旧 view 失效；限额与预算聚合另行验收 | 发布权已验证；纯 KV 规划已实施；限额/聚合与 dtype 扩展待实施 |
 | **CPU Attention baseline 与候选** | 增加按 Prefill/Decode、context depth、GQA、KV dtype/layout 分组的 benchmark；候选在独立 optimized descriptor | O0/O1 数值、O2 registered/prepared 基线、O4 同机交错测量；production `ExecutionStep` 与端到端结果；误差、bytes、latency 同报 | 待测，P1 |
 | **Paged KV 准入审查** | 需求、预算和多请求 workload 研究；获批后另设 block manager 与 paged kernel 专题 | 证明 contiguous 静态策略的真实资源损失，并同时测得 paged 方案收益足以覆盖额外 metadata/寻址成本 | 未触发，长期 |
 
@@ -122,6 +122,12 @@ PagedAttention 的目标是让 Attention 消费非连续物理 KV blocks；它�
 本轮还以 `cmake --build build-tsan --target AetherMind -j8` 成功构建 TSAN core，并将聚焦 non-PIE executable 链接到该 instrumented core。为避免与 sanitizer allocator 冲突，测试临时禁用了 `malloc_interposer.cpp` 的 glibc hooks；首次普通启动遇到 TSAN 的 `unexpected memory mapping`（66），按既有非 PIE 运行方法用 `setarch x86_64 -R` 重试，在 `TSAN_OPTIONS=halt_on_error=1` 下通过。filter 为 `KVLayoutContract.*:KVCacheManager.*:KVCacheSessionView.*:KVCacheCommitTest.*:InvalidReservations/KVCacheInvalidStateTest.*:KVCacheUpdateKernel.*`，结果为 64 ran、56 passed、8 skipped，且无 TSAN race 报告；8 个跳过项为依赖已禁用 hook 的故障注入用例，包含 4 个新的 commit OOM 用例，它们已由上述 Release 128/128 覆盖。临时 compile command 和 stub 仅作为本轮证据，不是仓库长期 artifact。该 TSAN 结果不构成并发支持验收。
 - 本机以当前编译选项测得 `sizeof(KVCacheSessionState) == 40`，此前为 48 字节；这仅是对象布局变化，不构成推理性能收益证据。按值拥有该状态的 C++ 对象布局会受影响，调用方需重新编译。
 
+### 5.3 2026-10-29：静态 KV 纯规划
+
+新增 `PlanKVCacheLayout` 与 `KVCacheLayout::TotalBytes()`，由 `KVCacheManager::Init` 复用同一布局算法。成功规划不分配内存；padding 使用 `alignment / gcd(alignment, element_bytes)` 的完整元素粒度，所有对齐与字节乘法均 checked。未初始化、scalable 或保留 lane 编码通过状态拒绝，避免调用要求固定 lane 的 dtype 查询触发断言。Init 保持失败时释放旧 storage/reservation、保留 generation 的语义。
+
+本批只交付物理布局及字节规划，不增加预算限额、资源汇总或 CPU dtype 支持。新定长多 lane 几何的物理测试不能作为模型执行支持声明。聚焦命令、实际覆盖及结果见[静态 KV 规划验证记录](../tests/kv_layout_planning_validation_2026-10-29.md)。
+
 ## 6. 风险与依赖
 
 | 风险 | 应对 |
@@ -142,5 +148,6 @@ PagedAttention 的目标是让 Attention 消费非连续物理 KV blocks；它�
 
 | 日期 | 版本 | 变更 |
 |---|---|---|
+| 2026-10-29 | 1.2 | 实施静态 KV 纯布局/字节规划，保留 Init 清理与 epoch 合同；分项限额、预算聚合和 dtype 扩展继续待实施 |
 | 2026-10-11 | 1.1 | 修复 owner/epoch 实现，加入正式回归并明确 Manager 的 move/lifetime/串行访问合同；publish/resource 与 Attention 优化仍保持待办 |
 | 2026-09-24 | 1.0 | 以当前代码和临时复现证据重新划分 KV correctness、CPU Attention 优化与 Paged KV 长期准入；取代过期的 05 号当前状态叙述，未修改代码 |

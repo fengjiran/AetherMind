@@ -47,9 +47,6 @@ struct MapMagicConstants {
 namespace details {
 
 #ifdef CPP20
-template<typename T>
-concept is_valid_array_type = std::default_initializable<T>;
-
 template<typename Iter, typename T>
 concept is_valid_iterator_v = std::convertible_to<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag> &&
                               (requires(Iter it) { requires std::same_as<std::remove_cv_t<std::remove_reference_t<decltype(*it)>>, T>; } || //

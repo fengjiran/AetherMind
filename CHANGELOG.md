@@ -17,6 +17,7 @@
 - 删除无生产消费者的公共 `utils/qualified_name.h` 及其单测 `test_qualified_name.cpp`：`QualifiedName` 原为已删除的 `Function` 体系配套，仓库内无源码消费者；C ABI 与其余 utils 接口不变。
 - 删除无生产消费者的遗留顶层头 `memory_format.h` 及其单测 `test_memory_format.cpp`：`MemoryFormat` 与 `GetChannelsLastStrides*`/`IsChannelsLastStrides*` 在 Tensor 重构后仅剩测试引用；C ABI 与现有张量/layout 接口不变。
 - 删除无消费者的遗留顶层头 `layout.h`：`Layout` 枚举、`kStrided` 等常量与 `operator<<` 无任何源码或测试引用；C ABI 与既有 KV/layout 契约不变。
+- 删除无生产消费者的 `Any` + `Array` 子系统：移除公共 `any.h`、`container/array.h`、实现 `any.cpp`/`array.cpp` 及对应单测，并清理仅服务于该子系统的 `is_valid_array_type` 与 `Any` 类型名特化；`any_utils.h` 的通用 concepts 保留供 Map/amstring 使用，C ABI 不变。
 - 清理公共 utils：删除未使用的 `lru.h`、`xxh3.h`、`bits.h` 及 DataType 的无效 include；`FillMemoryJunk` 移入 memory 私有实现，删除公共 `memory_utils.h` 与 pattern getters，不留转发。复合标准类型键改用显式 `aethermind::hash`，不再注入通用 `std::hash` 偏特化；Map 的 Fibonacci helper 归入 container detail。原 C++ 调用方需迁移并重新编译，C ABI 不变。
 - `logging.h` 只提供断言，不再传递包含 spdlog；实际日志调用方直接包含并链接 spdlog，核心库将该依赖设为 PRIVATE。
 - 整数可表示性检查统一复用 `utils/overflow_check.h` 的 `CheckNarrow`：失败时保留输出值；从 inference 公共头删除 `PositiveSize`，正值要求和字段诊断改由 policy、runner 与 C adapter 的私有包装保留，C ABI 错误合同保持不变。

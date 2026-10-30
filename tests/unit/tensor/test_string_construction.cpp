@@ -1,9 +1,10 @@
 //
 // Created by 赵丹 on 2025/8/22.
 //
-#include "any.h"
+#include "aethermind/base/macros.h"
 #include "container/string.h"
 
+#include <cstring>
 #include <deque>
 #include <gtest/gtest.h>
 #include <list>
@@ -504,49 +505,6 @@ TEST(String, StdHash) {
     String s1 = "a";
     String s2(std::string("a"));
     EXPECT_EQ(std::hash<String>()(s1), std::hash<String>()(s2));
-}
-
-TEST(String, AnyFromString) {
-    String s1 = "hello";
-    Any x1 = s1;
-    EXPECT_EQ(s1.use_count(), 1);
-    auto s2 = x1.try_cast<String>();
-    EXPECT_TRUE(s2.has_value());
-    EXPECT_EQ(s1.use_count(), 1);
-    EXPECT_TRUE(s2.value() == s1);
-
-    Any x2 = std::move(s1);
-    EXPECT_EQ(s2.value().use_count(), 1);
-
-    auto s3 = x1.cast<String>();
-    EXPECT_EQ(s3.use_count(), 1);
-
-    String s4;
-    Any x4 = s4;
-    EXPECT_TRUE(!s4.defined());
-    EXPECT_EQ(s4.use_count(), 1);
-}
-
-TEST(String, AnyFromStringLiteral) {
-    Any b = "hello";
-    EXPECT_TRUE(b.IsString());
-    EXPECT_TRUE(b.as<String>().has_value());
-    EXPECT_EQ(b.as<String>().value(), "hello");
-    EXPECT_EQ(b.try_cast<std::string>().value(), "hello");
-    EXPECT_EQ(b.use_count(), 1);
-
-    std::string s_world = "world";
-    b = s_world;
-    EXPECT_EQ(b.try_cast<std::string>().value(), "world");
-
-    String s{"hello"};
-    Any a = s;
-    EXPECT_EQ(a.as<String>().value(), "hello");
-    EXPECT_EQ(a.try_cast<std::string>().value(), "hello");
-
-    Any c = "long string very long";
-    EXPECT_EQ(c.as<String>().value(), "long string very long");
-    EXPECT_EQ(c.try_cast<std::string>().value(), "long string very long");
 }
 
 } // namespace

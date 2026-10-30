@@ -19,8 +19,6 @@
 namespace aethermind {
 
 class Tensor;
-class Tensor_BK;
-class Any;
 
 namespace details {
 
@@ -169,12 +167,7 @@ struct TypeName {
 
 SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(DEFINE_TYPE_NAME);
 DEFINE_TYPE_NAME(_, _, _, Tensor, Tensor);
-DEFINE_TYPE_NAME(_, _, _, Tensor_BK, Tensor);
 DEFINE_TYPE_NAME(_, _, _, Device, Device);
-DEFINE_TYPE_NAME(_, _, _, Any, Any);
-DEFINE_TYPE_NAME(_, _, _, Any*, Any*);
-DEFINE_TYPE_NAME(_, _, _, const Any*, const Any*);
-DEFINE_TYPE_NAME(_, _, _, const Any&, const Any&);
 DEFINE_TYPE_NAME(_, _, _, void, void);
 
 #undef DEFINE_TYPE_NAME

@@ -1,21 +1,21 @@
 # FP16 / BF16 执行支持方案
 
-- **状态**: Draft
-- **版本**: 1.0
-- **日期**: 2026-10-20
+- **状态**: In Progress
+- **版本**: 1.1
+- **日期**: 2026-10-29
 - **产品边界**: [当前产品 PRD](../products/aethermind_prd.md)；CPU-only、单进程、同步、单请求、Token IDs I/O、Llama Dense、静态连续 KV
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联计划**: [06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[07 模型准备入口](07-executable-model-preparation.md)、[08 KV/Attention 演进](08-kv-cache-and-attention-capability-evolution.md)、[09 模型家族扩展](09-qwen-and-moe-architecture-support.md)、[10 Runtime 组装入口](10-upper-level-runtime-assembly.md)
 - **算子工作流**: [算子开发与优化工作流](../guides/operator-development-workflow.md)
 - **关联模块**: dtypes / model / operators / graph / compiler / backend / execution / kv_cache / runtime / inference
 
-本文是待实施提案。源码事实按 2026-10-20 当前工作树静态核对；本次只编写文档，不实现精度策略、转换、kernel 或公开 API，不新增已支持 capability。下文标为“拟新增”的类型、字段和函数是设计名称，实施时须与真实源码核对。本文未运行 C++ 测试或 benchmark，验收条目均为未来门禁。
+本文仍是阶段化提案。P1 的显式 FP32 compatibility 已完成下述限定实现和 tiny checkpoint 验证；其当前接口、范围和证据见 [FP32 兼容推理指南](../guides/fp32-compatible-inference.md) 与 [P1 验证报告](../tests/fp32_compatibility_validation_2026-10-29.md)。P2–P4 仍为未来工作；未通过完整门禁前，不能据此声明 native 16-bit 推理、16-bit KV、16-bit activation 或性能收益。
 
 ## 1. 现状分析
 
 ### 1.1 问题与推荐路线
 
-“支持 FP16/BF16”需要分别回答：checkpoint 能否读取、图上 dtype 是否正确、所有 kernel 能否 resolve、数值是否符合合同、运行内存与性能是否达到目标。当前前两层已有基础，不能据此宣称完整生成链已支持。
+“支持 FP16/BF16”需要分别回答：checkpoint 能否读取、图上 dtype 是否正确、所有 kernel 能否 resolve、数值是否符合合同、运行内存与性能是否达到目标。当前 P1 已在限定 tiny checkpoint 上闭环完整生成链；这不代表 native 16-bit 执行、任意 checkpoint 或后续阶段已支持。
 
 推荐顺序：
 
@@ -53,11 +53,11 @@ P1 建立可执行基线，不是低内存方案；P2 是首个保留 16-bit 权
 
 ### 2.1 精度矩阵与不变量
 
-下表全部为待实现目标。W 表示矩阵权重存储，A 表示 activation；首批 residual 跟随 A。
+下表区分已验收的 P1 范围与后续目标。W 表示矩阵权重存储，A 表示 activation；首批 residual 跟随 A。
 
 | 模式 | Checkpoint 输入 | 执行矩阵权重 W | A / residual | KV storage | 累加 / logits | 状态 |
 |---|---|---|---|---|---|---|
-| FP32 兼容执行 | loader 已接受的 F32/F16/BF16 | 显式转换后的 F32 | F32 | F32 | F32 / F32 | P1 待实施 |
+| FP32 兼容执行 | loader 已接受的 F32/F16/BF16 | 显式转换后的 F32 | F32 | F32 | F32 / F32 | P1 C++ O1/plain 限定验收通过 |
 | FP16 权重执行 | uniform F16 linear weights | F16 | F32 | F32 | F32 / F32 | P2 待实施 |
 | BF16 权重执行 | uniform BF16 linear weights | BF16 | F32 | F32 | F32 / F32 | P2 待实施 |
 | 16-bit KV | 已验收的 P2 权重组合 | F16/BF16 | F32 | 显式选择 F16 或 BF16，K/V 同型 | F32 / F32 | P3 待实施 |
@@ -76,19 +76,19 @@ P2 要求 Embedding、linear 和 lm_head 的实际权重 dtype 与所选 F16/BF1
 
 ### 2.2 职责、数据结构与拟新增接口
 
-以下类型/接口均为拟新增或拟扩展；名称不代表已冻结 public ABI。
+下表的 P1 model/compiler/inference 接口已实现；operators、mixed-dtype backend 与后续 KV 扩展仍是提案。C++ API 不承诺冻结 binary ABI。
 
 | 所在层 | 数据/接口方向 | 职责 |
 |---|---|---|
-| inference | 拟新增 `InferencePrecisionPreset`，接入上层加载/准备编排 | 选择少量受支持模式，解析为逻辑转换与构图选项，协调 Runtime 的 KV 配置；不实现转换或 packing 算法 |
-| model | 拟新增纯数据 `ModelGraphBuildOptions`，含 activation/KV 精度；拟新增 `NormalizeLoadedModelWeightsToFp32` 及受控的按角色转换 helper | 构图前完成明确的逻辑权重转换；`BuildModelGraph` 继续是模型到 semantic graph 的唯一入口 |
-| compiler | 拟在 `ModelCompileOptions` 增加 model graph-build options，并传给 `BuildModelGraph` | 编排 Build→Optimize→Lower；不分配/转换权重，不访问 backend registry |
+| inference | `InferencePrecisionPreset` / `CpuModelPrepareOptions` 接入显式 C++ 准备入口 | P1 选择 O1/plain + compatibility，协调 Runtime CPU allocator、normalizer、FP32 graph options 与已有 Prepare；不实现转换算法或新 kernel |
+| model | `ModelGraphBuildOptions` 与 `NormalizeLoadedModelWeightsToFp32` | 构图前完成真实逻辑权重转换；`BuildModelGraph` 继续是模型到 semantic graph 的唯一入口 |
+| compiler | `ModelCompileOptions.graph_build` 传给 `BuildModelGraph` | 编排 Build→Optimize→Lower；不分配/转换权重，不访问 backend registry |
 | operators | 拟扩展 `EmbeddingParams.output_dtype` 及其 inference/serde；后续按需增加 Cast | 定义 gather+widening、mixed KV、转换边界的可见语义，不查询 ISA |
 | backend | 新增对应 dtype tuple 的 kernel、params builder、recipe/validator | 实现 weight widening、FP32 累加、物理 packing 与 ISA 选择 |
 | execution | 既有 plan/binding/prepare 路径；P3 扩展 state dtype 身份校验 | 冻结 kernel/资源，校验 TensorSpec 与物理 binding；维持完整 plan 的 KV transaction |
 | kv_cache / runtime | 使用解析后的 `kv_dtype`，沿用 layout/storage/allocator | 管理物理字节与布局，不解析 HF hint，不判断算子数值语义 |
 
-不为本提案新增 owning Engine facade。`LoadAndPrepareExecutableModel` 等上层入口可增加显式 precision 选项或复用同一 helper；直接 `ModelCompiler::Compile` / `LoadAndCompile` 仍是低层编译入口，不自动触发转换。低层调用方若绕过 normalizer，必须构造真实一致的 specs，未覆盖的 kernel tuple 在 prepare 时明确拒绝，不能静默取得兼容模式的承诺。
+不为本提案新增 owning Engine facade。P1 使用独立的 `LoadAndPrepareCpuExecutableModel` 入口，避免新增 aggregate options 重载使原 `{}` 调用歧义；直接 `ModelCompiler::Compile` / `LoadAndCompile` 仍是低层编译入口，不自动触发转换。低层调用方若绕过 normalizer，必须构造真实一致的 specs，未覆盖的 kernel tuple 在 prepare 时明确拒绝，不能静默取得兼容模式的承诺。
 
 新增 Embedding 字段的缺省语义须保留既有“输出跟随权重”；W16/A32 preset 显式选 F32 输出。字段迁移覆盖 OpParams、graph builder、inference、序列化/反序列化、constant evaluator（如适用）、kernel 参数和测试。通用 Cast 延后到 P4 真正需要图上 dtype transition 时再引入。
 
@@ -182,7 +182,7 @@ FP16 与 BF16 的指数范围和有效精度不同，不能按“都是 16-bit�
 
 ## 4. 实施步骤
 
-各阶段状态均为待实施；编号表示依赖，不承诺日期。每个算子依照 O0–O4 执行，微内核优化不是进入下一阶段的充分条件。
+P1 的限定实现与验收已完成；P0 中 graph options 和 widening 数值合同已随 P1 落地，F16 Add 与 narrowing 迁移留待实际 reduced-dtype consumer 需要时实施。P1 全程使用 F32 算子，不依赖这些未完成项。P2–P4 仍待实施；编号表示依赖，不承诺日期。每个算子依照 O0–O4 执行，微内核优化不是进入下一阶段的充分条件。
 
 ### 4.1 P0：冻结合同与补齐基础语义
 
@@ -193,7 +193,7 @@ FP16 与 BF16 的指数范围和有效精度不同，不能按“都是 16-bit�
 
 退出条件：语义与 dtype 身份一致，非法组合可诊断；F16 Add 的 producer/consumer/evaluator/CPU reference 同步。该阶段不承诺 F16/BF16 整模型执行。
 
-### 4.2 P1：显式 FP32 兼容执行
+### 4.2 P1：显式 FP32 兼容执行（限定验收通过）
 
 1. model 实现独立 normalizer，基于每个真实 RawWeightView 转换；通过 RawStorage 拥有结果并去重 tied tensor。
 2. inference 的显式模式串联 Load→Normalize→Compile→Prepare；低层直接 Compile 不偷偷触发转换。
@@ -290,3 +290,4 @@ FP16 与 BF16 的指数范围和有效精度不同，不能按“都是 16-bit�
 | 日期 | 版本 | 变更 |
 |---|---|---|
 | 2026-10-20 | 1.0 | 建立 Draft：FP32 兼容路径、W16/A32、独立 KV16 与 A16 阶段；明确职责、所有权、数值/ISA、selector/layout 迁移和验收门禁 |
+| 2026-10-29 | 1.1 | P1 转为 In Progress：记录显式 F16/BF16→FP32 normalizer、FP32 graph policy 和 C++ O1/plain 编排；限定模型与 sanitizer 证据另记验证报告；P2–P4 仍为未来工作 |

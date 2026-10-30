@@ -127,12 +127,16 @@ packing recipe 仍由 backend 选择。选择 O2 失败时传播错误，不静�
 
 当前 Llama builder 用 `weight_dtype_hint`（未定义时回退 Float32）确定 activation/state dtype，依据见 [llama_dense_graph_builder.cpp](../../src/model/llama_dense_graph_builder.cpp)。loader 的 dtype 支持集允许 F32/F16/BF16，linear dtype 一致性也不等于全部权重为 FP32；缺失或 `auto` hint 不能证明实际权重精度。图语义校验在 Compile，kernel resolve/packing 在 Prepare；当前 Session 路径的 external binding 校验在 Generate 内的 `PrepareExecutionBindings`，晚于 KV reservation。这些边界各自验证对应合同，不能代替分配 KV 前的产品准入，也不能假定所有 dtype 错误都会延迟到同一阶段。
 
-M1 原在应用内实现唯一 FP32 策略；M5 已将其迁入 [inference 实现](../../src/inference/model_execution_policy.cpp) 的 `aethermind` namespace，公共声明见 [model_execution_policy.h](../../include/aethermind/inference/model_execution_policy.h)。应用旧声明/实现已删除，无兼容转发：
+M1 原在应用内实现唯一 FP32 策略；M5 已将其迁入 [inference 实现](../../src/inference/model_execution_policy.cpp) 的 `aethermind` namespace，公共声明见 [model_execution_policy.h](../../include/aethermind/inference/model_execution_policy.h)。在此基础上，当前实现的 `MakeCpuRuntimeOptions` 位于 inference 层，统一 CPU defaults、KV 映射、Runtime budget 与 CPU feature policy；CLI 和 benchmark 复用它。Runtime 层不依赖模型 metadata。
 
 ```cpp
 Status ValidateFp32ExecutionInputs(const LoadedModel& model);
 StatusOr<KVCacheRuntimeOptions> MakeFp32KVCacheOptions(
     const HfModelConfig& config, size_t context_tokens);
+
+StatusOr<RuntimeOptions> MakeCpuRuntimeOptions(
+    const HfModelConfig& config,
+    const CpuRuntimeAssemblyOptions& options);
 ```
 
 runner 在 Load 成功后的请求/模型配置校验阶段调用一次，早于配置映射、Compile、TryBuild 和 KV reservation。它只读取 metadata，不依赖 Runtime，不读取权重 payload，不转换或分配权重，也不保存模型借用。`main`、preset 映射和后续 C ABI 不另写 dtype 遍历或准入分支。
@@ -156,7 +160,7 @@ required_tokens = prompt_tokens.size() + (N - 1)
 
 加法必须防溢出；要求 `required_tokens <= context_tokens <= model_context_limit`。首个新 token 由 Prefill 预测，因此不能把它再次计为一次 Decode KV append。EOS 可能提前结束，但不能依赖它缩小预约。`N == 0` 不做减一，遵循 Generate 的空输出语义。Session/manager 保留最终校验权，入口的提前报错不能替代底层检查。
 
-`RuntimeOptions.workspace` 当前未被 builder 消费，不能把 `default_workspace_limit_bytes` 当作已生效的内存预算。workspace/activation 继续由 Generate 准备；用户指定的 KV capacity 也不代表进程总内存上限。
+`RuntimeOptions.workspace.default_workspace_limit_bytes` 已由 Builder 按值写入 Runtime，并由 Session 在 reservation/workspace 分配前消费；它不是进程总内存上限。`workspace.enable_workspace_manager=true` 仍未实现，Builder 在任何 registry 组装前返回 `Unimplemented`。同样，execution/tracing 的非默认开关会明确拒绝，不再静默无效。
 
 ### 2.5 Ownership 与生命周期
 
@@ -212,7 +216,7 @@ M0 只证明测试资产可复现且被 Loader 接受，不证明 FP32 执行准
 | `RunOptions` / `CpuPreset` | 拥有路径、Token IDs、显式容量与 GenerationConfig；默认 `kO1Plain` |
 | `ValidateRunOptions` | 参数/词表/EOS/model context 检查；正数生成按 checked `prompt + N - 1` 校验容量；零生成仍校验参数，但不要求 prompt 满足物理 KV capacity |
 | `ValidateFp32ExecutionInputs` | 只读 metadata，精确匹配 scalar Float32；通过既有 resolver 检查全部必需角色和层，保留 tied head fallback；非 FP32 返回含实际/要求 dtype 与 hint 或角色/layer 的 `Unimplemented` |
-| `MakeRuntimeOptions` | 检查有符号值与转换，规范化逻辑 head_dim，返回 CPU/FP32/64-byte alignment 的值对象；不创建 Runtime 或分配 KV |
+| `MakeCpuRuntimeOptions` | 通过 `MakeFp32KVCacheOptions` 检查有符号值与转换，规范化逻辑 head_dim，返回 CPU/FP32/64-byte alignment、KV/workspace cap 和 CPU feature policy 的值对象；不创建 Runtime 或分配 KV |
 | `MakeCpuCompileOptions` | 显式选择 O1/plain 或 O2/packed、CPU、kBoth；未知枚举拒绝，dtype 留给 lowering 推导 |
 
 测试目标通过 [tests/unit/CMakeLists.txt](../../tests/unit/CMakeLists.txt) 显式编译同一份应用 helper，未将其加入 shared library，也未新增 executable/object/library target。M1 的 helper 直接返回 Status；完整 runner 的阶段标注、Compile→TryBuild 调用顺序与失败清理由 M2 接入（见 §4.2），CLI 退出码由 M3 实现。
@@ -539,7 +543,7 @@ M1 已交付 helper 的 hint/逐角色回归及真实 M0 HF 变体的 Load→hel
 
 通过 loader 的 F16/BF16 fixture 必须具有匹配 dtype 的真实 payload、bytes 和一致的 linear dtype；仅改 `RawWeightView.dtype` 或制造混合 linear 使 loader 提前失败，不是准入测试。逐角色 helper 单测与 loader→runner 集成证据分开记录。未使用的额外 tensor 不纳入 FP32 执行准入；lm-head 缺失是否合法及其他结构错误继续由原 validator 测试负责。
 
-M5 将唯一实现迁入 inference，M6 已回归两个生产消费者；应用不保留 dtype 白名单或转发实现。零 KV 分配是首版 runner 的顺序证据；C ABI 在模型加载前已创建 Runtime，M6 独立验收后续失败的资源保留/清理，不从共用 helper 推导分配顺序相同。
+M5 将唯一实现迁入 inference，M6 已回归两个生产消费者；应用不保留 dtype 白名单或转发实现。后续运行前配置集中为 `MakeCpuRuntimeOptions`，CLI 和 benchmark 复用该值映射，Builder 对未实现 options 预检且不消费 pending registration。零 KV 分配是首版 runner 的顺序证据；C ABI 在模型加载前已创建 Runtime，M6 独立验收后续失败的资源保留/清理，不从共用 helper 推导分配顺序相同。
 
 ### 6.5 A14 P2 跨对象与错误报告回归
 

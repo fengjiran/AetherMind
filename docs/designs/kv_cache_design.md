@@ -218,6 +218,8 @@ public:
 
     StatusOr<KVCacheSessionView> ReserveForSession(size_t prompt_len,
                                                    size_t future_kv_appends) noexcept;
+    Status ValidateReservation(size_t prompt_len,
+                               size_t future_kv_appends) const noexcept;
 
     Status ResetSession(const KVCacheSessionView& view) noexcept;
     Status ReleaseSession(KVCacheSessionView& view) noexcept;
@@ -232,6 +234,12 @@ public:
 与历史草图的差异：`Init` 接收几何参数与 `Allocator&`（而非 `LoadedModel`/`Runtime`）；预约按 `prompt_len + future_kv_appends` 精确预留；Re-init 会释放旧 reservation 并保留 generation 使旧 view 永不复活。
 
 Manager 按值持有 `storage_` 与 `session_state_`，不单独保存 layout；`layout()` 返回 `storage_.layout` 的 const 引用。`Init` 在局部构造完整 candidate storage，布局验证与两个 plane 分配均成功后，以不抛异常的移动整体发布。失败时 Manager 保持默认空 layout、零容量与零已分配字节，旧 view 持续失效；诊断分配 OOM 返回 `ResourceExhausted`。
+
+`ValidateReservation` 复用 Reserve 的几何、lifecycle、capacity 与 epoch 检查，但不修改 reservation。Session 的 request 资源规划和 budget admission 用它保持既有错误优先级；它不是多请求可用容量查询，也不替代实际 Reserve。
+
+### 4.2.1 Runtime KV payload cap
+
+`RuntimeOptions::kv_cache.max_bytes` 可为 RuntimeBuilder 的静态 K/V plane payload 设置上限，`0` 为 unlimited。Builder 先以 `PlanKVCacheLayout` 计算完整两 plane 字节数，超限在创建 KV allocator 或分配 plane 前返回 `ResourceExhausted`。这仅约束该次 Runtime 组装；直接调用 Manager 的 `Init` 不继承这个 option，也不会把低层物理 storage 变成全局 budget manager。
 
 ### 4.3 KVCacheStorage
 

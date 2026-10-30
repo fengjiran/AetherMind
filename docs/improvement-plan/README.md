@@ -18,7 +18,7 @@
 | 08 | [KV Cache 与 CPU Attention 能力演进方案](08-kv-cache-and-attention-capability-evolution.md) | In Progress | 2026-10-29 |
 | 09 | [Qwen 与 MoE 模型架构支持方案](09-qwen-and-moe-architecture-support.md) | Draft | 2026-10-20 |
 | 10 | [上层 Runtime 组装与推理入口实施方案](10-upper-level-runtime-assembly.md) | Implemented | 2026-10-22 |
-| 11 | [FP16 / BF16 执行支持方案](11-fp16-bf16-execution-support.md) | Draft | 2026-10-20 |
+| 11 | [FP16 / BF16 执行支持方案](11-fp16-bf16-execution-support.md) | In Progress | 2026-10-29 |
 | 12 | [CUDA 后端与执行支持方案](12-cuda-backend-execution-support.md) | Draft | 2026-10-21 |
 | 13 | [借鉴 DeepInfer 的生产验证与质量实施方案](13-deepinfer-quality-and-validation.md) | In Progress | 2026-10-28 |
 
@@ -30,7 +30,7 @@
 - [05-kv-cache-manager-evolution.md](05-kv-cache-manager-evolution.md)：历史 KV 草案，当前事实与实施优先级由 08 号提案取代。
 - [06-system-capability-evolution-roadmap.md](06-system-capability-evolution-roadmap.md)：全仓库 capability gap、模块级演进裁决与 Batch A–F 实施排序；关联 09 模型家族、11 精度与 12 CUDA 的独立主线，§11.4 记录单权重 identity 条件式零复制的待优化项与验收。
 - [07-executable-model-preparation.md](07-executable-model-preparation.md)：01 号计划 M2 的细化，`LoweredModelArtifact → ExecutableModel` 唯一生产准备入口、权重绑定映射与 inference 模块归属。
-- [08-kv-cache-and-attention-capability-evolution.md](08-kv-cache-and-attention-capability-evolution.md)：当前 KV owner/epoch correctness、CPU Attention 优化证据门禁和 Paged KV 长期准入。
+- [08-kv-cache-and-attention-capability-evolution.md](08-kv-cache-and-attention-capability-evolution.md)：当前 KV owner/epoch、静态布局与分阶段 payload budget，CPU Attention 优化证据门禁和 Paged KV 长期准入。
 - [09-qwen-and-moe-architecture-support.md](09-qwen-and-moe-architecture-support.md)：公共合同→Qwen3 Dense→Qwen3 MoE 主线；含 R1–R8 改造、binding 冷路径 workspace specialization、统一 decoder I/O、多 packed bindings 与验收，另列其他家族优先级和独立分支。
 - [10-upper-level-runtime-assembly.md](10-upper-level-runtime-assembly.md)：M0–M6 已完成，交付 CPU FP32 独立 C++ 入口和正式 C ABI、共享策略、owner/buffer/error 合同与分层验收；既有 LSAN 与全部产品 hard gates 仍单独记录。
 - [11-fp16-bf16-execution-support.md](11-fp16-bf16-execution-support.md)：显式 FP32 兼容执行→W16/A32→独立 KV16→A16 的分阶段提案；包含 logical weight ownership、构图精度、数值/ISA 合同、selector/layout 迁移与 production 验收。

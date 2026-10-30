@@ -81,7 +81,7 @@
 | [08-kv-cache-and-attention-capability-evolution.md](improvement-plan/08-kv-cache-and-attention-capability-evolution.md) | KV owner/epoch 正确性、CPU Attention 优化准入与 Paged KV 长期触发条件 | Draft |
 | [09-qwen-and-moe-architecture-support.md](improvement-plan/09-qwen-and-moe-architecture-support.md) | 公共合同→Qwen3 Dense→Qwen3 MoE 主线：R1–R8 改造、binding 冷路径 workspace、统一 decoder I/O、多 packed bindings 与验收 | Draft |
 | [10-upper-level-runtime-assembly.md](improvement-plan/10-upper-level-runtime-assembly.md) | CPU FP32 的独立 C++/C ABI 入口、生命周期、共享策略与分层验收（M0–M6） | Implemented |
-| [11-fp16-bf16-execution-support.md](improvement-plan/11-fp16-bf16-execution-support.md) | FP32 兼容执行、W16/A32、独立 KV16 与 A16 的精度合同、所有权、实施阶段与验收门禁 | Draft |
+| [11-fp16-bf16-execution-support.md](improvement-plan/11-fp16-bf16-execution-support.md) | FP32 兼容执行、W16/A32、独立 KV16 与 A16 的精度合同、所有权、实施阶段与验收门禁 | In Progress |
 | [12-cuda-backend-execution-support.md](improvement-plan/12-cuda-backend-execution-support.md) | 单 GPU 同步基线、device placement、显存权重、stream 完成与 KV 事务，及 FP32→FP16/BF16→性能优化的实施与验收 | Draft |
 | [13-deepinfer-quality-and-validation.md](improvement-plan/13-deepinfer-quality-and-validation.md) | 借鉴 DeepInfer 的模型 golden、teacher-forcing 数值等价、CTest/sanitizer/ISA、模型级 benchmark 与交付验证实施工作包 | In Progress |
 
@@ -94,6 +94,9 @@
 | [documentation-guide.md](guides/documentation-guide.md) | 文档系统规范：命名、交叉引用、质量、维护流程 | Current |
 | [operator-development-workflow.md](guides/operator-development-workflow.md) | 算子开发的单一规范文档：O0–O4 证据门禁、Benchmark 规范（§5）、记录文件格式（§4）与优化方法（§7） | Current |
 | [final-validation.md](guides/final-validation.md) | 已实现五批的统一构建、资产准备、冻结用例与最终验收入口 | Current |
+| [resource-budgeting.md](guides/resource-budgeting.md) | 当前模型与请求的 payload cap、分阶段预检、可观测边界与使用约束 | Current |
+| [runtime-configuration.md](guides/runtime-configuration.md) | CPU Runtime 的模型感知配置映射、Builder 预检与入口职责 | Current |
+| [fp32-compatible-inference.md](guides/fp32-compatible-inference.md) | P1 F16/BF16 checkpoint 显式拓宽为 CPU FP32 O1/plain 执行的入口、资源和能力边界 | Current |
 | [cpp_coding_style_guidelines.md](guides/cpp_coding_style_guidelines.md) | C++ 编码风格 | Current |
 | [cpp_comment_guidelines.md](guides/cpp_comment_guidelines.md) | 注释与 Doxygen 规范 | Current |
 | [test_writing_guidelines.md](guides/test_writing_guidelines.md) | GoogleTest 测试编写规范 | Current |
@@ -148,6 +151,11 @@
 
 - [第一至第五批集成与最终验收](tests/final_validation_2026-10-28.md)：冻结清单、七个 profile、资产/源码身份及 sanitizer 的限定最终结果。
 - [静态 KV 布局与字节规划验证](tests/kv_layout_planning_validation_2026-10-29.md)：纯 planner、实际分配一致性、溢出和 Init 生命周期的聚焦回归。
+- [资源预算验证](tests/resource_budgeting_validation_2026-10-29.md)：KV/workspace/request/model/packing 的分阶段 payload admission 与验证范围。
+- [FP32 兼容推理验证](tests/fp32_compatibility_validation_2026-10-29.md)：P1 F16/BF16→FP32 转换、构图 policy 与模型级验收记录。
+- [Raw weight dtype 边界修复验证](tests/raw_weight_dtype_validation_2026-10-29.md)：非法 dtype 的 Status 拒绝、真实消费者回归与合法空 tensor 合同。
+- [Packed artifact dtype 边界修复验证](tests/packed_weight_artifact_dtype_validation_2026-10-29.md)：collection 插入的 dtype 校验、失败状态与既有兼容语义。
+- [运行前 Runtime 配置验证](tests/runtime_configuration_validation_2026-10-30.md)：集中 CPU 配置映射、Builder option preflight 与入口迁移。
 
 ### 模型基准验证记录
 

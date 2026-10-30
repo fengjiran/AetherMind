@@ -161,7 +161,7 @@
 
 **核心原则：Token IDs 是唯一数据边界**
 
-> 注：`InferenceSession::Generate` 与下述 Runtime C ABI 均已实现。C ABI 合同由 M5 冻结、M6 接通；当前验证范围为 CPU FP32 Llama Dense，量化与全部产品 hard gates 不能由此推导。精确声明与合同见 [c_api.h](../../include/c_api.h) 和 [Runtime C ABI v1](../api/runtime-c-abi.md)。
+> 注：`InferenceSession::Generate` 与下述 Runtime C ABI 均已实现。C ABI 合同由 M5 冻结、M6 接通；当前验证范围为 CPU FP32 Llama Dense，量化与全部产品 hard gates 不能由此推导。精确声明与合同见 [c_api.h](../../include/c_api.h) 和 [Runtime C ABI v1](../api/runtime-c-abi.md)。 另有显式 C++ FP32 兼容准备入口，可将 loader 已接受的 F16/BF16 checkpoint 权重拓宽为 FP32 后运行 CPU O1/plain；限定证据见 [FP32 兼容验证](../tests/fp32_compatibility_validation_2026-10-29.md)。该入口不扩展 CLI/C ABI 的 strict FP32 输入合同，也不代表 native 16-bit 执行。
 
 ```cpp
 // C++ API

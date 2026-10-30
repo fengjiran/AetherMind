@@ -49,10 +49,10 @@ cmake --build build --target aethermind_unit_tests -j
 ./build/tests/unit/aethermind_unit_tests --gtest_filter='AdmissionFixtures/*:InferenceAdmissionFixtures.*'
 ```
 
-The Python tests independently inspect serialized tensors and conversion boundaries. The M0 C++ tests load every variant through the real loader and check the resolved roles, shapes, byte counts, dtype hints, and tied binding. M1 adds the application's metadata-only admission policy and configuration helpers:
+The Python tests independently inspect serialized tensors and conversion boundaries. The M0 C++ tests load every variant through the real loader and check the resolved roles, shapes, byte counts, dtype hints, and tied binding. M1 adds the shared inference metadata-only admission policy and CPU Runtime configuration helpers:
 
 ```bash
-./build/tests/unit/aethermind_unit_tests --gtest_filter='InferenceRunOptions.*:InferenceRuntimeOptions.*:InferenceCpuPreset.*:Fp32ExecutionInputs.*:AdmissionFixtures/Fp32HfAdmission.*:AdmissionFixtures/Fp32HfCompile.*:RequiredRoles/Fp32RequiredRoleAdmission.*'
+./build/tests/unit/aethermind_unit_tests --gtest_filter='InferenceRunOptions.*:CpuRuntimeAssembly.*:InferenceCpuPreset.*:Fp32ExecutionInputs.*:AdmissionFixtures/Fp32HfAdmission.*:AdmissionFixtures/Fp32HfCompile.*:RequiredRoles/Fp32RequiredRoleAdmission.*'
 ```
 
 The real Load→admission tests accept four FP32 variants and reject the other sixteen. Eight Compile tests cover the four accepted fixtures and both CPU presets without constructing Runtime. Synthetic role-by-role tests locate missing dtype checks; they do not replace the real HF cases.

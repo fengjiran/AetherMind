@@ -1,7 +1,7 @@
 # KV Cache 与 CPU Attention 能力演进方案
 
 - **状态**: In Progress
-- **版本**: 1.2
+- **版本**: 1.3
 - **日期**: 2026-10-29
 - **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)；CPU-only、单请求、同步 Generate、静态 KV
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1；`kv_cache` 拥有 KV 物理状态域，Runtime 按值聚合 Manager，execution 建立窄绑定，backend 执行 kernel
@@ -100,7 +100,7 @@ PagedAttention 的目标是让 Attention 消费非连续物理 KV blocks；它�
 | 工作包 | 最小改动范围 | 必须通过的证据 | 状态 |
 |---|---|---|---|
 | **KV owner/epoch correctness** | `KVCacheManager`/`KVCacheSessionView` 的 owner、slot、epoch 校验；re-init 与回绕策略 | cross-manager Reset/Release 拒绝；re-init/re-reserve 后旧 view 永不复活；ASAN/TSAN 目标测试；既有 M4/M5 Generate 测试继续通过 | 实现与正式回归已加入；验证结果见下方记录 |
-| **KV publish/resource contract** | commit 权威为 `KVCacheSessionView::CommitAppend`；调用方必须先完成 LayerRunner 的完整 transaction proof，方法只做 generation/lifecycle/range/capacity 校验；`PlanKVCacheLayout` 已提供不分配 storage 的字节规划，模型/activation/workspace/KV 预算及明确 KV dtype 可执行集合仍待完成 | 发布权沿既有聚焦回归；纯规划须与实际 K/V 请求一致，覆盖 checked padding/stride/total bytes、诊断 OOM、旧 view 失效；限额与预算聚合另行验收 | 发布权已验证；纯 KV 规划已实施；限额/聚合与 dtype 扩展待实施 |
+| **KV publish/resource contract** | commit 权威为 `KVCacheSessionView::CommitAppend`；调用方必须先完成 LayerRunner 的完整 transaction proof，方法只做 generation/lifecycle/range/capacity 校验；KV/workspace/request/packing 的可确定 payload 已有分阶段 cap 与预检，模型 backing 可观测性和 KV dtype 可执行集合仍有明确边界 | 发布权沿既有聚焦回归；纯规划、cap、binding layout 与实际 payload 请求一致；未知 backing/packing query 在对应有限 cap 下明确拒绝 | 发布权、静态 KV 规划与分阶段 payload budget 已实施；Runtime 多模型全局预算、全部 backing/RSS 与 dtype 扩展待实施 |
 | **CPU Attention baseline 与候选** | 增加按 Prefill/Decode、context depth、GQA、KV dtype/layout 分组的 benchmark；候选在独立 optimized descriptor | O0/O1 数值、O2 registered/prepared 基线、O4 同机交错测量；production `ExecutionStep` 与端到端结果；误差、bytes、latency 同报 | 待测，P1 |
 | **Paged KV 准入审查** | 需求、预算和多请求 workload 研究；获批后另设 block manager 与 paged kernel 专题 | 证明 contiguous 静态策略的真实资源损失，并同时测得 paged 方案收益足以覆盖额外 metadata/寻址成本 | 未触发，长期 |
 
@@ -128,6 +128,12 @@ PagedAttention 的目标是让 Attention 消费非连续物理 KV blocks；它�
 
 本批只交付物理布局及字节规划，不增加预算限额、资源汇总或 CPU dtype 支持。新定长多 lane 几何的物理测试不能作为模型执行支持声明。聚焦命令、实际覆盖及结果见[静态 KV 规划验证记录](../tests/kv_layout_planning_validation_2026-10-29.md)。
 
+### 5.4 2026-10-29：分阶段 payload budget
+
+第二步复用 5.3 的 layout planner，在 RuntimeBuilder 的 KV plane、Session workspace/request activation、model preparation 的 raw/constant/packed payload 三个阶段分别预检。binding specialization 拆为无 activation allocation 的 `PlanExecutionBindings` 与受控 materialization；Prefill 释放后才建立 Decode arena，因此请求 payload 以两阶段 activation 的 max 计算。CPU backend 为 exact recipe 增加 metadata-only packing requirements query，有限 cap 不能以未知 query 作为零字节继续分配。
+
+`RawStorage` 的 optional footprint 让模型汇总区分 mapped、owned、external 和 unknown backing；未知 source 仅在对应 model cap 下拒绝，不能误伤 unlimited generic Prepare 或仅有 packed cap 的路径。该实现是当前模型/请求的 payload admission，不是 Runtime 多模型全局 live-byte ledger，也不覆盖 allocator rounding、metadata、RSS 或外部 storage。Runtime 仍保持连续单 reservation KV，不引入 Paged KV、并发调度或 FP16/BF16 KV 可执行声明。接口、证据范围和未覆盖项见[资源预算指南](../guides/resource-budgeting.md)及[验证记录](../tests/resource_budgeting_validation_2026-10-29.md)。
+
 ## 6. 风险与依赖
 
 | 风险 | 应对 |
@@ -148,6 +154,7 @@ PagedAttention 的目标是让 Attention 消费非连续物理 KV blocks；它�
 
 | 日期 | 版本 | 变更 |
 |---|---|---|
+| 2026-10-29 | 1.3 | 实施静态 KV、workspace/request activation、packing 与模型 payload 的分阶段预算；保留全局多模型、RSS/backing 完整性和 dtype 扩展为后续工作 |
 | 2026-10-29 | 1.2 | 实施静态 KV 纯布局/字节规划，保留 Init 清理与 epoch 合同；分项限额、预算聚合和 dtype 扩展继续待实施 |
 | 2026-10-11 | 1.1 | 修复 owner/epoch 实现，加入正式回归并明确 Manager 的 move/lifetime/串行访问合同；publish/resource 与 Attention 优化仍保持待办 |
 | 2026-09-24 | 1.0 | 以当前代码和临时复现证据重新划分 KV correctness、CPU Attention 优化与 Paged KV 长期准入；取代过期的 05 号当前状态叙述，未修改代码 |

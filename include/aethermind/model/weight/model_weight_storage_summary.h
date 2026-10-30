@@ -35,7 +35,7 @@ struct ModelWeightStorageSummary {
 /// @note Exact default-empty slots are ignored so partial low-level graphs are
 ///       supported. Unknown footprint metadata sets backing_complete=false.
 ///       No tensor payload is read; this cold-path query may allocate metadata.
-AM_NODISCARD StatusOr<ModelWeightStorageSummary> SummarizeModelWeightStorage(
+StatusOr<ModelWeightStorageSummary> SummarizeModelWeightStorage(
         const ResolvedModelWeights& weights) noexcept;
 
 } // namespace aethermind

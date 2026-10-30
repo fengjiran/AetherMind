@@ -53,7 +53,7 @@ struct ModelWeightNormalizationUsage {
 /// Unknown retained F32 backing prevents a finite owned-payload cap; unknown
 /// source backing otherwise remains explicit in usage completeness flags.
 /// @return New owning model, or a validation/overflow/allocation error.
-AM_NODISCARD StatusOr<std::unique_ptr<LoadedModel>> NormalizeLoadedModelWeightsToFp32(
+StatusOr<std::unique_ptr<LoadedModel>> NormalizeLoadedModelWeightsToFp32(
         const LoadedModel& model,
         Allocator& allocator,
         const ModelWeightNormalizationOptions& options = {});

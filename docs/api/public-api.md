@@ -108,7 +108,7 @@ M5 将这两项规则归入 inference，CLI 与 M6 C adapter 消费同一实现�
 
 `CpuInferencePreset::kO1Plain` / `kO2Packed` 和 `MakeCpuCompileOptions(CpuInferencePreset)` 为 CLI/C adapter 共用的显式编译策略。返回 owning ModelCompileOptions：O1/plain 或 O2/packed、CPU、kBoth，activation/weight dtype 由 lowering 推导；未知枚举返回 InvalidArgument，诊断 OOM 返回空 message 的 ResourceExhausted。该函数不加载/准入模型、不 resolve kernel、不分配 storage，也不暗含性能优劣。
 
-`CpuRuntimeAssemblyOptions` 和 `MakeCpuRuntimeOptions(const HfModelConfig&, const CpuRuntimeAssemblyOptions&)` 是模型感知的运行前值映射。调用方一次提供 context capacity、KV/workspace payload caps 与 CPU feature policy；helper 复用 FP32 KV 映射并返回 owning RuntimeOptions。它只读 metadata，不读取权重 payload、不分配 Buffer、不创建 Runtime 或保留模型借用；模型准备和请求预算继续使用各自 options。
+`CpuRuntimeAssemblyOptions` 和 `MakeCpuRuntimeOptions(const HfModelConfig&, const CpuRuntimeAssemblyOptions&)` 是模型感知的运行前值映射，也是 CPU Runtime 配置的唯一入口。调用方一次提供 context capacity、KV/workspace payload caps 与 CPU feature policy；helper 复用 FP32 KV 映射，并显式构造 `RuntimeOptions` 的全部六组字段，不依赖默认成员值。它只读 metadata，不读取权重 payload、不分配 Buffer、不创建 Runtime 或保留模型借用；模型准备和请求预算继续使用各自 options。
 
 ### `ModelCompiler`（include/aethermind/compiler/model_compiler.h）
 

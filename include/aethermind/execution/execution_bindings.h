@@ -156,6 +156,7 @@ public:
 private:
     friend StatusOr<ExecutionBindingPlan> PlanExecutionBindings(
             const ExecutionPlan& plan, const ExternalTensorBindings& external);
+
     friend StatusOr<PreparedExecutionBindings> MaterializeExecutionBindings(
             const ExecutionPlan& plan,
             ExecutionBindingPlan binding_plan,

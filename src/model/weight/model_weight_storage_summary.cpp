@@ -3,7 +3,6 @@
 #include "utils/overflow_check.h"
 
 #include <algorithm>
-#include <cstdint>
 #include <limits>
 #include <map>
 #include <memory>

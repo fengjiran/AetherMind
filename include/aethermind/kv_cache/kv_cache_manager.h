@@ -101,8 +101,10 @@ public:
     AM_NODISCARD bool is_initialized() const noexcept;
 
 private:
-    StatusOr<size_t> ReservationCapacity(size_t prompt_len,
-                                         size_t future_kv_appends) const noexcept;
+    AM_NODISCARD StatusOr<size_t> ReservationCapacity(
+            size_t prompt_len,
+            size_t future_kv_appends) const noexcept;
+
     KVCacheStorage storage_{};
     KVCacheSessionState session_state_{};
     bool initialized_ = false;

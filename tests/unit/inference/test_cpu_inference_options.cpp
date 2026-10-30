@@ -28,6 +28,10 @@ TEST(CpuRuntimeAssembly, MapsGeometryAndSelectsOnlyCpuFp32Resources) {
     EXPECT_TRUE(mapped->backend.enable_cpu);
     EXPECT_FALSE(mapped->backend.enable_cuda);
     EXPECT_FALSE(mapped->backend.enable_cann);
+    EXPECT_TRUE(mapped->execution.enable_default_stream);
+    EXPECT_FALSE(mapped->execution.enable_graph_executor);
+    EXPECT_FALSE(mapped->tracing.enable_profiling);
+    EXPECT_FALSE(mapped->tracing.enable_memory_profiling);
     EXPECT_TRUE(mapped->kv_cache.enable_manager);
     EXPECT_EQ(mapped->kv_cache.num_layers, 2U);
     EXPECT_EQ(mapped->kv_cache.num_kv_heads, 2U);
@@ -35,6 +39,7 @@ TEST(CpuRuntimeAssembly, MapsGeometryAndSelectsOnlyCpuFp32Resources) {
     EXPECT_EQ(mapped->kv_cache.max_tokens, 8U);
     EXPECT_EQ(mapped->kv_cache.kv_dtype, DataType::Float32());
     EXPECT_EQ(mapped->kv_cache.alignment, 64U);
+    EXPECT_EQ(mapped->kv_cache.max_bytes, 0U);
     EXPECT_FALSE(mapped->workspace.enable_workspace_manager);
     EXPECT_EQ(mapped->workspace.default_workspace_limit_bytes, 0U);
 }

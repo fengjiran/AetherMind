@@ -391,8 +391,10 @@ StatusOr<ExecutionBindingPlan> PlanExecutionBindings(
         const ExecutionPlan& plan,
         const ExternalTensorBindings& external) {
     if (plan.binding_key().value == 0) {
-        return Status::FailedPrecondition("Cannot specialize an uninitialized ExecutionPlan");
+        return Status::FailedPrecondition(
+                "Cannot specialize an uninitialized ExecutionPlan");
     }
+
     auto storage = std::make_unique<PreparedExecutionBindingsStorage>();
     storage->plan_key = plan.binding_key();
     storage->values.resize(plan.values().size());
@@ -534,6 +536,7 @@ StatusOr<PreparedExecutionBindings> MaterializeExecutionBindings(
         return Status::FailedPrecondition(
                 "ExecutionBindingPlan does not match the ExecutionPlan");
     }
+
     auto storage = std::move(binding_plan.storage_);
     const auto act_offsets = std::move(binding_plan.activation_offsets_);
     const size_t act_bytes = binding_plan.activation_bytes_;

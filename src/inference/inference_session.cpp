@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <limits>
 #include <memory>
 #include <new>
@@ -114,7 +113,7 @@ public:
             uint32_t token_input,
             uint32_t position_input,
             std::span<const int64_t> tokens,
-            std::span<const int64_t> positions) {
+            std::span<const int64_t> positions) const {
         AM_CHECK(!context_.has_value(),
                  "PrepareContext requires the previous execution context to be cleared");
 
@@ -130,14 +129,14 @@ public:
         constexpr std::array<int64_t, 1> strides{1};
         external.read_only.push_back({
                 .value = {.index = token_input},
-                .tensor = TensorView(tokens.data(), DataType::Int(64), shape, strides,
-                                     alignof(int64_t)),
+                .tensor = TensorView(tokens.data(), DataType::Int(64),
+                                     shape, strides, alignof(int64_t)),
         });
 
         external.read_only.push_back({
                 .value = {.index = position_input},
-                .tensor = TensorView(positions.data(), DataType::Int(64), shape, strides,
-                                     alignof(int64_t)),
+                .tensor = TensorView(positions.data(), DataType::Int(64),
+                                     shape, strides, alignof(int64_t)),
         });
 
         return PlanExecutionBindings(plan, external);
@@ -151,7 +150,8 @@ public:
                           std::span<const int64_t> tokens,
                           std::span<const int64_t> positions) {
         AM_ASSIGN_OR_RETURN(auto binding_plan,
-                            PlanBindings(plan, immutable_bindings, token_input, position_input, tokens, positions));
+                            PlanBindings(plan, immutable_bindings, token_input,
+                                         position_input, tokens, positions));
         return MaterializeContext(allocator, plan, std::move(binding_plan));
     }
 
@@ -252,9 +252,11 @@ StatusOr<RequestResourceUsage> RequestUsage(const Runtime& runtime,
     RequestResourceUsage usage{.workspace_bytes = workspace,
                                .prefill_activation_bytes = prefill,
                                .decode_activation_bytes = decode};
-    if (CheckOverflowAdd(workspace, std::max(prefill, decode), &usage.peak_payload_bytes)) {
+    if (CheckOverflowAdd(workspace, std::max(prefill, decode),
+                         &usage.peak_payload_bytes)) {
         return Status::Overflow("Request payload peak overflowed size_t");
     }
+
     const auto* manager = runtime.GetKVCacheManager();
     usage.kv_reserved_bytes = manager == nullptr ? 0 : manager->total_bytes();
     usage.model_managed_payload_bytes = model.resource_usage().managed_payload_bytes;
@@ -335,29 +337,42 @@ StatusOr<InferenceSession> InferenceSession::Create(
 StatusOr<RequestResourceUsage> InferenceSession::PlanResources(
         size_t prompt_tokens, const GenerationConfig& config) const try {
     if (runtime_ == nullptr || model_ == nullptr) {
-        return Status::FailedPrecondition("InferenceSession is moved from or has no Runtime");
+        return Status::FailedPrecondition(
+                "InferenceSession is moved from or has no Runtime");
     }
+
     if (prompt_tokens == 0 || !std::in_range<int64_t>(prompt_tokens)) {
-        return Status::InvalidArgument("Resource planning requires a representable nonempty prompt");
+        return Status::InvalidArgument(
+                "Resource planning requires a representable nonempty prompt");
     }
+
     if (prompt_tokens > model_->context_limit() ||
         (config.eos_token_id.has_value() && *config.eos_token_id >= model_->vocab_size())) {
-        return Status::OutOfRange("Resource planning exceeds model token limits");
+        return Status::OutOfRange(
+                "Resource planning exceeds model token limits");
     }
+
     if (config.max_new_tokens == 0) {
         return RequestUsage(*runtime_, *model_, 0, 0, 0);
     }
+
     size_t context = 0;
     if (CheckOverflowAdd(prompt_tokens, config.max_new_tokens - 1, &context)) {
-        return Status::Overflow("Resource planning token count overflowed size_t");
+        return Status::Overflow(
+                "Resource planning token count overflowed size_t");
     }
+
     if (context > model_->context_limit()) {
-        return Status::OutOfRange("Resource planning exceeds model context");
+        return Status::OutOfRange(
+                "Resource planning exceeds model context");
     }
+
     auto* manager = runtime_->GetKVCacheManager();
     if (manager == nullptr) {
-        return Status::FailedPrecondition("Resource planning requires a KVCacheManager");
+        return Status::FailedPrecondition(
+                "Resource planning requires a KVCacheManager");
     }
+
     AM_RETURN_IF_ERROR(manager->ValidateReservation(prompt_tokens, config.max_new_tokens - 1));
     AM_ASSIGN_OR_RETURN(const ExecutionPlan* prefill, model_->plan(ExecPhase::kPrefill));
     AM_ASSIGN_OR_RETURN(const ExecutionPlan* decode, model_->plan(ExecPhase::kDecode));
@@ -366,9 +381,10 @@ StatusOr<RequestResourceUsage> InferenceSession::PlanResources(
     RequestResources scratch(*manager);
     scratch.prefill_tokens.resize(prompt_tokens);
     scratch.prefill_positions.resize(prompt_tokens);
-    AM_ASSIGN_OR_RETURN(auto prefill_layout, scratch.PlanBindings(*prefill, *prefill_weights,
-                                                                  prefill_contract_.token_input, prefill_contract_.position_input,
-                                                                  scratch.prefill_tokens, scratch.prefill_positions));
+    AM_ASSIGN_OR_RETURN(auto prefill_layout,
+                        scratch.PlanBindings(*prefill, *prefill_weights,
+                                             prefill_contract_.token_input, prefill_contract_.position_input,
+                                             scratch.prefill_tokens, scratch.prefill_positions));
     size_t decode_bytes = 0;
     if (config.max_new_tokens > 1) {
         scratch.decode_tokens.resize(1);
@@ -474,12 +490,18 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
                                             decode_plan.total_workspace_bytes());
     const bool request_cap = max_request_payload_bytes_ != 0;
     if (request_cap || runtime_->workspace_limit_bytes() != 0) {
-        AM_RETURN_IF_ERROR(manager->ValidateReservation(prompt_tokens.size(), future_kv_appends));
+        AM_RETURN_IF_ERROR(manager->ValidateReservation(prompt_tokens.size(),
+                                                        future_kv_appends));
     }
-    if (runtime_->workspace_limit_bytes() != 0 && workspace_bytes > runtime_->workspace_limit_bytes()) {
-        return Status::ResourceExhausted("Workspace payload exceeds limit: required=" +
-                                         std::to_string(workspace_bytes) + ", limit=" + std::to_string(runtime_->workspace_limit_bytes()));
+
+    if (runtime_->workspace_limit_bytes() != 0 &&
+        workspace_bytes > runtime_->workspace_limit_bytes()) {
+        return Status::ResourceExhausted(
+                "Workspace payload exceeds limit: required=" +
+                std::to_string(workspace_bytes) + ", limit=" +
+                std::to_string(runtime_->workspace_limit_bytes()));
     }
+
     RequestResources request(*manager);
     if (!request_cap) {
         AM_RETURN_IF_ERROR(request.Reserve(prompt_tokens.size(), future_kv_appends));
@@ -496,40 +518,50 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
     std::optional<ExecutionBindingPlan> prefill_layout;
     std::optional<ExecutionBindingPlan> decode_layout;
     if (request_cap) {
-        AM_ASSIGN_OR_RETURN(auto planned, request.PlanBindings(prefill_plan, **prefill_bindings_result,
-                                                               prefill_contract_.token_input, prefill_contract_.position_input,
-                                                               request.prefill_tokens, request.prefill_positions));
+        AM_ASSIGN_OR_RETURN(auto planned,
+                            request.PlanBindings(
+                                    prefill_plan, **prefill_bindings_result,
+                                    prefill_contract_.token_input, prefill_contract_.position_input,
+                                    request.prefill_tokens, request.prefill_positions));
         prefill_layout.emplace(std::move(planned));
         size_t decode_bytes = 0;
         if (config.max_new_tokens > 1) {
             request.decode_tokens.resize(1);
             request.decode_positions.resize(1);
-            AM_ASSIGN_OR_RETURN(auto decode_planned, request.PlanBindings(decode_plan, **decode_bindings_result,
-                                                                          decode_contract_.token_input, decode_contract_.position_input,
-                                                                          request.decode_tokens, request.decode_positions));
+            AM_ASSIGN_OR_RETURN(auto decode_planned,
+                                request.PlanBindings(
+                                        decode_plan, **decode_bindings_result,
+                                        decode_contract_.token_input, decode_contract_.position_input,
+                                        request.decode_tokens, request.decode_positions));
             decode_bytes = decode_planned.activation_bytes();
             decode_layout.emplace(std::move(decode_planned));
         }
-        AM_ASSIGN_OR_RETURN(const auto usage, RequestUsage(*runtime_, *model_, workspace_bytes,
-                                                           prefill_layout->activation_bytes(), decode_bytes));
+
+        AM_ASSIGN_OR_RETURN(const auto usage,
+                            RequestUsage(*runtime_, *model_, workspace_bytes,
+                                         prefill_layout->activation_bytes(), decode_bytes));
         if (usage.peak_payload_bytes > max_request_payload_bytes_) {
-            return Status::ResourceExhausted("Request payload exceeds limit: required=" +
-                                             std::to_string(usage.peak_payload_bytes) + ", limit=" + std::to_string(max_request_payload_bytes_));
+            return Status::ResourceExhausted(
+                    "Request payload exceeds limit: required=" +
+                    std::to_string(usage.peak_payload_bytes) + ", limit=" +
+                    std::to_string(max_request_payload_bytes_));
         }
         AM_RETURN_IF_ERROR(request.Reserve(prompt_tokens.size(), future_kv_appends));
     }
-    const size_t workspace_alignment =
-            std::max(prefill_plan.workspace_alignment(),
-                     decode_plan.workspace_alignment());
+
+    const size_t workspace_alignment = std::max(prefill_plan.workspace_alignment(),
+                                                decode_plan.workspace_alignment());
     AM_RETURN_IF_ERROR(request.InitializeWorkspace(*allocator, workspace_bytes,
                                                    workspace_alignment));
 
     if (prefill_layout.has_value()) {
-        AM_RETURN_IF_ERROR(request.MaterializeContext(*allocator, prefill_plan, std::move(*prefill_layout)));
+        AM_RETURN_IF_ERROR(request.MaterializeContext(
+                *allocator, prefill_plan, std::move(*prefill_layout)));
     } else {
-        AM_RETURN_IF_ERROR(request.PrepareContext(*allocator, prefill_plan, **prefill_bindings_result,
-                                                  prefill_contract_.token_input, prefill_contract_.position_input,
-                                                  request.prefill_tokens, request.prefill_positions));
+        AM_RETURN_IF_ERROR(request.PrepareContext(
+                *allocator, prefill_plan, **prefill_bindings_result,
+                prefill_contract_.token_input, prefill_contract_.position_input,
+                request.prefill_tokens, request.prefill_positions));
     }
 
     ExecutionContext* const prefill_context = request.context();
@@ -558,11 +590,13 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
     request.decode_positions[0] = static_cast<int64_t>(prompt_tokens.size());
 
     if (decode_layout.has_value()) {
-        AM_RETURN_IF_ERROR(request.MaterializeContext(*allocator, decode_plan, std::move(*decode_layout)));
+        AM_RETURN_IF_ERROR(request.MaterializeContext(
+                *allocator, decode_plan, std::move(*decode_layout)));
     } else {
-        AM_RETURN_IF_ERROR(request.PrepareContext(*allocator, decode_plan, **decode_bindings_result,
-                                                  decode_contract_.token_input, decode_contract_.position_input,
-                                                  request.decode_tokens, request.decode_positions));
+        AM_RETURN_IF_ERROR(request.PrepareContext(
+                *allocator, decode_plan, **decode_bindings_result,
+                decode_contract_.token_input, decode_contract_.position_input,
+                request.decode_tokens, request.decode_positions));
     }
 
     auto* const decode_context = request.context();

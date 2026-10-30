@@ -27,7 +27,7 @@ Load model → validate execution policy → MakeCpuRuntimeOptions
 | `workspace_limit_bytes` | 单请求 workspace payload 上限；0 为无限制 |
 | `cpu_feature_policy` | CPU kernel 选择的 required/disabled feature policy |
 
-`MakeCpuRuntimeOptions` 统一设置 CPU allocator/backend 默认值、FP32 KV geometry、两个 Runtime 阶段预算和 feature policy。它只读取 metadata；不读取权重 payload、不分配 Buffer、不创建 Runtime。`RuntimeBuilder` 负责真正的 KV layout 规划、物理字节上限检查及资源分配。
+`MakeCpuRuntimeOptions` 是运行前 Runtime 配置的唯一入口：它显式设置 `RuntimeOptions` 的全部六组字段（allocator、backend、execution、workspace、tracing、kv_cache），包括 CPU/FP32 固定策略、FP32 KV geometry、两个 Runtime 阶段预算和 feature policy，不依赖 `RuntimeOptions` 的默认成员值。它只读取 metadata；不读取权重 payload、不分配 Buffer、不创建 Runtime。`RuntimeBuilder` 负责真正的 KV layout 规划、物理字节上限检查及资源分配。
 
 模型准备和请求的预算不属于 `RuntimeOptions`：分别使用 `ExecutableModelPrepareOptions` 与 `InferenceSessionOptions`，因为它们需要已编译的 artifact 或具体 prompt/generation。它们可以和这份 Runtime 配置一起在产品入口处保存，但仍在各自阶段应用。
 

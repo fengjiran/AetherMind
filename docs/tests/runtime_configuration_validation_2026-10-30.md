@@ -6,7 +6,7 @@
 
 ## 实现与边界
 
-inference 层的 `cpu_inference_options.h` 新增 `CpuRuntimeAssemblyOptions` 和 `MakeCpuRuntimeOptions`，与既有 CPU 编译 preset 共用同一公开头文件。调用方一次给出 context capacity、KV/workspace payload caps 和 CPU feature policy；helper 复用 `MakeFp32KVCacheOptions` 派生模型几何并返回独立值对象，不读权重 payload、不分配 Buffer、不创建 Runtime 或保留模型借用。模型准备与请求预算仍使用各自现有 options。
+inference 层的 `cpu_inference_options.h` 新增 `CpuRuntimeAssemblyOptions` 和 `MakeCpuRuntimeOptions`，与既有 CPU 编译 preset 共用同一公开头文件。调用方一次给出 context capacity、KV/workspace payload caps 和 CPU feature policy；helper 复用 `MakeFp32KVCacheOptions` 派生模型几何，并显式构造 `RuntimeOptions` 的 allocator、backend、execution、workspace、tracing、kv_cache 六组字段，不依赖默认成员值。它返回独立值对象，不读权重 payload、不分配 Buffer、不创建 Runtime 或保留模型借用。模型准备与请求预算仍使用各自现有 options。
 
 CLI 私有 `MakeRuntimeOptions` 已删除，CLI 与 model benchmark 共用新入口。原 CLI 的 Load/准入/Compile 先于 RuntimeBuild 顺序、builder 注入、参数语法保持；benchmark 的计时边界和报告 schema 保持。C ABI v1 继续先创建 Runtime、后加载模型，保留显式 KV 几何及数值/overflow 校验，重复的 CPU 默认赋值改为复用 `RuntimeOptions{}`。
 

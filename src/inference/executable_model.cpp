@@ -376,6 +376,7 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
         const size_t remaining = options.max_model_payload_bytes - usage.managed_payload_bytes;
         packed_cap = packed_cap.has_value() ? std::min(*packed_cap, remaining) : remaining;
     }
+
     auto requests = BuildWeightPackingRequests(
             artifact.graph, resolved);
     if (!requests.ok()) {

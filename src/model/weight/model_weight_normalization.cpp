@@ -4,7 +4,6 @@
 #include "utils/overflow_check.h"
 
 #include <bit>
-#include <cstdint>
 #include <cstring>
 #include <map>
 #include <memory>

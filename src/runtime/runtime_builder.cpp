@@ -5,6 +5,7 @@
 #include "aethermind/memory/cuda_allocator.h"
 #include "aethermind/runtime/runtime_options.h"
 
+#include <algorithm>
 #include <new>
 #include <string>
 
@@ -39,34 +40,46 @@ StatusOr<Runtime> RuntimeBuilder::TryBuild() try {
 
 Status RuntimeBuilder::ValidateOptions() const {
     if (!options_.execution.enable_default_stream) {
-        return Status::Unimplemented("execution.enable_default_stream=false is unsupported");
+        return Status::Unimplemented(
+                "execution.enable_default_stream=false is unsupported");
     }
+
     if (options_.execution.enable_graph_executor) {
-        return Status::Unimplemented("execution.enable_graph_executor is not implemented");
+        return Status::Unimplemented(
+                "execution.enable_graph_executor is not implemented");
     }
+
     if (options_.workspace.enable_workspace_manager) {
-        return Status::Unimplemented("workspace.enable_workspace_manager is not implemented");
+        return Status::Unimplemented(
+                "workspace.enable_workspace_manager is not implemented");
     }
+
     if (options_.tracing.enable_profiling) {
-        return Status::Unimplemented("tracing.enable_profiling is not implemented");
+        return Status::Unimplemented(
+                "tracing.enable_profiling is not implemented");
     }
+
     if (options_.tracing.enable_memory_profiling) {
-        return Status::Unimplemented("tracing.enable_memory_profiling is not implemented");
+        return Status::Unimplemented(
+                "tracing.enable_memory_profiling is not implemented");
     }
 
     const auto has_custom_backend = [this](DeviceType type) {
-        for (const auto& registration: pending_backend_factories_) {
-            if (registration.type == type) {
-                return true;
-            }
-        }
-        return false;
+        return std::ranges::any_of(
+                pending_backend_factories_,
+                [type](const PendingBackendFactory& registration) {
+                    return registration.type == type;
+                });
     };
+
     if (options_.backend.enable_cuda && !has_custom_backend(DeviceType::kCUDA)) {
-        return Status::Unimplemented("backend.enable_cuda requires a custom CUDA backend factory");
+        return Status::Unimplemented(
+                "backend.enable_cuda requires a custom CUDA backend factory");
     }
+
     if (options_.backend.enable_cann && !has_custom_backend(DeviceType::kCANN)) {
-        return Status::Unimplemented("backend.enable_cann requires a custom CANN backend factory");
+        return Status::Unimplemented(
+                "backend.enable_cann requires a custom CANN backend factory");
     }
     return Status::Ok();
 }
@@ -147,24 +160,26 @@ BackendRegistry RuntimeBuilder::BuildBackendRegistry() {
 StatusOr<KVCacheManager> RuntimeBuilder::TryBuildKVCacheManager(
         AllocatorRegistry& allocator_registry) const {
     KVCacheManager manager;
-    const KVCacheRuntimeOptions& options = options_.kv_cache;
-    if (!options.enable_manager) {
+    const auto& [enable_manager, num_layers, num_kv_heads,
+                 max_tokens, head_dim, kv_dtype,
+                 alignment, max_bytes] = options_.kv_cache;
+    if (!enable_manager) {
         return manager;
     }
 
     AM_ASSIGN_OR_RETURN(const KVCacheLayout layout,
-                        PlanKVCacheLayout(options.num_layers,
-                                          options.num_kv_heads,
-                                          options.max_tokens,
-                                          options.head_dim,
-                                          options.kv_dtype,
-                                          options.alignment));
+                        PlanKVCacheLayout(num_layers,
+                                          num_kv_heads,
+                                          max_tokens,
+                                          head_dim,
+                                          kv_dtype,
+                                          alignment));
     AM_ASSIGN_OR_RETURN(const size_t required_bytes, layout.TotalBytes());
-    if (options.max_bytes != 0 && required_bytes > options.max_bytes) {
+    if (max_bytes != 0 && required_bytes > max_bytes) {
         return Status::ResourceExhausted(
                 "KV cache payload exceeds limit: required=" +
                 std::to_string(required_bytes) + ", limit=" +
-                std::to_string(options.max_bytes));
+                std::to_string(max_bytes));
     }
 
     // KV planes use the configured allocator, which must be available before
@@ -176,12 +191,12 @@ StatusOr<KVCacheManager> RuntimeBuilder::TryBuildKVCacheManager(
     // Propagated verbatim: Init reports ResourceExhausted on allocation
     // failure, and formatting a new message would allocate while reporting it.
     AM_RETURN_IF_ERROR(manager.Init(*allocator,
-                                    options.num_layers,
-                                    options.num_kv_heads,
-                                    options.max_tokens,
-                                    options.head_dim,
-                                    options.kv_dtype,
-                                    options.alignment));
+                                    num_layers,
+                                    num_kv_heads,
+                                    max_tokens,
+                                    head_dim,
+                                    kv_dtype,
+                                    alignment));
     return manager;
 }
 

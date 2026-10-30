@@ -21,6 +21,7 @@
 #include <new>
 #include <optional>
 #include <span>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -107,13 +108,13 @@ public:
         return storage_.is_initialized() ? &workspace_arena_ : nullptr;
     }
 
-    Status PrepareContext(Allocator& allocator,
-                          const ExecutionPlan& plan,
-                          const ExternalTensorBindings& immutable_bindings,
-                          uint32_t token_input,
-                          uint32_t position_input,
-                          std::span<const int64_t> tokens,
-                          std::span<const int64_t> positions) {
+    StatusOr<ExecutionBindingPlan> PlanBindings(
+            const ExecutionPlan& plan,
+            const ExternalTensorBindings& immutable_bindings,
+            uint32_t token_input,
+            uint32_t position_input,
+            std::span<const int64_t> tokens,
+            std::span<const int64_t> positions) {
         AM_CHECK(!context_.has_value(),
                  "PrepareContext requires the previous execution context to be cleared");
 
@@ -139,14 +140,28 @@ public:
                                      alignof(int64_t)),
         });
 
-        auto prepared = PrepareExecutionBindings(
-                plan, external, allocator);
-        if (!prepared.ok()) {
-            return prepared.status();
-        }
+        return PlanExecutionBindings(plan, external);
+    }
 
+    Status PrepareContext(Allocator& allocator,
+                          const ExecutionPlan& plan,
+                          const ExternalTensorBindings& immutable_bindings,
+                          uint32_t token_input,
+                          uint32_t position_input,
+                          std::span<const int64_t> tokens,
+                          std::span<const int64_t> positions) {
+        AM_ASSIGN_OR_RETURN(auto binding_plan,
+                            PlanBindings(plan, immutable_bindings, token_input, position_input, tokens, positions));
+        return MaterializeContext(allocator, plan, std::move(binding_plan));
+    }
+
+    Status MaterializeContext(Allocator& allocator, const ExecutionPlan& plan,
+                              ExecutionBindingPlan binding_plan) {
+        AM_CHECK(!context_.has_value(), "MaterializeContext requires the previous context to be cleared");
+        AM_ASSIGN_OR_RETURN(auto prepared,
+                            MaterializeExecutionBindings(plan, std::move(binding_plan), allocator));
         auto context = ExecutionContext::Create(
-                plan, std::move(*prepared), workspace_arena(), cache_view_);
+                plan, std::move(prepared), workspace_arena(), cache_view_);
         if (!context.ok()) {
             return context.status();
         }
@@ -231,20 +246,51 @@ StatusOr<uint32_t> ReadOutputToken(const ExecutionContext& context,
 }
 
 
+StatusOr<RequestResourceUsage> RequestUsage(const Runtime& runtime,
+                                            const ExecutableModel& model,
+                                            size_t workspace, size_t prefill, size_t decode) {
+    RequestResourceUsage usage{.workspace_bytes = workspace,
+                               .prefill_activation_bytes = prefill,
+                               .decode_activation_bytes = decode};
+    if (CheckOverflowAdd(workspace, std::max(prefill, decode), &usage.peak_payload_bytes)) {
+        return Status::Overflow("Request payload peak overflowed size_t");
+    }
+    const auto* manager = runtime.GetKVCacheManager();
+    usage.kv_reserved_bytes = manager == nullptr ? 0 : manager->total_bytes();
+    usage.model_managed_payload_bytes = model.resource_usage().managed_payload_bytes;
+    usage.model_payload_complete = model.resource_usage().weights.backing_complete;
+    if (CheckOverflowAdd(usage.kv_reserved_bytes, usage.model_managed_payload_bytes,
+                         &usage.peak_with_persistent_payload_bytes) ||
+        CheckOverflowAdd(usage.peak_with_persistent_payload_bytes, usage.peak_payload_bytes,
+                         &usage.peak_with_persistent_payload_bytes)) {
+        return Status::Overflow("Model and request payload peak overflowed size_t");
+    }
+    return usage;
+}
+
+
 } // namespace
 
 InferenceSession::InferenceSession(Runtime& runtime,
                                    std::shared_ptr<const ExecutableModel> model,
                                    PhaseContract prefill_contract,
-                                   PhaseContract decode_contract) noexcept
+                                   PhaseContract decode_contract,
+                                   size_t max_request_payload_bytes) noexcept
     : runtime_(&runtime),
       model_(std::move(model)),
       prefill_contract_(prefill_contract),
-      decode_contract_(decode_contract) {}
+      decode_contract_(decode_contract),
+      max_request_payload_bytes_(max_request_payload_bytes) {}
+
+StatusOr<InferenceSession> InferenceSession::Create(
+        Runtime& runtime, std::shared_ptr<const ExecutableModel> model) {
+    return Create(runtime, std::move(model), {});
+}
 
 StatusOr<InferenceSession> InferenceSession::Create(
         Runtime& runtime,
-        std::shared_ptr<const ExecutableModel> model) {
+        std::shared_ptr<const ExecutableModel> model,
+        const InferenceSessionOptions& options) {
     if (model == nullptr) {
         return Status::InvalidArgument(
                 "InferenceSession requires a non-null ExecutableModel");
@@ -283,7 +329,60 @@ StatusOr<InferenceSession> InferenceSession::Create(
     }
 
     return InferenceSession(runtime, std::move(model), *prefill_contract,
-                            *decode_contract);
+                            *decode_contract, options.max_request_payload_bytes);
+}
+
+StatusOr<RequestResourceUsage> InferenceSession::PlanResources(
+        size_t prompt_tokens, const GenerationConfig& config) const try {
+    if (runtime_ == nullptr || model_ == nullptr) {
+        return Status::FailedPrecondition("InferenceSession is moved from or has no Runtime");
+    }
+    if (prompt_tokens == 0 || !std::in_range<int64_t>(prompt_tokens)) {
+        return Status::InvalidArgument("Resource planning requires a representable nonempty prompt");
+    }
+    if (prompt_tokens > model_->context_limit() ||
+        (config.eos_token_id.has_value() && *config.eos_token_id >= model_->vocab_size())) {
+        return Status::OutOfRange("Resource planning exceeds model token limits");
+    }
+    if (config.max_new_tokens == 0) {
+        return RequestUsage(*runtime_, *model_, 0, 0, 0);
+    }
+    size_t context = 0;
+    if (CheckOverflowAdd(prompt_tokens, config.max_new_tokens - 1, &context)) {
+        return Status::Overflow("Resource planning token count overflowed size_t");
+    }
+    if (context > model_->context_limit()) {
+        return Status::OutOfRange("Resource planning exceeds model context");
+    }
+    auto* manager = runtime_->GetKVCacheManager();
+    if (manager == nullptr) {
+        return Status::FailedPrecondition("Resource planning requires a KVCacheManager");
+    }
+    AM_RETURN_IF_ERROR(manager->ValidateReservation(prompt_tokens, config.max_new_tokens - 1));
+    AM_ASSIGN_OR_RETURN(const ExecutionPlan* prefill, model_->plan(ExecPhase::kPrefill));
+    AM_ASSIGN_OR_RETURN(const ExecutionPlan* decode, model_->plan(ExecPhase::kDecode));
+    AM_ASSIGN_OR_RETURN(const ExternalTensorBindings* prefill_weights, model_->immutable_weight_bindings(ExecPhase::kPrefill));
+    AM_ASSIGN_OR_RETURN(const ExternalTensorBindings* decode_weights, model_->immutable_weight_bindings(ExecPhase::kDecode));
+    RequestResources scratch(*manager);
+    scratch.prefill_tokens.resize(prompt_tokens);
+    scratch.prefill_positions.resize(prompt_tokens);
+    AM_ASSIGN_OR_RETURN(auto prefill_layout, scratch.PlanBindings(*prefill, *prefill_weights,
+                                                                  prefill_contract_.token_input, prefill_contract_.position_input,
+                                                                  scratch.prefill_tokens, scratch.prefill_positions));
+    size_t decode_bytes = 0;
+    if (config.max_new_tokens > 1) {
+        scratch.decode_tokens.resize(1);
+        scratch.decode_positions.resize(1);
+        AM_ASSIGN_OR_RETURN(auto decode_layout, scratch.PlanBindings(*decode, *decode_weights,
+                                                                     decode_contract_.token_input, decode_contract_.position_input,
+                                                                     scratch.decode_tokens, scratch.decode_positions));
+        decode_bytes = decode_layout.activation_bytes();
+    }
+    return RequestUsage(*runtime_, *model_,
+                        std::max(prefill->total_workspace_bytes(), decode->total_workspace_bytes()),
+                        prefill_layout.activation_bytes(), decode_bytes);
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
@@ -371,8 +470,20 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
         return decode_bindings_result.status();
     }
 
+    const size_t workspace_bytes = std::max(prefill_plan.total_workspace_bytes(),
+                                            decode_plan.total_workspace_bytes());
+    const bool request_cap = max_request_payload_bytes_ != 0;
+    if (request_cap || runtime_->workspace_limit_bytes() != 0) {
+        AM_RETURN_IF_ERROR(manager->ValidateReservation(prompt_tokens.size(), future_kv_appends));
+    }
+    if (runtime_->workspace_limit_bytes() != 0 && workspace_bytes > runtime_->workspace_limit_bytes()) {
+        return Status::ResourceExhausted("Workspace payload exceeds limit: required=" +
+                                         std::to_string(workspace_bytes) + ", limit=" + std::to_string(runtime_->workspace_limit_bytes()));
+    }
     RequestResources request(*manager);
-    AM_RETURN_IF_ERROR(request.Reserve(prompt_tokens.size(), future_kv_appends));
+    if (!request_cap) {
+        AM_RETURN_IF_ERROR(request.Reserve(prompt_tokens.size(), future_kv_appends));
+    }
 
     request.prefill_tokens.resize(prompt_tokens.size());
     request.prefill_positions.resize(prompt_tokens.size());
@@ -382,19 +493,44 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
     }
     request.generated_tokens.reserve(config.max_new_tokens);
 
-    const size_t workspace_bytes =
-            std::max(prefill_plan.total_workspace_bytes(),
-                     decode_plan.total_workspace_bytes());
+    std::optional<ExecutionBindingPlan> prefill_layout;
+    std::optional<ExecutionBindingPlan> decode_layout;
+    if (request_cap) {
+        AM_ASSIGN_OR_RETURN(auto planned, request.PlanBindings(prefill_plan, **prefill_bindings_result,
+                                                               prefill_contract_.token_input, prefill_contract_.position_input,
+                                                               request.prefill_tokens, request.prefill_positions));
+        prefill_layout.emplace(std::move(planned));
+        size_t decode_bytes = 0;
+        if (config.max_new_tokens > 1) {
+            request.decode_tokens.resize(1);
+            request.decode_positions.resize(1);
+            AM_ASSIGN_OR_RETURN(auto decode_planned, request.PlanBindings(decode_plan, **decode_bindings_result,
+                                                                          decode_contract_.token_input, decode_contract_.position_input,
+                                                                          request.decode_tokens, request.decode_positions));
+            decode_bytes = decode_planned.activation_bytes();
+            decode_layout.emplace(std::move(decode_planned));
+        }
+        AM_ASSIGN_OR_RETURN(const auto usage, RequestUsage(*runtime_, *model_, workspace_bytes,
+                                                           prefill_layout->activation_bytes(), decode_bytes));
+        if (usage.peak_payload_bytes > max_request_payload_bytes_) {
+            return Status::ResourceExhausted("Request payload exceeds limit: required=" +
+                                             std::to_string(usage.peak_payload_bytes) + ", limit=" + std::to_string(max_request_payload_bytes_));
+        }
+        AM_RETURN_IF_ERROR(request.Reserve(prompt_tokens.size(), future_kv_appends));
+    }
     const size_t workspace_alignment =
             std::max(prefill_plan.workspace_alignment(),
                      decode_plan.workspace_alignment());
     AM_RETURN_IF_ERROR(request.InitializeWorkspace(*allocator, workspace_bytes,
                                                    workspace_alignment));
 
-    AM_RETURN_IF_ERROR(request.PrepareContext(
-            *allocator, prefill_plan, **prefill_bindings_result,
-            prefill_contract_.token_input, prefill_contract_.position_input,
-            request.prefill_tokens, request.prefill_positions));
+    if (prefill_layout.has_value()) {
+        AM_RETURN_IF_ERROR(request.MaterializeContext(*allocator, prefill_plan, std::move(*prefill_layout)));
+    } else {
+        AM_RETURN_IF_ERROR(request.PrepareContext(*allocator, prefill_plan, **prefill_bindings_result,
+                                                  prefill_contract_.token_input, prefill_contract_.position_input,
+                                                  request.prefill_tokens, request.prefill_positions));
+    }
 
     ExecutionContext* const prefill_context = request.context();
     if (prefill_context == nullptr) {
@@ -421,10 +557,13 @@ StatusOr<std::vector<uint32_t>> InferenceSession::Generate(
     request.decode_tokens[0] = static_cast<int64_t>(request.generated_tokens.back());
     request.decode_positions[0] = static_cast<int64_t>(prompt_tokens.size());
 
-    AM_RETURN_IF_ERROR(request.PrepareContext(
-            *allocator, decode_plan, **decode_bindings_result,
-            decode_contract_.token_input, decode_contract_.position_input,
-            request.decode_tokens, request.decode_positions));
+    if (decode_layout.has_value()) {
+        AM_RETURN_IF_ERROR(request.MaterializeContext(*allocator, decode_plan, std::move(*decode_layout)));
+    } else {
+        AM_RETURN_IF_ERROR(request.PrepareContext(*allocator, decode_plan, **decode_bindings_result,
+                                                  decode_contract_.token_input, decode_contract_.position_input,
+                                                  request.decode_tokens, request.decode_positions));
+    }
 
     auto* const decode_context = request.context();
     if (decode_context == nullptr) {

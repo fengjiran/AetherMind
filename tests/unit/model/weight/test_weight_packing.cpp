@@ -613,7 +613,9 @@ public:
 // prepacker stores artifacts under {source, value, binding, selector, recipe},
 // and the plan builder resolves each step to its own artifact.
 TEST(WeightPacking, LoweredDrivenPrepackAndResolve) {
-    auto storage = std::make_shared<TestStorage>(512);
+    constexpr size_t kEmbeddingBytes = 32 * 8 * sizeof(float);
+    constexpr size_t kNormBytes = 8 * sizeof(float);
+    auto storage = std::make_shared<TestStorage>(kEmbeddingBytes + 2 * kNormBytes);
     for (auto& b: storage->data) b = std::byte{0};
 
     ModelGraph graph;
@@ -645,13 +647,13 @@ TEST(WeightPacking, LoweredDrivenPrepackAndResolve) {
 
     // Backing raw weights for the three weight values.
     ResolvedModelWeights resolved;
-    resolved.embed_tokens = MakeWeightView(storage, 0, 32 * 8 * sizeof(float),
+    resolved.embed_tokens = MakeWeightView(storage, 0, kEmbeddingBytes,
                                            DataType::Float32(), {32, 8});
     resolved.layers.resize(2);
     resolved.layers[0].norm.input_rmsnorm = MakeWeightView(
-            storage, 256, 8 * sizeof(float), DataType::Float32(), {8});
+            storage, kEmbeddingBytes, kNormBytes, DataType::Float32(), {8});
     resolved.layers[1].norm.input_rmsnorm = MakeWeightView(
-            storage, 264, 8 * sizeof(float), DataType::Float32(), {8});
+            storage, kEmbeddingBytes + kNormBytes, kNormBytes, DataType::Float32(), {8});
 
     GraphLoweringConfig config;
     config.enable_packed_weights = true;

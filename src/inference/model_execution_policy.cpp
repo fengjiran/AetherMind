@@ -62,7 +62,8 @@ std::string WeightLocation(const RequiredRole& role, std::optional<uint32_t> lay
 
 Status ValidateRoleDType(const ResolvedModelWeights& weights,
                          const RequiredRole& role,
-                         std::optional<uint32_t> layer) {
+                         std::optional<uint32_t> layer,
+                         bool allow_widening) {
     const RawWeightView* weight = ResolveWeightBinding(
             MakeTransformerWeightBinding(layer, role.role), weights);
     if (weight == nullptr || !weight->IsValid()) {
@@ -70,28 +71,42 @@ Status ValidateRoleDType(const ResolvedModelWeights& weights,
                                        " is missing or invalid");
     }
     // IsFloat32() does not check lanes; kernels require scalar elements.
-    if (weight->dtype != DataType::Float32()) {
+    const bool supported = weight->dtype.raw_lanes() == 1 &&
+                           (weight->dtype == DataType::Float32() ||
+                            (allow_widening && (weight->dtype == DataType::Float(16) ||
+                                                weight->dtype == DataType::BFloat(16))));
+    if (!supported) {
         return Status::Unimplemented("Weight " + WeightLocation(role, layer) +
                                      " has dtype " + ToString(weight->dtype) +
-                                     "; required Float32");
+                                     (allow_widening ? "; required Float32, Float16 or BFloat16 source"
+                                                     : "; required Float32"));
     }
     return Status::Ok();
 }
 
-} // namespace
-
-Status ValidateFp32ExecutionInputs(const LoadedModel& model) try {
+Status ValidateSourceHint(const LoadedModel& model, bool allow_widening) {
     const auto& config = model.GetConfig();
     const auto hint = config.weight_dtype_hint;
     const bool automatic_hint = hint.IsUndefined() &&
                                 (config.weight_dtype_hint_name.empty() ||
                                  config.weight_dtype_hint_name == "auto");
-    if (hint != DataType::Float32() && !automatic_hint) {
+    const bool supported = automatic_hint ||
+                           (hint.raw_lanes() == 1 &&
+                            (hint == DataType::Float32() ||
+                             (allow_widening && (hint == DataType::Float(16) ||
+                                                 hint == DataType::BFloat(16)))));
+    if (!supported) {
         return Status::Unimplemented(
                 "Model weight dtype hint '" + config.weight_dtype_hint_name +
-                "' has dtype " + ToString(hint) + "; required Float32");
+                "' has dtype " + ToString(hint) +
+                (allow_widening ? "; required Float32, Float16 or BFloat16 source"
+                                : "; required Float32"));
     }
+    return Status::Ok();
+}
 
+Status ValidateExecutionWeights(const LoadedModel& model, bool allow_widening) {
+    const auto& config = model.GetConfig();
     const auto& weights = model.GetResolvedWeights();
     AM_ASSIGN_OR_RETURN(const size_t num_layers,
                         PositiveSize(config.num_hidden_layers, "num_hidden_layers"));
@@ -102,14 +117,34 @@ Status ValidateFp32ExecutionInputs(const LoadedModel& model) try {
         return Status::OutOfRange("Decoder layer index is not representable as uint32_t");
     }
     for (const auto& role: kGlobalRoles) {
-        AM_RETURN_IF_ERROR(ValidateRoleDType(weights, role, std::nullopt));
+        AM_RETURN_IF_ERROR(ValidateRoleDType(weights, role, std::nullopt, allow_widening));
     }
     for (size_t layer = 0; layer < num_layers; ++layer) {
         for (const auto& role: kLayerRoles) {
-            AM_RETURN_IF_ERROR(ValidateRoleDType(weights, role, static_cast<uint32_t>(layer)));
+            AM_RETURN_IF_ERROR(ValidateRoleDType(weights, role, static_cast<uint32_t>(layer), allow_widening));
         }
     }
     return Status::Ok();
+}
+
+} // namespace
+
+Status ValidateFp32ExecutionInputs(const LoadedModel& model) try {
+    AM_RETURN_IF_ERROR(ValidateSourceHint(model, false));
+    return ValidateExecutionWeights(model, false);
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
+}
+
+Status ValidateFp32CompatibleSourceInputs(const LoadedModel& model) try {
+    AM_RETURN_IF_ERROR(ValidateSourceHint(model, true));
+    return ValidateExecutionWeights(model, true);
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
+}
+
+Status ValidateFp32ExecutionWeights(const LoadedModel& model) try {
+    return ValidateExecutionWeights(model, false);
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});
 }

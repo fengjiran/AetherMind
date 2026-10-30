@@ -73,6 +73,10 @@ public:
     StatusOr<KVCacheSessionView> ReserveForSession(size_t prompt_len,
                                                    size_t future_kv_appends) noexcept;
 
+    /// @brief Checks the same capacity/lifecycle/epoch contract as reservation,
+    ///        without changing state or allocating storage.
+    Status ValidateReservation(size_t prompt_len, size_t future_kv_appends) const noexcept;
+
     /// @brief Clears the committed position while retaining its reservation.
     ///
     /// @param view Active session view belonging to this manager.
@@ -97,6 +101,8 @@ public:
     AM_NODISCARD bool is_initialized() const noexcept;
 
 private:
+    StatusOr<size_t> ReservationCapacity(size_t prompt_len,
+                                         size_t future_kv_appends) const noexcept;
     KVCacheStorage storage_{};
     KVCacheSessionState session_state_{};
     bool initialized_ = false;

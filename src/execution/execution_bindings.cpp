@@ -356,10 +356,43 @@ bool PreparedExecutionBindings::IsCompatible(const ExecutionPlan& plan) const no
            storage_->plan_key == plan.binding_key() && storage_->steps.size() == plan.size();
 }
 
-StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
+ExecutionBindingPlan::ExecutionBindingPlan(
+        std::unique_ptr<PreparedExecutionBindingsStorage> storage,
+        std::vector<size_t> activation_offsets,
+        size_t activation_bytes,
+        size_t step_count) noexcept
+    : storage_(std::move(storage)),
+      activation_offsets_(std::move(activation_offsets)),
+      activation_bytes_(activation_bytes),
+      step_count_(step_count) {}
+
+ExecutionBindingPlan::ExecutionBindingPlan() noexcept = default;
+ExecutionBindingPlan::ExecutionBindingPlan(ExecutionBindingPlan&&) noexcept = default;
+ExecutionBindingPlan& ExecutionBindingPlan::operator=(ExecutionBindingPlan&&) noexcept = default;
+ExecutionBindingPlan::~ExecutionBindingPlan() = default;
+
+size_t ExecutionBindingPlan::activation_bytes() const noexcept {
+    return storage_ == nullptr ? 0 : activation_bytes_;
+}
+
+size_t ExecutionBindingPlan::activation_alignment() const noexcept {
+    return storage_ == nullptr ? 0 : kActivationAlignment;
+}
+
+bool ExecutionBindingPlan::IsCompatible(const ExecutionPlan& plan) const noexcept {
+    return storage_ != nullptr && storage_->plan_key.value != 0 &&
+           storage_->plan_key == plan.binding_key() &&
+           storage_->values.size() == plan.values().size() &&
+           activation_offsets_.size() == plan.values().size() &&
+           step_count_ == plan.size();
+}
+
+StatusOr<ExecutionBindingPlan> PlanExecutionBindings(
         const ExecutionPlan& plan,
-        const ExternalTensorBindings& external,
-        Allocator& act_allocator) {
+        const ExternalTensorBindings& external) {
+    if (plan.binding_key().value == 0) {
+        return Status::FailedPrecondition("Cannot specialize an uninitialized ExecutionPlan");
+    }
     auto storage = std::make_unique<PreparedExecutionBindingsStorage>();
     storage->plan_key = plan.binding_key();
     storage->values.resize(plan.values().size());
@@ -489,6 +522,22 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
         }
     }
 
+    return ExecutionBindingPlan(std::move(storage), std::move(act_offsets),
+                                act_bytes, plan.size());
+}
+
+StatusOr<PreparedExecutionBindings> MaterializeExecutionBindings(
+        const ExecutionPlan& plan,
+        ExecutionBindingPlan binding_plan,
+        Allocator& act_allocator) {
+    if (!binding_plan.IsCompatible(plan)) {
+        return Status::FailedPrecondition(
+                "ExecutionBindingPlan does not match the ExecutionPlan");
+    }
+    auto storage = std::move(binding_plan.storage_);
+    const auto act_offsets = std::move(binding_plan.activation_offsets_);
+    const size_t act_bytes = binding_plan.activation_bytes_;
+
     // The arena's internal offsets are aligned to kActivationAlignment, so the
     // backing storage only needs to guarantee at least that; the allocator may
     // return stronger and every offset stays valid.
@@ -542,7 +591,11 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
     }
 
     constexpr size_t word_size = sizeof(std::max_align_t);
-    storage->kernel_params_storage.resize((params_bytes + word_size - 1) / word_size);
+    size_t rounded_params_bytes = 0;
+    if (CheckOverflowAdd(params_bytes, word_size - 1, &rounded_params_bytes)) {
+        return Status::Overflow("Kernel params arena rounding overflowed size_t");
+    }
+    storage->kernel_params_storage.resize(rounded_params_bytes / word_size);
     storage->steps.reserve(plan.size());
     for (size_t i = 0; i < plan.size(); ++i) {
         const auto& step = plan.steps()[i];
@@ -645,6 +698,14 @@ StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
         storage->steps.push_back(std::move(binding));
     }
     return PreparedExecutionBindings(std::move(storage));
+}
+
+StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
+        const ExecutionPlan& plan,
+        const ExternalTensorBindings& external,
+        Allocator& act_allocator) {
+    AM_ASSIGN_OR_RETURN(auto binding_plan, PlanExecutionBindings(plan, external));
+    return MaterializeExecutionBindings(plan, std::move(binding_plan), act_allocator);
 }
 
 } // namespace aethermind

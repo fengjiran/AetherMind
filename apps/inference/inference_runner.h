@@ -12,7 +12,6 @@
 #include "aethermind/base/status.h"
 #include "aethermind/inference/cpu_inference_options.h"
 #include "aethermind/inference/inference_session.h"
-#include "aethermind/runtime/runtime_options.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -55,14 +54,6 @@ AM_NODISCARD const char* ToString(RunStage stage) noexcept;
 /// checks, but does not require the prompt to fit the physical KV capacity.
 Status ValidateRunOptions(const RunOptions& options,
                           const HfModelConfig& config);
-
-/// @brief Maps loaded model geometry and explicit capacity to CPU runtime values.
-/// @param config Configuration already validated by ModelLoader.
-/// @param context_tokens Positive KV capacity no larger than the model context.
-/// @return Owning RuntimeOptions values or a conversion/geometry error; the
-/// function allocates no KV storage and does not inspect backend availability.
-StatusOr<RuntimeOptions> MakeRuntimeOptions(
-        const HfModelConfig& config, size_t context_tokens);
 
 /// @brief Loads, compiles, prepares, and generates with one request-owned Runtime.
 /// @param options Owning input values borrowed for the duration of this call.

@@ -435,8 +435,8 @@ StatusOr<Run> RunSample(const Options& options, size_t index) {
     Timer compile_timer(timing);
     AM_ASSIGN_OR_RETURN(auto artifact, ModelCompiler::Compile(std::move(loaded), compile_options));
     sample.compile_ns = compile_timer.Elapsed();
-    RuntimeOptions runtime_options;
-    AM_ASSIGN_OR_RETURN(runtime_options.kv_cache, MakeFp32KVCacheOptions(config, run.context_capacity));
+    AM_ASSIGN_OR_RETURN(auto runtime_options,
+                        MakeCpuRuntimeOptions(config, {.context_tokens = run.context_capacity}));
     RuntimeBuilder builder;
     builder.WithOptions(runtime_options);
     std::shared_ptr<AllocationCounter> counter;

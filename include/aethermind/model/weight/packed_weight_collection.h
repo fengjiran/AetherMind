@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -81,9 +82,12 @@ public:
     ///        collection to `key.source_id` on success. Its recipe must identify
     ///        a known, explicit layout and match the artifact's recipe.
     /// @param artifact Artifact referenced by `key` thereafter.
+    ///        Defined logical dtypes reject scalable and reserved lane encodings.
+    ///        Undefined or zero-byte logical dtypes retain the legacy absence
+    ///        of a logical-size premise; storage is still checked against the recipe.
     /// @return Ok on success, InvalidArgument if the artifact is null or its
-    ///         key comes from a different source artifact or violates the recipe
-    ///         contract, or AlreadyExists if
+    ///         logical dtype is unsupported, or its key comes from a different
+    ///         source artifact or violates the recipe contract, or AlreadyExists if
     ///         an entry with the same key is already present. Allocation failure
     ///         returns ResourceExhausted and leaves the collection unchanged.
     Status Insert(const WeightArtifactKey& key,
@@ -100,10 +104,20 @@ public:
     AM_NODISCARD size_t size() const noexcept;
     AM_NODISCARD bool empty() const noexcept;
 
+    /// @brief Counts visible payload once per shared Buffer implementation.
+    AM_NODISCARD StatusOr<size_t> total_storage_bytes() const noexcept;
+    /// @brief Whether every request was checked against an exact size query.
+    AM_NODISCARD bool storage_plan_complete() const noexcept;
+
 private:
     std::vector<std::pair<WeightArtifactKey, std::shared_ptr<const PackedWeight>>> entries_{};
     uint64_t source_id_ = 0;
     bool source_frozen_ = false;
+    bool storage_plan_complete_ = true;
+
+    friend StatusOr<PackedWeightCollection> PrepackWeightRequests(
+            const Backend&, const std::vector<WeightPackingRequest>&,
+            Allocator&, std::optional<size_t>);
 };
 
 /// @brief Executes prepack for every request and returns the collection owning the
@@ -137,6 +151,17 @@ StatusOr<PackedWeightCollection> PrepackWeightRequests(
         const Backend& backend,
         const std::vector<WeightPackingRequest>& requests,
         Allocator& allocator);
+
+/// @brief Preflights and packs with an optional exact batch payload cap.
+/// @param max_payload_bytes Optional batch payload cap, including zero. A finite
+///        cap requires every size query before any artifact allocation. An
+///        unlimited batch permits legacy backends without a query and reports
+///        storage_plan_complete=false. Known queries are checked against output.
+StatusOr<PackedWeightCollection> PrepackWeightRequests(
+        const Backend& backend,
+        const std::vector<WeightPackingRequest>& requests,
+        Allocator& allocator,
+        std::optional<size_t> max_payload_bytes);
 
 } // namespace aethermind
 

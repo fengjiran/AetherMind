@@ -81,6 +81,7 @@ struct StepTensorBinding {
 };
 
 class PreparedExecutionBindingsStorage;
+class ExecutionBindingPlan;
 
 /// @brief Controlled result of specializing one ExecutionPlan for a call/session.
 ///
@@ -113,6 +114,10 @@ public:
     AM_NODISCARD bool IsCompatible(const ExecutionPlan& plan) const noexcept;
 
 private:
+    friend StatusOr<PreparedExecutionBindings> MaterializeExecutionBindings(
+            const ExecutionPlan& plan,
+            ExecutionBindingPlan binding_plan,
+            Allocator& act_allocator);
     friend StatusOr<PreparedExecutionBindings> PrepareExecutionBindings(
             const ExecutionPlan& plan,
             const ExternalTensorBindings& external,
@@ -122,6 +127,49 @@ private:
             std::unique_ptr<PreparedExecutionBindingsStorage> storage) noexcept;
 
     std::unique_ptr<PreparedExecutionBindingsStorage> storage_{};
+};
+
+/// @brief Controlled activation layout and external metadata for one concrete call.
+///
+/// Planning owns concrete shape/stride snapshots and borrows external data
+/// addresses, without allocating activation storage or building kernel params.
+/// External backing must outlive materialization and the resulting bindings;
+/// its address/layout must remain stable, while input payload values may change.
+/// The plan's heap-stable metadata remains valid across moves. Empty and
+/// moved-from objects cannot be materialized.
+class ExecutionBindingPlan {
+public:
+    ExecutionBindingPlan() noexcept;
+    ExecutionBindingPlan(ExecutionBindingPlan&&) noexcept;
+    ExecutionBindingPlan& operator=(ExecutionBindingPlan&&) noexcept;
+    ExecutionBindingPlan(const ExecutionBindingPlan&) = delete;
+    ExecutionBindingPlan& operator=(const ExecutionBindingPlan&) = delete;
+    ~ExecutionBindingPlan();
+
+    /// @brief Returns the exact visible bytes of the planned activation arena.
+    AM_NODISCARD size_t activation_bytes() const noexcept;
+    /// @brief Returns the arena's required alignment, or zero when empty.
+    AM_NODISCARD size_t activation_alignment() const noexcept;
+    /// @brief Checks the immutable plan identity and planned value/step counts.
+    AM_NODISCARD bool IsCompatible(const ExecutionPlan& plan) const noexcept;
+
+private:
+    friend StatusOr<ExecutionBindingPlan> PlanExecutionBindings(
+            const ExecutionPlan& plan, const ExternalTensorBindings& external);
+    friend StatusOr<PreparedExecutionBindings> MaterializeExecutionBindings(
+            const ExecutionPlan& plan,
+            ExecutionBindingPlan binding_plan,
+            Allocator& act_allocator);
+
+    ExecutionBindingPlan(std::unique_ptr<PreparedExecutionBindingsStorage> storage,
+                         std::vector<size_t> activation_offsets,
+                         size_t activation_bytes,
+                         size_t step_count) noexcept;
+
+    std::unique_ptr<PreparedExecutionBindingsStorage> storage_{};
+    std::vector<size_t> activation_offsets_{};
+    size_t activation_bytes_ = 0;
+    size_t step_count_ = 0;
 };
 
 /// @brief Reports which plan values need a caller-supplied read-only binding.
@@ -145,6 +193,27 @@ private:
 ///         metadata is inconsistent with its semantic inputs.
 StatusOr<std::vector<bool>> ComputeExternalReadRequirements(
         const ExecutionPlan& plan);
+
+/// @brief Validates external bindings and plans concrete activation storage.
+///
+/// Snapshots shape/stride metadata, resolves symbols, and assigns arena offsets
+/// using the same layout consumed by MaterializeExecutionBindings. Reads no
+/// tensor payload and creates no activation Buffer or prepared kernel params.
+/// Metadata allocation may throw std::bad_alloc, as PrepareExecutionBindings does.
+StatusOr<ExecutionBindingPlan> PlanExecutionBindings(
+        const ExecutionPlan& plan,
+        const ExternalTensorBindings& external);
+
+/// @brief Allocates and binds the exact arena described by a controlled plan.
+///
+/// Consumes binding_plan and rejects a different, empty, or moved-from execution
+/// plan before invoking the allocator. Preserves the normal tensor/alias,
+/// deferred-shape and params-builder validation before bindings are published.
+/// Allocator borrowing and external storage lifetime match PrepareExecutionBindings.
+StatusOr<PreparedExecutionBindings> MaterializeExecutionBindings(
+        const ExecutionPlan& plan,
+        ExecutionBindingPlan binding_plan,
+        Allocator& act_allocator);
 
 /// @brief Resolves external tensors and allocates internal activations.
 ///

@@ -123,6 +123,109 @@ TEST(LlamaDenseGraphBuilder, BuildsFullLlamaDenseTopology) {
     EXPECT_FALSE(nodes[tail + 2].decoder_layer_index.has_value());
 }
 
+TEST(ModelGraphBuildOptions, OverridesFp32WithoutChangingCheckpointHint) {
+    for (const DataType source_dtype: {DataType::Float(16), DataType::BFloat(16)}) {
+        HfModelConfig config = MakeLlamaConfig(1);
+        config.weight_dtype_hint = source_dtype;
+        config.weight_dtype_hint_name = ToString(source_dtype);
+        const ResolvedModelWeights weights = MakeWeights(config);
+        const ModelGraphBuildOptions options{
+                .activation_dtype = DataType::Float32(),
+                .kv_dtype = DataType::Float32(),
+        };
+
+        const auto graph = BuildModelGraph(config, weights, options);
+
+        ASSERT_TRUE(graph.ok()) << graph.status().ToString();
+        EXPECT_EQ(config.weight_dtype_hint, source_dtype);
+        EXPECT_EQ(config.weight_dtype_hint_name, ToString(source_dtype));
+        size_t state_values = 0;
+        for (const auto& value: graph->GetValues()) {
+            if (std::holds_alternative<StateValue>(value.payload)) {
+                ++state_values;
+                EXPECT_EQ(value.spec.dtype, DataType::Float32()) << value.name;
+            } else if (value.spec.dtype.IsFloat()) {
+                EXPECT_EQ(value.spec.dtype, DataType::Float32()) << value.name;
+            }
+        }
+        EXPECT_EQ(state_values, 4U);
+        EXPECT_TRUE(graph->Validate().ok());
+    }
+}
+
+TEST(ModelGraphBuildOptions, UndefinedOptionsPreserveDefaultDTypes) {
+    const HfModelConfig config = MakeLlamaConfig(1);
+    const ResolvedModelWeights weights = MakeWeights(config);
+
+    const auto original = BuildLlamaDense(config, weights);
+    const auto explicit_default = BuildLlamaDense(config, weights, {});
+
+    ASSERT_TRUE(original.ok()) << original.status().ToString();
+    ASSERT_TRUE(explicit_default.ok()) << explicit_default.status().ToString();
+    ASSERT_EQ(original->GetValues().size(), explicit_default->GetValues().size());
+    for (size_t i = 0; i < original->GetValues().size(); ++i) {
+        EXPECT_EQ(original->GetValues()[i].spec.dtype,
+                  explicit_default->GetValues()[i].spec.dtype);
+        EXPECT_EQ(original->GetValues()[i].name, explicit_default->GetValues()[i].name);
+    }
+    ASSERT_EQ(original->GetNodes().size(), explicit_default->GetNodes().size());
+    for (size_t i = 0; i < original->GetNodes().size(); ++i) {
+        EXPECT_EQ(original->GetNodes()[i].op_type,
+                  explicit_default->GetNodes()[i].op_type);
+    }
+}
+
+TEST(ModelGraphBuildOptions, RejectsUnsupportedActivationDTypeBeforeWeightInspection) {
+    const HfModelConfig config = MakeLlamaConfig(1);
+    for (const DataType dtype: {DataType::Int(32), DataType::Double(),
+                                DataType::Float(32, 4), DataType::ScalableFloat(32, 2),
+                                DataType::Float8E4M3FN()}) {
+        const auto graph = BuildLlamaDense(config, {}, {.activation_dtype = dtype});
+
+        ASSERT_FALSE(graph.ok());
+        EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_NE(graph.status().message().find("activation_dtype"), std::string::npos);
+    }
+}
+
+TEST(ModelGraphBuildOptions, RejectsUnsupportedKvDTypeBeforeWeightInspection) {
+    const HfModelConfig config = MakeLlamaConfig(1);
+    for (const DataType dtype: {DataType::Int(32), DataType::Double(),
+                                DataType::BFloat(16, 4), DataType::ScalableFloat(16, 2),
+                                DataType::Float8E4M3FN()}) {
+        const auto graph = BuildLlamaDense(config, {}, {.kv_dtype = dtype});
+
+        ASSERT_FALSE(graph.ok());
+        EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_NE(graph.status().message().find("kv_dtype"), std::string::npos);
+    }
+}
+
+TEST(ModelGraphBuildOptions, RejectsActivationOverrideWithoutConvertingEmbedding) {
+    const HfModelConfig config = MakeLlamaConfig(1);
+    const ResolvedModelWeights weights = MakeWeights(config);
+
+    const auto graph = BuildLlamaDense(config, weights,
+                                       {.activation_dtype = DataType::Float(16)});
+
+    ASSERT_FALSE(graph.ok());
+    EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(graph.status().message().find("embedding"), std::string::npos);
+}
+
+TEST(ModelGraphBuildOptions, RejectsMixedKvDTypeWithoutConversionSemantics) {
+    const HfModelConfig config = MakeLlamaConfig(1);
+    const ResolvedModelWeights weights = MakeWeights(config);
+
+    const auto graph = BuildLlamaDense(config, weights,
+                                       {.activation_dtype = DataType::Float32(),
+                                        .kv_dtype = DataType::Float(16)});
+
+    ASSERT_FALSE(graph.ok());
+    EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(graph.status().message().find("dtype"), std::string::npos);
+}
+
 TEST(LlamaDenseGraphBuilder, AddRmsNormFusionCoversMultiLayerResidualAndFinalNormPaths) {
     const HfModelConfig config = MakeLlamaConfig(2);
     const ResolvedModelWeights weights = MakeWeights(config);

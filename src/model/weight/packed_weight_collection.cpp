@@ -5,8 +5,14 @@
 #include "aethermind/model/weight/weight_packing_request.h"
 #include "utils/overflow_check.h"
 
+#include <algorithm>
+#include <bit>
+#include <functional>
+#include <limits>
 #include <memory>
 #include <new>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -38,8 +44,18 @@ StatusOr<TensorView> MakeRowMajorView(const RawWeightView& raw,
 /// Expected byte payload of the logical weight an artifact claims to pack.
 /// Undefined or zero-byte dtypes yield 0 (no size premise).
 StatusOr<size_t> LogicalByteSize(const PackedWeight& artifact) {
-    if (artifact.logical_dtype().IsUndefined() ||
-        artifact.logical_dtype().nbytes() == 0) {
+    const DataType dtype = artifact.logical_dtype();
+    if (dtype.IsUndefined()) {
+        return 0U;
+    }
+    // nbytes() requires a fixed lane encoding. Checking the raw range also
+    // rejects reserved -1, which IsScalableVector() does not classify.
+    if (dtype.raw_lanes() > std::numeric_limits<int16_t>::max()) {
+        return Status::InvalidArgument(
+                "Packed artifact logical dtype requires a fixed lane encoding");
+    }
+    const int element_bytes = dtype.nbytes();
+    if (element_bytes == 0) {
         return 0U;
     }
 
@@ -67,7 +83,7 @@ StatusOr<size_t> LogicalByteSize(const PackedWeight& artifact) {
 
     size_t bytes = 0;
     if (CheckOverflowMul(elements,
-                         static_cast<size_t>(artifact.logical_dtype().nbytes()), &bytes)) {
+                         static_cast<size_t>(element_bytes), &bytes)) {
         return Status::Overflow(
                 "Packed artifact logical size overflowed size_t");
     }
@@ -179,85 +195,130 @@ bool PackedWeightCollection::empty() const noexcept {
     return entries_.empty();
 }
 
+StatusOr<size_t> PackedWeightCollection::total_storage_bytes() const noexcept try {
+    std::vector<const BufferImpl*> owners;
+    owners.reserve(entries_.size());
+    for (const auto& entry: entries_) {
+        if (const auto* impl = entry.second->storage().impl(); impl != nullptr) {
+            owners.push_back(impl);
+        }
+    }
+    std::sort(owners.begin(), owners.end(), std::less<const BufferImpl*>{});
+    owners.erase(std::unique(owners.begin(), owners.end()), owners.end());
+    size_t total = 0;
+    for (const auto* owner: owners) {
+        if (CheckOverflowAdd(total, owner->nbytes(), &total)) {
+            return Status::Overflow("Packed storage payload overflowed size_t");
+        }
+    }
+    return total;
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
+}
+
+bool PackedWeightCollection::storage_plan_complete() const noexcept {
+    return storage_plan_complete_;
+}
+
+StatusOr<PackedWeightCollection> PrepackWeightRequests(
+        const Backend& backend,
+        const std::vector<WeightPackingRequest>& requests,
+        Allocator& allocator) {
+    return PrepackWeightRequests(backend, requests, allocator, std::nullopt);
+}
+
 StatusOr<PackedWeightCollection>
 PrepackWeightRequests(const Backend& backend,
                       const std::vector<WeightPackingRequest>& requests,
-                      Allocator& allocator) try {
-    PackedWeightCollection packed_weight_collection;
+                      Allocator& allocator,
+                      std::optional<size_t> max_payload_bytes) try {
+    PackedWeightCollection collection;
     const uint64_t source_id = requests.empty() ? 0U : requests.front().source_id;
-    // Validate the whole batch before packing anything: a mixed batch would
-    // insert one artifact's weights under another's identity. The collection is
-    // returned only on success, so a failed batch is never observable.
     for (const auto& req: requests) {
         if (req.source_id != source_id) {
             return Status::InvalidArgument(
-                    "PrepackWeightRequests requires every request to share one "
-                    "source artifact");
+                    "PrepackWeightRequests requires every request to share one source artifact");
         }
     }
-
     if (!requests.empty()) {
-        AM_RETURN_IF_ERROR(packed_weight_collection.SetSourceId(source_id));
+        AM_RETURN_IF_ERROR(collection.SetSourceId(source_id));
     }
 
+    struct PlannedRequest {
+        std::vector<std::vector<int64_t>> strides;
+        std::vector<TensorView> components;
+        std::optional<AllocationRequest> storage;
+    };
+    std::vector<PlannedRequest> planned;
+    planned.reserve(requests.size());
+    size_t total = 0;
     for (const auto& req: requests) {
         if (!IsValidPackingLayout(req.recipe.layout) || req.recipe.alignment == 0) {
-            return Status::InvalidArgument(
-                    "PrepackWeightRequests requires an explicit packing recipe");
+            return Status::InvalidArgument("PrepackWeightRequests requires an explicit packing recipe");
         }
-
         if (req.components.empty()) {
-            return Status::InvalidArgument(
-                    "PrepackWeightRequests requires non-empty weight components");
+            return Status::InvalidArgument("PrepackWeightRequests requires non-empty weight components");
         }
-
-        // Validate byte sizes up front so a mismatch fails eagerly here with a
-        // view-level message instead of surfacing deep inside the backend.
-        std::vector<TensorView> components;
-        std::vector<std::vector<int64_t>> strides_storage;
-        components.reserve(req.components.size());
-        strides_storage.reserve(req.components.size());
-        auto append_component = [&](const RawWeightView& raw) {
-            strides_storage.emplace_back();
-            auto view = MakeRowMajorView(raw, strides_storage.back());
-            if (!view.ok()) {
-                return view.status();
-            }
-            components.push_back(*view);
-            return Status::Ok();
-        };
-
+        PlannedRequest item;
+        item.strides.reserve(req.components.size());
+        item.components.reserve(req.components.size());
         for (const auto& component: req.components) {
-            AM_RETURN_IF_ERROR(append_component(component));
+            item.strides.emplace_back();
+            AM_ASSIGN_OR_RETURN(auto view, MakeRowMajorView(component, item.strides.back()));
+            item.components.push_back(view);
         }
+        auto requirement = backend.GetWeightPackingRequirements(
+                req.op_type, item.components, req.selector, req.recipe);
+        if (!requirement.ok()) {
+            if (requirement.status().code() != StatusCode::kUnimplemented || max_payload_bytes.has_value()) {
+                return requirement.status();
+            }
+            collection.storage_plan_complete_ = false;
+        } else {
+            item.storage = *requirement;
+            if (requirement->alignment == 0 ||
+                !std::has_single_bit(requirement->alignment) ||
+                requirement->alignment < req.recipe.alignment) {
+                return Status::Internal("Packing query returned an invalid storage alignment");
+            }
+            if (CheckOverflowAdd(total, requirement->nbytes, &total)) {
+                return Status::Overflow("Packing batch payload overflowed size_t");
+            }
+        }
+        planned.push_back(std::move(item));
+    }
+    if (max_payload_bytes.has_value() && total > *max_payload_bytes) {
+        return Status::ResourceExhausted("Packed weight payload exceeds limit: required=" +
+                                         std::to_string(total) + ", limit=" + std::to_string(*max_payload_bytes));
+    }
 
-        auto packed = backend.PackWeights(
-                req.op_type, components, req.selector, req.recipe, allocator);
+    for (size_t i = 0; i < requests.size(); ++i) {
+        const auto& req = requests[i];
+        auto packed = backend.PackWeights(req.op_type, planned[i].components,
+                                          req.selector, req.recipe, allocator);
         if (!packed.ok()) {
             return packed.status();
         }
         if (*packed == nullptr) {
             return Status::Internal("Backend weight packing returned a null artifact");
         }
-
         if ((*packed)->recipe() != req.recipe) {
-            return Status::InvalidArgument(
-                    "Packed artifact recipe differs from its request");
+            return Status::InvalidArgument("Packed artifact recipe differs from its request");
         }
-
-        const WeightArtifactKey key{
-                .source_id = req.source_id,
-                .value_index = req.value_index,
-                .binding = req.binding,
-                .selector = req.selector,
-                .recipe = req.recipe};
-        // A duplicate {binding, selector} is a planner bug: propagate as an
-        // explicit error instead of silently skipping a weight.
-        AM_RETURN_IF_ERROR(packed_weight_collection.Insert(
+        if (planned[i].storage.has_value() &&
+            ((*packed)->storage().nbytes() != planned[i].storage->nbytes ||
+             (*packed)->storage().alignment() < planned[i].storage->alignment)) {
+            return Status::Internal("Packed artifact storage differs from its planned requirements");
+        }
+        const WeightArtifactKey key{.source_id = req.source_id,
+                                    .value_index = req.value_index,
+                                    .binding = req.binding,
+                                    .selector = req.selector,
+                                    .recipe = req.recipe};
+        AM_RETURN_IF_ERROR(collection.Insert(
                 key, std::shared_ptr<const PackedWeight>(std::move(*packed))));
     }
-
-    return packed_weight_collection;
+    return collection;
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});
 }

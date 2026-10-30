@@ -1,4 +1,5 @@
 #include "aethermind/inference/cpu_inference_options.h"
+#include "aethermind/inference/model_execution_policy.h"
 
 #include <new>
 
@@ -17,6 +18,20 @@ StatusOr<ModelCompileOptions> MakeCpuCompileOptions(CpuInferencePreset preset) t
                                  .weight_format = WeightFormat::kPlain,
                                  .phase = ExecPhase::kBoth};
     return options;
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
+}
+
+StatusOr<RuntimeOptions> MakeCpuRuntimeOptions(
+        const HfModelConfig& config,
+        const CpuRuntimeAssemblyOptions& options) try {
+    RuntimeOptions resolved;
+    AM_ASSIGN_OR_RETURN(resolved.kv_cache,
+                        MakeFp32KVCacheOptions(config, options.context_tokens));
+    resolved.kv_cache.max_bytes = options.kv_max_bytes;
+    resolved.workspace.default_workspace_limit_bytes = options.workspace_limit_bytes;
+    resolved.backend.cpu_feature_policy = options.cpu_feature_policy;
+    return resolved;
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});
 }

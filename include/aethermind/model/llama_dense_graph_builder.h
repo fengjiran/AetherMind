@@ -4,10 +4,7 @@
 /// @file llama_dense_graph_builder.h
 /// @brief Llama dense HF → semantic graph conversion.
 
-#include "aethermind/base/status.h"
-#include "aethermind/graph/graph.h"
-#include "aethermind/model/formats/hf/hf_model_config.h"
-#include "aethermind/model/resolved_model_weights.h"
+#include "aethermind/model/build_model_graph.h"
 
 namespace aethermind {
 
@@ -19,6 +16,11 @@ namespace aethermind {
 /// by BuildModelGraph; direct callers bypass family identification.
 StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
                                      const ResolvedModelWeights& weights);
+
+/// @brief Builds Llama semantics with explicit activation/KV dtypes.
+StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
+                                     const ResolvedModelWeights& weights,
+                                     const ModelGraphBuildOptions& options);
 
 } // namespace aethermind
 

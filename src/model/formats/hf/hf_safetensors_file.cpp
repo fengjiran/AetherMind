@@ -34,6 +34,11 @@ public:
         return mmap_.size();
     }
 
+    AM_NODISCARD std::optional<RawStorageFootprint> footprint() const noexcept override {
+        return RawStorageFootprint{.kind = RawStorageKind::kMapped,
+                                   .bytes = mmap_.size()};
+    }
+
     AM_NODISCARD Status Advise(MemoryMappedFile::Advice advice) const {
         return mmap_.Advise(advice);
     }

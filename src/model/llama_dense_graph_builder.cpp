@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <string_view>
 
 namespace aethermind {
 namespace {
@@ -219,14 +221,46 @@ Status ValidateInputs(const HfModelConfig& config, const ResolvedModelWeights& w
     return HfModelValidator::ValidateResolvedModel(config, weights);
 }
 
+Status ValidateDTypeOverride(DataType dtype, std::string_view field) {
+    if (dtype.IsUndefined()) {
+        return Status::Ok();
+    }
+    if (dtype.raw_lanes() != 1 ||
+        (dtype != DataType::Float32() && dtype != DataType::Float(16) &&
+         dtype != DataType::BFloat(16))) {
+        return Status::InvalidArgument(
+                "BuildLlamaDense: " + std::string(field) +
+                " must be scalar Float32, Float16, or BFloat16");
+    }
+    return Status::Ok();
+}
+
 } // namespace
 
 StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
                                      const ResolvedModelWeights& weights) {
+    return BuildLlamaDense(config, weights, {});
+}
+
+StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
+                                     const ResolvedModelWeights& weights,
+                                     const ModelGraphBuildOptions& options) {
+    AM_RETURN_IF_ERROR(ValidateDTypeOverride(options.activation_dtype, "activation_dtype"));
+    AM_RETURN_IF_ERROR(ValidateDTypeOverride(options.kv_dtype, "kv_dtype"));
     AM_RETURN_IF_ERROR(ValidateInputs(config, weights));
-    const DataType act_dtype = config.weight_dtype_hint.IsUndefined()
-                                       ? DataType::Float32()
-                                       : config.weight_dtype_hint;
+    const DataType act_dtype = options.activation_dtype.IsUndefined()
+                                       ? (config.weight_dtype_hint.IsUndefined()
+                                                  ? DataType::Float32()
+                                                  : config.weight_dtype_hint)
+                                       : options.activation_dtype;
+    if (!options.activation_dtype.IsUndefined() &&
+        options.activation_dtype != weights.embed_tokens.dtype) {
+        return Status::InvalidArgument(
+                "BuildLlamaDense: activation_dtype " + ToString(options.activation_dtype) +
+                " must match the embedding output dtype " + ToString(weights.embed_tokens.dtype) +
+                "; convert the embedding weight before graph construction");
+    }
+    const DataType kv_dtype = options.kv_dtype.IsUndefined() ? act_dtype : options.kv_dtype;
     const ShapeSymbol seq_len = ShapeSymbol::Create();
     const ShapeSymbol kv_len = ShapeSymbol::Create();
     const int64_t head_dim = config.head_dim != 0 ? config.head_dim
@@ -241,7 +275,7 @@ StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
     const TensorSpec position_ids_spec{.dtype = DataType::Int(64),
                                        .shape = SymbolicShape({seq_len})};
     const TensorSpec kv_cache_spec = detail::KVCacheTensorSpec(
-            act_dtype, config.num_key_value_heads, kv_len, head_dim);
+            kv_dtype, config.num_key_value_heads, kv_len, head_dim);
     const DecoderLayerParams params{
             .rms_norm_eps = static_cast<float>(config.rms_norm_eps),
             .rope = rope_params,

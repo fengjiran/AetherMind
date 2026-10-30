@@ -348,6 +348,104 @@ TEST(PackedWeightCollectionOwnership, InsertRejectsUnknownLayoutWithoutBindingSo
     EXPECT_EQ(collection.source_id(), 0U);
 }
 
+void ExpectLogicalDTypeRejected(DataType dtype, const std::vector<int64_t>& logical_shape) {
+    SCOPED_TRACE(ToString(dtype));
+    SCOPED_TRACE(::testing::PrintToString(logical_shape));
+    bool destroyed = false;
+    PackedWeightCollection collection;
+    const KernelSelector selector = MakePackedCpuSelector();
+    const PackingRecipe recipe = CpuIdentityPackingRecipe();
+    WeightArtifactKey key{.source_id = 9, .selector = selector, .recipe = recipe};
+    auto storage = MakeTestBuffer(64);
+    ASSERT_TRUE(storage.is_initialized());
+    auto artifact = std::make_shared<CountingPackedWeight>(
+            OpType::kLinear, selector, std::move(storage), &destroyed,
+            recipe, dtype, logical_shape);
+
+    const auto status = collection.Insert(key, std::move(artifact));
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_TRUE(destroyed);
+    EXPECT_TRUE(collection.empty());
+    EXPECT_EQ(collection.Find(key), nullptr);
+    EXPECT_EQ(collection.source_id(), 0U);
+
+    key.source_id = 7;
+    auto retry_storage = MakeTestBuffer(64);
+    ASSERT_TRUE(retry_storage.is_initialized());
+    const auto retry = collection.Insert(key, std::make_shared<CountingPackedWeight>(
+                                                      OpType::kLinear, selector, std::move(retry_storage), nullptr,
+                                                      recipe, DataType::Float32(), std::vector<int64_t>{2, 2}));
+    EXPECT_TRUE(retry.ok()) << retry.ToString();
+    EXPECT_EQ(collection.source_id(), 7U);
+    EXPECT_EQ(collection.size(), 1U);
+    EXPECT_NE(collection.Find(key), nullptr);
+}
+
+TEST(PackedWeightCollectionOwnership, InsertRejectsScalableLogicalDTypesWithoutBindingSource) {
+    for (const auto dtype: {DataType(DLDataTypeCode::kFloat, 16, 2, true),
+                            DataType(DLDataTypeCode::kFloat, 32, 2, true),
+                            DataType(DLDataTypeCode::kBFloat, 16, 2, true)}) {
+        for (const auto& shape: {std::vector<int64_t>{2, 2}, std::vector<int64_t>{0, 2}}) {
+            ExpectLogicalDTypeRejected(dtype, shape);
+        }
+    }
+}
+
+TEST(PackedWeightCollectionOwnership, InsertRejectsReservedLogicalLaneEncodingWithoutBindingSource) {
+    ExpectLogicalDTypeRejected(DataType::Float(32, 65535), {2, 2});
+}
+
+TEST(PackedWeightCollectionOwnership, InsertPreservesUnspecifiedLogicalSizeContract) {
+    for (const auto dtype: {DataType{}, DataType::Handle(64, 0),
+                            DataType::Handle(0, 1), DataType::Handle(0, 0)}) {
+        SCOPED_TRACE(ToString(dtype));
+        PackedWeightCollection collection;
+        const KernelSelector selector = MakePackedCpuSelector();
+        const PackingRecipe recipe = CpuIdentityPackingRecipe();
+        const WeightArtifactKey key{.source_id = 9, .selector = selector, .recipe = recipe};
+        auto storage = MakeTestBuffer(0);
+        ASSERT_TRUE(storage.is_initialized());
+        auto artifact = std::make_shared<CountingPackedWeight>(
+                OpType::kLinear, selector, std::move(storage), nullptr,
+                recipe, dtype, std::vector<int64_t>{2, 2});
+
+        const auto status = collection.Insert(key, artifact);
+
+        EXPECT_TRUE(status.ok()) << status.ToString();
+        EXPECT_EQ(collection.size(), 1U);
+        EXPECT_EQ(collection.Find(key), artifact);
+    }
+}
+
+TEST(PackedWeightCollectionOwnership, InsertUsesFixedVectorLogicalElementByteSize) {
+    PackedWeightCollection collection;
+    const KernelSelector selector = MakePackedCpuSelector();
+    const PackingRecipe recipe = CpuIdentityPackingRecipe();
+    const WeightArtifactKey key{.source_id = 9, .selector = selector, .recipe = recipe};
+    auto short_storage = MakeTestBuffer(31);
+    ASSERT_TRUE(short_storage.is_initialized());
+    auto undersized = std::make_shared<CountingPackedWeight>(
+            OpType::kLinear, selector, std::move(short_storage), nullptr,
+            recipe, DataType::Float(32, 4), std::vector<int64_t>{2});
+
+    const auto rejected = collection.Insert(key, undersized);
+
+    EXPECT_EQ(rejected.code(), StatusCode::kInvalidArgument);
+    EXPECT_TRUE(collection.empty());
+    EXPECT_EQ(collection.source_id(), 0U);
+
+    auto exact_storage = MakeTestBuffer(32);
+    ASSERT_TRUE(exact_storage.is_initialized());
+    auto exact = std::make_shared<CountingPackedWeight>(
+            OpType::kLinear, selector, std::move(exact_storage), nullptr,
+            recipe, DataType::Float(32, 4), std::vector<int64_t>{2});
+    const auto accepted = collection.Insert(key, exact);
+
+    EXPECT_TRUE(accepted.ok()) << accepted.ToString();
+    EXPECT_EQ(collection.Find(key), exact);
+}
+
 class PackedWeightCollectionZeroSize : public ::testing::TestWithParam<std::vector<int64_t>> {};
 
 TEST_P(PackedWeightCollectionZeroSize, InsertAcceptsZeroSizedLogicalWeights) {

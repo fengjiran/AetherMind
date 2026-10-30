@@ -66,18 +66,22 @@ public:
     /// @brief Builds a Runtime, reporting failures instead of aborting.
     ///
     /// Initializes the KV cache manager when KV caching is enabled in the
-    /// options. A KV cache initialization failure and any allocation failure
-    /// during registry assembly are returned to the caller; allocation failure
+    /// options. Unsupported option requests are rejected before registry
+    /// assembly or transfer of pending custom registrations. A KV cache
+    /// initialization failure and any allocation failure during registry
+    /// assembly are returned to the caller; allocation failure
     /// reports ResourceExhausted with an empty message. Partially built
     /// registries are discarded.
     ///
-    /// @return The assembled Runtime, or the first initialization failure.
+    /// @return The assembled Runtime, Unimplemented for an unsupported option,
+    ///         or the first initialization failure.
     /// @note On success this consumes the pending custom registrations, as
-    ///       Build() does. On failure the builder stays reusable: every pending
-    ///       list is left holding only registrations that were never
+    ///       Build() does. Option preflight failure preserves all pending
+    ///       registrations. Once assembly begins, failure leaves every pending
+    ///       list holding only registrations that were never
     ///       transferred. A registration already moved into a discarded
     ///       registry is unrecoverable, so a retry proceeds without it.
-    AM_NODISCARD StatusOr<Runtime> TryBuild();
+    StatusOr<Runtime> TryBuild();
 
 private:
     struct PendingCustomAllocatorProvider {
@@ -94,6 +98,7 @@ private:
     std::vector<PendingCustomAllocatorProvider> pending_custom_allocator_providers_;
     std::vector<PendingBackendFactory> pending_backend_factories_;
 
+    Status ValidateOptions() const;
     AllocatorRegistry BuildAllocatorRegistry();
     BackendRegistry BuildBackendRegistry();
     /// @brief Initializes the KV cache manager, allocating its planes through

@@ -6,6 +6,7 @@
 #include "aethermind/runtime/runtime_options.h"
 
 #include <new>
+#include <string>
 
 namespace aethermind {
 
@@ -16,22 +17,58 @@ RuntimeBuilder& RuntimeBuilder::WithOptions(const RuntimeOptions& options) {
 
 Runtime RuntimeBuilder::Build() {
     auto runtime = TryBuild();
-    AM_CHECK(runtime.ok(), "Failed to build Runtime: {}",
-             runtime.status().ToString().c_str());
+    AM_CHECK(runtime.ok(), "Failed to build Runtime: {}", runtime.status().ToString());
     return std::move(runtime).value();
 }
 
 StatusOr<Runtime> RuntimeBuilder::TryBuild() try {
+    AM_RETURN_IF_ERROR(ValidateOptions());
     auto allocator_registry = BuildAllocatorRegistry();
     auto backend_registry = BuildBackendRegistry();
     AM_ASSIGN_OR_RETURN(auto kv_cache_manager,
                         TryBuildKVCacheManager(allocator_registry));
-    return Runtime{std::move(allocator_registry), std::move(backend_registry),
-                   std::move(kv_cache_manager)};
+    return Runtime{std::move(allocator_registry),
+                   std::move(backend_registry),
+                   std::move(kv_cache_manager),
+                   options_.workspace.default_workspace_limit_bytes};
 } catch (const std::bad_alloc&) {
     // Registry node inserts and the pending-registration transfers allocate.
     // An empty message avoids allocating again while reporting OOM.
     return Status::ResourceExhausted({});
+}
+
+Status RuntimeBuilder::ValidateOptions() const {
+    if (!options_.execution.enable_default_stream) {
+        return Status::Unimplemented("execution.enable_default_stream=false is unsupported");
+    }
+    if (options_.execution.enable_graph_executor) {
+        return Status::Unimplemented("execution.enable_graph_executor is not implemented");
+    }
+    if (options_.workspace.enable_workspace_manager) {
+        return Status::Unimplemented("workspace.enable_workspace_manager is not implemented");
+    }
+    if (options_.tracing.enable_profiling) {
+        return Status::Unimplemented("tracing.enable_profiling is not implemented");
+    }
+    if (options_.tracing.enable_memory_profiling) {
+        return Status::Unimplemented("tracing.enable_memory_profiling is not implemented");
+    }
+
+    const auto has_custom_backend = [this](DeviceType type) {
+        for (const auto& registration: pending_backend_factories_) {
+            if (registration.type == type) {
+                return true;
+            }
+        }
+        return false;
+    };
+    if (options_.backend.enable_cuda && !has_custom_backend(DeviceType::kCUDA)) {
+        return Status::Unimplemented("backend.enable_cuda requires a custom CUDA backend factory");
+    }
+    if (options_.backend.enable_cann && !has_custom_backend(DeviceType::kCANN)) {
+        return Status::Unimplemented("backend.enable_cann requires a custom CANN backend factory");
+    }
+    return Status::Ok();
 }
 
 RuntimeBuilder& RuntimeBuilder::RegisterCustomAllocatorProvider(
@@ -113,6 +150,21 @@ StatusOr<KVCacheManager> RuntimeBuilder::TryBuildKVCacheManager(
     const KVCacheRuntimeOptions& options = options_.kv_cache;
     if (!options.enable_manager) {
         return manager;
+    }
+
+    AM_ASSIGN_OR_RETURN(const KVCacheLayout layout,
+                        PlanKVCacheLayout(options.num_layers,
+                                          options.num_kv_heads,
+                                          options.max_tokens,
+                                          options.head_dim,
+                                          options.kv_dtype,
+                                          options.alignment));
+    AM_ASSIGN_OR_RETURN(const size_t required_bytes, layout.TotalBytes());
+    if (options.max_bytes != 0 && required_bytes > options.max_bytes) {
+        return Status::ResourceExhausted(
+                "KV cache payload exceeds limit: required=" +
+                std::to_string(required_bytes) + ", limit=" +
+                std::to_string(options.max_bytes));
     }
 
     // KV planes use the configured allocator, which must be available before

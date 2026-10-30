@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <new>
 #include <span>
@@ -93,6 +94,12 @@ StatusOr<size_t> ContiguousWeightByteSize(const TensorView& weight) {
         return Status::InvalidArgument("CPU weight packing requires valid weight views");
     }
 
+    if (weight.dtype().IsUndefined() || weight.dtype().bits() == 0 ||
+        weight.dtype().raw_lanes() == 0 ||
+        weight.dtype().raw_lanes() > std::numeric_limits<int16_t>::max()) {
+        return Status::InvalidArgument("CPU packing requires a fixed positive-lane dtype");
+    }
+
     int64_t elements = 1;
     for (size_t i = weight.shape().size(); i > 0; --i) {
         const int64_t dim = weight.shape()[i - 1];
@@ -121,131 +128,76 @@ StatusOr<size_t> ContiguousWeightByteSize(const TensorView& weight) {
     return bytes;
 }
 
-// The dispatcher validates requests and matches the complete recipe before
-// entering these helpers with non-empty components.
+// A single metadata plan is consumed by both the size query and materialization.
+// It borrows no component metadata and does not inspect any logical payload.
+struct WeightPackingPlan {
+    AllocationRequest storage{};
+    DataType dtype{};
+    int64_t rows = 0;
+    int64_t columns = 0;
+};
 
-/// @brief Allocates packed artifact storage through the caller's allocator.
-///
-/// Packing must not reach for a CPU-specific allocation primitive: the artifact
-/// is managed backing storage and must follow the caller's allocation policy.
-StatusOr<Buffer> AllocatePackedStorage(Allocator& allocator,
-                                       size_t nbytes,
-                                       size_t alignment) {
-    return allocator.TryAllocate({.nbytes = nbytes,
-                                  .alignment = alignment});
-}
-
-StatusOr<std::unique_ptr<PackedWeight>> PackIdentityWeights(
-        OpType op_type,
-        std::span<const TensorView> components,
-        const KernelSelector& selector,
-        Allocator& allocator) {
+StatusOr<WeightPackingPlan> PlanIdentityWeights(
+        std::span<const TensorView> components) {
     const PackingRecipe recipe = CpuIdentityPackingRecipe();
-    // A single component keeps the single-component rank contract: direct
-    // bindings pack any valid rank (e.g. rank-1 norm weights).
+    // Direct bindings accept any valid rank, including scalar and norm weights.
     if (components.size() == 1U) {
-        const TensorView& logical_weight = components.front();
-        AM_ASSIGN_OR_RETURN(const size_t packed_nbytes,
-                            ContiguousWeightByteSize(logical_weight));
-        // Preserve a stronger source alignment while satisfying the recipe.
-        AM_ASSIGN_OR_RETURN(
-                Buffer packed_storage,
-                AllocatePackedStorage(
-                        allocator, packed_nbytes,
-                        std::max(logical_weight.alignment(), recipe.alignment)));
-        if (packed_nbytes > 0) {
-            std::memcpy(packed_storage.mutable_data(), logical_weight.data(),
-                        packed_nbytes);
-        }
-
-        std::vector<int64_t> logical_shape(logical_weight.shape().begin(),
-                                           logical_weight.shape().end());
-        return std::make_unique<CpuPackedWeight>(
-                op_type, selector, recipe,
-                logical_weight.dtype(), std::move(logical_shape),
-                std::move(packed_storage));
+        const TensorView& weight = components.front();
+        AM_ASSIGN_OR_RETURN(const size_t bytes, ContiguousWeightByteSize(weight));
+        return WeightPackingPlan{
+                .storage = {.nbytes = bytes,
+                            .alignment = std::max(weight.alignment(), recipe.alignment)},
+                .dtype = weight.dtype(),
+        };
     }
 
-    // The backend owns the fused layout authority for composite bindings:
-    // components must be contiguous rank-2 views sharing one dtype and
-    // feature count, concatenated along axis 0 in recipe order.
     const DataType& dtype = components.front().dtype();
     int64_t in_features = -1;
     int64_t total_rows = 0;
     size_t total_bytes = 0;
     size_t alignment = recipe.alignment;
     for (const auto& component: components) {
-        AM_ASSIGN_OR_RETURN(const size_t nbytes, ContiguousWeightByteSize(component));
-
+        AM_ASSIGN_OR_RETURN(const size_t bytes, ContiguousWeightByteSize(component));
         if (component.rank() != 2) {
             return Status::InvalidArgument("weight components must be rank 2");
         }
-
         if (component.dtype() != dtype) {
-            return Status::InvalidArgument(
-                    "weight components must share one dtype");
+            return Status::InvalidArgument("weight components must share one dtype");
         }
-
         if (in_features < 0) {
             in_features = component.dim(1);
         } else if (component.dim(1) != in_features) {
-            return Status::InvalidArgument(
-                    "weight components must share a feature count");
+            return Status::InvalidArgument("weight components must share a feature count");
         }
-
         const int64_t rows = component.dim(0);
         if (rows < 0) {
-            return Status::InvalidArgument(
-                    "weight component row count is negative");
+            return Status::InvalidArgument("weight component row count is negative");
         }
-
         if (CheckOverflowAdd(total_rows, rows, &total_rows)) {
-            return Status::Overflow(
-                    "fused weight row count overflows");
+            return Status::Overflow("fused weight row count overflows");
         }
-
-        if (CheckOverflowAdd(total_bytes, nbytes, &total_bytes)) {
-            return Status::Overflow(
-                    "fused weight byte count overflows");
+        if (CheckOverflowAdd(total_bytes, bytes, &total_bytes)) {
+            return Status::Overflow("fused weight byte count overflows");
         }
-
         alignment = std::max(alignment, component.alignment());
     }
-
     int64_t total_elements = 0;
     if (CheckOverflowMul(total_rows, in_features, &total_elements)) {
         return Status::Overflow("fused weight element count overflows int64_t");
     }
-
-    AM_ASSIGN_OR_RETURN(Buffer packed_storage,
-                        AllocatePackedStorage(allocator, total_bytes, alignment));
-
-    auto* out = static_cast<char*>(packed_storage.mutable_data());
-    for (const auto& component: components) {
-        AM_ASSIGN_OR_RETURN(const size_t nbytes, ContiguousWeightByteSize(component));
-        if (nbytes > 0) {
-            std::memcpy(out, component.data(), nbytes);
-            out += nbytes;
-        }
-    }
-
-    return std::make_unique<CpuPackedWeight>(
-            op_type, selector, recipe, dtype,
-            std::vector<int64_t>{total_rows, in_features},
-            std::move(packed_storage));
+    return WeightPackingPlan{
+            .storage = {.nbytes = total_bytes, .alignment = alignment},
+            .dtype = dtype,
+            .rows = total_rows,
+            .columns = in_features,
+    };
 }
 
-StatusOr<std::unique_ptr<PackedWeight>> PackBPanelF32Kc512Nr16Weights(
-        OpType op_type,
-        std::span<const TensorView> components,
-        const KernelSelector& selector,
-        Allocator& allocator) {
-    const PackingRecipe recipe = CpuBPanelF32Kc512Nr16Recipe();
+StatusOr<WeightPackingPlan> PlanBPanelF32Kc512Nr16Weights(
+        std::span<const TensorView> components) {
     if (!components.front().is_valid() || components.front().rank() != 2) {
-        return Status::InvalidArgument(
-                "cpu_bpanel_f32 requires valid rank-2 weight components");
+        return Status::InvalidArgument("cpu_bpanel_f32 requires valid rank-2 weight components");
     }
-
     const int64_t in_features = components.front().dim(1);
     int64_t total_rows = 0;
     size_t alignment = kCpuBPanelF32Kc512Nr16Alignment;
@@ -254,68 +206,136 @@ StatusOr<std::unique_ptr<PackedWeight>> PackBPanelF32Kc512Nr16Weights(
         if (!logical_bytes.ok()) {
             return logical_bytes.status();
         }
-
         if (component.rank() != 2 || component.dtype() != DataType::Float32() ||
             component.dim(1) != in_features) {
             return Status::InvalidArgument(
                     "cpu_bpanel_f32 requires contiguous rank-2 float32 weights with equal K");
         }
-
         if (CheckOverflowAdd(total_rows, component.dim(0), &total_rows)) {
             return Status::Overflow("cpu_bpanel_f32 logical N overflows int64_t");
         }
-
         alignment = std::max(alignment, component.alignment());
     }
-
     if (in_features < 0) {
-        return Status::InvalidArgument(
-                "cpu_bpanel_f32 requires a non-negative K dimension");
+        return Status::InvalidArgument("cpu_bpanel_f32 requires a non-negative K dimension");
+    }
+    AM_ASSIGN_OR_RETURN(const size_t bytes,
+                        cpu::CpuBPanelF32Kc512Nr16PackedByteSize(total_rows, in_features));
+    return WeightPackingPlan{
+            .storage = {.nbytes = bytes, .alignment = alignment},
+            .dtype = DataType::Float32(),
+            .rows = total_rows,
+            .columns = in_features,
+    };
+}
+
+StatusOr<WeightPackingPlan> PlanWeightsWithRecipe(
+        OpType op_type,
+        std::span<const TensorView> components,
+        const KernelSelector& selector,
+        const PackingRecipe& recipe) {
+    if (op_type == OpType::kUnknown || selector.device_type != DeviceType::kCPU ||
+        selector.weight_format != WeightFormat::kPacked) {
+        return Status::InvalidArgument("CPU weight packing requires a packed CPU request");
+    }
+    if (components.empty()) {
+        return Status::InvalidArgument("CPU weight packing requires at least one weight component");
+    }
+    if (recipe == CpuIdentityPackingRecipe()) {
+        return PlanIdentityWeights(components);
+    }
+    if (recipe == CpuBPanelF32Kc512Nr16Recipe()) {
+        return PlanBPanelF32Kc512Nr16Weights(components);
+    }
+    return Status::InvalidArgument("CPU weight packing does not support the requested recipe");
+}
+
+StatusOr<std::unique_ptr<PackedWeight>> PackIdentityWeights(
+        OpType op_type,
+        std::span<const TensorView> components,
+        const KernelSelector& selector,
+        const WeightPackingPlan& plan,
+        Allocator& allocator) {
+    AM_ASSIGN_OR_RETURN(Buffer packed_storage, allocator.TryAllocate(plan.storage));
+    if (components.size() == 1U) {
+        const TensorView& logical_weight = components.front();
+        if (plan.storage.nbytes > 0) {
+            std::memcpy(packed_storage.mutable_data(), logical_weight.data(), plan.storage.nbytes);
+        }
+        std::vector<int64_t> shape(logical_weight.shape().begin(), logical_weight.shape().end());
+        return std::make_unique<CpuPackedWeight>(
+                op_type, selector, CpuIdentityPackingRecipe(), plan.dtype,
+                std::move(shape), std::move(packed_storage));
     }
 
-    AM_ASSIGN_OR_RETURN(const size_t packed_nbytes,
-                        cpu::CpuBPanelF32Kc512Nr16PackedByteSize(total_rows, in_features));
-    AM_ASSIGN_OR_RETURN(Buffer packed_storage,
-                        AllocatePackedStorage(allocator, packed_nbytes, alignment));
-    if (packed_nbytes != 0) {
-        std::memset(packed_storage.mutable_data(), 0, packed_nbytes);
-        auto* const packed_data = static_cast<float*>(packed_storage.mutable_data());
-        auto n_blocks = static_cast<size_t>(
-                total_rows / kCpuBPanelF32Kc512Nr16NR +
-                (total_rows % kCpuBPanelF32Kc512Nr16NR != 0));
+    auto* out = static_cast<char*>(packed_storage.mutable_data());
+    for (const auto& component: components) {
+        AM_ASSIGN_OR_RETURN(const size_t bytes, ContiguousWeightByteSize(component));
+        if (bytes > 0) {
+            std::memcpy(out, component.data(), bytes);
+            out += bytes;
+        }
+    }
+    return std::make_unique<CpuPackedWeight>(
+            op_type, selector, CpuIdentityPackingRecipe(), plan.dtype,
+            std::vector<int64_t>{plan.rows, plan.columns}, std::move(packed_storage));
+}
 
+StatusOr<std::unique_ptr<PackedWeight>> PackBPanelF32Kc512Nr16Weights(
+        OpType op_type,
+        std::span<const TensorView> components,
+        const KernelSelector& selector,
+        const WeightPackingPlan& plan,
+        Allocator& allocator) {
+    AM_ASSIGN_OR_RETURN(Buffer packed_storage, allocator.TryAllocate(plan.storage));
+    if (plan.storage.nbytes != 0) {
+        std::memset(packed_storage.mutable_data(), 0, plan.storage.nbytes);
+        auto* const packed_data = static_cast<float*>(packed_storage.mutable_data());
+        const size_t n_blocks = static_cast<size_t>(
+                plan.rows / kCpuBPanelF32Kc512Nr16NR +
+                (plan.rows % kCpuBPanelF32Kc512Nr16NR != 0));
         size_t row_offset = 0;
         for (const auto& component: components) {
             const auto* const src = component.data<float>();
             for (int64_t row = 0; row < component.dim(0); ++row) {
-                size_t logical_row = row_offset + static_cast<size_t>(row);
-                size_t block = logical_row / static_cast<size_t>(kCpuBPanelF32Kc512Nr16NR);
-                size_t column = logical_row % static_cast<size_t>(kCpuBPanelF32Kc512Nr16NR);
-                for (int64_t k = 0; k < in_features; ++k) {
-                    auto k_panel = static_cast<size_t>(k / kCpuBPanelF32Kc512Nr16KC);
-                    auto k_in_panel = static_cast<size_t>(k % kCpuBPanelF32Kc512Nr16KC);
-                    size_t packed_index =
+                const size_t logical_row = row_offset + static_cast<size_t>(row);
+                const size_t block = logical_row / static_cast<size_t>(kCpuBPanelF32Kc512Nr16NR);
+                const size_t column = logical_row % static_cast<size_t>(kCpuBPanelF32Kc512Nr16NR);
+                for (int64_t k = 0; k < plan.columns; ++k) {
+                    const size_t k_panel = static_cast<size_t>(k / kCpuBPanelF32Kc512Nr16KC);
+                    const size_t k_in_panel = static_cast<size_t>(k % kCpuBPanelF32Kc512Nr16KC);
+                    const size_t packed_index =
                             ((k_panel * n_blocks + block) *
                                      static_cast<size_t>(kCpuBPanelF32Kc512Nr16KC) +
                              k_in_panel) *
                                     static_cast<size_t>(kCpuBPanelF32Kc512Nr16NR) +
                             column;
                     packed_data[packed_index] = src[static_cast<size_t>(row) *
-                                                            static_cast<size_t>(in_features) +
+                                                            static_cast<size_t>(plan.columns) +
                                                     static_cast<size_t>(k)];
                 }
             }
             row_offset += static_cast<size_t>(component.dim(0));
         }
     }
-
-    std::vector<int64_t> logical_shape{total_rows, in_features};
     return std::make_unique<CpuPackedWeight>(
-            op_type, selector, recipe, DataType::Float32(),
-            std::move(logical_shape), std::move(packed_storage));
+            op_type, selector, CpuBPanelF32Kc512Nr16Recipe(), plan.dtype,
+            std::vector<int64_t>{plan.rows, plan.columns}, std::move(packed_storage));
 }
 
 } // namespace
+
+StatusOr<AllocationRequest> GetWeightPackingRequirementsWithRecipe(
+        OpType op_type,
+        std::span<const TensorView> components,
+        const KernelSelector& selector,
+        const PackingRecipe& recipe) noexcept try {
+    AM_ASSIGN_OR_RETURN(const WeightPackingPlan plan,
+                        PlanWeightsWithRecipe(op_type, components, selector, recipe));
+    return plan.storage;
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
+}
 
 StatusOr<std::unique_ptr<PackedWeight>> PackWeightsWithRecipe(
         OpType op_type,
@@ -323,30 +343,13 @@ StatusOr<std::unique_ptr<PackedWeight>> PackWeightsWithRecipe(
         const KernelSelector& selector,
         const PackingRecipe& recipe,
         Allocator& allocator) noexcept try {
-    if (op_type == OpType::kUnknown || selector.device_type != DeviceType::kCPU ||
-        selector.weight_format != WeightFormat::kPacked) {
-        return Status::InvalidArgument(
-                "CPU weight packing requires a packed CPU request");
-    }
-
-    if (components.empty()) {
-        return Status::InvalidArgument(
-                "CPU weight packing requires at least one weight component");
-    }
-
+    AM_ASSIGN_OR_RETURN(const WeightPackingPlan plan,
+                        PlanWeightsWithRecipe(op_type, components, selector, recipe));
     if (recipe == CpuIdentityPackingRecipe()) {
-        return PackIdentityWeights(op_type, components, selector, allocator);
+        return PackIdentityWeights(op_type, components, selector, plan, allocator);
     }
-
-    if (recipe == CpuBPanelF32Kc512Nr16Recipe()) {
-        return PackBPanelF32Kc512Nr16Weights(op_type, components, selector,
-                                             allocator);
-    }
-
-    return Status::InvalidArgument(
-            "CPU weight packing does not support the requested recipe");
+    return PackBPanelF32Kc512Nr16Weights(op_type, components, selector, plan, allocator);
 } catch (const std::bad_alloc&) {
-    // Reporting allocation failure must not allocate another diagnostic string.
     return Status::ResourceExhausted({});
 }
 
@@ -458,6 +461,22 @@ StatusOr<PackingRecipe> CpuBackend::GetPackingRecipe(
     return cpu::internal::ResolvePackingRecipeFromRegistry(
             KernelRegistry::Global(), op_type, selector,
             capabilities_.effective_features);
+}
+
+StatusOr<AllocationRequest> CpuBackend::GetWeightPackingRequirements(
+        OpType op_type,
+        std::span<const TensorView> components,
+        const KernelSelector& selector,
+        const PackingRecipe& recipe) const try {
+    AM_ASSIGN_OR_RETURN(const PackingRecipe selected_recipe, GetPackingRecipe(op_type, selector));
+    if (recipe != selected_recipe) {
+        return Status::InvalidArgument(
+                "Requested packing recipe is not selected by this CPU backend");
+    }
+    return cpu::internal::GetWeightPackingRequirementsWithRecipe(
+            op_type, components, selector, recipe);
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 StatusOr<std::unique_ptr<PackedWeight>> CpuBackend::PackWeights(

@@ -8,9 +8,15 @@ namespace aethermind {
 
 StatusOr<ModelGraph> BuildModelGraph(const HfModelConfig& config,
                                      const ResolvedModelWeights& weights) {
+    return BuildModelGraph(config, weights, {});
+}
+
+StatusOr<ModelGraph> BuildModelGraph(const HfModelConfig& config,
+                                     const ResolvedModelWeights& weights,
+                                     const ModelGraphBuildOptions& options) {
     switch (ParseModelArchitecture(config)) {
         case ModelArchitecture::kLlamaDense:
-            return BuildLlamaDense(config, weights);
+            return BuildLlamaDense(config, weights, options);
         default:
             return Status::InvalidArgument(
                     "BuildModelGraph: unsupported model type '" + config.model_type +

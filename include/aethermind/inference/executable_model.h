@@ -9,6 +9,8 @@
 #include "aethermind/compiler/model_compiler.h"
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_plan.h"
+#include "aethermind/inference/cpu_inference_options.h"
+#include "aethermind/inference/resource_usage.h"
 #include "aethermind/inference/weight_binding_metadata.h"
 #include "aethermind/model/weight/packed_weight_collection.h"
 
@@ -19,6 +21,31 @@
 namespace aethermind {
 
 class Runtime;
+
+/// @brief Per-model visible tensor payload caps; zero means unlimited.
+/// Mapped/external backing, metadata and allocator overhead are reported or
+/// excluded separately. A model cap requires known raw backing metadata.
+struct ExecutableModelPrepareOptions {
+    size_t max_model_payload_bytes = 0;
+    size_t max_packed_weight_bytes = 0;
+};
+
+/// @brief Explicit source-weight policy for the CPU preparation entry point.
+enum class InferencePrecisionPreset : uint8_t {
+    kStrictFp32,
+    kFp32Compatible,
+};
+
+/// @brief CPU execution policy and per-model payload caps.
+///
+/// Compatibility widens actual F16/BF16 weights once before compilation and
+/// runs FP32 weights, activations, KV and logits. It currently requires O1/plain.
+/// The strict policy keeps the existing FP32-only source admission contract.
+struct CpuModelPrepareOptions {
+    CpuInferencePreset cpu_preset = CpuInferencePreset::kO1Plain;
+    InferencePrecisionPreset precision = InferencePrecisionPreset::kStrictFp32;
+    ExecutableModelPrepareOptions resources{};
+};
 
 /// @brief Immutable, execution-ready model owned between compilation and sessions.
 ///
@@ -93,9 +120,13 @@ public:
     /// @brief Returns whether this model's resolved kernels belong to runtime.
     AM_NODISCARD bool IsPreparedFor(const Runtime& runtime) const noexcept;
 
+    /// @brief Returns immutable preparation accounting for this model only.
+    AM_NODISCARD const ModelResourceUsage& resource_usage() const noexcept;
+
 private:
     friend StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
-                                                            LoweredModelArtifact artifact);
+                                                            LoweredModelArtifact artifact,
+                                                            const ExecutableModelPrepareOptions& options);
 
     ExecutableModel(Runtime& runtime,
                     LoweredModelArtifact artifact,
@@ -105,7 +136,8 @@ private:
                     ExecutionPlan plan,
                     ExecPhase phase,
                     size_t context_limit,
-                    size_t vocab_size) noexcept;
+                    size_t vocab_size,
+                    ModelResourceUsage resource_usage) noexcept;
 
     /// @brief Validates a phase query against the compiled artifact phase.
     Status CheckPhase(ExecPhase phase) const noexcept;
@@ -121,6 +153,7 @@ private:
     ExecPhase phase_ = ExecPhase::kBoth;
     size_t context_limit_ = 0;
     size_t vocab_size_ = 0;
+    ModelResourceUsage resource_usage_{};
 };
 
 /// @brief Prepares a compiled artifact for execution.
@@ -144,6 +177,12 @@ StatusOr<ExecutableModel> PrepareExecutableModel(
         Runtime& runtime,
         LoweredModelArtifact artifact);
 
+/// @brief Prepares with per-model payload admission; no partial model is published.
+StatusOr<ExecutableModel> PrepareExecutableModel(
+        Runtime& runtime,
+        LoweredModelArtifact artifact,
+        const ExecutableModelPrepareOptions& options);
+
 /// @brief Loads, compiles, and prepares a model directory for execution.
 ///
 /// This is a convenience orchestration entry point over
@@ -162,6 +201,30 @@ StatusOr<ExecutableModel> LoadAndPrepareExecutableModel(
         Runtime& runtime,
         const std::filesystem::path& model_dir,
         const ModelCompileOptions& compile_options);
+
+/// @brief Uses the same load/compile/prepare chain with explicit payload caps.
+StatusOr<ExecutableModel> LoadAndPrepareExecutableModel(
+        Runtime& runtime,
+        const std::filesystem::path& model_dir,
+        const ModelCompileOptions& compile_options,
+        const ExecutableModelPrepareOptions& prepare_options);
+
+/// @brief Loads once and prepares an explicitly selected CPU precision policy.
+///
+/// The Runtime must already be at its final address and outlive the model.
+/// Compatibility uses its CPU allocator for owned FP32 conversion storage,
+/// releases unused source backing before compilation, and preserves the original
+/// config dtype hint as provenance. The model cap is also checked against the
+/// normalized owned weights before allocating conversion payloads. It does not
+/// bound source mappings, conversion-time RSS, or allocator overhead.
+///
+/// Low-level compiler/preparation overloads retain their existing behavior;
+/// they never normalize weights implicitly. The C ABI and CLI retain strict
+/// source admission.
+StatusOr<ExecutableModel> LoadAndPrepareCpuExecutableModel(
+        Runtime& runtime,
+        const std::filesystem::path& model_dir,
+        const CpuModelPrepareOptions& options);
 
 } // namespace aethermind
 

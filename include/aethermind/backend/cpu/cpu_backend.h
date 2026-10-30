@@ -71,6 +71,15 @@ public:
     AM_NODISCARD StatusOr<PackingRecipe> GetPackingRecipe(
             OpType op_type, const KernelSelector& selector) const override;
 
+    /// @brief Queries the same validated storage request used by CPU packing.
+    /// @note Uses the effective-feature descriptor policy and exact recipe,
+    ///       without reading components or allocating artifact storage.
+    AM_NODISCARD StatusOr<AllocationRequest> GetWeightPackingRequirements(
+            OpType op_type,
+            std::span<const TensorView> components,
+            const KernelSelector& selector,
+            const PackingRecipe& recipe) const override;
+
     /// @brief Packs logical weight views using the selected CPU layout recipe.
     ///
     /// See `Backend::PackWeights` for the component contract; the CPU backend

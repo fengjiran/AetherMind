@@ -125,10 +125,6 @@ StatusOr<RuntimeConfiguration> ReadRuntimeConfiguration(const am_config_t* sourc
         return std::move(aligned_row_bytes).status();
     }
     RuntimeOptions options;
-    options.allocator = {.enable_cpu = true, .enable_cuda = false, .enable_cann = false};
-    options.backend.enable_cpu = true;
-    options.backend.enable_cuda = false;
-    options.backend.enable_cann = false;
     options.kv_cache = {.enable_manager = true,
                         .num_layers = layers,
                         .num_kv_heads = heads,

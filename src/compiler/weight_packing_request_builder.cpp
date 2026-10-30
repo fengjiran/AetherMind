@@ -8,14 +8,18 @@
 namespace aethermind {
 namespace {
 
-/// @brief Resolves one binding's raw weight, rejecting an absent view.
+/// @brief Resolves one binding's raw weight, rejecting absent or invalid views.
 StatusOr<RawWeightView> ResolveSingleWeight(const WeightBinding& binding,
                                             const ResolvedModelWeights& resolved) {
     const RawWeightView* raw = ResolveWeightBinding(binding, resolved);
-    if (raw == nullptr || !raw->IsValid()) {
+    if (raw == nullptr) {
         return Status::Internal(
                 "BuildWeightPackingRequests: resolved weights are "
                 "missing the raw weight for a binding");
+    }
+    if (!raw->IsValid()) {
+        return Status::InvalidArgument(
+                "BuildWeightPackingRequests: binding resolves to an invalid raw weight");
     }
     return *raw;
 }

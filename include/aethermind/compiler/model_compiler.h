@@ -8,6 +8,7 @@
 #include "aethermind/compiler/graph_lowering.h"
 #include "aethermind/compiler/lowered_graph.h"
 #include "aethermind/graph/optimization/graph_pass_manager.h"
+#include "aethermind/model/build_model_graph.h"
 #include "aethermind/model/loaded_model.h"
 
 #include <filesystem>
@@ -19,6 +20,7 @@ namespace aethermind {
 struct ModelCompileOptions {
     PassContext optimization{};
     GraphLoweringConfig lowering{};
+    ModelGraphBuildOptions graph_build{};
 };
 
 /// @brief Owning result of model compilation before execution planning.

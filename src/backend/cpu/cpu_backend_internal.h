@@ -8,6 +8,7 @@
 #include "aethermind/base/kernel_selector.h"
 #include "aethermind/base/status.h"
 #include "aethermind/base/tensor_view.h"
+#include "aethermind/memory/allocator.h"
 #include "aethermind/operators/op_type.h"
 
 #include <memory>
@@ -34,6 +35,16 @@ StatusOr<PackingRecipe> ResolvePackingRecipeFromRegistry(
         OpType op_type,
         const KernelSelector& selector,
         const CpuFeatureSet& effective_features);
+
+/// @brief Queries exact physical storage using the same metadata plan as packing.
+/// @note Does not resolve descriptors, read payloads, or allocate artifact storage.
+///       Used by CpuBackend after eligibility/recipe resolution, and by isolated
+///       layout tests that do not execute target-ISA kernels.
+AM_NODISCARD StatusOr<AllocationRequest> GetWeightPackingRequirementsWithRecipe(
+        OpType op_type,
+        std::span<const TensorView> components,
+        const KernelSelector& selector,
+        const PackingRecipe& recipe) noexcept;
 
 /// @brief Packs ordered components using an explicit recipe without registry lookup.
 ///

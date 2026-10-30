@@ -41,9 +41,9 @@ Status KVCacheManager::Init(Allocator& allocator,
     return Status::ResourceExhausted({});
 }
 
-StatusOr<KVCacheSessionView> KVCacheManager::ReserveForSession(
+StatusOr<size_t> KVCacheManager::ReservationCapacity(
         size_t prompt_len,
-        size_t future_kv_appends) noexcept try {
+        size_t future_kv_appends) const noexcept try {
     if (!initialized_) {
         return Status::FailedPrecondition("KVCacheManager is not initialized");
     }
@@ -77,6 +77,23 @@ StatusOr<KVCacheSessionView> KVCacheManager::ReserveForSession(
         return Status::Overflow("KV session generation is exhausted");
     }
 
+    return requested_tokens;
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
+}
+
+Status KVCacheManager::ValidateReservation(size_t prompt_len,
+                                           size_t future_kv_appends) const noexcept try {
+    auto capacity = ReservationCapacity(prompt_len, future_kv_appends);
+    return std::move(capacity).status();
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
+}
+
+StatusOr<KVCacheSessionView> KVCacheManager::ReserveForSession(
+        size_t prompt_len, size_t future_kv_appends) noexcept try {
+    AM_ASSIGN_OR_RETURN(const size_t requested_tokens,
+                        ReservationCapacity(prompt_len, future_kv_appends));
     ++session_state_.generation;
     session_state_.capacity_tokens = requested_tokens;
     session_state_.prompt_len = prompt_len;

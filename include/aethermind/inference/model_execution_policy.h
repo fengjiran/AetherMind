@@ -22,6 +22,16 @@ struct HfModelConfig;
 ///       Family and operator semantics remain the compiler's responsibility.
 Status ValidateFp32ExecutionInputs(const LoadedModel& model);
 
+/// @brief Validates actual required weights for explicit FP32 compatibility.
+/// Accepts only scalar F32/F16/BF16 source weights and supported source hints.
+/// Payload conversion remains the model normalizer's responsibility.
+Status ValidateFp32CompatibleSourceInputs(const LoadedModel& model);
+
+/// @brief Validates required execution weights as scalar FP32, ignoring hints.
+/// Used after explicit normalization, where the original hint is provenance.
+/// This does not validate tensor shapes, family semantics, or an existing Runtime.
+Status ValidateFp32ExecutionWeights(const LoadedModel& model);
+
 /// @brief Maps validated model geometry and explicit capacity to FP32 KV options.
 /// @param config Configuration already validated by ModelLoader.
 /// @param context_tokens Positive KV capacity no larger than the model context.

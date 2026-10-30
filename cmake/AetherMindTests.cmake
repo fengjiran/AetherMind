@@ -47,6 +47,8 @@ function(aethermind_test_labels name output)
             WorkspaceRequirementPlanningDiagnosticFailure.ReturnsResourceExhaustedAndPreservesOffsets
             OffsetAlignment.SuccessfulAlignmentDoesNotAllocate
             OffsetAlignmentDiagnosticFailure.ReturnsResourceExhaustedWithEmptyMessage
+            ExecutionBindingPlanningDiagnosticFailure.MetadataFailureThrowsBeforePayloadAllocation
+            ModelWeightStorageSummaryDiagnosticFailure.MetadataFailureReturnsResourceExhausted
             KVCacheLayoutPlanningNoAllocation.SucceedsWithoutHeapAllocation
             KVCacheLayoutPlanningDiagnosticFailure.ReturnsResourceExhaustedWithoutPublishingLayout
             ParseNumber.FallbackAllocationFailurePreservesOutputAndCanRetry
@@ -109,9 +111,15 @@ function(aethermind_test_labels name output)
         list(APPEND labels cli)
     endif ()
 
+    if ((name MATCHES "(^|/)(InferenceResourceLimits|ModelResourceLimits)\\." AND
+            NOT name MATCHES "(InlineConstantsAreChargedOnceBeforeAnyPacking|SharedOwnerDistinctConstantVectorsAreBothCharged|UnlimitedPreparationDoesNotValidateUnusedRawRoles)") OR
+            name STREQUAL "ModelWeightStorageSummary.HfMappingCountsCompleteFileOnce")
+        list(APPEND labels model)
+    endif ()
+
     string(CONCAT smoke_pattern
             "(^|/)(CpuInfo|CpuCapabilities|CpuBackendFactory|"
-            "InferenceRunOptions|InferenceRuntimeOptions|InferenceCpuPreset|CAbiRuntime|"
+            "InferenceRunOptions|CpuRuntimeAssembly|CpuRuntimeConfiguration|InferenceCpuPreset|CAbiRuntime|"
             "MallocInterposerContract|GlobalFunctionTable|FunctionRegistryOwnership)\\.")
     if (name MATCHES "${smoke_pattern}" OR
             name MATCHES "(TinyGenerateMatchesScalarOracle|LoadsPreparesAndGeneratesFromHfDirectory)")
@@ -125,7 +133,8 @@ function(aethermind_test_labels name output)
             "(^|/)CPUKernel(Argmax|Attention|Linear|RmsNorm|RoPE|AddRmsNorm|"
             "GateUpLinear|QkvLinear|MatMul|GemmReference|GemmScalar|DotProduct|Silu)")
     if (name MATCHES "${numerical_pattern}" OR
-            name MATCHES "${cpu_kernel_pattern}")
+            name MATCHES "${cpu_kernel_pattern}" OR
+            name MATCHES "(^|/)(ModelWeightNormalization|Fp32CompatibleInference)\\.")
         list(APPEND labels numerical)
     endif ()
 
@@ -145,7 +154,8 @@ function(aethermind_test_labels name output)
             "(KVCache|Prefill|ExecutionContext|PreparedExecutionBindings|KernelInvoker|RuntimeBuilder|"
             "Allocator|Buffer\\.|CAbi|InferenceRunnerFailure|TinyLlamaExecution|TinyWorkspaceSession|"
             "GlobalFunctionTable|FunctionRegistryOwnership)")
-    if (name MATCHES "${lifecycle_pattern}")
+    if (name MATCHES "${lifecycle_pattern}" OR
+            name MATCHES "(^|/)(ModelWeightNormalization|Fp32CompatibleInference|Fp32CompatibilityAdmission)\\.")
         list(APPEND labels lifecycle)
     endif ()
 
@@ -184,11 +194,22 @@ function(aethermind_test_labels name output)
     string(CONCAT validation_pattern
             "(^|/)(TinyLlamaExecution|TinyWorkspaceSession|DirectPrefillDecode|Prefill|"
             "PrefillInvalidToken|KVCacheCommitTest|KVCacheSessionView|KVCacheInvalidStateTest|"
-            "KernelInvoker|ExecutionContext|RuntimeBuilderTryBuild|KVCacheLayoutPlanning|"
+            "KernelInvoker|ExecutionContext|RuntimeBuilderTryBuild|KVCacheLayoutPlanning|RuntimeResourceLimits|ExecutionBindingPlanning|CpuWeightPackingRequirements|PackingResourceLimits|ModelWeightStorageSummary|ModelResourceLimits|InferenceResourceLimits|"
+            "CpuRuntimeAssembly|CpuRuntimeConfiguration|RuntimeOptionsValidation|"
+            "ModelWeightNormalization|ModelGraphBuildOptions|ModelCompilerGraphBuildOptions|Fp32CompatibilityPolicy|Fp32CompatibleInference|Fp32CompatibilityAdmission|"
+            "RawWeightValidation|RawWeightConsumers|"
             "LoadAndPrepareExecutableModel(Path)?|InferenceRunnerFailure|InferenceRunnerEquivalence|"
             "InferenceCliIntegration|CAbiRuntimeIntegration|MallocInterposerContract|"
             "GlobalFunctionTable|FunctionRegistryOwnership)\\.")
+    string(CONCAT artifact_dtype_pattern
+            "^PackedWeightCollectionOwnership\\.("
+            "InsertRejectsScalableLogicalDTypesWithoutBindingSource|"
+            "InsertRejectsReservedLogicalLaneEncodingWithoutBindingSource|"
+            "InsertPreservesUnspecifiedLogicalSizeContract|"
+            "InsertUsesFixedVectorLogicalElementByteSize)$")
     if (name MATCHES "${validation_pattern}" OR
+            name MATCHES "${artifact_dtype_pattern}" OR
+            name STREQUAL "WeightPacking.LoweredDrivenPrepackAndResolve" OR
             name MATCHES "SlidingWindow" OR "interposer" IN_LIST labels)
         list(APPEND labels validation)
     endif ()

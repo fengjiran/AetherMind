@@ -3,6 +3,7 @@
 
 #include "aethermind/model/loaded_model.h"
 #include "aethermind/model/model_loader.h"
+#include "model/test_model_graph_helpers.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -134,6 +135,45 @@ TEST(ModelCompiler, RejectsNullLoadedModel) {
 
     ASSERT_FALSE(lowered.ok());
     EXPECT_EQ(lowered.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(ModelCompilerGraphBuildOptions, PropagatesExplicitFp32DTypesAndPreservesSourceHint) {
+    HfModelConfig config = MakeLlamaConfig(1);
+    config.weight_dtype_hint = DataType::BFloat(16);
+    config.weight_dtype_hint_name = "bfloat16";
+    auto model = std::make_unique<LoadedModel>(config, MakeWeights(config));
+    ModelCompileOptions options;
+    options.optimization.opt_level = 1;
+    options.graph_build = {.activation_dtype = DataType::Float32(),
+                           .kv_dtype = DataType::Float32()};
+
+    const auto artifact = ModelCompiler::Compile(std::move(model), options);
+
+    ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
+    ASSERT_NE(artifact->loaded_model, nullptr);
+    EXPECT_EQ(artifact->loaded_model->GetConfig().weight_dtype_hint, DataType::BFloat(16));
+    EXPECT_EQ(artifact->loaded_model->GetConfig().weight_dtype_hint_name, "bfloat16");
+    for (const auto& value: artifact->graph.values()) {
+        if (value.spec.dtype.IsFloat()) {
+            EXPECT_EQ(value.spec.dtype, DataType::Float32()) << value.name;
+        }
+    }
+    EXPECT_TRUE(ValidateLoweredGraph(artifact->graph).ok());
+}
+
+TEST(ModelCompilerGraphBuildOptions, ReportsGraphConstructionDTypeError) {
+    const HfModelConfig config = MakeLlamaConfig(1);
+    auto model = std::make_unique<LoadedModel>(config, MakeWeights(config));
+    ModelCompileOptions options;
+    options.graph_build.activation_dtype = DataType::Int(32);
+
+    const auto artifact = ModelCompiler::Compile(std::move(model), options);
+
+    ASSERT_FALSE(artifact.ok());
+    EXPECT_EQ(artifact.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(artifact.status().message().find("Model graph construction failed"),
+              std::string::npos);
+    EXPECT_NE(artifact.status().message().find("activation_dtype"), std::string::npos);
 }
 
 } // namespace

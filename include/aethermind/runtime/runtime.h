@@ -8,6 +8,8 @@
 #include "aethermind/kv_cache/kv_cache_manager.h"
 #include "aethermind/memory/allocator.h"
 
+#include <cstddef>
+
 namespace aethermind {
 
 /// @brief Long-lived owner of backend, allocator, and KV-cache resources.
@@ -69,6 +71,13 @@ public:
         return backend_registry_.GetBackend(type);
     }
 
+    /// @brief Returns the request workspace payload cap; zero means unlimited.
+    /// @note This value is owned by the Runtime and independent of whether a
+    ///       separate workspace manager was requested during assembly.
+    AM_NODISCARD size_t workspace_limit_bytes() const noexcept {
+        return workspace_limit_bytes_;
+    }
+
     /// @brief Returns the KV cache manager, or nullptr when it is disabled.
     ///
     /// The returned pointer borrows Runtime-owned state: it stays valid only
@@ -99,14 +108,16 @@ public:
 
 private:
     Runtime(AllocatorRegistry allocator_registry, BackendRegistry backend_registry,
-            KVCacheManager kv_cache_manager)
+            KVCacheManager kv_cache_manager, size_t workspace_limit_bytes)
         : allocator_registry_(std::move(allocator_registry)),
           backend_registry_(std::move(backend_registry)),
-          kv_cache_manager_(std::move(kv_cache_manager)) {}
+          kv_cache_manager_(std::move(kv_cache_manager)),
+          workspace_limit_bytes_(workspace_limit_bytes) {}
 
     AllocatorRegistry allocator_registry_;
     BackendRegistry backend_registry_;
     KVCacheManager kv_cache_manager_{};
+    size_t workspace_limit_bytes_ = 0;
 
     friend class RuntimeBuilder;
 };

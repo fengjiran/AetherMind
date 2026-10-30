@@ -13,6 +13,7 @@
 #include "aethermind/backend/packed_weight.h"
 #include "aethermind/backend/resolved_kernel.h"
 #include "aethermind/base/macros.h"
+#include "aethermind/memory/allocator.h"
 #include "aethermind/operators/op_params.h"
 
 #include <memory>
@@ -67,6 +68,30 @@ public:
         UNUSED(selector);
         return Status::Unimplemented(
                 "Backend does not expose descriptor packing recipes");
+    }
+
+    /// @brief Queries the exact artifact storage request before packing.
+    /// @param op_type Operator whose selected descriptor consumes the artifact.
+    /// @param components Logical views in the same order accepted by PackWeights.
+    /// @param selector Packed-weight consumer selector.
+    /// @param recipe Exact recipe selected for that consumer.
+    /// @return The visible payload bytes and minimum allocation alignment, or
+    ///         Unimplemented when the backend cannot plan packing storage.
+    /// @note Reads metadata only: component payload is not accessed and no
+    ///       artifact storage is allocated. The result excludes allocator
+    ///       metadata and internal physical-capacity rounding. Callers must
+    ///       keep metadata unchanged between this query and PackWeights.
+    virtual StatusOr<AllocationRequest> GetWeightPackingRequirements(
+            OpType op_type,
+            std::span<const TensorView> components,
+            const KernelSelector& selector,
+            const PackingRecipe& recipe) const {
+        UNUSED(op_type);
+        UNUSED(components);
+        UNUSED(selector);
+        UNUSED(recipe);
+        return Status::Unimplemented(
+                "Backend does not expose weight packing storage requirements");
     }
 
     /// @brief Packs logical weight views using an explicit consumer recipe.

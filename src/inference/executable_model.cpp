@@ -7,6 +7,8 @@
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/graph/graph_types.h"
+#include "aethermind/inference/model_execution_policy.h"
+#include "aethermind/model/model_loader.h"
 #include "aethermind/model/raw_weight.h"
 #include "aethermind/model/resolved_model_weights.h"
 #include "aethermind/model/weight/packed_weight_collection.h"
@@ -14,8 +16,12 @@
 #include "aethermind/runtime/runtime.h"
 #include "utils/overflow_check.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <memory>
+#include <new>
 #include <optional>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -206,7 +212,8 @@ ExecutableModel::ExecutableModel(Runtime& runtime,
                                  ExecutionPlan plan,
                                  ExecPhase phase,
                                  size_t context_limit,
-                                 size_t vocab_size) noexcept
+                                 size_t vocab_size,
+                                 ModelResourceUsage resource_usage) noexcept
     : runtime_(&runtime),
       artifact_(std::move(artifact)),
       packed_weights_(std::move(packed_weights)),
@@ -215,7 +222,12 @@ ExecutableModel::ExecutableModel(Runtime& runtime,
       plan_(std::move(plan)),
       phase_(phase),
       context_limit_(context_limit),
-      vocab_size_(vocab_size) {}
+      vocab_size_(vocab_size),
+      resource_usage_(resource_usage) {}
+
+const ModelResourceUsage& ExecutableModel::resource_usage() const noexcept {
+    return resource_usage_;
+}
 
 Status ExecutableModel::CheckPhase(ExecPhase phase) const noexcept {
     if (!PhaseMatches(phase_, phase)) {
@@ -290,6 +302,12 @@ inference::internal::ResolveWeightPackingRequests(const Backend& backend,
 
 StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
                                                  LoweredModelArtifact artifact) {
+    return PrepareExecutableModel(runtime, std::move(artifact), {});
+}
+
+StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
+                                                 LoweredModelArtifact artifact,
+                                                 const ExecutableModelPrepareOptions& options) try {
     if (artifact.loaded_model == nullptr) {
         return Status::InvalidArgument("PrepareExecutableModel: artifact "
                                        "carries no loaded model");
@@ -311,6 +329,53 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
     const auto context_limit = static_cast<size_t>(model_config.max_position_embeddings);
 
     const ResolvedModelWeights& resolved = artifact.loaded_model->GetResolvedWeights();
+    ModelResourceUsage usage;
+    usage.weight_normalization = artifact.loaded_model->GetWeightNormalizationUsage();
+    auto weight_usage = SummarizeModelWeightStorage(resolved);
+    if (!weight_usage.ok()) {
+        if (options.max_model_payload_bytes != 0 ||
+            weight_usage.status().code() == StatusCode::kResourceExhausted) {
+            return weight_usage.status();
+        }
+        // Reporting must not strengthen the generic unlimited preparation
+        // contract for raw roles the graph never consumes.
+        usage.weights.backing_complete = false;
+    } else {
+        usage.weights = *weight_usage;
+    }
+    // Distinct vector objects may alias one shared control block; charge each
+    // visible payload once, rather than treating that entire owner as one vector.
+    std::set<const std::vector<std::byte>*, std::less<const std::vector<std::byte>*>> constants;
+    for (const auto& value: artifact.graph.values()) {
+        const auto* constant = std::get_if<ConstantValue>(&value.payload);
+        if (constant != nullptr && constant->binding.inline_data != nullptr &&
+            constants.insert(constant->binding.inline_data.get()).second) {
+            if (CheckOverflowAdd(usage.inline_constant_bytes,
+                                 constant->binding.inline_data->size(), &usage.inline_constant_bytes)) {
+                return Status::Overflow("Inline constant payload overflowed size_t");
+            }
+        }
+    }
+    if (CheckOverflowAdd(usage.weights.owned_bytes, usage.inline_constant_bytes,
+                         &usage.managed_payload_bytes)) {
+        return Status::Overflow("Model payload overflowed size_t");
+    }
+    std::optional<size_t> packed_cap;
+    if (options.max_packed_weight_bytes != 0) {
+        packed_cap = options.max_packed_weight_bytes;
+    }
+    if (options.max_model_payload_bytes != 0) {
+        if (!usage.weights.backing_complete) {
+            return Status::Unimplemented("Model payload limit requires complete raw storage footprints");
+        }
+        if (usage.managed_payload_bytes > options.max_model_payload_bytes) {
+            return Status::ResourceExhausted("Model payload exceeds limit: required=" +
+                                             std::to_string(usage.managed_payload_bytes) + ", limit=" +
+                                             std::to_string(options.max_model_payload_bytes));
+        }
+        const size_t remaining = options.max_model_payload_bytes - usage.managed_payload_bytes;
+        packed_cap = packed_cap.has_value() ? std::min(*packed_cap, remaining) : remaining;
+    }
     auto requests = BuildWeightPackingRequests(
             artifact.graph, resolved);
     if (!requests.ok()) {
@@ -334,8 +399,14 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
                         runtime.TryGetAllocator(Device(device)));
     AM_ASSIGN_OR_RETURN(PackedWeightCollection packed_weights,
                         PrepackWeightRequests(**backend, resolved_requests,
-                                              *pack_allocator));
+                                              *pack_allocator, packed_cap));
 
+    AM_ASSIGN_OR_RETURN(usage.packed_weight_bytes, packed_weights.total_storage_bytes());
+    usage.packing_plan_complete = packed_weights.storage_plan_complete();
+    if (CheckOverflowAdd(usage.managed_payload_bytes, usage.packed_weight_bytes,
+                         &usage.managed_payload_bytes)) {
+        return Status::Overflow("Model payload overflowed size_t");
+    }
     auto plan = ExecutionPlanBuilder::Build(runtime,
                                             packed_weights, artifact.graph);
     if (!plan.ok()) {
@@ -401,13 +472,22 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
                            std::move(binding_metadata), std::move(bindings),
                            std::move(*plan), *phase,
                            context_limit,
-                           vocab_size);
+                           vocab_size, usage);
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
+}
+
+StatusOr<ExecutableModel> LoadAndPrepareExecutableModel(
+        Runtime& runtime, const std::filesystem::path& model_dir,
+        const ModelCompileOptions& compile_options) {
+    return LoadAndPrepareExecutableModel(runtime, model_dir, compile_options, {});
 }
 
 StatusOr<ExecutableModel> LoadAndPrepareExecutableModel(
         Runtime& runtime,
         const std::filesystem::path& model_dir,
-        const ModelCompileOptions& compile_options) {
+        const ModelCompileOptions& compile_options,
+        const ExecutableModelPrepareOptions& prepare_options) {
     auto artifact = ModelCompiler::LoadAndCompile(model_dir, compile_options);
     if (!artifact.ok()) {
         const Status& status = artifact.status();
@@ -416,7 +496,7 @@ StatusOr<ExecutableModel> LoadAndPrepareExecutableModel(
                 status.message());
     }
 
-    auto executable = PrepareExecutableModel(runtime, std::move(*artifact));
+    auto executable = PrepareExecutableModel(runtime, std::move(*artifact), prepare_options);
     if (!executable.ok()) {
         const Status& status = executable.status();
         return status.WithMessage(
@@ -424,6 +504,55 @@ StatusOr<ExecutableModel> LoadAndPrepareExecutableModel(
                 status.message());
     }
     return std::move(*executable);
+}
+
+StatusOr<ExecutableModel> LoadAndPrepareCpuExecutableModel(
+        Runtime& runtime, const std::filesystem::path& model_dir,
+        const CpuModelPrepareOptions& options) try {
+    if (options.precision != InferencePrecisionPreset::kStrictFp32 &&
+        options.precision != InferencePrecisionPreset::kFp32Compatible) {
+        return Status::InvalidArgument("Unknown inference precision preset");
+    }
+    AM_ASSIGN_OR_RETURN(auto compile_options, MakeCpuCompileOptions(options.cpu_preset));
+    const bool compatible = options.precision == InferencePrecisionPreset::kFp32Compatible;
+    if (compatible && options.cpu_preset != CpuInferencePreset::kO1Plain) {
+        return Status::Unimplemented("FP32 compatibility requires CPU O1/plain");
+    }
+    compile_options.graph_build.activation_dtype = DataType::Float32();
+    compile_options.graph_build.kv_dtype = DataType::Float32();
+
+    AM_ASSIGN_OR_RETURN(auto loaded, ModelLoader::Load(model_dir));
+    if (compatible) {
+        AM_RETURN_IF_ERROR(ValidateFp32CompatibleSourceInputs(*loaded));
+        AM_ASSIGN_OR_RETURN(Allocator * allocator, runtime.TryGetAllocator(Device::CPU()));
+        auto normalized = NormalizeLoadedModelWeightsToFp32(
+                *loaded, *allocator,
+                {.max_owned_weight_bytes = options.resources.max_model_payload_bytes});
+        if (!normalized.ok()) {
+            return normalized.status().WithMessage(
+                    "FP32 compatibility normalization failed: " + normalized.status().message());
+        }
+        // Drop source-only mappings before compiling or packing. Shared F32
+        // source owners remain alive through the normalized model's views.
+        loaded = std::move(*normalized);
+        AM_RETURN_IF_ERROR(ValidateFp32ExecutionWeights(*loaded));
+    } else {
+        AM_RETURN_IF_ERROR(ValidateFp32ExecutionInputs(*loaded));
+    }
+
+    auto artifact = ModelCompiler::Compile(std::move(loaded), compile_options);
+    if (!artifact.ok()) {
+        return artifact.status().WithMessage(
+                "CPU model compilation failed: " + artifact.status().message());
+    }
+    auto executable = PrepareExecutableModel(runtime, std::move(*artifact), options.resources);
+    if (!executable.ok()) {
+        return executable.status().WithMessage(
+                "CPU model preparation failed: " + executable.status().message());
+    }
+    return std::move(*executable);
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 } // namespace aethermind

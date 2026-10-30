@@ -24,7 +24,8 @@ StatusOr<LoweredModelArtifact> ModelCompiler::Compile(std::unique_ptr<LoadedMode
         return Status::InvalidArgument("ModelCompiler::Compile requires a LoadedModel");
     }
 
-    auto graph = BuildModelGraph(model->GetConfig(), model->GetResolvedWeights());
+    auto graph = BuildModelGraph(model->GetConfig(), model->GetResolvedWeights(),
+                                 options.graph_build);
     if (!graph.ok()) {
         return AddStageContext(graph.status(), "Model graph construction failed");
     }

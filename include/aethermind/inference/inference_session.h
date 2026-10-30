@@ -5,6 +5,7 @@
 /// @brief Synchronous token generation over a prepared executable model.
 
 #include "aethermind/base/status.h"
+#include "aethermind/inference/resource_usage.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -36,6 +37,11 @@ struct GenerationConfig {
     std::optional<uint32_t> eos_token_id{};
 };
 
+/// @brief Per-request workspace + peak activation payload cap; zero is unlimited.
+struct InferenceSessionOptions {
+    size_t max_request_payload_bytes = 0;
+};
+
 /// @brief Synchronous, single-request orchestration over an ExecutableModel.
 ///
 /// The session borrows Runtime, which must outlive it, and shares ownership
@@ -52,6 +58,20 @@ public:
     static StatusOr<InferenceSession> Create(
             Runtime& runtime,
             std::shared_ptr<const ExecutableModel> model);
+
+    /// @brief Creates a session with an explicit per-request payload cap.
+    static StatusOr<InferenceSession> Create(
+            Runtime& runtime,
+            std::shared_ptr<const ExecutableModel> model,
+            const InferenceSessionOptions& options);
+
+    /// @brief Reports requirements for a concrete prompt length without
+    ///        reserving KV, allocating tensor Buffers or executing kernels.
+    /// @note Cold-path metadata/control vectors may allocate. This checks
+    ///       geometry/lifecycle but not prompt token values, and does not apply
+    ///       the limits, so callers can inspect an over-budget requirement.
+    AM_NODISCARD StatusOr<RequestResourceUsage> PlanResources(
+            size_t prompt_tokens, const GenerationConfig& config) const;
 
     InferenceSession(InferenceSession&&) noexcept = default;
     InferenceSession& operator=(InferenceSession&&) noexcept = default;
@@ -79,12 +99,14 @@ private:
     InferenceSession(Runtime& runtime,
                      std::shared_ptr<const ExecutableModel> model,
                      PhaseContract prefill_contract,
-                     PhaseContract decode_contract) noexcept;
+                     PhaseContract decode_contract,
+                     size_t max_request_payload_bytes) noexcept;
 
     Runtime* runtime_ = nullptr;
     std::shared_ptr<const ExecutableModel> model_{};
     PhaseContract prefill_contract_{};
     PhaseContract decode_contract_{};
+    size_t max_request_payload_bytes_ = 0;
 };
 
 } // namespace aethermind

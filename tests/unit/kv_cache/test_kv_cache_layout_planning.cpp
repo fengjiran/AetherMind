@@ -34,14 +34,30 @@ struct GeometryCase {
 };
 
 const std::array kGeometryCases{
-        GeometryCase{"F32Tail", 2, 3, 4, 17, DataType::Float32(), 64, 32, 128, 512, 1536, 3072, 3008},
-        GeometryCase{"F16MultiHead", 2, 4, 8, 17, DataType::Float(16), 64, 32, 64, 512, 2048, 4096, 4064},
-        GeometryCase{"BF16SingleHead", 3, 1, 7, 33, DataType::BFloat(16), 16, 40, 80, 560, 560, 1680, 1664},
-        GeometryCase{"AlignmentBelowElement", 1, 1, 2, 3, DataType::Float32(), 1, 3, 12, 24, 24, 24, 20},
-        GeometryCase{"LargeAlignment", 1, 2, 3, 65, DataType::Float32(), 256, 128, 512, 1536, 3072, 3072, 2816},
-        GeometryCase{"ThreeByteElement", 1, 2, 2, 17, DataType::UInt(8, 3), 64, 64, 192, 384, 768, 768, 624},
-        GeometryCase{"TwelveByteElement", 2, 2, 3, 5, DataType::Float(32, 3), 16, 8, 96, 288, 576, 1152, 1104},
-        GeometryCase{"ElementLargerThanAlignment", 1, 1, 2, 3, DataType::Float(32, 3), 8, 4, 48, 96, 96, 96, 72},
+        GeometryCase{"F32Tail", 2, 3, 4, 17,
+                     DataType::Float32(), 64, 32, 128,
+                     512, 1536, 3072, 3008},
+        GeometryCase{"F16MultiHead", 2, 4, 8, 17,
+                     DataType::Float(16), 64, 32, 64,
+                     512, 2048, 4096, 4064},
+        GeometryCase{"BF16SingleHead", 3, 1, 7, 33,
+                     DataType::BFloat(16), 16, 40, 80,
+                     560, 560, 1680, 1664},
+        GeometryCase{"AlignmentBelowElement", 1, 1, 2, 3,
+                     DataType::Float32(), 1, 3, 12,
+                     24, 24, 24, 20},
+        GeometryCase{"LargeAlignment", 1, 2, 3, 65,
+                     DataType::Float32(), 256, 128, 512,
+                     1536, 3072, 3072, 2816},
+        GeometryCase{"ThreeByteElement", 1, 2, 2, 17,
+                     DataType::UInt(8, 3), 64, 64, 192,
+                     384, 768, 768, 624},
+        GeometryCase{"TwelveByteElement", 2, 2, 3, 5,
+                     DataType::Float(32, 3), 16, 8, 96,
+                     288, 576, 1152, 1104},
+        GeometryCase{"ElementLargerThanAlignment", 1, 1, 2, 3,
+                     DataType::Float(32, 3), 8, 4, 48,
+                     96, 96, 96, 72},
 };
 
 void ExpectLayoutMatches(const KVCacheLayout& layout, const GeometryCase& expected) {
@@ -63,8 +79,9 @@ void ExpectLayoutMatches(const KVCacheLayout& layout, const GeometryCase& expect
     const auto total = layout.TotalBytes();
     ASSERT_TRUE(total.ok());
     EXPECT_EQ(*total, 2 * expected.plane_bytes);
-    const auto last = layout.Offset(expected.layers - 1, expected.heads - 1,
-                                    expected.tokens - 1, expected.head_dim - 1);
+    const auto last =
+            layout.Offset(expected.layers - 1, expected.heads - 1,
+                          expected.tokens - 1, expected.head_dim - 1);
     ASSERT_TRUE(last.ok());
     EXPECT_EQ(*last, expected.last_offset);
     EXPECT_LE(*last + layout.ElementBytes(), *plane);
@@ -95,7 +112,7 @@ public:
     explicit RecordingAllocator(std::shared_ptr<AllocationStats> stats)
         : stats_(std::move(stats)), backing_(Device::CPU()) {}
 
-    Device device() const noexcept override {
+    AM_NODISCARD Device device() const noexcept override {
         return Device::CPU();
     }
 
@@ -166,11 +183,14 @@ TEST(KVCacheLayoutPlanning, RejectsInvalidAlignment) {
 
 TEST(KVCacheLayoutPlanning, RejectsDTypesWithoutFixedPositiveLanes) {
     const auto valid =
-            PlanKVCacheLayout(1, 1, 1, 1, DataType::Float32(), 64);
+            PlanKVCacheLayout(1, 1, 1, 1,
+                              DataType::Float32(), 64);
     ASSERT_TRUE(valid.ok());
     for (const auto dtype: {DataType{}, DataType::ScalableFloat(32, 2),
                             DataType::Float(32, 65535)}) {
-        const auto planned = PlanKVCacheLayout(1, 1, 1, 1, dtype, 64);
+        const auto planned =
+                PlanKVCacheLayout(1, 1, 1, 1,
+                                  dtype, 64);
         EXPECT_EQ(planned.status().code(), StatusCode::kInvalidArgument);
         auto invalid = *valid;
         invalid.kv_dtype = dtype;
@@ -197,14 +217,17 @@ TEST(KVCacheLayoutPlanning, RejectsOverflowAtEveryLayoutStage) {
             OverflowCase{.name = "LayerStride", .heads = kMaxSize / 64 + 1},
             OverflowCase{.name = "PlaneBytes", .layers = kMaxSize / 64 + 1},
             OverflowCase{.name = "TotalBytes", .layers = kMaxSize / 128 + 1},
-            OverflowCase{.name = "RowElementGranularity", .dtype = DataType::Float(32, 3), .alignment = size_t{1} << (std::numeric_limits<size_t>::digits - 1)},
+            OverflowCase{.name = "RowElementGranularity",
+                         .dtype = DataType::Float(32, 3),
+                         .alignment = size_t{1} << (std::numeric_limits<size_t>::digits - 1)},
     };
 
     for (const auto& expected: cases) {
         SCOPED_TRACE(expected.name);
-        const auto planned = PlanKVCacheLayout(expected.layers, expected.heads,
-                                               expected.tokens, expected.head_dim,
-                                               expected.dtype, expected.alignment);
+        const auto planned =
+                PlanKVCacheLayout(expected.layers, expected.heads,
+                                  expected.tokens, expected.head_dim,
+                                  expected.dtype, expected.alignment);
         EXPECT_EQ(planned.status().code(), StatusCode::kOverflow);
     }
 }
@@ -238,7 +261,9 @@ TEST(KVCacheLayoutPlanning, TotalBytesIncludesDeclaredStrideGaps) {
 }
 
 TEST(KVCacheLayoutPlanning, TotalBytesRejectsInvalidLayoutsAndPlaneOverflow) {
-    const auto planned = PlanKVCacheLayout(1, 1, 1, 1, DataType::Float32(), 64);
+    const auto planned =
+            PlanKVCacheLayout(1, 1, 1, 1,
+                              DataType::Float32(), 64);
     ASSERT_TRUE(planned.ok());
     auto invalid = *planned;
     invalid.token_stride = 15;
@@ -261,8 +286,8 @@ TEST(KVCacheLayoutPlanning, ManagerAllocatesExactlyThePlannedPlanes) {
     for (const auto& expected: kGeometryCases) {
         SCOPED_TRACE(expected.name);
         const auto stats = std::make_shared<AllocationStats>();
-        RecordingAllocator allocator(stats);
         {
+            RecordingAllocator allocator(stats);
             KVCacheManager manager;
             const auto status = manager.Init(allocator, expected.layers, expected.heads,
                                              expected.tokens, expected.head_dim,
@@ -287,7 +312,8 @@ TEST(KVCacheLayoutPlanning, SecondPlaneFailureReleasesStorageAndCanRetry) {
     RecordingAllocator allocator(stats);
     allocator.fail_on_call = 1;
     KVCacheManager manager;
-    const auto status = manager.Init(allocator, 2, 3, 4, 17, DataType::Float32(), 64);
+    const auto status = manager.Init(allocator, 2, 3, 4,
+                                     17, DataType::Float32(), 64);
     EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
     EXPECT_FALSE(manager.is_initialized());
     EXPECT_EQ(manager.total_bytes(), 0U);
@@ -297,7 +323,9 @@ TEST(KVCacheLayoutPlanning, SecondPlaneFailureReleasesStorageAndCanRetry) {
     EXPECT_EQ(stats->released_buffers, 1U);
 
     allocator.fail_on_call = kMaxSize;
-    ASSERT_TRUE(manager.Init(allocator, 2, 3, 4, 17, DataType::Float32(), 64).ok());
+    ASSERT_TRUE(manager.Init(allocator, 2, 3, 4,
+                             17, DataType::Float32(), 64)
+                        .ok());
     EXPECT_EQ(stats->requests.size(), 4U);
     EXPECT_EQ(stats->live_buffers, 2U);
     auto view = manager.ReserveForSession(2, 1);
@@ -310,13 +338,15 @@ TEST(KVCacheLayoutPlanning, PlanningFailureClearsOldStorageBeforeReturning) {
     const auto stats = std::make_shared<AllocationStats>();
     RecordingAllocator allocator(stats);
     KVCacheManager manager;
-    ASSERT_TRUE(manager.Init(allocator, 1, 1, 8, 8, DataType::Float32(), 64).ok());
+    ASSERT_TRUE(manager.Init(allocator, 1, 1, 8,
+                             8, DataType::Float32(), 64)
+                        .ok());
     auto view = manager.ReserveForSession(2, 2);
     ASSERT_TRUE(view.ok());
     const KVCacheSessionView old = *view;
 
-    const auto status = manager.Init(allocator, 1, 1, 1, kMaxSize,
-                                     DataType::UInt(8), 64);
+    const auto status = manager.Init(allocator, 1, 1, 1,
+                                     kMaxSize, DataType::UInt(8), 64);
     EXPECT_EQ(status.code(), StatusCode::kOverflow);
     EXPECT_FALSE(manager.is_initialized());
     EXPECT_EQ(manager.total_bytes(), 0U);
@@ -327,7 +357,9 @@ TEST(KVCacheLayoutPlanning, PlanningFailureClearsOldStorageBeforeReturning) {
     EXPECT_FALSE(old.valid());
     EXPECT_FALSE(view->valid());
 
-    ASSERT_TRUE(manager.Init(allocator, 1, 1, 8, 8, DataType::Float32(), 64).ok());
+    ASSERT_TRUE(manager.Init(allocator, 1, 1, 8, 8,
+                             DataType::Float32(), 64)
+                        .ok());
     auto fresh = manager.ReserveForSession(2, 2);
     ASSERT_TRUE(fresh.ok());
     EXPECT_TRUE(fresh->valid());
@@ -341,7 +373,9 @@ TEST(KVCacheLayoutPlanningNoAllocation, SucceedsWithoutHeapAllocation) {
         GTEST_SKIP() << "Requires the glibc malloc interposer";
     }
     test::BeginMallocCallCounting();
-    const auto planned = PlanKVCacheLayout(2, 3, 4, 17, DataType::Float32(), 64);
+    const auto planned =
+            PlanKVCacheLayout(2, 3, 4,
+                              17, DataType::Float32(), 64);
     const StatusOr<size_t> total = planned.ok()
                                            ? planned->TotalBytes()
                                            : StatusOr<size_t>(planned.status());
@@ -363,7 +397,9 @@ TEST(KVCacheLayoutPlanningDiagnosticFailure, ReturnsResourceExhaustedWithoutPubl
     if (!test::MallocInterposerAvailable()) {
         GTEST_SKIP() << "Requires the glibc malloc interposer";
     }
-    const auto valid = PlanKVCacheLayout(1, 1, 1, 1, DataType::Float32(), 64);
+    const auto valid =
+            PlanKVCacheLayout(1, 1, 1, 1,
+                              DataType::Float32(), 64);
     ASSERT_TRUE(valid.ok());
     auto total_overflow = *valid;
     total_overflow.num_layers = kMaxSize / 128 + 1;
@@ -371,7 +407,9 @@ TEST(KVCacheLayoutPlanningDiagnosticFailure, ReturnsResourceExhaustedWithoutPubl
         SCOPED_TRACE(planner_failure);
         test::ScopedMallocFailure failure(0);
         const Status status = planner_failure
-                                      ? PlanKVCacheLayout(1, 1, 1, 1, DataType::Float32(), 3).status()
+                                      ? PlanKVCacheLayout(1, 1, 1, 1,
+                                                          DataType::Float32(), 3)
+                                                .status()
                                       : total_overflow.TotalBytes().status();
         const auto observed = failure.Stop();
 

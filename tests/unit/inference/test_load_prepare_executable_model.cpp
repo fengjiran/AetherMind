@@ -17,6 +17,10 @@
 namespace {
 
 using namespace aethermind;
+
+static_assert(requires(Runtime& runtime, const std::filesystem::path& directory) {
+    LoadAndPrepareExecutableModel(runtime, directory, {});
+});
 namespace fs = std::filesystem;
 
 fs::path TinyLlamaModelDir() {

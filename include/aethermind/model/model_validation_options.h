@@ -10,8 +10,9 @@ namespace aethermind {
 ///
 /// Validation reports mismatches through Status instead of silently fixing
 /// them. The defaults accept common HF export quirks (extra tensors, missing
-/// tied lm_head) while rejecting unsupported features (quantization,
-/// adapters, bias, RoPE scaling).
+/// tied lm_head, rope_scaling fields) while rejecting unsupported features
+/// (quantization, adapters, bias). Scaling semantics are decided downstream
+/// by the per-family graph builders' shared MakeRoPEParams, not here.
 // NOLINTBEGIN(readability-identifier-naming)
 struct ModelValidationOptions {
     // Enforce exact tensor-name matching; off because HF exports may carry
@@ -21,8 +22,8 @@ struct ModelValidationOptions {
     // are skipped when strict_tensor_names is off.
     bool allow_unknown_tensors = true; // NOLINT(readability-identifier-naming)
     // Accept configs with rope_scaling; on because HF configs commonly ship
-    // it. Scaling type values (kLinear/kNone) are validated downstream in
-    // the per-family graph builders' shared MakeRoPEParams.
+    // it. The HF algorithm name is validated downstream by the per-family
+    // graph builders' shared MakeRoPEParams (semantic RoPEAlgorithm).
     bool allow_rope_scaling = true; // NOLINT(readability-identifier-naming)
     // Accept attention/MLP bias; off because Llama-family models are bias-free.
     bool allow_bias = false; // NOLINT(readability-identifier-naming)

@@ -601,10 +601,10 @@ StatusOr<HfDirectoryDescriptor> HfDirectoryReader::InspectDirectory(
         return Status::InvalidArgument("HF model directory path must not be empty");
     }
 
-    std::error_code error;
     // First validate the root directory. All later paths are interpreted relative
     // to this directory, so missing or non-directory roots fail before checking
     // any HF-specific files.
+    std::error_code error;
     if (!std::filesystem::exists(model_dir, error) || error) {
         if (error) {
             return Status::Internal(

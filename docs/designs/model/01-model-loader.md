@@ -64,13 +64,14 @@ ModelLoader 是模型加载链路的前端唯一入口：把 HuggingFace 模型�
 
 ```text
 ModelLoader::Load(model_dir)
-  ├─ HfDirectoryReader::Open          → 目录存在性与结构校验
-  ├─ reader.Inspect()                 → 布局检测（单文件/分片）
+  ├─ HfDirectoryReader::Open          → 目录存在性与结构校验 + 布局检测（单文件/分片，InspectDirectory）
   ├─ reader.ParseConfig()             → HfModelConfig
+  ├─ HfModelValidator::ValidateConfig → config 语义校验
   ├─ reader.LoadRawWeightTable()      → RawWeightTable（raw tensor 视图）
-  ├─ HfModelValidator 三阶段校验      → config 语义 / weight set schema / resolved 完整性
-  └─ hf::ResolveWeights               → ResolvedModelWeights
-       └─ make_unique<LoadedModel>(config, resolved_weights)
+  ├─ HfModelValidator::ValidateWeightSet     → weight set schema / dtype 校验
+  ├─ hf::ResolveWeights               → ResolvedModelWeights
+  ├─ HfModelValidator::ValidateResolvedModel → resolved 形状 / dtype 完整性
+  └─ make_unique<LoadedModel>(config, resolved_weights)
 ```
 
 每步失败即返回对应 `Status`（`InvalidArgument` / 文件 I/O 错误等），不继续流水线。

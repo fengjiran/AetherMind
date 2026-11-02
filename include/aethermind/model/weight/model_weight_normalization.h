@@ -5,7 +5,7 @@
 /// @brief Explicit owned FP32 logical-weight normalization before compilation.
 
 #include "aethermind/base/status.h"
-#include "aethermind/model/weight/model_weight_storage_summary.h"
+#include "aethermind/model/weight/raw_weight_storage_usage.h"
 
 #include <cstddef>
 #include <memory>
@@ -28,8 +28,8 @@ struct ModelWeightNormalizationOptions {
 /// The peak covers source owned backing plus converted payload while both live;
 /// it excludes subsequent compilation/packing and allocator overhead.
 struct ModelWeightNormalizationUsage {
-    ModelWeightStorageSummary source_weights{};
-    ModelWeightStorageSummary normalized_weights{};
+    RawWeightStorageUsage source_weights{};
+    RawWeightStorageUsage normalized_weights{};
     size_t converted_source_bytes = 0;
     size_t converted_weight_bytes = 0;
     size_t peak_owned_weight_bytes = 0;

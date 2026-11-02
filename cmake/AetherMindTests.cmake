@@ -48,7 +48,7 @@ function(aethermind_test_labels name output)
             OffsetAlignment.SuccessfulAlignmentDoesNotAllocate
             OffsetAlignmentDiagnosticFailure.ReturnsResourceExhaustedWithEmptyMessage
             ExecutionBindingPlanningDiagnosticFailure.MetadataFailureThrowsBeforePayloadAllocation
-            ModelWeightStorageSummaryDiagnosticFailure.MetadataFailureReturnsResourceExhausted
+            RawWeightStorageUsageDiagnosticFailure.MetadataFailureReturnsResourceExhausted
             KVCacheLayoutPlanningNoAllocation.SucceedsWithoutHeapAllocation
             KVCacheLayoutPlanningDiagnosticFailure.ReturnsResourceExhaustedWithoutPublishingLayout
             ParseNumber.FallbackAllocationFailurePreservesOutputAndCanRetry
@@ -113,7 +113,7 @@ function(aethermind_test_labels name output)
 
     if ((name MATCHES "(^|/)(InferenceResourceLimits|ModelResourceLimits)\\." AND
             NOT name MATCHES "(InlineConstantsAreChargedOnceBeforeAnyPacking|SharedOwnerDistinctConstantVectorsAreBothCharged|UnlimitedPreparationDoesNotValidateUnusedRawRoles)") OR
-            name STREQUAL "ModelWeightStorageSummary.HfMappingCountsCompleteFileOnce")
+            name STREQUAL "RawWeightStorageUsage.HfMappingCountsCompleteFileOnce")
         list(APPEND labels model)
     endif ()
 
@@ -194,7 +194,7 @@ function(aethermind_test_labels name output)
     string(CONCAT validation_pattern
             "(^|/)(TinyLlamaExecution|TinyWorkspaceSession|DirectPrefillDecode|Prefill|"
             "PrefillInvalidToken|KVCacheCommitTest|KVCacheSessionView|KVCacheInvalidStateTest|"
-            "KernelInvoker|ExecutionContext|RuntimeBuilderTryBuild|KVCacheLayoutPlanning|RuntimeResourceLimits|ExecutionBindingPlanning|CpuWeightPackingRequirements|PackingResourceLimits|ModelWeightStorageSummary|ModelResourceLimits|InferenceResourceLimits|"
+            "KernelInvoker|ExecutionContext|RuntimeBuilderTryBuild|KVCacheLayoutPlanning|RuntimeResourceLimits|ExecutionBindingPlanning|CpuWeightPackingRequirements|PackingResourceLimits|RawWeightStorageUsage|ModelResourceLimits|InferenceResourceLimits|"
             "CpuRuntimeAssembly|CpuRuntimeConfiguration|RuntimeOptionsValidation|"
             "ModelWeightNormalization|ModelGraphBuildOptions|ModelCompilerGraphBuildOptions|Fp32CompatibilityPolicy|Fp32CompatibleInference|Fp32CompatibilityAdmission|"
             "RawWeightValidation|RawWeightConsumers|"

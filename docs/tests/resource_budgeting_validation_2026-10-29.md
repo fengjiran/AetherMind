@@ -52,10 +52,12 @@ ASAN_OPTIONS 为 halt_on_error=1:detect_leaks=1；UBSAN_OPTIONS 为 halt_on_erro
 最窄用例先执行 ExecutionBindingPlanning.PlansWithoutStorageAndMaterializesExactArena，再扩大到新增集合：
 
 ```bash
-new_filter='RuntimeResourceLimits.*:ExecutionBindingPlanning*.*:ModelWeightStorageSummary*.*:CpuWeightPackingRequirements.*:PackingResourceLimits.*:ModelResourceLimits.*:InferenceResourceLimits.*'
+new_filter='RuntimeResourceLimits.*:ExecutionBindingPlanning*.*:RawWeightStorageUsage*.*:CpuWeightPackingRequirements.*:PackingResourceLimits.*:ModelResourceLimits.*:InferenceResourceLimits.*'
 TMPDIR=/tmp AETHERMIND_REQUIRED_VALIDATION=1 \
   ./build/validation/validation-baseline/tests/unit/aethermind_unit_tests --gtest_filter="$new_filter"
 ```
+
+上述命令中的权重存储测试 suite 已更新为当前名称；历史产物保留验证时的名称。
 
 ASAN 使用真实 CTest 名称过滤、-LE '^interposer$'、--parallel 4 和 --output-junit；最终完整 filtered inventory 已保存。日志/JUnit 保存每个实际执行用例。
 

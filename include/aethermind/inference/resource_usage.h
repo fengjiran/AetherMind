@@ -2,7 +2,7 @@
 #define AETHERMIND_INFERENCE_RESOURCE_USAGE_H
 
 #include "aethermind/model/weight/model_weight_normalization.h"
-#include "aethermind/model/weight/model_weight_storage_summary.h"
+#include "aethermind/model/weight/raw_weight_storage_usage.h"
 
 #include <cstddef>
 #include <optional>
@@ -11,14 +11,14 @@ namespace aethermind {
 
 /// @brief Retained model tensor payload, excluding allocator overhead and RSS.
 struct ModelResourceUsage {
-    ModelWeightStorageSummary weights{};
+    RawWeightStorageUsage weights{};
     size_t inline_constant_bytes = 0;
     size_t packed_weight_bytes = 0;
     /// Known owned raw backing + inline constants + unique packed storage.
-    /// This is a partial observation when weights.backing_complete is false.
+    /// This is a partial observation when weights.backing_usage_complete is false.
     size_t managed_payload_bytes = 0;
     bool packing_plan_complete = true;
-    /// Conversion observations; these summaries do not retain source backing.
+    /// Conversion observations; these usage records do not retain source backing.
     std::optional<ModelWeightNormalizationUsage> weight_normalization{};
 };
 

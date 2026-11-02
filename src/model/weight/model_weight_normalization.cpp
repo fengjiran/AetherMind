@@ -171,10 +171,10 @@ StatusOr<std::unique_ptr<LoadedModel>> NormalizeLoadedModelWeightsToFp32(
         conversions[entry->second].targets.push_back(view);
     }
 
-    AM_ASSIGN_OR_RETURN(usage.source_weights, SummarizeModelWeightStorage(model.GetResolvedWeights()));
+    AM_ASSIGN_OR_RETURN(usage.source_weights, ComputeRawWeightStorageUsage(model.GetResolvedWeights()));
     usage.peak_owned_weight_bytes = usage.source_weights.owned_bytes;
     AM_RETURN_IF_ERROR(AddBytes(usage.converted_weight_bytes, usage.peak_owned_weight_bytes));
-    usage.peak_owned_weight_bytes_complete = usage.source_weights.backing_complete;
+    usage.peak_owned_weight_bytes_complete = usage.source_weights.backing_usage_complete;
 
     // Converted roles no longer retain their source owners. Summarize only F32
     // roles to count backing that survives alongside the new converted payload.
@@ -182,11 +182,11 @@ StatusOr<std::unique_ptr<LoadedModel>> NormalizeLoadedModelWeightsToFp32(
     for (const auto& [view, location]: CollectViews(retained)) {
         if (view->dtype != DataType::Float32()) *view = {};
     }
-    AM_ASSIGN_OR_RETURN(auto retained_summary, SummarizeModelWeightStorage(retained));
+    AM_ASSIGN_OR_RETURN(auto retained_summary, ComputeRawWeightStorageUsage(retained));
     size_t final_owned_bytes = retained_summary.owned_bytes;
     AM_RETURN_IF_ERROR(AddBytes(usage.converted_weight_bytes, final_owned_bytes));
     if (options.max_owned_weight_bytes != 0) {
-        if (!retained_summary.backing_complete) {
+        if (!retained_summary.backing_usage_complete) {
             return Status::FailedPrecondition("Finite normalized owned-weight cap requires complete retained Float32 backing metadata");
         }
         if (final_owned_bytes > options.max_owned_weight_bytes) {
@@ -219,7 +219,7 @@ StatusOr<std::unique_ptr<LoadedModel>> NormalizeLoadedModelWeightsToFp32(
             AM_RETURN_IF_ERROR(ValidateRawWeightView(*target));
         }
     }
-    AM_ASSIGN_OR_RETURN(usage.normalized_weights, SummarizeModelWeightStorage(normalized));
+    AM_ASSIGN_OR_RETURN(usage.normalized_weights, ComputeRawWeightStorageUsage(normalized));
     return std::make_unique<LoadedModel>(model.GetConfig(), std::move(normalized), usage);
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});

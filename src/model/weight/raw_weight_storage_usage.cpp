@@ -1,4 +1,4 @@
-#include "aethermind/model/weight/model_weight_storage_summary.h"
+#include "aethermind/model/weight/raw_weight_storage_usage.h"
 #include "aethermind/model/resolved_model_weights.h"
 #include "utils/overflow_check.h"
 
@@ -42,17 +42,21 @@ Status AddView(OwnerMap& owners, const RawWeightView& view) {
     if (view.dtype.IsUndefined() || view.dtype.bits() == 0 ||
         view.dtype.raw_lanes() == 0 ||
         view.dtype.raw_lanes() > std::numeric_limits<int16_t>::max()) {
-        return Status::InvalidArgument("Raw weight storage summary requires a fixed element dtype");
+        return Status::InvalidArgument(
+                "Raw weight storage usage requires a fixed element dtype");
     }
+
     AM_RETURN_IF_ERROR(ValidateRawWeightView(view));
     if (!view.is_contiguous) {
-        return Status::InvalidArgument("Raw weight storage summary requires contiguous views");
+        return Status::InvalidArgument(
+                "Raw weight storage usage requires contiguous views");
     }
 
     const auto footprint = view.storage->footprint();
     auto [owner, inserted] = owners.try_emplace(view.storage, OwnerRanges{footprint, {}});
     if (!inserted && owner->second.footprint != footprint) {
-        return Status::InvalidArgument("Shared raw weight owner reports conflicting footprint metadata");
+        return Status::InvalidArgument(
+                "Shared raw weight owner reports conflicting footprint metadata");
     }
 
     if (view.bytes == 0) {
@@ -78,7 +82,7 @@ StatusOr<size_t> UnionBytes(std::vector<AddressRange>& ranges) {
     const auto add_range = [&]() -> Status {
         size_t extent = 0;
         if (CheckNarrow(end - begin, &extent) || CheckOverflowAdd(bytes, extent, &bytes)) {
-            return Status::Overflow("Raw weight logical range union overflowed size_t");
+            return Status::Overflow("Raw weight referenced range union overflowed size_t");
         }
         return Status::Ok();
     };
@@ -97,7 +101,7 @@ StatusOr<size_t> UnionBytes(std::vector<AddressRange>& ranges) {
 
 } // namespace
 
-StatusOr<ModelWeightStorageSummary> SummarizeModelWeightStorage(
+StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
         const ResolvedModelWeights& weights) noexcept try {
     OwnerMap owners;
     AM_RETURN_IF_ERROR(AddView(owners, weights.embed_tokens));
@@ -114,30 +118,30 @@ StatusOr<ModelWeightStorageSummary> SummarizeModelWeightStorage(
         }
     }
 
-    ModelWeightStorageSummary summary;
+    RawWeightStorageUsage usage;
     for (auto& [owner, retained]: owners) {
-        AM_ASSIGN_OR_RETURN(const size_t logical_bytes, UnionBytes(retained.ranges));
-        if (CheckOverflowAdd(summary.logical_view_bytes, logical_bytes, &summary.logical_view_bytes)) {
-            return Status::Overflow("Raw model logical view bytes overflowed size_t");
+        AM_ASSIGN_OR_RETURN(const size_t referenced_bytes, UnionBytes(retained.ranges));
+        if (CheckOverflowAdd(usage.referenced_view_bytes, referenced_bytes, &usage.referenced_view_bytes)) {
+            return Status::Overflow("Raw model referenced view bytes overflowed size_t");
         }
         if (!retained.footprint.has_value()) {
-            summary.backing_complete = false;
+            usage.backing_usage_complete = false;
             continue;
         }
         const auto [kind, bytes] = *retained.footprint;
-        if (logical_bytes > bytes) {
+        if (referenced_bytes > bytes) {
             return Status::InvalidArgument("Raw owner footprint is smaller than its referenced view ranges");
         }
         size_t* category = nullptr;
         switch (kind) {
             case RawStorageKind::kMapped:
-                category = &summary.mapped_bytes;
+                category = &usage.mapped_bytes;
                 break;
             case RawStorageKind::kOwned:
-                category = &summary.owned_bytes;
+                category = &usage.owned_bytes;
                 break;
             case RawStorageKind::kExternal:
-                category = &summary.external_bytes;
+                category = &usage.external_bytes;
                 break;
             default:
                 return Status::InvalidArgument("Unknown raw storage footprint kind");
@@ -146,7 +150,7 @@ StatusOr<ModelWeightStorageSummary> SummarizeModelWeightStorage(
             return Status::Overflow("Raw model backing bytes overflowed size_t");
         }
     }
-    return summary;
+    return usage;
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});
 }

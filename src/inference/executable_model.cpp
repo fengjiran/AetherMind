@@ -305,33 +305,34 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
     return PrepareExecutableModel(runtime, std::move(artifact), {});
 }
 
-StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
-                                                 LoweredModelArtifact artifact,
-                                                 const ExecutableModelPrepareOptions& options) try {
+StatusOr<ExecutableModel> PrepareExecutableModel(
+        Runtime& runtime,
+        LoweredModelArtifact artifact,
+        const ExecutableModelPrepareOptions& options) try {
     if (artifact.loaded_model == nullptr) {
         return Status::InvalidArgument("PrepareExecutableModel: artifact "
                                        "carries no loaded model");
     }
 
-    const HfModelConfig& model_config = artifact.loaded_model->GetConfig();
-    if (model_config.vocab_size <= 0 || model_config.max_position_embeddings <= 0) {
+    const auto& config = artifact.loaded_model->GetConfig();
+    if (config.vocab_size <= 0 || config.max_position_embeddings <= 0) {
         return Status::InvalidArgument("PrepareExecutableModel: loaded model has "
                                        "invalid vocabulary or context limit");
     }
 
-    if (!std::in_range<size_t>(model_config.vocab_size) ||
-        !std::in_range<size_t>(model_config.max_position_embeddings)) {
+    if (!std::in_range<size_t>(config.vocab_size) ||
+        !std::in_range<size_t>(config.max_position_embeddings)) {
         return Status::Overflow("PrepareExecutableModel: vocabulary or "
                                 "context limit does not fit size_t");
     }
 
-    const auto vocab_size = static_cast<size_t>(model_config.vocab_size);
-    const auto context_limit = static_cast<size_t>(model_config.max_position_embeddings);
+    const auto vocab_size = static_cast<size_t>(config.vocab_size);
+    const auto context_limit = static_cast<size_t>(config.max_position_embeddings);
+    const auto& resolved = artifact.loaded_model->GetResolvedWeights();
 
-    const ResolvedModelWeights& resolved = artifact.loaded_model->GetResolvedWeights();
     ModelResourceUsage usage;
     usage.weight_normalization = artifact.loaded_model->GetWeightNormalizationUsage();
-    auto weight_usage = SummarizeModelWeightStorage(resolved);
+    auto weight_usage = ComputeRawWeightStorageUsage(resolved);
     if (!weight_usage.ok()) {
         if (options.max_model_payload_bytes != 0 ||
             weight_usage.status().code() == StatusCode::kResourceExhausted) {
@@ -339,7 +340,7 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
         }
         // Reporting must not strengthen the generic unlimited preparation
         // contract for raw roles the graph never consumes.
-        usage.weights.backing_complete = false;
+        usage.weights.backing_usage_complete = false;
     } else {
         usage.weights = *weight_usage;
     }
@@ -365,7 +366,7 @@ StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
         packed_cap = options.max_packed_weight_bytes;
     }
     if (options.max_model_payload_bytes != 0) {
-        if (!usage.weights.backing_complete) {
+        if (!usage.weights.backing_usage_complete) {
             return Status::Unimplemented("Model payload limit requires complete raw storage footprints");
         }
         if (usage.managed_payload_bytes > options.max_model_payload_bytes) {

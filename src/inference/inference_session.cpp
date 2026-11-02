@@ -260,7 +260,7 @@ StatusOr<RequestResourceUsage> RequestUsage(const Runtime& runtime,
     const auto* manager = runtime.GetKVCacheManager();
     usage.kv_reserved_bytes = manager == nullptr ? 0 : manager->total_bytes();
     usage.model_managed_payload_bytes = model.resource_usage().managed_payload_bytes;
-    usage.model_payload_complete = model.resource_usage().weights.backing_complete;
+    usage.model_payload_complete = model.resource_usage().weights.backing_usage_complete;
     if (CheckOverflowAdd(usage.kv_reserved_bytes, usage.model_managed_payload_bytes,
                          &usage.peak_with_persistent_payload_bytes) ||
         CheckOverflowAdd(usage.peak_with_persistent_payload_bytes, usage.peak_payload_bytes,

@@ -181,7 +181,7 @@ TEST(ModelWeightNormalization, PreservesTieAndDistinguishesLogicalShapes) {
     const auto& usage = *(*normalized)->GetWeightNormalizationUsage();
     EXPECT_EQ(usage.converted_source_bytes, 16U);
     EXPECT_EQ(usage.converted_weight_bytes, 32U);
-    EXPECT_EQ(usage.source_weights.logical_view_bytes, 8U);
+    EXPECT_EQ(usage.source_weights.referenced_view_bytes, 8U);
     EXPECT_EQ(usage.normalized_weights.owned_bytes, 32U);
 }
 
@@ -281,7 +281,7 @@ TEST(ModelWeightNormalization, UnknownSourceIsReportedAndFiniteRetainedCapFailsC
     auto normalized = NormalizeLoadedModelWeightsToFp32(reduced, allocator, {.max_owned_weight_bytes = 16});
     ASSERT_TRUE(normalized.ok()) << normalized.status().ToString();
     EXPECT_FALSE((*normalized)->GetWeightNormalizationUsage()->peak_owned_weight_bytes_complete);
-    EXPECT_TRUE((*normalized)->GetWeightNormalizationUsage()->normalized_weights.backing_complete);
+    EXPECT_TRUE((*normalized)->GetWeightNormalizationUsage()->normalized_weights.backing_usage_complete);
     LoadedModel fp32(MakeConfig(), MakeWeights(MakeView(source, DataType::Float32(), 2)));
     const auto calls = stats->calls;
     EXPECT_EQ(NormalizeLoadedModelWeightsToFp32(fp32, allocator, {.max_owned_weight_bytes = 16}).status().code(),

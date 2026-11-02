@@ -37,7 +37,7 @@ Request 的两个 activation arena 不同时存活：Prefill context 清理后�
 
 ## 模型 backing 与 packing
 
-`RawStorage::footprint()` 是可选只读 metadata。HF safetensors mmap 提供完整 mapping bytes；自定义 storage 未提供时，`ModelWeightStorageSummary::backing_complete` 为 false。摘要按 RawStorage ownership identity 合并重叠 view 区间，按 Buffer implementation 去重 packed payload。未知 backing 绝不按零计费：只有设置 `max_model_payload_bytes` 时，未知 source backing 才拒绝该模型 cap；仅设置 packed cap 仍可使用精确 packing query。
+`RawStorage::footprint()` 是可选只读 metadata。HF safetensors mmap 提供完整 mapping bytes；自定义 storage 未提供时，`RawWeightStorageUsage::backing_usage_complete` 为 false。该统计按 RawStorage ownership identity 合并重叠 view 区间，按 Buffer implementation 去重 packed payload。未知 backing 绝不按零计费：只有设置 `max_model_payload_bytes` 时，未知 source backing 才拒绝该模型 cap；仅设置 packed cap 仍可使用精确 packing query。
 
 `Backend::GetWeightPackingRequirements` 只读取 component metadata，返回 exact recipe 所需的 visible bytes 和 alignment。有限 packed/model cap 要求此 query 成功并在 batch 内全部 artifact 分配前检查。分配前按 request 汇总需求上界，完成后按共享 Buffer implementation 去重实际值；当前 CPU 每个 request 创建独立产物，两者一致。旧 backend 在 unlimited 路径可返回 `Unimplemented`，此时 model 的 `packing_plan_complete` 为 false；不能把未知大小当作零。
 

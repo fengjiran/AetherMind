@@ -270,10 +270,10 @@ TEST_P(Fp32CompatibleInference, MatchesIndependentFp32TrajectoryAndGenerate) {
     EXPECT_EQ(normalization.converted_weight_bytes, pair.fp32_payload_bytes);
     EXPECT_EQ(normalization.source_weights.mapped_bytes, std::filesystem::file_size(pair.source / "model.safetensors"));
     EXPECT_EQ(normalization.source_weights.owned_bytes, 0U);
-    EXPECT_TRUE(normalization.source_weights.backing_complete);
+    EXPECT_TRUE(normalization.source_weights.backing_usage_complete);
     EXPECT_EQ(normalization.normalized_weights.mapped_bytes, 0U);
     EXPECT_EQ(normalization.normalized_weights.owned_bytes, pair.fp32_payload_bytes);
-    EXPECT_TRUE(normalization.normalized_weights.backing_complete);
+    EXPECT_TRUE(normalization.normalized_weights.backing_usage_complete);
     EXPECT_EQ(normalization.peak_owned_weight_bytes, pair.fp32_payload_bytes);
     EXPECT_TRUE(normalization.peak_owned_weight_bytes_complete);
     EXPECT_EQ(usage.weights.owned_bytes, pair.fp32_payload_bytes);

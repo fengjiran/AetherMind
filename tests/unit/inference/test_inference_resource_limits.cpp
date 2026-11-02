@@ -216,7 +216,7 @@ TEST(ModelResourceLimits, FinitePackedAndModelCapsRejectBeforePacking) {
     const auto usage = baseline->resource_usage();
     ASSERT_GT(usage.packed_weight_bytes, 1U);
     EXPECT_TRUE(usage.packing_plan_complete);
-    EXPECT_TRUE(usage.weights.backing_complete);
+    EXPECT_TRUE(usage.weights.backing_usage_complete);
     stats->requests.clear();
     auto short_packed = LoadAndPrepareExecutableModel(runtime, ResourceModelDir(), ResourceCompile(true), {.max_packed_weight_bytes = usage.packed_weight_bytes - 1});
     EXPECT_EQ(short_packed.status().code(), StatusCode::kResourceExhausted);
@@ -251,7 +251,7 @@ TEST(ModelResourceLimits, UnknownSourceOnlyRejectsCorrespondingModelCap) {
     ASSERT_TRUE(second.ok());
     auto model = PrepareExecutableModel(runtime, std::move(*second), {.max_packed_weight_bytes = 1});
     ASSERT_TRUE(model.ok()) << model.status().ToString();
-    EXPECT_FALSE(model->resource_usage().weights.backing_complete);
+    EXPECT_FALSE(model->resource_usage().weights.backing_usage_complete);
 }
 TEST(ModelResourceLimits, InlineConstantsAreChargedOnceBeforeAnyPacking) {
     auto stats = std::make_shared<test::ResourceAllocationStats>();
@@ -298,7 +298,7 @@ TEST(ModelResourceLimits, UnlimitedPreparationDoesNotValidateUnusedRawRoles) {
     LoweredModelArtifact artifact{.loaded_model = std::make_unique<LoadedModel>(config, std::move(weights)), .graph = std::move(*lowered)};
     auto model = PrepareExecutableModel(runtime, std::move(artifact));
     ASSERT_TRUE(model.ok()) << model.status().ToString();
-    EXPECT_FALSE(model->resource_usage().weights.backing_complete);
+    EXPECT_FALSE(model->resource_usage().weights.backing_usage_complete);
     EXPECT_EQ(model->resource_usage().inline_constant_bytes, 16U);
 }
 TEST(ModelResourceLimits, SharedOwnerDistinctConstantVectorsAreBothCharged) {

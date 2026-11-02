@@ -176,17 +176,17 @@ StatusOr<std::unique_ptr<LoadedModel>> NormalizeLoadedModelWeightsToFp32(
     AM_RETURN_IF_ERROR(AddBytes(usage.converted_weight_bytes, usage.peak_owned_weight_bytes));
     usage.peak_owned_weight_bytes_complete = usage.source_weights.backing_usage_complete;
 
-    // Converted roles no longer retain their source owners. Summarize only F32
-    // roles to count backing that survives alongside the new converted payload.
+    // Converted roles no longer retain their source owners. Compute usage for
+    // only F32 roles to count backing that survives alongside the new payload.
     ResolvedModelWeights retained = normalized;
     for (const auto& [view, location]: CollectViews(retained)) {
         if (view->dtype != DataType::Float32()) *view = {};
     }
-    AM_ASSIGN_OR_RETURN(auto retained_summary, ComputeRawWeightStorageUsage(retained));
-    size_t final_owned_bytes = retained_summary.owned_bytes;
+    AM_ASSIGN_OR_RETURN(auto retained_usage, ComputeRawWeightStorageUsage(retained));
+    size_t final_owned_bytes = retained_usage.owned_bytes;
     AM_RETURN_IF_ERROR(AddBytes(usage.converted_weight_bytes, final_owned_bytes));
     if (options.max_owned_weight_bytes != 0) {
-        if (!retained_summary.backing_usage_complete) {
+        if (!retained_usage.backing_usage_complete) {
             return Status::FailedPrecondition("Finite normalized owned-weight cap requires complete retained Float32 backing metadata");
         }
         if (final_owned_bytes > options.max_owned_weight_bytes) {

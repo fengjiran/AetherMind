@@ -2,7 +2,7 @@
 #define AETHERMIND_MODEL_WEIGHT_RAW_WEIGHT_STORAGE_USAGE_H
 
 /// @file raw_weight_storage_usage.h
-/// @brief Ownership-aware raw model backing and logical payload accounting.
+/// @brief Ownership-aware raw model backing and referenced view accounting.
 
 #include "aethermind/base/status.h"
 

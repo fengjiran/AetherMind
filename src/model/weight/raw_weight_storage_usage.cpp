@@ -14,17 +14,17 @@
 namespace aethermind {
 namespace {
 
-struct AddressRange {
+struct AddrRange {
     uintptr_t begin;
     uintptr_t end;
 };
 
-struct OwnerRanges {
+struct OwnerStorageMetadata {
     std::optional<RawStorageFootprint> footprint;
-    std::vector<AddressRange> ranges;
+    std::vector<AddrRange> referenced_ranges;
 };
 
-using OwnerMap = std::map<std::shared_ptr<const RawStorage>, OwnerRanges,
+using OwnerMap = std::map<std::shared_ptr<const RawStorage>, OwnerStorageMetadata,
                           std::owner_less<std::shared_ptr<const RawStorage>>>;
 
 bool IsDefaultEmpty(const RawWeightView& view) noexcept {
@@ -37,6 +37,7 @@ Status AddView(OwnerMap& owners, const RawWeightView& view) {
     if (IsDefaultEmpty(view)) {
         return Status::Ok();
     }
+
     // ValidateRawWeightView uses nbytes(), whose fixed-lane precondition must
     // be checked before accepting externally constructed low-level metadata.
     if (view.dtype.IsUndefined() || view.dtype.bits() == 0 ||
@@ -53,7 +54,8 @@ Status AddView(OwnerMap& owners, const RawWeightView& view) {
     }
 
     const auto footprint = view.storage->footprint();
-    auto [owner, inserted] = owners.try_emplace(view.storage, OwnerRanges{footprint, {}});
+    auto [owner, inserted] = owners.try_emplace(
+            view.storage, OwnerStorageMetadata{footprint, {}});
     if (!inserted && owner->second.footprint != footprint) {
         return Status::InvalidArgument(
                 "Shared raw weight owner reports conflicting footprint metadata");
@@ -62,40 +64,51 @@ Status AddView(OwnerMap& owners, const RawWeightView& view) {
     if (view.bytes == 0) {
         return Status::Ok();
     }
+
     const auto begin = reinterpret_cast<uintptr_t>(view.data);
     uintptr_t end = 0;
     if (!std::in_range<uintptr_t>(view.bytes) ||
-        CheckOverflowAdd(begin, static_cast<uintptr_t>(view.bytes), &end)) {
-        return Status::Overflow("Raw weight address range overflowed uintptr_t");
+        CheckOverflowAdd(begin, view.bytes, &end)) {
+        return Status::Overflow(
+                "Raw weight address range overflowed uintptr_t");
     }
-    owner->second.ranges.push_back({begin, end});
+    owner->second.referenced_ranges.push_back({begin, end});
     return Status::Ok();
 }
 
-StatusOr<size_t> UnionBytes(std::vector<AddressRange>& ranges) {
-    std::sort(ranges.begin(), ranges.end(), [](const auto& lhs, const auto& rhs) {
-        return lhs.begin < rhs.begin || (lhs.begin == rhs.begin && lhs.end < rhs.end);
-    });
+StatusOr<size_t> UnionBytes(std::vector<AddrRange>& ranges) {
+    std::ranges::sort(ranges,
+                      [](const auto& lhs, const auto& rhs) {
+                          return lhs.begin < rhs.begin ||
+                                 (lhs.begin == rhs.begin && lhs.end < rhs.end);
+                      });
+
     size_t bytes = 0;
-    uintptr_t begin = 0;
-    uintptr_t end = 0;
-    const auto add_range = [&]() -> Status {
+    const auto add_range = [&bytes](const AddrRange& range) -> Status {
         size_t extent = 0;
-        if (CheckNarrow(end - begin, &extent) || CheckOverflowAdd(bytes, extent, &bytes)) {
-            return Status::Overflow("Raw weight referenced range union overflowed size_t");
+        if (CheckNarrow(range.end - range.begin, &extent) ||
+            CheckOverflowAdd(bytes, extent, &bytes)) {
+            return Status::Overflow(
+                    "Raw weight referenced range union overflowed size_t");
         }
         return Status::Ok();
     };
+
+    std::optional<AddrRange> current;
     for (const auto& range: ranges) {
-        if (range.begin > end) {
-            AM_RETURN_IF_ERROR(add_range());
-            begin = range.begin;
-            end = range.end;
+        if (!current.has_value()) {
+            current = range;
+        } else if (range.begin <= current->end) {
+            current->end = std::max(current->end, range.end);
         } else {
-            end = std::max(end, range.end);
+            AM_RETURN_IF_ERROR(add_range(*current));
+            current = range;
         }
     }
-    AM_RETURN_IF_ERROR(add_range());
+
+    if (current.has_value()) {
+        AM_RETURN_IF_ERROR(add_range(*current));
+    }
     return bytes;
 }
 
@@ -109,6 +122,7 @@ StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
     if (weights.lm_head.has_value()) {
         AM_RETURN_IF_ERROR(AddView(owners, *weights.lm_head));
     }
+
     for (const auto& layer: weights.layers) {
         for (const auto* view: {&layer.norm.input_rmsnorm, &layer.norm.post_attn_rmsnorm,
                                 &layer.attn.q_proj, &layer.attn.k_proj, &layer.attn.v_proj,
@@ -120,18 +134,24 @@ StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
 
     RawWeightStorageUsage usage;
     for (auto& [owner, retained]: owners) {
-        AM_ASSIGN_OR_RETURN(const size_t referenced_bytes, UnionBytes(retained.ranges));
+        AM_ASSIGN_OR_RETURN(const size_t referenced_bytes,
+                            UnionBytes(retained.referenced_ranges));
         if (CheckOverflowAdd(usage.referenced_view_bytes, referenced_bytes, &usage.referenced_view_bytes)) {
-            return Status::Overflow("Raw model referenced view bytes overflowed size_t");
+            return Status::Overflow(
+                    "Raw model referenced view bytes overflowed size_t");
         }
+
         if (!retained.footprint.has_value()) {
             usage.backing_usage_complete = false;
             continue;
         }
+
         const auto [kind, bytes] = *retained.footprint;
         if (referenced_bytes > bytes) {
-            return Status::InvalidArgument("Raw owner footprint is smaller than its referenced view ranges");
+            return Status::InvalidArgument(
+                    "Raw owner footprint is smaller than its referenced view ranges");
         }
+
         size_t* category = nullptr;
         switch (kind) {
             case RawStorageKind::kMapped:
@@ -144,10 +164,13 @@ StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
                 category = &usage.external_bytes;
                 break;
             default:
-                return Status::InvalidArgument("Unknown raw storage footprint kind");
+                return Status::InvalidArgument(
+                        "Unknown raw storage footprint kind");
         }
+
         if (CheckOverflowAdd(*category, bytes, category)) {
-            return Status::Overflow("Raw model backing bytes overflowed size_t");
+            return Status::Overflow(
+                    "Raw model backing bytes overflowed size_t");
         }
     }
     return usage;

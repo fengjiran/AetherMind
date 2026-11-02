@@ -3,7 +3,6 @@
 
 #include "aethermind/base/status.h"
 #include "aethermind/dtypes/data_type.h"
-#include "utils/overflow_check.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -85,44 +84,7 @@ struct RawWeightView {
 ///
 /// @param view Raw weight view to validate.
 /// @return Ok, or InvalidArgument describing the first violation.
-inline Status ValidateRawWeightView(const RawWeightView& view) noexcept {
-    if (!view.IsValid()) {
-        return Status::InvalidArgument(
-                "RawWeightView is not a valid view");
-    }
-
-    const int element_bytes = view.dtype.nbytes();
-    if (element_bytes <= 0) {
-        return Status::InvalidArgument(
-                "RawWeightView requires a nonzero element byte size");
-    }
-
-    uint64_t numel = 1;
-    for (const int64_t dim: view.shape) {
-        if (dim < 0) {
-            return Status::InvalidArgument(
-                    "RawWeightView shape has a negative dimension");
-        }
-
-        if (CheckOverflowMul(numel, static_cast<uint64_t>(dim), &numel)) {
-            return Status::InvalidArgument(
-                    "RawWeightView shape product overflows");
-        }
-    }
-
-    uint64_t expected_bytes = 0;
-    if (CheckOverflowMul(numel, static_cast<uint64_t>(element_bytes),
-                         &expected_bytes)) {
-        return Status::InvalidArgument(
-                "RawWeightView byte size overflows");
-    }
-
-    if (view.bytes != expected_bytes) {
-        return Status::InvalidArgument(
-                "RawWeightView byte size does not match its logical shape");
-    }
-    return Status::Ok();
-}
+Status ValidateRawWeightView(const RawWeightView& view);
 
 using RawWeightTable = std::unordered_map<std::string, RawWeightView>;
 

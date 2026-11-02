@@ -88,7 +88,6 @@ The optional `aethermind_infer` executable uses the `apps/inference/` runner to 
 - **Compiler**: A C++20-compliant compiler (GCC ≥ 11, Clang ≥ 14, or MSVC ≥ 19.30)
 - **CMake**: ≥ 3.28
 - **C++ runtime**: pthreads
-- **GoogleTest**: system-installed (for unit tests)
 - **libbacktrace** (bundled under `3rdparty/`, enabled by default)
 
 Third-party dependencies fetched automatically via CMake `FetchContent`:
@@ -96,7 +95,29 @@ Third-party dependencies fetched automatically via CMake `FetchContent`:
 | Dependency | Version | Purpose |
 |------------|---------|---------|
 | [spdlog](https://github.com/gabime/spdlog) | v1.17.0 | Logging |
-| [Google Benchmark](https://github.com/google/benchmark) | v1.9.5 | Fetched/configured only when `BUILD_BENCHMARKS=ON` |
+| [Google Benchmark](https://github.com/google/benchmark) | v1.9.5 | Fetched/configured only when `BUILD_BENCHMARKS=ON`, unless a parent project provides both `benchmark::benchmark` and `benchmark::benchmark_main` |
+| [GoogleTest](https://github.com/google/googletest) | v1.18.0 | Fetched/configured only when `BUILD_TESTS=ON`, unless a parent project provides both `GTest::gtest` and `GTest::gtest_main` |
+
+Google Benchmark targets supplied by a parent project are reused without changing
+their configuration or the parent's `BENCHMARK_ENABLE_*` options. Otherwise,
+AetherMind defaults `BENCHMARK_ENABLE_GTEST_TESTS`, `BENCHMARK_ENABLE_TESTING`, and
+`BENCHMARK_ENABLE_INSTALL` to `OFF` before preparing it, while respecting explicit
+settings. Enabling the dependency's GoogleTest-based tests also requires its
+GoogleTest/GoogleMock dependencies.
+
+GoogleTest does not require a system installation. AetherMind defaults
+`BUILD_GMOCK`, `INSTALL_GTEST`, `gtest_build_tests`, and `gtest_build_samples` to
+`OFF` when preparing it, while respecting explicit settings. Existing GTest
+targets are reused without changing their configuration. To use a system package,
+a parent project can call `find_package(GTest CONFIG REQUIRED)` before adding
+AetherMind.
+
+For an offline build, prepare a GoogleTest source checkout (normally `v1.18.0`)
+and pass `-DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=/absolute/path/to/googletest`.
+CMake uses that checkout without downloading or updating GoogleTest. Other
+dependencies must also be available offline. Parent targets, dependency providers,
+and source-directory overrides explicitly control the dependency version; the
+release tag above describes AetherMind's default source selection.
 
 ## Build
 

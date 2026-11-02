@@ -12,7 +12,6 @@ if(NOT AETHERMIND_HAS_AVX2_FMA)
     list(REMOVE_ITEM TEST_SRC_FILES "${AETHERMIND_AVX2_TEST_SOURCE}")
 endif()
 
-find_package(GTest REQUIRED)
 add_executable(${TEST_TARGET} ${TEST_SRC_FILES})
 aethermind_apply_sanitizer(${TEST_TARGET})
 

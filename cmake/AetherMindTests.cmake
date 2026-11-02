@@ -510,11 +510,18 @@ function(aethermind_register_tests target)
             -P "${PROJECT_SOURCE_DIR}/tests/cmake/test_ctest_skip_policy.cmake")
     set_tests_properties(cmake.validation_skip_policy PROPERTIES LABELS "smoke;validation;build" TIMEOUT 30)
 
+    set(googletest_contract_source "${googletest_SOURCE_DIR}")
+    if(NOT EXISTS "${googletest_contract_source}/googletest/CMakeLists.txt")
+        # A parent can provide source targets without using FetchContent.
+        get_target_property(gtest_target_source GTest::gtest SOURCE_DIR)
+        get_filename_component(googletest_contract_source "${gtest_target_source}" DIRECTORY)
+    endif()
     set(build_contract_config "${CMAKE_CURRENT_BINARY_DIR}/AetherMindBuildContractConfig-$<CONFIG>.cmake")
     string(CONCAT build_contract_content
             "set(AETHERMIND_SOURCE_DIR [==[${PROJECT_SOURCE_DIR}]==])\n"
             "set(AETHERMIND_CONTRACT_BINARY_DIR [==[${CMAKE_CURRENT_BINARY_DIR}/build contracts]==])\n"
             "set(AETHERMIND_SPDLOG_SOURCE_DIR [==[${spdlog_SOURCE_DIR}]==])\n"
+            "set(AETHERMIND_GOOGLETEST_SOURCE_DIR [==[${googletest_contract_source}]==])\n"
             "set(AETHERMIND_GENERATOR [==[${CMAKE_GENERATOR}]==])\n"
             "set(AETHERMIND_GENERATOR_PLATFORM [==[${CMAKE_GENERATOR_PLATFORM}]==])\n"
             "set(AETHERMIND_GENERATOR_TOOLSET [==[${CMAKE_GENERATOR_TOOLSET}]==])\n"
@@ -535,6 +542,19 @@ function(aethermind_register_tests target)
             set_tests_properties("${name}" PROPERTIES DISABLED TRUE LABELS "build;missing_dependency_source")
         endif ()
     endforeach ()
+
+    foreach(case offline existing options partial-gtest partial-gtest_main disabled)
+        set(name "cmake.googletest_dependency.${case}")
+        add_test(NAME "${name}" COMMAND "${CMAKE_COMMAND}"
+                "-DAETHERMIND_CONTRACT_CONFIG=${build_contract_config}"
+                "-DAETHERMIND_CONTRACT_CASE=${case}"
+                -P "${PROJECT_SOURCE_DIR}/tests/cmake/test_googletest_dependency.cmake")
+        set_tests_properties("${name}" PROPERTIES LABELS "smoke;validation;build" TIMEOUT 600 RUN_SERIAL TRUE)
+        if(NOT EXISTS "${spdlog_SOURCE_DIR}/CMakeLists.txt" OR
+           NOT EXISTS "${googletest_contract_source}/googletest/CMakeLists.txt")
+            set_tests_properties("${name}" PROPERTIES DISABLED TRUE LABELS "build;missing_dependency_source")
+        endif()
+    endforeach()
 
     foreach (contract final_validation verify_ctest_report prepare_validation_assets)
         set(contract_name "python.${contract}_contract")

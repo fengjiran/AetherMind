@@ -8,10 +8,6 @@ project(AetherMind
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# Memory allocation alignment configuration
-set(KALLOC_ALIGNMENT_DEFAULT 64 CACHE INTERNAL "Default alignment value")
-set(KALLOC_ALIGNMENT "${KALLOC_ALIGNMENT_DEFAULT}" CACHE STRING "Memory allocation alignment in bytes")
-
 include(CMakeDependentOption)
 cmake_dependent_option(
         USE_LIBBACKTRACE "Enable libbacktrace" ON
@@ -21,12 +17,14 @@ option(BACKTRACE_ON_SEGFAULT "Set signal handler to print traceback on segfault"
 option(BUILD_TESTS "Adding test targets." ON)
 option(BUILD_BENCHMARKS "Adding benchmark targets." ON)
 option(BUILD_INFERENCE_TOOL "Build the standalone token-ID inference tool." OFF)
-
 option(USE_ALLOC_ALIGNMENT "Enable alloc alignment" ON)
 option(BUILD_DOCS "Build Doxygen documentation (requires doxygen)" OFF)
 option(AETHERMIND_VALIDATION_REQUIRED_ASSETS "Require model fixtures and a CLI for CTest validation" OFF)
 
 if (USE_ALLOC_ALIGNMENT)
+    set(KALLOC_ALIGNMENT_DEFAULT 64 CACHE INTERNAL "Default alignment value")
+    set(KALLOC_ALIGNMENT "${KALLOC_ALIGNMENT_DEFAULT}" CACHE STRING "Memory allocation alignment in bytes")
+
     include(cmake/AetherMindBuildChecks.cmake)
     aethermind_validate_alloc_alignment("${KALLOC_ALIGNMENT}")
 endif ()
@@ -62,6 +60,7 @@ else ()
         get_target_property(_aethermind_spdlog_imported spdlog IMPORTED)
         get_target_property(_aethermind_spdlog_source spdlog SOURCE_DIR)
     endif ()
+
     if (TARGET spdlog AND NOT _aethermind_spdlog_imported AND
             _aethermind_spdlog_source STREQUAL spdlog_SOURCE_DIR)
         message(STATUS "AetherMind spdlog: SPDLOG_USE_STD_FORMAT=${SPDLOG_USE_STD_FORMAT}")
@@ -76,18 +75,6 @@ else ()
     endif ()
 endif ()
 
-if (BUILD_BENCHMARKS)
-    set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
-    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
-    set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(
-            google_benchmark
-            GIT_REPOSITORY https://github.com/google/benchmark.git
-            GIT_TAG v1.9.5
-    )
-    FetchContent_MakeAvailable(google_benchmark)
-endif ()
-
 add_subdirectory(src)
 if (BUILD_INFERENCE_TOOL)
     add_subdirectory(apps/inference)
@@ -96,11 +83,67 @@ endif ()
 if (BUILD_TESTS)
     message(STATUS "Enable Testing")
     enable_testing()
+
+    if (TARGET GTest::gtest AND TARGET GTest::gtest_main)
+        message(STATUS "AetherMind GoogleTest: reusing provided GTest targets")
+    elseif (TARGET GTest::gtest OR TARGET GTest::gtest_main)
+        message(FATAL_ERROR "AetherMind tests require both GTest::gtest and GTest::gtest_main; only one target was provided")
+    else ()
+        set(BUILD_GMOCK OFF CACHE BOOL "Build GoogleMock")
+        set(INSTALL_GTEST OFF CACHE BOOL "Install GoogleTest")
+        set(gtest_build_tests OFF CACHE BOOL "Build GoogleTest's own tests")
+        set(gtest_build_samples OFF CACHE BOOL "Build GoogleTest samples")
+
+        FetchContent_Declare(
+                googletest
+                GIT_REPOSITORY https://github.com/google/googletest.git
+                GIT_TAG v1.18.0
+        )
+        FetchContent_MakeAvailable(googletest)
+
+        if (googletest_SOURCE_DIR)
+            message(STATUS "AetherMind GoogleTest: using source ${googletest_SOURCE_DIR}")
+        else ()
+            message(STATUS "AetherMind GoogleTest: using dependency-provider targets")
+        endif ()
+    endif ()
+
+    if (NOT TARGET GTest::gtest OR NOT TARGET GTest::gtest_main)
+        message(FATAL_ERROR "GoogleTest did not provide GTest::gtest and GTest::gtest_main")
+    endif ()
+
     add_subdirectory(tests/unit)
 endif ()
 
 if (BUILD_BENCHMARKS)
     message(STATUS "Enable Benchmarks")
+    if (TARGET benchmark::benchmark AND TARGET benchmark::benchmark_main)
+        message(STATUS "AetherMind Google Benchmark: reusing provided benchmark targets")
+    elseif (TARGET benchmark::benchmark OR TARGET benchmark::benchmark_main)
+        message(FATAL_ERROR "AetherMind benchmarks require both benchmark::benchmark and benchmark::benchmark_main; only one target was provided")
+    else ()
+        set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "Build Google Benchmark tests that require GoogleTest")
+        set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Build Google Benchmark's own tests")
+        set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Install Google Benchmark")
+
+        FetchContent_Declare(
+                google_benchmark
+                GIT_REPOSITORY https://github.com/google/benchmark.git
+                GIT_TAG v1.9.5
+        )
+        FetchContent_MakeAvailable(google_benchmark)
+
+        if (google_benchmark_SOURCE_DIR)
+            message(STATUS "AetherMind Google Benchmark: using source ${google_benchmark_SOURCE_DIR}")
+        else ()
+            message(STATUS "AetherMind Google Benchmark: using dependency-provider targets")
+        endif ()
+    endif ()
+
+    if (NOT TARGET benchmark::benchmark OR NOT TARGET benchmark::benchmark_main)
+        message(FATAL_ERROR "Google Benchmark did not provide benchmark::benchmark and benchmark::benchmark_main")
+    endif ()
+
     add_subdirectory(tests/benchmark)
 endif ()
 

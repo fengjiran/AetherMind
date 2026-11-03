@@ -36,11 +36,11 @@ StatusOr<std::vector<uint32_t>> GenerateCompatible(
     const ExecutableModelPrepareOptions resources{
             .max_model_payload_bytes = 512U * 1024U * 1024U};
     AM_ASSIGN_OR_RETURN(auto allocator, runtime.TryGetAllocator(Device::CPU()));
-    AM_ASSIGN_OR_RETURN(auto normalized,
-                        NormalizeLoadedModelWeightsToFp32(
+    AM_ASSIGN_OR_RETURN(auto converted,
+                        ConvertLoadedModelWeightsToFp32(
                                 *loaded, *allocator,
                                 {.max_owned_weight_bytes = resources.max_model_payload_bytes}));
-    loaded = std::move(normalized);
+    loaded = std::move(converted);
     AM_RETURN_IF_ERROR(ValidateFp32ExecutionWeights(*loaded));
     AM_ASSIGN_OR_RETURN(auto compile_options,
                         MakeCpuCompileOptions(CpuInferencePreset::kO1Plain));
@@ -72,7 +72,7 @@ F32 view 零拷贝并继续共享原 owner。相同 source owner、起始地址�
 
 ## 资源观察与限额
 
-`ExecutableModel::resource_usage().weight_normalization` 提供 source/normalized backing 分类、唯一转换 source/target bytes 以及 source-owned 与转换 payload 同时存活时的 visible peak。它不持有 source owner，也不等于 RSS、allocator rounded capacity、mmap resident pages 或后续 packed artifacts 的峰值。
+`ExecutableModel::resource_usage().weight_fp32_conversion` 提供 source/converted backing 分类、唯一转换 source/target bytes 以及 source-owned 与转换 payload 同时存活时的 visible peak。它不持有 source owner，也不等于 RSS、allocator rounded capacity、mmap resident pages 或后续 packed artifacts 的峰值。
 
 `CpuModelPrepareOptions::resources.max_model_payload_bytes` 在转换 payload 分配前检查最终 retained FP32 owned bytes 加将创建的 converted bytes；之后 `PrepareExecutableModel` 继续以同一 cap 检查 inline constants 和 packed weights。该 cap 不是原 checkpoint mapping、临时 RSS 或进程级多模型 budget。0 保持现有“无限制”语义。
 

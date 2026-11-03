@@ -1,7 +1,7 @@
 #ifndef AETHERMIND_INFERENCE_RESOURCE_USAGE_H
 #define AETHERMIND_INFERENCE_RESOURCE_USAGE_H
 
-#include "aethermind/model/weight/model_weight_normalization.h"
+#include "aethermind/model/weight/raw_weight_fp32_conversion.h"
 #include "aethermind/model/weight/raw_weight_storage_usage.h"
 
 #include <cstddef>
@@ -19,7 +19,7 @@ struct ModelResourceUsage {
     size_t managed_payload_bytes = 0;
     bool packing_plan_complete = true;
     /// Conversion observations; these usage records do not retain source backing.
-    std::optional<ModelWeightNormalizationUsage> weight_normalization{};
+    std::optional<RawWeightFp32ConversionUsage> weight_fp32_conversion{};
 };
 
 /// @brief Concrete request Buffer requirements, not an allocation or reservation.

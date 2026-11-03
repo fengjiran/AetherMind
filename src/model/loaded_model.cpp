@@ -9,10 +9,10 @@ LoadedModel::LoadedModel(HfModelConfig config, ResolvedModelWeights resolved_wei
 
 LoadedModel::LoadedModel(HfModelConfig config,
                          ResolvedModelWeights resolved_weights,
-                         std::optional<ModelWeightNormalizationUsage> normalization_usage) noexcept
+                         std::optional<RawWeightFp32ConversionUsage> fp32_conversion_usage) noexcept
     : config_(std::move(config)),
       resolved_weights_(std::move(resolved_weights)),
-      normalization_usage_(normalization_usage) {}
+      fp32_conversion_usage_(fp32_conversion_usage) {}
 
 const HfModelConfig& LoadedModel::GetConfig() const noexcept {
     return config_;
@@ -22,8 +22,8 @@ const ResolvedModelWeights& LoadedModel::GetResolvedWeights() const noexcept {
     return resolved_weights_;
 }
 
-const std::optional<ModelWeightNormalizationUsage>& LoadedModel::GetWeightNormalizationUsage() const noexcept {
-    return normalization_usage_;
+const std::optional<RawWeightFp32ConversionUsage>& LoadedModel::GetWeightFp32ConversionUsage() const noexcept {
+    return fp32_conversion_usage_;
 }
 
 } // namespace aethermind

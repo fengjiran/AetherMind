@@ -60,7 +60,8 @@ TEST(RawWeightStorageUsage, MergesTiedAndOverlappingRangesPerOwner) {
 }
 
 TEST(RawWeightStorageUsage, UnknownBackingIsExplicitAndKnownCategoriesRemainPartial) {
-    auto first = std::make_shared<ResourceRawStorage>(), second = std::make_shared<ResourceRawStorage>();
+    auto first = std::make_shared<ResourceRawStorage>(),
+         second = std::make_shared<ResourceRawStorage>();
     second->info = RawStorageFootprint{RawStorageKind::kExternal, 64};
     ResolvedModelWeights weights;
     weights.embed_tokens = View(first, 0, 16);
@@ -125,8 +126,11 @@ TEST(RawWeightStorageUsage, HfMappingCountsCompleteFileOnce) {
 }
 
 TEST(RawWeightStorageUsageDiagnosticFailure, MetadataFailureReturnsResourceExhausted) {
-    if (!test::MallocInterposerAvailable()) GTEST_SKIP() << "Requires the glibc malloc interposer";
-    auto owner = std::make_shared<ResourceRawStorage>();
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+
+    const auto owner = std::make_shared<ResourceRawStorage>();
     ResolvedModelWeights weights;
     weights.embed_tokens = View(owner, 0, 16);
     test::ScopedMallocFailure failure(0);

@@ -134,7 +134,7 @@ function(aethermind_test_labels name output)
             "GateUpLinear|QkvLinear|MatMul|GemmReference|GemmScalar|DotProduct|Silu)")
     if (name MATCHES "${numerical_pattern}" OR
             name MATCHES "${cpu_kernel_pattern}" OR
-            name MATCHES "(^|/)(ModelWeightNormalization|Fp32CompatibleInference)\\.")
+            name MATCHES "(^|/)(RawWeightFp32Conversion|Fp32CompatibleInference)\\.")
         list(APPEND labels numerical)
     endif ()
 
@@ -155,7 +155,7 @@ function(aethermind_test_labels name output)
             "Allocator|Buffer\\.|CAbi|InferenceRunnerFailure|TinyLlamaExecution|TinyWorkspaceSession|"
             "GlobalFunctionTable|FunctionRegistryOwnership)")
     if (name MATCHES "${lifecycle_pattern}" OR
-            name MATCHES "(^|/)(ModelWeightNormalization|Fp32CompatibleInference|Fp32CompatibilityAdmission)\\.")
+            name MATCHES "(^|/)(RawWeightFp32Conversion|Fp32CompatibleInference|Fp32CompatibilityAdmission)\\.")
         list(APPEND labels lifecycle)
     endif ()
 
@@ -196,7 +196,7 @@ function(aethermind_test_labels name output)
             "PrefillInvalidToken|KVCacheCommitTest|KVCacheSessionView|KVCacheInvalidStateTest|"
             "KernelInvoker|ExecutionContext|RuntimeBuilderTryBuild|KVCacheLayoutPlanning|RuntimeResourceLimits|ExecutionBindingPlanning|CpuWeightPackingRequirements|PackingResourceLimits|RawWeightStorageUsage|ModelResourceLimits|InferenceResourceLimits|"
             "CpuRuntimeAssembly|CpuRuntimeConfiguration|RuntimeOptionsValidation|"
-            "ModelWeightNormalization|ModelGraphBuildOptions|ModelCompilerGraphBuildOptions|Fp32CompatibilityPolicy|Fp32CompatibleInference|Fp32CompatibilityAdmission|"
+            "RawWeightFp32Conversion|ModelGraphBuildOptions|ModelCompilerGraphBuildOptions|Fp32CompatibilityPolicy|Fp32CompatibleInference|Fp32CompatibilityAdmission|"
             "RawWeightValidation|RawWeightConsumers|"
             "LoadAndPrepareExecutableModel(Path)?|InferenceRunnerFailure|InferenceRunnerEquivalence|"
             "InferenceCliIntegration|CAbiRuntimeIntegration|MallocInterposerContract|"

@@ -1,8 +1,8 @@
-#ifndef AETHERMIND_MODEL_WEIGHT_MODEL_WEIGHT_NORMALIZATION_H
-#define AETHERMIND_MODEL_WEIGHT_MODEL_WEIGHT_NORMALIZATION_H
+#ifndef AETHERMIND_MODEL_WEIGHT_RAW_WEIGHT_FP32_CONVERSION_H
+#define AETHERMIND_MODEL_WEIGHT_RAW_WEIGHT_FP32_CONVERSION_H
 
-/// @file model_weight_normalization.h
-/// @brief Explicit owned FP32 logical-weight normalization before compilation.
+/// @file raw_weight_fp32_conversion.h
+/// @brief Explicit owned FP32 logical-weight conversion before compilation.
 
 #include "aethermind/base/status.h"
 #include "aethermind/model/weight/raw_weight_storage_usage.h"
@@ -17,19 +17,19 @@ class LoadedModel;
 
 /// @brief Final retained owned-weight payload cap; zero means unlimited.
 /// Mapped/external backing, temporary source backing, and metadata are excluded.
-struct ModelWeightNormalizationOptions {
+struct RawWeightFp32ConversionOptions {
     size_t max_owned_weight_bytes = 0;
 };
 
-/// @brief Visible weight storage observed during one normalization operation.
+/// @brief Visible weight storage observed during one conversion operation.
 ///
 /// This is metadata only: it does not retain checkpoint owners or measure RSS.
 /// Conversion totals count identical source views once per ownership identity.
 /// The peak covers source owned backing plus converted payload while both live;
 /// it excludes subsequent compilation/packing and allocator overhead.
-struct ModelWeightNormalizationUsage {
+struct RawWeightFp32ConversionUsage {
     RawWeightStorageUsage source_weights{};
-    RawWeightStorageUsage normalized_weights{};
+    RawWeightStorageUsage converted_weights{};
     size_t converted_source_bytes = 0;
     size_t converted_weight_bytes = 0;
     size_t peak_owned_weight_bytes = 0;
@@ -53,10 +53,10 @@ struct ModelWeightNormalizationUsage {
 /// Unknown retained F32 backing prevents a finite owned-payload cap; unknown
 /// source backing otherwise remains explicit in usage completeness flags.
 /// @return New owning model, or a validation/overflow/allocation error.
-StatusOr<std::unique_ptr<LoadedModel>> NormalizeLoadedModelWeightsToFp32(
+StatusOr<std::unique_ptr<LoadedModel>> ConvertLoadedModelWeightsToFp32(
         const LoadedModel& model,
         Allocator& allocator,
-        const ModelWeightNormalizationOptions& options = {});
+        const RawWeightFp32ConversionOptions& options = {});
 
 } // namespace aethermind
 

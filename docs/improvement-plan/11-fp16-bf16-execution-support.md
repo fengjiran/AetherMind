@@ -81,7 +81,7 @@ P2 要求 Embedding、linear 和 lm_head 的实际权重 dtype 与所选 F16/BF1
 | 所在层 | 数据/接口方向 | 职责 |
 |---|---|---|
 | inference | `InferencePrecisionPreset` / `CpuModelPrepareOptions` 接入显式 C++ 准备入口 | P1 选择 O1/plain + compatibility，协调 Runtime CPU allocator、normalizer、FP32 graph options 与已有 Prepare；不实现转换算法或新 kernel |
-| model | `ModelGraphBuildOptions` 与 `NormalizeLoadedModelWeightsToFp32` | 构图前完成真实逻辑权重转换；`BuildModelGraph` 继续是模型到 semantic graph 的唯一入口 |
+| model | `ModelGraphBuildOptions` 与 `ConvertLoadedModelWeightsToFp32` | 构图前完成真实逻辑权重转换；`BuildModelGraph` 继续是模型到 semantic graph 的唯一入口 |
 | compiler | `ModelCompileOptions.graph_build` 传给 `BuildModelGraph` | 编排 Build→Optimize→Lower；不分配/转换权重，不访问 backend registry |
 | operators | 拟扩展 `EmbeddingParams.output_dtype` 及其 inference/serde；后续按需增加 Cast | 定义 gather+widening、mixed KV、转换边界的可见语义，不查询 ISA |
 | backend | 新增对应 dtype tuple 的 kernel、params builder、recipe/validator | 实现 weight widening、FP32 累加、物理 packing 与 ISA 选择 |

@@ -7,7 +7,7 @@
 
 #include "aethermind/model/formats/hf/hf_model_config.h"
 #include "aethermind/model/resolved_model_weights.h"
-#include "aethermind/model/weight/model_weight_normalization.h"
+#include "aethermind/model/weight/raw_weight_fp32_conversion.h"
 
 #include <optional>
 
@@ -25,18 +25,18 @@ public:
     LoadedModel(HfModelConfig config, ResolvedModelWeights resolved_weights) noexcept;
     LoadedModel(HfModelConfig config,
                 ResolvedModelWeights resolved_weights,
-                std::optional<ModelWeightNormalizationUsage> normalization_usage) noexcept;
+                std::optional<RawWeightFp32ConversionUsage> fp32_conversion_usage) noexcept;
 
     AM_NODISCARD const HfModelConfig& GetConfig() const noexcept;
     AM_NODISCARD const ResolvedModelWeights& GetResolvedWeights() const noexcept;
 
-    /// @brief Observes normalization accounting without retaining source backing.
-    AM_NODISCARD const std::optional<ModelWeightNormalizationUsage>& GetWeightNormalizationUsage() const noexcept;
+    /// @brief Observes conversion accounting without retaining source backing.
+    AM_NODISCARD const std::optional<RawWeightFp32ConversionUsage>& GetWeightFp32ConversionUsage() const noexcept;
 
 private:
     HfModelConfig config_{};
     ResolvedModelWeights resolved_weights_{};
-    std::optional<ModelWeightNormalizationUsage> normalization_usage_{};
+    std::optional<RawWeightFp32ConversionUsage> fp32_conversion_usage_{};
 };
 
 } // namespace aethermind

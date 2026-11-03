@@ -8,6 +8,7 @@
 #include <memory>
 #include <new>
 #include <optional>
+#include <ranges>
 #include <utility>
 #include <vector>
 
@@ -84,7 +85,7 @@ StatusOr<size_t> UnionBytes(std::vector<AddrRange>& ranges) {
                       });
 
     size_t bytes = 0;
-    const auto add_range = [&bytes](const AddrRange& range) -> Status {
+    auto add_range = [&bytes](const AddrRange& range) -> Status {
         size_t extent = 0;
         if (CheckNarrow(range.end - range.begin, &extent) ||
             CheckOverflowAdd(bytes, extent, &bytes)) {
@@ -94,7 +95,7 @@ StatusOr<size_t> UnionBytes(std::vector<AddrRange>& ranges) {
         return Status::Ok();
     };
 
-    std::optional<AddrRange> current;
+    std::optional<AddrRange> current{};
     for (const auto& range: ranges) {
         if (!current.has_value()) {
             current = range;
@@ -123,30 +124,31 @@ StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
         AM_RETURN_IF_ERROR(AddView(owners, *weights.lm_head));
     }
 
-    for (const auto& layer: weights.layers) {
-        for (const auto* view: {&layer.norm.input_rmsnorm, &layer.norm.post_attn_rmsnorm,
-                                &layer.attn.q_proj, &layer.attn.k_proj, &layer.attn.v_proj,
-                                &layer.attn.o_proj, &layer.mlp.gate_proj, &layer.mlp.up_proj,
-                                &layer.mlp.down_proj}) {
+    for (const auto& [norm, attn, mlp]: weights.layers) {
+        for (const auto* view: {&norm.input_rmsnorm, &norm.post_attn_rmsnorm,
+                                &attn.q_proj, &attn.k_proj, &attn.v_proj,
+                                &attn.o_proj, &mlp.gate_proj, &mlp.up_proj,
+                                &mlp.down_proj}) {
             AM_RETURN_IF_ERROR(AddView(owners, *view));
         }
     }
 
     RawWeightStorageUsage usage;
-    for (auto& [owner, retained]: owners) {
+    for (auto& [footprint, referenced_ranges]: owners | std::views::values) {
         AM_ASSIGN_OR_RETURN(const size_t referenced_bytes,
-                            UnionBytes(retained.referenced_ranges));
-        if (CheckOverflowAdd(usage.referenced_view_bytes, referenced_bytes, &usage.referenced_view_bytes)) {
+                            UnionBytes(referenced_ranges));
+        if (CheckOverflowAdd(usage.referenced_view_bytes, referenced_bytes,
+                             &usage.referenced_view_bytes)) {
             return Status::Overflow(
                     "Raw model referenced view bytes overflowed size_t");
         }
 
-        if (!retained.footprint.has_value()) {
+        if (!footprint.has_value()) {
             usage.backing_usage_complete = false;
             continue;
         }
 
-        const auto [kind, bytes] = *retained.footprint;
+        const auto [kind, bytes] = *footprint;
         if (referenced_bytes > bytes) {
             return Status::InvalidArgument(
                     "Raw owner footprint is smaller than its referenced view ranges");

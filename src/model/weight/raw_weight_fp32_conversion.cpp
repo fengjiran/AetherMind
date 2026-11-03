@@ -1,4 +1,4 @@
-#include "aethermind/model/weight/model_weight_normalization.h"
+#include "aethermind/model/weight/raw_weight_fp32_conversion.h"
 #include "aethermind/memory/allocator.h"
 #include "aethermind/model/loaded_model.h"
 #include "utils/overflow_check.h"
@@ -15,9 +15,9 @@
 namespace aethermind {
 namespace {
 
-class NormalizedRawStorage final : public RawStorage {
+class ConvertedRawStorage final : public RawStorage {
 public:
-    explicit NormalizedRawStorage(Buffer buffer) noexcept : buffer_(std::move(buffer)) {}
+    explicit ConvertedRawStorage(Buffer buffer) noexcept : buffer_(std::move(buffer)) {}
 
     std::optional<RawStorageFootprint> footprint() const noexcept override {
         return RawStorageFootprint{RawStorageKind::kOwned, buffer_.nbytes()};
@@ -86,18 +86,18 @@ std::vector<WeightSlot> CollectViews(ResolvedModelWeights& weights) {
 
 Status ValidateSource(const RawWeightView& view) {
     if (!view.IsValid()) {
-        return Status::InvalidArgument("FP32 weight normalization requires a valid source weight");
+        return Status::InvalidArgument("FP32 weight conversion requires a valid source weight");
     }
     // Matching-code dtype equality calls lanes(); guard its scalar precondition
     // before equality or ValidateRawWeightView can inspect an encoded vector.
     if (view.dtype.raw_lanes() != 1 ||
         (view.dtype != DataType::Float32() && view.dtype != DataType::Float(16) &&
          view.dtype != DataType::BFloat(16))) {
-        return Status::Unimplemented("FP32 weight normalization requires scalar Float32, Float16, or BFloat16 weights");
+        return Status::Unimplemented("FP32 weight conversion requires scalar Float32, Float16, or BFloat16 weights");
     }
     AM_RETURN_IF_ERROR(ValidateRawWeightView(view));
     if (!view.is_contiguous) {
-        return Status::InvalidArgument("FP32 weight normalization requires contiguous source weights");
+        return Status::InvalidArgument("FP32 weight conversion requires contiguous source weights");
     }
     return Status::Ok();
 }
@@ -129,36 +129,36 @@ uint32_t WidenBits(uint16_t bits, bool bfloat) noexcept {
 
 Status AddBytes(size_t amount, size_t& total) {
     if (CheckOverflowAdd(total, amount, &total)) {
-        return Status::Overflow("FP32 weight normalization payload size overflowed size_t");
+        return Status::Overflow("FP32 weight conversion payload size overflowed size_t");
     }
     return Status::Ok();
 }
 
 } // namespace
 
-StatusOr<std::unique_ptr<LoadedModel>> NormalizeLoadedModelWeightsToFp32(
+StatusOr<std::unique_ptr<LoadedModel>> ConvertLoadedModelWeightsToFp32(
         const LoadedModel& model,
         Allocator& allocator,
-        const ModelWeightNormalizationOptions& options) try {
+        const RawWeightFp32ConversionOptions& options) try {
     if (!allocator.device().is_cpu()) {
-        return Status::InvalidArgument("FP32 weight normalization requires a CPU allocator");
+        return Status::InvalidArgument("FP32 weight conversion requires a CPU allocator");
     }
 
-    ResolvedModelWeights normalized = model.GetResolvedWeights();
-    const auto views = CollectViews(normalized);
+    ResolvedModelWeights converted = model.GetResolvedWeights();
+    const auto views = CollectViews(converted);
     std::map<SourceKey, size_t, SourceLess> conversion_indices;
     std::vector<Conversion> conversions;
-    ModelWeightNormalizationUsage usage;
+    RawWeightFp32ConversionUsage usage;
     for (const auto& slot: views) {
         auto* view = slot.view;
         if (const auto status = ValidateSource(*view); !status.ok()) {
-            return status.WithMessage("FP32 normalization weight " + slot.location + ": " + status.message());
+            return status.WithMessage("FP32 conversion weight " + slot.location + ": " + status.message());
         }
         if (view->dtype == DataType::Float32()) continue;
 
         size_t target_bytes = 0;
         if (CheckOverflowMul(view->bytes / sizeof(uint16_t), sizeof(float), &target_bytes)) {
-            return Status::Overflow("FP32 normalized weight byte size overflowed size_t");
+            return Status::Overflow("FP32 converted weight byte size overflowed size_t");
         }
         SourceKey key{view->storage, view->data, view->bytes,
                       view->dtype == DataType::BFloat(16), view->shape};
@@ -178,7 +178,7 @@ StatusOr<std::unique_ptr<LoadedModel>> NormalizeLoadedModelWeightsToFp32(
 
     // Converted roles no longer retain their source owners. Compute usage for
     // only F32 roles to count backing that survives alongside the new payload.
-    ResolvedModelWeights retained = normalized;
+    ResolvedModelWeights retained = converted;
     for (const auto& [view, location]: CollectViews(retained)) {
         if (view->dtype != DataType::Float32()) *view = {};
     }
@@ -187,10 +187,10 @@ StatusOr<std::unique_ptr<LoadedModel>> NormalizeLoadedModelWeightsToFp32(
     AM_RETURN_IF_ERROR(AddBytes(usage.converted_weight_bytes, final_owned_bytes));
     if (options.max_owned_weight_bytes != 0) {
         if (!retained_usage.backing_usage_complete) {
-            return Status::FailedPrecondition("Finite normalized owned-weight cap requires complete retained Float32 backing metadata");
+            return Status::FailedPrecondition("Finite converted owned-weight cap requires complete retained Float32 backing metadata");
         }
         if (final_owned_bytes > options.max_owned_weight_bytes) {
-            return Status::ResourceExhausted("Normalized owned-weight payload requires " +
+            return Status::ResourceExhausted("Converted owned-weight payload requires " +
                                              std::to_string(final_owned_bytes) + " bytes; limit " +
                                              std::to_string(options.max_owned_weight_bytes));
         }
@@ -210,7 +210,7 @@ StatusOr<std::unique_ptr<LoadedModel>> NormalizeLoadedModelWeightsToFp32(
             const float value = std::bit_cast<float>(widened);
             std::memcpy(destination + target_offset, &value, sizeof(value));
         }
-        auto owner = std::make_shared<NormalizedRawStorage>(std::move(buffer));
+        auto owner = std::make_shared<ConvertedRawStorage>(std::move(buffer));
         for (auto* target: conversion.targets) {
             target->data = destination;
             target->bytes = conversion.target_bytes;
@@ -219,8 +219,8 @@ StatusOr<std::unique_ptr<LoadedModel>> NormalizeLoadedModelWeightsToFp32(
             AM_RETURN_IF_ERROR(ValidateRawWeightView(*target));
         }
     }
-    AM_ASSIGN_OR_RETURN(usage.normalized_weights, ComputeRawWeightStorageUsage(normalized));
-    return std::make_unique<LoadedModel>(model.GetConfig(), std::move(normalized), usage);
+    AM_ASSIGN_OR_RETURN(usage.converted_weights, ComputeRawWeightStorageUsage(converted));
+    return std::make_unique<LoadedModel>(model.GetConfig(), std::move(converted), usage);
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});
 }

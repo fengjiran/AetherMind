@@ -1,7 +1,4 @@
 #include "aethermind/inference/executable_model.h"
-#include "aethermind/model/weight/weight_binding_resolver.h"
-#include "inference/inference_internal.h"
-
 #include "aethermind/backend/backend.h"
 #include "aethermind/compiler/weight_packing_request_builder.h"
 #include "aethermind/execution/execution_bindings.h"
@@ -12,12 +9,13 @@
 #include "aethermind/model/raw_weight.h"
 #include "aethermind/model/resolved_model_weights.h"
 #include "aethermind/model/weight/packed_weight_collection.h"
+#include "aethermind/model/weight/weight_binding_resolver.h"
 #include "aethermind/model/weight/weight_packing_request.h"
 #include "aethermind/runtime/runtime.h"
+#include "inference/inference_internal.h"
 #include "utils/overflow_check.h"
 
 #include <algorithm>
-#include <cstdint>
 #include <memory>
 #include <new>
 #include <optional>
@@ -331,7 +329,7 @@ StatusOr<ExecutableModel> PrepareExecutableModel(
     const auto& resolved = artifact.loaded_model->GetResolvedWeights();
 
     ModelResourceUsage usage;
-    usage.weight_normalization = artifact.loaded_model->GetWeightNormalizationUsage();
+    usage.weight_fp32_conversion = artifact.loaded_model->GetWeightFp32ConversionUsage();
     auto weight_usage = ComputeRawWeightStorageUsage(resolved);
     if (!weight_usage.ok()) {
         if (options.max_model_payload_bytes != 0 ||
@@ -378,17 +376,16 @@ StatusOr<ExecutableModel> PrepareExecutableModel(
         packed_cap = packed_cap.has_value() ? std::min(*packed_cap, remaining) : remaining;
     }
 
-    auto requests = BuildWeightPackingRequests(
-            artifact.graph, resolved);
+    auto requests = BuildWeightPackingRequests(artifact.graph, resolved);
     if (!requests.ok()) {
         return requests.status();
     }
 
     // Resolve the backend once from the first request's device (empty requests
     // skip packing entirely and default to CPU, mirroring plan construction).
-    const DeviceType device = requests->empty()
-                                      ? DeviceType::kCPU
-                                      : requests->front().selector.device_type;
+    const auto device = requests->empty()
+                                ? DeviceType::kCPU
+                                : requests->front().selector.device_type;
     const auto backend = runtime.GetBackend(device);
     AM_RETURN_IF_ERROR(backend.status());
 
@@ -409,6 +406,7 @@ StatusOr<ExecutableModel> PrepareExecutableModel(
                          &usage.managed_payload_bytes)) {
         return Status::Overflow("Model payload overflowed size_t");
     }
+
     auto plan = ExecutionPlanBuilder::Build(runtime,
                                             packed_weights, artifact.graph);
     if (!plan.ok()) {
@@ -527,16 +525,16 @@ StatusOr<ExecutableModel> LoadAndPrepareCpuExecutableModel(
     if (compatible) {
         AM_RETURN_IF_ERROR(ValidateFp32CompatibleSourceInputs(*loaded));
         AM_ASSIGN_OR_RETURN(Allocator * allocator, runtime.TryGetAllocator(Device::CPU()));
-        auto normalized = NormalizeLoadedModelWeightsToFp32(
+        auto converted = ConvertLoadedModelWeightsToFp32(
                 *loaded, *allocator,
                 {.max_owned_weight_bytes = options.resources.max_model_payload_bytes});
-        if (!normalized.ok()) {
-            return normalized.status().WithMessage(
-                    "FP32 compatibility normalization failed: " + normalized.status().message());
+        if (!converted.ok()) {
+            return converted.status().WithMessage(
+                    "FP32 compatibility conversion failed: " + converted.status().message());
         }
         // Drop source-only mappings before compiling or packing. Shared F32
-        // source owners remain alive through the normalized model's views.
-        loaded = std::move(*normalized);
+        // source owners remain alive through the converted model's views.
+        loaded = std::move(*converted);
         AM_RETURN_IF_ERROR(ValidateFp32ExecutionWeights(*loaded));
     } else {
         AM_RETURN_IF_ERROR(ValidateFp32ExecutionInputs(*loaded));

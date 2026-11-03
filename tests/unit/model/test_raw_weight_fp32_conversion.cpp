@@ -1,6 +1,6 @@
 #include "aethermind/memory/cpu_allocator.h"
 #include "aethermind/model/loaded_model.h"
-#include "aethermind/model/weight/model_weight_normalization.h"
+#include "aethermind/model/weight/raw_weight_fp32_conversion.h"
 
 #include <bit>
 #include <cmath>
@@ -125,9 +125,9 @@ void CheckEveryPattern(DataType dtype, bool bfloat) {
     LoadedModel model(MakeConfig(dtype), MakeWeights(MakeView(source, dtype, 65536)));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    auto normalized = NormalizeLoadedModelWeightsToFp32(model, allocator);
-    ASSERT_TRUE(normalized.ok()) << normalized.status().ToString();
-    const auto& output = (*normalized)->GetResolvedWeights().embed_tokens;
+    auto converted = ConvertLoadedModelWeightsToFp32(model, allocator);
+    ASSERT_TRUE(converted.ok()) << converted.status().ToString();
+    const auto& output = (*converted)->GetResolvedWeights().embed_tokens;
     EXPECT_EQ(output.dtype, DataType::Float32());
     EXPECT_EQ(output.bytes, 65536 * sizeof(float));
     for (uint32_t bits = 0; bits < 65536; ++bits) {
@@ -135,34 +135,34 @@ void CheckEveryPattern(DataType dtype, bool bfloat) {
                 << "source bits " << bits;
     }
     EXPECT_EQ(stats->calls, 1U);
-    EXPECT_EQ(output.storage, (*normalized)->GetResolvedWeights().final_norm.storage);
+    EXPECT_EQ(output.storage, (*converted)->GetResolvedWeights().final_norm.storage);
 }
 
-TEST(ModelWeightNormalization, Float16EveryBitPatternMatchesIndependentOracle) {
+TEST(RawWeightFp32Conversion, Float16EveryBitPatternMatchesIndependentOracle) {
     CheckEveryPattern(DataType::Float(16), false);
 }
 
-TEST(ModelWeightNormalization, BFloat16EveryBitPatternMatchesIndependentOracle) {
+TEST(RawWeightFp32Conversion, BFloat16EveryBitPatternMatchesIndependentOracle) {
     CheckEveryPattern(DataType::BFloat(16), true);
 }
 
-TEST(ModelWeightNormalization, AcceptsUnalignedSourceWithoutModifyingBytes) {
+TEST(RawWeightFp32Conversion, AcceptsUnalignedSourceWithoutModifyingBytes) {
     auto source = std::make_shared<SourceStorage>(9);
     const std::vector<uint16_t> values{0x0001, 0x8000, 0x7c01, 0xfc00};
     std::memcpy(source->data.data() + 1, values.data(), 8);
     const auto original = source->data;
     LoadedModel model(MakeConfig(), MakeWeights(MakeView(source, DataType::Float(16), 4, 1)));
     CPUAllocator allocator(Device::CPU());
-    auto normalized = NormalizeLoadedModelWeightsToFp32(model, allocator);
-    ASSERT_TRUE(normalized.ok()) << normalized.status().ToString();
+    auto converted = ConvertLoadedModelWeightsToFp32(model, allocator);
+    ASSERT_TRUE(converted.ok()) << converted.status().ToString();
     for (size_t i = 0; i < values.size(); ++i) {
-        EXPECT_EQ(ReadBits((*normalized)->GetResolvedWeights().embed_tokens, i), WidenOracle(values[i], false));
+        EXPECT_EQ(ReadBits((*converted)->GetResolvedWeights().embed_tokens, i), WidenOracle(values[i], false));
     }
     EXPECT_EQ(source->data, original);
     EXPECT_EQ(model.GetResolvedWeights().embed_tokens.dtype, DataType::Float(16));
 }
 
-TEST(ModelWeightNormalization, PreservesTieAndDistinguishesLogicalShapes) {
+TEST(RawWeightFp32Conversion, PreservesTieAndDistinguishesLogicalShapes) {
     auto source = std::make_shared<SourceStorage>(8);
     auto weights = MakeWeights(MakeView(source, DataType::Float(16), 4));
     weights.final_norm.shape = {2, 2};
@@ -170,53 +170,53 @@ TEST(ModelWeightNormalization, PreservesTieAndDistinguishesLogicalShapes) {
     LoadedModel model(MakeConfig(), std::move(weights));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    auto normalized = NormalizeLoadedModelWeightsToFp32(model, allocator);
-    ASSERT_TRUE(normalized.ok()) << normalized.status().ToString();
-    const auto& result = (*normalized)->GetResolvedWeights();
+    auto converted = ConvertLoadedModelWeightsToFp32(model, allocator);
+    ASSERT_TRUE(converted.ok()) << converted.status().ToString();
+    const auto& result = (*converted)->GetResolvedWeights();
     ASSERT_TRUE(result.lm_head.has_value());
     EXPECT_EQ(result.embed_tokens.data, result.lm_head->data);
     EXPECT_EQ(result.embed_tokens.storage, result.lm_head->storage);
     EXPECT_NE(result.embed_tokens.storage, result.final_norm.storage);
     EXPECT_EQ(stats->calls, 2U);
-    const auto& usage = *(*normalized)->GetWeightNormalizationUsage();
+    const auto& usage = *(*converted)->GetWeightFp32ConversionUsage();
     EXPECT_EQ(usage.converted_source_bytes, 16U);
     EXPECT_EQ(usage.converted_weight_bytes, 32U);
     EXPECT_EQ(usage.source_weights.referenced_view_bytes, 8U);
-    EXPECT_EQ(usage.normalized_weights.owned_bytes, 32U);
+    EXPECT_EQ(usage.converted_weights.owned_bytes, 32U);
 }
 
-TEST(ModelWeightNormalization, DoesNotMergeEqualContentFromDifferentOwners) {
+TEST(RawWeightFp32Conversion, DoesNotMergeEqualContentFromDifferentOwners) {
     auto first = std::make_shared<SourceStorage>(8), second = std::make_shared<SourceStorage>(8);
     auto weights = MakeWeights(MakeView(first, DataType::Float(16), 4));
     weights.final_norm = MakeView(second, DataType::Float(16), 4);
     LoadedModel model(MakeConfig(), std::move(weights));
     CPUAllocator allocator(Device::CPU());
-    auto normalized = NormalizeLoadedModelWeightsToFp32(model, allocator);
-    ASSERT_TRUE(normalized.ok()) << normalized.status().ToString();
-    const auto& result = (*normalized)->GetResolvedWeights();
+    auto converted = ConvertLoadedModelWeightsToFp32(model, allocator);
+    ASSERT_TRUE(converted.ok()) << converted.status().ToString();
+    const auto& result = (*converted)->GetResolvedWeights();
     EXPECT_NE(result.embed_tokens.data, result.final_norm.data);
     EXPECT_NE(result.embed_tokens.storage, result.final_norm.storage);
 }
 
-TEST(ModelWeightNormalization, Float32SharesSourceAndPreservesHintAndOptionalRole) {
+TEST(RawWeightFp32Conversion, Float32SharesSourceAndPreservesHintAndOptionalRole) {
     auto source = std::make_shared<SourceStorage>(16);
     auto weights = MakeWeights(MakeView(source, DataType::Float32(), 4));
     LoadedModel model(MakeConfig(DataType::BFloat(16)), weights);
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    auto normalized = NormalizeLoadedModelWeightsToFp32(model, allocator);
-    ASSERT_TRUE(normalized.ok()) << normalized.status().ToString();
+    auto converted = ConvertLoadedModelWeightsToFp32(model, allocator);
+    ASSERT_TRUE(converted.ok()) << converted.status().ToString();
     EXPECT_EQ(stats->calls, 0U);
-    EXPECT_EQ((*normalized)->GetResolvedWeights().embed_tokens.storage, source);
-    EXPECT_EQ((*normalized)->GetResolvedWeights().embed_tokens.data, weights.embed_tokens.data);
-    EXPECT_FALSE((*normalized)->GetResolvedWeights().lm_head.has_value());
-    EXPECT_EQ((*normalized)->GetConfig().weight_dtype_hint, DataType::BFloat(16));
-    EXPECT_EQ((*normalized)->GetConfig().weight_dtype_hint_name, "source dtype hint");
-    EXPECT_EQ((*normalized)->GetWeightNormalizationUsage()->converted_weight_bytes, 0U);
+    EXPECT_EQ((*converted)->GetResolvedWeights().embed_tokens.storage, source);
+    EXPECT_EQ((*converted)->GetResolvedWeights().embed_tokens.data, weights.embed_tokens.data);
+    EXPECT_FALSE((*converted)->GetResolvedWeights().lm_head.has_value());
+    EXPECT_EQ((*converted)->GetConfig().weight_dtype_hint, DataType::BFloat(16));
+    EXPECT_EQ((*converted)->GetConfig().weight_dtype_hint_name, "source dtype hint");
+    EXPECT_EQ((*converted)->GetWeightFp32ConversionUsage()->converted_weight_bytes, 0U);
 }
 
-TEST(ModelWeightNormalization, ConvertedOwnerOutlivesInputAndAllocator) {
-    std::unique_ptr<LoadedModel> normalized;
+TEST(RawWeightFp32Conversion, ConvertedOwnerOutlivesInputAndAllocator) {
+    std::unique_ptr<LoadedModel> converted;
     std::weak_ptr<const RawStorage> source_weak;
     auto stats = std::make_shared<AllocationStats>();
     {
@@ -226,37 +226,37 @@ TEST(ModelWeightNormalization, ConvertedOwnerOutlivesInputAndAllocator) {
         std::memcpy(source->data.data(), &one, sizeof(one));
         LoadedModel model(MakeConfig(), MakeWeights(MakeView(source, DataType::Float(16), 1)));
         TrackingAllocator allocator(stats);
-        auto result = NormalizeLoadedModelWeightsToFp32(model, allocator);
+        auto result = ConvertLoadedModelWeightsToFp32(model, allocator);
         ASSERT_TRUE(result.ok()) << result.status().ToString();
-        normalized = std::move(*result);
+        converted = std::move(*result);
     }
     EXPECT_TRUE(source_weak.expired());
     EXPECT_EQ(stats->live, 1U);
-    EXPECT_EQ(ReadBits(normalized->GetResolvedWeights().embed_tokens, 0), 0x3f800000U);
-    normalized.reset();
+    EXPECT_EQ(ReadBits(converted->GetResolvedWeights().embed_tokens, 0), 0x3f800000U);
+    converted.reset();
     EXPECT_EQ(stats->live, 0U);
     EXPECT_EQ(stats->released, 1U);
 }
 
-TEST(ModelWeightNormalization, EnforcesFinalOwnedBudgetBeforeAnyPayloadAllocation) {
+TEST(RawWeightFp32Conversion, EnforcesFinalOwnedBudgetBeforeAnyPayloadAllocation) {
     auto source = std::make_shared<SourceStorage>(8);
     source->kind = RawStorageKind::kOwned;
     LoadedModel model(MakeConfig(), MakeWeights(MakeView(source, DataType::Float(16), 4)));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    auto rejected = NormalizeLoadedModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 15});
+    auto rejected = ConvertLoadedModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 15});
     EXPECT_EQ(rejected.status().code(), StatusCode::kResourceExhausted);
     EXPECT_EQ(stats->calls, 0U);
-    auto accepted = NormalizeLoadedModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 16});
+    auto accepted = ConvertLoadedModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 16});
     ASSERT_TRUE(accepted.ok()) << accepted.status().ToString();
-    const auto& usage = *(*accepted)->GetWeightNormalizationUsage();
+    const auto& usage = *(*accepted)->GetWeightFp32ConversionUsage();
     EXPECT_EQ(usage.peak_owned_weight_bytes, 24U);
-    EXPECT_EQ(usage.normalized_weights.owned_bytes, 16U);
+    EXPECT_EQ(usage.converted_weights.owned_bytes, 16U);
     EXPECT_TRUE(usage.peak_owned_weight_bytes_complete);
-    EXPECT_TRUE(NormalizeLoadedModelWeightsToFp32(model, allocator).ok());
+    EXPECT_TRUE(ConvertLoadedModelWeightsToFp32(model, allocator).ok());
 }
 
-TEST(ModelWeightNormalization, CountsRetainedFloat32BackingAlongsideConvertedPayload) {
+TEST(RawWeightFp32Conversion, CountsRetainedFloat32BackingAlongsideConvertedPayload) {
     auto source = std::make_shared<SourceStorage>(24);
     source->kind = RawStorageKind::kOwned;
     auto weights = MakeWeights(MakeView(source, DataType::Float(16), 4));
@@ -264,33 +264,33 @@ TEST(ModelWeightNormalization, CountsRetainedFloat32BackingAlongsideConvertedPay
     LoadedModel model(MakeConfig(), std::move(weights));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    EXPECT_EQ(NormalizeLoadedModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 39}).status().code(),
+    EXPECT_EQ(ConvertLoadedModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 39}).status().code(),
               StatusCode::kResourceExhausted);
     EXPECT_EQ(stats->calls, 0U);
-    auto normalized = NormalizeLoadedModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 40});
-    ASSERT_TRUE(normalized.ok()) << normalized.status().ToString();
-    EXPECT_EQ((*normalized)->GetWeightNormalizationUsage()->normalized_weights.owned_bytes, 40U);
+    auto converted = ConvertLoadedModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 40});
+    ASSERT_TRUE(converted.ok()) << converted.status().ToString();
+    EXPECT_EQ((*converted)->GetWeightFp32ConversionUsage()->converted_weights.owned_bytes, 40U);
 }
 
-TEST(ModelWeightNormalization, UnknownSourceIsReportedAndFiniteRetainedCapFailsClosed) {
+TEST(RawWeightFp32Conversion, UnknownSourceIsReportedAndFiniteRetainedCapFailsClosed) {
     auto source = std::make_shared<SourceStorage>(8);
     source->known = false;
     LoadedModel reduced(MakeConfig(), MakeWeights(MakeView(source, DataType::Float(16), 4)));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    auto normalized = NormalizeLoadedModelWeightsToFp32(reduced, allocator, {.max_owned_weight_bytes = 16});
-    ASSERT_TRUE(normalized.ok()) << normalized.status().ToString();
-    EXPECT_FALSE((*normalized)->GetWeightNormalizationUsage()->peak_owned_weight_bytes_complete);
-    EXPECT_TRUE((*normalized)->GetWeightNormalizationUsage()->normalized_weights.backing_usage_complete);
+    auto converted = ConvertLoadedModelWeightsToFp32(reduced, allocator, {.max_owned_weight_bytes = 16});
+    ASSERT_TRUE(converted.ok()) << converted.status().ToString();
+    EXPECT_FALSE((*converted)->GetWeightFp32ConversionUsage()->peak_owned_weight_bytes_complete);
+    EXPECT_TRUE((*converted)->GetWeightFp32ConversionUsage()->converted_weights.backing_usage_complete);
     LoadedModel fp32(MakeConfig(), MakeWeights(MakeView(source, DataType::Float32(), 2)));
     const auto calls = stats->calls;
-    EXPECT_EQ(NormalizeLoadedModelWeightsToFp32(fp32, allocator, {.max_owned_weight_bytes = 16}).status().code(),
+    EXPECT_EQ(ConvertLoadedModelWeightsToFp32(fp32, allocator, {.max_owned_weight_bytes = 16}).status().code(),
               StatusCode::kFailedPrecondition);
     EXPECT_EQ(stats->calls, calls);
-    EXPECT_TRUE(NormalizeLoadedModelWeightsToFp32(fp32, allocator).ok());
+    EXPECT_TRUE(ConvertLoadedModelWeightsToFp32(fp32, allocator).ok());
 }
 
-TEST(ModelWeightNormalization, PartialAllocationFailureReleasesCandidatesAndAllowsRetry) {
+TEST(RawWeightFp32Conversion, PartialAllocationFailureReleasesCandidatesAndAllowsRetry) {
     auto source = std::make_shared<SourceStorage>(8);
     auto weights = MakeWeights(MakeView(source, DataType::Float(16), 2));
     weights.final_norm = MakeView(source, DataType::Float(16), 2, 4);
@@ -298,29 +298,29 @@ TEST(ModelWeightNormalization, PartialAllocationFailureReleasesCandidatesAndAllo
     auto stats = std::make_shared<AllocationStats>();
     stats->fail_on_call = 1;
     TrackingAllocator allocator(stats);
-    auto result = NormalizeLoadedModelWeightsToFp32(model, allocator);
+    auto result = ConvertLoadedModelWeightsToFp32(model, allocator);
     EXPECT_EQ(result.status().code(), StatusCode::kResourceExhausted);
     EXPECT_EQ(result.status().message(), "test allocation failure");
     EXPECT_EQ(stats->live, 0U);
     EXPECT_EQ(stats->released, 1U);
     EXPECT_EQ(model.GetResolvedWeights().embed_tokens.dtype, DataType::Float(16));
     stats->fail_on_call = std::numeric_limits<size_t>::max();
-    EXPECT_TRUE(NormalizeLoadedModelWeightsToFp32(model, allocator).ok());
+    EXPECT_TRUE(ConvertLoadedModelWeightsToFp32(model, allocator).ok());
     EXPECT_EQ(stats->live, 0U);
 }
 
-TEST(ModelWeightNormalization, ValidatesEveryLayerBeforePayloadAllocation) {
+TEST(RawWeightFp32Conversion, ValidatesEveryLayerBeforePayloadAllocation) {
     auto source = std::make_shared<SourceStorage>(8);
     auto weights = MakeWeights(MakeView(source, DataType::Float(16), 4));
     weights.layers.emplace_back();
     LoadedModel model(MakeConfig(), std::move(weights));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    EXPECT_FALSE(NormalizeLoadedModelWeightsToFp32(model, allocator).ok());
+    EXPECT_FALSE(ConvertLoadedModelWeightsToFp32(model, allocator).ok());
     EXPECT_EQ(stats->calls, 0U);
 }
 
-TEST(ModelWeightNormalization, RejectsMalformedShapeSizeDTypeAndContiguityBeforeAllocation) {
+TEST(RawWeightFp32Conversion, RejectsMalformedShapeSizeDTypeAndContiguityBeforeAllocation) {
     auto source = std::make_shared<SourceStorage>(8);
     const auto valid = MakeView(source, DataType::Float(16), 4);
     auto stats = std::make_shared<AllocationStats>();
@@ -329,7 +329,7 @@ TEST(ModelWeightNormalization, RejectsMalformedShapeSizeDTypeAndContiguityBefore
         auto weights = MakeWeights(valid);
         weights.final_norm = std::move(bad);
         LoadedModel model(MakeConfig(), std::move(weights));
-        EXPECT_FALSE(NormalizeLoadedModelWeightsToFp32(model, allocator).ok());
+        EXPECT_FALSE(ConvertLoadedModelWeightsToFp32(model, allocator).ok());
         EXPECT_EQ(stats->calls, 0U);
     };
     auto bad = valid;
@@ -363,7 +363,7 @@ TEST(ModelWeightNormalization, RejectsMalformedShapeSizeDTypeAndContiguityBefore
     reject(bad);
 }
 
-TEST(ModelWeightNormalization, RejectsTargetSizeOverflowBeforeAllocationOrPayloadRead) {
+TEST(RawWeightFp32Conversion, RejectsTargetSizeOverflowBeforeAllocationOrPayloadRead) {
     auto source = std::make_shared<SourceStorage>(1);
     constexpr size_t count = std::numeric_limits<size_t>::max() / sizeof(float) + 1;
     RawWeightView huge{.data = reinterpret_cast<const std::byte*>(64),
@@ -374,11 +374,11 @@ TEST(ModelWeightNormalization, RejectsTargetSizeOverflowBeforeAllocationOrPayloa
     LoadedModel model(MakeConfig(), MakeWeights(huge));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    EXPECT_EQ(NormalizeLoadedModelWeightsToFp32(model, allocator).status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(ConvertLoadedModelWeightsToFp32(model, allocator).status().code(), StatusCode::kOverflow);
     EXPECT_EQ(stats->calls, 0U);
 }
 
-TEST(ModelWeightNormalization, ZeroElementWeightsDoNotReadSourcePayload) {
+TEST(RawWeightFp32Conversion, ZeroElementWeightsDoNotReadSourcePayload) {
     auto source = std::make_shared<SourceStorage>(1);
     RawWeightView empty{.data = nullptr,
                         .bytes = 0,
@@ -387,14 +387,14 @@ TEST(ModelWeightNormalization, ZeroElementWeightsDoNotReadSourcePayload) {
                         .storage = source};
     LoadedModel model(MakeConfig(), MakeWeights(empty));
     CPUAllocator allocator(Device::CPU());
-    auto normalized = NormalizeLoadedModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 1});
-    ASSERT_TRUE(normalized.ok()) << normalized.status().ToString();
-    const auto& output = (*normalized)->GetResolvedWeights().embed_tokens;
+    auto converted = ConvertLoadedModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 1});
+    ASSERT_TRUE(converted.ok()) << converted.status().ToString();
+    const auto& output = (*converted)->GetResolvedWeights().embed_tokens;
     EXPECT_EQ(output.dtype, DataType::Float32());
     EXPECT_EQ(output.bytes, 0U);
     EXPECT_EQ(output.shape, std::vector<int64_t>{0});
     EXPECT_TRUE(ValidateRawWeightView(output).ok());
-    EXPECT_EQ((*normalized)->GetWeightNormalizationUsage()->converted_weight_bytes, 0U);
+    EXPECT_EQ((*converted)->GetWeightFp32ConversionUsage()->converted_weight_bytes, 0U);
 }
 
 } // namespace

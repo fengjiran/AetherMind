@@ -9,8 +9,8 @@
       "names_sha256": "24ceb9fcd18c347462093924e04d6bcc51aaa363de251d93369b06db19d6d989"
     },
     "asan-production": {
-      "expected_count": 440,
-      "names_sha256": "af72b96b80fcae5a7d9b63fc078756d0d1fe693629dd756cd976f5e609c8b985"
+      "expected_count": 446,
+      "names_sha256": "9532f52c10d159f42375098f1480505658ddb78b36d20256e072f38c505ba07c"
     },
     "avx-isa": {
       "expected_count": 62,
@@ -21,20 +21,20 @@
       "names_sha256": "24ceb9fcd18c347462093924e04d6bcc51aaa363de251d93369b06db19d6d989"
     },
     "avx-production": {
-      "expected_count": 538,
-      "names_sha256": "4e8199f1a59ed0548d6318be7a98a2ae4f69233c419dc7881603dd88310bcb4f"
+      "expected_count": 544,
+      "names_sha256": "fca12ca65a12e277ce48650b219f8f8a70b55e50e792a52ec33b49b11258edb5"
     },
     "baseline-numerical": {
       "expected_count": 20,
       "names_sha256": "24ceb9fcd18c347462093924e04d6bcc51aaa363de251d93369b06db19d6d989"
     },
     "baseline-production": {
-      "expected_count": 538,
-      "names_sha256": "4e8199f1a59ed0548d6318be7a98a2ae4f69233c419dc7881603dd88310bcb4f"
+      "expected_count": 544,
+      "names_sha256": "fca12ca65a12e277ce48650b219f8f8a70b55e50e792a52ec33b49b11258edb5"
     },
     "tsan-applicable": {
-      "expected_count": 362,
-      "names_sha256": "4b30aa476d065a3608213a0ccbd72aee9bf169a0541dd21a5a94c1c2bdc94244"
+      "expected_count": 368,
+      "names_sha256": "e9d6bb3935542f451af562c568ebeed385700d7dce571a945b686f6fe88247f8"
     }
   },
   "schema_version": 1,

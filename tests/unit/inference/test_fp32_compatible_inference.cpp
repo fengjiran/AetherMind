@@ -264,21 +264,21 @@ TEST_P(Fp32CompatibleInference, MatchesIndependentFp32TrajectoryAndGenerate) {
     auto reference_result = LoadAndPrepareCpuExecutableModel(reference_runtime, pair.reference, CpuModelPrepareOptions{});
     ASSERT_TRUE(reference_result.ok()) << reference_result.status().ToString();
     const auto& usage = result->resource_usage();
-    ASSERT_TRUE(usage.weight_normalization.has_value());
-    const auto& normalization = *usage.weight_normalization;
-    EXPECT_EQ(normalization.converted_source_bytes, pair.source_payload_bytes);
-    EXPECT_EQ(normalization.converted_weight_bytes, pair.fp32_payload_bytes);
-    EXPECT_EQ(normalization.source_weights.mapped_bytes, std::filesystem::file_size(pair.source / "model.safetensors"));
-    EXPECT_EQ(normalization.source_weights.owned_bytes, 0U);
-    EXPECT_TRUE(normalization.source_weights.backing_usage_complete);
-    EXPECT_EQ(normalization.normalized_weights.mapped_bytes, 0U);
-    EXPECT_EQ(normalization.normalized_weights.owned_bytes, pair.fp32_payload_bytes);
-    EXPECT_TRUE(normalization.normalized_weights.backing_usage_complete);
-    EXPECT_EQ(normalization.peak_owned_weight_bytes, pair.fp32_payload_bytes);
-    EXPECT_TRUE(normalization.peak_owned_weight_bytes_complete);
+    ASSERT_TRUE(usage.weight_fp32_conversion.has_value());
+    const auto& conversion = *usage.weight_fp32_conversion;
+    EXPECT_EQ(conversion.converted_source_bytes, pair.source_payload_bytes);
+    EXPECT_EQ(conversion.converted_weight_bytes, pair.fp32_payload_bytes);
+    EXPECT_EQ(conversion.source_weights.mapped_bytes, std::filesystem::file_size(pair.source / "model.safetensors"));
+    EXPECT_EQ(conversion.source_weights.owned_bytes, 0U);
+    EXPECT_TRUE(conversion.source_weights.backing_usage_complete);
+    EXPECT_EQ(conversion.converted_weights.mapped_bytes, 0U);
+    EXPECT_EQ(conversion.converted_weights.owned_bytes, pair.fp32_payload_bytes);
+    EXPECT_TRUE(conversion.converted_weights.backing_usage_complete);
+    EXPECT_EQ(conversion.peak_owned_weight_bytes, pair.fp32_payload_bytes);
+    EXPECT_TRUE(conversion.peak_owned_weight_bytes_complete);
     EXPECT_EQ(usage.weights.owned_bytes, pair.fp32_payload_bytes);
     EXPECT_EQ(usage.weights.mapped_bytes, 0U);
-    EXPECT_FALSE(reference_result->resource_usage().weight_normalization.has_value());
+    EXPECT_FALSE(reference_result->resource_usage().weight_fp32_conversion.has_value());
 
     // The convenience entry has already destroyed its loader and conversion
     // locals; only ExecutableModel's normal ownership chain supplies these bytes.

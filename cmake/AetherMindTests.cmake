@@ -494,7 +494,7 @@ function(aethermind_register_tests target)
             -DAETHERMIND_SOURCE_DIR=${PROJECT_SOURCE_DIR}
             -DAETHERMIND_TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}
             -P "${PROJECT_SOURCE_DIR}/tests/cmake/test_shared_dependency_sources.cmake")
-    set_tests_properties(cmake.shared_dependency_sources PROPERTIES LABELS "smoke;validation;build" TIMEOUT 120)
+    set_tests_properties(cmake.shared_dependency_sources PROPERTIES LABELS "smoke;validation;build" TIMEOUT 180)
     if (Python3_Interpreter_FOUND)
         add_test(NAME cmake.python_discovery COMMAND "${CMAKE_COMMAND}"
                 "-DAETHERMIND_SOURCE_DIR=${PROJECT_SOURCE_DIR}"

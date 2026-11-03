@@ -18,13 +18,11 @@
 #include "backend/cpu/kernels/add_rmsnorm/add_rmsnorm_internal.h"
 #include "test_utils/test_allocator.h"
 
-#include <gtest/gtest.h>
-
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
-#include <cstdint>
+#include <gtest/gtest.h>
 #include <limits>
 #include <memory>
 #include <optional>

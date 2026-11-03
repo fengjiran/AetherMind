@@ -48,15 +48,11 @@ else ()
             set(SPDLOG_USE_STD_FORMAT ON CACHE BOOL "Use std::format instead of fmt")
         endif ()
     endif ()
-    aethermind_shared_dependency_source_options(
-            "${CMAKE_CURRENT_SOURCE_DIR}/.deps/spdlog" spdlog_source_options)
-    FetchContent_Declare(
-            spdlog
-            GIT_REPOSITORY https://github.com/gabime/spdlog.git
-            GIT_TAG v1.17.0
-            ${spdlog_source_options}
-    )
-    FetchContent_MakeAvailable(spdlog)
+    aethermind_declare_shared_dependency(spdlog
+            "${CMAKE_CURRENT_SOURCE_DIR}/.deps/spdlog"
+            https://github.com/gabime/spdlog.git
+            v1.17.0)
+    aethermind_make_shared_dependency_available(spdlog TARGETS spdlog::spdlog)
 
     # A provider may supply an imported target instead of building this source.
     # Only extend usage requirements on the dependency we actually built.
@@ -98,15 +94,11 @@ if (BUILD_TESTS)
         set(gtest_build_tests OFF CACHE BOOL "Build GoogleTest's own tests")
         set(gtest_build_samples OFF CACHE BOOL "Build GoogleTest samples")
 
-        aethermind_shared_dependency_source_options(
-                "${CMAKE_CURRENT_SOURCE_DIR}/.deps/googletest" googletest_source_options)
-        FetchContent_Declare(
-                googletest
-                GIT_REPOSITORY https://github.com/google/googletest.git
-                GIT_TAG v1.18.0
-                ${googletest_source_options}
-        )
-        FetchContent_MakeAvailable(googletest)
+        aethermind_declare_shared_dependency(googletest
+                "${CMAKE_CURRENT_SOURCE_DIR}/.deps/googletest"
+                https://github.com/google/googletest.git
+                v1.18.0)
+        aethermind_make_shared_dependency_available(googletest TARGETS GTest::gtest GTest::gtest_main)
 
         if (googletest_SOURCE_DIR)
             message(STATUS "AetherMind GoogleTest: using source ${googletest_SOURCE_DIR}")
@@ -133,15 +125,11 @@ if (BUILD_BENCHMARKS)
         set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Build Google Benchmark's own tests")
         set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Install Google Benchmark")
 
-        aethermind_shared_dependency_source_options(
-                "${CMAKE_CURRENT_SOURCE_DIR}/.deps/benchmark" benchmark_source_options)
-        FetchContent_Declare(
-                google_benchmark
-                GIT_REPOSITORY https://github.com/google/benchmark.git
-                GIT_TAG v1.9.5
-                ${benchmark_source_options}
-        )
-        FetchContent_MakeAvailable(google_benchmark)
+        aethermind_declare_shared_dependency(google_benchmark
+                "${CMAKE_CURRENT_SOURCE_DIR}/.deps/benchmark"
+                https://github.com/google/benchmark.git
+                v1.9.5)
+        aethermind_make_shared_dependency_available(google_benchmark TARGETS benchmark::benchmark benchmark::benchmark_main)
 
         if (google_benchmark_SOURCE_DIR)
             message(STATUS "AetherMind Google Benchmark: using source ${google_benchmark_SOURCE_DIR}")

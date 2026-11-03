@@ -117,32 +117,54 @@ and pass `-DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=/absolute/path/to/googletest`.
 CMake uses that checkout without downloading or updating GoogleTest. Other
 dependencies must also be available offline. Parent targets, dependency providers,
 and source-directory overrides explicitly control the dependency version; the
-release tag above describes AetherMind's default source selection.
+release versions above identify the default tags selected in `CMakeLists.txt`.
 
 ### Shared dependency sources
 
-To share one source checkout across all build directories, prepare the pinned
-versions once in the gitignored `.deps/` directory:
+CMake automatically acquires each enabled dependency into its gitignored shared
+source directory on the first configure:
 
-```bash
-mkdir -p .deps
-git clone --depth 1 --branch v1.18.0 https://github.com/google/googletest.git .deps/googletest
-git clone --depth 1 --branch v1.9.5 https://github.com/google/benchmark.git .deps/benchmark
-git clone --depth 1 --branch v1.17.0 https://github.com/gabime/spdlog.git .deps/spdlog
+```text
+.deps/
+├── googletest/
+├── benchmark/
+└── spdlog/
 ```
 
-Normal CMake commands, presets and IDE profiles automatically use these sources
-when their `CMakeLists.txt` exists. Each build retains its own dependency binary,
-generated-file and population directories under its `_deps/`; configuring a
-build never downloads into, updates or checks out the prepared shared sources.
-Tests and benchmarks remain conditional on their existing build options. Without
-a prepared checkout, that dependency retains its normal FetchContent acquisition.
+Run normal CMake commands, presets or IDE profiles; no manual clone is required.
+Each dependency selects a release tag in `CMakeLists.txt`; no separate commit
+SHA needs to be maintained. Only requested dependencies are acquired: disabling
+tests or benchmarks does not fetch their sources.
 
-Existing parent targets and dependency providers keep their precedence, and
-explicit `FETCHCONTENT_SOURCE_DIR_GOOGLETEST`,
+Acquisition holds a per-dependency process lock, checks the existing checkout,
+and clones missing sources into a unique staging directory beside the final
+path. It validates the selected local tag and clean worktree before publishing
+the directory. Concurrent configure processes share the result. A checkout whose
+HEAD matches the selected local tag is reused without contacting the remote or
+modifying source files. Cached tags are not refreshed automatically. Unknown
+contents, local changes and mismatched tags fail without being overwritten.
+Failed acquisitions clean only their own staging directory and do not fall back
+to a build-private source copy. Interrupted staging directories are never
+considered published sources. Persistent hidden `.lock` files are intentional;
+the operating system releases their locks when the holder process exits.
+
+Every build retains its own dependency binaries, generated files and population
+stamps under its `_deps/`. A local validation still runs before third-party
+`CMakeLists.txt` is configured, even with old stamps or disconnected settings.
+`FETCHCONTENT_UPDATES_DISCONNECTED=ON` still permits acquiring missing sources;
+`FETCHCONTENT_FULLY_DISCONNECTED=ON` requires already prepared matching sources
+and never downloads. Git is required for automatically managed checkouts, and
+network access is needed only when a requested source is missing. Acquisition
+lock and Git command timeouts default to 600 and 180 seconds; positive integer
+`AETHERMIND_DEPENDENCY_LOCK_TIMEOUT` and `AETHERMIND_DEPENDENCY_DOWNLOAD_TIMEOUT`
+values can override them at configure time.
+
+Existing parent targets, earlier declarations and dependency providers retain
+their precedence. Explicit `FETCHCONTENT_SOURCE_DIR_GOOGLETEST`,
 `FETCHCONTENT_SOURCE_DIR_GOOGLE_BENCHMARK` and `FETCHCONTENT_SOURCE_DIR_SPDLOG`
-overrides are still respected. Clear old overrides when migrating existing
-builds to automatic shared-source selection:
+overrides are user-managed: they bypass automatic acquisition and tag
+validation, and can point at non-Git offline sources. Clear previous overrides
+to use automatic shared-source management:
 
 ```bash
 cmake -S . -B build \
@@ -151,11 +173,13 @@ cmake -S . -B build \
   -DFETCHCONTENT_SOURCE_DIR_SPDLOG=
 ```
 
-The directories intentionally have stable names. Their actual revisions must
-match the versions being built; the declared `GIT_TAG` does not update a prepared
-checkout. Upgrade shared sources only while their builds are idle, then
-reconfigure and rebuild each affected tree. Do not point `FETCHCONTENT_BASE_DIR`
-at one common directory: it also contains configuration-specific build state.
+The directory names intentionally contain no version. Normal configuration does
+not update, reset or switch an existing checkout. For an explicit dependency
+upgrade, stop all builds using that source, change its version tag, and move
+or remove the old `.deps/<dependency>` directory. The next online configure
+acquires the new tag; then reconfigure and rebuild every affected tree.
+Do not share `FETCHCONTENT_BASE_DIR`: it also contains configuration-specific
+binary and population state.
 
 ## Build
 

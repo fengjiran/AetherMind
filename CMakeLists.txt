@@ -31,9 +31,9 @@ endif ()
 
 find_package(Threads REQUIRED)
 
+include(FetchContent)
 include(cmake/AetherMindSanitizers.cmake)
 include(cmake/AetherMindCpuIsa.cmake)
-include(FetchContent)
 include(cmake/AetherMindDependencySources.cmake)
 
 if (TARGET spdlog::spdlog)

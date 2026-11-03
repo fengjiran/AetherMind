@@ -119,6 +119,44 @@ dependencies must also be available offline. Parent targets, dependency provider
 and source-directory overrides explicitly control the dependency version; the
 release tag above describes AetherMind's default source selection.
 
+### Shared dependency sources
+
+To share one source checkout across all build directories, prepare the pinned
+versions once in the gitignored `.deps/` directory:
+
+```bash
+mkdir -p .deps
+git clone --depth 1 --branch v1.18.0 https://github.com/google/googletest.git .deps/googletest
+git clone --depth 1 --branch v1.9.5 https://github.com/google/benchmark.git .deps/benchmark
+git clone --depth 1 --branch v1.17.0 https://github.com/gabime/spdlog.git .deps/spdlog
+```
+
+Normal CMake commands, presets and IDE profiles automatically use these sources
+when their `CMakeLists.txt` exists. Each build retains its own dependency binary,
+generated-file and population directories under its `_deps/`; configuring a
+build never downloads into, updates or checks out the prepared shared sources.
+Tests and benchmarks remain conditional on their existing build options. Without
+a prepared checkout, that dependency retains its normal FetchContent acquisition.
+
+Existing parent targets and dependency providers keep their precedence, and
+explicit `FETCHCONTENT_SOURCE_DIR_GOOGLETEST`,
+`FETCHCONTENT_SOURCE_DIR_GOOGLE_BENCHMARK` and `FETCHCONTENT_SOURCE_DIR_SPDLOG`
+overrides are still respected. Clear old overrides when migrating existing
+builds to automatic shared-source selection:
+
+```bash
+cmake -S . -B build \
+  -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST= \
+  -DFETCHCONTENT_SOURCE_DIR_GOOGLE_BENCHMARK= \
+  -DFETCHCONTENT_SOURCE_DIR_SPDLOG=
+```
+
+The directories intentionally have stable names. Their actual revisions must
+match the versions being built; the declared `GIT_TAG` does not update a prepared
+checkout. Upgrade shared sources only while their builds are idle, then
+reconfigure and rebuild each affected tree. Do not point `FETCHCONTENT_BASE_DIR`
+at one common directory: it also contains configuration-specific build state.
+
 ## Build
 
 ```bash

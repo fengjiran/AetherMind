@@ -115,7 +115,7 @@ cmake --build build-asan --target AetherMind -j
 c++ -std=c++20 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer \
   -DSPDLOG_USE_STD_FORMAT -DAETHERMIND_INFERENCE_RUNNER_TESTING=1 \
   -DAETHERMIND_TEST_MODELS_DIR="\"$M2_ROOT/.models\"" \
-  -Iinclude -Iapps/inference -Itests/unit -Ibuild-asan/_deps/spdlog-src/include \
+  -Iinclude -Iapps/inference -Itests/unit -I.deps/spdlog/include \
   apps/inference/inference_runner.cpp \
   tests/unit/apps/inference/test_inference_runner.cpp \
   tests/unit/apps/inference/test_inference_runner_success.cpp \

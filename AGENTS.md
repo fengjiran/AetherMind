@@ -14,6 +14,7 @@
 - 独立推理工具目标：`aethermind_infer`（`BUILD_INFERENCE_TOOL=ON`，默认 OFF；不依赖 tests/benchmark）
 - 单元测试目标：`aethermind_unit_tests`（GoogleTest v1.18.0，`BUILD_TESTS=ON` 时默认通过 FetchContent 获取；复用父工程已提供的 `GTest::gtest` / `GTest::gtest_main`，离线源码可通过 `FETCHCONTENT_SOURCE_DIR_GOOGLETEST` 指定）
 - 性能基准目标：`aethermind_benchmark`（Google Benchmark v1.9.5，`BUILD_BENCHMARKS=ON` 时默认通过 FetchContent 获取；复用父工程已提供的 `benchmark::benchmark` / `benchmark::benchmark_main`）
+- 共享依赖源码：准备好的 `.deps/googletest`、`.deps/benchmark`、`.deps/spdlog` 会被各 build 自动复用；源码不在配置时更新，编译产物和生成文件仍归各自 build 的 `_deps/`。显式 `FETCHCONTENT_SOURCE_DIR_*`、父工程 targets 与 dependency providers 保留优先级，版本准备与迁移见 README。
 
 ## 2. 目录结构
 - `include/`：核心公共头文件

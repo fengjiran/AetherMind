@@ -21,8 +21,8 @@ python3 tools/run_final_validation.py --jobs 4 --build-concurrency 2
 
 ```bash
 python3 tools/run_final_validation.py \
-  --spdlog-source "$PWD/build/_deps/spdlog-src" \
-  --google-benchmark-source "$PWD/build/_deps/google_benchmark-src" \
+  --spdlog-source "$PWD/.deps/spdlog" \
+  --google-benchmark-source "$PWD/.deps/benchmark" \
   --jobs 4 --build-concurrency 3
 ```
 

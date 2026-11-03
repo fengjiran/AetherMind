@@ -4,7 +4,6 @@
 
 #include <bit>
 #include <cmath>
-#include <cstdint>
 #include <cstring>
 #include <gtest/gtest.h>
 #include <limits>
@@ -20,8 +19,10 @@ struct SourceStorage final : RawStorage {
     std::vector<std::byte> data;
     bool known = true;
     RawStorageKind kind = RawStorageKind::kExternal;
-    std::optional<RawStorageFootprint> footprint() const noexcept override {
-        if (!known) return std::nullopt;
+    AM_NODISCARD std::optional<RawStorageFootprint> footprint() const noexcept override {
+        if (!known) {
+            return std::nullopt;
+        }
         return RawStorageFootprint{kind, data.size()};
     }
 };
@@ -37,17 +38,24 @@ class TrackingAllocator final : public Allocator {
 public:
     explicit TrackingAllocator(std::shared_ptr<AllocationStats> stats)
         : stats_(std::move(stats)), cpu_(Device::CPU()) {}
-    Device device() const noexcept override { return Device::CPU(); }
+
+    AM_NODISCARD Device device() const noexcept override {
+        return Device::CPU();
+    }
 
 protected:
     StatusOr<MemoryHandle> AllocateStorage(const AllocationRequest& request) override {
-        const size_t call = stats_->calls++;
-        if (call == stats_->fail_on_call) return Status::ResourceExhausted("test allocation failure");
+        if (const size_t call = stats_->calls++; call == stats_->fail_on_call) {
+            return Status::ResourceExhausted("test allocation failure");
+        }
+
         AM_ASSIGN_OR_RETURN(auto buffer, cpu_.TryAllocate(request));
+
         struct Owner {
             Buffer buffer;
             std::shared_ptr<AllocationStats> stats;
         };
+
         auto owner = std::make_unique<Owner>(Owner{std::move(buffer), stats_});
         void* data = owner->buffer.mutable_data();
         const size_t alignment = owner->buffer.alignment();
@@ -112,7 +120,7 @@ uint32_t WidenOracle(uint16_t bits, bool bfloat) {
                                      ? std::ldexp(static_cast<double>(fraction), 1 - bias - fraction_bits)
                                      : std::ldexp(1.0 + std::ldexp(static_cast<double>(fraction), -fraction_bits),
                                                   static_cast<int>(exponent) - bias);
-    const float value = static_cast<float>(sign == 0 ? magnitude : -magnitude);
+    const auto value = static_cast<float>(sign == 0 ? magnitude : -magnitude);
     return std::bit_cast<uint32_t>(value);
 }
 

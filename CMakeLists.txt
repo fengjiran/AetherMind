@@ -34,6 +34,7 @@ find_package(Threads REQUIRED)
 include(cmake/AetherMindSanitizers.cmake)
 include(cmake/AetherMindCpuIsa.cmake)
 include(FetchContent)
+include(cmake/AetherMindDependencySources.cmake)
 
 if (TARGET spdlog::spdlog)
     message(STATUS "AetherMind spdlog: reusing provided spdlog::spdlog target")
@@ -47,10 +48,13 @@ else ()
             set(SPDLOG_USE_STD_FORMAT ON CACHE BOOL "Use std::format instead of fmt")
         endif ()
     endif ()
+    aethermind_shared_dependency_source_options(
+            "${CMAKE_CURRENT_SOURCE_DIR}/.deps/spdlog" spdlog_source_options)
     FetchContent_Declare(
             spdlog
             GIT_REPOSITORY https://github.com/gabime/spdlog.git
             GIT_TAG v1.17.0
+            ${spdlog_source_options}
     )
     FetchContent_MakeAvailable(spdlog)
 
@@ -94,10 +98,13 @@ if (BUILD_TESTS)
         set(gtest_build_tests OFF CACHE BOOL "Build GoogleTest's own tests")
         set(gtest_build_samples OFF CACHE BOOL "Build GoogleTest samples")
 
+        aethermind_shared_dependency_source_options(
+                "${CMAKE_CURRENT_SOURCE_DIR}/.deps/googletest" googletest_source_options)
         FetchContent_Declare(
                 googletest
                 GIT_REPOSITORY https://github.com/google/googletest.git
                 GIT_TAG v1.18.0
+                ${googletest_source_options}
         )
         FetchContent_MakeAvailable(googletest)
 
@@ -126,10 +133,13 @@ if (BUILD_BENCHMARKS)
         set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Build Google Benchmark's own tests")
         set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Install Google Benchmark")
 
+        aethermind_shared_dependency_source_options(
+                "${CMAKE_CURRENT_SOURCE_DIR}/.deps/benchmark" benchmark_source_options)
         FetchContent_Declare(
                 google_benchmark
                 GIT_REPOSITORY https://github.com/google/benchmark.git
                 GIT_TAG v1.9.5
+                ${benchmark_source_options}
         )
         FetchContent_MakeAvailable(google_benchmark)
 

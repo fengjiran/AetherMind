@@ -135,6 +135,7 @@ dmypy.json
 .idea/
 .sisyphus/
 .models/
+.deps/
 .omo/
 .trae/
 .qoder/

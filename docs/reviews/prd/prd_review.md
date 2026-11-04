@@ -1,7 +1,7 @@
 这份 docs/products/aethermind_prd.md 方向上是对的，但现在更像“愿景文档 + 路线图 + 技术蓝图 + 部分实施要求”的混合体，不是一份足够稳健的 PRD。  
 如果按“合理性”看，Phase 1 的 CPU-first 嵌入式 runtime 是合理且可行的；如果按“可执行性”看，Phase 2+ 到 Phase 4 混入了太多远期能力，导致文档内部出现了明显冲突和过度承诺。
 总体判断
-- Phase 1 方向合理：CPU-first、单请求、确定性、量化推理、C/C++ API，这些和当前仓库基线以及现有计划是一致的，见 docs/products/aethermind_prd.md:132、docs/products/aethermind_prd.md:156、docs/products/aethermind_prd.md:179，也和 .sisyphus/plans/cpu-first-llama-runtime-v1.md:21、.sisyphus/plans/cpu-first-llama-runtime-v1.md:62 一致
+- Phase 1 方向合理：CPU-first、单请求、确定性、量化推理、C/C++ API，这些和当前仓库基线是一致的，见 docs/products/aethermind_prd.md:132、docs/products/aethermind_prd.md:156、docs/products/aethermind_prd.md:179
 - Phase 2+ 作为长期愿景也合理，但更像战略路线，不适合在同一份 PRD 里写成接近承诺的交付项
 - 当前最大问题不是“技术路线错”，而是“边界不清、相互打架、验收条件不够严谨”
 合理的地方
@@ -18,7 +18,7 @@
 - Prefix Caching 的 phase 定义互相冲突：图示像 Phase 4，正文又写 Phase 2+，路线图也放在 Phase 2，见 docs/products/aethermind_prd.md:27、docs/products/aethermind_prd.md:51、docs/products/aethermind_prd.md:122、docs/products/aethermind_prd.md:169、docs/products/aethermind_prd.md:361
 - Speculative Decoding / Multi-LoRA / FP8 也有类似 phase 泄漏，分别在图示、功能需求、里程碑里落在不同阶段，见 docs/products/aethermind_prd.md:27、docs/products/aethermind_prd.md:148、docs/products/aethermind_prd.md:211、docs/products/aethermind_prd.md:214、docs/products/aethermind_prd.md:379
 - docs/products/aethermind_prd.md:89 到 docs/products/aethermind_prd.md:92 把 Token Manager 放到 Phase 2+，但 docs/products/aethermind_prd.md:180 到 docs/products/aethermind_prd.md:183 的 Phase 1 又要求 Prompt -> Prefill -> Decode -> Output；这意味着 V1 到底是 token-id API，还是文本 API，文档没有定死
-- Phase 1 说是“生产级嵌入式推理库”，但成功标准只列了 3 条，缺少零稳态分配、golden tests、TSAN/ASAN、加载失败语义、KV parity 这类真正决定“可生产”的条件，和 .sisyphus/plans/cpu-first-llama-runtime-v1.md:53 不一致
+- Phase 1 说是“生产级嵌入式推理库”，但成功标准只列了 3 条，缺少零稳态分配、golden tests、TSAN/ASAN、加载失败语义、KV parity 这类真正决定“可生产”的条件
 和仓库现实的距离
 - 当前 repo 的强项在 tensor/type、storage、Function/Any、object、ammalloc，不是推理 runtime 本身
 - 当前 repo 里基本还没有真正的 loader / KV cache / decode loop / scheduler / serving / CUDA runtime 这些 inference substrate

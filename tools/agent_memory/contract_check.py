@@ -12,7 +12,9 @@ from typing import Iterable
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-EVIDENCE_DIR = REPO_ROOT / ".sisyphus" / "evidence"
+# Regenerable baseline cache lives under the gitignored .cache directory, not
+# in a versioned location.
+EVIDENCE_DIR = REPO_ROOT / ".cache" / "agent_memory" / "evidence"
 BASELINE_PATH = EVIDENCE_DIR / "agent_memory_default_startup_baseline.json"
 
 AGENTS_PATH = REPO_ROOT / "AGENTS.md"

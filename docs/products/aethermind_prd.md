@@ -486,7 +486,6 @@ Generate 的 output_len 必填；正数 N 要求 output_capacity 至少 N，短 
 
 ## 附录 B: 参考文档
 
-- **CPU 本地推理详细实施计划**: `.sisyphus/plans/cpu-first-llama-runtime-v1.md`
 - **编码规范**: `AGENTS.md`
 - **分配器规范**: `ammalloc/AGENTS.md`
 

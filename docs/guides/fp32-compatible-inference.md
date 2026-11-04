@@ -37,7 +37,7 @@ StatusOr<std::vector<uint32_t>> GenerateCompatible(
             .max_model_payload_bytes = 512U * 1024U * 1024U};
     AM_ASSIGN_OR_RETURN(auto allocator, runtime.TryGetAllocator(Device::CPU()));
     AM_ASSIGN_OR_RETURN(auto converted,
-                        ConvertLoadedModelWeightsToFp32(
+                        ConvertRawModelWeightsToFp32(
                                 *loaded, *allocator,
                                 {.max_owned_weight_bytes = resources.max_model_payload_bytes}));
     loaded = std::move(converted);

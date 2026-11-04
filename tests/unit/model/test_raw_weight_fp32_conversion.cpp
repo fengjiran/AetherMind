@@ -133,7 +133,7 @@ void CheckEveryPattern(DataType dtype, bool bfloat) {
     LoadedModel model(MakeConfig(dtype), MakeWeights(MakeView(source, dtype, 65536)));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    auto converted = ConvertLoadedModelWeightsToFp32(model, allocator);
+    auto converted = ConvertRawModelWeightsToFp32(model, allocator);
     ASSERT_TRUE(converted.ok()) << converted.status().ToString();
     const auto& output = (*converted)->GetResolvedWeights().embed_tokens;
     EXPECT_EQ(output.dtype, DataType::Float32());
@@ -161,7 +161,7 @@ TEST(RawWeightFp32Conversion, AcceptsUnalignedSourceWithoutModifyingBytes) {
     const auto original = source->data;
     LoadedModel model(MakeConfig(), MakeWeights(MakeView(source, DataType::Float(16), 4, 1)));
     CPUAllocator allocator(Device::CPU());
-    auto converted = ConvertLoadedModelWeightsToFp32(model, allocator);
+    auto converted = ConvertRawModelWeightsToFp32(model, allocator);
     ASSERT_TRUE(converted.ok()) << converted.status().ToString();
     for (size_t i = 0; i < values.size(); ++i) {
         EXPECT_EQ(ReadBits((*converted)->GetResolvedWeights().embed_tokens, i), WidenOracle(values[i], false));
@@ -178,7 +178,7 @@ TEST(RawWeightFp32Conversion, PreservesTieAndDistinguishesLogicalShapes) {
     LoadedModel model(MakeConfig(), std::move(weights));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    auto converted = ConvertLoadedModelWeightsToFp32(model, allocator);
+    auto converted = ConvertRawModelWeightsToFp32(model, allocator);
     ASSERT_TRUE(converted.ok()) << converted.status().ToString();
     const auto& result = (*converted)->GetResolvedWeights();
     ASSERT_TRUE(result.lm_head.has_value());
@@ -199,7 +199,7 @@ TEST(RawWeightFp32Conversion, DoesNotMergeEqualContentFromDifferentOwners) {
     weights.final_norm = MakeView(second, DataType::Float(16), 4);
     LoadedModel model(MakeConfig(), std::move(weights));
     CPUAllocator allocator(Device::CPU());
-    auto converted = ConvertLoadedModelWeightsToFp32(model, allocator);
+    auto converted = ConvertRawModelWeightsToFp32(model, allocator);
     ASSERT_TRUE(converted.ok()) << converted.status().ToString();
     const auto& result = (*converted)->GetResolvedWeights();
     EXPECT_NE(result.embed_tokens.data, result.final_norm.data);
@@ -212,7 +212,7 @@ TEST(RawWeightFp32Conversion, Float32SharesSourceAndPreservesHintAndOptionalRole
     LoadedModel model(MakeConfig(DataType::BFloat(16)), weights);
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    auto converted = ConvertLoadedModelWeightsToFp32(model, allocator);
+    auto converted = ConvertRawModelWeightsToFp32(model, allocator);
     ASSERT_TRUE(converted.ok()) << converted.status().ToString();
     EXPECT_EQ(stats->calls, 0U);
     EXPECT_EQ((*converted)->GetResolvedWeights().embed_tokens.storage, source);
@@ -234,7 +234,7 @@ TEST(RawWeightFp32Conversion, ConvertedOwnerOutlivesInputAndAllocator) {
         std::memcpy(source->data.data(), &one, sizeof(one));
         LoadedModel model(MakeConfig(), MakeWeights(MakeView(source, DataType::Float(16), 1)));
         TrackingAllocator allocator(stats);
-        auto result = ConvertLoadedModelWeightsToFp32(model, allocator);
+        auto result = ConvertRawModelWeightsToFp32(model, allocator);
         ASSERT_TRUE(result.ok()) << result.status().ToString();
         converted = std::move(*result);
     }
@@ -252,16 +252,16 @@ TEST(RawWeightFp32Conversion, EnforcesFinalOwnedBudgetBeforeAnyPayloadAllocation
     LoadedModel model(MakeConfig(), MakeWeights(MakeView(source, DataType::Float(16), 4)));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    auto rejected = ConvertLoadedModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 15});
+    auto rejected = ConvertRawModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 15});
     EXPECT_EQ(rejected.status().code(), StatusCode::kResourceExhausted);
     EXPECT_EQ(stats->calls, 0U);
-    auto accepted = ConvertLoadedModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 16});
+    auto accepted = ConvertRawModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 16});
     ASSERT_TRUE(accepted.ok()) << accepted.status().ToString();
     const auto& usage = *(*accepted)->GetWeightFp32ConversionUsage();
     EXPECT_EQ(usage.peak_owned_weight_bytes, 24U);
     EXPECT_EQ(usage.converted_weights.owned_bytes, 16U);
     EXPECT_TRUE(usage.peak_owned_weight_bytes_complete);
-    EXPECT_TRUE(ConvertLoadedModelWeightsToFp32(model, allocator).ok());
+    EXPECT_TRUE(ConvertRawModelWeightsToFp32(model, allocator).ok());
 }
 
 TEST(RawWeightFp32Conversion, CountsRetainedFloat32BackingAlongsideConvertedPayload) {
@@ -272,10 +272,10 @@ TEST(RawWeightFp32Conversion, CountsRetainedFloat32BackingAlongsideConvertedPayl
     LoadedModel model(MakeConfig(), std::move(weights));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    EXPECT_EQ(ConvertLoadedModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 39}).status().code(),
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 39}).status().code(),
               StatusCode::kResourceExhausted);
     EXPECT_EQ(stats->calls, 0U);
-    auto converted = ConvertLoadedModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 40});
+    auto converted = ConvertRawModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 40});
     ASSERT_TRUE(converted.ok()) << converted.status().ToString();
     EXPECT_EQ((*converted)->GetWeightFp32ConversionUsage()->converted_weights.owned_bytes, 40U);
 }
@@ -286,16 +286,16 @@ TEST(RawWeightFp32Conversion, UnknownSourceIsReportedAndFiniteRetainedCapFailsCl
     LoadedModel reduced(MakeConfig(), MakeWeights(MakeView(source, DataType::Float(16), 4)));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    auto converted = ConvertLoadedModelWeightsToFp32(reduced, allocator, {.max_owned_weight_bytes = 16});
+    auto converted = ConvertRawModelWeightsToFp32(reduced, allocator, {.max_owned_weight_bytes = 16});
     ASSERT_TRUE(converted.ok()) << converted.status().ToString();
     EXPECT_FALSE((*converted)->GetWeightFp32ConversionUsage()->peak_owned_weight_bytes_complete);
     EXPECT_TRUE((*converted)->GetWeightFp32ConversionUsage()->converted_weights.backing_usage_complete);
     LoadedModel fp32(MakeConfig(), MakeWeights(MakeView(source, DataType::Float32(), 2)));
     const auto calls = stats->calls;
-    EXPECT_EQ(ConvertLoadedModelWeightsToFp32(fp32, allocator, {.max_owned_weight_bytes = 16}).status().code(),
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(fp32, allocator, {.max_owned_weight_bytes = 16}).status().code(),
               StatusCode::kFailedPrecondition);
     EXPECT_EQ(stats->calls, calls);
-    EXPECT_TRUE(ConvertLoadedModelWeightsToFp32(fp32, allocator).ok());
+    EXPECT_TRUE(ConvertRawModelWeightsToFp32(fp32, allocator).ok());
 }
 
 TEST(RawWeightFp32Conversion, PartialAllocationFailureReleasesCandidatesAndAllowsRetry) {
@@ -306,14 +306,14 @@ TEST(RawWeightFp32Conversion, PartialAllocationFailureReleasesCandidatesAndAllow
     auto stats = std::make_shared<AllocationStats>();
     stats->fail_on_call = 1;
     TrackingAllocator allocator(stats);
-    auto result = ConvertLoadedModelWeightsToFp32(model, allocator);
+    auto result = ConvertRawModelWeightsToFp32(model, allocator);
     EXPECT_EQ(result.status().code(), StatusCode::kResourceExhausted);
     EXPECT_EQ(result.status().message(), "test allocation failure");
     EXPECT_EQ(stats->live, 0U);
     EXPECT_EQ(stats->released, 1U);
     EXPECT_EQ(model.GetResolvedWeights().embed_tokens.dtype, DataType::Float(16));
     stats->fail_on_call = std::numeric_limits<size_t>::max();
-    EXPECT_TRUE(ConvertLoadedModelWeightsToFp32(model, allocator).ok());
+    EXPECT_TRUE(ConvertRawModelWeightsToFp32(model, allocator).ok());
     EXPECT_EQ(stats->live, 0U);
 }
 
@@ -324,7 +324,7 @@ TEST(RawWeightFp32Conversion, ValidatesEveryLayerBeforePayloadAllocation) {
     LoadedModel model(MakeConfig(), std::move(weights));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    EXPECT_FALSE(ConvertLoadedModelWeightsToFp32(model, allocator).ok());
+    EXPECT_FALSE(ConvertRawModelWeightsToFp32(model, allocator).ok());
     EXPECT_EQ(stats->calls, 0U);
 }
 
@@ -337,7 +337,7 @@ TEST(RawWeightFp32Conversion, RejectsMalformedShapeSizeDTypeAndContiguityBeforeA
         auto weights = MakeWeights(valid);
         weights.final_norm = std::move(bad);
         LoadedModel model(MakeConfig(), std::move(weights));
-        EXPECT_FALSE(ConvertLoadedModelWeightsToFp32(model, allocator).ok());
+        EXPECT_FALSE(ConvertRawModelWeightsToFp32(model, allocator).ok());
         EXPECT_EQ(stats->calls, 0U);
     };
     auto bad = valid;
@@ -382,7 +382,7 @@ TEST(RawWeightFp32Conversion, RejectsTargetSizeOverflowBeforeAllocationOrPayload
     LoadedModel model(MakeConfig(), MakeWeights(huge));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    EXPECT_EQ(ConvertLoadedModelWeightsToFp32(model, allocator).status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator).status().code(), StatusCode::kOverflow);
     EXPECT_EQ(stats->calls, 0U);
 }
 
@@ -395,7 +395,7 @@ TEST(RawWeightFp32Conversion, ZeroElementWeightsDoNotReadSourcePayload) {
                         .storage = source};
     LoadedModel model(MakeConfig(), MakeWeights(empty));
     CPUAllocator allocator(Device::CPU());
-    auto converted = ConvertLoadedModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 1});
+    auto converted = ConvertRawModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 1});
     ASSERT_TRUE(converted.ok()) << converted.status().ToString();
     const auto& output = (*converted)->GetResolvedWeights().embed_tokens;
     EXPECT_EQ(output.dtype, DataType::Float32());

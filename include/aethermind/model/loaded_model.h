@@ -25,13 +25,14 @@ public:
     LoadedModel(HfModelConfig config, ResolvedModelWeights resolved_weights) noexcept;
     LoadedModel(HfModelConfig config,
                 ResolvedModelWeights resolved_weights,
-                std::optional<RawWeightFp32ConversionUsage> fp32_conversion_usage) noexcept;
+                const std::optional<RawWeightFp32ConversionUsage>& fp32_conversion_usage) noexcept;
 
     AM_NODISCARD const HfModelConfig& GetConfig() const noexcept;
     AM_NODISCARD const ResolvedModelWeights& GetResolvedWeights() const noexcept;
 
     /// @brief Observes conversion accounting without retaining source backing.
-    AM_NODISCARD const std::optional<RawWeightFp32ConversionUsage>& GetWeightFp32ConversionUsage() const noexcept;
+    AM_NODISCARD const std::optional<RawWeightFp32ConversionUsage>&
+    GetWeightFp32ConversionUsage() const noexcept;
 
 private:
     HfModelConfig config_{};

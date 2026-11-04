@@ -525,7 +525,7 @@ StatusOr<ExecutableModel> LoadAndPrepareCpuExecutableModel(
     if (compatible) {
         AM_RETURN_IF_ERROR(ValidateFp32CompatibleSourceInputs(*loaded));
         AM_ASSIGN_OR_RETURN(Allocator * allocator, runtime.TryGetAllocator(Device::CPU()));
-        auto converted = ConvertLoadedModelWeightsToFp32(
+        auto converted = ConvertRawModelWeightsToFp32(
                 *loaded, *allocator,
                 {.max_owned_weight_bytes = options.resources.max_model_payload_bytes});
         if (!converted.ok()) {

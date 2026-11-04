@@ -9,7 +9,7 @@
 
 ## 实现合同
 
-P1 使用 model 层 `ConvertLoadedModelWeightsToFp32`。它保留 config 的 source hint，F32 view 零拷贝，F16/BF16 view 以拥有的 CPU `Buffer` 转换为实际 F32 bytes，并对 tied source view 去重。构图通过 `ModelGraphBuildOptions` 明确将 activation/KV 设为 F32；普通 compiler entry 不自动转换。C++ 的 `LoadAndPrepareCpuExecutableModel(Runtime&, path, CpuModelPrepareOptions)` 只在显式 `kFp32Compatible` + O1/plain 下编排该链。
+P1 使用 model 层 `ConvertRawModelWeightsToFp32`。它保留 config 的 source hint，F32 view 零拷贝，F16/BF16 view 以拥有的 CPU `Buffer` 转换为实际 F32 bytes，并对 tied source view 去重。构图通过 `ModelGraphBuildOptions` 明确将 activation/KV 设为 F32；普通 compiler entry 不自动转换。C++ 的 `LoadAndPrepareCpuExecutableModel(Runtime&, path, CpuModelPrepareOptions)` 只在显式 `kFp32Compatible` + O1/plain 下编排该链。
 
 转换使用未对齐安全的 bit 读取；有限 subnormal 和 signed zero 保留，NaN 结果保留 sign/payload 并置 FP32 quiet bit。它不实现 narrowing 或 native reduced-dtype kernel。转换、source 和 converted storage 的可见 owner 分类通过 `ModelResourceUsage::weight_fp32_conversion` 报告；该字段不是 RSS 或全局 live-byte ledger。
 

@@ -82,12 +82,14 @@ function(validate_checkout path)
     if (NOT EXISTS "${path}/CMakeLists.txt")
         acquisition_failed("source has no CMakeLists.txt; existing content was preserved")
     endif ()
+
     run_git(top -C "${path}" rev-parse --show-toplevel)
     file(REAL_PATH "${path}" expected_top)
     file(REAL_PATH "${top}" actual_top)
     if (NOT actual_top STREQUAL expected_top)
         acquisition_failed("source is not its own Git checkout; existing content was preserved")
     endif ()
+
     run_git(head -C "${path}" rev-parse --verify HEAD)
     # Resolve the exact local tag, including annotated tags and aliases. Only
     # the tag is configured; no independent commit SHA is maintained or fetched.
@@ -95,6 +97,7 @@ function(validate_checkout path)
     if (NOT head STREQUAL expected)
         acquisition_failed("tag mismatch: checkout is not at ${AETHERMIND_DEPENDENCY_TAG}; stop affected builds before an explicit upgrade")
     endif ()
+
     run_git(changes -C "${path}" status --porcelain=v1 --untracked-files=all)
     if (NOT "${changes}" STREQUAL "")
         acquisition_failed("source has local changes; existing content was preserved")
@@ -104,10 +107,12 @@ endfunction()
 if (IS_SYMLINK "${source}")
     acquisition_failed("managed source is a symbolic link; use an explicit source override instead")
 endif ()
+
 if (EXISTS "${source}")
     if (NOT IS_DIRECTORY "${source}")
         acquisition_failed("source path is not a directory; existing content was preserved")
     endif ()
+
     source_entries("${source}" entries)
     list(LENGTH entries entry_count)
     if (entry_count GREATER 0)

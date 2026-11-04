@@ -53,7 +53,7 @@ struct RawWeightFp32ConversionUsage {
 /// Unknown retained F32 backing prevents a finite owned-payload cap; unknown
 /// source backing otherwise remains explicit in usage completeness flags.
 /// @return New owning model, or a validation/overflow/allocation error.
-StatusOr<std::unique_ptr<LoadedModel>> ConvertLoadedModelWeightsToFp32(
+StatusOr<std::unique_ptr<LoadedModel>> ConvertRawModelWeightsToFp32(
         const LoadedModel& model,
         Allocator& allocator,
         const RawWeightFp32ConversionOptions& options = {});

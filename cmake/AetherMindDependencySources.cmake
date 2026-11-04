@@ -88,6 +88,7 @@ function(aethermind_make_shared_dependency_available _aethermind_name)
             if (NOT _aethermind_actual_source STREQUAL _aethermind_expected_source)
                 message(FATAL_ERROR "${_aethermind_name}: provider or earlier declaration did not supply required targets")
             endif ()
+
             # Native stamps and UPDATE_DISCONNECTED can skip population work.
             # Check the effective source before configuring third-party code;
             # only fully disconnected mode forbids acquiring missing contents.
@@ -97,6 +98,7 @@ function(aethermind_make_shared_dependency_available _aethermind_name)
             else ()
                 set(_aethermind_mode ENSURE)
             endif ()
+
             execute_process(COMMAND "${CMAKE_COMMAND}" "-DAETHERMIND_DEPENDENCY_MODE=${_aethermind_mode}"
                     ${_aethermind_arguments} RESULT_VARIABLE _aethermind_result
                     OUTPUT_VARIABLE _aethermind_output ERROR_VARIABLE _aethermind_error)

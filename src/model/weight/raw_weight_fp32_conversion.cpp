@@ -5,7 +5,6 @@
 #include "aethermind/model/loaded_model.h"
 #include "utils/overflow_check.h"
 
-#include <cstdint>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -163,14 +162,12 @@ StatusOr<std::unique_ptr<LoadedModel>> ConvertRawModelWeightsToFp32(
     }
 
     auto converted = model.GetResolvedWeights();
-    const auto views = CollectViews(converted);
     std::map<SourceKey, size_t, SourceLess> conversion_indices;
     std::vector<Conversion> conversions;
     RawWeightFp32ConversionUsage usage;
-    for (const auto& slot: views) {
-        auto* view = slot.view;
+    for (const auto& [view, location]: CollectViews(converted)) {
         if (const auto status = ValidateSource(*view); !status.ok()) {
-            return status.WithMessage("FP32 conversion weight " + slot.location +
+            return status.WithMessage("FP32 conversion weight " + location +
                                       ": " + status.message());
         }
 

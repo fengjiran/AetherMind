@@ -1,10 +1,10 @@
 #include "aethermind/model/formats/hf/hf_model_validator.h"
+#include "utils/numeric_utils.h"
 #include "utils/overflow_check.h"
 
 #include <algorithm>
 #include <array>
 #include <charconv>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -536,7 +536,7 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
         return Status::InvalidArgument("Model config field 'rms_norm_eps' must be positive");
     }
 
-    if (!std::isfinite(config.rope.theta) || config.rope.theta <= 0.0) {
+    if (!IsFinitePositive(config.rope.theta)) {
         return Status::InvalidArgument("Model config field 'rope.theta' must be finite and positive");
     }
 
@@ -596,7 +596,7 @@ Status HfModelValidator::ValidateConfig(const HfModelConfig& config, const Model
         }
 
         if (config.rope.factor.has_value() &&
-            (!std::isfinite(*config.rope.factor) || *config.rope.factor <= 0.0)) {
+            !IsFinitePositive(*config.rope.factor)) {
             return Status::InvalidArgument("Model config field 'rope.factor' must be positive");
         }
 

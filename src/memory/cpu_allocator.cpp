@@ -4,12 +4,12 @@
 
 #include "aethermind/memory/cpu_allocator.h"
 #include "aethermind/base/env.h"
-#include "alignment.h"
 #include "memory_junk_fill.h"
 #include "utils/logging.h"
 
 #include <algorithm>
 #include <cerrno>
+#include <cstddef>
 #include <cstdlib>
 #include <spdlog/spdlog.h>
 
@@ -21,6 +21,15 @@
 namespace aethermind {
 
 namespace {
+
+#ifdef KALLOC_ALIGNMENT
+constexpr size_t kDefaultAllocationAlignment = KALLOC_ALIGNMENT;
+#else
+constexpr size_t kDefaultAllocationAlignment = 64;
+#endif
+
+constexpr size_t kFallbackPageSize = 4096;
+constexpr size_t kThpAllocationThreshold = size_t{2} * 1024 * 1024;
 
 void CpuBufferDeleter(void*, void* ptr) noexcept {
     free(ptr);
@@ -37,13 +46,13 @@ bool IsThpAllocEnabled() {
 size_t ThpAlignment() {
     static const size_t value = [] {
         const long pagesize = sysconf(_SC_PAGESIZE);
-        return pagesize > 0 ? static_cast<size_t>(pagesize) : gPagesize;
+        return pagesize > 0 ? static_cast<size_t>(pagesize) : kFallbackPageSize;
     }();
     return value;
 }
 
 bool ThpApplies(const CPUAllocatorPolicy& policy, size_t bytes) {
-    return policy.allow_thp && IsThpAllocEnabled() && bytes >= gAlloc_threshold_thp;
+    return policy.allow_thp && IsThpAllocEnabled() && bytes >= kThpAllocationThreshold;
 }
 
 } // namespace
@@ -57,7 +66,7 @@ StatusOr<MemoryHandle> CPUAllocator::AllocateStorage(const AllocationRequest& re
     const size_t bytes = request.nbytes == 0 ? 1 : request.nbytes;
 
     const size_t policy_default =
-            policy_.default_alignment != 0 ? policy_.default_alignment : gAlignment;
+            policy_.default_alignment != 0 ? policy_.default_alignment : kDefaultAllocationAlignment;
     const size_t minimum = request.alignment == 0 ? policy_default : request.alignment;
     size_t alignment = std::max(minimum, sizeof(void*));
 

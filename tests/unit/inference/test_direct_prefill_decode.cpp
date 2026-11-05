@@ -228,7 +228,7 @@ StatusOr<ExecutableModel> PrepareTinyExecutableModel(
     if (!artifact.ok()) {
         return artifact.status();
     }
-    return PrepareExecutableModel(runtime, std::move(*artifact));
+    return ExecutableModel::Prepare(runtime, std::move(*artifact));
 }
 
 class TinyLlamaScalarReference {

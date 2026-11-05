@@ -136,14 +136,14 @@ TEST(RawWeightConsumers, PlainPreparationRejectsInvalidElementDTypesBeforeBindin
         auto artifact = MakeEmbeddingArtifact(MakeRawWeight(storage, invalid.dtype, invalid.bytes), false);
         ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
         stats->requests.clear();
-        const auto result = PrepareExecutableModel(runtime, std::move(*artifact));
+        const auto result = ExecutableModel::Prepare(runtime, std::move(*artifact));
         EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument) << result.status().ToString();
         EXPECT_TRUE(stats->requests.empty());
     }
 
     auto artifact = MakeEmbeddingArtifact(MakeRawWeight(storage), false);
     ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
-    const auto retry = PrepareExecutableModel(runtime, std::move(*artifact));
+    const auto retry = ExecutableModel::Prepare(runtime, std::move(*artifact));
     EXPECT_TRUE(retry.ok()) << retry.status().ToString();
     EXPECT_TRUE(stats->requests.empty());
 }
@@ -158,14 +158,14 @@ TEST(RawWeightConsumers, PackedPreparationRejectsInvalidElementDTypesBeforeAlloc
         auto artifact = MakeEmbeddingArtifact(MakeRawWeight(storage, invalid.dtype, invalid.bytes), true);
         ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
         stats->requests.clear();
-        const auto result = PrepareExecutableModel(runtime, std::move(*artifact));
+        const auto result = ExecutableModel::Prepare(runtime, std::move(*artifact));
         EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument) << result.status().ToString();
         EXPECT_TRUE(stats->requests.empty());
     }
 
     auto artifact = MakeEmbeddingArtifact(MakeRawWeight(storage), true);
     ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
-    const auto retry = PrepareExecutableModel(runtime, std::move(*artifact));
+    const auto retry = ExecutableModel::Prepare(runtime, std::move(*artifact));
     EXPECT_TRUE(retry.ok()) << retry.status().ToString();
     EXPECT_FALSE(stats->requests.empty());
 }

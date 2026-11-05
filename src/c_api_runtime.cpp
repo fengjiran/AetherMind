@@ -1,7 +1,7 @@
 #include "aethermind/base/alignment.h"
 #include "aethermind/compiler/model_compiler.h"
-#include "aethermind/inference/cpu_inference_options.h"
 #include "aethermind/inference/executable_model.h"
+#include "aethermind/inference/inference_options.h"
 #include "aethermind/inference/inference_session.h"
 #include "aethermind/inference/model_execution_policy.h"
 #include "aethermind/model/model_loader.h"
@@ -29,9 +29,9 @@ using namespace aethermind;
 
 struct RuntimeState {
     Runtime runtime;
-    CpuInferencePreset preset;
+    CompilePreset preset;
 
-    RuntimeState(Runtime runtime_value, CpuInferencePreset preset_value) noexcept
+    RuntimeState(Runtime runtime_value, CompilePreset preset_value) noexcept
         : runtime(std::move(runtime_value)), preset(preset_value) {}
 };
 
@@ -91,7 +91,7 @@ StatusOr<size_t> ToSize(uint64_t value, const char* field, bool positive) {
 
 struct RuntimeConfiguration {
     RuntimeOptions options;
-    CpuInferencePreset preset;
+    CompilePreset preset;
 };
 
 StatusOr<RuntimeConfiguration> ReadRuntimeConfiguration(const am_config_t* source) {
@@ -99,13 +99,13 @@ StatusOr<RuntimeConfiguration> ReadRuntimeConfiguration(const am_config_t* sourc
     if (config.kv_dtype != AM_KV_DTYPE_FLOAT32) {
         return Status::InvalidArgument("Unknown KV dtype; required Float32");
     }
-    CpuInferencePreset preset;
+    CompilePreset preset;
     switch (config.cpu_preset) {
         case AM_CPU_PRESET_O1_PLAIN:
-            preset = CpuInferencePreset::kO1Plain;
+            preset = CompilePreset::kO1Plain;
             break;
         case AM_CPU_PRESET_O2_PACKED:
-            preset = CpuInferencePreset::kO2Packed;
+            preset = CompilePreset::kO2Packed;
             break;
         default:
             return Status::InvalidArgument("Unknown CPU preset");
@@ -307,11 +307,11 @@ am_model_t am_model_load(am_runtime_t runtime, const char* path, am_error_handle
         }
         auto runtime_owner = runtime->owner;
         AM_ASSIGN_OR_RETURN(auto loaded, ModelLoader::Load(std::filesystem::path(path)));
-        AM_RETURN_IF_ERROR(ValidateFp32ExecutionInputs(*loaded));
-        AM_ASSIGN_OR_RETURN(const auto options, MakeCpuCompileOptions(runtime_owner->preset));
+        AM_RETURN_IF_ERROR(ValidateSourceWeights(*loaded, WeightPolicy::kRequireFp32));
+        AM_ASSIGN_OR_RETURN(const auto options, MakeCompileOptions(runtime_owner->preset, DeviceType::kCPU));
         AM_ASSIGN_OR_RETURN(auto artifact, ModelCompiler::Compile(std::move(loaded), options));
         AM_RETURN_IF_ERROR(c_api::detail::ValidateRuntimeModelKV(runtime_owner->runtime, artifact));
-        AM_ASSIGN_OR_RETURN(auto prepared, PrepareExecutableModel(runtime_owner->runtime, std::move(artifact)));
+        AM_ASSIGN_OR_RETURN(auto prepared, ExecutableModel::Prepare(runtime_owner->runtime, std::move(artifact)));
         auto executable = std::make_shared<const ExecutableModel>(std::move(prepared));
         auto owner = std::make_shared<ModelState>(ModelState{std::move(runtime_owner), std::move(executable)});
         auto handle = std::make_unique<am_model>();

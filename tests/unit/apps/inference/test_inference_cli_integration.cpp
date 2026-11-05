@@ -87,7 +87,7 @@ StatusOr<std::vector<uint32_t>> DirectSessionGenerate(
     RuntimeBuilder builder;
     builder.WithOptions(runtime_options);
     AM_ASSIGN_OR_RETURN(auto runtime, builder.TryBuild());
-    AM_ASSIGN_OR_RETURN(auto executable, PrepareExecutableModel(runtime, std::move(artifact)));
+    AM_ASSIGN_OR_RETURN(auto executable, ExecutableModel::Prepare(runtime, std::move(artifact)));
     auto model = std::make_shared<const ExecutableModel>(std::move(executable));
     AM_ASSIGN_OR_RETURN(auto session, InferenceSession::Create(runtime, std::move(model)));
     return session.Generate(request.prompt, request.generation);

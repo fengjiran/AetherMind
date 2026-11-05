@@ -191,9 +191,9 @@ Runtime MakeCompatibilityRuntime(int64_t kv_heads,
     return builder.Build();
 }
 
-CpuModelPrepareOptions CompatibilityOptions() {
-    return {.cpu_preset = CpuInferencePreset::kO1Plain,
-            .precision = InferencePrecisionPreset::kFp32Compatible};
+ModelLoadOptions CompatibilityOptions() {
+    return {.preset = CompilePreset::kO1Plain,
+            .weights = WeightPolicy::kConvertToFp32};
 }
 
 StatusOr<numerical::CapturedTrajectory> ObserveCompatibilityTrajectory(Runtime& runtime,
@@ -259,9 +259,9 @@ TEST_P(Fp32CompatibleInference, MatchesIndependentFp32TrajectoryAndGenerate) {
     const auto pair = WriteCheckpointPair(directory.path(), test_case);
     Runtime runtime = MakeCompatibilityRuntime(test_case.kv_heads);
     Runtime reference_runtime = MakeCompatibilityRuntime(test_case.kv_heads);
-    auto result = LoadAndPrepareCpuExecutableModel(runtime, pair.source, CompatibilityOptions());
+    auto result = ExecutableModel::Load(runtime, pair.source, CompatibilityOptions());
     ASSERT_TRUE(result.ok()) << result.status().ToString();
-    auto reference_result = LoadAndPrepareCpuExecutableModel(reference_runtime, pair.reference, CpuModelPrepareOptions{});
+    auto reference_result = ExecutableModel::Load(reference_runtime, pair.reference, ModelLoadOptions{});
     ASSERT_TRUE(reference_result.ok()) << reference_result.status().ToString();
     const auto& usage = result->resource_usage();
     ASSERT_TRUE(usage.weight_fp32_conversion.has_value());
@@ -324,7 +324,7 @@ TEST(Fp32CompatibilityAdmission, StrictModeStillRejectsReducedCheckpointBeforePa
         auto stats = std::make_shared<test::ResourceAllocationStats>();
         Runtime runtime = MakeCompatibilityRuntime(2, stats);
         stats->requests.clear();
-        const auto result = LoadAndPrepareCpuExecutableModel(runtime, pair.source, CpuModelPrepareOptions{});
+        const auto result = ExecutableModel::Load(runtime, pair.source, ModelLoadOptions{});
         EXPECT_EQ(result.status().code(), StatusCode::kUnimplemented);
         EXPECT_TRUE(stats->requests.empty());
     }
@@ -336,18 +336,18 @@ TEST(Fp32CompatibilityAdmission, ModelBudgetRejectsBeforeConversionAndAcceptsExa
     auto stats = std::make_shared<test::ResourceAllocationStats>();
     Runtime runtime = MakeCompatibilityRuntime(2, stats);
     auto options = CompatibilityOptions();
-    options.resources.max_model_payload_bytes = pair.fp32_payload_bytes - 1;
+    options.limits.max_model_payload_bytes = pair.fp32_payload_bytes - 1;
     stats->requests.clear();
-    const auto rejected = LoadAndPrepareCpuExecutableModel(runtime, pair.source, options);
+    const auto rejected = ExecutableModel::Load(runtime, pair.source, options);
     EXPECT_EQ(rejected.status().code(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(stats->requests.empty());
-    options.resources.max_model_payload_bytes = 0;
-    const auto baseline = LoadAndPrepareCpuExecutableModel(runtime, pair.source, options);
+    options.limits.max_model_payload_bytes = 0;
+    const auto baseline = ExecutableModel::Load(runtime, pair.source, options);
     ASSERT_TRUE(baseline.ok()) << baseline.status().ToString();
-    options.resources.max_model_payload_bytes = baseline->resource_usage().managed_payload_bytes;
-    const auto exact = LoadAndPrepareCpuExecutableModel(runtime, pair.source, options);
+    options.limits.max_model_payload_bytes = baseline->resource_usage().managed_payload_bytes;
+    const auto exact = ExecutableModel::Load(runtime, pair.source, options);
     ASSERT_TRUE(exact.ok()) << exact.status().ToString();
-    EXPECT_EQ(exact->resource_usage().managed_payload_bytes, options.resources.max_model_payload_bytes);
+    EXPECT_EQ(exact->resource_usage().managed_payload_bytes, options.limits.max_model_payload_bytes);
 }
 
 TEST(Fp32CompatibilityAdmission, ConversionAllocationFailureAllowsFreshRetryAndGenerate) {
@@ -357,11 +357,11 @@ TEST(Fp32CompatibilityAdmission, ConversionAllocationFailureAllowsFreshRetryAndG
     Runtime runtime = MakeCompatibilityRuntime(4, stats);
     stats->requests.clear();
     stats->fail_on_call = 1;
-    const auto failed = LoadAndPrepareCpuExecutableModel(runtime, pair.source, CompatibilityOptions());
+    const auto failed = ExecutableModel::Load(runtime, pair.source, CompatibilityOptions());
     EXPECT_EQ(failed.status().code(), StatusCode::kResourceExhausted);
     ASSERT_EQ(stats->requests.size(), 2U);
     stats->fail_on_call = std::numeric_limits<size_t>::max();
-    auto retried = LoadAndPrepareCpuExecutableModel(runtime, pair.source, CompatibilityOptions());
+    auto retried = ExecutableModel::Load(runtime, pair.source, CompatibilityOptions());
     ASSERT_TRUE(retried.ok()) << retried.status().ToString();
     auto session = InferenceSession::Create(runtime, std::make_shared<ExecutableModel>(std::move(*retried)));
     ASSERT_TRUE(session.ok()) << session.status().ToString();
@@ -378,16 +378,28 @@ TEST(Fp32CompatibilityAdmission, UnsupportedAndUnknownPresetsRejectBeforePayload
     Runtime runtime = MakeCompatibilityRuntime(4, stats);
     stats->requests.clear();
     auto options = CompatibilityOptions();
-    options.cpu_preset = CpuInferencePreset::kO2Packed;
-    EXPECT_FALSE(LoadAndPrepareCpuExecutableModel(runtime, pair.source, options).ok());
+    options.preset = CompilePreset::kO2Packed;
+    EXPECT_FALSE(ExecutableModel::Load(runtime, pair.source, options).ok());
+    EXPECT_TRUE(stats->requests.empty());
+    for (const auto target: {DeviceType::kCUDA, DeviceType::kCANN}) {
+        options = CompatibilityOptions();
+        options.target = target;
+        EXPECT_EQ(ExecutableModel::Load(runtime, pair.source, options).status().code(),
+                  StatusCode::kUnimplemented);
+        EXPECT_TRUE(stats->requests.empty());
+    }
+    options = CompatibilityOptions();
+    options.target = static_cast<DeviceType>(255);
+    EXPECT_EQ(ExecutableModel::Load(runtime, pair.source, options).status().code(),
+              StatusCode::kInvalidArgument);
     EXPECT_TRUE(stats->requests.empty());
     options = CompatibilityOptions();
-    options.precision = static_cast<InferencePrecisionPreset>(255);
-    EXPECT_EQ(LoadAndPrepareCpuExecutableModel(runtime, pair.source, options).status().code(), StatusCode::kInvalidArgument);
+    options.weights = static_cast<WeightPolicy>(255);
+    EXPECT_EQ(ExecutableModel::Load(runtime, pair.source, options).status().code(), StatusCode::kInvalidArgument);
     EXPECT_TRUE(stats->requests.empty());
     options = CompatibilityOptions();
-    options.cpu_preset = static_cast<CpuInferencePreset>(255);
-    EXPECT_EQ(LoadAndPrepareCpuExecutableModel(runtime, pair.source, options).status().code(), StatusCode::kInvalidArgument);
+    options.preset = static_cast<CompilePreset>(255);
+    EXPECT_EQ(ExecutableModel::Load(runtime, pair.source, options).status().code(), StatusCode::kInvalidArgument);
     EXPECT_TRUE(stats->requests.empty());
 }
 

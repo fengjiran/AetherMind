@@ -1,18 +1,24 @@
-#include "aethermind/inference/cpu_inference_options.h"
+#include "aethermind/inference/inference_options.h"
 #include "aethermind/inference/model_execution_policy.h"
 
 #include <new>
 
 namespace aethermind {
 
-StatusOr<ModelCompileOptions> MakeCpuCompileOptions(CpuInferencePreset preset) try {
-    if (preset != CpuInferencePreset::kO1Plain && preset != CpuInferencePreset::kO2Packed) {
-        return Status::InvalidArgument("Unknown CPU preset");
+StatusOr<ModelCompileOptions> MakeCompileOptions(
+        CompilePreset preset, DeviceType target) try {
+    if (preset != CompilePreset::kO1Plain && preset != CompilePreset::kO2Packed) {
+        return Status::InvalidArgument("Unknown compile preset");
     }
+
+    if (!IsValidDeviceType(target)) {
+        return Status::InvalidArgument("Invalid compilation target");
+    }
+
     ModelCompileOptions options;
-    options.optimization.opt_level = preset == CpuInferencePreset::kO1Plain ? 1 : 2;
-    options.lowering.enable_packed_weights = preset == CpuInferencePreset::kO2Packed;
-    options.lowering.selector = {.device_type = DeviceType::kCPU,
+    options.optimization.opt_level = preset == CompilePreset::kO1Plain ? 1 : 2;
+    options.lowering.enable_packed_weights = preset == CompilePreset::kO2Packed;
+    options.lowering.selector = {.device_type = target,
                                  .act_dtype = {},
                                  .weight_dtype = {},
                                  .weight_format = WeightFormat::kPlain,

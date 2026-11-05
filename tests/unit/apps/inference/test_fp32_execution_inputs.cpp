@@ -79,7 +79,7 @@ TEST_P(Fp32HfAdmission, AppliesPolicyAfterRealLoaderAcceptsFixture) {
     ASSERT_TRUE(loaded.ok())
             << "Generate and check M0 fixtures before testing admission: " << loaded.status().ToString();
 
-    const Status status = ValidateFp32ExecutionInputs(**loaded);
+    const Status status = ValidateSourceWeights(**loaded, WeightPolicy::kRequireFp32);
     if (expected.accepted) {
         EXPECT_TRUE(status.ok()) << status.ToString();
     } else {
@@ -94,18 +94,18 @@ INSTANTIATE_TEST_SUITE_P(
 struct HfCompileCase {
     const char* directory;
     const char* parameter_name;
-    CpuInferencePreset preset;
+    CompilePreset preset;
 };
 
 constexpr std::array<HfCompileCase, 8> kHfCompileCases{{
-        {"f32-missing", "F32MissingO1Plain", CpuInferencePreset::kO1Plain},
-        {"f32-missing", "F32MissingO2Packed", CpuInferencePreset::kO2Packed},
-        {"f32-auto", "F32AutoO1Plain", CpuInferencePreset::kO1Plain},
-        {"f32-auto", "F32AutoO2Packed", CpuInferencePreset::kO2Packed},
-        {"f32-explicit", "F32ExplicitO1Plain", CpuInferencePreset::kO1Plain},
-        {"f32-explicit", "F32ExplicitO2Packed", CpuInferencePreset::kO2Packed},
-        {"f32-tied", "F32TiedO1Plain", CpuInferencePreset::kO1Plain},
-        {"f32-tied", "F32TiedO2Packed", CpuInferencePreset::kO2Packed},
+        {"f32-missing", "F32MissingO1Plain", CompilePreset::kO1Plain},
+        {"f32-missing", "F32MissingO2Packed", CompilePreset::kO2Packed},
+        {"f32-auto", "F32AutoO1Plain", CompilePreset::kO1Plain},
+        {"f32-auto", "F32AutoO2Packed", CompilePreset::kO2Packed},
+        {"f32-explicit", "F32ExplicitO1Plain", CompilePreset::kO1Plain},
+        {"f32-explicit", "F32ExplicitO2Packed", CompilePreset::kO2Packed},
+        {"f32-tied", "F32TiedO1Plain", CompilePreset::kO1Plain},
+        {"f32-tied", "F32TiedO2Packed", CompilePreset::kO2Packed},
 }};
 
 class Fp32HfCompile : public ::testing::TestWithParam<HfCompileCase> {};
@@ -113,9 +113,9 @@ class Fp32HfCompile : public ::testing::TestWithParam<HfCompileCase> {};
 TEST_P(Fp32HfCompile, CompilesAcceptedInputsWithExplicitCpuPreset) {
     auto loaded = ModelLoader::Load(HfDirectory(GetParam().directory));
     ASSERT_TRUE(loaded.ok()) << loaded.status().ToString();
-    const Status admitted = ValidateFp32ExecutionInputs(**loaded);
+    const Status admitted = ValidateSourceWeights(**loaded, WeightPolicy::kRequireFp32);
     ASSERT_TRUE(admitted.ok()) << admitted.ToString();
-    const auto options = MakeCpuCompileOptions(GetParam().preset);
+    const auto options = MakeCompileOptions(GetParam().preset, DeviceType::kCPU);
     ASSERT_TRUE(options.ok()) << options.status().ToString();
 
     const auto compiled = ModelCompiler::Compile(std::move(*loaded), *options);
@@ -207,7 +207,7 @@ protected:
         selected.bytes /= 2;
         const LoadedModel model(config, std::move(checkpoint.weights));
 
-        const Status status = ValidateFp32ExecutionInputs(model);
+        const Status status = ValidateSourceWeights(model, WeightPolicy::kRequireFp32);
         ExpectPrecisionDiagnostic(status, GetParam().diagnostic, dtype, GetParam().layer);
     }
 };
@@ -228,7 +228,7 @@ TEST(Fp32ExecutionInputs, AcceptsCompleteScalarFp32Metadata) {
     const auto config = test::MakeTinyLlamaConfig(2, false);
     auto checkpoint = test::MakeTinyLlamaCheckpoint(config);
     const LoadedModel model(config, std::move(checkpoint.weights));
-    const Status status = ValidateFp32ExecutionInputs(model);
+    const Status status = ValidateSourceWeights(model, WeightPolicy::kRequireFp32);
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
@@ -242,7 +242,7 @@ TEST(Fp32ExecutionInputs, AcceptsUndefinedHintOnlyAfterCheckingActualWeights) {
         checkpoint.weights.layers.back().norm.post_attn_rmsnorm.dtype = DataType::BFloat(16);
         checkpoint.weights.layers.back().norm.post_attn_rmsnorm.bytes /= 2;
         const LoadedModel model(config, std::move(checkpoint.weights));
-        const Status status = ValidateFp32ExecutionInputs(model);
+        const Status status = ValidateSourceWeights(model, WeightPolicy::kRequireFp32);
         ExpectPrecisionDiagnostic(status, "PostAttentionNorm", DataType::BFloat(16), 1U);
     }
 }
@@ -255,7 +255,7 @@ TEST(Fp32ExecutionInputs, RejectsNonFp32HintWithFp32Weights) {
         config.weight_dtype_hint_name = ToString(dtype);
         auto checkpoint = test::MakeTinyLlamaCheckpoint(config);
         const LoadedModel model(config, std::move(checkpoint.weights));
-        const Status status = ValidateFp32ExecutionInputs(model);
+        const Status status = ValidateSourceWeights(model, WeightPolicy::kRequireFp32);
         ExpectPrecisionDiagnostic(status, "hint", dtype);
     }
 }
@@ -265,7 +265,7 @@ TEST(Fp32ExecutionInputs, AcceptsTiedHeadByExistingEmbeddingFallback) {
     auto checkpoint = test::MakeTinyLlamaCheckpoint(config);
     ASSERT_FALSE(checkpoint.weights.lm_head.has_value());
     const LoadedModel model(config, std::move(checkpoint.weights));
-    const Status status = ValidateFp32ExecutionInputs(model);
+    const Status status = ValidateSourceWeights(model, WeightPolicy::kRequireFp32);
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
@@ -274,7 +274,7 @@ TEST(Fp32ExecutionInputs, RejectsInvalidRequiredViewInsteadOfSkippingIt) {
     auto checkpoint = test::MakeTinyLlamaCheckpoint(config);
     checkpoint.weights.layers.back().mlp.down_proj.storage.reset();
     const LoadedModel model(config, std::move(checkpoint.weights));
-    const Status status = ValidateFp32ExecutionInputs(model);
+    const Status status = ValidateSourceWeights(model, WeightPolicy::kRequireFp32);
     EXPECT_FALSE(status.ok());
     EXPECT_NE(status.message().find("MlpDown"), std::string::npos);
     EXPECT_NE(status.message().find("layer 1"), std::string::npos);
@@ -285,7 +285,7 @@ TEST(Fp32ExecutionInputs, RejectsMissingEmbeddingUsedByTiedHead) {
     auto checkpoint = test::MakeTinyLlamaCheckpoint(config);
     checkpoint.weights.embed_tokens = {};
     const LoadedModel model(config, std::move(checkpoint.weights));
-    const Status status = ValidateFp32ExecutionInputs(model);
+    const Status status = ValidateSourceWeights(model, WeightPolicy::kRequireFp32);
     EXPECT_FALSE(status.ok());
 }
 
@@ -294,7 +294,7 @@ TEST(Fp32ExecutionInputs, RejectsResolvedLayerCountMismatch) {
     auto checkpoint = test::MakeTinyLlamaCheckpoint(config);
     checkpoint.weights.layers.pop_back();
     const LoadedModel model(config, std::move(checkpoint.weights));
-    const Status status = ValidateFp32ExecutionInputs(model);
+    const Status status = ValidateSourceWeights(model, WeightPolicy::kRequireFp32);
     EXPECT_FALSE(status.ok());
 }
 
@@ -304,7 +304,7 @@ TEST(Fp32ExecutionInputs, RejectsNonpositiveDeclaredLayerCount) {
         auto checkpoint = test::MakeTinyLlamaCheckpoint(config);
         config.num_hidden_layers = count;
         const LoadedModel model(config, std::move(checkpoint.weights));
-        const Status status = ValidateFp32ExecutionInputs(model);
+        const Status status = ValidateSourceWeights(model, WeightPolicy::kRequireFp32);
         EXPECT_FALSE(status.ok());
     }
 }
@@ -315,7 +315,7 @@ TEST(Fp32ExecutionInputs, RejectsFloat32VectorLanesAsUnsupportedPrecision) {
     auto& weight = checkpoint.weights.layers.back().norm.post_attn_rmsnorm;
     weight.dtype = DataType::Float(32, 4);
     const LoadedModel model(config, std::move(checkpoint.weights));
-    const Status status = ValidateFp32ExecutionInputs(model);
+    const Status status = ValidateSourceWeights(model, WeightPolicy::kRequireFp32);
     ExpectPrecisionDiagnostic(status, "PostAttentionNorm", DataType::Float(32, 4), 1U);
 }
 

@@ -17,6 +17,7 @@ namespace aethermind {
 class Backend;
 class ExecutionContext;
 class ExecutionPlan;
+class LoadedModel;
 struct ExecutionValueId;
 struct WeightPackingRequest;
 enum class DeviceType : uint8_t;
@@ -24,6 +25,9 @@ enum class DeviceType : uint8_t;
 } // namespace aethermind
 
 namespace aethermind::inference::internal {
+
+/// @brief Checks normalized FP32 weights while preserving source hints as provenance.
+Status ValidateFp32Weights(const LoadedModel& model);
 
 /// @brief Validates a plan against the Llama session I/O contract.
 ///

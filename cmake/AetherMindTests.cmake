@@ -101,7 +101,7 @@ function(aethermind_test_labels name output)
             "Fp32HfAdmission|Fp32HfCompile|RunnerFp32Admission|RunnerKvAllocationFailure|"
             "InferenceRunnerEquivalence|InferenceRunnerSuccess|InferenceRunnerFailure|"
             "CAbiModel|CAbiSession|CAbiGenerate|CAbiKVValidation|CAbiRuntimeIntegration|"
-            "LoadAndPrepareExecutableModel(Path)?|InferenceCliIntegration)\\.")
+            "ModelLoad(Path)?|InferenceCliIntegration)\\.")
     if (name MATCHES "${model_pattern}" OR
     (name MATCHES "^ModelCompiler\\." AND NOT name MATCHES "^ModelCompiler\\.RejectsNullLoadedModel$"))
         list(APPEND labels model)
@@ -198,7 +198,7 @@ function(aethermind_test_labels name output)
             "CpuRuntimeAssembly|CpuRuntimeConfiguration|RuntimeOptionsValidation|"
             "RawWeightFp32Conversion|ModelGraphBuildOptions|ModelCompilerGraphBuildOptions|Fp32CompatibilityPolicy|Fp32CompatibleInference|Fp32CompatibilityAdmission|"
             "RawWeightValidation|RawWeightConsumers|"
-            "LoadAndPrepareExecutableModel(Path)?|InferenceRunnerFailure|InferenceRunnerEquivalence|"
+            "ModelLoad(Path)?|InferenceRunnerFailure|InferenceRunnerEquivalence|"
             "InferenceCliIntegration|CAbiRuntimeIntegration|MallocInterposerContract|"
             "GlobalFunctionTable|FunctionRegistryOwnership)\\.")
     string(CONCAT artifact_dtype_pattern

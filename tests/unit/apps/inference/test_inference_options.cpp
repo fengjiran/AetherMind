@@ -30,11 +30,11 @@ RunOptions Options() {
 }
 
 TEST(InferenceRunOptions, DefaultsToO1Plain) {
-    EXPECT_EQ(RunOptions{}.preset, CpuInferencePreset::kO1Plain);
+    EXPECT_EQ(RunOptions{}.preset, CompilePreset::kO1Plain);
 }
 
 TEST(InferenceRunOptions, AcceptsValidRequestForBothPresets) {
-    for (const CpuInferencePreset preset: {CpuInferencePreset::kO1Plain, CpuInferencePreset::kO2Packed}) {
+    for (const CompilePreset preset: {CompilePreset::kO1Plain, CompilePreset::kO2Packed}) {
         RunOptions options = Options();
         options.preset = preset;
         const Status status = ValidateRunOptions(options, Configuration());
@@ -161,7 +161,7 @@ TEST(InferenceRunOptions, ZeroGenerationStillRejectsInvalidEos) {
 
 TEST(InferenceRunOptions, RejectsUnknownPreset) {
     RunOptions options = Options();
-    options.preset = static_cast<CpuInferencePreset>(255);
+    options.preset = static_cast<CompilePreset>(255);
     const Status status = ValidateRunOptions(options, Configuration());
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
@@ -182,8 +182,8 @@ TEST(InferenceRunOptions, RejectsNonpositiveModelBoundsBeforeUnsignedConversion)
     }
 }
 
-TEST(InferenceCpuPreset, ExplicitlySelectsO1PlainAndBothPhases) {
-    const auto compile = MakeCpuCompileOptions(CpuInferencePreset::kO1Plain);
+TEST(InferenceCompilePreset, ExplicitlySelectsO1PlainAndBothPhases) {
+    const auto compile = MakeCompileOptions(CompilePreset::kO1Plain, DeviceType::kCPU);
     ASSERT_TRUE(compile.ok()) << compile.status().ToString();
     EXPECT_EQ(compile->optimization.opt_level, 1);
     EXPECT_FALSE(compile->lowering.enable_packed_weights);
@@ -194,8 +194,8 @@ TEST(InferenceCpuPreset, ExplicitlySelectsO1PlainAndBothPhases) {
     EXPECT_TRUE(compile->lowering.selector.weight_dtype.IsUndefined());
 }
 
-TEST(InferenceCpuPreset, ExplicitlySelectsO2PackedWithoutForcingAllStepsPacked) {
-    const auto compile = MakeCpuCompileOptions(CpuInferencePreset::kO2Packed);
+TEST(InferenceCompilePreset, ExplicitlySelectsO2PackedWithoutForcingAllStepsPacked) {
+    const auto compile = MakeCompileOptions(CompilePreset::kO2Packed, DeviceType::kCPU);
     ASSERT_TRUE(compile.ok()) << compile.status().ToString();
     EXPECT_EQ(compile->optimization.opt_level, 2);
     EXPECT_TRUE(compile->lowering.enable_packed_weights);
@@ -204,10 +204,17 @@ TEST(InferenceCpuPreset, ExplicitlySelectsO2PackedWithoutForcingAllStepsPacked) 
     EXPECT_EQ(compile->lowering.selector.phase, ExecPhase::kBoth);
 }
 
-TEST(InferenceCpuPreset, RejectsUnknownPresetWithoutFallback) {
-    const auto compile = MakeCpuCompileOptions(static_cast<CpuInferencePreset>(255));
+TEST(InferenceCompilePreset, RejectsUnknownPresetWithoutFallback) {
+    const auto compile = MakeCompileOptions(static_cast<CompilePreset>(255), DeviceType::kCPU);
     EXPECT_FALSE(compile.ok());
     EXPECT_EQ(compile.status().code(), StatusCode::kInvalidArgument);
+}
+
+TEST(InferenceCompilePreset, RejectsInvalidTargetsWithoutFallback) {
+    for (const auto target: {DeviceType::kUndefined, static_cast<DeviceType>(255)}) {
+        const auto compile = MakeCompileOptions(CompilePreset::kO1Plain, target);
+        EXPECT_EQ(compile.status().code(), StatusCode::kInvalidArgument);
+    }
 }
 
 } // namespace

@@ -4,6 +4,7 @@
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/inference/executable_model.h"
 #include "aethermind/inference/inference_session.h"
+#include "aethermind/model/model_loader.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/runtime/runtime_options.h"
 
@@ -18,21 +19,14 @@ namespace {
 
 using namespace aethermind;
 
-static_assert(requires(Runtime& runtime, const std::filesystem::path& directory) {
-    LoadAndPrepareExecutableModel(runtime, directory, {});
-});
 namespace fs = std::filesystem;
 
 fs::path TinyLlamaModelDir() {
     return fs::path(AETHERMIND_TEST_MODELS_DIR) / "tiny-random-LlamaForCausalLM";
 }
 
-ModelCompileOptions CpuCompileOptions(bool packed = false) {
-    ModelCompileOptions options;
-    // The CPU kernels for fused O2 operators currently require packed weights.
-    options.optimization.opt_level = packed ? 2 : 1;
-    options.lowering.enable_packed_weights = packed;
-    return options;
+ModelLoadOptions LoadOptions(bool packed = false) {
+    return {.preset = packed ? CompilePreset::kO2Packed : CompilePreset::kO1Plain};
 }
 
 Runtime MakeTinyLlamaRuntime() {
@@ -61,14 +55,14 @@ Runtime MakeCpuRuntimeWithoutBackend() {
     return builder.Build();
 }
 
-class LoadAndPrepareExecutableModelPath : public ::testing::TestWithParam<bool> {};
+class ModelLoadPath : public ::testing::TestWithParam<bool> {};
 
-TEST_P(LoadAndPrepareExecutableModelPath, LoadsPreparesAndGeneratesFromHfDirectory) {
+TEST_P(ModelLoadPath, LoadsPreparesAndGeneratesFromHfDirectory) {
     // Runtime outlives the prepared model and session because both borrow its
     // backend resources. These dimensions match the checked-in fixture config.
     Runtime runtime = MakeTinyLlamaRuntime();
-    auto executable = LoadAndPrepareExecutableModel(
-            runtime, TinyLlamaModelDir(), CpuCompileOptions(GetParam()));
+    auto executable = ExecutableModel::Load(
+            runtime, TinyLlamaModelDir(), LoadOptions(GetParam()));
     ASSERT_TRUE(executable.ok()) << executable.status().ToString();
     EXPECT_TRUE(executable->IsPreparedFor(runtime));
     EXPECT_EQ(executable->context_limit(), 2048U);
@@ -100,42 +94,75 @@ TEST_P(LoadAndPrepareExecutableModelPath, LoadsPreparesAndGeneratesFromHfDirecto
 }
 
 INSTANTIATE_TEST_SUITE_P(
-        PreparationPaths, LoadAndPrepareExecutableModelPath, ::testing::Bool(),
+        PreparationPaths, ModelLoadPath, ::testing::Bool(),
         [](const ::testing::TestParamInfo<bool>& info) { return info.param ? "O2Packed" : "O1Plain"; });
 
-TEST(LoadAndPrepareExecutableModel, PreservesLoadCompileErrorCodeAndAddsContext) {
+TEST(ModelLoad, PreservesLoadErrorCodeAndAddsContext) {
     Runtime runtime = MakeTinyLlamaRuntime();
     const fs::path missing_dir = TinyLlamaModelDir() / "missing-model-directory";
-    const ModelCompileOptions options = CpuCompileOptions();
+    const ModelLoadOptions options = LoadOptions();
 
-    const auto compile_result = ModelCompiler::LoadAndCompile(missing_dir, options);
-    ASSERT_FALSE(compile_result.ok());
+    const auto load_result = ModelLoader::Load(missing_dir);
+    ASSERT_FALSE(load_result.ok());
 
     const auto result =
-            LoadAndPrepareExecutableModel(runtime, missing_dir, options);
+            ExecutableModel::Load(runtime, missing_dir, options);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), compile_result.status().code());
+    EXPECT_EQ(result.status().code(), load_result.status().code());
     EXPECT_NE(result.status().message().find(
-                      "LoadAndPrepareExecutableModel loading/compilation failed"),
+                      "ExecutableModel::Load loading failed"),
               std::string::npos);
 }
 
-TEST(LoadAndPrepareExecutableModel, PreservesPreparationErrorCodeAndAddsContext) {
+TEST(ModelLoad, PreservesPreparationErrorCodeAndAddsContext) {
     Runtime runtime = MakeCpuRuntimeWithoutBackend();
-    const ModelCompileOptions options = CpuCompileOptions();
+    const ModelLoadOptions options = LoadOptions();
 
-    auto artifact = ModelCompiler::LoadAndCompile(TinyLlamaModelDir(), options);
+    const auto compile_options = MakeCompileOptions(options.preset, options.target);
+    ASSERT_TRUE(compile_options.ok()) << compile_options.status().ToString();
+    auto artifact = ModelCompiler::LoadAndCompile(TinyLlamaModelDir(), *compile_options);
     ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
-    const auto prepare_result = PrepareExecutableModel(runtime, std::move(*artifact));
+    const auto prepare_result = ExecutableModel::Prepare(runtime, std::move(*artifact));
     ASSERT_FALSE(prepare_result.ok());
 
     const auto result =
-            LoadAndPrepareExecutableModel(runtime, TinyLlamaModelDir(), options);
+            ExecutableModel::Load(runtime, TinyLlamaModelDir(), options);
     ASSERT_FALSE(result.ok());
     EXPECT_EQ(result.status().code(), prepare_result.status().code());
     EXPECT_NE(result.status().message().find(
-                      "LoadAndPrepareExecutableModel preparation failed"),
+                      "ExecutableModel::Load preparation failed"),
               std::string::npos);
+}
+
+TEST(ModelLoad, PreservesNonCpuTargetsThroughCompilation) {
+    for (const auto target: {DeviceType::kCUDA, DeviceType::kCANN}) {
+        for (const auto preset: {CompilePreset::kO1Plain, CompilePreset::kO2Packed}) {
+            SCOPED_TRACE(DeviceType2Str(target));
+            const auto options = MakeCompileOptions(preset, target);
+            ASSERT_TRUE(options.ok()) << options.status().ToString();
+            const auto artifact = ModelCompiler::LoadAndCompile(TinyLlamaModelDir(), *options);
+            ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
+            ASSERT_FALSE(artifact->graph.steps().empty());
+            for (const auto& step: artifact->graph.steps()) {
+                EXPECT_EQ(step.spec.selector.device_type, target);
+            }
+        }
+    }
+}
+
+TEST(ModelLoad, ReportsRequestedBackendWhenUnavailable) {
+    Runtime runtime = MakeCpuRuntimeWithoutBackend();
+    for (const auto target: {DeviceType::kCUDA, DeviceType::kCANN}) {
+        for (const auto preset: {CompilePreset::kO1Plain, CompilePreset::kO2Packed}) {
+            SCOPED_TRACE(DeviceType2Str(target));
+            const auto result = ExecutableModel::Load(
+                    runtime, TinyLlamaModelDir(), {.preset = preset, .target = target});
+            ASSERT_FALSE(result.ok());
+            EXPECT_EQ(result.status().code(), StatusCode::kNotFound);
+            EXPECT_NE(result.status().message().find(DeviceType2Str(target)), std::string::npos)
+                    << result.status().message();
+        }
+    }
 }
 
 } // namespace

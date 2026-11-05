@@ -1,6 +1,6 @@
 #include "inference_runner.h"
-#include "aethermind/inference/cpu_inference_options.h"
 #include "aethermind/inference/executable_model.h"
+#include "aethermind/inference/inference_options.h"
 #include "aethermind/inference/model_execution_policy.h"
 #include "aethermind/model/model_loader.h"
 #include "aethermind/runtime/runtime_builder.h"
@@ -33,8 +33,8 @@ StatusOr<size_t> PositiveSize(int64_t value, std::string_view field) {
     return result;
 }
 
-bool IsSupportedPreset(CpuInferencePreset preset) noexcept {
-    return preset == CpuInferencePreset::kO1Plain || preset == CpuInferencePreset::kO2Packed;
+bool IsSupportedPreset(CompilePreset preset) noexcept {
+    return preset == CompilePreset::kO1Plain || preset == CompilePreset::kO2Packed;
 }
 
 Status ValidateContextCapacity(size_t capacity, size_t model_context) {
@@ -67,7 +67,7 @@ StatusOr<std::vector<uint32_t>> RunInferenceBody(const RunOptions& options,
         stage = RunStage::kParameters;
         AM_RETURN_IF_ERROR(ValidateRunOptions(options, config));
         stage = RunStage::kModelAdmission;
-        AM_RETURN_IF_ERROR(ValidateFp32ExecutionInputs(**loaded));
+        AM_RETURN_IF_ERROR(ValidateSourceWeights(**loaded, WeightPolicy::kRequireFp32));
 
         stage = RunStage::kParameters;
         auto mapped_runtime = MakeCpuRuntimeOptions(
@@ -76,7 +76,7 @@ StatusOr<std::vector<uint32_t>> RunInferenceBody(const RunOptions& options,
             return std::move(mapped_runtime).status();
         }
 
-        auto mapped_compile = MakeCpuCompileOptions(options.preset);
+        auto mapped_compile = MakeCompileOptions(options.preset, DeviceType::kCPU);
         if (!mapped_compile.ok()) {
             return std::move(mapped_compile).status();
         }
@@ -104,7 +104,7 @@ StatusOr<std::vector<uint32_t>> RunInferenceBody(const RunOptions& options,
     Runtime runtime = std::move(*built_runtime);
 
     stage = RunStage::kPrepare;
-    auto prepared = PrepareExecutableModel(runtime, std::move(*artifact));
+    auto prepared = ExecutableModel::Prepare(runtime, std::move(*artifact));
     if (!prepared.ok()) {
         return std::move(prepared).status();
     }

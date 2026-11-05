@@ -1,10 +1,11 @@
-#ifndef AETHERMIND_INFERENCE_CPU_INFERENCE_OPTIONS_H
-#define AETHERMIND_INFERENCE_CPU_INFERENCE_OPTIONS_H
+#ifndef AETHERMIND_INFERENCE_INFERENCE_OPTIONS_H
+#define AETHERMIND_INFERENCE_INFERENCE_OPTIONS_H
 
-/// @file cpu_inference_options.h
-/// @brief CPU compilation policy and model-aware Runtime configuration shared
-///        by application entrypoints.
+/// @file inference_options.h
+/// @brief Target-independent compile presets and CPU Runtime configuration
+///        shared by application entrypoints.
 
+#include "aethermind/base/device.h"
 #include "aethermind/base/status.h"
 #include "aethermind/compiler/model_compiler.h"
 #include "aethermind/runtime/runtime_options.h"
@@ -16,17 +17,19 @@ namespace aethermind {
 
 struct HfModelConfig;
 
-enum class CpuInferencePreset : uint8_t {
+enum class CompilePreset : uint8_t {
     kO1Plain,
     kO2Packed,
 };
 
-/// @brief Constructs both-phase CPU compile options for a supported preset.
+/// @brief Constructs both-phase compile options for a preset and target.
 /// @param preset Explicit O1/plain or O2/packed policy; unknown values are rejected.
+/// @param target Known device type, independent of backend availability.
 /// @return Owning options; lowering derives activation/weight dtypes. Diagnostic
 ///         allocation failure returns ResourceExhausted with an empty message.
-/// @note This does not load/admit a model, resolve kernels, or allocate storage.
-StatusOr<ModelCompileOptions> MakeCpuCompileOptions(CpuInferencePreset preset);
+/// @note This does not validate backend/kernel support, load/admit a model,
+///       or allocate storage. Invalid targets return InvalidArgument.
+StatusOr<ModelCompileOptions> MakeCompileOptions(CompilePreset preset, DeviceType target);
 
 /// @brief User settings combined with model geometry before Runtime construction.
 /// @note Zero context capacity is invalid; zero byte caps mean unlimited.

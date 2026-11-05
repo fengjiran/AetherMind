@@ -7,8 +7,8 @@
 #include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/executor.h"
-#include "aethermind/inference/cpu_inference_options.h"
 #include "aethermind/inference/executable_model.h"
+#include "aethermind/inference/inference_options.h"
 #include "aethermind/inference/model_execution_policy.h"
 #include "aethermind/model/formats/hf/hf_safetensors_file.h"
 #include "aethermind/model/loaded_model.h"
@@ -394,19 +394,19 @@ private:
 
 inline StatusOr<CapturedTrajectory> RunFixedTrajectory(const std::filesystem::path& model_dir,
                                                        const ReferenceTrajectory& reference,
-                                                       CpuInferencePreset preset,
+                                                       CompilePreset preset,
                                                        bool last_prefill_row_only = false) {
     AM_ASSIGN_OR_RETURN(auto loaded, ModelLoader::Load(model_dir));
     const HfModelConfig config = loaded->GetConfig();
     AM_RETURN_IF_ERROR(ValidateReference(reference, config, last_prefill_row_only));
-    AM_ASSIGN_OR_RETURN(auto options, MakeCpuCompileOptions(preset));
+    AM_ASSIGN_OR_RETURN(auto options, MakeCompileOptions(preset, DeviceType::kCPU));
     AM_ASSIGN_OR_RETURN(auto artifact, ModelCompiler::Compile(std::move(loaded), options));
     RuntimeOptions runtime_options;
     AM_ASSIGN_OR_RETURN(runtime_options.kv_cache, MakeFp32KVCacheOptions(config, reference.prompt.size() + 2));
     RuntimeBuilder builder;
     builder.WithOptions(runtime_options);
     AM_ASSIGN_OR_RETURN(auto runtime, builder.TryBuild());
-    AM_ASSIGN_OR_RETURN(auto model, PrepareExecutableModel(runtime, std::move(artifact)));
+    AM_ASSIGN_OR_RETURN(auto model, ExecutableModel::Prepare(runtime, std::move(artifact)));
     AM_ASSIGN_OR_RETURN(const auto prefill, model.plan(ExecPhase::kPrefill));
     AM_ASSIGN_OR_RETURN(const auto decode, model.plan(ExecPhase::kDecode));
     AM_ASSIGN_OR_RETURN(const auto prefill_weights, model.immutable_weight_bindings(ExecPhase::kPrefill));

@@ -59,7 +59,7 @@ Runtime ResourceRuntime(const std::shared_ptr<test::ResourceAllocationStats>& st
     return builder.Build();
 }
 std::shared_ptr<const ExecutableModel> ResourceModel(Runtime& runtime, bool packed = false) {
-    auto result = LoadAndPrepareExecutableModel(runtime, ResourceModelDir(), ResourceCompile(packed));
+    auto result = ExecutableModel::Load(runtime, ResourceModelDir(), {.preset = packed ? CompilePreset::kO2Packed : CompilePreset::kO1Plain});
     if (!result.ok()) {
         ADD_FAILURE() << result.status().ToString();
         return {};
@@ -218,13 +218,13 @@ TEST(ModelResourceLimits, FinitePackedAndModelCapsRejectBeforePacking) {
     EXPECT_TRUE(usage.packing_plan_complete);
     EXPECT_TRUE(usage.weights.backing_usage_complete);
     stats->requests.clear();
-    auto short_packed = LoadAndPrepareExecutableModel(runtime, ResourceModelDir(), ResourceCompile(true), {.max_packed_weight_bytes = usage.packed_weight_bytes - 1});
+    auto short_packed = ExecutableModel::Load(runtime, ResourceModelDir(), {.preset = CompilePreset::kO2Packed, .limits = {.max_packed_weight_bytes = usage.packed_weight_bytes - 1}});
     EXPECT_EQ(short_packed.status().code(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(stats->requests.empty());
-    auto short_model = LoadAndPrepareExecutableModel(runtime, ResourceModelDir(), ResourceCompile(true), {.max_model_payload_bytes = usage.managed_payload_bytes - 1});
+    auto short_model = ExecutableModel::Load(runtime, ResourceModelDir(), {.preset = CompilePreset::kO2Packed, .limits = {.max_model_payload_bytes = usage.managed_payload_bytes - 1}});
     EXPECT_EQ(short_model.status().code(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(stats->requests.empty());
-    auto equal = LoadAndPrepareExecutableModel(runtime, ResourceModelDir(), ResourceCompile(true), {.max_model_payload_bytes = usage.managed_payload_bytes, .max_packed_weight_bytes = usage.packed_weight_bytes});
+    auto equal = ExecutableModel::Load(runtime, ResourceModelDir(), {.preset = CompilePreset::kO2Packed, .limits = {.max_model_payload_bytes = usage.managed_payload_bytes, .max_packed_weight_bytes = usage.packed_weight_bytes}});
     ASSERT_TRUE(equal.ok()) << equal.status().ToString();
     EXPECT_EQ(equal->resource_usage().managed_payload_bytes, usage.managed_payload_bytes);
 }
@@ -245,11 +245,11 @@ TEST(ModelResourceLimits, UnknownSourceOnlyRejectsCorrespondingModelCap) {
     auto first = compile();
     ASSERT_TRUE(first.ok());
     stats->requests.clear();
-    EXPECT_EQ(PrepareExecutableModel(runtime, std::move(*first), {.max_model_payload_bytes = 10000000}).status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(ExecutableModel::Prepare(runtime, std::move(*first), {.max_model_payload_bytes = 10000000}).status().code(), StatusCode::kUnimplemented);
     EXPECT_TRUE(stats->requests.empty());
     auto second = compile();
     ASSERT_TRUE(second.ok());
-    auto model = PrepareExecutableModel(runtime, std::move(*second), {.max_packed_weight_bytes = 1});
+    auto model = ExecutableModel::Prepare(runtime, std::move(*second), {.max_packed_weight_bytes = 1});
     ASSERT_TRUE(model.ok()) << model.status().ToString();
     EXPECT_FALSE(model->resource_usage().weights.backing_usage_complete);
 }
@@ -273,10 +273,10 @@ TEST(ModelResourceLimits, InlineConstantsAreChargedOnceBeforeAnyPacking) {
     };
     auto bad = build();
     ASSERT_TRUE(bad.ok());
-    EXPECT_EQ(PrepareExecutableModel(runtime, std::move(*bad), {.max_model_payload_bytes = 15}).status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(ExecutableModel::Prepare(runtime, std::move(*bad), {.max_model_payload_bytes = 15}).status().code(), StatusCode::kResourceExhausted);
     auto good = build();
     ASSERT_TRUE(good.ok());
-    auto model = PrepareExecutableModel(runtime, std::move(*good), {.max_model_payload_bytes = 16});
+    auto model = ExecutableModel::Prepare(runtime, std::move(*good), {.max_model_payload_bytes = 16});
     ASSERT_TRUE(model.ok()) << model.status().ToString();
     EXPECT_EQ(model->resource_usage().inline_constant_bytes, 16U);
 }
@@ -296,7 +296,7 @@ TEST(ModelResourceLimits, UnlimitedPreparationDoesNotValidateUnusedRawRoles) {
     ResolvedModelWeights weights;
     weights.final_norm.bytes = 1;
     LoweredModelArtifact artifact{.loaded_model = std::make_unique<LoadedModel>(config, std::move(weights)), .graph = std::move(*lowered)};
-    auto model = PrepareExecutableModel(runtime, std::move(artifact));
+    auto model = ExecutableModel::Prepare(runtime, std::move(artifact));
     ASSERT_TRUE(model.ok()) << model.status().ToString();
     EXPECT_FALSE(model->resource_usage().weights.backing_usage_complete);
     EXPECT_EQ(model->resource_usage().inline_constant_bytes, 16U);
@@ -324,10 +324,10 @@ TEST(ModelResourceLimits, SharedOwnerDistinctConstantVectorsAreBothCharged) {
     Runtime runtime = ResourceRuntime(stats);
     auto artifact = build();
     ASSERT_TRUE(artifact.ok());
-    EXPECT_EQ(PrepareExecutableModel(runtime, std::move(*artifact), {.max_model_payload_bytes = 47}).status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(ExecutableModel::Prepare(runtime, std::move(*artifact), {.max_model_payload_bytes = 47}).status().code(), StatusCode::kResourceExhausted);
     auto retry = build();
     ASSERT_TRUE(retry.ok());
-    auto model = PrepareExecutableModel(runtime, std::move(*retry), {.max_model_payload_bytes = 48});
+    auto model = ExecutableModel::Prepare(runtime, std::move(*retry), {.max_model_payload_bytes = 48});
     ASSERT_TRUE(model.ok()) << model.status().ToString();
     EXPECT_EQ(model->resource_usage().inline_constant_bytes, 48U);
 }

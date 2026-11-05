@@ -1,5 +1,6 @@
 #include "aethermind/inference/model_execution_policy.h"
 #include "aethermind/model/loaded_model.h"
+#include "inference/inference_internal.h"
 #include "model/test_llama_checkpoint_helpers.h"
 
 #include <gtest/gtest.h>
@@ -33,9 +34,9 @@ TEST(Fp32CompatibilityPolicy, CompatibleSourceAcceptsMixedScalarCheckpointPrecis
     checkpoint.weights.layers[1].mlp.down_proj.dtype = DataType::BFloat(16);
     const LoadedModel model(config, std::move(checkpoint.weights));
 
-    EXPECT_TRUE(ValidateFp32CompatibleSourceInputs(model).ok());
-    ExpectPrecisionFailure(ValidateFp32ExecutionWeights(model), "TokenEmbedding");
-    ExpectPrecisionFailure(ValidateFp32ExecutionInputs(model), "hint");
+    EXPECT_TRUE(ValidateSourceWeights(model, WeightPolicy::kConvertToFp32).ok());
+    ExpectPrecisionFailure(inference::internal::ValidateFp32Weights(model), "TokenEmbedding");
+    ExpectPrecisionFailure(ValidateSourceWeights(model, WeightPolicy::kRequireFp32), "hint");
 }
 
 TEST(Fp32CompatibilityPolicy, CompatibleSourceTreatsAutoHintAsProvenance) {
@@ -47,9 +48,9 @@ TEST(Fp32CompatibilityPolicy, CompatibleSourceTreatsAutoHintAsProvenance) {
     checkpoint.weights.layers[0].norm.post_attn_rmsnorm.dtype = DataType::BFloat(16);
     const LoadedModel model(config, std::move(checkpoint.weights));
 
-    EXPECT_TRUE(ValidateFp32CompatibleSourceInputs(model).ok());
-    ExpectPrecisionFailure(ValidateFp32ExecutionWeights(model), "FinalNorm");
-    ExpectPrecisionFailure(ValidateFp32ExecutionInputs(model), "FinalNorm");
+    EXPECT_TRUE(ValidateSourceWeights(model, WeightPolicy::kConvertToFp32).ok());
+    ExpectPrecisionFailure(inference::internal::ValidateFp32Weights(model), "FinalNorm");
+    ExpectPrecisionFailure(ValidateSourceWeights(model, WeightPolicy::kRequireFp32), "FinalNorm");
 }
 
 TEST(Fp32CompatibilityPolicy, ExecutionWeightsIgnoreSourceHintAfterNormalization) {
@@ -58,9 +59,9 @@ TEST(Fp32CompatibilityPolicy, ExecutionWeightsIgnoreSourceHintAfterNormalization
     config.weight_dtype_hint_name = "bfloat16";
     const LoadedModel model = MakeModel(config);
 
-    EXPECT_TRUE(ValidateFp32ExecutionWeights(model).ok());
-    EXPECT_TRUE(ValidateFp32CompatibleSourceInputs(model).ok());
-    ExpectPrecisionFailure(ValidateFp32ExecutionInputs(model), "hint");
+    EXPECT_TRUE(inference::internal::ValidateFp32Weights(model).ok());
+    EXPECT_TRUE(ValidateSourceWeights(model, WeightPolicy::kConvertToFp32).ok());
+    ExpectPrecisionFailure(ValidateSourceWeights(model, WeightPolicy::kRequireFp32), "hint");
 }
 
 TEST(Fp32CompatibilityPolicy, ExecutionWeightsRejectsNonFp32RequiredRoleWithoutReadingPayload) {
@@ -69,7 +70,7 @@ TEST(Fp32CompatibilityPolicy, ExecutionWeightsRejectsNonFp32RequiredRoleWithoutR
     checkpoint.weights.layers[0].attn.q_proj.dtype = DataType::Float(16);
     const LoadedModel model(config, std::move(checkpoint.weights));
 
-    ExpectPrecisionFailure(ValidateFp32ExecutionWeights(model), "AttentionQ");
+    ExpectPrecisionFailure(inference::internal::ValidateFp32Weights(model), "AttentionQ");
 }
 
 TEST(Fp32CompatibilityPolicy, CompatibleSourceRejectsUnsupportedScalarPrecision) {
@@ -78,7 +79,7 @@ TEST(Fp32CompatibilityPolicy, CompatibleSourceRejectsUnsupportedScalarPrecision)
     checkpoint.weights.layers[0].mlp.gate_proj.dtype = DataType::Float(64);
     const LoadedModel model(config, std::move(checkpoint.weights));
 
-    ExpectPrecisionFailure(ValidateFp32CompatibleSourceInputs(model), "MlpGate");
+    ExpectPrecisionFailure(ValidateSourceWeights(model, WeightPolicy::kConvertToFp32), "MlpGate");
 }
 
 TEST(Fp32CompatibilityPolicy, CompatibleSourceRejectsVectorScalableAndReservedPrecisions) {
@@ -91,7 +92,7 @@ TEST(Fp32CompatibilityPolicy, CompatibleSourceRejectsVectorScalableAndReservedPr
         checkpoint.weights.layers[0].norm.input_rmsnorm.dtype = dtype;
         const LoadedModel model(config, std::move(checkpoint.weights));
 
-        const Status status = ValidateFp32CompatibleSourceInputs(model);
+        const Status status = ValidateSourceWeights(model, WeightPolicy::kConvertToFp32);
         EXPECT_FALSE(status.ok()) << status.ToString();
         EXPECT_NE(status.message().find("InputNorm"), std::string::npos) << status.ToString();
     }
@@ -103,7 +104,7 @@ TEST(Fp32CompatibilityPolicy, ExecutionWeightsRejectsMissingRoleAndLayerMismatch
         auto checkpoint = test::MakeTinyLlamaCheckpoint(config);
         checkpoint.weights.lm_head = RawWeightView{};
         const LoadedModel model(config, std::move(checkpoint.weights));
-        const Status status = ValidateFp32ExecutionWeights(model);
+        const Status status = inference::internal::ValidateFp32Weights(model);
         EXPECT_FALSE(status.ok());
         EXPECT_NE(status.message().find("LmHead"), std::string::npos);
     }
@@ -112,7 +113,7 @@ TEST(Fp32CompatibilityPolicy, ExecutionWeightsRejectsMissingRoleAndLayerMismatch
         auto checkpoint = test::MakeTinyLlamaCheckpoint(config);
         checkpoint.weights.layers.pop_back();
         const LoadedModel model(config, std::move(checkpoint.weights));
-        const Status status = ValidateFp32ExecutionWeights(model);
+        const Status status = inference::internal::ValidateFp32Weights(model);
         EXPECT_FALSE(status.ok());
         EXPECT_NE(status.message().find("layer count"), std::string::npos);
     }
@@ -126,9 +127,9 @@ TEST(Fp32CompatibilityPolicy, RejectsNonScalarSourceHintsBeforeDTypeComparison) 
         config.weight_dtype_hint = hint;
         config.weight_dtype_hint_name = "invalid source hint";
         const LoadedModel model = MakeModel(config);
-        ExpectPrecisionFailure(ValidateFp32CompatibleSourceInputs(model), "hint");
-        ExpectPrecisionFailure(ValidateFp32ExecutionInputs(model), "hint");
-        EXPECT_TRUE(ValidateFp32ExecutionWeights(model).ok());
+        ExpectPrecisionFailure(ValidateSourceWeights(model, WeightPolicy::kConvertToFp32), "hint");
+        ExpectPrecisionFailure(ValidateSourceWeights(model, WeightPolicy::kRequireFp32), "hint");
+        EXPECT_TRUE(inference::internal::ValidateFp32Weights(model).ok());
     }
 }
 
@@ -138,8 +139,14 @@ TEST(Fp32CompatibilityPolicy, StrictPolicyRemainsFp32SourceAndExecutionAdmission
     config.weight_dtype_hint_name = "float16";
     const LoadedModel model = MakeModel(config);
 
-    ExpectPrecisionFailure(ValidateFp32ExecutionInputs(model), "hint");
-    EXPECT_TRUE(ValidateFp32ExecutionWeights(model).ok());
+    ExpectPrecisionFailure(ValidateSourceWeights(model, WeightPolicy::kRequireFp32), "hint");
+    EXPECT_TRUE(inference::internal::ValidateFp32Weights(model).ok());
+}
+
+TEST(Fp32CompatibilityPolicy, RejectsUnknownWeightPolicy) {
+    const LoadedModel model = MakeModel(test::MakeTinyLlamaConfig(1, false));
+    const auto status = ValidateSourceWeights(model, static_cast<WeightPolicy>(255));
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
 }
 
 } // namespace

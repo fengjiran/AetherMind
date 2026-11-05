@@ -43,18 +43,18 @@ struct RepeatedGeneration {
 
 StatusOr<RepeatedGeneration> RunPublicGenerate(const fs::path& model_dir,
                                                const ReferenceTrajectory& reference,
-                                               CpuInferencePreset preset) {
+                                               CompilePreset preset) {
     AM_ASSIGN_OR_RETURN(auto loaded, ModelLoader::Load(model_dir));
     const HfModelConfig config = loaded->GetConfig();
     AM_RETURN_IF_ERROR(ValidateReference(reference, config, false));
-    AM_ASSIGN_OR_RETURN(auto compile_options, MakeCpuCompileOptions(preset));
+    AM_ASSIGN_OR_RETURN(auto compile_options, MakeCompileOptions(preset, DeviceType::kCPU));
     AM_ASSIGN_OR_RETURN(auto artifact, ModelCompiler::Compile(std::move(loaded), compile_options));
     RuntimeOptions options;
     AM_ASSIGN_OR_RETURN(options.kv_cache, MakeFp32KVCacheOptions(config, reference.prompt.size() + 2));
     RuntimeBuilder builder;
     builder.WithOptions(options);
     AM_ASSIGN_OR_RETURN(auto runtime, builder.TryBuild());
-    AM_ASSIGN_OR_RETURN(auto executable, PrepareExecutableModel(runtime, std::move(artifact)));
+    AM_ASSIGN_OR_RETURN(auto executable, ExecutableModel::Prepare(runtime, std::move(artifact)));
     auto model = std::make_shared<ExecutableModel>(std::move(executable));
     AM_ASSIGN_OR_RETURN(auto session, InferenceSession::Create(runtime, model));
     std::vector<uint32_t> prompt(reference.prompt.begin(), reference.prompt.end());
@@ -64,7 +64,7 @@ StatusOr<RepeatedGeneration> RunPublicGenerate(const fs::path& model_dir,
     return result;
 }
 
-class HfFixedTrajectory : public ::testing::TestWithParam<std::tuple<FixtureCase, CpuInferencePreset>> {};
+class HfFixedTrajectory : public ::testing::TestWithParam<std::tuple<FixtureCase, CompilePreset>> {};
 
 TEST_P(HfFixedTrajectory, FixedTrajectoryMatchesExternalReference) {
     const FixtureCase fixture = std::get<0>(GetParam());
@@ -100,13 +100,13 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Combine(
                 ::testing::Values(FixtureCase{"mha-untied", "MhaUntied"}, FixtureCase{"mha-tied", "MhaTied"},
                                   FixtureCase{"gqa-tail", "GqaTail"}, FixtureCase{"mqa-tail", "MqaTail"}),
-                ::testing::Values(CpuInferencePreset::kO1Plain, CpuInferencePreset::kO2Packed)),
+                ::testing::Values(CompilePreset::kO1Plain, CompilePreset::kO2Packed)),
         [](const ::testing::TestParamInfo<HfFixedTrajectory::ParamType>& info) {
             return std::string(std::get<0>(info.param).name) +
-                   (std::get<1>(info.param) == CpuInferencePreset::kO1Plain ? "O1Plain" : "O2Packed");
+                   (std::get<1>(info.param) == CompilePreset::kO1Plain ? "O1Plain" : "O2Packed");
         });
 
-class HfNearContextLimit : public ::testing::TestWithParam<CpuInferencePreset> {};
+class HfNearContextLimit : public ::testing::TestWithParam<CompilePreset> {};
 
 TEST_P(HfNearContextLimit, MatchesExternalFixedTrajectoryAtContextLimit) {
     const auto directory = NumericalDirectory("mha-near-limit");
@@ -124,9 +124,9 @@ TEST_P(HfNearContextLimit, MatchesExternalFixedTrajectoryAtContextLimit) {
 
 INSTANTIATE_TEST_SUITE_P(
         NumericalPresets, HfNearContextLimit,
-        ::testing::Values(CpuInferencePreset::kO1Plain, CpuInferencePreset::kO2Packed),
-        [](const ::testing::TestParamInfo<CpuInferencePreset>& info) {
-            return info.param == CpuInferencePreset::kO1Plain ? "O1Plain" : "O2Packed";
+        ::testing::Values(CompilePreset::kO1Plain, CompilePreset::kO2Packed),
+        [](const ::testing::TestParamInfo<CompilePreset>& info) {
+            return info.param == CompilePreset::kO1Plain ? "O1Plain" : "O2Packed";
         });
 
 StageSnapshot ComparisonFixture() {
@@ -256,7 +256,7 @@ TEST(HfNumericalFaultInjection, ChangedNormWeightIsDetected) {
 
     // The cloned HF file remains structurally valid: loading, compilation and
     // execution must succeed before the independent numerical comparison fails.
-    const auto captured = RunFixedTrajectory(directory.path() / "model", *reference, CpuInferencePreset::kO1Plain);
+    const auto captured = RunFixedTrajectory(directory.path() / "model", *reference, CompilePreset::kO1Plain);
 
     ASSERT_TRUE(captured.ok()) << captured.status().ToString();
     const auto compared = CompareStage((*captured)[0], reference->stages[0], "prefill");

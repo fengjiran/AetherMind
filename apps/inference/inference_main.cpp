@@ -160,9 +160,9 @@ StatusOr<RunOptions> ParseArguments(int argc, char* argv[]) {
             }
             case Option::kPreset:
                 if (value == "o1-plain") {
-                    options.preset = CpuInferencePreset::kO1Plain;
+                    options.preset = CompilePreset::kO1Plain;
                 } else if (value == "o2-packed") {
-                    options.preset = CpuInferencePreset::kO2Packed;
+                    options.preset = CompilePreset::kO2Packed;
                 } else {
                     return Status::InvalidArgument(
                             "--preset must be o1-plain or o2-packed");

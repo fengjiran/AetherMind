@@ -9,7 +9,7 @@
 #include "aethermind/compiler/model_compiler.h"
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_plan.h"
-#include "aethermind/inference/cpu_inference_options.h"
+#include "aethermind/inference/inference_options.h"
 #include "aethermind/inference/resource_usage.h"
 #include "aethermind/inference/weight_binding_metadata.h"
 #include "aethermind/model/weight/packed_weight_collection.h"
@@ -25,26 +25,27 @@ class Runtime;
 /// @brief Per-model visible tensor payload caps; zero means unlimited.
 /// Mapped/external backing, metadata and allocator overhead are reported or
 /// excluded separately. A model cap requires known raw backing metadata.
-struct ExecutableModelPrepareOptions {
+struct ModelLimits {
     size_t max_model_payload_bytes = 0;
     size_t max_packed_weight_bytes = 0;
 };
 
-/// @brief Explicit source-weight policy for the CPU preparation entry point.
-enum class InferencePrecisionPreset : uint8_t {
-    kStrictFp32,
-    kFp32Compatible,
+/// @brief Explicit source-weight admission and conversion policy.
+enum class WeightPolicy : uint8_t {
+    kRequireFp32,
+    kConvertToFp32,
 };
 
-/// @brief CPU execution policy and per-model payload caps.
+/// @brief Target, compilation and source-weight policy with per-model caps.
 ///
 /// Compatibility widens actual F16/BF16 weights once before compilation and
-/// runs FP32 weights, activations, KV and logits. It currently requires O1/plain.
+/// runs FP32 weights, activations, KV and logits. It requires CPU O1/plain.
 /// The strict policy keeps the existing FP32-only source admission contract.
-struct CpuModelPrepareOptions {
-    CpuInferencePreset cpu_preset = CpuInferencePreset::kO1Plain;
-    InferencePrecisionPreset precision = InferencePrecisionPreset::kStrictFp32;
-    ExecutableModelPrepareOptions resources{};
+struct ModelLoadOptions {
+    CompilePreset preset = CompilePreset::kO1Plain;
+    DeviceType target = DeviceType::kCPU;
+    WeightPolicy weights = WeightPolicy::kRequireFp32;
+    ModelLimits limits{};
 };
 
 /// @brief Immutable, execution-ready model owned between compilation and sessions.
@@ -56,7 +57,7 @@ struct CpuModelPrepareOptions {
 /// role, or interpret packing decisions — preparation has already done it.
 ///
 /// Lifetime, outermost first:
-/// - the Runtime passed to PrepareExecutableModel must remain at the same
+/// - the Runtime used to prepare this model must remain at the same
 ///   address, must not be moved, and must outlive this object,
 ///   because the plan's resolved kernels borrow its backends;
 /// - this object must outlive every PreparedExecutionBindings built from its plan
@@ -76,6 +77,23 @@ struct CpuModelPrepareOptions {
 /// must serialize concurrent access.
 class ExecutableModel {
 public:
+    /// @brief Loads a model for a target using an explicit weight policy and preset.
+    /// @note Loads once; conversion precedes graph construction. Runtime must
+    ///       remain at the same address and outlive the returned model. CLI and
+    ///       C ABI retain their CPU/strict source admission through staged calls.
+    ///       Preparation checks the target backend and kernel availability.
+    static StatusOr<ExecutableModel> Load(Runtime& runtime,
+                                          const std::filesystem::path& directory,
+                                          const ModelLoadOptions& options);
+
+    /// @brief Prepares a compiled artifact, consuming its weight backing.
+    /// @note Checks payload limits before packing, resolves kernels and builds
+    ///       immutable bindings. Failure publishes no partial model. This never
+    ///       converts source weights; Runtime must remain stable and outlive it.
+    static StatusOr<ExecutableModel> Prepare(Runtime& runtime,
+                                             LoweredModelArtifact artifact,
+                                             const ModelLimits& limits = {});
+
     ExecutableModel(ExecutableModel&&) noexcept = default;
     ExecutableModel& operator=(ExecutableModel&&) = delete;
     ExecutableModel(const ExecutableModel&) = delete;
@@ -124,10 +142,6 @@ public:
     AM_NODISCARD const ModelResourceUsage& resource_usage() const noexcept;
 
 private:
-    friend StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
-                                                            LoweredModelArtifact artifact,
-                                                            const ExecutableModelPrepareOptions& options);
-
     ExecutableModel(Runtime& runtime,
                     LoweredModelArtifact artifact,
                     PackedWeightCollection packed_weights,
@@ -155,76 +169,6 @@ private:
     size_t vocab_size_ = 0;
     ModelResourceUsage resource_usage_{};
 };
-
-/// @brief Prepares a compiled artifact for execution.
-///
-/// The single production entry point between compilation and sessions. It runs
-/// graph-driven weight materialization, builds the execution plan against
-/// `runtime`'s backends, and derives the immutable weight/constant binding table
-/// from the same requirement query that PrepareExecutionBindings validates
-/// against, so the two can never disagree. Completeness is reconciled here: a
-/// weight that does not resolve, or a constant with no inline data, fails
-/// preparation instead of surfacing as wrong numerics at execution time.
-///
-/// @param runtime Runtime providing the backends the plan resolves kernels
-///        through; must outlive the returned model.
-/// @param artifact Compiled artifact to consume. Ownership transfers into the
-///        returned model, which keeps it alive as the weight backing.
-/// @return The prepared model, or an error if any weight or constant cannot be
-///         materialized, the artifact mixes execution phases, or plan building
-///         fails. No partially prepared model is observable on failure.
-StatusOr<ExecutableModel> PrepareExecutableModel(
-        Runtime& runtime,
-        LoweredModelArtifact artifact);
-
-/// @brief Prepares with per-model payload admission; no partial model is published.
-StatusOr<ExecutableModel> PrepareExecutableModel(
-        Runtime& runtime,
-        LoweredModelArtifact artifact,
-        const ExecutableModelPrepareOptions& options);
-
-/// @brief Loads, compiles, and prepares a model directory for execution.
-///
-/// This is a convenience orchestration entry point over
-/// `ModelCompiler::LoadAndCompile` and `PrepareExecutableModel`. Compilation
-/// options are explicit because the default O2/plain-weight combination does
-/// not currently resolve against the CPU kernel registry. The returned model
-/// borrows the backend owned by `runtime`; `runtime` must remain at the same address and
-/// outlive the returned model.
-///
-/// @param runtime Runtime providing the backends used to resolve kernels.
-/// @param model_dir Directory containing the model configuration and weights.
-/// @param compile_options Semantic optimization and lowering configuration.
-/// @return The prepared model, or an error with the original status code and
-///         context identifying loading/compilation or preparation.
-StatusOr<ExecutableModel> LoadAndPrepareExecutableModel(
-        Runtime& runtime,
-        const std::filesystem::path& model_dir,
-        const ModelCompileOptions& compile_options);
-
-/// @brief Uses the same load/compile/prepare chain with explicit payload caps.
-StatusOr<ExecutableModel> LoadAndPrepareExecutableModel(
-        Runtime& runtime,
-        const std::filesystem::path& model_dir,
-        const ModelCompileOptions& compile_options,
-        const ExecutableModelPrepareOptions& prepare_options);
-
-/// @brief Loads once and prepares an explicitly selected CPU precision policy.
-///
-/// The Runtime must already be at its final address and outlive the model.
-/// Compatibility uses its CPU allocator for owned FP32 conversion storage,
-/// releases unused source backing before compilation, and preserves the original
-/// config dtype hint as provenance. The model cap is also checked against the
-/// normalized owned weights before allocating conversion payloads. It does not
-/// bound source mappings, conversion-time RSS, or allocator overhead.
-///
-/// Low-level compiler/preparation overloads retain their existing behavior;
-/// they never normalize weights implicitly. The C ABI and CLI retain strict
-/// source admission.
-StatusOr<ExecutableModel> LoadAndPrepareCpuExecutableModel(
-        Runtime& runtime,
-        const std::filesystem::path& model_dir,
-        const CpuModelPrepareOptions& options);
 
 } // namespace aethermind
 

@@ -10,7 +10,7 @@
 /// only owning token IDs.
 
 #include "aethermind/base/status.h"
-#include "aethermind/inference/cpu_inference_options.h"
+#include "aethermind/inference/inference_options.h"
 #include "aethermind/inference/inference_session.h"
 
 #include <cstddef>
@@ -25,7 +25,7 @@ struct RunOptions {
     std::vector<uint32_t> prompt_tokens{};
     size_t context_tokens = 0;
     GenerationConfig generation{};
-    CpuInferencePreset preset = CpuInferencePreset::kO1Plain;
+    CompilePreset preset = CompilePreset::kO1Plain;
 };
 
 /// @brief Stage whose operation returned the runner's error status.

@@ -2,6 +2,7 @@
 #include "aethermind/graph/graph_types.h"
 #include "aethermind/model/loaded_model.h"
 #include "aethermind/model/weight/weight_binding_resolver.h"
+#include "inference/inference_internal.h"
 #include "utils/overflow_check.h"
 
 #include <array>
@@ -70,6 +71,7 @@ Status ValidateRoleDType(const ResolvedModelWeights& weights,
         return Status::InvalidArgument("Required weight " + WeightLocation(role, layer) +
                                        " is missing or invalid");
     }
+
     // IsFloat32() does not check lanes; kernels require scalar elements.
     const bool supported = weight->dtype.raw_lanes() == 1 &&
                            (weight->dtype == DataType::Float32() ||
@@ -111,14 +113,19 @@ Status ValidateExecutionWeights(const LoadedModel& model, bool allow_widening) {
     AM_ASSIGN_OR_RETURN(const size_t num_layers,
                         PositiveSize(config.num_hidden_layers, "num_hidden_layers"));
     if (weights.layers.size() != num_layers) {
-        return Status::InvalidArgument("Resolved layer count does not match num_hidden_layers");
+        return Status::InvalidArgument(
+                "Resolved layer count does not match num_hidden_layers");
     }
+
     if (!std::in_range<uint32_t>(num_layers - 1)) {
-        return Status::OutOfRange("Decoder layer index is not representable as uint32_t");
+        return Status::OutOfRange(
+                "Decoder layer index is not representable as uint32_t");
     }
+
     for (const auto& role: kGlobalRoles) {
         AM_RETURN_IF_ERROR(ValidateRoleDType(weights, role, std::nullopt, allow_widening));
     }
+
     for (size_t layer = 0; layer < num_layers; ++layer) {
         for (const auto& role: kLayerRoles) {
             AM_RETURN_IF_ERROR(ValidateRoleDType(weights, role, static_cast<uint32_t>(layer), allow_widening));
@@ -129,21 +136,18 @@ Status ValidateExecutionWeights(const LoadedModel& model, bool allow_widening) {
 
 } // namespace
 
-Status ValidateFp32ExecutionInputs(const LoadedModel& model) try {
-    AM_RETURN_IF_ERROR(ValidateSourceHint(model, false));
-    return ValidateExecutionWeights(model, false);
+Status ValidateSourceWeights(const LoadedModel& model, WeightPolicy policy) try {
+    if (policy != WeightPolicy::kRequireFp32 && policy != WeightPolicy::kConvertToFp32) {
+        return Status::InvalidArgument("Unknown source weight policy");
+    }
+    const bool allow_widening = policy == WeightPolicy::kConvertToFp32;
+    AM_RETURN_IF_ERROR(ValidateSourceHint(model, allow_widening));
+    return ValidateExecutionWeights(model, allow_widening);
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});
 }
 
-Status ValidateFp32CompatibleSourceInputs(const LoadedModel& model) try {
-    AM_RETURN_IF_ERROR(ValidateSourceHint(model, true));
-    return ValidateExecutionWeights(model, true);
-} catch (const std::bad_alloc&) {
-    return Status::ResourceExhausted({});
-}
-
-Status ValidateFp32ExecutionWeights(const LoadedModel& model) try {
+Status inference::internal::ValidateFp32Weights(const LoadedModel& model) try {
     return ValidateExecutionWeights(model, false);
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});
@@ -157,8 +161,10 @@ StatusOr<KVCacheRuntimeOptions> MakeFp32KVCacheOptions(
     if (context_tokens == 0) {
         return Status::InvalidArgument("context_tokens must be positive");
     }
+
     if (context_tokens > model_context) {
-        return Status::OutOfRange("context_tokens exceeds max_position_embeddings");
+        return Status::OutOfRange(
+                "context_tokens exceeds max_position_embeddings");
     }
 
     int64_t logical_head_dim = config.head_dim;
@@ -166,7 +172,9 @@ StatusOr<KVCacheRuntimeOptions> MakeFp32KVCacheOptions(
         // Only the loader's absent head_dim representation uses this fallback.
         if (config.hidden_size <= 0 || config.num_attention_heads <= 0 ||
             config.hidden_size % config.num_attention_heads != 0) {
-            return Status::InvalidArgument("head_dim requires positive, divisible hidden_size and num_attention_heads");
+            return Status::InvalidArgument(
+                    "head_dim requires positive, divisible hidden_size "
+                    "and num_attention_heads");
         }
         logical_head_dim = config.hidden_size / config.num_attention_heads;
     }

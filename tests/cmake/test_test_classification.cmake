@@ -28,6 +28,19 @@ expect_label("KVCacheLayoutPlanningNoAllocation.SucceedsWithoutHeapAllocation" v
 expect_label("KVCacheLayoutPlanningDiagnosticFailure.ReturnsResourceExhaustedWithoutPublishingLayout" interposer TRUE)
 expect_label("KVCacheLayoutPlanningDiagnosticFailure.ReturnsResourceExhaustedWithoutPublishingLayout" validation TRUE)
 expect_label("ModelCompiler.LoadAndCompileTinyLlamaAtO2" model TRUE)
+
+foreach (name IN ITEMS
+        "ModelLoad.PreservesLoadErrorCodeAndAddsContext"
+        "ModelLoad.PreservesPreparationErrorCodeAndAddsContext"
+        "ModelLoad.PreservesNonCpuTargetsThroughCompilation"
+        "ModelLoad.ReportsRequestedBackendWhenUnavailable"
+        "PreparationPaths/ModelLoadPath.LoadsPreparesAndGeneratesFromHfDirectory/O1Plain"
+        "PreparationPaths/ModelLoadPath.LoadsPreparesAndGeneratesFromHfDirectory/O2Packed")
+    expect_label("${name}" model TRUE)
+    expect_label("${name}" validation TRUE)
+endforeach ()
+expect_label("ModelLoader_PipelineTest.ValidSingleFileDirectoryReachesLoadedModelBoundary" model FALSE)
+expect_label("ModelLoader_PipelineTest.ValidSingleFileDirectoryReachesLoadedModelBoundary" validation FALSE)
 expect_label("InferenceRunnerSuccess.GeneratesAtExactKvCapacity" context_boundary TRUE)
 expect_label("InferenceRunnerSuccess.GeneratesAtExactKvCapacity" long_context FALSE)
 expect_label("PreparationPaths/TinyLlamaExecution.TinyGenerateMatchesScalarOracleAndStartsFreshEachCall/O1Plain" validation TRUE)

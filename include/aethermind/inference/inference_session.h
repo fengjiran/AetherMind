@@ -51,7 +51,7 @@ struct InferenceSessionOptions {
 /// returns, including on execution or allocation failure.
 class InferenceSession {
 public:
-    /// @brief Creates a session for a model prepared by PrepareExecutableModel.
+    /// @brief Creates a session for a model prepared by ExecutableModel::Prepare.
     ///
     /// A Runtime without a KVCacheManager is allowed; Generate reports that
     /// missing resource only when a positive token limit is requested.

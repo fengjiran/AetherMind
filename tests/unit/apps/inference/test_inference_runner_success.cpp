@@ -54,8 +54,8 @@ StatusOr<std::vector<uint32_t>> IndependentSessionGenerate(const RunOptions& opt
     };
 
     ModelCompileOptions compile_options;
-    compile_options.optimization.opt_level = options.preset == CpuInferencePreset::kO2Packed ? 2 : 1;
-    compile_options.lowering.enable_packed_weights = options.preset == CpuInferencePreset::kO2Packed;
+    compile_options.optimization.opt_level = options.preset == CompilePreset::kO2Packed ? 2 : 1;
+    compile_options.lowering.enable_packed_weights = options.preset == CompilePreset::kO2Packed;
     compile_options.lowering.selector = {
             .device_type = DeviceType::kCPU,
             .act_dtype = {},
@@ -68,7 +68,7 @@ StatusOr<std::vector<uint32_t>> IndependentSessionGenerate(const RunOptions& opt
     RuntimeBuilder builder;
     builder.WithOptions(runtime_options);
     AM_ASSIGN_OR_RETURN(auto runtime, builder.TryBuild());
-    AM_ASSIGN_OR_RETURN(auto executable, PrepareExecutableModel(runtime, std::move(artifact)));
+    AM_ASSIGN_OR_RETURN(auto executable, ExecutableModel::Prepare(runtime, std::move(artifact)));
     auto model = std::make_shared<const ExecutableModel>(std::move(executable));
     AM_ASSIGN_OR_RETURN(auto session, InferenceSession::Create(runtime, std::move(model)));
     return session.Generate(options.prompt_tokens, options.generation);
@@ -77,18 +77,18 @@ StatusOr<std::vector<uint32_t>> IndependentSessionGenerate(const RunOptions& opt
 struct RunnerFixtureCase {
     const char* fixture;
     const char* name;
-    CpuInferencePreset preset;
+    CompilePreset preset;
 };
 
 constexpr std::array<RunnerFixtureCase, 8> kRunnerFixtures{{
-        {"f32-missing", "F32MissingO1Plain", CpuInferencePreset::kO1Plain},
-        {"f32-missing", "F32MissingO2Packed", CpuInferencePreset::kO2Packed},
-        {"f32-auto", "F32AutoO1Plain", CpuInferencePreset::kO1Plain},
-        {"f32-auto", "F32AutoO2Packed", CpuInferencePreset::kO2Packed},
-        {"f32-explicit", "F32ExplicitO1Plain", CpuInferencePreset::kO1Plain},
-        {"f32-explicit", "F32ExplicitO2Packed", CpuInferencePreset::kO2Packed},
-        {"f32-tied", "F32TiedO1Plain", CpuInferencePreset::kO1Plain},
-        {"f32-tied", "F32TiedO2Packed", CpuInferencePreset::kO2Packed},
+        {"f32-missing", "F32MissingO1Plain", CompilePreset::kO1Plain},
+        {"f32-missing", "F32MissingO2Packed", CompilePreset::kO2Packed},
+        {"f32-auto", "F32AutoO1Plain", CompilePreset::kO1Plain},
+        {"f32-auto", "F32AutoO2Packed", CompilePreset::kO2Packed},
+        {"f32-explicit", "F32ExplicitO1Plain", CompilePreset::kO1Plain},
+        {"f32-explicit", "F32ExplicitO2Packed", CompilePreset::kO2Packed},
+        {"f32-tied", "F32TiedO1Plain", CompilePreset::kO1Plain},
+        {"f32-tied", "F32TiedO2Packed", CompilePreset::kO2Packed},
 }};
 
 class InferenceRunnerEquivalence : public ::testing::TestWithParam<RunnerFixtureCase> {};
@@ -118,12 +118,12 @@ TEST(InferenceRunnerSuccess, DefaultPresetRunsO1Plain) {
 
     const auto result = RunInference(options);
     ASSERT_TRUE(result.ok()) << result.status().ToString();
-    EXPECT_EQ(options.preset, CpuInferencePreset::kO1Plain);
+    EXPECT_EQ(options.preset, CompilePreset::kO1Plain);
     EXPECT_EQ(*result, *expected);
 }
 
 TEST(InferenceRunnerSuccess, RepeatedRequestsReturnTheSameNewTokens) {
-    for (const CpuInferencePreset preset: {CpuInferencePreset::kO1Plain, CpuInferencePreset::kO2Packed}) {
+    for (const CompilePreset preset: {CompilePreset::kO1Plain, CompilePreset::kO2Packed}) {
         SCOPED_TRACE(static_cast<int>(preset));
         RunOptions options = SuccessOptions();
         options.preset = preset;
@@ -137,7 +137,7 @@ TEST(InferenceRunnerSuccess, RepeatedRequestsReturnTheSameNewTokens) {
 }
 
 TEST(InferenceRunnerSuccess, GeneratesAtExactKvCapacity) {
-    for (const CpuInferencePreset preset: {CpuInferencePreset::kO1Plain, CpuInferencePreset::kO2Packed}) {
+    for (const CompilePreset preset: {CompilePreset::kO1Plain, CompilePreset::kO2Packed}) {
         SCOPED_TRACE(static_cast<int>(preset));
         RunOptions options = SuccessOptions();
         options.preset = preset;
@@ -154,7 +154,7 @@ TEST(InferenceRunnerSuccess, GeneratesAtExactKvCapacity) {
 }
 
 TEST(InferenceRunnerSuccess, ZeroGenerationAllowsPromptBeyondPhysicalKvCapacity) {
-    for (const CpuInferencePreset preset: {CpuInferencePreset::kO1Plain, CpuInferencePreset::kO2Packed}) {
+    for (const CompilePreset preset: {CompilePreset::kO1Plain, CompilePreset::kO2Packed}) {
         SCOPED_TRACE(static_cast<int>(preset));
         RunOptions options = SuccessOptions();
         options.preset = preset;
@@ -174,7 +174,7 @@ TEST(InferenceRunnerSuccess, ZeroGenerationAllowsPromptBeyondPhysicalKvCapacity)
 }
 
 TEST(InferenceRunnerSuccess, IncludesEosAndStopsAtTheFirstPrediction) {
-    for (const CpuInferencePreset preset: {CpuInferencePreset::kO1Plain, CpuInferencePreset::kO2Packed}) {
+    for (const CompilePreset preset: {CompilePreset::kO1Plain, CompilePreset::kO2Packed}) {
         SCOPED_TRACE(static_cast<int>(preset));
         RunOptions options = SuccessOptions();
         options.preset = preset;

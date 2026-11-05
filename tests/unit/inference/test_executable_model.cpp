@@ -127,7 +127,7 @@ LoweredModelArtifact MakeArtifactFrom(LoweredGraph graph, ResolvedModelWeights w
 
 /// Builds an artifact from an arbitrary semantic graph, mirroring
 /// ModelCompiler::Compile minus the Llama-specific front end. The plan is still
-/// produced only by PrepareExecutableModel.
+/// produced only by ExecutableModel::Prepare.
 StatusOr<LoweredModelArtifact> MakeArtifact(const ModelGraph& graph,
                                             ResolvedModelWeights weights,
                                             GraphLoweringConfig config) {
@@ -155,7 +155,7 @@ TEST(ExecutableModel, PreparesPlainUnfusedLlamaArtifact) {
                                      /*opt_level=*/1, /*enable_packed_weights=*/false);
     ASSERT_TRUE(compiled.ok()) << compiled.status().ToString();
 
-    const auto model = PrepareExecutableModel(runtime, std::move(compiled->artifact));
+    const auto model = ExecutableModel::Prepare(runtime, std::move(compiled->artifact));
     ASSERT_TRUE(model.ok()) << model.status().ToString();
 
     EXPECT_NE(model->artifact_id(), 0U);
@@ -190,7 +190,7 @@ TEST(ExecutableModel, BindingsMatchExternalReadRequirementsExactly) {
     auto compiled = CompileTinyLlama(/*num_layers=*/1, /*tie_word_embeddings=*/false,
                                      /*opt_level=*/1, /*enable_packed_weights=*/false);
     ASSERT_TRUE(compiled.ok()) << compiled.status().ToString();
-    const auto model = PrepareExecutableModel(runtime, std::move(compiled->artifact));
+    const auto model = ExecutableModel::Prepare(runtime, std::move(compiled->artifact));
     ASSERT_TRUE(model.ok()) << model.status().ToString();
 
     const auto plan = model->plan(ExecPhase::kBoth);
@@ -222,7 +222,7 @@ TEST(ExecutableModel, PlainLlamaBindsEveryWeightAndNoModelInput) {
     auto compiled = CompileTinyLlama(/*num_layers=*/1, /*tie_word_embeddings=*/false,
                                      /*opt_level=*/1, /*enable_packed_weights=*/false);
     ASSERT_TRUE(compiled.ok()) << compiled.status().ToString();
-    const auto model = PrepareExecutableModel(runtime, std::move(compiled->artifact));
+    const auto model = ExecutableModel::Prepare(runtime, std::move(compiled->artifact));
     ASSERT_TRUE(model.ok()) << model.status().ToString();
 
     const auto plan = model->plan(ExecPhase::kBoth);
@@ -250,7 +250,7 @@ TEST(ExecutableModel, MultiLayerLlamaBindsEveryWeightToItsOwnBacking) {
     const std::vector<const void*> expected = compiled->weight_data;
     ASSERT_EQ(expected.size(), 21U) << "3 model-level weights + 9 per layer";
 
-    const auto model = PrepareExecutableModel(runtime, std::move(compiled->artifact));
+    const auto model = ExecutableModel::Prepare(runtime, std::move(compiled->artifact));
     ASSERT_TRUE(model.ok()) << model.status().ToString();
     const auto bindings = model->immutable_weight_bindings(ExecPhase::kBoth);
     ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
@@ -280,7 +280,7 @@ TEST(ExecutableModel, TiedLmHeadSharesEmbeddingBacking) {
             << "a tied checkpoint carries no independent lm_head weight";
     const void* const embed_data = compiled->embed_tokens_data;
 
-    const auto model = PrepareExecutableModel(runtime, std::move(compiled->artifact));
+    const auto model = ExecutableModel::Prepare(runtime, std::move(compiled->artifact));
     ASSERT_TRUE(model.ok()) << model.status().ToString();
     const auto bindings = model->immutable_weight_bindings(ExecPhase::kBoth);
     ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
@@ -300,7 +300,7 @@ TEST(ExecutableModel, UntiedLmHeadKeepsItsOwnBacking) {
     ASSERT_NE(compiled->lm_head_data, nullptr);
     ASSERT_NE(compiled->lm_head_data, compiled->embed_tokens_data);
 
-    const auto model = PrepareExecutableModel(runtime, std::move(compiled->artifact));
+    const auto model = ExecutableModel::Prepare(runtime, std::move(compiled->artifact));
     ASSERT_TRUE(model.ok()) << model.status().ToString();
     const auto bindings = model->immutable_weight_bindings(ExecPhase::kBoth);
     ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
@@ -314,7 +314,7 @@ TEST(ExecutableModel, OneBindingTableSpecializesBothPrefillAndDecode) {
     auto compiled = CompileTinyLlama(/*num_layers=*/1, /*tie_word_embeddings=*/false,
                                      /*opt_level=*/1, /*enable_packed_weights=*/false);
     ASSERT_TRUE(compiled.ok()) << compiled.status().ToString();
-    const auto model = PrepareExecutableModel(runtime, std::move(compiled->artifact));
+    const auto model = ExecutableModel::Prepare(runtime, std::move(compiled->artifact));
     ASSERT_TRUE(model.ok()) << model.status().ToString();
 
     const auto plan_result = model->plan(ExecPhase::kBoth);
@@ -377,7 +377,7 @@ TEST(ExecutableModel, SurvivesBeingMoved) {
     ASSERT_TRUE(compiled.ok()) << compiled.status().ToString();
     const void* const embed_data = compiled->embed_tokens_data;
 
-    auto prepared = PrepareExecutableModel(runtime, std::move(compiled->artifact));
+    auto prepared = ExecutableModel::Prepare(runtime, std::move(compiled->artifact));
     ASSERT_TRUE(prepared.ok()) << prepared.status().ToString();
     ExecutableModel model(std::move(*prepared));
 
@@ -404,7 +404,7 @@ TEST(ExecutableModel, IsMoveConstructibleButNotAssignable) {
 TEST(ExecutableModel, RejectsArtifactWithoutLoadedModel) {
     Runtime runtime = MakeCpuRuntime();
 
-    const auto model = PrepareExecutableModel(runtime, LoweredModelArtifact{});
+    const auto model = ExecutableModel::Prepare(runtime, LoweredModelArtifact{});
 
     ASSERT_FALSE(model.ok());
     EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
@@ -434,7 +434,7 @@ TEST(ExecutableModel, MaterializesConstantFromInlineData) {
                                  GraphLoweringConfig{.enable_packed_weights = false});
     ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
 
-    const auto model = PrepareExecutableModel(runtime, std::move(*artifact));
+    const auto model = ExecutableModel::Prepare(runtime, std::move(*artifact));
     ASSERT_TRUE(model.ok()) << model.status().ToString();
     const auto bindings = model->immutable_weight_bindings(ExecPhase::kBoth);
     ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
@@ -479,7 +479,7 @@ TEST(ExecutableModel, RejectsConstantWithoutInlineData) {
                                  GraphLoweringConfig{.enable_packed_weights = false});
     ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
 
-    const auto model = PrepareExecutableModel(runtime, std::move(*artifact));
+    const auto model = ExecutableModel::Prepare(runtime, std::move(*artifact));
 
     ASSERT_FALSE(model.ok());
     EXPECT_EQ(model.status().code(), StatusCode::kFailedPrecondition);
@@ -510,7 +510,7 @@ TEST(ExecutableModel, RejectsConstantWhoseInlineSizeDisagreesWithShape) {
                                  GraphLoweringConfig{.enable_packed_weights = false});
     ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
 
-    const auto model = PrepareExecutableModel(runtime, std::move(*artifact));
+    const auto model = ExecutableModel::Prepare(runtime, std::move(*artifact));
 
     ASSERT_FALSE(model.ok());
     EXPECT_EQ(model.status().code(), StatusCode::kFailedPrecondition);
@@ -550,7 +550,7 @@ TEST(ExecutableModel, PackedSubgraphKeepsWeightOutOfBindingTable) {
                                  GraphLoweringConfig{.enable_packed_weights = true});
     ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
 
-    const auto model = PrepareExecutableModel(runtime, std::move(*artifact));
+    const auto model = ExecutableModel::Prepare(runtime, std::move(*artifact));
     ASSERT_TRUE(model.ok()) << model.status().ToString();
 
     const auto plan = model->plan(ExecPhase::kBoth);
@@ -579,7 +579,7 @@ TEST(ExecutableModel, PackedLoweringPreparesAllWeightConsumers) {
                                      /*opt_level=*/2, /*enable_packed_weights=*/true);
     ASSERT_TRUE(compiled.ok()) << compiled.status().ToString();
 
-    const auto model = PrepareExecutableModel(runtime, std::move(compiled->artifact));
+    const auto model = ExecutableModel::Prepare(runtime, std::move(compiled->artifact));
     ASSERT_TRUE(model.ok()) << model.status().ToString();
     const auto plan = model->plan(ExecPhase::kBoth);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
@@ -621,7 +621,7 @@ TEST(ExecutableModel, RejectsWeightWithNoDenseStorageRole) {
     // Dense checkpoints carry no router weight, so the binding resolves to
     // nothing. Preparation must reject it with the role named instead of
     // leaving the weight silently unbound.
-    const auto model = PrepareExecutableModel(runtime, std::move(*artifact));
+    const auto model = ExecutableModel::Prepare(runtime, std::move(*artifact));
 
     ASSERT_FALSE(model.ok());
     EXPECT_EQ(model.status().code(), StatusCode::kFailedPrecondition);
@@ -654,7 +654,7 @@ TEST(ExecutableModel, RejectsWeightWhoseLayerIndexHasNoStorage) {
                                  GraphLoweringConfig{.enable_packed_weights = false});
     ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
 
-    const auto model = PrepareExecutableModel(runtime, std::move(*artifact));
+    const auto model = ExecutableModel::Prepare(runtime, std::move(*artifact));
 
     ASSERT_FALSE(model.ok());
     EXPECT_EQ(model.status().code(), StatusCode::kFailedPrecondition);
@@ -689,7 +689,7 @@ TEST(ExecutableModel, PhaseSpecificArtifactRejectsUnmatchedPhaseQueries) {
     auto artifact = MakeArtifact(graph, std::move(weights), config);
     ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
 
-    const auto model = PrepareExecutableModel(runtime, std::move(*artifact));
+    const auto model = ExecutableModel::Prepare(runtime, std::move(*artifact));
     ASSERT_TRUE(model.ok()) << model.status().ToString();
     EXPECT_EQ(model->phase(), ExecPhase::kPrefill);
     EXPECT_TRUE(model->plan(ExecPhase::kPrefill).ok());
@@ -752,7 +752,7 @@ TEST(ExecutableModel, RejectsArtifactWhoseStepsMixPhases) {
     weights.layers[0].norm.post_attn_rmsnorm = carver.Carve({4});
 
     Runtime runtime = MakeCpuRuntime();
-    const auto model = PrepareExecutableModel(
+    const auto model = ExecutableModel::Prepare(
             runtime, MakeArtifactFrom(std::move(*mixed), std::move(weights)));
 
     ASSERT_FALSE(model.ok());
@@ -770,7 +770,7 @@ TEST(ExecutableModel, PreparedBindingsAreReleasedBeforeTheModel) {
     auto compiled = CompileTinyLlama(/*num_layers=*/1, /*tie_word_embeddings=*/false,
                                      /*opt_level=*/1, /*enable_packed_weights=*/false);
     ASSERT_TRUE(compiled.ok()) << compiled.status().ToString();
-    auto model = PrepareExecutableModel(runtime, std::move(compiled->artifact));
+    auto model = ExecutableModel::Prepare(runtime, std::move(compiled->artifact));
     ASSERT_TRUE(model.ok()) << model.status().ToString();
 
     const void* weight_data = nullptr;

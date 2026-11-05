@@ -1,5 +1,5 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
-#include "aethermind/inference/cpu_inference_options.h"
+#include "aethermind/inference/inference_options.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "model/test_llama_checkpoint_helpers.h"
 #include "test_utils/test_resource_allocator.h"

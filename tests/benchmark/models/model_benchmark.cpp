@@ -5,8 +5,8 @@
 #include "aethermind/compiler/model_compiler.h"
 #include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/executor.h"
-#include "aethermind/inference/cpu_inference_options.h"
 #include "aethermind/inference/executable_model.h"
+#include "aethermind/inference/inference_options.h"
 #include "aethermind/inference/inference_session.h"
 #include "aethermind/inference/model_execution_policy.h"
 #include "aethermind/memory/cpu_allocator.h"
@@ -49,7 +49,7 @@ struct Options {
     std::filesystem::path model;
     std::vector<uint32_t> prompt;
     size_t max_new_tokens = 0;
-    CpuInferencePreset preset = CpuInferencePreset::kO1Plain;
+    CompilePreset preset = CompilePreset::kO1Plain;
     std::string preset_name;
     size_t warmup = 1;
     size_t repetitions = 5;
@@ -194,9 +194,9 @@ Options ParseOptions(int argc, char** argv) {
             options.max_new_tokens = ParseUnsigned<size_t>(value, name);
         else if (name == "--preset") {
             options.preset_name = value;
-            if (value == "o1-plain") options.preset = CpuInferencePreset::kO1Plain;
+            if (value == "o1-plain") options.preset = CompilePreset::kO1Plain;
             else if (value == "o2-packed")
-                options.preset = CpuInferencePreset::kO2Packed;
+                options.preset = CompilePreset::kO2Packed;
             else
                 throw std::invalid_argument("--preset requires o1-plain or o2-packed");
         } else if (name == "--warmup")
@@ -423,11 +423,11 @@ StatusOr<Run> RunSample(const Options& options, size_t index) {
     Sample& sample = run.sample;
     sample.index = index;
     const bool timing = options.mode == "timing";
-    AM_ASSIGN_OR_RETURN(auto compile_options, MakeCpuCompileOptions(options.preset));
+    AM_ASSIGN_OR_RETURN(auto compile_options, MakeCompileOptions(options.preset, DeviceType::kCPU));
     Timer load_timer(timing);
     AM_ASSIGN_OR_RETURN(auto loaded, ModelLoader::Load(options.model));
     sample.load_ns = load_timer.Elapsed();
-    AM_RETURN_IF_ERROR(ValidateFp32ExecutionInputs(*loaded));
+    AM_RETURN_IF_ERROR(ValidateSourceWeights(*loaded, WeightPolicy::kRequireFp32));
     const HfModelConfig config = loaded->GetConfig();
     run.geometry = MakeGeometry(config);
     AM_ASSIGN_OR_RETURN(run.context_capacity, ContextCapacity(options, config));
@@ -449,7 +449,7 @@ StatusOr<Run> RunSample(const Options& options, size_t index) {
     AM_ASSIGN_OR_RETURN(auto runtime, builder.TryBuild());
     sample.runtime_ns = runtime_timer.Elapsed();
     Timer prepare_timer(timing);
-    AM_ASSIGN_OR_RETURN(auto executable, PrepareExecutableModel(runtime, std::move(artifact)));
+    AM_ASSIGN_OR_RETURN(auto executable, ExecutableModel::Prepare(runtime, std::move(artifact)));
     sample.prepare_ns = prepare_timer.Elapsed();
     auto model = std::make_shared<ExecutableModel>(std::move(executable));
     AM_ASSIGN_OR_RETURN(const auto prefill, model->plan(ExecPhase::kPrefill));

@@ -1,7 +1,5 @@
 #include "utils/hash.h"
 
-#include "container/detail/fibonacci_hash.h"
-
 #include <gtest/gtest.h>
 
 #include <limits>
@@ -50,11 +48,6 @@ struct hash<hash_test::StandardCustomization> {
 } // namespace std
 
 namespace {
-
-static_assert(noexcept(aethermind::details::FibonacciHash(1, 63)));
-static_assert(aethermind::details::FibonacciHash(1, 63) == 1);
-static_assert(aethermind::details::FibonacciHash(2, 63) == 0);
-static_assert(aethermind::details::FibonacciHash(1, 64) == 0);
 
 TEST(HashUtils, StaticCustomizationTakesPrecedenceOverStandardCustomization) {
     EXPECT_EQ(aethermind::hash<hash_test::DualCustomization>{}({}), 101U);
@@ -142,30 +135,6 @@ TEST(HashUtils, CombineConvertsSignedInputBeforeUnsignedArithmetic) {
     constexpr long long kInput = std::numeric_limits<long long>::max();
     EXPECT_EQ(aethermind::hash_combine(size_t{17}, kInput),
               aethermind::hash_combine(size_t{17}, static_cast<size_t>(kInput)));
-}
-
-TEST(FibonacciHash, PreservesKnownBucketIndices) {
-    EXPECT_EQ(aethermind::details::FibonacciHash(0, 60), 0U);
-    EXPECT_EQ(aethermind::details::FibonacciHash(1, 60), 9U);
-    EXPECT_EQ(aethermind::details::FibonacciHash(2, 60), 3U);
-    EXPECT_EQ(aethermind::details::FibonacciHash(3, 60), 13U);
-}
-
-TEST(FibonacciHash, KeepsTheProductAt64BitsFor32BitHashValues) {
-    EXPECT_EQ(aethermind::details::FibonacciHash(uint32_t{0xffffffffU}, 32),
-              size_t{3776119387U});
-}
-
-TEST(FibonacciHash, ZeroShiftReturnsTheProductInSizeT) {
-    EXPECT_EQ(aethermind::details::FibonacciHash(1, 0),
-              static_cast<size_t>(uint64_t{0x9e3779b97f4a7c15ULL}));
-}
-
-TEST(FibonacciHash, FullWidthAndLargerShiftsSelectTheSingleBucket) {
-    for (const uint32_t shift: {uint32_t{64}, uint32_t{65},
-                                std::numeric_limits<uint32_t>::max()}) {
-        EXPECT_EQ(aethermind::details::FibonacciHash(std::numeric_limits<size_t>::max(), shift), 0U);
-    }
 }
 
 } // namespace

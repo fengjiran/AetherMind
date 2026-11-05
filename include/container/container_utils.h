@@ -3,46 +3,10 @@
 
 #include "aethermind/base/macros.h"
 
-#include <cstdint>
 #include <iterator>
-#include <numeric>
 #include <optional>
 
 namespace aethermind {
-
-struct MapMagicConstants {
-    // 0b11111111 represent that the slot is empty
-    static constexpr auto kEmptySlot = std::byte{0xFF};
-    // 0b11111110 represent that the slot is tombstone
-    static constexpr auto kTombStoneSlot = std::byte{0xFE};
-    // Number of probing choices available
-    static constexpr int kNumOffsetDists = 126;
-    // head flag
-    static constexpr auto kHeadFlag = std::byte{0x00};
-    // tail flag
-    static constexpr auto kTailFlag = std::byte{0x80};
-    // head flag mask
-    static constexpr auto kHeadFlagMask = std::byte{0x80};
-    // offset mask
-    static constexpr auto kOffsetIdxMask = std::byte{0x7F};
-    // default fib shift
-    static constexpr uint32_t kDefaultFibShift = 63;
-
-    // The number of elements in a memory block.
-    static constexpr uint8_t kSlotsPerBlock = 16;
-
-    // Max load factor of hash table
-    static constexpr double kMaxLoadFactor = 0.75;
-
-    static constexpr size_t kIncFactor = 2;
-
-    // Index indicator to indicate an invalid index.
-    static constexpr size_t kInvalidIndex = std::numeric_limits<size_t>::max();
-
-    // next probe position offset
-    static const size_t NextProbePosOffset[kNumOffsetDists];
-};
-
 
 namespace details {
 

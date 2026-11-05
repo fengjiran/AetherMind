@@ -1,10 +1,10 @@
 #ifndef AETHERMIND_TEST_UTILS_TENSOR_FACTORY_H
 #define AETHERMIND_TEST_UTILS_TENSOR_FACTORY_H
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/tensor.h"
 #include "aethermind/memory/buffer.h"
 #include "container/array_view.h"
-#include "utils/logging.h"
 #include "utils/overflow_check.h"
 
 #include <array>

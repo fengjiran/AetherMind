@@ -1,9 +1,9 @@
 #ifndef AETHERMIND_CONTAINER_AMSTRING_H
 #define AETHERMIND_CONTAINER_AMSTRING_H
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/macros.h"
 #include "any_utils.h"
-#include "utils/logging.h"
 
 #include <bit>
 #include <cstddef>

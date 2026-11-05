@@ -1,3 +1,4 @@
+#include "aethermind/base/check.h"
 #include "aethermind/graph/optimization/graph_rewrite.h"
 #include "test_optimization_helpers.h"
 

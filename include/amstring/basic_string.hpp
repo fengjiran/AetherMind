@@ -6,6 +6,7 @@
 #ifndef AETHERMIND_AMSTRING_BASIC_STRING_HPP
 #define AETHERMIND_AMSTRING_BASIC_STRING_HPP
 
+#include "aethermind/base/check.h"
 #include "core.hpp"
 #include "growth_policy.hpp"
 #include "string_fwd.hpp"

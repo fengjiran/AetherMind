@@ -8,6 +8,7 @@
 // pipeline selection.
 
 #include "aethermind/graph/optimization/graph_pass_manager.h"
+#include "aethermind/base/check.h"
 
 namespace aethermind {
 

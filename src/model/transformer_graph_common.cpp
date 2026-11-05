@@ -1,4 +1,5 @@
 #include "transformer_graph_common.h"
+#include "aethermind/base/check.h"
 
 namespace aethermind::detail {
 

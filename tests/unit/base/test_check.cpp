@@ -1,6 +1,8 @@
-#include "utils/logging.h"
+#include "aethermind/base/check.h"
 
 #include <gtest/gtest.h>
+
+#include <stdexcept>
 
 namespace {
 
@@ -31,6 +33,37 @@ TEST(CheckMacroDeathTest, FailsWithStableDiagnosticPrefix) {
 
 TEST(CheckMacroDeathTest, FormatsDiagnosticArgumentsOutsideAethermindNamespace) {
     EXPECT_DEATH(AM_CHECK(false, "value {}", 42), "Check failed:.*value 42");
+}
+
+TEST(CheckMacroDeathTest, InvalidDynamicWidthDeath) {
+    int width = -1;
+    EXPECT_DEATH(AM_CHECK(false, "{:{}}", 7, width), "Check failed: \\(false\\)");
+}
+
+TEST(CheckMacroDeathTest, ThrowingDiagnosticArgumentDeath) {
+    auto diagnostic = []() -> int { throw std::runtime_error("unavailable"); };
+    EXPECT_DEATH(AM_CHECK(false, "{}", diagnostic()), "Check failed: \\(false\\)");
+}
+
+TEST(CheckMacro, UsesExplicitBoolConversion) {
+    struct Condition {
+        int& evaluations;
+        explicit operator bool() const {
+            ++evaluations;
+            return true;
+        }
+        bool operator!() const = delete;
+    };
+    int evaluations = 0;
+    Condition condition{evaluations};
+    AM_CHECK(condition);
+    EXPECT_EQ(evaluations, 1);
+    AM_DCHECK(condition);
+#ifdef NDEBUG
+    EXPECT_EQ(evaluations, 1);
+#else
+    EXPECT_EQ(evaluations, 2);
+#endif
 }
 
 TEST(DebugCheckMacro, EvaluatesConditionOnlyInDebugBuilds) {

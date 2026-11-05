@@ -15,7 +15,7 @@
 | hashing | [hash.h](../../include/utils/hash.h) 为自包含 C++20 头，删除标准复合类型的通用 std::hash 注入；定制顺序明确，pair 无元素复制。复合键使用显式 aethermind::hash。 |
 | Map helper | [FibonacciHash](../../include/container/detail/fibonacci_hash.h) 归 container detail，使用 uint64_t 运算；shift >= 64 返回单 bucket 索引零，三个 Map 的消费者均迁移。 |
 | 浮点解析 | [parse_number.cpp](../../src/utils/parse_number.cpp) 两分支完整成功后才发布输出；共享 POSIX fallback 检查 general 字面量格式、可表示 subnormal、OOM 与 locale 失败，局部 locale RAII 并恢复线程 rounding mode。合法 inf/nan 留给领域层准入。 |
-| 断言 | [logging.h](../../include/utils/logging.h) 限定 helper 命名空间，保留 Check failed 前缀和 debug/release 行为；移除 spdlog 传递 include，实际消费者声明直接依赖，核心库链接依赖为 PRIVATE。构建暴露的 memory/functional 传递依赖已在使用头补齐。 |
+| 断言 | 当时的 `logging.h`（现为 [check.h](../../include/aethermind/base/check.h)）限定 helper 命名空间，保留 Check failed 前缀和 debug/release 行为；移除 spdlog 传递 include，实际消费者声明直接依赖，核心库链接依赖为 PRIVATE。构建暴露的 memory/functional 传递依赖已在使用头补齐。 |
 | memory | [memory_junk_fill.cpp](../../src/memory/memory_junk_fill.cpp) 为 memory 私有实现，byte 指针和 memcpy 支持任意对齐，保留旧 pattern、null/zero no-op 和默认 junk_fill 策略。删除旧公共头、实现及 pattern getters。 |
 | 删除与保留 | 删除零消费者的 lru.h、xxh3.h、bits.h，以及 DataType 对 bits.h 的无效 include；保留 DataType 枚举与行为。numeric_utils、variant_utils、qualified_name 保留现有接口和归属。无兼容转发。 |
 

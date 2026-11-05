@@ -1,3 +1,4 @@
+#include "aethermind/base/check.h"
 #include "aethermind/model/formats/hf/hf_tensor_resolver.h"
 
 #include <array>

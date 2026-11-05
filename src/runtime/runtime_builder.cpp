@@ -1,5 +1,6 @@
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/base/check.h"
 #include "aethermind/memory/cann_allocator.h"
 #include "aethermind/memory/cpu_allocator.h"
 #include "aethermind/memory/cuda_allocator.h"

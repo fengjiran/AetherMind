@@ -1,5 +1,5 @@
 #include "aethermind/memory/cann_allocator.h"
-#include "utils/logging.h"
+#include "aethermind/base/check.h"
 
 namespace aethermind {
 

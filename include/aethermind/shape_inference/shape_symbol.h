@@ -1,10 +1,10 @@
 #ifndef AETHERMIND_SHAPE_INFERENCE_SHAPE_SYMBOL_H
 #define AETHERMIND_SHAPE_INFERENCE_SHAPE_SYMBOL_H
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"
 #include "container/array_view.h"
-#include "utils/logging.h"
 
 #include <atomic>
 

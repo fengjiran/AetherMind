@@ -6,10 +6,10 @@
 #ifndef AETHERMIND_AMSTRING_GENERIC_LAYOUT_POLICY_HPP
 #define AETHERMIND_AMSTRING_GENERIC_LAYOUT_POLICY_HPP
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/macros.h"
 #include "config.hpp"
 #include "invariant.hpp"
-#include "utils/logging.h"
 
 #include <cstddef>
 #include <cstdint>

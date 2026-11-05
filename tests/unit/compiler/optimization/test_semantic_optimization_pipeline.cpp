@@ -1,4 +1,5 @@
 #include "../../graph/optimization/test_optimization_helpers.h"
+#include "aethermind/base/check.h"
 #include "aethermind/compiler/graph_lowering.h"
 #include "aethermind/compiler/optimize_graph.h"
 #include "aethermind/execution/execution_bindings.h"

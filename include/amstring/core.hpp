@@ -6,6 +6,7 @@
 #ifndef AETHERMIND_AMSTRING_CORE_HPP
 #define AETHERMIND_AMSTRING_CORE_HPP
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/error.h"
 #include "aethermind/base/macros.h"
 #include "allocator_support.hpp"

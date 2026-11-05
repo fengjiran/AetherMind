@@ -1,4 +1,5 @@
 #include "aethermind/inference/weight_binding_metadata.h"
+#include "aethermind/base/check.h"
 #include "utils/overflow_check.h"
 
 #include <utility>

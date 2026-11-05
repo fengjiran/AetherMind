@@ -1,4 +1,5 @@
 #include "aethermind/shape_inference/shape_symbol.h"
+#include "aethermind/base/check.h"
 #include "aethermind/base/error.h"
 
 #include <algorithm>

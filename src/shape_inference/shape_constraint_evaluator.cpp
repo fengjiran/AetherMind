@@ -1,6 +1,6 @@
 #include "aethermind/shape_inference/shape_constraint_evaluator.h"
+#include "aethermind/base/check.h"
 #include "container/array_view.h"
-#include "utils/logging.h"
 #include "utils/overflow_check.h"
 #include "utils/variant_utils.h"
 

@@ -1,5 +1,6 @@
 #include "aethermind/backend/backend_registry.h"
 #include "aethermind/backend/backend.h"
+#include "aethermind/base/check.h"
 
 namespace aethermind {
 

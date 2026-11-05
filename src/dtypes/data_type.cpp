@@ -4,6 +4,7 @@
 // DataType construction remains consistent whether callers pass a raw DLDataType or use a factory.
 
 #include "aethermind/dtypes/data_type.h"
+#include "aethermind/base/check.h"
 
 #include <sstream>
 

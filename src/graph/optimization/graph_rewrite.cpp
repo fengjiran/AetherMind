@@ -1,4 +1,5 @@
 #include "aethermind/graph/optimization/graph_rewrite.h"
+#include "aethermind/base/check.h"
 #include "aethermind/operators/operator_inference.h"
 #include "op_removability_internal.h"
 #include "utils/variant_utils.h"

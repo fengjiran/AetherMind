@@ -1,5 +1,5 @@
 #include "aethermind/base/mmap_file.h"
-#include "utils/logging.h"
+#include "aethermind/base/check.h"
 
 #include <cerrno>
 #include <cstdint>

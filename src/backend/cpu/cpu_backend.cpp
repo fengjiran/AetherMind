@@ -1,10 +1,10 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/backend/cpu/cpu_info.h"
 #include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
+#include "aethermind/base/check.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/memory/allocator.h"
 #include "backend/cpu/cpu_backend_internal.h"
-#include "utils/logging.h"
 #include "utils/overflow_check.h"
 
 #include <algorithm>

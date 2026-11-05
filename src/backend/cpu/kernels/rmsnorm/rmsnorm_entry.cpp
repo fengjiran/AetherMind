@@ -5,6 +5,7 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/backend/kernel_types.h"
+#include "aethermind/base/check.h"
 #include "aethermind/operators/op_params.h"
 #include "rmsnorm_internal.h"
 

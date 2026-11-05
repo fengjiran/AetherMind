@@ -8,8 +8,8 @@
 /// on undefined signed-overflow behavior. Uses compiler builtins when available
 /// (GCC/Clang), otherwise falls back to portable implementations.
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/macros.h"
-#include "utils/logging.h"
 
 #include <cstdint>
 #include <limits>

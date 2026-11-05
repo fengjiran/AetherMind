@@ -3,6 +3,7 @@
 //
 
 #include "aethermind/base/env.h"
+#include "aethermind/base/check.h"
 
 #include <cstdlib>
 #include <mutex>

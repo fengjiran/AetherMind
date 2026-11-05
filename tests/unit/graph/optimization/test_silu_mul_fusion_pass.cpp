@@ -1,3 +1,4 @@
+#include "aethermind/base/check.h"
 #include "aethermind/graph/graph_op_builder.h"
 #include "aethermind/graph/optimization/constant_folding_pass.h"
 #include "aethermind/graph/optimization/dead_code_elimination_pass.h"

@@ -12,8 +12,8 @@
 ///
 /// Thread-safety: Device is immutable and thread-safe after construction.
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/status.h"
-#include "utils/logging.h"
 
 #include <string>
 

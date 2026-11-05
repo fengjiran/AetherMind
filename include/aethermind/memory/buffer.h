@@ -8,6 +8,7 @@
 /// alignment, MemoryHandle) and validates it on construction; Buffer is the
 /// copyable public handle that shares one BufferImpl among all its copies.
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/base/object.h"
 #include "aethermind/base/object_allocator.h"

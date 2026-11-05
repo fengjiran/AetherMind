@@ -1,6 +1,7 @@
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/base/alignment.h"
+#include "aethermind/base/check.h"
 #include "aethermind/memory/allocator.h"
 #include "aethermind/operators/operator_schema.h"
 #include "aethermind/shape_inference/shape_constraint_evaluator.h"

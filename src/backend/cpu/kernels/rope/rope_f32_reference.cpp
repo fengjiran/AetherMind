@@ -1,7 +1,7 @@
+#include "aethermind/base/check.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/operators/rope_frequency_resolver.h"
 #include "rope_internal.h"
-#include "utils/logging.h"
 
 #include <algorithm>
 #include <cmath>

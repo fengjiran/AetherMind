@@ -2,6 +2,7 @@
 #define AETHERMIND_TESTS_UNIT_GRAPH_OPTIMIZATION_TEST_OPTIMIZATION_HELPERS_H_
 
 #include "../test_graph_helpers.h"
+#include "aethermind/base/check.h"
 #include "aethermind/graph/graph.h"
 #include "aethermind/graph/graph_types.h"
 #include "aethermind/operators/op_params.h"

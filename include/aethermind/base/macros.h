@@ -122,7 +122,14 @@
 #define FUNC_SIG __func__
 #endif
 
+#if defined(_MSC_VER)
+#define AM_UNREACHABLE() __assume(0)
+#elif AM_HAS_BUILTIN(__builtin_unreachable)
 #define AM_UNREACHABLE() __builtin_unreachable()
+#else
+#include <cstdlib>
+#define AM_UNREACHABLE() ::std::abort()
+#endif
 
 #define DEFINE_OBJECT_NULLTYPE(ClassName)                \
     class ClassName##NullType final : public ClassName { \

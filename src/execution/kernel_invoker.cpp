@@ -1,4 +1,5 @@
 #include "aethermind/execution/kernel_invoker.h"
+#include "aethermind/base/check.h"
 
 #include <cstddef>
 

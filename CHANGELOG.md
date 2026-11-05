@@ -21,7 +21,7 @@
 - 删除无消费者的遗留顶层头 `layout.h`：`Layout` 枚举、`kStrided` 等常量与 `operator<<` 无任何源码或测试引用；C ABI 与既有 KV/layout 契约不变。
 - 删除无生产消费者的 `Any` + `Array` 子系统：移除公共 `any.h`、`container/array.h`、实现 `any.cpp`/`array.cpp` 及对应单测，并清理仅服务于该子系统的 `is_valid_array_type` 与 `Any` 类型名特化；`any_utils.h` 的通用 concepts 保留供 Map/amstring 使用，C ABI 不变。
 - 清理公共 utils：删除未使用的 `lru.h`、`xxh3.h`、`bits.h` 及 DataType 的无效 include；`FillMemoryJunk` 移入 memory 私有实现，删除公共 `memory_utils.h` 与 pattern getters，不留转发。复合标准类型键改用显式 `aethermind::hash`，不再注入通用 `std::hash` 偏特化；Map 的 Fibonacci helper 归入 container detail。原 C++ 调用方需迁移并重新编译，C ABI 不变。
-- `logging.h` 只提供断言，不再传递包含 spdlog；实际日志调用方直接包含并链接 spdlog，核心库将该依赖设为 PRIVATE。
+- 断言头 `utils/logging.h` 已迁至 `aethermind/base/check.h`，C++ 调用方须直接包含新头。使用 spdlog 的调用方直接包含并链接 spdlog，核心库将该依赖设为 PRIVATE。
 - 整数可表示性检查统一复用 `utils/overflow_check.h` 的 `CheckNarrow`：失败时保留输出值；从 inference 公共头删除 `PositiveSize`，正值要求和字段诊断改由 policy、runner 与 C adapter 的私有包装保留，C ABI 错误合同保持不变。
 - `KVAppendTransaction` 的逐层 append 状态统一使用 execution 层的 `KVAppendLayerState : uint8_t`；`ExecutionContext` 拥有 typed vector，`ResetKVLayerTransactionScratch()` 返回 `std::span<KVAppendLayerState>`，事务的 `layer_states` 只借用该存储。原字节 span 调用方需迁移并重新编译，冷路径预分配与整计划提交行为保持不变。
 - `BoundValue` 使用私有 `variant<monostate, TensorView, MutableTensorView>` 表达未绑定/只读/可写状态，移除重复 view 和 `has_writable`；调用方改用按值返回的 `ReadView()` 与借用指针 `TryGetWritableView()`，需迁移并重新编译。

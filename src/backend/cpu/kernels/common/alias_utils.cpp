@@ -1,5 +1,6 @@
 #include "aethermind/backend/cpu/kernels/common/alias_utils.h"
 #include "aethermind/backend/cpu/kernels/common/layout_utils.h"
+#include "aethermind/base/check.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/base/shape_and_stride.h"
 #include "utils/overflow_check.h"

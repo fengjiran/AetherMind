@@ -3,8 +3,8 @@
 
 #include "aethermind/memory/allocator.h"
 #include "aethermind/base/alignment.h"
+#include "aethermind/base/check.h"
 #include "aethermind/base/error.h"
-#include "utils/logging.h"
 
 #include <cstdint>
 #include <format>

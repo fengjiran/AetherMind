@@ -7,6 +7,7 @@
 #ifndef AETHERMIND_DTYPES_DATA_TYPE_H
 #define AETHERMIND_DTYPES_DATA_TYPE_H
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/error.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/dtypes/bfloat16.h"
@@ -14,7 +15,6 @@
 #include "aethermind/dtypes/float8_e4m3fn.h"
 #include "aethermind/dtypes/float8_e5m2.h"
 #include "aethermind/dtypes/half.h"
-#include "utils/logging.h"
 
 #include <cstdint>
 #include <iosfwd>

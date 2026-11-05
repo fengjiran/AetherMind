@@ -8,9 +8,9 @@
 #ifndef AETHERMIND_BASE_OBJECT_H
 #define AETHERMIND_BASE_OBJECT_H
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/macros.h"
 #include "c_api.h"
-#include "utils/logging.h"
 
 namespace aethermind {
 

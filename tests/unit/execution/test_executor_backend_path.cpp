@@ -1,6 +1,7 @@
 #include "aethermind/backend/backend_factory.h"
 #include "aethermind/backend/cpu/cpu_workspace_arena.h"
 #include "aethermind/backend/kernel_context.h"
+#include "aethermind/base/check.h"
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_plan_builder.h"
 #include "aethermind/execution/executor.h"

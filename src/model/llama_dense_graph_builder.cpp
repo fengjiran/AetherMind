@@ -1,4 +1,5 @@
 #include "aethermind/model/llama_dense_graph_builder.h"
+#include "aethermind/base/check.h"
 #include "aethermind/graph/graph_op_builder.h"
 #include "aethermind/model/formats/hf/hf_model_validator.h"
 #include "aethermind/model/weight/weight_binding_resolver.h"

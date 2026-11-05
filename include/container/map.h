@@ -1,6 +1,7 @@
 #ifndef AETHERMIND_CONTAINER_MAP_OBJ_H
 #define AETHERMIND_CONTAINER_MAP_OBJ_H
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/error.h"
 #include "aethermind/base/object.h"
 #include "any_utils.h"

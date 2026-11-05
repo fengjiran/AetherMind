@@ -3,13 +3,13 @@
 
 /// @file tensor.h
 /// @brief Owning dense tensor backed by a Buffer.
+#include "aethermind/base/check.h"
 #include "aethermind/base/device.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/memory/buffer.h"
 #include "container/array_view.h"
 #include "shape_and_stride.h"
-#include "utils/logging.h"
 
 #include <cstddef>
 #include <cstdint>

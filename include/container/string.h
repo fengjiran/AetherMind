@@ -1,10 +1,11 @@
 #ifndef AETHERMIND_CONTAINER_STRING_H
 #define AETHERMIND_CONTAINER_STRING_H
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/object_allocator.h"
 #include "container/container_utils.h"
-#include "utils/logging.h"
 
+#include <ostream>
 #include <unordered_map>
 #include <vector>
 

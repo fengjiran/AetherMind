@@ -6,6 +6,7 @@
 // they neither own nor extend the lifetime of the data or metadata they reference.
 
 #include "aethermind/base/tensor_view.h"
+#include "aethermind/base/check.h"
 #include "aethermind/base/shape_and_stride.h"
 #include "aethermind/base/tensor.h"
 #include "utils/overflow_check.h"

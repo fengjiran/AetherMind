@@ -1,4 +1,5 @@
 #include "aethermind/graph/graph.h"
+#include "aethermind/base/check.h"
 #include "aethermind/operators/operator_inference.h"
 
 #include <deque>

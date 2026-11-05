@@ -3,6 +3,7 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/backend/kernel_types.h"
+#include "aethermind/base/check.h"
 #include "silu_internal.h"
 
 #include <cstddef>

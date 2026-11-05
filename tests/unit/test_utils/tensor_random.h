@@ -1,6 +1,7 @@
 #ifndef AETHERMIND_TEST_UTILS_TENSOR_RANDOM_H
 #define AETHERMIND_TEST_UTILS_TENSOR_RANDOM_H
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/tensor.h"
 #include "tensor_factory.h"
 

@@ -1,3 +1,4 @@
+#include "aethermind/base/check.h"
 #include "aethermind/compiler/graph_lowering.h"
 #include "aethermind/compiler/optimize_graph.h"
 #include "aethermind/graph/graph_op_builder.h"

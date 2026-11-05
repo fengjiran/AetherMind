@@ -1,6 +1,7 @@
 #ifndef AETHERMIND_SHAPE_INFERENCE_SYMBOL_CONSTRAINT_SOLVER_H
 #define AETHERMIND_SHAPE_INFERENCE_SYMBOL_CONSTRAINT_SOLVER_H
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"
 #include "aethermind/shape_inference/shape_constraint.h"

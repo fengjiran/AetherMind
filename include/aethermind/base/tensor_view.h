@@ -13,6 +13,7 @@
 /// - Shape and strides are expressed in elements, not bytes
 /// - No metadata-transforming helpers (slice/narrow/contiguous construction)
 /// - Lifetime must be managed by the caller
+#include "aethermind/base/check.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/dtypes/data_type.h"
 #include "container/array_view.h"

@@ -1,3 +1,4 @@
+#include "aethermind/base/check.h"
 #include "aethermind/graph/graph_op_builder.h"
 #include "aethermind/graph/optimization/add_rmsnorm_fusion_pass.h"
 #include "test_optimization_helpers.h"

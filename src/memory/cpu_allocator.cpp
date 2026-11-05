@@ -3,9 +3,9 @@
 //
 
 #include "aethermind/memory/cpu_allocator.h"
+#include "aethermind/base/check.h"
 #include "aethermind/base/env.h"
 #include "memory_junk_fill.h"
-#include "utils/logging.h"
 
 #include <algorithm>
 #include <cerrno>

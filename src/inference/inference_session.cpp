@@ -1,5 +1,6 @@
 #include "aethermind/inference/inference_session.h"
 #include "aethermind/base/alignment.h"
+#include "aethermind/base/check.h"
 #include "aethermind/base/workspace_arena.h"
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_context.h"

@@ -1,4 +1,5 @@
 #include "../../graph/test_graph_helpers.h"
+#include "aethermind/base/check.h"
 #include "aethermind/compiler/graph_lowering.h"
 
 #include "aethermind/compiler/lowered_graph.h"

@@ -85,7 +85,7 @@ The optional `aethermind_infer` executable uses the `apps/inference/` runner to 
 
 ## Requirements
 
-- **Compiler**: A C++20-compliant compiler (GCC ≥ 11, Clang ≥ 14, or MSVC ≥ 19.30)
+- **Compiler and standard library**: A C++20 toolchain providing `std::format` and `std::format_string` (GCC with libstdc++ ≥ 13.1, Clang ≥ 14 with a compatible standard library, or MSVC ≥ 19.30 with its C++20 STL). CMake checks formatting support during configuration.
 - **CMake**: ≥ 3.28
 - **C++ runtime**: pthreads
 - **libbacktrace** (bundled under `3rdparty/`, enabled by default)

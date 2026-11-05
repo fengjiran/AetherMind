@@ -10,9 +10,9 @@
 /// its contents belongs in the kernel invocation rather than the params
 /// builder.
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/status.h"
 #include "aethermind/operators/op_params.h"
-#include "utils/logging.h"
 
 #include <cstddef>
 #include <cstdint>

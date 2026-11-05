@@ -2,6 +2,7 @@
 // Created by 赵丹 on 2025/8/22.
 //
 #include "container/string.h"
+#include "aethermind/base/check.h"
 #include "aethermind/base/error.h"
 
 #include <cstring>

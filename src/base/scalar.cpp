@@ -3,6 +3,7 @@
 //
 
 #include "aethermind/base/scalar.h"
+#include "aethermind/base/check.h"
 
 #include <utility>
 

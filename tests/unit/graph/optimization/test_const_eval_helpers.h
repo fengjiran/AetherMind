@@ -1,6 +1,7 @@
 #ifndef AETHERMIND_TESTS_UNIT_GRAPH_OPTIMIZATION_TEST_CONST_EVAL_HELPERS_H_
 #define AETHERMIND_TESTS_UNIT_GRAPH_OPTIMIZATION_TEST_CONST_EVAL_HELPERS_H_
 
+#include "aethermind/base/check.h"
 #include "aethermind/graph/optimization/const_evaluator.h"
 
 #include <cstdint>

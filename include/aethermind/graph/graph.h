@@ -9,10 +9,10 @@
 /// data types (identifiers, payload kinds, node/value structs) live in
 /// graph_types.h.
 
+#include "aethermind/base/check.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/base/status.h"
 #include "aethermind/graph/graph_types.h"
-#include "utils/logging.h"
 
 #include <cstdint>
 #include <optional>

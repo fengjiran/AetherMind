@@ -8,6 +8,18 @@ project(AetherMind
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles([=[
+    #include <format>
+    int main() {
+        constexpr std::format_string<int> fmt{"{}"};
+        return std::format(fmt, 42) == "42" ? 0 : 1;
+    }
+]=] AETHERMIND_HAS_STD_FORMAT)
+if (NOT AETHERMIND_HAS_STD_FORMAT)
+    message(FATAL_ERROR "AetherMind requires C++20 std::format and std::format_string. Select a standard library with <format> support (e.g. libstdc++ 13.1 or newer).")
+endif ()
+
 include(CMakeDependentOption)
 cmake_dependent_option(
         USE_LIBBACKTRACE "Enable libbacktrace" ON

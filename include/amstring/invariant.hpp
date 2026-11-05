@@ -6,8 +6,8 @@
 #ifndef AETHERMIND_AMSTRING_INVARIANT_HPP
 #define AETHERMIND_AMSTRING_INVARIANT_HPP
 
+#include "aethermind/base/check.h"
 #include "config.hpp"
-#include "utils/logging.h"
 
 #include <cstddef>
 

@@ -2,7 +2,7 @@
 #define AETHERMIND_BACKEND_KERNEL_STATIC_REGISTRATION_H
 
 #include "aethermind/backend/kernel_registry.h"
-#include "utils/logging.h"
+#include "aethermind/base/check.h"
 
 namespace aethermind::kernel_registration_detail {
 

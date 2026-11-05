@@ -1,15 +1,16 @@
 # CUDA 后端与执行支持方案
 
 - **状态**: Draft
-- **版本**: 1.0
+- **版本**: 1.1
 - **日期**: 2026-10-21
+- **最近更新**: 2026-11-05
 - **当前产品合同**: [AetherMind PRD](../products/aethermind_prd.md)；当前仍为 CPU-only，本提案定义未来 CUDA 专项范围，不扩大当前已交付能力
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联提案**: [06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[08 KV/Attention 演进](08-kv-cache-and-attention-capability-evolution.md)、[09 模型家族扩展](09-qwen-and-moe-architecture-support.md)、[10 Runtime 组装入口](10-upper-level-runtime-assembly.md)、[11 FP16/BF16 执行支持](11-fp16-bf16-execution-support.md)
 - **算子工作流**: [算子开发与优化工作流](../guides/operator-development-workflow.md)
 - **关联模块**: base / memory / backend / compiler / execution / kv_cache / runtime / inference
 
-本文为待实施提案。源码事实按 2026-10-21 当前工作树静态核对；本次仅编写文档，不实现 CUDA allocator、kernel、构建开关或公开 API，也未构建或运行 C++/GPU 测试及 benchmark。下文“拟新增/拟扩展”接口名称表示设计方向，不是已存在的符号或冻结的 ABI；所有验收条目均为未来门禁。
+本文为待实施提案。基础事实在 2026-10-21 建立，2026-11-05 增量复核 compiler、binding 准备、CMake 与现有 CPU 产品入口，补充模型编译与工程构建方案；其他运行时事实不是新一轮完整验证结果。本轮仅编写文档，不实现 CUDA allocator、kernel、构建开关或公开 API，也未构建或运行 C++/GPU 测试及 benchmark。下文“拟新增/拟扩展”接口名称表示设计方向，不是已存在的符号或冻结的 ABI；所有 CUDA 验收条目均为未来门禁。
 
 ## 1. 现状分析
 
@@ -45,6 +46,10 @@ P0 设备、存储与执行完成合同
 | `InferenceSession` 固定 CPU allocator、host token/position 输入、host pointer 输出读取，并拒绝非 CPU plan | [inference_session.cpp](../../src/inference/inference_session.cpp) | 改造整条 I/O 链，不能只移除 CPU gate |
 | `PrepareKernel` 不接收 concrete TensorViews；binding params builder 能看到 concrete views，但只允许小型、trivially destructible params | [backend.h](../../include/aethermind/backend/backend.h)、[kernel_types.h](../../include/aethermind/backend/kernel_types.h)、[execution_bindings.cpp](../../src/execution/execution_bindings.cpp) | cuBLASLt 的 shape specialization 和资源析构需要独立 owner |
 | 当前 plan 冻结 workspace layout，Generate 分配请求 Buffer；CMake 未启用 CUDA language，也不收集 `.cu` | [plan builder](../../src/execution/execution_plan_builder.cpp)、[session](../../src/inference/inference_session.cpp)、[root CMake](../../CMakeLists.txt)、[src CMake](../../src/CMakeLists.txt) | 先复用规划/分配分离，构建和 specialization 按阶段扩展 |
+| `ModelCompiler` 已串联 Build→Optimize→Lower，lowering 可传播 CUDA selector；已有传播测试源码，但默认优化管线仅按 opt_level/flags 选择 passes | [model compiler](../../src/compiler/model_compiler.cpp)、[pipeline](../../src/compiler/optimize_graph.cpp)、[lowering](../../src/compiler/graph_lowering.cpp)、[compiler tests](../../tests/unit/compiler/test_model_compiler.cpp) | 无需重写 IR；补齐 target-aware pipeline policy，传播测试不证明 CUDA 可执行 |
+| binding 准备已拆分 `PlanExecutionBindings` 与 `MaterializeExecutionBindings`，前者规划具体 activation，后者分配并构造 params | [binding 接口](../../include/aethermind/execution/execution_bindings.h)、[binding 实现](../../src/execution/execution_bindings.cpp) | 在既有冷路径扩展 specialization，不将其误写成已有动态 workspace query |
+| sanitizer 已按 target 应用但 compile options 尚未按语言过滤；AVX2/FMA 已限制于指定 CPU 源文件 | [sanitizer CMake](../../cmake/AetherMindSanitizers.cmake)、[CPU ISA CMake](../../cmake/AetherMindCpuIsa.cmake) | 复用现有隔离机制，补 CUDA 语言/链接阶段边界，不按旧全局 flags 假设重构 |
+| 当前存在 CPU compile preset、独立 CLI、同步 CPU 准备入口与正式 C runtime adapter；逻辑 FP32 转换和 graph-build dtype options 已存在 | [CPU options](../../include/aethermind/inference/cpu_inference_options.h)、[准备入口](../../src/inference/executable_model.cpp)、[构图选项](../../include/aethermind/model/build_model_graph.h)、[C adapter](../../src/c_api_runtime.cpp)、[CLI CMake](../../apps/inference/CMakeLists.txt) | CUDA preset 单独准入；保护现有 CPU CLI/C ABI 合同，复用已实现精度基础 |
 
 ### 1.3 范围与非目标
 
@@ -85,7 +90,7 @@ P2 输入使用真实 F32 权重；F16/BF16 checkpoint 只有经 [11 号提案](
 | execution | 拟扩展 `ExecutionContext` 的设备执行资源借用，binding 校验与完成屏障 | 向 `KernelContext` 传窄借用，维护完整 plan 的 KV transaction |
 | inference | 拟在 `ExecutableModel` 聚合 resident Buffer owners；改造请求 I/O 与资源选择 | 唯一 `PrepareExecutableModel` 编排上传/packing；Generate 编排 H2D/D2H，不实现 CUDA copy/kernel 算法 |
 
-`Backend` 保持 `PrepareKernel / GetPackingRecipe / PackWeights` 的准备期职责，不增加 `Backend::Execute`。设备执行资源由 Runtime 按明确 Device 拥有，ExecutionContext 借用；CUDA stream 与 cuBLAS handle 同 owner，创建时绑定一次，执行中不切换共享 handle 的 stream。初期一个 Runtime 对应一个执行目标与一条串行执行路径。
+`Backend` 保持 `PrepareKernel / GetPackingRecipe / GetWeightPackingRequirements / PackWeights` 的准备期职责，不增加 `Backend::Execute`。设备执行资源由 Runtime 按明确 Device 拥有，ExecutionContext 借用；CUDA stream 与 cuBLAS handle 同 owner，创建时绑定一次，执行中不切换共享 handle 的 stream。初期一个 Runtime 对应一个执行目标与一条串行执行路径。
 
 Backend factory 仍按 `DeviceType` 注册，拟将实例缓存改为按 `Device` 保存、factory 改为 `Create(Device)`，并贯通 Runtime、plan builder、权重准备和测试。`KernelSelector.device_type` 保留类型级匹配，具体 ordinal 记录在 Runtime、ExecutableModel、plan/binding 准备合同中；CudaBackend 的 capability snapshot 来自该 GPU。设备实例校验不依赖全局“最后选择的 GPU”。
 
@@ -189,6 +194,8 @@ workspace 保持“规划→请求分配→绑定 slice”的所有权分离：
 - 若 [09 号提案 §3.6](09-qwen-and-moe-architecture-support.md#36-静态执行workspace-与资源预算) 的 shape-dependent workspace 合同先落地，则 CUDA 复用其 query→prepared layout→请求分配链路。最终布局只保留一个权威，不同时以 plan 和 prepared offsets 驱动执行；固定 budget 可以作为约束传给 specializer。
 - specialization/heuristic 在 Prefill 的 concrete shape 或 Decode T=1 冷路径完成；Decode 循环不 query、不重建 descriptor、不分配。workspace Buffer 增长前先结束全部使用并清理旧 context，params 不缓存 workspace 基址。
 
+当前 `PlanExecutionBindings` / `MaterializeExecutionBindings` 已提供 metadata planning 与 activation materialization 的两阶段落点；这不等于 09 的具体 shape-to-workspace query 已实现。CUDA 应在该链路接入需求查询、资源 owner 和验证，阶段间仍保持 plan identity 与稳定 metadata，不另建平行的 CudaBindingPlan 系统。详见 §2.10。
+
 ### 2.8 Kernel、精度与优化边界
 
 P2 以 `O1/plain` 的真实 lowered op 集合为准，至少闭环 Embedding、Linear/lm_head、RMSNorm、RoPE、KVCacheUpdate、Attention、Add、Silu/ElementwiseMul 或实际 SiluMul、Argmax。Linear/MatMul 首先用传统 cuBLAS 或固定、可审计的实现；显式正确处理项目 row-major、transpose、leading dimension 和 dtype，不改变逻辑权重来迁就库默认布局。
@@ -205,13 +212,268 @@ CUDA Graphs 仅在稳定 pointer、capture-safe library/resource 行为、KV pos
 
 ### 2.9 可选构建与公开 API
 
-拟新增默认 OFF 的 `AETHERMIND_ENABLE_CUDA`：开启时启用 CUDA language、`find_package(CUDAToolkit REQUIRED)`，条件编译 `.cu` 及 CUDA `.cpp`，按实际使用链接 `CUDA::cudart`、`CUDA::cublas`，P4 再接入 `CUDA::cublasLt`。目标代码可组织为独立 CUDA OBJECT target 并链接现有 shared library；首版不要求运行期可卸载插件。
+以下是拟实施的工程构建合同，不是当前已有开关或可运行命令。首版采用预编译 CUDA kernels；CMake 生成 CPU host code 和指定架构的 CUDA code，模型加载时复用这些产物。工程构建不读取 HF 模型，不调用 ModelCompiler，也不在 configure 时执行 GPU 计算。
 
-当前递归 glob 会无条件收集 `.cpp`，实施时必须将 CUDA host sources 移出无条件集合并显式按选项加入，不能只条件添加 `.cu`。配置 `CUDA_ARCHITECTURES` 与受支持 C++20 toolchain，CUDA 专用 flags 限于 CUDA target；TSAN/host sanitizer、AVX2/FMA 和现有全局 C++ flags 不无条件传给 nvcc 或 device compilation。实际构建开关在落地后同步根 README 单一事实源。
+#### 2.9.1 配置入口、支持范围与失败阶段
 
-CUDA OFF 时不要求 Toolkit、driver 或 GPU，CPU consumer 可单独编译/链接且不依赖 CUDA 动态库；CUDA ON 但 Toolkit 不可用时在配置阶段明确失败；已编译但运行时无设备/driver/SM 不兼容则由 Runtime 初始化报告。不能把这些状态折叠为 `IsDeviceKindSupported` 一个布尔承诺。
+拟新增默认 OFF 的 `AETHERMIND_ENABLE_CUDA`，不提供 AUTO 模式，显式 ON 后缺少依赖不得静默退回 CPU。沿用 `CMAKE_CUDA_COMPILER`、`CMAKE_CUDA_HOST_COMPILER`、`CMAKE_CUDA_ARCHITECTURES`、`CUDAToolkit_ROOT` 等标准入口，不再复制一套项目专属编译器/架构变量。
 
-保留同步 C++ Session 和 Token IDs I/O；C ABI 扩展遵循最终实际发布接口的版本策略，不把 `cudaStream_t` 或 C++ CUDA wrapper 放入公开 C ABI。C++ view/factory 变化属于需迁移的接口变更，实施时完整更新调用方、tests/helpers 与 API 文档；本提案不把尚未交付的 C ABI 描述为既成接口。
+| 配置/条件 | 期望行为 |
+|---|---|
+| CUDA OFF | 不启用 CUDA language、不查找 Toolkit、不创建 CUDA target；CPU library/CLI/tests 可在无 SDK、driver、GPU 的机器构建 |
+| CUDA ON，未指定部署架构 | 要求调用方显式提供非空 `CMAKE_CUDA_ARCHITECTURES`；不把构建机 GPU 或 nvcc 默认架构当发布合同 |
+| CUDA ON，编译器/Toolkit/必需库缺失或不兼容 | 在 configure/compile-link probe 阶段失败，报告所选工具链与缺失项；不自动下载、替换编译器或关闭 CUDA |
+| CUDA ON，SDK 完整但没有 GPU | 显式架构下允许 compile/link 与产物检查；GPU 运行门禁另行执行，不把编译成功标为设备可用 |
+| 已编译，运行时 driver/device/SM/preset 不满足 | Runtime/prepare 返回对应 Status；configure 不模拟这类运行期保证 |
+
+首个受支持构建组合建议收敛为 Linux x86-64、NVIDIA NVCC、已验证的 GCC host compiler 与 Ninja；版本和 GPU/SM 列表由 P0 的实际 compile/link/run 证据冻结。Clang CUDA、Windows、AArch64、交叉编译及多配置 generator 分别准入，不因 CMake 可以识别就自动承诺。Windows 准入需验证 NVCC/MSVC/CRT、DLL 装载及现有导出接口，保持 MSVC 下 libbacktrace 默认关闭；现有 Linux CLI 集成测试不能作为 Windows GPU 验证替代。
+
+#### 2.9.2 工具链初始化与依赖来源
+
+配置顺序为：现有 `project(... LANGUAGES CXX C)` → CUDA option/架构校验 → 条件 `enable_language(CUDA)` → `find_package(CUDAToolkit REQUIRED)` → CUDA target。保持 CMake 3.28 基线，使用 first-class CUDA language 和 imported targets，不使用旧 `FindCUDA`、手写 `nvcc` custom command 或配置时 `nvidia-smi` 检测决定编译范围。
+
+- 在第一次启用 CUDA 之前，通过 toolchain file、preset、`-DCMAKE_CUDA_COMPILER=...` 或 `CUDACXX` 选择 NVCC。`CUDACXX` 仅参与初次 compiler 选择，已有 cache 的 `CMAKE_CUDA_COMPILER` 优先。
+- NVCC host compiler 在首次启用前由调用方通过 `CMAKE_CUDA_HOST_COMPILER` 或 `CUDAHOSTCXX` 选择；项目不强制把它改成 `CMAKE_CXX_COMPILER`。调用方保证 host ABI、标准库及 CRT 一致，配置日志记录实际选择。Visual Studio generator 对 host compiler 变量的行为按 CMake 官方限制单独验证。
+- CUDA language 启用后不改写 host compiler。更换 compiler、Toolkit、host ABI 或 generator 使用新 build directory，不在已有 cache 中强行切换。
+- `FindCUDAToolkit` 在启用 CUDA language 后查找；验证实际 compiler、Toolkit headers/imported libraries 属于批准的组合，必需 `CUDA::cudart`、P2 的 `CUDA::cublas` target 均存在；P4 再增加 `CUDA::cublasLt`。版本检查之外增加最小 C++20 host/device 编译和库符号链接检查，不 `try_run` GPU。
+- Toolkit/driver 是外部部署依赖，不进入 `.deps/`，不复用 spdlog/GoogleTest/benchmark 的 FetchContent 源码缓存，也不自动安装驱动。离线构建要求调用方事先提供 SDK 和现有依赖源码。
+
+机制依据：[CUDACXX](https://cmake.org/cmake/help/v3.28/envvar/CUDACXX.html)、[CUDA host compiler](https://cmake.org/cmake/help/v3.28/variable/CMAKE_LANG_HOST_COMPILER.html)、[CUDAHOSTCXX](https://cmake.org/cmake/help/v3.28/envvar/CUDAHOSTCXX.html)。
+
+#### 2.9.3 Target、源码与符号所有权
+
+推荐新增私有 `AetherMindCuda` OBJECT target，混合编译 CUDA host `.cpp` 与 device/launcher `.cu`，最终对象只进入现有 `AetherMind` shared library 一次。保持一个正式库产物，不新增运行期可卸载插件或对外静态 CUDA SDK。
+
+```text
+CXX host sources                          CUDA language sources
+CudaBackend / factory / resource RAII     __global__ kernels / launch wrappers
+registry descriptors / params builders    device helpers（首版在同一 TU 内闭合）
+CUDA allocator implementation                       │
+               └──────────── AetherMindCuda OBJECT ──┘
+                                      │ objects
+AetherMind core CXX/C ────────── AetherMind SHARED
+                                      │ private CUDA library dependencies
+                               cudart / cuBLAS
+```
+
+- graph/compiler/base 的公共 headers 保持 SDK-free；CUDA implementation headers 归私有实现。`.cpp` 调用 Runtime API/cuBLAS 可继续由 CXX compiler 编译，只有包含 device code/launch syntax 的 `.cu` 交给 NVCC。host params builder 不因目标是 CUDA 就统一改为 `.cu`。
+- 当前 `src/CMakeLists.txt` 递归 glob 所有 `.cpp/.cc`。实施时从通用集合显式排除 CUDA host implementation、OFF stub 与未来 CUDA 专用子树，分别以清单加入，防止 OFF 时误编 SDK-dependent 文件、ON 时重复编译同一 TU。首版不为此重写所有 CPU 源文件管理。
+- 当前 `CUDAAllocatorProvider::CreateAllocator` 符号会被 RuntimeBuilder 引用。真实实现与 SDK-free OFF stub 必须互斥选入并保持相同声明/ABI；不能只删 `cuda_allocator.cpp` 导致 provider vtable/函数未定义。OFF 的正常配置路径返回明确 unsupported；创建错误的可恢复接口迁移与 §2.3 一致，不保留意外 abort 作为产品拒绝路径。
+- `AETHERMIND_HAS_CUDA=0/1` 如需用于内置 factory/provider 注册，作为实现私有构建事实分别定义在需要的 core/CUDA target；使用数值条件 `#if AETHERMIND_HAS_CUDA`，不能因 OFF 时宏仍存在而用 `#ifdef` 误启用。它不改变公共类型布局，也不代替运行期 capability 查询。
+- OBJECT target 不反向链接 `AetherMind`；它通过 private include directories 看到项目契约，所引用的 core 符号在最终 shared link 解析，避免 target 环。
+
+#### 2.9.4 编译与链接依赖必须分开落实
+
+`AetherMindCuda` 需要 `CUDA::cudart`、实际使用的 cuBLAS 以及 host 源码所需的 `spdlog::spdlog` usage requirements；`AetherMind` 最终 shared link 同样必须得到 CUDA libraries。推荐显式保留两条边：OBJECT 的 PRIVATE 依赖用于自身编译，shared library 的 PRIVATE CUDA 依赖用于最终链接。
+
+通过 `target_link_libraries(AetherMind PRIVATE AetherMindCuda ...)` 消费对象；不同时再注入 `$<TARGET_OBJECTS:AetherMindCuda>`。后者只提供对象，不自动带来相同 usage requirements，若改用它必须另行补齐完整依赖，且不能将同一注册 TU 链接两次。[CMake OBJECT 链接合同](https://cmake.org/cmake/help/v3.28/command/target_link_libraries.html#linking-object-libraries)
+
+首版选 shared cudart；在 CUDA OBJECT 与最终 shared target 上一致设置 `CUDA_RUNTIME_LIBRARY=Shared`，最终 library 显式链接 `CUDA::cudart`，避免 NVCC 默认静态 runtime 与手工动态链接策略混用。CXX-only 的 SDK 调用不能仅靠该属性获得依赖，仍需 imported targets。shared runtime 选择应在生成命令和最终依赖中验证。[CUDA runtime 配置](https://cmake.org/cmake/help/v3.28/prop_tgt/CUDA_RUNTIME_LIBRARY.html)
+
+`PRIVATE` 隔离的是 CMake 编译接口，不会消除动态依赖。CUDA ON 的 `libAetherMind.so`/DLL 会依赖批准的 cudart/cuBLAS 分发文件；CPU consumer 虽不需要 CUDA headers，也仍要满足该库的动态装载依赖。只有 CUDA OFF 产物承诺无 CUDA 动态依赖。安装/打包阶段记录 soname/DLL、运行时搜索路径与允许的重分发规则，不把开发机绝对 Toolkit 路径当部署路径，不在库内修改宿主 PATH/loader 全局配置。
+
+#### 2.9.5 标准、架构与代码生成策略
+
+`AetherMindCuda` 显式设置 `CXX_STANDARD=20`、`CXX_STANDARD_REQUIRED=ON`、`CXX_EXTENSIONS=OFF`、`CUDA_STANDARD=20`、`CUDA_STANDARD_REQUIRED=ON`、`CUDA_EXTENSIONS=OFF`、`POSITION_INDEPENDENT_CODE=ON`。`cxx_std_20` 不自动成为 CUDA language 的标准要求；禁止标准回退。维持项目普通 CXX 与 NVCC host code 的 ABI 一致。
+
+`CUDA_ARCHITECTURES` 使用调用方显式列表，语义见 [CMake 架构配置](https://cmake.org/cmake/help/v3.28/prop_tgt/CUDA_ARCHITECTURES.html)：
+
+- 发布矩阵为已验收 SM 生成明确的 `-real` SASS，并可按批准策略保留一个 `-virtual` PTX；PTX fallback 受 driver/JIT 兼容限制，不能扩大为任意未来 GPU 承诺。
+- `native` 只用于有明确本机 GPU 的开发构建，不用于无 GPU CI、交叉编译或可分发 release；不默认 `all` 扩大构建时间与二进制体积。
+- 参数为空、`OFF` 或不受所选 Toolkit 支持时明确失败；不强行传绕过 compiler/host compatibility 的选项。
+- 模型 `KernelSelector.device_type`、设备 ordinal 与构建架构列表是三个不同身份，架构列表不进入 semantic graph。运行期 Backend 仍验证本 GPU 的真实 eligibility。
+- 默认关闭 CUDA target 的 unity build 和跨目标 IPO，避免 host 注册 TU 合并、CPU ISA 或 LTO 假设泄漏；以后按编译/链接/运行证据单独开放。
+
+#### 2.9.6 RDC、device link 与 kernel 注册
+
+首版将 device helpers 与其 kernel 留在同一 `.cu`，`CUDA_SEPARABLE_COMPILATION=OFF`，不需要跨 TU device symbol resolution。host launcher 分布在不同 TU 并不等同于 device 函数跨 TU 引用。
+
+若未来出现跨 TU device 调用，再引入 RDC 并增加两 TU 的实际 compile→device-link→shared-link→运行用例。CMake 3.28 明确 **OBJECT library 不支持自身 device link**；不得在 `AetherMindCuda` 上设置 `CUDA_RESOLVE_DEVICE_SYMBOLS=ON` 并声称完成链接。可以由最终 `AetherMind` shared target 解析，必要时调整为经验证的 STATIC/device-link 边界；选定结构必须在最低支持 CMake/generator 上验证，不能只看 nvcc 单文件成功。[separable compilation](https://cmake.org/cmake/help/v3.28/prop_tgt/CUDA_SEPARABLE_COMPILATION.html)、[device link 限制](https://cmake.org/cmake/help/v3.28/prop_tgt/CUDA_RESOLVE_DEVICE_SYMBOLS.html)
+
+现有 `AM_REGISTER_KERNEL` 在 host 静态初始化注册全局 registry。CUDA 可复用其 `selector.device_type=kCUDA` 的结构隔离，硬件 eligibility 归 CudaBackend；无需为接入 CUDA 重写 registry。注册 TU 经 OBJECT 直接进入 shared link，避免静态归档按未引用符号抽取时丢失 initializer。若以后采用 STATIC target，必须用显式注册锚点或经验证的归档保留策略，不能依赖偶然符号引用。
+
+CUDA 注册在 registry Freeze 前完成；不要在 CUDA factory 首次创建时再偷偷向已冻结的全局 registry 注册。项目的静态注册只写入描述符，不探测设备、创建 stream 或执行 CUDA allocation；NVCC 生成的初始化及外部库装载行为仍需在无 GPU 环境实测，不把“不主动初始化 GPU”扩大成“没有 CUDA 运行时依赖”。Release/section-GC/LTO 等批准配置分别验证 descriptor 存在、无重复注册、Resolve 命中正确 target。
+
+#### 2.9.7 编译选项与 sanitizer 边界
+
+当前 [sanitizer helper](../../cmake/AetherMindSanitizers.cmake) 已 target-scoped，[CPU ISA helper](../../cmake/AetherMindCpuIsa.cmake) 已按源文件附加 AVX2/FMA；这两项现状应保留，不能按旧全局 flags 基线重新设计。
+
+- sanitizer helper 当前未区分 `COMPILE_LANGUAGE`。增加 CUDA target 前，把普通 `-fsanitize`、`-fno-omit-frame-pointer`、TSAN `-O1` 等编译选项限制到批准的 C/CXX 源码，且只给已有批准的 compiler 平台；最终 host link 保留正确 sanitizer runtime。
+- 编译过滤可使用 `COMPILE_LANGUAGE` generator expressions；链接过滤另用 `HOST_LINK` / `DEVICE_LINK` 区分阶段。仅过滤 `.cu` 编译不代表 device-link 已安全，只有 host linker/driver 能正确识别的选项才能进入该阶段，具体命令须由合同测试核对。[CMake link options](https://cmake.org/cmake/help/v3.28/command/target_link_options.html#host-and-device-specific-link-options)
+- 初期 `.cpp` host wrapper/RAII 使用相同 host sanitizer，`.cu` 不直接接受这些 host flags；NVCC 生成的 host launcher 部分未被同等 instrumentation，验收中明确这一覆盖缺口。若要经 `-Xcompiler` 扩大覆盖，单列工具链验证，不默认认为转发即可兼容。
+- `aethermind_apply_sanitizer` 在启用的 host profile 下显式应用于 core、CUDA OBJECT 内的 CXX 源码及相应 executable；只在 `AetherMind` 上调用不会 instrument 另一个 OBJECT target。若未来最终 host/device link 由 NVCC 驱动，host link flags 也须按链接阶段分类并采用经验证的转发方式，不能把裸 `-fsanitize` 传给 device linker。
+- CPU `-mavx2/-mfma/-fno-lto` 留在现有 CPU TU；CUDA launch 参数、`-lineinfo` 和 device debug 选项按 CUDA language/configuration 附加，不添加全局 CUDA flags。
+- Release 默认不启用 `--use_fast_math` 或 device `-G`；数值模式由 preset 合同控制。需要的宏、warnings 与平台选项只应用于对应 target，不污染第三方源码。
+- GPU 内存/同步验证使用 Compute Sanitizer；host TSAN/ASAN 不证明 device 安全。`CUDA ON + sanitizer` 未经批准的组合 configure 明确拒绝；该拒绝不是该组合已通过验证。P1 至少通过已批准 Linux host TSAN profile 以及独立 GPU sanitizer profile后，才宣称相应合同完成。
+
+#### 2.9.8 拟议 CMake 骨架
+
+下列仅说明 target/dependency 连接，涉及路径是拟新增实现清单，不能在当前仓库直接执行。正式实施须先完成源文件与 OFF stub、工具链/架构检查及上述 sanitizer policy，再把开关写入根 README 的实际构建配置。骨架不覆盖 P4 RDC 或 cuBLASLt。
+
+```cmake
+# Root: after project(... LANGUAGES CXX C), before CUDA targets.
+option(AETHERMIND_ENABLE_CUDA "Build the built-in CUDA backend" OFF)
+if(AETHERMIND_ENABLE_CUDA)
+    if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES OR
+       "${CMAKE_CUDA_ARCHITECTURES}" STREQUAL "" OR
+       "${CMAKE_CUDA_ARCHITECTURES}" STREQUAL "OFF")
+        message(FATAL_ERROR "CUDA requires explicit deployment architectures")
+    endif()
+    enable_language(CUDA)
+    if(NOT CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA")
+        message(FATAL_ERROR "The initial CUDA build profile requires NVCC")
+    endif()
+    find_package(CUDAToolkit REQUIRED)
+endif()
+
+# src/: explicit lists are excluded from the existing core SRC_FILES glob.
+set(AETHERMIND_CUDA_HOST_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/backend/cuda/cuda_backend.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/backend/cuda/cuda_device_resources.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/backend/cuda/kernels/elementwise_entry.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/memory/cuda_allocator.cpp)
+set(AETHERMIND_CUDA_STUB
+    ${CMAKE_CURRENT_SOURCE_DIR}/memory/cuda_allocator_stub.cpp)
+list(FILTER SRC_FILES EXCLUDE REGEX "/backend/cuda/")
+list(REMOVE_ITEM SRC_FILES ${AETHERMIND_CUDA_HOST_SOURCES} ${AETHERMIND_CUDA_STUB})
+# Create AetherMind SHARED from the remaining SRC_FILES as today.
+if(AETHERMIND_ENABLE_CUDA)
+    add_library(AetherMindCuda OBJECT
+        ${AETHERMIND_CUDA_HOST_SOURCES}
+        backend/cuda/kernels/elementwise.cu)
+    target_include_directories(AetherMindCuda PRIVATE
+        ${PROJECT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR})
+    set_target_properties(AetherMindCuda PROPERTIES
+        CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF
+        CUDA_STANDARD 20 CUDA_STANDARD_REQUIRED ON CUDA_EXTENSIONS OFF
+        CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}"
+        CUDA_RUNTIME_LIBRARY Shared CUDA_SEPARABLE_COMPILATION OFF
+        POSITION_INDEPENDENT_CODE ON UNITY_BUILD OFF
+        INTERPROCEDURAL_OPTIMIZATION OFF)
+    target_link_libraries(AetherMindCuda PRIVATE
+        spdlog::spdlog CUDA::cudart CUDA::cublas)
+    # Requires the language-filtered helper and approved host sanitizer profile.
+    aethermind_apply_sanitizer(AetherMindCuda)
+    target_link_libraries(AetherMind PRIVATE
+        AetherMindCuda CUDA::cudart CUDA::cublas)
+    set_target_properties(AetherMind PROPERTIES CUDA_RUNTIME_LIBRARY Shared)
+    target_compile_definitions(AetherMind PRIVATE AETHERMIND_HAS_CUDA=1)
+    target_compile_definitions(AetherMindCuda PRIVATE AETHERMIND_HAS_CUDA=1)
+else()
+    target_sources(AetherMind PRIVATE ${AETHERMIND_CUDA_STUB})
+    target_compile_definitions(AetherMind PRIVATE AETHERMIND_HAS_CUDA=0)
+endif()
+```
+
+实现时将 configure/probe/target helper 收敛到拟新增 `cmake/AetherMindCuda.cmake`；root 负责选项和启用顺序，`src/CMakeLists.txt` 负责源文件与 target 装配。`enable_language(CUDA)` 在负责配置的最高公共目录作用域执行，不藏在 helper function 内，符合 [CMake language 启用合同](https://cmake.org/cmake/help/v3.28/command/enable_language.html)。helper 不 `FORCE` 修改调用方 toolchain/cache，不把开发机绝对 Toolkit 路径输出到公共接口。
+
+#### 2.9.9 Consumers、文件迁移与工作包
+
+现有 `aethermind_infer` 继续只消费库公共接口；`BUILD_INFERENCE_TOOL`、`BUILD_TESTS` 和 `BUILD_BENCHMARKS` 各自独立。CUDA library-only build 不拉取测试依赖或要求 CLI；CUDA ON 不自动把当前 strict CPU CLI/C ABI 改成 CUDA 产品入口。需增加 device 参数时，经上层 admission/preset/API 专项准入，不让应用直接创建 cuBLAS handle。
+
+公共 C/C++ consumer 只 include 现有 SDK-free 契约并链接 `AetherMind`；直接调用 CUDA 测试 helper 的 GPU 测试目标才显式依赖 CUDA targets。GPU test/benchmark 源文件必须条件加入，不能进入当前无条件 tests glob；GPU 必需验证与普通 CPU test 分组，所需 GPU/fixtures 缺失时显式失败，不用 skip 伪装 CUDA gate 通过。
+
+| 工作包 | 主要文件 | 产物/退出条件 |
+|---|---|---|
+| B1 配置合同 | root CMake、拟新增 `cmake/AetherMindCuda.cmake`、根 README（实现后） | OFF/ON、toolchain/SDK/SM diagnostics 与 compiler/link probe；不自动下载 Toolkit |
+| B2 源码/符号划分 | `src/CMakeLists.txt`、CUDA 实现清单、allocator OFF stub、Runtime factory/provider 分支 | 每个 TU 恰好进入一个 target；OFF 无未定义 provider/vtable；ON 注册完整 |
+| B3 选项与链接 | sanitizer/ISA helpers、CUDA OBJECT 与 shared target | 标准/PIC/ABI、两层依赖、runtime 类型和语言 flags 在生成命令中成立 |
+| B4 consumers/运行门禁 | apps/tests/benchmark 各 CMake、现有 `tests/cmake/` 风格的拟新增合同测试 | SDK-free consumer、独立 CLI、注册/link smoke、设备运行与 sanitizer 分层 |
+| B5 发布配置 | 经批准的 toolchain/preset、安装/发行清单与版本记录 | 明确架构产物、动态依赖和最低实测组合，记录 cold/JIT 与 warm 行为 |
+
+#### 2.9.10 构建与产物验收矩阵
+
+| 场景 | 必须验证 | 不能据此推断 |
+|---|---|---|
+| OFF，无 SDK/driver/GPU | library-only、独立 CLI、C/C++ consumer、选定 CPU 聚焦测试；产物无 CUDA 依赖 | CUDA 构建或运行支持 |
+| ON，缺 NVCC/Toolkit/必需 library | configure 明确失败；无静默 CPU fallback、无自动安装 | GPU capability |
+| ON，SDK 完整，无 GPU，显式 SM | CMake 最低版本下 compile/link、标准/flags/SDK 来源、注册与依赖检查；不运行设备探测 | GPU kernel 或完整生成可执行 |
+| ON，代表性批准 GPU | 真实 factory/registry/分配/copy/kernel 生产链；完整 P2 另按模型门禁 | 其他 SM、dtype 或 O2 组合 |
+| Release，批准 architecture 列表 | 用工具检查 SASS/PTX 与动态库依赖，descriptor 未被裁剪；支持的 GPU 各跑 smoke | PTX 对任意未来 GPU 的兼容性 |
+| 切换 OFF↔ON、新 build/增量构建 | stub/real 实现互斥、无重复 TU/注册、consumer 不读取旧 generated flags | 工具链可在同一 cache 任意切换 |
+| host ASAN/UBSAN、TSAN | 已批准组合的 host 生命周期/同步检查与正确 sanitizer 链接；其余组合明确拒绝 | device race/memory 已覆盖 |
+| GPU sanitizer | 独立 memcheck/initcheck/racecheck/synccheck 与错误回传；required GPU 资产完整 | host TSAN 或产品性能通过 |
+| Windows/其他 generator/RDC（准入时） | ABI/CRT/DLL、platform diagnostics，或两 TU device-link+运行合同 | 首版 Linux 证据自动覆盖这些配置 |
+
+构建合同测试分开 assert configure、host/device compile、host/device link、产物内容和实际运行阶段。保存 CMake/compiler/Toolkit 版本、架构列表、generated command/link line、artifact checksum 与设备运行环境；不只看最终 exit code 或打印 `HAS_CUDA=1`。
+
+保留同步 C++ Session 和 Token IDs I/O；保护现有 CPU C runtime ABI v1.0 的已冻结合同；未来 CUDA 配置按实际接口的 version/size 和兼容策略演进，不把 CUDA SDK 类型暴露到 C ABI。C++ view/factory 变化需要同步 producer/consumer/tests/API 文档；CUDA OFF/ON 不能改变同一 public 类型的定义或布局。
+
+### 2.10 模型编译管线与执行准备
+
+#### 2.10.1 编译方式与当前数据流
+
+首版选择 AOT 编译的 CUDA kernels，加模型编译时的 target/pipeline 决策与请求冷路径 specialization。模型加载阶段选择已有实现；`.cu → device code` 由工程构建中的 CUDA compiler 完成。`ModelCompiler` 的产物继续是 `LoweredModelArtifact`，不扩展为运行时 CUDA 源码生成器，不以引入 NVRTC、LLVM 或另一套 GPU IR 为前置。
+
+```text
+模型编译，一次 Load/Compile：
+  LoadedModel + ModelCompileOptions
+    → BuildModelGraph(graph_build)
+    → compiler 根据目标策略组装 OptimizeModelGraph
+    → LowerModelGraph(lowering)
+    → immutable LoweredModelArtifact
+
+模型执行准备，一次 PrepareExecutableModel：
+  inference 编排目标设备权重驻留 / packing
+    → ExecutionPlanBuilder
+    → CudaBackend::PrepareKernel / descriptor eligibility
+    → ExecutionPlan：host launcher、语义参数、固定资源要求
+
+每请求 Prefill / Decode 冷准备：
+  PlanExecutionBindings：具体 shape/stride、activation 规划
+    → MaterializeExecutionBindings：device activation、稳定 bindings/params
+    → 按需要扩展的 backend specialization owner / algorithm
+    → 请求 workspace allocation/binding 与 ExecutionContext
+    → Execute 复用，无逐 token 编译、查找或 descriptor 创建
+```
+
+上图按逻辑责任分阶段，不把原有 Prepare 的 recipe 查询、权重预算检查和实际 plan 构建顺序重新固定为另一套入口。固定 workspace 路径保持当前规划顺序；需要 shape-dependent scratch 时按 §2.7 与 09 的统一权威迁移。模型 Compile 成功只证明前端语义与 artifact 结构合法，Prepare 与具体 binding specialization 再证明目标设备/shape 可执行。
+
+#### 2.10.2 CUDA preset 与目标身份
+
+拟在 inference 的配置组装层提供 `CudaInferencePreset` / `MakeCudaCompileOptions`，对应既有 CPU preset 工厂，首批仅开放 FP32 O1/plain/both。其职责是生成一致的 `ModelCompileOptions`，不创建 Runtime、查询 GPU、上传权重或选择库算法；共享 graph-build precision 沿用现有 `ModelGraphBuildOptions`。
+
+| 配置维度 | 首批策略 | 权威与边界 |
+|---|---|---|
+| target 类型 | `lowering.selector.device_type = kCUDA` | 复用既有字段，不再增加可能冲突的第二个 device_type |
+| 具体设备 | 明确的 `cuda:N` | Runtime/model preparation 合同；compiler 不依赖线程 current device 或实际 GPU 可用性 |
+| optimization | O1，ConstantFolding + DCE | compiler 组装 pipeline；CPU 默认 O2 不自动用于 CUDA |
+| weight representation | plain，关闭 packed 请求 | 显存上传不改变 WeightFormat；后续 packed 与 recipe 独立准入 |
+| dtype | 真实 F32 weights + F32 activation/KV | graph-build options 与实际 bytes 一致；selector 从 specs 派生 |
+| phase | both 语义合同，按请求分别 specialize | 后续需要阶段专用实现时使用现有 ExecPhase |
+| math / hardware eligibility | FP32 baseline 的固定数值合同 | backend 验证实际 SM/库/编译产物；不得隐式开启缩窄乘法模式 |
+
+preset 是经验证组合的产品入口，不强制低层 `ModelCompiler::Compile` 只能产出这些组合。低层调用方可以构造其他结构合法的 lowered graph，但不能据此声称 CUDA 可执行，真实 kernel/layout/shape 检查仍在后续 Prepare。CPU 现有 presets 和 `LoadAndPrepareCpuExecutableModel` 保持显式 CPU 语义，新增 CUDA 组装不会把其默认 target 偷换。
+
+#### 2.10.3 Target-aware pipeline composition
+
+当前 `OptimizeModelGraph(graph, PassContext)` 未接收 lowering target。拟在 `ModelCompiler` 内解析有效编译策略，将既有 target、opt_level 和 pass flags 一致地传给 compiler-owned pipeline composition；接口可增加 compiler 私有 policy 参数，不把 `DeviceType`、Backend、SM 或 registry 放进 graph 的 `PassContext`。
+
+- ConstantFolding、DCE 和各 fusion pass 的实现仍归 graph，保持 backend-independent 的语义与 alias/consumer 验证。
+- 首版 CUDA preset 选择 O1。后续开启 QKV、GateUp、SiluMul、AddRmsNorm 等时，先证明该组合的 CUDA consumer、参数准备、物理表示和数值合同齐备，再更新允许的 preset/policy。
+- 复用已有 `PassContext.enable_*`，首批以有限 policy 表达已批准组合。无需预先建立动态 kernel capability 数据库；compiler 不查询真实 registry。
+- preset 入口只生成其批准的配置；如以后接收额外用户 override，必须明确优先级并拒绝矛盾组合，不能因缺 kernel 在 Execute 中临时拆 fusion 或切 CPU。
+- 编译 pipeline 与运行 Backend 有不同的验证责任：前者决定允许生成的语义组合，后者检查当前构建/设备确实提供它。kernel 未注册或被裁剪时，准备失败须携带 op、phase、dtype/layout 与阶段上下文。
+
+若未来需要硬件感知的 cost model，先由上层提供不可变纯数据策略，再评估哪些字段有真实消费者；本轮不把 CUDA properties 整体搬进 compiler，也不重复保存可从 selector/specs 得出的 dtype/target。
+
+#### 2.10.4 Lowering、表示与 kernel resolution
+
+沿用 `LoweredStepSpec` 的 schema-port-ordered input/output specs、OpParams、deferred constraints 和 state aliases。dtype 从真实 specs 派生，结构化 target request 继续使用 `KernelSelector`；kernel 指针、库 handle、显存地址及 workspace 基址不进入 compiler artifact。
+
+当前一个 semantic node 对应一个 lowered step 可保留，一个 step 的 host launcher 可以调用多个 CUDA kernels 或 cuBLAS，不要求一条 step 对应一个 device launch。只有临时值必须进入跨 step 调度、全局 lifetime/reuse 或 layout conversion 需要显式数据流时，才评估扩展 implementation planning；不能仅因某算子有多次 launch 就重写 IR。
+
+plain/packed 只表达 consumer 的表示合同。target lowering 不硬编码 CPU B-panel 或 CUDA tile；backend 通过 recipe 决定物理布局。constant folding 的新常量仍由 artifact 拥有，CUDA Prepare 显式上传；graph pass 不接触 device pointer。fusion 之后必须保留 residual flow、全部输出 consumer、layer/state identity 和 weight source binding。
+
+`ExecutionPlanBuilder` 继续调用 Backend 并冻结 `ResolvedKernel`，其函数指针指向 host CUDA launcher。CudaBackend 按明确设备的 capabilities 筛选 descriptor，返回已验证的 metadata/固定 resource requirement；SM 和编译架构可用性不混入语义算子定义。现有 `KernelRegistry` 已按 selector 过滤设备类型，首版可复用；若以后同一 selector 存在多个 SM/feature 实现，再扩展 backend eligibility 和注册身份，不能借 CPU requirements 字段编码 GPU 能力。
+
+#### 2.10.5 Concrete-shape specialization 与精度演进
+
+`PlanExecutionBindings` 保留只读 metadata、解析 symbols、规划 activation 的职责；`MaterializeExecutionBindings` 分配目标 storage 并准备稳定 operands/params。cuBLASLt 引入时由 backend 回调形成需要析构的 opaque specialization，prepared bindings 拥有它，params 只持稳定借用。最终地址的 alignment/layout 校验在合法地址可用后完成，不能在 metadata planning 阶段伪造 payload pointer 或读取未来计算数据。
+
+算法选择至少受真实 M/N/K、transpose/layout/stride、输入输出 dtype、对齐、设备和 scratch budget 约束；Prefill 使用实际 T，Decode 使用 T=1。固定 budget 模式先验证所选算法不超上界；采用 shape-query 时要求最终 layout 与请求分配来自同一权威。不可变 ExecutionPlan 不因一次请求的 T 被修改，bindings 与 specialization move 后仍须保持地址有效。
+
+FP16/BF16 继续复用现有 graph-build dtype options 与显式 `ConvertRawModelWeightsToFp32` 等逻辑转换边界，CUDA 上传不代替转换。未来 A16/KV16/mixed output 同步迁移 typed params、inference/serde、selector/state 匹配与 fused consumer，明确 cast/rounding；CPU W16/A32 不自动成为 CUDA Tensor Core 路径。低精度、phase 和优化组合按 §2.8、11 号提案分别准入。
 
 ## 3. 方案与备选
 
@@ -226,6 +488,8 @@ CUDA OFF 时不要求 Toolkit、driver 或 GPU，CPU consumer 可单独编译/�
 | 先 FP32 再低精度 | 分离设备正确性与精度变化，便于 CPU oracle 对照；FP32 内存较大 | 推荐，用 tiny 模型建立闭环 |
 | 上传统一伪装成 packing | 可复用部分 owner，但混淆 dense layout 与 opaque recipe，绑错 consumer | 不采用，独立 resident plain storage |
 | 默认 Unified Memory 或 stream-ordered allocator | 可简化特定访问/回收，但引入迁移或 stream lifetime，难以验证稳态流量 | 首版显式显存与 copy，需求触发后独立评估 |
+| 复用现有 IR、有限 CUDA compile preset 与冷准备 | 复用 semantic/shape/binding 基础，按真实需求扩展 target policy 和 specialization | 首版推荐；具体工程构建见 §2.9 |
+| 在 ModelCompiler 内生成 CUDA 源码、查 registry 或运行 heuristic | 将设备环境、库资源和符号 shape 混入前端，扩大依赖和生命周期责任 | 首版不采用，device code 构建与执行准备分别落在 CMake、backend/execution |
 
 ## 4. 实施步骤
 
@@ -236,13 +500,13 @@ CUDA OFF 时不要求 Toolkit、driver 或 GPU，CPU consumer 可单独编译/�
 1. 固定首批 GPU/SM、Toolkit/driver/host compiler 和部署环境矩阵；定义 compiled/available/executable 的诊断与 unsupported 行为。
 2. 冻结明确 target Device、Backend factory/instance key 迁移、view placement、CUDA CPU pointer 拒绝边界，列齐 Tensor/BoundValue/packed/KV/workspace producer 与 consumer。
 3. 冻结 Runtime-owned 设备执行资源、Execute 完成屏障、错误分类与 request drain；定义 C++ 接口迁移范围，保留模块依赖方向。
-4. 固定 FP32 O1/plain、静态 KV、同步 greedy I/O 与 reference 数值门禁，区分计划中的低精度/packed 支持；决定是否已采用 09 的 prepared workspace 权威。
+4. 固定 FP32 O1/plain、静态 KV、同步 greedy I/O 与 reference 数值门禁，区分计划中的低精度/packed 支持；按 §2.10 冻结 compiler target/pipeline 与 prepare 边界，决定是否已采用 09 的 prepared workspace 权威。
 
 退出条件：设计合同与支持/拒绝矩阵完整，拟改 producer/consumer/tests/docs 可追踪；后续基础接口迁移不得破坏 CPU 生成链。该阶段不宣称 CUDA 可执行。
 
 ### 4.2 P1：CUDA 基础设施与最小算子路径
 
-1. 增加可选 CUDA target、编译语言隔离和 CUDA OFF 配置验证，注册真实 CUDA provider/backend/device resources；移除启用 CUDA 后仍走 stub abort 的路径。
+1. 按 §2.9 增加可选 CUDA target、条件源码、依赖/架构与编译语言隔离，完成 CUDA OFF 和 CUDA ON build/link 门禁；注册真实 CUDA provider/backend/device resources，移除启用 CUDA 后仍走 stub abort 的路径。
 2. 实现 allocator、独立 deleter/device guard、stream/handle RAII、transfer/staging 与 device propagation；错误经 Status 返回。
 3. 迁移 ExecutionContext/KernelContext、binding 校验和完整 plan 完成屏障，覆盖无 KV plan；CPU 同步资源实现保持原语义。
 4. 选简单 elementwise kernel，使用真实 registry→plan→prepared bindings→Executor 跑通 H2D、计算和 D2H，验证异步失败/清理而非仅直接 launch。
@@ -275,6 +539,21 @@ CUDA OFF 时不要求 Toolkit、driver 或 GPU，CPU consumer 可单独编译/�
 
 退出条件：正确性/资源门禁持续通过，prepared production path 与真实 Generate 均有可重复收益；不设无测量依据的固定加速倍数。
 
+### 4.6 模型编译工作包追踪
+
+以下均为待实施项，阶段沿用 P0–P4；工程构建的独立文件/工作包与门禁见 §2.9。
+
+| 工作包 | 主要落点 | 责任与退出条件 |
+|---|---|---|
+| C1 CUDA compile preset | inference 新增 CUDA options；既有 `cpu_inference_options`、`ModelCompileOptions` | P0 定义、P2 接入；单一 target 来源、O1/plain/F32/both，CPU 默认不变，非法 preset 可诊断 |
+| C2 目标相关 pipeline | `src/compiler/model_compiler.cpp`、`optimize_graph.cpp` 及对应 public contract（按需要） | P0 定义、P2 接入；compiler 根据既有 target/policy 选择 passes，graph 不引入 backend/device 依赖 |
+| C3 lowering 与 artifact | `compiler/graph_lowering`、`lowered_graph`、既有 compiler tests | P1/P2；保持 dtype/spec、state alias/consumer 与 1:1 step 不变量，CUDA selector 传播有测试 |
+| C4 CUDA resolve 与表示 | `execution_plan_builder`、`backend/cuda`、registry、recipe/validator | P1 最小路径、P2 完整 op 集；host launcher 冻结，plain upload 与 packed 分开，缺 kernel 在 prepare 失败 |
+| C5 shape/resource specialization | `execution_bindings`、backend preparation callback、request workspace/context | P1/P2 复用既有固定资源路径，P4 接 Lt；owner 可析构、地址稳定、单一 scratch 权威，Decode 不重准备 |
+| C6 精度/phase/fusion 演进 | graph-build options、operators、compiler policy、backend 与 inference | P3/P4；每个 dtype/phase/layout 组合完整迁移并验证，不以类型许可代替可执行支持 |
+
+每个工作包都需覆盖 producer、consumer、untrusted-plan 校验（如适用）、tests/helpers 与 docs/API。共享配置 API 的修改在其原层扩展，不通过增加笼统 CompilationTarget/Policy 容器重复所有 selector 和 Runtime 字段。
+
 ## 5. 风险与依赖
 
 | 风险/依赖 | 处理与准入条件 |
@@ -285,6 +564,8 @@ CUDA OFF 时不要求 Toolkit、driver 或 GPU，CPU consumer 可单独编译/�
 | KV 提前发布或错误恢复承诺 | 全 plan 完成后提交；fatal fault poison 并要求应用重启，真实 device fault 测试放独立进程 |
 | 准备/请求峰值内存 | 分别统计 host raw/mmap、resident/packed、staging、activation、KV、workspace、库/driver reserve，不把显存 payload 等同于总占用 |
 | cuBLASLt workspace 与 09 冲突 | 初期显式固定 budget；采用 shape-query 合同后 final layout 统一归 prepared bindings，不能两套 offset 并存 |
+| target / optimization 组合漂移 | CUDA preset 与 compiler pipeline 使用同一 target/policy；低层结构合法不等于设备可执行，prepare 补齐 capability 验证 |
+| 构建图、注册或二进制依赖遗漏 | OBJECT 与 final shared 的编译/链接边分开验证，OFF 符号完整，ON 运行时依赖明确；使用 §2.9 的 contract matrix |
 | 精度与 CPU/HF 差异 | 不承诺跨设备 bit-identical；冻结 compute mode、rounding 和误差预算，near-tie 输出需按 margin 审查 |
 | CPU 配置退化/ABI 漏迁移 | CUDA OFF 不依赖 SDK/动态库；view/factory 改动覆盖全部 producer/consumer/test/doc，C ABI 遵循实际发布状态 |
 | 并发/外部 CUDA 使用者 | 当前单请求/外部串行化；资源不共享可变 stream handle，不自动 reset device，不将单 Runtime 合同扩大为进程任意并发安全 |
@@ -328,6 +609,16 @@ CUDA OFF 时不要求 Toolkit、driver 或 GPU，CPU consumer 可单独编译/�
 - 依照 [算子工作流](../guides/operator-development-workflow.md) 将证据写入对应算子机器记录和 raw artifact；本提案不创建占位 benchmark 文件，不把未来验收写成既有结果。
 - 实施并通过对应门禁后，再更新模块设计、API/构建文档、产品 capability 和行为变更记录。Draft 状态不更改当前 PRD、现有 CPU preset 或公开 ABI 承诺。
 
+### 6.5 模型编译与工程构建专项门禁
+
+- compiler 测试覆盖 CUDA selector 的 device/phase/weight-format 传播、dtype 从真实 specs 派生、所有 schema ports/state aliases 和 artifact 不可变性；保留既有 `ModelCompiler.PropagatesLoweringTargetConfiguration` 的低层结构验证定位，不改称 GPU 集成测试。
+- preset 测试证明首批 CUDA O1/plain 只生成批准的 semantic op 集，CPU O1/plain、O2/packed 行为不回归；未来开放 fusion 时逐项验证 consumer、residual/alias、recipe 与数值合同，缺实现于 Prepare 失败。
+- 编译头文件与依赖检查证明 graph/operators 不引入 CUDA/device/runtime，compiler 不引入 backend registry/SDK。CUDA OFF 的 C++ consumer 可独立包含公共 headers，CUDA ON 不以宏改变公共类型布局。
+- binding 规划与物化覆盖不同 Prefill T、Decode T=1、symbols/constraints、alignment、budget/OOM、move 后地址稳定与冷准备失败；执行期间不得修改 immutable plan 或缓存旧 workspace 基址。
+- cuBLASLt owner 的销毁与错误路径单独验证，不以 512B POD arena 存储待析构资源；算法/descriptor 准备次数在 Decode 循环内为零，最终 scratch layout 只有一个权威。
+- 工程实施以 §2.9.10 的 configure/compile/link/artifact/run 矩阵为门禁；构建脚本新增的合同测试按现有 `tests/cmake/` 模式组织。支持的最低 CMake/generator 至少验证 OFF consumer 与 ON 编译链接，GPU 数值/完成/失败另走真实硬件门禁。
+- 本轮为文档增补，没有执行上述未来构建/GPU 门禁；文档链接、索引和空白检查只能证明文档本身，不证明拟议 CMake 骨架已可构建。
+
 ## 7. 一手资料
 
 以下资料用于 CUDA/CMake 机制与接口约束，不作为 AetherMind 已实现或性能收益的证据；具体部署版本仍按 P0 的支持矩阵冻结。
@@ -336,6 +627,9 @@ CUDA OFF 时不要求 Toolkit、driver 或 GPU，CPU consumer 可单独编译/�
 - [CUDA Runtime 错误定义](https://docs.nvidia.com/cuda/cuda-runtime-api/cuda_runtime_api/group__CUDART__TYPES.html)：包括 illegal address 在内的严重错误与进程恢复限制。
 - [cuBLAS 官方文档](https://docs.nvidia.com/cuda/cublas/)：计算模式、矩阵布局、cuBLASLt descriptor/heuristic 与 workspace；推荐在冷路径查询并复用算法。
 - [CMake 3.28 FindCUDAToolkit](https://cmake.org/cmake/help/v3.28/module/FindCUDAToolkit.html)、[CUDA_ARCHITECTURES](https://cmake.org/cmake/help/v3.28/prop_tgt/CUDA_ARCHITECTURES.html)：可选 Toolkit imported targets 与架构代码生成。
+- [OBJECT library 链接](https://cmake.org/cmake/help/v3.28/command/target_link_libraries.html#linking-object-libraries)、[CUDA_RUNTIME_LIBRARY](https://cmake.org/cmake/help/v3.28/prop_tgt/CUDA_RUNTIME_LIBRARY.html)：对象/usage requirements、最终链接和 runtime 选择的边界。
+- [CUDA_SEPARABLE_COMPILATION](https://cmake.org/cmake/help/v3.28/prop_tgt/CUDA_SEPARABLE_COMPILATION.html)、[CUDA_RESOLVE_DEVICE_SYMBOLS](https://cmake.org/cmake/help/v3.28/prop_tgt/CUDA_RESOLVE_DEVICE_SYMBOLS.html)：RDC 与 device-link；OBJECT target 不支持自身 device-link。
+- [NVCC host compiler 选择](https://cmake.org/cmake/help/v3.28/variable/CMAKE_LANG_HOST_COMPILER.html)、[CUDA_STANDARD](https://cmake.org/cmake/help/v3.28/prop_tgt/CUDA_STANDARD.html)：初始化时机、host ABI 责任及禁止标准回退。
 - [Compute Sanitizer](https://docs.nvidia.com/compute-sanitizer/ComputeSanitizer/index.html)：memcheck、initcheck、shared-memory racecheck 与 synccheck 的检测范围；不代替 host sanitizer 或完整并发正确性证明。
 
 ## 8. 变更记录
@@ -343,3 +637,4 @@ CUDA OFF 时不要求 Toolkit、driver 或 GPU，CPU consumer 可单独编译/�
 | 日期 | 版本 | 变更 |
 |---|---|---|
 | 2026-10-21 | 1.0 | 建立 Draft：单 GPU 同步执行、设备/显存/stream 合同、KV 完成提交、FP32→FP16/BF16→性能优化阶段及验收；明确与 09/11 的 workspace/精度边界 |
+| 2026-11-05 | 1.1 | 增补 §2.10 模型编译/preset/target-aware pipeline 与冷准备、§2.9 工程构建详细设计及 C1–C6/B1–B5 工作包和专项门禁；复核当前 CMake/binding/CPU 产品入口，保留 Draft，未实施 CUDA |

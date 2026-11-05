@@ -1,9 +1,11 @@
 # 上层 Runtime 组装与推理入口实施方案
 
+> 本文同时作为当前上层装配参考，API 名称与现有源码保持一致。完整签名与权重策略见 [ExecutableModel 设计](../designs/inference/01-executable-model.md) §5–§6；各阶段历史测试命令与受测身份见对应验收报告。
+
 - **状态**: Implemented
-- **版本**: 1.14
+- **版本**: 1.15
 - **日期**: 2026-10-19
-- **最近更新**: 2026-10-22
+- **最近更新**: 2026-11-05
 - **产品边界**: [当前产品 PRD](../products/aethermind_prd.md)
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联计划**: [01 Generate 闭环](01-inference-session-generate-readiness.md)、[02 工程质量](02-engineering-quality-system.md)、[06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[07 模型准备入口](07-executable-model-preparation.md)
@@ -18,7 +20,7 @@ M0–M6 已按本方案限定的 CPU FP32 Llama Dense 范围完成：测试资�
 
 `RuntimeBuilder::Build()` / `TryBuild()` 已有资源装配实现，作为公开 C++ 构建块由外部宿主调用是合理边界。库内部没有调用它们，本身不是 builder 的实现缺陷。
 
-原缺口是仓库没有非测试调用方，将模型配置、Runtime、模型准备、Session 与 Token IDs I/O 连成可独立运行的入口。M2 runner 和 M3 CLI 已接通这一入口；C ABI 仍需独立实施，不能由 C++ 工具结果推导为已交付。
+原缺口是仓库没有非测试调用方，将模型配置、Runtime、模型准备、Session 与 Token IDs I/O 连成可独立运行的入口。M2 runner 和 M3 CLI 已接通这一入口；C ABI 由 M6 独立实现及验收，证据分别记录。
 
 | 已核对事实 | 源码依据 | 对方案的约束 |
 |---|---|---|
@@ -27,8 +29,8 @@ M0–M6 已按本方案限定的 CPU FP32 Llama Dense 范围完成：测试资�
 | `ModelCompiler::Compile` 消费 `unique_ptr<LoadedModel>`，产物保活权重，不依赖 Runtime | [model_compiler.h](../../include/aethermind/compiler/model_compiler.h)、[model_compiler.cpp](../../src/compiler/model_compiler.cpp) | 加载一次，先编译再分配 KV；Runtime 地址稳定性从 Prepare 起约束 |
 | Load 不执行家族构图与完整 RoPE 语义校验；家族识别和 RoPE 规范化/拒绝属于 Compile 的构图链 | [model_loader.cpp](../../src/model/model_loader.cpp)、[build_model_graph.cpp](../../src/model/build_model_graph.cpp)、[rope_params_builder.cpp](../../src/model/rope_params_builder.cpp) | Load 成功不能作为分配 KV 前唯一的模型准入条件 |
 | Prefill/Decode 当前共享一个 plan；`ExecPhase::kBoth` 可供两阶段查询 | [executable_model.h](../../include/aethermind/inference/executable_model.h)、[graph_lowering.h](../../include/aethermind/compiler/graph_lowering.h) | 一次编译、一次准备；不预先拆成两份模型 |
-| `LoadAndPrepareExecutableModel` 已串起加载、编译、准备，但要求 Runtime 已存在 | [executable_model.cpp](../../src/inference/executable_model.cpp) | 保留该便利 API；本入口为读取模型配置而显式组合其下层 API |
-| 默认编译选项是 O2/plain，不能视为 CPU 通用可执行默认值；现有测试显式选择 O1/plain 或 O2/packed | [model_compiler.h](../../include/aethermind/compiler/model_compiler.h)、[graph_lowering.h](../../include/aethermind/compiler/graph_lowering.h)、[集成测试](../../tests/unit/inference/test_load_prepare_executable_model.cpp) | 入口必须有明确 CPU preset |
+| `ExecutableModel::Load` 已串起加载、源权重策略、可选转换、编译与准备，但要求 Runtime 已存在 | [executable_model.cpp](../../src/inference/executable_model.cpp) | 保留该便利 API；本入口为读取模型配置而显式组合其下层 API |
+| 默认编译选项是 O2/plain，不能视为 CPU 通用可执行默认值；现有测试显式选择 O1/plain 或 O2/packed | [model_compiler.h](../../include/aethermind/compiler/model_compiler.h)、[graph_lowering.h](../../include/aethermind/compiler/graph_lowering.h)、[集成测试](../../tests/unit/inference/test_load_prepare_executable_model.cpp) | 入口必须显式组合编译 preset 与 CPU target |
 | Runtime 按值拥有 KV manager；workspace 和 activation 在请求准备路径分配 | [runtime.h](../../include/aethermind/runtime/runtime.h)、[inference_session.cpp](../../src/inference/inference_session.cpp) | 不把 workspace storage 搬进 builder |
 | M5 冻结、M6 已实现 runtime/model/session C ABI，并由纯 C 调用方实际链接运行 | [c_api.h](../../include/c_api.h)、[c_api_runtime.cpp](../../src/c_api_runtime.cpp)、[C ABI 合同](../api/runtime-c-abi.md) | header/布局检查与动态 C 调用证据分别记录，不推导全部产品范围 |
 | M3 已新增默认关闭的独立推理工具目标 | [根 CMake](../../CMakeLists.txt)、[应用 CMake](../../apps/inference/CMakeLists.txt) | 可关闭 tests/benchmarks 单独构建工具，保留核心 shared library |
@@ -54,7 +56,7 @@ M0–M6 已按本方案限定的 CPU FP32 Llama Dense 范围完成：测试资�
 | model | HF I/O、模型配置/权重验证、家族识别、semantic graph 前端 | 模型支持判断继续以 model 的既有权威入口为准；不依赖 Runtime，不校验 Runtime/model 跨对象一致性 |
 | runtime | provider/factory、allocator/backend、静态 KV storage | 不依赖 model/compiler/inference，不读取 HF 配置 |
 | compiler | semantic pipeline 与 lowering | 不访问 backend registry，不内置产品 CPU preset |
-| inference | 模型准备、immutable 权重绑定、Session/Generate 编排、共享 FP32 准入与模型 KV 配置映射 | 继续使用 `PrepareExecutableModel` 唯一准备入口；策略只读 metadata，不承担 Runtime/model 跨对象比较 |
+| inference | 模型准备、immutable 权重绑定、Session/Generate 编排、共享 FP32 准入与模型 KV 配置映射 | 继续使用 `ExecutableModel::Prepare` 唯一准备入口；策略只读 metadata，不承担 Runtime/model 跨对象比较 |
 | C ABI 适配层（M6） | opaque handle、所有权、Runtime/model KV 一致性、异常边界、状态与输出缓冲区 | KV 跨对象规则集中在 adapter 私有 helper；复用上述能力，不复制 compiler、packing 或执行算法 |
 
 目录按职责划分：`apps/inference/` 承载独立推理应用，`src/inference/` 保持库内模型准备与会话编排职责，`tools/` 保留构建、测试、文档检查与 fixture 生成等开发辅助工具。应用源文件不纳入 `AetherMind` shared library 的源文件集合；M1 由测试目标显式编译私有 helper，P1 再由独立 executable target 收集同一实现。
@@ -70,7 +72,7 @@ flowchart TD
     E -->|编译成功后| F[RuntimeBuilder::TryBuild 包括 KV 分配]
     C -->|已派生的 RuntimeOptions| F
     F --> G[将 Runtime 安置在最终地址]
-    G --> H[PrepareExecutableModel]
+    G --> H[ExecutableModel::Prepare]
     E -->|转移 artifact 所有权| H
     H --> I[shared_ptr<const ExecutableModel>]
     I --> K[InferenceSession::Create]
@@ -79,13 +81,13 @@ flowchart TD
     L --> M[输出新 Token IDs]
 ```
 
-首版 FP32 调用顺序为 Load → 请求校验与 `ValidateFp32ExecutionInputs` → 配置映射 → Compile → TryBuild → 将 Runtime 安置在最终地址 → Prepare → Create → Generate。FP32 准入检查实际 resolved weights；配置映射只生成值对象，不分配 KV。只有准入及 Compile 均成功后才调用 `TryBuild`，使精度策略、家族、RoPE 及其他构图/编译错误在 KV 分配前返回。
+首版 FP32 调用顺序为 Load → 请求校验与 `ValidateSourceWeights(model, WeightPolicy::kRequireFp32)` → 配置映射 → Compile → TryBuild → 将 Runtime 安置在最终地址 → Prepare → Create → Generate。FP32 准入检查实际 resolved weights；配置映射只生成值对象，不分配 KV。只有准入及 Compile 均成功后才调用 `TryBuild`，使精度策略、家族、RoPE 及其他构图/编译错误在 KV 分配前返回。
 
-`Compile` 不借用 Runtime，不受其构造位置约束。Runtime 必须在 `PrepareExecutableModel` 前构造并安置在最终地址，从 Prepare 起不得移动或替换，且必须长于后续的 ExecutableModel 和 Session。
+`Compile` 不借用 Runtime，不受其构造位置约束。Runtime 必须在 `ExecutableModel::Prepare` 前构造并安置在最终地址，从 Prepare 起不得移动或替换，且必须长于后续的 ExecutableModel 和 Session。
 
-在 Compile 消费模型前，完成所需配置读取，将 RuntimeOptions、生成边界等保存在独立值对象中，不保存指向 LoadedModel 配置的借用。随后把同一个 `LoadedModel` 移入 `ModelCompiler::Compile`；不再调用 `LoadAndPrepareExecutableModel(model_dir, ...)` 重新加载。编译成功的 artifact 在 Runtime 构造后移入 `PrepareExecutableModel`，由该入口统一处理所有权、权重组装和 plan，工具不自行逐层绑定权重。
+在 Compile 消费模型前，完成所需配置读取，将 RuntimeOptions、生成边界等保存在独立值对象中，不保存指向 LoadedModel 配置的借用。随后把同一个 `LoadedModel` 移入 `ModelCompiler::Compile`；不再调用 `ExecutableModel::Load(runtime, model_dir, options)` 重新加载。编译成功的 artifact 在 Runtime 构造后移入 `ExecutableModel::Prepare`，由该入口统一处理所有权、权重组装和 plan，工具不自行逐层绑定权重。
 
-[11 号精度提案](11-fp16-bf16-execution-support.md) §2.3–2.4 规划由 Runtime allocator 分配 normalizer 的转换产物，该扩展路径可能要求 Runtime 早于 Normalize/Compile 构造。这是精度扩展的单独依赖，不适用于当前无需转换的 FP32 首版。接入时须同时明确如何在大块 KV 分配前完成可提前判定的模型语义校验，或设计延迟 KV 初始化；仅记录顺序差异不能满足同一 fail-fast 门禁。
+[11 号精度方案](11-fp16-bf16-execution-support.md) 的显式 C++ FP32 兼容路径已由 `ExecutableModel::Load` 实现：Runtime 先放到最终地址，再用其 CPU allocator 转换权重，随后 Compile/Prepare。该便利入口当前只允许 CPU O1/plain 的显式转换；CLI/C ABI 继续使用本方案无需转换的 strict FP32 分阶段路径。兼容入口的顺序不能复用 runner 的“Compile 成功后才分配 KV”证据；若以后接入 CLI/C ABI，仍需单独落实大块 KV 分配前可完成的模型校验或延迟 KV 初始化合同。
 
 ### 2.3 核心数据与接口
 
@@ -97,16 +99,16 @@ flowchart TD
 | `prompt_tokens` | 非空 `uint32_t` 数组；严格解析整数，加载后检查词表范围 |
 | `context_tokens` | 必填的静态 KV capacity；正数且不超过模型 `max_position_embeddings` |
 | `generation` | 复用 `GenerationConfig{max_new_tokens, eos_token_id}`；EOS 不做隐式猜测 |
-| `preset` | inference 共享枚举 `CpuInferencePreset::kO1Plain` / `kO2Packed`，默认 `kO1Plain`；M6 已删除应用旧类型 |
+| `preset` | inference 共享枚举 `CompilePreset::kO1Plain` / `kO2Packed`，默认 `kO1Plain`；M6 已删除应用旧类型 |
 
 工具私有入口已实现为 `StatusOr<std::vector<uint32_t>> RunInference(const RunOptions&, RunStage* failure_stage = nullptr)`：它在一个作用域内拥有 Runtime、模型和 Session，只返回拥有数据的 Token IDs，不返回借用局部 Runtime 的 Session。可选的 `RunStage` 输出只标识失败阶段，成功时为 `kNone`；原始 StatusCode/message 保持不变，`ToString(RunStage)` 返回不分配的静态诊断标签。它不是阶段计数或事件 hook。`main` 负责进程 logger、参数、输出、退出码及异常边界。
 
-CPU preset 必须逐项设置，不能直接转用 `ModelCompileOptions{}`：
+工具调用 `MakeCompileOptions(preset, DeviceType::kCPU)`，将设备无关的 `CompilePreset` 与 CPU 目标组合，不能直接转用 `ModelCompileOptions{}`。下面的 CPU selector 来自调用方指定的 target：
 
 | preset | `optimization.opt_level` | `lowering.enable_packed_weights` | selector |
 |---|---:|---|---|
-| `CpuInferencePreset::kO1Plain` | 1 | false | CPU、`WeightFormat::kPlain`、`ExecPhase::kBoth` |
-| `CpuInferencePreset::kO2Packed` | 2 | true | CPU、`ExecPhase::kBoth`；具体消费权重的 step 由 lowering 标记 packed |
+| `CompilePreset::kO1Plain` | 1 | false | CPU、`WeightFormat::kPlain`、`ExecPhase::kBoth` |
+| `CompilePreset::kO2Packed` | 2 | true | CPU、`ExecPhase::kBoth`；具体消费权重的 step 由 lowering 标记 packed |
 
 packing recipe 仍由 backend 选择。选择 O2 失败时传播错误，不静默降到 O1，不强制指定 identity/B-panel 布局。
 
@@ -125,12 +127,13 @@ packing recipe 仍由 backend 选择。选择 O2 失败时传播错误，不静�
 | `kv_dtype` | 首版限定 `Float32`；必须与图的 activation/state dtype 一致 |
 | `alignment` | 首版固定 64；物理 stride/padding 与溢出检查仍交给 KV layout/manager |
 
-当前 Llama builder 用 `weight_dtype_hint`（未定义时回退 Float32）确定 activation/state dtype，依据见 [llama_dense_graph_builder.cpp](../../src/model/llama_dense_graph_builder.cpp)。loader 的 dtype 支持集允许 F32/F16/BF16，linear dtype 一致性也不等于全部权重为 FP32；缺失或 `auto` hint 不能证明实际权重精度。图语义校验在 Compile，kernel resolve/packing 在 Prepare；当前 Session 路径的 external binding 校验在 Generate 内的 `PrepareExecutionBindings`，晚于 KV reservation。这些边界各自验证对应合同，不能代替分配 KV 前的产品准入，也不能假定所有 dtype 错误都会延迟到同一阶段。
+当前 Llama builder 的 activation specs 由算子推导，显式 `ModelGraphBuildOptions::activation_dtype` 必须匹配 embedding 输出；KV dtype 优先使用显式 `kv_dtype`，其次使用显式 activation policy，均未指定时沿用 `weight_dtype_hint`（未定义时回退 Float32），依据见 [llama_dense_graph_builder.cpp](../../src/model/llama_dense_graph_builder.cpp)。loader 的 dtype 支持集允许 F32/F16/BF16，linear dtype 一致性也不等于全部权重为 FP32；缺失或 `auto` hint 不能证明实际权重精度。图语义校验在 Compile，kernel resolve/packing 在 Prepare；当前 Session 路径的 external binding 校验在 Generate 内的 `PrepareExecutionBindings`，晚于 KV reservation。这些边界各自验证对应合同，不能代替分配 KV 前的产品准入，也不能假定所有 dtype 错误都会延迟到同一阶段。
 
 M1 原在应用内实现唯一 FP32 策略；M5 已将其迁入 [inference 实现](../../src/inference/model_execution_policy.cpp) 的 `aethermind` namespace，公共声明见 [model_execution_policy.h](../../include/aethermind/inference/model_execution_policy.h)。在此基础上，当前实现的 `MakeCpuRuntimeOptions` 位于 inference 层，统一 CPU defaults、KV 映射、Runtime budget 与 CPU feature policy；CLI 和 benchmark 复用它。Runtime 层不依赖模型 metadata。
 
 ```cpp
-Status ValidateFp32ExecutionInputs(const LoadedModel& model);
+Status ValidateSourceWeights(const LoadedModel& model, WeightPolicy policy);
+StatusOr<ModelCompileOptions> MakeCompileOptions(CompilePreset preset, DeviceType target);
 StatusOr<KVCacheRuntimeOptions> MakeFp32KVCacheOptions(
     const HfModelConfig& config, size_t context_tokens);
 
@@ -139,18 +142,18 @@ StatusOr<RuntimeOptions> MakeCpuRuntimeOptions(
     const CpuRuntimeAssemblyOptions& options);
 ```
 
-runner 在 Load 成功后的请求/模型配置校验阶段调用一次，早于配置映射、Compile、TryBuild 和 KV reservation。它只读取 metadata，不依赖 Runtime，不读取权重 payload，不转换或分配权重，也不保存模型借用。`main`、preset 映射和后续 C ABI 不另写 dtype 遍历或准入分支。
+runner 在 Load 成功后的请求/模型配置校验阶段调用 `ValidateSourceWeights(model, WeightPolicy::kRequireFp32)` 一次，早于配置映射、Compile、TryBuild 和 KV reservation。它只读取 metadata，不依赖 Runtime，不读取权重 payload，不转换或分配权重，也不保存模型借用。`main`、preset 映射和后续 C ABI 不另写 dtype 遍历或准入分支。
 
 | 校验职责 | 唯一归属与规则 |
 |---|---|
 | 配置、tensor schema、shape/bytes 与 loader dtype 支持集 | 沿用 `HfModelValidator`；不因首版 FP32 preset 将通用 loader 改为只接受 F32 |
-| 首版 FP32 执行策略 | 只由 `ValidateFp32ExecutionInputs` 判定：显式 hint 必须为 Float32；缺失/`auto` 的 undefined hint 继续检查实际权重，不能直接返回成功 |
+| 首版 FP32 执行策略 | 只由 `ValidateSourceWeights(model, WeightPolicy::kRequireFp32)` 判定：显式 hint 必须为 Float32；缺失/`auto` 的 undefined hint 继续检查实际权重，不能直接返回成功 |
 | 必需权重的实际 dtype | helper 遍历下述全部 resolved 权重角色，任何非 Float32 均拒绝；不扫描未被模型使用的额外原始 tensor |
 | 算子与物理 binding 合同 | 保留原有 inference、kernel resolve、packing 和 `PrepareExecutionBindings` 校验；准入成功不构成完整可执行性证明，也不授权跳过信任边界检查 |
 
 遍历范围覆盖 embedding、final norm、有效 lm-head，以及每层的 input/post-attention norm、Q/K/V/O projection、gate/up/down projection。按已有角色绑定使用 [ResolveWeightBinding](../../include/aethermind/model/weight/weight_binding_resolver.h)，不在工具建立第二套 role→field 映射；tied lm-head 缺失时沿用该 resolver 的 embedding fallback，缺失是否允许仍由 loader 验证。必需角色解析为空必须报错，不能跳过检查。Norm 也必须为 Float32，不能只检查 linear 或抽查首个 tensor。
 
-精度策略拒绝返回 `Unimplemented`，诊断包含 hint 或权重角色/layer、实际 dtype 与要求的 Float32；runner 标记为模型准入阶段，CLI 按模型不支持返回退出码 1。不得改写 hint 或把 KV 设置为 FP32 来伪装权重转换。M5 已迁移唯一策略与几何映射，M6 adapter 必须复用；11 号提案若扩展 precision preset，再显式扩展策略，不能使本 helper 自动成为 normalizer。
+精度策略拒绝返回 `Unimplemented`，诊断包含 hint 或权重角色/layer、实际 dtype 与要求的 Float32；runner 标记为模型准入阶段，CLI 按模型不支持返回退出码 1。不得改写 hint 或把 KV 设置为 FP32 来伪装权重转换。M5 已迁移唯一策略与几何映射，M6 adapter 复用 strict 策略；显式 C++ 兼容入口通过 `WeightPolicy::kConvertToFp32` 选择准入及转换，不使 CLI/C ABI 的 `kRequireFp32` 调用隐式转换。
 
 对正的 `max_new_tokens = N`，本请求所需 KV token 数为：
 
@@ -213,11 +216,11 @@ M0 只证明测试资产可复现且被 Loader 接受，不证明 FP32 执行准
 
 | 接口 | 已落实的合同 |
 |---|---|
-| `RunOptions` / `CpuPreset` | 拥有路径、Token IDs、显式容量与 GenerationConfig；默认 `kO1Plain` |
+| `RunOptions` / `CompilePreset` | 拥有路径、Token IDs、显式容量与 GenerationConfig；默认 `kO1Plain` |
 | `ValidateRunOptions` | 参数/词表/EOS/model context 检查；正数生成按 checked `prompt + N - 1` 校验容量；零生成仍校验参数，但不要求 prompt 满足物理 KV capacity |
-| `ValidateFp32ExecutionInputs` | 只读 metadata，精确匹配 scalar Float32；通过既有 resolver 检查全部必需角色和层，保留 tied head fallback；非 FP32 返回含实际/要求 dtype 与 hint 或角色/layer 的 `Unimplemented` |
+| `ValidateSourceWeights(model, WeightPolicy::kRequireFp32)` | CLI/C ABI 的 strict 准入：只读 metadata，精确匹配 scalar Float32；通过既有 resolver 检查全部必需角色和层，保留 tied head fallback；非 FP32 返回含实际/要求 dtype 与 hint 或角色/layer 的 `Unimplemented` |
 | `MakeCpuRuntimeOptions` | 通过 `MakeFp32KVCacheOptions` 检查有符号值与转换，规范化逻辑 head_dim，返回 CPU/FP32/64-byte alignment、KV/workspace cap 和 CPU feature policy 的值对象；不创建 Runtime 或分配 KV |
-| `MakeCpuCompileOptions` | 显式选择 O1/plain 或 O2/packed、CPU、kBoth；未知枚举拒绝，dtype 留给 lowering 推导 |
+| `MakeCompileOptions(preset, DeviceType::kCPU)` | 将 O1/plain 或 O2/packed 与显式 CPU target 组合为 kBoth 编译配置；未知 preset/target 拒绝，dtype 留给 lowering 推导；不检查 backend/kernel 可用性 |
 
 测试目标通过 [tests/unit/CMakeLists.txt](../../tests/unit/CMakeLists.txt) 显式编译同一份应用 helper，未将其加入 shared library，也未新增 executable/object/library target。M1 的 helper 直接返回 Status；完整 runner 的阶段标注、Compile→TryBuild 调用顺序与失败清理由 M2 接入（见 §4.2），CLI 退出码由 M3 实现。
 
@@ -234,7 +237,7 @@ M1 验收记录：
 Compile 用例不创建 Runtime，不证明 Prepare/Generate 可执行性；M1 不宣称 A12/A13 的 runner 调用位置、计数 allocator 零 KV 分配或 CLI 门禁已通过。本轮未运行全量测试、benchmark 或 sanitizer。
 
 1. 以由 CI/本地准备的 tiny Llama FP32 HF fixture 定义首版输入，固定来源/revision 与文件校验值，核对 `ParseModelArchitecture`、loader、graph 和 CPU 执行支持范围；不假定 clone 仓库即包含 `.models/` 数据。
-2. 落实已知行为字段的拒绝合同；例如模型声明的 activation 必须与实际构图一致。结构与算子语义修复归 model，参照 [06 路线图](06-system-capability-evolution-roadmap.md)；不在 CLI 复制 validator 的 schema/shape/bytes 规则。首版 FP32 产品准入按 §2.4 仅实现于 `ValidateFp32ExecutionInputs`，与 loader 支持集分开。
+2. 落实已知行为字段的拒绝合同；例如模型声明的 activation 必须与实际构图一致。结构与算子语义修复归 model，参照 [06 路线图](06-system-capability-evolution-roadmap.md)；不在 CLI 复制 validator 的 schema/shape/bytes 规则。首版 FP32 产品准入按 §2.4 仅实现于 `ValidateSourceWeights`，与 loader 支持集分开。
 3. 工具私有 helper 校验 RunOptions、配置 CPU 资源/preset，调用 inference 唯一的 FP32 准入和模型 KV 映射；Load 后先完成实际权重遍历，再 Compile，成功后才 TryBuild。错误按参数/加载/模型准入/编译/Runtime 构建/准备/Session/生成阶段分类，同时保留底层 StatusCode。
 4. 明确零 token、EOS、容量边界和 dtype 拒绝规则，以合法权重 fixture 定义不支持家族和未知 RoPE 的拒绝用例，先验证既有 model/Compile 的拒绝合同；runner 的分配观测随 P1 的 A12 落实。
 
@@ -335,13 +338,13 @@ runner 在入口边界捕获 `std::bad_alloc` 并返回空 message 的 ResourceE
 #### M5：合同冻结与共享策略迁移（已完成，2026-10-22）
 
 - 新增三类 typed opaque handle、固定 v1 配置/version 与完整 owner/error/buffer 合同；统一 PRD 的 error out、错误命名及 Generate 返回码。仅声明新函数，不提供 stub，不声称 runtime C ABI 可链接。
-- 共享 `ValidateFp32ExecutionInputs` 与 `MakeFp32KVCacheOptions` 已归 inference，CLI 直接调用公共头，删除应用副本与旧声明；家族/RoPE 语义继续由 Compile 判定，Runtime/model 比较留 adapter。
+- 共享 `ValidateSourceWeights` 与 `MakeFp32KVCacheOptions` 已归 inference，CLI 直接调用公共头，删除应用副本与旧声明；家族/RoPE 语义继续由 Compile 判定，Runtime/model 比较留 adapter。
 - 真实 C11 translation unit 与 C++20 检查签名、数值、layout 和 opaque 类型；C 编译调用既有 error ABI。修复 `am_error_create` message 构造抛出时的泄漏，确定性 OOM 用例验证命中与分配释放平衡，旧实现负向回归可检出原问题。
 - M5 的聚焦回归、CLI 验证与 sanitizer 证据见 [M5 验收报告](../tests/upper_level_runtime_assembly_m5_validation_2026-10-22.md)。M5 当时尚待的 A10/A14 动态 owner、buffer、error-out、KV 跨对象测试，以及 A13 第二生产消费者，现已由 M6 完成。
 
 #### M6：正式适配与独立 C 验收（已完成，2026-10-22）
 
-M6 在 [c_api_runtime.cpp](../../src/c_api_runtime.cpp) 实现全部冻结函数，Runtime 稳定 heap owner、Model/Session 强 owner 链与逆序销毁封装在 adapter 内，不增加 handle registry。CLI/C adapter 共用 inference 的准入、KV 映射和新增 [CPU preset](../../include/aethermind/inference/cpu_inference_options.h)；应用旧 preset 类型与映射已删除，无兼容转发，参数与 I/O 留在应用。
+M6 在 [c_api_runtime.cpp](../../src/c_api_runtime.cpp) 实现全部冻结函数，Runtime 稳定 heap owner、Model/Session 强 owner 链与逆序销毁封装在 adapter 内，不增加 handle registry。CLI/C adapter 共用 inference 的准入、KV 映射和共享 [编译 preset](../../include/aethermind/inference/inference_options.h)；应用旧 preset 类型与映射已删除，无兼容转发，参数与 I/O 留在应用。
 
 | 验收 | 结果与范围 |
 |---|---|

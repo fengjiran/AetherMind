@@ -98,10 +98,10 @@ Runtime 创建时立即校验显式 KV 配置并分配 K/V plane。模型未知�
 
 ```text
 Load → 共享 FP32 准入 → Compile → adapter 私有 ValidateRuntimeModelKV
-  → PrepareExecutableModel → 发布 model handle
+  → ExecutableModel::Prepare → 发布 model handle
 ```
 
-[共享策略](../../include/aethermind/inference/model_execution_policy.h) 只有两个入口：ValidateFp32ExecutionInputs 检查 hint 与所有必需 resolved weight roles；MakeFp32KVCacheOptions 读取已验证 HfModelConfig，安全转换维度、处理 absent head_dim=0 的整除 fallback、校验显式 capacity，返回已有 KVCacheRuntimeOptions 值类型。CLI 与 C adapter 直接复用同一实现，不复制 dtype 遍历或归一化规则。两者也共用 [cpu_inference_options.h](../../include/aethermind/inference/cpu_inference_options.h) 的 CpuInferencePreset/MakeCpuCompileOptions，应用旧类型与映射实现已删除。
+[共享策略](../../include/aethermind/inference/model_execution_policy.h) 只有两个入口：ValidateSourceWeights 检查 hint 与所有必需 resolved weight roles；MakeFp32KVCacheOptions 读取已验证 HfModelConfig，安全转换维度、处理 absent head_dim=0 的整除 fallback、校验显式 capacity，返回已有 KVCacheRuntimeOptions 值类型。CLI 与 C adapter 直接复用同一实现，不复制 dtype 遍历或归一化规则。两者也共用 [inference_options.h](../../include/aethermind/inference/inference_options.h) 的 CompilePreset/MakeCompileOptions（显式 target=CPU），应用旧类型与映射实现已删除。
 
 MakeFp32KVCacheOptions 不验证现有 Runtime，也不代替已编译 state dtype 检查。adapter 私有 ValidateRuntimeModelKV 比较既有 KV layout 与通过 Compile 的模型：
 

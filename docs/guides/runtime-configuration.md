@@ -9,14 +9,14 @@
 ```text
 Load model → validate execution policy → MakeCpuRuntimeOptions
     → Compile → RuntimeBuilder::WithOptions → TryBuild
-    → PrepareExecutableModel → InferenceSession::Create → Generate
+    → ExecutableModel::Prepare → InferenceSession::Create → Generate
 ```
 
-此顺序使模型配置、KV 容量和预算在资源分配前一次确定。`Runtime` 必须在 `PrepareExecutableModel` 前移动到最终地址，之后直到 model、session 销毁前都不能移动。
+此顺序使模型配置、KV 容量和预算在资源分配前一次确定。`Runtime` 必须在 `ExecutableModel::Prepare` 前移动到最终地址，之后直到 model、session 销毁前都不能移动。
 
 ## 共享 CPU 映射
 
-`CpuRuntimeAssemblyOptions` 与 `MakeCpuRuntimeOptions` 和编译 preset 共同声明于 `include/aethermind/inference/cpu_inference_options.h`，调用方无需再包含单独的 runtime options 头。
+`CpuRuntimeAssemblyOptions` 与 `MakeCpuRuntimeOptions` 和编译 preset 共同声明于 `include/aethermind/inference/inference_options.h`，调用方无需再包含单独的 runtime options 头。
 
 `CpuRuntimeAssemblyOptions` 是调用方设置的运行前输入：
 
@@ -29,7 +29,7 @@ Load model → validate execution policy → MakeCpuRuntimeOptions
 
 `MakeCpuRuntimeOptions` 是运行前 Runtime 配置的唯一入口：它显式设置 `RuntimeOptions` 的全部六组字段（allocator、backend、execution、workspace、tracing、kv_cache），包括 CPU/FP32 固定策略、FP32 KV geometry、两个 Runtime 阶段预算和 feature policy，不依赖 `RuntimeOptions` 的默认成员值。它只读取 metadata；不读取权重 payload、不分配 Buffer、不创建 Runtime。`RuntimeBuilder` 负责真正的 KV layout 规划、物理字节上限检查及资源分配。
 
-模型准备和请求的预算不属于 `RuntimeOptions`：分别使用 `ExecutableModelPrepareOptions` 与 `InferenceSessionOptions`，因为它们需要已编译的 artifact 或具体 prompt/generation。它们可以和这份 Runtime 配置一起在产品入口处保存，但仍在各自阶段应用。
+模型准备和请求的预算不属于 `RuntimeOptions`：分别使用 `ModelLimits` 与 `InferenceSessionOptions`，因为它们需要已编译的 artifact 或具体 prompt/generation。它们可以和这份 Runtime 配置一起在产品入口处保存，但仍在各自阶段应用。
 
 ```cpp
 using namespace aethermind;
@@ -38,7 +38,7 @@ StatusOr<std::vector<uint32_t>> GenerateWithUnifiedConfiguration(
         const std::filesystem::path& model_dir,
         std::span<const uint32_t> prompt) {
     AM_ASSIGN_OR_RETURN(auto loaded, ModelLoader::Load(model_dir));
-    AM_RETURN_IF_ERROR(ValidateFp32ExecutionInputs(*loaded));
+    AM_RETURN_IF_ERROR(ValidateSourceWeights(*loaded, WeightPolicy::kRequireFp32));
 
     CpuRuntimeAssemblyOptions runtime_input{
             .context_tokens = 4096,
@@ -49,7 +49,7 @@ StatusOr<std::vector<uint32_t>> GenerateWithUnifiedConfiguration(
     AM_ASSIGN_OR_RETURN(auto runtime_options,
                         MakeCpuRuntimeOptions(loaded->GetConfig(), runtime_input));
     AM_ASSIGN_OR_RETURN(auto compile_options,
-                        MakeCpuCompileOptions(CpuInferencePreset::kO1Plain));
+                        MakeCompileOptions(CompilePreset::kO1Plain, DeviceType::kCPU));
     AM_ASSIGN_OR_RETURN(auto artifact,
                         ModelCompiler::Compile(std::move(loaded), compile_options));
 
@@ -57,12 +57,12 @@ StatusOr<std::vector<uint32_t>> GenerateWithUnifiedConfiguration(
     builder.WithOptions(runtime_options);
     AM_ASSIGN_OR_RETURN(Runtime runtime, builder.TryBuild());
 
-    const ExecutableModelPrepareOptions prepare_options{
+    const ModelLimits prepare_options{
             .max_model_payload_bytes = 1024U * 1024U * 1024U,
             .max_packed_weight_bytes = 512U * 1024U * 1024U,
     };
     AM_ASSIGN_OR_RETURN(auto executable,
-                        PrepareExecutableModel(runtime, std::move(artifact), prepare_options));
+                        ExecutableModel::Prepare(runtime, std::move(artifact), prepare_options));
     auto model = std::make_shared<ExecutableModel>(std::move(executable));
     AM_ASSIGN_OR_RETURN(auto session, InferenceSession::Create(
             runtime, model, {.max_request_payload_bytes = 16U * 1024U * 1024U}));

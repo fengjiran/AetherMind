@@ -39,7 +39,7 @@ The application explicitly assembles the public C++ building blocks in this orde
 
 ```text
 ModelLoader::Load → ModelCompiler::Compile → RuntimeBuilder::TryBuild
-  → PrepareExecutableModel → InferenceSession::Create → Generate
+  → ExecutableModel::Prepare → InferenceSession::Create → Generate
 ```
 
 Compilation precedes KV allocation. Runtime remains at a stable address from preparation onward and outlives the prepared model and session; the application returns only owning Token IDs. Source ownership and dependency rules are defined in [AGENTS.md](AGENTS.md), with the detailed [architecture overview](docs/designs/architecture/architecture_overview.md) and [assembly plan](docs/improvement-plan/10-upper-level-runtime-assembly.md) covering the contracts.
@@ -81,7 +81,7 @@ AetherMind/
 └── tools/                   # Development and maintenance tools
 ```
 
-The optional `aethermind_infer` executable uses the `apps/inference/` runner to load, compile, build Runtime, prepare a model, and generate owning Token IDs through public C++ APIs. CLI and C ABI share FP32 admission/model-to-KV mapping in `inference/model_execution_policy.h` and compilation presets in `inference/cpu_inference_options.h`; application helpers retain request validation, CPU resource assembly, and I/O. The [assembly plan](docs/improvement-plan/10-upper-level-runtime-assembly.md) records staged validation. Application code stays outside the core shared library; custom builder injection is enabled only for the runner's test compilation.
+The optional `aethermind_infer` executable uses the `apps/inference/` runner to load, compile, build Runtime, prepare a model, and generate owning Token IDs through public C++ APIs. CLI and C ABI share FP32 admission/model-to-KV mapping in `inference/model_execution_policy.h` and compilation presets in `inference/inference_options.h`; application helpers retain request validation, CPU resource assembly, and I/O. The [assembly plan](docs/improvement-plan/10-upper-level-runtime-assembly.md) records staged validation. Application code stays outside the core shared library; custom builder injection is enabled only for the runner's test compilation.
 
 ## Requirements
 

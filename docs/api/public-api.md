@@ -2,7 +2,7 @@
 
 > 本文件汇总 AetherMind 公共 API 的语义，与头文件 Doxygen 注释**同源同步**：修改头文件注释必须同步本文件，反之亦然（[文档系统规范](../guides/documentation-guide.md) §7.3）。
 >
-> 构建选项与运行配置以根 [README.md](../../README.md) 为单一事实源，本文件不复制其表格。C++ 已提供 `PrepareExecutableModel` 与 `InferenceSession::Generate`，M6 已接通 runtime/model/session C ABI。当前已验证范围为 CPU FP32 Llama Dense，不以 loader 接受范围推导执行支持；能力与产品目标见 [PRD](../products/aethermind_prd.md) 和 [10 号方案](../improvement-plan/10-upper-level-runtime-assembly.md)。
+> 构建选项与运行配置以根 [README.md](../../README.md) 为单一事实源，本文件不复制其表格。C++ 已提供 `ExecutableModel::Prepare` 与 `InferenceSession::Generate`，M6 已接通 runtime/model/session C ABI。当前已验证范围为 CPU FP32 Llama Dense，不以 loader 接受范围推导执行支持；能力与产品目标见 [PRD](../products/aethermind_prd.md) 和 [10 号方案](../improvement-plan/10-upper-level-runtime-assembly.md)。
 
 ## 1. C ABI（include/c_api.h）
 
@@ -99,14 +99,15 @@
 
 | 接口 | 语义与所有权 |
 |---|---|
-| `Status ValidateFp32ExecutionInputs(const LoadedModel&)` | 检查 scalar Float32 hint 与全部必需 resolved weight roles，支持 tied lm-head fallback；只读 metadata，不读/转换 payload、不保留借用。精度不支持返回 Unimplemented，非法 metadata 返回相应错误，诊断 OOM 返回空 message 的 ResourceExhausted。家族/算子语义仍由 Compile 判定。 |
+| `Status ValidateSourceWeights(const LoadedModel&, WeightPolicy)` | 按源权重策略检查 dtype hint 与全部必需 resolved weight roles；`kRequireFp32` 要求 scalar F32，`kConvertToFp32` 还允许 F16/BF16，支持 tied lm-head fallback；只读 metadata，不读/转换 payload、不保留借用。精度不支持返回 Unimplemented，非法 metadata 返回相应错误，诊断 OOM 返回空 message 的 ResourceExhausted。家族/算子语义仍由 Compile 判定。 |
 | `StatusOr<KVCacheRuntimeOptions> MakeFp32KVCacheOptions(const HfModelConfig&, size_t context_tokens)` | 将 Loader 已验证的模型几何与显式 capacity 映射为 owning KV 配置：CPU 首版 Float32、64-byte alignment、逻辑 head_dim；只有 absent head_dim=0 才按整除 fallback。校验正数、安全转换和模型 context 上限，不分配 KV、不访问 backend、不比较既有 Runtime/model。 |
 
 M5 将这两项规则归入 inference，CLI 与 M6 C adapter 消费同一实现，没有旧应用 namespace alias 或兼容转发。跨对象 KV 相等与 compiled state dtype 校验仍属于 adapter。
 
-### 共享 CPU 编译与运行配置（include/aethermind/inference/cpu_inference_options.h）
+### 共享编译策略与 CPU 运行配置（include/aethermind/inference/inference_options.h）
 
-`CpuInferencePreset::kO1Plain` / `kO2Packed` 和 `MakeCpuCompileOptions(CpuInferencePreset)` 为 CLI/C adapter 共用的显式编译策略。返回 owning ModelCompileOptions：O1/plain 或 O2/packed、CPU、kBoth，activation/weight dtype 由 lowering 推导；未知枚举返回 InvalidArgument，诊断 OOM 返回空 message 的 ResourceExhausted。该函数不加载/准入模型、不 resolve kernel、不分配 storage，也不暗含性能优劣。
+`CompilePreset::kO1Plain` / `kO2Packed` 与 `MakeCompileOptions(CompilePreset, DeviceType target)` 将优化/packing 策略与目标设备分开。返回 owning ModelCompileOptions：O1/plain 或 O2/packed、调用方指定 target、kBoth；activation/weight dtype 由 lowering 推导。未知 preset、未定义或未知 target 返回 InvalidArgument，诊断 OOM 返回空 message 的 ResourceExhausted。它不检查 backend/kernel 的可用性，不加载/准入模型或分配 storage；CUDA/CANN 配置值可生成和降低，但不构成对应设备推理支持。CLI/C adapter 显式传入 CPU。
+
 
 `CpuRuntimeAssemblyOptions` 和 `MakeCpuRuntimeOptions(const HfModelConfig&, const CpuRuntimeAssemblyOptions&)` 是模型感知的运行前值映射，也是 CPU Runtime 配置的唯一入口。调用方一次提供 context capacity、KV/workspace payload caps 与 CPU feature policy；helper 复用 FP32 KV 映射，并显式构造 `RuntimeOptions` 的全部六组字段，不依赖默认成员值。它只读 metadata，不读取权重 payload、不分配 Buffer、不创建 Runtime 或保留模型借用；模型准备和请求预算继续使用各自 options。
 
@@ -129,15 +130,18 @@ M5 将这两项规则归入 inference，CLI 与 M6 C adapter 消费同一实现�
 | `Build` | `Runtime Build()` | 装配 AllocatorRegistry + BackendRegistry + KVCacheManager 为 `Runtime`；初始化失败（含分配失败）时 abort |
 | `TryBuild` | `StatusOr<Runtime> TryBuild()` | 与 `Build` 相同的装配，但把 KV 初始化失败与注册阶段的分配失败作为 Status 返回（分配失败为空 message 的 `kResourceExhausted`）。成功后消费 pending 注册；失败时两个 pending 列表只保留从未转移的项，builder 仍可复用而不会 abort，但已转入被丢弃 registry 的注册项不可恢复 |
 
-### `PrepareExecutableModel` / `ExecutableModel`（include/aethermind/inference/executable_model.h）
+### `ExecutableModel`（include/aethermind/inference/executable_model.h）
 
 | 接口 | 语义与所有权 |
 |---|---|
-| `StatusOr<ExecutableModel> PrepareExecutableModel(Runtime&, LoweredModelArtifact)` | 唯一生产准备入口；消费 artifact，编排权重物化、执行计划构建与 immutable weight/constant bindings。失败不发布部分准备的模型。 |
-| `LoadAndPrepareExecutableModel(Runtime&, const std::filesystem::path&, const ModelCompileOptions&)` | 组合加载、编译、准备的便利入口，要求 Runtime 已存在且编译选项显式给出。CLI 为读取模型配置并在 Compile 成功后分配 KV，改用上述独立步骤。 |
+| `static StatusOr<ExecutableModel> Prepare(Runtime&, LoweredModelArtifact, const ModelLimits& = {})` | 唯一生产准备入口；消费 artifact，编排权重物化、执行计划构建与 immutable weight/constant bindings。失败不发布部分准备的模型。 |
+| `static StatusOr<ExecutableModel> Load(Runtime&, const std::filesystem::path&, const ModelLoadOptions&)` | 目录到可执行模型的入口：加载、按 `WeightPolicy` 准入与可选转换、按 preset 与 target 编译，再调用 `Prepare`。Runtime 已存在，options 必须显式传入；`{}` 为 CPU strict FP32 O1/plain。 |
+| `ModelLimits` / `ModelLoadOptions` | 前者配置模型与 packed payload 限额；后者包含 `preset`、目标设备 `target`（默认 CPU）、源权重策略 `weights` 及 `limits`。`kConvertToFp32` 将 F16/BF16 拓宽为 F32，目前只允许 CPU O1/plain。 |
 | `ExecutableModel::plan(ExecPhase)` / `immutable_weight_bindings(ExecPhase)` | 返回模型拥有的 plan/binding table 的借用指针，phase 不匹配报错；Prefill/Decode 当前共享一个不可变 plan。binding table 不含请求 token/position 输入。 |
 | `artifact_id()` / `phase()` / `context_limit()` / `vocab_size()` | 查询编译产物身份、phase、模型 context 上限与词表大小。 |
 | `IsPreparedFor(const Runtime&)` | 检查模型 resolve 的 kernels 是否属于该 Runtime。 |
+
+任意 `ModelCompileOptions` 的调用方显式调用 `ModelLoader`、`ModelCompiler`，再调用 `ExecutableModel::Prepare`。CLI 保持 Compile 成功后构建 Runtime；C adapter 保持 Prepare 前的 Runtime/model KV 校验。旧创建自由函数与转发 overload 已删除，无兼容别名。
 
 `ExecutableModel` 拥有 compiler artifact、packed artifacts、binding metadata、immutable bindings 与 plan，可 move-construct，不可复制或赋值。传给 Prepare 的 Runtime 从此必须保持地址稳定、不可移动，并长于模型和 Session；模型必须长于从其 plan/bindings 派生的 prepared bindings。底层权重 storage 由模型保活，resolved kernel 所借用的 backend 仍由 Runtime 保活。
 

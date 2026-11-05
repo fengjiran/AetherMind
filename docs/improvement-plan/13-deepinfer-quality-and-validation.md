@@ -84,7 +84,7 @@ DeepInfer 当前面向 DeepSeek-V4.1-Flash 和 SM100/Ascend 950 的优化不能�
                └─ Prefill 与每步 Decode → logits/KV snapshot → 独立 oracle 比较
 ```
 
-公开路径的对象构造顺序与失败边界以 10 为准：可提前确定的模型/请求错误在 KV 大块分配前返回；backend、packing 与 kernel 可执行性由 Prepare 判定。现有要求 Runtime 已存在的 LoadAndPrepareExecutableModel 便利入口继续独立覆盖，不能据上图改写其接口。
+公开路径的对象构造顺序与失败边界以 10 为准：可提前确定的模型/请求错误在 KV 大块分配前返回；backend、packing 与 kernel 可执行性由 Prepare 判定。现有要求 Runtime 已存在的 ExecutableModel::Load 便利入口继续独立覆盖，不能据上图改写其接口。
 
 诊断路径复用现有 direct Prefill/Decode 测试基础，在每步输入相同的既定 token 与绝对 position，避免自由生成分叉后无法定位初始误差。它不代替公开 Generate 集成测试，也不使用观测后的运行数据生成自己的正确性期望值。
 
@@ -152,7 +152,7 @@ Decode 上下文随生成增长。固定上下文实验应在计时区外用独�
 
 - **准入子项已实现（2026-10-26）**：model 显式解析 sliding_window，缺失/null 保持当前全注意力语义；正整数因不支持滑动窗口而拒绝，0/负数因非法值而拒绝，非法类型、小数/指数、非法后缀和整数溢出在解析时拒绝。覆盖 reader→validator→loader、直接 BuildModelGraph/BuildLlamaDense 与 runner 的 Runtime 分配前失败边界，沿用已有 activation 与 RoPE 权威。实现和限定验证证据见 [第一批验收记录](../tests/sliding_window_admission_validation_2026-10-26.md)。本子项不表示 Q1 全部退出条件或 Q2–Q5 已完成。
 - 按 10 实施 apps/inference 下的独立入口，默认 O1/plain，O2/packed 显式选择；完成模型和请求失败边界、Runtime 稳定地址、stderr/stdout 与退出码合同。
-- 固定 fixture 来源、checksum、命令和预期样本集合；复用已有 LoadAndPrepareExecutableModel/Generate 测试。输出第一版能力证据记录，尚未运行的组合明确标记。
+- 固定 fixture 来源、checksum、命令和预期样本集合；复用已有 ExecutableModel::Load/Generate 测试。输出第一版能力证据记录，尚未运行的组合明确标记。
 
 退出条件：不支持的已知语义在规定阶段被拒绝；关闭测试与 benchmark 后能单独构建/运行入口；合法 fixture 通过公开全链路，失败用例清理正确。FP16/BF16、量化和其他家族不能因 parser 接受而出现在支持列表。
 

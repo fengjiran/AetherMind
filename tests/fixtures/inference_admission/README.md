@@ -91,7 +91,7 @@ M4 passed 48 CLI/Session comparisons, 271 focused C++ regressions, 38 Python CLI
 
 M5 moved the unique admission implementation to `inference/model_execution_policy.h` and added shared `MakeFp32KVCacheOptions`. Existing admission tests consume that public header directly; the application has no forwarding implementation. Eleven additional `Fp32KVCacheOptions.*` tests cover the mapping. The [M5 report](../../../docs/tests/upper_level_runtime_assembly_m5_validation_2026-10-22.md) records its 290-test focused C++ run, CLI checks, C11 contract, and sanitizer boundaries.
 
-M6 implemented the frozen C ABI and moved CPU compile presets into shared `inference/cpu_inference_options.h`. CLI and C adapter use the same admission, geometry mapping, and preset implementation. Run the new C gates with:
+M6 implemented the frozen C ABI and moved CPU compile presets into shared `inference/inference_options.h`. CLI and C adapter use the same admission, geometry mapping, and preset implementation. Run the new C gates with:
 
 ```bash
 TMPDIR=/tmp ./build/tests/unit/aethermind_unit_tests \

@@ -11,8 +11,8 @@ Runtime、Prepare 和 Session options 中的整数 limit 单位均为可见 payl
 | Runtime 构造 | `KVCacheRuntimeOptions::max_bytes` | layout padding 后的 K/V 两块 plane | 获取 KV allocator、分配 plane 前 |
 | Request | `WorkspaceRuntimeOptions::default_workspace_limit_bytes` | Prefill/Decode 共用的最大 workspace | reservation 与 workspace 分配前 |
 | Request | `InferenceSessionOptions::max_request_payload_bytes` | `workspace + max(prefill activation, decode activation)` | reservation、workspace 与 activation 分配前 |
-| Model 准备 | `ExecutableModelPrepareOptions::max_packed_weight_bytes` | batch 查询的 packed storage 上界 | 任一 packed artifact 分配前 |
-| Model 准备 | `ExecutableModelPrepareOptions::max_model_payload_bytes` | known owned raw backing、unique inline constants、packed payload | 准备阶段、packing 前；原始 backing 不完整时拒绝有限 cap |
+| Model 准备 | `ModelLimits::max_packed_weight_bytes` | batch 查询的 packed storage 上界 | 任一 packed artifact 分配前 |
+| Model 准备 | `ModelLimits::max_model_payload_bytes` | known owned raw backing、unique inline constants、packed payload | 准备阶段、packing 前；原始 backing 不完整时拒绝有限 cap |
 
 `KVCacheManager::Init` 是低层物理存储接口，保留原有几何和 allocator 合同；它不会自动读取 Runtime 的 `max_bytes`。KV cap 只在 `RuntimeBuilder` 组装 Runtime 时生效。
 
@@ -54,24 +54,24 @@ StatusOr<std::vector<uint32_t>> GenerateWithCaps(
         const std::filesystem::path& model_dir,
         std::span<const uint32_t> prompt, size_t context_tokens) {
     AM_ASSIGN_OR_RETURN(auto loaded, ModelLoader::Load(model_dir));
-    AM_RETURN_IF_ERROR(ValidateFp32ExecutionInputs(*loaded));
+    AM_RETURN_IF_ERROR(ValidateSourceWeights(*loaded, WeightPolicy::kRequireFp32));
     AM_ASSIGN_OR_RETURN(auto runtime_options,
                         MakeCpuRuntimeOptions(
                                 loaded->GetConfig(),
                                 {.context_tokens = context_tokens,
                                  .kv_max_bytes = 64U * 1024U * 1024U,
                                  .workspace_limit_bytes = 2U * 1024U * 1024U}));
-    AM_ASSIGN_OR_RETURN(auto compile_options, MakeCpuCompileOptions(CpuInferencePreset::kO1Plain));
+    AM_ASSIGN_OR_RETURN(auto compile_options, MakeCompileOptions(CompilePreset::kO1Plain, DeviceType::kCPU));
     AM_ASSIGN_OR_RETURN(auto artifact, ModelCompiler::Compile(std::move(loaded), compile_options));
     RuntimeBuilder builder;
     builder.WithOptions(runtime_options);
     AM_ASSIGN_OR_RETURN(Runtime runtime, builder.TryBuild());
-    const ExecutableModelPrepareOptions prepare_options{
+    const ModelLimits prepare_options{
         .max_model_payload_bytes = 512U * 1024U * 1024U,
         .max_packed_weight_bytes = 256U * 1024U * 1024U,
     };
     AM_ASSIGN_OR_RETURN(auto executable,
-                        PrepareExecutableModel(runtime, std::move(artifact), prepare_options));
+                        ExecutableModel::Prepare(runtime, std::move(artifact), prepare_options));
     auto model = std::make_shared<ExecutableModel>(std::move(executable));
     AM_ASSIGN_OR_RETURN(auto session, InferenceSession::Create(
         runtime, model, {.max_request_payload_bytes = 8U * 1024U * 1024U}));
@@ -81,7 +81,7 @@ StatusOr<std::vector<uint32_t>> GenerateWithCaps(
 }
 ```
 
-原有 `PrepareExecutableModel`、`LoadAndPrepareExecutableModel` 与 `InferenceSession::Create` overload 仍保留，默认均不启用新的可选 caps。C ABI v1 的 struct、函数和默认 FP32 行为未改变。
+模型准备使用 `ExecutableModel::Prepare(..., ModelLimits)`，目录加载使用 `ExecutableModel::Load(..., ModelLoadOptions)`；零限额表示不启用可选 cap。旧创建自由函数与转发 overload 已删除；`InferenceSession::Create` 仍支持独立的 request options。C ABI v1 的 struct、函数和默认 FP32 行为未改变。
 
 CPU Runtime 的完整配置映射和 Builder 的 option 预检见 [运行前 Runtime 配置](runtime-configuration.md)。
 

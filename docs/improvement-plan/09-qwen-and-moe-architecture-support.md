@@ -55,7 +55,7 @@ Qwen 是模型家族，MoE 是 FFN 结构；支持 MoE 不以先支持多个 Den
 
 PRD 当前仍限定 Llama Dense，并排除 MoE。本提案记录用户要求的范围扩展；进入实现时同步修订 PRD 的模型矩阵和验收范围，交付时只把已通过相应证据门禁的组合标记为支持。本次文档化不把 PRD 的现状改写为已经交付。
 
-06 保留通用 correctness、physical planning、量化和发布路线，本提案负责多架构/MoE 的具体依赖与集成；07 的 `PrepareExecutableModel` 仍是唯一生产准备入口；08 继续负责 KV 物理状态、提交权威、Attention 优化及资源预算。MoE 不要求 Paged KV、服务化、GPU 或专家并行。
+06 保留通用 correctness、physical planning、量化和发布路线，本提案负责多架构/MoE 的具体依赖与集成；07 的 `ExecutableModel::Prepare` 仍是唯一生产准备入口；08 继续负责 KV 物理状态、提交权威、Attention 优化及资源预算。MoE 不要求 Paged KV、服务化、GPU 或专家并行。
 
 [10 上层 Runtime 组装提案](10-upper-level-runtime-assembly.md) 负责当前 Llama FP32 产品入口与对象生命周期，不是多架构改造的完整交付前置；本提案也不阻塞其基线入口。两者共享“模型只 Load/Compile/Prepare 一次、请求在冷路径 specialize”的边界，workspace Buffer 继续归请求，不移入 RuntimeBuilder 或工具层。
 
@@ -285,7 +285,7 @@ plan 步骤固定，expert_ids/counts/offsets 是执行数据。在 binding spec
 推荐扩展已有 `PreparedExecutionBindings` 的 cold-path specialization，分开 kernel resolution 和 concrete workspace query：
 
 ```text
-PrepareExecutableModel / ExecutionPlanBuilder
+ExecutableModel::Prepare / ExecutionPlanBuilder
   → 按 descriptor resolve kernel，冻结 attrs、params builder、workspace query
   → 一个 immutable plan，不提前假设当前请求的 T
 
@@ -324,7 +324,7 @@ Session 请求
 
 每步 Decode 继续使用同一 prepared bindings、kernel params 和 workspace，只更新合法输入数据与 KV view；循环内不分配、不 query、不重新 resolve 或 packing。kernel 从当次 `KernelContext` 获得 workspace，不能在 prepared params 中固化该基址。
 
-该设计适用于当前 Prefill/Decode 共用一个 immutable `kBoth` plan，不要求拆两份模型。[10](10-upper-level-runtime-assembly.md) 的“一次准备”指一次 Load/Compile/PrepareExecutableModel，并不禁止每请求的两阶段 binding specialization。失败时通过现有请求 RAII 清理 activation、context、workspace 与 reservation，完整 plan 的 KV 发布规则不变。
+该设计适用于当前 Prefill/Decode 共用一个 immutable `kBoth` plan，不要求拆两份模型。[10](10-upper-level-runtime-assembly.md) 的“一次准备”指一次 Load/Compile/ExecutableModel::Prepare，并不禁止每请求的两阶段 binding specialization。失败时通过现有请求 RAII 清理 activation、context、workspace 与 reservation，完整 plan 的 KV 发布规则不变。
 
 #### 3.6.4 scratch 复用与总预算
 
@@ -392,7 +392,7 @@ model 私有 input/output 构图 helper 固定顺序，各 family builder 使用
 
 两个输入的 dtype/rank 相同，当前 runtime 校验不能识别语义互换；不得声称形状检查已证明角色正确。通过 builder 合同检查、token/position 数据显著不同及非零绝对位置的集成用例验证绑定正确。将来只有在具体目标要求可变输入顺序或其他任务输出时，再考虑 typed role metadata 并贯通 lowering，而非现在引入任意 I/O 系统。
 
-`InferenceSession` 继续只编排同步生成、请求资源与失败清理；MoE、norm、RoPE 和 mask 由图/算子执行，KV 仅由完整 plan transaction 发布。模型准备仍经 `PrepareExecutableModel`，不存在每家族独立 Session 或第二生产入口。
+`InferenceSession` 继续只编排同步生成、请求资源与失败清理；MoE、norm、RoPE 和 mask 由图/算子执行，KV 仅由完整 plan transaction 发布。模型准备仍经 `ExecutableModel::Prepare`，不存在每家族独立 Session 或第二生产入口。
 
 ### 3.11 支持矩阵与可执行能力真值
 
@@ -495,7 +495,7 @@ M1 是推荐集成顺序，不阻塞 M2/M3 的独立实现；M2 的真实 prepar
 
 ### 6.3 生产入口与数值 oracle
 
-每个拟标记支持的组合通过 `ModelLoader → ModelCompiler → PrepareExecutableModel → InferenceSession` 和真实 CpuBackend，不用手工拼接 bindings 的测试代替集成门禁。
+每个拟标记支持的组合通过 `ModelLoader → ModelCompiler → ExecutableModel::Prepare → InferenceSession` 和真实 CpuBackend，不用手工拼接 bindings 的测试代替集成门禁。
 
 先采用可再生成 tiny HF checkpoints：Qwen3 Dense；Qwen3 MoE 的纯 MoE 与混合 Dense/MoE 层；按需追加 Qwen2/Mixtral/shared expert。固定权重、token IDs、Transformers 版本、checkpoint revision/hash、eval/attention 实现与 dtype。
 

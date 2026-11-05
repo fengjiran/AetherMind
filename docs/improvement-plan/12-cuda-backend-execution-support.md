@@ -49,7 +49,7 @@ P0 设备、存储与执行完成合同
 | `ModelCompiler` 已串联 Build→Optimize→Lower，lowering 可传播 CUDA selector；已有传播测试源码，但默认优化管线仅按 opt_level/flags 选择 passes | [model compiler](../../src/compiler/model_compiler.cpp)、[pipeline](../../src/compiler/optimize_graph.cpp)、[lowering](../../src/compiler/graph_lowering.cpp)、[compiler tests](../../tests/unit/compiler/test_model_compiler.cpp) | 无需重写 IR；补齐 target-aware pipeline policy，传播测试不证明 CUDA 可执行 |
 | binding 准备已拆分 `PlanExecutionBindings` 与 `MaterializeExecutionBindings`，前者规划具体 activation，后者分配并构造 params | [binding 接口](../../include/aethermind/execution/execution_bindings.h)、[binding 实现](../../src/execution/execution_bindings.cpp) | 在既有冷路径扩展 specialization，不将其误写成已有动态 workspace query |
 | sanitizer 已按 target 应用但 compile options 尚未按语言过滤；AVX2/FMA 已限制于指定 CPU 源文件 | [sanitizer CMake](../../cmake/AetherMindSanitizers.cmake)、[CPU ISA CMake](../../cmake/AetherMindCpuIsa.cmake) | 复用现有隔离机制，补 CUDA 语言/链接阶段边界，不按旧全局 flags 假设重构 |
-| 当前存在 CPU compile preset、独立 CLI、同步 CPU 准备入口与正式 C runtime adapter；逻辑 FP32 转换和 graph-build dtype options 已存在 | [CPU options](../../include/aethermind/inference/cpu_inference_options.h)、[准备入口](../../src/inference/executable_model.cpp)、[构图选项](../../include/aethermind/model/build_model_graph.h)、[C adapter](../../src/c_api_runtime.cpp)、[CLI CMake](../../apps/inference/CMakeLists.txt) | CUDA preset 单独准入；保护现有 CPU CLI/C ABI 合同，复用已实现精度基础 |
+| 当前存在 CPU compile preset、独立 CLI、同步 CPU 准备入口与正式 C runtime adapter；逻辑 FP32 转换和 graph-build dtype options 已存在 | [CPU options](../../include/aethermind/inference/inference_options.h)、[准备入口](../../src/inference/executable_model.cpp)、[构图选项](../../include/aethermind/model/build_model_graph.h)、[C adapter](../../src/c_api_runtime.cpp)、[CLI CMake](../../apps/inference/CMakeLists.txt) | CUDA preset 单独准入；保护现有 CPU CLI/C ABI 合同，复用已实现精度基础 |
 
 ### 1.3 范围与非目标
 
@@ -88,7 +88,7 @@ P2 输入使用真实 F32 权重；F16/BF16 checkpoint 只有经 [11 号提案](
 | runtime | 拟增加具体 target Device 与上述资源 owner | 创建资源、配置一致性校验、按目标 allocator 初始化 KV；不依赖 execution/compiler/inference |
 | compiler | 沿用 `GraphLoweringConfig` 的 selector；按需编排 target-aware pipeline | 不查询 CUDA registry；graph/operators 不承载 SM、stream、workspace 或库 handle |
 | execution | 拟扩展 `ExecutionContext` 的设备执行资源借用，binding 校验与完成屏障 | 向 `KernelContext` 传窄借用，维护完整 plan 的 KV transaction |
-| inference | 拟在 `ExecutableModel` 聚合 resident Buffer owners；改造请求 I/O 与资源选择 | 唯一 `PrepareExecutableModel` 编排上传/packing；Generate 编排 H2D/D2H，不实现 CUDA copy/kernel 算法 |
+| inference | 拟在 `ExecutableModel` 聚合 resident Buffer owners；改造请求 I/O 与资源选择 | 唯一 `ExecutableModel::Prepare` 编排上传/packing；Generate 编排 H2D/D2H，不实现 CUDA copy/kernel 算法 |
 
 `Backend` 保持 `PrepareKernel / GetPackingRecipe / GetWeightPackingRequirements / PackWeights` 的准备期职责，不增加 `Backend::Execute`。设备执行资源由 Runtime 按明确 Device 拥有，ExecutionContext 借用；CUDA stream 与 cuBLAS handle 同 owner，创建时绑定一次，执行中不切换共享 handle 的 stream。初期一个 Runtime 对应一个执行目标与一条串行执行路径。
 
@@ -130,7 +130,7 @@ Generate 请求
   └─ ExecutionContext：拥有 bindings，借用执行资源、workspace 与 KV view
 ```
 
-ModelLoader 继续只读 HF、验证与 resolve，不上传显存。`PrepareExecutableModel` 按目标设备编排普通权重/常量上传和 `Backend::PackWeights`，CUDA 具体 transfer/packing 算法归 backend。准备成功返回前等待全部上传/转换完成，再发布 immutable model，首版不引入 readiness event 的跨 stream 生命周期。
+ModelLoader 继续只读 HF、验证与 resolve，不上传显存。`ExecutableModel::Prepare` 按目标设备编排普通权重/常量上传和 `Backend::PackWeights`，CUDA 具体 transfer/packing 算法归 backend。准备成功返回前等待全部上传/转换完成，再发布 immutable model，首版不引入 readiness event 的跨 stream 生命周期。
 
 上传保持 row-major 的 plain 权重仍为 `WeightFormat::kPlain`；不能只为显存所有权伪造 packed artifact。opaque 格式才走 recipe，新增 CUDA `PackingLayout` 必须描述不可变字节格式，贯通尺寸公式、alignment、validator、key 与 consumer，不复用 CPU B-panel ID。packed 数据由传入的目标 allocator 分配，host source 可读性与 device destination 可写性分别验证。
 
@@ -413,7 +413,7 @@ endif()
     → LowerModelGraph(lowering)
     → immutable LoweredModelArtifact
 
-模型执行准备，一次 PrepareExecutableModel：
+模型执行准备，一次 ExecutableModel::Prepare：
   inference 编排目标设备权重驻留 / packing
     → ExecutionPlanBuilder
     → CudaBackend::PrepareKernel / descriptor eligibility
@@ -443,7 +443,7 @@ endif()
 | phase | both 语义合同，按请求分别 specialize | 后续需要阶段专用实现时使用现有 ExecPhase |
 | math / hardware eligibility | FP32 baseline 的固定数值合同 | backend 验证实际 SM/库/编译产物；不得隐式开启缩窄乘法模式 |
 
-preset 是经验证组合的产品入口，不强制低层 `ModelCompiler::Compile` 只能产出这些组合。低层调用方可以构造其他结构合法的 lowered graph，但不能据此声称 CUDA 可执行，真实 kernel/layout/shape 检查仍在后续 Prepare。CPU 现有 presets 和 `LoadAndPrepareCpuExecutableModel` 保持显式 CPU 语义，新增 CUDA 组装不会把其默认 target 偷换。
+preset 是经验证组合的产品入口，不强制低层 `ModelCompiler::Compile` 只能产出这些组合。低层调用方可以构造其他结构合法的 lowered graph，但不能据此声称 CUDA 可执行，真实 kernel/layout/shape 检查仍在后续 Prepare。CPU 现有 presets 和 `ExecutableModel::Load` 保持显式 CPU 语义，新增 CUDA 组装不会把其默认 target 偷换。
 
 #### 2.10.3 Target-aware pipeline composition
 
@@ -545,7 +545,7 @@ FP16/BF16 继续复用现有 graph-build dtype options 与显式 `ConvertRawMode
 
 | 工作包 | 主要落点 | 责任与退出条件 |
 |---|---|---|
-| C1 CUDA compile preset | inference 新增 CUDA options；既有 `cpu_inference_options`、`ModelCompileOptions` | P0 定义、P2 接入；单一 target 来源、O1/plain/F32/both，CPU 默认不变，非法 preset 可诊断 |
+| C1 CUDA compile preset | inference 新增 CUDA options；既有 `inference_options`、`ModelCompileOptions` | P0 定义、P2 接入；单一 target 来源、O1/plain/F32/both，CPU 默认不变，非法 preset 可诊断 |
 | C2 目标相关 pipeline | `src/compiler/model_compiler.cpp`、`optimize_graph.cpp` 及对应 public contract（按需要） | P0 定义、P2 接入；compiler 根据既有 target/policy 选择 passes，graph 不引入 backend/device 依赖 |
 | C3 lowering 与 artifact | `compiler/graph_lowering`、`lowered_graph`、既有 compiler tests | P1/P2；保持 dtype/spec、state alias/consumer 与 1:1 step 不变量，CUDA selector 传播有测试 |
 | C4 CUDA resolve 与表示 | `execution_plan_builder`、`backend/cuda`、registry、recipe/validator | P1 最小路径、P2 完整 op 集；host launcher 冻结，plain upload 与 packed 分开，缺 kernel 在 prepare 失败 |

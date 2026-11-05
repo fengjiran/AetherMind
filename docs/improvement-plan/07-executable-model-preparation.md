@@ -1,5 +1,7 @@
 # ExecutableModel 生产准备入口方案
 
+> 当前 C++ API 已收敛为 `ExecutableModel::Load/Prepare`；下文旧名称属于实现时记录。当前签名、权重策略与迁移方式见 [ExecutableModel 设计](../designs/inference/01-executable-model.md) §5–§6。
+
 - **状态**: Implemented
 - **版本**: 1.13
 - **日期**: 2026-09-23

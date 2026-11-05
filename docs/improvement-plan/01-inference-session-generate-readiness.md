@@ -1,5 +1,7 @@
 # InferenceSession / Generate 前置闭环计划
 
+> 当前 C++ API 已收敛为 `ExecutableModel::Load/Prepare`；下文旧名称属于实现时记录。当前签名、权重策略与迁移方式见 [ExecutableModel 设计](../designs/inference/01-executable-model.md) §5–§6。
+
 - **状态**: Implemented
 - **版本**: 1.12
 - **日期**: 2026-09-03

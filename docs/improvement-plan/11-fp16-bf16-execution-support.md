@@ -80,7 +80,7 @@ P2 要求 Embedding、linear 和 lm_head 的实际权重 dtype 与所选 F16/BF1
 
 | 所在层 | 数据/接口方向 | 职责 |
 |---|---|---|
-| inference | `InferencePrecisionPreset` / `CpuModelPrepareOptions` 接入显式 C++ 准备入口 | P1 选择 O1/plain + compatibility，协调 Runtime CPU allocator、normalizer、FP32 graph options 与已有 Prepare；不实现转换算法或新 kernel |
+| inference | `WeightPolicy` / `ModelLoadOptions` 接入显式 C++ 准备入口 | P1 选择 O1/plain + compatibility，协调 Runtime CPU allocator、normalizer、FP32 graph options 与已有 Prepare；不实现转换算法或新 kernel |
 | model | `ModelGraphBuildOptions` 与 `ConvertRawModelWeightsToFp32` | 构图前完成真实逻辑权重转换；`BuildModelGraph` 继续是模型到 semantic graph 的唯一入口 |
 | compiler | `ModelCompileOptions.graph_build` 传给 `BuildModelGraph` | 编排 Build→Optimize→Lower；不分配/转换权重，不访问 backend registry |
 | operators | 拟扩展 `EmbeddingParams.output_dtype` 及其 inference/serde；后续按需增加 Cast | 定义 gather+widening、mixed KV、转换边界的可见语义，不查询 ISA |
@@ -88,7 +88,7 @@ P2 要求 Embedding、linear 和 lm_head 的实际权重 dtype 与所选 F16/BF1
 | execution | 既有 plan/binding/prepare 路径；P3 扩展 state dtype 身份校验 | 冻结 kernel/资源，校验 TensorSpec 与物理 binding；维持完整 plan 的 KV transaction |
 | kv_cache / runtime | 使用解析后的 `kv_dtype`，沿用 layout/storage/allocator | 管理物理字节与布局，不解析 HF hint，不判断算子数值语义 |
 
-不为本提案新增 owning Engine facade。P1 使用独立的 `LoadAndPrepareCpuExecutableModel` 入口，避免新增 aggregate options 重载使原 `{}` 调用歧义；直接 `ModelCompiler::Compile` / `LoadAndCompile` 仍是低层编译入口，不自动触发转换。低层调用方若绕过 normalizer，必须构造真实一致的 specs，未覆盖的 kernel tuple 在 prepare 时明确拒绝，不能静默取得兼容模式的承诺。
+不为本提案新增 owning Engine facade。当前统一使用 `ExecutableModel::Load(runtime, path, ModelLoadOptions)`，按 `WeightPolicy` 选择源权重准入及可选转换；artifact 准备统一使用 `ExecutableModel::Prepare`。旧创建自由函数与转发 overload 已删除，C++ 调用方需迁移；直接 `ModelCompiler::Compile` / `LoadAndCompile` 仍是低层编译入口，不自动触发转换。低层调用方若绕过 normalizer，必须构造真实一致的 specs，未覆盖的 kernel tuple 在 prepare 时明确拒绝，不能静默取得兼容模式的承诺。
 
 新增 Embedding 字段的缺省语义须保留既有“输出跟随权重”；W16/A32 preset 显式选 F32 输出。字段迁移覆盖 OpParams、graph builder、inference、序列化/反序列化、constant evaluator（如适用）、kernel 参数和测试。通用 Cast 延后到 P4 真正需要图上 dtype transition 时再引入。
 
@@ -104,7 +104,7 @@ flowchart TD
     D --> F
     F --> G[BuildModelGraph / Optimize / Lower]
     G --> H[LoweredModelArtifact]
-    H --> I[PrepareExecutableModel]
+    H --> I[ExecutableModel::Prepare]
     D --> I
     I --> J[Backend::PackWeights / kernel resolve / bindings]
     J --> K[ExecutableModel]

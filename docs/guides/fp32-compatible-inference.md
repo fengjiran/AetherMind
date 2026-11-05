@@ -7,12 +7,13 @@
 `Runtime` 必须在转换前创建并保持最终地址，因为转换 payload 使用它的 CPU allocator。如果 Runtime 已按模型几何配置，可使用显式 convenience 入口；该入口只加载一次：
 
 ```cpp
-CpuModelPrepareOptions options{
-        .cpu_preset = CpuInferencePreset::kO1Plain,
-        .precision = InferencePrecisionPreset::kFp32Compatible,
-        .resources = {.max_model_payload_bytes = 512U * 1024U * 1024U},
+ModelLoadOptions options{
+        .preset = CompilePreset::kO1Plain,
+        .target = DeviceType::kCPU,
+        .weights = WeightPolicy::kConvertToFp32,
+        .limits = {.max_model_payload_bytes = 512U * 1024U * 1024U},
 };
-auto executable = LoadAndPrepareCpuExecutableModel(runtime, model_dir, options);
+auto executable = ExecutableModel::Load(runtime, model_dir, options);
 ```
 
 需要先读取 config 以组装 Runtime 时，可以组合公开的阶段入口，同样只加载一次。下面的例子显式传播相同的模型 cap，并在编译前释放只供转换使用的 source owner：
@@ -24,7 +25,7 @@ StatusOr<std::vector<uint32_t>> GenerateCompatible(
         const std::filesystem::path& model_dir,
         std::span<const uint32_t> prompt, size_t context_tokens) {
     AM_ASSIGN_OR_RETURN(auto loaded, ModelLoader::Load(model_dir));
-    AM_RETURN_IF_ERROR(ValidateFp32CompatibleSourceInputs(*loaded));
+    AM_RETURN_IF_ERROR(ValidateSourceWeights(*loaded, WeightPolicy::kConvertToFp32));
     AM_ASSIGN_OR_RETURN(auto runtime_options,
                         MakeCpuRuntimeOptions(
                                 loaded->GetConfig(),
@@ -33,7 +34,7 @@ StatusOr<std::vector<uint32_t>> GenerateCompatible(
     builder.WithOptions(runtime_options);
     AM_ASSIGN_OR_RETURN(Runtime runtime, builder.TryBuild());
 
-    const ExecutableModelPrepareOptions resources{
+    const ModelLimits resources{
             .max_model_payload_bytes = 512U * 1024U * 1024U};
     AM_ASSIGN_OR_RETURN(auto allocator, runtime.TryGetAllocator(Device::CPU()));
     AM_ASSIGN_OR_RETURN(auto converted,
@@ -41,26 +42,25 @@ StatusOr<std::vector<uint32_t>> GenerateCompatible(
                                 *loaded, *allocator,
                                 {.max_owned_weight_bytes = resources.max_model_payload_bytes}));
     loaded = std::move(converted);
-    AM_RETURN_IF_ERROR(ValidateFp32ExecutionWeights(*loaded));
     AM_ASSIGN_OR_RETURN(auto compile_options,
-                        MakeCpuCompileOptions(CpuInferencePreset::kO1Plain));
+                        MakeCompileOptions(CompilePreset::kO1Plain, DeviceType::kCPU));
     compile_options.graph_build = {.activation_dtype = DataType::Float32(),
                                    .kv_dtype = DataType::Float32()};
     AM_ASSIGN_OR_RETURN(auto artifact,
                         ModelCompiler::Compile(std::move(loaded), compile_options));
     AM_ASSIGN_OR_RETURN(auto executable,
-                        PrepareExecutableModel(runtime, std::move(artifact), resources));
+                        ExecutableModel::Prepare(runtime, std::move(artifact), resources));
     auto model = std::make_shared<ExecutableModel>(std::move(executable));
     AM_ASSIGN_OR_RETURN(auto session, InferenceSession::Create(runtime, model));
     return session.Generate(prompt, {.max_new_tokens = 3});
 }
 ```
 
-转换不是 `ModelCompiler::Compile`、`LoadAndCompile` 或普通 `PrepareExecutableModel` 的隐式行为。上例中的局部 `Runtime` 先于 model/session 创建，销毁顺序满足借用合同。
+转换不是 `ModelCompiler::Compile`、`LoadAndCompile` 或普通 `ExecutableModel::Prepare` 的隐式行为。上例中的局部 `Runtime` 先于 model/session 创建，销毁顺序满足借用合同。
 
 `MakeCpuRuntimeOptions` 是值映射，不读取 payload 或分配转换/KV storage；相关 budget、CPU feature policy 和 Builder 预检见 [运行前 Runtime 配置](runtime-configuration.md)。
 
-`kFp32Compatible` 目前只允许 `CpuInferencePreset::kO1Plain`。未知 preset、O2/packed 和不受支持的 source dtype 在分配转换 payload 前失败。C ABI v1 和 `aethermind_infer` CLI 继续使用 strict FP32 source admission；它们不会因这个 C++ 入口 放宽输入。
+`kConvertToFp32` 目前只允许 CPU 目标与 `CompilePreset::kO1Plain`。非 CPU 目标会在读取 checkpoint 或分配转换 payload 前返回 Unimplemented。未知 preset、O2/packed 和不受支持的 source dtype 在分配转换 payload 前失败。C ABI v1 和 `aethermind_infer` CLI 继续使用 strict FP32 source admission；它们不会因这个 C++ 入口 放宽输入。
 
 ## 转换和所有权
 
@@ -74,10 +74,10 @@ F32 view 零拷贝并继续共享原 owner。相同 source owner、起始地址�
 
 `ExecutableModel::resource_usage().weight_fp32_conversion` 提供 source/converted backing 分类、唯一转换 source/target bytes 以及 source-owned 与转换 payload 同时存活时的 visible peak。它不持有 source owner，也不等于 RSS、allocator rounded capacity、mmap resident pages 或后续 packed artifacts 的峰值。
 
-`CpuModelPrepareOptions::resources.max_model_payload_bytes` 在转换 payload 分配前检查最终 retained FP32 owned bytes 加将创建的 converted bytes；之后 `PrepareExecutableModel` 继续以同一 cap 检查 inline constants 和 packed weights。该 cap 不是原 checkpoint mapping、临时 RSS 或进程级多模型 budget。0 保持现有“无限制”语义。
+`ModelLoadOptions::limits.max_model_payload_bytes` 在转换 payload 分配前检查最终 retained FP32 owned bytes 加将创建的 converted bytes；之后 `ExecutableModel::Prepare` 继续以同一 cap 检查 inline constants 和 packed weights。该 cap 不是原 checkpoint mapping、临时 RSS 或进程级多模型 budget。0 保持现有“无限制”语义。
 
 ## 能力边界
 
 P1 不是原生 F16/BF16 推理：权重不会保留 16-bit，activation、FP32 accumulation、KV 和 logits 没有新的 mixed-dtype kernel。它也没有实现 16-bit KV、A16 activation、GPU、调度或性能优化；这些分别属于 P2、P3、P4 或其他提案，不能从本模式推导性能或内存收益。
 
-公开 C++ 类型布局已扩展，C++ 调用方需要重新编译；C ABI v1 的签名与 strict 输入合同保持不变。原 `LoadAndPrepareExecutableModel(runtime, path, {})` 调用仍可编译，新 CPU 入口使用独立名称以避免 options 重载歧义。
+公开 C++ 创建接口统一为 `ExecutableModel::Load` 和 `ExecutableModel::Prepare`，旧自由函数已删除，调用方须迁移并重新编译。`Load` 接收 `ModelLoadOptions`；任意编译配置通过显式 Load/Compile 后调用 `Prepare`。C ABI v1 的签名与 strict 输入合同保持不变。

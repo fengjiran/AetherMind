@@ -42,7 +42,7 @@
 | 文档 | 定位 | 状态 |
 |---|---|---|
 | [model/01-model-loader.md](designs/model/01-model-loader.md) | ModelLoader 模块：HF I/O/校验/权重 resolve（P3 新建，基于当前头文件） | Current |
-| [inference/01-executable-model.md](designs/inference/01-executable-model.md) | ExecutableModel 模块：`PrepareExecutableModel` 唯一准备入口、所有权与销毁契约、phase 合同、绑定与需求同源 | Current |
+| [inference/01-executable-model.md](designs/inference/01-executable-model.md) | ExecutableModel 模块：`ExecutableModel::Prepare` 唯一准备入口、所有权与销毁契约、phase 合同、绑定与需求同源 | Current |
 | [inference/02-inference-session.md](designs/inference/02-inference-session.md) | InferenceSession 模块：同步 greedy `Generate`、plan I/O 合同校验、请求级 RAII 与清理顺序、KV 预约算术（prompt + N−1）、Decode 稳态零分配 | Current |
 | [amstring/](designs/amstring/) | amstring 字符串库模块设计（存量，待按 NN- 编号重排） | 待迁移 |
 | [graph_compilation_flow.md](designs/graph_compilation_flow.md) | 图编译流程追踪（存量，待归位 compiler/） | 待迁移 |

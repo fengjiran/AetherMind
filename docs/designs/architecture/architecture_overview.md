@@ -133,13 +133,13 @@ API 服务层是 AetherMind **进程内**集成/服务边界。它不是 HTTP/gR
 | 维度 | 说明 |
 |------|------|
 | **责任** | 装配 Runtime 资源（Allocator、Backend、KVCacheManager）；在冷路径将 `ExecutionPlan` specialize 为 `PreparedExecutionBindings`，并以 `ExecutionContext` 聚合 bindings、borrowed workspace 和 KV view |
-| **当前模块** | `RuntimeBuilder`、`Runtime`、`Executor`、`KVCacheManager`、`PreparedExecutionBindings`、`ExecutionContext`、`ModelLoader`、`PrepareExecutableModel`/`ExecutableModel`、`InferenceSession` |
+| **当前模块** | `RuntimeBuilder`、`Runtime`、`Executor`、`KVCacheManager`、`PreparedExecutionBindings`、`ExecutionContext`、`ModelLoader`、`ExecutableModel::Prepare`/`ExecutableModel`、`InferenceSession` |
 | **主要输入** | 已编译的 `ExecutionPlan`、其对应的模型 artifact（必要时含 `PackedWeightCollection`）、Prompt Token 序列、`GenerationConfig{max_new_tokens, eos_token_id}` |
 | **主要输出** | 执行步骤结果（tensor 写入 workspace / KV cache 位置）；`InferenceSession::Generate` 返回本次新生成的 Token IDs（含 Prefill 预测的首 token 与触发停止的 EOS） |
 | **当前缺口** | 同步 Generate 状态机已闭环（session reservation → Prefill → Decode loop → Argmax/stop → 释放预约），见 [InferenceSession 模块设计](../inference/02-inference-session.md)。仓库中不存在独立的 `PrefillPath`/`DecodePath` 类型：phase 区分由 `ExecutableModel::plan(phase)` 与 Session 的两份 `PhaseContract` 承担。剩余缺口为 C ABI（`am_session_*`）、采样、跨调用 KV 复用与并发 Generate |
 | **禁止责任泄漏** | 不得承担请求排队/批处理、不得处理网络 IO、不得承担算子级 dispatch 决策（仅为调用方） |
 
-> 当前生命周期为 `RuntimeBuilder::Build → Runtime`、`ModelCompiler::Compile → LoweredModelArtifact`、`PrepareExecutableModel → ExecutableModel`（内含 `ExecutionPlanBuilder::Build → ExecutionPlan`）、`InferenceSession::Create/Generate`，其请求内为 `PrepareExecutionBindings → PreparedExecutionBindings`、`ExecutionContext::Create → Executor::Execute`。shape/layout/aliasing premise、deferred shape constraints 和 kernel params 均在 `PrepareExecutionBindings` 冷路径验证；`LayerRunner` 只读取已准备的 bindings，绑定 step workspace 并调用冻结的 `step.kernel.fn`。Generate 状态机（session reservation → Prefill → Decode loop → Argmax/stop）已实现；采样、C ABI 与跨调用 KV 复用仍属当前产品目标。
+> 当前生命周期为 `RuntimeBuilder::Build → Runtime`、`ModelCompiler::Compile → LoweredModelArtifact`、`ExecutableModel::Prepare → ExecutableModel`（内含 `ExecutionPlanBuilder::Build → ExecutionPlan`）、`InferenceSession::Create/Generate`，其请求内为 `PrepareExecutionBindings → PreparedExecutionBindings`、`ExecutionContext::Create → Executor::Execute`。shape/layout/aliasing premise、deferred shape constraints 和 kernel params 均在 `PrepareExecutionBindings` 冷路径验证；`LayerRunner` 只读取已准备的 bindings，绑定 step workspace 并调用冻结的 `step.kernel.fn`。Generate 状态机（session reservation → Prefill → Decode loop → Argmax/stop）已实现；采样、C ABI 与跨调用 KV 复用仍属当前产品目标。
 
 ---
 

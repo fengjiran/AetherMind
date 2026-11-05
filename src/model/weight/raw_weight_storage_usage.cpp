@@ -34,26 +34,29 @@ bool IsDefaultEmpty(const RawWeightView& view) noexcept {
            view.dtype.bits() == 0 && view.dtype.raw_lanes() == 0 && view.is_contiguous;
 }
 
-Status AddView(OwnerMap& owners, const RawWeightView& view) {
-    if (IsDefaultEmpty(view)) {
-        return Status::Ok();
-    }
-
+Status ValidateDType(DataType dtype) {
     // ValidateRawWeightView uses nbytes(), whose fixed-lane precondition must
     // be checked before accepting externally constructed low-level metadata.
-    if (view.dtype.IsUndefined() || view.dtype.bits() == 0 ||
-        view.dtype.raw_lanes() == 0 ||
-        view.dtype.raw_lanes() > std::numeric_limits<int16_t>::max()) {
+    if (dtype.IsUndefined() || dtype.bits() == 0 ||
+        dtype.raw_lanes() == 0 ||
+        dtype.raw_lanes() > std::numeric_limits<int16_t>::max()) {
         return Status::InvalidArgument(
                 "Raw weight storage usage requires a fixed element dtype");
     }
+    return Status::Ok();
+}
 
+Status ValidateView(const RawWeightView& view) {
+    AM_RETURN_IF_ERROR(ValidateDType(view.dtype));
     AM_RETURN_IF_ERROR(ValidateRawWeightView(view));
     if (!view.is_contiguous) {
         return Status::InvalidArgument(
                 "Raw weight storage usage requires contiguous views");
     }
+    return Status::Ok();
+}
 
+Status AddView(OwnerMap& owners, const RawWeightView& view) {
     const auto footprint = view.storage->footprint();
     auto [owner, inserted] = owners.try_emplace(
             view.storage, OwnerStorageMetadata{footprint, {}});
@@ -113,15 +116,30 @@ StatusOr<size_t> UnionBytes(std::vector<AddrRange>& ranges) {
     return bytes;
 }
 
-} // namespace
+StatusOr<RawWeightStorageUsage> ComputeUsage(
+        const ResolvedModelWeights& weights,
+        std::optional<DataType> dtype_filter) noexcept try {
+    if (dtype_filter.has_value()) {
+        AM_RETURN_IF_ERROR(ValidateDType(*dtype_filter));
+    }
 
-StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
-        const ResolvedModelWeights& weights) noexcept try {
     OwnerMap owners;
-    AM_RETURN_IF_ERROR(AddView(owners, weights.embed_tokens));
-    AM_RETURN_IF_ERROR(AddView(owners, weights.final_norm));
+    const auto add_view = [&](const RawWeightView& view) -> Status {
+        if (IsDefaultEmpty(view)) {
+            return Status::Ok();
+        }
+
+        AM_RETURN_IF_ERROR(ValidateView(view));
+        if (dtype_filter.has_value() && view.dtype != *dtype_filter) {
+            return Status::Ok();
+        }
+        return AddView(owners, view);
+    };
+
+    AM_RETURN_IF_ERROR(add_view(weights.embed_tokens));
+    AM_RETURN_IF_ERROR(add_view(weights.final_norm));
     if (weights.lm_head.has_value()) {
-        AM_RETURN_IF_ERROR(AddView(owners, *weights.lm_head));
+        AM_RETURN_IF_ERROR(add_view(*weights.lm_head));
     }
 
     for (const auto& [norm, attn, mlp]: weights.layers) {
@@ -129,7 +147,7 @@ StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
                                 &attn.q_proj, &attn.k_proj, &attn.v_proj,
                                 &attn.o_proj, &mlp.gate_proj, &mlp.up_proj,
                                 &mlp.down_proj}) {
-            AM_RETURN_IF_ERROR(AddView(owners, *view));
+            AM_RETURN_IF_ERROR(add_view(*view));
         }
     }
 
@@ -178,6 +196,18 @@ StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
     return usage;
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});
+}
+
+} // namespace
+
+StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
+        const ResolvedModelWeights& weights) noexcept {
+    return ComputeUsage(weights, std::nullopt);
+}
+
+StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
+        const ResolvedModelWeights& weights, DataType dtype_filter) noexcept {
+    return ComputeUsage(weights, dtype_filter);
 }
 
 } // namespace aethermind

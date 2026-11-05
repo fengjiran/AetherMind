@@ -5,6 +5,7 @@
 /// @brief Ownership-aware raw model backing and referenced view accounting.
 
 #include "aethermind/base/status.h"
+#include "aethermind/dtypes/data_type.h"
 
 #include <cstddef>
 
@@ -37,6 +38,18 @@ struct RawWeightStorageUsage {
 ///       No tensor payload is read; this cold-path query may allocate metadata.
 StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
         const ResolvedModelWeights& weights) noexcept;
+
+/// @brief Computes storage usage for roles matching an exact element dtype.
+/// @param weights Resolved roles; all populated views are metadata-validated.
+/// @param dtype_filter Defined element dtype with a fixed, positive lane count.
+/// @return Checked accounting for matching views, or the same errors as the
+///         unfiltered overload. An invalid dtype filter returns InvalidArgument.
+/// @note Selected owners contribute their full backing extent once, even when
+///       unselected views share that backing. Unselected owners do not affect
+///       totals or completeness. No matching views yields complete zero usage.
+///       No tensor payload is read; this cold-path query may allocate metadata.
+StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
+        const ResolvedModelWeights& weights, DataType dtype_filter) noexcept;
 
 } // namespace aethermind
 

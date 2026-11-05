@@ -213,14 +213,8 @@ StatusOr<std::unique_ptr<LoadedModel>> ConvertRawModelWeightsToFp32(
 
     // Converted roles no longer retain their source owners. Compute usage for
     // only F32 roles to count backing that survives alongside the new payload.
-    ResolvedModelWeights retained = converted;
-    for (const auto& [view, location]: CollectViews(retained)) {
-        if (view->dtype != DataType::Float32()) {
-            *view = {};
-        }
-    }
-
-    AM_ASSIGN_OR_RETURN(auto retained_usage, ComputeRawWeightStorageUsage(retained));
+    AM_ASSIGN_OR_RETURN(auto retained_usage,
+                        ComputeRawWeightStorageUsage(converted, DataType::Float32()));
     AM_ASSIGN_OR_RETURN(const size_t final_owned_bytes,
                         AddBytes(retained_usage.owned_bytes,
                                  usage.converted_weight_bytes));

@@ -142,12 +142,13 @@ float WidenToFp32(uint16_t bits, bool bfloat) {
     return Half{bits, Half::from_bits()};
 }
 
-Status AddBytes(size_t amount, size_t& total) {
-    if (CheckOverflowAdd(total, amount, &total)) {
+StatusOr<size_t> AddBytes(size_t total, size_t amount) {
+    size_t sum = 0;
+    if (CheckOverflowAdd(total, amount, &sum)) {
         return Status::Overflow(
                 "FP32 weight conversion payload size overflowed size_t");
     }
-    return Status::Ok();
+    return sum;
 }
 
 } // namespace
@@ -187,8 +188,12 @@ StatusOr<std::unique_ptr<LoadedModel>> ConvertRawModelWeightsToFp32(
         auto [entry, inserted] = conversion_indices.try_emplace(
                 std::move(key), conversions.size());
         if (inserted) {
-            AM_RETURN_IF_ERROR(AddBytes(view->bytes, usage.converted_source_bytes));
-            AM_RETURN_IF_ERROR(AddBytes(target_bytes, usage.converted_weight_bytes));
+            AM_ASSIGN_OR_RETURN(usage.converted_source_bytes,
+                                AddBytes(usage.converted_source_bytes,
+                                         view->bytes));
+            AM_ASSIGN_OR_RETURN(usage.converted_weight_bytes,
+                                AddBytes(usage.converted_weight_bytes,
+                                         target_bytes));
             conversions.push_back({view->data,
                                    view->bytes,
                                    target_bytes,
@@ -198,9 +203,12 @@ StatusOr<std::unique_ptr<LoadedModel>> ConvertRawModelWeightsToFp32(
         conversions[entry->second].targets.push_back(view);
     }
 
-    AM_ASSIGN_OR_RETURN(usage.source_weights, ComputeRawWeightStorageUsage(model.GetResolvedWeights()));
-    usage.peak_owned_weight_bytes = usage.source_weights.owned_bytes;
-    AM_RETURN_IF_ERROR(AddBytes(usage.converted_weight_bytes, usage.peak_owned_weight_bytes));
+    AM_ASSIGN_OR_RETURN(
+            usage.source_weights,
+            ComputeRawWeightStorageUsage(model.GetResolvedWeights()));
+    AM_ASSIGN_OR_RETURN(usage.peak_owned_weight_bytes,
+                        AddBytes(usage.source_weights.owned_bytes,
+                                 usage.converted_weight_bytes));
     usage.peak_owned_weight_bytes_complete = usage.source_weights.backing_usage_complete;
 
     // Converted roles no longer retain their source owners. Compute usage for
@@ -213,8 +221,9 @@ StatusOr<std::unique_ptr<LoadedModel>> ConvertRawModelWeightsToFp32(
     }
 
     AM_ASSIGN_OR_RETURN(auto retained_usage, ComputeRawWeightStorageUsage(retained));
-    size_t final_owned_bytes = retained_usage.owned_bytes;
-    AM_RETURN_IF_ERROR(AddBytes(usage.converted_weight_bytes, final_owned_bytes));
+    AM_ASSIGN_OR_RETURN(const size_t final_owned_bytes,
+                        AddBytes(retained_usage.owned_bytes,
+                                 usage.converted_weight_bytes));
     if (options.max_owned_weight_bytes != 0) {
         if (!retained_usage.backing_usage_complete) {
             return Status::FailedPrecondition(
@@ -230,25 +239,27 @@ StatusOr<std::unique_ptr<LoadedModel>> ConvertRawModelWeightsToFp32(
         }
     }
 
-    for (const auto& conversion: conversions) {
+    for (const auto& [source, source_bytes,
+                      target_bytes, bfloat,
+                      targets]: conversions) {
         AM_ASSIGN_OR_RETURN(auto buffer,
                             allocator.TryAllocate(
-                                    {conversion.target_bytes, 64}));
+                                    {.nbytes = target_bytes}));
         auto* dest = static_cast<std::byte*>(buffer.mutable_data());
         for (size_t src_offset = 0, target_offset = 0;
-             src_offset < conversion.source_bytes;
+             src_offset < source_bytes;
              src_offset += sizeof(uint16_t), target_offset += sizeof(float)) {
             uint16_t bits;
-            std::memcpy(&bits, conversion.source + src_offset, sizeof(bits));
-            const float value = WidenToFp32(bits, conversion.bfloat);
+            std::memcpy(&bits, source + src_offset, sizeof(bits));
+            const auto value = WidenToFp32(bits, bfloat);
             // memcpy implicitly creates float objects in the raw allocation.
             std::memcpy(dest + target_offset, &value, sizeof(value));
         }
 
         auto owner = std::make_shared<ConvertedRawStorage>(std::move(buffer));
-        for (auto* target: conversion.targets) {
+        for (auto* target: targets) {
             target->data = dest;
-            target->bytes = conversion.target_bytes;
+            target->bytes = target_bytes;
             target->dtype = DataType::Float32();
             target->storage = owner;
             AM_RETURN_IF_ERROR(ValidateRawWeightView(*target));

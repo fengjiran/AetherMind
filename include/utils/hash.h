@@ -54,7 +54,7 @@ inline uint64_t twang_mix64(uint64_t key) noexcept {
 template<typename T>
     requires std::convertible_to<T, size_t>
 constexpr size_t hash_combine(size_t seed, const T& hash_value) noexcept {
-    const size_t value = static_cast<size_t>(hash_value);
+    const auto value = static_cast<size_t>(hash_value);
     return seed ^ (value + size_t{0x9e3779b9U} + (seed << 6u) + (seed >> 2u));
 }
 

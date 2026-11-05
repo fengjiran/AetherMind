@@ -27,12 +27,14 @@ namespace detail {
     if (!condition.empty()) {
         std::fwrite(condition.data(), 1, condition.size(), stderr);
     }
+
     std::fprintf(stderr, ") at %s:%lu:%lu", loc.file_name(),
                  static_cast<unsigned long>(loc.line()), static_cast<unsigned long>(loc.column()));
     if (message) {
         std::fprintf(stderr, " [%s]\nMessage: ", loc.function_name());
         std::fwrite(message->data(), 1, message->size(), stderr);
     }
+
     std::fputc('\n', stderr);
     std::fflush(stderr);
     std::abort();

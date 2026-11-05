@@ -1,6 +1,7 @@
 #include "utils/parse_number.h"
 #include "parse_number_internal.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cfenv>
 #include <cmath>
@@ -21,7 +22,7 @@
 #if defined(__APPLE__)
 #include <xlocale.h>
 #elif defined(__linux__)
-#include <locale.h>
+#include <clocale>
 #endif
 
 namespace aethermind::utils {
@@ -41,6 +42,7 @@ bool EqualIgnoringAsciiCase(std::string_view value, std::string_view expected) n
     if (value.size() != expected.size()) {
         return false;
     }
+
     for (size_t i = 0; i < value.size(); ++i) {
         if (LowerAscii(value[i]) != expected[i]) {
             return false;
@@ -53,23 +55,25 @@ bool IsGeneralLiteral(std::string_view text, bool& nonzero_significand) noexcept
     if (text.empty()) {
         return false;
     }
+
     if (text.front() == '-') {
         text.remove_prefix(1);
     }
+
     if (EqualIgnoringAsciiCase(text, "inf") ||
         EqualIgnoringAsciiCase(text, "infinity") ||
         EqualIgnoringAsciiCase(text, "nan")) {
         return true;
     }
+
     if (text.size() >= 5 && EqualIgnoringAsciiCase(text.substr(0, 4), "nan(") &&
         text.back() == ')') {
-        for (const char value: text.substr(4, text.size() - 5)) {
-            const char lower = LowerAscii(value);
-            if (!IsDigit(value) && !(lower >= 'a' && lower <= 'z') && value != '_') {
-                return false;
-            }
-        }
-        return true;
+        return std::ranges::all_of(text.substr(4, text.size() - 5),
+                                   [](char value) {
+                                       const char lower = LowerAscii(value);
+                                       return IsDigit(value) || (lower >= 'a' && lower <= 'z') ||
+                                              value == '_';
+                                   });
     }
 
     size_t position = 0;
@@ -81,23 +85,28 @@ bool IsGeneralLiteral(std::string_view text, bool& nonzero_significand) noexcept
             ++position;
         }
     };
+
     consume_digits();
     if (position < text.size() && text[position] == '.') {
         ++position;
         consume_digits();
     }
+
     if (!has_digits) {
         return false;
     }
+
     if (position < text.size() && (text[position] == 'e' || text[position] == 'E')) {
         ++position;
         if (position < text.size() && (text[position] == '+' || text[position] == '-')) {
             ++position;
         }
+
         const size_t exponent_start = position;
         while (position < text.size() && IsDigit(text[position])) {
             ++position;
         }
+
         if (position == exponent_start) {
             return false;
         }
@@ -137,20 +146,26 @@ public:
         ready_ = std::fesetround(FE_TONEAREST) == 0;
     }
 
-    ~NearestRoundingMode() { Restore(); }
+    ~NearestRoundingMode() {
+        Restore();
+    }
 
     NearestRoundingMode(const NearestRoundingMode&) = delete;
     NearestRoundingMode& operator=(const NearestRoundingMode&) = delete;
 
-    bool ready() const noexcept { return ready_; }
+    bool ready() const noexcept {
+        return ready_;
+    }
 
     bool Restore() noexcept {
         if (!changed_) {
             return true;
         }
+
         if (std::fesetround(original_) != 0) {
             return false;
         }
+
         changed_ = false;
         return true;
     }
@@ -174,6 +189,7 @@ bool ParseFallback(std::string_view text, T& out) noexcept try {
     if (!rounding.ready()) {
         return false;
     }
+
     const std::string buffer{text};
     // A failed locale creation is recoverable on the next call. No global
     // locale changes or process-lifetime locale allocations are needed.
@@ -191,19 +207,23 @@ bool ParseFallback(std::string_view text, T& out) noexcept try {
             return strtod_l(buffer.c_str(), &end, locale.get());
         }
     }();
+
     if (end != buffer.c_str() + buffer.size() ||
         (errno != 0 && errno != ERANGE)) {
         return false;
     }
+
     // C conversion may report ERANGE for a representable, nonzero subnormal.
     // Reject only overflow and a nonzero significand rounded down to zero.
     if (errno == ERANGE &&
         (!std::isfinite(value) || (value == 0 && nonzero_significand))) {
         return false;
     }
+
     if (!rounding.Restore()) {
         return false;
     }
+
     out = value;
     return true;
 } catch (const std::bad_alloc&) {
@@ -237,11 +257,13 @@ bool Parse(std::string_view text, T& out) noexcept {
     if (text.empty()) {
         return false;
     }
+
     T value;
     const auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
     if (ec != std::errc{} || ptr != text.data() + text.size()) {
         return false;
     }
+
     out = value;
     return true;
 #endif

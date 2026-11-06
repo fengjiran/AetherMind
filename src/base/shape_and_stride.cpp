@@ -15,7 +15,6 @@
 #include "aethermind/base/check.h"
 #include "utils/overflow_check.h"
 
-#include <limits>
 #include <utility>
 
 namespace aethermind {
@@ -160,8 +159,7 @@ int64_t ShapeAndStride::max_element_offset() const {
         int64_t term = 0;
         AM_CHECK(!CheckOverflowMul((shape_[i] - 1), strides_[i], &term));
         AM_CHECK(term >= 0);
-        AM_CHECK(offset <= std::numeric_limits<int64_t>::max() - term, "max_element_offset overflow.");
-        offset += term;
+        AM_CHECK(!CheckOverflowAdd(offset, term, &offset), "max_element_offset overflow.");
     }
 
     return offset;

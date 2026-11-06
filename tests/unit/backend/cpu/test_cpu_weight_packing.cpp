@@ -194,14 +194,12 @@ TEST_P(CpuWeightPackingOverflow, PublicAndInternalPackingReturnOverflowBeforeRea
 INSTANTIATE_TEST_SUITE_P(
         CheckedSizes, CpuWeightPackingOverflow,
         ::testing::Values(
-                WeightOverflowCase{{int64_t{1} << 62, 1}, {1, 1}, "Bytes"},
-                WeightOverflowCase{{std::numeric_limits<int64_t>::max(), 2}, {2, 1}, "Elements"},
                 WeightOverflowCase{{0, std::numeric_limits<int64_t>::max(), 2}, {0, 2, 1}, "ZeroPrefixStride"}),
         [](const ::testing::TestParamInfo<WeightOverflowCase>& info) { return info.param.name; });
 
-TEST(CpuWeightPacking, BpanelRejectsLogicalByteOverflowBeforeReadingData) {
+TEST(CpuWeightPacking, BpanelRejectsPaddedByteOverflowBeforeReadingData) {
     const float data = 1.0F;
-    constexpr int64_t shape[] = {int64_t{1} << 62, 1};
+    constexpr int64_t shape[] = {(int64_t{1} << 62) - 1, 1};
     constexpr int64_t strides[] = {1, 1};
     const std::array<TensorView, 1> components{
             TensorView(&data, DataType::Float32(), shape, strides)};
@@ -213,10 +211,9 @@ TEST(CpuWeightPacking, BpanelRejectsLogicalByteOverflowBeforeReadingData) {
     EXPECT_EQ(packed.status().code(), StatusCode::kOverflow);
 }
 
-TEST(CpuWeightPacking, IdentityPackingAcceptsHugeLeadingDimensionsBeforeZeroSuffix) {
-    constexpr int64_t shape[] = {std::numeric_limits<int64_t>::max(),
-                                 std::numeric_limits<int64_t>::max(), 0};
-    constexpr int64_t strides[] = {0, 0, 1};
+TEST(CpuWeightPacking, IdentityPackingAcceptsHugeLeadingDimensionsBeforeZeroExtent) {
+    constexpr int64_t shape[] = {std::numeric_limits<int64_t>::max(), 0, 2};
+    constexpr int64_t strides[] = {0, 2, 1};
     const std::array<TensorView, 1> components{
             TensorView(nullptr, DataType::Float32(), shape, strides)};
     CpuBackend backend;

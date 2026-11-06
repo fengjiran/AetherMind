@@ -5,6 +5,7 @@
 
 #include <array>
 #include <gtest/gtest.h>
+#include <limits>
 
 namespace {
 using namespace aethermind;
@@ -225,6 +226,12 @@ TEST(TensorRankZero, SliceRejectsRankZeroDeath) {
 TEST(TensorRankZero, NarrowRejectsRankZeroDeath) {
     Tensor t = MakeRankZeroFloat32Tensor(4);
     EXPECT_DEATH(static_cast<void>(t.narrow(0, 0, 1)), "Check failed");
+}
+
+TEST(TensorNarrow, RejectsRangeOverflowDeath) {
+    Tensor t = MakeContiguousTensor({2, 3});
+    EXPECT_DEATH(static_cast<void>(t.narrow(1, std::numeric_limits<int64_t>::max(), 1)),
+                 "Check failed");
 }
 
 // ── TensorView dim/stride rejection for rank-0 (DCHECK-based) ──────

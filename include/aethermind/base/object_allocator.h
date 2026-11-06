@@ -4,8 +4,10 @@
 // #define AETHERMIND_ALLOCATOR_DEBUG
 
 #include "aethermind/base/object.h"
+#include "utils/overflow_check.h"
 
 #include <mutex>
+#include <new>
 #include <unordered_map>
 
 namespace aethermind {
@@ -139,11 +141,22 @@ public:
 
         template<typename... Args>
         static ObjType* allocate(size_t num_elems, Args&&... args) {
-            const size_t size = sizeof(ObjType) + num_elems * sizeof(ElemType);
+            size_t payload_size = 0;
+            if (CheckOverflowMul(num_elems, sizeof(ElemType), &payload_size)) {
+                throw std::bad_alloc();
+            }
+
+            size_t size = 0;
+            if (CheckOverflowAdd(sizeof(ObjType), payload_size, &size)) {
+                throw std::bad_alloc();
+            }
+
             constexpr size_t align = alignof(ObjType);
-            // C++ standard always guarantees that alignof operator returns a power of 2
-            // const size_t aligned_size = (size + (align - 1)) & ~(align - 1);
-            const size_t aligned_size = (size + align - 1) / align * align;
+            size_t aligned_size = 0;
+            if (CheckOverflowAdd(size, align - 1, &aligned_size)) {
+                throw std::bad_alloc();
+            }
+            aligned_size &= ~(align - 1);
             void* data = AllocObject<align>(aligned_size);
             new (data) ObjType(std::forward<Args>(args)...);
             return static_cast<ObjType*>(data);

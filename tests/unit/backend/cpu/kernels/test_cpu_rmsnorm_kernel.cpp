@@ -701,24 +701,6 @@ TEST(CPUKernelRmsNormEntry, RejectsNonCollapsibleLeadingDimensions) {
     EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
 }
 
-TEST(CPUKernelRmsNormEntry, RejectsRowCountOverflow) {
-    constexpr int64_t io_shape[3] = {std::numeric_limits<int64_t>::max(), 2, 1};
-    constexpr int64_t io_strides[3] = {2, 1, 1};
-    constexpr int64_t weight_shape[1] = {1};
-    constexpr int64_t weight_strides[1] = {1};
-    constexpr float input = 1.0F;
-    constexpr float weight = 1.0F;
-    float output = 0.0F;
-
-    const Status status = RunReferenceRmsNormEntry(RmsNormTestViews{
-            .input_tensor = TensorView{&input, DataType::Float32(), io_shape, io_strides},
-            .weight_tensor = TensorView{&weight, DataType::Float32(), weight_shape, weight_strides},
-            .output_tensor = MutableTensorView{&output, DataType::Float32(), io_shape, io_strides},
-    });
-
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
-}
-
 TEST(CPUKernelRmsNormEntry, RejectsAddressOffsetOverflow) {
     constexpr int64_t io_shape[2] = {2, 2};
     constexpr int64_t input_strides[2] = {std::numeric_limits<int64_t>::max(), 1};

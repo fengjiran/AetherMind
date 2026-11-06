@@ -7,7 +7,9 @@
 #include <cstring>
 #include <deque>
 #include <gtest/gtest.h>
+#include <limits>
 #include <list>
+#include <new>
 
 namespace {
 
@@ -39,6 +41,13 @@ TEST(StringConstructorFill, LargeString) {
 
     // 验证字符串结尾有正确的空终止符
     EXPECT_EQ(s.c_str()[large_size], '\0');
+}
+
+TEST(StringConstructorFill, RejectsUnrepresentableCapacity) {
+    constexpr size_t kMaxSize = std::numeric_limits<size_t>::max();
+
+    EXPECT_THROW(String(kMaxSize, 'x'), std::bad_alloc);
+    EXPECT_THROW(String(kMaxSize - 1, 'x'), std::bad_alloc);
 }
 
 // 测试特殊字符：包括控制字符

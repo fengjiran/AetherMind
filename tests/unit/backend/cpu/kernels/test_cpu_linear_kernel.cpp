@@ -458,20 +458,10 @@ TEST(CPUKernelLinearEntry, RejectsInvalidViewAndNonPositiveStrides) {
     EXPECT_EQ(bad_stride.code(), StatusCode::kInvalidArgument) << bad_stride.ToString();
 }
 
-TEST(CPUKernelLinearEntry, RejectsRowCountAndAddressOffsetOverflow) {
-    constexpr int64_t overflow_shape[3] = {std::numeric_limits<int64_t>::max(), 2, 1};
-    constexpr int64_t overflow_strides[3] = {2, 1, 1};
+TEST(CPUKernelLinearEntry, RejectsAddressOffsetOverflow) {
     constexpr int64_t weight_shape[2] = {1, 1};
     constexpr int64_t weight_strides[2] = {1, 1};
     float scalar = 1.0F;
-
-    const Status row_count_overflow = RunLinearEntry(LinearTestViews{
-            .input_tensor = TensorView{&scalar, DataType::Float32(), overflow_shape, overflow_strides},
-            .weight_tensor = TensorView{&scalar, DataType::Float32(), weight_shape, weight_strides},
-            .output_tensor = MutableTensorView{&scalar, DataType::Float32(), overflow_shape, overflow_strides},
-    });
-    EXPECT_EQ(row_count_overflow.code(), StatusCode::kInvalidArgument)
-            << row_count_overflow.ToString();
 
     constexpr int64_t input_shape[2] = {2, 2};
     constexpr int64_t input_strides[2] = {std::numeric_limits<int64_t>::max(), 1};

@@ -1,6 +1,7 @@
 #include "aethermind/base/shape_and_stride.h"
 
 #include <gtest/gtest.h>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -132,6 +133,15 @@ TEST(ShapeAndStrideRankZero, NumelOverflowDeath) {
             static_cast<int64_t>(1) << 20,
             static_cast<int64_t>(1) << 20}));
     EXPECT_DEATH(static_cast<void>(ss.numel()), "Check failed");
+}
+
+TEST(ShapeAndStrideRankZero, MaxElementOffsetOverflowDeath) {
+    constexpr int64_t kHalfMax = std::numeric_limits<int64_t>::max() / 2;
+    ShapeAndStride ss;
+    ss.set(IntArrayView(std::vector<int64_t>{3, 3}),
+           IntArrayView(std::vector<int64_t>{kHalfMax, kHalfMax}));
+
+    EXPECT_DEATH(static_cast<void>(ss.max_element_offset()), "Check failed");
 }
 
 TEST(ShapeAndStrideRankZero, RankZeroDimDeath) {

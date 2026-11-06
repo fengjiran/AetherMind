@@ -10,6 +10,7 @@
 #include "aethermind/memory/buffer.h"
 #include "container/array_view.h"
 #include "shape_and_stride.h"
+#include "utils/overflow_check.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -212,7 +213,9 @@ public:
     /// @throws AM_CHECK failure if length < 0.
     AM_NODISCARD Tensor narrow(int32_t dim_idx, int64_t start, int64_t length) const noexcept {
         AM_CHECK(length >= 0);
-        return slice(dim_idx, start, start + length);
+        int64_t end = 0;
+        AM_CHECK(!CheckOverflowAdd(start, length, &end), "Tensor narrow range overflow.");
+        return slice(dim_idx, start, end);
     }
 
     AM_NODISCARD bool is_rank_zero() const noexcept {

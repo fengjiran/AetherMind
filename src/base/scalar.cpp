@@ -4,6 +4,7 @@
 
 #include "aethermind/base/scalar.h"
 #include "aethermind/base/check.h"
+#include "utils/overflow_check.h"
 
 #include <utility>
 
@@ -107,7 +108,10 @@ Scalar::Scalar(complex<double> val) {
 Scalar Scalar::operator-() const {
     AM_CHECK(!is_bool(), "boolean negative is not supported.");
     if (is_signed_integral()) {
-        return {-v.i};
+        int64_t negated = 0;
+        AM_CHECK(!CheckOverflowSub(int64_t{0}, v.i, &negated),
+                 "integer negation overflow.");
+        return {negated};
     }
 
     if (is_floating_point()) {

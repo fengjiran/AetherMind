@@ -4,8 +4,10 @@
 #include "container/string.h"
 #include "aethermind/base/check.h"
 #include "aethermind/base/error.h"
+#include "utils/overflow_check.h"
 
 #include <cstring>
+#include <new>
 #include <unordered_map>
 #include <vector>
 
@@ -1027,9 +1029,14 @@ void String::CheckSize(size_type delta) const {
 }
 
 ObjectPtr<StringImpl> String::Create(size_type cap) {
-    auto impl = make_array_object<StringImpl, value_type>(cap + 1);
+    size_type num_elems = 0;
+    if (CheckOverflowAdd(cap, size_type{1}, &num_elems)) {
+        throw std::bad_alloc();
+    }
+
+    auto impl = make_array_object<StringImpl, value_type>(num_elems);
     impl->data_ = reinterpret_cast<pointer>(impl.get()) + sizeof(StringImpl);
-    std::memset(impl->data_, '\0', cap + 1);
+    std::memset(impl->data_, '\0', num_elems);
     return impl;
 }
 

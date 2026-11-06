@@ -117,9 +117,9 @@ TEST(CpuWeightPackingRequirements, QueryDoesNotReadPayloadAndRejectsInvalidMetad
                       .status()
                       .code(),
               StatusCode::kInvalidArgument);
-    constexpr std::array<int64_t, 2> huge{
-            std::numeric_limits<int64_t>::max(), 2},
-            huge_stride{2, 1};
+    constexpr std::array<int64_t, 3> huge{
+            0, std::numeric_limits<int64_t>::max(), 2},
+            huge_stride{0, 2, 1};
     const std::array overflow{
             TensorView(reinterpret_cast<const void*>(uintptr_t{64}),
                        DataType::Float32(), huge, huge_stride, 4)};

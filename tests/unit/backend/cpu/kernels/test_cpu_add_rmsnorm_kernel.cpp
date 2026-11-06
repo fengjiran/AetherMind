@@ -496,16 +496,16 @@ TEST(CPUKernelAddRmsNorm, RejectsInvalidMetadataShapesLayoutsAndPointers) {
     EXPECT_EQ(BuildPlainPreparedParams(*kernel, overlapping_rows).status().code(),
               StatusCode::kInvalidArgument);
 
-    constexpr std::array<int64_t, 3> overflowing_shape{
-            std::numeric_limits<int64_t>::max(), 2, 1};
-    constexpr std::array<int64_t, 3> overflowing_strides{2, 1, 1};
-    constexpr std::array<int64_t, 1> single_weight_shape{1};
+    constexpr std::array<int64_t, 2> overflowing_shape{2, 3};
+    constexpr std::array<int64_t, 2> overflowing_strides{
+            std::numeric_limits<int64_t>::max(), 1};
+    constexpr std::array<int64_t, 1> overflowing_weight_shape{3};
     AddRmsNormTestViews overflowing_rows{
             .input = TensorView(input, DataType::Float32(), overflowing_shape,
                                 overflowing_strides, 64),
             .residual = TensorView(residual, DataType::Float32(), overflowing_shape,
                                    overflowing_strides, 64),
-            .weight = TensorView(weight, DataType::Float32(), single_weight_shape,
+            .weight = TensorView(weight, DataType::Float32(), overflowing_weight_shape,
                                  weight_strides, 64),
             .output = MutableTensorView(output, DataType::Float32(), overflowing_shape,
                                         overflowing_strides, 64),

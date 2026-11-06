@@ -2,7 +2,9 @@
 #include "aethermind/base/tensor_view.h"
 
 #include <array>
+#include <cstddef>
 #include <gtest/gtest.h>
+#include <limits>
 
 namespace {
 using namespace aethermind;
@@ -76,6 +78,32 @@ TEST(TensorView, MutableTensorViewSupportsBorrowedRawParts) {
 
     view.data<float>()[4] = 99.0F;
     EXPECT_FLOAT_EQ(storage[4], 99.0F);
+}
+
+TEST(TensorView, RejectsUnrepresentableNumelAtConstruction) {
+    alignas(64) std::array<std::byte, 64> storage{};
+    constexpr std::array<int64_t, 2> kShape{std::numeric_limits<int64_t>::max(), 2};
+    constexpr std::array<int64_t, 2> kStrides{2, 1};
+
+    EXPECT_DEATH(TensorView(storage.data(),
+                            DataType::Float32(),
+                            IntArrayView{kShape.data(), kShape.size()},
+                            IntArrayView{kStrides.data(), kStrides.size()},
+                            64),
+                 "Check failed");
+}
+
+TEST(TensorView, RejectsUnrepresentableLogicalNBytesAtConstruction) {
+    alignas(64) std::array<std::byte, 64> storage{};
+    constexpr std::array<int64_t, 2> kShape{std::numeric_limits<int64_t>::max() / 2, 2};
+    constexpr std::array<int64_t, 2> kStrides{2, 1};
+
+    EXPECT_DEATH(TensorView(storage.data(),
+                            DataType::Float32(),
+                            IntArrayView{kShape.data(), kShape.size()},
+                            IntArrayView{kStrides.data(), kStrides.size()},
+                            64),
+                 "Check failed");
 }
 
 TEST(TensorView, RejectsScalableVectorDataType) {

@@ -626,11 +626,12 @@ TEST(ScalarTest, UnaryMinusOperator) {
     Scalar neg_f64 = -f64;
     EXPECT_DOUBLE_EQ(neg_f64.toDouble(), -1.234);
     EXPECT_EQ(neg_f64.type(), f64.type());
+}
 
-    // 边界情况：最小整数
-    Scalar min_int(std::numeric_limits<int64_t>::min());
-    Scalar neg_min_int = -min_int;
-    // 注意：这可能会溢出，取决于实现
+TEST(ScalarTest, UnaryMinusRejectsInt64Min) {
+    const Scalar min_int(std::numeric_limits<int64_t>::min());
+
+    EXPECT_DEATH(static_cast<void>(-min_int), "Check failed");
 }
 
 // 测试Scalar类的log方法

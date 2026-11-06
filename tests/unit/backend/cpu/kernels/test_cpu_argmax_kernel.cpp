@@ -981,23 +981,6 @@ TEST(CPUKernelArgmaxEntry, AcceptsDisjointInputOutputInsideOneAllocation) {
     EXPECT_EQ(output[1], 0);
 }
 
-TEST(CPUKernelArgmaxEntry, RejectsOutputElementCountOverflow) {
-    constexpr float input = 1.0F;
-    int64_t output = kSentinel;
-    constexpr int64_t input_shape[3] = {std::numeric_limits<int64_t>::max(), 3, 2};
-    constexpr int64_t input_strides[3] = {6, 2, 1};
-    constexpr int64_t output_shape[2] = {std::numeric_limits<int64_t>::max(), 3};
-    constexpr int64_t output_strides[2] = {3, 1};
-
-    const Status status = RunArgmaxWithAxis(-1, ArgmaxTestViews{
-                                                        .input_tensor = TensorView{&input, DataType::Float32(), input_shape,
-                                                                                   input_strides},
-                                                        .output_tensor = MutableTensorView{&output, DataType::Int(64), output_shape,
-                                                                                           output_strides},
-                                                });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
-}
-
 TEST(CPUKernelArgmaxEntry, RejectsInputOffsetOverflow) {
     constexpr float input = 1.0F;
     int64_t output[2] = {kSentinel, kSentinel};

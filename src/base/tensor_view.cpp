@@ -63,7 +63,15 @@ bool HasValidMetadata(const DataType& dtype,
         }
     }
 
-    return true;
+    uint64_t numel = 0;
+    if (SafeMultiplyU64(shape, &numel) || !std::in_range<int64_t>(numel)) {
+        return false;
+    }
+
+    size_t logical_nbytes = 0;
+    return !CheckOverflowMul(static_cast<size_t>(numel),
+                             static_cast<size_t>(dtype.nbytes()),
+                             &logical_nbytes);
 }
 
 // Returns true when `data` satisfies the `alignment` constraint.
@@ -114,16 +122,15 @@ bool HasAnyElement(const IntArrayView shape) noexcept {
 // Returns the number of elements described by `shape`.
 //
 // Delegates to SafeMultiplyU64 so overflow is detected even for extreme
-// shapes.  The result is clamped to the smaller of int64_t and size_t
-// maxima; the debug-only ASSERT catches callers that build views with
-// shapes that exceed the representable range.
+// shapes. Rejecting unrepresentable counts here prevents release builds from
+// silently wrapping a caller-supplied shape into a small numel.
 int64_t ComputeNumel(const IntArrayView shape) noexcept {
     uint64_t product = 1;
     const bool overflow = SafeMultiplyU64(shape, &product);
 
-    AM_DCHECK(!overflow && std::in_range<int64_t>(product) &&
-                      std::in_range<size_t>(product),
-              "Integer multiplication overflow when computing TensorView numel.");
+    AM_CHECK(!overflow && std::in_range<int64_t>(product) &&
+                     std::in_range<size_t>(product),
+             "Integer multiplication overflow when computing TensorView numel.");
     return static_cast<int64_t>(product);
 }
 
@@ -131,15 +138,13 @@ int64_t ComputeNumel(const IntArrayView shape) noexcept {
 // by `shape` with the given `itemsize`.
 //
 // Used to compute view-level byte bounds without consulting a backing buffer.
-// The overflow check is debug-only; production code is expected to have
-// validated this at construction time.
 size_t ComputeLogicalNBytes(const IntArrayView shape, const size_t itemsize) noexcept {
     const auto n = ComputeNumel(shape);
-    AM_DCHECK(n >= 0);
+    AM_CHECK(n >= 0);
 
     size_t logical_nbytes = 0;
     const bool overflow = CheckOverflowMul(static_cast<size_t>(n), itemsize, &logical_nbytes);
-    AM_DCHECK(!overflow, "TensorView logical_nbytes overflow.");
+    AM_CHECK(!overflow, "TensorView logical_nbytes overflow.");
     return logical_nbytes;
 }
 

@@ -16,7 +16,9 @@
 #include <cmath>
 #include <cstdint>
 #include <iosfwd>
+#include <limits>
 #include <ostream>
+#include <type_traits>
 
 namespace aethermind {
 namespace detail {
@@ -125,7 +127,7 @@ bool operator>(BFloat16& lhs, BFloat16& rhs);
 bool operator<(BFloat16& lhs, BFloat16& rhs);
 
 /// @brief Trait identifying reduced-precision floating-point types (`Half`,
-/// `BFloat16`). Used to gate `std::` math overloads that route through
+/// `BFloat16`). Used to gate `aethermind::` math overloads that route through
 /// `float` for these types.
 template<typename T>
 struct is_reduced_floating_point : std::false_type {};
@@ -141,15 +143,13 @@ constexpr bool is_reduced_floating_point_v = is_reduced_floating_point<T>::value
 
 } // namespace aethermind
 
-namespace std {
-
 /// @brief std::numeric_limits specialization for bfloat16.
 ///
 /// Bit constants follow the bfloat16 format (1 sign | 8 exponent | 7 mantissa,
 /// bias 127). `is_iec559` is false because bfloat16 is not an IEEE 754
 /// standard format, even though it uses IEEE-like semantics.
 template<>
-struct numeric_limits<aethermind::BFloat16> {
+struct std::numeric_limits<aethermind::BFloat16> {
     static constexpr bool is_signed = true;
     static constexpr bool is_specialized = true;
     static constexpr bool is_integer = false;
@@ -212,146 +212,158 @@ struct numeric_limits<aethermind::BFloat16> {
     }
 };
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+namespace aethermind {
+
+/// @name Reduced-precision mathematical helpers
+/// @brief Apply math to float-converted inputs and return Half or BFloat16.
+/// @note These overloads belong to aethermind so qualified std calls retain
+///       their standard overload set. Use aethermind::sqrt(value), or
+///       `using std::sqrt; sqrt(value);` to select through ADL. isfinite returns
+///       bool; pow preserves its existing double exponent evaluation.
+/// @{
+
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T acos(T a) {
     return std::acos(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T asin(T a) {
     return std::asin(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T atan(T a) {
     return std::atan(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T erf(T a) {
     return std::erf(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T erfc(T a) {
     return std::erfc(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T exp(T a) {
     return std::exp(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T expm1(T a) {
     return std::expm1(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 bool isfinite(T a) {
     return std::isfinite(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T log(T a) {
     return std::log(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T log10(T a) {
     return std::log10(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T log2(T a) {
     return std::log2(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T log1p(T a) {
     return std::log1p(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T ceil(T a) {
     return std::ceil(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T cos(T a) {
     return std::cos(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T sin(T a) {
     return std::sin(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T sinh(T a) {
     return std::sinh(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T cosh(T a) {
     return std::cosh(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T tan(T a) {
     return std::tan(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T tanh(T a) {
     return std::tanh(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T floor(T a) {
     return std::floor(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T nearbyint(T a) {
     return std::nearbyint(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T trunc(T a) {
     return std::trunc(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T lgamma(T a) {
     return std::lgamma(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T sqrt(T a) {
     return std::sqrt(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T rsqrt(T a) {
     return 1.0 / std::sqrt(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T abs(T a) {
     return std::abs(static_cast<float>(a));
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T pow(T a, double b) {
     return std::pow(static_cast<float>(a), b);
 }
 
-template<typename T, typename = std::enable_if_t<aethermind::is_reduced_floating_point_v<T>>>
+template<typename T, typename = std::enable_if_t<is_reduced_floating_point_v<T>>>
 T fmod(T a, T b) {
     return std::fmod(static_cast<float>(a), static_cast<float>(b));
 }
 
-} // namespace std
+/// @}
+
+} // namespace aethermind
 
 #endif // AETHERMIND_DTYPES_BFLOAT16_H

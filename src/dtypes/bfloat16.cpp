@@ -184,67 +184,67 @@ double operator/(double lhs, BFloat16 rhs) __ubsan_ignore_float_divide_by_zero__
 }
 
 BFloat16 operator+(BFloat16 lhs, int rhs) {
-    return lhs + static_cast<BFloat16>(rhs);
+    return lhs + static_cast<float>(rhs);
 }
 
 BFloat16 operator-(BFloat16 lhs, int rhs) {
-    return lhs - static_cast<BFloat16>(rhs);
+    return lhs - static_cast<float>(rhs);
 }
 
 BFloat16 operator*(BFloat16 lhs, int rhs) {
-    return lhs * static_cast<BFloat16>(rhs);
+    return lhs * static_cast<float>(rhs);
 }
 
 BFloat16 operator/(BFloat16 lhs, int rhs) {
-    return lhs / static_cast<BFloat16>(rhs);
+    return lhs / static_cast<float>(rhs);
 }
 
 BFloat16 operator+(int lhs, BFloat16 rhs) {
-    return static_cast<BFloat16>(lhs) + rhs;
+    return static_cast<float>(lhs) + rhs;
 }
 
 BFloat16 operator-(int lhs, BFloat16 rhs) {
-    return static_cast<BFloat16>(lhs) - rhs;
+    return static_cast<float>(lhs) - rhs;
 }
 
 BFloat16 operator*(int lhs, BFloat16 rhs) {
-    return static_cast<BFloat16>(lhs) * rhs;
+    return static_cast<float>(lhs) * rhs;
 }
 
 BFloat16 operator/(int lhs, BFloat16 rhs) {
-    return static_cast<BFloat16>(lhs) / rhs;
+    return static_cast<float>(lhs) / rhs;
 }
 
 BFloat16 operator+(BFloat16 lhs, int64_t rhs) {
-    return lhs + static_cast<BFloat16>(rhs);
+    return lhs + static_cast<float>(rhs);
 }
 
 BFloat16 operator-(BFloat16 lhs, int64_t rhs) {
-    return lhs - static_cast<BFloat16>(rhs);
+    return lhs - static_cast<float>(rhs);
 }
 
 BFloat16 operator*(BFloat16 lhs, int64_t rhs) {
-    return lhs * static_cast<BFloat16>(rhs);
+    return lhs * static_cast<float>(rhs);
 }
 
 BFloat16 operator/(BFloat16 lhs, int64_t rhs) {
-    return lhs / static_cast<BFloat16>(rhs);
+    return lhs / static_cast<float>(rhs);
 }
 
 BFloat16 operator+(int64_t lhs, BFloat16 rhs) {
-    return static_cast<BFloat16>(lhs) + rhs;
+    return static_cast<float>(lhs) + rhs;
 }
 
 BFloat16 operator-(int64_t lhs, BFloat16 rhs) {
-    return static_cast<BFloat16>(lhs) - rhs;
+    return static_cast<float>(lhs) - rhs;
 }
 
 BFloat16 operator*(int64_t lhs, BFloat16 rhs) {
-    return static_cast<BFloat16>(lhs) * rhs;
+    return static_cast<float>(lhs) * rhs;
 }
 
 BFloat16 operator/(int64_t lhs, BFloat16 rhs) {
-    return static_cast<BFloat16>(lhs) / rhs;
+    return static_cast<float>(lhs) / rhs;
 }
 
 bool operator>(BFloat16& lhs, BFloat16& rhs) {

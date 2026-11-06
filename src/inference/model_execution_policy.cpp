@@ -6,7 +6,6 @@
 #include "utils/overflow_check.h"
 
 #include <array>
-#include <cstdint>
 #include <new>
 #include <optional>
 #include <string>
@@ -78,10 +77,11 @@ Status ValidateRoleDType(const ResolvedModelWeights& weights,
                             (allow_widening && (weight->dtype == DataType::Float(16) ||
                                                 weight->dtype == DataType::BFloat(16))));
     if (!supported) {
-        return Status::Unimplemented("Weight " + WeightLocation(role, layer) +
-                                     " has dtype " + ToString(weight->dtype) +
-                                     (allow_widening ? "; required Float32, Float16 or BFloat16 source"
-                                                     : "; required Float32"));
+        return Status::Unimplemented(
+                "Weight " + WeightLocation(role, layer) +
+                " has dtype " + ToString(weight->dtype) +
+                (allow_widening ? "; required Float32, Float16 or BFloat16 source"
+                                : "; required Float32"));
     }
     return Status::Ok();
 }
@@ -123,12 +123,16 @@ Status ValidateExecutionWeights(const LoadedModel& model, bool allow_widening) {
     }
 
     for (const auto& role: kGlobalRoles) {
-        AM_RETURN_IF_ERROR(ValidateRoleDType(weights, role, std::nullopt, allow_widening));
+        AM_RETURN_IF_ERROR(ValidateRoleDType(
+                weights, role,
+                std::nullopt, allow_widening));
     }
 
     for (size_t layer = 0; layer < num_layers; ++layer) {
         for (const auto& role: kLayerRoles) {
-            AM_RETURN_IF_ERROR(ValidateRoleDType(weights, role, static_cast<uint32_t>(layer), allow_widening));
+            AM_RETURN_IF_ERROR(ValidateRoleDType(
+                    weights, role,
+                    static_cast<uint32_t>(layer), allow_widening));
         }
     }
     return Status::Ok();
@@ -140,6 +144,7 @@ Status ValidateSourceWeights(const LoadedModel& model, WeightPolicy policy) try 
     if (policy != WeightPolicy::kRequireFp32 && policy != WeightPolicy::kConvertToFp32) {
         return Status::InvalidArgument("Unknown source weight policy");
     }
+
     const bool allow_widening = policy == WeightPolicy::kConvertToFp32;
     AM_RETURN_IF_ERROR(ValidateSourceHint(model, allow_widening));
     return ValidateExecutionWeights(model, allow_widening);

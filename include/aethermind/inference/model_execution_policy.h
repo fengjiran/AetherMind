@@ -5,15 +5,21 @@
 /// @brief Shared first-release FP32 admission and model-to-KV configuration.
 
 #include "aethermind/base/status.h"
-#include "aethermind/inference/executable_model.h"
 #include "aethermind/runtime/runtime_options.h"
 
 #include <cstddef>
+#include <cstdint>
 
 namespace aethermind {
 
 class LoadedModel;
 struct HfModelConfig;
+
+/// @brief Explicit source-weight admission and conversion policy.
+enum class WeightPolicy : uint8_t {
+    kRequireFp32,
+    kConvertToFp32,
+};
 
 /// @brief Checks source dtype hints and actual required weights for a policy.
 /// @return Ok, Unimplemented for unsupported source precision, or an invalid

@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <gtest/gtest.h>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -20,7 +21,9 @@ TEST(WeightBindingMetadata, AddReturnsViewOverBorrowedData) {
     WeightBindingMetadata metadata;
     alignas(64) const float data[24] = {};
 
-    const TensorView view = metadata.Add(data, DataType::Float32(), {2, 3, 4});
+    const auto view_result = metadata.Add(data, DataType::Float32(), {2, 3, 4});
+    ASSERT_TRUE(view_result.ok()) << view_result.status().ToString();
+    const TensorView view = *view_result;
 
     EXPECT_EQ(metadata.size(), 1U);
     EXPECT_FALSE(metadata.empty());
@@ -36,7 +39,9 @@ TEST(WeightBindingMetadata, RankOneShapeHasUnitStride) {
     WeightBindingMetadata metadata;
     alignas(64) const float data[8] = {};
 
-    const TensorView view = metadata.Add(data, DataType::Float32(), {8});
+    const auto view_result = metadata.Add(data, DataType::Float32(), {8});
+    ASSERT_TRUE(view_result.ok()) << view_result.status().ToString();
+    const TensorView view = *view_result;
 
     EXPECT_EQ(Copy(view.shape()), (std::vector<int64_t>{8}));
     EXPECT_EQ(Copy(view.strides()), (std::vector<int64_t>{1}));
@@ -47,21 +52,51 @@ TEST(WeightBindingMetadata, RankZeroShapeHasNoStrides) {
     WeightBindingMetadata metadata;
     alignas(64) const float data[1] = {};
 
-    const TensorView view = metadata.Add(data, DataType::Float32(), {});
+    const auto view_result = metadata.Add(data, DataType::Float32(), {});
+    ASSERT_TRUE(view_result.ok()) << view_result.status().ToString();
+    const TensorView view = *view_result;
 
     EXPECT_EQ(view.rank(), 0);
     EXPECT_TRUE(Copy(view.shape()).empty());
     EXPECT_TRUE(Copy(view.strides()).empty());
 }
 
-// Compact row-major strides accumulate the shape product in int64_t; a product
-// that does not fit would silently produce wrong strides, so it is a fatal check.
-TEST(WeightBindingMetadata, ShapeProductOverflowDeath) {
+TEST(WeightBindingMetadata, ShapeProductOverflowReturnsStatus) {
     WeightBindingMetadata metadata;
-    alignas(64) const float data[1] = {};
+    const auto result = metadata.Add(nullptr, DataType::Float32(), {int64_t{1} << 62, 8});
+    EXPECT_EQ(result.status().code(), StatusCode::kOverflow);
+    EXPECT_TRUE(metadata.empty());
+}
 
-    EXPECT_DEATH(metadata.Add(data, DataType::Float32(), {int64_t{1} << 62, 8}),
-                 "Check failed");
+TEST(WeightBindingMetadata, InvalidShapesPreserveEarlierViewsAndAllowRetry) {
+    WeightBindingMetadata metadata;
+    const float data[6] = {};
+    const auto original = metadata.Add(data, DataType::Float32(), {2, 3});
+    ASSERT_TRUE(original.ok());
+    const std::vector<int64_t> invalid_shapes[]{
+            {0, std::numeric_limits<int64_t>::max(), 2},
+            {std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max(), 0},
+            {-1, 0},
+    };
+    for (const auto& shape: invalid_shapes) {
+        const auto result = metadata.Add(nullptr, DataType::Float32(), shape);
+        EXPECT_EQ(result.status().code(), shape[0] < 0 ? StatusCode::kInvalidArgument : StatusCode::kOverflow);
+        EXPECT_EQ(metadata.size(), 1U);
+        EXPECT_EQ(original->data(), data);
+        EXPECT_EQ(Copy(original->shape()), (std::vector<int64_t>{2, 3}));
+        EXPECT_EQ(Copy(original->strides()), (std::vector<int64_t>{3, 1}));
+    }
+    EXPECT_TRUE(metadata.Add(data, DataType::Float32(), {6}).ok());
+    EXPECT_EQ(metadata.size(), 2U);
+}
+
+TEST(WeightBindingMetadata, EmptyTensorKeepsRepresentableStrides) {
+    WeightBindingMetadata metadata;
+    const auto view = metadata.Add(nullptr, DataType::Float32(), {2, 0, 3});
+    ASSERT_TRUE(view.ok()) << view.status().ToString();
+    EXPECT_TRUE(view->is_valid());
+    EXPECT_EQ(view->numel(), 0);
+    EXPECT_EQ(Copy(view->strides()), (std::vector<int64_t>{0, 3, 1}));
 }
 
 TEST(WeightBindingMetadata, EachEntryKeepsItsOwnMetadata) {
@@ -69,8 +104,12 @@ TEST(WeightBindingMetadata, EachEntryKeepsItsOwnMetadata) {
     alignas(64) const float matrix[6] = {};
     alignas(64) const float vector[3] = {};
 
-    const TensorView first = metadata.Add(matrix, DataType::Float32(), {2, 3});
-    const TensorView second = metadata.Add(vector, DataType::Float32(), {3});
+    const auto first_result = metadata.Add(matrix, DataType::Float32(), {2, 3});
+    ASSERT_TRUE(first_result.ok()) << first_result.status().ToString();
+    const TensorView first = *first_result;
+    const auto second_result = metadata.Add(vector, DataType::Float32(), {3});
+    ASSERT_TRUE(second_result.ok()) << second_result.status().ToString();
+    const TensorView second = *second_result;
 
     EXPECT_EQ(metadata.size(), 2U);
     EXPECT_EQ(first.data(), matrix);
@@ -83,7 +122,9 @@ TEST(WeightBindingMetadata, EachEntryKeepsItsOwnMetadata) {
 TEST(WeightBindingMetadata, EarlierViewsSurviveLaterAdditions) {
     WeightBindingMetadata metadata;
     alignas(64) const float data[6] = {};
-    const TensorView view = metadata.Add(data, DataType::Float32(), {2, 3});
+    const auto view_result = metadata.Add(data, DataType::Float32(), {2, 3});
+    ASSERT_TRUE(view_result.ok()) << view_result.status().ToString();
+    const TensorView view = *view_result;
     const std::vector<int64_t> expected_shape = Copy(view.shape());
     const std::vector<int64_t> expected_strides = Copy(view.strides());
 
@@ -91,7 +132,7 @@ TEST(WeightBindingMetadata, EarlierViewsSurviveLaterAdditions) {
     // elements; the inner shape/stride buffers keep their addresses.
     alignas(64) const float filler[1] = {};
     for (int i = 0; i < 64; ++i) {
-        metadata.Add(filler, DataType::Float32(), {1});
+        ASSERT_TRUE(metadata.Add(filler, DataType::Float32(), {1}).ok());
     }
 
     ASSERT_EQ(metadata.size(), 65U);
@@ -104,7 +145,9 @@ TEST(WeightBindingMetadata, EarlierViewsSurviveLaterAdditions) {
 TEST(WeightBindingMetadata, EarlierViewsSurviveMoveConstruction) {
     WeightBindingMetadata metadata;
     alignas(64) const float data[6] = {};
-    const TensorView view = metadata.Add(data, DataType::Float32(), {2, 3});
+    const auto view_result = metadata.Add(data, DataType::Float32(), {2, 3});
+    ASSERT_TRUE(view_result.ok()) << view_result.status().ToString();
+    const TensorView view = *view_result;
     const std::vector<int64_t> expected_shape = Copy(view.shape());
     const std::vector<int64_t> expected_strides = Copy(view.strides());
 
@@ -120,13 +163,15 @@ TEST(WeightBindingMetadata, EarlierViewsSurviveMoveConstruction) {
 TEST(WeightBindingMetadata, EarlierViewsSurviveMoveAssignment) {
     WeightBindingMetadata metadata;
     alignas(64) const float data[6] = {};
-    const TensorView view = metadata.Add(data, DataType::Float32(), {2, 3});
+    const auto view_result = metadata.Add(data, DataType::Float32(), {2, 3});
+    ASSERT_TRUE(view_result.ok()) << view_result.status().ToString();
+    const TensorView view = *view_result;
     const std::vector<int64_t> expected_shape = Copy(view.shape());
     const std::vector<int64_t> expected_strides = Copy(view.strides());
 
     WeightBindingMetadata target;
     alignas(64) const float stale[1] = {};
-    target.Add(stale, DataType::Float32(), {1});
+    ASSERT_TRUE(target.Add(stale, DataType::Float32(), {1}).ok());
     target = std::move(metadata);
 
     EXPECT_EQ(target.size(), 1U);

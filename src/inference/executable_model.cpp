@@ -201,7 +201,8 @@ StatusOr<TensorView> MaterializeBinding(WeightBindingMetadata& metadata,
 }
 
 StatusOr<ModelResourceUsage> CollectModelUsage(
-        const LoweredModelArtifact& artifact, const ModelLimits& limits) {
+        const LoweredModelArtifact& artifact,
+        const ModelLimits& limits) {
     const auto& resolved = artifact.loaded_model->GetResolvedWeights();
     ModelResourceUsage usage;
     usage.weight_fp32_conversion = artifact.loaded_model->GetWeightFp32ConversionUsage();
@@ -217,15 +218,17 @@ StatusOr<ModelResourceUsage> CollectModelUsage(
     } else {
         usage.weights = *weight_usage;
     }
+
     // Distinct vector objects may alias one shared control block; charge each
     // visible payload once, rather than treating that entire owner as one vector.
     std::set<const std::vector<std::byte>*> constants;
     for (const auto& value: artifact.graph.values()) {
-        const auto* constant = std::get_if<ConstantValue>(&value.payload);
-        if (constant != nullptr && constant->binding.inline_data != nullptr &&
+        if (const auto* constant = std::get_if<ConstantValue>(&value.payload);
+            constant != nullptr && constant->binding.inline_data != nullptr &&
             constants.insert(constant->binding.inline_data.get()).second) {
             if (CheckOverflowAdd(usage.inline_constant_bytes,
-                                 constant->binding.inline_data->size(), &usage.inline_constant_bytes)) {
+                                 constant->binding.inline_data->size(),
+                                 &usage.inline_constant_bytes)) {
                 return Status::Overflow(
                         "Inline constant payload overflowed size_t");
             }
@@ -267,7 +270,8 @@ StatusOr<std::optional<size_t>> PackingLimit(const ModelLimits& limits,
 }
 
 StatusOr<PackedWeightCollection> PackModelWeights(
-        Runtime& runtime, const LoweredModelArtifact& artifact,
+        Runtime& runtime,
+        const LoweredModelArtifact& artifact,
         std::optional<size_t> packed_cap) {
     auto requests = BuildWeightPackingRequests(
             artifact.graph, artifact.loaded_model->GetResolvedWeights());
@@ -283,6 +287,7 @@ StatusOr<PackedWeightCollection> PackModelWeights(
     } else if (!artifact.graph.steps().empty()) {
         device = artifact.graph.steps().front().spec.selector.device_type;
     }
+
     const auto backend = runtime.GetBackend(device);
     AM_RETURN_IF_ERROR(backend.status());
 
@@ -356,7 +361,8 @@ StatusOr<ExternalTensorBindings> BuildModelBindings(
 }
 
 StatusOr<std::unique_ptr<LoadedModel>> ApplyWeightPolicy(
-        Runtime& runtime, std::unique_ptr<LoadedModel> loaded,
+        Runtime& runtime,
+        std::unique_ptr<LoadedModel> loaded,
         const ModelLoadOptions& options) {
     AM_RETURN_IF_ERROR(ValidateSourceWeights(*loaded, options.weights));
     if (options.weights == WeightPolicy::kConvertToFp32) {
@@ -434,13 +440,15 @@ const ModelResourceUsage& ExecutableModel::resource_usage() const noexcept {
     return resource_usage_;
 }
 
-Status ExecutableModel::CheckPhase(ExecPhase phase) const noexcept {
+Status ExecutableModel::CheckPhase(ExecPhase phase) const noexcept try {
     if (!PhaseMatches(phase_, phase)) {
         return Status::FailedPrecondition(
                 std::string("ExecutableModel was compiled for phase ") +
                 ToString(phase_) + ", but phase " + ToString(phase) + " was requested");
     }
     return Status::Ok();
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 StatusOr<const ExecutionPlan*> ExecutableModel::plan(ExecPhase phase) const noexcept {
@@ -475,21 +483,27 @@ bool ExecutableModel::IsPreparedFor(const Runtime& runtime) const noexcept {
 }
 
 StatusOr<ExecutableModel> ExecutableModel::Prepare(
-        Runtime& runtime, LoweredModelArtifact artifact,
+        Runtime& runtime,
+        LoweredModelArtifact artifact,
         const ModelLimits& limits) try {
     if (artifact.loaded_model == nullptr) {
-        return Status::InvalidArgument("ExecutableModel::Prepare: artifact carries no loaded model");
+        return Status::InvalidArgument(
+                "ExecutableModel::Prepare: artifact carries no loaded model");
     }
+
     const auto& config = artifact.loaded_model->GetConfig();
     if (config.vocab_size <= 0 || config.max_position_embeddings <= 0) {
         return Status::InvalidArgument(
                 "ExecutableModel::Prepare: invalid vocabulary or context limit");
     }
+
     if (!std::in_range<size_t>(config.vocab_size) ||
         !std::in_range<size_t>(config.max_position_embeddings)) {
         return Status::Overflow(
-                "ExecutableModel::Prepare: vocabulary or context limit does not fit size_t");
+                "ExecutableModel::Prepare: vocabulary or context "
+                "limit does not fit size_t");
     }
+
     const auto vocab_size = static_cast<size_t>(config.vocab_size);
     const auto context_limit = static_cast<size_t>(config.max_position_embeddings);
 
@@ -547,7 +561,8 @@ StatusOr<ExecutableModel> ExecutableModel::Load(Runtime& runtime,
                 artifact.status().message());
     }
 
-    auto executable = Prepare(runtime, std::move(*artifact), options.limits);
+    auto executable = Prepare(
+            runtime, std::move(*artifact), options.limits);
     if (!executable.ok()) {
         return executable.status().WithMessage(
                 "ExecutableModel::Load preparation failed: " +

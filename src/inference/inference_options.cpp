@@ -5,8 +5,8 @@
 
 namespace aethermind {
 
-StatusOr<ModelCompileOptions> MakeCompileOptions(
-        CompilePreset preset, DeviceType target) try {
+StatusOr<ModelCompileOptions> MakeCompileOptions(CompilePreset preset,
+                                                 DeviceType target) try {
     if (preset != CompilePreset::kO1Plain && preset != CompilePreset::kO2Packed) {
         return Status::InvalidArgument("Unknown compile preset");
     }

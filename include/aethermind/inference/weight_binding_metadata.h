@@ -4,6 +4,7 @@
 /// @file weight_binding_metadata.h
 /// @brief Stable shape/stride metadata for long-lived external tensor bindings.
 
+#include "aethermind/base/status.h"
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/dtypes/data_type.h"
 
@@ -53,12 +54,16 @@ public:
     ///
     /// @param data Borrowed element data; must outlive this object.
     /// @param dtype Element type of `data`.
-    /// @param shape Logical dimensions with non-negative extents whose product
-    ///        fits in `int64_t`, copied into owned storage. A violating shape is
-    ///        a fatal check rather than a returned error, because callers
-    ///        validate the shape product against the backing byte size first.
-    /// @return View borrowing `data` and this object's metadata arrays.
-    TensorView Add(const void* data, DataType dtype, std::vector<int64_t> shape);
+    /// @param shape Logical dimensions copied into owned storage. Extents must
+    ///        be non-negative and every suffix product must fit in int64_t,
+    ///        including for empty tensors. Forward element-count products must
+    ///        also fit in uint64_t, as required by TensorView.
+    /// @return View borrowing `data` and this object's metadata arrays, or
+    ///         InvalidArgument for negative extents, Overflow for unrepresentable
+    ///         products, or empty ResourceExhausted on allocation failure.
+    /// @note Failure leaves existing entries and issued views unchanged.
+    AM_NODISCARD StatusOr<TensorView> Add(const void* data, DataType dtype,
+                                          std::vector<int64_t> shape);
 
     AM_NODISCARD size_t size() const noexcept;
     AM_NODISCARD bool empty() const noexcept;

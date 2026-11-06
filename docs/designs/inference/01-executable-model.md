@@ -1,9 +1,9 @@
 # ExecutableModel 模块设计
 
 - **状态**: Current（描述已验证实现；只写仓库事实）
-- **版本**: 1.8
+- **版本**: 1.9
 - **日期**: 2026-09-23
-- **最近更新**: 2026-11-05
+- **最近更新**: 2026-11-06
 - **来源提案**: [07 号提案：ExecutableModel 生产准备入口方案](../../improvement-plan/07-executable-model-preparation.md)（Implemented）
 - **关联代码**: [include/aethermind/inference/](../../../include/aethermind/inference/)（`executable_model.h`、`weight_binding_metadata.h`）/[src/inference/](../../../src/inference/)
 - **上游依赖**: compiler（`LoweredModelArtifact`、`BuildWeightPackingRequests`）、model（`LoadedModel`/`ResolvedModelWeights`、`ResolveWeightBinding`、`PrepackWeightRequests`、`PackedWeightCollection`）、execution（`ExecutionPlanBuilder`、`ComputeExternalReadRequirements`、`ExternalTensorBindings`）、runtime（`Runtime` 提供 backends/allocator）、graph/operators 纯数据 payload 契约（`WeightValue`/`ConstantValue`）
@@ -30,7 +30,7 @@
 
 ### 2.1 上层共享 FP32 策略
 
-[model_execution_policy.h](../../../include/aethermind/inference/model_execution_policy.h) / [实现](../../../src/inference/model_execution_policy.cpp) 提供 `ValidateSourceWeights(const LoadedModel&, WeightPolicy)` 和 `MakeFp32KVCacheOptions(const HfModelConfig&, size_t)`：前者只读 hint 与全部必需 resolved roles，后者返回已有 `KVCacheRuntimeOptions` owning 值，校验容量、正数/安全转换及逻辑 head_dim。策略不读/转换 payload、不分配 KV、不访问 backend、不保留借用；诊断 OOM 返回空 message 的 ResourceExhausted。
+[model_execution_policy.h](../../../include/aethermind/inference/model_execution_policy.h) / [实现](../../../src/inference/model_execution_policy.cpp) 提供 `ValidateSourceWeights(const LoadedModel&, WeightPolicy)` 和 `MakeFp32KVCacheOptions(const HfModelConfig&, size_t)`：前者只读 hint 与全部必需 resolved roles，后者返回已有 `KVCacheRuntimeOptions` owning 值，校验容量、正数/安全转换及逻辑 head_dim。`WeightPolicy` 在该策略头中定义，策略头不再依赖 `ExecutableModel` 的完整定义。策略不读/转换 payload、不分配 KV、不访问 backend、不保留借用；诊断 OOM 返回空 message 的 ResourceExhausted。
 
 该产品准入策略由上层入口显式调用，不改变通用 Loader/Compile/Prepare 的精度支持契约。M5 已移除应用中的实现副本，CLI 与 M6 C adapter 消费同一公共头。Runtime/model KV 跨对象比较和已编译图所有层 state dtype 扫描属于 adapter 私有 helper，不由此共享配置映射代替。完整边界见 [Runtime C ABI 合同](../../api/runtime-c-abi.md)。
 
@@ -59,7 +59,8 @@
 - 元数据指针稳定性由两个独立机制保证——(a) 外层 vector 扩容时 `Entry` 被 move 构造，但内层 vector 的 `data()` 跨 move 不变；(b) `ExecutableModel`/元数据对象整体移动时外层缓冲指针直接移交。
 - 因此**禁止**把 shape/stride 换成内联存储（`std::array`、small-buffer）——任何一次扩容或移动都会让已发出的 `IntArrayView` 悬垂。
 - stride 按行主序紧凑推导（权重连续性由 HF 校验器与 prepack 路径保证）；`alignment` 统一以 0（未指定）交付，因为 `RawWeightView` 不携带对齐信息。
-- stride 累加以 `CheckOverflowMul` 检测 `int64_t` 乘积溢出，溢出即 `AM_CHECK` 致命失败（不是返回 `Status`）：调用方已先按 backing 字节数校验过形状乘积，越界形状属前置条件违反，而静默产出错误 stride 会在执行期变成越界索引。
+- `Add` 返回 `StatusOr<TensorView>`，检查负维度、与 `TensorView` 一致的正序 `uint64_t` 元素计数以及每一级逆序 `int64_t` 乘积；负维度返回 `InvalidArgument`，溢出返回 `Overflow`。即使总元素数为零，后缀乘积也可能不可表示，不能用总字节数校验代替 stride 校验。
+- shape/stride 完整构造成功后才发布元数据 entry；失败保持原有 entries 和已发出的 views 有效，函数内部的分配失败返回空消息 `ResourceExhausted`。此 C++ 返回类型变更要求直接调用方检查状态并重新编译。
 
 ## 4. 并发模型
 
@@ -93,7 +94,7 @@ public:
 };
 ```
 
-- 两个 phase 访问器返回 `StatusOr<const T*>`（借用指针），使 phase 不匹配可表达为失败而非静默复用。
+- 两个 phase 访问器返回 `StatusOr<const T*>`（借用指针），使 phase 不匹配可表达为失败而非静默复用；诊断字符串分配失败时返回空消息 `ResourceExhausted`，保持 `noexcept` 合同。
 - 只可移动构造、不可赋值：就地替换一个已 prepare 的模型会作废此前交出的 `plan()`/`immutable_weight_bindings()` 借用指针与派生的 `PreparedExecutionBindings`，且逐成员赋值会先释放 artifact 再替换借用它的绑定表（违反 §3.1 的逆序销毁契约）；换模型应构造新对象。
 - 返回路径只依赖 `StatusOr` 的 nothrow 移动构造前提（`StatusOr` 不再要求 `T` 可赋值，其赋值运算符对这类 `T` 变为 deleted）。
 - 不暴露 packed store 与 artifact 访问器。
@@ -142,7 +143,8 @@ public:
 | 权重视图无效/不连续 | `kFailedPrecondition` | 经 `ValidateRawWeightView` + 连续性复查 |
 | 常量无 `inline_data`、非静态形状、负维度、形状乘积溢出、字节数与形状不符 | `kFailedPrecondition` | 每条均含 value index |
 | step 间 phase 不一致 | `kFailedPrecondition` | prepare 期拒绝 |
-| phase 查询不匹配 | `kFailedPrecondition` | 两个访问器一致 |
+| phase 查询不匹配 | `kFailedPrecondition` | 两个访问器一致；诊断分配失败返回空消息 `kResourceExhausted` |
+| 绑定 shape/stride 的逆序乘积不可表示 | `kOverflow` | 包括总元素数为零但后缀乘积溢出的形状；不发布部分模型 |
 | plan 值下标越出 artifact 值表 / payload 类别不符 | `kInternal` | 值索引同一性被破坏的内部错误 |
 | 第 7 步对账不相等 | `kInternal` | 不进入执行期 |
 
@@ -170,8 +172,8 @@ model inputs 不进绑定表：token/position 由 Session 按 phase 追加，重
 - 多层（≥2 layer）：每个权重绑定到自己的 backing，不串层。
 - 常量：物化成功、无 inline 数据、字节数不符三条路径。
 - packed：`AddRmsNorm` 子图权重不进绑定表且 `step.packed_weights` 非空；完整 Llama 在 `enable_packed_weights=true` 下所有含权重 step 均可解析（`PackedLoweringPreparesAllWeightConsumers`）。
-- phase：`kBoth` artifact 三查询同 plan；单 phase artifact 拒绝不匹配查询；混合 phase artifact prepare 期拒绝。
-- 元数据稳定性：移动后、扩容后已发出的 `TensorView` 仍有效；绑定表先于模型释放的 teardown 顺序在 ASAN/TSAN 下验证；形状乘积超出 `int64_t` 时 `Add` 致命失败（`ShapeProductOverflowDeath`）。
+- phase：`kBoth` artifact 三查询同 plan；单 phase artifact 拒绝不匹配查询；混合 phase artifact prepare 期拒绝。glibc interposer 可用时，逐个注入两个访问器错误路径上的每次分配失败，验证空消息 `ResourceExhausted` 及随后查询仍正常。
+- 元数据稳定性：移动后、扩容后已发出的 `TensorView` 仍有效；绑定表先于模型释放的 teardown 顺序在 ASAN/TSAN 下验证；`Add` 对形状/stride 溢出返回 `Overflow`；负维度或失败添加不破坏旧 views，正常空张量仍可准备。通过真实 lowering 的 `[0, INT64_MAX, 2]` 空常量在 Prepare 返回错误且 Runtime 可重试。
 - 契约钉住：`IsMoveConstructibleButNotAssignable` 断言只可移动构造、不可赋值/复制。
 
 ## 10. 变更记录
@@ -189,3 +191,5 @@ model inputs 不进绑定表：token/position 由 Session 按 phase 追加，重
 | 2026-11-05 | 1.7 | 原文件内收敛为 `ExecutableModel::Load/Prepare`，统一 options 与源权重策略，整理资源核算、packing、bindings 私有步骤；删除旧创建自由函数 |
 
 | 2026-11-05 | 1.8 | `CompilePreset` 与显式 target 分开映射；ModelLoadOptions 增加 target，plain 准备沿 lowered target 解析资源；CPU 转换准入与 CLI/C ABI 范围保持明确 |
+
+| 2026-11-06 | 1.9 | phase 查询诊断 OOM 转为 Status；WeightBindingMetadata::Add 改为可恢复的 stride 校验并在成功后发布 entry；WeightPolicy 归入现有策略头，去除策略对完整模型的依赖 |

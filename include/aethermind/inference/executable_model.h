@@ -10,6 +10,7 @@
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/inference/inference_options.h"
+#include "aethermind/inference/model_execution_policy.h"
 #include "aethermind/inference/resource_usage.h"
 #include "aethermind/inference/weight_binding_metadata.h"
 #include "aethermind/model/weight/packed_weight_collection.h"
@@ -28,12 +29,6 @@ class Runtime;
 struct ModelLimits {
     size_t max_model_payload_bytes = 0;
     size_t max_packed_weight_bytes = 0;
-};
-
-/// @brief Explicit source-weight admission and conversion policy.
-enum class WeightPolicy : uint8_t {
-    kRequireFp32,
-    kConvertToFp32,
 };
 
 /// @brief Target, compilation and source-weight policy with per-model caps.
@@ -77,6 +72,12 @@ struct ModelLoadOptions {
 /// must serialize concurrent access.
 class ExecutableModel {
 public:
+    ExecutableModel(ExecutableModel&&) noexcept = default;
+    ExecutableModel& operator=(ExecutableModel&&) = delete;
+    ExecutableModel(const ExecutableModel&) = delete;
+    ExecutableModel& operator=(const ExecutableModel&) = delete;
+    ~ExecutableModel() = default;
+
     /// @brief Loads a model for a target using an explicit weight policy and preset.
     /// @note Loads once; conversion precedes graph construction. Runtime must
     ///       remain at the same address and outlive the returned model. CLI and
@@ -94,11 +95,6 @@ public:
                                              LoweredModelArtifact artifact,
                                              const ModelLimits& limits = {});
 
-    ExecutableModel(ExecutableModel&&) noexcept = default;
-    ExecutableModel& operator=(ExecutableModel&&) = delete;
-    ExecutableModel(const ExecutableModel&) = delete;
-    ExecutableModel& operator=(const ExecutableModel&) = delete;
-    ~ExecutableModel() = default;
 
     /// @brief Returns the plan to run for `phase`.
     ///
@@ -108,6 +104,7 @@ public:
     ///
     /// @param phase Phase the caller intends to run.
     /// @return Borrowed plan owned by this model, or an error on phase mismatch.
+    ///         Diagnostic allocation failure returns empty ResourceExhausted.
     AM_NODISCARD StatusOr<const ExecutionPlan*> plan(ExecPhase phase) const noexcept;
 
     /// @brief Returns the immutable weight and constant bindings for `phase`.
@@ -117,7 +114,8 @@ public:
     ///
     /// @param phase Phase the caller intends to run.
     /// @return Borrowed bindings owned by this model, or an error on phase
-    ///         mismatch.
+    ///         mismatch. Diagnostic allocation failure returns empty
+    ///         ResourceExhausted.
     AM_NODISCARD StatusOr<const ExternalTensorBindings*> immutable_weight_bindings(
             ExecPhase phase) const noexcept;
 

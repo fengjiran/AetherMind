@@ -14,12 +14,14 @@
 #include "aethermind/runtime/runtime_builder.h"
 #include "aethermind/shape_inference/tensor_spec.h"
 #include "execution/test_tensor_buffer_helpers.h"
+#include "inference/test_malloc_interposer.h"
 #include "model/test_llama_checkpoint_helpers.h"
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <gtest/gtest.h>
+#include <limits>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -485,6 +487,33 @@ TEST(ExecutableModel, RejectsConstantWithoutInlineData) {
     EXPECT_EQ(model.status().code(), StatusCode::kFailedPrecondition);
 }
 
+TEST(ExecutableModel, RejectsEmptyConstantWithUnrepresentableStridesAndAllowsRetry) {
+    Runtime runtime = MakeCpuRuntime();
+    for (const bool overflow: {true, false}) {
+        ModelGraph graph;
+        const auto spec = overflow ? FloatSpec({0, std::numeric_limits<int64_t>::max(), 2})
+                                   : FloatSpec({0, 2, 3});
+        const auto input = graph.AddConstant(spec, ConstantBinding{.inline_data = MakeConstantBytes(0)});
+        const auto silu = graph.AddNode(OpType::kSilu, 0U, {input},
+                                        {NodeOutputDesc{.payload = ActivationValue{}}}, SiluParams{});
+        ASSERT_TRUE(silu.ok()) << silu.status().ToString();
+        graph.MarkOutput(silu->outputs[0]);
+        auto artifact = MakeArtifact(graph, {}, {.enable_packed_weights = false});
+        ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
+        const auto model = ExecutableModel::Prepare(runtime, std::move(*artifact));
+        if (overflow) {
+            EXPECT_EQ(model.status().code(), StatusCode::kOverflow);
+        } else {
+            ASSERT_TRUE(model.ok()) << model.status().ToString();
+            const auto bindings = model->immutable_weight_bindings(ExecPhase::kBoth);
+            ASSERT_TRUE(bindings.ok());
+            ASSERT_EQ((*bindings)->read_only.size(), 1U);
+            EXPECT_TRUE((*bindings)->read_only[0].tensor.is_valid());
+            EXPECT_EQ((*bindings)->read_only[0].tensor.numel(), 0);
+        }
+    }
+}
+
 TEST(ExecutableModel, RejectsConstantWhoseInlineSizeDisagreesWithShape) {
     // Three floats behind a four-element shape: binding it would let a kernel
     // read past the payload.
@@ -703,6 +732,37 @@ TEST(ExecutableModel, PhaseSpecificArtifactRejectsUnmatchedPhaseQueries) {
         const auto bindings = model->immutable_weight_bindings(mismatched);
         ASSERT_FALSE(bindings.ok()) << ToString(mismatched);
         EXPECT_EQ(bindings.status().code(), StatusCode::kFailedPrecondition);
+
+        // Ordinary phase checks above run on every platform. The glibc build
+        // additionally replays every diagnostic allocation, including Status
+        // propagation, without depending on a particular string layout.
+        if (MallocInterposerAvailable()) {
+            for (const bool query_bindings: {false, true}) {
+                const auto query = [&]() -> Status {
+                    if (query_bindings) {
+                        return model->immutable_weight_bindings(mismatched).status();
+                    }
+                    return model->plan(mismatched).status();
+                };
+                BeginMallocCallCounting();
+                const auto original = query();
+                const auto counts = EndMallocCallCounting();
+                EXPECT_EQ(original.code(), StatusCode::kFailedPrecondition);
+                ASSERT_GT(counts.malloc_calls, 0U);
+                for (size_t skip = 0; skip < counts.malloc_calls; ++skip) {
+                    SCOPED_TRACE(skip);
+                    ScopedMallocFailure failure(0, skip);
+                    const auto status = query();
+                    const auto injected = failure.Stop();
+                    EXPECT_TRUE(injected.allocation_failed);
+                    EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+                    EXPECT_TRUE(status.message().empty());
+                    EXPECT_TRUE(model->plan(ExecPhase::kPrefill).ok());
+                    EXPECT_TRUE(model->immutable_weight_bindings(ExecPhase::kPrefill).ok());
+                    EXPECT_EQ(query().code(), StatusCode::kFailedPrecondition);
+                }
+            }
+        }
     }
 }
 

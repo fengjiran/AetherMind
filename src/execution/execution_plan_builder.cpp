@@ -5,6 +5,7 @@
 #include "aethermind/model/weight/packed_weight_collection.h"
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/operator_schema.h"
+#include "utils/overflow_check.h"
 
 #include <algorithm>
 #include <optional>
@@ -214,6 +215,16 @@ struct PreparedExecutionGraph {
     std::vector<ExecutionValueId> model_inputs{};
     std::vector<ExecutionValueId> model_outputs{};
 };
+
+StatusOr<ExecutionValueId> AppendPreparedValue(PreparedExecutionGraph& graph,
+                                               ExecutionValueDesc value) {
+    uint32_t index = 0;
+    if (CheckNarrow(graph.values.size(), &index)) {
+        return Status::Overflow("Execution plan value id space exhausted");
+    }
+    graph.values.push_back(std::move(value));
+    return ExecutionValueId{.index = index};
+}
 
 Status ValidateCallerMetadata(const ExecutionPlanNodeSpec& node,
                               std::span<const TensorSpec> compact_input_specs,
@@ -429,9 +440,9 @@ StatusOr<PreparedExecutionGraph> PrepareUntrustedGraph(
                     : port_kind == OperatorPortKind::kConstant ? ExecutionValueKind::kConstant
                     : port_kind == OperatorPortKind::kState    ? ExecutionValueKind::kState
                                                                : ExecutionValueKind::kModelInput;
-            const ExecutionValueId id{.index = static_cast<uint32_t>(graph.values.size())};
-            graph.values.push_back({.spec = input_specs[i],
-                                    .kind = kind});
+            AM_ASSIGN_OR_RETURN(
+                    const ExecutionValueId id,
+                    AppendPreparedValue(graph, {.spec = input_specs[i], .kind = kind}));
             prepared->inputs.push_back(id);
             if (kind == ExecutionValueKind::kModelInput) {
                 graph.model_inputs.push_back(id);
@@ -442,9 +453,9 @@ StatusOr<PreparedExecutionGraph> PrepareUntrustedGraph(
             const ExecutionValueKind kind = schema->output_ports[i].kind == OperatorPortKind::kState
                                                     ? ExecutionValueKind::kState
                                                     : ExecutionValueKind::kActivation;
-            const ExecutionValueId id{.index = static_cast<uint32_t>(graph.values.size())};
-            graph.values.push_back({.spec = output_specs[i],
-                                    .kind = kind});
+            AM_ASSIGN_OR_RETURN(
+                    const ExecutionValueId id,
+                    AppendPreparedValue(graph, {.spec = output_specs[i], .kind = kind}));
             prepared->outputs.push_back(id);
             if (kind == ExecutionValueKind::kActivation) {
                 graph.model_outputs.push_back(id);

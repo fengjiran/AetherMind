@@ -264,6 +264,25 @@ prompt 必须非空；prompt/EOS 必须在词表范围内，prompt 长度须满�
 
 旧的 `CommitUntil` 与私有提交访问 header 不再是当前 API；不提供兼容别名或旧 header。
 
+### BFloat16 与整数的混合算术（include/aethermind/dtypes/bfloat16.h）
+
+`BFloat16` 与 `int` / `int64_t` 两侧的 `+`、`-`、`*`、`/` 保持返回 `BFloat16`。两个操作数提升为 Float32 后运算，仅在返回时将结果舍入为 BF16；整数不会在运算前先量化为 BF16。因此 `BFloat16(-256.0f) + 257` 返回 `1`。
+
+`int64_t` 先转为 float，超出 Float32 有效精度的整数仍可能舍入；该接口不承诺精确的 64-bit 整数混合算术。除零、Inf、NaN 和 signed zero 沿用既有 Float32 运算与 BF16 结果转换合同。
+
+### Half / BFloat16 数学 helper（include/aethermind/dtypes/bfloat16.h）
+
+[bfloat16.h](../../include/aethermind/dtypes/bfloat16.h) 为 `Half` / `BFloat16` 提供受类型约束的 `aethermind` 数学 helper；合法的 `std::numeric_limits` 特化继续保留，数学函数不向 `namespace std` 添加重载。
+
+| 接口 | 合同 |
+|---|---|
+| `aethermind::acos/asin/atan/erf/erfc/exp/expm1/log/log10/log2/log1p/ceil/cos/sin/sinh/cosh/tan/tanh/floor/nearbyint/trunc/lgamma/sqrt/abs(T)` | `T` 为 Half 或 BFloat16；将输入转为 float 调用对应标准数学函数，再转换回 T，沿用该类型现有 rounding/NaN/subnormal 合同。 |
+| `aethermind::isfinite(T)` | 先转换为 float，返回 bool，不做 reduced-type 回转换。 |
+| `aethermind::rsqrt(T)` | 保留 `1.0 / std::sqrt(static_cast<float>(value))` 的计算，再转换回 T。 |
+| `aethermind::pow(T, double)` / `aethermind::fmod(T, T)` | pow 保留 double exponent，fmod 将两个输入转为 float；结果均转换回 T。 |
+
+显式使用 `aethermind::sqrt(value)`，或通过 `using std::sqrt; sqrt(value);` 的 ADL 选择 reduced-type helper。需要 FP32 中间值时，使用 `std::sqrt(static_cast<float>(value))` 等标准调用。原 `std::sqrt<BFloat16>` 等非标准扩展调用须迁移；包含本头不再改变 `std::sqrt(Half)` 等表达式的标准重载与返回类型。此变更不改变存储格式、转换实现、算术运算符或 C ABI。
+
 ## 3. 通用 C++ 工具（include/utils/）
 
 | 接口 | 合同 |

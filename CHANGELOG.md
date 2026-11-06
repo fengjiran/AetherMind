@@ -13,6 +13,7 @@
 
 ### Changed
 
+- `bfloat16.h` 中 Half/BFloat16 的数学 helper 从 `std` 迁入 `aethermind`，仅保留合法的 `std::numeric_limits` 特化。原 `std::sqrt<BFloat16>` 等调用须改为 `aethermind::sqrt` 或通过 ADL 调用；显式 `std::sqrt` / `std::exp` 对 reduced wrapper 恢复标准的 Float32 转换路径，不再被该头额外窄化。helper 的既有计算与返回类型保持不变。
 - 共享编译 preset 与 CPU Runtime 配置的头/实现统一重命名为 `inference_options.h/.cpp`；调用方更新 include 路径，旧路径不提供转发头。
 
 - 删除未使用的公共 `function.h`、`function_traits.h`、`registry.h` 与 `src/function.cpp`：移除 `Function`/`TypedFunction`/`Registry`、`DEFINE_STATIC_FUNCTION`/`REG_VAR_DEF` 宏及 Any 的 `Function` 类型名。原 C++ 调用方需迁移并重新编译，C ABI 不变。
@@ -41,6 +42,7 @@
 
 ### Fixed
 
+- 修复 BFloat16 与 `int` / `int64_t` 两侧算术中的整数提前量化：整数先提升为 Float32，运算结果仅在返回时转换为 BF16，保留既有返回类型；例如 `BFloat16(-256.0f) + 257` 从错误的 `0` 修正为 `1`。
 - 修复 checked arithmetic portable fallback 的有符号溢出误报/漏报及窄整数提升 UB；修复 hash 头的 include 顺序依赖、定制点歧义和 pair 复制，以及 Map 的全位宽右移 UB。
 - 浮点解析的原生与 POSIX fallback 统一完整输入校验，失败保留输出；fallback 处理 locale/分配失败、可表示 subnormal 及宿主 rounding mode 的恢复。
 - memory junk-fill 支持任意字节对齐并保留原 pattern；断言宏限定 helper 命名空间，可在全局或其他命名空间调用。

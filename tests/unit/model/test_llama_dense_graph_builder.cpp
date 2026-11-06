@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -594,6 +595,16 @@ TEST(LlamaDenseGraphBuilder, UsesSymbolicSequenceAndStaticModelDimensions) {
     ASSERT_EQ(logits.shape.rank(), 2U);
     EXPECT_EQ(logits.shape[0], seq_len);
     EXPECT_EQ(logits.shape[1].GetStaticValue(), config.vocab_size);
+}
+
+TEST(LlamaDenseGraphBuilder, RejectsLayerCountOutsideUint32) {
+    HfModelConfig config = MakeLlamaConfig(std::numeric_limits<int64_t>::max());
+
+    const StatusOr<ModelGraph> graph = BuildLlamaDense(config, {});
+
+    ASSERT_FALSE(graph.ok());
+    EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(graph.status().message().find("num_hidden_layers"), std::string::npos);
 }
 
 TEST(LlamaDenseGraphBuilder, RejectsInvalidConfig) {

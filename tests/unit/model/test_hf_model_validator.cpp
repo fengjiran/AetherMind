@@ -502,6 +502,17 @@ TEST(ModelLoader_HfModelValidatorTest, AcceptsResolvedModelWithExpectedShapes) {
     EXPECT_TRUE(status.ok()) << status.ToString();
 }
 
+TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedKvHiddenOverflow) {
+    HfModelConfig config = MakeResolvedShapeConfig();
+    config.num_key_value_heads = std::numeric_limits<int64_t>::max();
+    const ResolvedModelWeights resolved;
+
+    const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(status.message().find("overflows int64_t"), std::string::npos);
+}
+
 TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedModelLayerCountMismatch) {
     HfModelConfig config = MakeResolvedShapeConfig();
     ResolvedModelWeights resolved = MakeResolvedModelWeights(config);

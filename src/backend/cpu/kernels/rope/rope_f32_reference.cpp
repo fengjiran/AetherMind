@@ -2,11 +2,11 @@
 #include "aethermind/base/macros.h"
 #include "aethermind/operators/rope_frequency_resolver.h"
 #include "rope_internal.h"
+#include "utils/overflow_check.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <limits>
 
 namespace aethermind::cpu::detail {
 namespace {
@@ -67,11 +67,10 @@ double EffectivePositionUnchecked(const RoPEF32KernelArgs& args,
 
 StatusOr<RoPERuntimeState> PrepareRuntimeState(const RoPEF32KernelArgs& args) noexcept {
     AM_ASSIGN_OR_RETURN(const int64_t max_pos, ValidatePosIdsAndGetMaxPos(args));
-    if (max_pos == std::numeric_limits<int64_t>::max()) {
+    int64_t effective_seq_len = 0;
+    if (CheckOverflowAdd(max_pos, int64_t{1}, &effective_seq_len)) {
         return Status::Overflow("CPU RoPE max position cannot form sequence length");
     }
-
-    const int64_t effective_seq_len = max_pos + 1;
     double dynamic_base = args.theta;
     if (args.algorithm == RoPEAlgorithm::kDynamicNtk) {
         AM_ASSIGN_OR_RETURN(dynamic_base,

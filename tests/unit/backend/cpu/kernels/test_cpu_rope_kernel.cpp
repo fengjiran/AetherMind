@@ -549,6 +549,28 @@ TEST(CPUKernelRoPEEntry, RejectsByteAndAddressRangeOverflow) {
               StatusCode::kInvalidArgument);
 }
 
+TEST(CPUKernelRoPEEntry, RejectsMaxPositionSequenceLengthOverflow) {
+    constexpr int64_t shape[2] = {1, 4};
+    constexpr int64_t strides[2] = {4, 1};
+    constexpr int64_t position_shape[1] = {1};
+    constexpr int64_t position_strides[1] = {1};
+    constexpr int64_t positions[1] = {std::numeric_limits<int64_t>::max()};
+    std::array<float, 4> q{};
+    std::array<float, 4> k{};
+    std::array<float, 4> q_output{};
+    std::array<float, 4> k_output{};
+
+    const Status status = RunRoPEEntry(MakeRoPEParams(4, 1, 1), RoPETestViews{
+                                                                        .q = TensorView{q.data(), DataType::Float32(), shape, strides},
+                                                                        .k = TensorView{k.data(), DataType::Float32(), shape, strides},
+                                                                        .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
+                                                                        .q_output = MutableTensorView{q_output.data(), DataType::Float32(), shape, strides},
+                                                                        .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, strides},
+                                                                });
+
+    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+}
+
 TEST(CPUKernelRoPEEntry, AcceptsOutputInsideStridedPositionIdsGap) {
     constexpr int64_t shape[2] = {2, 4};
     constexpr int64_t strides[2] = {4, 1};

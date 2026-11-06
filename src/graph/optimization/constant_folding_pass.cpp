@@ -1,6 +1,7 @@
 #include "aethermind/graph/optimization/constant_folding_pass.h"
 #include "aethermind/graph/optimization/const_evaluator.h"
 #include "aethermind/operators/operator_schema.h"
+#include "utils/overflow_check.h"
 
 namespace aethermind {
 namespace {
@@ -234,11 +235,12 @@ Status ConstantFoldingPass::Run(GraphRewriteSession& session, const PassContext&
         size_t total_output_bytes = 0;
         bool total_bytes_overflow = false;
         for (const auto& output: plan->outputs) {
-            if (output.nbytes > std::numeric_limits<size_t>::max() - total_output_bytes) {
+            size_t next_total = 0;
+            if (CheckOverflowAdd(total_output_bytes, output.nbytes, &next_total)) {
                 total_bytes_overflow = true;
                 break;
             }
-            total_output_bytes += output.nbytes;
+            total_output_bytes = next_total;
         }
 
         if (total_bytes_overflow) {

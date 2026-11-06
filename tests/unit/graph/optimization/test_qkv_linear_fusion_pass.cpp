@@ -7,6 +7,7 @@
 #include "test_optimization_helpers.h"
 
 #include <gtest/gtest.h>
+#include <limits>
 
 namespace {
 
@@ -220,6 +221,19 @@ TEST(QkvLinearFusionPass, FusesWhenProjectionHasMultipleConsumers) {
     ASSERT_TRUE(result.ok()) << result.status().ToString();
     EXPECT_EQ(result->FindNodesByOpType(OpType::kQkvLinear).size(), 1U);
     EXPECT_EQ(result->FindNodesByOpType(OpType::kLinear).size(), 1U);
+}
+
+TEST(QkvLinearFusionPass, SkipsFusedOutputFeatureOverflow) {
+    ModelGraph graph;
+    const QkvProjections projections = AddQkvProjections(
+            graph, 0U, {std::numeric_limits<int64_t>::max(), 1, 1});
+    MarkOutputs(graph, projections);
+
+    const StatusOr<ModelGraph> result = RunQkvFusion(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_TRUE(result->FindNodesByOpType(OpType::kQkvLinear).empty());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kLinear).size(), 3U);
 }
 
 TEST(QkvLinearFusionPass, SkipsIncompleteDuplicateAndNonAttentionRoleGroups) {

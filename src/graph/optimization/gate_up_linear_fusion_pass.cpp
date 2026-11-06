@@ -1,10 +1,10 @@
 #include "aethermind/graph/optimization/gate_up_linear_fusion_pass.h"
 #include "aethermind/operators/operator_inference.h"
+#include "utils/overflow_check.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <span>
 #include <string>
@@ -215,10 +215,11 @@ std::optional<GateUpLinearPattern> MakeGateUpLinearPattern(const GateUpCandidate
         }
     }
 
-    if (gate.output_features > std::numeric_limits<int64_t>::max() - up.output_features) {
+    int64_t fused_output_features = 0;
+    if (CheckOverflowAdd(gate.output_features, up.output_features,
+                         &fused_output_features)) {
         return std::nullopt;
     }
-    const int64_t fused_output_features = gate.output_features + up.output_features;
 
     return GateUpLinearPattern{
             .gate = ProjectionMatch{

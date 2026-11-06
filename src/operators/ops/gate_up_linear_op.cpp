@@ -1,6 +1,7 @@
 #include "aethermind/operators/operator_inference.h"
 #include "aethermind/operators/ops/linear_op.h"
 #include "aethermind/shape_inference/shape_constraint.h"
+#include "utils/overflow_check.h"
 
 namespace aethermind {
 
@@ -41,8 +42,9 @@ StatusOr<InferenceResult> InferGateUpLinear(const OpParams& params,
                 "GateUpLinear gate/up out_features must be non-negative");
     }
 
-    if (gate_up_params.gate_out_features >
-        std::numeric_limits<int64_t>::max() - gate_up_params.up_out_features) {
+    int64_t expected_rows = 0;
+    if (CheckOverflowAdd(gate_up_params.gate_out_features,
+                         gate_up_params.up_out_features, &expected_rows)) {
         return Status::InvalidArgument(
                 "GateUpLinear gate/up out_features overflow int64");
     }
@@ -57,7 +59,6 @@ StatusOr<InferenceResult> InferGateUpLinear(const OpParams& params,
                 MakeLinearUnsupportedWeightDTypeMessage("GateUpLinear"));
     }
 
-    const int64_t expected_rows = gate_up_params.gate_out_features + gate_up_params.up_out_features;
     const ShapeSymbol& packed_rows = weight_shape[0];
     if (packed_rows.IsStatic() && packed_rows.GetStaticValue() != expected_rows) {
         return Status::InvalidArgument(

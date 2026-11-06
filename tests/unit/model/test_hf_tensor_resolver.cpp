@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <gtest/gtest.h>
+#include <limits>
 #include <string>
 
 namespace {
@@ -111,6 +112,16 @@ TEST(ModelLoader_HfWeightResolverTest, RejectsMissingLayerAttentionWeight) {
     ASSERT_FALSE(resolved.ok());
     EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
     EXPECT_NE(resolved.status().message().find("model.layers.1.self_attn.q_proj.weight"), std::string::npos);
+}
+
+TEST(ModelLoader_HfWeightResolverTest, HandlesHugeLayerCountWithoutHugeReservation) {
+    const HfModelConfig config = MakeLlamaConfig(std::numeric_limits<int64_t>::max());
+    const RawWeightTable tensors = MakeCompleteTensorSet(0);
+
+    const auto resolved = hf::ResolveWeights(config, tensors);
+
+    ASSERT_FALSE(resolved.ok());
+    EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfWeightResolverTest, RejectsIncompleteLayerCount) {

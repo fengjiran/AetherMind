@@ -1,5 +1,6 @@
 #include "aethermind/operators/ops/kvcache_update_op.h"
 #include "aethermind/operators/operator_inference.h"
+#include "utils/overflow_check.h"
 
 namespace aethermind::detail {
 
@@ -127,7 +128,12 @@ Status ValidateKVCacheUpdateShapes(std::span<const TensorSpec> inputs) {
     }
 
     if (kv_heads.IsStatic() && head_dim.IsStatic()) {
-        const int64_t expected_last = kv_heads.GetStaticValue() * head_dim.GetStaticValue();
+        int64_t expected_last = 0;
+        if (CheckOverflowMul(kv_heads.GetStaticValue(), head_dim.GetStaticValue(),
+                             &expected_last)) {
+            return Status::InvalidArgument(
+                    "KVCacheUpdate num_kv_heads * head_dim overflows int64_t");
+        }
         if (k_last.IsStatic() && k_last.GetStaticValue() != expected_last) {
             return Status::InvalidArgument(
                     "KVCacheUpdate k last dim must equal num_kv_heads * head_dim");

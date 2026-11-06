@@ -157,6 +157,13 @@ TEST_F(KVCacheBindingValidationTest, RefreshesBindingsAfterValidLayoutChange) {
     EXPECT_EQ(*key, static_cast<const std::byte*>(storage_.key_buffer.data()) + 2264);
 }
 
+TEST_F(KVCacheBindingValidationTest, RejectsSequencePositionOverflowInElementReads) {
+    constexpr size_t kMaxSize = std::numeric_limits<size_t>::max();
+
+    EXPECT_EQ(view_.KeyData(0, 0, kMaxSize, 0).status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(view_.ValueData(0, 0, kMaxSize, 0).status().code(), StatusCode::kOutOfRange);
+}
+
 TEST_F(KVCacheBindingValidationTest, RejectsPlaneSizeOverflowAfterLayoutChange) {
     storage_.layout.num_layers = std::numeric_limits<size_t>::max();
     ASSERT_TRUE(storage_.layout.Validate().ok());

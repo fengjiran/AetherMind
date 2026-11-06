@@ -10,6 +10,7 @@
 
 #include <array>
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <string>
 
@@ -166,6 +167,20 @@ TEST(GateUpLinearFusionPass, FusesFixedGateUpOrderRegardlessOfInsertionAndPreser
     const GraphNode& swiglu_node = result->GetNode(silu_mul_nodes[0]);
     EXPECT_EQ(swiglu_node.inputs[0], fused.outputs[0]);
     EXPECT_EQ(swiglu_node.inputs[1], fused.outputs[1]);
+}
+
+TEST(GateUpLinearFusionPass, SkipsFusedOutputFeatureOverflow) {
+    ModelGraph graph;
+    const GateUpProjections projections = AddGateUpProjections(
+            graph, 0U, std::numeric_limits<int64_t>::max(), 1);
+    graph.MarkOutput(projections.gate);
+    graph.MarkOutput(projections.up);
+
+    const StatusOr<ModelGraph> result = RunGateUpFusion(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_TRUE(result->FindNodesByOpType(OpType::kGateUpLinear).empty());
+    EXPECT_EQ(result->FindNodesByOpType(OpType::kLinear).size(), 2U);
 }
 
 TEST(GateUpLinearFusionPass, SkipsIncompleteDuplicateAndIncompatibleGroups) {

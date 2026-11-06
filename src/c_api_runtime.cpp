@@ -14,7 +14,6 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
-#include <limits>
 #include <memory>
 #include <new>
 #include <span>
@@ -117,10 +116,11 @@ StatusOr<RuntimeConfiguration> ReadRuntimeConfiguration(const am_config_t* sourc
     // Reject byte/padding overflow before the manager rounds in element units;
     // wrapped geometry must not turn the ABI's Overflow into InvalidArgument.
     constexpr size_t kFp32Bytes = sizeof(uint32_t);
-    if (head_dim > std::numeric_limits<size_t>::max() / kFp32Bytes) {
+    size_t row_bytes = 0;
+    if (CheckOverflowMul(head_dim, kFp32Bytes, &row_bytes)) {
         return Status::Overflow("head_dim FP32 row byte count overflowed size_t");
     }
-    auto aligned_row_bytes = AlignOffsetUp(head_dim * kFp32Bytes, 64);
+    auto aligned_row_bytes = AlignOffsetUp(row_bytes, 64);
     if (!aligned_row_bytes.ok()) {
         return std::move(aligned_row_bytes).status();
     }
@@ -141,7 +141,8 @@ StatusOr<GenerationConfig> ReadSessionConfiguration(const am_session_config_t* s
         return Status::InvalidArgument("has_eos_token_id must be zero or one");
     }
     AM_ASSIGN_OR_RETURN(const size_t limit, ToSize(config.max_new_tokens, "max_new_tokens", false));
-    if (limit > std::numeric_limits<size_t>::max() / sizeof(uint32_t)) {
+    size_t output_bytes = 0;
+    if (CheckOverflowMul(limit, sizeof(uint32_t), &output_bytes)) {
         return Status::Overflow("max_new_tokens output byte count overflowed size_t");
     }
     GenerationConfig generation{.max_new_tokens = limit};

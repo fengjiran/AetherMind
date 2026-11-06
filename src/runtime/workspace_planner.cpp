@@ -42,14 +42,25 @@ StatusOr<WorkspacePlanLayout> PlanWorkspaceRequirements(
     }
 
     // Exclusive access keeps bytes/alignment stable. The checks above prove
-    // these sums safe, so committing offsets cannot fail or allocate.
+    // these sums safe; keep the same checked path so future changes cannot
+    // silently diverge between the validation and commit passes.
     size_t total_bytes = 0;
     for (WorkspaceRequirement& requirement: requirements) {
         if (!requirement.empty()) {
-            total_bytes = (total_bytes + (requirement.alignment - 1)) & ~(requirement.alignment - 1);
+            AM_ASSIGN_OR_RETURN(const size_t aligned_offset,
+                                AlignOffsetUp(total_bytes, requirement.alignment));
+            total_bytes = aligned_offset;
+
+            size_t next_total = 0;
+            if (CheckOverflowAdd(total_bytes, requirement.bytes, &next_total)) {
+                return Status::Overflow(
+                        "Workspace planning exceeded size_t capacity");
+            }
+            requirement.offset = total_bytes;
+            total_bytes = next_total;
+        } else {
+            requirement.offset = total_bytes;
         }
-        requirement.offset = total_bytes;
-        total_bytes += requirement.bytes;
     }
 
     return layout;

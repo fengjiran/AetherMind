@@ -1,5 +1,7 @@
 #include "aethermind/model/formats/hf/hf_tensor_resolver.h"
+#include "utils/overflow_check.h"
 
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -30,6 +32,12 @@ StatusOr<ResolvedModelWeights> ResolveWeights(const HfModelConfig& config,
         return Status::InvalidArgument("Model config field 'num_hidden_layers' must be positive");
     }
 
+    size_t layer_count = 0;
+    if (CheckNarrow(config.num_hidden_layers, &layer_count)) {
+        return Status::InvalidArgument(
+                "Model config field 'num_hidden_layers' is not representable in size_t");
+    }
+
     ResolvedModelWeights index;
     auto embed_tokens = FindRequiredWeight(weights, "model.embed_tokens.weight");
     if (!embed_tokens.ok()) {
@@ -47,7 +55,9 @@ StatusOr<ResolvedModelWeights> ResolveWeights(const HfModelConfig& config,
         index.lm_head = lm_head->second;
     }
 
-    index.layers.reserve(static_cast<size_t>(config.num_hidden_layers));
+    // Weight availability bounds the useful reservation; the config value may
+    // be arbitrarily large and is verified layer by layer below.
+    index.layers.reserve(std::min(layer_count, weights.size()));
     for (int64_t i = 0; i < config.num_hidden_layers; ++i) {
         DecoderLayerRawWeights layer;
 

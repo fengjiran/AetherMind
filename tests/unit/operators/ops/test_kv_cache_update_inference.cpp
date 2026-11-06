@@ -3,6 +3,7 @@
 #include "aethermind/operators/operator_inference.h"
 
 #include <gtest/gtest.h>
+#include <limits>
 
 namespace {
 using namespace aethermind;
@@ -117,6 +118,22 @@ TEST(KVCacheUpdateInference, RejectsKCacheAndVCacheShapeMismatch) {
     // v_cache has a different cache_len than k_cache.
     inputs[3] = MakeSpec(DataType::Float32(), {8, 2048, 64});
     EXPECT_FALSE(InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, inputs).ok());
+}
+
+TEST(KVCacheUpdateInference, RejectsStaticHiddenDimensionOverflow) {
+    auto inputs = MakeConsistentInputs(DataType::Float32());
+    const SymbolicShape overflowing_cache_shape{
+            ShapeSymbol::CreateFromValue(std::numeric_limits<int64_t>::max()),
+            ShapeSymbol::CreateFromValue(1),
+            ShapeSymbol::CreateFromValue(2)};
+    inputs[2] = {DataType::Float32(), overflowing_cache_shape};
+    inputs[3] = {DataType::Float32(), overflowing_cache_shape};
+
+    const auto result = InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, inputs);
+
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(result.status().message().find("overflows int64_t"), std::string::npos);
 }
 
 TEST(KVCacheUpdateInference, RejectsKLastDimNotMatchingHkvTimesD) {

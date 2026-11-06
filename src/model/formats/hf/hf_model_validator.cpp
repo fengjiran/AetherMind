@@ -690,9 +690,20 @@ Status HfModelValidator::ValidateResolvedModel(const HfModelConfig& config,
     const int64_t vocab = config.vocab_size;
     const int64_t intermediate = config.intermediate_size;
     const int64_t head_dim = config.hidden_size / config.num_attention_heads;
-    const int64_t kv_hidden = config.num_key_value_heads * head_dim;
 
-    if (resolved.layers.size() != static_cast<size_t>(config.num_hidden_layers)) {
+    size_t expected_layers = 0;
+    if (CheckNarrow(config.num_hidden_layers, &expected_layers)) {
+        return Status::InvalidArgument(
+                "Model config num_hidden_layers is not representable in size_t");
+    }
+
+    int64_t kv_hidden = 0;
+    if (CheckOverflowMul(config.num_key_value_heads, head_dim, &kv_hidden)) {
+        return Status::InvalidArgument(
+                "Model config num_key_value_heads * head_dim overflows int64_t");
+    }
+
+    if (resolved.layers.size() != expected_layers) {
         return Status::InvalidArgument("Resolved model layer count mismatch: expected=" +
                                        std::to_string(config.num_hidden_layers) +
                                        ", actual=" + std::to_string(resolved.layers.size()));

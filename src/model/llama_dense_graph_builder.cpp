@@ -5,6 +5,7 @@
 #include "aethermind/model/weight/weight_binding_resolver.h"
 #include "rope_params_builder.h"
 #include "transformer_graph_common.h"
+#include "utils/overflow_check.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -248,6 +249,13 @@ StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
                                      const ModelGraphBuildOptions& options) {
     AM_RETURN_IF_ERROR(ValidateDTypeOverride(options.activation_dtype, "activation_dtype"));
     AM_RETURN_IF_ERROR(ValidateDTypeOverride(options.kv_dtype, "kv_dtype"));
+
+    uint32_t layer_count = 0;
+    if (CheckNarrow(config.num_hidden_layers, &layer_count)) {
+        return Status::InvalidArgument(
+                "BuildLlamaDense: num_hidden_layers is not representable as uint32_t");
+    }
+
     AM_RETURN_IF_ERROR(ValidateInputs(config, weights));
     const DataType act_dtype = options.activation_dtype.IsUndefined()
                                        ? (config.weight_dtype_hint.IsUndefined()
@@ -303,7 +311,7 @@ StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
                                 detail::WeightDebugName(TransformerWeightRole::kTokenEmbedding,
                                                         std::nullopt)));
 
-    for (uint32_t i = 0; i < static_cast<uint32_t>(config.num_hidden_layers); ++i) {
+    for (uint32_t i = 0; i < layer_count; ++i) {
         const GraphValueId k_cache = AddState(graph,
                                               kv_cache_spec,
                                               KVCacheStateBinding{.decoder_layer_index = i,

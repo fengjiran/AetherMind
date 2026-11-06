@@ -1,10 +1,10 @@
 #include "aethermind/graph/optimization/qkv_linear_fusion_pass.h"
 #include "aethermind/operators/operator_inference.h"
+#include "utils/overflow_check.h"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <span>
 #include <string>
@@ -223,16 +223,17 @@ std::optional<QkvLinearPattern> MakeQkvLinearPattern(const QkvCandidateGroup& gr
         }
     }
 
-    if (query.output_features > std::numeric_limits<int64_t>::max() - key.output_features) {
+    int64_t query_and_key_output_features = 0;
+    if (CheckOverflowAdd(query.output_features, key.output_features,
+                         &query_and_key_output_features)) {
         return std::nullopt;
     }
 
-    const int64_t query_and_key_output_features = query.output_features + key.output_features;
-    if (query_and_key_output_features >
-        std::numeric_limits<int64_t>::max() - value.output_features) {
+    int64_t fused_output_features = 0;
+    if (CheckOverflowAdd(query_and_key_output_features, value.output_features,
+                         &fused_output_features)) {
         return std::nullopt;
     }
-    const int64_t fused_output_features = query_and_key_output_features + value.output_features;
 
     return QkvLinearPattern{
             .query = ProjectionMatch{

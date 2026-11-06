@@ -20,6 +20,14 @@ Status ValidateIndexRange(size_t index, size_t upper_bound, const char* label) {
     return Status::Ok();
 }
 
+StatusOr<size_t> CheckedReadEnd(size_t seq_pos) {
+    size_t seq_end = 0;
+    if (CheckOverflowAdd(seq_pos, size_t{1}, &seq_end)) {
+        return Status::OutOfRange("KV read sequence position exceeds size_t range");
+    }
+    return seq_end;
+}
+
 } // namespace
 
 KVCacheSessionView::KVCacheSessionView(KVCacheStorage* storage,
@@ -327,7 +335,8 @@ StatusOr<const void*> KVCacheSessionView::KeyData(size_t layer_idx,
                                                   size_t kv_head_idx,
                                                   size_t seq_pos,
                                                   size_t dim_idx) const noexcept try {
-    AM_RETURN_IF_ERROR(ValidateRead(layer_idx, kv_head_idx, seq_pos, seq_pos + 1));
+    AM_ASSIGN_OR_RETURN(const size_t seq_end, CheckedReadEnd(seq_pos));
+    AM_RETURN_IF_ERROR(ValidateRead(layer_idx, kv_head_idx, seq_pos, seq_end));
     const StatusOr<size_t> offset = storage_->layout.OffsetValidated(layer_idx, kv_head_idx, seq_pos, dim_idx);
     if (!offset.ok()) {
         return offset.status();
@@ -341,7 +350,8 @@ StatusOr<const void*> KVCacheSessionView::ValueData(size_t layer_idx,
                                                     size_t kv_head_idx,
                                                     size_t seq_pos,
                                                     size_t dim_idx) const noexcept try {
-    AM_RETURN_IF_ERROR(ValidateRead(layer_idx, kv_head_idx, seq_pos, seq_pos + 1));
+    AM_ASSIGN_OR_RETURN(const size_t seq_end, CheckedReadEnd(seq_pos));
+    AM_RETURN_IF_ERROR(ValidateRead(layer_idx, kv_head_idx, seq_pos, seq_end));
     const StatusOr<size_t> offset = storage_->layout.OffsetValidated(layer_idx, kv_head_idx, seq_pos, dim_idx);
     if (!offset.ok()) {
         return offset.status();

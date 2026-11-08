@@ -10,6 +10,7 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -198,6 +199,76 @@ TEST(ModelLoader_HfConfigTest, DefaultsOptionalFields) {
     EXPECT_FALSE(config->rope.factor.has_value());
     EXPECT_TRUE(config->weight_dtype_hint_name.empty());
     EXPECT_EQ(config->weight_dtype_hint, DataType{});
+}
+
+TEST(ModelLoader_HfConfigTest, PreservesInvalidExplicitKvHeadsForValidation) {
+    for (const int heads: {0, -3}) {
+        SCOPED_TRACE(heads);
+        TempDirectory temp_dir;
+        std::string json = MakeConfigWithoutRequiredField("");
+        json.insert(json.rfind('}'), ", \"num_key_value_heads\": " + std::to_string(heads));
+        WriteConfig(temp_dir.Path(), json);
+        WriteMinimalSafetensors(temp_dir.Path());
+        auto reader = OpenTempDir(temp_dir);
+        ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+        const auto config = reader->ParseConfig();
+        ASSERT_TRUE(config.ok()) << config.status().ToString();
+        EXPECT_EQ(config->num_key_value_heads, heads);
+        EXPECT_EQ(HfModelValidator::ValidateConfig(*config).code(), StatusCode::kInvalidArgument);
+    }
+}
+
+TEST(ModelLoader_HfConfigTest, RejectsConflictingRopeThetaRegardlessOfOrder) {
+    for (const std::string alias: {"rope_scaling", "rope_parameters"}) {
+        for (const bool nested_first: {false, true}) {
+            SCOPED_TRACE(alias + (nested_first ? " nested first" : " top first"));
+            TempDirectory temp_dir;
+            std::string json = MakeConfigWithoutRequiredField("");
+            const std::string top = R"("rope_theta":500000)";
+            const std::string nested = "\"" + alias + R"(":{"rope_type":"default","rope_theta":1000000})";
+            json.insert(json.rfind('}'), "," + (nested_first ? nested + "," + top : top + "," + nested));
+            WriteConfig(temp_dir.Path(), json);
+            WriteMinimalSafetensors(temp_dir.Path());
+            auto reader = OpenTempDir(temp_dir);
+            ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+            const auto config = reader->ParseConfig();
+            EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
+            EXPECT_NE(config.status().message().find("Conflicting RoPE rope_theta"), std::string::npos);
+        }
+    }
+}
+
+TEST(ModelLoader_HfConfigTest, AcceptsEqualRopeThetaAliasesRegardlessOfOrder) {
+    for (const std::string alias: {"rope_scaling", "rope_parameters"}) {
+        for (const bool nested_first: {false, true}) {
+            SCOPED_TRACE(alias + (nested_first ? " nested first" : " top first"));
+            TempDirectory temp_dir;
+            std::string json = MakeConfigWithoutRequiredField("");
+            const std::string top = R"("rope_theta":500000)";
+            const std::string nested = "\"" + alias + R"(":{"rope_type":"default","rope_theta":500000})";
+            json.insert(json.rfind('}'), "," + (nested_first ? nested + "," + top : top + "," + nested));
+            WriteConfig(temp_dir.Path(), json);
+            WriteMinimalSafetensors(temp_dir.Path());
+            auto reader = OpenTempDir(temp_dir);
+            ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+            const auto config = reader->ParseConfig();
+            ASSERT_TRUE(config.ok()) << config.status().ToString();
+            EXPECT_DOUBLE_EQ(config->rope.theta, 500000);
+        }
+    }
+}
+
+TEST(ModelLoader_HfConfigTest, SkipsUnknownFieldsWithUnicodeEscapes) {
+    TempDirectory temp_dir;
+    std::string json = MakeConfigWithoutRequiredField("");
+    json.insert(json.rfind('}'), R"(,"_name_or_path":"\u4e2d\u6587\ud83d\ude00")");
+    WriteConfig(temp_dir.Path(), json);
+    WriteMinimalSafetensors(temp_dir.Path());
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
+    ASSERT_TRUE(config.ok()) << config.status().ToString();
+    EXPECT_EQ(config->model_type, "llama");
 }
 
 TEST(ModelLoader_HfConfigTest, ParsesNullSlidingWindowAsAbsent) {
@@ -560,6 +631,74 @@ TEST(ModelLoader_HfConfigTest, SkipsUnknownFloatingJsonValue) {
     const auto config = reader->ParseConfig();
 
     ASSERT_TRUE(config.ok()) << config.status().ToString();
+}
+
+TEST(ModelLoader_HfConfigTest, RejectsNonJsonNumbersInKnownAndUnknownFields) {
+    const std::pair<std::string_view, std::string_view> fields[]{
+            {"hidden_size", "04096"},
+            {"rope_theta", ".5"},
+            {"rope_theta", "1."},
+            {"unused", "01"},
+            {"unused", "1.e2"},
+            {"unused", R"({"nested":01})"},
+    };
+    for (const auto& [field, value]: fields) {
+        SCOPED_TRACE(std::string(field) + ":" + std::string(value));
+        TempDirectory temp_dir;
+        std::string json = MakeConfigWithoutRequiredField(field);
+        json.insert(json.rfind('}'), ",\"" + std::string(field) + "\":" + std::string(value));
+        WriteConfig(temp_dir.Path(), json);
+        WriteMinimalSafetensors(temp_dir.Path());
+        auto reader = OpenTempDir(temp_dir);
+        ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+        const auto config = reader->ParseConfig();
+        EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_NE(config.status().message().find("at byte offset "), std::string::npos);
+        EXPECT_NE(config.status().message().find("config.json"), std::string::npos);
+    }
+}
+
+TEST(ModelLoader_HfConfigTest, SkipsUnknownNumbersOutsideDoubleRange) {
+    TempDirectory temp_dir;
+    std::string json = MakeConfigWithoutRequiredField("");
+    json.insert(json.rfind('}'), R"(,"unused":{"positive":1e400,"negative":-1e400,"tiny":1e-4000,"nested":[1e99999999999999999999]})");
+    WriteConfig(temp_dir.Path(), json);
+    WriteMinimalSafetensors(temp_dir.Path());
+    auto reader = OpenTempDir(temp_dir);
+    ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+    const auto config = reader->ParseConfig();
+    ASSERT_TRUE(config.ok()) << config.status().ToString();
+    EXPECT_TRUE(HfModelValidator::ValidateConfig(*config).ok());
+}
+
+TEST(ModelLoader_HfConfigTest, RejectsOutOfRangeConsumedNumbers) {
+    for (const std::string_view value: {"1e400", "1e-4000"}) {
+        TempDirectory temp_dir;
+        std::string json = MakeConfigWithoutRequiredField("");
+        json.insert(json.rfind('}'), ",\"rope_theta\":" + std::string(value));
+        WriteConfig(temp_dir.Path(), json);
+        WriteMinimalSafetensors(temp_dir.Path());
+        auto reader = OpenTempDir(temp_dir);
+        ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+        EXPECT_EQ(reader->ParseConfig().status().code(), StatusCode::kInvalidArgument);
+    }
+}
+
+TEST(ModelLoader_HfConfigTest, RejectsNonJsonWhitespace) {
+    for (const char c: {'\f', '\v'}) {
+        for (const bool trailing: {false, true}) {
+            TempDirectory temp_dir;
+            std::string json = MakeConfigWithoutRequiredField("");
+            if (trailing) json += c;
+            else
+                json.insert(1, 1, c);
+            WriteConfig(temp_dir.Path(), json);
+            WriteMinimalSafetensors(temp_dir.Path());
+            auto reader = OpenTempDir(temp_dir);
+            ASSERT_TRUE(reader.ok()) << reader.status().ToString();
+            EXPECT_EQ(reader->ParseConfig().status().code(), StatusCode::kInvalidArgument);
+        }
+    }
 }
 
 } // namespace

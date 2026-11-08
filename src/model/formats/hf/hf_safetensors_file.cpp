@@ -95,6 +95,10 @@ public:
         std::vector<HfSafetensorsEntry> entries;
         SkipWhitespace();
         if (TryConsume('}')) {
+            SkipWhitespace();
+            if (!AtEnd()) {
+                return Status::InvalidArgument("Safetensors header contains trailing JSON content");
+            }
             // An empty header object must not be followed by data bytes;
             // otherwise the contiguity walk below would see no entries.
             if (data_size_ > 0) {
@@ -112,17 +116,14 @@ public:
 
             AM_RETURN_IF_ERROR(Expect(':', "after safetensors header key"));
 
-            if (*key == "__metadata__") {
-                Status skip_status = SkipValue();
-                if (!skip_status.ok()) {
-                    return skip_status;
-                }
-            } else {
-                if (!seen_names_.insert(*key).second) {
-                    return Status::InvalidArgument(
-                            std::string("Duplicate safetensors tensor name: '") + *key + "'");
-                }
+            if (!seen_names_.insert(*key).second) {
+                return Status::InvalidArgument(
+                        std::string("Duplicate safetensors header key: '") + *key + "'");
+            }
 
+            if (*key == "__metadata__") {
+                AM_RETURN_IF_ERROR(ParseMetadata());
+            } else {
                 HfSafetensorsEntry entry;
                 if (const Status entry_status = ParseTensorEntry(*key, &entry); !entry_status.ok()) {
                     return entry_status.WithMessage(
@@ -159,7 +160,8 @@ public:
             }
             std::ranges::sort(sorted,
                               [](const HfSafetensorsEntry* a, const HfSafetensorsEntry* b) noexcept {
-                                  return a->data_offset_begin < b->data_offset_begin;
+                                  return std::pair{a->data_offset_begin, a->data_offset_end} <
+                                         std::pair{b->data_offset_begin, b->data_offset_end};
                               });
 
             for (size_t i = 0; i < sorted.size(); ++i) {
@@ -184,12 +186,34 @@ public:
     }
 
 private:
+    Status ParseMetadata() {
+        AM_RETURN_IF_ERROR(Expect('{', "at start of safetensors metadata"));
+        std::unordered_set<std::string> seen_keys;
+        if (TryConsume('}')) {
+            return Status::Ok();
+        }
+        while (true) {
+            AM_ASSIGN_OR_RETURN(auto key, ParseString());
+            if (!seen_keys.insert(key).second) {
+                return Status::InvalidArgument("Duplicate safetensors metadata key: '" + key + "'");
+            }
+            AM_RETURN_IF_ERROR(Expect(':', "after safetensors metadata key"));
+            AM_ASSIGN_OR_RETURN(auto value, ParseString());
+            if (TryConsume('}')) {
+                return Status::Ok();
+            }
+            AM_RETURN_IF_ERROR(Expect(',', "between safetensors metadata fields"));
+        }
+    }
+
     Status ParseTensorEntry(const std::string& name, HfSafetensorsEntry* entry) {
         AM_RETURN_IF_ERROR(Expect('{', "at start of safetensors tensor entry"));
 
         std::optional<DataType> dtype;
         std::vector<int64_t> shape;
+        bool has_shape = false;
         std::optional<std::pair<uint64_t, uint64_t>> data_offsets;
+        std::unordered_set<std::string> seen_fields;
 
         SkipWhitespace();
         if (!TryConsume('}')) {
@@ -200,6 +224,9 @@ private:
                 }
 
                 AM_RETURN_IF_ERROR(Expect(':', "after safetensors tensor field name"));
+                if (!seen_fields.insert(*key).second) {
+                    return Status::InvalidArgument("Duplicate safetensors tensor field: '" + *key + "'");
+                }
 
                 if (*key == "dtype") {
                     const auto dtype_text = ParseString();
@@ -218,6 +245,7 @@ private:
                         return parsed_shape.status();
                     }
                     shape = std::move(*parsed_shape);
+                    has_shape = true;
                 } else if (*key == "data_offsets") {
                     const auto parsed_offsets = ParseOffsetPair();
                     if (!parsed_offsets.ok()) {
@@ -241,6 +269,10 @@ private:
 
         if (!dtype.has_value()) {
             return Status::InvalidArgument("Safetensors tensor entry is missing required 'dtype' field");
+        }
+
+        if (!has_shape) {
+            return Status::InvalidArgument("Safetensors tensor entry is missing required 'shape' field");
         }
 
         if (!data_offsets.has_value()) {

@@ -1,7 +1,6 @@
 #include "aethermind/model/formats/hf/hf_json_reader.h"
 #include "utils/parse_number.h"
 
-#include <cctype>
 #include <charconv>
 #include <cstdint>
 #include <string>
@@ -9,14 +8,46 @@
 #include <system_error>
 #include <vector>
 
-namespace aethermind {
-namespace hf {
+namespace aethermind::hf {
+namespace {
+
+constexpr bool IsJsonWhitespace(char c) noexcept {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
+constexpr bool IsDigit(char c) noexcept {
+    return c >= '0' && c <= '9';
+}
+
+constexpr bool IsValueTerminator(char c) noexcept {
+    return IsJsonWhitespace(c) || c == ',' || c == ']' || c == '}';
+}
+
+void AppendUtf8(std::string& output, uint32_t codepoint) {
+    if (codepoint <= 0x7FU) {
+        output += static_cast<char>(codepoint);
+    } else if (codepoint <= 0x7FFU) {
+        output += static_cast<char>(0xC0U | (codepoint >> 6U));
+        output += static_cast<char>(0x80U | (codepoint & 0x3FU));
+    } else if (codepoint <= 0xFFFFU) {
+        output += static_cast<char>(0xE0U | (codepoint >> 12U));
+        output += static_cast<char>(0x80U | ((codepoint >> 6U) & 0x3FU));
+        output += static_cast<char>(0x80U | (codepoint & 0x3FU));
+    } else {
+        output += static_cast<char>(0xF0U | (codepoint >> 18U));
+        output += static_cast<char>(0x80U | ((codepoint >> 12U) & 0x3FU));
+        output += static_cast<char>(0x80U | ((codepoint >> 6U) & 0x3FU));
+        output += static_cast<char>(0x80U | (codepoint & 0x3FU));
+    }
+}
+
+} // namespace
 
 HfJsonReader::HfJsonReader(std::string_view input) noexcept
     : input_(input) {}
 
 void HfJsonReader::SkipWhitespace() noexcept {
-    while (!AtEnd() && std::isspace(static_cast<unsigned char>(input_[position_]))) {
+    while (!AtEnd() && IsJsonWhitespace(input_[position_])) {
         ++position_;
     }
 }
@@ -38,13 +69,21 @@ Status HfJsonReader::Expect(char expected, std::string_view context) {
     if (TryConsume(expected)) {
         return Status::Ok();
     }
-    return Status::InvalidArgument(
+    return Error(
             "Expected '" + std::string(1, expected) + "' " + std::string(context));
+}
+
+Status HfJsonReader::Error(std::string_view message) const {
+    return ErrorAt(message, position_);
+}
+
+Status HfJsonReader::ErrorAt(std::string_view message, size_t offset) const {
+    return Status::InvalidArgument(std::string(message) + " at byte offset " + std::to_string(offset));
 }
 
 bool HfJsonReader::TryConsumeLiteral(std::string_view literal) noexcept {
     SkipWhitespace();
-    if (position_ + literal.size() > input_.size()) {
+    if (literal.size() > input_.size() - position_) {
         return false;
     }
 
@@ -56,76 +95,202 @@ bool HfJsonReader::TryConsumeLiteral(std::string_view literal) noexcept {
 }
 
 StatusOr<std::string> HfJsonReader::ParseString() {
+    std::string decoded;
+    AM_RETURN_IF_ERROR(ScanString(&decoded));
+    return decoded;
+}
+
+StatusOr<uint32_t> HfJsonReader::ParseHexQuad() {
+    if (input_.size() - position_ < 4) {
+        return Error("Truncated JSON Unicode escape");
+    }
+    uint32_t value = 0;
+    for (size_t i = 0; i < 4; ++i) {
+        const char c = input_[position_];
+        uint32_t digit = 0;
+        if (c >= '0' && c <= '9') digit = static_cast<uint32_t>(c - '0');
+        else if (c >= 'a' && c <= 'f')
+            digit = static_cast<uint32_t>(c - 'a' + 10);
+        else if (c >= 'A' && c <= 'F')
+            digit = static_cast<uint32_t>(c - 'A' + 10);
+        else
+            return Error("Invalid JSON Unicode escape");
+        ++position_;
+        value = (value << 4U) | digit;
+    }
+    return value;
+}
+
+Status HfJsonReader::ScanString(std::string* decoded) {
     SkipWhitespace();
     if (AtEnd() || input_[position_] != '"') {
-        return Status::InvalidArgument("Expected JSON string");
+        return Error("Expected JSON string");
     }
     ++position_;
 
-    std::string result;
     while (!AtEnd()) {
+        const size_t start = position_;
         const char cur = input_[position_++];
         if (cur == '"') {
-            return result;
+            return Status::Ok();
         }
 
         if (cur == '\\') {
             if (AtEnd()) {
-                return Status::InvalidArgument("Unexpected end of JSON escape sequence");
+                return Error("Unexpected end of JSON escape sequence");
             }
 
             switch (const char escaped = input_[position_++]) {
                 case '"':
                 case '\\':
                 case '/':
-                    result += escaped;
+                    if (decoded) *decoded += escaped;
                     break;
                 case 'b':
-                    result += '\b';
+                    if (decoded) *decoded += '\b';
                     break;
                 case 'f':
-                    result += '\f';
+                    if (decoded) *decoded += '\f';
                     break;
                 case 'n':
-                    result += '\n';
+                    if (decoded) *decoded += '\n';
                     break;
                 case 'r':
-                    result += '\r';
+                    if (decoded) *decoded += '\r';
                     break;
                 case 't':
-                    result += '\t';
+                    if (decoded) *decoded += '\t';
                     break;
+                case 'u': {
+                    AM_ASSIGN_OR_RETURN(auto codepoint, ParseHexQuad());
+                    if (codepoint >= 0xD800U && codepoint <= 0xDBFFU) {
+                        if (input_.size() - position_ < 6 ||
+                            input_[position_] != '\\' || input_[position_ + 1] != 'u') {
+                            return Error("JSON high surrogate requires a low surrogate");
+                        }
+                        position_ += 2;
+                        const size_t low_start = position_;
+                        AM_ASSIGN_OR_RETURN(auto low, ParseHexQuad());
+                        if (low < 0xDC00U || low > 0xDFFFU) {
+                            return ErrorAt("Invalid JSON low surrogate", low_start);
+                        }
+                        codepoint = 0x10000U + ((codepoint - 0xD800U) << 10U) + (low - 0xDC00U);
+                    } else if (codepoint >= 0xDC00U && codepoint <= 0xDFFFU) {
+                        return ErrorAt("Unpaired JSON low surrogate", start);
+                    }
+                    if (decoded) AppendUtf8(*decoded, codepoint);
+                    break;
+                }
                 default:
-                    return Status::InvalidArgument("Unsupported JSON escape sequence");
+                    return ErrorAt("Unsupported JSON escape sequence", position_ - 1);
             }
             continue;
         }
-        result += cur;
+        const auto first = static_cast<unsigned char>(cur);
+        if (first < 0x20U) {
+            return ErrorAt("Unescaped control character in JSON string", start);
+        }
+        if (first < 0x80U) {
+            if (decoded) *decoded += cur;
+            continue;
+        }
+
+        size_t continuation_count = 0;
+        uint32_t codepoint = 0;
+        uint32_t minimum = 0;
+        if (first >= 0xC2U && first <= 0xDFU) {
+            continuation_count = 1;
+            codepoint = first & 0x1FU;
+            minimum = 0x80U;
+        } else if (first >= 0xE0U && first <= 0xEFU) {
+            continuation_count = 2;
+            codepoint = first & 0x0FU;
+            minimum = 0x800U;
+        } else if (first >= 0xF0U && first <= 0xF4U) {
+            continuation_count = 3;
+            codepoint = first & 0x07U;
+            minimum = 0x10000U;
+        } else {
+            return ErrorAt("Invalid UTF-8 in JSON string", start);
+        }
+        if (input_.size() - position_ < continuation_count) {
+            return ErrorAt("Truncated UTF-8 in JSON string", start);
+        }
+        for (size_t i = 0; i < continuation_count; ++i) {
+            const auto next = static_cast<unsigned char>(input_[position_]);
+            if ((next & 0xC0U) != 0x80U) {
+                return Error("Invalid UTF-8 continuation in JSON string");
+            }
+            ++position_;
+            codepoint = (codepoint << 6U) | (next & 0x3FU);
+        }
+        if (codepoint < minimum || codepoint > 0x10FFFFU ||
+            (codepoint >= 0xD800U && codepoint <= 0xDFFFU)) {
+            return ErrorAt("Invalid UTF-8 codepoint in JSON string", start);
+        }
+        if (decoded) decoded->append(input_.substr(start, continuation_count + 1));
     }
-    return Status::InvalidArgument("Unterminated JSON string");
+    return Error("Unterminated JSON string");
 }
 
-StatusOr<int64_t> HfJsonReader::ParseInt64() {
+StatusOr<std::string_view> HfJsonReader::ScanNumberToken() {
     SkipWhitespace();
     const size_t start = position_;
     if (!AtEnd() && input_[position_] == '-') {
         ++position_;
     }
-
-    while (!AtEnd() && std::isdigit(static_cast<unsigned char>(input_[position_]))) {
+    if (AtEnd() || !IsDigit(input_[position_])) {
+        return Error("Expected integer value in JSON number");
+    }
+    if (input_[position_] == '0') {
         ++position_;
+        if (!AtEnd() && IsDigit(input_[position_])) {
+            return Error("Leading zeros are not allowed in JSON numbers");
+        }
+    } else {
+        while (!AtEnd() && IsDigit(input_[position_])) {
+            ++position_;
+        }
     }
-
-    if (start == position_ || (position_ == start + 1 && input_[start] == '-')) {
-        return Status::InvalidArgument("Expected integer value");
+    if (!AtEnd() && input_[position_] == '.') {
+        ++position_;
+        if (AtEnd() || !IsDigit(input_[position_])) {
+            return Error("Invalid floating point value: fraction requires a digit");
+        }
+        while (!AtEnd() && IsDigit(input_[position_])) {
+            ++position_;
+        }
     }
+    if (!AtEnd() && (input_[position_] == 'e' || input_[position_] == 'E')) {
+        ++position_;
+        if (!AtEnd() && (input_[position_] == '+' || input_[position_] == '-')) {
+            ++position_;
+        }
+        if (AtEnd() || !IsDigit(input_[position_])) {
+            return Error("Invalid floating point value: exponent requires a digit");
+        }
+        while (!AtEnd() && IsDigit(input_[position_])) {
+            ++position_;
+        }
+    }
+    if (!AtEnd() && !IsValueTerminator(input_[position_])) {
+        return Error("Invalid character after JSON number");
+    }
+    return input_.substr(start, position_ - start);
+}
 
+StatusOr<int64_t> HfJsonReader::ParseInt64() {
+    SkipWhitespace();
+    const size_t start = position_;
+    if (AtEnd() || (!IsDigit(input_[position_]) && input_[position_] != '-')) {
+        return Error("Expected integer value");
+    }
+    AM_ASSIGN_OR_RETURN(auto token, ScanNumberToken());
     int64_t value = 0;
-    const auto token = input_.substr(start, position_ - start);
     if (const auto [ptr, ec] =
                 std::from_chars(token.data(), token.data() + token.size(), value);
         ec != std::errc{} || ptr != token.data() + token.size()) {
-        return Status::InvalidArgument("Invalid integer value");
+        return ErrorAt("Invalid integer value", start);
     }
     return value;
 }
@@ -133,19 +298,15 @@ StatusOr<int64_t> HfJsonReader::ParseInt64() {
 StatusOr<uint64_t> HfJsonReader::ParseUInt64() {
     SkipWhitespace();
     const size_t start = position_;
-    while (!AtEnd() && std::isdigit(static_cast<unsigned char>(input_[position_]))) {
-        ++position_;
+    if (AtEnd() || !IsDigit(input_[position_])) {
+        return Error("Expected non-negative integer value");
     }
-    if (start == position_) {
-        return Status::InvalidArgument("Expected non-negative integer value");
-    }
-
+    AM_ASSIGN_OR_RETURN(auto token, ScanNumberToken());
     uint64_t value = 0;
-    const auto token = input_.substr(start, position_ - start);
     if (const auto [ptr, ec] =
                 std::from_chars(token.data(), token.data() + token.size(), value);
         ec != std::errc{} || ptr != token.data() + token.size()) {
-        return Status::InvalidArgument("Invalid unsigned integer value");
+        return ErrorAt("Invalid unsigned integer value", start);
     }
     return value;
 }
@@ -153,50 +314,28 @@ StatusOr<uint64_t> HfJsonReader::ParseUInt64() {
 StatusOr<double> HfJsonReader::ParseDouble() {
     SkipWhitespace();
     const size_t start = position_;
-    if (!AtEnd() && input_[position_] == '-') {
-        ++position_;
+    if (AtEnd() || (!IsDigit(input_[position_]) && input_[position_] != '-')) {
+        return Error("Expected floating point value");
     }
-
-    while (!AtEnd() && std::isdigit(static_cast<unsigned char>(input_[position_]))) {
-        ++position_;
-    }
-    if (!AtEnd() && input_[position_] == '.') {
-        ++position_;
-        while (!AtEnd() && std::isdigit(static_cast<unsigned char>(input_[position_]))) {
-            ++position_;
-        }
-    }
-
-    if (!AtEnd() && (input_[position_] == 'e' || input_[position_] == 'E')) {
-        ++position_;
-        if (!AtEnd() && (input_[position_] == '+' || input_[position_] == '-')) {
-            ++position_;
-        }
-        while (!AtEnd() && std::isdigit(static_cast<unsigned char>(input_[position_]))) {
-            ++position_;
-        }
-    }
-
-    if (start == position_ || (position_ == start + 1 && input_[start] == '-')) {
-        return Status::InvalidArgument("Expected floating point value");
-    }
-
+    AM_ASSIGN_OR_RETURN(auto token, ScanNumberToken());
     double value = 0.0;
-    const auto token = input_.substr(start, position_ - start);
     if (!utils::ParseDouble(token, value)) {
-        return Status::InvalidArgument("Invalid floating point value");
+        return ErrorAt("Invalid floating point value", start);
     }
     return value;
 }
 
 StatusOr<bool> HfJsonReader::ParseBool() {
+    bool value = false;
     if (TryConsumeLiteral("true")) {
-        return true;
+        value = true;
+    } else if (!TryConsumeLiteral("false")) {
+        return Error("Expected boolean value");
     }
-    if (TryConsumeLiteral("false")) {
-        return false;
+    if (!AtEnd() && !IsValueTerminator(input_[position_])) {
+        return Error("Invalid character after JSON boolean");
     }
-    return Status::InvalidArgument("Expected boolean value");
+    return value;
 }
 
 StatusOr<std::vector<std::string>> HfJsonReader::ParseStringArray() {
@@ -251,7 +390,7 @@ StatusOr<std::vector<int64_t>> HfJsonReader::ParseInt64Array() {
 
 StatusOr<std::vector<double>> HfJsonReader::ParseDoubleArray() {
     if (!TryConsume('[')) {
-        return Status::InvalidArgument("Expected JSON array");
+        return Error("Expected JSON array");
     }
     std::vector<double> values;
     SkipWhitespace();
@@ -276,12 +415,12 @@ Status HfJsonReader::SkipValue() {
 
 Status HfJsonReader::SkipValueInternal(uint32_t depth) {
     if (depth > kMaxSkipDepth) {
-        return Status::InvalidArgument("JSON nesting depth exceeds maximum");
+        return Error("JSON nesting depth exceeds maximum");
     }
 
     SkipWhitespace();
     if (AtEnd()) {
-        return Status::InvalidArgument("Unexpected end of JSON while skipping value");
+        return Error("Unexpected end of JSON while skipping value");
     }
 
     const char cur = input_[position_];
@@ -293,10 +432,7 @@ Status HfJsonReader::SkipValueInternal(uint32_t depth) {
         }
 
         while (true) {
-            const auto key = ParseString();
-            if (!key.ok()) {
-                return key.status();
-            }
+            AM_RETURN_IF_ERROR(ScanString(nullptr));
 
             AM_RETURN_IF_ERROR(Expect(':', "inside JSON object while skipping value"));
 
@@ -329,25 +465,24 @@ Status HfJsonReader::SkipValueInternal(uint32_t depth) {
     }
 
     if (cur == '"') {
-        if (const auto string_value = ParseString(); !string_value.ok()) {
-            return string_value.status();
-        }
-        return Status::Ok();
+        return ScanString(nullptr);
     }
 
-    if (std::isdigit(static_cast<unsigned char>(cur)) || cur == '-') {
-        if (const auto number = ParseDouble(); !number.ok()) {
+    if (IsDigit(cur) || cur == '-') {
+        if (const auto number = ScanNumberToken(); !number.ok()) {
             return number.status();
         }
         return Status::Ok();
     }
 
     if (TryConsumeLiteral("true") || TryConsumeLiteral("false") || TryConsumeLiteral("null")) {
+        if (!AtEnd() && !IsValueTerminator(input_[position_])) {
+            return Error("Invalid character after JSON literal");
+        }
         return Status::Ok();
     }
 
-    return Status::InvalidArgument("Unsupported JSON value while skipping");
+    return Error("Unsupported JSON value while skipping");
 }
 
-} // namespace hf
-} // namespace aethermind
+} // namespace aethermind::hf

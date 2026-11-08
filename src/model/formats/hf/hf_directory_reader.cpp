@@ -124,6 +124,7 @@ private:
         }
 
         if (key == "num_key_value_heads") {
+            has_num_key_value_heads_ = true;
             return parse_into([&] { return ParseInt64(); },
                               config.num_key_value_heads);
         }
@@ -187,8 +188,9 @@ private:
         }
 
         if (key == "rope_theta") {
-            return parse_into([&] { return ParseDouble(); },
-                              config.rope.theta);
+            double theta = 0;
+            AM_RETURN_IF_ERROR(parse_into([&] { return ParseDouble(); }, theta));
+            return SetRopeTheta(config, theta);
         }
 
         if (key == "partial_rotary_factor") {
@@ -237,7 +239,7 @@ private:
 
             config.rope.algorithm = value->algorithm;
             if (value->theta.has_value()) {
-                config.rope.theta = *value->theta;
+                AM_RETURN_IF_ERROR(SetRopeTheta(config, *value->theta));
             }
             return Status::Ok();
         }
@@ -398,11 +400,25 @@ private:
                                         "': " + parse_status.message());
     }
 
-    static void ApplyDefaults(HfModelConfig& config) {
-        if (config.num_key_value_heads <= 0) {
+    Status SetRopeTheta(HfModelConfig& config, double theta) {
+        // A default is not an explicit source. Equal aliases are harmless, but
+        // conflicting sources must not make semantics depend on JSON key order.
+        if (rope_theta_.has_value() && *rope_theta_ != theta) {
+            return Status::InvalidArgument("Conflicting RoPE rope_theta values");
+        }
+        rope_theta_ = theta;
+        config.rope.theta = theta;
+        return Status::Ok();
+    }
+
+    void ApplyDefaults(HfModelConfig& config) const {
+        if (!has_num_key_value_heads_) {
             config.num_key_value_heads = config.num_attention_heads;
         }
     }
+
+    bool has_num_key_value_heads_ = false;
+    std::optional<double> rope_theta_;
 };
 
 StatusOr<RawWeightTable> LoadSingleFileRawWeightTable(const HfDirectoryDescriptor& dir_desc) {

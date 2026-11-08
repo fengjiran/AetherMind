@@ -325,4 +325,131 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsHeaderExceedingMaxSize) {
               std::string::npos);
 }
 
+TEST(ModelLoader_HfSafetensorsFileTest, RejectsMissingShapeInsteadOfTreatingItAsScalar) {
+    TempDirectory temp_dir;
+    const auto bytes = FloatArrayToBytes(std::array<float, 1>{1.0f});
+    const auto path = WriteSafetensorsFile(
+            temp_dir.Path(), R"({"w":{"dtype":"F32","data_offsets":[0,4]}})", bytes);
+    const auto file = HfSafetensorsFile::Open(path);
+    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(file.status().message().find("missing required 'shape'"), std::string::npos);
+}
+
+TEST(ModelLoader_HfSafetensorsFileTest, AcceptsExplicitScalarShape) {
+    TempDirectory temp_dir;
+    const auto bytes = FloatArrayToBytes(std::array<float, 1>{1.0f});
+    const auto path = WriteSafetensorsFile(
+            temp_dir.Path(), R"({"w":{"dtype":"F32","shape":[],"data_offsets":[0,4]}})", bytes);
+    const auto file = HfSafetensorsFile::Open(path);
+    ASSERT_TRUE(file.ok()) << file.status().ToString();
+    ASSERT_EQ(file->Entries().size(), 1U);
+    EXPECT_TRUE(file->Entries()[0].shape.empty());
+    EXPECT_FLOAT_EQ(ReadFloat(file->Entries()[0].view.data), 1.0f);
+}
+
+TEST(ModelLoader_HfSafetensorsFileTest, RejectsDuplicateTensorFields) {
+    const std::string_view entries[]{
+            R"({"dtype":"F32","dtype":"F32","shape":[1],"data_offsets":[0,4]})",
+            R"({"dtype":"F32","shape":[1],"shape":[1],"data_offsets":[0,4]})",
+            R"({"dtype":"F32","shape":[1],"data_offsets":[0,4],"data_offsets":[0,4]})",
+            R"({"dtype":"F32","\u0064type":"F32","shape":[1],"data_offsets":[0,4]})",
+    };
+    const auto bytes = FloatArrayToBytes(std::array<float, 1>{1.0f});
+    for (const auto entry: entries) {
+        SCOPED_TRACE(entry);
+        TempDirectory temp_dir;
+        const auto path = WriteSafetensorsFile(
+                temp_dir.Path(), "{\"w\":" + std::string(entry) + "}", bytes);
+        const auto file = HfSafetensorsFile::Open(path);
+        EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_NE(file.status().message().find("Duplicate"), std::string::npos);
+    }
+}
+
+TEST(ModelLoader_HfSafetensorsFileTest, RejectsDuplicateHeaderKeys) {
+    const std::string_view headers[]{
+            R"({"w":{"dtype":"F32","shape":[0],"data_offsets":[0,0]},"\u0077":{"dtype":"F32","shape":[0],"data_offsets":[0,0]}})",
+            R"({"__metadata__":{},"__metadata__":{}})",
+    };
+    for (const auto header: headers) {
+        SCOPED_TRACE(header);
+        TempDirectory temp_dir;
+        const auto file = HfSafetensorsFile::Open(WriteSafetensorsFile(temp_dir.Path(), header, {}));
+        EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_NE(file.status().message().find("Duplicate"), std::string::npos);
+    }
+}
+
+TEST(ModelLoader_HfSafetensorsFileTest, RejectsMetadataOutsideStringMapContract) {
+    const std::string_view values[]{
+            "123",
+            "null",
+            "[]",
+            R"({"x":1})",
+            R"({"x":false})",
+            R"({"x":{}})",
+            R"({"x":"a","x":"b"})",
+    };
+    for (const auto value: values) {
+        SCOPED_TRACE(value);
+        TempDirectory temp_dir;
+        const std::string header = "{\"__metadata__\":" + std::string(value) + "}";
+        const auto file = HfSafetensorsFile::Open(WriteSafetensorsFile(temp_dir.Path(), header, {}));
+        EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+    }
+}
+
+TEST(ModelLoader_HfSafetensorsFileTest, AcceptsMetadataStringMapWithUnicode) {
+    TempDirectory temp_dir;
+    const auto path = WriteSafetensorsFile(
+            temp_dir.Path(), R"({"__metadata__":{"format":"pt","name":"\u4e2d\u6587"}})", {});
+    const auto file = HfSafetensorsFile::Open(path);
+    ASSERT_TRUE(file.ok()) << file.status().ToString();
+    EXPECT_TRUE(file->Entries().empty());
+}
+
+TEST(ModelLoader_HfSafetensorsFileTest, RejectsTrailingContentAfterEmptyHeader) {
+    for (const std::string_view header: {"{} garbage", "{}{}"}) {
+        TempDirectory temp_dir;
+        const auto file = HfSafetensorsFile::Open(WriteSafetensorsFile(temp_dir.Path(), header, {}));
+        EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+    }
+}
+
+TEST(ModelLoader_HfSafetensorsFileTest, AcceptsWhitespaceAfterEmptyHeader) {
+    TempDirectory temp_dir;
+    const auto file = HfSafetensorsFile::Open(WriteSafetensorsFile(temp_dir.Path(), "{}   ", {}));
+    ASSERT_TRUE(file.ok()) << file.status().ToString();
+    EXPECT_TRUE(file->Entries().empty());
+}
+
+TEST(ModelLoader_HfSafetensorsFileTest, AcceptsEmptyIntervalsRegardlessOfHeaderOrder) {
+    const std::string_view headers[]{
+            R"({"w":{"dtype":"F32","shape":[1],"data_offsets":[0,4]},"e":{"dtype":"F32","shape":[0],"data_offsets":[0,0]}})",
+            R"({"e":{"dtype":"F32","shape":[0],"data_offsets":[0,0]},"w":{"dtype":"F32","shape":[1],"data_offsets":[0,4]}})",
+            R"({"e":{"dtype":"F32","shape":[0],"data_offsets":[4,4]},"w":{"dtype":"F32","shape":[1],"data_offsets":[0,4]}})",
+            R"({"w":{"dtype":"F32","shape":[1],"data_offsets":[0,4]},"e":{"dtype":"F32","shape":[0],"data_offsets":[4,4]}})",
+    };
+    const auto bytes = FloatArrayToBytes(std::array<float, 1>{1.0f});
+    for (const auto header: headers) {
+        SCOPED_TRACE(header);
+        TempDirectory temp_dir;
+        const auto file = HfSafetensorsFile::Open(WriteSafetensorsFile(temp_dir.Path(), header, bytes));
+        ASSERT_TRUE(file.ok()) << file.status().ToString();
+        ASSERT_NE(file->Find("e"), nullptr);
+        EXPECT_EQ(file->Find("e")->view.bytes, 0U);
+        ASSERT_NE(file->Find("w"), nullptr);
+        EXPECT_FLOAT_EQ(ReadFloat(file->Find("w")->view.data), 1.0f);
+    }
+}
+
+TEST(ModelLoader_HfSafetensorsFileTest, AcceptsMultipleEmptyTensorsWithoutPayload) {
+    TempDirectory temp_dir;
+    const auto path = WriteSafetensorsFile(temp_dir.Path(),
+                                           R"({"a":{"dtype":"F32","shape":[0],"data_offsets":[0,0]},"b":{"dtype":"F32","shape":[0,2],"data_offsets":[0,0]}})", {});
+    const auto file = HfSafetensorsFile::Open(path);
+    ASSERT_TRUE(file.ok()) << file.status().ToString();
+    EXPECT_EQ(file->Entries().size(), 2U);
+}
+
 } // namespace

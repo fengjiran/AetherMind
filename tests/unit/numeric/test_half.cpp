@@ -323,10 +323,41 @@ TEST(HalfFromFP32Test, Underflow) {
     EXPECT_EQ(fp16_from_fp32_value_for_testing(-1e-10f), 0x8000);
 }
 
-TEST(HalfFromFP32Test, Rounding) {
-    // Round-to-nearest-even: tie breaks to even.
+TEST(HalfFromFP32Test, ExactRepresentableValues) {
+    // Both values are exactly representable in binary16; no rounding occurs.
     EXPECT_EQ(fp16_from_fp32_value_for_testing(1.0009765625f), 0x3C01);
     EXPECT_EQ(fp16_from_fp32_value_for_testing(1.001953125f), 0x3C02);
+}
+
+TEST(HalfFromFP32Test, RoundToNearestEvenTies) {
+    // Midpoints between adjacent binary16 values must break to the even mantissa.
+    // At exponent 0 the binary16 ULP is 2^-10.
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(1.00048828125f), 0x3C00); // 1 + 2^-11: even lower
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(1.00146484375f), 0x3C02); // 1 + 3*2^-11: even upper
+
+    // At exponent 1 the binary16 ULP is 2^-9.
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(2.0009765625f), 0x4000); // 2 + 2^-10: even lower
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(2.0029296875f), 0x4002); // 2 + 3*2^-10: even upper
+
+    // Sign is preserved on both tie directions.
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(-1.00048828125f), 0xBC00);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(-1.00146484375f), 0xBC02);
+}
+
+TEST(HalfFromFP32Test, RoundingOverflowBoundary) {
+    // The largest finite binary16 value is 65504; the next step is infinity and
+    // the midpoint 65520 breaks to the even (infinite) encoding.
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(65504.0f), 0x7BFF);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(65519.0f), 0x7BFF);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(65520.0f), 0x7C00);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(65521.0f), 0x7C00);
+
+    // Values beyond the rounding boundary overflow directly.
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(65536.0f), 0x7C00);
+
+    // Sign is preserved when rounding to infinity.
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(-65519.0f), 0xFBFF);
+    EXPECT_EQ(fp16_from_fp32_value_for_testing(-65520.0f), 0xFC00);
 }
 
 TEST(HalfFromFP32Test, SpecialValues) {

@@ -60,6 +60,43 @@ TEST(BFloat16Test, FloatConversion) {
     }
 }
 
+TEST(BFloat16Test, FromFp32RoundToNearestEvenTies) {
+    // At exponent 0 the bfloat16 ULP is 2^-7; ties must break to the even mantissa.
+    EXPECT_EQ(bf16_from_fp32_value(1.00390625f), 0x3F80U); // 1 + 2^-8: even lower
+    EXPECT_EQ(bf16_from_fp32_value(1.01171875f), 0x3F82U); // 1 + 3*2^-8: even upper
+
+    // At exponent 1 the bfloat16 ULP is 2^-6.
+    EXPECT_EQ(bf16_from_fp32_value(2.0078125f), 0x4000U); // 2 + 2^-7: even lower
+    EXPECT_EQ(bf16_from_fp32_value(2.0234375f), 0x4002U); // 2 + 3*2^-7: even upper
+
+    // Sign is preserved on both tie directions.
+    EXPECT_EQ(bf16_from_fp32_value(-1.00390625f), 0xBF80U);
+    EXPECT_EQ(bf16_from_fp32_value(-1.01171875f), 0xBF82U);
+}
+
+TEST(BFloat16Test, FromFp32RoundsInsteadOfTruncating) {
+    // Truncation maps both values to 0x3F80; round-to-nearest must distinguish them.
+    EXPECT_EQ(bf16_from_fp32_value(1.005859375f), 0x3F81U); // 1 + 0.75 ULP
+    EXPECT_EQ(bf16_from_fp32_value(1.001953125f), 0x3F80U); // 1 + 0.25 ULP
+    EXPECT_EQ(bf16_from_fp32_value(-1.005859375f), 0xBF81U);
+}
+
+TEST(BFloat16Test, FromFp32OverflowBoundary) {
+    // The largest finite bfloat16 value is 0x7F7F; the next step is infinity.
+    constexpr float max_float = std::numeric_limits<float>::max();
+    EXPECT_EQ(bf16_from_fp32_value(max_float), 0x7F80U);
+    EXPECT_EQ(bf16_from_fp32_value(-max_float), 0xFF80U);
+
+    // Exactly halfway between 0x7F7F and 2^128 breaks to the even (upper) encoding.
+    const float tie = std::ldexp(511.0f, 119);
+    EXPECT_EQ(bf16_from_fp32_value(tie), 0x7F80U);
+    EXPECT_EQ(bf16_from_fp32_value(-tie), 0xFF80U);
+
+    // Values just below the midpoint still round to the largest finite value.
+    EXPECT_EQ(bf16_from_fp32_value(std::ldexp(510.0f, 119)), 0x7F7FU);
+    EXPECT_EQ(bf16_from_fp32_value(-std::ldexp(510.0f, 119)), 0xFF7FU);
+}
+
 TEST(BFloat16Test, EdgeValues) {
     // 测试边界值
 

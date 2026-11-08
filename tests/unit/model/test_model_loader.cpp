@@ -1,5 +1,6 @@
 #include "aethermind/model/model_loader.h"
 
+#include "aethermind/compiler/model_compiler.h"
 #include "aethermind/model/loaded_model.h"
 #include "test_utils.h"
 
@@ -10,6 +11,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -252,25 +254,22 @@ TEST(ModelLoader_PipelineTest, AllowsStructurallyValidRopeScalingForModelCompile
     EXPECT_DOUBLE_EQ(*(*model)->GetConfig().rope.factor, 2.0);
 }
 
-TEST(ModelLoader_PipelineTest, RejectsUnsupportedModelFamily) {
+TEST(ModelLoader_PipelineTest, DefersUnsupportedModelFamilyToGraphConstruction) {
     TempDirectory temp_dir;
-    WriteTextFile(temp_dir.path() / "config.json", R"({
-        "architectures": ["GPTNeoXForCausalLM"],
-        "model_type": "gpt_neox",
-        "hidden_size": 64,
-        "intermediate_size": 256,
-        "num_hidden_layers": 1,
-        "num_attention_heads": 8,
-        "max_position_embeddings": 128,
-        "vocab_size": 1000,
-        "rms_norm_eps": 1e-6
-    })");
-    WriteTextFile(temp_dir.path() / "model.safetensors", "dummy");
+    std::string config = MakeMinimalLlamaConfigJson();
+    config.replace(config.find("LlamaForCausalLM"), std::string_view("LlamaForCausalLM").size(), "GPTNeoXForCausalLM");
+    config.replace(config.find("\"llama\""), std::string_view("\"llama\"").size(), "\"gpt_neox\"");
+    WriteTextFile(temp_dir.path() / "config.json", config);
+    const auto names = MakeCompleteTensorNames(1);
+    WriteSafetensorsFile(temp_dir.path() / "model.safetensors", MakeTensorHeaderForNames(names), ZeroFloatBytes(names.size()));
 
-    const auto model = ModelLoader::Load(temp_dir.path());
+    auto model = ModelLoader::Load(temp_dir.path());
 
-    ASSERT_FALSE(model.ok());
-    EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
+    ASSERT_TRUE(model.ok()) << model.status().ToString();
+    EXPECT_EQ((*model)->GetConfig().model_type, "gpt_neox");
+    const auto compiled = ModelCompiler::Compile(std::move(*model));
+    EXPECT_EQ(compiled.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(compiled.status().message().find("unsupported model type 'gpt_neox'"), std::string::npos);
 }
 
 TEST(ModelLoader_PipelineTest, PropagatesSafetensorsArtifactError) {

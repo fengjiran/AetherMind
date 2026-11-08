@@ -187,6 +187,27 @@ TEST(ExecutableModel, PreparesPlainUnfusedLlamaArtifact) {
     }
 }
 
+TEST(ExecutableModel, RejectsMisalignedRawWeightsBeforePlainOrPackedExecution) {
+    Runtime runtime = MakeCpuRuntime();
+    for (const auto preset: {CompilePreset::kO1Plain, CompilePreset::kO2Packed}) {
+        SCOPED_TRACE(preset == CompilePreset::kO1Plain ? "O1Plain" : "O2Packed");
+        const auto config = MakeTinyLlamaConfig(1, false);
+        auto checkpoint = MakeTinyLlamaCheckpoint(config);
+        // The carver retains extra backing bytes; this is an in-bounds raw byte
+        // view whose sole violation at the typed boundary is natural alignment.
+        checkpoint.weights.final_norm.data += 1;
+        ASSERT_NE(reinterpret_cast<uintptr_t>(checkpoint.weights.final_norm.data) % alignof(float), 0U);
+        auto loaded = std::make_unique<LoadedModel>(config, std::move(checkpoint.weights));
+        const auto options = MakeCompileOptions(preset, DeviceType::kCPU);
+        ASSERT_TRUE(options.ok()) << options.status().ToString();
+        auto artifact = ModelCompiler::Compile(std::move(loaded), *options);
+        ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
+        const auto model = ExecutableModel::Prepare(runtime, std::move(*artifact));
+        EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_NE(model.status().message().find("natural alignment"), std::string::npos);
+    }
+}
+
 TEST(ExecutableModel, BindingsMatchExternalReadRequirementsExactly) {
     Runtime runtime = MakeCpuRuntime();
     auto compiled = CompileTinyLlama(/*num_layers=*/1, /*tie_word_embeddings=*/false,

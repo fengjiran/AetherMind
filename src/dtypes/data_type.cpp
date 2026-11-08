@@ -19,6 +19,15 @@ namespace aethermind {
 SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(DEFINE_MAKE);
 #undef DEFINE_MAKE
 
+size_t DataType::natural_alignment() const noexcept {
+#define SCALAR_ALIGNMENT(type_code, width, lanes, T, name) \
+    if (code() == type_code && bits() == width) return alignof(T)
+    SCALAR_TYPE_TO_CPP_TYPE_AND_NAME(SCALAR_ALIGNMENT);
+#undef SCALAR_ALIGNMENT
+    if (IsHandle()) return alignof(void*);
+    return 1;
+}
+
 void DataType::ValidateCodeBitsConsistency(DLDataTypeCode code, int bits) {
     if (code == DLDataTypeCode::Undefined) {
         AM_CHECK(bits == 0, "Undefined type code requires bits==0, got bits={}", bits);

@@ -27,6 +27,10 @@ StatusOr<TensorView> MakeRowMajorView(const RawWeightView& raw,
     if (!raw.is_contiguous) {
         return Status::InvalidArgument("Raw weight components must be contiguous row-major views");
     }
+    const size_t alignment = raw.dtype.natural_alignment();
+    if (reinterpret_cast<uintptr_t>(raw.data) % alignment != 0) {
+        return Status::InvalidArgument("Raw weight component data does not satisfy natural alignment");
+    }
     strides.resize(raw.shape.size());
     if (!strides.empty()) {
         strides.back() = 1;
@@ -38,7 +42,7 @@ StatusOr<TensorView> MakeRowMajorView(const RawWeightView& raw,
         }
     }
     return TensorView(raw.data, raw.dtype, IntArrayView(raw.shape),
-                      IntArrayView(strides), 0);
+                      IntArrayView(strides), alignment);
 }
 
 /// Expected byte payload of the logical weight an artifact claims to pack.

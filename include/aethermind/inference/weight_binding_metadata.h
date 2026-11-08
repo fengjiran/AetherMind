@@ -49,8 +49,9 @@ public:
 
     /// @brief Appends one entry for borrowed data and returns a view of it.
     ///
-    /// Strides are derived as compact row-major. Alignment is left unspecified
-    /// because the raw weight source carries none.
+    /// Strides are derived as compact row-major. The actual data address must
+    /// satisfy the scalar lane type's natural alignment, which the view records.
+    /// This does not require or promise SIMD alignment.
     ///
     /// @param data Borrowed element data; must outlive this object.
     /// @param dtype Element type of `data`.
@@ -59,7 +60,7 @@ public:
     ///        including for empty tensors. Forward element-count products must
     ///        also fit in uint64_t, as required by TensorView.
     /// @return View borrowing `data` and this object's metadata arrays, or
-    ///         InvalidArgument for negative extents, Overflow for unrepresentable
+    ///         InvalidArgument for negative extents or misaligned data, Overflow for unrepresentable
     ///         products, or empty ResourceExhausted on allocation failure.
     /// @note Failure leaves existing entries and issued views unchanged.
     AM_NODISCARD StatusOr<TensorView> Add(const void* data, DataType dtype,

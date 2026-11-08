@@ -16,6 +16,7 @@
 #include "aethermind/dtypes/float8_e5m2.h"
 #include "aethermind/dtypes/half.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <iosfwd>
 #include <string>
@@ -118,6 +119,11 @@ public:
         AM_CHECK(!IsScalableVector(), "Scalable vector DataType has runtime-dependent byte size.");
         return (bits() * lanes() + 7) / 8;
     }
+
+    /// @brief Natural alignment in bytes of the C++ scalar lane representation.
+    /// @note Fixed vector lanes do not imply SIMD alignment. Byte-packed types
+    ///       without a C++ scalar mapping, void and undefined types return 1.
+    AM_NODISCARD size_t natural_alignment() const noexcept;
 
     AM_NODISCARD int GetScaleFactor() const {
         int lanes_as_int = static_cast<int16_t>(dtype_.lanes);

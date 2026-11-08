@@ -375,6 +375,25 @@ TEST(WeightPacking, PrepackWeightRequestsAcceptsZeroSizedWeights) {
     EXPECT_EQ(packed->logical_shape(), request.components.front().shape);
 }
 
+TEST(WeightPacking, PrepackWeightRequestsRejectsMisalignedDataBeforeBackendCall) {
+    PackingOnlyTestBackend backend;
+    auto storage = std::make_shared<TestStorage>(64);
+    ASSERT_EQ(reinterpret_cast<uintptr_t>(storage->data.data()) % alignof(float), 0U);
+    const WeightPackingRequest request{
+            .op_type = OpType::kLinear,
+            .source_id = 1,
+            .binding = MakeTransformerWeightBinding(0U, TransformerWeightRole::kAttentionQ),
+            .components = {MakeWeightView(storage, 1, 8, DataType::Float32(), {2, 1})},
+            .selector = MakeExpectedSelector(),
+            .recipe = CpuIdentityPackingRecipe(),
+    };
+    EXPECT_TRUE(ValidateRawWeightView(request.components.front()).ok());
+    const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
+    EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_NE(prepacked.status().message().find("natural alignment"), std::string::npos);
+    EXPECT_EQ(backend.pack_calls, 0U);
+}
+
 TEST(WeightPacking, PrepackWeightRequestsRejectsStrideOverflowBeforeBackendCall) {
     PackingOnlyTestBackend backend;
     const WeightPackingRequest request{

@@ -37,10 +37,17 @@ StatusOr<std::vector<int64_t>> CompactRowMajorStrides(const std::vector<int64_t>
 StatusOr<TensorView> WeightBindingMetadata::Add(const void* data, DataType dtype,
                                                 std::vector<int64_t> shape) try {
     AM_ASSIGN_OR_RETURN(auto strides, CompactRowMajorStrides(shape));
+    // mmap and other byte-oriented sources do not guarantee alignment for typed
+    // loads. Check the address before publishing a binding; SIMD alignment is
+    // a separate kernel contract, not implied by the scalar lane type.
+    const size_t alignment = dtype.natural_alignment();
+    if (reinterpret_cast<uintptr_t>(data) % alignment != 0) {
+        return Status::InvalidArgument("Weight binding data does not satisfy natural alignment");
+    }
     entries_.push_back(Entry{.shape = std::move(shape), .strides = std::move(strides)});
     Entry& entry = entries_.back();
     return TensorView{data, dtype, IntArrayView{entry.shape},
-                      IntArrayView{entry.strides}};
+                      IntArrayView{entry.strides}, alignment};
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});
 }

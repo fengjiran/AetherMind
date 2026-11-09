@@ -12,6 +12,7 @@
 #include "aethermind/base/macros.h"
 
 #include <compare>
+#include <concepts>
 #include <cstdint>
 #include <iosfwd>
 #include <limits>
@@ -85,7 +86,8 @@ struct alignas(2) Half {
     Half(float value); // NOLINT
 
     /// Converts to binary32 `float` for arithmetic and comparisons.
-    /// All NaNs become quiet NaNs, preserving sign and payload bits. Conversion
+    /// All NaNs become quiet NaNs, preserving sign and the low nine payload
+    /// bits (the top payload bit is forced on for signaling NaNs). Conversion
     /// uses integer bit operations and does not raise floating-point exceptions,
     /// including for signaling NaNs. The stored binary16 bits remain unchanged.
     ///
@@ -135,6 +137,13 @@ float& operator+=(float& lhs, const Half& rhs);
 float& operator-=(float& lhs, const Half& rhs);
 float& operator*=(float& lhs, const Half& rhs);
 float& operator/=(float& lhs, const Half& rhs);
+/// Compound assignment with a `Half` lhs evaluates in float and narrows to
+/// `Half` once on write-back, matching the corresponding binary operators.
+/// Pre-narrowing the right operand would overflow or round it prematurely.
+Half& operator+=(Half& lhs, float rhs);
+Half& operator-=(Half& lhs, float rhs);
+Half& operator*=(Half& lhs, float rhs);
+Half& operator/=(Half& lhs, float rhs);
 
 /// Arithmetic with double
 double operator+(Half lhs, double rhs);
@@ -145,6 +154,12 @@ double operator+(double lhs, Half rhs);
 double operator-(double lhs, Half rhs);
 double operator*(double lhs, Half rhs);
 double operator/(double lhs, Half rhs);
+/// Compound assignment with a `Half` lhs evaluates in double and narrows to
+/// `Half` once on write-back, matching the corresponding binary operators.
+Half& operator+=(Half& lhs, double rhs);
+Half& operator-=(Half& lhs, double rhs);
+Half& operator*=(Half& lhs, double rhs);
+Half& operator/=(Half& lhs, double rhs);
 
 /// Arithmetic with int (result is float, matching Half-with-float promotion).
 float operator+(Half lhs, int rhs);
@@ -155,6 +170,12 @@ float operator+(int lhs, Half rhs);
 float operator-(int lhs, Half rhs);
 float operator*(int lhs, Half rhs);
 float operator/(int lhs, Half rhs);
+/// Compound assignment with a `Half` lhs promotes the int operand to float and
+/// narrows once on write-back, matching the corresponding binary operators.
+Half& operator+=(Half& lhs, int rhs);
+Half& operator-=(Half& lhs, int rhs);
+Half& operator*=(Half& lhs, int rhs);
+Half& operator/=(Half& lhs, int rhs);
 
 /// Arithmetic with int64_t (result is float, matching Half-with-float promotion).
 float operator+(Half lhs, int64_t rhs);
@@ -165,6 +186,76 @@ float operator+(int64_t lhs, Half rhs);
 float operator-(int64_t lhs, Half rhs);
 float operator*(int64_t lhs, Half rhs);
 float operator/(int64_t lhs, Half rhs);
+/// Compound assignment with a `Half` lhs promotes the int64_t operand to float
+/// and narrows once on write-back, matching the corresponding binary operators.
+Half& operator+=(Half& lhs, int64_t rhs);
+Half& operator-=(Half& lhs, int64_t rhs);
+Half& operator*=(Half& lhs, int64_t rhs);
+Half& operator/=(Half& lhs, int64_t rhs);
+
+/// Arithmetic with integral operands promotes the integer directly to float.
+/// Binary results are float; compound assignment narrows only on write-back.
+/// Keep the concrete int/int64_t overloads above for existing binary consumers;
+/// these templates provide exact matches for the remaining integral types.
+template<std::integral T>
+float operator+(Half lhs, T rhs) {
+    return lhs + static_cast<float>(rhs);
+}
+
+template<std::integral T>
+float operator-(Half lhs, T rhs) {
+    return lhs - static_cast<float>(rhs);
+}
+
+template<std::integral T>
+float operator*(Half lhs, T rhs) {
+    return lhs * static_cast<float>(rhs);
+}
+
+template<std::integral T>
+float operator/(Half lhs, T rhs) {
+    return lhs / static_cast<float>(rhs);
+}
+
+template<std::integral T>
+float operator+(T lhs, Half rhs) {
+    return static_cast<float>(lhs) + rhs;
+}
+
+template<std::integral T>
+float operator-(T lhs, Half rhs) {
+    return static_cast<float>(lhs) - rhs;
+}
+
+template<std::integral T>
+float operator*(T lhs, Half rhs) {
+    return static_cast<float>(lhs) * rhs;
+}
+
+template<std::integral T>
+float operator/(T lhs, Half rhs) {
+    return static_cast<float>(lhs) / rhs;
+}
+
+template<std::integral T>
+Half& operator+=(Half& lhs, T rhs) {
+    return lhs += static_cast<float>(rhs);
+}
+
+template<std::integral T>
+Half& operator-=(Half& lhs, T rhs) {
+    return lhs -= static_cast<float>(rhs);
+}
+
+template<std::integral T>
+Half& operator*=(Half& lhs, T rhs) {
+    return lhs *= static_cast<float>(rhs);
+}
+
+template<std::integral T>
+Half& operator/=(Half& lhs, T rhs) {
+    return lhs /= static_cast<float>(rhs);
+}
 
 /// Comparison operators based on IEEE 754 binary32 value ordering.
 ///

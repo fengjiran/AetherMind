@@ -1,9 +1,5 @@
-/// @file test_half.cpp
-/// @brief Unit tests for IEEE 754 half-precision conversion and the Half type.
-///
-/// Covers bit-exact conversion (`fp16_to_fp32_bits_for_testing`,
-/// `fp16_from_fp32_value_for_testing`), value conversion
-/// (`fp16_to_fp32_value_for_testing`), and the `Half` class API.
+/// @file test_half_conversion.cpp
+/// @brief Binary16/binary32 conversion, rounding, and floating-point environment contracts.
 #include "aethermind/dtypes/detail/floating_point_bits.h"
 #include "aethermind/dtypes/half.h"
 
@@ -11,7 +7,8 @@
 #include <cfenv>
 #include <cmath>
 #include <gtest/gtest.h>
-#include <sstream>
+#include <initializer_list>
+#include <limits>
 
 namespace aethermind::detail {
 uint32_t fp16_to_fp32_bits_for_testing(uint16_t h);
@@ -417,335 +414,140 @@ TEST(HalfFromFP32Test, RoundTrip) {
     EXPECT_NEAR(original, reconstructed, 1e-3);
 }
 
-TEST(HalfTest, ConstructorAndConversion) {
-    Half h1;
-    EXPECT_EQ(h1.bits(), 0);
-
-    // from_bits stores the raw pattern without conversion.
-    Half h2(0x3C00, Half::from_bits()); // 1.0 in half precision
-    EXPECT_EQ(h2.bits(), 0x3C00);
-
-    Half h3(1.0f);
-    EXPECT_EQ(static_cast<float>(h3), 1.0f);
-
-    Half h4(0.0f);
-    EXPECT_EQ(static_cast<float>(h4), 0.0f);
-
-    // Negative zero must preserve sign.
-    Half h5(-0.0f);
-    EXPECT_EQ(static_cast<float>(h5), -0.0f);
-
-    Half h6(std::numeric_limits<float>::infinity());
-    EXPECT_TRUE(std::isinf(static_cast<float>(h6)));
+// Reconstruct finite positive binary16 values independently of production
+// widening. All intermediate dyadic values are exact in double and float.
+float PositiveHalfValue(uint16_t bits) {
+    const uint32_t exponent = bits >> 10;
+    const uint32_t fraction = bits & 0x03FFU;
+    const double value = exponent == 0
+                                 ? std::ldexp(static_cast<double>(fraction), -24)
+                                 : std::ldexp(static_cast<double>(0x0400U + fraction),
+                                              static_cast<int>(exponent) - 25);
+    return static_cast<float>(value);
 }
 
-TEST(HalfTest, ArithmeticOperations) {
-    Half a(1.5f);
-    Half b(2.5f);
-
-    EXPECT_FLOAT_EQ(a + b, 4.0f);
-    EXPECT_FLOAT_EQ(a - b, -1.0f);
-    EXPECT_FLOAT_EQ(a * b, 3.75f);
-    EXPECT_FLOAT_EQ(a / b, 0.60009766f);
-
-    Half c(1.0f);
-    c += a;
-    EXPECT_FLOAT_EQ(c, 2.5f);
-
-    EXPECT_FLOAT_EQ(-a, -1.5f);
+void ExpectNarrowingForBothSigns(float positive, uint16_t expected) {
+    for (const uint32_t sign: {0U, 0x80000000U}) {
+        const uint32_t bits = std::bit_cast<uint32_t>(positive) | sign;
+        const auto value = std::bit_cast<float>(bits);
+        EXPECT_EQ(Half(value).bits(), expected | (sign >> 16)) << "source bits=" << bits;
+    }
 }
 
-TEST(HalfTest, MixedTypeArithmetic) {
-    Half h(2.0f);
-
-    static_assert(std::is_same_v<decltype(h + 3.0f), float>);
-    static_assert(std::is_same_v<decltype(3.0f + h), float>);
-    EXPECT_FLOAT_EQ(h + 3.0f, 5.0f);
-    EXPECT_FLOAT_EQ(3.0f + h, 5.0f);
-
-    static_assert(std::is_same_v<decltype(h + 3.0), double>);
-    static_assert(std::is_same_v<decltype(3.0 + h), double>);
-    EXPECT_DOUBLE_EQ(h + 3.0, 5.0);
-    EXPECT_DOUBLE_EQ(3.0 + h, 5.0);
-
-    // With int (promoted to float, matching Half-with-float semantics).
-    static_assert(std::is_same_v<decltype(h + 3), float>);
-    static_assert(std::is_same_v<decltype(3 + h), float>);
-    EXPECT_FLOAT_EQ(h + 3, 5.0f);
-    EXPECT_FLOAT_EQ(3 + h, 5.0f);
-
-    // With int64_t (promoted to float).
-    static_assert(std::is_same_v<decltype(h + int64_t(3)), float>);
-    static_assert(std::is_same_v<decltype(int64_t(3) + h), float>);
-    EXPECT_FLOAT_EQ(h + int64_t(3), 5.0f);
-    EXPECT_FLOAT_EQ(int64_t(3) + h, 5.0f);
+TEST(HalfNarrowing, CreatesSubnormalResults) {
+    ExpectNarrowingForBothSigns(0x1p-24f, 0x0001);
+    ExpectNarrowingForBothSigns(0x1p-23f, 0x0002);
+    ExpectNarrowingForBothSigns(0x1.ff8p-15f, 0x03FF);
 }
 
-TEST(HalfTest, NumericLimits) {
-    EXPECT_EQ(std::numeric_limits<Half>::round_style, std::round_to_nearest);
-    EXPECT_EQ(std::numeric_limits<Half>::has_denorm, std::denorm_present);
-    EXPECT_FALSE(std::numeric_limits<Half>::is_iec559);
-    EXPECT_EQ(std::numeric_limits<Half>::min().bits(), 0x0400);
-    EXPECT_EQ(std::numeric_limits<Half>::max().bits(), 0x7BFF);
-    EXPECT_EQ(std::numeric_limits<Half>::lowest().bits(), 0xFBFF);
-    EXPECT_EQ(std::numeric_limits<Half>::epsilon().bits(), 0x1400);
-    EXPECT_EQ(std::numeric_limits<Half>::infinity().bits(), 0x7C00);
-    EXPECT_EQ(std::numeric_limits<Half>::quiet_NaN().bits(), 0x7E00);
-    EXPECT_EQ(std::numeric_limits<Half>::signaling_NaN().bits(), 0x7D00);
-    EXPECT_EQ(std::numeric_limits<Half>::denorm_min().bits(), 0x0001);
+TEST(HalfNarrowing, EveryFiniteHalfValueNarrowsExactly) {
+    for (uint32_t bits = 0; bits < 0x7C00U; ++bits) {
+        const auto expected = static_cast<uint16_t>(bits);
+        ExpectNarrowingForBothSigns(PositiveHalfValue(expected), expected);
+    }
 }
 
-TEST(HalfTest, EdgeCases) {
-    // Denormalized values must be positive and non-zero.
-    Half denorm(std::numeric_limits<Half>::denorm_min());
-    EXPECT_GT(static_cast<float>(denorm), 0.0f);
+TEST(HalfNarrowing, EveryFiniteMidpointRoundsToNearestEven) {
+    for (uint32_t lower = 0; lower < 0x7BFFU; ++lower) {
+        const double a = PositiveHalfValue(static_cast<uint16_t>(lower));
+        const double b = PositiveHalfValue(static_cast<uint16_t>(lower + 1U));
+        // Adjacent binary16 midpoints are exactly representable in binary32.
+        const auto midpoint = static_cast<float>((a + b) * 0.5);
+        const auto even = static_cast<uint16_t>(lower + (lower & 1U));
 
-    // Quiet NaN must test as NaN.
-    Half nan = std::numeric_limits<Half>::quiet_NaN();
-    EXPECT_TRUE(std::isnan(static_cast<float>(nan)));
-
-    // Overflow saturates to infinity.
-    Half large(1.0e8f);
-    EXPECT_TRUE(std::isinf(static_cast<float>(large)));
+        ExpectNarrowingForBothSigns(std::nextafter(midpoint, 0.0f), static_cast<uint16_t>(lower));
+        ExpectNarrowingForBothSigns(midpoint, even);
+        ExpectNarrowingForBothSigns(std::nextafter(midpoint, std::numeric_limits<float>::infinity()),
+                                    static_cast<uint16_t>(lower + 1U));
+    }
 }
 
-TEST(HalfTest, OutputOperator) {
-    Half h(3.14f);
-    std::ostringstream oss;
-    oss << h;
-    EXPECT_FALSE(oss.str().empty());
+TEST(HalfNarrowing, OverflowMidpointRoundsToInfinity) {
+    constexpr float midpoint = 65520.0f;
+    ExpectNarrowingForBothSigns(std::nextafter(midpoint, 0.0f), 0x7BFF);
+    ExpectNarrowingForBothSigns(midpoint, 0x7C00);
+    ExpectNarrowingForBothSigns(std::nextafter(midpoint, std::numeric_limits<float>::infinity()), 0x7C00);
 }
 
-TEST(HalfTest, MemoryLayout) {
-    // Half wraps a single uint16_t with no padding; size and alignment must match.
-    EXPECT_EQ(sizeof(Half), 2u);
-    EXPECT_EQ(alignof(Half), 2u);
+TEST(HalfNarrowing, NaNsQuietAndPreserveRetainedPayload) {
+    for (uint32_t retained = 0; retained < 0x0400U; ++retained) {
+        for (const uint32_t tail: {0U, 1U, 0x1FFFU}) {
+            const uint32_t fraction = (retained << 13) | tail;
+            if (fraction == 0) {
+                continue;
+            }
+            const auto value = std::bit_cast<float>(0x7F800000U | fraction);
+            ExpectNarrowingForBothSigns(value, static_cast<uint16_t>(0x7E00U | (retained & 0x01FFU)));
+        }
+    }
 }
 
-TEST(HalfTest, FromBitsConstructor) {
-    // from_bits stores the raw pattern verbatim — no conversion, no canonicalization.
-    Half pos_inf(0x7C00, Half::from_bits());
-    EXPECT_TRUE(std::isinf(static_cast<float>(pos_inf)));
-    EXPECT_GT(static_cast<float>(pos_inf), 0.0f);
+TEST(HalfNarrowing, ArithmeticPreservesSubnormalResults) {
+    const Half normal{0x0400, Half::from_bits()};
+    const Half below{0x03FF, Half::from_bits()};
+    EXPECT_EQ((normal - below).bits(), 0x0001U);
+    EXPECT_EQ((normal * Half(0.5f)).bits(), 0x0200U);
 
-    Half neg_inf(0xFC00, Half::from_bits());
-    EXPECT_TRUE(std::isinf(static_cast<float>(neg_inf)));
-    EXPECT_LT(static_cast<float>(neg_inf), 0.0f);
-
-    Half qnan(0x7E00, Half::from_bits());
-    EXPECT_TRUE(std::isnan(static_cast<float>(qnan)));
-
-    // Smallest positive denormal must round-trip through float as a positive subnormal value.
-    Half min_denormal(0x0001, Half::from_bits());
-    float as_float = static_cast<float>(min_denormal);
-    EXPECT_GT(as_float, 0.0f);
-    EXPECT_LT(as_float, 1e-7f);
+    Half compound = normal;
+    compound /= Half(1024.0f);
+    EXPECT_EQ(compound.bits(), 0x0001U);
 }
 
-TEST(HalfTest, AllCompoundAssignments) {
-    Half a(4.0f);
-    a -= Half(1.5f);
-    EXPECT_FLOAT_EQ(a, 2.5f);
+struct ConversionCase {
+    uint32_t source;
+    uint16_t expected;
+};
 
-    Half b(2.0f);
-    b *= Half(3.0f);
-    EXPECT_FLOAT_EQ(b, 6.0f);
+constexpr ConversionCase kEnvironmentCases[] = {
+        {0x00000000U, 0x0000}, // zero
+        {0x00000001U, 0x0000}, // binary32 subnormal
+        {0x33000000U, 0x0000}, // zero/subnormal midpoint
+        {0x33000001U, 0x0001}, // immediately above that midpoint
+        {0x33800000U, 0x0001}, // smallest binary16 subnormal
+        {0x33C00000U, 0x0002}, // tie between first and second subnormals
+        {0x387FE000U, 0x0400}, // subnormal/normal midpoint
+        {0x3F801000U, 0x3C00}, // normal tie, even lower
+        {0x3F803000U, 0x3C02}, // normal tie, even upper
+        {0x477FF000U, 0x7C00}, // overflow midpoint
+        {0x7F7FFFFFU, 0x7C00}, // largest binary32 finite value
+        {0x7F800000U, 0x7C00}, // infinity
+        {0x7F800001U, 0x7E00}, // signaling NaN, retained payload is zero
+        {0x7FC00000U, 0x7E00}, // quiet NaN
+};
 
-    Half c(8.0f);
-    c /= Half(2.0f);
-    EXPECT_FLOAT_EQ(c, 4.0f);
+class HalfNarrowingEnvironment : public ::testing::Test {
+protected:
+    void SetUp() override {
+        saved_ = std::feholdexcept(&environment_) == 0;
+        ASSERT_TRUE(saved_);
+    }
+
+    void TearDown() override {
+        if (saved_) {
+            EXPECT_EQ(std::fesetenv(&environment_), 0);
+        }
+    }
+
+private:
+    std::fenv_t environment_{};
+    bool saved_ = false;
+};
+
+TEST_F(HalfNarrowingEnvironment, FixedRoundingAcrossAllModes) {
+    for (const int mode: {FE_TONEAREST, FE_DOWNWARD, FE_UPWARD, FE_TOWARDZERO}) {
+        ASSERT_EQ(std::fesetround(mode), 0);
+        for (const auto& [bits, expected]: kEnvironmentCases) {
+            ExpectNarrowingForBothSigns(std::bit_cast<float>(bits), expected);
+        }
+        EXPECT_EQ(std::fegetround(), mode);
+    }
 }
 
-TEST(HalfTest, FloatCompoundAssignments) {
-    // float& OP= Half: lhs is a float reference; result accumulates in float precision.
-    float a = 4.0f;
-    a += Half(1.5f);
-    EXPECT_FLOAT_EQ(a, 5.5f);
-
-    float b = 4.0f;
-    b -= Half(1.5f);
-    EXPECT_FLOAT_EQ(b, 2.5f);
-
-    float c = 2.0f;
-    c *= Half(3.0f);
-    EXPECT_FLOAT_EQ(c, 6.0f);
-
-    float d = 8.0f;
-    d /= Half(2.0f);
-    EXPECT_FLOAT_EQ(d, 4.0f);
-}
-
-TEST(HalfTest, MixedTypeSubtraction) {
-    Half h(5.0f);
-
-    EXPECT_FLOAT_EQ(h - 2.0f, 3.0f);
-    EXPECT_FLOAT_EQ(7.0f - h, 2.0f);
-    EXPECT_DOUBLE_EQ(h - 2.0, 3.0);
-    EXPECT_DOUBLE_EQ(7.0 - h, 2.0);
-
-    static_assert(std::is_same_v<decltype(h - 2), float>);
-    static_assert(std::is_same_v<decltype(7 - h), float>);
-    EXPECT_FLOAT_EQ(h - 2, 3.0f);
-    EXPECT_FLOAT_EQ(7 - h, 2.0f);
-
-    static_assert(std::is_same_v<decltype(h - int64_t(2)), float>);
-    static_assert(std::is_same_v<decltype(int64_t(7) - h), float>);
-    EXPECT_FLOAT_EQ(h - int64_t(2), 3.0f);
-    EXPECT_FLOAT_EQ(int64_t(7) - h, 2.0f);
-}
-
-TEST(HalfTest, MixedTypeMultiplication) {
-    Half h(3.0f);
-
-    EXPECT_FLOAT_EQ(h * 2.0f, 6.0f);
-    EXPECT_FLOAT_EQ(2.0f * h, 6.0f);
-    EXPECT_DOUBLE_EQ(h * 2.0, 6.0);
-    EXPECT_DOUBLE_EQ(2.0 * h, 6.0);
-
-    static_assert(std::is_same_v<decltype(h * 2), float>);
-    static_assert(std::is_same_v<decltype(2 * h), float>);
-    EXPECT_FLOAT_EQ(h * 2, 6.0f);
-    EXPECT_FLOAT_EQ(2 * h, 6.0f);
-
-    static_assert(std::is_same_v<decltype(h * int64_t(2)), float>);
-    static_assert(std::is_same_v<decltype(int64_t(2) * h), float>);
-    EXPECT_FLOAT_EQ(h * int64_t(2), 6.0f);
-    EXPECT_FLOAT_EQ(int64_t(2) * h, 6.0f);
-}
-
-TEST(HalfTest, MixedTypeDivision) {
-    Half h(6.0f);
-
-    EXPECT_FLOAT_EQ(h / 2.0f, 3.0f);
-    EXPECT_FLOAT_EQ(12.0f / h, 2.0f);
-    EXPECT_DOUBLE_EQ(h / 2.0, 3.0);
-    EXPECT_DOUBLE_EQ(12.0 / h, 2.0);
-
-    static_assert(std::is_same_v<decltype(h / 2), float>);
-    static_assert(std::is_same_v<decltype(12 / h), float>);
-    EXPECT_FLOAT_EQ(h / 2, 3.0f);
-    EXPECT_FLOAT_EQ(12 / h, 2.0f);
-
-    static_assert(std::is_same_v<decltype(h / int64_t(2)), float>);
-    static_assert(std::is_same_v<decltype(int64_t(12) / h), float>);
-    EXPECT_FLOAT_EQ(h / int64_t(2), 3.0f);
-    EXPECT_FLOAT_EQ(int64_t(12) / h, 2.0f);
-}
-
-TEST(HalfTest, NaNPropagation) {
-    // NaN must propagate through every arithmetic operation; result is NaN regardless of operand order.
-    Half nan = std::numeric_limits<Half>::quiet_NaN();
-    Half one(1.0f);
-
-    EXPECT_TRUE(std::isnan(static_cast<float>(nan + one)));
-    EXPECT_TRUE(std::isnan(static_cast<float>(one + nan)));
-    EXPECT_TRUE(std::isnan(static_cast<float>(nan - one)));
-    EXPECT_TRUE(std::isnan(static_cast<float>(nan * one)));
-    EXPECT_TRUE(std::isnan(static_cast<float>(nan / one)));
-
-    Half acc(1.0f);
-    acc += nan;
-    EXPECT_TRUE(std::isnan(static_cast<float>(acc)));
-}
-
-TEST(HalfTest, InfinityArithmetic) {
-    Half pos_inf = std::numeric_limits<Half>::infinity();
-    Half neg_inf(-std::numeric_limits<float>::infinity());
-    Half one(1.0f);
-
-    // inf ± finite stays inf with the same sign.
-    EXPECT_TRUE(std::isinf(static_cast<float>(pos_inf + one)));
-    EXPECT_GT(static_cast<float>(pos_inf + one), 0.0f);
-
-    EXPECT_TRUE(std::isinf(static_cast<float>(neg_inf - one)));
-    EXPECT_LT(static_cast<float>(neg_inf - one), 0.0f);
-
-    // inf - inf is NaN (indeterminate form).
-    EXPECT_TRUE(std::isnan(static_cast<float>(pos_inf - pos_inf)));
-
-    // 1 / 0 is +inf; -1 / 0 is -inf.
-    Half zero(0.0f);
-    EXPECT_TRUE(std::isinf(static_cast<float>(one / zero)));
-    EXPECT_GT(static_cast<float>(one / zero), 0.0f);
-
-    Half neg_one(-1.0f);
-    EXPECT_TRUE(std::isinf(static_cast<float>(neg_one / zero)));
-    EXPECT_LT(static_cast<float>(neg_one / zero), 0.0f);
-
-    // 0 / 0 is NaN.
-    EXPECT_TRUE(std::isnan(static_cast<float>(zero / zero)));
-}
-
-TEST(HalfTest, Comparisons) {
-    // Comparisons go through implicit conversion to float and follow IEEE 754 ordering.
-    Half a(1.5f);
-    Half b(2.5f);
-    Half c(1.5f);
-
-    EXPECT_TRUE(a == c);
-    EXPECT_FALSE(a == b);
-    EXPECT_TRUE(a != b);
-    EXPECT_FALSE(a != c);
-
-    EXPECT_TRUE(a < b);
-    EXPECT_FALSE(b < a);
-    EXPECT_TRUE(b > a);
-    EXPECT_FALSE(a > b);
-
-    EXPECT_TRUE(a <= c);
-    EXPECT_TRUE(a <= b);
-    EXPECT_TRUE(a >= c);
-    EXPECT_TRUE(b >= a);
-
-    // +0.0 == -0.0 per IEEE 754.
-    Half pos_zero(0.0f);
-    Half neg_zero(-0.0f);
-    EXPECT_TRUE(pos_zero == neg_zero);
-}
-
-TEST(HalfTest, NaNComparisons) {
-    // NaN is unordered: every comparison with NaN returns false except !=, which returns true.
-    Half nan = std::numeric_limits<Half>::quiet_NaN();
-    Half one(1.0f);
-
-    EXPECT_FALSE(nan == nan);
-    EXPECT_FALSE(nan == one);
-    EXPECT_FALSE(one == nan);
-
-    EXPECT_TRUE(nan != nan);
-    EXPECT_TRUE(nan != one);
-
-    EXPECT_FALSE(nan < one);
-    EXPECT_FALSE(nan > one);
-    EXPECT_FALSE(nan <= one);
-    EXPECT_FALSE(nan >= one);
-}
-
-TEST(HalfTest, SpaceshipOperator) {
-    Half a(1.5f);
-    Half b(2.5f);
-    Half c(1.5f);
-
-    EXPECT_EQ(a <=> b, std::partial_ordering::less);
-    EXPECT_EQ(b <=> a, std::partial_ordering::greater);
-    EXPECT_EQ(a <=> c, std::partial_ordering::equivalent);
-
-    // +0.0 and -0.0 are equivalent under IEEE 754 value comparison.
-    Half pos_zero(0.0f);
-    Half neg_zero(-0.0f);
-    EXPECT_EQ(pos_zero <=> neg_zero, std::partial_ordering::equivalent);
-
-    // NaN is unordered, including relative to itself.
-    Half nan = std::numeric_limits<Half>::quiet_NaN();
-    EXPECT_EQ(nan <=> a, std::partial_ordering::unordered);
-    EXPECT_EQ(a <=> nan, std::partial_ordering::unordered);
-    EXPECT_EQ(nan <=> nan, std::partial_ordering::unordered);
-
-    // Ordering-derived operators still work as before.
-    EXPECT_TRUE(a < b);
-    EXPECT_TRUE(a <= c);
-    EXPECT_TRUE(b > a);
-    EXPECT_TRUE(b >= a);
+TEST_F(HalfNarrowingEnvironment, ConversionDoesNotRaiseFloatingPointExceptions) {
+    for (const auto& [bits, expected]: kEnvironmentCases) {
+        ExpectNarrowingForBothSigns(std::bit_cast<float>(bits), expected);
+    }
+    EXPECT_EQ(std::fetestexcept(FE_ALL_EXCEPT), 0);
 }
 
 } // namespace

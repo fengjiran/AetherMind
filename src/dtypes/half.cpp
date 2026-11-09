@@ -7,6 +7,8 @@
 #include "aethermind/base/macros.h"
 #include "aethermind/dtypes/detail/floating_point_bits.h"
 
+#include <bit>
+
 namespace aethermind {
 namespace {
 
@@ -68,7 +70,7 @@ uint16_t fp16_from_fp32_value(float f) {
 
         // NaN: preserve the top 10 mantissa bits of the binary32 payload
         // and force the quiet-NaN bit so we never propagate a signaling NaN.
-        // If the payload rounds to zero, substitute the smallest non-zero
+        // If the payload truncates to zero, substitute the smallest non-zero
         // quiet payload to keep the result a NaN.
         auto nan_payload = static_cast<uint16_t>(mantissa >> 13);
         if (nan_payload == 0) {
@@ -207,6 +209,91 @@ Half& operator*=(Half& lhs, const Half& rhs) {
 }
 
 Half& operator/=(Half& lhs, const Half& rhs) {
+    lhs = lhs / rhs;
+    return lhs;
+}
+
+// Mixed-type compound assignment keeps the right operand in its wider type:
+// the operation evaluates in the wider precision and narrows to Half once on
+// write-back, matching the corresponding binary operators. Pre-narrowing the
+// right operand would overflow or round it prematurely — e.g. `a += 65536.0f`
+// must not become `a += +inf`.
+Half& operator+=(Half& lhs, float rhs) {
+    lhs = lhs + rhs;
+    return lhs;
+}
+
+Half& operator-=(Half& lhs, float rhs) {
+    lhs = lhs - rhs;
+    return lhs;
+}
+
+Half& operator*=(Half& lhs, float rhs) {
+    lhs = lhs * rhs;
+    return lhs;
+}
+
+Half& operator/=(Half& lhs, float rhs) {
+    lhs = lhs / rhs;
+    return lhs;
+}
+
+Half& operator+=(Half& lhs, double rhs) {
+    lhs = lhs + rhs;
+    return lhs;
+}
+
+Half& operator-=(Half& lhs, double rhs) {
+    lhs = lhs - rhs;
+    return lhs;
+}
+
+Half& operator*=(Half& lhs, double rhs) {
+    lhs = lhs * rhs;
+    return lhs;
+}
+
+Half& operator/=(Half& lhs, double rhs) {
+    lhs = lhs / rhs;
+    return lhs;
+}
+
+Half& operator+=(Half& lhs, int rhs) {
+    lhs = lhs + rhs;
+    return lhs;
+}
+
+Half& operator-=(Half& lhs, int rhs) {
+    lhs = lhs - rhs;
+    return lhs;
+}
+
+Half& operator*=(Half& lhs, int rhs) {
+    lhs = lhs * rhs;
+    return lhs;
+}
+
+Half& operator/=(Half& lhs, int rhs) {
+    lhs = lhs / rhs;
+    return lhs;
+}
+
+Half& operator+=(Half& lhs, int64_t rhs) {
+    lhs = lhs + rhs;
+    return lhs;
+}
+
+Half& operator-=(Half& lhs, int64_t rhs) {
+    lhs = lhs - rhs;
+    return lhs;
+}
+
+Half& operator*=(Half& lhs, int64_t rhs) {
+    lhs = lhs * rhs;
+    return lhs;
+}
+
+Half& operator/=(Half& lhs, int64_t rhs) {
     lhs = lhs / rhs;
     return lhs;
 }

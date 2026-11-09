@@ -127,18 +127,15 @@ Status ValidateSource(const RawWeightView& view) {
 }
 
 float WidenToFp32(uint16_t bits, bool bfloat) {
-    // Dtype widening preserves signaling NaNs. Quiet them in the source format
-    // before converting to satisfy the weight conversion contract.
     if (bfloat) {
+        // BFloat16 widening preserves signaling NaNs; quiet them in the source
+        // format. Half widening already guarantees quiet NaNs.
         if ((bits & 0x7f80U) == 0x7f80U && (bits & 0x007fU) != 0) {
             bits |= 0x0040U;
         }
         return BFloat16{bits, BFloat16::from_bits()};
     }
 
-    if ((bits & 0x7c00U) == 0x7c00U && (bits & 0x03ffU) != 0) {
-        bits |= 0x0200U;
-    }
     return Half{bits, Half::from_bits()};
 }
 

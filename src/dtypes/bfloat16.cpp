@@ -64,8 +64,8 @@ BFloat16 operator/(const BFloat16& lhs, const BFloat16& rhs)
     return static_cast<float>(lhs) / static_cast<float>(rhs);
 }
 
-BFloat16 operator-(const BFloat16& a) {
-    return -static_cast<float>(a);
+BFloat16 operator-(const BFloat16& value) {
+    return {static_cast<uint16_t>(value.x ^ 0x8000U), BFloat16::from_bits()};
 }
 
 BFloat16& operator+=(BFloat16& lhs, const BFloat16& rhs) {

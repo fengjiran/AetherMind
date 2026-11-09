@@ -42,7 +42,7 @@ uint16_t bf16_from_fp32_value(float);
 ///
 /// Stores the raw 16-bit bfloat16 bit pattern in `x`. The format is
 /// 1 sign | 8 exponent | 7 mantissa, which shares the exponent range of
-/// binary32 but has lower precision. Arithmetic and comparisons go through
+/// binary32 but has lower precision. Binary arithmetic and comparisons go through
 /// implicit conversion to `float` and follow IEEE 754 binary32 rounding and
 /// NaN semantics. Use `from_bits()` to construct from a raw bit pattern
 /// without conversion.
@@ -70,7 +70,11 @@ BFloat16 operator+(const BFloat16& lhs, const BFloat16& rhs);
 BFloat16 operator-(const BFloat16& lhs, const BFloat16& rhs);
 BFloat16 operator*(const BFloat16& lhs, const BFloat16& rhs);
 BFloat16 operator/(const BFloat16& lhs, const BFloat16& rhs);
-BFloat16 operator-(const BFloat16&);
+/// @brief Reverses the stored sign without floating-point arithmetic or conversion.
+/// @param value Value to negate; remains unchanged.
+/// @return Sign bit flipped, with all other bits preserved, including NaN payload
+///         and signaling/quiet state.
+BFloat16 operator-(const BFloat16& value);
 BFloat16& operator+=(BFloat16& lhs, const BFloat16& rhs);
 BFloat16& operator-=(BFloat16& lhs, const BFloat16& rhs);
 BFloat16& operator*=(BFloat16& lhs, const BFloat16& rhs);

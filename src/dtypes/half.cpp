@@ -20,40 +20,42 @@ uint32_t fp16_to_fp32_bits(uint16_t h) {
     const uint32_t mantissa = w & 0x03FF0000U;
 
     // zero
-    if (exponent == 0 && mantissa == 0) {
+    if ((w & 0x7FFFFFFFU) == 0) {
         return sign;
     }
 
     // clang-format off
-    // inf or nan
+    // Quiet NaNs without floating-point operations; preserve infinities.
     if (exponent == 0x7C000000U) AM_UNLIKELY {
-        return sign | 0x7F800000U | (mantissa >> 3);
+        const uint32_t quiet_bit = mantissa != 0 ? 0x00400000U : 0U;
+        return sign | 0x7F800000U | (mantissa >> 3) | quiet_bit;
     }
     // clang-format on
 
-    // Renormalize denormalized half values into the normalized fp32 range.
-    // std::countl_zero finds the position of the leading 1 bit; we shift the
-    // mantissa into the normalized position and adjust the exponent bias
-    // accordingly. The `> 5` guard accounts for the 5-bit exponent field
-    // (fp32 mantissa is 23 bits vs half's 10).
-    const uint32_t nonsign = w & 0x7FFFFFFFU;
-    // Zero, inf, and NaN cases returned above, so nonsign is non-zero here.
-    uint32_t renorm_shift = std::countl_zero(nonsign);
+    // For normal halves the exponent field is non-zero, so countl_zero <= 5
+    // and renorm_shift is 0: the value only needs re-biasing (15 -> 127) and
+    // the 13-bit mantissa shift. For denormal halves countl_zero >= 6, and
+    // shifting by countl_zero - 5 moves the leading 1 to bit 26 so that the
+    // final >> 3 lands it on fp32's implicit-1 position (bit 23); the exponent
+    // bias is reduced by the same shift to compensate.
+    const uint32_t non_sign = w & 0x7FFFFFFFU;
+    // Zero, inf, and NaN cases returned above, so non_sign is non-zero here.
+    uint32_t renorm_shift = std::countl_zero(non_sign);
     renorm_shift = renorm_shift > 5 ? renorm_shift - 5 : 0;
-    return sign | ((nonsign << renorm_shift >> 3) + ((0x70 - renorm_shift) << 23));
+    return sign | ((non_sign << renorm_shift >> 3) + ((0x70 - renorm_shift) << 23));
 }
 
 // Converts an IEEE single-precision `float` to an IEEE half-precision value
 // (bit representation). Implemented with integer bit manipulation only; no
-// floating-point operations. Rounding mode is round-to-nearest-even.
+// floating-point operations. Uses fixed round-to-nearest-even with gradual
+// underflow, independently of the floating-point environment.
 uint16_t fp16_from_fp32_value(float f) {
     const uint32_t x = detail::fp32_to_bits(f);
     const uint32_t sign = x & 0x80000000U;
     const uint32_t exponent = x & 0x7F800000U;
     const uint32_t mantissa = x & 0x007FFFFFU;
 
-    // zero case
-    if (exponent == 0 && mantissa == 0) {
+    if ((x & 0x7FFFFFFFU) == 0) {
         return static_cast<uint16_t>(sign >> 16);
     }
 
@@ -77,13 +79,29 @@ uint16_t fp16_from_fp32_value(float f) {
         return static_cast<uint16_t>(sign >> 16 | 0x7C00U | nan_payload);
     }
 
-    // normalize the exponent from fp32 bias(127) to fp16 bias(15)
-    const auto exp32 = static_cast<int32_t>((exponent >> 23) - 127);
+    const int32_t exp32 = static_cast<int32_t>(exponent >> 23) - 127;
 
-    // We do not support FP16 denormals. Values smaller than the minimum
-    // normal FP16 (exp32 < -14) are flushed to zero.
-    if (exp32 < -14) {
+    // Magnitudes below half the smallest binary16 subnormal round to zero.
+    // This also handles all binary32 subnormals without renormalizing them.
+    if (exp32 < -25) {
         return static_cast<uint16_t>(sign >> 16);
+    }
+
+    if (exp32 < -14) {
+        // Restore the implicit one and round once from the full significand;
+        // truncating first would lose sticky bits and permit double rounding.
+        const uint32_t significand = 0x00800000U | mantissa;
+        const auto shift = static_cast<uint32_t>(-exp32 - 1); // [14, 24]
+        uint32_t rounded = significand >> shift;
+        const uint32_t remainder = significand & ((uint32_t{1} << shift) - 1U);
+
+        if (const uint32_t halfway = uint32_t{1} << (shift - 1U);
+            remainder > halfway || (remainder == halfway && (rounded & 1U) != 0)) {
+            ++rounded;
+        }
+
+        // A carry to 0x0400 is the smallest normal binary16, not overflow.
+        return static_cast<uint16_t>((sign >> 16) | rounded);
     }
 
     if (exp32 > 15) {
@@ -107,7 +125,6 @@ uint16_t fp16_from_fp32_value(float f) {
     // result is odd) — the `res & 1` check implements the "even" tie-break.
     const uint32_t rounding_bit = mantissa & 0x00001000U;
     const uint32_t sticky_bits = mantissa & 0x00000FFFU;
-
     if (rounding_bit && (sticky_bits || (res & 1))) {
         res += 1;
     }
@@ -170,8 +187,8 @@ Half operator/(const Half& lhs, const Half& rhs)
     return static_cast<float>(lhs) / static_cast<float>(rhs);
 }
 
-Half operator-(const Half& a) {
-    return -static_cast<float>(a);
+Half operator-(const Half& value) {
+    return {static_cast<uint16_t>(value.bits() ^ 0x8000U), Half::from_bits()};
 }
 
 Half& operator+=(Half& lhs, const Half& rhs) {

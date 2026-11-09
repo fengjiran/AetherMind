@@ -1,11 +1,14 @@
-/// \file
-/// Unit tests for IEEE 754 half-precision conversion functions and the Half type.
+/// @file test_half.cpp
+/// @brief Unit tests for IEEE 754 half-precision conversion and the Half type.
 ///
 /// Covers bit-exact conversion (`fp16_to_fp32_bits_for_testing`,
-/// `fp16_from_fp32_value_for_testing`), value conversion (`fp16_to_fp32_value_for_testing`),
-/// and the `Half` class API.
+/// `fp16_from_fp32_value_for_testing`), value conversion
+/// (`fp16_to_fp32_value_for_testing`), and the `Half` class API.
 #include "aethermind/dtypes/detail/floating_point_bits.h"
 #include "aethermind/dtypes/half.h"
+
+#include <bit>
+#include <cfenv>
 #include <cmath>
 #include <gtest/gtest.h>
 #include <sstream>
@@ -57,17 +60,57 @@ TEST(HalfToFP32Test, HalfToFp32Bits_Infinity) {
 }
 
 TEST(HalfToFP32Test, HalfToFp32Bits_NaN) {
-    // Quiet NaN
-    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x7C01), 0x7F802000);
+    // NaN payloads shift into the fp32 fraction, with the quiet bit forced on.
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x7C01), 0x7FC02000);
     EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x7FFF), 0x7FFFE000);
-
-    // Signaling NaN
     EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x7E00), 0x7FC00000);
     EXPECT_EQ(fp16_to_fp32_bits_for_testing(0x7F00), 0x7FE00000);
 
-    // Negative NaN
-    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0xFC01), 0xFF802000);
+    // Sign is preserved.
+    EXPECT_EQ(fp16_to_fp32_bits_for_testing(0xFC01), 0xFFC02000);
     EXPECT_EQ(fp16_to_fp32_bits_for_testing(0xFFFF), 0xFFFFE000);
+}
+
+TEST(HalfToFP32Test, EveryNaNQuietsAndPreservesSignAndPayload) {
+    for (uint32_t bits = 0; bits < 0x10000U; ++bits) {
+        if ((bits & 0x7C00U) != 0x7C00U || (bits & 0x03FFU) == 0) {
+            continue;
+        }
+
+        const Half source{static_cast<uint16_t>(bits), Half::from_bits()};
+        const uint32_t results[] = {
+                fp16_to_fp32_bits_for_testing(static_cast<uint16_t>(bits)),
+                std::bit_cast<uint32_t>(fp16_to_fp32_value_for_testing(static_cast<uint16_t>(bits))),
+                std::bit_cast<uint32_t>(static_cast<float>(source))};
+
+        for (const uint32_t result: results) {
+            EXPECT_EQ(result & 0x7FC00000U, 0x7FC00000U) << "source bits=" << bits;
+            EXPECT_EQ(result >> 31, bits >> 15) << "source bits=" << bits;
+            // The remaining nine payload bits are preserved; new low bits are zero.
+            EXPECT_EQ(result & 0x003FFFFFU, (bits & 0x01FFU) << 13) << "source bits=" << bits;
+        }
+        EXPECT_EQ(source.bits(), bits) << "source bits=" << bits;
+    }
+}
+
+TEST(HalfToFP32Test, SignalingNaNConversionDoesNotRaiseInvalid) {
+    std::fenv_t environment;
+    ASSERT_EQ(std::feholdexcept(&environment), 0);
+
+    uint32_t quiet_bits = 0x00400000U;
+    for (uint32_t bits = 0x7C01U; bits < 0x7E00U; ++bits) {
+        for (const uint32_t sign: {0U, 0x8000U}) {
+            const Half source{static_cast<uint16_t>(bits | sign), Half::from_bits()};
+            quiet_bits &= std::bit_cast<uint32_t>(static_cast<float>(source));
+        }
+    }
+    const int raised = std::fetestexcept(FE_INVALID);
+    // Restore the caller's environment before any assertions can report failure.
+    const int restored = std::fesetenv(&environment);
+
+    EXPECT_EQ(restored, 0);
+    EXPECT_EQ(quiet_bits, 0x00400000U);
+    EXPECT_EQ(raised, 0);
 }
 
 TEST(HalfToFP32Test, HalfToFp32Bits_EdgeCases) {
@@ -163,10 +206,10 @@ TEST(HalfToFP32Test, HalfToFp32Value_Infinity) {
 }
 
 TEST(HalfToFP32Test, HalfToFp32Value_NaN) {
-    float nan1 = fp16_to_fp32_value_for_testing(0x7C01); // quiet NaN
+    float nan1 = fp16_to_fp32_value_for_testing(0x7C01); // signaling input becomes quiet
     float nan2 = fp16_to_fp32_value_for_testing(0x7FFF); // quiet NaN
-    float nan3 = fp16_to_fp32_value_for_testing(0x7E00); // signaling NaN
-    float nan4 = fp16_to_fp32_value_for_testing(0xFC01); // negative quiet NaN
+    float nan3 = fp16_to_fp32_value_for_testing(0x7E00); // quiet NaN
+    float nan4 = fp16_to_fp32_value_for_testing(0xFC01); // negative signaling input becomes quiet
 
     EXPECT_TRUE(std::isnan(nan1));
     EXPECT_TRUE(std::isnan(nan2));
@@ -202,7 +245,7 @@ TEST(HalfToFP32Test, HalfToFp32Value_SpecialValues) {
     // E approximation: 0x4170 -> ~2.71875
     EXPECT_NEAR(fp16_to_fp32_value_for_testing(0x4170), 2.71875f, 1e-6f);
 
-    // Golden ratio: 0x3FCF -> ~1.618
+    // 0x3FCF -> 1 + 975/1024 ~= 1.95215
     EXPECT_NEAR(fp16_to_fp32_value_for_testing(0x3FCF), 1.95215f, 1e-3f);
 }
 
@@ -249,7 +292,7 @@ TEST(HalfFromFP32Test, ZeroValues) {
 }
 
 TEST(HalfFromFP32Test, DenormalizedNumbers) {
-    // Values below the half-precision minimum normal flush to zero.
+    // Even the largest binary32 subnormal is below binary16's rounding range.
     float smallest_denormal = std::numeric_limits<float>::denorm_min();
     EXPECT_EQ(fp16_from_fp32_value_for_testing(smallest_denormal), 0x0000);
 
@@ -263,7 +306,7 @@ TEST(HalfFromFP32Test, NormalizedNumbers) {
     EXPECT_EQ(fp16_from_fp32_value_for_testing(0.5f), 0x3800);
     EXPECT_EQ(fp16_from_fp32_value_for_testing(-1.0f), 0xBC00);
 
-    // Float denormals flush to zero in half.
+    // The binary32 minimum normal is far below the binary16 subnormal range.
     float smallest_normal = 1.17549435e-38f; // 2^-126
     EXPECT_EQ(fp16_from_fp32_value_for_testing(smallest_normal), 0);
 
@@ -318,7 +361,7 @@ TEST(HalfFromFP32Test, Overflow) {
 }
 
 TEST(HalfFromFP32Test, Underflow) {
-    // Values too small to represent flush to zero.
+    // Magnitudes below 2^-25 round to signed zero.
     EXPECT_EQ(fp16_from_fp32_value_for_testing(1e-10f), 0x0000);
     EXPECT_EQ(fp16_from_fp32_value_for_testing(-1e-10f), 0x8000);
 }
@@ -375,15 +418,13 @@ TEST(HalfFromFP32Test, RoundTrip) {
 }
 
 TEST(HalfTest, ConstructorAndConversion) {
-    // Default constructor: zero.
     Half h1;
     EXPECT_EQ(h1.bits(), 0);
 
-    // from_bits constructor: raw bit pattern, no conversion.
+    // from_bits stores the raw pattern without conversion.
     Half h2(0x3C00, Half::from_bits()); // 1.0 in half precision
     EXPECT_EQ(h2.bits(), 0x3C00);
 
-    // Float constructor and conversion.
     Half h3(1.0f);
     EXPECT_EQ(static_cast<float>(h3), 1.0f);
 
@@ -407,25 +448,21 @@ TEST(HalfTest, ArithmeticOperations) {
     EXPECT_FLOAT_EQ(a * b, 3.75f);
     EXPECT_FLOAT_EQ(a / b, 0.60009766f);
 
-    // Compound assignment.
     Half c(1.0f);
     c += a;
     EXPECT_FLOAT_EQ(c, 2.5f);
 
-    // Unary minus.
     EXPECT_FLOAT_EQ(-a, -1.5f);
 }
 
 TEST(HalfTest, MixedTypeArithmetic) {
     Half h(2.0f);
 
-    // With float.
     static_assert(std::is_same_v<decltype(h + 3.0f), float>);
     static_assert(std::is_same_v<decltype(3.0f + h), float>);
     EXPECT_FLOAT_EQ(h + 3.0f, 5.0f);
     EXPECT_FLOAT_EQ(3.0f + h, 5.0f);
 
-    // With double.
     static_assert(std::is_same_v<decltype(h + 3.0), double>);
     static_assert(std::is_same_v<decltype(3.0 + h), double>);
     EXPECT_DOUBLE_EQ(h + 3.0, 5.0);
@@ -445,6 +482,9 @@ TEST(HalfTest, MixedTypeArithmetic) {
 }
 
 TEST(HalfTest, NumericLimits) {
+    EXPECT_EQ(std::numeric_limits<Half>::round_style, std::round_to_nearest);
+    EXPECT_EQ(std::numeric_limits<Half>::has_denorm, std::denorm_present);
+    EXPECT_FALSE(std::numeric_limits<Half>::is_iec559);
     EXPECT_EQ(std::numeric_limits<Half>::min().bits(), 0x0400);
     EXPECT_EQ(std::numeric_limits<Half>::max().bits(), 0x7BFF);
     EXPECT_EQ(std::numeric_limits<Half>::lowest().bits(), 0xFBFF);

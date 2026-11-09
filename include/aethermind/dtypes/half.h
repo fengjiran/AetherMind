@@ -47,15 +47,15 @@ namespace aethermind {
 
 /// @brief IEEE 754 half-precision (binary16) floating-point value.
 ///
-/// Wraps a 16-bit binary16 bit pattern. Arithmetic and comparisons go through
+/// Wraps a 16-bit binary16 bit pattern. Binary arithmetic and comparisons go through
 /// implicit conversion to `float`, so results follow IEEE 754 binary32 rounding
 /// and NaN semantics. This carries more intermediate precision than strict
 /// binary16 arithmetic and matches the behavior of common reduced-precision
 /// libraries (e.g., PyTorch c10::Half).
 ///
-/// `is_iec559` is false: `fp16_from_fp32_value` flushes subnormals to zero.
-/// Subnormals stored via `from_bits()` are preserved and round-trip correctly
-/// through `fp16_to_fp32_value`.
+/// Narrowing uses fixed round-to-nearest-even with gradual underflow. Both
+/// conversion directions quiet NaNs. `is_iec559` is false: arithmetic evaluates
+/// in binary32 and conversion does not implement IEEE floating-point exceptions.
 /// Use `from_bits()` to construct from a raw bit pattern without conversion.
 struct alignas(2) Half {
     /// Tag type for constructing a `Half` from raw bits without conversion.
@@ -69,7 +69,13 @@ struct alignas(2) Half {
     /// Constructs from raw binary16 bits; no floating-point conversion.
     constexpr Half(uint16_t bits, from_bits_t) : x(bits) {}
 
-    /// Constructs from a binary32 `float`, rounding to binary16.
+    /// @brief Constructs from binary32 using fixed round-to-nearest-even.
+    /// @param value Source value; signed zero and binary16 subnormals are preserved.
+    ///
+    /// Supports gradual underflow and rounds overflow to signed infinity. All
+    /// NaNs become quiet NaNs with sign and retained high payload bits preserved.
+    /// Conversion ignores the current rounding mode and raises no floating-point
+    /// exceptions, including for signaling NaNs.
     ///
     /// Implicit conversion is intentional: it lets `Half` flow through
     /// float-based APIs (literals, arithmetic expressions, printf-style
@@ -79,6 +85,9 @@ struct alignas(2) Half {
     Half(float value); // NOLINT
 
     /// Converts to binary32 `float` for arithmetic and comparisons.
+    /// All NaNs become quiet NaNs, preserving sign and payload bits. Conversion
+    /// uses integer bit operations and does not raise floating-point exceptions,
+    /// including for signaling NaNs. The stored binary16 bits remain unchanged.
     ///
     /// Implicit conversion is intentional: it makes `Half` usable in
     /// float expressions and with the standard library without wrapping
@@ -103,7 +112,11 @@ Half operator+(const Half& lhs, const Half& rhs);
 Half operator-(const Half& lhs, const Half& rhs);
 Half operator*(const Half& lhs, const Half& rhs);
 Half operator/(const Half& lhs, const Half& rhs);
-Half operator-(const Half&);
+/// @brief Reverses the stored sign without floating-point arithmetic or conversion.
+/// @param value Value to negate; remains unchanged.
+/// @return Sign bit flipped, with all other bits preserved, including NaN payload
+///         and signaling/quiet state.
+Half operator-(const Half& value);
 Half& operator+=(Half& lhs, const Half& rhs);
 Half& operator-=(Half& lhs, const Half& rhs);
 Half& operator*=(Half& lhs, const Half& rhs);
@@ -180,10 +193,9 @@ AM_NODISCARD bool operator==(T&& lhs, U&& rhs) {
 /// @brief std::numeric_limits specialization for IEEE 754 binary16.
 ///
 /// Bit constants follow the binary16 format (1 sign | 5 exponent | 10 mantissa,
-/// bias 15). `is_iec559` is false: `fp16_from_fp32_value` flushes subnormals to
-/// zero, so the type does not provide gradual underflow. Subnormals stored via
-/// `from_bits()` are preserved and round-trip correctly through
-/// `fp16_to_fp32_value`.
+/// bias 15). Narrowing uses fixed round-to-nearest-even with gradual underflow.
+/// `is_iec559` is false: arithmetic evaluates in binary32 and conversion does
+/// not implement IEEE floating-point exceptions.
 template<>
 struct std::numeric_limits<aethermind::Half> {
     static constexpr bool is_specialized = true;
@@ -195,7 +207,7 @@ struct std::numeric_limits<aethermind::Half> {
     static constexpr bool has_signaling_NaN = true;
     static constexpr auto has_denorm = denorm_present;
     static constexpr auto has_denorm_loss = true;
-    static constexpr auto round_style = numeric_limits<float>::round_style;
+    static constexpr auto round_style = round_to_nearest;
     static constexpr bool is_iec559 = false;
     static constexpr bool is_bounded = true;
     static constexpr bool is_modulo = false;

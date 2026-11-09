@@ -264,6 +264,22 @@ prompt 必须非空；prompt/EOS 必须在词表范围内，prompt 长度须满�
 
 旧的 `CommitUntil` 与私有提交访问 header 不再是当前 API；不提供兼容别名或旧 header。
 
+### Half 与 Float32 的相互转换（include/aethermind/dtypes/half.h）
+
+`Half::operator float()` 将所有 binary16 NaN 转为 binary32 quiet NaN，保留 sign 和除 quiet 标志位外的 payload 位；原始 fraction 左移 13 位，并设置 Float32 quiet bit `0x00400000`。转换仅使用整数位运算和 bit cast，即使输入为 signaling NaN，也不会因转换触发浮点异常。有限值（包括 subnormal）、signed zero 和 Infinity 保持精确。
+
+`Half(float)` 固定使用 round-to-nearest-even（RNE）并支持 gradual underflow。FP32→FP16 只从完整 significand 舍入一次；`±2^-24` 精确得到最小 subnormal，`±2^-25` 的 halfway 舍入为同符号零，subnormal 舍入进位可得到最小 normal。有限输入的绝对值达到 `65520` 时按 RNE 舍入为同符号 Infinity。NaN 保留 sign 及可容纳的高位 payload，强制设置 FP16 quiet bit `0x0200`；即使 payload 被全部截掉，也不会变为 Infinity。
+
+双向转换均使用整数位运算和 bit cast，不依赖当前 rounding mode 或 FTZ/DAZ，也不设置浮点异常标志。此保证仅适用于转换；二元算术仍在 Float32 中求值。FTZ→gradual underflow 是可观察行为迁移：构造、二元算术、复合赋值及数学 helper 的结果窄化现在可产生 FP16 subnormal。
+
+`Half::from_bits()` 仍逐位保存输入，转换不会修改源 `Half`；`numeric_limits<Half>::has_signaling_NaN` 继续为 `true`，表示该存储类型仍可表示 signaling NaN。`round_style` 显式为 `std::round_to_nearest`；`is_iec559` 继续为 `false`，不因转换支持 subnormal 就声明整个类型符合 IEEE 754 的全部算术和异常语义。
+
+### Half / BFloat16 一元取负
+
+[Half](../../include/aethermind/dtypes/half.h) 的 `Half operator-(const Half&)` 与 [BFloat16](../../include/aethermind/dtypes/bfloat16.h) 的 `BFloat16 operator-(const BFloat16&)` 仅翻转存储中的 sign bit，其余 15 bit 保持不变，输入不变。
+
+该操作不执行浮点运算或转换：保留 subnormal 的全部有效位；正负零、正负 Inf 互换；NaN 的 payload 和 quiet/signaling 状态保持。双重取负逐位恢复原值。这与 widening 时 quiet NaN 或各类型 narrowing 时的舍入和 subnormal 政策独立。
+
 ### BFloat16 与整数的混合算术（include/aethermind/dtypes/bfloat16.h）
 
 `BFloat16` 与 `int` / `int64_t` 两侧的 `+`、`-`、`*`、`/` 保持返回 `BFloat16`。两个操作数提升为 Float32 后运算，仅在返回时将结果舍入为 BF16；整数不会在运算前先量化为 BF16。因此 `BFloat16(-256.0f) + 257` 返回 `1`。

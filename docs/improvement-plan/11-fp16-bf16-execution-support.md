@@ -1,8 +1,8 @@
 # FP16 / BF16 执行支持方案
 
 - **状态**: In Progress
-- **版本**: 1.1
-- **日期**: 2026-10-29
+- **版本**: 1.2
+- **日期**: 2026-11-09
 - **产品边界**: [当前产品 PRD](../products/aethermind_prd.md)；CPU-only、单进程、同步、单请求、Token IDs I/O、Llama Dense、静态连续 KV
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联计划**: [06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[07 模型准备入口](07-executable-model-preparation.md)、[08 KV/Attention 演进](08-kv-cache-and-attention-capability-evolution.md)、[09 模型家族扩展](09-qwen-and-moe-architecture-support.md)、[10 Runtime 组装入口](10-upper-level-runtime-assembly.md)
@@ -40,7 +40,7 @@ P1 建立可执行基线，不是低内存方案；P2 是首个保留 16-bit 权
 | Llama 所需 CPU kernel 尚未形成 F16/BF16 完整执行链；例如 Linear 注册为 F32/F32，BF16 Add 是局部已有能力 | [Linear entry](../../src/backend/cpu/kernels/linear/linear_entry.cpp)、[Add entry](../../src/backend/cpu/kernels/add/add_entry.cpp) | 按算子与完整 production path 分别验收，不将局部支持推广为整模型支持 |
 | `KernelSelector` 严格匹配 activation/weight dtype；`DeriveSelectorDTypes` 忽略 state，未独立表达 output dtype | [selector](../../include/aethermind/base/kernel_selector.h)、[dtype 派生](../../src/operators/operator_inference.cpp) | W16/A32 可复用；mixed KV 和后续 mixed output 才扩展匹配身份 |
 | identity packing 保留源 dtype；现有 B-panel 只有 `kCpuBPanelF32Kc512Nr16`，packer/validator 限定 F32 | [CPU packing](../../src/backend/cpu/cpu_backend.cpp)、[recipe](../../include/aethermind/backend/packing_recipe.h)、[packed validation](../../src/backend/cpu/packed_weight_validation.cpp) | 16-bit B-panel 需要独立物理布局身份，不复用 F32 ID |
-| `Half(float)` 使用 RNE，但将 subnormal 范围清零；BF16 转换使用 RNE 并 canonicalize NaN | [Half 转换](../../src/dtypes/half.cpp)、[BF16 转换](../../src/dtypes/bfloat16.cpp) | narrow conversion 的数值合同与现有兼容性必须先明确 |
+| `Half(float)` 软件标量转换使用固定 RNE + gradual underflow，双向转换 quiet NaN；BF16 转换使用 RNE 并 canonicalize NaN | [Half 转换](../../src/dtypes/half.cpp)、[BF16 转换](../../src/dtypes/bfloat16.cpp) | Half 的 FTZ 行为已独立迁移；软件转换的合同和测试不代表 native 16-bit kernel 已支持 |
 | CPU capability 已检测 F16C、AVX512BF16、AMX_BF16 等，尚无对应完整 kernel 链；当前 SIMD 编译配置主要针对 FP32 AVX2/FMA | [CPU capability](../../include/aethermind/backend/cpu/cpu_capabilities.h)、[检测](../../src/backend/cpu/cpu_info.cpp)、[库 CMake](../../src/CMakeLists.txt) | feature detection 不是执行支持；新增 ISA 按 translation unit 隔离 |
 
 ### 1.3 范围与非目标
@@ -157,7 +157,7 @@ P4 如出现 input/output dtype 不同或同角色的多端口异型，需要按
 | 项目 | 推荐合同与限制 |
 |---|---|
 | Widening | F16/BF16 的有限值提升到 F32 精确表示，包括可表示的 subnormal；零符号保留；NaN 按已冻结的 bit-copy/quieting 规则处理 |
-| Narrowing | 推荐 RNE + gradual underflow，明确 overflow→Inf、signed zero、q/sNaN 及 payload/canonicalization。现有 Half FTZ 改动须单列行为迁移；P1 的纯 widening 不依赖这项修订 |
+| Narrowing | Half 软件标量转换已采用固定 RNE + gradual underflow，保留 signed zero，overflow→Inf，NaN quiet 并保留可容纳的 payload，不设置浮点异常标志；FTZ 迁移见 [公共 API](../api/public-api.md)。后续 narrowing/SIMD 路径须匹配该合同；P1 的纯 widening 不依赖此次迁移 |
 | GEMM/归约 | P1/P2 固定 FP32 累加，reference 可用 FP64 oracle 检查；不得假定 wrapper 算术自然实现 FP32 accumulation |
 | Norm/Attention | 平方和、dot、stable softmax 的 max/exp/sum 与 value accumulation 至少 F32；RoPE 保留其既有更高精度频率/角度合同，不能因 dtype 扩展缩窄 |
 | Fusion | 先规定 logical op 边界的 rounding/cast placement；融合不能移除要求的 narrowing 或额外引入舍入。浮点运算顺序变化按数值门禁审查，不要求所有实现逐位一致 |
@@ -182,14 +182,14 @@ FP16 与 BF16 的指数范围和有效精度不同，不能按“都是 16-bit�
 
 ## 4. 实施步骤
 
-P1 的限定实现与验收已完成；P0 中 graph options 和 widening 数值合同已随 P1 落地，F16 Add 与 narrowing 迁移留待实际 reduced-dtype consumer 需要时实施。P1 全程使用 F32 算子，不依赖这些未完成项。P2–P4 仍待实施；编号表示依赖，不承诺日期。每个算子依照 O0–O4 执行，微内核优化不是进入下一阶段的充分条件。
+P1 的限定实现与验收已完成；P0 中 graph options 和 widening 数值合同已随 P1 落地，Half 软件标量 narrowing 已独立完成 FTZ→gradual underflow 迁移。F16 Add 与新增 narrowing/SIMD 路径仍待实际 reduced-dtype consumer 需要时实施。P1 全程使用 F32 算子，不依赖这些未完成项。P2–P4 仍待实施；编号表示依赖，不承诺日期。每个算子依照 O0–O4 执行，微内核优化不是进入下一阶段的充分条件。
 
 ### 4.1 P0：冻结合同与补齐基础语义
 
 1. 固定 §2.1 的首批 presets、source/activation/KV 权威与明确拒绝策略。
 2. 引入 graph-build options，经 ModelCompileOptions 传到唯一构图入口；覆盖 hint 缺失、auto、与实际权重不同的情况，不改 checkpoint 来源 metadata。
 3. 补齐 F16 Add 的 shared dtype contract、CPU reference 注册、constant folding 与相关测试；不把其他未实现 kernel 一并标为支持。
-4. 写明转换 rounding、NaN/Inf、subnormal 及 Half FTZ 迁移范围；在任何新 narrowing/SIMD 路径开放前完成对应行为与测试迁移。
+4. Half 软件标量转换已明确 rounding、NaN/Inf、subnormal 和 FTZ 迁移范围，并有独立回归覆盖；任何新 narrowing/SIMD 路径开放前仍须验证其数值和异常行为匹配同一合同。
 
 退出条件：语义与 dtype 身份一致，非法组合可诊断；F16 Add 的 producer/consumer/evaluator/CPU reference 同步。该阶段不承诺 F16/BF16 整模型执行。
 

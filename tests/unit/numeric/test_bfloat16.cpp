@@ -1,11 +1,7 @@
-//
-// Created by richard on 9/23/25.
-//
 #include "aethermind/dtypes/bfloat16.h"
 
 #include <bitset>
 #include <cmath>
-#include <cstdint>
 #include <gtest/gtest.h>
 #include <type_traits>
 
@@ -14,14 +10,12 @@ using namespace aethermind;
 using namespace aethermind::detail;
 
 TEST(BFloat16Test, DefaultConstructor) {
-    // 测试默认构造函数
     BFloat16 val;
     EXPECT_EQ(val.x, 0);
     EXPECT_FLOAT_EQ(val, 0.0f);
 }
 
 TEST(BFloat16Test, FromBitsConstructor) {
-    // 测试通过位构造函数
     BFloat16 val1(0x3F80, BFloat16::from_bits()); // 1.0
     EXPECT_EQ(val1.x, 0x3F80);
     EXPECT_FLOAT_EQ(val1, 1.0f);
@@ -32,20 +26,20 @@ TEST(BFloat16Test, FromBitsConstructor) {
 }
 
 TEST(BFloat16Test, FloatConversion) {
-    // 测试从float转换和转换为float
     constexpr float test_values[] = {
             0.0f, 1.0f, -1.0f, 2.0f, 0.5f,
             0.3333333333f, 100.0f, -100.0f,
-            std::numeric_limits<float>::max() / 2, // 大值但不会溢出BFloat16
-            std::numeric_limits<float>::min() * 2  // 小值但不会下溢BFloat16
+            std::numeric_limits<float>::max() / 2, // Large value that still fits BF16.
+            std::numeric_limits<float>::min() * 2  // Smallest normal float doubled; still normal in BF16.
     };
 
     for (float f: test_values) {
         BFloat16 bf16 = f;
         float converted_back = bf16;
 
-        // 由于精度损失，我们不能期望完全相等，但应该在合理的误差范围内
-        // 对于BFloat16，相对误差通常应小于0.5%
+        // BF16 keeps only 8 mantissa bits, so exact equality is not expected.
+        // Round-to-nearest keeps the relative error below roughly 0.5%; the
+        // assertion allows 1%.
         if (std::isnan(f)) {
             EXPECT_TRUE(std::isnan(converted_back));
         } else if (std::isinf(f)) {
@@ -98,9 +92,6 @@ TEST(BFloat16Test, FromFp32OverflowBoundary) {
 }
 
 TEST(BFloat16Test, EdgeValues) {
-    // 测试边界值
-
-    // 零值
     BFloat16 zero_pos(0.0f);
     BFloat16 zero_neg(-0.0f);
     EXPECT_EQ(zero_pos.x, 0x0000);
@@ -108,7 +99,6 @@ TEST(BFloat16Test, EdgeValues) {
     EXPECT_FLOAT_EQ(zero_pos, 0.0f);
     EXPECT_FLOAT_EQ(zero_neg, -0.0f);
 
-    // 无穷大
     BFloat16 inf_pos(std::numeric_limits<float>::infinity());
     BFloat16 inf_neg(-std::numeric_limits<float>::infinity());
     EXPECT_EQ(inf_pos.x, 0x7F80);
@@ -116,13 +106,11 @@ TEST(BFloat16Test, EdgeValues) {
     EXPECT_TRUE(std::isinf(inf_pos));
     EXPECT_TRUE(std::isinf(inf_neg));
 
-    // NaN
     BFloat16 nan_pos(std::numeric_limits<float>::quiet_NaN());
     BFloat16 nan_neg(-std::numeric_limits<float>::quiet_NaN());
     EXPECT_TRUE(std::isnan(nan_pos));
     EXPECT_TRUE(std::isnan(nan_neg));
 
-    // 最小和最大规格化值
     BFloat16 min_norm = std::numeric_limits<BFloat16>::min();
     BFloat16 max_norm = std::numeric_limits<BFloat16>::max();
     BFloat16 lowest = std::numeric_limits<BFloat16>::lowest();
@@ -133,28 +121,21 @@ TEST(BFloat16Test, EdgeValues) {
 }
 
 TEST(BFloat16Test, ArithmeticOperations) {
-    // 测试基本算术运算
     BFloat16 a(2.0f);
     BFloat16 b(3.0f);
 
-    // 加法
     EXPECT_FLOAT_EQ(a + b, 5.0f);
 
-    // 减法
     EXPECT_FLOAT_EQ(a - b, -1.0f);
     EXPECT_FLOAT_EQ(b - a, 1.0f);
 
-    // 乘法
     EXPECT_FLOAT_EQ(a * b, 6.0f);
 
-    // 除法
     EXPECT_FLOAT_EQ(a / b, 0.66796875f);
     EXPECT_FLOAT_EQ(b / a, 1.5f);
 
-    // 一元负号
     EXPECT_FLOAT_EQ(-a, -2.0f);
 
-    // 复合赋值
     BFloat16 c = a;
     c += b;
     EXPECT_FLOAT_EQ(c, 5.0f);
@@ -173,10 +154,8 @@ TEST(BFloat16Test, ArithmeticOperations) {
 }
 
 TEST(BFloat16Test, MixedTypeOperations) {
-    // 测试与其他类型的混合运算
     BFloat16 a(2.0f);
 
-    // 与float运算
     EXPECT_FLOAT_EQ(a + 3.0f, 5.0f);
     EXPECT_FLOAT_EQ(3.0f + a, 5.0f);
     EXPECT_FLOAT_EQ(a - 3.0f, -1.0f);
@@ -186,7 +165,6 @@ TEST(BFloat16Test, MixedTypeOperations) {
     EXPECT_FLOAT_EQ(a / 3.0f, 2.0f / 3.0f);
     EXPECT_FLOAT_EQ(3.0f / a, 1.5f);
 
-    // 与int运算
     BFloat16 result = a + 3;
     EXPECT_FLOAT_EQ(result, 5.0f);
 
@@ -199,7 +177,6 @@ TEST(BFloat16Test, MixedTypeOperations) {
     result = 3 - a;
     EXPECT_FLOAT_EQ(result, 1.0f);
 
-    // 与double运算
     double d = 3.14159;
     EXPECT_DOUBLE_EQ(a + d, 5.14159);
     EXPECT_DOUBLE_EQ(d + a, 5.14159);
@@ -304,7 +281,6 @@ TEST(BFloat16Test, Int64ArithmeticPreservesValuesBeyondInt32Range) {
 }
 
 TEST(BFloat16Test, ComparisonOperators) {
-    // 测试比较运算符
     BFloat16 a(2.0f);
     BFloat16 b(3.0f);
     BFloat16 c(2.0f);
@@ -317,13 +293,11 @@ TEST(BFloat16Test, ComparisonOperators) {
     EXPECT_FALSE(b < a);
     EXPECT_FALSE(a < c);
 
-    // 使用隐式转换测试相等性
     EXPECT_TRUE(a == c);
     EXPECT_FALSE(a == b);
 }
 
 TEST(BFloat16Test, BitwiseOperations) {
-    // 测试位运算
     BFloat16 a(2.0f); // 0x4000 in bfloat16
     BFloat16 b(3.0f); // 0x4040 in bfloat16
 
@@ -341,7 +315,6 @@ TEST(BFloat16Test, BitwiseOperations) {
 }
 
 TEST(BFloat16Test, NumericLimits) {
-    // 测试numeric_limits特性
     EXPECT_TRUE(std::numeric_limits<BFloat16>::is_signed);
     EXPECT_TRUE(std::numeric_limits<BFloat16>::is_specialized);
     EXPECT_FALSE(std::numeric_limits<BFloat16>::is_integer);
@@ -360,7 +333,6 @@ TEST(BFloat16Test, NumericLimits) {
     EXPECT_EQ(std::numeric_limits<BFloat16>::max_exponent, 128);
     EXPECT_EQ(std::numeric_limits<BFloat16>::max_exponent10, 38);
 
-    // 测试极值
     EXPECT_EQ(std::numeric_limits<BFloat16>::min().x, 0x0080);
     EXPECT_EQ(std::numeric_limits<BFloat16>::max().x, 0x7F7F);
     EXPECT_EQ(std::numeric_limits<BFloat16>::lowest().x, 0xFF7F);
@@ -393,26 +365,25 @@ TEST(BFloat16Test, SignalingNaN) {
 }
 
 TEST(BFloat16Test, RoundTripAccuracy) {
-    // 测试往返转换精度
     constexpr float test_values[] = {
             1.0f, 2.0f, 0.5f, 3.14159f, 1e38f, 1e-38f,
             -1.0f, -2.0f, -0.5f, -3.14159f, -1e38f, -1e-38f};
 
     for (float f: test_values) {
         if (std::isnan(f) || std::isinf(f)) {
-            continue; // 跳过NaN和无穷大，因为它们无法精确比较
+            continue; // NaN and infinity cannot be compared exactly.
         }
 
         BFloat16 bf16 = f;
         float f_roundtrip = static_cast<float>(bf16);
         BFloat16 bf16_roundtrip = f_roundtrip;
 
-        // 验证从float到bfloat16再到float，再到bfloat16，两次的bfloat16位值应该相同
+        // BF16 -> FP32 -> BF16 must reproduce identical encodings.
         EXPECT_EQ(bf16.x, bf16_roundtrip.x) << "Original: " << f << ", Roundtrip: " << f_roundtrip;
     }
 }
 
-// 通用测试函数，用于测试单参数数学函数
+// Compares a BF16 unary math result against its FP32 reference implementation.
 void TestUnaryMathFunction(BFloat16 (*func)(BFloat16), float (*std_func)(float),
                            const std::vector<float>& test_values, float max_relative_error = 0.02f) {
     for (float f: test_values) {
@@ -429,10 +400,9 @@ void TestUnaryMathFunction(BFloat16 (*func)(BFloat16), float (*std_func)(float),
         } else if (expected == 0.0f) {
             EXPECT_FLOAT_EQ(actual, 0.0f);
         } else if (f == 0.0f) {
-            // 对于零输入，直接比较结果
+            // Zero input: compare against the expected value with an absolute tolerance.
             EXPECT_NEAR(actual, expected, max_relative_error) << "Function test failed for input: " << f;
         } else {
-            // 计算相对误差
             float relative_error = std::abs((actual - expected) / expected);
             EXPECT_LE(relative_error, max_relative_error)
                     << "Function test failed for input: " << f
@@ -465,7 +435,6 @@ TEST(BFloat16MathTest, ReducedMathSupportsArgumentDependentLookup) {
     EXPECT_EQ(aethermind::sqrt(Half{2.0f}).bits(), Half{std::sqrt(2.0f)}.bits());
 }
 
-// 测试acos函数
 TEST(BFloat16MathTest, Acos) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -1.0f, 0.5f, -0.5f,
@@ -473,7 +442,6 @@ TEST(BFloat16MathTest, Acos) {
     TestUnaryMathFunction(aethermind::acos<BFloat16>, std::acos, test_values);
 }
 
-// 测试asin函数
 TEST(BFloat16MathTest, Asin) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -1.0f, 0.5f, -0.5f,
@@ -481,7 +449,6 @@ TEST(BFloat16MathTest, Asin) {
     TestUnaryMathFunction(aethermind::asin<BFloat16>, std::asin, test_values);
 }
 
-// 测试atan函数
 TEST(BFloat16MathTest, Atan) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 2.0f, -2.0f,
@@ -489,7 +456,6 @@ TEST(BFloat16MathTest, Atan) {
     TestUnaryMathFunction(aethermind::atan<BFloat16>, std::atan, test_values);
 }
 
-// 测试erf函数
 TEST(BFloat16MathTest, Erf) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 2.0f, -2.0f,
@@ -497,7 +463,6 @@ TEST(BFloat16MathTest, Erf) {
     TestUnaryMathFunction(aethermind::erf<BFloat16>, std::erf, test_values);
 }
 
-// 测试erfc函数
 TEST(BFloat16MathTest, Erfc) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 2.0f, -2.0f,
@@ -505,16 +470,14 @@ TEST(BFloat16MathTest, Erfc) {
     TestUnaryMathFunction(aethermind::erfc<BFloat16>, std::erfc, test_values);
 }
 
-// 测试exp函数
 TEST(BFloat16MathTest, Exp) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 2.0f, -2.0f,
             0.693147f, -0.693147f, 1.098612f, -1.098612f};
-    // 对于指数函数，放宽误差要求
+    // Rounding error grows with the result; relax the relative-error bound.
     TestUnaryMathFunction(aethermind::exp<BFloat16>, std::exp, test_values, 0.05f);
 }
 
-// 测试expm1函数
 TEST(BFloat16MathTest, Expm1) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 0.1f, -0.1f,
@@ -522,8 +485,6 @@ TEST(BFloat16MathTest, Expm1) {
     TestUnaryMathFunction(aethermind::expm1<BFloat16>, std::expm1, test_values);
 }
 
-
-// 测试isfinite函数
 TEST(BFloat16MathTest, IsFinite) {
     BFloat16 finite_value(1.0f);
     BFloat16 inf_pos(std::numeric_limits<float>::infinity());
@@ -536,7 +497,6 @@ TEST(BFloat16MathTest, IsFinite) {
     EXPECT_FALSE(aethermind::isfinite(nan));
 }
 
-// 测试log函数
 TEST(BFloat16MathTest, Log) {
     std::vector<float> test_values = {
             1.0f, 2.0f, 0.5f, M_E, M_PI, 10.0f, 0.1f,
@@ -544,7 +504,6 @@ TEST(BFloat16MathTest, Log) {
     TestUnaryMathFunction(aethermind::log<BFloat16>, std::log, test_values);
 }
 
-// 测试log10函数
 TEST(BFloat16MathTest, Log10) {
     std::vector<float> test_values = {
             1.0f, 10.0f, 0.1f, 100.0f, 0.01f, 1000.0f, 0.001f,
@@ -552,7 +511,6 @@ TEST(BFloat16MathTest, Log10) {
     TestUnaryMathFunction(aethermind::log10<BFloat16>, std::log10, test_values);
 }
 
-// 测试log2函数
 TEST(BFloat16MathTest, Log2) {
     std::vector<float> test_values = {
             1.0f, 2.0f, 0.5f, 4.0f, 0.25f, 8.0f, 0.125f,
@@ -560,7 +518,6 @@ TEST(BFloat16MathTest, Log2) {
     TestUnaryMathFunction(aethermind::log2<BFloat16>, std::log2, test_values);
 }
 
-// 测试log1p函数
 TEST(BFloat16MathTest, Log1p) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -0.5f, 0.5f, 2.0f, -0.9f, 0.1f,
@@ -568,7 +525,6 @@ TEST(BFloat16MathTest, Log1p) {
     TestUnaryMathFunction(aethermind::log1p<BFloat16>, std::log1p, test_values);
 }
 
-// 测试ceil函数
 TEST(BFloat16MathTest, Ceil) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -1.0f, 1.1f, -1.1f, 1.5f, -1.5f,
@@ -585,7 +541,6 @@ TEST(BFloat16MathTest, Ceil) {
     }
 }
 
-// 测试cos函数
 TEST(BFloat16MathTest, Cos) {
     std::vector<float> test_values = {
             0.0f, M_PI, -M_PI, M_PI_4, -M_PI_4,
@@ -593,7 +548,6 @@ TEST(BFloat16MathTest, Cos) {
     TestUnaryMathFunction(aethermind::cos<BFloat16>, std::cos, test_values);
 }
 
-// 测试sin函数
 TEST(BFloat16MathTest, Sin) {
     std::vector<float> test_values = {
             0.0f, M_PI_2, -M_PI_2, M_PI_4, -M_PI_4,
@@ -601,7 +555,6 @@ TEST(BFloat16MathTest, Sin) {
     TestUnaryMathFunction(aethermind::sin<BFloat16>, std::sin, test_values);
 }
 
-// 测试sinh函数
 TEST(BFloat16MathTest, Sinh) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 2.0f, -2.0f,
@@ -609,7 +562,6 @@ TEST(BFloat16MathTest, Sinh) {
     TestUnaryMathFunction(aethermind::sinh<BFloat16>, std::sinh, test_values, 0.03f);
 }
 
-// 测试cosh函数
 TEST(BFloat16MathTest, Cosh) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 2.0f, -2.0f,
@@ -617,16 +569,14 @@ TEST(BFloat16MathTest, Cosh) {
     TestUnaryMathFunction(aethermind::cosh<BFloat16>, std::cosh, test_values, 0.03f);
 }
 
-// 测试tan函数
 TEST(BFloat16MathTest, Tan) {
     std::vector<float> test_values = {
             0.0f, M_PI_4, -M_PI_4,
             0.1f, -0.1f, 1.0f, -1.0f};
-    // 对于tan函数，放宽误差要求
+    // tan() amplifies input rounding; relax the relative-error bound.
     TestUnaryMathFunction(aethermind::tan<BFloat16>, std::tan, test_values, 0.03f);
 }
 
-// 测试tanh函数
 TEST(BFloat16MathTest, Tanh) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -1.0f, 0.5f, -0.5f, 2.0f, -2.0f,
@@ -634,7 +584,6 @@ TEST(BFloat16MathTest, Tanh) {
     TestUnaryMathFunction(aethermind::tanh<BFloat16>, std::tanh, test_values);
 }
 
-// 测试floor函数
 TEST(BFloat16MathTest, Floor) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -1.0f, 1.9f, -1.9f, 1.5f, -1.5f,
@@ -651,7 +600,6 @@ TEST(BFloat16MathTest, Floor) {
     }
 }
 
-// 测试nearbyint函数
 TEST(BFloat16MathTest, Nearbyint) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -1.0f, 1.1f, -1.1f, 1.5f, -1.5f,
@@ -659,7 +607,6 @@ TEST(BFloat16MathTest, Nearbyint) {
     TestUnaryMathFunction(aethermind::nearbyint<BFloat16>, std::nearbyint, test_values, 0.01f);
 }
 
-// 测试trunc函数
 TEST(BFloat16MathTest, Trunc) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -1.0f, 1.1f, -1.1f, 1.9f, -1.9f,
@@ -676,16 +623,14 @@ TEST(BFloat16MathTest, Trunc) {
     }
 }
 
-// 测试lgamma函数
 TEST(BFloat16MathTest, Lgamma) {
     std::vector<float> test_values = {
             1.0f, 2.0f, 3.0f, 0.5f, 1.5f, 5.0f, 10.0f,
             0.1f, 0.2f, 0.3f, 0.4f};
-    // 对于lgamma函数，放宽误差要求
+    // lgamma() loses precision near the poles; relax the relative-error bound.
     TestUnaryMathFunction(aethermind::lgamma<BFloat16>, std::lgamma, test_values, 0.05f);
 }
 
-// 测试sqrt函数
 TEST(BFloat16MathTest, Sqrt) {
     std::vector<float> test_values = {
             0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 0.25f, 0.5f,
@@ -693,7 +638,6 @@ TEST(BFloat16MathTest, Sqrt) {
     TestUnaryMathFunction(aethermind::sqrt<BFloat16>, std::sqrt, test_values);
 }
 
-// 测试rsqrt函数
 TEST(BFloat16MathTest, Rsqrt) {
     std::vector<float> test_values = {
             1.0f, 2.0f, 3.0f, 4.0f, 0.25f, 0.5f,
@@ -702,7 +646,6 @@ TEST(BFloat16MathTest, Rsqrt) {
     TestUnaryMathFunction(aethermind::rsqrt<BFloat16>, rsqrt_func, test_values);
 }
 
-// 测试abs函数
 TEST(BFloat16MathTest, Abs) {
     std::vector<float> test_values = {
             0.0f, 1.0f, -1.0f, 2.5f, -2.5f,
@@ -719,7 +662,6 @@ TEST(BFloat16MathTest, Abs) {
     }
 }
 
-// 测试pow函数
 TEST(BFloat16MathTest, Pow) {
     std::vector<std::pair<float, double>> test_pairs = {
             {1.0f, 2.0},
@@ -762,7 +704,6 @@ TEST(BFloat16MathTest, Pow) {
     }
 }
 
-// 测试fmod函数
 TEST(BFloat16MathTest, Fmod) {
     std::vector<std::pair<float, float>> test_pairs = {
             {5.0f, 2.0f},
@@ -777,7 +718,7 @@ TEST(BFloat16MathTest, Fmod) {
             {7.0f, 3.0f}};
 
     for (const auto& [x, y]: test_pairs) {
-        if (y == 0.0f) continue; // 跳过除以零的情况
+        if (y == 0.0f) continue;
 
         BFloat16 x_bf16 = x;
         BFloat16 y_bf16 = y;
@@ -785,19 +726,18 @@ TEST(BFloat16MathTest, Fmod) {
         float expected = std::fmod(x, y);
         float actual = static_cast<float>(result_bf16);
 
-        // fmod结果可能会有不同的符号，取决于实现，所以我们只比较绝对值
+        // Sign handling may vary across implementations, so compare magnitudes first.
         if (std::isnan(expected)) {
             EXPECT_TRUE(std::isnan(actual))
                     << "Fmod test failed for x: " << x << ", y: " << y;
         } else {
-            // 检查结果的绝对值和符号
             EXPECT_NEAR(std::abs(actual), std::abs(expected), 0.02f)
                     << "Fmod test failed for x: " << x
                     << ", y: " << y
                     << ", Expected: " << expected
                     << ", Actual: " << actual;
 
-            // 确保结果与被除数同号
+            // fmod must preserve the sign of the dividend.
             EXPECT_EQ(std::signbit(actual), std::signbit(x))
                     << "Fmod test failed for x: " << x
                     << ", y: " << y

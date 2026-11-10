@@ -1,4 +1,5 @@
 #include "aethermind/backend/cpu/cpu_backend.h"
+#include "aethermind/backend/cpu/bf16_conversion.h"
 #include "aethermind/backend/cpu/cpu_info.h"
 #include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/backend/cpu/fp16_conversion.h"
@@ -451,6 +452,10 @@ CpuBackend::CpuBackend(const CpuFeaturePolicy& policy)
 
 Fp16ConversionFuncs CpuBackend::GetHostFp16Conversions() const noexcept {
     return cpu::SelectFp16Conversions(capabilities_.effective_features);
+}
+
+Bf16ConversionFuncs CpuBackend::GetHostBf16Conversions() const noexcept {
+    return cpu::SelectBf16Conversions(capabilities_.effective_features);
 }
 
 StatusOr<ResolvedKernel> CpuBackend::PrepareKernel(OpType op_type,

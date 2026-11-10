@@ -13,6 +13,7 @@
 #include "aethermind/backend/packed_weight.h"
 #include "aethermind/backend/resolved_kernel.h"
 #include "aethermind/base/macros.h"
+#include "aethermind/dtypes/bf16_conversion.h"
 #include "aethermind/dtypes/fp16_conversion.h"
 #include "aethermind/memory/allocator.h"
 #include "aethermind/operators/op_params.h"
@@ -44,6 +45,14 @@ public:
     /// @note The default is portable scalar for custom backends. Overrides must
     ///       honor Fp16ConversionFunc's numerical and host-memory contract.
     AM_NODISCARD virtual Fp16ConversionFuncs GetHostFp16Conversions() const noexcept {
+        return {};
+    }
+
+    /// @brief Prepares host-memory BF16 conversions under this backend's policy.
+    /// @return Non-null conversion functions independent of backend lifetime.
+    /// @note The default is portable scalar for custom backends. Overrides must
+    ///       honor Bf16ConversionFunc's numerical and host-memory contract.
+    AM_NODISCARD virtual Bf16ConversionFuncs GetHostBf16Conversions() const noexcept {
         return {};
     }
 

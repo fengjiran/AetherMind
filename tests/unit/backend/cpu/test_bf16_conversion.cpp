@@ -12,13 +12,27 @@ namespace {
 using namespace aethermind;
 
 TEST(CpuBf16Conversion, SelectsPortableScalarForBothDirections) {
+    // Without the AVX base policy bit both directions stay scalar, even with
+    // AVX2/BF16 ISA bits present.
     for (const auto features: {CpuFeatureSet{},
-                               CpuFeatureSet::From({CpuFeature::kAvx, CpuFeature::kAvx2, CpuFeature::kAvx512Bf16}),
+                               CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kAvx512Bf16}),
                                CpuFeatureSet::From({CpuFeature::kNeon, CpuFeature::kBf16})}) {
         const auto functions = cpu::SelectBf16Conversions(features);
         EXPECT_EQ(functions.to_fp32, ConvertBf16ToFp32Scalar);
         EXPECT_EQ(functions.from_fp32, ConvertFp32ToBf16Scalar);
     }
+}
+
+TEST(CpuBf16Conversion, SelectsAvx2ConversionsForBothDirections) {
+    const auto functions = cpu::SelectBf16Conversions(
+            CpuFeatureSet::From({CpuFeature::kAvx, CpuFeature::kAvx2}));
+#if defined(BF16_HAS_AVX2_CONVERSION)
+    EXPECT_NE(functions.to_fp32, ConvertBf16ToFp32Scalar);
+    EXPECT_NE(functions.from_fp32, ConvertFp32ToBf16Scalar);
+#else
+    EXPECT_EQ(functions.to_fp32, ConvertBf16ToFp32Scalar);
+    EXPECT_EQ(functions.from_fp32, ConvertFp32ToBf16Scalar);
+#endif
 }
 
 TEST(CpuBf16Conversion, BackendTableOutlivesBackendWithNoEffectiveFeatures) {

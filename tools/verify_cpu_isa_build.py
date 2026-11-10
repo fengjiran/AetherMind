@@ -20,6 +20,7 @@ AVX_MACROS = ("GEMM_HAS_AVX2_FMA_KERNEL", "RMSNORM_HAS_AVX2_FMA_KERNEL",
               "DOT_PRODUCT_HAS_AVX2_FMA_KERNEL", "AETHERMIND_TEST_HAS_AVX2_FMA")
 F16C_SOURCE = "src/backend/cpu/fp16_conversion_f16c.cpp"
 AVX2_CONVERSION_SOURCE = "src/backend/cpu/fp16_conversion_avx2.cpp"
+BF16_AVX2_CONVERSION_SOURCE = "src/backend/cpu/bf16_conversion_avx2.cpp"
 
 
 def uplift_options(arguments):
@@ -72,13 +73,14 @@ def verify(source_dir, build_dir, expect_avx2, expect_f16c=False, expect_avx2_co
                         if line.startswith("BUILD_TESTS:BOOL=")), "OFF").upper()
     tests_enabled = tests_value not in {"", "0", "OFF", "NO", "FALSE", "N", "IGNORE", "NOTFOUND"}
     legacy_sources = LIBRARY_SOURCES | {TEST_SOURCE}
-    optional_sources = legacy_sources | {F16C_SOURCE, AVX2_CONVERSION_SOURCE}
+    optional_sources = legacy_sources | {F16C_SOURCE, AVX2_CONVERSION_SOURCE, BF16_AVX2_CONVERSION_SOURCE}
     expected = {name: {"-mavx2", "-mfma"} for name in
                 ((LIBRARY_SOURCES | ({TEST_SOURCE} if tests_enabled else set())) if expect_avx2 else set())}
     if expect_f16c:
         expected[F16C_SOURCE] = {"-mavx", "-mf16c"}
     if expect_avx2_conversion:
         expected[AVX2_CONVERSION_SOURCE] = {"-mavx2"}
+        expected[BF16_AVX2_CONVERSION_SOURCE] = {"-mavx2"}
     seen = set()
     project_entries = 0
     for entry in entries:
@@ -98,7 +100,8 @@ def verify(source_dir, build_dir, expect_avx2, expect_f16c=False, expect_avx2_co
         options = uplift_options(arguments)
         if relative in optional_sources:
             if relative not in expected:
-                kind = "AVX2" if relative in legacy_sources else "FP16"
+                kind = "AVX2" if relative in legacy_sources else (
+                    "BF16" if relative == BF16_AVX2_CONVERSION_SOURCE else "FP16")
                 raise ValueError(f"Optional {kind} source compiled in baseline: {relative}")
             lto_options = [argument for argument in arguments
                            if argument.startswith("-flto") or argument == "-fno-lto"]
@@ -113,6 +116,7 @@ def verify(source_dir, build_dir, expect_avx2, expect_f16c=False, expect_avx2_co
             forbidden.add("FP16_HAS_F16C_CONVERSION")
         if not expect_avx2_conversion:
             forbidden.add("FP16_HAS_AVX2_CONVERSION")
+            forbidden.add("BF16_HAS_AVX2_CONVERSION")
         if forbidden.intersection(definitions):
             raise ValueError(f"Optional ISA availability macro in baseline: {relative}")
     if project_entries == 0:

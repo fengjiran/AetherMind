@@ -16,13 +16,14 @@ endif ()
 
 set(AETHERMIND_F16C_CONVERSION_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/fp16_conversion_f16c.cpp)
 set(AETHERMIND_AVX2_CONVERSION_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/fp16_conversion_avx2.cpp)
+set(AETHERMIND_AVX2_BF16_CONVERSION_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/bf16_conversion_avx2.cpp)
 
 if (NOT AETHERMIND_HAS_F16C)
     list(REMOVE_ITEM SRC_FILES ${AETHERMIND_F16C_CONVERSION_SOURCE})
 endif ()
 
 if (NOT AETHERMIND_HAS_AVX2)
-    list(REMOVE_ITEM SRC_FILES ${AETHERMIND_AVX2_CONVERSION_SOURCE})
+    list(REMOVE_ITEM SRC_FILES ${AETHERMIND_AVX2_CONVERSION_SOURCE} ${AETHERMIND_AVX2_BF16_CONVERSION_SOURCE})
 endif ()
 
 add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
@@ -34,8 +35,10 @@ if (AETHERMIND_HAS_F16C)
 endif ()
 
 if (AETHERMIND_HAS_AVX2)
-    aethermind_configure_avx2_integer_sources(${AETHERMIND_AVX2_CONVERSION_SOURCE})
+    aethermind_configure_avx2_integer_sources(${AETHERMIND_AVX2_CONVERSION_SOURCE}
+                                              ${AETHERMIND_AVX2_BF16_CONVERSION_SOURCE})
     target_compile_definitions(${PROJECT_NAME} PUBLIC FP16_HAS_AVX2_CONVERSION=1)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC BF16_HAS_AVX2_CONVERSION=1)
 endif ()
 aethermind_apply_sanitizer(${PROJECT_NAME})
 

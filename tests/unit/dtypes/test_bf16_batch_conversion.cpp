@@ -1,3 +1,5 @@
+#include "aethermind/backend/cpu/bf16_conversion.h"
+#include "aethermind/backend/cpu/cpu_info.h"
 #include "aethermind/dtypes/bf16_conversion.h"
 #include "aethermind/dtypes/bfloat16.h"
 
@@ -23,6 +25,13 @@
 
 namespace {
 using namespace aethermind;
+
+Bf16ConversionFuncs SelectedConversions() {
+    static const auto capabilities = cpu::DetectCpuCapabilities();
+    EXPECT_TRUE(capabilities.ok());
+    return capabilities.ok() ? cpu::SelectBf16Conversions(capabilities->effective_features)
+                             : Bf16ConversionFuncs{};
+}
 
 double PositiveBf16Value(uint16_t bits) {
     const unsigned exponent = bits >> 7;
@@ -86,6 +95,94 @@ TEST(Bf16BatchConversion, EveryBfloatPatternWidensExactlyAndQuietsNaNs) {
     }
 }
 
+TEST(Bf16BatchConversion, EveryPatternMatchesOracleInEveryLane) {
+    std::vector<uint16_t> source(0x10000U + 15);
+    for (size_t index = 0; index < source.size(); ++index) {
+        source[index] = static_cast<uint16_t>(index);
+    }
+
+    std::vector<uint32_t> actual(0x10000U);
+    const auto functions = SelectedConversions();
+    for (size_t rotation = 0; rotation < 16; ++rotation) {
+        const auto input = std::as_bytes(std::span(source).subspan(rotation, actual.size()));
+        ASSERT_TRUE(ConvertBf16ToFp32(input, std::as_writable_bytes(std::span(actual)), functions).ok());
+        for (size_t index = 0; index < actual.size(); ++index) {
+            ASSERT_EQ(actual[index], WideningOracle(source[index + rotation]))
+                    << "index=" << index << " rotation=" << rotation;
+        }
+    }
+}
+
+TEST(Bf16BatchConversion, SelectedConversionsMatchScalarForUnalignedRangesAndAllTails) {
+    const auto functions = SelectedConversions();
+    for (size_t count = 0; count <= 65; ++count) {
+        for (size_t offset = 0; offset < 32; ++offset) {
+            for (const bool widening: {false, true}) {
+                const size_t input_width = widening ? 2 : 4;
+                const size_t output_width = widening ? 4 : 2;
+                const size_t destination_offset = (offset * 7 + 3) % 32;
+                std::vector<std::byte> source(offset + count * input_width + 32, std::byte{0x5A});
+                for (size_t index = 0; index < count * input_width; ++index) {
+                    source[offset + index] = static_cast<std::byte>((index * 139 + offset * 17) & 0xFF);
+                }
+                const auto original = source;
+                std::vector<std::byte> actual(destination_offset + count * output_width + 32, std::byte{0xCD});
+                std::vector<std::byte> expected(count * output_width);
+                const auto input = std::span<const std::byte>(source).subspan(offset, count * input_width);
+                auto output = std::span(actual).subspan(destination_offset, count * output_width);
+                if (widening) {
+                    ASSERT_TRUE(ConvertBf16ToFp32(input, expected).ok());
+                    ASSERT_TRUE(ConvertBf16ToFp32(input, output, functions).ok());
+                } else {
+                    ASSERT_TRUE(ConvertFp32ToBf16(input, expected).ok());
+                    ASSERT_TRUE(ConvertFp32ToBf16(input, output, functions).ok());
+                }
+                EXPECT_TRUE(std::equal(output.begin(), output.end(), expected.begin()))
+                        << "count=" << count << " offset=" << offset << " widening=" << widening;
+                EXPECT_TRUE(std::all_of(actual.begin(), actual.begin() + destination_offset,
+                                        [](std::byte value) { return value == std::byte{0xCD}; }));
+                EXPECT_TRUE(std::all_of(actual.begin() + destination_offset + output.size(), actual.end(),
+                                        [](std::byte value) { return value == std::byte{0xCD}; }));
+                EXPECT_EQ(source, original);
+            }
+        }
+    }
+}
+
+TEST(Bf16BatchConversion, SelectedNarrowingMatchesScalarForEveryFiniteMidpoint) {
+    std::vector<uint32_t> source;
+    for (uint32_t lower = 0; lower < 0x7F80U; ++lower) {
+        const uint32_t midpoint = (lower << 16) + 0x8000U;
+        for (const uint32_t sign: {0U, 0x80000000U}) {
+            source.push_back(sign | (midpoint - 1));
+            source.push_back(sign | midpoint);
+            source.push_back(sign | (midpoint + 1));
+        }
+    }
+    std::vector<uint16_t> actual(source.size()), expected(source.size());
+    const auto input = std::as_bytes(std::span(source));
+    ASSERT_TRUE(ConvertFp32ToBf16(input, std::as_writable_bytes(std::span(expected))).ok());
+    ASSERT_TRUE(ConvertFp32ToBf16(input, std::as_writable_bytes(std::span(actual)), SelectedConversions()).ok());
+    for (size_t index = 0; index < actual.size(); ++index) {
+        ASSERT_EQ(actual[index], expected[index]) << "source bits=" << source[index];
+    }
+}
+
+TEST(Bf16BatchConversion, SelectedNarrowingMatchesScalarForRandomBitPatterns) {
+    std::mt19937 random(20261110);
+    std::vector<uint32_t> source(200003);
+    for (auto& bits: source) {
+        bits = random();
+    }
+    std::vector<uint16_t> actual(source.size()), expected(source.size());
+    const auto input = std::as_bytes(std::span(source));
+    ASSERT_TRUE(ConvertFp32ToBf16(input, std::as_writable_bytes(std::span(expected))).ok());
+    ASSERT_TRUE(ConvertFp32ToBf16(input, std::as_writable_bytes(std::span(actual)), SelectedConversions()).ok());
+    for (size_t index = 0; index < actual.size(); ++index) {
+        ASSERT_EQ(actual[index], expected[index]) << "source bits=" << source[index];
+    }
+}
+
 TEST(Bf16BatchConversion, EveryFinitePatternRoundTripsWithoutRounding) {
     std::vector<uint16_t> source;
     for (uint32_t bits = 0; bits <= 0xFFFFU; ++bits) {
@@ -146,15 +243,16 @@ TEST(Bf16BatchConversion, QuietNaNsPreserveSignAndRepresentablePayload) {
     EXPECT_EQ(actual, expected);
 }
 
-TEST(Bf16BatchConversion, BatchWideningQuietsRawSignalingNaNsWithoutChangingWrapperPolicy) {
+TEST(Bf16BatchConversion, BatchAndWrapperWideningQuietRawSignalingNaNsIdentically) {
     constexpr std::array<uint16_t, 2> source{0x7F85U, 0xFF85U};
     std::array<uint32_t, source.size()> actual{};
     EXPECT_TRUE(ConvertBf16ToFp32(std::as_bytes(std::span(source)), std::as_writable_bytes(std::span(actual))).ok());
     for (size_t index = 0; index < source.size(); ++index) {
         const BFloat16 wrapper{source[index], BFloat16::from_bits()};
         const uint32_t wrapper_bits = std::bit_cast<uint32_t>(static_cast<float>(wrapper));
-        EXPECT_EQ(wrapper_bits, static_cast<uint32_t>(source[index]) << 16);
-        EXPECT_EQ(actual[index], wrapper_bits | 0x00400000U);
+        // Batch and single-value widening agree: payload preserved, quiet bit forced.
+        EXPECT_EQ(actual[index], (static_cast<uint32_t>(source[index]) << 16) | 0x00400000U);
+        EXPECT_EQ(wrapper_bits, actual[index]);
         EXPECT_EQ(wrapper.x, source[index]);
     }
 }
@@ -299,6 +397,44 @@ TEST_F(Bf16BatchEnvironment, RoundingModesAndStickyExceptionFlagsAreUnchanged) {
     }
 }
 
+TEST_F(Bf16BatchEnvironment, SelectedConversionsPreserveRoundingAndExceptionFlags) {
+    constexpr std::array<uint16_t, 10> bfloat{
+            0x7F81, 0xFF81, 0x0001, 0x8001, 0x007F, 0x0080, 0x7F80, 0xFF80, 0x7FE5, 0x8000};
+    constexpr std::array<uint32_t, bfloat.size()> expected_wide{
+            0x7FC10000, 0xFFC10000, 0x00010000, 0x80010000, 0x007F0000,
+            0x00800000, 0x7F800000, 0xFF800000, 0x7FE50000, 0x80000000};
+    constexpr std::array<uint32_t, 14> floats{
+            0x7F800001, 0xFF800001, 0x00000001, 0x80000001, 0x00008000, 0x00008001, 0x00018000,
+            0x007F8000, 0x3F808000, 0x3F818000, 0x7F7F8000, 0xFF7F8000, 0x7F800000, 0x80000000};
+    constexpr std::array<uint16_t, floats.size()> expected_narrow{
+            0x7FC0, 0xFFC0, 0x0000, 0x8000, 0x0000, 0x0001, 0x0002,
+            0x0080, 0x3F80, 0x3F82, 0x7F80, 0xFF80, 0x7F80, 0x8000};
+    const auto functions = SelectedConversions();
+    for (const int rounding: {FE_TONEAREST, FE_DOWNWARD, FE_UPWARD, FE_TOWARDZERO}) {
+        ASSERT_EQ(std::fesetround(rounding), 0);
+        ASSERT_EQ(std::feclearexcept(FE_ALL_EXCEPT), 0);
+        ASSERT_EQ(std::feraiseexcept(FE_DIVBYZERO), 0);
+#if defined(__x86_64__) || defined(_M_X64)
+        const unsigned control = _mm_getcsr();
+#endif
+        std::array<uint32_t, bfloat.size()> widened{};
+        std::array<uint16_t, floats.size()> narrowed{};
+        ASSERT_TRUE(ConvertBf16ToFp32(std::as_bytes(std::span(bfloat)),
+                                      std::as_writable_bytes(std::span(widened)), functions)
+                            .ok());
+        ASSERT_TRUE(ConvertFp32ToBf16(std::as_bytes(std::span(floats)),
+                                      std::as_writable_bytes(std::span(narrowed)), functions)
+                            .ok());
+        EXPECT_EQ(std::fetestexcept(FE_ALL_EXCEPT), FE_DIVBYZERO);
+        EXPECT_EQ(std::fegetround(), rounding);
+#if defined(__x86_64__) || defined(_M_X64)
+        EXPECT_EQ(_mm_getcsr(), control);
+#endif
+        EXPECT_EQ(widened, expected_wide);
+        EXPECT_EQ(narrowed, expected_narrow);
+    }
+}
+
 #if defined(__x86_64__) || defined(_M_X64)
 TEST_F(Bf16BatchEnvironment, DenormalControlsDoNotChangeValuesOrFlags) {
     alignas(16) std::array<std::byte, 512> state{};
@@ -327,6 +463,35 @@ TEST_F(Bf16BatchEnvironment, DenormalControlsDoNotChangeValuesOrFlags) {
     }
 }
 #endif
+
+TEST(CpuBf16Conversion, SelectionRequiresAvxAndSelectsAvx2UnderSupport) {
+    const auto none = cpu::SelectBf16Conversions({});
+    EXPECT_EQ(none.to_fp32, ConvertBf16ToFp32Scalar);
+    EXPECT_EQ(none.from_fp32, ConvertFp32ToBf16Scalar);
+    const auto no_avx = cpu::SelectBf16Conversions(CpuFeatureSet::From({CpuFeature::kAvx2}));
+    EXPECT_EQ(no_avx.to_fp32, ConvertBf16ToFp32Scalar);
+    EXPECT_EQ(no_avx.from_fp32, ConvertFp32ToBf16Scalar);
+    const auto avx2 = cpu::SelectBf16Conversions(CpuFeatureSet::From({CpuFeature::kAvx, CpuFeature::kAvx2}));
+#if defined(BF16_HAS_AVX2_CONVERSION)
+    EXPECT_NE(avx2.to_fp32, ConvertBf16ToFp32Scalar);
+    EXPECT_NE(avx2.from_fp32, ConvertFp32ToBf16Scalar);
+#else
+    EXPECT_EQ(avx2.to_fp32, ConvertBf16ToFp32Scalar);
+    EXPECT_EQ(avx2.from_fp32, ConvertFp32ToBf16Scalar);
+#endif
+}
+
+TEST(CpuBf16Conversion, RestrictivePolicyDoesNotGetReplacedByFreshDetection) {
+    auto detected = cpu::DetectCpuCapabilities();
+    ASSERT_TRUE(detected.ok());
+    CpuFeaturePolicy policy;
+    policy.disabled_features.Enable(CpuFeature::kAvx);
+    auto restricted = cpu::ApplyCpuFeaturePolicy(*detected, policy);
+    ASSERT_TRUE(restricted.ok());
+    const auto functions = cpu::SelectBf16Conversions(restricted->effective_features);
+    EXPECT_EQ(functions.to_fp32, ConvertBf16ToFp32Scalar);
+    EXPECT_EQ(functions.from_fp32, ConvertFp32ToBf16Scalar);
+}
 
 #if defined(__linux__)
 class GuardedPages {
@@ -366,6 +531,21 @@ TEST(Bf16BatchConversion, TailsDoNotReadOrWritePastProtectedPages) {
         auto floats = source.Tail(count * 4);
         std::fill(floats.begin(), floats.end(), std::byte{0x3F});
         EXPECT_TRUE(ConvertFp32ToBf16(floats, destination.Tail(count * 2)).ok());
+    }
+}
+
+TEST(Bf16BatchConversion, SelectedConversionsTailsDoNotReadOrWritePastProtectedPages) {
+    GuardedPages source, destination;
+    ASSERT_TRUE(source.Init());
+    ASSERT_TRUE(destination.Init());
+    const auto functions = SelectedConversions();
+    for (size_t count = 1; count <= 65; ++count) {
+        auto input = source.Tail(count * 2);
+        std::fill(input.begin(), input.end(), std::byte{0x3C});
+        EXPECT_TRUE(ConvertBf16ToFp32(input, destination.Tail(count * 4), functions).ok());
+        auto floats = source.Tail(count * 4);
+        std::fill(floats.begin(), floats.end(), std::byte{0x3F});
+        EXPECT_TRUE(ConvertFp32ToBf16(floats, destination.Tail(count * 2), functions).ok());
     }
 }
 #endif

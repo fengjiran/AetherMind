@@ -1,3 +1,4 @@
+#include "aethermind/backend/cpu/cpu_backend.h"
 #include "aethermind/inference/executable_model.h"
 #include "aethermind/inference/inference_session.h"
 #include "aethermind/inference/model_execution_policy.h"
@@ -174,7 +175,8 @@ CheckpointPair WriteCheckpointPair(const std::filesystem::path& root, const Comp
 }
 
 Runtime MakeCompatibilityRuntime(int64_t kv_heads,
-                                 const std::shared_ptr<test::ResourceAllocationStats>& stats = {}) {
+                                 const std::shared_ptr<test::ResourceAllocationStats>& stats = {},
+                                 std::unique_ptr<BackendFactory> factory = {}) {
     RuntimeOptions options;
     options.kv_cache = {.enable_manager = true,
                         .num_layers = 2,
@@ -185,6 +187,9 @@ Runtime MakeCompatibilityRuntime(int64_t kv_heads,
                         .alignment = 64};
     RuntimeBuilder builder;
     builder.WithOptions(options);
+    if (factory != nullptr) {
+        builder.RegisterBackendFactory(DeviceType::kCPU, std::move(factory));
+    }
     if (stats != nullptr) {
         builder.RegisterCustomAllocatorProvider(DeviceType::kCPU, std::make_unique<test::ResourceRecordingProvider>(stats));
     }
@@ -194,6 +199,82 @@ Runtime MakeCompatibilityRuntime(int64_t kv_heads,
 ModelLoadOptions CompatibilityOptions() {
     return {.preset = CompilePreset::kO1Plain,
             .weights = WeightPolicy::kConvertToFp32};
+}
+
+struct BatchConversionCalls {
+    static inline size_t calls = 0;
+    static inline size_t elements = 0;
+    static void Widen(const std::byte* source, std::byte* destination, size_t count) noexcept {
+        ++calls;
+        elements += count;
+        ConvertFp16ToFp32Scalar(source, destination, count);
+    }
+};
+
+class ConversionRecordingBackend final : public Backend {
+public:
+    explicit ConversionRecordingBackend(bool record) : record_(record) {}
+    DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
+    StatusOr<ResolvedKernel> PrepareKernel(OpType op, const KernelSelector& selector, const OpParams& params) const override {
+        return cpu_.PrepareKernel(op, selector, params);
+    }
+    Fp16ConversionFuncs GetHostFp16Conversions() const noexcept override {
+        return record_ ? Fp16ConversionFuncs{BatchConversionCalls::Widen, ConvertFp32ToFp16Scalar}
+                       : Backend::GetHostFp16Conversions();
+    }
+    const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override {
+        return cpu_.TryGetKernelRegistryForDebug();
+    }
+
+private:
+    CpuBackend cpu_;
+    bool record_;
+};
+
+class ConversionRecordingFactory final : public BackendFactory {
+public:
+    explicit ConversionRecordingFactory(bool record) : record_(record) {}
+    DeviceType device_type() const noexcept override { return DeviceType::kCPU; }
+    StatusOr<std::unique_ptr<Backend>> Create() const override {
+        return std::unique_ptr<Backend>(std::make_unique<ConversionRecordingBackend>(record_));
+    }
+
+private:
+    bool record_;
+};
+
+class Fp32CompatibilityBatch : public ::testing::Test {
+protected:
+    void SetUp() override { Reset(); }
+    void TearDown() override { Reset(); }
+
+private:
+    static void Reset() {
+        BatchConversionCalls::calls = 0;
+        BatchConversionCalls::elements = 0;
+    }
+};
+
+TEST_F(Fp32CompatibilityBatch, LoadUsesBackendCallbackOncePerDistinctFp16Tensor) {
+    TempDirectory directory;
+    const CompatibilityCase test_case{false, false, 2, "fp16"};
+    const auto pair = WriteCheckpointPair(directory.path(), test_case);
+    Runtime runtime = MakeCompatibilityRuntime(2, {}, std::make_unique<ConversionRecordingFactory>(true));
+    auto result = ExecutableModel::Load(runtime, pair.source, CompatibilityOptions());
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(BatchConversionCalls::calls, MakeCheckpointTensors(test_case).size());
+    EXPECT_EQ(BatchConversionCalls::elements * sizeof(uint16_t), pair.source_payload_bytes);
+}
+
+TEST_F(Fp32CompatibilityBatch, CustomBackendKeepsDefaultScalarConversion) {
+    TempDirectory directory;
+    const auto pair = WriteCheckpointPair(directory.path(), {false, true, 2, "fp16"});
+    Runtime runtime = MakeCompatibilityRuntime(2, {}, std::make_unique<ConversionRecordingFactory>(false));
+    auto result = ExecutableModel::Load(runtime, pair.source, CompatibilityOptions());
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(BatchConversionCalls::calls, 0U);
+    ASSERT_TRUE(runtime.GetBackend(DeviceType::kCPU).ok());
+    EXPECT_EQ((*runtime.GetBackend(DeviceType::kCPU))->GetHostFp16Conversions().to_fp32, ConvertFp16ToFp32Scalar);
 }
 
 StatusOr<numerical::CapturedTrajectory> ObserveCompatibilityTrajectory(Runtime& runtime,

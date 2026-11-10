@@ -1,6 +1,5 @@
 #include "aethermind/model/weight/raw_weight_fp32_conversion.h"
 #include "aethermind/dtypes/bfloat16.h"
-#include "aethermind/dtypes/half.h"
 #include "aethermind/memory/allocator.h"
 #include "aethermind/model/loaded_model.h"
 #include "utils/overflow_check.h"
@@ -126,17 +125,11 @@ Status ValidateSource(const RawWeightView& view) {
     return Status::Ok();
 }
 
-float WidenToFp32(uint16_t bits, bool bfloat) {
-    if (bfloat) {
-        // BFloat16 widening preserves signaling NaNs; quiet them in the source
-        // format. Half widening already guarantees quiet NaNs.
-        if ((bits & 0x7f80U) == 0x7f80U && (bits & 0x007fU) != 0) {
-            bits |= 0x0040U;
-        }
-        return BFloat16{bits, BFloat16::from_bits()};
+float WidenBfloatToFp32(uint16_t bits) {
+    if ((bits & 0x7f80U) == 0x7f80U && (bits & 0x007fU) != 0) {
+        bits |= 0x0040U;
     }
-
-    return Half{bits, Half::from_bits()};
+    return BFloat16{bits, BFloat16::from_bits()};
 }
 
 StatusOr<size_t> AddBytes(size_t total, size_t amount) {
@@ -154,6 +147,11 @@ StatusOr<std::unique_ptr<LoadedModel>> ConvertRawModelWeightsToFp32(
         const LoadedModel& model,
         Allocator& allocator,
         const RawWeightFp32ConversionOptions& options) try {
+    if (options.fp16_to_fp32 == nullptr) {
+        return Status::InvalidArgument(
+                "FP32 weight conversion requires a non-null FP16 callback");
+    }
+
     if (!allocator.device().is_cpu()) {
         return Status::InvalidArgument(
                 "FP32 weight conversion requires a CPU allocator");
@@ -237,14 +235,20 @@ StatusOr<std::unique_ptr<LoadedModel>> ConvertRawModelWeightsToFp32(
                             allocator.TryAllocate(
                                     {.nbytes = target_bytes}));
         auto* dest = static_cast<std::byte*>(buffer.mutable_data());
-        for (size_t src_offset = 0, target_offset = 0;
-             src_offset < source_bytes;
-             src_offset += sizeof(uint16_t), target_offset += sizeof(float)) {
-            uint16_t bits;
-            std::memcpy(&bits, source + src_offset, sizeof(bits));
-            const auto value = WidenToFp32(bits, bfloat);
-            // memcpy implicitly creates float objects in the raw allocation.
-            std::memcpy(dest + target_offset, &value, sizeof(value));
+        if (!bfloat) {
+            // Source sizes, contiguity, and destination bytes were preflighted.
+            // The new allocation is disjoint; no typed source objects are assumed.
+            options.fp16_to_fp32(source, dest, source_bytes / sizeof(uint16_t));
+        } else {
+            for (size_t src_offset = 0, target_offset = 0;
+                 src_offset < source_bytes;
+                 src_offset += sizeof(uint16_t), target_offset += sizeof(float)) {
+                uint16_t bits;
+                std::memcpy(&bits, source + src_offset, sizeof(bits));
+                const auto value = WidenBfloatToFp32(bits);
+                // memcpy implicitly creates float objects in the raw allocation.
+                std::memcpy(dest + target_offset, &value, sizeof(value));
+            }
         }
 
         auto owner = std::make_shared<ConvertedRawStorage>(std::move(buffer));

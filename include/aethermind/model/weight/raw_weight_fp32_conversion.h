@@ -5,6 +5,7 @@
 /// @brief Explicit owned FP32 logical-weight conversion before compilation.
 
 #include "aethermind/base/status.h"
+#include "aethermind/dtypes/fp16_conversion.h"
 #include "aethermind/model/weight/raw_weight_storage_usage.h"
 
 #include <cstddef>
@@ -19,6 +20,9 @@ class LoadedModel;
 /// Mapped/external backing, temporary source backing, and metadata are excluded.
 struct RawWeightFp32ConversionOptions {
     size_t max_owned_weight_bytes = 0;
+    /// Prepared host widening callback; must obey Fp16ConversionFunc's contract.
+    /// Borrowed for this call only, invoked once per unique F16 source tensor.
+    Fp16ConversionFunc fp16_to_fp32 = ConvertFp16ToFp32Scalar;
 };
 
 /// @brief Visible weight storage observed during one conversion operation.

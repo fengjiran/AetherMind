@@ -204,10 +204,17 @@ ModelLoadOptions CompatibilityOptions() {
 struct BatchConversionCalls {
     static inline size_t calls = 0;
     static inline size_t elements = 0;
+    static inline size_t bfloat_calls = 0;
+    static inline size_t bfloat_elements = 0;
     static void Widen(const std::byte* source, std::byte* destination, size_t count) noexcept {
         ++calls;
         elements += count;
         ConvertFp16ToFp32Scalar(source, destination, count);
+    }
+    static void WidenBfloat(const std::byte* source, std::byte* destination, size_t count) noexcept {
+        ++bfloat_calls;
+        bfloat_elements += count;
+        ConvertBf16ToFp32Scalar(source, destination, count);
     }
 };
 
@@ -221,6 +228,10 @@ public:
     Fp16ConversionFuncs GetHostFp16Conversions() const noexcept override {
         return record_ ? Fp16ConversionFuncs{BatchConversionCalls::Widen, ConvertFp32ToFp16Scalar}
                        : Backend::GetHostFp16Conversions();
+    }
+    Bf16ConversionFuncs GetHostBf16Conversions() const noexcept override {
+        return record_ ? Bf16ConversionFuncs{BatchConversionCalls::WidenBfloat, ConvertFp32ToBf16Scalar}
+                       : Backend::GetHostBf16Conversions();
     }
     const KernelRegistry* TryGetKernelRegistryForDebug() const noexcept override {
         return cpu_.TryGetKernelRegistryForDebug();
@@ -252,6 +263,8 @@ private:
     static void Reset() {
         BatchConversionCalls::calls = 0;
         BatchConversionCalls::elements = 0;
+        BatchConversionCalls::bfloat_calls = 0;
+        BatchConversionCalls::bfloat_elements = 0;
     }
 };
 
@@ -264,6 +277,19 @@ TEST_F(Fp32CompatibilityBatch, LoadUsesBackendCallbackOncePerDistinctFp16Tensor)
     ASSERT_TRUE(result.ok()) << result.status().ToString();
     EXPECT_EQ(BatchConversionCalls::calls, MakeCheckpointTensors(test_case).size());
     EXPECT_EQ(BatchConversionCalls::elements * sizeof(uint16_t), pair.source_payload_bytes);
+    EXPECT_EQ(BatchConversionCalls::bfloat_calls, 0U);
+}
+
+TEST_F(Fp32CompatibilityBatch, LoadUsesBackendCallbackOncePerDistinctBfloat16Tensor) {
+    TempDirectory directory;
+    const CompatibilityCase test_case{true, true, 2, "bf16"};
+    const auto pair = WriteCheckpointPair(directory.path(), test_case);
+    Runtime runtime = MakeCompatibilityRuntime(2, {}, std::make_unique<ConversionRecordingFactory>(true));
+    auto result = ExecutableModel::Load(runtime, pair.source, CompatibilityOptions());
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(BatchConversionCalls::bfloat_calls, MakeCheckpointTensors(test_case).size());
+    EXPECT_EQ(BatchConversionCalls::bfloat_elements * sizeof(uint16_t), pair.source_payload_bytes);
+    EXPECT_EQ(BatchConversionCalls::calls, 0U);
 }
 
 TEST_F(Fp32CompatibilityBatch, CustomBackendKeepsDefaultScalarConversion) {
@@ -275,6 +301,19 @@ TEST_F(Fp32CompatibilityBatch, CustomBackendKeepsDefaultScalarConversion) {
     EXPECT_EQ(BatchConversionCalls::calls, 0U);
     ASSERT_TRUE(runtime.GetBackend(DeviceType::kCPU).ok());
     EXPECT_EQ((*runtime.GetBackend(DeviceType::kCPU))->GetHostFp16Conversions().to_fp32, ConvertFp16ToFp32Scalar);
+}
+
+TEST_F(Fp32CompatibilityBatch, CustomBackendKeepsDefaultBfloatScalarConversions) {
+    TempDirectory directory;
+    const auto pair = WriteCheckpointPair(directory.path(), {true, true, 2, "bf16"});
+    Runtime runtime = MakeCompatibilityRuntime(2, {}, std::make_unique<ConversionRecordingFactory>(false));
+    auto result = ExecutableModel::Load(runtime, pair.source, CompatibilityOptions());
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(BatchConversionCalls::bfloat_calls, 0U);
+    ASSERT_TRUE(runtime.GetBackend(DeviceType::kCPU).ok());
+    const auto conversions = (*runtime.GetBackend(DeviceType::kCPU))->GetHostBf16Conversions();
+    EXPECT_EQ(conversions.to_fp32, ConvertBf16ToFp32Scalar);
+    EXPECT_EQ(conversions.from_fp32, ConvertFp32ToBf16Scalar);
 }
 
 StatusOr<numerical::CapturedTrajectory> ObserveCompatibilityTrajectory(Runtime& runtime,

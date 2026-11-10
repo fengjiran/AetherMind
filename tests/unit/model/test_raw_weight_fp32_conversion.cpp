@@ -156,13 +156,27 @@ TEST(RawWeightFp32Conversion, BFloat16EveryBitPatternMatchesIndependentOracle) {
 
 class RawWeightFp32BatchConversion : public ::testing::Test {
 protected:
-    void SetUp() override { calls_ = 0; }
-    void TearDown() override { calls_ = 0; }
+    void SetUp() override { Reset(); }
+    void TearDown() override { Reset(); }
     static void Widen(const std::byte* source, std::byte* destination, size_t count) noexcept {
         ++calls_;
         ConvertFp16ToFp32Scalar(source, destination, count);
     }
+    static void WidenBfloat(const std::byte* source, std::byte* destination, size_t count) noexcept {
+        ++bfloat_calls_;
+        bfloat_elements_ += count;
+        ConvertBf16ToFp32Scalar(source, destination, count);
+    }
     static inline size_t calls_ = 0;
+    static inline size_t bfloat_calls_ = 0;
+    static inline size_t bfloat_elements_ = 0;
+
+private:
+    static void Reset() {
+        calls_ = 0;
+        bfloat_calls_ = 0;
+        bfloat_elements_ = 0;
+    }
 };
 
 TEST_F(RawWeightFp32BatchConversion, InvokesPreparedCallbackOncePerUniqueUnalignedSource) {
@@ -206,6 +220,101 @@ TEST_F(RawWeightFp32BatchConversion, Bfloat16DoesNotInvokeFp16Callback) {
     CPUAllocator allocator(Device::CPU());
     EXPECT_TRUE(ConvertRawModelWeightsToFp32(model, allocator, {.fp16_to_fp32 = Widen}).ok());
     EXPECT_EQ(calls_, 0U);
+}
+
+TEST_F(RawWeightFp32BatchConversion, InvokesBfloatCallbackOncePerUniqueUnalignedSource) {
+    const std::vector<uint16_t> values{0x0000, 0x8000, 0x0001, 0x007f, 0x0080,
+                                       0x3f80, 0x7f7f, 0x7f80, 0xff80, 0x7f81, 0xffa5};
+    auto source = std::make_shared<SourceStorage>(1 + values.size() * sizeof(uint16_t));
+    std::memcpy(source->data.data() + 1, values.data(), values.size() * sizeof(uint16_t));
+    const auto original = source->data;
+    auto input = MakeWeights(MakeView(source, DataType::BFloat(16), values.size(), 1));
+    input.lm_head = input.embed_tokens;
+    LoadedModel model(MakeConfig(DataType::BFloat(16)), std::move(input));
+    auto stats = std::make_shared<AllocationStats>();
+    TrackingAllocator allocator(stats);
+    auto result = ConvertRawModelWeightsToFp32(
+            model, allocator, {.fp16_to_fp32 = Widen, .bf16_to_fp32 = WidenBfloat});
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(calls_, 0U);
+    EXPECT_EQ(bfloat_calls_, 1U);
+    EXPECT_EQ(bfloat_elements_, values.size());
+    EXPECT_EQ(stats->calls, 1U);
+    EXPECT_EQ(source->data, original);
+    const auto& weights = (*result)->GetResolvedWeights();
+    ASSERT_TRUE(weights.lm_head.has_value());
+    EXPECT_EQ(weights.embed_tokens.storage, weights.final_norm.storage);
+    EXPECT_EQ(weights.embed_tokens.storage, weights.lm_head->storage);
+    for (size_t index = 0; index < values.size(); ++index) {
+        EXPECT_EQ(ReadBits(weights.embed_tokens, index), WidenOracle(values[index], true));
+    }
+}
+
+TEST_F(RawWeightFp32BatchConversion, MixedDtypesUseIndependentCallbacksAndRetainFloat32View) {
+    auto source = std::make_shared<SourceStorage>(32);
+    const uint16_t half_one = 0x3c00;
+    const uint16_t bfloat_one = 0x3f80;
+    std::memcpy(source->data.data(), &half_one, sizeof(half_one));
+    std::memcpy(source->data.data() + 8, &bfloat_one, sizeof(bfloat_one));
+    auto weights = MakeWeights(MakeView(source, DataType::Float(16), 1));
+    weights.final_norm = MakeView(source, DataType::BFloat(16), 1, 8);
+    weights.lm_head = MakeView(source, DataType::Float32(), 1, 16);
+    const auto original_fp32 = *weights.lm_head;
+    LoadedModel model(MakeConfig(), std::move(weights));
+    CPUAllocator allocator(Device::CPU());
+    auto result = ConvertRawModelWeightsToFp32(
+            model, allocator, {.fp16_to_fp32 = Widen, .bf16_to_fp32 = WidenBfloat});
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(calls_, 1U);
+    EXPECT_EQ(bfloat_calls_, 1U);
+    EXPECT_EQ(bfloat_elements_, 1U);
+    const auto& output = (*result)->GetResolvedWeights();
+    EXPECT_EQ(ReadBits(output.embed_tokens, 0), 0x3f800000U);
+    EXPECT_EQ(ReadBits(output.final_norm, 0), 0x3f800000U);
+    ASSERT_TRUE(output.lm_head.has_value());
+    EXPECT_EQ(output.lm_head->data, original_fp32.data);
+    EXPECT_EQ(output.lm_head->storage, original_fp32.storage);
+}
+
+TEST_F(RawWeightFp32BatchConversion, BfloatNullCallbackAndBudgetFailurePrecedeAllocationAndConversion) {
+    auto source = std::make_shared<SourceStorage>(16);
+    LoadedModel model(MakeConfig(DataType::BFloat(16)), MakeWeights(MakeView(source, DataType::BFloat(16), 8)));
+    auto stats = std::make_shared<AllocationStats>();
+    TrackingAllocator allocator(stats);
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, {.bf16_to_fp32 = nullptr}).status().code(),
+              StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(
+                      model, allocator,
+                      {.max_owned_weight_bytes = 1, .bf16_to_fp32 = WidenBfloat})
+                      .status()
+                      .code(),
+              StatusCode::kResourceExhausted);
+    EXPECT_EQ(stats->calls, 0U);
+    EXPECT_EQ(bfloat_calls_, 0U);
+}
+
+TEST_F(RawWeightFp32BatchConversion, BfloatConvertedOwnerOutlivesInputAndAllocator) {
+    std::unique_ptr<LoadedModel> converted;
+    std::weak_ptr<const RawStorage> source_weak;
+    auto stats = std::make_shared<AllocationStats>();
+    {
+        auto source = std::make_shared<SourceStorage>(2);
+        source_weak = source;
+        const uint16_t one = 0x3f80;
+        std::memcpy(source->data.data(), &one, sizeof(one));
+        LoadedModel model(MakeConfig(DataType::BFloat(16)), MakeWeights(MakeView(source, DataType::BFloat(16), 1)));
+        TrackingAllocator allocator(stats);
+        auto result = ConvertRawModelWeightsToFp32(model, allocator, {.bf16_to_fp32 = WidenBfloat});
+        ASSERT_TRUE(result.ok()) << result.status().ToString();
+        converted = std::move(*result);
+    }
+    EXPECT_TRUE(source_weak.expired());
+    EXPECT_EQ(stats->live, 1U);
+    EXPECT_EQ(bfloat_calls_, 1U);
+    EXPECT_EQ(ReadBits(converted->GetResolvedWeights().embed_tokens, 0), 0x3f800000U);
+    converted.reset();
+    EXPECT_EQ(stats->live, 0U);
+    EXPECT_EQ(stats->released, 1U);
 }
 
 TEST(RawWeightFp32Conversion, AcceptsUnalignedSourceWithoutModifyingBytes) {

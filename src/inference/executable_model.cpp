@@ -368,11 +368,13 @@ StatusOr<std::unique_ptr<LoadedModel>> ApplyWeightPolicy(
     if (options.weights == WeightPolicy::kConvertToFp32) {
         AM_ASSIGN_OR_RETURN(Allocator * allocator, runtime.TryGetAllocator(Device::CPU()));
         AM_ASSIGN_OR_RETURN(Backend * backend, runtime.GetBackend(DeviceType::kCPU));
-        const auto conversions = backend->GetHostFp16Conversions();
+        const auto fp16_conversions = backend->GetHostFp16Conversions();
+        const auto bf16_conversions = backend->GetHostBf16Conversions();
         auto converted = ConvertRawModelWeightsToFp32(
                 *loaded, *allocator,
                 {.max_owned_weight_bytes = options.limits.max_model_payload_bytes,
-                 .fp16_to_fp32 = conversions.to_fp32});
+                 .fp16_to_fp32 = fp16_conversions.to_fp32,
+                 .bf16_to_fp32 = bf16_conversions.to_fp32});
         if (!converted.ok()) {
             return converted.status().WithMessage(
                     "FP32 compatibility conversion failed: " + converted.status().message());

@@ -274,6 +274,10 @@ prompt 必须非空；prompt/EOS 必须在词表范围内，prompt 长度须满�
 
 `Half::from_bits()` 仍逐位保存输入，转换不会修改源 `Half`；`numeric_limits<Half>::has_signaling_NaN` 继续为 `true`，表示该存储类型仍可表示 signaling NaN。`round_style` 显式为 `std::round_to_nearest`；`is_iec559` 继续为 `false`，不因转换支持 subnormal 就声明整个类型符合 IEEE 754 的全部算术和异常语义。
 
+### BFloat16 与 Float32 的相互转换（include/aethermind/dtypes/bfloat16.h）
+
+`BFloat16` 拓宽为 Float32 时直接把 16-bit pattern 放入高半部，逐位保留 NaN payload、sign 与 exponent。Float32→BFloat16 使用 round-to-nearest-even；NaN 保留 sign 与截断后的高 7 位 payload，并强制设置 quiet bit `0x0040`。payload 截断为零时替换为最小非零 quiet payload，使结果仍是 NaN 而不是 Infinity。两个方向的转换均为 `noexcept`，只使用整数位运算，不修改浮点环境或异常标志。
+
 ### FP16 / FP32 批量转换（include/aethermind/dtypes/fp16_conversion.h）
 
 `ConvertFp16ToFp32(source, destination, functions)` 和 `ConvertFp32ToFp16(source, destination, functions)` 接收连续的 byte spans。输出长度必须恰为输入长度的两倍或一半；输入必须包含完整元素，范围必须不重叠。任意字节对齐均合法，空输入接受空指针。长度、乘法溢出、范围重叠及空函数检查在写入前完成；成功路径不分配 payload 或 scratch。

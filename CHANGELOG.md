@@ -16,6 +16,7 @@
 
 - `Half(float)` 的 FP32→FP16 转换从 FTZ 迁移为固定 RNE + gradual underflow，保留 signed zero，正确处理 subnormal 舍入进位与溢出；NaN 继续 quiet 并保留 sign 与可容纳的 payload。转换不依赖浮点环境、不设置异常标志；构造、二元算术、复合赋值及数学 helper 的窄化结果现在可产生 FP16 subnormal。`numeric_limits<Half>::round_style` 显式为 `round_to_nearest`，`is_iec559` 保持 false。
 - `Half` 转为 Float32 时，所有 NaN 统一 quiet，保留 sign 与 payload；转换使用整数位运算，即使输入为 signaling NaN 也不触发浮点异常。原始 binary16 存储与逐位取负合同保持不变；FP16 权重拓宽复用该转换，删除重复 quieting。
+- BFloat16 窄化不再把所有 NaN canonicalize 为 `0x7FC0`：保留 sign 和截断后的高 7 位 payload，强制 quiet；payload 截断为零时使用最小非零 quiet payload。Half/BFloat16 的构造与双向转换现为 `noexcept`。
 - `bfloat16.h` 中 Half/BFloat16 的数学 helper 从 `std` 迁入 `aethermind`，仅保留合法的 `std::numeric_limits` 特化。原 `std::sqrt<BFloat16>` 等调用须改为 `aethermind::sqrt` 或通过 ADL 调用；显式 `std::sqrt` / `std::exp` 对 reduced wrapper 恢复标准的 Float32 转换路径，不再被该头额外窄化。helper 的既有计算与返回类型保持不变。
 - 共享编译 preset 与 CPU Runtime 配置的头/实现统一重命名为 `inference_options.h/.cpp`；调用方更新 include 路径，旧路径不提供转发头。
 

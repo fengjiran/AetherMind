@@ -371,6 +371,19 @@ TEST(BFloat16Test, NumericLimits) {
     EXPECT_EQ(std::numeric_limits<BFloat16>::denorm_min().x, 0x0001);
 }
 
+TEST(BFloat16Test, WideningQuietsSignalingNaNs) {
+    // Single-value widening must agree with the batch contract: payload
+    // preserved, quiet bit forced.
+    const BFloat16 snan{0x7F85, BFloat16::from_bits()};
+    EXPECT_EQ(std::bit_cast<uint32_t>(static_cast<float>(snan)), 0x7FC50000U);
+    const BFloat16 negative_snan{0xFF85, BFloat16::from_bits()};
+    EXPECT_EQ(std::bit_cast<uint32_t>(static_cast<float>(negative_snan)), 0xFFC50000U);
+
+    // Quiet NaNs widen with their payload untouched.
+    const BFloat16 qnan{0x7FE5, BFloat16::from_bits()};
+    EXPECT_EQ(std::bit_cast<uint32_t>(static_cast<float>(qnan)), 0x7FE50000U);
+}
+
 TEST(BFloat16Test, SignalingNaN) {
     // Regression: signaling_NaN() must not collide with +infinity (0x7F80).
     // BF16 layout: 1 sign | 8 exponent | 7 mantissa.

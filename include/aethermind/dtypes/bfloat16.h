@@ -26,8 +26,8 @@ namespace detail {
 /// Converts a bfloat16 bit pattern to an IEEE 754 binary32 `float`.
 ///
 /// bfloat16 occupies the high 16 bits of a binary32; the conversion left-shifts
-/// the input by 16 and reinterprets as `float`. Bit-exact: NaN payloads, sign,
-/// and exponent are preserved.
+/// the input by 16 and reinterprets as `float`. Bit-exact for finite values;
+/// NaNs are quieted, preserving sign and payload bits.
 float bf16_to_fp32_value(uint16_t input) noexcept;
 
 /// Converts an IEEE 754 binary32 `float` to a bfloat16 bit pattern.
@@ -46,8 +46,9 @@ uint16_t bf16_from_fp32_value(float) noexcept;
 /// 1 sign | 8 exponent | 7 mantissa, which shares the exponent range of
 /// binary32 but has lower precision. Binary arithmetic and comparisons go through
 /// implicit conversion to `float` and follow IEEE 754 binary32 rounding and
-/// NaN semantics. Use `from_bits()` to construct from a raw bit pattern
-/// without conversion.
+/// NaN semantics. Both conversion directions quiet NaNs, preserving sign and
+/// representable payload bits; `from_bits()` stores raw bit patterns, including
+/// signaling NaNs, without conversion.
 struct alignas(2) BFloat16 {
     /// bfloat16 bit pattern: 1 sign | 8 exponent | 7 mantissa.
     uint16_t x;

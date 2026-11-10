@@ -13,6 +13,10 @@ float bf16_to_fp32_value(uint16_t input) noexcept {
     // and reinterpreting yields the corresponding float without any rounding.
     uint32_t tmp = input;
     tmp <<= 16;
+    // Quiet NaNs so both conversion directions and the batch contract agree.
+    if ((input & 0x7F80U) == 0x7F80U && (input & 0x007FU) != 0) {
+        tmp |= 0x00400000U;
+    }
     return fp32_from_bits(tmp);
 }
 

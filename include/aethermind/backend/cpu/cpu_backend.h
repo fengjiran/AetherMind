@@ -52,6 +52,10 @@ public:
         return DeviceType::kCPU;
     }
 
+    /// @brief Selects compiled host conversions using this backend's effective features.
+    /// @return Independent widening/narrowing functions with scalar fallbacks.
+    AM_NODISCARD Fp16ConversionFuncs GetHostFp16Conversions() const noexcept override;
+
     /// @brief Resolves a CPU kernel for the given operator and selector.
     ///
     /// Filters registry candidates by `effective_features` and priority, then

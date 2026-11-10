@@ -3,11 +3,14 @@
 ///
 /// Portable integer bit-manipulation implementations of binary16 ↔ binary32
 /// conversion; no hardware intrinsics are used.
+
 #include "aethermind/dtypes/half.h"
 #include "aethermind/base/macros.h"
 #include "aethermind/dtypes/detail/floating_point_bits.h"
+#include "aethermind/dtypes/fp16_conversion.h"
 
 #include <bit>
+#include <cstring>
 
 namespace aethermind {
 namespace {
@@ -158,6 +161,24 @@ uint16_t fp16_from_fp32_value_for_testing(float f) {
 }
 
 } // namespace detail
+
+void ConvertFp16ToFp32Scalar(const std::byte* src, std::byte* dst, size_t count) noexcept {
+    for (size_t i = 0; i < count; ++i) {
+        uint16_t bits;
+        std::memcpy(&bits, src + i * sizeof(bits), sizeof(bits));
+        const float value = fp16_to_fp32_value(bits);
+        std::memcpy(dst + i * sizeof(value), &value, sizeof(value));
+    }
+}
+
+void ConvertFp32ToFp16Scalar(const std::byte* src, std::byte* dst, size_t count) noexcept {
+    for (size_t i = 0; i < count; ++i) {
+        float value;
+        std::memcpy(&value, src + i * sizeof(value), sizeof(value));
+        const uint16_t bits = fp16_from_fp32_value(value);
+        std::memcpy(dst + i * sizeof(bits), &bits, sizeof(bits));
+    }
+}
 
 Half::Half(float value) : x(fp16_from_fp32_value(value)) {}
 

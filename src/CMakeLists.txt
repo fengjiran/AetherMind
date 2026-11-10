@@ -9,12 +9,34 @@ set(AETHERMIND_AVX2_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_f32_avx2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_packed_b_avx2.cpp
 )
-if(NOT AETHERMIND_HAS_AVX2_FMA)
+
+if (NOT AETHERMIND_HAS_AVX2_FMA)
     list(REMOVE_ITEM SRC_FILES ${AETHERMIND_AVX2_SOURCES})
-endif()
+endif ()
+
+set(AETHERMIND_F16C_CONVERSION_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/fp16_conversion_f16c.cpp)
+set(AETHERMIND_AVX2_CONVERSION_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/fp16_conversion_avx2.cpp)
+
+if (NOT AETHERMIND_HAS_F16C)
+    list(REMOVE_ITEM SRC_FILES ${AETHERMIND_F16C_CONVERSION_SOURCE})
+endif ()
+
+if (NOT AETHERMIND_HAS_AVX2)
+    list(REMOVE_ITEM SRC_FILES ${AETHERMIND_AVX2_CONVERSION_SOURCE})
+endif ()
 
 add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
+
+if (AETHERMIND_HAS_F16C)
+    aethermind_configure_f16c_sources(${AETHERMIND_F16C_CONVERSION_SOURCE})
+    target_compile_definitions(${PROJECT_NAME} PUBLIC FP16_HAS_F16C_CONVERSION=1)
+endif ()
+
+if (AETHERMIND_HAS_AVX2)
+    aethermind_configure_avx2_integer_sources(${AETHERMIND_AVX2_CONVERSION_SOURCE})
+    target_compile_definitions(${PROJECT_NAME} PUBLIC FP16_HAS_AVX2_CONVERSION=1)
+endif ()
 aethermind_apply_sanitizer(${PROJECT_NAME})
 
 target_include_directories(${PROJECT_NAME}
@@ -59,9 +81,9 @@ endif (BACKTRACE_ON_SEGFAULT)
 
 # Consumers use these definitions to know which optional symbols exist. Runtime
 # eligibility still comes from CPU/OS detection and descriptor requirements.
-if(AETHERMIND_HAS_AVX2_FMA)
+if (AETHERMIND_HAS_AVX2_FMA)
     aethermind_configure_avx2_sources(${AETHERMIND_AVX2_SOURCES})
     target_compile_definitions(${PROJECT_NAME} PUBLIC RMSNORM_HAS_AVX2_FMA_KERNEL=1)
     target_compile_definitions(${PROJECT_NAME} PUBLIC GEMM_HAS_AVX2_FMA_KERNEL=1)
     target_compile_definitions(${PROJECT_NAME} PUBLIC DOT_PRODUCT_HAS_AVX2_FMA_KERNEL=1)
-endif()
+endif ()

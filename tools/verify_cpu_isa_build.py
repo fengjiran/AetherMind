@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify optional AVX2/FMA translation-unit boundaries in compile_commands.json."""
+"""Verify optional x86 ISA translation-unit boundaries in compile_commands.json."""
 
 import argparse
 import json
@@ -18,6 +18,8 @@ LIBRARY_SOURCES = {
 TEST_SOURCE = "tests/unit/backend/cpu/kernels/avx_learning/test_avx_learning_avx2.cpp"
 AVX_MACROS = ("GEMM_HAS_AVX2_FMA_KERNEL", "RMSNORM_HAS_AVX2_FMA_KERNEL",
               "DOT_PRODUCT_HAS_AVX2_FMA_KERNEL", "AETHERMIND_TEST_HAS_AVX2_FMA")
+F16C_SOURCE = "src/backend/cpu/fp16_conversion_f16c.cpp"
+AVX2_CONVERSION_SOURCE = "src/backend/cpu/fp16_conversion_avx2.cpp"
 
 
 def uplift_options(arguments):
@@ -62,14 +64,21 @@ def project_sources(source, source_dir):
     return included, True
 
 
-def verify(source_dir, build_dir, expect_avx2):
+def verify(source_dir, build_dir, expect_avx2, expect_f16c=False, expect_avx2_conversion=False):
     source_dir = source_dir.resolve()
     entries = json.loads((build_dir / "compile_commands.json").read_text())
     cache = (build_dir / "CMakeCache.txt").read_text()
     tests_value = next((line.split("=", 1)[1] for line in cache.splitlines()
                         if line.startswith("BUILD_TESTS:BOOL=")), "OFF").upper()
     tests_enabled = tests_value not in {"", "0", "OFF", "NO", "FALSE", "N", "IGNORE", "NOTFOUND"}
-    expected = (LIBRARY_SOURCES | ({TEST_SOURCE} if tests_enabled else set())) if expect_avx2 else set()
+    legacy_sources = LIBRARY_SOURCES | {TEST_SOURCE}
+    optional_sources = legacy_sources | {F16C_SOURCE, AVX2_CONVERSION_SOURCE}
+    expected = {name: {"-mavx2", "-mfma"} for name in
+                ((LIBRARY_SOURCES | ({TEST_SOURCE} if tests_enabled else set())) if expect_avx2 else set())}
+    if expect_f16c:
+        expected[F16C_SOURCE] = {"-mavx", "-mf16c"}
+    if expect_avx2_conversion:
+        expected[AVX2_CONVERSION_SOURCE] = {"-mavx2"}
     seen = set()
     project_entries = 0
     for entry in entries:
@@ -79,7 +88,7 @@ def verify(source_dir, build_dir, expect_avx2):
         owned_sources, unity = project_sources(source, source_dir)
         if not owned_sources:
             continue
-        if unity and owned_sources & (LIBRARY_SOURCES | {TEST_SOURCE}):
+        if unity and owned_sources & optional_sources:
             raise ValueError(f"Optional ISA implementation merged into Unity: {source}")
         relative = str(source) if unity else next(iter(owned_sources))
         project_entries += 1
@@ -87,26 +96,32 @@ def verify(source_dir, build_dir, expect_avx2):
         if arguments is None:
             arguments = shlex.split(entry["command"])
         options = uplift_options(arguments)
-        if relative in LIBRARY_SOURCES | {TEST_SOURCE}:
+        if relative in optional_sources:
             if relative not in expected:
-                raise ValueError(f"Optional AVX2 source compiled in baseline: {relative}")
+                kind = "AVX2" if relative in legacy_sources else "FP16"
+                raise ValueError(f"Optional {kind} source compiled in baseline: {relative}")
             lto_options = [argument for argument in arguments
                            if argument.startswith("-flto") or argument == "-fno-lto"]
-            if options != {"-mavx2", "-mfma"} or not lto_options or lto_options[-1] != "-fno-lto":
-                raise ValueError(f"AVX2 source has invalid ISA/LTO options: {relative}: {sorted(options)}")
+            if options != expected[relative] or not lto_options or lto_options[-1] != "-fno-lto":
+                raise ValueError(f"Optional source has invalid ISA/LTO options: {relative}: {sorted(options)}")
             seen.add(relative)
         elif options:
             raise ValueError(f"Baseline translation unit has ISA uplift options: {relative}: {sorted(options)}")
-        if not expect_avx2:
-            definitions = [argument[2:].split("=", 1)[0] for argument in arguments
-                           if argument.startswith("-D")]
-            if any(macro in definitions for macro in AVX_MACROS):
-                raise ValueError(f"Optional AVX2 availability macro in baseline: {relative}")
+        definitions = [argument[2:].split("=", 1)[0] for argument in arguments if argument.startswith("-D")]
+        forbidden = set(AVX_MACROS) if not expect_avx2 else set()
+        if not expect_f16c:
+            forbidden.add("FP16_HAS_F16C_CONVERSION")
+        if not expect_avx2_conversion:
+            forbidden.add("FP16_HAS_AVX2_CONVERSION")
+        if forbidden.intersection(definitions):
+            raise ValueError(f"Optional ISA availability macro in baseline: {relative}")
     if project_entries == 0:
         raise ValueError("No project compile commands found")
-    if seen != expected:
-        raise ValueError(f"Missing optional implementation commands: {sorted(expected - seen)}")
+    if seen != set(expected):
+        raise ValueError(f"Missing optional implementation commands: {sorted(set(expected) - seen)}")
     return {"optional_avx2_compiled": expect_avx2,
+            "optional_f16c_compiled": expect_f16c,
+            "optional_avx2_conversion_compiled": expect_avx2_conversion,
             "project_compile_commands": project_entries,
             "isa_translation_units": sorted(seen)}
 
@@ -116,9 +131,12 @@ def main():
     parser.add_argument("--source-dir", required=True, type=Path)
     parser.add_argument("--build-dir", required=True, type=Path)
     parser.add_argument("--expect-avx2", required=True, choices=("ON", "OFF"))
+    parser.add_argument("--expect-f16c", default="OFF", choices=("ON", "OFF"))
+    parser.add_argument("--expect-avx2-conversion", default="OFF", choices=("ON", "OFF"))
     options = parser.parse_args()
     try:
-        result = verify(options.source_dir, options.build_dir, options.expect_avx2 == "ON")
+        result = verify(options.source_dir, options.build_dir, options.expect_avx2 == "ON",
+                        options.expect_f16c == "ON", options.expect_avx2_conversion == "ON")
     except (OSError, ValueError, KeyError, TypeError) as error:
         print(f"CPU ISA build verification failed: {error}", file=sys.stderr)
         return 1

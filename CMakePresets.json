@@ -17,6 +17,7 @@
         "BUILD_INFERENCE_TOOL": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "AETHERMIND_ENABLE_AVX2": "ON",
+        "AETHERMIND_ENABLE_F16C": "ON",
         "AETHERMIND_VALIDATION_REQUIRED_ASSETS": "ON"
       }
     },
@@ -32,9 +33,10 @@
     {
       "name": "validation-baseline",
       "inherits": "validation-release",
-      "displayName": "CPU validation without optional AVX2/FMA implementations",
+      "displayName": "CPU validation without optional x86 ISA implementations",
       "cacheVariables": {
-        "AETHERMIND_ENABLE_AVX2": "OFF"
+        "AETHERMIND_ENABLE_AVX2": "OFF",
+        "AETHERMIND_ENABLE_F16C": "OFF"
       }
     },
     {
@@ -83,9 +85,10 @@
     {
       "name": "benchmark-model-baseline",
       "inherits": "benchmark-model",
-      "displayName": "Release model measurements without optional AVX2/FMA implementations",
+      "displayName": "Release model measurements without optional x86 ISA implementations",
       "cacheVariables": {
-        "AETHERMIND_ENABLE_AVX2": "OFF"
+        "AETHERMIND_ENABLE_AVX2": "OFF",
+        "AETHERMIND_ENABLE_F16C": "OFF"
       }
     },
     {

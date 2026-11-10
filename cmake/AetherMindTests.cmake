@@ -134,7 +134,7 @@ function(aethermind_test_labels name output)
             "GateUpLinear|QkvLinear|MatMul|GemmReference|GemmScalar|DotProduct|Silu)")
     if (name MATCHES "${numerical_pattern}" OR
             name MATCHES "${cpu_kernel_pattern}" OR
-            name MATCHES "(^|/)(RawWeightFp32Conversion|Fp32CompatibleInference)\\.")
+            name MATCHES "(^|/)(RawWeightFp32Conversion|Fp32CompatibleInference|Fp16BatchConversion|Fp16BatchEnvironment|CpuFp16Conversion|RawWeightFp32BatchConversion|Fp32CompatibilityBatch)\\.")
         list(APPEND labels numerical)
     endif ()
 
@@ -155,7 +155,7 @@ function(aethermind_test_labels name output)
             "Allocator|Buffer\\.|CAbi|InferenceRunnerFailure|TinyLlamaExecution|TinyWorkspaceSession|"
             "GlobalFunctionTable|FunctionRegistryOwnership)")
     if (name MATCHES "${lifecycle_pattern}" OR
-            name MATCHES "(^|/)(RawWeightFp32Conversion|Fp32CompatibleInference|Fp32CompatibilityAdmission)\\.")
+            name MATCHES "(^|/)(RawWeightFp32Conversion|Fp32CompatibleInference|Fp32CompatibilityAdmission|RawWeightFp32BatchConversion|Fp32CompatibilityBatch)\\.")
         list(APPEND labels lifecycle)
     endif ()
 
@@ -376,7 +376,9 @@ function(aethermind_register_tests target)
         add_test(NAME fixture.cpu_isa_build COMMAND "${Python3_EXECUTABLE}"
                 "${PROJECT_SOURCE_DIR}/tools/verify_cpu_isa_build.py"
                 --source-dir "${PROJECT_SOURCE_DIR}" --build-dir "${PROJECT_BINARY_DIR}"
-                --expect-avx2 "${expected_avx2}")
+                --expect-avx2 "${expected_avx2}"
+                --expect-f16c "$<IF:$<BOOL:${AETHERMIND_HAS_F16C}>,ON,OFF>"
+                --expect-avx2-conversion "$<IF:$<BOOL:${AETHERMIND_HAS_AVX2}>,ON,OFF>")
     else ()
         add_test(NAME fixture.cpu_isa_build COMMAND "${CMAKE_COMMAND}" -E false)
     endif ()

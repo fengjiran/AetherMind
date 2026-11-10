@@ -30,9 +30,47 @@ class CpuIsaBuildContract(unittest.TestCase):
                            for name in sorted(ISA.LIBRARY_SOURCES | {ISA.TEST_SOURCE}))
         return entries
 
-    def verify(self, entries, avx2):
+    def verify(self, entries, avx2, f16c=False, conversion=False):
         (self.build_dir / "compile_commands.json").write_text(json.dumps(entries))
-        return ISA.verify(SOURCE_DIR, self.build_dir, avx2)
+        return ISA.verify(SOURCE_DIR, self.build_dir, avx2, f16c, conversion)
+
+    def test_conversion_implementations_are_independently_optional(self):
+        for f16c, conversion in ((False, True), (True, False), (True, True)):
+            with self.subTest(f16c=f16c, conversion=conversion):
+                entries = self.commands(False)
+                if f16c:
+                    entries.append(self.entry(ISA.F16C_SOURCE, ("-mavx", "-mf16c", "-fno-lto")))
+                if conversion:
+                    entries.append(self.entry(ISA.AVX2_CONVERSION_SOURCE, ("-mavx2", "-fno-lto")))
+                result = self.verify(entries, False, f16c, conversion)
+                self.assertEqual(len(result["isa_translation_units"]), int(f16c) + int(conversion))
+
+    def test_conversion_sources_reject_extra_isa_and_lto_override(self):
+        for flag in ("-mfma", "-flto"):
+            entries = self.commands(False)
+            entries.append(self.entry(ISA.F16C_SOURCE, ("-mavx", "-mf16c", "-fno-lto", flag)))
+            with self.subTest(flag=flag), self.assertRaisesRegex(ValueError, "invalid ISA/LTO"):
+                self.verify(entries, False, True)
+
+    def test_disabled_conversion_macros_and_sources_fail(self):
+        for macro in ("FP16_HAS_F16C_CONVERSION", "FP16_HAS_AVX2_CONVERSION"):
+            entries = self.commands(False)
+            entries[0]["arguments"].append("-D" + macro + "=1")
+            with self.subTest(macro=macro), self.assertRaisesRegex(ValueError, "availability macro"):
+                self.verify(entries, False)
+        with self.assertRaisesRegex(ValueError, "Optional FP16 source"):
+            self.verify([self.entry(ISA.F16C_SOURCE, ("-mavx", "-mf16c", "-fno-lto"))], False)
+
+    def test_conversion_implementation_cannot_merge_into_unity(self):
+        unity = self.build_dir / "CMakeFiles/unit.dir/Unity/unity_0_cxx.cxx"
+        unity.parent.mkdir(parents=True)
+        unity.write_text('#include "' + str(SOURCE_DIR / ISA.F16C_SOURCE) + '"\n')
+        entries = self.commands(False)
+        entries.append(self.entry(ISA.F16C_SOURCE, ("-mavx", "-mf16c", "-fno-lto")))
+        entries.append({"directory": str(self.build_dir), "file": str(unity),
+                        "arguments": ["c++", "-c", str(unity)]})
+        with self.assertRaisesRegex(ValueError, "merged into Unity"):
+            self.verify(entries, False, True)
 
     def test_baseline_has_no_optional_implementations(self):
         result = self.verify(self.commands(False), False)
@@ -48,7 +86,7 @@ class CpuIsaBuildContract(unittest.TestCase):
 
     def test_wrappers_reject_global_isa_uplift(self):
         for avx2 in (False, True):
-            for flag in ("-mavx2", "-mfma", "-march=native", "-mcpu=native", "+avx2"):
+            for flag in ("-mavx2", "-mfma", "-mf16c", "-mavx", "-march=native", "-mcpu=native", "+avx2"):
                 with self.subTest(avx2=avx2, flag=flag):
                     entries = self.commands(avx2)
                     entries[0]["arguments"].append(flag)

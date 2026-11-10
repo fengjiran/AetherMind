@@ -13,6 +13,7 @@
 #include "aethermind/backend/packed_weight.h"
 #include "aethermind/backend/resolved_kernel.h"
 #include "aethermind/base/macros.h"
+#include "aethermind/dtypes/fp16_conversion.h"
 #include "aethermind/memory/allocator.h"
 #include "aethermind/operators/op_params.h"
 
@@ -37,6 +38,14 @@ public:
     ///
     /// @return Device type (e.g. `kCPU`).
     AM_NODISCARD virtual DeviceType device_type() const noexcept = 0;
+
+    /// @brief Prepares host-memory FP16 conversions under this backend's policy.
+    /// @return Non-null conversion functions independent of backend lifetime.
+    /// @note The default is portable scalar for custom backends. Overrides must
+    ///       honor Fp16ConversionFunc's numerical and host-memory contract.
+    AM_NODISCARD virtual Fp16ConversionFuncs GetHostFp16Conversions() const noexcept {
+        return {};
+    }
 
     /// @brief Resolves a kernel and freezes metadata for execution.
     ///

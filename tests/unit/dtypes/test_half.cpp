@@ -11,9 +11,15 @@
 #include <limits>
 #include <sstream>
 #include <type_traits>
+#include <utility>
 
 namespace {
 using namespace aethermind;
+
+TEST(HalfTest, ConversionOperatorsAreNoexcept) {
+    static_assert(noexcept(Half(1.0f)));
+    static_assert(noexcept(static_cast<float>(std::declval<const Half&>())));
+}
 
 TEST(HalfTest, ConstructorAndConversion) {
     Half h1;

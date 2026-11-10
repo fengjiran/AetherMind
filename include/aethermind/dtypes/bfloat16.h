@@ -28,13 +28,15 @@ namespace detail {
 /// bfloat16 occupies the high 16 bits of a binary32; the conversion left-shifts
 /// the input by 16 and reinterprets as `float`. Bit-exact: NaN payloads, sign,
 /// and exponent are preserved.
-float bf16_to_fp32_value(uint16_t input);
+float bf16_to_fp32_value(uint16_t input) noexcept;
 
 /// Converts an IEEE 754 binary32 `float` to a bfloat16 bit pattern.
 ///
 /// Uses round-to-nearest-even on the truncated 16 mantissa LSBs. NaN inputs
-/// are canonicalized to the quiet NaN bit pattern `0x7FC0`.
-uint16_t bf16_from_fp32_value(float);
+/// keep their sign, preserve the top 7 mantissa payload bits, and force the
+/// quiet bit; a payload that truncates to zero becomes the smallest non-zero
+/// quiet payload so the result stays a NaN.
+uint16_t bf16_from_fp32_value(float) noexcept;
 
 } // namespace detail
 
@@ -59,8 +61,8 @@ struct alignas(2) BFloat16 {
     BFloat16() : x(0) {}
     /// Constructs from raw bfloat16 bits; no floating-point conversion.
     constexpr BFloat16(uint16_t bits, from_bits_t) : x(bits) {}
-    BFloat16(float);        // NOLINT
-    operator float() const; // NOLINT
+    BFloat16(float) noexcept;        // NOLINT
+    operator float() const noexcept; // NOLINT
 };
 
 std::ostream& operator<<(std::ostream& os, const BFloat16& value);

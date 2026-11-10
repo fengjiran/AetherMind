@@ -8,7 +8,7 @@
 namespace aethermind {
 namespace detail {
 
-float bf16_to_fp32_value(uint16_t input) {
+float bf16_to_fp32_value(uint16_t input) noexcept {
     // bfloat16 occupies the high 16 bits of a binary32: shifting left by 16
     // and reinterpreting yields the corresponding float without any rounding.
     uint32_t tmp = input;
@@ -16,27 +16,31 @@ float bf16_to_fp32_value(uint16_t input) {
     return fp32_from_bits(tmp);
 }
 
-uint16_t bf16_from_fp32_value(float value) {
-    // Canonicalize all NaNs to a single quiet-NaN bit pattern. 0x7FC0 has
-    // sign=0, exponent=0xFF, mantissa MSB=1 (quiet), other mantissa bits=0.
-    if (std::isnan(value)) {
-        return 0x7FC0U;
+uint16_t bf16_from_fp32_value(float value) noexcept {
+    const uint32_t x = fp32_to_bits(value);
+
+    // NaN: preserve the sign, keep the top 7 mantissa payload bits, and force
+    // the quiet bit. A payload that truncates to zero becomes the smallest
+    // non-zero quiet payload (0x0040) so the result stays a NaN.
+    if ((x & 0x7F800000U) == 0x7F800000U && (x & 0x007FFFFFU) != 0) {
+        uint32_t payload = (x & 0x007FFFFFU) >> 16;
+        payload = payload == 0 ? 0x0040U : payload | 0x0040U;
+        return static_cast<uint16_t>((x & 0x80000000U) >> 16 | 0x7F80U | payload);
     }
 
     // Round-to-nearest-even via rounding bias: bias the lower 16 bits before
     // truncation so that the high 16 bits round correctly. The bias depends
     // on the LSB of the surviving high half — when that LSB is 1, ties round
     // up; when 0, ties round down. This makes ties round to the even value.
-    uint32_t x = fp32_to_bits(value);
     uint32_t rounding_bias = (x >> 16 & 1) + 0x7FFFU;
     return static_cast<uint16_t>((x + rounding_bias) >> 16);
 }
 
 } // namespace detail
 
-BFloat16::BFloat16(float value) : x(detail::bf16_from_fp32_value(value)) {}
+BFloat16::BFloat16(float value) noexcept : x(detail::bf16_from_fp32_value(value)) {}
 
-BFloat16::operator float() const {
+BFloat16::operator float() const noexcept {
     return detail::bf16_to_fp32_value(x);
 }
 

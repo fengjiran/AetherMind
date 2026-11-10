@@ -18,7 +18,7 @@ namespace {
 // Converts an IEEE half-precision value bit pattern to an IEEE single-precision
 // bit pattern. Implemented with integer bit manipulation only; no floating-point
 // operations.
-uint32_t fp16_to_fp32_bits(uint16_t h) {
+uint32_t fp16_to_fp32_bits(uint16_t h) noexcept {
     const uint32_t w = static_cast<uint32_t>(h) << 16;
     const uint32_t sign = w & 0x80000000U;
     const uint32_t exponent = w & 0x7C000000U;
@@ -54,7 +54,7 @@ uint32_t fp16_to_fp32_bits(uint16_t h) {
 // (bit representation). Implemented with integer bit manipulation only; no
 // floating-point operations. Uses fixed round-to-nearest-even with gradual
 // underflow, independently of the floating-point environment.
-uint16_t fp16_from_fp32_value(float f) {
+uint16_t fp16_from_fp32_value(float f) noexcept {
     const uint32_t x = detail::fp32_to_bits(f);
     const uint32_t sign = x & 0x80000000U;
     const uint32_t exponent = x & 0x7F800000U;
@@ -140,7 +140,7 @@ uint16_t fp16_from_fp32_value(float f) {
 // Converts an IEEE half-precision bit pattern to an IEEE single-precision
 // `float`. Uses int/float bitcasts; makes no assumption about the current
 // rounding mode and performs no operations on denormals.
-float fp16_to_fp32_value(uint16_t h) {
+float fp16_to_fp32_value(uint16_t h) noexcept {
     return detail::fp32_from_bits(fp16_to_fp32_bits(h));
 }
 
@@ -180,9 +180,9 @@ void ConvertFp32ToFp16Scalar(const std::byte* src, std::byte* dst, size_t count)
     }
 }
 
-Half::Half(float value) : x(fp16_from_fp32_value(value)) {}
+Half::Half(float value) noexcept : x(fp16_from_fp32_value(value)) {}
 
-Half::operator float() const {
+Half::operator float() const noexcept {
     return fp16_to_fp32_value(x);
 }
 

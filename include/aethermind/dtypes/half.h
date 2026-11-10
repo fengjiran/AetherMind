@@ -83,7 +83,7 @@ struct alignas(2) Half {
     /// formatting) with minimal friction. NOLINT suppresses the implicit
     /// conversion warning; callers should still be explicit when ambiguity
     /// matters.
-    Half(float value); // NOLINT
+    Half(float value) noexcept; // NOLINT
 
     /// Converts to binary32 `float` for arithmetic and comparisons.
     /// All NaNs become quiet NaNs, preserving sign and the low nine payload
@@ -95,7 +95,7 @@ struct alignas(2) Half {
     /// float expressions and with the standard library without wrapping
     /// every use site in `static_cast`. NOLINT suppresses the implicit
     /// conversion warning.
-    operator float() const; // NOLINT
+    operator float() const noexcept; // NOLINT
 
     /// Returns the raw IEEE 754 binary16 bit pattern.
     AM_NODISCARD constexpr uint16_t bits() const {

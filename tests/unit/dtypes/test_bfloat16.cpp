@@ -1,9 +1,11 @@
 #include "aethermind/dtypes/bfloat16.h"
 
+#include <bit>
 #include <bitset>
 #include <cmath>
 #include <gtest/gtest.h>
 #include <type_traits>
+#include <utility>
 
 namespace {
 using namespace aethermind;
@@ -89,6 +91,30 @@ TEST(BFloat16Test, FromFp32OverflowBoundary) {
     // Values just below the midpoint still round to the largest finite value.
     EXPECT_EQ(bf16_from_fp32_value(std::ldexp(510.0f, 119)), 0x7F7FU);
     EXPECT_EQ(bf16_from_fp32_value(-std::ldexp(510.0f, 119)), 0xFF7FU);
+}
+
+TEST(BFloat16Test, NaNConversionPreservesSignAndTrimmedPayload) {
+    struct ConversionCase {
+        uint32_t source;
+        uint16_t expected;
+    };
+    constexpr ConversionCase cases[] = {
+            {0x7F800001U, 0x7FC0U}, // payload truncates away; force a quiet payload
+            {0x7F810000U, 0x7FC1U},
+            {0x7F8F0000U, 0x7FCFU},
+            {0x7FFFFFFFU, 0x7FFFU},
+            {0xFF800001U, 0xFFC0U},
+            {0xFFC12345U, 0xFFC1U},
+    };
+    for (const auto& [source, expected]: cases) {
+        const BFloat16 value(std::bit_cast<float>(source));
+        EXPECT_EQ(value.x, expected) << "source bits=" << source;
+    }
+}
+
+TEST(BFloat16Test, ConversionOperatorsAreNoexcept) {
+    static_assert(noexcept(BFloat16(1.0f)));
+    static_assert(noexcept(static_cast<float>(std::declval<const BFloat16&>())));
 }
 
 TEST(BFloat16Test, EdgeValues) {
@@ -253,8 +279,10 @@ TYPED_TEST(BFloat16IntegerArithmetic, DivisionPreservesZeroAndNonFiniteResults) 
     EXPECT_EQ((one / negative_zero).x, 0xff80U);
     EXPECT_EQ((negative_zero / one).x, 0x8000U);
     EXPECT_EQ((zero / BFloat16{-1.0f}).x, 0x8000U);
-    EXPECT_EQ((positive_zero / zero).x, 0x7fc0U);
-    EXPECT_EQ((zero / positive_zero).x, 0x7fc0U);
+    // 0/0 is an invalid operation yielding a quiet NaN; the NaN sign bit is
+    // implementation-defined, so assert only the NaN/quiet structure.
+    EXPECT_EQ((positive_zero / zero).x & 0x7FC0U, 0x7FC0U);
+    EXPECT_EQ((zero / positive_zero).x & 0x7FC0U, 0x7FC0U);
 }
 
 TEST(BFloat16Test, Int64ArithmeticUsesFloat32Promotion) {

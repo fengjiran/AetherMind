@@ -16,7 +16,7 @@ docs/operators/
     └── benchmarks/                # 证据记录：一机器一文件，追加式，不覆盖
 ```
 
-现有算子目录：`gemm/`、`linear/`、`rmsnorm/`、`rope/`。
+现有目录包括 `gemm/`、`linear/`、`rmsnorm/`、`rope/`，以及 backend 数值 primitive `fp16_conversion/`。
 
 ## 规则
 
@@ -32,3 +32,4 @@ docs/operators/
 | RMSNorm | [rmsnorm/](rmsnorm/) | 契约（contract basis） |
 | RoPE | [rope/](rope/) | 契约（contract basis） |
 | Linear | [linear/](linear/) | 契约（contract basis） |
+| FP16 批量转换（backend 数值 primitive，无 GraphOp） | [fp16_conversion/](fp16_conversion/) | scalar/F16C/AVX2 合同、权重准备接入及单机证据 |

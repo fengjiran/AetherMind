@@ -270,9 +270,21 @@ prompt 必须非空；prompt/EOS 必须在词表范围内，prompt 长度须满�
 
 `Half(float)` 固定使用 round-to-nearest-even（RNE）并支持 gradual underflow。FP32→FP16 只从完整 significand 舍入一次；`±2^-24` 精确得到最小 subnormal，`±2^-25` 的 halfway 舍入为同符号零，subnormal 舍入进位可得到最小 normal。有限输入的绝对值达到 `65520` 时按 RNE 舍入为同符号 Infinity。NaN 保留 sign 及可容纳的高位 payload，强制设置 FP16 quiet bit `0x0200`；即使 payload 被全部截掉，也不会变为 Infinity。
 
-双向转换均使用整数位运算和 bit cast，不依赖当前 rounding mode 或 FTZ/DAZ，也不设置浮点异常标志。此保证仅适用于转换；二元算术仍在 Float32 中求值。FTZ→gradual underflow 是可观察行为迁移：构造、二元算术、复合赋值及数学 helper 的结果窄化现在可产生 FP16 subnormal。
+上述 Half 单值转换使用整数位运算和 bit cast，不依赖当前 rounding mode 或 FTZ/DAZ，也不设置浮点异常标志。此保证仅适用于转换；二元算术仍在 Float32 中求值。FTZ→gradual underflow 是可观察行为迁移：构造、二元算术、复合赋值及数学 helper 的结果窄化现在可产生 FP16 subnormal。
 
 `Half::from_bits()` 仍逐位保存输入，转换不会修改源 `Half`；`numeric_limits<Half>::has_signaling_NaN` 继续为 `true`，表示该存储类型仍可表示 signaling NaN。`round_style` 显式为 `std::round_to_nearest`；`is_iec559` 继续为 `false`，不因转换支持 subnormal 就声明整个类型符合 IEEE 754 的全部算术和异常语义。
+
+### FP16 / FP32 批量转换（include/aethermind/dtypes/fp16_conversion.h）
+
+`ConvertFp16ToFp32(source, destination, functions)` 和 `ConvertFp32ToFp16(source, destination, functions)` 接收连续的 byte spans。输出长度必须恰为输入长度的两倍或一半；输入必须包含完整元素，范围必须不重叠。任意字节对齐均合法，空输入接受空指针。长度、乘法溢出、范围重叠及空函数检查在写入前完成；成功路径不分配 payload 或 scratch。
+
+`Fp16ConversionFuncs` 是两个 `noexcept` 函数指针组成的值类型，默认指向 portable scalar。它不携带 backend 指针、CPU policy 或数据所有权。直接调用其中函数时，调用方负责证明有效范围、可表示的字节数和不重叠；两个 checked 入口负责这些边界检查。
+
+`Backend::GetHostFp16Conversions()` 默认返回 scalar 表。`CpuBackend` 使用自身 `effective_features` 独立选择 widening/narrowing：AVX + F16C 对应先整数 quieting 再 8 路硬件 widening；AVX + AVX2 对应 8 路整数 narrowing，不要求 FMA。两条路径逐位匹配 Half 的结果与异常合同，不探测 CPU、不修改 MXCSR、不读取或写入尾部范围以外的字节。短尾部复用 scalar。
+
+`ExecutableModel::Load` 把该表的 widening 函数传入 `RawWeightFp32ConversionOptions::fp16_to_fp32`；model 层不依赖 CPU backend。callback 按每个唯一 F16 tensor 调用一次，原有 allocation、budget preflight、tie 去重和 owner 合同保持。BF16 仍走原有 scalar widening。自定义 backend 不必重写该能力查询。
+
+新增 virtual 查询与 options 字段要求 C++ 消费者重新编译；C ABI v1 签名和 strict FP32 准入不变。实现和证据见 [批量转换](../operators/fp16_conversion/README.md)。
 
 ### Half / BFloat16 一元取负
 

@@ -219,7 +219,8 @@ Prepare the [numerical fixtures](tests/fixtures/inference_numerical/README.md) f
 | `BUILD_TESTS` | `ON` | Build unit test targets |
 | `BUILD_BENCHMARKS` | `ON` | Build benchmark targets |
 | `BUILD_INFERENCE_TOOL` | `OFF` | Build the standalone `aethermind_infer` CLI |
-| `AETHERMIND_ENABLE_AVX2` | `ON` | Build optional x86 AVX2/FMA implementations when the compiler supports them |
+| `AETHERMIND_ENABLE_AVX2` | `ON` | Build optional x86 AVX2 integer conversions and AVX2/FMA kernels when the compiler supports them |
+| `AETHERMIND_ENABLE_F16C` | `ON` | Build isolated F16C FP16→FP32 batch conversion; independent of AVX2/FMA |
 | `USE_LIBBACKTRACE` | `ON` | Enable libbacktrace for stack traces |
 | `BACKTRACE_ON_SEGFAULT` | `ON` | Install a SIGSEGV traceback handler |
 | `AETHERMIND_SANITIZER` | `none` | Project-target instrumentation: `none`, `asan-ubsan`, or `tsan` |
@@ -344,7 +345,7 @@ python3 tests/unit/apps/inference/test_inference_cli.py \
 
 ### CPU ISA Validation
 
-Optional AVX2/FMA implementations are compiled in isolated translation units. Test entry points, dispatch, and ordinary library/application code use baseline compiler options. `AETHERMIND_ENABLE_AVX2=OFF` excludes the optional implementations and their availability macros.
+Optional AVX2/FMA kernels, AVX2 integer FP32→FP16 conversion, and F16C FP16→FP32 conversion are compiled in isolated translation units. Test entry points, dispatch, and ordinary library/application code use baseline compiler options. `AETHERMIND_ENABLE_AVX2=OFF` excludes the AVX2 implementations; `AETHERMIND_ENABLE_F16C=OFF` independently excludes F16C. The baseline presets disable both. AVX2 integer conversion does not require FMA.
 
 ```bash
 cmake --preset validation-baseline
@@ -359,6 +360,8 @@ ctest --preset validation-avx2
 The baseline preset runs the production/lifecycle slice with reference and packed-identity kernels. The AVX2 preset requires both compiled candidates and OS-usable AVX2/FMA hardware, then runs the direct candidate tests. Missing binaries, empty ISA discovery, unavailable hardware, and required skips cannot pass this gate. Pure metadata and backend-policy tests remain runnable without AVX2.
 
 `fixture.cpu_isa_build` checks `compile_commands.json` for target-wide ISA uplift and per-file isolation; ISA implementation files also stay outside Unity and LTO merging. Update the explicit source manifest and its negative tests when adding an ISA implementation. Backend feature policy controls descriptor eligibility; internal dot-product dispatch independently detects host features. The baseline build excludes those optional implementations at compile time. Physical non-AVX hardware execution remains a separate platform qualification.
+
+FP16 batch conversions use the Runtime backend's effective features through a prepared function table, without fresh detection inside conversion loops. See the [conversion contract and evidence](docs/operators/fp16_conversion/README.md). Model preparation uses F16C widening when eligible; this does not add native 16-bit inference.
 
 ### Sanitizer Builds
 

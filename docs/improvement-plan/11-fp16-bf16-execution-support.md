@@ -1,8 +1,8 @@
 # FP16 / BF16 执行支持方案
 
 - **状态**: In Progress
-- **版本**: 1.2
-- **日期**: 2026-11-09
+- **版本**: 1.3
+- **日期**: 2026-11-10
 - **产品边界**: [当前产品 PRD](../products/aethermind_prd.md)；CPU-only、单进程、同步、单请求、Token IDs I/O、Llama Dense、静态连续 KV
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联计划**: [06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[07 模型准备入口](07-executable-model-preparation.md)、[08 KV/Attention 演进](08-kv-cache-and-attention-capability-evolution.md)、[09 模型家族扩展](09-qwen-and-moe-architecture-support.md)、[10 Runtime 组装入口](10-upper-level-runtime-assembly.md)
@@ -161,7 +161,7 @@ P4 如出现 input/output dtype 不同或同角色的多端口异型，需要按
 | GEMM/归约 | P1/P2 固定 FP32 累加，reference 可用 FP64 oracle 检查；不得假定 wrapper 算术自然实现 FP32 accumulation |
 | Norm/Attention | 平方和、dot、stable softmax 的 max/exp/sum 与 value accumulation 至少 F32；RoPE 保留其既有更高精度频率/角度合同，不能因 dtype 扩展缩窄 |
 | Fusion | 先规定 logical op 边界的 rounding/cast placement；融合不能移除要求的 narrowing 或额外引入舍入。浮点运算顺序变化按数值门禁审查，不要求所有实现逐位一致 |
-| 硬件转换 | F16C 是转换能力；BF16 可经 portable bit conversion 或向量 widening。优化实现遵守同一 subnormal/NaN 合同；不满足时修正边界或保留 fallback |
+| 硬件转换 | FP16 批量转换已具备 F16C widening 与 AVX2 整数 narrowing，并接入 P1 的 F16 权重准备，见 [合同与证据](../operators/fp16_conversion/README.md)。不改变 native 16-bit kernel 的实施状态；BF16 保留 scalar。新增候选仍须遵守相同 subnormal/NaN 和异常合同 |
 | Native BF16 | `VDPBF16PS` 乘数为 BF16、累加为 FP32；不能把 W16/A32 的 activation 偷转 BF16 以复用它。此类路径属于经过批准的 A16 模式 |
 | Native FP16 | 有 FP16 算术指令不等于满足 FP32 累加；任何候选必须证明符合该 preset 的数值合同 |
 | Dispatch/build | 独立 TU 与编译能力检查，使用实际 CPU/OS effective features，保留 scalar fallback；不全局添加高 ISA 或 fast-math 选项，不按 CPU 品牌猜测支持 |
@@ -182,7 +182,7 @@ FP16 与 BF16 的指数范围和有效精度不同，不能按“都是 16-bit�
 
 ## 4. 实施步骤
 
-P1 的限定实现与验收已完成；P0 中 graph options 和 widening 数值合同已随 P1 落地，Half 软件标量 narrowing 已独立完成 FTZ→gradual underflow 迁移。F16 Add 与新增 narrowing/SIMD 路径仍待实际 reduced-dtype consumer 需要时实施。P1 全程使用 F32 算子，不依赖这些未完成项。P2–P4 仍待实施；编号表示依赖，不承诺日期。每个算子依照 O0–O4 执行，微内核优化不是进入下一阶段的充分条件。
+P1 的限定实现与验收已完成；P0 中 graph options 和 widening 数值合同已随 P1 落地，Half 软件标量 narrowing 已独立完成 FTZ→gradual underflow 迁移，并已增加 FP16 批量 F16C widening/AVX2 整数 narrowing。F16 Add 与 native reduced-dtype consumers 仍待实施；P1 全程使用 F32 算子。P2–P4 仍待实施；编号表示依赖，不承诺日期。每个算子依照 O0–O4 执行，微内核优化不是进入下一阶段的充分条件。
 
 ### 4.1 P0：冻结合同与补齐基础语义
 

@@ -68,7 +68,7 @@ StatusOr<std::vector<uint32_t>> GenerateCompatible(
 
 F32 view 零拷贝并继续共享原 owner。相同 source owner、起始地址、范围、dtype 和 shape 的 reduced view 只转换一次，因此 tied embedding/lm_head 继续共享转换 storage；内容相同但来源不同的 tensor 不合并。无用的 F16/BF16 source owner 不会被结果模型保活，仍被共享的 F32 owner 会保留。
 
-转换不要求 source 对齐，也不将原始字节解释为对齐的 C++ reduced-float 对象。有限值（包括 subnormal）精确拓宽，保留 signed zero；NaN 保留 sign/payload 并在 FP32 结果置 quiet bit。这是 widening 合同，不引入 F32→16 的 narrowing、FTZ 迁移或 ISA 专用路径。
+转换不要求 source 对齐，也不将原始字节解释为对齐的 C++ reduced-float 对象。有限值（包括 subnormal）精确拓宽，保留 signed zero；NaN 保留 sign/payload 并在 FP32 结果置 quiet bit。F16 的批量 widening 可按 Runtime backend 的 effective features 使用 F16C，先以整数操作 quiet signaling NaN，保持不设置浮点异常的合同；BF16 保留 scalar 路径。backend 禁用 F16C 或 AVX 时回退 scalar，不在 model 层重新检测 CPU。独立调用 `ConvertRawModelWeightsToFp32` 默认使用 scalar，也可显式传入遵循同一合同的 prepared callback。
 
 ## 资源观察与限额
 
@@ -78,6 +78,6 @@ F32 view 零拷贝并继续共享原 owner。相同 source owner、起始地址�
 
 ## 能力边界
 
-P1 不是原生 F16/BF16 推理：权重不会保留 16-bit，activation、FP32 accumulation、KV 和 logits 没有新的 mixed-dtype kernel。它也没有实现 16-bit KV、A16 activation、GPU、调度或性能优化；这些分别属于 P2、P3、P4 或其他提案，不能从本模式推导性能或内存收益。
+P1 不是原生 F16/BF16 推理：权重不会保留 16-bit，activation、FP32 accumulation、KV 和 logits 没有新的 mixed-dtype kernel。F16C 改善的是准备阶段的权重转换，不代表 token 吞吐或峰值内存改善；实测范围见 [转换基准](../operators/fp16_conversion/README.md)。16-bit KV、A16 activation、GPU 和调度仍属于其他阶段。
 
 公开 C++ 创建接口统一为 `ExecutableModel::Load` 和 `ExecutableModel::Prepare`，旧自由函数已删除，调用方须迁移并重新编译。`Load` 接收 `ModelLoadOptions`；任意编译配置通过显式 Load/Compile 后调用 `Prepare`。C ABI v1 的签名与 strict 输入合同保持不变。

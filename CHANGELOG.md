@@ -6,6 +6,7 @@
 
 ### Added
 
+- BF16/FP32 checked byte-batch API、双向 portable scalar 与 prepared 函数表：固定 RNE、gradual underflow、signed zero，NaN 保留 sign/payload 并 quiet，浮点环境不变。Backend 默认及 CPU 当前均返回 scalar；`ExecutableModel::Load` 将独立 BF16 widening callback 接入权重准备，每个唯一 BF16 tensor 调用一次。新增 C++ virtual 查询与 options 字段要求消费者重新编译；C ABI v1 准入不变。
 - FP16/FP32 checked byte-batch API 与 prepared 函数表：可选 F16C widening、AVX2 整数 narrowing、scalar fallback，保持 RNE、gradual underflow、quiet NaN 与浮点环境不变。`ExecutableModel::Load` 将 backend 有效特性选择的 widening 接入 F16 权重准备；BF16 路径与 C ABI v1 准入不变。新增独立 `AETHERMIND_ENABLE_F16C`，baseline presets 禁用 F16C/AVX2；C++ backend/options 消费者须重新编译。
 - Runtime C ABI v1：M5 冻结配置/version、opaque handles、error/owner/buffer 合同，M6 实现 version 与 create/load/create/generate/destroy 链；支持 CPU FP32 Llama Dense、O1/plain 与 O2/packed、调用方输出缓冲区，模型/Session 保活必要 owner。
 - inference 公共 `model_execution_policy.h` 提供唯一的 `ValidateSourceWeights` 和 `MakeFp32KVCacheOptions`；新增 `inference_options.h` 的 `CompilePreset` / `MakeCompileOptions(preset, target)`。CLI 与 C adapter 共用准入、模型 KV 映射及 preset，删除应用旧实现与旧类型。

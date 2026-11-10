@@ -68,7 +68,7 @@ StatusOr<std::vector<uint32_t>> GenerateCompatible(
 
 F32 view 零拷贝并继续共享原 owner。相同 source owner、起始地址、范围、dtype 和 shape 的 reduced view 只转换一次，因此 tied embedding/lm_head 继续共享转换 storage；内容相同但来源不同的 tensor 不合并。无用的 F16/BF16 source owner 不会被结果模型保活，仍被共享的 F32 owner 会保留。
 
-转换不要求 source 对齐，也不将原始字节解释为对齐的 C++ reduced-float 对象。有限值（包括 subnormal）精确拓宽，保留 signed zero；NaN 保留 sign/payload 并在 FP32 结果置 quiet bit。F16 的批量 widening 可按 Runtime backend 的 effective features 使用 F16C，先以整数操作 quiet signaling NaN，保持不设置浮点异常的合同；BF16 保留 scalar 路径。backend 禁用 F16C 或 AVX 时回退 scalar，不在 model 层重新检测 CPU。独立调用 `ConvertRawModelWeightsToFp32` 默认使用 scalar，也可显式传入遵循同一合同的 prepared callback。
+转换不要求 source 对齐，也不将原始字节解释为对齐的 C++ reduced-float 对象。有限值（包括 subnormal）精确拓宽，保留 signed zero；NaN 保留 sign/payload 并在 FP32 结果置 quiet bit。F16 的批量 widening 可按 Runtime backend 的 effective features 使用 F16C，先以整数操作 quiet signaling NaN，保持不设置浮点异常的合同；BF16 使用独立的 portable scalar 批量转换。backend 禁用 F16C 或 AVX 时，F16 回退 scalar，不在 model 层重新检测 CPU。`ExecutableModel::Load` 分别查询 `GetHostFp16Conversions()` / `GetHostBf16Conversions()`，把 prepared widening 传入 `fp16_to_fp32` / `bf16_to_fp32`；每个唯一 reduced tensor 仅调用相应 callback 一次。独立调用 `ConvertRawModelWeightsToFp32` 默认使用 scalar，也可显式传入遵循同一合同的两个非空 callback。BF16 双向基础 API 与包装类型的 NaN 区别见 [转换合同](../operators/bf16_conversion/README.md)。
 
 ## 资源观察与限额
 

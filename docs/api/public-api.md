@@ -286,9 +286,21 @@ prompt 必须非空；prompt/EOS 必须在词表范围内，prompt 长度须满�
 
 `Backend::GetHostFp16Conversions()` 默认返回 scalar 表。`CpuBackend` 使用自身 `effective_features` 独立选择 widening/narrowing：AVX + F16C 对应先整数 quieting 再 8 路硬件 widening；AVX + AVX2 对应 8 路整数 narrowing，不要求 FMA。两条路径逐位匹配 Half 的结果与异常合同，不探测 CPU、不修改 MXCSR、不读取或写入尾部范围以外的字节。短尾部复用 scalar。
 
-`ExecutableModel::Load` 把该表的 widening 函数传入 `RawWeightFp32ConversionOptions::fp16_to_fp32`；model 层不依赖 CPU backend。callback 按每个唯一 F16 tensor 调用一次，原有 allocation、budget preflight、tie 去重和 owner 合同保持。BF16 仍走原有 scalar widening。自定义 backend 不必重写该能力查询。
+`ExecutableModel::Load` 把该表的 widening 函数传入 `RawWeightFp32ConversionOptions::fp16_to_fp32`；model 层不依赖 CPU backend。callback 按每个唯一 F16 tensor 调用一次，原有 allocation、budget preflight、tie 去重和 owner 合同保持。BF16 使用下述独立函数表与 callback。自定义 backend 不必重写该能力查询。
 
 新增 virtual 查询与 options 字段要求 C++ 消费者重新编译；C ABI v1 签名和 strict FP32 准入不变。实现和证据见 [批量转换](../operators/fp16_conversion/README.md)。
+
+### BF16 / FP32 批量转换（include/aethermind/dtypes/bf16_conversion.h）
+
+`ConvertBf16ToFp32(source, destination, functions)` 与 `ConvertFp32ToBf16(source, destination, functions)` 接收连续 byte spans。输入必须包含完整元素，输出长度恰为输入的两倍或一半，两个范围必须不重叠；支持任意字节对齐。checked 入口在任何写入前检查长度、乘法溢出、非空函数和范围；空输入/输出允许空指针与空函数。成功调用不分配 payload 或 scratch。
+
+拓宽精确保留所有有限值，包括 subnormal 与 signed zero；窄化固定使用 round-to-nearest-even 和 gradual underflow，舍入溢出产生同号 Infinity。两个方向的 NaN 均保留 sign 与可容纳的 payload，并强制设置 quiet bit。批量 widening 会 quiet signaling NaN，与 `BFloat16::operator float()` 保留原始 signaling 状态的单值 widening 不同；批量 narrowing 与当前 `BFloat16(float)` 的位结果一致。scalar 只操作整数位与 `memcpy`，不依赖 rounding mode、FTZ/DAZ，也不改变浮点控制或异常标志。
+
+`Bf16ConversionFuncs` 包含 `to_fp32` / `from_fp32` 两个 `noexcept` 函数指针，默认指向 `ConvertBf16ToFp32Scalar` / `ConvertFp32ToBf16Scalar`。直接调用这些 trusted 函数时，调用方负责有效范围、可表示字节数和不重叠；函数表不借用 backend、CPU policy 或数据。
+
+`Backend::GetHostBf16Conversions()` 默认返回 scalar，`CpuBackend` 经 `cpu::SelectBf16Conversions(effective_features)` 返回同样的 portable 实现；当前没有 BF16 SIMD 路径或新的 ISA 构建开关。inference 冷路径选择后把 widening 传入 `RawWeightFp32ConversionOptions::bf16_to_fp32`，model 每个唯一 BF16 tensor 调用一次，不探测 CPU；F16 和 BF16 callback 独立，两个 options callback 均须非空，检查发生在 payload 分配前。原有去重、预算与所有权合同保留。
+
+新增 virtual 查询与 options 字段要求 C++ 消费者重新编译；C ABI v1 和 CLI 继续 strict FP32。该基础包不构成 P2 W16/A32 执行支持。合同和验证入口见 [BF16 批量转换](../operators/bf16_conversion/README.md)。
 
 ### Half / BFloat16 一元取负
 

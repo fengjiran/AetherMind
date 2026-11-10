@@ -3,15 +3,13 @@
 #include "aethermind/dtypes/fp16_conversion.h"
 #include "aethermind/dtypes/half.h"
 
-#include <gtest/gtest.h>
-
 #include <algorithm>
 #include <array>
 #include <bit>
 #include <cfenv>
 #include <cmath>
-#include <cstdint>
 #include <cstring>
+#include <gtest/gtest.h>
 #include <limits>
 #include <random>
 #include <span>
@@ -36,7 +34,7 @@ Fp16ConversionFuncs SelectedConversions() {
 }
 
 TEST(Fp16BatchConversion, MixedLanesMatchScalar) {
-    const std::array<uint16_t, 17> input{
+    constexpr std::array<uint16_t, 17> input{
             0x0001, 0x8000, 0x3C00, 0x7C01, 0xFC01, 0x7C00, 0xFC00, 0x03FF,
             0x0400, 0x7BFF, 0xFBFF, 0x7E55, 0xFE55, 0x8001, 0xBC00, 0x0000, 0x3555};
     std::array<uint32_t, input.size()> expected{}, actual{};
@@ -51,11 +49,16 @@ TEST(Fp16BatchConversion, EveryHalfPatternMatchesScalarInEveryLane) {
     for (size_t index = 0; index < source.size(); ++index) {
         source[index] = static_cast<uint16_t>(index);
     }
+
     std::vector<uint32_t> actual(0x10000U);
     const auto functions = SelectedConversions();
     for (size_t rotation = 0; rotation < 8; ++rotation) {
-        const auto input = std::as_bytes(std::span(source).subspan(rotation, actual.size()));
-        ASSERT_TRUE(ConvertFp16ToFp32(input, std::as_writable_bytes(std::span(actual)), functions).ok());
+        const auto input = std::as_bytes(
+                std::span(source).subspan(rotation, actual.size()));
+        ASSERT_TRUE(ConvertFp16ToFp32(
+                            input,
+                            std::as_writable_bytes(std::span(actual)), functions)
+                            .ok());
         for (size_t index = 0; index < actual.size(); ++index) {
             const Half reference{source[index + rotation], Half::from_bits()};
             ASSERT_EQ(actual[index], std::bit_cast<uint32_t>(static_cast<float>(reference)))
@@ -69,14 +72,15 @@ TEST(Fp16BatchConversion, NarrowingMatchesScalarAtEveryFiniteMidpoint) {
     for (uint32_t lower = 0; lower < 0x7BFFU; ++lower) {
         const double a = static_cast<float>(Half{static_cast<uint16_t>(lower), Half::from_bits()});
         const double b = static_cast<float>(Half{static_cast<uint16_t>(lower + 1U), Half::from_bits()});
-        const float midpoint = static_cast<float>((a + b) * 0.5);
+        const auto midpoint = static_cast<float>((a + b) * 0.5);
         for (const float value: {std::nextafter(midpoint, 0.0f), midpoint,
                                  std::nextafter(midpoint, std::numeric_limits<float>::infinity())}) {
-            const uint32_t bits = std::bit_cast<uint32_t>(value);
+            const auto bits = std::bit_cast<uint32_t>(value);
             source.push_back(bits);
             source.push_back(bits | 0x80000000U);
         }
     }
+
     std::vector<uint16_t> actual(source.size()), expected(source.size());
     const auto input = std::as_bytes(std::span(source));
     ASSERT_TRUE(ConvertFp32ToFp16(input, std::as_writable_bytes(std::span(expected))).ok());
@@ -113,6 +117,7 @@ TEST(Fp16BatchConversion, UnalignedRangesAndAllTailsMatchScalarWithoutOverwrites
                 for (size_t index = 0; index < count * input_width; ++index) {
                     source[offset + index] = static_cast<std::byte>((index * 139 + offset * 17) & 0xFF);
                 }
+
                 const auto original = source;
                 std::vector<std::byte> actual(destination_offset + count * output_width + 32, std::byte{0xCD});
                 std::vector<std::byte> expected(count * output_width);
@@ -137,28 +142,28 @@ TEST(Fp16BatchConversion, UnalignedRangesAndAllTailsMatchScalarWithoutOverwrites
 }
 
 TEST(Fp16BatchConversion, EmptyRangesPermitNullPointersAndFunctions) {
-    const Fp16ConversionFuncs functions{nullptr, nullptr};
+    constexpr Fp16ConversionFuncs functions{nullptr, nullptr};
     EXPECT_TRUE(ConvertFp16ToFp32({}, {}, functions).ok());
     EXPECT_TRUE(ConvertFp32ToFp16({}, {}, functions).ok());
 }
 
 TEST(Fp16BatchConversion, RejectsInvalidRangesBeforeWriting) {
-    std::array<std::byte, 64> bytes;
+    std::array<std::byte, 64> bytes{};
     bytes.fill(std::byte{0x5A});
     const auto original = bytes;
-    const auto source = std::span<const std::byte>(bytes);
-    auto destination = std::span(bytes);
-    EXPECT_EQ(ConvertFp16ToFp32(source.first(3), destination.subspan(32, 4)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToFp16(source.first(3), destination.subspan(32, 2)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp16ToFp32(source.first(4), destination.subspan(32, 4)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToFp16(source.first(8), destination.subspan(32, 8)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp16ToFp32(source.first(8), destination.subspan(1, 16)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp16ToFp32(source.subspan(8, 8), destination.first(16)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToFp16(source.first(16), destination.subspan(1, 8)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToFp16(source.subspan(4, 16), destination.first(8)).code(), StatusCode::kInvalidArgument);
+    const auto src = std::span<const std::byte>(bytes);
+    auto dst = std::span(bytes);
+    EXPECT_EQ(ConvertFp16ToFp32(src.first(3), dst.subspan(32, 4)).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToFp16(src.first(3), dst.subspan(32, 2)).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp16ToFp32(src.first(4), dst.subspan(32, 4)).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToFp16(src.first(8), dst.subspan(32, 8)).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp16ToFp32(src.first(8), dst.subspan(1, 16)).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp16ToFp32(src.subspan(8, 8), dst.first(16)).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToFp16(src.first(16), dst.subspan(1, 8)).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToFp16(src.subspan(4, 16), dst.first(8)).code(), StatusCode::kInvalidArgument);
     const Fp16ConversionFuncs missing{nullptr, nullptr};
-    EXPECT_EQ(ConvertFp16ToFp32(source.first(4), destination.subspan(32, 8), missing).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToFp16(source.first(8), destination.subspan(32, 4), missing).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp16ToFp32(src.first(4), dst.subspan(32, 8), missing).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToFp16(src.first(8), dst.subspan(32, 4), missing).code(), StatusCode::kInvalidArgument);
     EXPECT_EQ(bytes, original);
 }
 
@@ -215,8 +220,9 @@ private:
 };
 
 TEST_F(Fp16BatchEnvironment, PreservesRoundingAndExceptionFlags) {
-    const std::array<uint16_t, 9> halves{0x7C01, 0xFC01, 0x0001, 0x8001, 0x03FF, 0x7C00, 0xFC00, 0x7E55, 0x8000};
-    const std::array<uint32_t, 17> floats{
+    constexpr std::array<uint16_t, 9> halves{
+            0x7C01, 0xFC01, 0x0001, 0x8001, 0x03FF, 0x7C00, 0xFC00, 0x7E55, 0x8000};
+    constexpr std::array<uint32_t, 17> floats{
             0x7F800001, 0xFF800001, 0x7F7FFFFF, 0xFF7FFFFF, 0x00000001, 0x80000001,
             0x33000000, 0x33000001, 0x33800000, 0x33C00000, 0x387FE000, 0x3F801000,
             0x3F803000, 0x477FF000, 0x7F800000, 0xFF800000, 0x80000000};
@@ -255,9 +261,11 @@ TEST_F(Fp16BatchEnvironment, DenormalControlsDoNotChangeValuesOrFlags) {
     const unsigned supported = writable_control & 0x8040U;
     const unsigned original = _mm_getcsr();
     const auto functions = SelectedConversions();
-    const std::array<uint16_t, 9> halves{1, 0x8001, 0x03FF, 0x83FF, 0x7C01, 0xFC01, 0, 0x8000, 0x0400};
-    const std::array<uint32_t, 9> floats{1, 0x80000001, 0x33800000, 0xB3800000, 0x33000001,
-                                         0x387FE000, 0x7F800001, 0xFF800001, 0x477FF000};
+    constexpr std::array<uint16_t, 9> halves{
+            1, 0x8001, 0x03FF, 0x83FF, 0x7C01, 0xFC01, 0, 0x8000, 0x0400};
+    constexpr std::array<uint32_t, 9> floats{
+            1, 0x80000001, 0x33800000, 0xB3800000, 0x33000001,
+            0x387FE000, 0x7F800001, 0xFF800001, 0x477FF000};
     std::array<uint32_t, halves.size()> expected_wide{}, actual_wide{};
     std::array<uint16_t, floats.size()> expected_narrow{}, actual_narrow{};
     ASSERT_TRUE(ConvertFp16ToFp32(std::as_bytes(std::span(halves)), std::as_writable_bytes(std::span(expected_wide))).ok());

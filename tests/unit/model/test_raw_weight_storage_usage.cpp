@@ -61,6 +61,44 @@ TEST(RawWeightStorageUsage, MergesTiedAndOverlappingRangesPerOwner) {
     EXPECT_TRUE(usage->backing_usage_complete);
 }
 
+TEST(RawWeightStorageUsage, ExplicitViewsMergeMixedDTypesWithinTheSameOwner) {
+    auto owner = std::make_shared<ResourceRawStorage>();
+    owner->info = RawStorageFootprint{RawStorageKind::kOwned, 64};
+    const auto fp16 = View(owner, 0, 4, DataType::Float(16));
+    const auto fp32 = View(owner, 4, 2, DataType::Float32());
+    const std::array<const RawWeightView*, 3> selected{&fp16, &fp32, &fp16};
+    const auto usage = ComputeRawWeightViewStorageUsage(selected);
+    ASSERT_TRUE(usage.ok()) << usage.status().ToString();
+    EXPECT_EQ(usage->owned_bytes, 64U);
+    EXPECT_EQ(usage->referenced_view_bytes, 12U);
+    EXPECT_TRUE(usage->backing_usage_complete);
+}
+
+TEST(RawWeightStorageUsage, ExplicitViewsPermitEmptySelectionAndDefaultEmptyViews) {
+    const auto empty = ComputeRawWeightViewStorageUsage({});
+    ASSERT_TRUE(empty.ok()) << empty.status().ToString();
+    EXPECT_EQ(empty->owned_bytes, 0U);
+    EXPECT_TRUE(empty->backing_usage_complete);
+    const RawWeightView unused;
+    const std::array<const RawWeightView*, 1> selected{&unused};
+    const auto usage = ComputeRawWeightViewStorageUsage(selected);
+    ASSERT_TRUE(usage.ok()) << usage.status().ToString();
+    EXPECT_EQ(usage->referenced_view_bytes, 0U);
+    EXPECT_TRUE(usage->backing_usage_complete);
+}
+
+TEST(RawWeightStorageUsage, ExplicitViewsRejectNullPointersAndMalformedMetadata) {
+    const std::array<const RawWeightView*, 1> null_view{nullptr};
+    EXPECT_EQ(ComputeRawWeightViewStorageUsage(null_view).status().code(),
+              StatusCode::kInvalidArgument);
+    auto owner = std::make_shared<ResourceRawStorage>();
+    auto malformed = View(owner, 0, 4, DataType::Float(16));
+    --malformed.bytes;
+    const std::array<const RawWeightView*, 1> selected{&malformed};
+    EXPECT_EQ(ComputeRawWeightViewStorageUsage(selected).status().code(),
+              StatusCode::kInvalidArgument);
+}
+
 TEST(RawWeightStorageUsage, FiltersDTypeAcrossGlobalAndLayerRoles) {
     auto owned = std::make_shared<ResourceRawStorage>();
     owned->info = RawStorageFootprint{RawStorageKind::kOwned, 64};
@@ -334,6 +372,24 @@ TEST(RawWeightStorageUsageDiagnosticFailure, FilteredMetadataFailureReturnsResou
     test::ScopedMallocFailure failure(0);
     const auto result = ComputeRawWeightStorageUsage(
             weights, dtype_filter);
+    const auto observed = failure.Stop();
+
+    EXPECT_TRUE(observed.allocation_failed);
+    EXPECT_EQ(result.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_TRUE(result.status().message().empty());
+}
+
+TEST(RawWeightStorageUsageDiagnosticFailure, ExplicitViewMetadataFailureReturnsResourceExhausted) {
+    if (!test::MallocInterposerAvailable()) {
+        GTEST_SKIP() << "Requires the glibc malloc interposer";
+    }
+
+    const auto owner = std::make_shared<ResourceRawStorage>();
+    const auto view = View(owner, 0, 4, DataType::Float32());
+    const std::array<const RawWeightView*, 1> selected{&view};
+    static_assert(noexcept(ComputeRawWeightViewStorageUsage(selected)));
+    test::ScopedMallocFailure failure(0);
+    const auto result = ComputeRawWeightViewStorageUsage(selected);
     const auto observed = failure.Stop();
 
     EXPECT_TRUE(observed.allocation_failed);

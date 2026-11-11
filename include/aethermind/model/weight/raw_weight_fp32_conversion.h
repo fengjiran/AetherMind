@@ -17,6 +17,12 @@ namespace aethermind {
 class Allocator;
 class LoadedModel;
 
+/// @brief Selects which logical weight roles are widened before compilation.
+enum class RawWeightFp32ConversionScope {
+    kAllRequiredWeights,
+    kNormWeightsOnly,
+};
+
 /// @brief Final retained owned-weight payload cap; zero means unlimited.
 /// Mapped/external backing, temporary source backing, and metadata are excluded.
 /// Both callbacks must be non-null, even if their source dtype is absent.
@@ -28,6 +34,8 @@ struct RawWeightFp32ConversionOptions {
     /// Non-null host widening callback; must obey Bf16ConversionFunc's contract.
     /// Borrowed for this call only, invoked once per unique BF16 source tensor.
     Bf16ConversionFunc bf16_to_fp32 = ConvertBf16ToFp32Scalar;
+    /// Norm-only preserves all non-Norm views, including their dtype and owner.
+    RawWeightFp32ConversionScope scope = RawWeightFp32ConversionScope::kAllRequiredWeights;
 };
 
 /// @brief Visible weight storage observed during one conversion operation.
@@ -45,12 +53,15 @@ struct RawWeightFp32ConversionUsage {
     bool peak_owned_weight_bytes_complete = true;
 };
 
-/// @brief Produces a new model with actual F16/BF16 weights widened to FP32.
+/// @brief Produces a new model with selected F16/BF16 weight roles widened to FP32.
 ///
 /// All populated required roles must be valid contiguous scalar F32/F16/BF16
-/// views. F32 views share their original owners; identical reduced-precision
-/// views share one converted owner. Configuration, including source dtype hints,
-/// remains unchanged. Missing optional lm_head remains missing.
+/// views, even when outside the selected scope. F32 and unselected views share
+/// their original owners. Identical selected reduced-precision views share one
+/// converted owner. Norm-only selects final_norm and each layer's input_rmsnorm
+/// and post_attn_rmsnorm. Source aliases across the scope boundary remain valid:
+/// only selected roles acquire converted storage. Configuration, including source
+/// dtype hints, remains unchanged. Missing optional lm_head remains missing.
 ///
 /// Conversion preserves finite values exactly, including subnormals and signed
 /// zero. NaNs retain sign and payload with the FP32 quiet bit set. Source bytes
@@ -59,7 +70,7 @@ struct RawWeightFp32ConversionUsage {
 ///
 /// All source metadata validation, size accounting, and cap checks precede payload
 /// allocation. Failure leaves the input model unchanged and releases candidates.
-/// Unknown retained F32 backing prevents a finite owned-payload cap; unknown
+/// Unknown retained backing prevents a finite owned-payload cap; unknown
 /// source backing otherwise remains explicit in usage completeness flags.
 /// @return New owning model, or a validation/overflow/allocation error.
 StatusOr<std::unique_ptr<LoadedModel>> ConvertRawModelWeightsToFp32(

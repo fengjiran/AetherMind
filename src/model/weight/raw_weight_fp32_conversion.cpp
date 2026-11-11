@@ -72,20 +72,22 @@ struct Conversion {
 struct WeightSlot {
     RawWeightView* view;
     std::string location;
+    bool is_norm = false;
 };
 
 std::vector<WeightSlot> CollectViews(ResolvedModelWeights& weights) {
     std::vector<WeightSlot> views{{&weights.embed_tokens, "embed_tokens"},
-                                  {&weights.final_norm, "final_norm"}};
+                                  {&weights.final_norm, "final_norm", true}};
     if (weights.lm_head.has_value()) {
         views.push_back({&*weights.lm_head, "lm_head"});
     }
 
     for (size_t i = 0; i < weights.layers.size(); ++i) {
         auto& [norm, attn, mlp] = weights.layers[i];
+        const auto location = "layer " + std::to_string(i) + " ";
+        views.push_back({&norm.input_rmsnorm, location + "input_rmsnorm", true});
+        views.push_back({&norm.post_attn_rmsnorm, location + "post_attn_rmsnorm", true});
         for (const auto& [view, name]: {
-                     std::pair{&norm.input_rmsnorm, "input_rmsnorm"},
-                     std::pair{&norm.post_attn_rmsnorm, "post_attn_rmsnorm"},
                      std::pair{&attn.q_proj, "q_proj"},
                      std::pair{&attn.k_proj, "k_proj"},
                      std::pair{&attn.v_proj, "v_proj"},
@@ -93,7 +95,7 @@ std::vector<WeightSlot> CollectViews(ResolvedModelWeights& weights) {
                      std::pair{&mlp.gate_proj, "gate_proj"},
                      std::pair{&mlp.up_proj, "up_proj"},
                      std::pair{&mlp.down_proj, "down_proj"}}) {
-            views.push_back({view, "layer " + std::to_string(i) + " " + name});
+            views.push_back({view, location + name});
         }
     }
     return views;
@@ -138,6 +140,11 @@ StatusOr<std::unique_ptr<LoadedModel>> ConvertRawModelWeightsToFp32(
         const LoadedModel& model,
         Allocator& allocator,
         const RawWeightFp32ConversionOptions& options) try {
+    if (options.scope != RawWeightFp32ConversionScope::kAllRequiredWeights &&
+        options.scope != RawWeightFp32ConversionScope::kNormWeightsOnly) {
+        return Status::InvalidArgument("Unknown FP32 weight conversion scope");
+    }
+
     if (options.fp16_to_fp32 == nullptr) {
         return Status::InvalidArgument(
                 "FP32 weight conversion requires a non-null FP16 callback");
@@ -156,14 +163,17 @@ StatusOr<std::unique_ptr<LoadedModel>> ConvertRawModelWeightsToFp32(
     auto converted = model.GetResolvedWeights();
     std::map<SourceKey, size_t, SourceLess> conversion_indices;
     std::vector<Conversion> conversions;
+    std::vector<const RawWeightView*> retained_views;
     RawWeightFp32ConversionUsage usage;
-    for (const auto& [view, location]: CollectViews(converted)) {
+    for (const auto& [view, location, is_norm]: CollectViews(converted)) {
         if (const auto status = ValidateSource(*view); !status.ok()) {
             return status.WithMessage("FP32 conversion weight " + location +
                                       ": " + status.message());
         }
 
-        if (view->dtype == DataType::Float32()) {
+        if (view->dtype == DataType::Float32() ||
+            (options.scope == RawWeightFp32ConversionScope::kNormWeightsOnly && !is_norm)) {
+            retained_views.push_back(view);
             continue;
         }
 
@@ -202,10 +212,10 @@ StatusOr<std::unique_ptr<LoadedModel>> ConvertRawModelWeightsToFp32(
                                  usage.converted_weight_bytes));
     usage.peak_owned_weight_bytes_complete = usage.source_weights.backing_usage_complete;
 
-    // Converted roles no longer retain their source owners. Compute usage for
-    // only F32 roles to count backing that survives alongside the new payload.
+    // Select by surviving roles, not dtype: W16 matrices may keep a backing
+    // shared with converted Norms. Owner aggregation counts that backing once.
     AM_ASSIGN_OR_RETURN(auto retained_usage,
-                        ComputeRawWeightStorageUsage(converted, DataType::Float32()));
+                        ComputeRawWeightViewStorageUsage(retained_views));
     AM_ASSIGN_OR_RETURN(const size_t final_owned_bytes,
                         AddBytes(retained_usage.owned_bytes,
                                  usage.converted_weight_bytes));
@@ -213,7 +223,7 @@ StatusOr<std::unique_ptr<LoadedModel>> ConvertRawModelWeightsToFp32(
         if (!retained_usage.backing_usage_complete) {
             return Status::FailedPrecondition(
                     "Finite converted owned-weight cap requires complete "
-                    "retained Float32 backing metadata");
+                    "retained backing metadata");
         }
 
         if (final_owned_bytes > options.max_owned_weight_bytes) {

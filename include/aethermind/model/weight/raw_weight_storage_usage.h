@@ -8,10 +8,12 @@
 #include "aethermind/dtypes/data_type.h"
 
 #include <cstddef>
+#include <span>
 
 namespace aethermind {
 
 struct ResolvedModelWeights;
+struct RawWeightView;
 
 /// @brief Visible raw backing extents and the union of referenced view ranges.
 ///
@@ -50,6 +52,16 @@ StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
 ///       No tensor payload is read; this cold-path query may allocate metadata.
 StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
         const ResolvedModelWeights& weights, DataType dtype_filter) noexcept;
+
+/// @brief Computes backing usage for an explicitly selected set of borrowed views.
+/// @param views Non-null view pointers, borrowed only for this call.
+/// @return The same checked owner/range accounting as ComputeRawWeightStorageUsage,
+///         or InvalidArgument for a null pointer or malformed selected view.
+/// @note Repeated views and shared owners contribute once; a selected owner
+///       contributes its complete footprint. Exact default-empty views are ignored.
+///       Reads metadata only and may allocate metadata, never tensor payload.
+StatusOr<RawWeightStorageUsage> ComputeRawWeightViewStorageUsage(
+        std::span<const RawWeightView* const> views) noexcept;
 
 } // namespace aethermind
 

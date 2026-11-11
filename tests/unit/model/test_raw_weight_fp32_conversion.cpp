@@ -2,6 +2,7 @@
 #include "aethermind/model/loaded_model.h"
 #include "aethermind/model/weight/raw_weight_fp32_conversion.h"
 
+#include <array>
 #include <bit>
 #include <cmath>
 #include <cstring>
@@ -567,5 +568,350 @@ TEST(RawWeightFp32Conversion, ZeroElementWeightsDoNotReadSourcePayload) {
     EXPECT_TRUE(ValidateRawWeightView(output).ok());
     EXPECT_EQ((*converted)->GetWeightFp32ConversionUsage()->converted_weight_bytes, 0U);
 }
+
+struct NormConversionFixture {
+    std::shared_ptr<SourceStorage> matrices;
+    std::shared_ptr<SourceStorage> reduced_norm;
+    std::shared_ptr<SourceStorage> fp32_norm;
+    ResolvedModelWeights weights;
+};
+
+NormConversionFixture MakeNormConversionFixture(DataType dtype, bool shared_backing = false) {
+    NormConversionFixture fixture;
+    fixture.matrices = std::make_shared<SourceStorage>(shared_backing ? 12 : 8);
+    fixture.reduced_norm = shared_backing ? fixture.matrices : std::make_shared<SourceStorage>(4);
+    fixture.fp32_norm = std::make_shared<SourceStorage>(8);
+    for (const auto& owner: {fixture.matrices, fixture.reduced_norm, fixture.fp32_norm}) {
+        owner->kind = RawStorageKind::kOwned;
+    }
+    const std::array<uint16_t, 2> norm_bits = dtype == DataType::BFloat(16)
+                                                      ? std::array<uint16_t, 2>{0x3f80, 0xc000}
+                                                      : std::array<uint16_t, 2>{0x3c00, 0xc000};
+    const size_t norm_offset = shared_backing ? 8 : 0;
+    std::memcpy(fixture.reduced_norm->data.data() + norm_offset, norm_bits.data(), sizeof(norm_bits));
+    auto matrix = MakeView(fixture.matrices, dtype, 4);
+    matrix.shape = {2, 2};
+    fixture.weights.embed_tokens = matrix;
+    fixture.weights.lm_head = matrix;
+    fixture.weights.final_norm = MakeView(fixture.reduced_norm, dtype, 2, norm_offset);
+    fixture.weights.layers.resize(1);
+    auto& layer = fixture.weights.layers[0];
+    layer.norm.input_rmsnorm = fixture.weights.final_norm;
+    layer.norm.post_attn_rmsnorm = MakeView(fixture.fp32_norm, DataType::Float32(), 2);
+    layer.attn = {matrix, matrix, matrix, matrix};
+    layer.mlp = {matrix, matrix, matrix};
+    return fixture;
+}
+
+void ExpectSameView(const RawWeightView& result, const RawWeightView& input) {
+    EXPECT_EQ(result.data, input.data);
+    EXPECT_EQ(result.bytes, input.bytes);
+    EXPECT_EQ(result.dtype, input.dtype);
+    EXPECT_EQ(result.shape, input.shape);
+    EXPECT_EQ(result.storage, input.storage);
+    EXPECT_EQ(result.is_contiguous, input.is_contiguous);
+}
+
+void ExpectMatricesUnchanged(const ResolvedModelWeights& result, const ResolvedModelWeights& input) {
+    ExpectSameView(result.embed_tokens, input.embed_tokens);
+    ASSERT_TRUE(result.lm_head.has_value());
+    ASSERT_TRUE(input.lm_head.has_value());
+    ExpectSameView(*result.lm_head, *input.lm_head);
+    ASSERT_EQ(result.layers.size(), input.layers.size());
+    for (size_t index = 0; index < result.layers.size(); ++index) {
+        const auto& result_layer = result.layers[index];
+        const auto& input_layer = input.layers[index];
+        for (const auto& [actual, expected]: {
+                     std::pair{&result_layer.attn.q_proj, &input_layer.attn.q_proj},
+                     std::pair{&result_layer.attn.k_proj, &input_layer.attn.k_proj},
+                     std::pair{&result_layer.attn.v_proj, &input_layer.attn.v_proj},
+                     std::pair{&result_layer.attn.o_proj, &input_layer.attn.o_proj},
+                     std::pair{&result_layer.mlp.gate_proj, &input_layer.mlp.gate_proj},
+                     std::pair{&result_layer.mlp.up_proj, &input_layer.mlp.up_proj},
+                     std::pair{&result_layer.mlp.down_proj, &input_layer.mlp.down_proj}}) {
+            ExpectSameView(*actual, *expected);
+        }
+    }
+}
+
+class RawWeightNormFp32Conversion : public ::testing::TestWithParam<bool> {
+protected:
+    DataType dtype() const { return GetParam() ? DataType::BFloat(16) : DataType::Float(16); }
+    void SetUp() override { fp16_calls_ = bf16_calls_ = 0; }
+    void TearDown() override { fp16_calls_ = bf16_calls_ = 0; }
+    RawWeightFp32ConversionOptions options(size_t cap = 0) const {
+        return {.max_owned_weight_bytes = cap,
+                .fp16_to_fp32 = WidenFp16,
+                .bf16_to_fp32 = WidenBf16,
+                .scope = RawWeightFp32ConversionScope::kNormWeightsOnly};
+    }
+    size_t calls() const { return fp16_calls_ + bf16_calls_; }
+    static inline size_t fp16_calls_ = 0;
+    static inline size_t bf16_calls_ = 0;
+
+private:
+    static void WidenFp16(const std::byte* src, std::byte* dst, size_t count) noexcept {
+        ++fp16_calls_;
+        ConvertFp16ToFp32Scalar(src, dst, count);
+    }
+    static void WidenBf16(const std::byte* src, std::byte* dst, size_t count) noexcept {
+        ++bf16_calls_;
+        ConvertBf16ToFp32Scalar(src, dst, count);
+    }
+};
+
+TEST_P(RawWeightNormFp32Conversion, ConvertsOnlyUniqueNormSourceAndPreservesEveryMatrixView) {
+    const auto fixture = MakeNormConversionFixture(dtype());
+    LoadedModel model(MakeConfig(dtype()), fixture.weights);
+    auto stats = std::make_shared<AllocationStats>();
+    TrackingAllocator allocator(stats);
+    auto result = ConvertRawModelWeightsToFp32(model, allocator, options());
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    const auto& weights = (*result)->GetResolvedWeights();
+    ExpectMatricesUnchanged(weights, fixture.weights);
+    EXPECT_EQ(weights.embed_tokens.dtype.nbytes(), 2);
+    EXPECT_EQ(weights.embed_tokens.storage, weights.lm_head->storage);
+    EXPECT_EQ(weights.final_norm.dtype, DataType::Float32());
+    EXPECT_EQ(weights.final_norm.bytes, 8U);
+    EXPECT_EQ(weights.final_norm.shape, fixture.weights.final_norm.shape);
+    EXPECT_EQ(weights.final_norm.storage, weights.layers[0].norm.input_rmsnorm.storage);
+    EXPECT_NE(weights.final_norm.storage, fixture.reduced_norm);
+    EXPECT_EQ(ReadBits(weights.final_norm, 0), 0x3f800000U);
+    EXPECT_EQ(ReadBits(weights.final_norm, 1), 0xc0000000U);
+    ExpectSameView(weights.layers[0].norm.post_attn_rmsnorm, fixture.weights.layers[0].norm.post_attn_rmsnorm);
+    EXPECT_EQ(fp16_calls_, GetParam() ? 0U : 1U);
+    EXPECT_EQ(bf16_calls_, GetParam() ? 1U : 0U);
+    EXPECT_EQ(stats->calls, 1U);
+    EXPECT_EQ(model.GetConfig().weight_dtype_hint, dtype());
+    ExpectSameView(model.GetResolvedWeights().final_norm, fixture.weights.final_norm);
+}
+
+TEST_P(RawWeightNormFp32Conversion, EnforcesFinalBudget24AndReportsPeak28BeforeAnyPayloadAllocation) {
+    const auto fixture = MakeNormConversionFixture(dtype());
+    LoadedModel model(MakeConfig(dtype()), fixture.weights);
+    auto stats = std::make_shared<AllocationStats>();
+    TrackingAllocator allocator(stats);
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, options(23)).status().code(),
+              StatusCode::kResourceExhausted);
+    EXPECT_EQ(stats->calls, 0U);
+    EXPECT_EQ(calls(), 0U);
+    auto result = ConvertRawModelWeightsToFp32(model, allocator, options(24));
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    const auto& usage = *(*result)->GetWeightFp32ConversionUsage();
+    EXPECT_EQ(usage.source_weights.owned_bytes, 20U);
+    EXPECT_EQ(usage.converted_source_bytes, 4U);
+    EXPECT_EQ(usage.converted_weight_bytes, 8U);
+    EXPECT_EQ(usage.converted_weights.owned_bytes, 24U);
+    EXPECT_EQ(usage.peak_owned_weight_bytes, 28U);
+    EXPECT_TRUE(usage.peak_owned_weight_bytes_complete);
+    EXPECT_EQ(stats->calls, 1U);
+}
+
+TEST_P(RawWeightNormFp32Conversion, CountsSharedBackingOnceWithFinal28AndPeak28) {
+    const auto fixture = MakeNormConversionFixture(dtype(), true);
+    LoadedModel model(MakeConfig(dtype()), fixture.weights);
+    auto stats = std::make_shared<AllocationStats>();
+    TrackingAllocator allocator(stats);
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, options(27)).status().code(),
+              StatusCode::kResourceExhausted);
+    EXPECT_EQ(stats->calls, 0U);
+    EXPECT_EQ(calls(), 0U);
+    auto result = ConvertRawModelWeightsToFp32(model, allocator, options(28));
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    const auto& usage = *(*result)->GetWeightFp32ConversionUsage();
+    EXPECT_EQ(usage.source_weights.owned_bytes, 20U);
+    EXPECT_EQ(usage.converted_source_bytes, 4U);
+    EXPECT_EQ(usage.converted_weight_bytes, 8U);
+    EXPECT_EQ(usage.converted_weights.owned_bytes, 28U);
+    EXPECT_EQ(usage.converted_weights.referenced_view_bytes, 24U);
+    EXPECT_EQ(usage.peak_owned_weight_bytes, 28U);
+    EXPECT_EQ(calls(), 1U);
+    ExpectMatricesUnchanged((*result)->GetResolvedWeights(), fixture.weights);
+}
+
+TEST_P(RawWeightNormFp32Conversion, AllowsIdenticalSourceAcrossConvertedNormAndRetainedMatrixRoles) {
+    auto fixture = MakeNormConversionFixture(dtype());
+    fixture.weights.final_norm = fixture.weights.embed_tokens;
+    fixture.weights.layers[0].norm.input_rmsnorm = fixture.weights.embed_tokens;
+    LoadedModel model(MakeConfig(dtype()), fixture.weights);
+    CPUAllocator allocator(Device::CPU());
+    auto result = ConvertRawModelWeightsToFp32(model, allocator, options(32));
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    const auto& weights = (*result)->GetResolvedWeights();
+    ExpectMatricesUnchanged(weights, fixture.weights);
+    EXPECT_EQ(weights.final_norm.dtype, DataType::Float32());
+    EXPECT_EQ(weights.final_norm.bytes, 16U);
+    EXPECT_NE(weights.final_norm.storage, weights.embed_tokens.storage);
+    EXPECT_EQ(weights.final_norm.storage, weights.layers[0].norm.input_rmsnorm.storage);
+    EXPECT_EQ((*result)->GetWeightFp32ConversionUsage()->converted_weights.owned_bytes, 32U);
+    EXPECT_EQ(calls(), 1U);
+}
+
+TEST_P(RawWeightNormFp32Conversion, DoesNotMergeDistinctNormShapesOrOwners) {
+    for (const bool different_owner: {false, true}) {
+        auto fixture = MakeNormConversionFixture(dtype());
+        if (different_owner) {
+            auto other = std::make_shared<SourceStorage>(4);
+            other->kind = RawStorageKind::kOwned;
+            other->data = fixture.reduced_norm->data;
+            fixture.weights.layers[0].norm.input_rmsnorm = MakeView(other, dtype(), 2);
+        } else {
+            fixture.weights.layers[0].norm.input_rmsnorm.shape = {1, 2};
+        }
+        LoadedModel model(MakeConfig(dtype()), fixture.weights);
+        auto stats = std::make_shared<AllocationStats>();
+        TrackingAllocator allocator(stats);
+        auto result = ConvertRawModelWeightsToFp32(model, allocator, options());
+        ASSERT_TRUE(result.ok()) << result.status().ToString();
+        const auto& weights = (*result)->GetResolvedWeights();
+        EXPECT_NE(weights.final_norm.storage, weights.layers[0].norm.input_rmsnorm.storage);
+        EXPECT_EQ(stats->calls, 2U);
+        EXPECT_EQ((*result)->GetWeightFp32ConversionUsage()->converted_source_bytes, 8U);
+    }
+}
+
+TEST_P(RawWeightNormFp32Conversion, LeavesExistingFloat32NormsSharedWithoutAllocation) {
+    auto fixture = MakeNormConversionFixture(dtype());
+    fixture.weights.final_norm = fixture.weights.layers[0].norm.post_attn_rmsnorm;
+    fixture.weights.layers[0].norm.input_rmsnorm = fixture.weights.final_norm;
+    LoadedModel model(MakeConfig(dtype()), fixture.weights);
+    auto stats = std::make_shared<AllocationStats>();
+    TrackingAllocator allocator(stats);
+    auto result = ConvertRawModelWeightsToFp32(model, allocator, options(16));
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ExpectSameView((*result)->GetResolvedWeights().final_norm, fixture.weights.final_norm);
+    ExpectMatricesUnchanged((*result)->GetResolvedWeights(), fixture.weights);
+    EXPECT_EQ(stats->calls, 0U);
+    EXPECT_EQ(calls(), 0U);
+    EXPECT_EQ((*result)->GetWeightFp32ConversionUsage()->converted_weight_bytes, 0U);
+}
+
+TEST_P(RawWeightNormFp32Conversion, UnknownRetainedW16BackingFailsFiniteCapBeforeAllocation) {
+    auto fixture = MakeNormConversionFixture(dtype());
+    fixture.matrices->known = false;
+    LoadedModel model(MakeConfig(dtype()), fixture.weights);
+    auto stats = std::make_shared<AllocationStats>();
+    TrackingAllocator allocator(stats);
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, options(24)).status().code(),
+              StatusCode::kFailedPrecondition);
+    EXPECT_EQ(stats->calls, 0U);
+    EXPECT_EQ(calls(), 0U);
+    auto unlimited = ConvertRawModelWeightsToFp32(model, allocator, options());
+    ASSERT_TRUE(unlimited.ok()) << unlimited.status().ToString();
+    EXPECT_FALSE((*unlimited)->GetWeightFp32ConversionUsage()->converted_weights.backing_usage_complete);
+}
+
+TEST_P(RawWeightNormFp32Conversion, UnknownSourceOnlyBackingKeepsPeakIncompleteAndFinalComplete) {
+    auto fixture = MakeNormConversionFixture(dtype());
+    fixture.reduced_norm->known = false;
+    LoadedModel model(MakeConfig(dtype()), fixture.weights);
+    CPUAllocator allocator(Device::CPU());
+    auto result = ConvertRawModelWeightsToFp32(model, allocator, options(24));
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    const auto& usage = *(*result)->GetWeightFp32ConversionUsage();
+    EXPECT_FALSE(usage.peak_owned_weight_bytes_complete);
+    EXPECT_TRUE(usage.converted_weights.backing_usage_complete);
+    EXPECT_EQ(usage.converted_weights.owned_bytes, 24U);
+}
+
+TEST_P(RawWeightNormFp32Conversion, InvalidScopeCallbacksAndUnselectedMetadataPrecedeAllocation) {
+    const auto fixture = MakeNormConversionFixture(dtype());
+    LoadedModel model(MakeConfig(dtype()), fixture.weights);
+    auto stats = std::make_shared<AllocationStats>();
+    TrackingAllocator allocator(stats);
+    for (size_t index = 0; index < 3; ++index) {
+        auto invalid = options();
+        if (index == 0) {
+            invalid.scope = static_cast<RawWeightFp32ConversionScope>(-1);
+        } else if (index == 1) {
+            invalid.fp16_to_fp32 = nullptr;
+        } else {
+            invalid.bf16_to_fp32 = nullptr;
+        }
+        EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, invalid).status().code(),
+                  StatusCode::kInvalidArgument);
+    }
+    for (size_t index = 0; index < 5; ++index) {
+        auto malformed = fixture.weights;
+        auto& matrix = malformed.layers[0].attn.q_proj;
+        switch (index) {
+            case 0:
+                --matrix.bytes;
+                break;
+            case 1:
+                matrix.shape = {-1};
+                break;
+            case 2:
+                matrix.is_contiguous = false;
+                break;
+            case 3:
+                matrix.storage.reset();
+                break;
+            case 4:
+                matrix.dtype = DataType::Int(16);
+                break;
+        }
+        LoadedModel bad_model(MakeConfig(dtype()), std::move(malformed));
+        EXPECT_FALSE(ConvertRawModelWeightsToFp32(bad_model, allocator, options()).ok());
+    }
+    EXPECT_EQ(stats->calls, 0U);
+    EXPECT_EQ(calls(), 0U);
+}
+
+TEST_P(RawWeightNormFp32Conversion, PartialNormAllocationFailureReleasesCandidatesAndAllowsRetry) {
+    auto fixture = MakeNormConversionFixture(dtype());
+    fixture.weights.layers[0].norm.input_rmsnorm.shape = {1, 2};
+    LoadedModel model(MakeConfig(dtype()), fixture.weights);
+    auto stats = std::make_shared<AllocationStats>();
+    stats->fail_on_call = 1;
+    TrackingAllocator allocator(stats);
+    auto failed = ConvertRawModelWeightsToFp32(model, allocator, options());
+    EXPECT_EQ(failed.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(stats->live, 0U);
+    EXPECT_EQ(stats->released, 1U);
+    EXPECT_EQ(calls(), 1U);
+    ExpectSameView(model.GetResolvedWeights().final_norm, fixture.weights.final_norm);
+    ExpectMatricesUnchanged(model.GetResolvedWeights(), fixture.weights);
+    stats->fail_on_call = std::numeric_limits<size_t>::max();
+    {
+        auto retry = ConvertRawModelWeightsToFp32(model, allocator, options());
+        ASSERT_TRUE(retry.ok()) << retry.status().ToString();
+        EXPECT_EQ(stats->live, 2U);
+    }
+    EXPECT_EQ(stats->live, 0U);
+    EXPECT_EQ(stats->released, 3U);
+}
+
+TEST_P(RawWeightNormFp32Conversion, OutputOutlivesInputAndAllocatorWhileKeepingOnlyRequiredSourceOwners) {
+    for (const bool shared_backing: {false, true}) {
+        std::unique_ptr<LoadedModel> output;
+        std::weak_ptr<const RawStorage> norm_source;
+        std::weak_ptr<const RawStorage> matrix_source;
+        auto stats = std::make_shared<AllocationStats>();
+        {
+            const auto fixture = MakeNormConversionFixture(dtype(), shared_backing);
+            norm_source = fixture.reduced_norm;
+            matrix_source = fixture.matrices;
+            LoadedModel model(MakeConfig(dtype()), fixture.weights);
+            TrackingAllocator allocator(stats);
+            auto result = ConvertRawModelWeightsToFp32(model, allocator, options());
+            ASSERT_TRUE(result.ok()) << result.status().ToString();
+            output = std::move(*result);
+        }
+        EXPECT_EQ(norm_source.expired(), !shared_backing);
+        EXPECT_FALSE(matrix_source.expired());
+        EXPECT_EQ(stats->live, 1U);
+        EXPECT_EQ(ReadBits(output->GetResolvedWeights().final_norm, 0), 0x3f800000U);
+        EXPECT_EQ(output->GetResolvedWeights().embed_tokens.dtype, dtype());
+        output.reset();
+        EXPECT_TRUE(norm_source.expired());
+        EXPECT_TRUE(matrix_source.expired());
+        EXPECT_EQ(stats->live, 0U);
+        EXPECT_EQ(stats->released, 1U);
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(ReducedDtypes, RawWeightNormFp32Conversion,
+                         ::testing::Bool(), [](const auto& info) { return info.param ? "Bfloat16" : "Fp16"; });
 
 } // namespace

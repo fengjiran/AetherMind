@@ -116,43 +116,10 @@ StatusOr<size_t> UnionBytes(std::vector<AddrRange>& ranges) {
     return bytes;
 }
 
-StatusOr<RawWeightStorageUsage> ComputeUsage(
-        const ResolvedModelWeights& weights,
-        std::optional<DataType> dtype_filter) noexcept try {
-    if (dtype_filter.has_value()) {
-        AM_RETURN_IF_ERROR(ValidateDType(*dtype_filter));
-    }
-
-    OwnerMap owners;
-    const auto add_view = [&](const RawWeightView& view) -> Status {
-        if (IsDefaultEmpty(view)) {
-            return Status::Ok();
-        }
-
-        AM_RETURN_IF_ERROR(ValidateView(view));
-        if (dtype_filter.has_value() && view.dtype != *dtype_filter) {
-            return Status::Ok();
-        }
-        return AddView(owners, view);
-    };
-
-    AM_RETURN_IF_ERROR(add_view(weights.embed_tokens));
-    AM_RETURN_IF_ERROR(add_view(weights.final_norm));
-    if (weights.lm_head.has_value()) {
-        AM_RETURN_IF_ERROR(add_view(*weights.lm_head));
-    }
-
-    for (const auto& [norm, attn, mlp]: weights.layers) {
-        for (const auto* view: {&norm.input_rmsnorm, &norm.post_attn_rmsnorm,
-                                &attn.q_proj, &attn.k_proj, &attn.v_proj,
-                                &attn.o_proj, &mlp.gate_proj, &mlp.up_proj,
-                                &mlp.down_proj}) {
-            AM_RETURN_IF_ERROR(add_view(*view));
-        }
-    }
-
+StatusOr<RawWeightStorageUsage> SummarizeOwners(OwnerMap& owners) {
     RawWeightStorageUsage usage;
-    for (auto& [footprint, referenced_ranges]: owners | std::views::values) {
+    for (auto& [footprint, referenced_ranges]:
+         owners | std::views::values) {
         AM_ASSIGN_OR_RETURN(const size_t referenced_bytes,
                             UnionBytes(referenced_ranges));
         if (CheckOverflowAdd(usage.referenced_view_bytes, referenced_bytes,
@@ -194,6 +161,48 @@ StatusOr<RawWeightStorageUsage> ComputeUsage(
         }
     }
     return usage;
+}
+
+Status AddSelectedView(OwnerMap& owners, const RawWeightView& view,
+                       std::optional<DataType> dtype_filter) {
+    if (IsDefaultEmpty(view)) {
+        return Status::Ok();
+    }
+
+    AM_RETURN_IF_ERROR(ValidateView(view));
+    if (dtype_filter.has_value() && view.dtype != *dtype_filter) {
+        return Status::Ok();
+    }
+    return AddView(owners, view);
+}
+
+StatusOr<RawWeightStorageUsage> ComputeUsage(const ResolvedModelWeights& weights,
+                                             std::optional<DataType> dtype_filter) noexcept try {
+    if (dtype_filter.has_value()) {
+        AM_RETURN_IF_ERROR(ValidateDType(*dtype_filter));
+    }
+
+    OwnerMap owners;
+    const auto add_view = [&](const RawWeightView& view) {
+        return AddSelectedView(owners, view, dtype_filter);
+    };
+
+    AM_RETURN_IF_ERROR(add_view(weights.embed_tokens));
+    AM_RETURN_IF_ERROR(add_view(weights.final_norm));
+    if (weights.lm_head.has_value()) {
+        AM_RETURN_IF_ERROR(add_view(*weights.lm_head));
+    }
+
+    for (const auto& [norm, attn, mlp]:
+         weights.layers) {
+        for (const auto* view: {&norm.input_rmsnorm, &norm.post_attn_rmsnorm,
+                                &attn.q_proj, &attn.k_proj, &attn.v_proj,
+                                &attn.o_proj, &mlp.gate_proj, &mlp.up_proj,
+                                &mlp.down_proj}) {
+            AM_RETURN_IF_ERROR(add_view(*view));
+        }
+    }
+    return SummarizeOwners(owners);
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});
 }
@@ -208,6 +217,21 @@ StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
 StatusOr<RawWeightStorageUsage> ComputeRawWeightStorageUsage(
         const ResolvedModelWeights& weights, DataType dtype_filter) noexcept {
     return ComputeUsage(weights, dtype_filter);
+}
+
+StatusOr<RawWeightStorageUsage> ComputeRawWeightViewStorageUsage(
+        std::span<const RawWeightView* const> views) noexcept try {
+    OwnerMap owners;
+    for (const auto* view: views) {
+        if (view == nullptr) {
+            return Status::InvalidArgument(
+                    "Raw weight storage usage requires non-null view pointers");
+        }
+        AM_RETURN_IF_ERROR(AddSelectedView(owners, *view, std::nullopt));
+    }
+    return SummarizeOwners(owners);
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
 }
 
 } // namespace aethermind

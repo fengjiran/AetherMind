@@ -2,7 +2,7 @@
 
 > 本文件汇总 AetherMind 公共 API 的语义，与头文件 Doxygen 注释**同源同步**：修改头文件注释必须同步本文件，反之亦然（[文档系统规范](../guides/documentation-guide.md) §7.3）。
 >
-> 构建选项与运行配置以根 [README.md](../../README.md) 为单一事实源，本文件不复制其表格。C++ 已提供 `ExecutableModel::Prepare` 与 `InferenceSession::Generate`，M6 已接通 runtime/model/session C ABI。当前已验证范围为 CPU FP32 Llama Dense，不以 loader 接受范围推导执行支持；能力与产品目标见 [PRD](../products/aethermind_prd.md) 和 [10 号方案](../improvement-plan/10-upper-level-runtime-assembly.md)。
+> 构建选项与运行配置以根 [README.md](../../README.md) 为单一事实源。C++ 提供 `ExecutableModel::Load/Prepare` 与 `InferenceSession::Generate`，支持 CPU FP32 和显式 [W16/A32 Llama Dense](../guides/w16-fp32-inference.md)，M6 C ABI 提供 CPU strict FP32 runtime/model/session 调用。能力与产品目标见 [PRD](../products/aethermind_prd.md) 和 [10 号方案](../improvement-plan/10-upper-level-runtime-assembly.md)。
 
 ## 1. C ABI（include/c_api.h）
 
@@ -95,7 +95,7 @@
 | 语义 | 不构建图、不 resolve kernel、不 prepack；所有失败通过 Status 返回（对应 `@note`） |
 | 前置条件 | `model_dir` 为有效可读目录（对应 `@pre`） |
 
-### 共享 FP32 执行策略（include/aethermind/inference/model_execution_policy.h）
+### 共享权重执行策略（include/aethermind/inference/model_execution_policy.h）
 
 | 接口 | 语义与所有权 |
 |---|---|
@@ -103,6 +103,12 @@
 | `StatusOr<KVCacheRuntimeOptions> MakeFp32KVCacheOptions(const HfModelConfig&, size_t context_tokens)` | 将 Loader 已验证的模型几何与显式 capacity 映射为 owning KV 配置：CPU 首版 Float32、64-byte alignment、逻辑 head_dim；只有 absent head_dim=0 才按整除 fallback。校验正数、安全转换和模型 context 上限，不分配 KV、不访问 backend、不比较既有 Runtime/model。 |
 
 M5 将这两项规则归入 inference，CLI 与 M6 C adapter 消费同一实现，没有旧应用 namespace alias 或兼容转发。跨对象 KV 相等与 compiled state dtype 校验仍属于 adapter。
+
+`WeightPolicy::kKeepFp16WeightsFp32Activation` / `kKeepBf16WeightsFp32Activation` 要求 Embedding、LM head 和所有矩阵权重实际为选定的 scalar F16/BF16，Norm 源允许 F32/F16/BF16。已识别的 scalar floating hint（含 auto/缺省）仅保留为 provenance，允许与实际权重不同，执行 activation/KV 显式为 F32。这两个 C++ policy 支持 CPU O1/plain 与 O2/identity-packed，完整准备及数值合同见 [W16 执行指南](../guides/w16-fp32-inference.md)。
+
+`RawWeightFp32ConversionOptions::scope` 默认 `kAllRequiredWeights`，`kNormWeightsOnly` 仅转换 Final/Input/PostAttention Norm。两个 widening callback 均须非空，payload 分配前验证所有 source metadata、owner 账本和 cap。结果模型保活原矩阵 backing 与独立 Norm Buffer。`ComputeRawWeightViewStorageUsage(span<const RawWeightView* const>)` 复用 owner identity 和 range union 统计所选 source views，支持 retained W16 backing，空集合返回完整零账本，空 view 指针返回 InvalidArgument。
+
+`EmbeddingParams::output_dtype` 缺省跟随 weight，显式首批支持 scalar F32。`AddEmbedding` 的末尾可选 params 参数保留旧调用形式。Serde 缺省逐字节输出裸 `Embedding`，显式输出 `Embedding output_dtype=float32`，解析接受 0/1 字段并拒绝重复、未知 key、空值和不受支持的显式 dtype。
 
 ### 共享编译策略与 CPU 运行配置（include/aethermind/inference/inference_options.h）
 

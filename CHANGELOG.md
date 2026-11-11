@@ -6,6 +6,7 @@
 
 ### Added
 
+- CPU Llama Dense 新增 W16/A32 C++ policy，保留 F16/BF16 矩阵，仅转换 Norm，activation/KV/logits 使用 F32。O1/plain 与 O2/identity-packed 覆盖 Embedding、Linear/LM head 和 QKV/GateUp fused consumer，Embedding 按有效 CPU 特性使用 F16C/AVX2 行级 widening。新增 `EmbeddingParams::output_dtype`、Norm-only scope 和 retained-view 账本接口，C++ 消费者须重编译。见 [W16 执行指南](docs/guides/w16-fp32-inference.md)。
 - BF16/FP32 checked byte-batch API、双向 scalar、可选 AVX2 整数实现与 prepared 函数表：固定 RNE、gradual underflow、signed zero，NaN 保留 sign/payload 并 quiet，浮点环境不变。Backend 默认返回 scalar，CPU 在 effective features 含 AVX 与 AVX2 时选择 AVX2，短尾部复用 scalar；`ExecutableModel::Load` 将独立 BF16 widening callback 接入权重准备，每个唯一 BF16 tensor 调用一次。新增 C++ virtual 查询与 options 字段要求消费者重新编译；C ABI v1 准入不变。
 - FP16/FP32 checked byte-batch API 与 prepared 函数表：可选 F16C widening、AVX2 整数 narrowing、scalar fallback，保持 RNE、gradual underflow、quiet NaN 与浮点环境不变。`ExecutableModel::Load` 将 backend 有效特性选择的 widening 接入 F16 权重准备；BF16 路径与 C ABI v1 准入不变。新增独立 `AETHERMIND_ENABLE_F16C`，baseline presets 禁用 F16C/AVX2；C++ backend/options 消费者须重新编译。
 - Runtime C ABI v1：M5 冻结配置/version、opaque handles、error/owner/buffer 合同，M6 实现 version 与 create/load/create/generate/destroy 链；支持 CPU FP32 Llama Dense、O1/plain 与 O2/packed、调用方输出缓冲区，模型/Session 保活必要 owner。

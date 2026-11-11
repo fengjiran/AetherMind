@@ -128,6 +128,7 @@ public:
 
 - `ExecutableModel::Load` 依次调用 `ModelLoader::Load`、`ValidateSourceWeights`、可选 `ConvertRawModelWeightsToFp32`、`ModelCompiler::Compile`，最后调用 `Prepare`。转换先于构图，并在编译前释放只供转换使用的 source owner。
 - `ModelLoadOptions` 必须显式传入；`{}` 选择 CPU、O1/plain、strict FP32 和无限额。`kConvertToFp32` 允许 F32/F16/BF16 源权重，转换后 weights、activation、KV 与 logits 全为 F32，目前仅允许 CPU O1/plain；CLI/C ABI 继续 CPU/strict FP32。
+- `kKeepFp16WeightsFp32Activation` / `kKeepBf16WeightsFp32Activation` 在 CPU O1/plain 或 O2/identity-packed 保留匹配的 W16 矩阵，仅将 Norm 转为 F32。转换前按角色准入，转换后重新验证矩阵 dtype 和 F32 Norm。retained 账本按 surviving views 的 owner identity 去重，完整保留共享 shard 的 footprint。Embedding output、activation、KV 和 logits 均为 F32，W16 Linear 使用升序 F32 分离乘加。支持矩阵与入口见 [W16 指南](../../guides/w16-fp32-inference.md)。
 - 使用任意 `ModelCompileOptions` 的调用方显式组合 Load/Compile/Prepare；旧目录包装函数、CPU 专用名称及转发 overload 已删除。C++ 调用方须迁移并重新编译，C ABI 合同不变。
 - 本文件的实现仍集中在 `src/inference/executable_model.cpp`：私有 helper 处理资源核算、packing 限额、权重打包、bindings 与权重策略；对象方法和两个 factory 分别呈现主流程。`WeightBindingMetadata` 与资源观察类型维持各自所有权和计量合同。
 - `PreparationPaths/ModelLoadPath` 覆盖 O1/plain 与 O2/packed 的 HF 文件到三 token Generate；只验证 token 数量、范围与重复请求一致性。`CompatibleCheckpoints/Fp32CompatibleInference` 覆盖显式 FP32 转换与独立 FP32 checkpoint 的轨迹、KV 和 Generate 对照。数值与性能承诺以各自验证记录为准。

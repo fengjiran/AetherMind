@@ -31,6 +31,7 @@ docs/operators/
 | GEMM | [gemm/](gemm/) | 证据按机器记录（一机器一文件，54H5MMI / QHIHOGQ）；2026-09-21 清空重采 |
 | RMSNorm | [rmsnorm/](rmsnorm/) | 契约（contract basis） |
 | RoPE | [rope/](rope/) | 契约（contract basis） |
-| Linear | [linear/](linear/) | 契约（contract basis） |
+| Linear | [linear/](linear/) | F32 与 W16/A32 reference、plain/identity-packed、单机基线 |
+| Embedding | [embedding/](embedding/) | F32 output、W16 scalar/F16C/AVX2 行级 widening 与单机基线 |
 | FP16 批量转换（backend 数值 primitive，无 GraphOp） | [fp16_conversion/](fp16_conversion/) | scalar/F16C/AVX2 合同、权重准备接入及单机证据 |
 | BF16 批量转换（backend 数值 primitive，无 GraphOp） | [bf16_conversion/](bf16_conversion/) | 双向 scalar/AVX2 合同、独立 prepared 函数表与权重准备接入 |

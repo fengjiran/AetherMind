@@ -97,6 +97,7 @@
 | [resource-budgeting.md](guides/resource-budgeting.md) | 当前模型与请求的 payload cap、分阶段预检、可观测边界与使用约束 | Current |
 | [runtime-configuration.md](guides/runtime-configuration.md) | CPU Runtime 的模型感知配置映射、Builder 预检与入口职责 | Current |
 | [fp32-compatible-inference.md](guides/fp32-compatible-inference.md) | P1 F16/BF16 checkpoint 显式拓宽为 CPU FP32 O1/plain 执行的入口、资源和能力边界 | Current |
+| [w16-fp32-inference.md](guides/w16-fp32-inference.md) | CPU F16/BF16 矩阵、F32 Norm/activation/KV 的 O1/plain 和 O2/identity-packed C++ 执行 | Current |
 | [cpp_coding_style_guidelines.md](guides/cpp_coding_style_guidelines.md) | C++ 编码风格 | Current |
 | [cpp_comment_guidelines.md](guides/cpp_comment_guidelines.md) | 注释与 Doxygen 规范 | Current |
 | [test_writing_guidelines.md](guides/test_writing_guidelines.md) | GoogleTest 测试编写规范 | Current |
@@ -156,6 +157,7 @@
 - [Raw weight dtype 边界修复验证](tests/raw_weight_dtype_validation_2026-10-29.md)：非法 dtype 的 Status 拒绝、真实消费者回归与合法空 tensor 合同。
 - [Packed artifact dtype 边界修复验证](tests/packed_weight_artifact_dtype_validation_2026-10-29.md)：collection 插入的 dtype 校验、失败状态与既有兼容语义。
 - [运行前 Runtime 配置验证](tests/runtime_configuration_validation_2026-10-30.md)：集中 CPU 配置映射、Builder option preflight 与入口迁移。
+- [P2 W16/A32 执行验收](tests/w16_fp32_execution_validation_2026-11-11.md)：CPU O1/plain、O2/identity-packed 的转换、kernel、生成、账本与 sanitizer 范围。
 
 ### 模型基准验证记录
 

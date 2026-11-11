@@ -83,8 +83,13 @@ TEST(Fp16BatchConversion, NarrowingMatchesScalarAtEveryFiniteMidpoint) {
 
     std::vector<uint16_t> actual(source.size()), expected(source.size());
     const auto input = std::as_bytes(std::span(source));
-    ASSERT_TRUE(ConvertFp32ToFp16(input, std::as_writable_bytes(std::span(expected))).ok());
-    ASSERT_TRUE(ConvertFp32ToFp16(input, std::as_writable_bytes(std::span(actual)), SelectedConversions()).ok());
+    ASSERT_TRUE(ConvertFp32ToFp16(input,
+                                  std::as_writable_bytes(std::span(expected)))
+                        .ok());
+    ASSERT_TRUE(ConvertFp32ToFp16(input,
+                                  std::as_writable_bytes(std::span(actual)),
+                                  SelectedConversions())
+                        .ok());
     for (size_t index = 0; index < actual.size(); ++index) {
         ASSERT_EQ(actual[index], expected[index]) << "source bits=" << source[index];
     }
@@ -96,10 +101,16 @@ TEST(Fp16BatchConversion, NarrowingMatchesScalarForRandomBitPatterns) {
     for (auto& bits: source) {
         bits = random();
     }
+
     std::vector<uint16_t> actual(source.size()), expected(source.size());
     const auto input = std::as_bytes(std::span(source));
-    ASSERT_TRUE(ConvertFp32ToFp16(input, std::as_writable_bytes(std::span(expected))).ok());
-    ASSERT_TRUE(ConvertFp32ToFp16(input, std::as_writable_bytes(std::span(actual)), SelectedConversions()).ok());
+    ASSERT_TRUE(ConvertFp32ToFp16(input,
+                                  std::as_writable_bytes(std::span(expected)))
+                        .ok());
+    ASSERT_TRUE(ConvertFp32ToFp16(input,
+                                  std::as_writable_bytes(std::span(actual)),
+                                  SelectedConversions())
+                        .ok());
     for (size_t index = 0; index < actual.size(); ++index) {
         ASSERT_EQ(actual[index], expected[index]) << "source bits=" << source[index];
     }
@@ -113,13 +124,13 @@ TEST(Fp16BatchConversion, UnalignedRangesAndAllTailsMatchScalarWithoutOverwrites
                 const size_t input_width = widening ? 2 : 4;
                 const size_t output_width = widening ? 4 : 2;
                 const size_t destination_offset = (offset * 7 + 3) % 32;
-                std::vector<std::byte> source(offset + count * input_width + 32, std::byte{0x5A});
+                std::vector source(offset + count * input_width + 32, std::byte{0x5A});
                 for (size_t index = 0; index < count * input_width; ++index) {
                     source[offset + index] = static_cast<std::byte>((index * 139 + offset * 17) & 0xFF);
                 }
 
                 const auto original = source;
-                std::vector<std::byte> actual(destination_offset + count * output_width + 32, std::byte{0xCD});
+                std::vector actual(destination_offset + count * output_width + 32, std::byte{0xCD});
                 std::vector<std::byte> expected(count * output_width);
                 const auto input = std::span<const std::byte>(source).subspan(offset, count * input_width);
                 auto output = std::span(actual).subspan(destination_offset, count * output_width);
@@ -153,17 +164,39 @@ TEST(Fp16BatchConversion, RejectsInvalidRangesBeforeWriting) {
     const auto original = bytes;
     const auto src = std::span<const std::byte>(bytes);
     auto dst = std::span(bytes);
-    EXPECT_EQ(ConvertFp16ToFp32(src.first(3), dst.subspan(32, 4)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToFp16(src.first(3), dst.subspan(32, 2)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp16ToFp32(src.first(4), dst.subspan(32, 4)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToFp16(src.first(8), dst.subspan(32, 8)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp16ToFp32(src.first(8), dst.subspan(1, 16)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp16ToFp32(src.subspan(8, 8), dst.first(16)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToFp16(src.first(16), dst.subspan(1, 8)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToFp16(src.subspan(4, 16), dst.first(8)).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp16ToFp32(src.first(3),
+                                dst.subspan(32, 4)),
+              StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToFp16(src.first(3),
+                                dst.subspan(32, 2)),
+              StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp16ToFp32(src.first(4),
+                                dst.subspan(32, 4)),
+              StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToFp16(src.first(8),
+                                dst.subspan(32, 8)),
+              StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp16ToFp32(src.first(8),
+                                dst.subspan(1, 16)),
+              StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp16ToFp32(src.subspan(8, 8),
+                                dst.first(16)),
+              StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToFp16(src.first(16),
+                                dst.subspan(1, 8)),
+              StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToFp16(src.subspan(4, 16),
+                                dst.first(8)),
+              StatusCode::kInvalidArgument);
     const Fp16ConversionFuncs missing{nullptr, nullptr};
-    EXPECT_EQ(ConvertFp16ToFp32(src.first(4), dst.subspan(32, 8), missing).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToFp16(src.first(8), dst.subspan(32, 4), missing).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp16ToFp32(src.first(4),
+                                dst.subspan(32, 8), missing)
+                      .code(),
+              StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToFp16(src.first(8),
+                                dst.subspan(32, 4), missing)
+                      .code(),
+              StatusCode::kInvalidArgument);
     EXPECT_EQ(bytes, original);
 }
 
@@ -171,11 +204,14 @@ TEST(CpuFp16Conversion, SelectionRequiresAvxAndIsIndependentPerDirection) {
     const auto none = cpu::SelectFp16Conversions({});
     EXPECT_EQ(none.to_fp32, ConvertFp16ToFp32Scalar);
     EXPECT_EQ(none.from_fp32, ConvertFp32ToFp16Scalar);
-    const auto no_avx = cpu::SelectFp16Conversions(CpuFeatureSet::From({CpuFeature::kF16c, CpuFeature::kAvx2}));
+    const auto no_avx = cpu::SelectFp16Conversions(
+            CpuFeatureSet::From({CpuFeature::kF16c, CpuFeature::kAvx2}));
     EXPECT_EQ(no_avx.to_fp32, ConvertFp16ToFp32Scalar);
     EXPECT_EQ(no_avx.from_fp32, ConvertFp32ToFp16Scalar);
-    const auto f16c = cpu::SelectFp16Conversions(CpuFeatureSet::From({CpuFeature::kAvx, CpuFeature::kF16c}));
-    const auto avx2 = cpu::SelectFp16Conversions(CpuFeatureSet::From({CpuFeature::kAvx, CpuFeature::kAvx2}));
+    const auto f16c = cpu::SelectFp16Conversions(
+            CpuFeatureSet::From({CpuFeature::kAvx, CpuFeature::kF16c}));
+    const auto avx2 = cpu::SelectFp16Conversions(
+            CpuFeatureSet::From({CpuFeature::kAvx, CpuFeature::kAvx2}));
 #if defined(FP16_HAS_F16C_CONVERSION)
     EXPECT_NE(f16c.to_fp32, ConvertFp16ToFp32Scalar);
 #else
@@ -236,8 +272,16 @@ TEST_F(Fp16BatchEnvironment, PreservesRoundingAndExceptionFlags) {
 #if defined(__x86_64__) || defined(_M_X64)
         const unsigned control = _mm_getcsr();
 #endif
-        ASSERT_TRUE(ConvertFp16ToFp32(std::as_bytes(std::span(halves)), std::as_writable_bytes(std::span(widened)), functions).ok());
-        ASSERT_TRUE(ConvertFp32ToFp16(std::as_bytes(std::span(floats)), std::as_writable_bytes(std::span(narrowed)), functions).ok());
+        ASSERT_TRUE(ConvertFp16ToFp32(
+                            std::as_bytes(std::span(halves)),
+                            std::as_writable_bytes(std::span(widened)),
+                            functions)
+                            .ok());
+        ASSERT_TRUE(ConvertFp32ToFp16(
+                            std::as_bytes(std::span(floats)),
+                            std::as_writable_bytes(std::span(narrowed)),
+                            functions)
+                            .ok());
         EXPECT_EQ(std::fetestexcept(FE_ALL_EXCEPT), FE_DIVBYZERO);
         EXPECT_EQ(std::fegetround(), rounding);
 #if defined(__x86_64__) || defined(_M_X64)
@@ -268,13 +312,27 @@ TEST_F(Fp16BatchEnvironment, DenormalControlsDoNotChangeValuesOrFlags) {
             0x387FE000, 0x7F800001, 0xFF800001, 0x477FF000};
     std::array<uint32_t, halves.size()> expected_wide{}, actual_wide{};
     std::array<uint16_t, floats.size()> expected_narrow{}, actual_narrow{};
-    ASSERT_TRUE(ConvertFp16ToFp32(std::as_bytes(std::span(halves)), std::as_writable_bytes(std::span(expected_wide))).ok());
-    ASSERT_TRUE(ConvertFp32ToFp16(std::as_bytes(std::span(floats)), std::as_writable_bytes(std::span(expected_narrow))).ok());
+    ASSERT_TRUE(ConvertFp16ToFp32(
+                        std::as_bytes(std::span(halves)),
+                        std::as_writable_bytes(std::span(expected_wide)))
+                        .ok());
+    ASSERT_TRUE(ConvertFp32ToFp16(
+                        std::as_bytes(std::span(floats)),
+                        std::as_writable_bytes(std::span(expected_narrow)))
+                        .ok());
     for (const unsigned flags: {0U, 0x8000U, 0x0040U, 0x8040U}) {
         const unsigned control = (original & ~supported) | (flags & supported);
         _mm_setcsr(control);
-        ASSERT_TRUE(ConvertFp16ToFp32(std::as_bytes(std::span(halves)), std::as_writable_bytes(std::span(actual_wide)), functions).ok());
-        ASSERT_TRUE(ConvertFp32ToFp16(std::as_bytes(std::span(floats)), std::as_writable_bytes(std::span(actual_narrow)), functions).ok());
+        ASSERT_TRUE(ConvertFp16ToFp32(
+                            std::as_bytes(std::span(halves)),
+                            std::as_writable_bytes(std::span(actual_wide)),
+                            functions)
+                            .ok());
+        ASSERT_TRUE(ConvertFp32ToFp16(
+                            std::as_bytes(std::span(floats)),
+                            std::as_writable_bytes(std::span(actual_narrow)),
+                            functions)
+                            .ok());
         EXPECT_EQ(_mm_getcsr(), control);
         EXPECT_EQ(actual_wide, expected_wide);
         EXPECT_EQ(actual_narrow, expected_narrow);
@@ -297,10 +355,15 @@ public:
         const long page_size = sysconf(_SC_PAGESIZE);
         if (page_size <= 0) return false;
         page_size_ = static_cast<size_t>(page_size);
-        storage_ = mmap(nullptr, page_size_ * 2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-        return storage_ != MAP_FAILED && mprotect(static_cast<std::byte*>(storage_) + page_size_, page_size_, PROT_NONE) == 0;
+        storage_ = mmap(nullptr, page_size_ * 2,
+                        PROT_READ | PROT_WRITE,
+                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        return storage_ != MAP_FAILED &&
+               mprotect(static_cast<std::byte*>(storage_) + page_size_,
+                        page_size_, PROT_NONE) == 0;
     }
-    std::span<std::byte> Tail(size_t bytes) {
+
+    AM_NODISCARD std::span<std::byte> Tail(size_t bytes) const {
         return {static_cast<std::byte*>(storage_) + page_size_ - bytes, bytes};
     }
 
@@ -316,11 +379,17 @@ TEST(Fp16BatchConversion, TailsDoNotReadOrWritePastProtectedPages) {
     const auto functions = SelectedConversions();
     for (size_t count = 1; count <= 33; ++count) {
         auto input = source.Tail(count * 2);
-        std::fill(input.begin(), input.end(), std::byte{0x3C});
-        ASSERT_TRUE(ConvertFp16ToFp32(input, destination.Tail(count * 4), functions).ok());
+        std::ranges::fill(input, std::byte{0x3C});
+        ASSERT_TRUE(ConvertFp16ToFp32(input,
+                                      destination.Tail(count * 4),
+                                      functions)
+                            .ok());
         auto floats = source.Tail(count * 4);
-        std::fill(floats.begin(), floats.end(), std::byte{0x3F});
-        ASSERT_TRUE(ConvertFp32ToFp16(floats, destination.Tail(count * 2), functions).ok());
+        std::ranges::fill(floats, std::byte{0x3F});
+        ASSERT_TRUE(ConvertFp32ToFp16(floats,
+                                      destination.Tail(count * 2),
+                                      functions)
+                            .ok());
     }
 }
 #endif

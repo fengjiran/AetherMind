@@ -70,11 +70,13 @@ uint16_t NarrowingOracle(uint32_t bits) {
         result.push_back(std::ldexp(1.0, 128));
         return result;
     }();
-    const double value = static_cast<double>(std::bit_cast<float>(magnitude));
-    const auto upper = std::lower_bound(values.begin(), values.end(), value);
+
+    const auto value = static_cast<double>(std::bit_cast<float>(magnitude));
+    const auto upper = std::ranges::lower_bound(values, value);
     if (upper == values.begin()) {
         return sign;
     }
+
     const auto upper_code = static_cast<uint16_t>(upper - values.begin());
     const double lower_distance = value - *(upper - 1);
     const double upper_distance = *upper - value;
@@ -89,8 +91,11 @@ TEST(Bf16BatchConversion, EveryBfloatPatternWidensExactlyAndQuietsNaNs) {
     for (size_t index = 0; index < source.size(); ++index) {
         source[index] = static_cast<uint16_t>(index);
     }
+
     std::vector<uint32_t> actual(source.size());
-    EXPECT_TRUE(ConvertBf16ToFp32(std::as_bytes(std::span(source)), std::as_writable_bytes(std::span(actual))).ok());
+    EXPECT_TRUE(ConvertBf16ToFp32(std::as_bytes(std::span(source)),
+                                  std::as_writable_bytes(std::span(actual)))
+                        .ok());
     for (size_t index = 0; index < source.size(); ++index) {
         EXPECT_EQ(actual[index], WideningOracle(source[index])) << "BF16 bits=" << index;
     }
@@ -105,8 +110,12 @@ TEST(Bf16BatchConversion, EveryPatternMatchesOracleInEveryLane) {
     std::vector<uint32_t> actual(0x10000U);
     const auto functions = SelectedConversions();
     for (size_t rotation = 0; rotation < 16; ++rotation) {
-        const auto input = std::as_bytes(std::span(source).subspan(rotation, actual.size()));
-        ASSERT_TRUE(ConvertBf16ToFp32(input, std::as_writable_bytes(std::span(actual)), functions).ok());
+        const auto input = std::as_bytes(
+                std::span(source).subspan(rotation, actual.size()));
+        ASSERT_TRUE(ConvertBf16ToFp32(
+                            input,
+                            std::as_writable_bytes(std::span(actual)), functions)
+                            .ok());
         for (size_t index = 0; index < actual.size(); ++index) {
             ASSERT_EQ(actual[index], WideningOracle(source[index + rotation]))
                     << "index=" << index << " rotation=" << rotation;
@@ -122,12 +131,12 @@ TEST(Bf16BatchConversion, SelectedConversionsMatchScalarForUnalignedRangesAndAll
                 const size_t input_width = widening ? 2 : 4;
                 const size_t output_width = widening ? 4 : 2;
                 const size_t destination_offset = (offset * 7 + 3) % 32;
-                std::vector<std::byte> source(offset + count * input_width + 32, std::byte{0x5A});
+                std::vector source(offset + count * input_width + 32, std::byte{0x5A});
                 for (size_t index = 0; index < count * input_width; ++index) {
                     source[offset + index] = static_cast<std::byte>((index * 139 + offset * 17) & 0xFF);
                 }
                 const auto original = source;
-                std::vector<std::byte> actual(destination_offset + count * output_width + 32, std::byte{0xCD});
+                std::vector actual(destination_offset + count * output_width + 32, std::byte{0xCD});
                 std::vector<std::byte> expected(count * output_width);
                 const auto input = std::span<const std::byte>(source).subspan(offset, count * input_width);
                 auto output = std::span(actual).subspan(destination_offset, count * output_width);
@@ -138,6 +147,7 @@ TEST(Bf16BatchConversion, SelectedConversionsMatchScalarForUnalignedRangesAndAll
                     ASSERT_TRUE(ConvertFp32ToBf16(input, expected).ok());
                     ASSERT_TRUE(ConvertFp32ToBf16(input, output, functions).ok());
                 }
+
                 EXPECT_TRUE(std::equal(output.begin(), output.end(), expected.begin()))
                         << "count=" << count << " offset=" << offset << " widening=" << widening;
                 EXPECT_TRUE(std::all_of(actual.begin(), actual.begin() + destination_offset,
@@ -160,6 +170,7 @@ TEST(Bf16BatchConversion, SelectedNarrowingMatchesScalarForEveryFiniteMidpoint) 
             source.push_back(sign | (midpoint + 1));
         }
     }
+
     std::vector<uint16_t> actual(source.size()), expected(source.size());
     const auto input = std::as_bytes(std::span(source));
     ASSERT_TRUE(ConvertFp32ToBf16(input, std::as_writable_bytes(std::span(expected))).ok());
@@ -193,8 +204,12 @@ TEST(Bf16BatchConversion, EveryFinitePatternRoundTripsWithoutRounding) {
     }
     std::vector<uint32_t> widened(source.size());
     std::vector<uint16_t> round_trip(source.size());
-    EXPECT_TRUE(ConvertBf16ToFp32(std::as_bytes(std::span(source)), std::as_writable_bytes(std::span(widened))).ok());
-    EXPECT_TRUE(ConvertFp32ToBf16(std::as_bytes(std::span(widened)), std::as_writable_bytes(std::span(round_trip))).ok());
+    EXPECT_TRUE(ConvertBf16ToFp32(std::as_bytes(std::span(source)),
+                                  std::as_writable_bytes(std::span(widened)))
+                        .ok());
+    EXPECT_TRUE(ConvertFp32ToBf16(std::as_bytes(std::span(widened)),
+                                  std::as_writable_bytes(std::span(round_trip)))
+                        .ok());
     EXPECT_EQ(round_trip, source);
 }
 
@@ -214,7 +229,9 @@ TEST(Bf16BatchConversion, EveryFiniteMidpointAndItsNeighborsUseNearestEven) {
         }
     }
     std::vector<uint16_t> actual(source.size());
-    EXPECT_TRUE(ConvertFp32ToBf16(std::as_bytes(std::span(source)), std::as_writable_bytes(std::span(actual))).ok());
+    EXPECT_TRUE(ConvertFp32ToBf16(std::as_bytes(std::span(source)),
+                                  std::as_writable_bytes(std::span(actual)))
+                        .ok());
     for (size_t index = 0; index < source.size(); ++index) {
         EXPECT_EQ(actual[index], expected[index]) << "FP32 bits=" << source[index];
     }
@@ -227,9 +244,12 @@ TEST(Bf16BatchConversion, RandomFloatPatternsMatchIndependentNearestValueOracle)
         bits = random();
     }
     std::vector<uint16_t> actual(source.size());
-    EXPECT_TRUE(ConvertFp32ToBf16(std::as_bytes(std::span(source)), std::as_writable_bytes(std::span(actual))).ok());
+    EXPECT_TRUE(ConvertFp32ToBf16(std::as_bytes(std::span(source)),
+                                  std::as_writable_bytes(std::span(actual)))
+                        .ok());
     for (size_t index = 0; index < source.size(); ++index) {
-        EXPECT_EQ(actual[index], NarrowingOracle(source[index])) << "FP32 bits=" << source[index];
+        EXPECT_EQ(actual[index], NarrowingOracle(source[index]))
+                << "FP32 bits=" << source[index];
     }
 }
 
@@ -240,17 +260,22 @@ TEST(Bf16BatchConversion, QuietNaNsPreserveSignAndRepresentablePayload) {
     constexpr std::array<uint16_t, source.size()> expected{
             0x7FC0, 0xFFC0, 0x7FC1, 0xFFC1, 0x7FE5, 0xFFE5, 0x7FC0, 0xFFC5, 0x7FFF, 0xFFFF};
     std::array<uint16_t, source.size()> actual{};
-    EXPECT_TRUE(ConvertFp32ToBf16(std::as_bytes(std::span(source)), std::as_writable_bytes(std::span(actual))).ok());
+    EXPECT_TRUE(ConvertFp32ToBf16(std::as_bytes(std::span(source)),
+                                  std::as_writable_bytes(std::span(actual)))
+                        .ok());
     EXPECT_EQ(actual, expected);
 }
 
 TEST(Bf16BatchConversion, BatchAndWrapperWideningQuietRawSignalingNaNsIdentically) {
     constexpr std::array<uint16_t, 2> source{0x7F85U, 0xFF85U};
     std::array<uint32_t, source.size()> actual{};
-    EXPECT_TRUE(ConvertBf16ToFp32(std::as_bytes(std::span(source)), std::as_writable_bytes(std::span(actual))).ok());
+    EXPECT_TRUE(ConvertBf16ToFp32(std::as_bytes(std::span(source)),
+                                  std::as_writable_bytes(std::span(actual)))
+                        .ok());
+
     for (size_t index = 0; index < source.size(); ++index) {
         const BFloat16 wrapper{source[index], BFloat16::from_bits()};
-        const uint32_t wrapper_bits = std::bit_cast<uint32_t>(static_cast<float>(wrapper));
+        const auto wrapper_bits = std::bit_cast<uint32_t>(static_cast<float>(wrapper));
         // Batch and single-value widening agree: payload preserved, quiet bit forced.
         EXPECT_EQ(actual[index], (static_cast<uint32_t>(source[index]) << 16) | 0x00400000U);
         EXPECT_EQ(wrapper_bits, actual[index]);
@@ -265,8 +290,8 @@ TEST(Bf16BatchConversion, UnalignedRangesAndAllTailsPreserveSurroundingBytes) {
                 const size_t input_width = widening ? 2 : 4;
                 const size_t output_width = widening ? 4 : 2;
                 const size_t destination_offset = (offset * 7 + 3) % 32;
-                std::vector<std::byte> source(offset + count * input_width + 32, std::byte{0x5A});
-                std::vector<std::byte> actual(destination_offset + count * output_width + 32, std::byte{0xCD});
+                std::vector source(offset + count * input_width + 32, std::byte{0x5A});
+                std::vector actual(destination_offset + count * output_width + 32, std::byte{0xCD});
                 std::vector<std::byte> expected(count * output_width);
                 for (size_t index = 0; index < count; ++index) {
                     if (widening) {
@@ -275,19 +300,27 @@ TEST(Bf16BatchConversion, UnalignedRangesAndAllTailsPreserveSurroundingBytes) {
                         std::memcpy(source.data() + offset + index * input_width, &bits, sizeof(bits));
                         std::memcpy(expected.data() + index * output_width, &result, sizeof(result));
                     } else {
-                        const uint32_t bits = static_cast<uint32_t>(index * 1442695041U + offset * 1664525U);
+                        const auto bits = static_cast<uint32_t>(index * 1442695041U + offset * 1664525U);
                         const uint16_t result = NarrowingOracle(bits);
                         std::memcpy(source.data() + offset + index * input_width, &bits, sizeof(bits));
                         std::memcpy(expected.data() + index * output_width, &result, sizeof(result));
                     }
                 }
+
                 const auto original = source;
                 const auto input = std::span<const std::byte>(source).subspan(offset, count * input_width);
                 auto output = std::span(actual).subspan(destination_offset, count * output_width);
                 EXPECT_TRUE((widening ? ConvertBf16ToFp32(input, output) : ConvertFp32ToBf16(input, output)).ok());
-                EXPECT_TRUE(std::equal(output.begin(), output.end(), expected.begin())) << "count=" << count << " offset=" << offset;
-                EXPECT_TRUE(std::all_of(actual.begin(), actual.begin() + destination_offset, [](std::byte byte) { return byte == std::byte{0xCD}; }));
-                EXPECT_TRUE(std::all_of(actual.begin() + destination_offset + output.size(), actual.end(), [](std::byte byte) { return byte == std::byte{0xCD}; }));
+                EXPECT_TRUE(std::equal(output.begin(), output.end(), expected.begin()))
+                        << "count=" << count << " offset=" << offset;
+                EXPECT_TRUE(std::all_of(actual.begin(), actual.begin() + destination_offset,
+                                        [](std::byte byte) {
+                                            return byte == std::byte{0xCD};
+                                        }));
+                EXPECT_TRUE(std::all_of(actual.begin() + destination_offset + output.size(), actual.end(),
+                                        [](std::byte byte) {
+                                            return byte == std::byte{0xCD};
+                                        }));
                 EXPECT_EQ(source, original);
             }
         }
@@ -505,6 +538,7 @@ public:
             munmap(storage_, page_size_ * 2);
         }
     }
+
     bool Init() {
         const long page_size = sysconf(_SC_PAGESIZE);
         if (page_size <= 0) return false;
@@ -512,7 +546,8 @@ public:
         storage_ = mmap(nullptr, page_size_ * 2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         return storage_ != MAP_FAILED && mprotect(static_cast<std::byte*>(storage_) + page_size_, page_size_, PROT_NONE) == 0;
     }
-    std::span<std::byte> Tail(size_t bytes) {
+
+    AM_NODISCARD std::span<std::byte> Tail(size_t bytes) const {
         return {static_cast<std::byte*>(storage_) + page_size_ - bytes, bytes};
     }
 
@@ -542,10 +577,10 @@ TEST(Bf16BatchConversion, SelectedConversionsTailsDoNotReadOrWritePastProtectedP
     const auto functions = SelectedConversions();
     for (size_t count = 1; count <= 65; ++count) {
         auto input = source.Tail(count * 2);
-        std::fill(input.begin(), input.end(), std::byte{0x3C});
+        std::ranges::fill(input, std::byte{0x3C});
         EXPECT_TRUE(ConvertBf16ToFp32(input, destination.Tail(count * 4), functions).ok());
         auto floats = source.Tail(count * 4);
-        std::fill(floats.begin(), floats.end(), std::byte{0x3F});
+        std::ranges::fill(floats, std::byte{0x3F});
         EXPECT_TRUE(ConvertFp32ToBf16(floats, destination.Tail(count * 2), functions).ok());
     }
 }

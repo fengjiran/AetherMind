@@ -365,7 +365,7 @@ StatusOr<std::unique_ptr<LoadedModel>> ApplyWeightPolicy(
         std::unique_ptr<LoadedModel> loaded,
         const ModelLoadOptions& options) {
     AM_RETURN_IF_ERROR(ValidateSourceWeights(*loaded, options.weights));
-    if (options.weights == WeightPolicy::kConvertToFp32) {
+    if (options.weights != WeightPolicy::kRequireFp32) {
         AM_ASSIGN_OR_RETURN(Allocator * allocator, runtime.TryGetAllocator(Device::CPU()));
         AM_ASSIGN_OR_RETURN(Backend * backend, runtime.GetBackend(DeviceType::kCPU));
         const auto fp16_conversions = backend->GetHostFp16Conversions();
@@ -374,16 +374,18 @@ StatusOr<std::unique_ptr<LoadedModel>> ApplyWeightPolicy(
                 *loaded, *allocator,
                 {.max_owned_weight_bytes = options.limits.max_model_payload_bytes,
                  .fp16_to_fp32 = fp16_conversions.to_fp32,
-                 .bf16_to_fp32 = bf16_conversions.to_fp32});
+                 .bf16_to_fp32 = bf16_conversions.to_fp32,
+                 .scope = options.weights == WeightPolicy::kConvertToFp32
+                                  ? RawWeightFp32ConversionScope::kAllRequiredWeights
+                                  : RawWeightFp32ConversionScope::kNormWeightsOnly});
         if (!converted.ok()) {
             return converted.status().WithMessage(
-                    "FP32 compatibility conversion failed: " + converted.status().message());
+                    "Weight FP32 conversion failed: " + converted.status().message());
         }
-        // Drop source-only mappings before compilation. Shared F32 source
-        // owners remain alive through the converted model's views.
+        // Final views retain surviving source backing, including W16 matrices.
         loaded = std::move(*converted);
-        AM_RETURN_IF_ERROR(inference::internal::ValidateFp32Weights(*loaded));
     }
+    AM_RETURN_IF_ERROR(inference::internal::ValidatePreparedWeights(*loaded, options.weights));
     return loaded;
 }
 
@@ -537,7 +539,9 @@ StatusOr<ExecutableModel> ExecutableModel::Load(Runtime& runtime,
                                                 const std::filesystem::path& directory,
                                                 const ModelLoadOptions& options) try {
     if (options.weights != WeightPolicy::kRequireFp32 &&
-        options.weights != WeightPolicy::kConvertToFp32) {
+        options.weights != WeightPolicy::kConvertToFp32 &&
+        options.weights != WeightPolicy::kKeepFp16WeightsFp32Activation &&
+        options.weights != WeightPolicy::kKeepBf16WeightsFp32Activation) {
         return Status::InvalidArgument("Unknown source weight policy");
     }
 
@@ -545,6 +549,13 @@ StatusOr<ExecutableModel> ExecutableModel::Load(Runtime& runtime,
     if (options.weights == WeightPolicy::kConvertToFp32 &&
         (options.target != DeviceType::kCPU || options.preset != CompilePreset::kO1Plain)) {
         return Status::Unimplemented("FP32 compatibility requires CPU O1/plain");
+    }
+    if ((options.weights == WeightPolicy::kKeepFp16WeightsFp32Activation ||
+         options.weights == WeightPolicy::kKeepBf16WeightsFp32Activation) &&
+        (options.target != DeviceType::kCPU ||
+         (options.preset != CompilePreset::kO1Plain &&
+          options.preset != CompilePreset::kO2Packed))) {
+        return Status::Unimplemented("Retained W16 weights require CPU O1/plain or O2/packed");
     }
 
     compile_options.graph_build.activation_dtype = DataType::Float32();

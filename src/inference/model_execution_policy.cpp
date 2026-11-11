@@ -60,28 +60,60 @@ std::string WeightLocation(const RequiredRole& role, std::optional<uint32_t> lay
     return location;
 }
 
+// Admission diagnostics use the contract display names, not ToString(DataType),
+// whose scalar macro names (e.g. "Float") are a different diagnostic vocabulary.
+std::string_view RequiredDTypeName(DataType dtype) {
+    if (dtype == DataType::Float(16)) {
+        return "Float16";
+    }
+
+    if (dtype == DataType::BFloat(16)) {
+        return "BFloat16";
+    }
+    return "Float32";
+}
+
 Status ValidateRoleDType(const ResolvedModelWeights& weights,
                          const RequiredRole& role,
                          std::optional<uint32_t> layer,
-                         bool allow_widening) {
-    const RawWeightView* weight = ResolveWeightBinding(
+                         WeightPolicy policy,
+                         bool prepared) {
+    const auto* weight = ResolveWeightBinding(
             MakeTransformerWeightBinding(layer, role.role), weights);
     if (weight == nullptr || !weight->IsValid()) {
-        return Status::InvalidArgument("Required weight " + WeightLocation(role, layer) +
-                                       " is missing or invalid");
+        return Status::InvalidArgument(
+                "Required weight " + WeightLocation(role, layer) +
+                " is missing or invalid");
     }
 
-    // IsFloat32() does not check lanes; kernels require scalar elements.
+    const bool norm = role.role == TransformerWeightRole::kFinalNorm ||
+                      role.role == TransformerWeightRole::kInputNorm ||
+                      role.role == TransformerWeightRole::kPostAttentionNorm;
+    const bool retained_w16 = policy == WeightPolicy::kKeepFp16WeightsFp32Activation ||
+                              policy == WeightPolicy::kKeepBf16WeightsFp32Activation;
+    const bool floating_source = !prepared &&
+                                 (policy == WeightPolicy::kConvertToFp32 ||
+                                  (retained_w16 && norm));
+    DataType required = DataType::Float32();
+    if (!norm && retained_w16) {
+        required = policy == WeightPolicy::kKeepFp16WeightsFp32Activation
+                           ? DataType::Float(16)
+                           : DataType::BFloat(16);
+    }
+
+    // Equality has a scalar-lane precondition for externally supplied metadata.
     const bool supported = weight->dtype.raw_lanes() == 1 &&
-                           (weight->dtype == DataType::Float32() ||
-                            (allow_widening && (weight->dtype == DataType::Float(16) ||
-                                                weight->dtype == DataType::BFloat(16))));
+                           (weight->dtype == required ||
+                            (floating_source &&
+                             (weight->dtype == DataType::Float32() ||
+                              weight->dtype == DataType::Float(16) ||
+                              weight->dtype == DataType::BFloat(16))));
     if (!supported) {
         return Status::Unimplemented(
                 "Weight " + WeightLocation(role, layer) +
                 " has dtype " + ToString(weight->dtype) +
-                (allow_widening ? "; required Float32, Float16 or BFloat16 source"
-                                : "; required Float32"));
+                (floating_source ? "; required Float32, Float16 or BFloat16 source"
+                                 : "; required " + std::string(RequiredDTypeName(required))));
     }
     return Status::Ok();
 }
@@ -89,10 +121,10 @@ Status ValidateRoleDType(const ResolvedModelWeights& weights,
 Status ValidateSourceHint(const LoadedModel& model, bool allow_widening) {
     const auto& config = model.GetConfig();
     const auto hint = config.weight_dtype_hint;
-    const bool automatic_hint = hint.IsUndefined() &&
-                                (config.weight_dtype_hint_name.empty() ||
-                                 config.weight_dtype_hint_name == "auto");
-    const bool supported = automatic_hint ||
+    const bool auto_hint = hint.IsUndefined() &&
+                           (config.weight_dtype_hint_name.empty() ||
+                            config.weight_dtype_hint_name == "auto");
+    const bool supported = auto_hint ||
                            (hint.raw_lanes() == 1 &&
                             (hint == DataType::Float32() ||
                              (allow_widening && (hint == DataType::Float(16) ||
@@ -107,7 +139,7 @@ Status ValidateSourceHint(const LoadedModel& model, bool allow_widening) {
     return Status::Ok();
 }
 
-Status ValidateExecutionWeights(const LoadedModel& model, bool allow_widening) {
+Status ValidateExecutionWeights(const LoadedModel& model, WeightPolicy policy, bool prepared) {
     const auto& config = model.GetConfig();
     const auto& weights = model.GetResolvedWeights();
     AM_ASSIGN_OR_RETURN(const size_t num_layers,
@@ -124,15 +156,14 @@ Status ValidateExecutionWeights(const LoadedModel& model, bool allow_widening) {
 
     for (const auto& role: kGlobalRoles) {
         AM_RETURN_IF_ERROR(ValidateRoleDType(
-                weights, role,
-                std::nullopt, allow_widening));
+                weights, role, std::nullopt, policy, prepared));
     }
 
     for (size_t layer = 0; layer < num_layers; ++layer) {
         for (const auto& role: kLayerRoles) {
             AM_RETURN_IF_ERROR(ValidateRoleDType(
                     weights, role,
-                    static_cast<uint32_t>(layer), allow_widening));
+                    static_cast<uint32_t>(layer), policy, prepared));
         }
     }
     return Status::Ok();
@@ -141,19 +172,33 @@ Status ValidateExecutionWeights(const LoadedModel& model, bool allow_widening) {
 } // namespace
 
 Status ValidateSourceWeights(const LoadedModel& model, WeightPolicy policy) try {
-    if (policy != WeightPolicy::kRequireFp32 && policy != WeightPolicy::kConvertToFp32) {
+    if (policy != WeightPolicy::kRequireFp32 && policy != WeightPolicy::kConvertToFp32 &&
+        policy != WeightPolicy::kKeepFp16WeightsFp32Activation &&
+        policy != WeightPolicy::kKeepBf16WeightsFp32Activation) {
         return Status::InvalidArgument("Unknown source weight policy");
     }
 
-    const bool allow_widening = policy == WeightPolicy::kConvertToFp32;
+    const bool allow_widening = policy != WeightPolicy::kRequireFp32;
     AM_RETURN_IF_ERROR(ValidateSourceHint(model, allow_widening));
-    return ValidateExecutionWeights(model, allow_widening);
+    return ValidateExecutionWeights(model, policy, false);
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});
 }
 
 Status inference::internal::ValidateFp32Weights(const LoadedModel& model) try {
-    return ValidateExecutionWeights(model, false);
+    return ValidateExecutionWeights(model, WeightPolicy::kRequireFp32, true);
+} catch (const std::bad_alloc&) {
+    return Status::ResourceExhausted({});
+}
+
+Status inference::internal::ValidatePreparedWeights(
+        const LoadedModel& model, WeightPolicy policy) try {
+    if (policy != WeightPolicy::kRequireFp32 && policy != WeightPolicy::kConvertToFp32 &&
+        policy != WeightPolicy::kKeepFp16WeightsFp32Activation &&
+        policy != WeightPolicy::kKeepBf16WeightsFp32Activation) {
+        return Status::InvalidArgument("Unknown prepared weight policy");
+    }
+    return ValidateExecutionWeights(model, policy, true);
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});
 }

@@ -35,6 +35,9 @@ struct ModelLimits {
 ///
 /// Compatibility widens actual F16/BF16 weights once before compilation and
 /// runs FP32 weights, activations, KV and logits. It requires CPU O1/plain.
+/// Retained-W16 policies widen only Norm weights and retain the selected F16 or
+/// BF16 matrices, with F32 activations, accumulation, KV and logits on CPU
+/// O1/plain or O2/identity-packed execution.
 /// The strict policy keeps the existing FP32-only source admission contract.
 struct ModelLoadOptions {
     CompilePreset preset = CompilePreset::kO1Plain;

@@ -19,6 +19,7 @@ import sys
 
 MAX_INTEGER = (1 << 63) - 1
 MODES = {"timing", "profile", "allocations"}
+WEIGHTS = {"require-fp32", "convert-fp32", "keep-fp16", "keep-bf16"}
 # Inputs that can change allocation, dispatch, instrumentation or loader behavior.
 # The collector imports this tuple so collection and validation share one list.
 ENVIRONMENT_KEYS = (
@@ -31,7 +32,7 @@ GEOMETRY = {
     "hidden_size", "intermediate_size", "vocab_size", "num_hidden_layers",
     "num_attention_heads", "num_key_value_heads", "head_dim", "max_position_embeddings",
 }
-PREPARATION = {"load_ns", "compile_ns", "runtime_ns", "prepare_ns"}
+PREPARATION = {"load_ns", "compile_ns", "runtime_ns", "prepare_ns", "conversion_ns"}
 MEMORY = {
     "raw_unique_visible_bytes", "packed_unique_storage_bytes", "kv_capacity_bytes",
     "workspace_bytes", "process_peak_rss_bytes",
@@ -185,11 +186,13 @@ def verify_engine(engine):
             "geometry: query heads must be divisible by KV heads")
     workload = engine["workload"]
     exact_keys(workload, {
-        "preset", "prompt_tokens", "max_new_tokens", "eos_token_id",
+        "preset", "weights", "prompt_tokens", "max_new_tokens", "eos_token_id",
         "context_capacity", "warmup", "repetitions",
     }, "workload")
     require(isinstance(workload["preset"], str)
             and workload["preset"] in {"o1-plain", "o2-packed"}, "workload: invalid preset")
+    require(isinstance(workload["weights"], str)
+            and workload["weights"] in WEIGHTS, "workload: invalid weights")
     prompt = workload["prompt_tokens"]
     vocab = geometry["vocab_size"]
     _tokens(prompt, vocab, "workload.prompt_tokens", nonempty=True)
@@ -227,7 +230,14 @@ def verify_engine(engine):
         preparation = sample["preparation"]
         exact_keys(preparation, PREPARATION, f"{context}.preparation")
         for key, value in preparation.items():
-            duration(value, mode, f"{context}.preparation.{key}", positive=True)
+            if key != "conversion_ns":
+                duration(value, mode, f"{context}.preparation.{key}", positive=True)
+        # Only a timed non-require policy runs ConvertRawModelWeightsToFp32.
+        if mode == "timing" and workload["weights"] != "require-fp32":
+            number(preparation["conversion_ns"], f"{context}.preparation.conversion_ns")
+        else:
+            require(preparation["conversion_ns"] is None,
+                    f"{context}.preparation.conversion_ns: no policy conversion runs and it must be null")
         memory = sample["memory"]
         exact_keys(memory, MEMORY, f"{context}.memory")
         for key, value in memory.items():
@@ -451,7 +461,9 @@ def summarize(document):
     workload = engine["workload"]
     metrics = {}
     for key in sorted(PREPARATION):
-        metrics[f"preparation.{key}"] = _statistics([sample["preparation"][key] for sample in samples])
+        metrics[f"preparation.{key}"] = _statistics(
+            [sample["preparation"][key] for sample in samples
+             if sample["preparation"][key] is not None])
     for key in ("request_setup_ns", "first_token_request_ns", "prefill_execute_ns", "decode_setup_ns"):
         metrics[f"internal.{key}"] = _statistics(
             [sample["internal"][key] for sample in samples if sample["internal"][key] is not None])

@@ -11,6 +11,7 @@
 #include "aethermind/inference/model_execution_policy.h"
 #include "aethermind/memory/cpu_allocator.h"
 #include "aethermind/model/model_loader.h"
+#include "aethermind/model/weight/raw_weight_fp32_conversion.h"
 #include "aethermind/runtime/runtime_builder.h"
 
 #include <algorithm>
@@ -51,6 +52,8 @@ struct Options {
     size_t max_new_tokens = 0;
     CompilePreset preset = CompilePreset::kO1Plain;
     std::string preset_name;
+    WeightPolicy weights = WeightPolicy::kRequireFp32;
+    std::string weights_name = "require-fp32";
     size_t warmup = 1;
     size_t repetitions = 5;
     std::string mode = "timing";
@@ -78,6 +81,7 @@ struct InternalSample {
 struct Sample {
     size_t index = 0;
     Nanoseconds load_ns, compile_ns, runtime_ns, prepare_ns;
+    Nanoseconds conversion_ns;
     size_t raw_unique_visible_bytes = 0, packed_unique_storage_bytes = 0;
     size_t kv_capacity_bytes = 0, workspace_bytes = 0, process_peak_rss_bytes = 0;
     InternalSample internal;
@@ -199,6 +203,17 @@ Options ParseOptions(int argc, char** argv) {
                 options.preset = CompilePreset::kO2Packed;
             else
                 throw std::invalid_argument("--preset requires o1-plain or o2-packed");
+        } else if (name == "--weights") {
+            options.weights_name = value;
+            if (value == "require-fp32") options.weights = WeightPolicy::kRequireFp32;
+            else if (value == "convert-fp32")
+                options.weights = WeightPolicy::kConvertToFp32;
+            else if (value == "keep-fp16")
+                options.weights = WeightPolicy::kKeepFp16WeightsFp32Activation;
+            else if (value == "keep-bf16")
+                options.weights = WeightPolicy::kKeepBf16WeightsFp32Activation;
+            else
+                throw std::invalid_argument("--weights requires require-fp32, convert-fp32, keep-fp16 or keep-bf16");
         } else if (name == "--warmup")
             options.warmup = ParseUnsigned<size_t>(value, name);
         else if (name == "--repetitions") {
@@ -427,14 +442,10 @@ StatusOr<Run> RunSample(const Options& options, size_t index) {
     Timer load_timer(timing);
     AM_ASSIGN_OR_RETURN(auto loaded, ModelLoader::Load(options.model));
     sample.load_ns = load_timer.Elapsed();
-    AM_RETURN_IF_ERROR(ValidateSourceWeights(*loaded, WeightPolicy::kRequireFp32));
+    AM_RETURN_IF_ERROR(ValidateSourceWeights(*loaded, options.weights));
     const HfModelConfig config = loaded->GetConfig();
     run.geometry = MakeGeometry(config);
     AM_ASSIGN_OR_RETURN(run.context_capacity, ContextCapacity(options, config));
-    AM_ASSIGN_OR_RETURN(sample.raw_unique_visible_bytes, RawBytes(loaded->GetResolvedWeights()));
-    Timer compile_timer(timing);
-    AM_ASSIGN_OR_RETURN(auto artifact, ModelCompiler::Compile(std::move(loaded), compile_options));
-    sample.compile_ns = compile_timer.Elapsed();
     AM_ASSIGN_OR_RETURN(auto runtime_options,
                         MakeCpuRuntimeOptions(config, {.context_tokens = run.context_capacity}));
     RuntimeBuilder builder;
@@ -448,6 +459,38 @@ StatusOr<Run> RunSample(const Options& options, size_t index) {
     // This final local Runtime is never moved after Prepare borrows backends.
     AM_ASSIGN_OR_RETURN(auto runtime, builder.TryBuild());
     sample.runtime_ns = runtime_timer.Elapsed();
+    if (options.weights != WeightPolicy::kRequireFp32) {
+        Timer conversion_timer(timing);
+        AM_ASSIGN_OR_RETURN(Allocator * allocator, runtime.TryGetAllocator(Device::CPU()));
+        AM_ASSIGN_OR_RETURN(Backend * backend, runtime.GetBackend(DeviceType::kCPU));
+        const auto fp16_conversions = backend->GetHostFp16Conversions();
+        const auto bf16_conversions = backend->GetHostBf16Conversions();
+        auto converted = ConvertRawModelWeightsToFp32(
+                *loaded, *allocator,
+                {.max_owned_weight_bytes = 0,
+                 .fp16_to_fp32 = fp16_conversions.to_fp32,
+                 .bf16_to_fp32 = bf16_conversions.to_fp32,
+                 .scope = options.weights == WeightPolicy::kConvertToFp32
+                                  ? RawWeightFp32ConversionScope::kAllRequiredWeights
+                                  : RawWeightFp32ConversionScope::kNormWeightsOnly});
+        if (!converted.ok()) {
+            return converted.status().WithMessage(
+                    "Benchmark weight FP32 conversion failed: " + converted.status().message());
+        }
+        // Final views retain surviving source backing, including W16 matrices.
+        loaded = std::move(*converted);
+        sample.conversion_ns = conversion_timer.Elapsed();
+    }
+    // The private prepared-weight validator is unavailable to this public-header
+    // build; Compile/Prepare below reject inconsistent converted weights.
+    AM_ASSIGN_OR_RETURN(sample.raw_unique_visible_bytes, RawBytes(loaded->GetResolvedWeights()));
+    if (options.weights != WeightPolicy::kRequireFp32) {
+        compile_options.graph_build.activation_dtype = DataType::Float32();
+        compile_options.graph_build.kv_dtype = DataType::Float32();
+    }
+    Timer compile_timer(timing);
+    AM_ASSIGN_OR_RETURN(auto artifact, ModelCompiler::Compile(std::move(loaded), compile_options));
+    sample.compile_ns = compile_timer.Elapsed();
     Timer prepare_timer(timing);
     AM_ASSIGN_OR_RETURN(auto executable, ExecutableModel::Prepare(runtime, std::move(artifact)));
     sample.prepare_ns = prepare_timer.Elapsed();
@@ -525,6 +568,8 @@ void WriteSample(std::ostream& s, const Sample& sample) {
     Optional(s, sample.runtime_ns);
     s << ",\"prepare_ns\":";
     Optional(s, sample.prepare_ns);
+    s << ",\"conversion_ns\":";
+    Optional(s, sample.conversion_ns);
     s << "},\"memory\":{\"raw_unique_visible_bytes\":" << sample.raw_unique_visible_bytes
       << ",\"packed_unique_storage_bytes\":" << sample.packed_unique_storage_bytes
       << ",\"kv_capacity_bytes\":" << sample.kv_capacity_bytes << ",\"workspace_bytes\":" << sample.workspace_bytes
@@ -587,6 +632,8 @@ void WriteDocument(std::ostream& s, const Options& options, const std::vector<Ru
       << ",\"head_dim\":" << g.head_dim << ",\"max_position_embeddings\":" << g.max_position_embeddings
       << "},\"workload\":{\"preset\":";
     String(s, options.preset_name);
+    s << ",\"weights\":";
+    String(s, options.weights_name);
     s << ",\"prompt_tokens\":";
     Array(s, options.prompt);
     s << ",\"max_new_tokens\":" << options.max_new_tokens << ",\"eos_token_id\":";
@@ -603,6 +650,7 @@ int RunCommandLine(int argc, char** argv) {
     if (argc == 2 && std::string_view(argv[1]) == "--help") {
         std::cout << "Usage: aethermind_model_benchmark --model PATH --prompt 1,7,3 --max-new-tokens N\n"
                      "  --preset o1-plain|o2-packed [--warmup N] [--repetitions N]\n"
+                     "  [--weights require-fp32|convert-fp32|keep-fp16|keep-bf16]\n"
                      "  [--mode timing|profile|allocations] [--eos-token ID]\n";
         return std::cout ? 0 : 1;
     }

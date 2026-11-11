@@ -244,6 +244,7 @@ def run(options):
         "--max-new-tokens", str(options.max_new_tokens),
         "--preset", options.preset, "--warmup", str(options.warmup),
         "--repetitions", str(options.repetitions), "--mode", options.mode,
+        "--weights", options.weights,
     ]
     if options.eos_token is not None:
         command += ["--eos-token", str(options.eos_token)]
@@ -274,7 +275,8 @@ def run(options):
         engine = strict_json(completed.stdout)
         (destination / "engine.json").write_text(json_text(engine))
         expected_workload = {
-            "preset": options.preset, "prompt_tokens": options.prompt,
+            "preset": options.preset, "weights": options.weights,
+            "prompt_tokens": options.prompt,
             "max_new_tokens": options.max_new_tokens, "eos_token_id": options.eos_token,
             "context_capacity": len(options.prompt) + max(options.max_new_tokens - 1, 0),
             "warmup": options.warmup, "repetitions": options.repetitions,
@@ -329,6 +331,9 @@ def main():
     parser.add_argument("--max-new-tokens", type=unsigned, required=True)
     parser.add_argument("--eos-token", type=token)
     parser.add_argument("--preset", choices=("o1-plain", "o2-packed"), required=True)
+    parser.add_argument("--weights",
+                        choices=("require-fp32", "convert-fp32", "keep-fp16", "keep-bf16"),
+                        default="require-fp32")
     parser.add_argument("--warmup", type=unsigned, default=1)
     parser.add_argument("--repetitions", type=unsigned, default=5)
     parser.add_argument("--mode", choices=("timing", "profile", "allocations"), default="timing")

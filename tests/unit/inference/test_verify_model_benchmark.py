@@ -18,7 +18,8 @@ SPEC.loader.exec_module(CHECKER)
 def report(repetitions=3):
     sample = {
         "index": 0,
-        "preparation": {"load_ns": 100, "compile_ns": 200, "runtime_ns": 300, "prepare_ns": 400},
+        "preparation": {"load_ns": 100, "compile_ns": 200, "runtime_ns": 300, "prepare_ns": 400,
+                        "conversion_ns": None},
         "memory": {"raw_unique_visible_bytes": 1000, "packed_unique_storage_bytes": 200,
                    "kv_capacity_bytes": 2560, "workspace_bytes": 512, "process_peak_rss_bytes": 1048576},
         "internal": {
@@ -66,7 +67,8 @@ def report(repetitions=3):
             "geometry": {"hidden_size": 16, "intermediate_size": 37, "vocab_size": 64,
                          "num_hidden_layers": 2, "num_attention_heads": 4, "num_key_value_heads": 2,
                          "head_dim": 4, "max_position_embeddings": 32},
-            "workload": {"preset": "o1-plain", "prompt_tokens": [1, 7, 3], "max_new_tokens": 3,
+            "workload": {"preset": "o1-plain", "weights": "require-fp32",
+                         "prompt_tokens": [1, 7, 3], "max_new_tokens": 3,
                          "eos_token_id": None, "context_capacity": 5, "warmup": 1, "repetitions": repetitions},
             "samples": samples,
         },
@@ -116,6 +118,13 @@ def end_on(document, count, eos=None, maximum=None):
         if count == 0:
             internal["request_setup_ns"] = 0
             internal["first_token_request_ns"] = internal["prefill_execute_ns"] = None
+    return document
+
+
+def weight_policy(document, name, conversion_ns=None):
+    document["engine"]["workload"]["weights"] = name
+    for sample in document["engine"]["samples"]:
+        sample["preparation"]["conversion_ns"] = conversion_ns
     return document
 
 
@@ -253,6 +262,43 @@ class ReportContracts(unittest.TestCase):
                      ("engine", "samples", 0, "generate", "duration_ns")):
             with self.subTest(path=path):
                 self.invalid(path, 0, "positive")
+
+    def test_unknown_weight_policy_name_is_rejected(self):
+        for value in ("keep-fp8", "fp16", 1):
+            with self.subTest(value=value):
+                self.invalid(("engine", "workload", "weights"), value, "invalid weights")
+
+    def test_keep_policy_timing_requires_a_conversion_measurement(self):
+        document = weight_policy(report(), "keep-fp16")
+        with self.assertRaisesRegex(CHECKER.VerificationError, "conversion_ns"):
+            CHECKER.verify_report(document)
+
+    def test_require_fp32_cannot_claim_a_conversion_measurement(self):
+        document = weight_policy(report(), "require-fp32", 50)
+        with self.assertRaisesRegex(CHECKER.VerificationError, "must be null"):
+            CHECKER.verify_report(document)
+
+    def test_keep_policy_timing_with_conversion_measurement_is_accepted(self):
+        document = weight_policy(report(), "keep-fp16", 50)
+        CHECKER.verify_report(document)
+        result = CHECKER.summarize(document)
+        self.assertEqual(result["metrics"]["preparation.conversion_ns"]["median"], 50)
+
+    def test_keep_policy_diagnostic_modes_have_no_conversion_measurement(self):
+        for mode in ("profile", "allocations"):
+            with self.subTest(mode=mode):
+                document = set_mode(weight_policy(report(), "keep-bf16", 50), mode)
+                CHECKER.verify_report(document)
+        document = weight_policy(report(), "keep-bf16", 50)
+        set_mode(document, "profile")
+        document["engine"]["samples"][0]["preparation"]["conversion_ns"] = 50
+        with self.assertRaisesRegex(CHECKER.VerificationError, "must be null"):
+            CHECKER.verify_report(document)
+
+    def test_keep_policy_conversion_measurement_must_be_nonnegative(self):
+        document = weight_policy(report(), "keep-bf16", -1)
+        with self.assertRaisesRegex(CHECKER.VerificationError, "nonnegative"):
+            CHECKER.verify_report(document)
 
     def test_first_token_latency_must_include_request_setup(self):
         self.invalid(("engine", "samples", 0, "internal", "first_token_request_ns"), 1000,
@@ -431,6 +477,11 @@ class SummaryContracts(unittest.TestCase):
         self.assertIsNone(result["metrics"]["generate.actual_tokens_per_second"])
         self.assertIsNotNone(result["metrics"]["generate.duration_ns"])
 
+    def test_require_fp32_summary_keeps_a_null_conversion_group(self):
+        result = CHECKER.summarize(report())
+        self.assertIsNone(result["metrics"]["preparation.conversion_ns"])
+        self.assertEqual(result["metrics"]["preparation.load_ns"]["n"], 3)
+
     def test_undefined_throughput_keeps_all_timings_without_selecting_repetitions(self):
         for phase in ("prefill", "decode"):
             with self.subTest(phase=phase):
@@ -493,6 +544,13 @@ class SummaryContracts(unittest.TestCase):
                 target[path[-1]] = value
                 with self.assertRaisesRegex(CHECKER.VerificationError, "same machine"):
                     CHECKER.compare_reports(baseline, candidate)
+
+    def test_comparison_rejects_weight_policy_mixing(self):
+        baseline = report()
+        candidate = weight_policy(report(), "keep-fp16", 50)
+        candidate["run_id"] += "-candidate"
+        with self.assertRaisesRegex(CHECKER.VerificationError, "same machine"):
+            CHECKER.compare_reports(baseline, candidate)
 
     def test_noise_floor_preserves_all_process_medians_and_pairs(self):
         result = CHECKER.noise_floor(noise_reports())

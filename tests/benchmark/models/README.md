@@ -1,6 +1,6 @@
 # Model benchmark measurements
 
-The Linux-only `aethermind_model_benchmark` developer executable measures the existing CPU FP32 Llama path. It separates internal prepared execution diagnostics from the public `InferenceSession::Generate` interval. It does not add a product runner or change inference APIs.
+The Linux-only `aethermind_model_benchmark` developer executable measures the CPU Llama path with FP32 activations/KV, including the retained W16 weight policies. It separates internal prepared execution diagnostics from the public `InferenceSession::Generate` interval. It does not add a product runner or change inference APIs.
 
 The measurement rules follow the [operator workflow](../../../docs/guides/operator-development-workflow.md) and [quality plan Q4](../../../docs/improvement-plan/13-deepinfer-quality-and-validation.md). Results describe the specified model, build, machine, workload, and measurement boundary; they do not establish model quality or an optimization benefit by themselves.
 
@@ -44,13 +44,25 @@ Timing runs preserve `invocation.json`, `source.patch`, `machine.json`, `dynamic
 
 The driver reads model files to compute their identities before launching the probe. The recorded cache policy is `pre_read_by_identity_collection`: loading measurements are **not cold filesystem-cache startup measurements**. It checks model, binary, linked library, and relevant source identities again after execution. Avoid rebuilding or editing those files during capture.
 
+`--weights` selects the source weight policy: `require-fp32` (default), `convert-fp32`, `keep-fp16`, or `keep-bf16`. `convert-fp32` widens all required weights before compilation; the retained W16 policies keep F16/BF16 matrix weights, widen only Norm weights to FP32, and execute with FP32 activations/KV, mirroring the production `ExecutableModel::Load` orchestration. The retained-W16 path supports CPU O1/plain and O2/identity-packed; O2 additionally holds identity-packed two-byte artifacts. W16 measurement fixtures can come from `.models/inference-admission` (for example `f16-auto` or `bf16-auto`):
+
+```bash
+python3 tools/run_model_benchmark.py \
+  --binary build/validation/benchmark-model/tests/benchmark/aethermind_model_benchmark \
+  --model .models/inference-admission/f16-auto \
+  --prompt 1,7,3 --max-new-tokens 3 --preset o1-plain --weights keep-fp16 \
+  --warmup 1 --repetitions 20 --mode timing --variant w16-f16
+```
+
+The policy is recorded in the workload and participates in comparison identity; runs with different weight policies are not comparable.
+
 Identity collection includes all index-referenced shards, including nested paths, and rejects symlink/path escapes. The environment contract records allocator settings such as `THP_MEM_ALLOC_ENABLE` as well as loader/thread settings. Empty recorded values mean the input variable was unset; library defaults remain tied to the recorded binary/source identity. Machine metadata records visible CPU, OS/kernel, affinity, memory, NUMA and available governor/turbo information; unavailable virtualization details do not become hardware claims.
 
 Each warmup and measured sample uses the same fixed order:
 
 ```text
-Load → Compile → Runtime build → Prepare
-     → internal prepared Prefill/Decode → public Generate
+Load → Runtime build → (policy conversion when --weights != require-fp32)
+     → Compile → Prepare → internal prepared Prefill/Decode → public Generate
 ```
 
 Every sample owns a fresh Runtime/model. Runtime stays at its final address while prepared kernels borrow it. The public Generate call starts a fresh logical request, but follows the internal diagnostic in that sample and therefore sees already-used model/cache pages. This order must remain the same when comparing runs. Warmups use the complete pipeline and are excluded from the numbered measured samples; every requested measured repetition is retained.
@@ -62,6 +74,7 @@ Every sample owns a fresh Runtime/model. Runtime stays at its final address whil
 | `preparation.load_ns` | `ModelLoader::Load`; later benchmark admission checks and raw-byte inspection are outside it |
 | `preparation.compile_ns` | `ModelCompiler::Compile` |
 | `preparation.runtime_ns` | `RuntimeBuilder::TryBuild`, including the configured KV storage |
+| `preparation.conversion_ns` | `ConvertRawModelWeightsToFp32` with the policy scope and backend host conversion callbacks, including its validation and owned payload allocation; null for `require-fp32`. Post-conversion admission is enforced by Compile/Prepare, which are measured separately |
 | `preparation.prepare_ns` | `PrepareExecutableModel`, including packing and plan/binding preparation |
 | `internal.request_setup_ns` | Reservation, request inputs/positions, output capacity, workspace, and Prefill bindings/context |
 | `internal.first_token_request_ns` | From reservation setup through Prefill execution and reading the first token; excludes prior plan/allocator lookup and diagnostic-array allocation |
@@ -96,11 +109,11 @@ python3 tools/run_model_benchmark.py \
 
 `timing` uses the normal allocator and requires a Release, non-sanitized build. The driver rejects loader injection through `LD_PRELOAD`/`LD_AUDIT` for timing. `profile` uses the normal allocator but makes no probe clock queries; an external profiler can observe this separate execution. It does not create timing summaries.
 
-`allocations` also makes no clock queries. Its separate Runtime allocator wrapper counts allocation requests during the specified Execute intervals. These are **Runtime allocator requests**, not all process heap operations, malloc-family calls, or a global zero-allocation proof. The wrapper is absent from normal timing/profile execution. Diagnostic reports use null timing fields and cannot enter timing comparisons/statistics.
+`allocations` also makes no clock queries. Its separate Runtime allocator wrapper counts allocation requests during the specified Execute intervals. These are **Runtime allocator requests**, not all process heap operations, malloc-family calls, or a global zero-allocation proof. Policy conversion runs before those intervals, so its allocations are not counted. The wrapper is absent from normal timing/profile execution. Diagnostic reports use null timing fields and cannot enter timing comparisons/statistics.
 
 Resource fields have separate meanings:
 
-- `raw_unique_visible_bytes`: deduplicated raw weight views by data/size; logical visible bytes, not mapped file bytes or RSS.
+- `raw_unique_visible_bytes`: deduplicated final raw weight views by data/size, after any policy conversion (retained W16 matrices plus widened FP32 Norm weights); logical visible bytes, not mapped file bytes or RSS.
 - `packed_unique_storage_bytes`: packed storage deduplicated by Buffer implementation, including sharing across phase plans.
 - `kv_capacity_bytes` and `workspace_bytes`: configured KV planes and maximum phase workspace capacity.
 - `process_peak_rss_bytes`: Linux process cumulative high-water RSS, including earlier warmups/samples; not a per-phase peak or current request RSS.
@@ -119,7 +132,7 @@ python3 tools/verify_model_benchmark.py \
   --compare <candidate-run-dir>/report.json
 ```
 
-Comparison requires the same machine/environment/affinity, build configuration, model identity, non-preset workload, and observed token/context trajectory. Warmup and repetition counts must match. It may compare O1/plain and O2/packed, but does not automatically call a difference an improvement or regression. All metric groups must be present; it does not compare only an overlapping subset.
+Comparison requires the same machine/environment/affinity, build configuration, model identity, non-preset workload (including the weight policy), and observed token/context trajectory. Warmup and repetition counts must match. It may compare O1/plain and O2/packed, but does not automatically call a difference an improvement or regression. All metric groups must be present; it does not compare only an overlapping subset.
 
 Statistics use all measured repetitions and report `n/min/median/max`. Observed p90 appears only with at least 10 samples in the group; observed p99 requires at least 100. These nearest-rank observations are not promises of stable tail latency.
 

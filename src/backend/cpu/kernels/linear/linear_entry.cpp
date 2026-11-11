@@ -30,29 +30,38 @@ Status BuildLinearF32Args(const KernelParamsBuildContext& context,
     const TensorView& weight = inputs[1];
     const MutableTensorView& output = outputs[0];
     if (!input.is_valid()) {
-        return Status::InvalidArgument("LinearKernelEntry requires a valid input TensorView");
+        return Status::InvalidArgument(
+                "LinearKernelEntry requires a valid input TensorView");
     }
+
     if (!weight.is_valid()) {
-        return Status::InvalidArgument("LinearKernelEntry requires a valid weight TensorView");
+        return Status::InvalidArgument(
+                "LinearKernelEntry requires a valid weight TensorView");
     }
+
     if (!output.is_valid()) {
         return Status::InvalidArgument(
                 "LinearKernelEntry requires a valid output MutableTensorView");
     }
 
-    const DataType fp32 = DataType::Float32();
-    if (input.dtype() != fp32 || weight.dtype() != fp32 || output.dtype() != fp32) {
+    if (const DataType fp32 = DataType::Float32();
+        input.dtype() != fp32 || weight.dtype() != fp32 || output.dtype() != fp32) {
         return Status::InvalidArgument(
-                "LinearKernelEntry requires float32 input, weight, and output TensorViews");
+                "LinearKernelEntry requires float32 input, "
+                "weight, and output TensorViews");
     }
 
     const int32_t rank = input.rank();
     if (rank < 1) {
-        return Status::InvalidArgument("LinearKernelEntry requires input rank >= 1");
+        return Status::InvalidArgument(
+                "LinearKernelEntry requires input rank >= 1");
     }
+
     if (weight.rank() != 2) {
-        return Status::InvalidArgument("LinearKernelEntry requires rank-2 weight TensorView");
+        return Status::InvalidArgument(
+                "LinearKernelEntry requires rank-2 weight TensorView");
     }
+
     if (output.rank() != rank) {
         return Status::InvalidArgument(
                 "LinearKernelEntry requires output rank to match input rank");
@@ -61,7 +70,8 @@ Status BuildLinearF32Args(const KernelParamsBuildContext& context,
     for (int32_t dim = 0; dim < rank - 1; ++dim) {
         if (output.dim(dim) != input.dim(dim)) {
             return Status::InvalidArgument(
-                    "LinearKernelEntry requires output leading dimensions to match input");
+                    "LinearKernelEntry requires output "
+                    "leading dimensions to match input");
         }
     }
 
@@ -69,14 +79,18 @@ Status BuildLinearF32Args(const KernelParamsBuildContext& context,
     const int64_t out_features = weight.dim(0);
     if (weight.dim(1) != in_features) {
         return Status::InvalidArgument(
-                "LinearKernelEntry requires weight input dimension to match input last dimension");
-    }
-    if (output.dim(rank - 1) != out_features) {
-        return Status::InvalidArgument(
-                "LinearKernelEntry requires output last dimension to match weight output dimension");
+                "LinearKernelEntry requires weight input dimension "
+                "to match input last dimension");
     }
 
-    const auto row_count = ComputeFlattenedRowCount(input, "LinearKernelEntry");
+    if (output.dim(rank - 1) != out_features) {
+        return Status::InvalidArgument(
+                "LinearKernelEntry requires output last dimension "
+                "to match weight output dimension");
+    }
+
+    const auto row_count = ComputeFlattenedRowCount(
+            input, "LinearKernelEntry");
     if (!row_count.ok()) {
         return row_count.status();
     }
@@ -108,7 +122,8 @@ Status BuildLinearF32Args(const KernelParamsBuildContext& context,
 
     if (input.data() == nullptr || weight.data() == nullptr || output.data() == nullptr) {
         return Status::InvalidArgument(
-                "LinearKernelEntry requires non-null data pointers for non-empty tensors");
+                "LinearKernelEntry requires non-null "
+                "data pointers for non-empty tensors");
     }
 
     AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis input_analysis,
@@ -120,9 +135,17 @@ Status BuildLinearF32Args(const KernelParamsBuildContext& context,
     // out_features: writing one output row can clobber input or weight elements
     // that later dot products have not read yet.
     AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
-            "CPU Linear", output_analysis.footprint(), "output", input_analysis.footprint(), "input"));
+            "CPU Linear",
+            output_analysis.footprint(),
+            "output",
+            input_analysis.footprint(),
+            "input"));
     AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
-            "CPU Linear", output_analysis.footprint(), "output", weight_analysis.footprint(), "weight"));
+            "CPU Linear",
+            output_analysis.footprint(),
+            "output",
+            weight_analysis.footprint(),
+            "weight"));
 
     ::new (params_buffer) LinearF32KernelArgs{
             .input = input.data<float>(),
@@ -138,6 +161,232 @@ Status BuildLinearF32Args(const KernelParamsBuildContext& context,
             .output_row_stride = output_analysis.row_stride(),
             .output_col_stride = output_analysis.column_stride(),
     };
+    return Status::Ok();
+}
+
+template<bool Bfloat>
+Status BuildLinearF32W16Args(const KernelParamsBuildContext& context,
+                             void* params_buffer) noexcept {
+    const auto inputs = context.inputs;
+    const auto outputs = context.outputs;
+    if (inputs.size() != 2 || outputs.size() != 1) {
+        return Status::InvalidArgument("Linear requires 2 inputs and 1 output");
+    }
+
+    const TensorView& input = inputs[0];
+    const TensorView& weight = inputs[1];
+    const MutableTensorView& output = outputs[0];
+    if (!input.is_valid() || !weight.is_valid() || !output.is_valid()) {
+        return Status::InvalidArgument(
+                "LinearF32W16 requires valid input, weight, and output TensorViews");
+    }
+
+    const DataType weight_dtype = weight.dtype();
+    const DataType expected_weight = Bfloat ? DataType::BFloat(16)
+                                            : DataType::Float(16);
+    if (input.dtype() != DataType::Float32() || output.dtype() != DataType::Float32() ||
+        weight_dtype != expected_weight) {
+        return Status::InvalidArgument(
+                "LinearF32W16 requires float32 input/output "
+                "and weight dtype matching its selector");
+    }
+
+    const int32_t rank = input.rank();
+    if (rank < 1 || weight.rank() != 2 || output.rank() != rank) {
+        return Status::InvalidArgument(
+                "LinearF32W16 requires rank >= 1 input/output "
+                "and rank-2 weight TensorViews");
+    }
+
+    for (int32_t dim = 0; dim < rank - 1; ++dim) {
+        if (output.dim(dim) != input.dim(dim)) {
+            return Status::InvalidArgument(
+                    "LinearF32W16 requires output leading dimensions to match input");
+        }
+    }
+
+    const int64_t in_features = input.dim(rank - 1);
+    const int64_t out_features = weight.dim(0);
+    if (weight.dim(1) != in_features || output.dim(rank - 1) != out_features) {
+        return Status::InvalidArgument(
+                "LinearF32W16 input, weight, and output "
+                "feature dimensions do not match");
+    }
+
+    AM_ASSIGN_OR_RETURN(const int64_t row_count,
+                        ComputeFlattenedRowCount(input,
+                                                 "LinearF32W16 input"));
+    if (row_count == 0 || out_features == 0) {
+        ::new (params_buffer) LinearF32W16KernelArgs{
+                .weight_dtype = weight_dtype,
+                .row_count = row_count,
+                .in_features = in_features,
+                .out_features = out_features,
+        };
+        return Status::Ok();
+    }
+
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis output_analysis,
+                        AnalyzeRowwiseView(output, "LinearF32W16 output"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout("LinearF32W16", output_analysis));
+    if (in_features == 0) {
+        ::new (params_buffer) LinearF32W16KernelArgs{
+                .output = output.data<float>(),
+                .weight_dtype = weight_dtype,
+                .row_count = output_analysis.row_count(),
+                .in_features = 0,
+                .out_features = out_features,
+                .output_row_stride = output_analysis.row_stride(),
+                .output_col_stride = output_analysis.column_stride(),
+        };
+        return Status::Ok();
+    }
+
+    if (input.data() == nullptr || weight.data() == nullptr || output.data() == nullptr) {
+        return Status::InvalidArgument(
+                "LinearF32W16 requires non-null data "
+                "pointers for non-empty tensors");
+    }
+
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis input_analysis,
+                        AnalyzeRowwiseView(input, "LinearF32W16 input"));
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis weight_analysis,
+                        AnalyzeRowwiseView(weight, "LinearF32W16 weight"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU LinearF32W16", output_analysis.footprint(), "output",
+            input_analysis.footprint(), "input"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU LinearF32W16", output_analysis.footprint(), "output",
+            weight_analysis.footprint(), "weight"));
+
+    ::new (params_buffer) LinearF32W16KernelArgs{
+            .input = input.data<float>(),
+            .weight = static_cast<const std::byte*>(weight.data()),
+            .output = output.data<float>(),
+            .weight_dtype = weight_dtype,
+            .row_count = input_analysis.row_count(),
+            .in_features = in_features,
+            .out_features = out_features,
+            .input_row_stride = input_analysis.row_stride(),
+            .input_col_stride = input_analysis.column_stride(),
+            .weight_row_stride = weight_analysis.row_stride(),
+            .weight_col_stride = weight_analysis.column_stride(),
+            .output_row_stride = output_analysis.row_stride(),
+            .output_col_stride = output_analysis.column_stride(),
+    };
+    return Status::Ok();
+}
+
+template<bool Bfloat>
+Status BuildLinearF32W16PackedIdentityArgs(const KernelParamsBuildContext& context,
+                                           void* params_buffer) noexcept {
+    if (context.inputs.size() != 1U || context.outputs.size() != 1U ||
+        !context.packed_weight.has_value()) {
+        return Status::InvalidArgument(
+                "Packed W16 Linear requires one activation, one output, and an artifact");
+    }
+
+    const TensorView& input = context.inputs[0];
+    const MutableTensorView& output = context.outputs[0];
+    const PackedWeightView& packed = *context.packed_weight;
+    if (!input.is_valid() || !output.is_valid()) {
+        return Status::InvalidArgument(
+                "Packed W16 Linear requires valid input and output TensorViews");
+    }
+    if (input.dtype() != DataType::Float32() || output.dtype() != DataType::Float32()) {
+        return Status::InvalidArgument(
+                "Packed W16 Linear requires float32 input and output TensorViews");
+    }
+    if (input.rank() < 1 || packed.logical_shape.size() != 2U) {
+        return Status::InvalidArgument(
+                "Packed W16 Linear requires rank >= 1 input and a rank-2 weight artifact");
+    }
+
+    const DataType weight_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16);
+    const int64_t in_features = input.dim(input.rank() - 1);
+    const int64_t out_features = packed.logical_shape[0];
+    if (out_features < 0 || packed.logical_shape[1] != in_features) {
+        return Status::InvalidArgument(
+                "Packed W16 Linear weight shape does not match the input feature dimension");
+    }
+    AM_RETURN_IF_ERROR(ValidateIdentityPackedWeight(
+            packed, std::array{out_features, in_features},
+            "LinearW16KernelEntry", weight_dtype));
+
+    const int32_t rank = input.rank();
+    if (output.rank() != rank) {
+        return Status::InvalidArgument(
+                "Packed W16 Linear requires output rank to match input rank");
+    }
+    for (int32_t dim = 0; dim < rank - 1; ++dim) {
+        if (output.dim(dim) != input.dim(dim)) {
+            return Status::InvalidArgument(
+                    "Packed W16 Linear requires output leading dimensions to match input");
+        }
+    }
+    if (output.dim(rank - 1) != out_features) {
+        return Status::InvalidArgument(
+                "Packed W16 Linear output feature dimension does not match the weight");
+    }
+
+    AM_ASSIGN_OR_RETURN(const int64_t row_count,
+                        ComputeFlattenedRowCount(input, "LinearW16KernelEntry"));
+    LinearF32W16KernelArgs args{
+            .weight_dtype = weight_dtype,
+            .row_count = row_count,
+            .in_features = in_features,
+            .out_features = out_features,
+    };
+    if (row_count == 0 || out_features == 0) {
+        ::new (params_buffer) LinearF32W16KernelArgs(args);
+        return Status::Ok();
+    }
+
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis output_analysis,
+                        AnalyzeRowwiseView(output, "LinearW16KernelEntry output"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout(
+            "LinearW16KernelEntry output", output_analysis));
+    if (output.data() == nullptr) {
+        return Status::InvalidArgument(
+                "Packed W16 Linear requires non-null output for non-empty tensors");
+    }
+    args.output = output.data<float>();
+    args.output_row_stride = output_analysis.row_stride();
+    args.output_col_stride = output_analysis.column_stride();
+    if (in_features == 0) {
+        ::new (params_buffer) LinearF32W16KernelArgs(args);
+        return Status::Ok();
+    }
+
+    if (input.data() == nullptr || packed.data == nullptr) {
+        return Status::InvalidArgument(
+                "Packed W16 Linear requires non-null input and packed weight data");
+    }
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis input_analysis,
+                        AnalyzeRowwiseView(input, "LinearW16KernelEntry input"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU LinearF32W16", output_analysis.footprint(), "output",
+            input_analysis.footprint(), "input"));
+    if (!std::in_range<int64_t>(packed.nbytes)) {
+        return Status::Overflow(
+                "Packed W16 Linear artifact byte range exceeds int64_t");
+    }
+    AM_ASSIGN_OR_RETURN(const ByteAddressRange packed_range,
+                        BuildContiguousByteRange(
+                                packed.data, static_cast<int64_t>(packed.nbytes),
+                                size_t{1}, "LinearW16KernelEntry packed weight"));
+    AM_RETURN_IF_ERROR(ValidateContiguousDisjoint(
+            "CPU LinearF32W16", output_analysis.footprint().envelope(), "output",
+            packed_range, "packed weight"));
+
+    args.input = input.data<float>();
+    args.weight = static_cast<const std::byte*>(packed.data);
+    args.row_count = input_analysis.row_count();
+    args.input_row_stride = input_analysis.row_stride();
+    args.input_col_stride = input_analysis.column_stride();
+    args.weight_row_stride = in_features;
+    args.weight_col_stride = 1;
+    ::new (params_buffer) LinearF32W16KernelArgs(args);
     return Status::Ok();
 }
 
@@ -318,10 +567,19 @@ Status LinearF32ReferenceEntry(const KernelContext& ctx) noexcept {
     return RunLinearF32Reference(*args);
 }
 
+Status LinearF32W16ReferenceEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const LinearF32W16KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunLinearF32W16Reference(*args);
+}
+
 } // namespace
 
 static_assert(std::is_trivially_destructible_v<LinearF32KernelArgs>);
 static_assert(alignof(LinearF32KernelArgs) <= alignof(std::max_align_t));
+static_assert(std::is_trivially_destructible_v<LinearF32W16KernelArgs>);
+static_assert(alignof(LinearF32W16KernelArgs) <= alignof(std::max_align_t));
+static_assert(sizeof(LinearF32W16KernelArgs) <= kMaxKernelParamsSize);
 
 AM_REGISTER_KERNEL(
         CpuLinearF32Reference,
@@ -339,6 +597,76 @@ AM_REGISTER_KERNEL(
                 .params_size = sizeof(LinearF32KernelArgs),
                 .params_builder = &BuildLinearF32Args,
                 .name = "cpu::linear_f32_reference"})
+
+AM_REGISTER_KERNEL(
+        CpuLinearF32F16Reference,
+        KernelDef{
+                .op_type = OpType::kLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float(16),
+                        .weight_format = WeightFormat::kPlain,
+                        .phase = ExecPhase::kBoth,
+                },
+                .kernel_func = &LinearF32W16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(LinearF32W16KernelArgs),
+                .params_builder = &BuildLinearF32W16Args<false>,
+                .name = "cpu::linear_f32_f16_reference"})
+
+AM_REGISTER_KERNEL(
+        CpuLinearF32Bf16Reference,
+        KernelDef{
+                .op_type = OpType::kLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::BFloat(16),
+                        .weight_format = WeightFormat::kPlain,
+                        .phase = ExecPhase::kBoth,
+                },
+                .kernel_func = &LinearF32W16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(LinearF32W16KernelArgs),
+                .params_builder = &BuildLinearF32W16Args<true>,
+                .name = "cpu::linear_f32_bf16_reference"})
+
+AM_REGISTER_KERNEL(
+        CpuLinearF32F16PackedIdentityReference,
+        KernelDef{
+                .op_type = OpType::kLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float(16),
+                        .weight_format = WeightFormat::kPacked,
+                        .phase = ExecPhase::kBoth,
+                },
+                .packing_recipe = CpuIdentityPackingRecipe(),
+                .kernel_func = &LinearF32W16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(LinearF32W16KernelArgs),
+                .params_builder = &BuildLinearF32W16PackedIdentityArgs<false>,
+                .name = "cpu::linear_f32_f16_packed_identity_reference"})
+
+AM_REGISTER_KERNEL(
+        CpuLinearF32Bf16PackedIdentityReference,
+        KernelDef{
+                .op_type = OpType::kLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::BFloat(16),
+                        .weight_format = WeightFormat::kPacked,
+                        .phase = ExecPhase::kBoth,
+                },
+                .packing_recipe = CpuIdentityPackingRecipe(),
+                .kernel_func = &LinearF32W16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(LinearF32W16KernelArgs),
+                .params_builder = &BuildLinearF32W16PackedIdentityArgs<true>,
+                .name = "cpu::linear_f32_bf16_packed_identity_reference"})
 
 
 AM_REGISTER_KERNEL(

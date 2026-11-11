@@ -2,6 +2,8 @@
 #include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_types.h"
+#include "aethermind/dtypes/bfloat16.h"
+#include "aethermind/dtypes/half.h"
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan_builder.h"
@@ -10,11 +12,16 @@
 #include "aethermind/runtime/runtime_builder.h"
 #include "backend/cpu/kernels/linear/linear_internal.h"
 #include "execution/test_execution_binding_helpers.h"
+#include "test_utils/test_allocator.h"
 
 #include <gtest/gtest.h>
 
 #include <array>
+#include <bit>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <limits>
 #include <string_view>
 #include <vector>
@@ -46,6 +53,15 @@ StatusOr<ResolvedKernel> PrepareLinearKernel() {
 StatusOr<ResolvedKernel> PrepareLinearKernel(const CpuFeaturePolicy& policy) {
     CpuBackend backend(policy);
     return backend.PrepareKernel(OpType::kLinear, MakeLinearSelector(), OpParams{LinearParams{}});
+}
+
+StatusOr<ResolvedKernel> PrepareLinearW16Kernel(DataType weight_dtype,
+                                                ExecPhase phase = ExecPhase::kBoth) {
+    CpuBackend backend;
+    KernelSelector selector = MakeLinearSelector();
+    selector.weight_dtype = weight_dtype;
+    selector.phase = phase;
+    return backend.PrepareKernel(OpType::kLinear, selector, OpParams{LinearParams{}});
 }
 
 
@@ -132,6 +148,72 @@ void ExpectLinearRowsNear(const float* input,
     }
 }
 
+uint16_t ReducedBits(float value, DataType dtype) {
+    if (dtype == DataType::Float(16)) {
+        return Half(value).bits();
+    }
+    return BFloat16(value).x;
+}
+
+float WidenReducedBits(uint16_t bits, DataType dtype) {
+    const int fraction_bits = dtype == DataType::Float(16) ? 10 : 7;
+    const int bias = fraction_bits == 10 ? 15 : 127;
+    const unsigned exponent_mask = fraction_bits == 10 ? 31U : 255U;
+    const unsigned exponent = (bits >> fraction_bits) & exponent_mask;
+    const unsigned fraction = bits & ((1U << fraction_bits) - 1);
+    const uint32_t sign = static_cast<uint32_t>(bits & 0x8000U) << 16;
+    if (exponent == exponent_mask) {
+        return std::bit_cast<float>(sign | 0x7f800000U |
+                                    (fraction == 0 ? 0U : (fraction << (23 - fraction_bits)) | 0x00400000U));
+    }
+    const double significand = exponent == 0 ? fraction : (1U << fraction_bits) + fraction;
+    const float value = static_cast<float>(std::ldexp(significand,
+                                                      static_cast<int>(exponent == 0 ? 1 : exponent) - bias - fraction_bits));
+    return std::bit_cast<float>(sign | std::bit_cast<uint32_t>(value));
+}
+
+void StoreReduced(std::byte* storage, int64_t index, float value, DataType dtype) {
+    const uint16_t bits = dtype == DataType::Float(16) ? Half(value).bits() : BFloat16(value).x;
+    std::memcpy(storage + static_cast<size_t>(index) * sizeof(bits), &bits, sizeof(bits));
+}
+
+float FixedFp32Dot(const float* input,
+                   int64_t input_stride,
+                   const std::byte* weight,
+                   int64_t weight_stride,
+                   int64_t count,
+                   DataType dtype) {
+    float sum = 0.0F;
+    for (int64_t index = 0; index < count; ++index) {
+        uint16_t bits = 0;
+        std::memcpy(&bits, weight + static_cast<size_t>(index * weight_stride) * sizeof(bits),
+                    sizeof(bits));
+        sum += input[index * input_stride] * WidenReducedBits(bits, dtype);
+    }
+    return sum;
+}
+
+std::pair<double, double> DoubleDotAndAbsoluteProductSum(
+        const float* input,
+        int64_t input_stride,
+        const std::byte* weight,
+        int64_t weight_stride,
+        int64_t count,
+        DataType dtype) {
+    double sum = 0.0;
+    double absolute_products = 0.0;
+    for (int64_t index = 0; index < count; ++index) {
+        uint16_t bits = 0;
+        std::memcpy(&bits, weight + static_cast<size_t>(index * weight_stride) * sizeof(bits),
+                    sizeof(bits));
+        const double product = static_cast<double>(input[index * input_stride]) *
+                               static_cast<double>(WidenReducedBits(bits, dtype));
+        sum += product;
+        absolute_products += std::abs(product);
+    }
+    return {sum, absolute_products};
+}
+
 TEST(CPUKernelLinear, CpuBackendPreparesPlainF32ReferenceKernel) {
     const auto kernel = PrepareLinearKernel();
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
@@ -150,6 +232,193 @@ TEST(CPUKernelLinear, RejectsSelectorsWithoutPlainF32ReferenceSupport) {
             OpType::kLinear, selector, OpParams{LinearParams{}});
     EXPECT_FALSE(fp16.ok());
     EXPECT_EQ(fp16.status().code(), StatusCode::kNotFound);
+}
+
+TEST(CPUKernelLinearW16, CpuBackendPreparesBothReducedWeightReferencesForBothPhases) {
+    for (const DataType dtype: {DataType::Float(16), DataType::BFloat(16)}) {
+        for (const ExecPhase phase: {ExecPhase::kPrefill, ExecPhase::kDecode}) {
+            const auto kernel = PrepareLinearW16Kernel(dtype, phase);
+            ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+            EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::LinearF32W16KernelArgs));
+            EXPECT_EQ(std::string_view{kernel->name},
+                      dtype == DataType::Float(16) ? "cpu::linear_f32_f16_reference"
+                                                   : "cpu::linear_f32_bf16_reference");
+        }
+    }
+}
+
+TEST(CPUKernelLinearW16, FixedFp32AccumulationHandlesRankThreeStridesUnalignedWeightsAndTails) {
+    constexpr int64_t input_shape[3] = {2, 1, 9};
+    constexpr int64_t input_strides[3] = {13, 13, 1};
+    constexpr int64_t weight_shape[2] = {3, 9};
+    constexpr int64_t weight_strides[2] = {12, 1};
+    constexpr int64_t output_shape[3] = {2, 1, 3};
+    constexpr int64_t output_strides[3] = {7, 7, 1};
+
+    for (const DataType dtype: {DataType::Float(16), DataType::BFloat(16)}) {
+        std::array<float, 22> input{};
+        std::array<float, 13> output{};
+        std::array<std::byte, 1 + 2 * 33> weight_storage{};
+        std::byte* const weight = weight_storage.data() + 1;
+        for (int64_t row = 0; row < 2; ++row) {
+            for (int64_t k = 0; k < 9; ++k) {
+                input[static_cast<size_t>(row * 13 + k)] =
+                        static_cast<float>(row * 9 + k - 5) * 0.125F;
+            }
+        }
+        for (int64_t n = 0; n < 3; ++n) {
+            for (int64_t k = 0; k < 9; ++k) {
+                StoreReduced(weight, n * 12 + k,
+                             static_cast<float>((n + 1) * (k - 4)) * 0.09375F, dtype);
+            }
+        }
+
+        const auto kernel = PrepareLinearW16Kernel(dtype);
+        ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+        const Status status = RunLinearEntryWith(*kernel, LinearTestViews{
+                                                                  .input_tensor = TensorView{input.data(), DataType::Float32(), input_shape, input_strides},
+                                                                  .weight_tensor = TensorView{weight, dtype, weight_shape, weight_strides},
+                                                                  .output_tensor = MutableTensorView{output.data(), DataType::Float32(), output_shape, output_strides},
+                                                          });
+        ASSERT_TRUE(status.ok()) << status.ToString();
+        for (int64_t row = 0; row < 2; ++row) {
+            for (int64_t n = 0; n < 3; ++n) {
+                const float expected = FixedFp32Dot(input.data() + row * 13, 1,
+                                                    weight + static_cast<size_t>(n * 12) * 2,
+                                                    1, 9, dtype);
+                EXPECT_EQ(output[static_cast<size_t>(row * 7 + n)], expected);
+                const auto [double_expected, absolute_products] =
+                        DoubleDotAndAbsoluteProductSum(input.data() + row * 13, 1,
+                                                       weight + static_cast<size_t>(n * 12) * 2,
+                                                       1, 9, dtype);
+                constexpr double unit_roundoff =
+                        static_cast<double>(std::numeric_limits<float>::epsilon()) / 2.0;
+                const double gamma = (18.0 * unit_roundoff) / (1.0 - 18.0 * unit_roundoff);
+                EXPECT_NEAR(output[static_cast<size_t>(row * 7 + n)],
+                            static_cast<float>(double_expected),
+                            static_cast<float>(gamma * absolute_products + 1.0e-6));
+            }
+        }
+    }
+}
+
+TEST(CPUKernelLinearW16, DoesNotRoundFloat32ActivationBeforeMultiplication) {
+    constexpr int64_t input_shape[1] = {1};
+    constexpr int64_t weight_shape[2] = {1, 1};
+    constexpr int64_t output_shape[1] = {1};
+    constexpr int64_t strides[2] = {1, 1};
+    constexpr int64_t vector_stride[1] = {1};
+    const float input = 1.0001F;
+
+    for (const DataType dtype: {DataType::Float(16), DataType::BFloat(16)}) {
+        const uint16_t bits = ReducedBits(1.0F, dtype);
+        float output = 0.0F;
+        const auto kernel = PrepareLinearW16Kernel(dtype);
+        ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+        const Status status = RunLinearEntryWith(*kernel, LinearTestViews{
+                                                                  .input_tensor = TensorView{&input, DataType::Float32(), input_shape, vector_stride},
+                                                                  .weight_tensor = TensorView{&bits, dtype, weight_shape, strides},
+                                                                  .output_tensor = MutableTensorView{&output, DataType::Float32(), output_shape, vector_stride},
+                                                          });
+        ASSERT_TRUE(status.ok()) << status.ToString();
+        EXPECT_EQ(output, input);
+    }
+}
+
+TEST(CPUKernelLinearW16, QuietedReducedNanWeightPropagatesToFloat32Output) {
+    constexpr int64_t input_shape[1] = {1};
+    constexpr int64_t weight_shape[2] = {1, 1};
+    constexpr int64_t vector_stride[1] = {1};
+    constexpr int64_t matrix_stride[2] = {1, 1};
+    constexpr float input = 1.0F;
+
+    for (const DataType dtype: {DataType::Float(16), DataType::BFloat(16)}) {
+        const uint16_t signaling_nan = dtype == DataType::Float(16) ? 0x7C01U : 0x7F81U;
+        float output = 0.0F;
+        const auto kernel = PrepareLinearW16Kernel(dtype);
+        ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+        ASSERT_TRUE(RunLinearEntryWith(*kernel, LinearTestViews{
+                                                        .input_tensor = TensorView{&input, DataType::Float32(), input_shape, vector_stride},
+                                                        .weight_tensor = TensorView{&signaling_nan, dtype, weight_shape, matrix_stride},
+                                                        .output_tensor = MutableTensorView{&output, DataType::Float32(), input_shape, vector_stride},
+                                                })
+                            .ok());
+        EXPECT_TRUE(std::isnan(output));
+    }
+}
+
+TEST(CPUKernelLinearW16, RejectsOutputAliasAndPreservesZeroKSemantics) {
+    constexpr int64_t shape[2] = {1, 2};
+    constexpr int64_t strides[2] = {2, 1};
+    std::array<float, 2> input{};
+    std::array<uint16_t, 4> weight{};
+    const auto kernel = PrepareLinearW16Kernel(DataType::BFloat(16));
+    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+    EXPECT_EQ(RunLinearEntryWith(*kernel, LinearTestViews{
+                                                  .input_tensor = TensorView{input.data(), DataType::Float32(), shape, strides},
+                                                  .weight_tensor = TensorView{weight.data(), DataType::BFloat(16), shape, strides},
+                                                  .output_tensor = MutableTensorView{input.data(), DataType::Float32(), shape, strides},
+                                          })
+                      .code(),
+              StatusCode::kInvalidArgument);
+
+    constexpr int64_t input_zero_shape[2] = {2, 0};
+    constexpr int64_t weight_zero_shape[2] = {3, 0};
+    constexpr int64_t output_zero_shape[2] = {2, 3};
+    constexpr int64_t zero_strides[2] = {1, 1};
+    constexpr int64_t output_zero_strides[2] = {3, 1};
+    std::array<float, 6> output{};
+    output.fill(1.0F);
+    const Status zero_status = RunLinearEntryWith(*kernel, LinearTestViews{
+                                                                   .input_tensor = TensorView{nullptr, DataType::Float32(), input_zero_shape, zero_strides},
+                                                                   .weight_tensor = TensorView{nullptr, DataType::BFloat(16), weight_zero_shape, zero_strides},
+                                                                   .output_tensor = MutableTensorView{output.data(), DataType::Float32(), output_zero_shape, output_zero_strides},
+                                                           });
+    ASSERT_TRUE(zero_status.ok()) << zero_status.ToString();
+    for (const float value: output) {
+        EXPECT_EQ(value, 0.0F);
+    }
+}
+
+TEST(CPUKernelLinearW16, RejectsWeightFormatDifferentFromResolvedSelector) {
+    constexpr int64_t shape[2] = {1, 1};
+    constexpr int64_t strides[2] = {1, 1};
+    const float input = 1.0F;
+    const uint16_t weight = 0x3f80;
+    float output = 42.0F;
+    for (const DataType dtype: {DataType::Float(16), DataType::BFloat(16)}) {
+        const auto kernel = PrepareLinearW16Kernel(dtype);
+        ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+        const DataType wrong = dtype == DataType::Float(16) ? DataType::BFloat(16) : DataType::Float(16);
+        const auto status = RunLinearEntryWith(*kernel,
+                                               {.input_tensor = TensorView{&input, DataType::Float32(), shape, strides},
+                                                .weight_tensor = TensorView{&weight, wrong, shape, strides},
+                                                .output_tensor = MutableTensorView{&output, DataType::Float32(), shape, strides}});
+        EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(output, 42.0F);
+    }
+}
+
+TEST(CPUKernelLinearW16, ZeroRowsOrOutputFeaturesAreNoOps) {
+    constexpr int64_t strides[2] = {3, 1};
+    constexpr int64_t no_rows[2] = {0, 3}, regular_weight[2] = {2, 3}, empty_output[2] = {0, 2};
+    constexpr int64_t input_shape[2] = {2, 3}, no_features[2] = {0, 3}, no_feature_output[2] = {2, 0};
+    const std::array<uint16_t, 6> weights{};
+    const std::array<float, 6> inputs{};
+    for (const DataType dtype: {DataType::Float(16), DataType::BFloat(16)}) {
+        const auto kernel = PrepareLinearW16Kernel(dtype);
+        ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+        EXPECT_TRUE(RunLinearEntryWith(*kernel,
+                                       {.input_tensor = TensorView{nullptr, DataType::Float32(), no_rows, strides},
+                                        .weight_tensor = TensorView{weights.data(), dtype, regular_weight, strides},
+                                        .output_tensor = MutableTensorView{nullptr, DataType::Float32(), empty_output, strides}})
+                            .ok());
+        EXPECT_TRUE(RunLinearEntryWith(*kernel,
+                                       {.input_tensor = TensorView{inputs.data(), DataType::Float32(), input_shape, strides},
+                                        .weight_tensor = TensorView{nullptr, dtype, no_features, strides},
+                                        .output_tensor = MutableTensorView{nullptr, DataType::Float32(), no_feature_output, strides}})
+                            .ok());
+    }
 }
 
 TEST(CPUKernelLinear, PreparesPackedIdentityFallback) {
@@ -641,6 +910,98 @@ TEST(CPUKernelLinear, ExecutionPlanBuilderRunsPreparedReferenceKernel) {
     const Status status = Executor::Execute(*plan, *context);
     ASSERT_TRUE(status.ok()) << status.ToString();
     ExpectLinearRowsNear(input, weight, output, 2, 3, 2, 3, 1, 3, 1, 2, 1);
+}
+
+TEST(CPUKernelLinearW16, PackedIdentityExecutesAndValidatesReducedArtifact) {
+    constexpr int64_t input_shape[2] = {2, 3};
+    constexpr int64_t input_strides[2] = {3, 1};
+    constexpr int64_t weight_shape[2] = {2, 3};
+    constexpr int64_t weight_strides[2] = {3, 1};
+    constexpr int64_t output_shape[2] = {2, 2};
+    constexpr int64_t output_strides[2] = {2, 1};
+    const float input[6] = {1.0F, -2.0F, 0.5F, 0.25F, 4.0F, -1.5F};
+    const float logical[6] = {0.5F, -0.25F, 1.5F, 2.0F, 0.125F, -3.0F};
+
+    for (const DataType dtype: {DataType::Float(16), DataType::BFloat(16)}) {
+        std::array<std::byte, 12> weight_bytes{};
+        for (size_t index = 0; index < 6; ++index) {
+            StoreReduced(weight_bytes.data(), static_cast<int64_t>(index), logical[index], dtype);
+        }
+        const TensorView weight_view(weight_bytes.data(), dtype, weight_shape, weight_strides);
+        CpuBackend backend;
+        KernelSelector selector = MakeLinearSelector();
+        selector.weight_dtype = dtype;
+        selector.weight_format = WeightFormat::kPacked;
+        const auto recipe = backend.GetPackingRecipe(OpType::kLinear, selector);
+        ASSERT_TRUE(recipe.ok()) << recipe.status().ToString();
+        auto packed = backend.PackWeights(
+                OpType::kLinear, std::array<TensorView, 1>{weight_view},
+                selector, *recipe, test::TestCpuAllocator());
+        ASSERT_TRUE(packed.ok()) << packed.status().ToString();
+        EXPECT_EQ((*packed)->logical_dtype(), dtype);
+        EXPECT_EQ((*packed)->storage().nbytes(), weight_bytes.size());
+
+        const auto kernel = backend.PrepareKernel(
+                OpType::kLinear, selector, OpParams{LinearParams{}});
+        ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+        EXPECT_EQ(kernel->name, dtype == DataType::Float(16)
+                                        ? "cpu::linear_f32_f16_packed_identity_reference"
+                                        : "cpu::linear_f32_bf16_packed_identity_reference");
+        const PackedWeightView packed_view{
+                .data = (*packed)->storage().data(),
+                .nbytes = (*packed)->storage().nbytes(),
+                .logical_dtype = (*packed)->logical_dtype(),
+                .logical_shape = (*packed)->logical_shape(),
+                .recipe_layout = (*packed)->recipe().layout,
+                .recipe_alignment = (*packed)->recipe().alignment,
+                .alignment = (*packed)->storage().alignment(),
+        };
+
+        float output[4]{};
+        const TensorView input_view(input, DataType::Float32(), input_shape, input_strides);
+        const MutableTensorView output_view(output, DataType::Float32(), output_shape, output_strides);
+        PreparedKernelParams prepared;
+        ASSERT_TRUE(kernel->params_builder(
+                                  KernelParamsBuildContext{
+                                          .inputs = std::array<TensorView, 1>{input_view},
+                                          .outputs = std::array<MutableTensorView, 1>{output_view},
+                                          .attrs = kernel->attrs,
+                                          .packed_weight = packed_view,
+                                  },
+                                  prepared.storage.data())
+                            .ok());
+        ASSERT_TRUE(RunLinearEntry(*kernel, prepared).ok());
+        const auto* packed_bytes = static_cast<const std::byte*>((*packed)->storage().data());
+        for (int64_t row = 0; row < 2; ++row) {
+            for (int64_t col = 0; col < 2; ++col) {
+                EXPECT_EQ(output[row * 2 + col],
+                          FixedFp32Dot(input + row * 3, 1,
+                                       packed_bytes + static_cast<size_t>(col * 3) * 2,
+                                       1, 3, dtype));
+            }
+        }
+
+        alignas(64) std::array<float, 6> fp32_storage{};
+        const PackedWeightView wrong_dtype{
+                .data = fp32_storage.data(),
+                .nbytes = fp32_storage.size() * sizeof(float),
+                .logical_dtype = DataType::Float32(),
+                .logical_shape = (*packed)->logical_shape(),
+                .recipe_layout = (*packed)->recipe().layout,
+                .recipe_alignment = (*packed)->recipe().alignment,
+                .alignment = (*packed)->storage().alignment(),
+        };
+        EXPECT_EQ(kernel->params_builder(
+                                KernelParamsBuildContext{
+                                        .inputs = std::array<TensorView, 1>{input_view},
+                                        .outputs = std::array<MutableTensorView, 1>{output_view},
+                                        .attrs = kernel->attrs,
+                                        .packed_weight = wrong_dtype,
+                                },
+                                prepared.storage.data())
+                          .code(),
+                  StatusCode::kInvalidArgument);
+    }
 }
 
 } // namespace

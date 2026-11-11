@@ -11,8 +11,9 @@ namespace aethermind::cpu::detail {
 namespace {
 
 /// @brief Computes the storage bytes required by an arbitrary-rank logical
-///        fp32 weight with sign and overflow checks.
+///        weight at the given element width, with sign and overflow checks.
 StatusOr<size_t> RequiredPackedBytes(std::span<const int64_t> shape,
+                                     size_t element_size,
                                      std::string_view kernel_name) noexcept {
     size_t elements = 1;
     for (const int64_t dimension: shape) {
@@ -33,7 +34,7 @@ StatusOr<size_t> RequiredPackedBytes(std::span<const int64_t> shape,
     }
 
     size_t bytes = 0;
-    if (CheckOverflowMul(elements, sizeof(float), &bytes)) {
+    if (CheckOverflowMul(elements, element_size, &bytes)) {
         return Status::Overflow(std::string(kernel_name) +
                                 " packed byte count overflows size_t");
     }
@@ -44,8 +45,13 @@ StatusOr<size_t> RequiredPackedBytes(std::span<const int64_t> shape,
 
 Status ValidateIdentityPackedWeight(const PackedWeightView& packed,
                                     std::span<const int64_t> expected_shape,
-                                    std::string_view kernel_name) noexcept {
-    if (packed.logical_dtype != DataType::Float32() ||
+                                    std::string_view kernel_name,
+                                    DataType expected_dtype) noexcept {
+    if (expected_dtype.raw_lanes() != 1 || expected_dtype.bits() == 0) {
+        return Status::InvalidArgument(std::string(kernel_name) +
+                                       " requires a scalar fixed-width expected dtype");
+    }
+    if (packed.logical_dtype != expected_dtype ||
         packed.logical_shape.size() != expected_shape.size()) {
         return Status::InvalidArgument(
                 std::string(kernel_name) +
@@ -68,7 +74,9 @@ Status ValidateIdentityPackedWeight(const PackedWeightView& packed,
     }
 
     AM_ASSIGN_OR_RETURN(const size_t required_bytes,
-                        RequiredPackedBytes(expected_shape, kernel_name));
+                        RequiredPackedBytes(expected_shape,
+                                            static_cast<size_t>(expected_dtype.nbytes()),
+                                            kernel_name));
     if (packed.nbytes < required_bytes) {
         return Status::InvalidArgument(std::string(kernel_name) +
                                        " packed storage is smaller than its logical weight");

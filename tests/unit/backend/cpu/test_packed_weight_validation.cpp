@@ -181,4 +181,46 @@ TEST(CpuIdentityPackedWeight, ChecksNegativeDimensionsAndProducts) {
               StatusCode::kOverflow);
 }
 
+TEST(CpuIdentityPackedWeight, ValidatesReducedWeightDTypeAndElementWidth) {
+    alignas(64) std::array<std::byte, 12> storage{};
+    constexpr std::array<int64_t, 2> shape{2, 3};
+    for (const DataType dtype: {DataType::Float(16), DataType::BFloat(16)}) {
+        PackedWeightView packed = MakeIdentityPackedWeight(storage.data(), storage.size(), shape);
+        packed.logical_dtype = dtype;
+        EXPECT_TRUE(cpu::detail::ValidateIdentityPackedWeight(
+                            packed, shape, "PackedWeightUtilsTest", dtype)
+                            .ok());
+
+        // F32 default must not accept a reduced artifact, and the reduced
+        // expectation must not accept an F32 artifact.
+        EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
+                          packed, shape, "PackedWeightUtilsTest")
+                          .code(),
+                  StatusCode::kInvalidArgument);
+        PackedWeightView fp32_packed = MakeIdentityPackedWeight(storage.data(), storage.size(), shape);
+        EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
+                          fp32_packed, shape, "PackedWeightUtilsTest", dtype)
+                          .code(),
+                  StatusCode::kInvalidArgument);
+
+        PackedWeightView undersized = MakeIdentityPackedWeight(storage.data(), 10, shape);
+        undersized.logical_dtype = dtype;
+        EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
+                          undersized, shape, "PackedWeightUtilsTest", dtype)
+                          .code(),
+                  StatusCode::kInvalidArgument);
+    }
+}
+
+TEST(CpuIdentityPackedWeight, RejectsNonScalarExpectedDType) {
+    alignas(64) std::array<std::byte, 12> storage{};
+    constexpr std::array<int64_t, 2> shape{2, 3};
+    const PackedWeightView packed = MakeIdentityPackedWeight(storage.data(), storage.size(), shape);
+    EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
+                      packed, shape, "PackedWeightUtilsTest",
+                      DataType(DLDataTypeCode::kFloat, 16, 2, true))
+                      .code(),
+              StatusCode::kInvalidArgument);
+}
+
 } // namespace

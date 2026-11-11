@@ -5,6 +5,8 @@
 #include "aethermind/compiler/graph_lowering.h"
 #include "aethermind/compiler/optimize_graph.h"
 #include "aethermind/compiler/weight_packing_request_builder.h"
+#include "aethermind/dtypes/bfloat16.h"
+#include "aethermind/dtypes/half.h"
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan_builder.h"
@@ -20,6 +22,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstring>
 #include <initializer_list>
 #include <limits>
 #include <memory>
@@ -725,6 +728,108 @@ TEST(CPUKernelGateUpLinear, FusedPackedExecutionRequiresNoExternalGateUpWeightBi
     };
     expect_projection(gate_output, 2, 0);
     expect_projection(up_output, 3, 2);
+}
+
+float WidenReducedBits(uint16_t bits, DataType dtype) {
+    if (dtype == DataType::Float(16)) {
+        return static_cast<float>(Half(bits, Half::from_bits()));
+    }
+    return static_cast<float>(BFloat16(bits, BFloat16::from_bits()));
+}
+
+TEST(CPUKernelGateUpLinear, PackedW16ReferenceProjectsReducedCompositeWithFp32Accumulation) {
+    constexpr int64_t gate_features = 2;
+    constexpr int64_t up_features = 3;
+    constexpr int64_t in_features = 3;
+    constexpr int64_t total_features = gate_features + up_features;
+    constexpr int64_t input_shape[2] = {2, 3};
+    constexpr int64_t input_strides[2] = {3, 1};
+    const float input[6] = {1.0F, -2.0F, 0.5F, 0.25F, 4.0F, -1.5F};
+
+    for (const DataType dtype: {DataType::Float(16), DataType::BFloat(16)}) {
+        std::array<std::byte, total_features * in_features * 2> weight_bytes{};
+        std::array<float, total_features * in_features> logical{};
+        for (size_t index = 0; index < logical.size(); ++index) {
+            logical[index] = static_cast<float>(static_cast<int64_t>(index % 7) - 3) * 0.25F;
+            const uint16_t bits = dtype == DataType::Float(16)
+                                          ? Half(logical[index]).bits()
+                                          : BFloat16(logical[index]).x;
+            std::memcpy(weight_bytes.data() + index * sizeof(bits), &bits, sizeof(bits));
+        }
+
+        KernelSelector selector = MakeGateUpSelector();
+        selector.weight_dtype = dtype;
+        const int64_t gate_shape[2] = {gate_features, in_features};
+        const int64_t up_shape[2] = {up_features, in_features};
+        const int64_t row_strides[2] = {in_features, 1};
+        const auto* base = weight_bytes.data();
+        const std::array<TensorView, 2> components{
+                TensorView(base, dtype, gate_shape, row_strides),
+                TensorView(base + gate_features * in_features * 2, dtype, up_shape, row_strides),
+        };
+        auto packed = cpu::internal::PackWeightsWithRecipe(
+                OpType::kGateUpLinear, components, selector, CpuIdentityPackingRecipe(),
+                test::TestCpuAllocator());
+        ASSERT_TRUE(packed.ok()) << packed.status().ToString();
+        EXPECT_EQ((*packed)->logical_dtype(), dtype);
+        EXPECT_EQ((*packed)->storage().nbytes(), weight_bytes.size());
+
+        CpuBackend backend;
+        const auto kernel = backend.PrepareKernel(
+                OpType::kGateUpLinear, selector,
+                OpParams{GateUpLinearParams{.gate_out_features = gate_features,
+                                            .up_out_features = up_features,
+                                            .has_bias = false}});
+        ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+        EXPECT_EQ(kernel->name, dtype == DataType::Float(16)
+                                        ? "cpu::gate_up_linear_f32_f16_reference"
+                                        : "cpu::gate_up_linear_f32_bf16_reference");
+
+        const PackedWeightView packed_view{
+                .data = (*packed)->storage().data(),
+                .nbytes = (*packed)->storage().nbytes(),
+                .logical_dtype = (*packed)->logical_dtype(),
+                .logical_shape = (*packed)->logical_shape(),
+                .recipe_layout = (*packed)->recipe().layout,
+                .recipe_alignment = (*packed)->recipe().alignment,
+                .alignment = (*packed)->storage().alignment(),
+        };
+        float gate_output[2 * gate_features]{};
+        float up_output[2 * up_features]{};
+        const int64_t gate_out_shape[2] = {2, gate_features};
+        const int64_t up_out_shape[2] = {2, up_features};
+        const int64_t gate_strides[2] = {gate_features, 1};
+        const int64_t up_strides[2] = {up_features, 1};
+        const GateUpTestViews views{
+                .input = TensorView(input, DataType::Float32(), input_shape, input_strides),
+                .gate = MutableTensorView(gate_output, DataType::Float32(), gate_out_shape, gate_strides),
+                .up = MutableTensorView(up_output, DataType::Float32(), up_out_shape, up_strides),
+        };
+        ASSERT_TRUE(RunGateUpEntry(*kernel, views, packed_view).ok());
+
+        const auto* packed_bytes = static_cast<const std::byte*>((*packed)->storage().data());
+        const auto expect_projection = [&](const float* output, int64_t features,
+                                           int64_t row_offset) {
+            for (int64_t row = 0; row < 2; ++row) {
+                for (int64_t feature = 0; feature < features; ++feature) {
+                    double expected = 0.0;
+                    for (int64_t t = 0; t < in_features; ++t) {
+                        uint16_t bits = 0;
+                        std::memcpy(&bits,
+                                    packed_bytes +
+                                            static_cast<size_t>((row_offset + feature) * in_features + t) * 2,
+                                    sizeof(bits));
+                        expected += static_cast<double>(input[row * in_features + t]) *
+                                    static_cast<double>(WidenReducedBits(bits, dtype));
+                    }
+                    EXPECT_FLOAT_EQ(output[row * features + feature],
+                                    static_cast<float>(expected));
+                }
+            }
+        };
+        expect_projection(gate_output, gate_features, 0);
+        expect_projection(up_output, up_features, gate_features);
+    }
 }
 
 } // namespace

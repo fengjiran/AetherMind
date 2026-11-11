@@ -29,6 +29,17 @@ endif ()
 add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 
+# Reference W16 reductions use a rounded F32 product followed by a rounded F32
+# add in ascending K order. ISA kernels may define their own numerical contract.
+set(AETHERMIND_W16_REFERENCE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_w16_reference.cpp
+)
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set_property(SOURCE ${AETHERMIND_W16_REFERENCE_SOURCES} APPEND PROPERTY COMPILE_OPTIONS -ffp-contract=off)
+elseif (MSVC)
+    set_property(SOURCE ${AETHERMIND_W16_REFERENCE_SOURCES} APPEND PROPERTY COMPILE_OPTIONS /fp:strict)
+endif ()
+
 if (AETHERMIND_HAS_F16C)
     aethermind_configure_f16c_sources(${AETHERMIND_F16C_CONVERSION_SOURCE})
     target_compile_definitions(${PROJECT_NAME} PUBLIC FP16_HAS_F16C_CONVERSION=1)

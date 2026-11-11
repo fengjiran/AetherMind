@@ -2,8 +2,10 @@
 #define AETHERMIND_BACKEND_CPU_KERNELS_QKV_LINEAR_QKV_LINEAR_INTERNAL_H
 
 #include "aethermind/base/status.h"
+#include "aethermind/dtypes/data_type.h"
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
 
+#include <cstddef>
 #include <cstdint>
 
 namespace aethermind::cpu::detail {
@@ -44,6 +46,39 @@ struct QkvLinearF32KernelArgs {
 
 /// @brief Executes the compute-ready scalar FP32 QKV projection.
 Status RunQkvLinearF32Reference(const QkvLinearF32KernelArgs& args) noexcept;
+
+/// @brief Pre-validated arguments for the scalar packed W16 QKV projection.
+///
+/// Weight pointers reference the Q, K, and V byte ranges of the
+/// identity-packed `[Q + K + V, in_features]` artifact; strides are element
+/// strides and the payload is byte-addressed like the plain W16 Linear args.
+struct QkvLinearF32W16KernelArgs {
+    const float* input{};
+    const std::byte* q_weight{};
+    const std::byte* k_weight{};
+    const std::byte* v_weight{};
+    DataType weight_dtype{};
+    float* query{};
+    float* key{};
+    float* value{};
+    int64_t row_count{};
+    int64_t in_features{};
+    int64_t q_out_features{};
+    int64_t k_out_features{};
+    int64_t v_out_features{};
+    int64_t input_row_stride{};
+    int64_t input_col_stride{1};
+    int64_t query_row_stride{};
+    int64_t query_col_stride{1};
+    int64_t key_row_stride{};
+    int64_t key_col_stride{1};
+    int64_t value_row_stride{};
+    int64_t value_col_stride{1};
+};
+
+/// @brief Executes the compute-ready scalar W16 QKV projection with FP32
+///        accumulation, delegating each slice to the W16 Linear reference.
+Status RunQkvLinearF32W16Reference(const QkvLinearF32W16KernelArgs& args) noexcept;
 
 /// @brief Prepared bpanel args for the three output slices of packed QKV.
 struct QkvLinearF32PackedBKernelArgs {

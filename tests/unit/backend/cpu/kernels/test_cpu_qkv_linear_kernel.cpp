@@ -5,6 +5,8 @@
 #include "aethermind/compiler/graph_lowering.h"
 #include "aethermind/compiler/optimize_graph.h"
 #include "aethermind/compiler/weight_packing_request_builder.h"
+#include "aethermind/dtypes/bfloat16.h"
+#include "aethermind/dtypes/half.h"
 #include "aethermind/execution/execution_bindings.h"
 #include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan_builder.h"
@@ -22,6 +24,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <span>
@@ -709,6 +712,118 @@ TEST(CPUKernelQkvLinear, FusedPackedExecutionRequiresNoExternalQkvWeightBinding)
     expect_projection(query_output, 4, 0);
     expect_projection(key_output, 2, 4);
     expect_projection(value_output, 2, 6);
+}
+
+float WidenReducedBits(uint16_t bits, DataType dtype) {
+    if (dtype == DataType::Float(16)) {
+        return static_cast<float>(Half(bits, Half::from_bits()));
+    }
+    return static_cast<float>(BFloat16(bits, BFloat16::from_bits()));
+}
+
+TEST(CPUKernelQkvLinear, PackedW16ReferenceProjectsReducedCompositeWithFp32Accumulation) {
+    constexpr int64_t q_features = 4;
+    constexpr int64_t k_features = 2;
+    constexpr int64_t v_features = 2;
+    constexpr int64_t in_features = 3;
+    constexpr int64_t total_features = q_features + k_features + v_features;
+    constexpr int64_t input_shape[2] = {2, 3};
+    constexpr int64_t input_strides[2] = {3, 1};
+    const float input[6] = {1.0F, -2.0F, 0.5F, 0.25F, 4.0F, -1.5F};
+
+    for (const DataType dtype: {DataType::Float(16), DataType::BFloat(16)}) {
+        std::array<std::byte, total_features * in_features * 2> weight_bytes{};
+        std::array<float, total_features * in_features> logical{};
+        for (size_t index = 0; index < logical.size(); ++index) {
+            logical[index] = static_cast<float>(static_cast<int64_t>(index % 7) - 3) * 0.25F;
+            const uint16_t bits = dtype == DataType::Float(16)
+                                          ? Half(logical[index]).bits()
+                                          : BFloat16(logical[index]).x;
+            std::memcpy(weight_bytes.data() + index * sizeof(bits), &bits, sizeof(bits));
+        }
+
+        KernelSelector selector = MakeQkvSelector();
+        selector.weight_dtype = dtype;
+        const int64_t q_shape[2] = {q_features, in_features};
+        const int64_t k_shape[2] = {k_features, in_features};
+        const int64_t v_shape[2] = {v_features, in_features};
+        const int64_t row_strides[2] = {in_features, 1};
+        const auto* base = weight_bytes.data();
+        const std::array<TensorView, 3> components{
+                TensorView(base, dtype, q_shape, row_strides),
+                TensorView(base + q_features * in_features * 2, dtype, k_shape, row_strides),
+                TensorView(base + (q_features + k_features) * in_features * 2, dtype,
+                           v_shape, row_strides),
+        };
+        auto packed = cpu::internal::PackWeightsWithRecipe(
+                OpType::kQkvLinear, components, selector, CpuIdentityPackingRecipe(),
+                test::TestCpuAllocator());
+        ASSERT_TRUE(packed.ok()) << packed.status().ToString();
+        EXPECT_EQ((*packed)->logical_dtype(), dtype);
+        EXPECT_EQ((*packed)->storage().nbytes(), weight_bytes.size());
+
+        CpuBackend backend;
+        const auto kernel = backend.PrepareKernel(
+                OpType::kQkvLinear, selector,
+                OpParams{QkvLinearParams{.q_out_features = q_features,
+                                         .k_out_features = k_features,
+                                         .v_out_features = v_features,
+                                         .has_bias = false}});
+        ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+        EXPECT_EQ(kernel->name, dtype == DataType::Float(16)
+                                        ? "cpu::qkv_linear_f32_f16_reference"
+                                        : "cpu::qkv_linear_f32_bf16_reference");
+
+        const PackedWeightView packed_view{
+                .data = (*packed)->storage().data(),
+                .nbytes = (*packed)->storage().nbytes(),
+                .logical_dtype = (*packed)->logical_dtype(),
+                .logical_shape = (*packed)->logical_shape(),
+                .recipe_layout = (*packed)->recipe().layout,
+                .recipe_alignment = (*packed)->recipe().alignment,
+                .alignment = (*packed)->storage().alignment(),
+        };
+        float query_output[2 * q_features]{};
+        float key_output[2 * k_features]{};
+        float value_output[2 * v_features]{};
+        const int64_t q_out_shape[2] = {2, q_features};
+        const int64_t k_out_shape[2] = {2, k_features};
+        const int64_t v_out_shape[2] = {2, v_features};
+        const int64_t q_strides[2] = {q_features, 1};
+        const int64_t k_strides[2] = {k_features, 1};
+        const int64_t v_strides[2] = {v_features, 1};
+        const QkvTestViews views{
+                .input = TensorView(input, DataType::Float32(), input_shape, input_strides),
+                .query = MutableTensorView(query_output, DataType::Float32(), q_out_shape, q_strides),
+                .key = MutableTensorView(key_output, DataType::Float32(), k_out_shape, k_strides),
+                .value = MutableTensorView(value_output, DataType::Float32(), v_out_shape, v_strides),
+        };
+        ASSERT_TRUE(RunQkvEntry(*kernel, views, packed_view).ok());
+
+        const auto* packed_bytes = static_cast<const std::byte*>((*packed)->storage().data());
+        const auto expect_projection = [&](const float* output, int64_t features,
+                                           int64_t row_offset) {
+            for (int64_t row = 0; row < 2; ++row) {
+                for (int64_t feature = 0; feature < features; ++feature) {
+                    double expected = 0.0;
+                    for (int64_t t = 0; t < in_features; ++t) {
+                        uint16_t bits = 0;
+                        std::memcpy(&bits,
+                                    packed_bytes +
+                                            static_cast<size_t>((row_offset + feature) * in_features + t) * 2,
+                                    sizeof(bits));
+                        expected += static_cast<double>(input[row * in_features + t]) *
+                                    static_cast<double>(WidenReducedBits(bits, dtype));
+                    }
+                    EXPECT_FLOAT_EQ(output[row * features + feature],
+                                    static_cast<float>(expected));
+                }
+            }
+        };
+        expect_projection(query_output, q_features, 0);
+        expect_projection(key_output, k_features, q_features);
+        expect_projection(value_output, v_features, q_features + k_features);
+    }
 }
 
 } // namespace

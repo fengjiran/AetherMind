@@ -227,6 +227,191 @@ Status BuildQkvLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
     return Status::Ok();
 }
 
+template<bool Bfloat>
+Status BuildQkvLinearF32W16ReferenceArgs(const KernelParamsBuildContext& context,
+                                         void* params_buffer) noexcept {
+    if (context.inputs.size() != 1U || context.outputs.size() != 3U) {
+        return Status::InvalidArgument(
+                "QkvLinearW16 requires one activation input and three outputs");
+    }
+    if (!context.packed_weight.has_value()) {
+        return Status::InvalidArgument(
+                "QkvLinearW16 requires a packed weight artifact");
+    }
+
+    AM_ASSIGN_OR_RETURN(const QkvLinearF32KernelMetadata metadata,
+                        ReadMetadata(context.attrs));
+    AM_ASSIGN_OR_RETURN(const int64_t total_out_features,
+                        TotalOutFeatures(metadata));
+    const TensorView& input = context.inputs[0];
+    const MutableTensorView& query = context.outputs[0];
+    const MutableTensorView& key = context.outputs[1];
+    const MutableTensorView& value = context.outputs[2];
+
+    if (!input.is_valid() || !query.is_valid() || !key.is_valid() || !value.is_valid()) {
+        return Status::InvalidArgument(
+                "QkvLinearW16KernelEntry requires valid TensorViews");
+    }
+    if (input.dtype() != DataType::Float32() || query.dtype() != DataType::Float32() ||
+        key.dtype() != DataType::Float32() || value.dtype() != DataType::Float32()) {
+        return Status::InvalidArgument(
+                "QkvLinearW16KernelEntry requires float32 input and outputs");
+    }
+
+    const int32_t rank = input.rank();
+    if (rank < 1 || query.rank() != rank || key.rank() != rank || value.rank() != rank) {
+        return Status::InvalidArgument(
+                "QkvLinearW16KernelEntry requires input and outputs with matching rank >= 1");
+    }
+    for (int32_t dim = 0; dim < rank - 1; ++dim) {
+        if (query.dim(dim) != input.dim(dim) || key.dim(dim) != input.dim(dim) ||
+            value.dim(dim) != input.dim(dim)) {
+            return Status::InvalidArgument(
+                    "QkvLinearW16KernelEntry requires matching leading dimensions");
+        }
+    }
+
+    const int64_t in_features = input.dim(rank - 1);
+    if (query.dim(rank - 1) != metadata.q_out_features ||
+        key.dim(rank - 1) != metadata.k_out_features ||
+        value.dim(rank - 1) != metadata.v_out_features) {
+        return Status::InvalidArgument(
+                "QkvLinearW16KernelEntry outputs do not match QKV feature metadata");
+    }
+    const DataType weight_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16);
+    AM_RETURN_IF_ERROR(ValidateIdentityPackedWeight(
+            *context.packed_weight, std::array{total_out_features, in_features},
+            "QkvLinearW16KernelEntry", weight_dtype));
+
+    AM_ASSIGN_OR_RETURN(const int64_t row_count,
+                        ComputeFlattenedRowCount(input, "QkvLinearW16KernelEntry"));
+    if (row_count == 0) {
+        ::new (params_buffer) QkvLinearF32W16KernelArgs{
+                .weight_dtype = weight_dtype,
+                .row_count = 0,
+                .in_features = in_features,
+                .q_out_features = metadata.q_out_features,
+                .k_out_features = metadata.k_out_features,
+                .v_out_features = metadata.v_out_features,
+        };
+        return Status::Ok();
+    }
+
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis query_analysis,
+                        AnalyzeRowwiseView(query, "QkvLinearW16KernelEntry q output"));
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis key_analysis,
+                        AnalyzeRowwiseView(key, "QkvLinearW16KernelEntry k output"));
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis value_analysis,
+                        AnalyzeRowwiseView(value, "QkvLinearW16KernelEntry v output"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout(
+            "QkvLinearW16KernelEntry q output", query_analysis));
+    AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout(
+            "QkvLinearW16KernelEntry k output", key_analysis));
+    AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout(
+            "QkvLinearW16KernelEntry v output", value_analysis));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU QkvLinearW16", query_analysis.footprint(), "q output",
+            key_analysis.footprint(), "k output"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU QkvLinearW16", query_analysis.footprint(), "q output",
+            value_analysis.footprint(), "v output"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU QkvLinearW16", key_analysis.footprint(), "k output",
+            value_analysis.footprint(), "v output"));
+
+    QkvLinearF32W16KernelArgs args{
+            .weight_dtype = weight_dtype,
+            .query = query.data<float>(),
+            .key = key.data<float>(),
+            .value = value.data<float>(),
+            .row_count = row_count,
+            .in_features = in_features,
+            .q_out_features = metadata.q_out_features,
+            .k_out_features = metadata.k_out_features,
+            .v_out_features = metadata.v_out_features,
+            .query_row_stride = query_analysis.row_stride(),
+            .query_col_stride = query_analysis.column_stride(),
+            .key_row_stride = key_analysis.row_stride(),
+            .key_col_stride = key_analysis.column_stride(),
+            .value_row_stride = value_analysis.row_stride(),
+            .value_col_stride = value_analysis.column_stride(),
+    };
+
+    if (in_features == 0 || total_out_features == 0) {
+        ::new (params_buffer) QkvLinearF32W16KernelArgs(args);
+        return Status::Ok();
+    }
+
+    if (input.data() == nullptr ||
+        (metadata.q_out_features != 0 && query.data() == nullptr) ||
+        (metadata.k_out_features != 0 && key.data() == nullptr) ||
+        (metadata.v_out_features != 0 && value.data() == nullptr) ||
+        context.packed_weight->data == nullptr) {
+        return Status::InvalidArgument(
+                "QkvLinearW16KernelEntry requires non-null data for non-empty tensors");
+    }
+
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis input_analysis,
+                        AnalyzeRowwiseView(input, "QkvLinearW16KernelEntry input"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU QkvLinearW16", query_analysis.footprint(), "q output",
+            input_analysis.footprint(), "input"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU QkvLinearW16", key_analysis.footprint(), "k output",
+            input_analysis.footprint(), "input"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU QkvLinearW16", value_analysis.footprint(), "v output",
+            input_analysis.footprint(), "input"));
+
+    if (!std::in_range<int64_t>(context.packed_weight->nbytes)) {
+        return Status::Overflow(
+                "QkvLinearW16KernelEntry packed storage size exceeds int64_t");
+    }
+    AM_ASSIGN_OR_RETURN(
+            const ByteAddressRange packed_range,
+            BuildContiguousByteRange(context.packed_weight->data,
+                                     static_cast<int64_t>(context.packed_weight->nbytes),
+                                     size_t{1}, "QkvLinearW16KernelEntry packed weight"));
+    for (const auto& [footprint, role]: std::array{
+                 std::pair{query_analysis.footprint(), "q output"},
+                 std::pair{key_analysis.footprint(), "k output"},
+                 std::pair{value_analysis.footprint(), "v output"}}) {
+        AM_RETURN_IF_ERROR(ValidateRowwiseDisjointFromContiguous(
+                "CPU QkvLinearW16", footprint, role, packed_range,
+                "packed weight"));
+    }
+
+    int64_t key_weight_offset = 0;
+    int64_t value_weight_row = 0;
+    int64_t value_weight_offset = 0;
+    if (CheckOverflowMul(metadata.q_out_features, in_features, &key_weight_offset) ||
+        CheckOverflowAdd(metadata.q_out_features, metadata.k_out_features,
+                         &value_weight_row) ||
+        CheckOverflowMul(value_weight_row, in_features, &value_weight_offset)) {
+        return Status::Overflow(
+                "QkvLinearW16KernelEntry packed weight offsets overflow int64_t");
+    }
+    size_t key_weight_bytes = 0;
+    size_t value_weight_bytes = 0;
+    if (CheckOverflowMul(static_cast<size_t>(key_weight_offset), sizeof(uint16_t),
+                         &key_weight_bytes) ||
+        CheckOverflowMul(static_cast<size_t>(value_weight_offset), sizeof(uint16_t),
+                         &value_weight_bytes)) {
+        return Status::Overflow(
+                "QkvLinearW16KernelEntry packed weight byte offsets overflow size_t");
+    }
+
+    args.input = input.data<float>();
+    const auto* packed_data = static_cast<const std::byte*>(context.packed_weight->data);
+    args.q_weight = packed_data;
+    args.k_weight = packed_data + key_weight_bytes;
+    args.v_weight = packed_data + value_weight_bytes;
+    args.input_row_stride = input_analysis.row_stride();
+    args.input_col_stride = input_analysis.column_stride();
+    ::new (params_buffer) QkvLinearF32W16KernelArgs(args);
+    return Status::Ok();
+}
+
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status BuildQkvLinearF32BpanelArgs(
         const KernelParamsBuildContext& context,
@@ -416,6 +601,12 @@ Status QkvLinearF32ReferenceEntry(const KernelContext& ctx) noexcept {
     return RunQkvLinearF32Reference(*args);
 }
 
+Status QkvLinearF32W16ReferenceEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const QkvLinearF32W16KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunQkvLinearF32W16Reference(*args);
+}
+
 } // namespace
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
@@ -450,6 +641,48 @@ AM_REGISTER_KERNEL(
                 .params_builder = &BuildQkvLinearF32ReferenceArgs,
                 .metadata_builder = &BuildQkvLinearF32Metadata,
                 .name = "cpu::qkv_linear_f32_reference"})
+
+static_assert(std::is_trivially_destructible_v<QkvLinearF32W16KernelArgs>);
+static_assert(sizeof(QkvLinearF32W16KernelArgs) <= kMaxKernelParamsSize);
+static_assert(alignof(QkvLinearF32W16KernelArgs) <= alignof(std::max_align_t));
+
+AM_REGISTER_KERNEL(
+        CpuQkvLinearF32F16Reference,
+        KernelDef{
+                .op_type = OpType::kQkvLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float(16),
+                        .weight_format = WeightFormat::kPacked,
+                        .phase = ExecPhase::kBoth,
+                },
+                .packing_recipe = CpuIdentityPackingRecipe(),
+                .kernel_func = &QkvLinearF32W16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(QkvLinearF32W16KernelArgs),
+                .params_builder = &BuildQkvLinearF32W16ReferenceArgs<false>,
+                .metadata_builder = &BuildQkvLinearF32Metadata,
+                .name = "cpu::qkv_linear_f32_f16_reference"})
+
+AM_REGISTER_KERNEL(
+        CpuQkvLinearF32Bf16Reference,
+        KernelDef{
+                .op_type = OpType::kQkvLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::BFloat(16),
+                        .weight_format = WeightFormat::kPacked,
+                        .phase = ExecPhase::kBoth,
+                },
+                .packing_recipe = CpuIdentityPackingRecipe(),
+                .kernel_func = &QkvLinearF32W16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(QkvLinearF32W16KernelArgs),
+                .params_builder = &BuildQkvLinearF32W16ReferenceArgs<true>,
+                .metadata_builder = &BuildQkvLinearF32Metadata,
+                .name = "cpu::qkv_linear_f32_bf16_reference"})
 
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)

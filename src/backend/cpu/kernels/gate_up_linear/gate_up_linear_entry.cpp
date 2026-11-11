@@ -12,6 +12,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <new>
 #include <span>
@@ -270,6 +271,13 @@ Status BuildGateUpLinearF32W16ReferenceArgs(const KernelParamsBuildContext& cont
                 .up_out_features = metadata.up_out_features,
         };
         return Status::Ok();
+    }
+
+    if ((metadata.gate_out_features != 0 && reinterpret_cast<std::uintptr_t>(gate.data()) % alignof(float) != 0) ||
+        (metadata.up_out_features != 0 && reinterpret_cast<std::uintptr_t>(up.data()) % alignof(float) != 0) ||
+        (total_out_features != 0 && in_features != 0 && reinterpret_cast<std::uintptr_t>(input.data()) % alignof(float) != 0)) {
+        return Status::InvalidArgument(
+                "GateUpLinearW16 requires naturally aligned float32 input/output data");
     }
 
     AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis gate_analysis,

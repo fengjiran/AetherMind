@@ -43,6 +43,7 @@ Status RunLinearF32Reference(const LinearF32KernelArgs& args) noexcept;
 /// Weight strides are element strides; `weight` is byte-addressed because raw
 /// model storage need not contain live C++ Half/BFloat16 objects or meet their
 /// alignment. The reference widens each element and accumulates in FP32.
+/// FP32 input/output addresses that are accessed must satisfy alignof(float).
 struct LinearF32W16KernelArgs {
     const float* input{};
     const std::byte* weight{};

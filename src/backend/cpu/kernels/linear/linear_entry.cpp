@@ -11,6 +11,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -182,8 +183,7 @@ Status BuildLinearF32W16Args(const KernelParamsBuildContext& context,
     }
 
     const DataType weight_dtype = weight.dtype();
-    const DataType expected_weight = Bfloat ? DataType::BFloat(16)
-                                            : DataType::Float(16);
+    const DataType expected_weight = Bfloat ? DataType::BFloat(16) : DataType::Float(16);
     if (input.dtype() != DataType::Float32() || output.dtype() != DataType::Float32() ||
         weight_dtype != expected_weight) {
         return Status::InvalidArgument(
@@ -224,6 +224,14 @@ Status BuildLinearF32W16Args(const KernelParamsBuildContext& context,
                 .out_features = out_features,
         };
         return Status::Ok();
+    }
+
+    // Unknown view alignment does not prove float alignment. Zero K still
+    // writes output, but does not read input or the byte-addressed W16 weight.
+    if (reinterpret_cast<std::uintptr_t>(output.data()) % alignof(float) != 0 ||
+        (in_features != 0 && reinterpret_cast<std::uintptr_t>(input.data()) % alignof(float) != 0)) {
+        return Status::InvalidArgument(
+                "LinearF32W16 requires naturally aligned float32 input/output data");
     }
 
     AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis output_analysis,
@@ -293,10 +301,12 @@ Status BuildLinearF32W16PackedIdentityArgs(const KernelParamsBuildContext& conte
         return Status::InvalidArgument(
                 "Packed W16 Linear requires valid input and output TensorViews");
     }
+
     if (input.dtype() != DataType::Float32() || output.dtype() != DataType::Float32()) {
         return Status::InvalidArgument(
                 "Packed W16 Linear requires float32 input and output TensorViews");
     }
+
     if (input.rank() < 1 || packed.logical_shape.size() != 2U) {
         return Status::InvalidArgument(
                 "Packed W16 Linear requires rank >= 1 input and a rank-2 weight artifact");
@@ -309,6 +319,7 @@ Status BuildLinearF32W16PackedIdentityArgs(const KernelParamsBuildContext& conte
         return Status::InvalidArgument(
                 "Packed W16 Linear weight shape does not match the input feature dimension");
     }
+
     AM_RETURN_IF_ERROR(ValidateIdentityPackedWeight(
             packed, std::array{out_features, in_features},
             "LinearW16KernelEntry", weight_dtype));
@@ -318,12 +329,14 @@ Status BuildLinearF32W16PackedIdentityArgs(const KernelParamsBuildContext& conte
         return Status::InvalidArgument(
                 "Packed W16 Linear requires output rank to match input rank");
     }
+
     for (int32_t dim = 0; dim < rank - 1; ++dim) {
         if (output.dim(dim) != input.dim(dim)) {
             return Status::InvalidArgument(
                     "Packed W16 Linear requires output leading dimensions to match input");
         }
     }
+
     if (output.dim(rank - 1) != out_features) {
         return Status::InvalidArgument(
                 "Packed W16 Linear output feature dimension does not match the weight");
@@ -342,6 +355,12 @@ Status BuildLinearF32W16PackedIdentityArgs(const KernelParamsBuildContext& conte
         return Status::Ok();
     }
 
+    if (reinterpret_cast<std::uintptr_t>(output.data()) % alignof(float) != 0 ||
+        (in_features != 0 && reinterpret_cast<std::uintptr_t>(input.data()) % alignof(float) != 0)) {
+        return Status::InvalidArgument(
+                "Packed W16 Linear requires naturally aligned float32 input/output data");
+    }
+
     AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis output_analysis,
                         AnalyzeRowwiseView(output, "LinearW16KernelEntry output"));
     AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout(
@@ -350,6 +369,7 @@ Status BuildLinearF32W16PackedIdentityArgs(const KernelParamsBuildContext& conte
         return Status::InvalidArgument(
                 "Packed W16 Linear requires non-null output for non-empty tensors");
     }
+
     args.output = output.data<float>();
     args.output_row_stride = output_analysis.row_stride();
     args.output_col_stride = output_analysis.column_stride();
@@ -371,6 +391,7 @@ Status BuildLinearF32W16PackedIdentityArgs(const KernelParamsBuildContext& conte
         return Status::Overflow(
                 "Packed W16 Linear artifact byte range exceeds int64_t");
     }
+
     AM_ASSIGN_OR_RETURN(const ByteAddressRange packed_range,
                         BuildContiguousByteRange(
                                 packed.data, static_cast<int64_t>(packed.nbytes),
@@ -529,8 +550,8 @@ Status BuildLinearF32BpanelArgs(const KernelParamsBuildContext& context,
     AM_ASSIGN_OR_RETURN(const LinearF32KernelArgs base,
                         BuildLinearF32PackedBase(context, true));
     const int64_t n_blocks = base.out_features /
-                                     cpu::kCpuBPanelF32Kc512Nr16NR +
-                             (base.out_features % cpu::kCpuBPanelF32Kc512Nr16NR != 0);
+                                     kCpuBPanelF32Kc512Nr16NR +
+                             (base.out_features % kCpuBPanelF32Kc512Nr16NR != 0);
     const PackedGemmF32Args args{
             .gemm = GemmF32Args{
                     .lhs = base.input,

@@ -41,3 +41,13 @@ Embedding 的同构建 scalar/selected prepared A/B 使用 CPU affinity 0、同�
 矩阵逻辑存储为两字节，Norm 保持四字节，O2 另外持有对应 dtype 的 packed artifacts。最终 retained owner 账本按完整 backing footprint 计量。Linear 当前为 reference，实现及现有 baseline 的性能限制见 [Linear 机器记录](../operators/linear/benchmarks/desktop-54h5mmi-linear.md)。新 W16 B-panel 的布局评估采用后续 profiling 门禁。
 
 当前验收覆盖本机与 tiny 测试模型，资源与时延按各 report 的计时区间解释。其他平台和生产规模模型质量由对应测试矩阵验收。
+
+## W16 FP32 I/O 自然对齐修复
+
+本节记录 `98604d79` 加当前工作树补丁的独立修复验证。W16 plain/identity-packed Linear、QKV 和 GateUp 在 params builder 检查实际读写的 F32 地址满足 `alignof(float)`，不依赖未知或较弱的 view alignment。空输出不要求对齐；零 K 仍检查写入的 output，未读取的 input 不受该检查约束。W16 权重继续使用 byte-safe 读取。
+
+- Debug `aethermind_unit_tests` 目标构建通过；新增 56 项参数化边界测试全部通过，覆盖两种权重 dtype、四种 projection 路径、每个输出端口、零 M/N/K、空输出 split 和自然对齐但未满足 SIMD 对齐的合法地址。
+- 扩大的受影响回归共 366 项，全部通过且无跳过，包含 W16 O1/O2 生成、转换预算、owner lifetime、Embedding 和 Linear/composite 回归。
+- 原四个 F16/BF16 输入/输出未对齐 UBSan harness 均在准备阶段返回 `InvalidArgument`，不再进入 typed load/store。
+- 独立构建完整 ASan/UBSan `AetherMind` 库，单独编译新增 GTest 源文件并链接该库。设置 `ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1`，56 项全部通过且无跳过。开启 leak detection 时，56 项测试仍通过，随后 LSan 因当前 ptrace 环境不受支持而 fatal 退出；本次不声明泄漏检查通过。
+- 格式检查与 `git diff --check` 通过。源码 SHA-256、完整命令、GoogleTest XML、build/test logs 和 LSan 失败日志保存在 `benchmark-results/operators/linear/20261111T154712Z_98604d79_desktop-54h5mmi_w16-alignment-fix/`。

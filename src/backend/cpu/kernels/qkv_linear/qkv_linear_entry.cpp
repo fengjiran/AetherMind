@@ -12,6 +12,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <new>
 #include <span>
@@ -295,6 +296,14 @@ Status BuildQkvLinearF32W16ReferenceArgs(const KernelParamsBuildContext& context
                 .v_out_features = metadata.v_out_features,
         };
         return Status::Ok();
+    }
+
+    if ((metadata.q_out_features != 0 && reinterpret_cast<std::uintptr_t>(query.data()) % alignof(float) != 0) ||
+        (metadata.k_out_features != 0 && reinterpret_cast<std::uintptr_t>(key.data()) % alignof(float) != 0) ||
+        (metadata.v_out_features != 0 && reinterpret_cast<std::uintptr_t>(value.data()) % alignof(float) != 0) ||
+        (total_out_features != 0 && in_features != 0 && reinterpret_cast<std::uintptr_t>(input.data()) % alignof(float) != 0)) {
+        return Status::InvalidArgument(
+                "QkvLinearW16 requires naturally aligned float32 input/output data");
     }
 
     AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis query_analysis,

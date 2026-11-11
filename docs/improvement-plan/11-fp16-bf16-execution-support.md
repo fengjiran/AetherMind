@@ -1,8 +1,8 @@
 # FP16 / BF16 执行支持方案
 
 - **状态**: In Progress
-- **版本**: 1.4
-- **日期**: 2026-11-10
+- **版本**: 1.5
+- **日期**: 2026-11-11
 - **产品边界**: [当前产品 PRD](../products/aethermind_prd.md)；CPU-only、单进程、同步、单请求、Token IDs I/O、Llama Dense、静态连续 KV
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联计划**: [06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[07 模型准备入口](07-executable-model-preparation.md)、[08 KV/Attention 演进](08-kv-cache-and-attention-capability-evolution.md)、[09 模型家族扩展](09-qwen-and-moe-architecture-support.md)、[10 Runtime 组装入口](10-upper-level-runtime-assembly.md)
@@ -11,7 +11,7 @@
 
 本文仍是阶段化提案。P1 的显式 FP32 compatibility 已完成下述限定实现和 tiny checkpoint 验证；其当前接口、范围和证据见 [FP32 兼容推理指南](../guides/fp32-compatible-inference.md) 与 [P1 验证报告](../tests/fp32_compatibility_validation_2026-10-29.md)。P2–P4 仍为未来工作；未通过完整门禁前，不能据此声明 native 16-bit 推理、16-bit KV、16-bit activation 或性能收益。
 
-P2 的转换基础现已扩展为独立的 [BF16↔FP32 批量转换](../operators/bf16_conversion/README.md)：双向 scalar、checked byte spans、prepared Backend 函数表，以及 P1 权重准备中的 BF16 callback。该 primitive 不新增 W16 kernel、Embedding output dtype 或 Norm-only transformation；SIMD 优化后续独立验收。
+P2 的转换基础已包括 [FP16 批量转换](../operators/fp16_conversion/README.md) 的 scalar、F16C widening、AVX2 narrowing，以及 [BF16 批量转换](../operators/bf16_conversion/README.md) 的双向 scalar/AVX2、checked byte spans、prepared Backend 函数表和 P1 callback。当前可以进入 CPU/O1/plain 的 P2 实施。下文冻结 P2 的准入、Embedding、Norm-only 和 kernel args 合同，P2 能力状态由各批次退出门禁判定。
 
 ## 1. 现状分析
 
@@ -43,7 +43,7 @@ P1 建立可执行基线，不是低内存方案；P2 是首个保留 16-bit 权
 | `KernelSelector` 严格匹配 activation/weight dtype；`DeriveSelectorDTypes` 忽略 state，未独立表达 output dtype | [selector](../../include/aethermind/base/kernel_selector.h)、[dtype 派生](../../src/operators/operator_inference.cpp) | W16/A32 可复用；mixed KV 和后续 mixed output 才扩展匹配身份 |
 | identity packing 保留源 dtype；现有 B-panel 只有 `kCpuBPanelF32Kc512Nr16`，packer/validator 限定 F32 | [CPU packing](../../src/backend/cpu/cpu_backend.cpp)、[recipe](../../include/aethermind/backend/packing_recipe.h)、[packed validation](../../src/backend/cpu/packed_weight_validation.cpp) | 16-bit B-panel 需要独立物理布局身份，不复用 F32 ID |
 | `Half(float)` 软件标量转换使用固定 RNE + gradual underflow，双向转换 quiet NaN；BF16 转换使用 RNE 并保留 sign 与截断后的 NaN payload | [Half 转换](../../src/dtypes/half.cpp)、[BF16 转换](../../src/dtypes/bfloat16.cpp) | Half 的 FTZ 行为已独立迁移；软件转换的合同和测试不代表 native 16-bit kernel 已支持 |
-| CPU capability 已检测 F16C、AVX512BF16、AMX_BF16 等，尚无对应完整 kernel 链；现有编译配置分别隔离 FP32 AVX2/FMA、FP16 F16C widening 与 AVX2 integer narrowing，BF16 batch 当前为 portable scalar | [CPU capability](../../include/aethermind/backend/cpu/cpu_capabilities.h)、[检测](../../src/backend/cpu/cpu_info.cpp)、[库 CMake](../../src/CMakeLists.txt) | feature detection 不是执行支持；新增 ISA 按 translation unit 隔离 |
+| CPU capability 已检测 F16C、AVX512BF16、AMX_BF16 等，尚无对应完整 kernel 链；现有编译配置分别隔离 FP32 AVX2/FMA、FP16 F16C widening、FP16/BF16 AVX2 integer conversion | [CPU capability](../../include/aethermind/backend/cpu/cpu_capabilities.h)、[检测](../../src/backend/cpu/cpu_info.cpp)、[库 CMake](../../src/CMakeLists.txt) | feature detection 不是执行支持；新增 ISA 按 translation unit 隔离 |
 
 ### 1.3 范围与非目标
 
@@ -59,13 +59,24 @@ P1 建立可执行基线，不是低内存方案；P2 是首个保留 16-bit 权
 
 | 模式 | Checkpoint 输入 | 执行矩阵权重 W | A / residual | KV storage | 累加 / logits | 状态 |
 |---|---|---|---|---|---|---|
-| FP32 兼容执行 | loader 已接受的 F32/F16/BF16 | 显式转换后的 F32 | F32 | F32 | F32 / F32 | P1 C++ O1/plain 限定验收通过 |
+| FP32 兼容执行 | loader 已接受的 F32/F16/BF16 | 显式转换后的 F32 | F32 | F32 | 沿用既有 kernel / F32 | P1 C++ O1/plain 限定验收通过 |
 | FP16 权重执行 | uniform F16 linear weights | F16 | F32 | F32 | F32 / F32 | P2 待实施 |
 | BF16 权重执行 | uniform BF16 linear weights | BF16 | F32 | F32 | F32 / F32 | P2 待实施 |
 | 16-bit KV | 已验收的 P2 权重组合 | F16/BF16 | F32 | 显式选择 F16 或 BF16，K/V 同型 | F32 / F32 | P3 待实施 |
 | 16-bit activation | 后续按算子签名批准 | 按 preset 决定 | 显式边界；首版保留 FP32 residual 作为候选 | 独立选择已验收组合 | 至少 F32 / F32 | P4 待设计与实施 |
 
-P2 要求 Embedding、linear 和 lm_head 的实际权重 dtype 与所选 F16/BF16 preset 一致；即使 loader 接受某种 untied Embedding/linear 混合组合，首批 preset 也明确拒绝，不隐式转换。Norm 权重在 P1/P2 统一为 FP32：P2 仅对这些小权重做准备期 widening，避免首批额外增加 mixed-dtype Norm kernel；矩阵权重仍保留目标 16-bit 格式。Embedding 与 tied lm_head 使用同一份经验证的权重来源。
+P2 要求 Embedding、linear 和 lm_head 的实际权重 dtype 与所选 F16/BF16 preset 一致。Norm 源权重允许 scalar F32/F16/BF16，准备后统一为 F32，矩阵权重保留目标 16-bit 格式。缺少独立 lm_head 时沿用 resolver 的 embedding fallback。显式 lm_head 验证实际 dtype，并保留其既有 storage 关系。
+
+**P2 source hint 合同（待实施）。** 在 [model_execution_policy.cpp](../../src/inference/model_execution_policy.cpp) 的新 policy 分支接受下表组合，先完成 metadata 准入，再分配转换 payload。
+
+| Hint | P2 处理 |
+|---|---|
+| 缺省，或 undefined 且 name 为空 / `auto` | 接受，执行 dtype 由 policy 与实际权重决定 |
+| scalar F32、F16、BF16，且与实际矩阵 dtype 一致 | 接受并保留原配置 |
+| scalar F32、F16、BF16，与实际矩阵 dtype 不一致 | 接受并原样保留为 provenance / diagnostic，执行 activation/KV 显式为 F32 |
+| 未识别的命名 hint，或上述集合以外的 dtype / lanes | 拒绝 |
+
+所有矩阵角色的实际 dtype 仍须匹配所选 policy。即使 hint 匹配 policy，错误或混合的矩阵 dtype 也须拒绝。准入测试分别覆盖 known-hint mismatch 的接受与 actual-dtype mismatch 的拒绝。现有 Loader 已允许已识别 hint 与实际 dtype 不一致，P2 可沿用该读取合同。
 
 必须保持：
 
@@ -93,6 +104,22 @@ P2 要求 Embedding、linear 和 lm_head 的实际权重 dtype 与所选 F16/BF1
 不为本提案新增 owning Engine facade。当前统一使用 `ExecutableModel::Load(runtime, path, ModelLoadOptions)`，按 `WeightPolicy` 选择源权重准入及可选转换；artifact 准备统一使用 `ExecutableModel::Prepare`。旧创建自由函数与转发 overload 已删除，C++ 调用方需迁移；直接 `ModelCompiler::Compile` / `LoadAndCompile` 仍是低层编译入口，不自动触发转换。低层调用方若绕过 normalizer，必须构造真实一致的 specs，未覆盖的 kernel tuple 在 prepare 时明确拒绝，不能静默取得兼容模式的承诺。
 
 新增 Embedding 字段的缺省语义须保留既有“输出跟随权重”；W16/A32 preset 显式选 F32 输出。字段迁移覆盖 OpParams、graph builder、inference、序列化/反序列化、constant evaluator（如适用）、kernel 参数和测试。通用 Cast 延后到 P4 真正需要图上 dtype transition 时再引入。
+
+**P2 Embedding 输出与 builder 合同（待实施）。** `EmbeddingParams::output_dtype` 的唯一解析规则为 `output_dtype.IsUndefined() ? weight_spec.dtype : output_dtype`，`InferEmbedding` 用该结果生成 output spec。首批显式 output dtype 支持 scalar F32，undefined 路径继续覆盖原有 F32/F16/BF16 同型输出。
+
+[llama_dense_graph_builder.cpp](../../src/model/llama_dense_graph_builder.cpp) 中当前比较 `options.activation_dtype` 与 `weights.embed_tokens.dtype` 的 guard 必须替换。P2 构图先给 Embedding 设置 `output_dtype=F32`，再将显式 activation override 与推导后的 Embedding **output spec dtype** 比较。output dtype 未设置时，该 spec 跟随 weight。回归须验证旧缺省调用的跟随规则，以及 W16 weight + 显式 F32 activation/output 能成功构图且输出 spec 一致。
+
+**P2 Embedding serde 合同（待实施）。** 修改 [op_params_serde.cpp](../../src/operators/op_params_serde.cpp) 的序列化与解析分支。
+
+| 参数状态 / 文本 | Canonical serialize / parse |
+|---|---|
+| `output_dtype` 为 undefined | 仍序列化为裸 `Embedding`，与旧输出逐字节一致 |
+| 显式 scalar F32 | 序列化为 `Embedding output_dtype=float32` |
+| 裸 `Embedding`，0 字段 | 解析为 `EmbeddingParams{}` |
+| `Embedding output_dtype=float32`，1 字段 | 解析为显式 scalar F32 |
+| 未知 key、重复 key、空值、额外字段、首批集合以外的显式 dtype | 返回 `InvalidArgument` |
+
+解析只接受 0 或 1 个字段，重复 key 继续由已有 `ParseFields` 拒绝。对应回归包括两种 canonical 文本的 round trip、旧裸格式的逐字节断言，以及各非法字段分支。
 
 ### 2.3 控制与数据流
 
@@ -138,9 +165,35 @@ normalizer 创建新的 `LoadedModel`，不 `const_cast` 修改只读权重，�
 - 部分转换、metadata 或分配失败时 RAII 清理并返回原状态码及阶段上下文，不发布半成品模型；已存在的外部模型与 plan 不被替换。
 - Runtime 地址稳定且长于模型/Session；model 长于所有借用权重的 prepared bindings。请求 workspace 仍由 Generate 分配，planner 只规划偏移。
 
+**P2 Norm-only 预算合同（待实施）。** 在 [RawWeightFp32ConversionOptions](../../include/aethermind/model/weight/raw_weight_fp32_conversion.h) 增加显式 scope，默认覆盖 P1 全量转换，P2 选择 Norm-only。所有角色先验证 metadata，转换计划仅收集 scope 选中且非 F32 的 view。retained 统计从转换后仍保留的 source views 构建，复用既有 ownership-identity 聚合与 range union 逻辑。
+
+```text
+final_owned = unique surviving source owners 的 owned backing
+            + unique converted Norm F32 payload
+peak_owned  = unique all source owners 的 owned backing
+            + unique converted Norm F32 payload
+```
+
+Norm 与矩阵共享 backing 时，Norm 创建 F32 storage，矩阵保留原 view，原 backing 按 owner identity 计一次完整 footprint。Mapped/external 分类单列。有限 cap 要求 retained backing 信息完整，包含保留的 W16 backing。
+
+同一实现批次必须更新转换器 public header 中的 `Unknown retained F32 backing...` 注释和 `retained Float32 backing metadata` 错误消息，使二者描述 retained backing（含 W16）。P1 与 P2 的固定账本验收见 §6.2。
+
 ### 2.5 Kernel、selector 与 packing
 
 **P2：复用已有 act/weight selector。** Linear 使用 `{act=F32, weight=F16}` 或 `{act=F32, weight=BF16}`，输出 F32；Embedding 从显式 activation output 得出 act dtype。reference 读取 16-bit weight 并提升为 float，用 FP32 累加，直接写回 F32。不得用 reduced wrapper 的 `operator+=` 作为归约，也不在每个 token 展开整份 FP32 权重。
+
+**P2 W16 Linear args 合同（待实施）。** 现有 [LinearF32KernelArgs](../../src/backend/cpu/kernels/linear/linear_internal.h) 持有 `const float* weight`。新增 CPU-private `LinearF32W16KernelArgs`，由注册的 params builder 一次构造。
+
+| 字段 / 行为 | 合同 |
+|---|---|
+| `input` / `output` | `const float*` / `float*`，activation/output 为 F32 |
+| `weight` | `const std::byte*`，用 `memcpy` 读取 16-bit 元素 |
+| `weight_dtype` | 实际 scalar F16 或 BF16，须与 weight TensorView 和 selector 一致 |
+| 所有 row/col stride | 按对应张量的**元素数**计量，默认 col stride 为 1 |
+| weight 地址计算 | 将逻辑元素 offset 显式乘以 2 转为 byte offset，binding-time 校验最大 offset 和字节范围溢出 |
+| shape / layout / alias | 复用现有 TensorView、`AnalyzeRowwiseView` 与范围/alias 校验，沿用 rank flatten、空输出和零 K 合同 |
+
+stride 回归使用相同物理 storage 的不同合法 row/col stride、非对齐 W16 source、尾部和溢出 metadata，确认 prepared args 与实际读写范围一致。
 
 Prefill 可在已规划 scratch 中按 tile widening 并复用，Decode 可直接流式读取 16-bit weight；具体 blocking/threshold 属算子专项，须经 profiling 与 benchmark 决定。新增需求沿用 `WorkspaceRequirement`→plan→request allocation→binding，不在 kernel 中申请堆内存。
 
@@ -160,10 +213,10 @@ P4 如出现 input/output dtype 不同或同角色的多端口异型，需要按
 |---|---|
 | Widening | F16/BF16 的有限值提升到 F32 精确表示，包括可表示的 subnormal；零符号保留；NaN 按已冻结的 bit-copy/quieting 规则处理 |
 | Narrowing | Half 软件标量转换已采用固定 RNE + gradual underflow，保留 signed zero，overflow→Inf，NaN quiet 并保留可容纳的 payload，不设置浮点异常标志；FTZ 迁移见 [公共 API](../api/public-api.md)。后续 narrowing/SIMD 路径须匹配该合同；P1 的纯 widening 不依赖此次迁移 |
-| GEMM/归约 | P1/P2 固定 FP32 累加，reference 可用 FP64 oracle 检查；不得假定 wrapper 算术自然实现 FP32 accumulation |
+| GEMM/归约 | P1 沿用已有 kernel 的数值合同，当前 FP32 Linear reference 使用 double 累加。P2 新增 W16 Linear 固定 F32 累加，显式规定 reference 的累加顺序与 FMA contraction 策略，以独立 FP64 oracle、约定误差和 near-tie 规则验收 |
 | Norm/Attention | 平方和、dot、stable softmax 的 max/exp/sum 与 value accumulation 至少 F32；RoPE 保留其既有更高精度频率/角度合同，不能因 dtype 扩展缩窄 |
 | Fusion | 先规定 logical op 边界的 rounding/cast placement；融合不能移除要求的 narrowing 或额外引入舍入。浮点运算顺序变化按数值门禁审查，不要求所有实现逐位一致 |
-| 硬件转换 | FP16 批量转换已具备 F16C widening 与 AVX2 整数 narrowing，并接入 P1 的 F16 权重准备，见 [合同与证据](../operators/fp16_conversion/README.md)。BF16 已有独立双向 scalar batch 与 P1 callback，见 [BF16 合同](../operators/bf16_conversion/README.md)。不改变 native 16-bit kernel 的实施状态；新增候选仍须遵守相同 subnormal/NaN 和异常合同 |
+| 硬件转换 | FP16 批量转换已具备 F16C widening 与 AVX2 整数 narrowing，并接入 P1 的 F16 权重准备，见 [合同与证据](../operators/fp16_conversion/README.md)。BF16 已有双向 scalar/AVX2 batch 与 P1 callback，见 [BF16 合同](../operators/bf16_conversion/README.md)。新增候选须遵守相同 subnormal/NaN 和异常合同 |
 | Native BF16 | `VDPBF16PS` 乘数为 BF16、累加为 FP32；不能把 W16/A32 的 activation 偷转 BF16 以复用它。此类路径属于经过批准的 A16 模式 |
 | Native FP16 | 有 FP16 算术指令不等于满足 FP32 累加；任何候选必须证明符合该 preset 的数值合同 |
 | Dispatch/build | 独立 TU 与编译能力检查，使用实际 CPU/OS effective features，保留 scalar fallback；不全局添加高 ISA 或 fast-math 选项，不按 CPU 品牌猜测支持 |
@@ -184,16 +237,16 @@ FP16 与 BF16 的指数范围和有效精度不同，不能按“都是 16-bit�
 
 ## 4. 实施步骤
 
-P1 的限定实现与验收已完成；P0 中 graph options 和 widening 数值合同已随 P1 落地，Half 软件标量 narrowing 已独立完成 FTZ→gradual underflow 迁移，并已增加 FP16 批量 F16C widening/AVX2 整数 narrowing，以及 BF16 双向 scalar batch 和独立 P1 callback。F16 Add 与 native reduced-dtype consumers 仍待实施；P1 全程使用 F32 算子。P2–P4 仍待实施；编号表示依赖，不承诺日期。每个算子依照 O0–O4 执行，微内核优化不是进入下一阶段的充分条件。
+P1 的限定实现与验收已完成。P0 中 graph options 和 widening 数值合同已随 P1 落地，Half 软件标量 narrowing 已完成 FTZ→gradual underflow 迁移，FP16 F16C/AVX2 与 BF16 AVX2 批量转换已经接入当前源码。P2 按以下首批合同实施，activation/residual/Add 全程使用 F32，F16 Add 按后续 reduced-activation consumer 的需要建设。P2–P4 的实现状态按退出门禁更新。各算子依照 O0–O4 执行。
 
 ### 4.1 P0：冻结合同与补齐基础语义
 
 1. 固定 §2.1 的首批 presets、source/activation/KV 权威与明确拒绝策略。
 2. 引入 graph-build options，经 ModelCompileOptions 传到唯一构图入口；覆盖 hint 缺失、auto、与实际权重不同的情况，不改 checkpoint 来源 metadata。
-3. 补齐 F16 Add 的 shared dtype contract、CPU reference 注册、constant folding 与相关测试；不把其他未实现 kernel 一并标为支持。
+3. F16 Add 的 shared dtype contract、CPU reference 注册、constant folding 与相关测试按后续 A16 consumer 的需要联动补齐。P2 residual/Add 使用既有 F32 路径。
 4. Half 软件标量转换已明确 rounding、NaN/Inf、subnormal 和 FTZ 迁移范围，并有独立回归覆盖；任何新 narrowing/SIMD 路径开放前仍须验证其数值和异常行为匹配同一合同。
 
-退出条件：语义与 dtype 身份一致，非法组合可诊断；F16 Add 的 producer/consumer/evaluator/CPU reference 同步。该阶段不承诺 F16/BF16 整模型执行。
+退出条件：本批次 consumer 所需的语义与 dtype 身份一致，非法组合可诊断。F16 Add 的 producer/consumer/evaluator/CPU reference 联动验收归入使用 F16 activation 的批次，P2 按 F32 Add 合同验收。
 
 ### 4.2 P1：显式 FP32 兼容执行（限定验收通过）
 
@@ -206,10 +259,19 @@ P1 的限定实现与验收已完成；P0 中 graph options 和 widening 数值�
 
 ### 4.3 P2：16-bit 权重、FP32 activation
 
-1. Embedding 显式产生 F32 output；Norm 在准备期转为 F32，所有矩阵权重保留选定 F16/BF16。
-2. 为 Linear/LM head 增加 A32/W16→A32 reference 与 exact selector 注册，先闭环 O1/plain；已有 FP32 RoPE、KV、Attention、residual 和 Argmax 继续消费真实 F32 activation。
-3. 补齐 QKV/GateUp 等 fused weight consumer 的语义、reference、packing、参数准备与绑定，再单独验收 O2/packed。AddRmsNorm 等不改变 dtype 的 fusion 也需验证接入后的权重与数值合同。
-4. 先测 registered/prepared baseline，再基于 profiling 引入 F16C/向量 widening、Decode GEMV 或 Prefill tile；新物理 B-panel 单列布局证据。
+以下均为待实施任务。第一批支持 CPU/O1/plain、W16/A32、KV32，随后推进 O2/packed。
+
+1. **冻结支持矩阵与数值合同。** 落实 §2.1 的 hint 白名单、不一致策略与按角色区分的 actual dtype 准入，明确 P2 F32 累加、reference 的 FMA contraction 策略、误差预算及 near-tie 规则。同步维护本提案版本与变更记录。
+2. **扩展 inference 准入。** 在 [model_execution_policy.h](../../include/aethermind/inference/model_execution_policy.h) 增加 F16/BF16 两个 W16 策略，矩阵严格匹配所选类型，Norm 源接受 F32/F16/BF16。验证 unknown policy、target、preset、known-hint mismatch 和 actual-dtype mismatch 的各分支。
+3. **完成 Norm-only transformation 与预算。** 在 [raw_weight_fp32_conversion.h](../../include/aethermind/model/weight/raw_weight_fp32_conversion.h) 的 options 增加 `RawWeightFp32ConversionScope::{kAllRequiredWeights,kNormWeightsOnly}`。转换器按角色选择 FinalNorm、InputNorm、PostAttentionNorm，复用两套 widening callback 与 SourceKey 去重。依 §2.4 重做 retained 选择，更新 cap 注释/错误文案，并通过 §6.2 的 P1/P2 独立账本和失败回滚测试。
+4. **完成 Embedding 语义和 builder/serde 迁移。** 修改 [op_params.h](../../include/aethermind/operators/op_params.h)、[embedding_op.cpp](../../src/operators/ops/embedding_op.cpp)、[graph_op_builder.cpp](../../src/graph/graph_op_builder.cpp)、[llama_dense_graph_builder.cpp](../../src/model/llama_dense_graph_builder.cpp) 与 [op_params_serde.cpp](../../src/operators/op_params_serde.cpp)。尤其要将 builder 的 activation-vs-weight guard 改为 activation-vs-inferred-output 比较，按 §2.2 保持裸 serde 的逐字节兼容并扩展 0/1 字段解析。退出门禁包括 operator inference、serde、graph-build 和 selector dtype 派生回归。
+5. **实现 O1/plain reference kernel。** Embedding 按选中 W16 row 写 F32 output，Linear/LM head 使用 §2.5 的专用 W16 args 和 F32 累加。分别注册 `{A=F32,W=F16}`、`{A=F32,W=BF16}`，覆盖 Prefill/Decode、合法 stride、非对齐、尾部、零 M/N/K、alias 和执行期零分配。
+6. **接通公开 Load 链。** [executable_model.cpp](../../src/inference/executable_model.cpp) 编排 source 准入→Backend widening 选择→Norm-only conversion→prepared 角色校验→Compile(A32/KV32)→Prepare→Session。转换后校验 Norm=F32、矩阵=W16，复用原有 owner 链，分别闭环两种 policy。
+7. **完成 P2-O1 模型级验收。** 对同一 reduced checkpoint 比较 P2 与 P1，按 §6 的 logits abs/rel、top-k、top-1 margin 验证 Prefill、多次 Decode 和 Generate。覆盖 MHA/GQA、tied/untied、EOS/容量、OOM 重试、owner lifetime、持久矩阵两字节存储与 Decode 稳态零分配，执行相关 sanitizer profile。
+8. **采集 O1 baseline 并优化。** 记录 registered/prepared、production ExecutionStep 与端到端准备/生成指标。依据 profiling 接入行级 SIMD widening、Decode GEMV 或 Prefill tile，新增 scratch 经现有 workspace 规划链提供。
+9. **完成 P2-O2/packed。** 按预期 dtype 和 itemsize 验证 identity packed weight，补齐 W16 Embedding/Linear、QKV/GateUp composite、reference、参数准备与绑定，回归 AddRmsNorm 等实际 fusion。完整 O2 图通过后，再依据性能证据决定是否新增 W16 B-panel 及其独立布局身份。
+
+步骤 1 完成后，步骤 2/3/4 可以并行推进。步骤 5/6 汇合语义、权重与 backend 实现，步骤 7 是 O1 批次退出门禁，步骤 9 另有 O2 退出门禁。
 
 退出条件：两个 W16/A32 presets 均完成完整生成；实际持久矩阵存储为 16-bit，无隐藏整模型 F32 展开；plain/packed 支持范围分别记录，Decode 稳态分配合同通过。无 benchmark 证据前不宣称吞吐提升。
 
@@ -258,6 +320,10 @@ P1 的限定实现与验收已完成；P0 中 graph options 和 widening 数值�
 
 ### 6.2 所有权、绑定与失败
 
+- P1 默认全量 scope 的精确字节断言按测试名称保留，包括 [test_raw_weight_fp32_conversion.cpp](../../tests/unit/model/test_raw_weight_fp32_conversion.cpp) 的 `EnforcesFinalOwnedBudgetBeforeAnyPayloadAllocation`（cap 15 拒绝、16 接受，peak 24，final owned 16）和 `CountsRetainedFloat32BackingAlongsideConvertedPayload`（cap 39 拒绝、40 接受，final owned 40）。
+- P2 单列 Norm-only 账本。一个最小 owned fixture 让全部矩阵角色共用 4 个 W16 元素的 8-byte owner，待转换 Norm 角色共用 2 个 W16 元素的 4-byte owner，已有 F32 Norm 使用 8-byte owner。断言唯一 converted source=4 bytes、converted payload=8 bytes、final owned=24 bytes、peak owned=28 bytes，cap 23 拒绝、24 接受，持久矩阵 itemsize=2 且原 view 保留。
+- 共享 backing fixture 将上述矩阵与待转换 Norm 放入同一个 12-byte owner，已有 F32 Norm 仍有独立 8-byte owner。断言该 shared owner 按完整 footprint 计一次，final owned=28 bytes、peak owned=28 bytes，cap 27 拒绝、28 接受。Norm 间相同 source 仅转换一次，矩阵继续引用 source owner。
+- 两种 W16 dtype 分别覆盖上述账本、未知 retained backing + 有限 cap 的拒绝、未知 source-only backing 的 peak completeness，以及 payload 分配前 callback/allocator 调用为零的失败断言。
 - 正确释放 normalizer 输入、局部 helper 和请求对象后，ExecutableModel/plan 仍有有效 bytes 与 metadata；最后一个 owner 销毁才释放转换存储，无泄漏或重复释放。
 - tied embedding/lm_head 在转换后保留共享关系；相同内容的不同 tensor 不被误合并；partial failure/OOM 不发布半成品。
 - dtype、bytes、alignment、recipe 或 state binding 故意不一致时在执行前失败；不能通过修改 selector 绕过 validation。
@@ -293,3 +359,7 @@ P1 的限定实现与验收已完成；P0 中 graph options 和 widening 数值�
 |---|---|---|
 | 2026-10-20 | 1.0 | 建立 Draft：FP32 兼容路径、W16/A32、独立 KV16 与 A16 阶段；明确职责、所有权、数值/ISA、selector/layout 迁移和验收门禁 |
 | 2026-10-29 | 1.1 | P1 转为 In Progress：记录显式 F16/BF16→FP32 normalizer、FP32 graph policy 和 C++ O1/plain 编排；限定模型与 sanitizer 证据另记验证报告；P2–P4 仍为未来工作 |
+| 2026-11-09 | 1.2 | Half narrowing 迁移为 RNE + gradual underflow，记录 quiet NaN 与 reduced-float 逐位取负合同 |
+| 2026-11-10 | 1.3 | 补充 FP16 checked batch、F16C widening、AVX2 integer narrowing 及 P1 Backend callback 接入 |
+| 2026-11-10 | 1.4 | 补充 BF16 双向 scalar batch、prepared 函数表和 P1 callback，记录当时已完成的转换基础 |
+| 2026-11-11 | 1.5 | 对齐 BF16 AVX2 现状，冻结 P2 hint、Embedding output/builder/serde、retained backing 与 W16 args 合同，保留 P1 精确预算并增加 P2 账本验收，细化九步实施顺序 |

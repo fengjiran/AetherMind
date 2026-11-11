@@ -8,7 +8,6 @@
 #include <bit>
 #include <cfenv>
 #include <cmath>
-#include <cstdint>
 #include <cstring>
 #include <gtest/gtest.h>
 #include <random>
@@ -36,22 +35,24 @@ Bf16ConversionFuncs SelectedConversions() {
 double PositiveBf16Value(uint16_t bits) {
     const unsigned exponent = bits >> 7;
     const unsigned fraction = bits & 0x007FU;
-    return exponent == 0 ? std::ldexp(static_cast<double>(fraction), -133)
-                         : std::ldexp(static_cast<double>(128 + fraction), static_cast<int>(exponent) - 134);
+    return exponent == 0
+                   ? std::ldexp(static_cast<double>(fraction), -133)
+                   : std::ldexp(static_cast<double>(128 + fraction), static_cast<int>(exponent) - 134);
 }
 
 uint32_t WideningOracle(uint16_t bits) {
     const uint32_t magnitude = bits & 0x7FFFU;
-    const uint32_t sign = static_cast<uint32_t>(bits & 0x8000U) << 16;
+    const uint32_t sign = (bits & 0x8000U) << 16;
     if (magnitude >= 0x7F80U) {
         return sign | (magnitude << 16) | (magnitude > 0x7F80U ? 0x00400000U : 0U);
     }
-    const float value = static_cast<float>(PositiveBf16Value(static_cast<uint16_t>(magnitude)));
+
+    const auto value = static_cast<float>(PositiveBf16Value(static_cast<uint16_t>(magnitude)));
     return sign | std::bit_cast<uint32_t>(value);
 }
 
 uint16_t NarrowingOracle(uint32_t bits) {
-    const uint16_t sign = static_cast<uint16_t>((bits >> 16) & 0x8000U);
+    const auto sign = static_cast<uint16_t>((bits >> 16) & 0x8000U);
     const uint32_t magnitude = bits & 0x7FFFFFFFU;
     if (magnitude >= 0x7F800000U) {
         return sign | 0x7F80U | (magnitude > 0x7F800000U ? static_cast<uint16_t>((magnitude >> 16) & 0x007FU) | 0x0040U : 0U);

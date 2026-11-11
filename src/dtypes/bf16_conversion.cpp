@@ -2,12 +2,9 @@
 #include "utils/overflow_check.h"
 
 #include <cstdint>
-#include <cstring>
 
 namespace aethermind {
 namespace {
-
-static_assert(sizeof(float) == sizeof(uint32_t));
 
 Status Convert(std::span<const std::byte> src, std::span<std::byte> dst,
                size_t src_width, size_t dst_width, Bf16ConversionFunc func) {
@@ -51,38 +48,6 @@ Status Convert(std::span<const std::byte> src, std::span<std::byte> dst,
 }
 
 } // namespace
-
-void ConvertBf16ToFp32Scalar(const std::byte* src,
-                             std::byte* dst,
-                             size_t count) noexcept {
-    for (size_t i = 0; i < count; ++i) {
-        uint16_t input = 0;
-        std::memcpy(&input, src + i * sizeof(input), sizeof(input));
-        uint32_t output = static_cast<uint32_t>(input) << 16;
-        if ((input & 0x7F80U) == 0x7F80U && (input & 0x007FU) != 0) {
-            output |= 0x00400000U;
-        }
-        std::memcpy(dst + i * sizeof(output), &output, sizeof(output));
-    }
-}
-
-void ConvertFp32ToBf16Scalar(const std::byte* src,
-                             std::byte* dst,
-                             size_t count) noexcept {
-    for (size_t i = 0; i < count; ++i) {
-        uint32_t input = 0;
-        std::memcpy(&input, src + i * sizeof(input), sizeof(input));
-        uint16_t output = 0;
-        if ((input & 0x7FFFFFFFU) > 0x7F800000U) {
-            output = static_cast<uint16_t>((input >> 16) | 0x0040U);
-        } else {
-            // Bias implements RNE across subnormal, normal and overflow boundaries.
-            const uint32_t bias = 0x7FFFU + ((input >> 16) & 1U);
-            output = static_cast<uint16_t>((input + bias) >> 16);
-        }
-        std::memcpy(dst + i * sizeof(output), &output, sizeof(output));
-    }
-}
 
 Status ConvertBf16ToFp32(std::span<const std::byte> src, std::span<std::byte> dst,
                          const Bf16ConversionFuncs& functions) {

@@ -27,7 +27,7 @@ using Bf16ConversionFunc = void (*)(const std::byte* src,
 /// @param src Source bfloat16 bytes; see Bf16ConversionFunc preconditions.
 /// @param dst Destination binary32 bytes.
 /// @param count Number of elements.
-/// @note Unlike BFloat16::operator float(), this conversion quiets signaling NaNs.
+/// @note Matches BFloat16::operator float(), including signaling-NaN quieting.
 void ConvertBf16ToFp32Scalar(const std::byte* src,
                              std::byte* dst,
                              size_t count) noexcept;

@@ -2,27 +2,27 @@
 /// Implementation of `BFloat16` and bfloat16 ↔ binary32 conversion.
 
 #include "aethermind/dtypes/bfloat16.h"
-
 #include "aethermind/base/macros.h"
+#include "aethermind/dtypes/bf16_conversion.h"
+
+#include <cstring>
 
 namespace aethermind {
-namespace detail {
+namespace {
 
-float bf16_to_fp32_value(uint16_t input) noexcept {
-    // bfloat16 occupies the high 16 bits of a binary32: shifting left by 16
-    // and reinterpreting yields the corresponding float without any rounding.
+uint32_t bf16_to_fp32_bits(uint16_t input) noexcept {
+    // bfloat16 occupies the high 16 bits of binary32; shifting yields its
+    // binary32 bit pattern without rounding.
     uint32_t tmp = input;
     tmp <<= 16;
     // Quiet NaNs so both conversion directions and the batch contract agree.
     if ((input & 0x7F80U) == 0x7F80U && (input & 0x007FU) != 0) {
         tmp |= 0x00400000U;
     }
-    return fp32_from_bits(tmp);
+    return tmp;
 }
 
-uint16_t bf16_from_fp32_value(float value) noexcept {
-    const uint32_t x = fp32_to_bits(value);
-
+uint16_t bf16_from_fp32_bits(uint32_t x) noexcept {
     // NaN: preserve the sign, keep the top 7 mantissa payload bits, and force
     // the quiet bit. A payload that truncates to zero becomes the smallest
     // non-zero quiet payload (0x0040) so the result stays a NaN.
@@ -40,7 +40,37 @@ uint16_t bf16_from_fp32_value(float value) noexcept {
     return static_cast<uint16_t>((x + rounding_bias) >> 16);
 }
 
+} // namespace
+
+namespace detail {
+
+float bf16_to_fp32_value(uint16_t input) noexcept {
+    return fp32_from_bits(bf16_to_fp32_bits(input));
+}
+
+uint16_t bf16_from_fp32_value(float value) noexcept {
+    return bf16_from_fp32_bits(fp32_to_bits(value));
+}
+
 } // namespace detail
+
+void ConvertBf16ToFp32Scalar(const std::byte* src, std::byte* dst, size_t count) noexcept {
+    for (size_t i = 0; i < count; ++i) {
+        uint16_t bits;
+        std::memcpy(&bits, src + i * sizeof(bits), sizeof(bits));
+        const uint32_t result = bf16_to_fp32_bits(bits);
+        std::memcpy(dst + i * sizeof(result), &result, sizeof(result));
+    }
+}
+
+void ConvertFp32ToBf16Scalar(const std::byte* src, std::byte* dst, size_t count) noexcept {
+    for (size_t i = 0; i < count; ++i) {
+        uint32_t bits;
+        std::memcpy(&bits, src + i * sizeof(bits), sizeof(bits));
+        const uint16_t result = bf16_from_fp32_bits(bits);
+        std::memcpy(dst + i * sizeof(result), &result, sizeof(result));
+    }
+}
 
 BFloat16::BFloat16(float value) noexcept : x(detail::bf16_from_fp32_value(value)) {}
 

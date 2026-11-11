@@ -8,4 +8,4 @@ token ids 接受 contiguous int32、uint32、int64，rank 至少为 1。weight �
 
 W16 读取采用 byte-safe batch conversion，finite/subnormal/signed zero 位结果精确，NaN 保留 sign/payload 并 quiet。reference 不要求 CPU feature。F16C/AVX2 kernel 依 backend 的 effective features resolve，在 binding 时固定行级函数，执行无 CPU 检测或堆分配。
 
-实现见 [entry](../../../src/backend/cpu/kernels/embedding/embedding_w16_entry.cpp)，测试见 [W16 kernel regression](../../../tests/unit/backend/cpu/kernels/test_cpu_embedding_w16_kernel.cpp)，性能证据见 [本机记录](benchmarks/desktop-54h5mmi-embedding.md)。遵循 [算子工作流](../../guides/operator-development-workflow.md)。
+实现见 [entry](../../../src/backend/cpu/kernels/embedding/embedding_entry.cpp)、[F32 reference](../../../src/backend/cpu/kernels/embedding/embedding_f32_reference.cpp) 与 [W16 reference](../../../src/backend/cpu/kernels/embedding/embedding_w16_reference.cpp)，测试见 [W16 kernel regression](../../../tests/unit/backend/cpu/kernels/test_cpu_embedding_w16_kernel.cpp)，性能证据见 [本机记录](benchmarks/desktop-54h5mmi-embedding.md)。遵循 [算子工作流](../../guides/operator-development-workflow.md)。

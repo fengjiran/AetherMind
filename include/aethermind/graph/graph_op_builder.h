@@ -99,6 +99,8 @@ StatusOr<GraphValueId> AddRmsNorm(ModelGraph& graph,
 /// @param weight_dtype Dtype of the registered embedding table.
 /// @param binding Weight binding metadata (slot, layer index, semantic role).
 /// @param name Debug name stem; `.weight` is appended for the weight value.
+/// @param params Embedding semantic parameters. An undefined output dtype
+///        preserves output-following-weight behavior.
 /// @return Value id of the embedding lookup output, or an error status on
 ///         validation failure.
 StatusOr<GraphValueId> AddEmbedding(ModelGraph& graph,
@@ -107,7 +109,8 @@ StatusOr<GraphValueId> AddEmbedding(ModelGraph& graph,
                                     int64_t embedding_dim,
                                     DataType weight_dtype,
                                     WeightBinding binding,
-                                    std::string name = {});
+                                    std::string name = {},
+                                    EmbeddingParams params = {});
 
 /// @brief Builds a RoPE node applying rotary position embeddings to Q and K,
 ///        returning both rotated outputs.

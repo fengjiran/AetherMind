@@ -8,6 +8,7 @@
 /// by operator schema inference. Parameter structs are typed value objects;
 /// no std::any or stringly-typed fields are used.
 
+#include "aethermind/dtypes/data_type.h"
 #include "utils/variant_utils.h"
 
 #include <cstdint>
@@ -17,7 +18,14 @@
 
 namespace aethermind {
 
-struct EmbeddingParams {};
+/// @brief Semantic output dtype for an embedding lookup.
+///
+/// An undefined value preserves the legacy contract: output dtype follows the
+/// table dtype. The first explicit mixed-dtype contract is W16 -> A32, so the
+/// operator inference currently accepts only scalar Float32 here.
+struct EmbeddingParams {
+    DataType output_dtype{};
+};
 
 struct RmsNormParams {
     float eps = 1.0e-5f;

@@ -223,8 +223,12 @@ void DumpOpParams(const OpParams& params, std::ostream& os) {
             [&](const std::monostate&) {
                 os << "monostate{}";
             },
-            [&](const EmbeddingParams&) {
-                DumpEmptyParams("EmbeddingParams", os);
+            [&](const EmbeddingParams& p) {
+                if (p.output_dtype.IsUndefined()) {
+                    DumpEmptyParams("EmbeddingParams", os);
+                } else {
+                    os << "EmbeddingParams{output_dtype=" << ToString(p.output_dtype) << '}';
+                }
             },
             [&](const RmsNormParams& p) {
                 os << "RmsNormParams{eps=" << p.eps << '}';

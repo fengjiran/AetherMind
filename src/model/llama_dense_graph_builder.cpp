@@ -7,8 +7,6 @@
 #include "transformer_graph_common.h"
 #include "utils/overflow_check.h"
 
-#include <cstddef>
-#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -262,12 +260,9 @@ StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
                                                   ? DataType::Float32()
                                                   : config.weight_dtype_hint)
                                        : options.activation_dtype;
-    if (!options.activation_dtype.IsUndefined() &&
-        options.activation_dtype != weights.embed_tokens.dtype) {
-        return Status::InvalidArgument(
-                "BuildLlamaDense: activation_dtype " + ToString(options.activation_dtype) +
-                " must match the embedding output dtype " + ToString(weights.embed_tokens.dtype) +
-                "; convert the embedding weight before graph construction");
+    EmbeddingParams embedding_params{};
+    if (options.activation_dtype == DataType::Float32()) {
+        embedding_params.output_dtype = act_dtype;
     }
     const DataType kv_dtype = options.kv_dtype.IsUndefined() ? act_dtype : options.kv_dtype;
     const ShapeSymbol seq_len = ShapeSymbol::Create();
@@ -309,7 +304,14 @@ StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
                                 MakeTransformerWeightBinding(std::nullopt,
                                                              TransformerWeightRole::kTokenEmbedding),
                                 detail::WeightDebugName(TransformerWeightRole::kTokenEmbedding,
-                                                        std::nullopt)));
+                                                        std::nullopt),
+                                embedding_params));
+    if (!options.activation_dtype.IsUndefined() &&
+        graph.GetValue(hidden).spec.dtype != act_dtype) {
+        return Status::InvalidArgument(
+                "BuildLlamaDense: explicit activation_dtype must match "
+                "the inferred Embedding output_dtype");
+    }
 
     for (uint32_t i = 0; i < layer_count; ++i) {
         const GraphValueId k_cache = AddState(graph,

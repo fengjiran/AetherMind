@@ -110,6 +110,25 @@ TEST(GraphDump, DumpsMinimalGraph) {
     EXPECT_NE(dump.find("debug_name=embedding"), std::string::npos);
 }
 
+TEST(GraphDump, IncludesExplicitEmbeddingOutputDType) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(32), {4}), "tokens");
+    const GraphValueId weight = graph.AddWeight(Spec(DataType::Float(16), {32, 8}),
+                                                MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
+                                                "tok_embeddings.weight");
+    const auto embedding = graph.AddNode(
+            OpType::kEmbedding, std::nullopt, {tokens, weight},
+            {NodeOutputDesc{.payload = ActivationValue{}, .name = "hidden"}},
+            EmbeddingParams{.output_dtype = DataType::Float32()}, {}, "embedding");
+    ASSERT_TRUE(embedding.ok()) << embedding.status().ToString();
+    graph.MarkOutput(embedding->outputs.front());
+
+    std::ostringstream os;
+    DumpGraph(graph, os);
+
+    EXPECT_NE(os.str().find("EmbeddingParams{output_dtype=Float}"), std::string::npos);
+}
+
 // --- ConstantValue dump coverage ---
 
 TEST(GraphDump, DumpsConstantValue) {

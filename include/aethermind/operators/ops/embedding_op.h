@@ -38,7 +38,8 @@ inline bool IsSupportedTokenIdDType(const DataType& dtype) noexcept {
 
 /// @brief Floating-point dtypes accepted for Embedding weights.
 ///
-/// Output dtype follows the weight dtype.
+/// With an undefined EmbeddingParams::output_dtype, output dtype follows the
+/// weight dtype. Explicit output dtype validation lives in InferEmbedding.
 inline const std::array<DataType, 3> kEmbeddingSupportedWeightDTypes = {
         DataType::Float32(),
         DataType::Float(16),
@@ -61,9 +62,11 @@ inline std::string EmbeddingWeightDTypeDisplayName(const DataType& dtype) {
     if (dtype == DataType::Float32()) {
         return "float32";
     }
+
     if (dtype == DataType::Float(16)) {
         return "float16";
     }
+
     if (dtype == DataType::BFloat(16)) {
         return "bfloat16";
     }

@@ -133,7 +133,8 @@ StatusOr<GraphValueId> AddEmbedding(ModelGraph& graph,
                                     int64_t embedding_dim,
                                     DataType weight_dtype,
                                     WeightBinding binding,
-                                    std::string name) {
+                                    std::string name,
+                                    EmbeddingParams params) {
     if (vocab_size <= 0) {
         return Status::InvalidArgument("Embedding vocab_size must be positive");
     }
@@ -160,7 +161,7 @@ StatusOr<GraphValueId> AddEmbedding(ModelGraph& graph,
                                 std::nullopt,
                                 {token_ids, weight},
                                 {ActivationOutput()},
-                                EmbeddingParams{},
+                                params,
                                 {},
                                 std::move(name)));
     return OnlyOneOutput(node);

@@ -148,6 +148,22 @@ TEST(GraphOpBuilder, AddsSingleOutputOperatorHelpers) {
     EXPECT_TRUE(std::holds_alternative<ArgmaxParams>(graph.GetNode(GraphNodeId{.index = 7}).op_params));
 }
 
+TEST(GraphOpBuilder, EmbeddingCanProduceFloat32FromFloat16Weight) {
+    ModelGraph graph;
+    const GraphValueId tokens = graph.AddInput(Spec(DataType::Int(64), {2}), "tokens");
+
+    const auto output = AddEmbedding(
+            graph, tokens, 16, 4, DataType::Float(16),
+            MakeTransformerWeightBinding(std::nullopt, TransformerWeightRole::kTokenEmbedding),
+            "embedding", EmbeddingParams{.output_dtype = DataType::Float32()});
+
+    ASSERT_TRUE(output.ok()) << output.status().ToString();
+    EXPECT_EQ(graph.GetValue(*output).spec, Spec(DataType::Float32(), {2, 4}));
+    const GraphNode& node = graph.GetNode(*graph.GetValue(*output).producer);
+    EXPECT_EQ(std::get<EmbeddingParams>(node.op_params).output_dtype, DataType::Float32());
+    EXPECT_EQ(graph.GetValue(node.inputs[1]).spec.dtype, DataType::Float(16));
+}
+
 TEST(GraphOpBuilder, AddSiluMulRequiresMatchingSpecs) {
     ModelGraph graph;
     const GraphValueId gate = graph.AddConstant(

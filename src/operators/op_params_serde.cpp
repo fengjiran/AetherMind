@@ -433,9 +433,22 @@ const char* OpParamsKindName(const OpParams& params) noexcept {
 }
 
 Status SerializeOpParams(const OpParams& params, std::ostream& os) {
+    if (const auto* embedding = std::get_if<EmbeddingParams>(&params);
+        embedding != nullptr && !embedding->output_dtype.IsUndefined() &&
+        (embedding->output_dtype.raw_lanes() != 1 ||
+         embedding->output_dtype != DataType::Float32())) {
+        return Status::InvalidArgument(
+                "SerializeOpParams: Embedding output_dtype must be scalar float32 when specified");
+    }
+
     auto visitor = overloaded{
             [&](const std::monostate&) { os << "monostate"; },
-            [&](const EmbeddingParams&) { os << "Embedding"; },
+            [&](const EmbeddingParams& p) {
+                os << "Embedding";
+                if (!p.output_dtype.IsUndefined()) {
+                    os << " output_dtype=float32";
+                }
+            },
             [&](const RmsNormParams& p) { os << "RmsNorm eps=" << p.eps; },
             [&](const LinearParams&) { os << "Linear"; },
             [&](const RoPEParams& p) {
@@ -538,8 +551,16 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
     }
 
     if (kind == "Embedding") {
-        AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 0));
-        return OpParams{EmbeddingParams{}};
+        if (fields.empty()) {
+            return OpParams{EmbeddingParams{}};
+        }
+        AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 1));
+        const auto output_dtype = fields.find("output_dtype");
+        if (output_dtype == fields.end() || output_dtype->second != "float32") {
+            return Status::InvalidArgument(
+                    "ParseOpParams: Embedding output_dtype must be float32");
+        }
+        return OpParams{EmbeddingParams{.output_dtype = DataType::Float32()}};
     }
 
     if (kind == "RmsNorm") {

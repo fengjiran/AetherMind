@@ -211,7 +211,64 @@ TEST(ModelGraphBuildOptions, RejectsActivationOverrideWithoutConvertingEmbedding
 
     ASSERT_FALSE(graph.ok());
     EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
-    EXPECT_NE(graph.status().message().find("embedding"), std::string::npos);
+    EXPECT_NE(graph.status().message().find("output_dtype"), std::string::npos);
+}
+
+TEST(ModelGraphBuildOptions, ExplicitFloat32ActivationUsesFloat32EmbeddingOutputForW16Weights) {
+    const HfModelConfig config = MakeLlamaConfig(1);
+    ResolvedModelWeights weights = MakeWeights(config);
+    weights.embed_tokens.dtype = DataType::Float(16);
+    ASSERT_TRUE(weights.lm_head.has_value());
+    weights.lm_head->dtype = DataType::Float(16);
+    for (auto& layer: weights.layers) {
+        layer.attn.q_proj.dtype = DataType::Float(16);
+        layer.attn.k_proj.dtype = DataType::Float(16);
+        layer.attn.v_proj.dtype = DataType::Float(16);
+        layer.attn.o_proj.dtype = DataType::Float(16);
+        layer.mlp.gate_proj.dtype = DataType::Float(16);
+        layer.mlp.up_proj.dtype = DataType::Float(16);
+        layer.mlp.down_proj.dtype = DataType::Float(16);
+    }
+
+    const auto graph = BuildLlamaDense(config, weights,
+                                       {.activation_dtype = DataType::Float32(),
+                                        .kv_dtype = DataType::Float32()});
+
+    ASSERT_TRUE(graph.ok()) << graph.status().ToString();
+    const GraphNode& embedding = graph->GetNodes().front();
+    EXPECT_EQ(std::get<EmbeddingParams>(embedding.op_params).output_dtype, DataType::Float32());
+    EXPECT_EQ(graph->GetValue(embedding.outputs.front()).spec.dtype, DataType::Float32());
+    EXPECT_EQ(graph->GetValue(embedding.inputs[1]).spec.dtype, DataType::Float(16));
+
+    const auto lowered = LowerModelGraph(*graph);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+    ASSERT_FALSE(lowered->steps().empty());
+    EXPECT_EQ(lowered->steps().front().spec.selector.act_dtype, DataType::Float32());
+    EXPECT_EQ(lowered->steps().front().spec.selector.weight_dtype, DataType::Float(16));
+}
+
+TEST(ModelGraphBuildOptions, MatchingBfloatActivationOverridePreservesLegacyFollowWeightOutput) {
+    auto config = MakeLlamaConfig(1);
+    config.weight_dtype_hint = DataType::BFloat(16);
+    auto weights = MakeWeights(config);
+    weights.embed_tokens.dtype = DataType::BFloat(16);
+    weights.final_norm.dtype = DataType::BFloat(16);
+    weights.lm_head->dtype = DataType::BFloat(16);
+    for (auto& layer: weights.layers) {
+        for (auto* view: {&layer.norm.input_rmsnorm, &layer.norm.post_attn_rmsnorm,
+                          &layer.attn.q_proj, &layer.attn.k_proj, &layer.attn.v_proj,
+                          &layer.attn.o_proj, &layer.mlp.gate_proj, &layer.mlp.up_proj,
+                          &layer.mlp.down_proj}) {
+            view->dtype = DataType::BFloat(16);
+        }
+    }
+    const auto graph = BuildLlamaDense(config, weights,
+                                       {.activation_dtype = DataType::BFloat(16),
+                                        .kv_dtype = DataType::BFloat(16)});
+    ASSERT_TRUE(graph.ok()) << graph.status().ToString();
+    const auto& embedding = graph->GetNodes().front();
+    EXPECT_TRUE(std::get<EmbeddingParams>(embedding.op_params).output_dtype.IsUndefined());
+    EXPECT_EQ(graph->GetValue(embedding.outputs.front()).spec.dtype, DataType::BFloat(16));
 }
 
 TEST(ModelGraphBuildOptions, RejectsMixedKvDTypeWithoutConversionSemantics) {

@@ -9,7 +9,8 @@ namespace detail {
 StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
                                          std::span<const TensorSpec> inputs) {
     if (!std::holds_alternative<EmbeddingParams>(params)) {
-        return Status::InvalidArgument("Embedding node requires EmbeddingParams");
+        return Status::InvalidArgument(
+                "Embedding node requires EmbeddingParams");
     }
 
     AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kEmbedding, inputs));
@@ -27,6 +28,17 @@ StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
     if (!IsEmbeddingSupportedWeightDType(weight_spec.dtype)) {
         return Status::InvalidArgument(
                 MakeEmbeddingUnsupportedWeightDTypeMessage("Embedding"));
+    }
+
+    const auto& embedding_params = std::get<EmbeddingParams>(params);
+    const DataType output_dtype = embedding_params.output_dtype.IsUndefined()
+                                          ? weight_spec.dtype
+                                          : embedding_params.output_dtype;
+    if (!embedding_params.output_dtype.IsUndefined() &&
+        (embedding_params.output_dtype.raw_lanes() != 1 ||
+         embedding_params.output_dtype != DataType::Float32())) {
+        return Status::InvalidArgument(
+                "Embedding output_dtype must be scalar float32 when specified");
     }
 
     const auto input_rank_opt = input_ids_shape.rank();
@@ -67,7 +79,7 @@ StatusOr<InferenceResult> InferEmbedding(const OpParams& params,
     }
     output_shape.push_back(weight_shape[1]);
 
-    res.outputs.emplace_back(weight_spec.dtype,
+    res.outputs.emplace_back(output_dtype,
                              SymbolicShape(std::move(output_shape)));
     return res;
 }

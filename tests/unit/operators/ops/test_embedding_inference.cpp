@@ -8,7 +8,7 @@ namespace {
 using namespace aethermind;
 
 TEST(EmbeddingInference, ValidatesInputContract) {
-    constexpr EmbeddingParams params;
+    const EmbeddingParams params;
     const TensorSpec inputs[2] = {
             {.dtype = DataType::Int(64), .shape = MakeSpec(DataType::Int(64), {2}).shape},
             {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {3, 2}).shape},
@@ -18,7 +18,7 @@ TEST(EmbeddingInference, ValidatesInputContract) {
 }
 
 TEST(EmbeddingInference, InfersOutputShapeFromTokenIdsAndWeight) {
-    constexpr EmbeddingParams params;
+    const EmbeddingParams params;
     const TensorSpec inputs[2] = {
             {.dtype = DataType::Int(64), .shape = MakeSpec(DataType::Int(64), {5}).shape},
             {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {32000, 4096}).shape},
@@ -36,7 +36,7 @@ TEST(EmbeddingInference, InfersOutputShapeFromTokenIdsAndWeight) {
 }
 
 TEST(EmbeddingInference, RejectsRankZeroTokenIds) {
-    constexpr EmbeddingParams params;
+    const EmbeddingParams params;
     const TensorSpec inputs[2] = {
             {.dtype = DataType::Int(64), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
             {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {3, 2}).shape},
@@ -49,7 +49,7 @@ TEST(EmbeddingInference, RejectsRankZeroTokenIds) {
 }
 
 TEST(EmbeddingInference, RejectsRankZeroWeight) {
-    constexpr EmbeddingParams params;
+    const EmbeddingParams params;
     const TensorSpec inputs[2] = {
             {.dtype = DataType::Int(64), .shape = MakeSpec(DataType::Int(64), {2}).shape},
             {.dtype = DataType::Float32(), .shape = SymbolicShape(std::vector<ShapeSymbol>{})},
@@ -62,7 +62,7 @@ TEST(EmbeddingInference, RejectsRankZeroWeight) {
 }
 
 TEST(EmbeddingInference, AcceptsUint32TokenIds) {
-    constexpr EmbeddingParams params;
+    const EmbeddingParams params;
     const TensorSpec inputs[2] = {
             {.dtype = DataType::UInt(32), .shape = MakeSpec(DataType::UInt(32), {2}).shape},
             {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {3, 2}).shape},
@@ -72,7 +72,7 @@ TEST(EmbeddingInference, AcceptsUint32TokenIds) {
 }
 
 TEST(EmbeddingInference, InfersOutputShapeWithUint32Tokens) {
-    constexpr EmbeddingParams params;
+    const EmbeddingParams params;
     const TensorSpec inputs[2] = {
             {.dtype = DataType::UInt(32), .shape = MakeSpec(DataType::UInt(32), {5}).shape},
             {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {32000, 4096}).shape},
@@ -90,7 +90,7 @@ TEST(EmbeddingInference, InfersOutputShapeWithUint32Tokens) {
 }
 
 TEST(EmbeddingInference, PreservesSymbolicTokenAndHiddenDims) {
-    constexpr EmbeddingParams params;
+    const EmbeddingParams params;
     const ShapeSymbol token_count = ShapeSymbol::Create();
     const ShapeSymbol hidden_size = ShapeSymbol::Create();
     const TensorSpec inputs[2] = {
@@ -114,7 +114,7 @@ TEST(EmbeddingInference, PreservesSymbolicTokenAndHiddenDims) {
 TEST(EmbeddingInference, InfersOutputShapeForRank2Tokens) {
     // Rank-2 token_ids [batch, seq] must produce [batch, seq, hidden],
     // preserving all input axes (PyTorch nn.Embedding semantics).
-    constexpr EmbeddingParams params;
+    const EmbeddingParams params;
     const TensorSpec inputs[2] = {
             {.dtype = DataType::Int(64), .shape = MakeSpec(DataType::Int(64), {2, 5}).shape},
             {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {32000, 4096}).shape},
@@ -134,7 +134,7 @@ TEST(EmbeddingInference, InfersOutputShapeForRank2Tokens) {
 
 TEST(EmbeddingInference, InfersOutputShapeForRank2SymbolicTokens) {
     // Symbolic rank-2 token_ids must preserve both symbolic axes in output.
-    constexpr EmbeddingParams params;
+    const EmbeddingParams params;
     const ShapeSymbol batch = ShapeSymbol::Create();
     const ShapeSymbol seq = ShapeSymbol::Create();
     const ShapeSymbol hidden = ShapeSymbol::Create();
@@ -159,7 +159,7 @@ TEST(EmbeddingInference, InfersOutputShapeForRank2SymbolicTokens) {
 
 TEST(EmbeddingInference, AcceptsZeroTokenCount) {
     // Zero token count yields empty output [0, hidden]; valid NumPy-style embedding.
-    constexpr EmbeddingParams params;
+    const EmbeddingParams params;
     const TensorSpec inputs[2] = {
             {.dtype = DataType::Int(64), .shape = MakeSpec(DataType::Int(64), {0}).shape},
             {.dtype = DataType::Float32(), .shape = MakeSpec(DataType::Float32(), {32000, 4096}).shape},
@@ -169,7 +169,7 @@ TEST(EmbeddingInference, AcceptsZeroTokenCount) {
 
 TEST(EmbeddingInference, EmitsPositiveConstraintForSymbolicWeightDims) {
     // Symbolic weight dims must emit DimPositiveConstraint for runtime validation.
-    constexpr EmbeddingParams params;
+    const EmbeddingParams params;
     const ShapeSymbol vocab = ShapeSymbol::Create();
     const ShapeSymbol hidden = ShapeSymbol::Create();
     const TensorSpec inputs[2] = {
@@ -213,6 +213,49 @@ TEST(EmbeddingInference, InfersFloat32OutputForInt32Tokens) {
     auto result = InferOperator(OpType::kEmbedding, EmbeddingParams{}, inputs);
     ASSERT_TRUE(result.ok());
     EXPECT_EQ(result->outputs[0].dtype, DataType::Float32());
+}
+
+TEST(EmbeddingInference, ExplicitFloat32OutputWidensFloat16WeightSemantically) {
+    const TensorSpec inputs[2] = {
+            {.dtype = DataType::Int(64), .shape = MakeSpec(DataType::Int(64), {2}).shape},
+            {.dtype = DataType::Float(16), .shape = MakeSpec(DataType::Float(16), {32, 8}).shape},
+    };
+
+    const auto result = InferOperator(
+            OpType::kEmbedding, EmbeddingParams{.output_dtype = DataType::Float32()}, inputs);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_EQ(result->outputs.size(), 1U);
+    EXPECT_EQ(result->outputs[0].dtype, DataType::Float32());
+}
+
+TEST(EmbeddingInference, UndefinedOutputDTypePreservesWeightDType) {
+    const TensorSpec inputs[2] = {
+            {.dtype = DataType::Int(64), .shape = MakeSpec(DataType::Int(64), {2}).shape},
+            {.dtype = DataType::BFloat(16), .shape = MakeSpec(DataType::BFloat(16), {32, 8}).shape},
+    };
+
+    const auto result = InferOperator(OpType::kEmbedding, EmbeddingParams{}, inputs);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_EQ(result->outputs.size(), 1U);
+    EXPECT_EQ(result->outputs[0].dtype, DataType::BFloat(16));
+}
+
+TEST(EmbeddingInference, RejectsNonFloat32ExplicitOutputDType) {
+    const TensorSpec inputs[2] = {
+            {.dtype = DataType::Int(64), .shape = MakeSpec(DataType::Int(64), {2}).shape},
+            {.dtype = DataType::Float(16), .shape = MakeSpec(DataType::Float(16), {32, 8}).shape},
+    };
+
+    for (const DataType dtype: {DataType::Float(16), DataType::BFloat(16), DataType::Float(32, 2),
+                                DataType::Int(32)}) {
+        SCOPED_TRACE(ToString(dtype));
+        EXPECT_EQ(InferOperator(OpType::kEmbedding, EmbeddingParams{.output_dtype = dtype}, inputs)
+                          .status()
+                          .code(),
+                  StatusCode::kInvalidArgument);
+    }
 }
 
 TEST(EmbeddingInference, RejectsWrongWeightDtype) {

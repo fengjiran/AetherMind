@@ -17,6 +17,7 @@ TEST(OpParamsSerde, RoundTripsEveryVariant) {
     const std::vector<OpParams> params{
             std::monostate{},
             EmbeddingParams{},
+            EmbeddingParams{.output_dtype = DataType::Float32()},
             RmsNormParams{.eps = 1.0e-6F},
             LinearParams{},
             RoPEParams{.head_dim = 8,
@@ -113,6 +114,48 @@ TEST(OpParamsSerde, RoundTripsEveryVariant) {
         ASSERT_TRUE(parsed.ok()) << serialized << " -> " << parsed.status().ToString();
         EXPECT_EQ(SerializeToString(*parsed), serialized);
     }
+}
+
+TEST(OpParamsSerde, EmbeddingPreservesLegacyBareFormAndCanonicalFloat32Output) {
+    EXPECT_EQ(SerializeToString(OpParams{EmbeddingParams{}}), "Embedding");
+    EXPECT_EQ(SerializeToString(OpParams{EmbeddingParams{.output_dtype = DataType::Float32()}}),
+              "Embedding output_dtype=float32");
+
+    const auto legacy = ParseOpParams("Embedding");
+    ASSERT_TRUE(legacy.ok()) << legacy.status().ToString();
+    EXPECT_TRUE(std::get<EmbeddingParams>(*legacy).output_dtype.IsUndefined());
+
+    const auto explicit_output = ParseOpParams("Embedding output_dtype=float32");
+    ASSERT_TRUE(explicit_output.ok()) << explicit_output.status().ToString();
+    EXPECT_EQ(std::get<EmbeddingParams>(*explicit_output).output_dtype, DataType::Float32());
+}
+
+TEST(OpParamsSerde, EmbeddingRejectsMalformedOutputDType) {
+    const std::vector<std::string> malformed{
+            "Embedding output_dtype=",
+            "Embedding output_dtype=float16",
+            "Embedding output_dtype=bfloat16",
+            "Embedding output_dtype=float32 extra=1",
+            "Embedding unknown=float32",
+            "Embedding output_dtype=float32 output_dtype=float32",
+    };
+
+    for (const std::string& text: malformed) {
+        const auto parsed = ParseOpParams(text);
+        EXPECT_FALSE(parsed.ok()) << text;
+        if (!parsed.ok()) {
+            EXPECT_EQ(parsed.status().code(), StatusCode::kInvalidArgument) << text;
+        }
+    }
+}
+
+TEST(OpParamsSerde, EmbeddingRejectsInvalidExplicitOutputDuringSerialization) {
+    std::ostringstream os;
+    const Status status = SerializeOpParams(
+            OpParams{EmbeddingParams{.output_dtype = DataType::Float(16)}}, os);
+
+    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_TRUE(os.str().empty());
 }
 
 TEST(OpParamsSerde, MigratesLegacyRoPEAndRejectsUnknownVersionedTags) {

@@ -17,9 +17,10 @@ namespace aethermind {
 /// Undefined fields preserve the builder's legacy policy: the checkpoint hint
 /// (Float32 when absent) supplies the default KV dtype, while activation specs
 /// follow operator inference. An explicit activation policy becomes the default
-/// KV dtype and must match the embedding output dtype until mixed-output
-/// embedding semantics are available. Overrides do not convert weight payloads
-/// or alter the source configuration.
+/// KV dtype. An explicit Float32 policy sets the Embedding output dtype so a
+/// mixed embedding contract can feed the activation path. Other supported
+/// explicit policies must match its inferred output. Overrides do not convert
+/// weight payloads or alter the source configuration.
 struct ModelGraphBuildOptions {
     DataType activation_dtype{};
     DataType kv_dtype{};

@@ -20,6 +20,7 @@ import sys
 MAX_INTEGER = (1 << 63) - 1
 MODES = {"timing", "profile", "allocations"}
 WEIGHTS = {"require-fp32", "convert-fp32", "keep-fp16", "keep-bf16"}
+KV_DTYPES = {"f32": 4, "f16": 2, "bf16": 2}
 # Inputs that can change allocation, dispatch, instrumentation or loader behavior.
 # The collector imports this tuple so collection and validation share one list.
 ENVIRONMENT_KEYS = (
@@ -37,6 +38,7 @@ MEMORY = {
     "raw_unique_visible_bytes", "packed_unique_storage_bytes", "kv_capacity_bytes",
     "workspace_bytes", "process_peak_rss_bytes",
 }
+ACTIVATION_MEMORY = {"prefill_activation_bytes", "decode_activation_bytes"}
 
 
 class VerificationError(ValueError):
@@ -156,7 +158,7 @@ def verify_engine(engine):
     exact_keys(engine, {
         "schema_version", "status", "mode", "build", "cpu", "geometry", "workload", "samples",
     }, "engine")
-    require(type(engine["schema_version"]) is int and engine["schema_version"] == 1,
+    require(type(engine["schema_version"]) is int and engine["schema_version"] in {1, 2},
             "engine: unsupported schema_version")
     require(engine["status"] == "complete", "engine: incomplete run")
     mode = engine["mode"]
@@ -185,14 +187,24 @@ def verify_engine(engine):
     require(geometry["num_attention_heads"] % geometry["num_key_value_heads"] == 0,
             "geometry: query heads must be divisible by KV heads")
     workload = engine["workload"]
-    exact_keys(workload, {
+    workload_keys = {
         "preset", "weights", "prompt_tokens", "max_new_tokens", "eos_token_id",
         "context_capacity", "warmup", "repetitions",
-    }, "workload")
+    }
+    if engine["schema_version"] == 2:
+        workload_keys.add("kv_dtype")
+    exact_keys(workload, workload_keys, "workload")
     require(isinstance(workload["preset"], str)
             and workload["preset"] in {"o1-plain", "o2-packed"}, "workload: invalid preset")
     require(isinstance(workload["weights"], str)
             and workload["weights"] in WEIGHTS, "workload: invalid weights")
+    # Version 1 predates selectable KV precision and always used FP32. Version
+    # 2 must explicitly carry the storage dtype; absence is not auto-detection.
+    kv_dtype = workload.get("kv_dtype", "f32")
+    require(isinstance(kv_dtype, str) and kv_dtype in KV_DTYPES,
+            "workload: invalid kv_dtype")
+    require(kv_dtype == "f32" or workload["weights"] in {"keep-fp16", "keep-bf16"},
+            "workload: KV16 requires a retained W16 policy")
     prompt = workload["prompt_tokens"]
     vocab = geometry["vocab_size"]
     _tokens(prompt, vocab, "workload.prompt_tokens", nonempty=True)
@@ -216,11 +228,15 @@ def verify_engine(engine):
     samples = engine["samples"]
     require(isinstance(samples, list) and len(samples) == workload["repetitions"],
             "samples: missing or extra repetitions")
-    # MakeFp32KVCacheOptions fixes 64-byte row alignment. KVCacheManager pads
-    # every FP32 head row to a multiple of sixteen elements.
-    padded_dim = (geometry["head_dim"] + 15) // 16 * 16
+    # MakeKVCacheOptions fixes 64-byte row alignment. The actual dtype controls
+    # the number of whole elements in each padded head row.
+    element_bytes = KV_DTYPES[kv_dtype]
+    dtype_label = {"f32": "FP32", "f16": "FP16", "bf16": "BF16"}[kv_dtype]
+    elements_per_row_alignment = 64 // element_bytes
+    padded_dim = ((geometry["head_dim"] + elements_per_row_alignment - 1)
+                  // elements_per_row_alignment * elements_per_row_alignment)
     kv_bytes = (2 * geometry["num_hidden_layers"] * geometry["num_key_value_heads"]
-                * padded_dim * workload["context_capacity"] * 4)
+                * padded_dim * workload["context_capacity"] * element_bytes)
     previous_tokens = None
     for index, sample in enumerate(samples):
         context = f"samples[{index}]"
@@ -239,11 +255,20 @@ def verify_engine(engine):
             require(preparation["conversion_ns"] is None,
                     f"{context}.preparation.conversion_ns: no policy conversion runs and it must be null")
         memory = sample["memory"]
-        exact_keys(memory, MEMORY, f"{context}.memory")
+        exact_keys(memory, MEMORY | ACTIVATION_MEMORY if engine["schema_version"] == 2 else MEMORY,
+                   f"{context}.memory")
         for key, value in memory.items():
             integer(value, f"{context}.memory.{key}")
         require(memory["kv_capacity_bytes"] == kv_bytes,
-                f"{context}: kv_capacity_bytes differs from 64-byte padded FP32 storage")
+                f"{context}: kv_capacity_bytes differs from 64-byte padded "
+                f"{dtype_label} storage")
+        if engine["schema_version"] == 2:
+            if maximum == 0:
+                require(memory["prefill_activation_bytes"] == 0,
+                        f"{context}: zero generation cannot reserve prefill activation")
+            if maximum <= 1:
+                require(memory["decode_activation_bytes"] == 0,
+                        f"{context}: no requested decode can reserve decode activation")
         internal = sample["internal"]
         exact_keys(internal, {
             "generated_tokens", "stop_reason", "final_watermark", "request_setup_ns",
@@ -502,6 +527,7 @@ def _comparison_identity(document, include_preset):
     provenance = document["provenance"]
     engine = document["engine"]
     workload = dict(engine["workload"])
+    workload.setdefault("kv_dtype", "f32")
     if not include_preset:
         workload.pop("preset")
     return {

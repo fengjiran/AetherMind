@@ -131,6 +131,7 @@ def stub_engine(options):
                         "conversion_ns": None if options.weights == "require-fp32" else 50},
         "memory": {"raw_unique_visible_bytes": 1000, "packed_unique_storage_bytes": 200,
                    "kv_capacity_bytes": 512 * context, "workspace_bytes": 512,
+                   "prefill_activation_bytes": 1024, "decode_activation_bytes": 512,
                    "process_peak_rss_bytes": 1048576},
         "internal": {
             "generated_tokens": [7, 8, 9], "stop_reason": "length", "final_watermark": 5,
@@ -150,14 +151,14 @@ def stub_engine(options):
         item["index"] = index
         samples.append(item)
     return {
-        "schema_version": 1, "status": "complete", "mode": options.mode,
+        "schema_version": 2, "status": "complete", "mode": options.mode,
         "build": {"compiler": "GCC 14.2", "build_type": "Release", "sanitizer": "none",
                   "compiled_avx2_fma": True, "cxx_flags": "-O3"},
         "cpu": {"usable_features": ["avx2", "fma"], "effective_features": ["avx2", "fma"]},
         "geometry": {"hidden_size": 16, "intermediate_size": 37, "vocab_size": 64,
                      "num_hidden_layers": 2, "num_attention_heads": 4, "num_key_value_heads": 2,
                      "head_dim": 4, "max_position_embeddings": 32},
-        "workload": {"preset": options.preset, "weights": options.weights,
+        "workload": {"preset": options.preset, "weights": options.weights, "kv_dtype": options.kv_dtype,
                      "prompt_tokens": options.prompt, "max_new_tokens": options.max_new_tokens,
                      "eos_token_id": options.eos_token, "context_capacity": context,
                      "warmup": options.warmup, "repetitions": options.repetitions},
@@ -199,7 +200,7 @@ class ModelBenchmarkDriverCommand(unittest.TestCase):
         result = argparse.Namespace(
             binary=self.binary, model=self.model, prompt=[1, 7, 3], max_new_tokens=3,
             eos_token=None, preset="o1-plain", warmup=0, repetitions=1, mode="timing",
-            weights="require-fp32", output_root=self.output, variant="", timeout_seconds=60)
+            weights="require-fp32", kv_dtype="f32", output_root=self.output, variant="", timeout_seconds=60)
         for name, value in changes.items():
             setattr(result, name, value)
         return result
@@ -216,9 +217,11 @@ class ModelBenchmarkDriverCommand(unittest.TestCase):
         invocation = json.loads((path.parent / "invocation.json").read_text())
         command = invocation["engine_command"]
         self.assertEqual(command[command.index("--weights") + 1], "require-fp32")
+        self.assertEqual(command[command.index("--kv-dtype") + 1], "f32")
         report = json.loads(path.read_text())
         self.assertEqual(report["provenance"]["command"], command)
         self.assertEqual(report["engine"]["workload"]["weights"], "require-fp32")
+        self.assertEqual(report["engine"]["workload"]["kv_dtype"], "f32")
         self.assertIsNone(report["engine"]["samples"][0]["preparation"]["conversion_ns"])
 
     def test_keep_bf16_is_forwarded_and_recorded(self):
@@ -230,6 +233,25 @@ class ModelBenchmarkDriverCommand(unittest.TestCase):
         self.assertEqual(report["provenance"]["command"], command)
         self.assertEqual(report["engine"]["workload"]["weights"], "keep-bf16")
         self.assertEqual(report["engine"]["samples"][0]["preparation"]["conversion_ns"], 50)
+
+    def test_cross_weight_and_kv_dtype_are_forwarded_and_recorded(self):
+        path = self.run_driver(self.options(weights="keep-fp16", kv_dtype="bf16"))
+        invocation = json.loads((path.parent / "invocation.json").read_text())
+        self.assertEqual(invocation["engine_command"][invocation["engine_command"].index("--kv-dtype") + 1],
+                         "bf16")
+        document = json.loads(path.read_text())
+        self.assertEqual(document["engine"]["schema_version"], 2)
+        self.assertEqual(document["engine"]["workload"]["weights"], "keep-fp16")
+        self.assertEqual(document["engine"]["workload"]["kv_dtype"], "bf16")
+
+    def test_engine_cannot_silently_change_requested_kv_dtype(self):
+        options = self.options(weights="keep-fp16", kv_dtype="bf16")
+        wrong = stub_engine(options)
+        wrong["workload"]["kv_dtype"] = "f32"
+        with mock.patch.object(runner.subprocess, "run", return_value=subprocess.CompletedProcess(
+                [], 0, stdout=json.dumps(wrong), stderr="")):
+            with self.assertRaisesRegex(ValueError, "workload/mode differs"):
+                runner.run(options)
 
 
 if __name__ == "__main__":

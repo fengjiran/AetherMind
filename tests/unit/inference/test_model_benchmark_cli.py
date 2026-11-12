@@ -73,6 +73,20 @@ class ModelBenchmarkCli(unittest.TestCase):
         self.assertEqual(engine["workload"]["warmup"], 2)
         self.assertEqual([sample["index"] for sample in engine["samples"]], [0, 1, 2])
 
+    def test_default_kv_dtype_is_explicit_in_version_two_report(self):
+        engine = self.engine()
+        self.assertEqual(engine["schema_version"], 2)
+        self.assertEqual(engine["workload"]["kv_dtype"], "f32")
+
+    def test_kv16_requires_retained_weight_policy_before_loading(self):
+        for dtype in ("f16", "bf16"):
+            command = self.arguments() + ["--kv-dtype", dtype]
+            with self.subTest(dtype=dtype):
+                result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout.strip(), "")
+                self.assertIn("requires --weights", result.stderr)
+
     def test_zero_limit_has_no_internal_execution_or_kv_commit(self):
         engine = self.engine(limit=0)
         internal = engine["samples"][0]["internal"]
@@ -153,6 +167,7 @@ class ModelBenchmarkCli(unittest.TestCase):
             ("replace", "--repetitions", "0"),
             ("append", "--unknown", "1"),
             ("append", "--max-new-tokens", "3"),
+            ("append", "--kv-dtype", "float16"),
         )
         for action, option, value in changes:
             command = self.arguments()

@@ -54,6 +54,8 @@ struct Options {
     std::string preset_name;
     WeightPolicy weights = WeightPolicy::kRequireFp32;
     std::string weights_name = "require-fp32";
+    DataType kv_dtype = DataType::Float32();
+    std::string kv_dtype_name = "f32";
     size_t warmup = 1;
     size_t repetitions = 5;
     std::string mode = "timing";
@@ -84,6 +86,7 @@ struct Sample {
     Nanoseconds conversion_ns;
     size_t raw_unique_visible_bytes = 0, packed_unique_storage_bytes = 0;
     size_t kv_capacity_bytes = 0, workspace_bytes = 0, process_peak_rss_bytes = 0;
+    size_t prefill_activation_bytes = 0, decode_activation_bytes = 0;
     InternalSample internal;
     std::vector<uint32_t> generated_tokens;
     std::string generate_stop_reason;
@@ -214,6 +217,15 @@ Options ParseOptions(int argc, char** argv) {
                 options.weights = WeightPolicy::kKeepBf16WeightsFp32Activation;
             else
                 throw std::invalid_argument("--weights requires require-fp32, convert-fp32, keep-fp16 or keep-bf16");
+        } else if (name == "--kv-dtype") {
+            options.kv_dtype_name = value;
+            if (value == "f32") options.kv_dtype = DataType::Float32();
+            else if (value == "f16")
+                options.kv_dtype = DataType::Float(16);
+            else if (value == "bf16")
+                options.kv_dtype = DataType::BFloat(16);
+            else
+                throw std::invalid_argument("--kv-dtype requires f32, f16 or bf16");
         } else if (name == "--warmup")
             options.warmup = ParseUnsigned<size_t>(value, name);
         else if (name == "--repetitions") {
@@ -235,6 +247,11 @@ Options ParseOptions(int argc, char** argv) {
     }
     if (options.prompt.size() > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
         throw std::invalid_argument("Requested prompt count overflows int64_t");
+    }
+    if (options.kv_dtype != DataType::Float32() &&
+        options.weights != WeightPolicy::kKeepFp16WeightsFp32Activation &&
+        options.weights != WeightPolicy::kKeepBf16WeightsFp32Activation) {
+        throw std::invalid_argument("--kv-dtype f16/bf16 requires --weights keep-fp16 or keep-bf16");
     }
     return options;
 }
@@ -447,7 +464,8 @@ StatusOr<Run> RunSample(const Options& options, size_t index) {
     run.geometry = MakeGeometry(config);
     AM_ASSIGN_OR_RETURN(run.context_capacity, ContextCapacity(options, config));
     AM_ASSIGN_OR_RETURN(auto runtime_options,
-                        MakeCpuRuntimeOptions(config, {.context_tokens = run.context_capacity}));
+                        MakeCpuRuntimeOptions(config, {.context_tokens = run.context_capacity,
+                                                       .kv_dtype = options.kv_dtype}));
     RuntimeBuilder builder;
     builder.WithOptions(runtime_options);
     std::shared_ptr<AllocationCounter> counter;
@@ -484,10 +502,8 @@ StatusOr<Run> RunSample(const Options& options, size_t index) {
     // The private prepared-weight validator is unavailable to this public-header
     // build; Compile/Prepare below reject inconsistent converted weights.
     AM_ASSIGN_OR_RETURN(sample.raw_unique_visible_bytes, RawBytes(loaded->GetResolvedWeights()));
-    if (options.weights != WeightPolicy::kRequireFp32) {
-        compile_options.graph_build.activation_dtype = DataType::Float32();
-        compile_options.graph_build.kv_dtype = DataType::Float32();
-    }
+    compile_options.graph_build.activation_dtype = DataType::Float32();
+    compile_options.graph_build.kv_dtype = options.kv_dtype;
     Timer compile_timer(timing);
     AM_ASSIGN_OR_RETURN(auto artifact, ModelCompiler::Compile(std::move(loaded), compile_options));
     sample.compile_ns = compile_timer.Elapsed();
@@ -508,6 +524,12 @@ StatusOr<Run> RunSample(const Options& options, size_t index) {
     run.capabilities = cpu_backend->cpu_capabilities();
     AM_ASSIGN_OR_RETURN(sample.internal, RunInternal(runtime, *model, options, counter.get()));
     AM_ASSIGN_OR_RETURN(auto session, InferenceSession::Create(runtime, model));
+    AM_ASSIGN_OR_RETURN(const auto request_resources,
+                        session.PlanResources(options.prompt.size(),
+                                              GenerationConfig{.max_new_tokens = options.max_new_tokens,
+                                                               .eos_token_id = options.eos}));
+    sample.prefill_activation_bytes = request_resources.prefill_activation_bytes;
+    sample.decode_activation_bytes = request_resources.decode_activation_bytes;
     Timer generate_timer(timing);
     auto generated = session.Generate(options.prompt, GenerationConfig{.max_new_tokens = options.max_new_tokens, .eos_token_id = options.eos});
     sample.generate_ns = generate_timer.Elapsed();
@@ -573,6 +595,8 @@ void WriteSample(std::ostream& s, const Sample& sample) {
     s << "},\"memory\":{\"raw_unique_visible_bytes\":" << sample.raw_unique_visible_bytes
       << ",\"packed_unique_storage_bytes\":" << sample.packed_unique_storage_bytes
       << ",\"kv_capacity_bytes\":" << sample.kv_capacity_bytes << ",\"workspace_bytes\":" << sample.workspace_bytes
+      << ",\"prefill_activation_bytes\":" << sample.prefill_activation_bytes
+      << ",\"decode_activation_bytes\":" << sample.decode_activation_bytes
       << ",\"process_peak_rss_bytes\":" << sample.process_peak_rss_bytes << "},\"internal\":{\"generated_tokens\":";
     const auto& i = sample.internal;
     Array(s, i.generated_tokens);
@@ -611,7 +635,7 @@ void WriteSample(std::ostream& s, const Sample& sample) {
     s << "}}";
 }
 void WriteDocument(std::ostream& s, const Options& options, const std::vector<Run>& runs) {
-    s << "{\"schema_version\":1,\"status\":\"complete\",\"mode\":";
+    s << "{\"schema_version\":2,\"status\":\"complete\",\"mode\":";
     String(s, options.mode);
     s << ",\"build\":{\"compiler\":";
     String(s, AETHERMIND_MODEL_BENCH_COMPILER);
@@ -634,6 +658,8 @@ void WriteDocument(std::ostream& s, const Options& options, const std::vector<Ru
     String(s, options.preset_name);
     s << ",\"weights\":";
     String(s, options.weights_name);
+    s << ",\"kv_dtype\":";
+    String(s, options.kv_dtype_name);
     s << ",\"prompt_tokens\":";
     Array(s, options.prompt);
     s << ",\"max_new_tokens\":" << options.max_new_tokens << ",\"eos_token_id\":";
@@ -651,6 +677,7 @@ int RunCommandLine(int argc, char** argv) {
         std::cout << "Usage: aethermind_model_benchmark --model PATH --prompt 1,7,3 --max-new-tokens N\n"
                      "  --preset o1-plain|o2-packed [--warmup N] [--repetitions N]\n"
                      "  [--weights require-fp32|convert-fp32|keep-fp16|keep-bf16]\n"
+                     "  [--kv-dtype f32|f16|bf16]\n"
                      "  [--mode timing|profile|allocations] [--eos-token ID]\n";
         return std::cout ? 0 : 1;
     }

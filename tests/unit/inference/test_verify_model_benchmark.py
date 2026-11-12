@@ -128,6 +128,24 @@ def weight_policy(document, name, conversion_ns=None):
     return document
 
 
+def kv_precision(document, name, head_dim=None):
+    engine = document["engine"]
+    engine["schema_version"] = 2
+    engine["workload"]["kv_dtype"] = name
+    if head_dim is not None:
+        engine["geometry"]["head_dim"] = head_dim
+        engine["geometry"]["hidden_size"] = head_dim * engine["geometry"]["num_attention_heads"]
+    b = CHECKER.KV_DTYPES[name]
+    g, w = engine["geometry"], engine["workload"]
+    row_bytes = (g["head_dim"] * b + 63) // 64 * 64
+    for sample in engine["samples"]:
+        sample["memory"]["prefill_activation_bytes"] = 256 if w["max_new_tokens"] else 0
+        sample["memory"]["decode_activation_bytes"] = 128 if w["max_new_tokens"] > 1 else 0
+        sample["memory"]["kv_capacity_bytes"] = (2 * g["num_hidden_layers"] * g["num_key_value_heads"]
+                                                 * row_bytes * w["context_capacity"])
+    return document
+
+
 def noise_reports(count=4):
     result = []
     for index in range(count):
@@ -267,6 +285,74 @@ class ReportContracts(unittest.TestCase):
         for value in ("keep-fp8", "fp16", 1):
             with self.subTest(value=value):
                 self.invalid(("engine", "workload", "weights"), value, "invalid weights")
+
+    def test_kv16_storage_uses_actual_dtype_and_row_padding(self):
+        for dtype in ("f16", "bf16"):
+            with self.subTest(dtype=dtype):
+                document = kv_precision(weight_policy(report(), "keep-fp16", 50), dtype, head_dim=33)
+                CHECKER.verify_report(document)
+                # 33 FP16/BF16 elements pad to 64 elements (128 bytes), whereas
+                # FP32 rows pad to 48 elements (192 bytes).
+                self.assertEqual(document["engine"]["samples"][0]["memory"]["kv_capacity_bytes"], 5120)
+                document["engine"]["samples"][0]["memory"]["kv_capacity_bytes"] = 3840
+                with self.assertRaisesRegex(CHECKER.VerificationError, "padded"):
+                    CHECKER.verify_report(document)
+
+    def test_kv16_can_have_the_same_physical_bytes_as_fp32(self):
+        document = kv_precision(weight_policy(report(), "keep-bf16", 50), "bf16", head_dim=16)
+        CHECKER.verify_report(document)
+        self.assertEqual(document["engine"]["samples"][0]["memory"]["kv_capacity_bytes"], 2560)
+
+    def test_kv_dtype_is_mandatory_in_engine_schema_two(self):
+        document = report()
+        document["engine"]["schema_version"] = 2
+        with self.assertRaisesRegex(CHECKER.VerificationError, "kv_dtype"):
+            CHECKER.verify_report(document)
+
+    def test_legacy_engine_schema_cannot_relabel_kv_precision(self):
+        document = report()
+        document["engine"]["workload"]["kv_dtype"] = "f16"
+        with self.assertRaisesRegex(CHECKER.VerificationError, "kv_dtype"):
+            CHECKER.verify_report(document)
+
+    def test_unknown_kv_dtype_is_rejected(self):
+        for value in (None, True, 16, "float16", "", []):
+            with self.subTest(value=value):
+                document = kv_precision(report(), "f32")
+                document["engine"]["workload"]["kv_dtype"] = value
+                with self.assertRaisesRegex(CHECKER.VerificationError, "invalid kv_dtype"):
+                    CHECKER.verify_report(document)
+
+    def test_version_two_requires_explicit_nonnegative_activation_bytes(self):
+        for field in ("prefill_activation_bytes", "decode_activation_bytes"):
+            with self.subTest(field=field):
+                document = kv_precision(report(), "f32")
+                document["engine"]["samples"][0]["memory"][field] = -1
+                with self.assertRaisesRegex(CHECKER.VerificationError, "integer"):
+                    CHECKER.verify_report(document)
+                del document["engine"]["samples"][0]["memory"][field]
+                with self.assertRaisesRegex(CHECKER.VerificationError, field):
+                    CHECKER.verify_report(document)
+
+    def test_zero_and_single_token_requests_have_no_unused_activation_storage(self):
+        document = kv_precision(end_on(report(), 0, maximum=0), "f32")
+        CHECKER.verify_report(document)
+        document["engine"]["samples"][0]["memory"]["prefill_activation_bytes"] = 1
+        with self.assertRaisesRegex(CHECKER.VerificationError, "zero generation"):
+            CHECKER.verify_report(document)
+        document = kv_precision(end_on(report(), 1, maximum=1), "f32")
+        CHECKER.verify_report(document)
+        document["engine"]["samples"][0]["memory"]["decode_activation_bytes"] = 1
+        with self.assertRaisesRegex(CHECKER.VerificationError, "no requested decode"):
+            CHECKER.verify_report(document)
+
+    def test_kv16_requires_retained_w16_policy(self):
+        for policy in ("require-fp32", "convert-fp32"):
+            with self.subTest(policy=policy):
+                document = kv_precision(weight_policy(report(), policy,
+                                                      None if policy == "require-fp32" else 50), "f16")
+                with self.assertRaisesRegex(CHECKER.VerificationError, "retained W16"):
+                    CHECKER.verify_report(document)
 
     def test_keep_policy_timing_requires_a_conversion_measurement(self):
         document = weight_policy(report(), "keep-fp16")
@@ -549,6 +635,19 @@ class SummaryContracts(unittest.TestCase):
         baseline = report()
         candidate = weight_policy(report(), "keep-fp16", 50)
         candidate["run_id"] += "-candidate"
+        with self.assertRaisesRegex(CHECKER.VerificationError, "same machine"):
+            CHECKER.compare_reports(baseline, candidate)
+
+    def test_legacy_fp32_kv_and_explicit_fp32_kv_comparison_are_compatible(self):
+        baseline = report()
+        candidate = kv_precision(report(), "f32")
+        candidate["run_id"] += "-schema2"
+        self.assertEqual(CHECKER.compare_reports(baseline, candidate)["status"], "compared")
+
+    def test_comparison_rejects_kv_dtype_mixing_even_when_bytes_match(self):
+        baseline = kv_precision(weight_policy(report(), "keep-fp16", 50), "f16")
+        candidate = kv_precision(weight_policy(report(), "keep-fp16", 50), "bf16")
+        candidate["run_id"] += "-bf16"
         with self.assertRaisesRegex(CHECKER.VerificationError, "same machine"):
             CHECKER.compare_reports(baseline, candidate)
 

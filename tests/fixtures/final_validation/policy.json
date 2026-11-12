@@ -40,8 +40,8 @@
   "schema_version": 1,
   "unittest_suites": {
     "benchmark": {
-      "expected_count": 14,
-      "names_sha256": "f142b0f0124acb3da95d773a772e01a4de3afce58203e4295496d295fa2eeaac"
+      "expected_count": 16,
+      "names_sha256": "fe270e2975a323bc8123b2ddad5d307afa04b54ca4445ac2175eb8224b5bf307"
     },
     "cli": {
       "expected_count": 39,

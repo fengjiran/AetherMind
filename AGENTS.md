@@ -6,7 +6,7 @@
 - 项目名称：AetherMind
 - 项目目标：构建可独立交付的桌面/服务器 CPU 本地大模型推理引擎，支持 Llama 家族模型与 C/C++ API
   - 当前产品边界：CPU-only、单进程、同步、单请求、Token IDs I/O、静态 KV Cache
-  - 长期演进方向：服务化、异构计算与分布式推理（见 docs/products/aethermind_prd.md 附录），不构成当前交付承诺
+  - 长期演进方向：服务化、异构计算与分布式推理（见 docs/product.md 附录），不构成当前交付承诺
   - 范围约束：除非用户明确要求，不要预先实现当前产品边界之外的服务化、调度、GPU 或分布式能力。
 - 语言：C++20（`CMAKE_CXX_STANDARD 20`）
 - 构建系统：CMake >= 3.28
@@ -188,7 +188,7 @@ See full test writing rules:
 - `.cursorrules`：不存在
 - `.cursor/rules/`：不存在
 - `.github/copilot-instructions.md`：不存在
-- `docs/products/aethermind_prd.md`：**当前产品需求与验收标准**（产品范围、公开 API、架构或验收标准相关工作时必读）
+- `docs/product.md`：**当前产品需求与验收标准**（产品范围、公开 API、架构或验收标准相关工作时必读）
 
 ## 11. 指令优先级与作用域
 
@@ -201,130 +201,26 @@ See full test writing rules:
 
 嵌套 AGENTS.md 中的审批门（如生成代码前需先审核）仅在其所在目录子树内生效，不影响同仓库其他模块。
 
-## 12. Agent Memory System 执行约束
+## 12. Agent 上下文
 
-使用 Agent Memory 系统恢复/继续已有工作流时，必须遵守以下约束。本节不适用于未请求记忆恢复的普通新任务。
+使用仓库内上下文恢复或继续已有工作时：
 
-### 启动核心原则：先加载最小必要记忆，再渐进式升级
+1. 先读本文件与 `docs/agent/memory/project.md`；后者只记录跨模块稳定事实。
+2. 当前任务状态与下一步见 `docs/agent/handoff.md`；该文件不存在时不加载历史 handoff。
+3. 需要模块边界、接口或所有权细节时，按路径读取 `docs/architecture.md` 与 `docs/modules/<module>.md`。
+4. `docs/guides/**` 按需引用，不进入默认启动路径。
+5. 默认启动加载量控制在 ≤15,000 tokens；超出时只保留本文件和用户明确指定的文件。
 
-**规范地位**：本节是 Agent Memory System 的**唯一规范性启动契约**。其他文档只可引用本节，不得重新定义默认启动顺序。
+约束：
 
-#### 允许的引导操作（Resume Gate 前）
-
-在通过 Resume Gate 之前，只允许以下只读引导操作：
-
-1. 解析工作流类型（按下面定义的优先级）
-2. 列出候选 handoff 路径
-3. 读取 AGENTS.md 和 `docs/agent/memory/project.md`
-4. 扫描候选 handoff 文件的 YAML frontmatter（仅 frontmatter，不读取正文）
-5. 根据 frontmatter 信息筛选后读取唯一选中 handoff 的正文
-6. 按需读取许可的记忆文档（module.md、submodule.md 等）
-
-**禁止行为**：在通过 Resume Gate 并获得用户确认前，不得执行以下操作：
-
-- 与恢复无关的代码扫描
-- 构建、测试、编辑、写入
-- 任何外部副作用操作
-
-#### 工作流类型解析（按优先级）
-
-**明确指令**（用户直接说明）：
-- 用户说"项目级"或 `project__<slug>` → **项目级工作**
-- 用户说"模块"或 `<module>__<submodule-or-none>` → **模块工作**
-
-**默认推断**（用户未明确说明时）：
-- 如果目标匹配 `project__<slug>` 格式（如 `project__docs-reorg`）→ **项目级工作**
-- 如果目标匹配模块名（在 `docs/agent/memory/modules/` 中存在）→ **模块工作**
-- 如果目标匹配 `<module>/<submodule>` 路径格式 → **模块工作**
-
-**歧义处理**（无法唯一确定时）：
-- **必须询问用户**："请明确指定工作流类型：1) 项目级 2) 模块级"
-- **禁止猜测**：不得在歧义时自动选择
-
-#### 默认启动路径
-
-**Token 预算约束**：默认启动加载量 **≤ 15,000 tokens**。超出此预算时，默认启动降级为仅 AGENTS.md 加用户手动指定的文件。
-
-**项目级工作默认启动路径**：
-```
-AGENTS.md → docs/agent/memory/project.md → docs/agent/handoff/workstreams/project__<slug>/<selected-active-handoff>.md
-```
-项目级工作**必须跳过** `docs/agent/memory/modules/<module>/module.md` 和 `docs/agent/memory/modules/<module>/submodules/<submodule>.md`，除非因模块边界、所有权/生命周期、线程安全或性能约束需要按需读取这些模块记忆，并在 Resume Gate 中记录。
-
-**模块工作默认启动路径**：
-```
-AGENTS.md → docs/agent/memory/project.md → docs/agent/handoff/workstreams/<module>__<submodule-or-none>/<selected-active-handoff>.md
-```
-
-若 `docs/agent/memory/project.md` 缺失或无法读取，则 `resume_status` 为 `blocked`，且不加载任何 handoff 正文。
-
-**Handoff 选择规则**：
-1. 扫描目录下所有候选 handoff 文件的 YAML frontmatter，仅作为元数据收集
-2. 筛选 `status: active` 的条目
-3. 按 `created_at` 降序排序；若相同则按文件名字典序 tie-break
-4. 仅读取排序后第一个 handoff 的完整正文
-5. 同一 workstream 只读取一个 handoff 正文（frontmatter 扫描不计为读取多个 handoff 正文）
-
-**默认启动禁止加载**：
-- `docs/agent/memory/README.md` — 操作手册，仅按需升级时读取
-- `docs/agent/memory/modules/**/module.md` — 项目级工作时默认跳过
-- `docs/agent/tests/**` — 测试文档，不参与恢复
-- `docs/guides/**` — 指南文档，按需引用
-- 历史 handoff（`status: superseded` 或 `status: closed`）— 只读取 active
-
-#### 渐进式升级读取
-
-仅在以下情况触发：
-- 目标 workstream 没有可用的 active handoff
-- handoff 缺少恢复所需信息，或未明确可用于低上下文恢复（例如 `bootstrap_ready` 缺失或为 `false`）
-- 任务触及模块边界、所有权/生命周期、线程安全、性能敏感约束
-- 需要写回 memory、处理 handoff/frontmatter/schema、或排查冲突/兼容问题
-- 需要理解模块内部不变量，且 handoff 无法覆盖
-
-**渐进式升级读取规则**：
-- `docs/agent/memory/README.md`：仅按需升级时读取，用于操作细则、schema、兼容与写回规则
-- `docs/agent/memory/modules/<module>/module.md`：模块工作且需要模块级约束时读取；项目工作触及该模块边界/所有权/生命周期/并发/性能时也可按需读取
-- `docs/agent/memory/modules/<module>/submodules/<submodule>.md`：需要子模块级不变量时读取；项目工作触及相关边界/所有权/生命周期/并发/性能时也可按需读取
-- `docs/agent/memory_system.md`：仅作架构参考，不属于默认启动路径
-
-#### Handoff 路径规则
-
-- 模板文件：`docs/agent/prompts/handoff_template.md`（只读参考）
-- 存储目录：`docs/agent/handoff/workstreams/<workstream_key>/`（实际 handoff 位置）
-
-#### Resume Gate 检查点
-
-在引导操作完成后、任何非恢复/业务工具操作前，必须通过以下检查点：
-
-```markdown
-## Resume Gate
-- [x] 工作流类型：[模块级工作 | 项目级工作]
-- [x] resolved_workstream_key：[<module>__<submodule-or-none> | project__<slug>]
-- [x] 默认启动已加载文件：[列出完整路径]
-- [x] 按需升级读取：[无 | 列出额外读取文件]
-- [x] 跳过/缺失项：[项目级时列出跳过的 module/submodule，或列出按需读取的模块]
-- [x] resume_status: complete | partial | blocked
-- [x] handoff 路径：docs/agent/handoff/workstreams/<workstream_key>/（非 docs/agent/prompts/handoff_template.md）
-```
-
-#### 用户确认
-
-加载完成后，输出已加载文件清单，并显式询问用户："记忆已加载，是否执行[推荐操作]？"
-
-**关键区分**：
-- 第一轮对话中的"继续"表示选择/恢复 workstream，不等于授权执行业务操作
-- 只有在 Resume Gate 中明确询问后，用户明确说"继续"、"执行"或"是"时，才授权执行推荐操作。此确认在第二回合或之后发生，而非第一回合
-
-#### 为什么重要
-
-- 默认启动路径必须尽量小，避免新对话一开始就加载过量上下文
-- handoff 负责当前状态，memory/README 负责稳定规则；二者不能互相替代
-- 跨机器恢复时，必须先恢复上下文，再精准继续
+- `docs/agent/` 不维护 workstream、frontmatter、模块记忆或 ADR 子目录。
+- 恢复上下文不构成业务执行授权；执行构建、测试或写入前仍需用户明确确认。
+- 上下文与代码冲突时，以已验证的代码、CMake 与测试事实为准。
 
 ## 13. 推荐代理工作流
 算子语义、reference kernel、optimized kernel、packing/layout、fusion 或 threading 工作必须遵循 `docs/guides/operator-development-workflow.md`（该单一文档含 O0–O4 证据门禁、Benchmark 规范、证据记录格式（§4）与优化方法（§7）），并达到对应证据门禁。不得以 microbenchmark 代替 production-path 或端到端证据。
 
-1. 修改前先阅读相关 `CMakeLists.txt` 和 `AGENTS.md`；涉及产品范围、公开 API、架构或验收标准时，还需阅读 `docs/products/aethermind_prd.md`。
+1. 修改前先阅读相关 `CMakeLists.txt` 和 `AGENTS.md`；涉及产品范围、公开 API、架构或验收标准时，还需阅读 `docs/product.md`。
 2. 进行最小化、风格一致的改动。
 3. 构建最小受影响目标（`--target <name>`）。
 4. 先跑单个聚焦测试（`--gtest_filter=Suite.Case`），再扩大范围。

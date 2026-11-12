@@ -1,8 +1,8 @@
 # AetherMind 公共 API 参考
 
-> 本文件汇总 AetherMind 公共 API 的语义，与头文件 Doxygen 注释**同源同步**：修改头文件注释必须同步本文件，反之亦然（[文档系统规范](../guides/documentation-guide.md) §7.3）。
+> 本文件汇总 AetherMind 公共 API 的语义，与头文件 Doxygen 注释**同源同步**：修改头文件注释必须同步本文件，反之亦然。
 >
-> 构建选项与运行配置以根 [README.md](../../README.md) 为单一事实源。C++ 提供 `ExecutableModel::Load/Prepare` 与 `InferenceSession::Generate`，支持 CPU FP32 和显式 [W16/A32 Llama Dense](../guides/w16-fp32-inference.md)，M6 C ABI 提供 CPU strict FP32 runtime/model/session 调用。能力与产品目标见 [PRD](../products/aethermind_prd.md) 和 [10 号方案](../improvement-plan/10-upper-level-runtime-assembly.md)。
+> 构建选项与运行配置以根 [README.md](../../README.md) 为单一事实源。C++ 提供 `ExecutableModel::Load/Prepare` 与 `InferenceSession::Generate`，支持 CPU FP32 和显式 [W16/A32 Llama Dense](../guides/w16-fp32-inference.md)，M6 C ABI 提供 CPU strict FP32 runtime/model/session 调用。能力与产品目标见 [产品文档](../product.md) 和 [10 号方案](../improvement-plan/10-upper-level-runtime-assembly.md)。
 
 ## 1. C ABI（include/c_api.h）
 
@@ -358,6 +358,6 @@ prompt 必须非空；prompt/EOS 必须在词表范围内，prompt 长度须满�
 ## 5. 相关文档
 
 - 头文件：`include/c_api.h`、`include/aethermind/model/model_loader.h`、`include/aethermind/compiler/model_compiler.h`、`include/aethermind/runtime/runtime_builder.h`、`include/aethermind/inference/executable_model.h`、`include/aethermind/inference/inference_session.h`、`include/aethermind/execution/executor.h`（Doxygen 注释为语义事实源）
-- 架构总览：[docs/designs/architecture/architecture_overview.md](../designs/architecture/architecture_overview.md)（§一 API 服务层、§八 差距概要）
+- 架构总览：[docs/architecture.md](../architecture.md)（§一 API 服务层、§八 当前实现与未闭环项）
 - ModelLoader 模块设计：[docs/designs/model/01-model-loader.md](../designs/model/01-model-loader.md)
 - 注释规范：[docs/guides/cpp_comment_guidelines.md](../guides/cpp_comment_guidelines.md)

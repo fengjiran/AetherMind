@@ -4,8 +4,8 @@ Scope and precedence:
 
 - This document defines practical coding style guidance for AetherMind.
 - If this document conflicts with `AGENTS.md` or verified repository constraints, follow `AGENTS.md` and repository facts.
-- Product-scope constraints (for example, Phase 1 boundaries) are defined in `docs/products/aethermind_prd.md`.
-- Subsystem-specific constraints override generic guidance (for example, `ammalloc/AGENTS.md`).
+- Product-scope constraints are defined in `docs/product.md`.
+- Subsystem-specific constraints override generic guidance.
 
 ## Goals
 

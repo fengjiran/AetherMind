@@ -1,207 +1,59 @@
-# AetherMind 文档索引
+# AetherMind 文档
 
-本文档是 AetherMind 项目文档的唯一入口。文档分类体系、命名与交叉引用规则、质量标准与维护流程见 [文档系统规范](guides/documentation-guide.md)；模块设计从[模块设计模板](templates/module-design.md)开始，算子工作使用[算子开发与优化工作流](guides/operator-development-workflow.md)及其标准模板。
+本目录只保留四类内容：系统现状、模块设计、过程规范、已知问题。构建、测试与运行命令以根目录 [README.md](../README.md) 为准，本页不重复。
 
-> 迁移状态：本索引按 [文档系统设计方案](guides/documentation-guide.md) 落地；`docs/designs/` 存量文档正处于渐进式迁移中，未完成迁移的文档在清单中标注"待迁移"。
+## 文档地图
 
-## 文档分类总览
-
-| 类型 | 目录 | 状态字段 | 职责边界 |
-|---|---|---|---|
-| 架构总览 | [designs/architecture/architecture_overview.md](designs/architecture/architecture_overview.md) | Current | 全系统唯一权威总览：分层架构、硬性约束、跨层流程、模块地图、性能基线 |
-| 模块设计 | [designs/](designs/) | Current / Deprecated | 单模块深入设计：数据结构、并发模型、接口、边界、权衡；按 AGENTS.md §2.1 模块表分子目录（算子/backend 相关设计已归位文档见 [operators/](operators/)，不在此目录） |
-| 算子文档 | [operators/](operators/) | 各算子目录自含状态 | **全部算子文档唯一位置**：算子契约、专项提案、证据记录（按算子分目录），算子语义层设计（operator_contract_design、算子系统设计）在其根目录；规范见 [guides/operator-development-workflow.md](guides/operator-development-workflow.md) |
-| 调研备忘 | `docs/designs/research/`（当前无内容） | 无状态，头部标注日期与可信度 | 未验证/未采纳的技术调研，不承诺实现，禁止当作事实引用 |
-| 演进提案 | [improvement-plan/](improvement-plan/) | Draft / In Progress / Implemented / Superseded | 未来要做什么：路线图与专题提案 |
-| 开发指南 | [guides/](guides/) | Current / Deprecated | "怎么做"的过程规范：编码、注释、测试、评审、文档 |
-| API 参考 | [api/public-api.md](api/public-api.md) | Current | 公共 API 语义（与头文件 Doxygen 同源同步） |
-| 决策记录 | [decisions/](decisions/) | Proposed / Accepted / Deprecated / Superseded | 已作出/被否决的架构决策及其理由（ADR），每篇至少 1 个被否定备选方案 |
-| 评审报告 | [reviews/](reviews/) | Current / 历史快照 | 代码/设计评审结论；过时快照头部加"已过时"警示 |
-| 验证报告 | [tests/](tests/) | Current | 测试/基准验证结果与结论；算子证据记录见 [operators/](operators/) |
-| 问题跟踪 | [issues.md](issues.md) | 每条目 `[x]`/`[ ]` | 已知缺陷与优化待办，短生命周期 |
-| 变更记录 | [../CHANGELOG.md](../CHANGELOG.md) | 无 | 行为可见变更，按语义化版本 |
-| 开发日志 | [logs/development_log.md](logs/development_log.md) | 无 | 项目开发过程记录，记录"为什么"而非"做了什么"；算子实验与验证记录见 [operators/](operators/) |
-| 产品需求 | [products/aethermind_prd.md](products/aethermind_prd.md) | Current | 当前产品范围、验收标准（唯一权威） |
-
-**职责边界判定**：描述"代码里现在是什么" → `designs/`；"将来要做什么" → `improvement-plan/`；"曾经怎么决策的" → `decisions/`；"怎么干活" → `guides/`；"API 怎么用" → `api/`；"已知缺陷/待办" → `issues.md`。
-
-**独立子系统**：`docs/agent/`（Agent 记忆与 handoff 系统）不并入本体系，不参与编号与索引；与人工文档的唯一交叉点是决策记录（ADR 双向链接，见 [文档系统规范 §3.3](guides/documentation-guide.md#33-单一事实源与-docsagent-互链)）。
-
-## 文档清单
-
-### 架构与模块设计（docs/designs/）
-
-#### 架构总览
-
-| 文档 | 定位 | 状态 | 最后更新 |
-|---|---|---|---|
-| [architecture/architecture_overview.md](designs/architecture/architecture_overview.md) | 全系统唯一权威总览（六层架构、依赖规则、产物所有权、当前产品边界） | Current | 2026-09-24 |
-
-#### 模块设计（按模块子目录）
-
-| 文档 | 定位 | 状态 |
+| 入口 | 回答的问题 | 权威性 |
 |---|---|---|
-| [model/01-model-loader.md](designs/model/01-model-loader.md) | ModelLoader 模块：HF I/O/校验/权重 resolve（P3 新建，基于当前头文件） | Current |
-| [inference/01-executable-model.md](designs/inference/01-executable-model.md) | ExecutableModel 模块：`ExecutableModel::Prepare` 唯一准备入口、所有权与销毁契约、phase 合同、绑定与需求同源 | Current |
-| [inference/02-inference-session.md](designs/inference/02-inference-session.md) | InferenceSession 模块：同步 greedy `Generate`、plan I/O 合同校验、请求级 RAII 与清理顺序、KV 预约算术（prompt + N−1）、Decode 稳态零分配 | Current |
-| [amstring/](designs/amstring/) | amstring 字符串库模块设计（存量，待按 NN- 编号重排） | 待迁移 |
-| [graph_compilation_flow.md](designs/graph_compilation_flow.md) | 图编译流程追踪（存量，待归位 compiler/） | 待迁移 |
-| [graph_lowering_design.md](designs/graph_lowering_design.md) | 图降低设计（存量，待归位 compiler/） | 待迁移 |
-| [graph_invariants_and_validator_architecture.md](designs/graph_invariants_and_validator_architecture.md) | 图不变量与验证器架构（存量，待归位 graph/） | 待迁移 |
-| [executor_design.md](designs/executor_design.md) | Executor 设计（存量，待归位 execution/） | 待迁移 |
-| [kv_cache_design.md](designs/kv_cache_design.md) | KV Cache 设计（存量，待归位 kv_cache/） | 待迁移 |
-| [model_graph_design.md](designs/model_graph_design.md) | ModelGraph 设计（存量，待归位 graph/） | 待迁移 |
-| [tensor_view_design.md](designs/tensor_view_design.md) | TensorView 设计（存量，待归位 base/） | 待迁移 |
-| [unified_allocator_design.md](designs/unified_allocator_design.md) | 统一分配器设计（存量，待归位 memory/） | 待迁移 |
-| [status设计方案.md](designs/status设计方案.md) | Status 错误模型设计（存量，待归位 base/） | 待迁移 |
-| [已证明约束的执行阶段保障方案.md](designs/已证明约束的执行阶段保障方案.md) | 形状约束证明与执行期保障（存量，待归位 compiler/或 shape_inference/） | 待迁移 |
+| [architecture.md](architecture.md) | 系统怎么分层、依赖方向、跨层数据流、关键冻结决策 | 架构唯一权威 |
+| [modules/](modules/) | 每个模块负责什么，接口、所有权、并发与错误边界 | 模块设计唯一权威 |
+| [product.md](product.md) | 产品范围、验收标准、非目标、演进方向 | 产品唯一权威 |
+| [guides/](guides/) | 怎么编码、注释、测试、评审、做算子 | 过程规范 |
+| [api/](api/) | 对外 API 的生命周期与错误语义 | 与头文件 Doxygen 同源 |
+| [operators/](operators/) | 算子契约、reference/optimized 证据 | 算子文档唯一位置 |
+| [issues.md](issues.md) | 已知缺陷与待办 | 短生命周期 |
+| [archive/](archive/) | 历史资料 | 不权威、不维护 |
 
-> 2026-09-19 算子文档归一：算子契约与算子语义层设计归 [operators/](operators/)（`kernel_dev/` 契约、`operator_contract_design.md`、`算子系统设计.md`）；backend/dispatch/cpu_capability/op_evaluator 属 backend/graph 模块设计，回流 [designs/](designs/)。
+> `docs/agent/` 仅保存代理上下文（`memory/project.md`、`handoff.md`），不属于人类文档权威体系。
 
-#### 历史与过期文档（docs/archive/）
+## 权威顺序
 
-| 文档 | 原位置 | 状态 |
-|---|---|---|
-| [aethermind_arch_design.md](archive/aethermind_arch_design.md) | `docs/designs/` | Deprecated（有效内容并入架构总览） |
-| [model_loader/](archive/model_loader/)（4 篇） | `docs/designs/model_loader/` | Deprecated（历史快照，已被当前实现取代） |
-| [kernel_dev/](archive/kernel_dev/)（8 篇） | `docs/designs/kernel_dev/` | Deprecated（历史方案/审查记录；现行算子契约已迁至 [docs/operators/](operators/)） |
-| [designs-legacy/](archive/designs-legacy/)（14 篇） | `docs/designs/` 顶层 | Deprecated（历史计划/评审快照） |
-| [archive/](archive/) | 归档区索引见 archive/README.md | Deprecated |
+1. 用户当前明确指令。
+2. 已验证的代码、CMake 与测试事实。
+3. `architecture.md`、`modules/`、`product.md`。
+4. `guides/`、`api/`、`operators/`。
+5. `issues.md`。
+6. `archive/`：仅作历史参考，不作为事实来源。
 
-### 演进提案（docs/improvement-plan/）
+## 写作规则
 
-| 文档 | 定位 | 状态 |
-|---|---|---|
-| [01-inference-session-generate-readiness.md](improvement-plan/01-inference-session-generate-readiness.md) | InferenceSession/Generate 前置模块、实施顺序与 public API 准入门禁 | Implemented |
-| [02-engineering-quality-system.md](improvement-plan/02-engineering-quality-system.md) | Capability-driven 的风险治理、验证 profile 与质量体系建设方案 | Draft |
-| [03-documentation-stabilization.md](improvement-plan/03-documentation-stabilization.md) | Batch -1 文档系统稳定化：D0–D5 迁移计划与 E1–E9 退出条件 | In Progress |
-| [05-kv-cache-manager-evolution.md](improvement-plan/05-kv-cache-manager-evolution.md) | 历史 KV 演进草案；当前事实与排序由 08 号提案取代 | Superseded |
-| [06-system-capability-evolution-roadmap.md](improvement-plan/06-system-capability-evolution-roadmap.md) | 全仓库 capability gap、模块演进裁决与实施顺序 | Draft |
-| [07-executable-model-preparation.md](improvement-plan/07-executable-model-preparation.md) | `LoweredModelArtifact → ExecutableModel` 生产准备入口、权重绑定映射与模块归属 | Implemented |
-| [08-kv-cache-and-attention-capability-evolution.md](improvement-plan/08-kv-cache-and-attention-capability-evolution.md) | KV owner/epoch 正确性、CPU Attention 优化准入与 Paged KV 长期触发条件 | Draft |
-| [09-qwen-and-moe-architecture-support.md](improvement-plan/09-qwen-and-moe-architecture-support.md) | 公共合同→Qwen3 Dense→Qwen3 MoE 主线：R1–R8 改造、binding 冷路径 workspace、统一 decoder I/O、多 packed bindings 与验收 | Draft |
-| [10-upper-level-runtime-assembly.md](improvement-plan/10-upper-level-runtime-assembly.md) | CPU FP32 的独立 C++/C ABI 入口、生命周期、共享策略与分层验收（M0–M6） | Implemented |
-| [11-fp16-bf16-execution-support.md](improvement-plan/11-fp16-bf16-execution-support.md) | FP32 兼容执行、W16/A32、独立 KV16 与 A16 的精度合同、所有权、实施阶段与验收门禁 | In Progress |
-| [12-cuda-backend-execution-support.md](improvement-plan/12-cuda-backend-execution-support.md) | 单 GPU 同步基线、target-aware 编译管线与冷路径 specialization、device placement/显存权重/stream/KV 合同、可选 CUDA 工程构建与链接及验证矩阵，按 FP32→FP16/BF16→性能优化分阶段验收 | Draft |
-| [13-deepinfer-quality-and-validation.md](improvement-plan/13-deepinfer-quality-and-validation.md) | 借鉴 DeepInfer 的模型 golden、teacher-forcing 数值等价、CTest/sanitizer/ISA、模型级 benchmark 与交付验证实施工作包 | In Progress |
-
-> 算子专项提案不再建在本目录：按 [算子开发工作流 O3](guides/operator-development-workflow.md) 建在 `docs/operators/<op>/<op>-optimization.md`（原 04 号 GEMM 专项已迁至 [operators/gemm/cpu-gemm-optimization.md](operators/gemm/cpu-gemm-optimization.md)）。
-
-### 开发指南（docs/guides/）
-
-| 文档 | 定位 | 状态 |
-|---|---|---|
-| [documentation-guide.md](guides/documentation-guide.md) | 文档系统规范：命名、交叉引用、质量、维护流程 | Current |
-| [operator-development-workflow.md](guides/operator-development-workflow.md) | 算子开发的单一规范文档：O0–O4 证据门禁、Benchmark 规范（§5）、记录文件格式（§4）与优化方法（§7） | Current |
-| [final-validation.md](guides/final-validation.md) | 已实现五批的统一构建、资产准备、冻结用例与最终验收入口 | Current |
-| [resource-budgeting.md](guides/resource-budgeting.md) | 当前模型与请求的 payload cap、分阶段预检、可观测边界与使用约束 | Current |
-| [runtime-configuration.md](guides/runtime-configuration.md) | CPU Runtime 的模型感知配置映射、Builder 预检与入口职责 | Current |
-| [fp32-compatible-inference.md](guides/fp32-compatible-inference.md) | P1 F16/BF16 checkpoint 显式拓宽为 CPU FP32 O1/plain 执行的入口、资源和能力边界 | Current |
-| [w16-fp32-inference.md](guides/w16-fp32-inference.md) | CPU F16/BF16 矩阵、F32 Norm/activation/KV 的 O1/plain 和 O2/identity-packed C++ 执行 | Current |
-| [cpp_coding_style_guidelines.md](guides/cpp_coding_style_guidelines.md) | C++ 编码风格 | Current |
-| [cpp_comment_guidelines.md](guides/cpp_comment_guidelines.md) | 注释与 Doxygen 规范 | Current |
-| [test_writing_guidelines.md](guides/test_writing_guidelines.md) | GoogleTest 测试编写规范 | Current |
-| [code_review_guide.md](guides/code_review_guide.md) | 代码审查方法（风险分级驱动） | **Deprecated**（待重写，见文档头部警示） |
-
-### 文档模板（docs/templates/）
-
-| 模板 | 用途 |
-|---|---|
-| [module-design.md](templates/module-design.md) | 当前模块设计文档 |
-| [adr.md](templates/adr.md) | 架构决策记录 |
-
-算子证据记录不使用独立模板：格式内嵌于 [operator-development-workflow.md](guides/operator-development-workflow.md) §4；优化方法见 §7。
-
-### 架构决策记录（docs/decisions/）
-
-| 文档 | 决策内容 | 状态 |
-|---|---|---|
-| [0001-documentation-system.md](decisions/0001-documentation-system.md) | 文档系统落地：分类/模板/命名/质量/维护规范与存量渐进式迁移 | Accepted |
-
-### API 参考（docs/api/）
-
-- [api/public-api.md](api/public-api.md)：公共 API（C ABI + 公开 C++ 构建块）语义参考，与头文件 Doxygen 同源同步。
-- [api/runtime-c-abi.md](api/runtime-c-abi.md)：M5 冻结、M6 实现的 Runtime C ABI v1（config/version、opaque owner、error、buffer）及 C 调用验证边界。
-
-### 评审报告（docs/reviews/）
-
-| 文档 | 定位 | 状态 |
-|---|---|---|
-| [graph_compilation_flow.md](reviews/graph_compilation_flow.md) | 图编译功能历史审查快照（已过时，头部有警示） | 历史快照 |
-| [model_graph_data_structure_review.md](reviews/model_graph_data_structure_review.md) | ModelGraph 数据结构评审 | 历史快照 |
-| [operator_kernel_architecture_review_2026-07-18.md](reviews/operator_kernel_architecture_review_2026-07-18.md) | 算子内核架构评审 | 历史快照 |
-| [operator_semantic_layer_review.md](reviews/operator_semantic_layer_review.md) | 算子语义层评审 | 历史快照 |
-| [prd/prd_review.md](reviews/prd/prd_review.md) | PRD 评审 | 历史快照 |
-
-### 验证报告（docs/tests/）
-
-- [operators/](operators/)：算子文档唯一位置——契约、专项提案、证据记录按算子分目录；算子语义层设计（operator_contract_design、算子系统设计）在根目录。
-
-| 文档 | 定位 | 状态 |
-|---|---|---|
-| [size_class_benchmark_20260310.md](tests/size_class_benchmark_20260310.md) | size_class 基准验证 | Current |
-| [upper_level_runtime_assembly_m4_validation_2026-10-22.md](tests/upper_level_runtime_assembly_m4_validation_2026-10-22.md) | 10 号方案 M4：C++ CLI/Session 对照、失败边界、fixture 与 sanitizer 基线 | Current |
-| [upper_level_runtime_assembly_m5_validation_2026-10-22.md](tests/upper_level_runtime_assembly_m5_validation_2026-10-22.md) | 10 号方案 M5：冻结 C ABI、共享准入/KV 映射、C11 合同与错误对象 OOM | Current |
-| [upper_level_runtime_assembly_m6_validation_2026-10-22.md](tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md) | 10 号方案 M6：正式 C ABI、纯 C caller、owner/buffer/KV/故障与 sanitizer 验收 | Current |
-| [utils_cleanup_validation_2026-10-23.md](tests/utils_cleanup_validation_2026-10-23.md) | utils 清理：checked arithmetic、hash、解析、断言与 memory 私有化及消费者回归 | Current |
-| [ctest_sanitizer_validation_2026-10-26.md](tests/ctest_sanitizer_validation_2026-10-26.md) | 13 号方案 Q2 第二批：CTest 逐 case 发现、label、fixture 门禁、target-scoped ASAN/UBSAN 与独立 TSAN presets | Current |
-| [cpu_isa_isolation_validation_2026-10-27.md](tests/cpu_isa_isolation_validation_2026-10-27.md) | 13 号方案 Q2 第三批：AVX2/FMA TU 隔离、baseline/AVX presets、host probe 与 compile_commands 门禁 | Current |
-| [hf_numerical_reference_validation_2026-10-27.md](tests/hf_numerical_reference_validation_2026-10-27.md) | 13 号方案 Q3：HF/PyTorch 外部数值参考、固定轨迹、checksum fixture 与 O1/O2 对比 | Current |
-
-### 集成验收
-
-- [第一至第五批集成与最终验收](tests/final_validation_2026-10-28.md)：冻结清单、七个 profile、资产/源码身份及 sanitizer 的限定最终结果。
-- [静态 KV 布局与字节规划验证](tests/kv_layout_planning_validation_2026-10-29.md)：纯 planner、实际分配一致性、溢出和 Init 生命周期的聚焦回归。
-- [资源预算验证](tests/resource_budgeting_validation_2026-10-29.md)：KV/workspace/request/model/packing 的分阶段 payload admission 与验证范围。
-- [FP32 兼容推理验证](tests/fp32_compatibility_validation_2026-10-29.md)：P1 F16/BF16→FP32 转换、构图 policy 与模型级验收记录。
-- [Raw weight dtype 边界修复验证](tests/raw_weight_dtype_validation_2026-10-29.md)：非法 dtype 的 Status 拒绝、真实消费者回归与合法空 tensor 合同。
-- [Packed artifact dtype 边界修复验证](tests/packed_weight_artifact_dtype_validation_2026-10-29.md)：collection 插入的 dtype 校验、失败状态与既有兼容语义。
-- [运行前 Runtime 配置验证](tests/runtime_configuration_validation_2026-10-30.md)：集中 CPU 配置映射、Builder option preflight 与入口迁移。
-- [P2 W16/A32 执行验收](tests/w16_fp32_execution_validation_2026-11-11.md)：CPU O1/plain、O2/identity-packed 的转换、kernel、生成、账本与 sanitizer 范围。
-- [P3 CPU KV16 执行验收](tests/kv16_execution_validation_2026-11-12.md)：独立量化 oracle、四组合 O1/O2、2048 near-limit 预算、state 身份与 sanitizer 范围。
-
-### 模型基准验证记录
-
-- [第五批模型 benchmark 验收](tests/model_benchmark_validation_2026-10-27.md)：阶段计时、实际 token/KV 计数、独立进程采集与报告完整性合同。
-- [desktop-54h5mmi 模型基准记录](tests/benchmarks/models/desktop-54h5mmi-model.md)：同一机器的原始观测摘要，完整 repetitions 保存在 benchmark-results/models。
-
-### 问题跟踪（docs/issues.md）
-
-已知缺陷与优化待办清单，条目格式：`- [ ] 背景与方案简述`。
+1. 新建文档前先问：能否并入现有入口？不能则不建。
+2. 现状写 `architecture.md` / `modules/`；在研方向写 `roadmap.md`（Phase 3 建立）或 `issues.md`；不新建计划、评审、验证、日志目录。
+3. 单篇文档不超过 600 行；按模块拆分，不按日期或版本拆分。
+4. 不写状态、日期、版本头；不使用 `NN-` / `NNNN-` 编号；不使用模板目录。
+5. 文档与代码同一 PR 修改；过时文档直接删除或合并，历史由 git 保留。
+6. 模块文档固定六节：职责与边界（含"不得负责什么"）、关键数据结构与所有权、接口与代码位置、主流程、关键取舍（选择/原因/被否方案）、测试与验证入口。
+7. 决策写进对应模块文档的"关键取舍"；跨模块且不可逆的决策写进 `architecture.md` 附录，每条一行并链接 PR。
+8. 验证结论写进 `CHANGELOG.md` 或 `operators/<op>/benchmarks/`；不建带日期的验证报告。
+9. 自动化只保留一种：相对链接有效性检查。
+10. 术语随文定义；只有跨模块稳定术语才进入下表。
 
 ## 术语表
 
-以下术语在全仓库文档中统一使用，含义以本表为准。
-
 | 术语 | 定义 |
 |---|---|
-| ModelLoader | 模型加载前端：仅负责 HF I/O、校验与权重 resolve，返回 `LoadedModel` |
-| LoadedModel | 模型加载产物：config + resolved raw weights + backing storage，构造后只读，由 `LoweredModelArtifact` 持有 |
-| BuildModelGraph | HF → 语义图唯一转换权威入口（`ParseModelArchitecture` 家族判定后分发到 per-family builder）；`BuildLlamaDense` 规范化受支持的 RoPE algorithms，拒绝 unknown type |
-| ModelGraph | backend-independent 语义 DAG（graph 模块产物） |
+| ModelLoader | HF 目录 I/O、配置校验与权重解析，返回 `LoadedModel` |
+| LoadedModel | 模型加载产物：config + resolved raw weights + backing storage，构造后只读 |
+| BuildModelGraph | HF → 语义图的唯一转换入口，按模型家族分发到 per-family builder |
+| ModelGraph | backend-independent 的语义 DAG |
 | ModelCompiler | 编译阶段编排：`BuildModelGraph` → `OptimizeModelGraph` → `LowerModelGraph` |
-| OptimizeModelGraph | 语义优化入口（O0/O1/O2+ passes） |
-| LowerModelGraph | 语义图降低入口，产出 `LoweredGraph` |
-| LoweredGraph | 不可变、结构验证过的编译产物（`LoweredStepSpec[]` + dense value metadata） |
-| LoweredModelArtifact | 编译产物容器：owns `LoadedModel` + `LoweredGraph` |
-| ExecutionPlan | 不可变执行计划（`ExecutionStep[]`，kernel fn 已 resolve、weight ptr 已绑定、workspace req 已冻结） |
-| ExecutionStep | 单步执行描述（kernel 函数指针 + 参数 + 绑定信息） |
-| StateAliasPlan | state alias 的 runtime 表示（execution 层，由 LoweredGraph 的 alias 信息转换） |
-| ExecutionPlanBuilder | 计划构建器：消费 LoweredGraph，kernel resolve + workspace planning |
-| KernelRegistry | 全局内核注册表（singleton + `AM_REGISTER_KERNEL` 静态注册），冻结后不可变 |
-| KernelSelector | base 层纯数据契约内核匹配器（backend 据此匹配内核，不依赖 Graph IR 语义细节） |
-| ResolvedKernel | plan-build-time 冻结的 kernel 描述（`fn` 函数指针 + 参数） |
-| LayerRunner | 逐步骤执行器：workspace 绑定、shape 校验后调用算子 kernel |
-| WorkspaceArena | 可复用 workspace buffer（Bind/Reset），Session 生命周期 |
-| KVCacheManager | 静态 KV 缓存管理（Init + ReserveForSession） |
-| KVCacheSessionView | KV 缓存逻辑访问视图（可复制，底层状态可变） |
-| semantic pass | backend-independent 图变换（ConstantFolding / DCE / SiluMul / AddRmsNorm / QkvLinearFusion） |
-| GraphRewrite / GraphPassManager | 语义 pass 框架（graph 模块） |
-| OpType / OperatorSchema / OpParams | 算子语义契约层：端口顺序为语义 ABI；OpParams 为 typed variant |
-| TensorSpec / ShapeSymbol / ShapeConstraint | 形状推导基础设施（shape_inference 模块） |
-| PackedWeightCollection | packed weights 存储（legacy backend artifact，调用方持有） |
-| RuntimeBuilder / Runtime | 运行时装配与上下文（AllocatorRegistry + BackendRegistry + KVCacheManager） |
-| PreparedExecutionBindings | `ExecutionPlan` 的 cold-path tensor specialization：拥有 activation/metadata/prepared params，借用 external backing |
-| ExecutionContext | 单 plan 的窄执行资源：拥有 prepared bindings，借用 WorkspaceArena，保存 KVCacheSessionView |
-| ammalloc | 自研用户态分配器（ThreadCache/CentralCache/PageCache） |
-| Argmax | 贪婪采样（当前产品唯一采样策略） |
+| LoweredGraph | 不可变、结构验证过的编译产物 |
+| ExecutionPlan | 不可变执行计划：kernel 已 resolve、权重已绑定、workspace 需求已冻结 |
+| ExecutableModel | 模型准备产物：拥有编译产物、packed artifacts、权重绑定与 phase plans；入口为 `Load` / `Prepare` |
+| InferenceSession | 同步贪婪生成编排：Prefill → Decode → Argmax/stop |
+| KVCacheManager | 静态 KV 存储、单 session reservation 与提交水位管理 |
+| W16/A32 | 保留 16-bit 矩阵权重、FP32 activation 的执行策略 |
+| KV16 | 16-bit KV 存储；仅在显式策略下准入 |
+| ammalloc | 自研用户态分配器（ThreadCache / CentralCache / PageCache） |
+| Argmax | 当前产品唯一的贪婪采样策略 |

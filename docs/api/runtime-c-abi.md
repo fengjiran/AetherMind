@@ -5,7 +5,7 @@
 - **日期**: 2026-10-22
 - **声明事实源**: [include/c_api.h](../../include/c_api.h)
 - **关联方案**: [10 号方案](../improvement-plan/10-upper-level-runtime-assembly.md) §4.3、§6.5
-- **产品边界**: [PRD §3.4](../products/aethermind_prd.md#34-c-abi-规范)
+- **产品边界**: [产品文档 §3.4](../product.md#34-c-abi-规范)
 
 ## 1. 交付状态与边界
 

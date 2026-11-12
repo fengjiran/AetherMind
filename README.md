@@ -10,7 +10,7 @@
 
 AetherMind is a C++20 desktop/server CPU inference engine. Its standalone CLI and C ABI provide synchronous, single-request FP32 Llama Dense greedy generation with static KV storage and Token IDs I/O. The C++ API also supports explicit F16/BF16-to-FP32 conversion and retained-W16 execution policies. Validation uses tiny HF and generated checkpoints; it does not establish large-model performance or completion of every product hard gate.
 
-GPU offloading, serving, and distributed execution are direction-only and documented in the [PRD appendix](docs/products/aethermind_prd.md); they are not current delivery commitments.
+GPU offloading, serving, and distributed execution are direction-only and documented in the [product document appendix](docs/product.md); they are not current delivery commitments.
 
 ### Delivered C++ Slice
 
@@ -19,11 +19,11 @@ GPU offloading, serving, and distributed execution are direction-only and docume
 | CPU execution, validated on Linux/x86_64            | GPU / CUDA execution                           |
 | Llama Dense FP32 and explicit C++ W16/A32 execution | Other families, MoE, encoder-decoder           |
 | Greedy sampling                                     | temperature / top-k / top-p                    |
-| Static pre-allocated FP32 KV cache                  | 16-bit KV, PagedAttention, continuous batching |
+| Static pre-allocated KV cache (FP32 or explicit KV16) | PagedAttention, continuous batching            |
 | FP32 activations and logits                         | FP16/BF16 activations, INT8/INT4 execution     |
 | Token IDs I/O (no tokenizer)                        | HTTP/gRPC serving                              |
 
-The [PRD](docs/products/aethermind_prd.md) defines broader product targets, including quantized execution. HF loader acceptance of a dtype or family does not imply executable support. The standalone CLI and [runtime C ABI v1](docs/api/runtime-c-abi.md) retain strict FP32 source admission; their scoped validation does not establish every product or release gate.
+The [product document](docs/product.md) defines broader product targets, including quantized execution. HF loader acceptance of a dtype or family does not imply executable support. The standalone CLI and [runtime C ABI v1](docs/api/runtime-c-abi.md) retain strict FP32 source admission; their scoped validation does not establish every product or release gate.
 
 ### C++ Weight Policies
 
@@ -57,7 +57,7 @@ ModelLoader::Load → ModelCompiler::Compile → RuntimeBuilder::TryBuild
 
 In this CLI path, compilation precedes KV allocation. Callers with an existing Runtime can instead use `ExecutableModel::Load`, which performs Load → source-weight admission and optional conversion → Compile → Prepare. The C ABI also creates Runtime before loading a model, then validates the Runtime against the compiled model before preparation.
 
-Runtime must remain at a stable address from preparation onward and outlive the prepared model and session. The application returns owning Token IDs. Source ownership and dependency rules are defined in [AGENTS.md](AGENTS.md), with the detailed [architecture overview](docs/designs/architecture/architecture_overview.md) and [assembly plan](docs/improvement-plan/10-upper-level-runtime-assembly.md) covering the contracts. See the [public API reference](docs/api/public-api.md), [Runtime configuration guide](docs/guides/runtime-configuration.md), and [resource budgeting guide](docs/guides/resource-budgeting.md) for configuration, payload limits, and resource queries.
+Runtime must remain at a stable address from preparation onward and outlive the prepared model and session. The application returns owning Token IDs. Source ownership and dependency rules are defined in [AGENTS.md](AGENTS.md), with the detailed [architecture overview](docs/architecture.md) and [assembly plan](docs/improvement-plan/10-upper-level-runtime-assembly.md) covering the contracts. See the [public API reference](docs/api/public-api.md), [Runtime configuration guide](docs/guides/runtime-configuration.md), and [resource budgeting guide](docs/guides/resource-budgeting.md) for configuration, payload limits, and resource queries.
 
 ## Project Structure
 
@@ -382,7 +382,7 @@ If `build/compile_commands.json` is available, `clang-tidy` can be run against i
 AetherMind follows a disciplined development workflow. Before contributing:
 
 1. Read [AGENTS.md](AGENTS.md) — the repository-wide engineering guide covering build, test, coding style, and review conventions.
-2. Read the [PRD](docs/products/aethermind_prd.md) for the current product scope and acceptance criteria.
+2. Read [docs/product.md](docs/product.md) for the current product scope and acceptance criteria.
 3. For operator semantics, reference/optimized kernels, packing/layout, fusion, or threading changes, follow the [operator development workflow](docs/guides/operator-development-workflow.md) and satisfy the applicable O0–O4 evidence gates.
 4. Make minimal, style-consistent changes; build the narrowest affected target first.
 5. Run focused tests (`--gtest_filter=Suite.Case`) before widening scope.
@@ -408,25 +408,16 @@ Use `IsValidAlignment(alignment)` and `AlignOffsetUp(offset, alignment)` from `a
 
 | Document                                                                                     | Description                                               |
 |----------------------------------------------------------------------------------------------|-----------------------------------------------------------|
+| [docs/README.md](docs/README.md)                                                             | Documentation map, authority order, and writing rules     |
+| [docs/architecture.md](docs/architecture.md)                                                 | System architecture, dependency rules, and invariants     |
+| [docs/product.md](docs/product.md)                                                           | Current product requirements and acceptance criteria      |
 | [AGENTS.md](AGENTS.md)                                                                       | Repository-wide engineering guide                         |
-| [docs/products/aethermind_prd.md](docs/products/aethermind_prd.md)                           | Current product requirements and acceptance criteria      |
-| [docs/api/public-api.md](docs/api/public-api.md)                                             | C++ APIs, ownership, and resource contracts               |
-| [docs/api/runtime-c-abi.md](docs/api/runtime-c-abi.md)                                       | Implemented runtime C ABI v1 contract                     |
-| [docs/guides/fp32-compatible-inference.md](docs/guides/fp32-compatible-inference.md)         | Explicit F16/BF16-to-FP32 C++ preparation                 |
-| [docs/guides/w16-fp32-inference.md](docs/guides/w16-fp32-inference.md)                       | Retained F16/BF16 weights with FP32 execution             |
-| [docs/guides/runtime-configuration.md](docs/guides/runtime-configuration.md)                 | CPU Runtime options and model geometry mapping            |
-| [docs/guides/resource-budgeting.md](docs/guides/resource-budgeting.md)                       | Payload limits, preflight admission, and resource queries |
-| [docs/guides/operator-development-workflow.md](docs/guides/operator-development-workflow.md) | Operator development and O0–O4 evidence gates             |
-| [docs/guides/cpp_coding_style_guidelines.md](docs/guides/cpp_coding_style_guidelines.md)     | C++ coding style                                          |
-| [docs/guides/cpp_comment_guidelines.md](docs/guides/cpp_comment_guidelines.md)               | Comment guidelines                                        |
-| [docs/guides/test_writing_guidelines.md](docs/guides/test_writing_guidelines.md)             | Test writing guidelines                                   |
-| [docs/designs/](docs/designs/)                                                               | Architecture and module design documents                  |
 
 ## Product Scope and Evolution
 
-- **Implemented scope**: CPU Llama Dense with strict FP32 CLI/C ABI and explicit C++ FP32 compatibility or W16/A32 policies, static FP32 KV cache, and synchronous greedy generation.
-- **Current product requirements**: The [PRD](docs/products/aethermind_prd.md) additionally requires INT8/INT4 quantization; executable quantized inference remains a target beyond the implemented slice above.
-- **Long-term directions, not committed**: GPU offloading, continuous batching, HTTP API, PagedAttention, and speculative decoding. See the [PRD appendix](docs/products/aethermind_prd.md).
+- **Implemented scope**: CPU Llama Dense with strict FP32 CLI/C ABI and explicit C++ FP32 compatibility or W16/A32 policies, static KV cache (FP32 or explicit C++ KV16), and synchronous greedy generation.
+- **Current product requirements**: The [product document](docs/product.md) additionally requires INT8/INT4 quantization; executable quantized inference remains a target beyond the implemented slice above.
+- **Long-term directions, not committed**: GPU offloading, continuous batching, HTTP API, PagedAttention, and speculative decoding. See the [product document appendix](docs/product.md).
 
 ## FAQ
 

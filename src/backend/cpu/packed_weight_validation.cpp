@@ -2,8 +2,6 @@
 #include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "utils/overflow_check.h"
 
-#include <cstddef>
-#include <cstdint>
 #include <string>
 #include <utility>
 
@@ -51,6 +49,7 @@ Status ValidateIdentityPackedWeight(const PackedWeightView& packed,
         return Status::InvalidArgument(std::string(kernel_name) +
                                        " requires a scalar fixed-width expected dtype");
     }
+
     if (packed.logical_dtype != expected_dtype ||
         packed.logical_shape.size() != expected_shape.size()) {
         return Status::InvalidArgument(
@@ -78,8 +77,9 @@ Status ValidateIdentityPackedWeight(const PackedWeightView& packed,
                                             static_cast<size_t>(expected_dtype.nbytes()),
                                             kernel_name));
     if (packed.nbytes < required_bytes) {
-        return Status::InvalidArgument(std::string(kernel_name) +
-                                       " packed storage is smaller than its logical weight");
+        return Status::InvalidArgument(
+                std::string(kernel_name) +
+                " packed storage is smaller than its logical weight");
     }
     return Status::Ok();
 }
@@ -109,16 +109,18 @@ Status ValidateBPanelF32PackedWeight(
         packed.alignment < kCpuBPanelF32Kc512Nr16Alignment ||
         (packed.data != nullptr &&
          reinterpret_cast<std::uintptr_t>(packed.data) % kCpuBPanelF32Kc512Nr16Alignment != 0)) {
-        return Status::InvalidArgument(std::string(kernel_name) +
-                                       " requires the cpu_bpanel_f32_kc512_nr16 recipe");
+        return Status::InvalidArgument(
+                std::string(kernel_name) +
+                " requires the cpu_bpanel_f32_kc512_nr16 recipe");
     }
 
     AM_ASSIGN_OR_RETURN(const size_t required_bytes,
                         cpu::CpuBPanelF32Kc512Nr16PackedByteSize(
                                 expected_shape[0], expected_shape[1]));
     if (packed.nbytes != required_bytes || (required_bytes != 0 && packed.data == nullptr)) {
-        return Status::InvalidArgument(std::string(kernel_name) +
-                                       " packed storage size does not match the padded bpanel layout");
+        return Status::InvalidArgument(
+                std::string(kernel_name) +
+                " packed storage size does not match the padded bpanel layout");
     }
     return Status::Ok();
 }

@@ -3,7 +3,6 @@
 #include "utils/overflow_check.h"
 
 namespace aethermind::detail {
-
 namespace {
 
 // Validates AttentionParams fields. Must be called before any input-dependent
@@ -36,8 +35,11 @@ Status ValidateAttentionParams(const AttentionParams& p) {
     return Status::Ok();
 }
 
-// Validates that q, k_cache, and v_cache share the same dtype from the
-// supported set. Output dtype follows q.
+// Validates the Attention dtype contract. Two tuple families are legal:
+//   * same-dtype: q, k_cache, v_cache all share one supported dtype;
+//   * P3 mixed KV16: q=F32 with k_cache/v_cache in the same F16 or BF16.
+// K/V caches must always agree. Output dtype follows q. No other mixed
+// combination declares an implicit conversion.
 Status ValidateAttentionDTypes(std::span<const TensorSpec> inputs) {
     const TensorSpec& q = inputs[0];
     const TensorSpec& k_cache = inputs[1];
@@ -48,14 +50,29 @@ Status ValidateAttentionDTypes(std::span<const TensorSpec> inputs) {
                 MakeAttentionUnsupportedDTypeMessage("Attention q"));
     }
 
-    if (k_cache.dtype != q.dtype) {
+    if (!IsAttentionSupportedDType(k_cache.dtype)) {
         return Status::InvalidArgument(
-                "Attention k_cache dtype must match q dtype");
+                MakeAttentionUnsupportedDTypeMessage("Attention k_cache"));
     }
 
-    if (v_cache.dtype != q.dtype) {
+    if (!IsAttentionSupportedDType(v_cache.dtype)) {
         return Status::InvalidArgument(
-                "Attention v_cache dtype must match q dtype");
+                MakeAttentionUnsupportedDTypeMessage("Attention v_cache"));
+    }
+
+    if (k_cache.dtype != v_cache.dtype) {
+        return Status::InvalidArgument(
+                "Attention k_cache and v_cache dtypes must match");
+    }
+
+    const bool same_dtype = k_cache.dtype == q.dtype;
+    const bool mixed_kv16 = q.dtype == DataType::Float32() &&
+                            (k_cache.dtype == DataType::Float(16) ||
+                             k_cache.dtype == DataType::BFloat(16));
+    if (!same_dtype && !mixed_kv16) {
+        return Status::InvalidArgument(
+                "Attention requires q/k_cache/v_cache same dtype, or q=float32 "
+                "with k_cache/v_cache float16 or bfloat16");
     }
     return Status::Ok();
 }
@@ -153,6 +170,7 @@ StatusOr<InferenceResult> InferAttention(const OpParams& params,
     if (!std::holds_alternative<AttentionParams>(params)) {
         return Status::InvalidArgument("Attention node requires AttentionParams");
     }
+
     const auto& attn_params = std::get<AttentionParams>(params);
     AM_RETURN_IF_ERROR(ValidateAttentionParams(attn_params));
     AM_RETURN_IF_ERROR(ValidateInferenceInputCount(OpType::kAttention, inputs));

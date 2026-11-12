@@ -1193,6 +1193,35 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsSelectorWeightDTypeMismatch) 
     EXPECT_NE(plan.status().message().find("weight_dtype"), std::string::npos);
 }
 
+TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsSelectorStateDTypeMismatch) {
+    RuntimeBuilder builder;
+    Runtime runtime = builder.Build();
+
+    const SymbolicShape act_shape = StaticShape({4, 8});
+    const SymbolicShape weight_shape = StaticShape({8});
+    const auto analyzed = InferRmsNorm(1.0e-5F, act_shape, weight_shape);
+    ASSERT_TRUE(analyzed.ok()) << analyzed.status().ToString();
+
+    ExecutionPlanNodeSpec node = MakeRmsNormNodeSpec();
+    // RmsNorm is stateless: its derived state_dtype is undefined. A selector
+    // claiming a Float32 state must be rejected before execution.
+    node.selector.state_dtype = DataType::Float32();
+    node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
+    node.input_specs = {
+            TensorSpec{.dtype = DataType::Float32(), .shape = act_shape},
+            TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape},
+    };
+    node.output_specs = analyzed->outputs;
+    node.runtime_checks = analyzed->runtime_checks;
+
+    const StatusOr<ExecutionPlan> plan =
+            ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
+
+    ASSERT_FALSE(plan.ok());
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
+    EXPECT_NE(plan.status().message().find("state_dtype"), std::string::npos);
+}
+
 TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsSelectorWeightDTypeWithoutWeightPort) {
     // Softmax has no weight port, so its selector weight_dtype must fall back
     // to the activation dtype; a caller-declared different weight dtype is

@@ -9,7 +9,6 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
-#include <cstdint>
 #include <cstring>
 #include <new>
 #include <span>
@@ -156,14 +155,12 @@ StatusOr<StridedAddressFootprint> BuildKVFootprint(const KVCacheLayerStorageBind
     const std::array<int64_t, 3> shape = {
             static_cast<int64_t>(storage.num_kv_heads),
             static_cast<int64_t>(visible_end),
-            static_cast<int64_t>(storage.head_dim),
-    };
+            static_cast<int64_t>(storage.head_dim)};
 
     const std::array<int64_t, 3> strides = {
             static_cast<int64_t>(head_stride),
             static_cast<int64_t>(token_stride),
-            1,
-    };
+            1};
     // Avoid formatting a diagnostic label for every successful KV read.
     const std::string_view cache_label = role == "key"
                                                  ? "CPU Attention key cache"
@@ -185,8 +182,8 @@ StatusOr<StridedAddressFootprint> BuildOutputFootprint(
             args.output_row_stride,
             args.output_col_stride,
     };
-    return BuildStridedAddressFootprint(
-            args.output, shape, strides, sizeof(float), "CPU Attention output");
+    return BuildStridedAddressFootprint(args.output, shape, strides,
+                                        sizeof(float), "CPU Attention output");
 }
 
 Status ValidateReadBinding(const AttentionF32KernelArgs& args,
@@ -290,6 +287,130 @@ Status AttentionF32ReferenceEntry(const KernelContext& ctx) noexcept {
     return RunAttentionF32Reference(*args, *ctx.kv_read);
 }
 
+// --- KV16 (Q=F32, K/V cache F16/BF16) path ---
+// Q/output stay F32 and reuse the FP32 params/metadata builders; only the cache
+// element dtype differs. Cache addressing is byte-safe with two-byte elements
+// and no float alignment requirement.
+
+StatusOr<StridedAddressFootprint> BuildKVFootprintKV16(
+        const KVCacheLayerStorageBinding& storage,
+        const std::byte* data,
+        size_t visible_end,
+        std::string_view role) noexcept {
+    if (storage.token_stride_bytes % 2 != 0 || storage.head_stride_bytes % 2 != 0) {
+        return Status::InvalidArgument(
+                std::string(kKernelName) + " requires two-byte-aligned " +
+                std::string(role) + " cache strides");
+    }
+
+    const size_t token_stride = storage.token_stride_bytes / 2;
+    const size_t head_stride = storage.head_stride_bytes / 2;
+    if (!std::in_range<int64_t>(token_stride) ||
+        !std::in_range<int64_t>(head_stride) ||
+        !std::in_range<int64_t>(storage.num_kv_heads) ||
+        !std::in_range<int64_t>(storage.head_dim) ||
+        !std::in_range<int64_t>(visible_end)) {
+        return Status::InvalidArgument(
+                std::string(kKernelName) + " " + std::string(role) +
+                " cache geometry exceeds int64 range");
+    }
+
+    const std::array<int64_t, 3> shape = {
+            static_cast<int64_t>(storage.num_kv_heads),
+            static_cast<int64_t>(visible_end),
+            static_cast<int64_t>(storage.head_dim)};
+    const std::array<int64_t, 3> strides = {
+            static_cast<int64_t>(head_stride),
+            static_cast<int64_t>(token_stride),
+            1};
+    const std::string_view cache_label = role == "key"
+                                                 ? "CPU Attention key cache"
+                                                 : "CPU Attention value cache";
+    return BuildStridedAddressFootprint(data, shape, strides, 2, cache_label);
+}
+
+Status ValidateReadBindingKV16(const AttentionF32KernelArgs& args,
+                               const KVCacheReadBinding& read,
+                               DataType expected_dtype) noexcept {
+    const KVCacheLayerStorageBinding& storage = read.storage;
+    if (storage.dtype != expected_dtype) {
+        return Status::InvalidArgument(
+                "CPU Attention KV cache storage dtype does not "
+                "match the kernel state dtype");
+    }
+
+    if (storage.key_data == nullptr || storage.value_data == nullptr ||
+        storage.num_kv_heads == 0 || storage.head_dim == 0 || storage.token_capacity == 0) {
+        return Status::InvalidArgument(
+                "CPU Attention has invalid KV cache storage binding");
+    }
+
+    if (storage.num_kv_heads != static_cast<size_t>(args.num_kv_heads) ||
+        storage.head_dim != static_cast<size_t>(args.head_dim)) {
+        return Status::InvalidArgument(
+                "CPU Attention KV cache geometry does not match head metadata");
+    }
+
+    if (read.committed_end > read.visible_end ||
+        read.visible_end > storage.token_capacity ||
+        read.query_begin > read.query_end ||
+        read.query_end > read.visible_end) {
+        return Status::InvalidArgument(
+                "CPU Attention has invalid KV cache read frontiers");
+    }
+
+    if (read.query_end - read.query_begin != static_cast<size_t>(args.seq_len)) {
+        return Status::InvalidArgument(
+                "CPU Attention query interval does not match query sequence length");
+    }
+
+    size_t minimum_token_stride = 0;
+    size_t minimum_head_stride = 0;
+    if (CheckOverflowMul(storage.head_dim, size_t{2}, &minimum_token_stride) ||
+        CheckOverflowMul(storage.token_capacity, storage.token_stride_bytes,
+                         &minimum_head_stride) ||
+        storage.token_stride_bytes < minimum_token_stride ||
+        storage.head_stride_bytes < minimum_head_stride) {
+        return Status::InvalidArgument(
+                "CPU Attention KV cache strides do not cover its geometry");
+    }
+
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint key_footprint,
+                        BuildKVFootprintKV16(storage, storage.key_data, read.visible_end, "key"));
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint value_footprint,
+                        BuildKVFootprintKV16(storage, storage.value_data, read.visible_end, "value"));
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint output_footprint,
+                        BuildOutputFootprint(args));
+    AM_RETURN_IF_ERROR(ValidateStridedDisjoint(
+            kKernelName, key_footprint, "key cache",
+            value_footprint, "value cache"));
+    AM_RETURN_IF_ERROR(ValidateStridedDisjoint(
+            kKernelName, output_footprint, "output",
+            key_footprint, "key cache"));
+    return ValidateStridedDisjoint(
+            kKernelName, output_footprint, "output",
+            value_footprint, "value cache");
+}
+
+Status AttentionKV16ReferenceEntry(const KernelContext& ctx,
+                                   DataType expected_dtype) noexcept {
+    const auto* const args = static_cast<const AttentionF32KernelArgs*>(ctx.kernel_params);
+    if (args == nullptr || ctx.kv_read == nullptr) {
+        return Status::FailedPrecondition(
+                "CPU Attention requires prepared args and a KV read binding");
+    }
+    AM_RETURN_IF_ERROR(ValidateReadBindingKV16(*args, *ctx.kv_read, expected_dtype));
+    return RunAttentionKV16Reference(*args, *ctx.kv_read, expected_dtype);
+}
+
+Status AttentionF16ReferenceEntry(const KernelContext& ctx) noexcept {
+    return AttentionKV16ReferenceEntry(ctx, DataType::Float(16));
+}
+
+Status AttentionBF16ReferenceEntry(const KernelContext& ctx) noexcept {
+    return AttentionKV16ReferenceEntry(ctx, DataType::BFloat(16));
+}
+
 } // namespace
 
 static_assert(std::is_trivially_copyable_v<AttentionF32KernelMetadata>);
@@ -305,6 +426,7 @@ AM_REGISTER_KERNEL(
                         .device_type = DeviceType::kCPU,
                         .act_dtype = DataType::Float32(),
                         .weight_dtype = DataType::Float32(),
+                        .state_dtype = DataType::Float32(),
                         .weight_format = WeightFormat::kPlain,
                         .phase = ExecPhase::kBoth,
                 },
@@ -314,5 +436,43 @@ AM_REGISTER_KERNEL(
                 .params_builder = &BuildAttentionF32ReferenceArgs,
                 .metadata_builder = &BuildAttentionF32Metadata,
                 .name = "cpu::attention_f32_reference"})
+
+AM_REGISTER_KERNEL(
+        CpuAttentionF16Reference,
+        KernelDef{
+                .op_type = OpType::kAttention,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float32(),
+                        .state_dtype = DataType::Float(16),
+                        .weight_format = WeightFormat::kPlain,
+                        .phase = ExecPhase::kBoth,
+                },
+                .kernel_func = &AttentionF16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(AttentionF32KernelArgs),
+                .params_builder = &BuildAttentionF32ReferenceArgs,
+                .metadata_builder = &BuildAttentionF32Metadata,
+                .name = "cpu::attention_f16_reference"})
+
+AM_REGISTER_KERNEL(
+        CpuAttentionBF16Reference,
+        KernelDef{
+                .op_type = OpType::kAttention,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float32(),
+                        .state_dtype = DataType::BFloat(16),
+                        .weight_format = WeightFormat::kPlain,
+                        .phase = ExecPhase::kBoth,
+                },
+                .kernel_func = &AttentionBF16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(AttentionF32KernelArgs),
+                .params_builder = &BuildAttentionF32ReferenceArgs,
+                .metadata_builder = &BuildAttentionF32Metadata,
+                .name = "cpu::attention_bf16_reference"})
 
 } // namespace aethermind::cpu::detail

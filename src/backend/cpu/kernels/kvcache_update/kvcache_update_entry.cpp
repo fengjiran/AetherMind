@@ -7,7 +7,6 @@
 
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -249,6 +248,170 @@ Status KVCacheUpdateF32ReferenceEntry(const KernelContext& ctx) noexcept {
     return RunKVCacheUpdateF32Reference(*args, *ctx.kv_append);
 }
 
+// --- KV16 (A32 -> F16/BF16 cache) path ---
+// Activations stay F32 and reuse the FP32 params builder; only the cache
+// element dtype differs. Cache addressing is byte-safe: two-byte elements,
+// byte strides that are multiples of two, and no float alignment requirement.
+StatusOr<StridedAddressFootprint> BuildTargetFootprintKV16(
+        const KVCacheLayerStorageBinding& storage,
+        std::byte* data,
+        size_t begin,
+        size_t end,
+        std::string_view role) noexcept {
+    if (data == nullptr || end <= begin) {
+        return Status::InvalidArgument(
+                std::string(kKernelName) + " has invalid " +
+                std::string(role) + " cache geometry");
+    }
+
+    if (storage.token_stride_bytes % 2 != 0 || storage.head_stride_bytes % 2 != 0) {
+        return Status::InvalidArgument(
+                std::string(kKernelName) + " requires two-byte-aligned " +
+                std::string(role) + " cache strides");
+    }
+
+    const size_t token_stride = storage.token_stride_bytes / 2;
+    const size_t head_stride = storage.head_stride_bytes / 2;
+    if (!std::in_range<int64_t>(token_stride) ||
+        !std::in_range<int64_t>(head_stride) ||
+        !std::in_range<int64_t>(storage.num_kv_heads) ||
+        !std::in_range<int64_t>(storage.head_dim) ||
+        !std::in_range<int64_t>(end - begin)) {
+        return Status::InvalidArgument(
+                std::string(kKernelName) + " " + std::string(role) +
+                " cache geometry exceeds int64 range");
+    }
+
+    size_t begin_bytes = 0;
+    if (CheckOverflowMul(begin, storage.token_stride_bytes, &begin_bytes)) {
+        return Status::InvalidArgument(std::string(kKernelName) + " " +
+                                       std::string(role) + " cache offset overflow");
+    }
+
+    const std::array shape = {static_cast<int64_t>(storage.num_kv_heads),
+                              static_cast<int64_t>(end - begin),
+                              static_cast<int64_t>(storage.head_dim)};
+    const std::array<int64_t, 3> strides = {static_cast<int64_t>(head_stride),
+                                            static_cast<int64_t>(token_stride), 1};
+    const std::string_view cache_label = role == "key"
+                                                 ? "CPU KVCacheUpdate key cache"
+                                                 : "CPU KVCacheUpdate value cache";
+    return BuildStridedAddressFootprint(data + begin_bytes,
+                                        shape, strides, 2, cache_label);
+}
+
+Status ValidateNoOverlapKV16(const KVCacheUpdateF32KernelArgs& args,
+                             const KVCacheAppendBinding& append) noexcept {
+    const std::array src_shape = {args.seq_len, args.hidden};
+    const std::array key_strides = {args.key_row_stride, args.key_col_stride};
+    const std::array value_strides = {args.value_row_stride, args.value_col_stride};
+    AM_ASSIGN_OR_RETURN(
+            const StridedAddressFootprint key_source,
+            BuildStridedAddressFootprint(
+                    args.key_data, src_shape, key_strides,
+                    sizeof(float), "CPU KVCacheUpdate key activation"));
+    AM_ASSIGN_OR_RETURN(
+            const StridedAddressFootprint value_source,
+            BuildStridedAddressFootprint(
+                    args.value_data, src_shape, value_strides,
+                    sizeof(float), "CPU KVCacheUpdate value activation"));
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint key_target,
+                        BuildTargetFootprintKV16(append.storage, append.storage.key_data,
+                                                 append.begin, append.end, "key"));
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint value_target,
+                        BuildTargetFootprintKV16(append.storage, append.storage.value_data,
+                                                 append.begin, append.end, "value"));
+
+    if (ByteRangesOverlap(key_target.envelope(), value_target.envelope())) {
+        return Status::InvalidArgument("CPU KVCacheUpdate cannot prove key "
+                                       "and value cache destinations are disjoint");
+    }
+
+    const auto require_disjoint = [](const StridedAddressFootprint& source,
+                                     std::string_view source_name,
+                                     const StridedAddressFootprint& destination,
+                                     std::string_view destination_name) {
+        if (ByteRangesOverlap(source.envelope(), destination.envelope())) {
+            return Status::InvalidArgument(
+                    std::string(kKernelName) + " cannot prove " +
+                    std::string(source_name) + " activation is disjoint from " +
+                    std::string(destination_name) + " cache destination");
+        }
+        return Status::Ok();
+    };
+
+    AM_RETURN_IF_ERROR(require_disjoint(key_source, "key", key_target, "key"));
+    AM_RETURN_IF_ERROR(require_disjoint(key_source, "key", value_target, "value"));
+    AM_RETURN_IF_ERROR(require_disjoint(value_source, "value", key_target, "key"));
+    return require_disjoint(value_source, "value", value_target, "value");
+}
+
+Status ValidateAppendKV16(const KVCacheUpdateF32KernelArgs& args,
+                          const KVCacheAppendBinding& append,
+                          DataType expected_dtype) noexcept {
+    const KVCacheLayerStorageBinding& storage = append.storage;
+    if (storage.dtype != expected_dtype) {
+        return Status::InvalidArgument(
+                "CPU KVCacheUpdate KV cache storage dtype does not "
+                "match the kernel state dtype");
+    }
+
+    if (storage.key_data == nullptr || storage.value_data == nullptr ||
+        storage.num_kv_heads == 0 || storage.head_dim == 0 || storage.token_capacity == 0) {
+        return Status::InvalidArgument(
+                "CPU KVCacheUpdate has invalid KV cache storage binding");
+    }
+
+    if (append.end <= append.begin || append.end > storage.token_capacity) {
+        return Status::InvalidArgument(
+                "CPU KVCacheUpdate append range is outside the cache binding");
+    }
+
+    if (append.end - append.begin != static_cast<size_t>(args.seq_len)) {
+        return Status::InvalidArgument(
+                "CPU KVCacheUpdate append length does not "
+                "match key/value sequence length");
+    }
+
+    size_t hidden = 0;
+    if (CheckOverflowMul(storage.num_kv_heads, storage.head_dim, &hidden) ||
+        !std::in_range<int64_t>(hidden) ||
+        args.hidden != static_cast<int64_t>(hidden)) {
+        return Status::InvalidArgument(
+                "CPU KVCacheUpdate hidden size does not match KV cache geometry");
+    }
+
+    size_t minimum_token_stride = 0;
+    size_t minimum_head_stride = 0;
+    if (CheckOverflowMul(storage.head_dim, size_t{2}, &minimum_token_stride) ||
+        CheckOverflowMul(storage.token_capacity, storage.token_stride_bytes, &minimum_head_stride) ||
+        storage.token_stride_bytes < minimum_token_stride ||
+        storage.head_stride_bytes < minimum_head_stride) {
+        return Status::InvalidArgument(
+                "CPU KVCacheUpdate cache strides do not cover its geometry");
+    }
+    return ValidateNoOverlapKV16(args, append);
+}
+
+Status KVCacheUpdateKV16ReferenceEntry(const KernelContext& ctx,
+                                       DataType expected_dtype) noexcept {
+    const auto* const args = static_cast<const KVCacheUpdateF32KernelArgs*>(ctx.kernel_params);
+    if (args == nullptr || ctx.kv_append == nullptr) {
+        return Status::FailedPrecondition(
+                "CPU KVCacheUpdate requires prepared args and an append binding");
+    }
+    AM_RETURN_IF_ERROR(ValidateAppendKV16(*args, *ctx.kv_append, expected_dtype));
+    return RunKVCacheUpdateKV16Reference(*args, *ctx.kv_append, expected_dtype);
+}
+
+Status KVCacheUpdateF16ReferenceEntry(const KernelContext& ctx) noexcept {
+    return KVCacheUpdateKV16ReferenceEntry(ctx, DataType::Float(16));
+}
+
+Status KVCacheUpdateBF16ReferenceEntry(const KernelContext& ctx) noexcept {
+    return KVCacheUpdateKV16ReferenceEntry(ctx, DataType::BFloat(16));
+}
+
 } // namespace
 
 static_assert(std::is_trivially_destructible_v<KVCacheUpdateF32KernelArgs>);
@@ -262,6 +425,7 @@ AM_REGISTER_KERNEL(CpuKVCacheUpdateF32Reference,
                                    .device_type = DeviceType::kCPU,
                                    .act_dtype = DataType::Float32(),
                                    .weight_dtype = DataType::Float32(),
+                                   .state_dtype = DataType::Float32(),
                                    .weight_format = WeightFormat::kPlain,
                                    .phase = ExecPhase::kBoth,
                            },
@@ -270,6 +434,42 @@ AM_REGISTER_KERNEL(CpuKVCacheUpdateF32Reference,
                            .params_size = sizeof(KVCacheUpdateF32KernelArgs),
                            .params_builder = &BuildKVCacheUpdateF32ReferenceArgs,
                            .name = "cpu::kvcache_update_f32_reference",
+                   })
+
+AM_REGISTER_KERNEL(CpuKVCacheUpdateF16Reference,
+                   KernelDef{
+                           .op_type = OpType::kKVCacheUpdate,
+                           .selector = KernelSelector{
+                                   .device_type = DeviceType::kCPU,
+                                   .act_dtype = DataType::Float32(),
+                                   .weight_dtype = DataType::Float32(),
+                                   .state_dtype = DataType::Float(16),
+                                   .weight_format = WeightFormat::kPlain,
+                                   .phase = ExecPhase::kBoth,
+                           },
+                           .kernel_func = &KVCacheUpdateF16ReferenceEntry,
+                           .priority = 10,
+                           .params_size = sizeof(KVCacheUpdateF32KernelArgs),
+                           .params_builder = &BuildKVCacheUpdateF32ReferenceArgs,
+                           .name = "cpu::kvcache_update_f16_reference",
+                   })
+
+AM_REGISTER_KERNEL(CpuKVCacheUpdateBF16Reference,
+                   KernelDef{
+                           .op_type = OpType::kKVCacheUpdate,
+                           .selector = KernelSelector{
+                                   .device_type = DeviceType::kCPU,
+                                   .act_dtype = DataType::Float32(),
+                                   .weight_dtype = DataType::Float32(),
+                                   .state_dtype = DataType::BFloat(16),
+                                   .weight_format = WeightFormat::kPlain,
+                                   .phase = ExecPhase::kBoth,
+                           },
+                           .kernel_func = &KVCacheUpdateBF16ReferenceEntry,
+                           .priority = 10,
+                           .params_size = sizeof(KVCacheUpdateF32KernelArgs),
+                           .params_builder = &BuildKVCacheUpdateF32ReferenceArgs,
+                           .name = "cpu::kvcache_update_bf16_reference",
                    })
 
 } // namespace aethermind::cpu::detail

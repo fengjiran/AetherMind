@@ -6,18 +6,15 @@ namespace aethermind {
 
 std::string ToString(const KernelSelector& selector) {
     return std::string("KernelSelector{device=") +
-           DeviceType2Str(selector.device_type) +
-           ", activation_dtype=" +
+           DeviceType2Str(selector.device_type) + ", activation_dtype=" +
            std::to_string(selector.act_dtype.bits()) +
-           "bit" +
-           ", weight_dtype=" +
+           "bit, weight_dtype=" +
            std::to_string(selector.weight_dtype.bits()) +
-           "bit" +
-           ", weight_format=" +
+           "bit, state_dtype=" +
+           std::to_string(selector.state_dtype.bits()) +
+           "bit" + ", weight_format=" +
            ToString(selector.weight_format) +
-           ", phase=" +
-           ToString(selector.phase) +
-           "}";
+           ", phase=" + ToString(selector.phase) + "}";
 }
 
 } // namespace aethermind

@@ -189,6 +189,58 @@ TEST(AttentionInference, RejectsMismatchedCacheDtype) {
                          .ok());
 }
 
+// --- P3 mixed KV16 boundary: Q=F32, K/V cache in same F16/BF16 ---
+
+TEST(AttentionInference, AcceptsMixedFloat16Cache) {
+    auto q = MakeSpec(DataType::Float32(), {1, 32 * 64});
+    auto kCache = MakeSpec(DataType::Float(16), {8, 1024, 64});
+    auto vCache = MakeSpec(DataType::Float(16), {8, 1024, 64});
+    std::vector<TensorSpec> inputs = {q, kCache, vCache};
+    auto result = InferOperator(OpType::kAttention, AttentionParams{32, 8, 64}, inputs);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    EXPECT_EQ(result->outputs[0].dtype, DataType::Float32());
+    EXPECT_EQ(result->outputs[0].shape, q.shape);
+}
+
+TEST(AttentionInference, AcceptsMixedBFloat16Cache) {
+    auto q = MakeSpec(DataType::Float32(), {1, 32 * 64});
+    auto kCache = MakeSpec(DataType::BFloat(16), {8, 1024, 64});
+    auto vCache = MakeSpec(DataType::BFloat(16), {8, 1024, 64});
+    std::vector<TensorSpec> inputs = {q, kCache, vCache};
+    EXPECT_TRUE(InferOperator(OpType::kAttention, AttentionParams{32, 8, 64}, inputs).ok());
+}
+
+TEST(AttentionInference, RejectsMixedKVCacheDTypeMismatch) {
+    auto q = MakeSpec(DataType::Float32(), {1, 32 * 64});
+    auto kCache = MakeSpec(DataType::Float(16), {8, 1024, 64});
+    auto vCache = MakeSpec(DataType::BFloat(16), {8, 1024, 64});
+    std::vector<TensorSpec> inputs = {q, kCache, vCache};
+    EXPECT_FALSE(InferOperator(OpType::kAttention,
+                               AttentionParams{32, 8, 64}, inputs)
+                         .ok());
+}
+
+TEST(AttentionInference, RejectsMixedFloat16QWithFloat32Cache) {
+    // Only Q=F32 -> cache16 is declared; the reverse direction is not.
+    auto q = MakeSpec(DataType::Float(16), {1, 32 * 64});
+    auto kCache = MakeSpec(DataType::Float32(), {8, 1024, 64});
+    auto vCache = MakeSpec(DataType::Float32(), {8, 1024, 64});
+    std::vector<TensorSpec> inputs = {q, kCache, vCache};
+    EXPECT_FALSE(InferOperator(OpType::kAttention,
+                               AttentionParams{32, 8, 64}, inputs)
+                         .ok());
+}
+
+TEST(AttentionInference, RejectsMixedInt32QWithFloat16Cache) {
+    auto q = MakeSpec(DataType::Int(32), {1, 32 * 64});
+    auto kCache = MakeSpec(DataType::Float(16), {8, 1024, 64});
+    auto vCache = MakeSpec(DataType::Float(16), {8, 1024, 64});
+    std::vector<TensorSpec> inputs = {q, kCache, vCache};
+    EXPECT_FALSE(InferOperator(OpType::kAttention,
+                               AttentionParams{32, 8, 64}, inputs)
+                         .ok());
+}
+
 // --- Rank validation ---
 
 TEST(AttentionInference, RejectsRank3Q) {

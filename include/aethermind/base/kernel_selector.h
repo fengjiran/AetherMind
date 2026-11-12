@@ -23,12 +23,16 @@
 namespace aethermind {
 
 /// @brief Pure-data description of the execution capabilities a step
-/// requires: device, activation and weight dtypes, weight layout, and
-/// execution phase.
+/// requires: device, activation and weight dtypes, state dtype, weight layout,
+/// and execution phase.
 struct KernelSelector {
     DeviceType device_type = DeviceType::kUndefined;
     DataType act_dtype{};
     DataType weight_dtype{};
+    /// Persistent state (KV cache) dtype. Undefined for stateless steps; matched
+    /// by strict equality, never as a wildcard. Derived only from real state
+    /// specs, never borrowed from weight_dtype.
+    DataType state_dtype{};
     WeightFormat weight_format = WeightFormat::kPlain;
     ExecPhase phase = ExecPhase::kBoth;
 
@@ -36,6 +40,7 @@ struct KernelSelector {
         return lhs.device_type == rhs.device_type &&
                lhs.act_dtype == rhs.act_dtype &&
                lhs.weight_dtype == rhs.weight_dtype &&
+               lhs.state_dtype == rhs.state_dtype &&
                lhs.weight_format == rhs.weight_format &&
                lhs.phase == rhs.phase;
     }
@@ -60,6 +65,7 @@ AM_NODISCARD inline bool SelectorMatches(const KernelSelector& candidate,
     return candidate.device_type == request.device_type &&
            candidate.act_dtype == request.act_dtype &&
            candidate.weight_dtype == request.weight_dtype &&
+           candidate.state_dtype == request.state_dtype &&
            candidate.weight_format == request.weight_format &&
            PhaseMatches(candidate.phase, request.phase);
 }
@@ -82,6 +88,7 @@ struct std::hash<aethermind::KernelSelector> {
         seed = aethermind::hash_combine(seed, static_cast<std::size_t>(s.device_type));
         seed = aethermind::hash_combine(seed, std::hash<aethermind::DataType>{}(s.act_dtype));
         seed = aethermind::hash_combine(seed, std::hash<aethermind::DataType>{}(s.weight_dtype));
+        seed = aethermind::hash_combine(seed, std::hash<aethermind::DataType>{}(s.state_dtype));
         seed = aethermind::hash_combine(seed, static_cast<std::size_t>(s.weight_format));
         seed = aethermind::hash_combine(seed, static_cast<std::size_t>(s.phase));
         return seed;

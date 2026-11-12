@@ -160,7 +160,7 @@ TEST(OperatorSelectorDTypes, FallsBackWeightToActivationWhenNoWeightPort) {
     EXPECT_EQ(derived->weight_dtype, DataType::Float32());
 }
 
-TEST(OperatorSelectorDTypes, IgnoresStatePorts) {
+TEST(OperatorSelectorDTypes, StatePortsContributeStateDTypeOnly) {
     const auto schema = GetOperatorSchema(OpType::kKVCacheUpdate);
     ASSERT_TRUE(schema.ok());
     const std::vector<TensorSpec> inputs{
@@ -176,10 +176,69 @@ TEST(OperatorSelectorDTypes, IgnoresStatePorts) {
 
     const auto derived = DeriveSelectorDTypes(*schema, inputs, outputs);
 
-    // State ports never contribute; only the activation inputs do.
+    // State ports do not contribute act/weight, but do contribute state_dtype.
     ASSERT_TRUE(derived.ok()) << derived.status().ToString();
     EXPECT_EQ(derived->act_dtype, DataType::Float32());
     EXPECT_EQ(derived->weight_dtype, DataType::Float32());
+    EXPECT_EQ(derived->state_dtype, DataType::Float(16));
+}
+
+TEST(OperatorSelectorDTypes, StatelessOpHasUndefinedStateDType) {
+    const auto schema = GetOperatorSchema(OpType::kRmsNorm);
+    ASSERT_TRUE(schema.ok());
+    const std::vector<TensorSpec> inputs{
+            MakeSpec(DataType::Float32(), {4, 8}),
+            MakeSpec(DataType::Float32(), {8}),
+    };
+    const std::vector<TensorSpec> outputs{
+            MakeSpec(DataType::Float32(), {4, 8}),
+    };
+
+    const auto derived = DeriveSelectorDTypes(*schema, inputs, outputs);
+
+    ASSERT_TRUE(derived.ok()) << derived.status().ToString();
+    EXPECT_TRUE(derived->state_dtype.IsUndefined());
+}
+
+TEST(OperatorSelectorDTypes, AttentionMixedDerivesStateFromCache) {
+    const auto schema = GetOperatorSchema(OpType::kAttention);
+    ASSERT_TRUE(schema.ok());
+    const std::vector<TensorSpec> inputs{
+            MakeSpec(DataType::Float32(), {1, 8}),
+            MakeSpec(DataType::BFloat(16), {2, 1024, 4}),
+            MakeSpec(DataType::BFloat(16), {2, 1024, 4}),
+    };
+    const std::vector<TensorSpec> outputs{
+            MakeSpec(DataType::Float32(), {1, 8}),
+    };
+
+    const auto derived = DeriveSelectorDTypes(*schema, inputs, outputs);
+
+    ASSERT_TRUE(derived.ok()) << derived.status().ToString();
+    EXPECT_EQ(derived->act_dtype, DataType::Float32());
+    EXPECT_EQ(derived->weight_dtype, DataType::Float32());
+    EXPECT_EQ(derived->state_dtype, DataType::BFloat(16));
+}
+
+TEST(OperatorSelectorDTypes, RejectsInconsistentStateDTypes) {
+    const auto schema = GetOperatorSchema(OpType::kKVCacheUpdate);
+    ASSERT_TRUE(schema.ok());
+    const std::vector<TensorSpec> inputs{
+            MakeSpec(DataType::Float32(), {1, 8, 1, 64}),
+            MakeSpec(DataType::Float32(), {1, 8, 1, 64}),
+            MakeSpec(DataType::Float(16), {1, 8, 1024, 64}),
+            MakeSpec(DataType::BFloat(16), {1, 8, 1024, 64}),
+    };
+    const std::vector<TensorSpec> outputs{
+            MakeSpec(DataType::Float(16), {1, 8, 1024, 64}),
+            MakeSpec(DataType::Float(16), {1, 8, 1024, 64}),
+    };
+
+    const auto derived = DeriveSelectorDTypes(*schema, inputs, outputs);
+
+    ASSERT_FALSE(derived.ok());
+    EXPECT_EQ(derived.status(), StatusCode::kInvalidArgument);
+    EXPECT_NE(derived.status().message().find("inconsistent state"), std::string::npos);
 }
 
 TEST(OperatorSelectorDTypes, RejectsUndefinedActivationDType) {

@@ -45,6 +45,17 @@ struct AttentionF32KernelArgs {
 Status RunAttentionF32Reference(const AttentionF32KernelArgs& args,
                                 const KVCacheReadBinding& read) noexcept;
 
+/// @brief Runs prevalidated causal scaled dot-product Attention over a KV16 cache.
+///
+/// Q/output stay F32; K/V are widened from the F16/BF16 cache on read. The
+/// reduction is fixed F32 (independent product/add, ascending head_dim and
+/// visible token order); this TU is compiled with FMA contraction disabled.
+/// `kv_dtype` must be scalar Float(16) or BFloat(16) and match the read
+/// binding's storage dtype (validated by the caller).
+Status RunAttentionKV16Reference(const AttentionF32KernelArgs& args,
+                                 const KVCacheReadBinding& read,
+                                 DataType kv_dtype) noexcept;
+
 } // namespace aethermind::cpu::detail
 
 #endif // AETHERMIND_BACKEND_CPU_KERNELS_ATTENTION_ATTENTION_INTERNAL_H

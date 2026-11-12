@@ -6,9 +6,12 @@ namespace aethermind::detail {
 
 namespace {
 
-// Reports the first unsupported dtype among k/v/cache and enforces that all
-// four inputs share the same dtype. Mixed dtypes between activations and cache
-// are rejected: no implicit conversion is declared.
+// Validates the KVCacheUpdate dtype contract. Two tuple families are legal:
+//   * same-dtype: k, v, k_cache_in, v_cache_in all share one supported dtype;
+//   * P3 mixed KV16: k/v activation=F32 with k_cache_in/v_cache_in in the same
+//     F16 or BF16 (the A32->KV16 narrowing boundary).
+// Activations must agree, caches must agree. No other mixed combination
+// declares an implicit conversion.
 Status ValidateKVCacheUpdateDTypes(std::span<const TensorSpec> inputs) {
     const TensorSpec& k = inputs[0];
     const TensorSpec& v = inputs[1];
@@ -17,7 +20,23 @@ Status ValidateKVCacheUpdateDTypes(std::span<const TensorSpec> inputs) {
 
     if (!IsKVCacheUpdateSupportedDType(k.dtype)) {
         return Status::InvalidArgument(
-                MakeKVCacheUpdateUnsupportedDTypeMessage("KVCacheUpdate k"));
+                MakeKVCacheUpdateUnsupportedDTypeMessage(
+                        "KVCacheUpdate k"));
+    }
+
+    if (!IsKVCacheUpdateSupportedDType(v.dtype)) {
+        return Status::InvalidArgument(MakeKVCacheUpdateUnsupportedDTypeMessage(
+                "KVCacheUpdate v"));
+    }
+
+    if (!IsKVCacheUpdateSupportedDType(k_cache.dtype)) {
+        return Status::InvalidArgument(MakeKVCacheUpdateUnsupportedDTypeMessage(
+                "KVCacheUpdate k_cache_in"));
+    }
+
+    if (!IsKVCacheUpdateSupportedDType(v_cache.dtype)) {
+        return Status::InvalidArgument(MakeKVCacheUpdateUnsupportedDTypeMessage(
+                "KVCacheUpdate v_cache_in"));
     }
 
     if (v.dtype != k.dtype) {
@@ -25,14 +44,19 @@ Status ValidateKVCacheUpdateDTypes(std::span<const TensorSpec> inputs) {
                 "KVCacheUpdate v dtype must match k dtype");
     }
 
-    if (k_cache.dtype != k.dtype) {
+    if (v_cache.dtype != k_cache.dtype) {
         return Status::InvalidArgument(
-                "KVCacheUpdate k_cache_in dtype must match k dtype");
+                "KVCacheUpdate k_cache_in and v_cache_in dtypes must match");
     }
 
-    if (v_cache.dtype != k.dtype) {
+    const bool same_dtype = k_cache.dtype == k.dtype;
+    const bool mixed_kv16 = k.dtype == DataType::Float32() &&
+                            (k_cache.dtype == DataType::Float(16) ||
+                             k_cache.dtype == DataType::BFloat(16));
+    if (!same_dtype && !mixed_kv16) {
         return Status::InvalidArgument(
-                "KVCacheUpdate v_cache_in dtype must match k dtype");
+                "KVCacheUpdate requires k/v/cache same dtype, or k/v=float32 "
+                "with cache float16 or bfloat16");
     }
     return Status::Ok();
 }
@@ -156,8 +180,9 @@ StatusOr<InferenceResult> InferKVCacheUpdate(const OpParams& params,
     AM_RETURN_IF_ERROR(ValidateKVCacheUpdateDTypes(inputs));
     AM_RETURN_IF_ERROR(ValidateKVCacheUpdateShapes(inputs));
 
-    // Cache-out follows cache-in verbatim (shape and dtype). The dtype is now
-    // guaranteed to match k/v by ValidateKVCacheUpdateDTypes.
+    // Cache-out follows cache-in verbatim (shape and dtype). For the mixed
+    // A32->KV16 tuple the cache keeps its own F16/BF16 dtype, distinct from the
+    // F32 activations; the narrowing happens at the kernel write boundary.
     return InferenceResult{
             .outputs = {inputs[2], inputs[3]},
     };

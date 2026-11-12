@@ -47,7 +47,9 @@ Status ValidatePreparedWorkspaceRequirement(const ResolvedKernel& kernel) {
 
 std::optional<WorkspaceRequirement> MakeCallerWorkspaceAssertion(
         const WorkspaceRequirement& requirement) noexcept {
-    return HasLegacyWorkspaceRequirement(requirement) ? std::optional{requirement} : std::nullopt;
+    return HasLegacyWorkspaceRequirement(requirement)
+                   ? std::optional{requirement}
+                   : std::nullopt;
 }
 
 Status ValidateCallerWorkspaceRequirement(const WorkspaceRequirement& caller,
@@ -110,8 +112,8 @@ bool ShapeMatchesSpec(const TensorSpec& spec,
     }
 
     for (size_t d = 0; d < shape.size(); ++d) {
-        const ShapeSymbol& dimension = spec.shape[d];
-        if (dimension.IsStatic() && shape[d] != dimension.GetStaticValue()) {
+        if (const ShapeSymbol& dimension = spec.shape[d];
+            dimension.IsStatic() && shape[d] != dimension.GetStaticValue()) {
             return false;
         }
     }
@@ -133,7 +135,7 @@ StatusOr<std::vector<ShapeConstraint>> RemapRuntimeChecks(
         output_to_kernel[semantic_port] = i;
     }
 
-    auto remap_port = [&inference_input_ports, &output_to_kernel](TensorPort& port) -> Status {
+    auto remap_port = [&inference_input_ports, &output_to_kernel](TensorPort& port) {
         if (port.direction == TensorPortType::kInput) {
             if (port.tensor_idx >= inference_input_ports.size()) {
                 return Status::Internal(
@@ -305,24 +307,39 @@ StatusOr<PreparedNode> PrepareNode(OpType op_type,
     const auto selector_dtypes =
             DeriveSelectorDTypes(*schema, semantic_inputs, semantic_outputs);
     if (!selector_dtypes.ok()) {
-        return untrusted ? Status::InvalidArgument("ExecutionPlanNodeSpec selector "
-                                                   "dtypes cannot be derived")
-                         : Status::Internal("Finalized LoweredStepSpec selector "
-                                            "dtypes cannot be derived");
+        return untrusted ? Status::InvalidArgument(
+                                   "ExecutionPlanNodeSpec selector "
+                                   "dtypes cannot be derived")
+                         : Status::Internal(
+                                   "Finalized LoweredStepSpec selector "
+                                   "dtypes cannot be derived");
     }
 
     if (selector.act_dtype != selector_dtypes->act_dtype) {
-        return untrusted ? Status::InvalidArgument("ExecutionPlanNodeSpec.selector.act_dtype"
-                                                   " does not match semantic specs")
-                         : Status::Internal("Finalized LoweredStepSpec.selector.act_dtype "
-                                            "does not match semantic specs");
+        return untrusted ? Status::InvalidArgument(
+                                   "ExecutionPlanNodeSpec.selector.act_dtype"
+                                   " does not match semantic specs")
+                         : Status::Internal(
+                                   "Finalized LoweredStepSpec.selector.act_dtype "
+                                   "does not match semantic specs");
     }
 
     if (selector.weight_dtype != selector_dtypes->weight_dtype) {
-        return untrusted ? Status::InvalidArgument("ExecutionPlanNodeSpec.selector.weight_dtype"
-                                                   " does not match semantic specs")
-                         : Status::Internal("Finalized LoweredStepSpec.selector.weight_dtype"
-                                            " does not match semantic specs");
+        return untrusted ? Status::InvalidArgument(
+                                   "ExecutionPlanNodeSpec.selector.weight_dtype"
+                                   " does not match semantic specs")
+                         : Status::Internal(
+                                   "Finalized LoweredStepSpec.selector.weight_dtype"
+                                   " does not match semantic specs");
+    }
+
+    if (selector.state_dtype != selector_dtypes->state_dtype) {
+        return untrusted ? Status::InvalidArgument(
+                                   "ExecutionPlanNodeSpec.selector.state_dtype"
+                                   " does not match semantic specs")
+                         : Status::Internal(
+                                   "Finalized LoweredStepSpec.selector.state_dtype"
+                                   " does not match semantic specs");
     }
 
     auto remapped_checks =
@@ -482,6 +499,7 @@ StatusOr<PreparedExecutionGraph> PrepareUntrustedGraph(
                 return Status::InvalidArgument(
                         "kPacked ExecutionPlanNodeSpec has no kWeight input");
             }
+
             prepared->packed_key = WeightArtifactKey{
                     .source_id = 0,
                     .value_index = weight_operand->index,

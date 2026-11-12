@@ -53,7 +53,7 @@ StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(
         const OperatorSchema& schema,
         std::span<const TensorSpec> all_inputs);
 
-/// @brief Activation and weight dtypes that an operator's specs imply.
+/// @brief Activation, weight, and state dtypes that an operator's specs imply.
 ///
 /// The sole source of selector dtype semantics: graph lowering derives the
 /// lowered selector from these, and the untrusted ExecutionPlanNodeSpec path
@@ -61,6 +61,9 @@ StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(
 struct SelectorDTypes {
     DataType act_dtype{};
     DataType weight_dtype{};
+    /// Undefined when the operator has no state ports; otherwise the single
+    /// dtype shared by all state input/output ports.
+    DataType state_dtype{};
 };
 
 /// @brief Derives the selector dtypes an operator's specs imply.
@@ -71,7 +74,10 @@ struct SelectorDTypes {
 ///   has no activation input (e.g. Embedding).
 /// - weight_dtype comes from the contributing weight input ports (all must
 ///   agree), falling back to act_dtype when the operator has no weight port.
-/// - kModelInput/kConstant/kState ports never contribute a dtype.
+/// - state_dtype comes from every kState input/output port in the full schema
+///   (all must agree), independent of contributes_tensor_spec; it is undefined
+///   when the operator has no state port. kModelInput/kConstant ports never
+///   contribute a dtype.
 ///
 /// @param schema Operator schema defining port kinds and participation.
 /// @param input_specs Full schema-port-ordered input specs.

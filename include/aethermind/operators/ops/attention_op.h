@@ -15,10 +15,11 @@ namespace aethermind {
 
 /// @brief Supported dtype set for the Attention operator.
 ///
-/// q, K cache, and V cache must share the same dtype from this set. Mixed
-/// dtypes between q and the caches are rejected: no implicit conversion
-/// policy is declared by the operator params. Output dtype follows q.
-inline const std::array<DataType, 3> kAttentionSupportedDTypes = {
+/// Two tuple families are legal: q/K cache/V cache all share one dtype from
+/// this set, or the P3 mixed KV16 boundary q=F32 with K/V cache in the same
+/// F16 or BF16. K/V caches must always agree; no other mixed combination
+/// declares an implicit conversion. Output dtype follows q.
+inline const std::array kAttentionSupportedDTypes = {
         DataType::Float32(),
         DataType::Float(16),
         DataType::BFloat(16),

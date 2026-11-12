@@ -47,17 +47,20 @@ Status ValidateStateAlias(const LoweredGraph& lowered,
     const LoweredStep& step = lowered.steps()[alias.step_index];
     const auto schema = GetOperatorSchema(step.spec.op_type);
     if (!schema.ok()) {
-        return Status::Internal(prefix + "step has no registered operator schema");
+        return Status::Internal(
+                prefix + "step has no registered operator schema");
     }
 
     if (alias.input_port >= schema->input_ports.size() ||
         alias.output_port >= schema->output_ports.size()) {
-        return Status::Internal(prefix + "schema port index out of range");
+        return Status::Internal(
+                prefix + "schema port index out of range");
     }
 
     if (schema->input_ports[alias.input_port].kind != OperatorPortKind::kState ||
         schema->output_ports[alias.output_port].kind != OperatorPortKind::kState) {
-        return Status::Internal(prefix + "alias ports must both be state ports");
+        return Status::Internal(
+                prefix + "alias ports must both be state ports");
     }
 
     bool declared = std::ranges::any_of(
@@ -168,6 +171,48 @@ Status ValidateLoweredGraph(const LoweredGraph& lowered) {
             return Status::Internal(
                     "ValidateLoweredGraph: step " + std::to_string(i) +
                     " has undefined selector dtype");
+        }
+
+        // State dtype identity: selector.state_dtype must equal the single
+        // dtype shared by every kState port, or be undefined for a stateless
+        // step. State ports are checked even though they do not contribute to
+        // compact shape inference.
+        DataType expected_state_dtype{};
+        bool has_state_port = false;
+        for (size_t j = 0; j < schema->input_ports.size(); ++j) {
+            if (schema->input_ports[j].kind != OperatorPortKind::kState) {
+                continue;
+            }
+
+            const DataType& dtype = step.spec.input_specs[j].dtype;
+            if (has_state_port && expected_state_dtype != dtype) {
+                return Status::Internal(
+                        "ValidateLoweredGraph: step " + std::to_string(i) +
+                        " has inconsistent state dtypes");
+            }
+            expected_state_dtype = dtype;
+            has_state_port = true;
+        }
+
+        for (size_t j = 0; j < schema->output_ports.size(); ++j) {
+            if (schema->output_ports[j].kind != OperatorPortKind::kState) {
+                continue;
+            }
+
+            const DataType& dtype = step.spec.output_specs[j].dtype;
+            if (has_state_port && expected_state_dtype != dtype) {
+                return Status::Internal(
+                        "ValidateLoweredGraph: step " + std::to_string(i) +
+                        " has inconsistent state dtypes");
+            }
+            expected_state_dtype = dtype;
+            has_state_port = true;
+        }
+
+        if (step.spec.selector.state_dtype != expected_state_dtype) {
+            return Status::Internal(
+                    "ValidateLoweredGraph: step " + std::to_string(i) +
+                    " selector.state_dtype does not match state specs");
         }
 
         const auto weight_input_count = static_cast<size_t>(std::count_if(

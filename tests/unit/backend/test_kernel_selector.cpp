@@ -96,4 +96,87 @@ TEST(KernelSelectorToString, ContainsAllFieldNames) {
     EXPECT_TRUE(str.find("phase=") != std::string::npos);
 }
 
+TEST(KernelSelectorState, EqualityDetectsDifferentStateDType) {
+    KernelSelector lhs{
+            .device_type = DeviceType::kCPU,
+            .act_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .state_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPlain,
+            .phase = ExecPhase::kBoth,
+    };
+    KernelSelector rhs = lhs;
+    rhs.state_dtype = DataType::Float(16);
+
+    EXPECT_NE(lhs, rhs);
+}
+
+TEST(KernelSelectorState, MatchesRequiresExactStateDType) {
+    KernelSelector f32_state{
+            .device_type = DeviceType::kCPU,
+            .act_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .state_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPlain,
+            .phase = ExecPhase::kBoth,
+    };
+    KernelSelector f16_state = f32_state;
+    f16_state.state_dtype = DataType::Float(16);
+    KernelSelector bf16_state = f32_state;
+    bf16_state.state_dtype = DataType::BFloat(16);
+
+    EXPECT_TRUE(SelectorMatches(f32_state, f32_state));
+    EXPECT_FALSE(SelectorMatches(f32_state, f16_state));
+    EXPECT_FALSE(SelectorMatches(f16_state, f32_state));
+    EXPECT_FALSE(SelectorMatches(f16_state, bf16_state));
+}
+
+TEST(KernelSelectorState, UndefinedStateIsNotWildcard) {
+    KernelSelector stateless{
+            .device_type = DeviceType::kCPU,
+            .act_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPlain,
+            .phase = ExecPhase::kBoth,
+    };
+    KernelSelector stateful = stateless;
+    stateful.state_dtype = DataType::Float32();
+
+    EXPECT_TRUE(stateless.state_dtype.IsUndefined());
+    EXPECT_TRUE(SelectorMatches(stateless, stateless));
+    EXPECT_FALSE(SelectorMatches(stateless, stateful));
+    EXPECT_FALSE(SelectorMatches(stateful, stateless));
+}
+
+TEST(KernelSelectorState, HashConsistentWithEquality) {
+    KernelSelector lhs{
+            .device_type = DeviceType::kCPU,
+            .act_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .state_dtype = DataType::BFloat(16),
+            .weight_format = WeightFormat::kPlain,
+            .phase = ExecPhase::kBoth,
+    };
+    KernelSelector rhs = lhs;
+    EXPECT_EQ(std::hash<KernelSelector>{}(lhs), std::hash<KernelSelector>{}(rhs));
+
+    rhs.state_dtype = DataType::Float(16);
+    EXPECT_NE(lhs, rhs);
+    EXPECT_NE(std::hash<KernelSelector>{}(lhs), std::hash<KernelSelector>{}(rhs));
+}
+
+TEST(KernelSelectorToString, ContainsStateDType) {
+    KernelSelector selector{
+            .device_type = DeviceType::kCPU,
+            .act_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .state_dtype = DataType::Float(16),
+            .weight_format = WeightFormat::kPlain,
+            .phase = ExecPhase::kBoth,
+    };
+
+    const std::string str = ToString(selector);
+    EXPECT_TRUE(str.find("state_dtype=") != std::string::npos);
+}
+
 } // namespace

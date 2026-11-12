@@ -5,6 +5,8 @@
 #include "aethermind/compiler/model_compiler.h"
 #include "aethermind/memory/buffer.h"
 #include "aethermind/model/model_loader.h"
+#include "aethermind/operators/operator_inference.h"
+#include "aethermind/operators/operator_schema.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "inference/test_malloc_interposer.h"
 #include "model/test_utils.h"
@@ -799,6 +801,16 @@ protected:
             for (size_t i = 0; i < step.binding.output_values.size(); ++i) {
                 step.spec.output_specs[i] = builder.values[step.binding.output_values[i].index].spec;
             }
+            // Re-derive the selector from the modified specs so a structurally
+            // consistent tamper still passes lowered state-identity validation.
+            const auto schema = GetOperatorSchema(step.spec.op_type);
+            ASSERT_TRUE(schema.ok()) << schema.status().ToString();
+            const auto dtypes = DeriveSelectorDTypes(
+                    *schema, step.spec.input_specs, step.spec.output_specs);
+            ASSERT_TRUE(dtypes.ok()) << dtypes.status().ToString();
+            step.spec.selector.act_dtype = dtypes->act_dtype;
+            step.spec.selector.weight_dtype = dtypes->weight_dtype;
+            step.spec.selector.state_dtype = dtypes->state_dtype;
         }
         auto graph = std::move(builder).Build();
         ASSERT_TRUE(graph.ok()) << graph.status().ToString();
@@ -845,7 +857,9 @@ TEST_F(CAbiKVValidation, RejectsNonFirstLayerStateDtype) {
     for (auto& value: builder.values) {
         const auto* state = std::get_if<StateValue>(&value.payload);
         const auto* kv = state == nullptr ? nullptr : std::get_if<KVCacheStateBinding>(&state->binding);
-        if (kv != nullptr && kv->decoder_layer_index == 1 && kv->slot == KVCacheSlot::kValue) {
+        // Tamper both K and V of layer 1 so the step's state stays uniform and
+        // the graph remains structurally valid; the adapter must still reject.
+        if (kv != nullptr && kv->decoder_layer_index == 1) {
             value.spec.dtype = DataType::BFloat(16);
             ++changed;
         }
@@ -857,10 +871,18 @@ TEST_F(CAbiKVValidation, RejectsNonFirstLayerStateDtype) {
     EXPECT_EQ(result, StatusCode::kInvalidArgument);
 }
 
-TEST_F(CAbiKVValidation, RejectsNonFloat32AliasOutputEvenWhenRootIsFloat32) {
+TEST_F(CAbiKVValidation, RejectsNonFloat32KvStateIncludingAliasOutputs) {
     auto builder = Clone();
     ASSERT_FALSE(builder.state_aliases.empty());
-    builder.values[builder.state_aliases.back().output.index].spec.dtype = DataType::Float(16);
+    // Uniformly retypes every KV state value (roots and alias outputs) to F16 so
+    // each step stays structurally consistent; the adapter's per-value F32
+    // policy must reject the alias outputs as well as the roots.
+    for (auto& value: builder.values) {
+        const auto* state = std::get_if<StateValue>(&value.payload);
+        if (state != nullptr && std::holds_alternative<KVCacheStateBinding>(state->binding)) {
+            value.spec.dtype = DataType::Float(16);
+        }
+    }
     ReplaceGraph(std::move(builder));
     ASSERT_FALSE(::testing::Test::HasFatalFailure());
     const auto result = c_api::detail::ValidateRuntimeModelKV(*runtime_, *artifact_);

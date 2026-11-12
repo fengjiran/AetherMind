@@ -91,14 +91,18 @@ protected:
         const KernelSelector selector{.device_type = DeviceType::kCPU,
                                       .act_dtype = DataType::Float32(),
                                       .weight_dtype = DataType::Float32()};
+        const KernelSelector state_selector{.device_type = DeviceType::kCPU,
+                                            .act_dtype = DataType::Float32(),
+                                            .weight_dtype = DataType::Float32(),
+                                            .state_dtype = DataType::Float32()};
         std::vector<ExecutionStep> steps;
         StateAliasPlan aliases;
         if (append) {
             CpuBackend backend;
             AM_ASSIGN_OR_RETURN(auto update,
-                                backend.PrepareKernel(OpType::kKVCacheUpdate, selector,
+                                backend.PrepareKernel(OpType::kKVCacheUpdate, state_selector,
                                                       OpParams{KVCacheUpdateParams{}}));
-            steps.push_back({.selector = selector,
+            steps.push_back({.selector = state_selector,
                              .kernel = std::move(update),
                              .inputs = {{.index = 0}, {.index = 1}, {.index = 3}, {.index = 4}},
                              .outputs = {{.index = 5}, {.index = 6}},

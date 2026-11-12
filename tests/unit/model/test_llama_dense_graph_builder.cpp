@@ -271,17 +271,33 @@ TEST(ModelGraphBuildOptions, MatchingBfloatActivationOverridePreservesLegacyFoll
     EXPECT_EQ(graph->GetValue(embedding.outputs.front()).spec.dtype, DataType::BFloat(16));
 }
 
-TEST(ModelGraphBuildOptions, RejectsMixedKvDTypeWithoutConversionSemantics) {
+TEST(ModelGraphBuildOptions, MixedKv16SelectsReducedStateDTypeWithFloat32Activation) {
     const HfModelConfig config = MakeLlamaConfig(1);
     const ResolvedModelWeights weights = MakeWeights(config);
 
     const auto graph = BuildLlamaDense(config, weights,
                                        {.activation_dtype = DataType::Float32(),
                                         .kv_dtype = DataType::Float(16)});
+    ASSERT_TRUE(graph.ok()) << graph.status().ToString();
 
-    ASSERT_FALSE(graph.ok());
-    EXPECT_EQ(graph.status(), StatusCode::kInvalidArgument);
-    EXPECT_NE(graph.status().message().find("dtype"), std::string::npos);
+    const auto lowered = LowerModelGraph(*graph);
+    ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
+    bool saw_update = false;
+    bool saw_attention = false;
+    for (const auto& step: lowered->steps()) {
+        if (step.spec.op_type == OpType::kKVCacheUpdate) {
+            EXPECT_EQ(step.spec.selector.act_dtype, DataType::Float32());
+            EXPECT_EQ(step.spec.selector.state_dtype, DataType::Float(16));
+            saw_update = true;
+        }
+        if (step.spec.op_type == OpType::kAttention) {
+            EXPECT_EQ(step.spec.selector.act_dtype, DataType::Float32());
+            EXPECT_EQ(step.spec.selector.state_dtype, DataType::Float(16));
+            saw_attention = true;
+        }
+    }
+    EXPECT_TRUE(saw_update);
+    EXPECT_TRUE(saw_attention);
 }
 
 TEST(LlamaDenseGraphBuilder, AddRmsNormFusionCoversMultiLayerResidualAndFinalNormPaths) {

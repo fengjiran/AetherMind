@@ -80,8 +80,9 @@ StatusOr<InferenceResult> InferOperator(OpType op_type,
     return Status::InvalidArgument("Unknown op type");
 }
 
-StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(const OperatorSchema& schema,
-                                                        std::span<const TensorSpec> all_inputs) {
+StatusOr<std::vector<TensorSpec>> MakeCompactInputSpecs(
+        const OperatorSchema& schema,
+        std::span<const TensorSpec> all_inputs) {
     if (schema.input_ports.size() != all_inputs.size()) {
         return Status::InvalidArgument(
                 "MakeCompactInputSpecs: input count mismatch, schema expects " +
@@ -139,9 +140,28 @@ StatusOr<SelectorDTypes> DeriveSelectorDTypes(const OperatorSchema& schema,
                 "operator schema has no contributing activation dtype source");
     }
 
+    // State dtype is derived from every kState port in the full schema,
+    // independent of contributes_tensor_spec (state inputs do not contribute
+    // to compact shape inference but still carry the KV storage dtype).
+    std::optional<DataType> state_dtype;
+    for (size_t i = 0; i < schema.input_ports.size(); ++i) {
+        if (schema.input_ports[i].kind == OperatorPortKind::kState) {
+            AM_RETURN_IF_ERROR(SetSelectorDTypeCandidate(
+                    input_specs[i], state_dtype, "state"));
+        }
+    }
+
+    for (size_t i = 0; i < schema.output_ports.size(); ++i) {
+        if (schema.output_ports[i].kind == OperatorPortKind::kState) {
+            AM_RETURN_IF_ERROR(SetSelectorDTypeCandidate(
+                    output_specs[i], state_dtype, "state"));
+        }
+    }
+
     return SelectorDTypes{
             .act_dtype = *act_dtype,
             .weight_dtype = weight_dtype.value_or(*act_dtype),
+            .state_dtype = state_dtype.value_or(DataType{}),
     };
 }
 

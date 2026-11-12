@@ -107,6 +107,7 @@ StatusOr<LoweredGraph> LowerModelGraph(const ModelGraph& graph,
 
         spec.selector.act_dtype = selector_dtypes->act_dtype;
         spec.selector.weight_dtype = selector_dtypes->weight_dtype;
+        spec.selector.state_dtype = selector_dtypes->state_dtype;
         const bool has_weight_input = std::ranges::any_of(
                 schema->input_ports,
                 [](const OperatorInputPort& port) {

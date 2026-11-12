@@ -12,12 +12,12 @@ namespace aethermind {
 
 /// @brief Supported dtype set for the KVCacheUpdate operator.
 ///
-/// All four tensor inputs (k, v, k_cache_in, v_cache_in) must share the same
-/// dtype from this set. Mixed dtypes between activations and cache are
-/// rejected: no implicit conversion policy is declared by the operator params.
-/// If mixed cache dtype becomes a real requirement, add an explicit conversion
-/// policy instead of silently accepting arbitrary combinations.
-inline const std::array<DataType, 3> kKVCacheUpdateSupportedDTypes = {
+/// Two tuple families are legal: all four tensor inputs (k, v, k_cache_in,
+/// v_cache_in) share one dtype from this set, or the P3 mixed KV16 boundary
+/// k/v activation=F32 with k_cache_in/v_cache_in in the same F16 or BF16.
+/// Activations must agree and caches must agree; no other mixed combination
+/// declares an implicit conversion. Cache-out follows cache-in verbatim.
+inline const std::array kKVCacheUpdateSupportedDTypes = {
         DataType::Float32(),
         DataType::Float(16),
         DataType::BFloat(16),

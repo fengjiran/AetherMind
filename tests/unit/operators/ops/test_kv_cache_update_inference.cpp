@@ -59,6 +59,58 @@ TEST(KVCacheUpdateInference, AcceptsBFloat16) {
                         .ok());
 }
 
+// --- P3 mixed A32->KV16 boundary: k/v=F32, cache in same F16/BF16 ---
+
+std::vector<TensorSpec> MakeMixedInputs(DataType cache_dtype, int64_t t = 1,
+                                        int64_t kv_heads = 8,
+                                        int64_t cache_len = 1024,
+                                        int64_t head_dim = 64) {
+    return {
+            MakeSpec(DataType::Float32(), {t, kv_heads * head_dim}),
+            MakeSpec(DataType::Float32(), {t, kv_heads * head_dim}),
+            MakeSpec(cache_dtype, {kv_heads, cache_len, head_dim}),
+            MakeSpec(cache_dtype, {kv_heads, cache_len, head_dim}),
+    };
+}
+
+TEST(KVCacheUpdateInference, AcceptsMixedFloat16Cache) {
+    auto inputs = MakeMixedInputs(DataType::Float(16));
+    auto result = InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, inputs);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_EQ(result->outputs.size(), 2u);
+    EXPECT_EQ(result->outputs[0].dtype, DataType::Float(16));
+    EXPECT_EQ(result->outputs[1].dtype, DataType::Float(16));
+    EXPECT_EQ(result->outputs[0].shape, inputs[2].shape);
+    EXPECT_EQ(result->outputs[1].shape, inputs[3].shape);
+}
+
+TEST(KVCacheUpdateInference, AcceptsMixedBFloat16Cache) {
+    EXPECT_TRUE(InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{},
+                              MakeMixedInputs(DataType::BFloat(16)))
+                        .ok());
+}
+
+TEST(KVCacheUpdateInference, RejectsMixedKVCacheDTypeMismatch) {
+    auto inputs = MakeMixedInputs(DataType::Float(16));
+    inputs[3] = {DataType::BFloat(16), inputs[3].shape};
+    EXPECT_FALSE(InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, inputs).ok());
+}
+
+TEST(KVCacheUpdateInference, RejectsMixedFloat16ActivationWithFloat32Cache) {
+    // Only activation=F32 -> cache16 is declared; the reverse is not.
+    auto inputs = MakeConsistentInputs(DataType::Float32());
+    inputs[0] = {DataType::Float(16), inputs[0].shape};
+    inputs[1] = {DataType::Float(16), inputs[1].shape};
+    EXPECT_FALSE(InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, inputs).ok());
+}
+
+TEST(KVCacheUpdateInference, RejectsMixedInt32Activation) {
+    auto inputs = MakeMixedInputs(DataType::Float(16));
+    inputs[0] = {DataType::Int(32), inputs[0].shape};
+    inputs[1] = {DataType::Int(32), inputs[1].shape};
+    EXPECT_FALSE(InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, inputs).ok());
+}
+
 // --- Dtype rejection ---
 
 TEST(KVCacheUpdateInference, RejectsInt32K) {

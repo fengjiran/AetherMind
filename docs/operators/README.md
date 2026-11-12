@@ -16,7 +16,7 @@ docs/operators/
     └── benchmarks/                # 证据记录：一机器一文件，追加式，不覆盖
 ```
 
-现有目录包括 `gemm/`、`linear/`、`rmsnorm/`、`rope/`，以及 backend 数值 primitive `fp16_conversion/`、`bf16_conversion/`。
+现有目录包括 `gemm/`、`linear/`、`embedding/`、`rmsnorm/`、`rope/`、`attention/`、`kv_cache_update/`，以及 backend 数值 primitive `fp16_conversion/`、`bf16_conversion/`。
 
 ## 规则
 
@@ -33,5 +33,7 @@ docs/operators/
 | RoPE | [rope/](rope/) | 契约（contract basis） |
 | Linear | [linear/](linear/) | F32 与 W16/A32 reference、plain/identity-packed、单机基线 |
 | Embedding | [embedding/](embedding/) | F32 output、W16 scalar/F16C/AVX2 行级 widening 与单机基线 |
+| Attention | [attention/](attention/) | F32 与 A32/KV16 reference、四组合模型验收与单机 baseline |
+| KVCacheUpdate | [kv_cache_update/](kv_cache_update/) | F32 与 A32→KV16 update/transaction、四组合验收与单机 baseline |
 | FP16 批量转换（backend 数值 primitive，无 GraphOp） | [fp16_conversion/](fp16_conversion/) | scalar/F16C/AVX2 合同、权重准备接入及单机证据 |
 | BF16 批量转换（backend 数值 primitive，无 GraphOp） | [bf16_conversion/](bf16_conversion/) | 双向 scalar/AVX2 合同、独立 prepared 函数表与权重准备接入 |

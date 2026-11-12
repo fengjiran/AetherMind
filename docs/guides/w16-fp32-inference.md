@@ -1,6 +1,6 @@
 # CPU W16 权重与 FP32 执行
 
-状态为 Current。C++ `ExecutableModel::Load` 提供 CPU Llama Dense 的 F16/BF16 矩阵执行，支持 O1/plain 和 O2/identity-packed。矩阵、Embedding 和 LM head 保留选定的 16-bit 格式，Final/Input/PostAttention Norm 在准备期转为 F32，activation、residual、KV 和 logits 为 F32。
+状态为 Current。C++ `ExecutableModel::Load` 提供 CPU Llama Dense 的 F16/BF16 矩阵执行，支持 O1/plain 和 O2/identity-packed。矩阵、Embedding 和 LM head 保留选定的 16-bit 格式，Final/Input/PostAttention Norm 在准备期转为 F32，activation、residual 和 logits 为 F32。KV 默认 F32，也可在 retained-W16 policy 下显式选择 F16 或 BF16。
 
 Runtime 使用模型几何和 F32 KV 创建，并保持稳定地址。通过显式 policy 选择权重精度。
 
@@ -15,6 +15,31 @@ auto model = ExecutableModel::Load(runtime, model_dir, options);
 ```
 
 F16 模式选择 `kKeepFp16WeightsFp32Activation`。`kO2Packed` 使用 W16 identity artifacts 和 QKV/GateUp composite，布局保留两字节元素。已有 F32 B-panel 的布局身份仍描述其 F32 物理格式。
+
+## 显式 KV16
+
+W16 与 KV 精度独立选择；同一 Runtime 的所有层 K/V 使用同一 scalar dtype。将同一个显式值传入 Runtime 组装与模型加载：
+
+```cpp
+const DataType kv_dtype = DataType::BFloat(16);
+AM_ASSIGN_OR_RETURN(auto runtime_options,
+                    MakeCpuRuntimeOptions(config, {.context_tokens = 2048,
+                                                   .kv_dtype = kv_dtype}));
+RuntimeBuilder builder;
+builder.WithOptions(runtime_options);
+AM_ASSIGN_OR_RETURN(auto runtime, builder.TryBuild());
+auto model = ExecutableModel::Load(
+        runtime, model_dir,
+        {.preset = CompilePreset::kO1Plain,
+         .weights = WeightPolicy::kKeepFp16WeightsFp32Activation,
+         .kv_dtype = kv_dtype});
+```
+
+示例所在函数返回 Status/StatusOr，并继续检查 Load 结果；config 应由 Loader 验证。Runtime 必须保持最终地址并长于 model/session。KV16 Load 需要已有 Manager，且其物理 dtype 与请求一致；不一致在转换或 packing 前拒绝。默认 strict-F32、FP32 compatibility、产品 CLI 与 C ABI 不自动扩大为 KV16。
+
+K 在既有 F32 RoPE 后 narrow，V 在写 cache 时 narrow，采用固定 RNE、gradual underflow 与 quiet NaN 合同。Prefill 当前 token 也先写 cache16，Attention 再 widening 并用 F32 计算；不保留平行 F32 cache。模型对独立量化 oracle 的实现误差与同 W16/KV32 的质量差分别验收，不能混用两套预算。
+
+实际 KV 字节由 padded layout 决定；小 head_dim 的两字节元素可能仍占相同的对齐行，不能保证物理 KV 或整个进程内存减半。数值、四组合 O1/O2、2048 context、零分配与 baseline 范围见 [P3 验收记录](../tests/kv16_execution_validation_2026-11-12.md)。
 
 ## 准备与所有权
 

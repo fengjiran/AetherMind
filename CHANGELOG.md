@@ -6,6 +6,7 @@
 
 ### Added
 
+- CPU Llama Dense 的 retained-W16 C++ policy 支持显式 F16/BF16 KV，W 与 KV 独立选择，activation/residual/logits 保持 F32。新增 `ModelLoadOptions::kv_dtype`、`CpuRuntimeAssemblyOptions::kv_dtype`、通用 `MakeKVCacheOptions` 和严格匹配的 `KernelSelector::state_dtype`；KVUpdate 在写入时 narrow、Attention 在读取时 widen，完整 plan 成功后发布 watermark。独立量化 oracle、四组合 O1/O2、2048 context、Decode 零分配和 prepared/ExecutionStep/model baseline 的范围见 [P3 验收](docs/tests/kv16_execution_validation_2026-11-12.md)。C++ 消费者需重新构建，C ABI/产品 CLI 保持 strict FP32。
 - CPU Llama Dense 新增 W16/A32 C++ policy，保留 F16/BF16 矩阵，仅转换 Norm，activation/KV/logits 使用 F32。O1/plain 与 O2/identity-packed 覆盖 Embedding、Linear/LM head 和 QKV/GateUp fused consumer，Embedding 按有效 CPU 特性使用 F16C/AVX2 行级 widening。新增 `EmbeddingParams::output_dtype`、Norm-only scope 和 retained-view 账本接口，C++ 消费者须重编译。见 [W16 执行指南](docs/guides/w16-fp32-inference.md)。
 - BF16/FP32 checked byte-batch API、双向 scalar、可选 AVX2 整数实现与 prepared 函数表：固定 RNE、gradual underflow、signed zero，NaN 保留 sign/payload 并 quiet，浮点环境不变。Backend 默认返回 scalar，CPU 在 effective features 含 AVX 与 AVX2 时选择 AVX2，短尾部复用 scalar；`ExecutableModel::Load` 将独立 BF16 widening callback 接入权重准备，每个唯一 BF16 tensor 调用一次。新增 C++ virtual 查询与 options 字段要求消费者重新编译；C ABI v1 准入不变。
 - FP16/FP32 checked byte-batch API 与 prepared 函数表：可选 F16C widening、AVX2 整数 narrowing、scalar fallback，保持 RNE、gradual underflow、quiet NaN 与浮点环境不变。`ExecutableModel::Load` 将 backend 有效特性选择的 widening 接入 F16 权重准备；BF16 路径与 C ABI v1 准入不变。新增独立 `AETHERMIND_ENABLE_F16C`，baseline presets 禁用 F16C/AVX2；C++ backend/options 消费者须重新编译。

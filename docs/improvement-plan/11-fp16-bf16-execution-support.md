@@ -1,15 +1,15 @@
 # FP16 / BF16 执行支持方案
 
 - **状态**: In Progress
-- **版本**: 1.8
-- **日期**: 2026-11-11
+- **版本**: 2.6
+- **日期**: 2026-11-12
 - **产品边界**: [当前产品 PRD](../products/aethermind_prd.md)；CPU-only、单进程、同步、单请求、Token IDs I/O、Llama Dense、静态连续 KV
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联计划**: [06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[07 模型准备入口](07-executable-model-preparation.md)、[08 KV/Attention 演进](08-kv-cache-and-attention-capability-evolution.md)、[09 模型家族扩展](09-qwen-and-moe-architecture-support.md)、[10 Runtime 组装入口](10-upper-level-runtime-assembly.md)
 - **算子工作流**: [算子开发与优化工作流](../guides/operator-development-workflow.md)
 - **关联模块**: dtypes / model / operators / graph / compiler / backend / execution / kv_cache / runtime / inference
 
-本文是阶段化提案。P1 的显式 FP32 compatibility 已完成限定实现和 tiny checkpoint 验证，见 [FP32 兼容推理指南](../guides/fp32-compatible-inference.md) 与 [P1 验证报告](../tests/fp32_compatibility_validation_2026-10-29.md)。P2 首批 CPU/O1/plain 与 O2/identity-packed、W16/A32/KV32 已完成限定验收，入口见 [W16 指南](../guides/w16-fp32-inference.md)，当前工作树测试与 sanitizer 范围见 [P2 验收记录](../tests/w16_fp32_execution_validation_2026-11-11.md)。P3–P4 仍为未来工作。
+本文是阶段化提案。P1 的显式 FP32 compatibility 已完成限定实现和 tiny checkpoint 验证，见 [FP32 兼容推理指南](../guides/fp32-compatible-inference.md) 与 [P1 验证报告](../tests/fp32_compatibility_validation_2026-10-29.md)。P2 首批 CPU/O1/plain 与 O2/identity-packed、W16/A32/KV32 已完成限定验收，入口见 [W16 指南](../guides/w16-fp32-inference.md)，源码身份与 sanitizer 范围见 [P2 验收记录](../tests/w16_fp32_execution_validation_2026-11-11.md)。P3 步骤 1–10 核心已完成：首批合同（§2.7–2.8）冻结与独立校准、mixed-KV 语义、`state_dtype` 身份迁移、布局账本、KV16 读写 reference、plan 事务、显式 `kv_dtype` 配置链、reduced fixture 四组合模型验收、§2.8 冻结预算校准 fixture（2048）正式生产验收、ASan/UBSan、prepared-operator baseline 与文档收口。KV16 在 CPU O1/O2 上端到端可执行并通过冻结预算验收；production ExecutionStep/模型级 baseline 与 SIMD 优化为后续 refinement；C ABI/CLI 保持 strict F32；P4 仍为未来工作。
 
 P2 的转换基础已包括 [FP16 批量转换](../operators/fp16_conversion/README.md) 的 scalar、F16C widening、AVX2 narrowing，以及 [BF16 批量转换](../operators/bf16_conversion/README.md) 的双向 scalar/AVX2、checked byte spans、prepared Backend 函数表和 P1 callback。下文冻结 P2 的准入、Embedding、Norm-only 和 kernel args 合同，P2 能力状态由各批次退出门禁判定。
 
@@ -37,9 +37,9 @@ P1 建立可执行基线，不是低内存方案；P2 是首个保留 16-bit 权
 |---|---|---|
 | `DataType`、`Half`、`BFloat16` 与 F16/BF16 safetensors 读取已存在；validator 接受 F32/F16/BF16 权重 | [DataType](../../include/aethermind/dtypes/data_type.h)、[HF dtype 解析](../../src/model/formats/hf/hf_utils.cpp)、[HF validator](../../src/model/formats/hf/hf_model_validator.cpp) | 不重复建设类型枚举或文件格式入口；加载不等于可执行 |
 | 多数 Llama 算子语义允许 reduced dtype；`Add` 白名单有 BF16、缺 F16 | [Linear 合同](../../include/aethermind/operators/ops/linear_op.h)、[Add 合同](../../include/aethermind/operators/ops/add_op.h) | 补齐 F16 Add 时同步 semantic inference、constant folding、CPU 注册及测试 |
-| `BuildLlamaDense` 从 `weight_dtype_hint` 得出 activation/KV dtype；Embedding 输出实际跟随权重 dtype | [Llama builder](../../src/model/llama_dense_graph_builder.cpp)、[Embedding inference](../../src/operators/ops/embedding_op.cpp) | hint 缺失/auto 或与实际权重不同，可能导致 KV 与 activation 不一致；需要显式执行精度权威 |
+| `BuildLlamaDense` 接受显式 activation/KV dtype；W16 Load 指定 A32/KV32，Embedding 显式输出 F32 | [Llama builder](../../src/model/llama_dense_graph_builder.cpp)、[Load](../../src/inference/executable_model.cpp)、[Embedding inference](../../src/operators/ops/embedding_op.cpp) | P3 复用 graph-build options；公开 KV 精度选项必须与 Runtime 物理布局一致，不从源 hint 推测 |
 | Linear/RMSNorm 语义分别校验 activation 与 weight，输出跟随 activation；Attention/KVUpdate 要求 activation 与 cache 同 dtype | [Linear inference](../../src/operators/ops/linear_op.cpp)、[RMSNorm inference](../../src/operators/ops/rmsnorm_op.cpp)、[Attention inference](../../src/operators/ops/attention_op.cpp)、[KVUpdate inference](../../src/operators/ops/kvcache_update_op.cpp) | W16/A32 有现成扩展基础；mixed KV 必须先扩展语义 |
-| Llama 所需 CPU kernel 尚未形成 F16/BF16 完整执行链；例如 Linear 注册为 F32/F32，BF16 Add 是局部已有能力 | [Linear entry](../../src/backend/cpu/kernels/linear/linear_entry.cpp)、[Add entry](../../src/backend/cpu/kernels/add/add_entry.cpp) | 按算子与完整 production path 分别验收，不将局部支持推广为整模型支持 |
+| P2 W16/A32/KV32 的 plain/identity-packed 链已限定验收；CPU Attention/KVUpdate 仍只消费 F32 cache | [P2 验收](../tests/w16_fp32_execution_validation_2026-11-11.md)、[Attention entry](../../src/backend/cpu/kernels/attention/attention_entry.cpp)、[KVUpdate entry](../../src/backend/cpu/kernels/kvcache_update/kvcache_update_entry.cpp) | KV16 需要独立的读写 reference 和完整模型证据，不因 Manager 接受两字节元素就获得执行支持 |
 | `KernelSelector` 严格匹配 activation/weight dtype；`DeriveSelectorDTypes` 忽略 state，未独立表达 output dtype | [selector](../../include/aethermind/base/kernel_selector.h)、[dtype 派生](../../src/operators/operator_inference.cpp) | W16/A32 可复用；mixed KV 和后续 mixed output 才扩展匹配身份 |
 | identity packing 保留源 dtype；现有 B-panel 只有 `kCpuBPanelF32Kc512Nr16`，packer/validator 限定 F32 | [CPU packing](../../src/backend/cpu/cpu_backend.cpp)、[recipe](../../include/aethermind/backend/packing_recipe.h)、[packed validation](../../src/backend/cpu/packed_weight_validation.cpp) | 16-bit B-panel 需要独立物理布局身份，不复用 F32 ID |
 | `Half(float)` 软件标量转换使用固定 RNE + gradual underflow，双向转换 quiet NaN；BF16 转换使用 RNE 并保留 sign 与截断后的 NaN payload | [Half 转换](../../src/dtypes/half.cpp)、[BF16 转换](../../src/dtypes/bfloat16.cpp) | Half 的 FTZ 行为已独立迁移；软件转换的合同和测试不代表 native 16-bit kernel 已支持 |
@@ -82,7 +82,7 @@ P2 要求 Embedding、linear 和 lm_head 的实际权重 dtype 与所选 F16/BF1
 
 1. TensorSpec、实际 bytes、TensorView、packed logical dtype、selector 与 kernel 参数一致。修改 dtype 标签不能代替数据转换。
 2. checkpoint 源 dtype 以各 tensor 的实际 metadata 为准；执行 activation/KV dtype 以经解析的 graph-build options 为准，`weight_dtype_hint` 只保留来源信息。
-3. 不隐式进行 BF16→F16、F32→16 或 F16↔BF16 转换；首次 P2 不承诺任意 mixed linear dtype。额外转换必须成为明确策略并单独验收。
+3. 不按 hint 或 ISA 隐式改变精度；P2 不进行 F32→16 activation 转换，也不承诺任意 mixed linear dtype。P3 仅在显式选定的 KV 写入边界执行 F32→16，在读取边界 widening；不因 W/KV 类型不同而转换矩阵权重。其他转换须有明确策略并单独验收。
 4. 累加精度是算子/kernel family 的固定数值合同，首批不开放任意 accumulator dtype 配置。
 5. 不支持的 tuple 在编译或准备阶段失败，错误携带 op、端口、实际/要求 dtype、preset 和 phase。ISA fallback 只能替换实现，不能改变精度合同。
 6. 相同 preset 的 Prefill/Decode 使用一致的权重与 KV 表示；阶段特化只能在同一数值合同下选择 kernel。
@@ -227,6 +227,66 @@ P2 reference 的数值门禁固定如下。Embedding 与已冻结的 widening �
 
 FP16 与 BF16 的指数范围和有效精度不同，不能按“都是 16-bit”互换。ISA 的可用性、吞吐与 workload 共同决定选择；不预设 BF16 总比 FP16 快，也不预设 16-bit 总比 FP32 快。硬件机制来源见 §7。
 
+### 2.7 P3 首批执行合同（步骤 1 冻结；实现与验收见 §4.4）
+
+本节定义并冻结实现必须满足的合同；当前实现与限定验收状态见 §4.4 和 [P3 验收记录](../tests/kv16_execution_validation_2026-11-12.md)。算子细节分别归 [KVCacheUpdate](../operators/kv_cache_update/README.md) 和 [Attention](../operators/attention/README.md)。
+
+| 矩阵 W | activation / residual / logits | 所有层 K/V storage | 首批 preset 与状态 |
+|---|---|---|---|
+| F16 | F32 | F16 | O1/plain 与 O2/identity-packed 已接通 |
+| F16 | F32 | BF16 | 同上 |
+| BF16 | F32 | F16 | 同上 |
+| BF16 | F32 | BF16 | 同上 |
+
+W 与 KV 精度独立选择；同一 Runtime 的全部层 K/V 必须使用同一 scalar dtype。Norm 保持 P2 的准备后 F32，checkpoint hint 继续只作 provenance。KV32 保持既有 P1/P2 合同。首批 KV16 只对上述两个 W16 policy 开放；F32 矩阵与 KV16 的模型组合另行准入。C ABI 与产品 CLI 保持 strict FP32。
+
+**配置合同（当前实现）。** 在 `CpuRuntimeAssemblyOptions` 和 `ModelLoadOptions` 末尾分别追加 `DataType kv_dtype = DataType::Float32()`，不扩张 `WeightPolicy` 来编码 KV 精度。通用 `MakeKVCacheOptions(config, context_tokens, kv_dtype)` 接受 scalar F32/F16/BF16，拒绝 undefined、scalable、其他类型及非法 lanes；现有 `MakeFp32KVCacheOptions` 保留为 F32 wrapper。显式选项分别驱动 RuntimeOptions 与 ModelGraphBuildOptions；KV16 Load 在权重转换和 packing 前验证已有 Manager 的实际 dtype 与请求相等，不修改或重建 Runtime。低层 Compile→Prepare/binding 路径也必须验证真实 state specs 与已有物理布局一致。新增 C++ 字段改变结构布局，消费者需重新构建。
+
+**唯一转换边界。** K 在既有 F32 RoPE 完成后窄化一次，V 从 F32 projection 输出窄化一次。KVUpdate 的 state 输入/输出 alias 同一实际 cache plane；Attention 必须从 cache16 读取，再 widening 到 F32。Prefill、Decode 及当前 query 可见的当步 K/V 都经过该边界，不能在 Prefill 直接旁路读取未窄化 activation。持久 cache 不保留平行 F32 数据源；未来 tile scratch 必须走既有 workspace 规划，不能改变该语义。
+
+```text
+K32 → 既有 F32 RoPE → RNE narrow → K cache16 ┐
+V32 ─────────────────→ RNE narrow → V cache16 ├→ widen → F32 Attention(Q32) → output32
+                                           ┘
+```
+
+**reference 算术。** KV 转换完全复用已有固定 RNE、gradual underflow、signed zero、overflow→signed Inf、quiet NaN 且保留 sign/可容纳 payload 的合同，转换自身不改变浮点环境。Attention 使用 F32 score、scale、max、`exp`、denominator、value accumulation 和除法；按 head dimension 升序进行独立 F32 product/add，按可见 token 升序执行 max 与 softmax 两遍扫描、累加 weighted V，最后除以 denominator。新 reference TU 禁止 FMA contraction 和 fast-math，不改变已交付 F32 kernel 的数值合同。RoPE 保持既有更高精度频率/旋转计算与最终 F32 写回。
+
+数值误差门禁使用 FE_TONEAREST、gradual-underflow 的 F32 环境（x86 FTZ/DAZ 关闭）。Attention 不负责修改/恢复调用方 FP 控制，不承诺算术异常 flags 不变；转换的 FP 环境保证不能推广为 Attention 保证。NaN/Inf 或 F32 中间溢出不触发额外 payload 预扫描、clamp 或有限结果补救；按固定算法的 F32/`std::exp` 传播检查分类，Attention 算术不承诺 NaN payload。含 +Inf 或全 -Inf 的 logits 不承诺有限 softmax，不能用零向量替代 NaN 来通过测试。模型误差/排名门禁要求输入与所比较的全部中间/输出有限。
+
+**state 身份与物理绑定。** `state_dtype` 只从完整 schema 的实际 state 输入/输出 specs 推导，不受 `contributes_tensor_spec=false` 过滤；各 state port 同型，无 state 时为唯一 undefined，严格匹配。同步覆盖 lowering、lowered artifact 验证、registry、hash/equality/ToString、untrusted 重校验与包含 selector 的 artifact key。无 weight 的算子沿用 weight dtype fallback，不借用该字段表达 KV。当前 untrusted stateful node 限制保持。
+
+F32 activation/query/output 使用元素单位正 stride 与实际 float 自然对齐；KV binding 的 stride 是字节单位，按真实两字节元素验证范围与 overflow，不沿用 `sizeof(float)`。生产基址仍遵守 layout alignment，byte-safe KV 读写不新增 float 对齐要求。KV padding 不参与转换/Attention。KVUpdate 两个只读 activation 可以共享 storage，但不得覆盖任一写入窗口；K/V destinations 互不重叠。Attention output 与 Q、可见 K/V 均不重叠。动态 KV 指针、append/read 区间和 query position 只借用于本次调用，不写入 prepared 参数。
+
+**失败与资源。** 先校验本次访问所需 metadata、dtype、geometry、alias 与可表示范围，再读写。完整 plan 和所有层写入成功后才提交 watermark；失败允许未提交窗口的 bytes 已改变，但不得发布该窗口或破坏已提交历史，重试重写完整 append range。Manager 的 generation/reservation/capacity 与外部串行化合同保持。逻辑两字节 payload 与 padded physical bytes 分别记账，不要求所有 head_dim/alignment 下总 KV 恰好减半。
+
+### 2.8 P3 数值门禁与独立校准
+
+验收分成三个独立层次：
+
+1. **转换位合同。** 以独立可表示值/nearest-even oracle 检查写入的每个 16-bit pattern 与 widening 位结果，覆盖全部 65,536 个源模式、F32 midpoint 邻点、零/subnormal/overflow/NaN。不得用被测 Half/BFloat16 helper 生成 expected。NaN 算术的 payload 不属于此位合同。
+2. **KV16 实现正确性。** 独立 reference 必须在每层 post-RoPE K 和原始 V 的写入位置窄化再 widening，包括 Prefill 当前 token；保留相同 W16 checkpoint 与 Norm 数据。比较每阶段 Attention/模型 logits、各层 K/V、watermark，固定数值容差与 near-tie 规则后再实现 kernel。
+3. **KV16 相对 KV32 的误差。** 同一 W16 checkpoint、同一 teacher-forced token/position 轨迹，对比 KV16 与 KV32。不能把权重精度误差并入 KV 误差，不能只比较最终 greedy token，也不能直接沿用 P2 容差。closed-loop Generate、EOS、重复请求另列测试。
+
+校准必须覆盖 MHA tied/untied、GQA/MQA tail、短 Prefill+至少两次 Decode，以及 2046-token Prefill+两次 Decode 至 2048 的 near-limit case；四种 W×KV 组合分别记录。校准使用独立于 AetherMind 的算法，并先通过既有 FP32 HF golden 交叉验证。本次校准从固定 F32 source 的全部矩阵独立 RNE 派生数学 W16，Norm 保留原 F32；它不验证实际序列化 W16 checkpoint 的加载。步骤 9 必须消费真实 reduced checkpoint、记录 payload identity，并对相同 payload 生成 reference。生成的脚本/编译参数、输入与 oracle hash、环境和全部测量保存在 raw；校准不验证 KV16 production path、实际两字节分配、O1/O2 kernel 或性能，不更新 accepted FP32 assets/checksums。
+
+**固定 finite 模型预算（已冻结，2026-11-12）。** 下表适用于本批 5 个 fixture、最长 2048-token 的 Prefill/两次 Decode、两种矩阵 dtype；每个 scalar 均须满足 `abs(actual-reference) <= atol + rtol * abs(reference)`，同时拒绝非有限比较值。K/V 以 decoded F32 数值比较。实现正确性对照固定量化边界、采用 FP64 归约后写回 F32 的独立 reference；质量对照采用同 W16 的 F32 计算/KV32 reference。
+
+| 对照层次 | KV dtype | logits atol | logits rtol | K/V atol | K/V rtol |
+|---|---|---:|---:|---:|---:|
+| 实现正确性 | F16 | `1e-6` | `2e-5` | `2e-4` | `2e-3` |
+| 实现正确性 | BF16 | `1e-6` | `2e-5` | `1.5e-3` | `2e-3` |
+| 相对 KV32 的误差 | F16 | `1e-3` | `2e-3` | `4e-4` | `4e-3` |
+| 相对 KV32 的误差 | BF16 | `5e-3` | `1e-2` | `2e-3` | `2e-2` |
+
+不同归约的上游 F32 微差可能跨 KV16 midpoint，使 cache 数值相差一个离散间隔；因此模型 K/V 不要求逐位相等，**单次转换在相同输入位模式下仍必须精确匹配独立位 oracle**。模型容差不能用于放宽 converter 位合同。误差预算按 phase、context、W/KV 组合分别报告最大绝对/相对误差和最大归一化误差，不能只报告合并平均数。
+
+**固定排名规则。** 对相应对照层次，先从 reference logits 和本表预算计算每行 `epsilon = max_i(atol + rtol * abs(reference[i]))`。top-1 margin（第一与第二名差）及 top-4 boundary margin（第四与第五名差）分别大于 `2*epsilon` 时，该行对应的排名集合必须一致；否则作为 near-tie 记录，仍须通过全部 scalar 数值门禁。classification 绑定 reference identity、预算和 row，在检查候选前固定，不使用候选自身实测误差重新分类。P2 的历史 margin 规则不在本步迁移。位置、watermark、logit row identity 必须精确一致；固定 HF golden 自检还要求全部已保存 token IDs 一致。独立模型的 short closed-loop greedy 结果单独记录，不能用 teacher-forcing 代替 production Generate/EOS 验收。
+
+预算在新的 production kernel 实现前冻结。校准结果、重复性和比较器 negative checks 完整记录后，才将步骤 1 标为完成；候选失败不能通过临时放宽阈值、改 reference 或动态重分类绕过。更大 context、不同模型/geometry 或更改数值算法需新增独立校准和明确范围，不能由本批预算推导通用模型质量保证。
+
+**预算冻结依据（2026-11-12，步骤 1 完成）。** 上表预算已据独立校准冻结。校准器 [calibrate_kv16_reference.py](../../tools/calibrate_kv16_reference.py)（sha256 `0c1b0be328c4dcb2453631ec27b125138119dad97df652cc48eccffb8affaba6`）以 pinned HF Llama 实现与整数 RNE oracle 独立于 AetherMind：转换器有限域逐位匹配独立 oracle（F16 63,488 / BF16 65,280 个模式、各约 9.7 万 midpoint 邻点、20 万随机模式），比较器 11 项 negative checks 通过；FP32 模式对 5 个 accepted golden case 逐位复现（max_abs=0，含 2046→2048 near-limit）。四种 W×KV 组合 × 5 fixture 共 20 次运行全部通过两层预算：实现正确性最大归一化误差 0.298（logits max_abs 2.83e-7、K/V max_abs 4.88e-4），相对 KV32 最大归一化误差 0.567（logits max_abs 3.58e-3、K/V max_abs 4.10e-3）；near-limit 出现预测的 KV16 midpoint 跨越（impl K/V 非零），预算均吸收，质量层 near-tie 分类被实际触发且不误判。两次独立进程校准的 65 个规范产物逐位一致。raw 证据（脚本/环境/输入与 oracle hash/全部测量/重复性报告）见 gitignored `benchmark-results/models/kv16-calibration/20261112T053100Z_592df0e4-dirty_desktop-54h5mmi_kv16-step1/`。校准不验证 production path、实际两字节分配、O1/O2 kernel 或性能；torch bf16 narrowing 的 NaN 规范化不在有限校准域内，NaN 位合同归步骤 5/6 的生产转换器验收，真实序列化 W16 checkpoint 加载归步骤 9。
+
 ## 3. 方案与备选
 
 | 方案 | 收益与代价 | 裁决 |
@@ -281,10 +341,22 @@ P1 的限定实现与验收已完成。P0 中 graph options 和 widening 数值�
 
 ### 4.4 P3：独立 16-bit KV
 
-1. 在 operators 冻结 FP32 activation 与 KV16 的读写转换、输出 alias 和数值合同；K/V 同型。
-2. 迁移 state dtype selector 身份和全部派生/重校验/registry/key；KVCacheLayout 按实际元素字节、alignment/padding 规划容量。
-3. KVUpdate 写入时 narrow，Attention 读取时 widen，保持 FP32 attention reduction；Runtime 配置与图 state 精度一致。
-4. 复核完整 plan 成功后才 commit watermark；失败写入不发布，stale view、owner/generation 与现有单 reservation 合同保持。
+步骤 1 的合同见 §2.7–2.8；它的完成与后续 KV16 可执行状态分开记录。步骤 1–10 核心已完成：合同冻结与独立校准、mixed-KV 语义、state_dtype 身份迁移、布局账本、KV16 读写 reference、plan 事务、kv_dtype 配置链、reduced fixture 四组合模型验收、§2.8 冻结预算的 2048 near-limit 正式验收、ASan/UBSan 与 prepared-operator baseline。production ExecutionStep/模型级 baseline 和 SIMD 优化为后续 refinement，见 [P3 验收记录](../tests/kv16_execution_validation_2026-11-12.md)。
+
+| 步骤 | 交付与门禁 | 当前状态 |
+|---|---|---|
+| 1. 冻结合同 | 四种 W×KV 组合、O1→O2 顺序、配置、转换位置、reference 数值/alias/失败合同，以及独立校准后的固定数值预算 | 完成：合同冻结、独立校准与重复性通过、预算冻结（§2.8） |
+| 2. 算子语义 | 扩展 Attention A32/KV16 和 KVUpdate A32→KV16；保留原同型合同，state 输出保持原 cache alias | 完成：mixed inference 接受/拒绝 + 原有组合回归（kernel 待步骤 5/6） |
+| 3. state 身份 | selector/derivation/lowering/lowered validation/registry/key/untrusted 校验完整迁移；无 state 严格使用 undefined | 完成：全链路迁移 + 严格匹配/篡改拒绝回归 |
+| 4. 布局与参数 | 复用 dtype-aware KVCacheLayout，补齐两字节账本、padding/cap/overflow/OOM；动态指针与位置不进入 prepared args | 完成：dtype-aware 布局复核 + 两字节账本回归（lifetime 保持） |
+| 5. KVUpdate reference | 两种 narrow 写入、访问范围和 alias 校验、padding/历史保护、真实 prepared 路径零分配 | 完成：F16/BF16 窄化写入 + 已知位模式 oracle、padding/history/alias/stride、dtype 拒绝、零分配 |
+| 6. Attention reference | 两种 cache widening、F32 固定归约、GQA/MQA/causal/read visibility，独立 oracle 与特殊值分类 | 完成：F16/BF16 widening + F32 固定归约（FMA off）+ double oracle、GQA/MQA/decode、dtype 拒绝 |
+| 7. plan 事务 | 每层写入证明、完整 plan 成功后 commit、失败不发布与重试；复核 generation/capacity/stale view | 完成：LayerRunner dtype-agnostic 无需改；KV16 prefill/decode/多层/缺层不提交/update-then-attention/后续失败不发布回归（F16/BF16） |
+| 8. 公开 C++ 链 | kv_dtype 配置统一驱动 Runtime/graph，Load 早期一致性校验，低层 Prepare/binding 不可绕过 | 完成：kv_dtype 驱动 Runtime/graph + Load 早期 Manager dtype 校验 + MakeKVCacheOptions 通用/F32 wrapper；KV16 Load/Generate 闭环与拒绝回归；C ABI strict F32 保持 |
+| 9. 模型验收 | 先 O1 再 O2；四种组合的 Prefill/多次 Decode/Generate、近容量长上下文、预算、EOS/失败/零分配 | 完成（reduced fixture）：四组合 O1/O2 + 近容量 14→16 + GQA tied，KV16 vs KV32 实测容差 + 固定排名规则 + Generate/重复 + Decode 模型级零分配（F16/BF16×O1/O2）；§2.8 冻结预算的校准 fixture（2048）正式验收为后续精确项 |
+| 10. baseline 与收口 | prepared/production/model 资源与性能证据、适用 sanitizer/fallback、API/指南/验收状态；SIMD 根据证据后续推进 | 完成（核心）：文档同步；ASan/UBSan 通过；§2.8 冻结预算校准 fixture（2048）正式验收通过；KVUpdate/Attention prepared-operator baseline 采集（raw + 算子记录）。production ExecutionStep/模型级 baseline 与 SIMD 优化为后续 refinement |
+
+依赖为 `1 → 2/3/4 → 5/6 → 7`，配置接口可并行设计，集成后完成 `8 → 9(O1→O2) → 10`。新 reference 实现前必须先完成步骤 1 的预算校准；校准器不实现或替代 production kernel。
 
 退出条件：Prefill/Decode、capacity 边界、长上下文误差与真实 byte accounting 通过；不能仅凭 Manager 能分配两字节元素就声明 KV16 可执行。
 
@@ -370,3 +442,11 @@ P1 的限定实现与验收已完成。P0 中 graph options 和 widening 数值�
 | 2026-11-11 | 1.6 | 实施并验收 P2 CPU O1/plain 与 O2/identity-packed，固定 F32 reference 数值门禁，接入 Norm-only/retained 账本、Embedding mixed output/行级 SIMD 和 W16 Linear/QKV/GateUp，记录生产路径与性能范围 |
 | 2026-11-11 | 1.7 | P2 首批完成：O1/plain 与 O2/packed（identity）两个 W16 policy 限定验收通过（4675 项单测、ASan/UBSan/LSan、模型级账本与 EOS/容量/重试覆盖）；记录 O1 kernel/生产路径 baseline 与优化顺序决策；W16 B-panel 经证据评估延后；修复准入诊断消息合同（required Float32 显示名） |
 | 2026-11-11 | 1.8 | 接入 Embedding F16C/AVX2 行级 widening，补充 exact selector、空输出和 legacy BF16 override 回归，扩展两种 policy 的三种 Norm source dtype 与 O1/O2 零分配检查，按当前工作树重新记录 Release、ASan/UBSan 和 LSan 环境范围 |
+| 2026-11-12 | 1.9 | 开展 P3 步骤 1：冻结四种 W16×KV16 支持矩阵、显式配置、post-RoPE narrow/cache widen、reference 算术与 FP 环境、state/alias/事务边界，建立 Attention/KVUpdate Draft 合同；数值预算由独立校准后冻结，后续语义与 kernel 仍待实施 |
+| 2026-11-12 | 2.0 | P3 步骤 1 完成：独立校准器（整数 RNE oracle + pinned HF reference + 量化 cache 边界 + FP64 写回 F32）通过转换器位合同、比较器 negative checks 与 FP32 golden 逐位交叉验证；四种 W16×KV16 组合 × 5 fixture 全部通过两层预算（impl 归一化 ≤0.298、quality ≤0.567），两次独立运行 65 个产物逐位重复；据校准冻结 §2.8 数值预算并记录依据；步骤 2–10 仍待实施 |
+| 2026-11-12 | 2.1 | P3 步骤 2–4 完成：Attention/KVUpdate 扩展 A32→KV16 mixed 语义（保留同型合同、state 输出 alias）；`state_dtype` 加入 KernelSelector 并迁移 derivation/lowering/lowered 验证/untrusted 重校验/registry/artifact key，F32 descriptor 补 state_dtype、无 state 严格 undefined；复核 dtype-aware KVCacheLayout 两字节账本（逻辑减半/物理未必减半）。335 项迁移回归 + 58 项 F32/W16 端到端模型生成 + execution/lowering 套件通过，clang-format 干净；KV16 kernel（步骤 5/6）及后续仍待实施 |
+| 2026-11-12 | 2.2 | P3 步骤 5–6 完成：新增 CPU KV16 KVUpdate 写入 reference（F32 activation 经固定 RNE 标量窄化为 F16/BF16，byte-safe 写入 logical head_dim，复用 F32 params builder）与 Attention 读取 reference（cache16 widening、F32 固定归约、独立 TU 禁 FMA contraction）；注册 {act=F32, state=F16/BF16} 四个 kernel。独立 oracle 验收：KVUpdate 已知位模式/RNE midpoint/特殊值/padding/history/stride/alias 重叠拒绝/dtype 拒绝/prepared 零分配，Attention double 精度 oracle 覆盖 prefill/GQA/MQA/decode/dtype 拒绝。KV16 + F32 kernel + 58 项端到端模型 + execution/kv_cache/registry 回归通过；plan 事务（7）、配置链（8）、模型验收（9/10）仍待实施 |
+| 2026-11-12 | 2.3 | P3 步骤 7–8 完成：LayerRunner 事务 dtype-agnostic 无需改，补 KV16 prefill/decode/多层/缺层不提交/update-then-attention/后续失败不发布回归（F16/BF16）；`CpuRuntimeAssemblyOptions`/`ModelLoadOptions` 追加 kv_dtype，新增通用 MakeKVCacheOptions（标量 F32/F16/BF16 准入）+ F32 wrapper，MakeCpuRuntimeOptions 与 Load 由其驱动，Load 在转换/packing 前校验 Runtime Manager dtype 一致；KV16 仅对两个 W16 policy 开放。KV16 Load→Generate 限定 fixture 闭环（含跨 W×KV）、不一致/非法配置早拒、C ABI strict F32 保持（51 项 C ABI 含 KV 校验 fixture 修正）。综合回归通过；四组合模型验收（9）与 baseline/收口（10）仍待实施 |
+| 2026-11-12 | 2.4 | P3 步骤 9 完成（reduced fixture）：泛化 CaptureStage 按 kv_dtype widening K/V（F32 identity，golden 不变），新增 KV16 四组合模型验收（O1→O2，KV16 vs 同 W16 KV32，固定排名规则 + Generate/重复）、近容量 14→16 长上下文与 GQA tied。实测 reduced fixture 容差（区别于 §2.8 校准 fixture 冻结预算：BF16 V 尺度需独立校准，max normalized logits≤0.37/keys≤0.24/values≤0.73）。步骤 10 文档收口进行中；§2.8 冻结预算在校准数值 fixture（2048）的正式生产验收、KV16 Decode 模型级零分配、baseline 与 sanitizer/fallback 证据为后续精确项 |
+| 2026-11-12 | 2.5 | P3 步骤 9/10 推进：补 KV16 Decode 模型级零分配证明（F16/BF16×O1/O2，binding 后 malloc-family 全零）；KV16 全套件（kernel/事务/Load 链/模型验收）在 ASan/UBSan 下通过（29 过/2 跳过零分配 interposer，0 内存错误/UB/泄漏），证据存 gitignored benchmark-results/models/kv16-step10/。KV16 reference 为纯 scalar、无 ISA 依赖（fallback 即 reference）。文档同步完成；prepared/production/model baseline 与 §2.8 校准 fixture（2048）正式生产验收为后续精确项 |
+| 2026-11-12 | 2.6 | P3 步骤 10 核心完成：新增 tools/derive_w16_numerical_fixture.py（逐元素独立 RNE oracle 校验，修正 int16→uint32 符号扩展）派生 W16 校准 fixture；KV16 生产路径在 mha-near-limit（2048，vocab 32000）四组合×O1/O2 通过 §2.8 冻结预算正式验收（KV16 vs 同 W16 KV32，2046 prefill+2 decode，固定排名规则）；采集 KVUpdate/Attention prepared-operator baseline（KVUpdate decode ~13.5µs/prefill ~1.6ms，Attention scalar decode ~24ms，raw + desktop-54h5mmi 算子记录）。P3 步骤 1–10 核心闭环；production ExecutionStep/模型级 baseline 与 SIMD 优化为后续 refinement |

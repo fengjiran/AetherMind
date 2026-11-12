@@ -1,6 +1,6 @@
-# AetherMind 推理引擎产品需求文档 (PRD v1.5)
+# AetherMind 推理引擎产品需求文档 (PRD v1.6)
 
-| 文档版本 | V1.5 |
+| 文档版本 | V1.6 |
 |----------|----------------|
 | **项目名称** | **AetherMind** |
 | **核心目标** | 交付生产级桌面/服务器 CPU 本地推理引擎，并为服务化、异构计算和分布式演进保留可验证的架构边界 |
@@ -80,9 +80,9 @@
 | C++ FP32 compatibility | 显式将 F16/BF16 权重拓宽为 FP32；CPU O1/plain | [兼容执行验证](../tests/fp32_compatibility_validation_2026-10-29.md)；不保留 16-bit 矩阵 |
 | C++ W16/A32 | 保留 F16 或 BF16 矩阵，仅转换 Norm；FP32 activation、累加、KV、logits；CPU O1/plain、O2/identity-packed | [W16 执行验证](../tests/w16_fp32_execution_validation_2026-11-11.md)，含专项正确性、资源与生命周期证据；Linear 当前为 reference 路径 |
 | 独立 CLI / C ABI v1.0 | 已实现，继续采用 CPU strict FP32 source admission | [CLI 验证](../tests/upper_level_runtime_assembly_m4_validation_2026-10-22.md)、[C ABI 验证](../tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md)；不开放 C++ reduced-weight policy |
-| 静态 KV 与资源预算 | 高层执行使用 FP32 KV；支持模型、packed、KV、workspace 与请求 payload 限额及资源查询 | [资源预算指南](../guides/resource-budgeting.md)；payload 账本与进程 RSS 分别测量 |
+| 静态 KV 与资源预算 | KV 默认 F32，C++ retained-W16 可显式选择 F16/BF16；支持模型、packed、KV、workspace 与请求 payload 限额及资源查询 | [资源预算指南](../guides/resource-budgeting.md)；payload、padding 与进程 RSS 分别测量 |
 | INT8/INT4 仅权重量化 | 保留为当前产品交付需求；尚无本 PRD 可据以验收的端到端量化执行链 | loader 接受某种 dtype/metadata 不等于 quantized graph、packing、kernel 与生成已接通 |
-| FP16/BF16 KV | 保留为 KV 精度扩展目标；现有低层布局能力不等于高层执行支持 | 需要独立的算子、kernel、Session 与数值/内存门禁；当前不得据此宣称交付 |
+| FP16/BF16 KV | C++ CPU W16/A32 的四种 W×KV 组合、O1/plain 与 O2/identity-packed reference 已接通 | [P3 限定验收](../tests/kv16_execution_validation_2026-11-12.md)：独立量化 oracle、最长 2048-token fixture、Decode 零分配与分层 baseline；不代表任意模型/平台质量或加速保证 |
 | 算子内并行 | 尚未建立 OpenMP/线程池生产执行与验收证据 | 在同步单请求边界内另行明确线程所有权、确定性、零分配与 TSAN 合同 |
 | 7B 量化模型与目标性能 | 目标见 §4.1，尚未完成代表性模型验收 | tiny fixture 或 microbenchmark 不能替代大模型质量、冷启动、RSS 与吞吐证据 |
 
@@ -162,7 +162,7 @@ plan、model 与 session 借用其执行资源。KV 物理状态归 kv_cache。
 | `WeightPolicy::kKeepFp16WeightsFp32Activation` | 保留 F16 矩阵，仅转换 Norm 为 FP32 | O1/plain、O2/identity-packed |
 | `WeightPolicy::kKeepBf16WeightsFp32Activation` | 保留 BF16 矩阵，仅转换 Norm 为 FP32 | O1/plain、O2/identity-packed |
 
-W16/A32 要求 Embedding、Linear/LM head 等矩阵的实际 dtype 匹配选定 policy，Norm 源可为 scalar F32/F16/BF16；activation、residual、KV、logits 为 FP32，W16 projection 使用 FP32 累加。O2 的 W16 identity/composite artifacts 保留两字节元素，并产生额外 packed storage。使用与数值合同见 [FP32 compatibility](../guides/fp32-compatible-inference.md) 和 [W16/A32](../guides/w16-fp32-inference.md)。这些 C++ policy 不改变 CLI/C ABI 的 strict FP32 准入。
+W16/A32 要求 Embedding、Linear/LM head 等矩阵的实际 dtype 匹配选定 policy，Norm 源可为 scalar F32/F16/BF16；activation、residual、logits 为 FP32，W16 projection 使用 FP32 累加。KV 默认 FP32，retained-W16 policy 可显式选择 F16/BF16，与矩阵精度独立，所有层 K/V 同型。O2 的 W16 identity/composite artifacts 保留两字节元素，并产生额外 packed storage。使用与数值合同见 [FP32 compatibility](../guides/fp32-compatible-inference.md) 和 [W16/A32](../guides/w16-fp32-inference.md)。这些 C++ policy 不改变 CLI/C ABI 的 strict FP32 准入。
 
 ```cpp
 // C++ API
@@ -238,13 +238,13 @@ am_status_code am_session_generate(
 当前高层执行的存储组成：
 Model weights：FP32，或 W16 矩阵 + FP32 Norm
     └─ O2 按 recipe 另持有 packed artifacts
-KV cache：FP32 K/V planes，Runtime 构造时静态分配
+KV cache：默认 FP32；C++ retained-W16 可显式选 F16/BF16 K/V planes，Runtime 构造时静态分配
     └─ [layer][head][token][head_dim]，物理 padding/strides 由 layout 决定
 Request：workspace + max(Prefill activation, Decode activation)
     └─ 两个 activation arena 分阶段存活；Decode bindings/params 准备后复用
 ```
 
-KV capacity 由调用方显式设置并受模型 context、checked layout bytes 和预算约束；4k 是长序列验收目标，不是统一的硬编码容量上限。请求内不自动扩容 KV。FP16/BF16 KV 需要单独接通高层执行合同；INT8/INT4 权重及约 3.5 GB 的 7B INT4 逻辑 payload 属于目标估算，不能据此推导总内存占用已达标。
+KV capacity 由调用方显式设置并受模型 context、checked layout bytes 和预算约束；4k 是长序列验收目标，不是统一的硬编码容量上限。请求内不自动扩容 KV。FP16/BF16 KV 的当前数值验收限定于 P3 记录列出的 fixture 与 2048-token 范围；更大上下文独立验收。INT8/INT4 权重及约 3.5 GB 的 7B INT4 逻辑 payload 属于目标估算，不能据此推导总内存占用已达标。
 
 **资源预算与失败行为**：
 

@@ -158,6 +158,7 @@
 - [Packed artifact dtype 边界修复验证](tests/packed_weight_artifact_dtype_validation_2026-10-29.md)：collection 插入的 dtype 校验、失败状态与既有兼容语义。
 - [运行前 Runtime 配置验证](tests/runtime_configuration_validation_2026-10-30.md)：集中 CPU 配置映射、Builder option preflight 与入口迁移。
 - [P2 W16/A32 执行验收](tests/w16_fp32_execution_validation_2026-11-11.md)：CPU O1/plain、O2/identity-packed 的转换、kernel、生成、账本与 sanitizer 范围。
+- [P3 CPU KV16 执行验收](tests/kv16_execution_validation_2026-11-12.md)：独立量化 oracle、四组合 O1/O2、2048 near-limit 预算、state 身份与 sanitizer 范围。
 
 ### 模型基准验证记录
 

@@ -101,10 +101,11 @@
 |---|---|
 | `Status ValidateSourceWeights(const LoadedModel&, WeightPolicy)` | 按源权重策略检查 dtype hint 与全部必需 resolved weight roles；`kRequireFp32` 要求 scalar F32，`kConvertToFp32` 还允许 F16/BF16，支持 tied lm-head fallback；只读 metadata，不读/转换 payload、不保留借用。精度不支持返回 Unimplemented，非法 metadata 返回相应错误，诊断 OOM 返回空 message 的 ResourceExhausted。家族/算子语义仍由 Compile 判定。 |
 | `StatusOr<KVCacheRuntimeOptions> MakeFp32KVCacheOptions(const HfModelConfig&, size_t context_tokens)` | 将 Loader 已验证的模型几何与显式 capacity 映射为 owning KV 配置：CPU 首版 Float32、64-byte alignment、逻辑 head_dim；只有 absent head_dim=0 才按整除 fallback。校验正数、安全转换和模型 context 上限，不分配 KV、不访问 backend、不比较既有 Runtime/model。 |
+| `StatusOr<KVCacheRuntimeOptions> MakeKVCacheOptions(const HfModelConfig&, size_t context_tokens, DataType kv_dtype)` | 相同几何映射，显式接受 scalar F32/F16/BF16；拒绝 undefined、scalable 与其他类型/lanes。按实际 dtype 交给 Runtime 规划物理字节；`MakeFp32KVCacheOptions` 保留为 F32 wrapper。 |
 
 M5 将这两项规则归入 inference，CLI 与 M6 C adapter 消费同一实现，没有旧应用 namespace alias 或兼容转发。跨对象 KV 相等与 compiled state dtype 校验仍属于 adapter。
 
-`WeightPolicy::kKeepFp16WeightsFp32Activation` / `kKeepBf16WeightsFp32Activation` 要求 Embedding、LM head 和所有矩阵权重实际为选定的 scalar F16/BF16，Norm 源允许 F32/F16/BF16。已识别的 scalar floating hint（含 auto/缺省）仅保留为 provenance，允许与实际权重不同，执行 activation/KV 显式为 F32。这两个 C++ policy 支持 CPU O1/plain 与 O2/identity-packed，完整准备及数值合同见 [W16 执行指南](../guides/w16-fp32-inference.md)。
+`WeightPolicy::kKeepFp16WeightsFp32Activation` / `kKeepBf16WeightsFp32Activation` 要求 Embedding、LM head 和所有矩阵权重实际为选定的 scalar F16/BF16，Norm 源允许 F32/F16/BF16。已识别的 scalar floating hint（含 auto/缺省）仅保留为 provenance，允许与实际权重不同，activation 固定为 F32。KV 默认 F32；两个 retained-W16 policy 可在 CPU O1/plain 与 O2/identity-packed 显式选择 F16/BF16 KV，W 与 KV 独立，全部层 K/V 同型。完整准备及数值合同见 [W16 执行指南](../guides/w16-fp32-inference.md)。
 
 `RawWeightFp32ConversionOptions::scope` 默认 `kAllRequiredWeights`，`kNormWeightsOnly` 仅转换 Final/Input/PostAttention Norm。两个 widening callback 均须非空，payload 分配前验证所有 source metadata、owner 账本和 cap。结果模型保活原矩阵 backing 与独立 Norm Buffer。`ComputeRawWeightViewStorageUsage(span<const RawWeightView* const>)` 复用 owner identity 和 range union 统计所选 source views，支持 retained W16 backing，空集合返回完整零账本，空 view 指针返回 InvalidArgument。
 
@@ -115,7 +116,7 @@ M5 将这两项规则归入 inference，CLI 与 M6 C adapter 消费同一实现�
 `CompilePreset::kO1Plain` / `kO2Packed` 与 `MakeCompileOptions(CompilePreset, DeviceType target)` 将优化/packing 策略与目标设备分开。返回 owning ModelCompileOptions：O1/plain 或 O2/packed、调用方指定 target、kBoth；activation/weight dtype 由 lowering 推导。未知 preset、未定义或未知 target 返回 InvalidArgument，诊断 OOM 返回空 message 的 ResourceExhausted。它不检查 backend/kernel 的可用性，不加载/准入模型或分配 storage；CUDA/CANN 配置值可生成和降低，但不构成对应设备推理支持。CLI/C adapter 显式传入 CPU。
 
 
-`CpuRuntimeAssemblyOptions` 和 `MakeCpuRuntimeOptions(const HfModelConfig&, const CpuRuntimeAssemblyOptions&)` 是模型感知的运行前值映射，也是 CPU Runtime 配置的唯一入口。调用方一次提供 context capacity、KV/workspace payload caps 与 CPU feature policy；helper 复用 FP32 KV 映射，并显式构造 `RuntimeOptions` 的全部六组字段，不依赖默认成员值。它只读 metadata，不读取权重 payload、不分配 Buffer、不创建 Runtime 或保留模型借用；模型准备和请求预算继续使用各自 options。
+`CpuRuntimeAssemblyOptions` 和 `MakeCpuRuntimeOptions(const HfModelConfig&, const CpuRuntimeAssemblyOptions&)` 是模型感知的运行前值映射，也是 CPU Runtime 配置的唯一入口。调用方一次提供 context capacity、KV/workspace payload caps、CPU feature policy 和 `kv_dtype`（默认 F32）；helper 复用 `MakeKVCacheOptions`，并显式构造 `RuntimeOptions` 的全部六组字段，不依赖默认成员值。它只读 metadata，不读取权重 payload、不分配 Buffer、不创建 Runtime 或保留模型借用；模型准备和请求预算继续使用各自 options。
 
 ### `ModelCompiler`（include/aethermind/compiler/model_compiler.h）
 
@@ -142,10 +143,12 @@ M5 将这两项规则归入 inference，CLI 与 M6 C adapter 消费同一实现�
 |---|---|
 | `static StatusOr<ExecutableModel> Prepare(Runtime&, LoweredModelArtifact, const ModelLimits& = {})` | 唯一生产准备入口；消费 artifact，编排权重物化、执行计划构建与 immutable weight/constant bindings。失败不发布部分准备的模型。 |
 | `static StatusOr<ExecutableModel> Load(Runtime&, const std::filesystem::path&, const ModelLoadOptions&)` | 目录到可执行模型的入口：加载、按 `WeightPolicy` 准入与可选转换、按 preset 与 target 编译，再调用 `Prepare`。Runtime 已存在，options 必须显式传入；`{}` 为 CPU strict FP32 O1/plain。 |
-| `ModelLimits` / `ModelLoadOptions` | 前者配置模型与 packed payload 限额；后者包含 `preset`、目标设备 `target`（默认 CPU）、源权重策略 `weights` 及 `limits`。`kConvertToFp32` 将 F16/BF16 拓宽为 F32，目前只允许 CPU O1/plain。 |
+| `ModelLimits` / `ModelLoadOptions` | 前者配置模型与 packed payload 限额；后者包含 `preset`、目标设备 `target`（默认 CPU）、源权重策略 `weights`、`limits` 和 `kv_dtype`（默认 F32）。`kConvertToFp32` 将 F16/BF16 拓宽为 F32，目前只允许 CPU O1/plain、KV32；KV16 仅对 CPU retained-W16 policy 开放。 |
 | `ExecutableModel::plan(ExecPhase)` / `immutable_weight_bindings(ExecPhase)` | 返回模型拥有的 plan/binding table 的借用指针，phase 不匹配报错；Prefill/Decode 当前共享一个不可变 plan。binding table 不含请求 token/position 输入。 |
 | `artifact_id()` / `phase()` / `context_limit()` / `vocab_size()` | 查询编译产物身份、phase、模型 context 上限与词表大小。 |
 | `IsPreparedFor(const Runtime&)` | 检查模型 resolve 的 kernels 是否属于该 Runtime。 |
+
+KV16 Load 要求已有、地址稳定的 Runtime KV Manager，其实际 dtype 必须与 `ModelLoadOptions::kv_dtype` 一致；不一致在权重转换和 packing 前失败，Load 不重建 Runtime。Graph state spec、`KernelSelector::state_dtype`、view/layout 和调用期 binding 保持相同 dtype。无 state 的 selector 使用唯一 undefined，按严格相等匹配。KVUpdate 在 K 经 RoPE 后和 V 写入 cache 时 narrow；Attention 从 cache widening 后以 F32 归约。C++ options/selector 布局变化要求消费者重新构建，C ABI/产品 CLI 保持 strict FP32。限定模型、数值与验证范围见 [P3 验收记录](../tests/kv16_execution_validation_2026-11-12.md)。
 
 任意 `ModelCompileOptions` 的调用方显式调用 `ModelLoader`、`ModelCompiler`，再调用 `ExecutableModel::Prepare`。CLI 保持 Compile 成功后构建 Runtime；C adapter 保持 Prepare 前的 Runtime/model KV 校验。旧创建自由函数与转发 overload 已删除，无兼容别名。
 

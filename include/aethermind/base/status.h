@@ -213,75 +213,26 @@ public:
 
     // ── Error factories ──────────────────────────────────────────────
     // Each factory creates a non-OK Status with the corresponding code
-    // and the caller-supplied message.
+    // and the caller-supplied message. Defined in status.cpp so message
+    // construction is not duplicated into every including translation unit.
 
-    static Status Cancelled(std::string_view message) {
-        return Status(StatusCode::kCancelled, std::string(message));
-    }
-
-    static Status Unknown(std::string_view message) {
-        return Status(StatusCode::kUnknown, std::string(message));
-    }
-
-    static Status DeadlineExceeded(std::string_view message) {
-        return Status(StatusCode::kDeadlineExceeded, std::string(message));
-    }
-
-    static Status Aborted(std::string_view message) {
-        return Status(StatusCode::kAborted, std::string(message));
-    }
-
-    static Status Unavailable(std::string_view message) {
-        return Status(StatusCode::kUnavailable, std::string(message));
-    }
-
-    static Status DataLoss(std::string_view message) {
-        return Status(StatusCode::kDataLoss, std::string(message));
-    }
-
-    static Status Unauthenticated(std::string_view message) {
-        return Status(StatusCode::kUnauthenticated, std::string(message));
-    }
-
-    static Status InvalidArgument(std::string_view message) {
-        return Status(StatusCode::kInvalidArgument, std::string(message));
-    }
-
-    static Status NotFound(std::string_view message) {
-        return Status(StatusCode::kNotFound, std::string(message));
-    }
-
-    static Status Internal(std::string_view message) {
-        return Status(StatusCode::kInternal, std::string(message));
-    }
-
-    static Status PermissionDenied(std::string_view message) {
-        return Status(StatusCode::kPermissionDenied, std::string(message));
-    }
-
-    static Status AlreadyExists(std::string_view message) {
-        return Status(StatusCode::kAlreadyExists, std::string(message));
-    }
-
-    static Status OutOfRange(std::string_view message) {
-        return Status(StatusCode::kOutOfRange, std::string(message));
-    }
-
-    static Status FailedPrecondition(std::string_view message) {
-        return Status(StatusCode::kFailedPrecondition, std::string(message));
-    }
-
-    static Status Unimplemented(std::string_view message) {
-        return Status(StatusCode::kUnimplemented, std::string(message));
-    }
-
-    static Status ResourceExhausted(std::string_view message) {
-        return Status(StatusCode::kResourceExhausted, std::string(message));
-    }
-
-    static Status Overflow(std::string_view message) {
-        return Status(StatusCode::kOverflow, std::string(message));
-    }
+    static Status Cancelled(std::string_view message);
+    static Status Unknown(std::string_view message);
+    static Status DeadlineExceeded(std::string_view message);
+    static Status Aborted(std::string_view message);
+    static Status Unavailable(std::string_view message);
+    static Status DataLoss(std::string_view message);
+    static Status Unauthenticated(std::string_view message);
+    static Status InvalidArgument(std::string_view message);
+    static Status NotFound(std::string_view message);
+    static Status Internal(std::string_view message);
+    static Status PermissionDenied(std::string_view message);
+    static Status AlreadyExists(std::string_view message);
+    static Status OutOfRange(std::string_view message);
+    static Status FailedPrecondition(std::string_view message);
+    static Status Unimplemented(std::string_view message);
+    static Status ResourceExhausted(std::string_view message);
+    static Status Overflow(std::string_view message);
 
     /// @brief Returns true if the status code is kOk.
     /// @return True on success.
@@ -339,29 +290,14 @@ public:
     /// no semantic value.
     /// @param message The replacement error message.
     /// @return A new Status with the same code and the given message.
-    Status WithMessage(std::string message) const noexcept {
-        if (ok()) {
-            return Ok();
-        }
-        return Status(code_, std::move(message));
-    }
+    Status WithMessage(std::string message) const noexcept;
 
     /// @brief Returns a human-readable string like "NOT_FOUND: file not found".
     ///
     /// Format: "STATUS_CODE_NAME" for OK or empty-message errors, or
     /// "STATUS_CODE_NAME: message" when a message is present.
     /// @return The formatted string representation.
-    AM_NODISCARD std::string ToString() const {
-        if (ok()) {
-            return std::string(StatusCodeName(StatusCode::kOk));
-        }
-
-        if (message_.empty()) {
-            return std::string(StatusCodeName(code_));
-        }
-
-        return std::string(StatusCodeName(code_)) + ": " + message_;
-    }
+    AM_NODISCARD std::string ToString() const;
 
     /// @brief Returns true if both code and message are equal.
     /// @param other The Status to compare against.

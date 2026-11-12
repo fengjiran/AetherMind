@@ -1,7 +1,6 @@
 #include "aethermind/base/status.h"
 
 #include <gtest/gtest.h>
-
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -269,6 +268,7 @@ TEST(Status, AllFactoriesProduceCorrectCodeAndPreserveMessage) {
         Status (*factory)(std::string_view);
         std::string_view name;
     };
+
     const Case cases[] = {
             {StatusCode::kCancelled, &Status::Cancelled, "CANCELLED"},
             {StatusCode::kUnknown, &Status::Unknown, "UNKNOWN"},
@@ -288,6 +288,7 @@ TEST(Status, AllFactoriesProduceCorrectCodeAndPreserveMessage) {
             {StatusCode::kUnauthenticated, &Status::Unauthenticated, "UNAUTHENTICATED"},
             {StatusCode::kOverflow, &Status::Overflow, "OVERFLOW"},
     };
+
     for (const auto& c: cases) {
         const std::string msg = std::string(c.name) + " detail";
         Status s = c.factory(msg);

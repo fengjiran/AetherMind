@@ -114,7 +114,7 @@ TEST(RawWeightConsumers, PrepackRejectsInvalidElementDTypesBeforeAllocation) {
             SCOPED_TRACE(cap.has_value() ? "Bounded" : "Unlimited");
             stats->requests.clear();
             const auto result = PrepackWeightRequests(**backend, {request}, allocator, cap);
-            EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument) << result.status().ToString();
+            EXPECT_EQ(result.status(), StatusCode::kInvalidArgument) << result.status().ToString();
             EXPECT_TRUE(stats->requests.empty());
         }
     }
@@ -137,7 +137,7 @@ TEST(RawWeightConsumers, PlainPreparationRejectsInvalidElementDTypesBeforeBindin
         ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
         stats->requests.clear();
         const auto result = ExecutableModel::Prepare(runtime, std::move(*artifact));
-        EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument) << result.status().ToString();
+        EXPECT_EQ(result.status(), StatusCode::kInvalidArgument) << result.status().ToString();
         EXPECT_TRUE(stats->requests.empty());
     }
 
@@ -159,7 +159,7 @@ TEST(RawWeightConsumers, PackedPreparationRejectsInvalidElementDTypesBeforeAlloc
         ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
         stats->requests.clear();
         const auto result = ExecutableModel::Prepare(runtime, std::move(*artifact));
-        EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument) << result.status().ToString();
+        EXPECT_EQ(result.status(), StatusCode::kInvalidArgument) << result.status().ToString();
         EXPECT_TRUE(stats->requests.empty());
     }
 

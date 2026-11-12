@@ -192,7 +192,7 @@ TEST_P(HfSlidingWindowValidatorTest, RejectsDeclaredSlidingWindow) {
 
     const Status status = HfModelValidator::ValidateConfig(config);
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("sliding_window"), std::string::npos);
     if (GetParam() <= 0) {
         EXPECT_NE(status.message().find("positive"), std::string::npos);
@@ -223,7 +223,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsNonPositiveRequiredDimensions) {
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsNonPositiveRmsNormEps) {
@@ -233,7 +233,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsNonPositiveRmsNormEps) {
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsHiddenSizeNotDivisibleByAttentionHeads) {
@@ -243,7 +243,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsHiddenSizeNotDivisibleByAttentionH
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsTooManyKeyValueHeads) {
@@ -253,7 +253,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsTooManyKeyValueHeads) {
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsAttentionHeadsNotDivisibleByKeyValueHeads) {
@@ -263,7 +263,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsAttentionHeadsNotDivisibleByKeyVal
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsIntermediateSizeSmallerThanHiddenSize) {
@@ -273,7 +273,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsIntermediateSizeSmallerThanHiddenS
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsNonPositiveMaxPositionEmbeddings) {
@@ -283,7 +283,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsNonPositiveMaxPositionEmbeddings) 
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsMismatchedHeadDim) {
@@ -293,7 +293,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsMismatchedHeadDim) {
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsUnsupportedHiddenActivation) {
@@ -303,7 +303,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsUnsupportedHiddenActivation) {
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsGeluActivation) {
@@ -313,7 +313,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsGeluActivation) {
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("hidden_act"), std::string::npos);
     EXPECT_NE(status.message().find("'silu'"), std::string::npos);
     EXPECT_NE(status.message().find("'gelu'"), std::string::npos);
@@ -326,7 +326,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsReluActivation) {
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("hidden_act"), std::string::npos);
     EXPECT_NE(status.message().find("'silu'"), std::string::npos);
     EXPECT_NE(status.message().find("'relu'"), std::string::npos);
@@ -339,7 +339,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsBiasByDefault) {
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, AcceptsBiasWhenAllowed) {
@@ -360,7 +360,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsNonPositiveRopeTheta) {
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsRopeScalingWhenDisallowed) {
@@ -373,7 +373,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsRopeScalingWhenDisallowed) {
     const Status status = HfModelValidator::ValidateConfig(config, options);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, AcceptsPositiveRopeScalingWhenAllowed) {
@@ -408,7 +408,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsLongRopeWithoutOriginalContext) {
 
     const Status status = HfModelValidator::ValidateConfig(config);
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, DefersUnknownRoPEAlgorithmValidationToBuilder) {
@@ -435,7 +435,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsRoPEAlgorithmWithoutRequiredFactor
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsRoPEAlgorithmWithoutRequiredFactorWhenAllowed) {
@@ -447,7 +447,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsRoPEAlgorithmWithoutRequiredFactor
     const Status status = HfModelValidator::ValidateConfig(config, options);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsQuantizedDTypeHint) {
@@ -458,7 +458,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsQuantizedDTypeHint) {
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsUnknownNamedDTypeHint) {
@@ -469,7 +469,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsUnknownNamedDTypeHint) {
     const Status status = HfModelValidator::ValidateConfig(config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, AcceptsCompleteWeightSet) {
@@ -509,7 +509,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedKvHiddenOverflow) {
 
     const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("overflows int64_t"), std::string::npos);
 }
 
@@ -521,7 +521,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedModelLayerCountMismatch) {
     const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("layer count"), std::string::npos);
 }
 
@@ -533,7 +533,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedEmbeddingShapeMismatch) {
     const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.embed_tokens.weight"), std::string::npos);
 }
 
@@ -545,7 +545,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedKvProjectionShapeMismatch)
     const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.layers.0.self_attn.k_proj.weight"), std::string::npos);
 }
 
@@ -557,7 +557,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedMlpDownProjectionShapeMism
     const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.layers.1.mlp.down_proj.weight"), std::string::npos);
 }
 
@@ -569,7 +569,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedMissingLmHeadWhenNotTied) 
     const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("lm_head.weight"), std::string::npos);
 }
 
@@ -591,7 +591,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedUnsupportedLinearDType) {
     const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.layers.0.self_attn.q_proj.weight"), std::string::npos);
     EXPECT_NE(status.message().find("Invalid tensor dtype"), std::string::npos);
 }
@@ -604,7 +604,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedUnsupportedNormDType) {
     const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.norm.weight"), std::string::npos);
     EXPECT_NE(status.message().find("Invalid tensor dtype"), std::string::npos);
 }
@@ -630,7 +630,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedMixedLinearDTypeByDefault)
     const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("Mixed linear tensor dtype"), std::string::npos);
 }
 
@@ -656,7 +656,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedEmbedTokensDTypeMismatchWi
     const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("Mixed linear tensor dtype"), std::string::npos);
 }
 
@@ -669,7 +669,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsResolvedTiedLmHeadDTypeMismatch) {
     const Status status = HfModelValidator::ValidateResolvedModel(config, resolved);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("Tied embedding dtype mismatch"), std::string::npos);
     EXPECT_NE(status.message().find("lm_head.weight"), std::string::npos);
 }
@@ -683,7 +683,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsMissingEmbeddingWeight) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.embed_tokens.weight"), std::string::npos);
 }
 
@@ -696,7 +696,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsMissingFinalNormWeight) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.norm.weight"), std::string::npos);
 }
 
@@ -709,7 +709,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsMissingLayerAttentionWeight) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.layers.1.self_attn.q_proj.weight"), std::string::npos);
 }
 
@@ -722,7 +722,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsMissingLayerMlpWeight) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.layers.0.mlp.down_proj.weight"), std::string::npos);
 }
 
@@ -735,7 +735,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsMissingLayerNormWeight) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.layers.0.post_attention_layernorm.weight"), std::string::npos);
 }
 
@@ -746,7 +746,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsWeightSetWithInvalidLayerCount) {
     const Status status = HfModelValidator::ValidateWeightSet(config, RawWeightTable{});
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfModelValidatorTest, RejectsWeightWithMismatchedByteSize) {
@@ -784,7 +784,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsWeightWithMismatchedByteSize) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.embed_tokens.weight"), std::string::npos);
     EXPECT_NE(status.message().find("byte size mismatch"), std::string::npos);
 }
@@ -824,7 +824,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsWeightWithNonPositiveShapeDimensio
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("non-positive shape dimension"), std::string::npos);
 }
 
@@ -872,7 +872,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsWeightWithNullStorage) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("invalid RawWeightView"), std::string::npos);
 }
 
@@ -892,7 +892,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsEmptyWeightTensor) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("empty tensor"), std::string::npos);
 }
 
@@ -905,7 +905,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsNonContiguousWeight) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("non-contiguous"), std::string::npos);
 }
 
@@ -921,7 +921,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsMoeTensor) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("experts"), std::string::npos);
 }
 
@@ -935,7 +935,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsRouterTensor) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("router"), std::string::npos);
 }
 
@@ -949,7 +949,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsBiasTensorByDefault) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("bias"), std::string::npos);
 }
 
@@ -963,7 +963,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsLmHeadBiasByDefault) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("bias"), std::string::npos);
 }
 
@@ -992,7 +992,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsLoraTensorByDefault) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("lora_A"), std::string::npos);
 }
 
@@ -1021,7 +1021,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsQuantizedTensorByDefault) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("qweight"), std::string::npos);
 }
 
@@ -1050,7 +1050,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsScalesQuantizedTensor) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("scales"), std::string::npos);
 }
 
@@ -1077,7 +1077,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsMissingLmHeadWhenNotTied) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("lm_head.weight"), std::string::npos);
 }
 
@@ -1115,7 +1115,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsMissingLmHeadWhenRequireLmHeadWhen
     const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("lm_head.weight"), std::string::npos);
 }
 
@@ -1129,7 +1129,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsOutOfRangeLayerIndex) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("layer index 1"), std::string::npos);
 }
 
@@ -1143,7 +1143,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsNonNumericLayerIndex) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("not numeric"), std::string::npos);
 }
 
@@ -1157,7 +1157,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsOutOfRangeNumericLayerIndex) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("out of range"), std::string::npos);
 }
 
@@ -1172,7 +1172,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsUnsupportedRequiredWeightDType) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("Invalid tensor dtype"), std::string::npos);
 }
 
@@ -1216,7 +1216,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsLinearWeightRankOne) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("Invalid tensor rank"), std::string::npos);
 }
 
@@ -1230,7 +1230,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsNormWeightRankTwo) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("Invalid tensor rank"), std::string::npos);
 }
 
@@ -1258,7 +1258,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsUnknownTensorWhenUnknownTensorsAre
     const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.extra_metadata.weight"), std::string::npos);
 }
 
@@ -1274,7 +1274,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsUnknownTensorWhenStrictTensorNames
     const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("model.extra_metadata.weight"), std::string::npos);
 }
 
@@ -1302,7 +1302,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsKnownIgnorableRotaryTensorWhenStri
     const Status status = HfModelValidator::ValidateWeightSet(config, weights, options);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("rotary_emb.inv_freq"), std::string::npos);
 }
 
@@ -1320,7 +1320,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsMixedLinearDTypeByDefault) {
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("Mixed linear tensor dtype"), std::string::npos);
 }
 
@@ -1353,7 +1353,7 @@ TEST(ModelLoader_HfModelValidatorTest, RejectsEmbedTokensDTypeMismatchWithLinear
     const Status status = HfModelValidator::ValidateWeightSet(config, weights);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("Mixed linear tensor dtype"), std::string::npos);
 }
 

@@ -118,7 +118,7 @@ TEST(CpuIsaFallback, FactoryCannotEnableAFeatureAbsentFromTheHardwareArchitectur
     const auto backend = factory.Create();
 
     ASSERT_FALSE(backend.ok());
-    EXPECT_EQ(backend.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(backend.status(), StatusCode::kFailedPrecondition);
 }
 
 } // namespace

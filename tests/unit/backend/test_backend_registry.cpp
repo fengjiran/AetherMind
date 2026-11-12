@@ -87,7 +87,7 @@ TEST(BackendRegistry, GetBackendForUnregisteredDeviceFails) {
     BackendRegistry registry;
     auto status_or_backend = registry.GetBackend(DeviceType::kCPU);
     EXPECT_FALSE(status_or_backend.ok());
-    EXPECT_EQ(status_or_backend.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(status_or_backend.status(), StatusCode::kNotFound);
 }
 
 TEST(BackendRegistry, OverrideFactoryBeforeInstantiationUsesLatestFactory) {

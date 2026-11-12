@@ -34,7 +34,7 @@ TEST(ArgmaxInference, RejectsStaticallyEmptyReductionAxis) {
     std::vector<TensorSpec> inputs = {input};
     auto result = InferOperator(OpType::kArgmax, ArgmaxParams{-1}, inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument)
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument)
             << result.status().ToString();
 }
 
@@ -43,7 +43,7 @@ TEST(ArgmaxInference, RejectsStaticallyEmptyLeadingReductionAxis) {
     std::vector<TensorSpec> inputs = {input};
     auto result = InferOperator(OpType::kArgmax, ArgmaxParams{0}, inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument)
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument)
             << result.status().ToString();
 }
 

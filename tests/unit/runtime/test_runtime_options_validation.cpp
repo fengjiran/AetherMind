@@ -123,7 +123,7 @@ TEST(RuntimeOptionsValidation, RejectsUnsupportedOptionsBeforeCreatingResourcesA
 
         const auto rejected = builder.TryBuild();
 
-        EXPECT_EQ(rejected.status().code(), StatusCode::kUnimplemented);
+        EXPECT_EQ(rejected.status(), StatusCode::kUnimplemented);
         EXPECT_NE(rejected.status().message().find(option.field), std::string::npos);
         ExpectNoResourceUse(*observation);
 
@@ -152,7 +152,7 @@ TEST(RuntimeOptionsValidation, RejectsGpuDefaultsWithoutMatchingCustomFactories)
 
         const auto rejected = builder.TryBuild();
 
-        EXPECT_EQ(rejected.status().code(), StatusCode::kUnimplemented);
+        EXPECT_EQ(rejected.status(), StatusCode::kUnimplemented);
         EXPECT_NE(rejected.status().message().find(cuda ? "backend.enable_cuda" : "backend.enable_cann"), std::string::npos);
         ExpectNoResourceUse(*observation);
 
@@ -201,7 +201,7 @@ TEST(RuntimeOptionsValidation, GpuRejectionPreservesMatchedFactoriesForRetry) {
 
     const auto rejected = builder.TryBuild();
 
-    EXPECT_EQ(rejected.status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(rejected.status(), StatusCode::kUnimplemented);
     EXPECT_NE(rejected.status().message().find("backend.enable_cann"), std::string::npos);
     ExpectNoResourceUse(*cuda);
     auto cann = std::make_shared<ResourceObservation>();

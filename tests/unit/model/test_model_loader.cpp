@@ -218,7 +218,7 @@ TEST_P(ModelLoaderSlidingWindow, RejectsBeforeReadingWeights) {
     const auto model = ModelLoader::Load(temp_dir.path());
 
     ASSERT_FALSE(model.ok());
-    EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(model.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(model.status().message().find("sliding_window"), std::string::npos);
 }
 
@@ -268,7 +268,7 @@ TEST(ModelLoader_PipelineTest, DefersUnsupportedModelFamilyToGraphConstruction) 
     ASSERT_TRUE(model.ok()) << model.status().ToString();
     EXPECT_EQ((*model)->GetConfig().model_type, "gpt_neox");
     const auto compiled = ModelCompiler::Compile(std::move(*model));
-    EXPECT_EQ(compiled.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(compiled.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(compiled.status().message().find("unsupported model type 'gpt_neox'"), std::string::npos);
 }
 
@@ -281,7 +281,7 @@ TEST(ModelLoader_PipelineTest, PropagatesSafetensorsArtifactError) {
     const auto model = ModelLoader::Load(temp_dir.path());
 
     ASSERT_FALSE(model.ok());
-    EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(model.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_PipelineTest, RejectsIncompleteWeightSet) {
@@ -295,7 +295,7 @@ TEST(ModelLoader_PipelineTest, RejectsIncompleteWeightSet) {
     const auto model = ModelLoader::Load(temp_dir.path());
 
     ASSERT_FALSE(model.ok());
-    EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(model.status(), StatusCode::kInvalidArgument);
 }
 
 } // namespace

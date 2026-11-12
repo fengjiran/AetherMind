@@ -110,7 +110,7 @@ TEST(ModelLoader_HfWeightResolverTest, RejectsMissingLayerAttentionWeight) {
     const auto resolved = hf::ResolveWeights(config, tensors);
 
     ASSERT_FALSE(resolved.ok());
-    EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(resolved.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(resolved.status().message().find("model.layers.1.self_attn.q_proj.weight"), std::string::npos);
 }
 
@@ -121,7 +121,7 @@ TEST(ModelLoader_HfWeightResolverTest, HandlesHugeLayerCountWithoutHugeReservati
     const auto resolved = hf::ResolveWeights(config, tensors);
 
     ASSERT_FALSE(resolved.ok());
-    EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(resolved.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfWeightResolverTest, RejectsIncompleteLayerCount) {
@@ -131,7 +131,7 @@ TEST(ModelLoader_HfWeightResolverTest, RejectsIncompleteLayerCount) {
     const auto resolved = hf::ResolveWeights(config, tensors);
 
     ASSERT_FALSE(resolved.ok());
-    EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(resolved.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(resolved.status().message().find("model.layers.1"), std::string::npos);
 }
 

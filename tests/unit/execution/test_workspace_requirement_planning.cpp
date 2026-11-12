@@ -144,7 +144,7 @@ TEST(WorkspaceRequirementPlanning, RejectsInvalidAlignment) {
             PlanWorkspaceRequirements(zero_alignment);
 
     ASSERT_FALSE(zero_result.ok());
-    EXPECT_EQ(zero_result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(zero_result.status(), StatusCode::kInvalidArgument);
 
     std::vector<WorkspaceRequirement> non_power_of_two = {
             {.bytes = 32, .alignment = 24},
@@ -154,7 +154,7 @@ TEST(WorkspaceRequirementPlanning, RejectsInvalidAlignment) {
             PlanWorkspaceRequirements(non_power_of_two);
 
     ASSERT_FALSE(invalid_result.ok());
-    EXPECT_EQ(invalid_result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(invalid_result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(WorkspaceRequirementPlanning, DetectsOffsetOverflowDuringPlanning) {
@@ -167,7 +167,7 @@ TEST(WorkspaceRequirementPlanning, DetectsOffsetOverflowDuringPlanning) {
     const StatusOr<WorkspacePlanLayout> layout = PlanWorkspaceRequirements(requirements);
 
     ASSERT_FALSE(layout.ok());
-    EXPECT_EQ(layout.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(layout.status(), StatusCode::kOverflow);
     EXPECT_EQ(requirements[0].offset, 11U);
     EXPECT_EQ(requirements[1].offset, 22U);
     EXPECT_EQ(requirements[2].offset, 33U);
@@ -183,7 +183,7 @@ TEST(WorkspaceRequirementPlanning, ByteOverflowPreservesAllOffsets) {
     const StatusOr<WorkspacePlanLayout> layout = PlanWorkspaceRequirements(requirements);
 
     ASSERT_FALSE(layout.ok());
-    EXPECT_EQ(layout.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(layout.status(), StatusCode::kOverflow);
     EXPECT_EQ(requirements[0].offset, 11U);
     EXPECT_EQ(requirements[1].offset, 22U);
     EXPECT_EQ(requirements[2].offset, 33U);
@@ -199,7 +199,7 @@ TEST(WorkspaceRequirementPlanning, LateInvalidAlignmentPreservesAllOffsets) {
     const StatusOr<WorkspacePlanLayout> layout = PlanWorkspaceRequirements(requirements);
 
     ASSERT_FALSE(layout.ok());
-    EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(layout.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(requirements[0].offset, 11U);
     EXPECT_EQ(requirements[1].offset, 22U);
     EXPECT_EQ(requirements[2].offset, 33U);
@@ -215,7 +215,7 @@ TEST(WorkspaceRequirementPlanning, InvalidAlignmentTakesPrecedenceOverEarlierOve
     const StatusOr<WorkspacePlanLayout> layout = PlanWorkspaceRequirements(requirements);
 
     ASSERT_FALSE(layout.ok());
-    EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(layout.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(requirements[0].offset, 11U);
     EXPECT_EQ(requirements[1].offset, 22U);
     EXPECT_EQ(requirements[2].offset, 33U);
@@ -257,7 +257,7 @@ TEST_P(WorkspaceRequirementPlanningDiagnosticFailure, ReturnsResourceExhaustedAn
 
     EXPECT_TRUE(injection.allocation_failed);
     ASSERT_FALSE(layout.ok());
-    EXPECT_EQ(layout.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(layout.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(layout.status().message().empty());
     EXPECT_EQ(requirements[0].offset, 11U);
     EXPECT_EQ(requirements[1].offset, 22U);

@@ -302,7 +302,7 @@ TEST(ShapeConstraintEvaluator, ValidateShapeConstraintsReturnsConstraintContext)
             std::span<const TensorView>(inputs),
             std::span<const MutableTensorView>());
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_EQ(status.message(), "hidden size mismatch");
 }
 
@@ -319,7 +319,7 @@ TEST(ShapeConstraintEvaluator, RuntimeEvaluationRejectsOutOfRangeReferences) {
             missing_input, std::span<const TensorView>(inputs),
             std::span<const MutableTensorView>());
     ASSERT_FALSE(missing_input_result.ok());
-    EXPECT_EQ(missing_input_result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(missing_input_result.status(), StatusCode::kInvalidArgument);
 
     // Output tensor index beyond the bound spans (no outputs bound).
     const ShapeConstraint missing_output{
@@ -330,7 +330,7 @@ TEST(ShapeConstraintEvaluator, RuntimeEvaluationRejectsOutOfRangeReferences) {
             missing_output, std::span<const TensorView>(inputs),
             std::span<const MutableTensorView>());
     ASSERT_FALSE(missing_output_result.ok());
-    EXPECT_EQ(missing_output_result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(missing_output_result.status(), StatusCode::kInvalidArgument);
 
     // Dimension index beyond the referenced tensor's rank.
     const ShapeConstraint missing_dim{
@@ -341,7 +341,7 @@ TEST(ShapeConstraintEvaluator, RuntimeEvaluationRejectsOutOfRangeReferences) {
             missing_dim, std::span<const TensorView>(inputs),
             std::span<const MutableTensorView>());
     ASSERT_FALSE(missing_dim_result.ok());
-    EXPECT_EQ(missing_dim_result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(missing_dim_result.status(), StatusCode::kInvalidArgument);
 
     // Rank constraint referencing a missing tensor.
     const ShapeConstraint missing_rank{
@@ -352,7 +352,7 @@ TEST(ShapeConstraintEvaluator, RuntimeEvaluationRejectsOutOfRangeReferences) {
             missing_rank, std::span<const TensorView>(inputs),
             std::span<const MutableTensorView>());
     ASSERT_FALSE(missing_rank_result.ok());
-    EXPECT_EQ(missing_rank_result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(missing_rank_result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ShapeConstraintEvaluator, ValidateShapeConstraintsPropagatesReferenceErrors) {
@@ -368,7 +368,7 @@ TEST(ShapeConstraintEvaluator, ValidateShapeConstraintsPropagatesReferenceErrors
             std::span<const TensorView>(inputs),
             std::span<const MutableTensorView>());
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("missing input tensor"), std::string::npos);
 }
 

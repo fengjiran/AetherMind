@@ -39,7 +39,7 @@ TEST(LinearInference, RejectsRankZeroInput) {
     const Status status = InferOperator(OpType::kLinear, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(LinearInference, RejectsRankZeroWeight) {
@@ -52,7 +52,7 @@ TEST(LinearInference, RejectsRankZeroWeight) {
     const Status status = InferOperator(OpType::kLinear, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(LinearInference, RejectsRank3Input) {
@@ -65,7 +65,7 @@ TEST(LinearInference, RejectsRank3Input) {
     const Status status = InferOperator(OpType::kLinear, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(LinearInference, RejectsWeightRank1) {
@@ -78,7 +78,7 @@ TEST(LinearInference, RejectsWeightRank1) {
     const Status status = InferOperator(OpType::kLinear, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(LinearInference, RejectsStaticKMismatch) {
@@ -91,7 +91,7 @@ TEST(LinearInference, RejectsStaticKMismatch) {
     const Status status = InferOperator(OpType::kLinear, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 // --- Inference ---

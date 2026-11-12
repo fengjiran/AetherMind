@@ -459,7 +459,7 @@ TEST(KVCacheUpdateKernel, MissingLayerUpdateDoesNotCommitTheTransaction) {
 
     const Status status = Executor::Execute(*plan, *context);
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_EQ(view->current_pos(), 0U);
 }
 
@@ -494,7 +494,7 @@ TEST(KVCacheUpdateKernel, AliasFailureDoesNotCommitTheTransaction) {
 
     const Status status = Executor::Execute(*plan, *context);
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_EQ(view->current_pos(), 0U);
     EXPECT_TRUE(view->awaiting_prefill());
 }
@@ -616,7 +616,7 @@ TEST(KVCacheUpdateKernel, AttentionRejectsAppendTransactionQueryLengthMismatch) 
 
     const Status status = Executor::Execute(*plan, *context);
 
-    EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(status, StatusCode::kFailedPrecondition);
     EXPECT_FALSE(g_last_read_binding.has_value());
     EXPECT_EQ(view->current_pos(), 0U);
 }
@@ -643,7 +643,7 @@ TEST(KVCacheUpdateKernel, AttentionRejectsPureReadQueryLengthPastVisibleRange) {
 
     const Status status = Executor::Execute(*plan, *context);
 
-    EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(status, StatusCode::kFailedPrecondition);
     EXPECT_FALSE(g_last_read_binding.has_value());
     EXPECT_EQ(view->current_pos(), 2U);
 }
@@ -740,7 +740,7 @@ TEST(KVCacheUpdateKernel, AttentionRejectsStateGeometryThatDiffersFromKVCacheSes
 
     const Status status = Executor::Execute(*plan, *context);
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_FALSE(g_last_read_binding.has_value());
     EXPECT_EQ(view->current_pos(), 2U);
 }
@@ -800,7 +800,7 @@ TEST(KVCacheUpdateKernel, AttentionRejectsMismatchedStaticKvHeadsAndHeadDimensio
 
         const Status status = Executor::Execute(*plan, *context);
 
-        EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(status, StatusCode::kInvalidArgument);
         EXPECT_FALSE(g_last_read_binding.has_value());
         EXPECT_EQ(view->current_pos(), 2U);
     }
@@ -829,7 +829,7 @@ TEST(KVCacheUpdateKernel, LaterStepFailureLeavesWrittenRangeUncommitted) {
 
     const Status status = Executor::Execute(*plan, *context);
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     ASSERT_TRUE(g_last_read_binding.has_value());
     EXPECT_EQ(g_last_read_binding->visible_end, 2U);
     EXPECT_EQ(g_last_read_binding->query_begin, 0U);
@@ -906,7 +906,7 @@ TEST(KVCacheUpdateKernel, AttentionBeforeLayerUpdateCannotReadVisibleAppendRange
 
     const Status status = Executor::Execute(*plan, *context);
 
-    EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(status, StatusCode::kFailedPrecondition);
     EXPECT_EQ(view->current_pos(), 0U);
     EXPECT_FALSE(g_last_read_binding.has_value());
 }
@@ -926,7 +926,7 @@ TEST(KVCacheUpdateKernel, RejectsUntrustedStatefulNodeWithoutIdentity) {
             }});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(plan.status().message().find("state identity"), std::string::npos);
 }
 
@@ -942,7 +942,7 @@ TEST(KVCacheUpdateKernel, RegistryDoesNotResolveUnsupportedF16Selector) {
             OpType::kKVCacheUpdate, selector, OpParams{KVCacheUpdateParams{}});
 
     ASSERT_FALSE(kernel.ok());
-    EXPECT_EQ(kernel.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(kernel.status(), StatusCode::kNotFound);
 }
 
 } // namespace

@@ -159,7 +159,7 @@ TEST(ExecutorBackendPath, PropagatesFrozenKernelFailure) {
     ASSERT_TRUE(table.ok()) << table.status().ToString();
     auto bindings = ExecutionContext::Create(*plan, std::move(*table), nullptr);
     ASSERT_TRUE(bindings.ok()) << bindings.status().ToString();
-    EXPECT_EQ(Executor::Execute(*plan, *bindings).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(Executor::Execute(*plan, *bindings), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutorBackendPath, CreateRequiresWorkspaceForNonZeroPlanRequirement) {
@@ -177,7 +177,7 @@ TEST(ExecutorBackendPath, CreateRequiresWorkspaceForNonZeroPlanRequirement) {
     ASSERT_TRUE(table.ok()) << table.status().ToString();
     const auto bindings = ExecutionContext::Create(*plan, std::move(*table), nullptr);
     EXPECT_FALSE(bindings.ok());
-    EXPECT_EQ(bindings.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(bindings.status(), StatusCode::kFailedPrecondition);
 }
 
 TEST(ExecutorBackendPath, PrepareRejectsViolatedRuntimeShapeConstraintBeforeRun) {
@@ -217,7 +217,7 @@ TEST(ExecutorBackendPath, PrepareRejectsViolatedRuntimeShapeConstraintBeforeRun)
                             .tensor = TensorView(weight, DataType::Float32(), weight_shape, weight_strides)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_FALSE(table.ok());
-    EXPECT_EQ(table.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(table.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutorBackendPath, ExecuteRunsWhenRuntimeShapeConstraintIsSatisfied) {

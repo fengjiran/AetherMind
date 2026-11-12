@@ -45,7 +45,7 @@ TEST(EmbeddingInference, RejectsRankZeroTokenIds) {
     const Status status = InferOperator(OpType::kEmbedding, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(EmbeddingInference, RejectsRankZeroWeight) {
@@ -58,7 +58,7 @@ TEST(EmbeddingInference, RejectsRankZeroWeight) {
     const Status status = InferOperator(OpType::kEmbedding, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(EmbeddingInference, AcceptsUint32TokenIds) {
@@ -252,8 +252,7 @@ TEST(EmbeddingInference, RejectsNonFloat32ExplicitOutputDType) {
                                 DataType::Int(32)}) {
         SCOPED_TRACE(ToString(dtype));
         EXPECT_EQ(InferOperator(OpType::kEmbedding, EmbeddingParams{.output_dtype = dtype}, inputs)
-                          .status()
-                          .code(),
+                          .status(),
                   StatusCode::kInvalidArgument);
     }
 }

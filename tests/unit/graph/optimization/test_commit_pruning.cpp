@@ -665,7 +665,7 @@ TEST(CommitPruningFailure, RemovedProducerOfGraphOutput) {
     const StatusOr<ModelGraph> committed = session.Commit(ForcePruning());
 
     ASSERT_FALSE(committed.ok());
-    EXPECT_EQ(committed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(committed.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(committed.status().message().find("unavailable during commit"),
               std::string::npos);
 }
@@ -682,7 +682,7 @@ TEST(CommitPruningFailure, RemovedProducerConsumedByRetainedNode) {
     const StatusOr<ModelGraph> committed = session.Commit(ForcePruning());
 
     ASSERT_FALSE(committed.ok());
-    EXPECT_EQ(committed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(committed.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(committed.status().message().find("unavailable during commit"),
               std::string::npos);
 }

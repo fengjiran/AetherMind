@@ -38,11 +38,11 @@ TEST(SymbolConstraintSolver, RejectsStaticConflicts) {
     const ShapeSymbol b = ShapeSymbol::Create();
 
     ASSERT_TRUE(solver.AddEqual(a, 8).ok());
-    EXPECT_EQ(solver.AddEqual(a, 16).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(solver.AddEqual(a, 16), StatusCode::kInvalidArgument);
 
     ASSERT_TRUE(solver.AddEqual(b, 16).ok());
-    EXPECT_EQ(solver.AddEqual(a, b).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(solver.AddEqual(ShapeSymbol::CreateFromValue(8), ShapeSymbol::CreateFromValue(16)).code(),
+    EXPECT_EQ(solver.AddEqual(a, b), StatusCode::kInvalidArgument);
+    EXPECT_EQ(solver.AddEqual(ShapeSymbol::CreateFromValue(8), ShapeSymbol::CreateFromValue(16)),
               StatusCode::kInvalidArgument);
 }
 

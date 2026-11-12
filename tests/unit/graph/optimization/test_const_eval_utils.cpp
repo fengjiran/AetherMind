@@ -32,7 +32,7 @@ TEST(ConstEvaluator, MakeContiguousStridesOverflow) {
     const std::vector<int64_t> shape{0, kHuge, kHuge};
     const auto result = MakeContiguousStrides(shape);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(result.status(), StatusCode::kOverflow);
 }
 
 TEST(ConstEvaluator, FoldingBudgetAcceptsExactLimits) {
@@ -52,7 +52,7 @@ TEST(ConstEvaluator, FoldingBudgetRejectsComputeOverLimit) {
             .output_bytes = 0U,
     };
 
-    EXPECT_EQ(CheckFoldingBudget(cost, policy).code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(CheckFoldingBudget(cost, policy), StatusCode::kUnimplemented);
 }
 
 TEST(ConstEvaluator, FoldingBudgetRejectsOutputBytesOverLimit) {
@@ -62,7 +62,7 @@ TEST(ConstEvaluator, FoldingBudgetRejectsOutputBytesOverLimit) {
             .output_bytes = policy.max_output_bytes + 1U,
     };
 
-    EXPECT_EQ(CheckFoldingBudget(cost, policy).code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(CheckFoldingBudget(cost, policy), StatusCode::kUnimplemented);
 }
 
 // ── EstimateCost (generalized traversal × per-element cost) ──
@@ -90,7 +90,7 @@ TEST(ConstEvaluator, EstimateCostRejectsNegativeTraversal) {
     const auto result = EstimateCost(spec, -1, 1U);
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ConstEvaluator, EstimateCostOverflow) {
@@ -99,7 +99,7 @@ TEST(ConstEvaluator, EstimateCostOverflow) {
     const auto result = EstimateCost(spec, int64_t{1} << 62, 64U);
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(result.status(), StatusCode::kOverflow);
 }
 
 } // namespace

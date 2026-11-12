@@ -774,7 +774,7 @@ TEST(OptimizeModelGraph, RejectsWrongInputDtypeBeforeOptimization) {
     const StatusOr<ModelGraph> result = OptimizeModelGraph(graph, ctx);
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(result.status().message().find("RmsNorm"), std::string::npos);
 }
 
@@ -789,7 +789,7 @@ TEST(OptimizeModelGraph, RejectsForgedOutputSpecBeforeOptimization) {
     const StatusOr<ModelGraph> result = OptimizeModelGraph(graph, ctx);
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(result.status().message().find("RmsNorm"), std::string::npos);
 }
 
@@ -812,7 +812,7 @@ TEST_P(OptLevelPreconditionTest, RejectsForgedOutputSpecAtAnyOptLevel) {
     const StatusOr<ModelGraph> result = OptimizeModelGraph(graph, ctx);
 
     ASSERT_FALSE(result.ok()) << "opt_level=" << GetParam().opt_level;
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(result.status().message().find("RmsNorm"), std::string::npos);
 }
 
@@ -971,7 +971,7 @@ TEST(GraphCompilerIntegration, SymbolicConstraintFlowsFromGraphToRuntimeFailure)
              .writable = {{.value = step.outputs[0], .tensor = out_storage.MutableView()}}},
             runtime.GetAllocator(Device::CPU()));
     const Status status = bindings.status();
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument)
+    EXPECT_EQ(status, StatusCode::kInvalidArgument)
             << "Runtime must reject bindings violating the symbolic constraint";
     EXPECT_NE(status.message().find("RmsNorm"), std::string::npos)
             << "Failure message must preserve op semantic context";

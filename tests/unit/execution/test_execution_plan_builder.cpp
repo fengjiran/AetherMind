@@ -435,7 +435,7 @@ TEST(ExecutionPlanBuilder, BuildRejectsMismatchedOutputSpecs) {
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlanBuilder, BuildRejectsInvalidInputSpecsBeforePrepare) {
@@ -454,7 +454,7 @@ TEST(ExecutionPlanBuilder, BuildRejectsInvalidInputSpecsBeforePrepare) {
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsWrongInputDtype) {
@@ -484,7 +484,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsWrongInputDtype) {
             ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
     // The rejection must come from InferRmsNorm's dtype check, not from
     // an output-spec mismatch or kernel resolution failure.
     EXPECT_NE(plan.status().message().find("RmsNorm"), std::string::npos);
@@ -533,7 +533,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMismatchedRuntimeChecks) {
             ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(plan.status().message().find("runtime_checks does not match"),
               std::string::npos);
 }
@@ -548,7 +548,7 @@ TEST(ExecutionPlanBuilder, BuildRejectsMissingTypedParams) {
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlanBuilder, BuildUsesPreparedKernelWorkspaceRequirementsForRawNodes) {
@@ -627,7 +627,7 @@ TEST(ExecutionPlanBuilder, BuildRejectsRawWorkspaceRequirementThatDisagreesWithK
             ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(plan.status().message().find("must match"), std::string::npos);
 }
 
@@ -728,7 +728,7 @@ TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutPackedWeightCollec
     const StatusOr<ExecutionPlan> plan = ExecutionPlanBuilder::Build(runtime, nodes);
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(plan.status(), StatusCode::kNotFound);
 }
 
 TEST(ExecutionPlanBuilder, PrepareKernelForNodeRejectsUnknownOpType) {
@@ -746,7 +746,7 @@ TEST(ExecutionPlanBuilder, PrepareKernelForNodeRejectsUnknownOpType) {
                                                        });
 
     EXPECT_FALSE(resolved.ok());
-    EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(resolved.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlanBuilder, PrepareKernelForNodeRejectsBackendOpTypeMismatch) {
@@ -755,7 +755,7 @@ TEST(ExecutionPlanBuilder, PrepareKernelForNodeRejectsBackendOpTypeMismatch) {
     node.op_params = OpParams{RmsNormParams{.eps = 1.0e-5F}};
     const auto kernel = ExecutionPlanBuilder::PrepareKernelForNode(backend, node);
     ASSERT_FALSE(kernel.ok());
-    EXPECT_EQ(kernel.status().code(), StatusCode::kInternal);
+    EXPECT_EQ(kernel.status(), StatusCode::kInternal);
 }
 
 TEST(ExecutionPlanBuilder, TrustedPathRejectsUnknownLoweredValuePayload) {
@@ -768,7 +768,7 @@ TEST(ExecutionPlanBuilder, TrustedPathRejectsUnknownLoweredValuePayload) {
     Runtime runtime = RuntimeBuilder{}.Build();
     const auto plan = ExecutionPlanBuilder::Build(runtime, *lowered);
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInternal);
+    EXPECT_EQ(plan.status(), StatusCode::kInternal);
 }
 
 TEST(ExecutionPlanBuilder, BuildFromLoweredGraphPropagatesPreparedKernelWorkspace) {
@@ -983,7 +983,7 @@ TEST(ExecutionPlanBuilder, TrustedPathRejectsCollectionFromAnotherArtifact) {
     const auto plan = ExecutionPlanBuilder::Build(runtime, foreign_collection, *lowered);
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(plan.status().message().find("different model artifact"), std::string::npos);
 }
 
@@ -1087,7 +1087,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsMissingTypedParams) {
             ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(plan.status().message().find("typed op_params"), std::string::npos);
 }
 
@@ -1162,7 +1162,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsSelectorActDTypeMismatch) {
             ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(plan.status().message().find("act_dtype"), std::string::npos);
 }
 
@@ -1189,7 +1189,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsSelectorWeightDTypeMismatch) 
             ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(plan.status().message().find("weight_dtype"), std::string::npos);
 }
 
@@ -1230,7 +1230,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsSelectorWeightDTypeWithoutWei
             ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(plan.status().message().find("weight_dtype"), std::string::npos);
 }
 
@@ -1257,7 +1257,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsUndefinedSelectorActDType) {
             ExecutionPlanBuilder::Build(runtime, std::vector<ExecutionPlanNodeSpec>{node});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(plan.status().message().find("act_dtype"), std::string::npos);
 }
 

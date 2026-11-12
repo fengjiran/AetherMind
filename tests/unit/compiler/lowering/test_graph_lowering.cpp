@@ -226,7 +226,7 @@ TEST(LoweredGraphBuilder, RejectsSchemaUndeclaredStateAlias) {
 
     const Status status = builder.Validate();
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInternal);
+    EXPECT_EQ(status, StatusCode::kInternal);
     EXPECT_NE(status.message().find("not declared"), std::string::npos);
 }
 
@@ -243,7 +243,7 @@ TEST(LoweredGraphBuilder, RejectsDuplicateStateAlias) {
 
     const Status status = builder.Validate();
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInternal);
+    EXPECT_EQ(status, StatusCode::kInternal);
     EXPECT_NE(status.message().find("duplicate"), std::string::npos);
 }
 
@@ -493,7 +493,7 @@ TEST(GraphLowering, RejectsInvalidGraph) {
     const StatusOr<LoweredGraph> lowered = LowerModelGraph(graph);
 
     ASSERT_FALSE(lowered.ok());
-    EXPECT_EQ(lowered.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(lowered.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(GraphLowering, LowersFullLlamaDenseGraph) {

@@ -61,7 +61,7 @@ fs::path HfDirectory(const char* name) {
 
 void ExpectPrecisionDiagnostic(const Status& status, const char* role,
                                DataType actual_dtype, std::optional<uint32_t> layer = std::nullopt) {
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(status, StatusCode::kUnimplemented);
     EXPECT_NE(status.message().find(role), std::string::npos) << status.message();
     EXPECT_NE(status.message().find(ToString(actual_dtype)), std::string::npos) << status.message();
     EXPECT_NE(status.message().find("required Float32"), std::string::npos) << status.message();

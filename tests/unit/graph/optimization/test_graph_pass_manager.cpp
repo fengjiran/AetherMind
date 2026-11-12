@@ -126,7 +126,7 @@ TEST(GraphPassManager, StopsOnFirstError) {
     const StatusOr<ModelGraph> result = pipeline.Run(graph);
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(GraphPassManager, AddSequentialRunsPassesInOrder) {
@@ -325,7 +325,7 @@ TEST(GraphPassManager, RejectsWrongInputDtypeBeforeAnyPass) {
     const StatusOr<ModelGraph> result = pipeline.Run(graph);
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(pass_invocations, 0)
             << "Precondition violation: pass ran on an unvalidated graph";
     // Node/op semantic context preserved in the error message.
@@ -343,7 +343,7 @@ TEST(GraphPassManager, RejectsForgedOutputSpecBeforeAnyPass) {
     const StatusOr<ModelGraph> result = pipeline.Run(graph);
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(pass_invocations, 0)
             << "Precondition violation: pass ran on an unvalidated graph";
     EXPECT_NE(result.status().message().find("RmsNorm"), std::string::npos);

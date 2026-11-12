@@ -101,7 +101,7 @@ TEST(RuntimeResourceLimits, RejectsKvPayloadOverLimitBeforeCreatingAllocator) {
     const auto result = builder.TryBuild();
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(result.status(), StatusCode::kResourceExhausted);
     EXPECT_NE(result.status().message().find("KV cache payload"), std::string::npos);
     EXPECT_NE(result.status().message().find("required=" + std::to_string(kRequiredKvBytes)), std::string::npos);
     EXPECT_NE(result.status().message().find("limit=" + std::to_string(kRequiredKvBytes - 1)), std::string::npos);
@@ -164,7 +164,7 @@ TEST(RuntimeResourceLimits, RejectsInvalidKvGeometryBeforeBudgetComparison) {
         const auto result = builder.TryBuild();
 
         ASSERT_FALSE(result.ok());
-        EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
         EXPECT_EQ(observation->allocator_creations, 0U);
         EXPECT_EQ(observation->storage_calls, 0U);
     }
@@ -182,7 +182,7 @@ TEST(RuntimeResourceLimits, RejectsKvByteOverflowBeforeCreatingAllocator) {
     const auto result = builder.TryBuild();
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(result.status(), StatusCode::kOverflow);
     EXPECT_EQ(observation->allocator_creations, 0U);
     EXPECT_EQ(observation->storage_calls, 0U);
 }
@@ -199,7 +199,7 @@ TEST(RuntimeResourceLimits, BudgetFailureConsumesRegistrationsAndBuilderCanRetry
 
     const auto failure = builder.TryBuild();
     ASSERT_FALSE(failure.ok());
-    EXPECT_EQ(failure.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(failure.status(), StatusCode::kResourceExhausted);
     EXPECT_EQ(observation->allocator_creations, 0U);
 
     options.kv_cache.max_bytes = kRequiredKvBytes;
@@ -224,7 +224,7 @@ TEST(RuntimeResourceLimits, AllocatorFailureWithinBudgetCanRetry) {
     ObserveCpuAllocator(builder, observation);
     const auto failure = builder.TryBuild();
     ASSERT_FALSE(failure.ok());
-    EXPECT_EQ(failure.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(failure.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(failure.status().message().empty());
     EXPECT_EQ(observation->storage_calls, 1U);
 

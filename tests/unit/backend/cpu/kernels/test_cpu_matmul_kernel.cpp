@@ -327,7 +327,7 @@ TEST(CPUKernelMatMulEntry, RejectsIncorrectOutputShape) {
             .rhs = TensorView{rhs, DataType::Float32(), rhs_shape, rhs_strides},
             .output = MutableTensorView{output, DataType::Float32(), incorrect_output_shape, output_strides},
     });
-    EXPECT_EQ(wrong_shape.code(), StatusCode::kInvalidArgument) << wrong_shape.ToString();
+    EXPECT_EQ(wrong_shape, StatusCode::kInvalidArgument) << wrong_shape.ToString();
 }
 
 TEST(CPUKernelMatMulEntry, RejectsOverlappingOutputLayout) {
@@ -344,7 +344,7 @@ TEST(CPUKernelMatMulEntry, RejectsOverlappingOutputLayout) {
             .output = MutableTensorView{output, DataType::Float32(), matrix_shape,
                                         overlapping_output_strides},
     });
-    EXPECT_EQ(overlapping_output.code(), StatusCode::kInvalidArgument)
+    EXPECT_EQ(overlapping_output, StatusCode::kInvalidArgument)
             << overlapping_output.ToString();
 }
 
@@ -359,7 +359,7 @@ TEST(CPUKernelMatMulEntry, RejectsPartiallyAliasedLhsOutput) {
             .rhs = TensorView{rhs, DataType::Float32(), matrix_shape, matrix_strides},
             .output = MutableTensorView{lhs + 1, DataType::Float32(), matrix_shape, matrix_strides},
     });
-    EXPECT_EQ(partial_alias.code(), StatusCode::kInvalidArgument) << partial_alias.ToString();
+    EXPECT_EQ(partial_alias, StatusCode::kInvalidArgument) << partial_alias.ToString();
 }
 
 TEST(CPUKernelMatMulEntry, RejectsPartiallyAliasedRhsOutput) {
@@ -373,7 +373,7 @@ TEST(CPUKernelMatMulEntry, RejectsPartiallyAliasedRhsOutput) {
             .rhs = TensorView{rhs, DataType::Float32(), matrix_shape, matrix_strides},
             .output = MutableTensorView{rhs + 1, DataType::Float32(), matrix_shape, matrix_strides},
     });
-    EXPECT_EQ(partial_alias.code(), StatusCode::kInvalidArgument) << partial_alias.ToString();
+    EXPECT_EQ(partial_alias, StatusCode::kInvalidArgument) << partial_alias.ToString();
 }
 
 TEST(CPUKernelMatMulEntry, RejectsOverflowBeforeAddressCalculation) {
@@ -391,7 +391,7 @@ TEST(CPUKernelMatMulEntry, RejectsOverflowBeforeAddressCalculation) {
             .rhs = TensorView{storage, DataType::Float32(), rhs_shape, rhs_strides},
             .output = MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
     });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelMatMulEntry, RejectsInvalidDtype) {
@@ -404,7 +404,7 @@ TEST(CPUKernelMatMulEntry, RejectsInvalidDtype) {
             .rhs = TensorView{storage, DataType::Float32(), matrix_shape, matrix_strides},
             .output = MutableTensorView{storage + 4, DataType::Float32(), matrix_shape, matrix_strides},
     });
-    EXPECT_EQ(bad_dtype.code(), StatusCode::kInvalidArgument) << bad_dtype.ToString();
+    EXPECT_EQ(bad_dtype, StatusCode::kInvalidArgument) << bad_dtype.ToString();
 }
 
 TEST(CPUKernelMatMulEntry, RejectsRankOneInput) {
@@ -419,7 +419,7 @@ TEST(CPUKernelMatMulEntry, RejectsRankOneInput) {
             .rhs = TensorView{storage, DataType::Float32(), matrix_shape, matrix_strides},
             .output = MutableTensorView{storage + 4, DataType::Float32(), matrix_shape, matrix_strides},
     });
-    EXPECT_EQ(bad_rank.code(), StatusCode::kInvalidArgument) << bad_rank.ToString();
+    EXPECT_EQ(bad_rank, StatusCode::kInvalidArgument) << bad_rank.ToString();
 }
 
 TEST(CPUKernelMatMulEntry, RejectsMismatchedInnerDimension) {
@@ -433,7 +433,7 @@ TEST(CPUKernelMatMulEntry, RejectsMismatchedInnerDimension) {
             .rhs = TensorView{storage, DataType::Float32(), bad_rhs_shape, matrix_strides},
             .output = MutableTensorView{storage + 6, DataType::Float32(), matrix_shape, matrix_strides},
     });
-    EXPECT_EQ(bad_inner_dimension.code(), StatusCode::kInvalidArgument)
+    EXPECT_EQ(bad_inner_dimension, StatusCode::kInvalidArgument)
             << bad_inner_dimension.ToString();
 }
 
@@ -449,7 +449,7 @@ TEST(CPUKernelMatMulEntry, RejectsIncompatibleBatchDimensions) {
             .rhs = TensorView{storage, DataType::Float32(), rhs_batch_shape, batch_strides},
             .output = MutableTensorView{storage, DataType::Float32(), output_batch_shape, batch_strides},
     });
-    EXPECT_EQ(bad_batch_shape.code(), StatusCode::kInvalidArgument) << bad_batch_shape.ToString();
+    EXPECT_EQ(bad_batch_shape, StatusCode::kInvalidArgument) << bad_batch_shape.ToString();
 }
 
 TEST(CPUKernelMatMulEntry, RejectsCorruptTransposeMetadata) {
@@ -470,7 +470,7 @@ TEST(CPUKernelMatMulEntry, RejectsCorruptTransposeMetadata) {
                                                                      .output = MutableTensorView{output, DataType::Float32(), matrix_shape, matrix_strides},
                                                              });
     ASSERT_FALSE(prepared.ok());
-    EXPECT_EQ(prepared.status().code(), StatusCode::kInvalidArgument)
+    EXPECT_EQ(prepared.status(), StatusCode::kInvalidArgument)
             << prepared.status().ToString();
 }
 

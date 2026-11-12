@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -42,6 +43,20 @@ TEST(Status, ErrorCarriesCodeAndMessage) {
     EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
     EXPECT_EQ(status.message(), "token ids must not be empty");
     EXPECT_EQ(status.ToString(), "INVALID_ARGUMENT: token ids must not be empty");
+}
+
+TEST(Status, StreamsToStringText) {
+    std::ostringstream ok;
+    ok << Status::Ok();
+    EXPECT_EQ(ok.str(), "OK");
+
+    std::ostringstream error;
+    error << Status::InvalidArgument("token ids must not be empty");
+    EXPECT_EQ(error.str(), "INVALID_ARGUMENT: token ids must not be empty");
+
+    std::ostringstream empty_message;
+    empty_message << Status::InvalidArgument("");
+    EXPECT_EQ(empty_message.str(), "INVALID_ARGUMENT");
 }
 
 TEST(Status, EqualityComparesCodeAndMessage) {

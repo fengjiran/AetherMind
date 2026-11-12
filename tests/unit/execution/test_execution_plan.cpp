@@ -172,22 +172,20 @@ TEST(ExecutionPlan, StoresResolvedKernelByValue) {
 }
 
 TEST(ExecutionPlan, RejectsInvalidResolvedKernel) {
-    EXPECT_EQ(ExecutionPlan::Create({}, {}, {}, {ExecutionStep{}}).status().code(),
+    EXPECT_EQ(ExecutionPlan::Create({}, {}, {}, {ExecutionStep{}}).status(),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(ExecutionPlan::Create({}, {}, {},
                                     {ExecutionStep{.kernel = {.op_type = OpType::kSoftmax,
                                                               .fn = &FakeKernel,
                                                               .params_size = 1}}})
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(ExecutionPlan::Create({}, {}, {},
                                     {ExecutionStep{.kernel = {.op_type = OpType::kSoftmax,
                                                               .fn = &FakeKernel,
                                                               .params_builder = &BuildKernelParam,
                                                               .params_size = kMaxKernelParamsSize + 1}}})
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kInvalidArgument);
 }
 
@@ -205,7 +203,7 @@ TEST(ExecutionPlan, RejectsRuntimeCheckReferencingMissingTensorPort) {
             .error_context = "unused"};
     const auto plan = MakeRmsNormPlan({check});
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlan, RejectsRuntimeCheckReferencingDimensionBeyondRank) {
@@ -214,7 +212,7 @@ TEST(ExecutionPlan, RejectsRuntimeCheckReferencingDimensionBeyondRank) {
             .error_context = "unused"};
     const auto plan = MakeRmsNormPlan({check});
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(KernelInvoker, BuildsParamsOnlyForTheKernelCall) {
@@ -238,17 +236,16 @@ TEST(KernelInvoker, PropagatesBuilderFailureWithoutCallingKernel) {
                                               .fn = &CaptureBuiltParamKernel,
                                               .params_builder = &FailToBuildKernelParam,
                                               .params_size = sizeof(int)},
-                                             context, {}, {})
-                      .code(),
+                                             context, {}, {}),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(g_invocations, 0);
 }
 
 TEST(KernelInvoker, RejectsNullFunctionAndInvalidParamsContract) {
     KernelContext context{};
-    EXPECT_EQ(BuildAndInvokeKernelForTesting({.op_type = OpType::kAdd}, context, {}, {}).code(),
+    EXPECT_EQ(BuildAndInvokeKernelForTesting({.op_type = OpType::kAdd}, context, {}, {}),
               StatusCode::kFailedPrecondition);
-    EXPECT_EQ(BuildAndInvokeKernelForTesting({.op_type = OpType::kAdd, .fn = &FakeKernel, .params_size = 1}, context, {}, {}).code(),
+    EXPECT_EQ(BuildAndInvokeKernelForTesting({.op_type = OpType::kAdd, .fn = &FakeKernel, .params_size = 1}, context, {}, {}),
               StatusCode::kFailedPrecondition);
 }
 
@@ -288,7 +285,7 @@ TEST(ExecutionPlan, RejectsActivationInputWithoutEarlierProducer) {
               .kernel_input_ports = {0},
               .kernel_output_ports = {0}}});
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlan, RejectsModelInputValueMissingFromModelInputs) {
@@ -298,7 +295,7 @@ TEST(ExecutionPlan, RejectsModelInputValueMissingFromModelInputs) {
             {}, {}, {});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlan, RejectsActivationWithoutProducer) {
@@ -308,7 +305,7 @@ TEST(ExecutionPlan, RejectsActivationWithoutProducer) {
             {}, {{.index = 0}}, {});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlan, ExecuteRejectsBindingDTypeDrift) {
@@ -324,7 +321,7 @@ TEST(ExecutionPlan, ExecuteRejectsBindingDTypeDrift) {
                             .tensor = TensorView(input, DataType::Float(16), shape, strides)}}},
             allocator);
     ASSERT_FALSE(bindings.ok());
-    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(bindings.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlan, ExecuteRejectsBindingRankDrift) {
@@ -340,7 +337,7 @@ TEST(ExecutionPlan, ExecuteRejectsBindingRankDrift) {
                             .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
             allocator);
     ASSERT_FALSE(bindings.ok());
-    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(bindings.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlan, ExecuteRejectsBindingStaticDimDrift) {
@@ -356,7 +353,7 @@ TEST(ExecutionPlan, ExecuteRejectsBindingStaticDimDrift) {
                             .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
             allocator);
     ASSERT_FALSE(bindings.ok());
-    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(bindings.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlan, ExecuteRejectsInvalidViewsWhenCheckingPremises) {
@@ -366,7 +363,7 @@ TEST(ExecutionPlan, ExecuteRejectsInvalidViewsWhenCheckingPremises) {
     const auto bindings = PrepareExecutionBindings(
             *plan, ExternalTensorBindings{.read_only = {{.value = {.index = 0}, .tensor = TensorView{}}}}, allocator);
     ASSERT_FALSE(bindings.ok());
-    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(bindings.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionPlan, SortsStateAliasPlanForStepLookup) {
@@ -413,7 +410,7 @@ TEST(ExecutionPlan, RejectsStateValueWithoutExplicitIdentity) {
             {{.spec = tensor_spec, .kind = ExecutionValueKind::kState}}, {}, {}, {});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(plan.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(plan.status().message().find("state identity"), std::string::npos);
 }
 
@@ -432,7 +429,7 @@ TEST(ExecutionPlan, RejectsStateAliasBeyondStepCount) {
               .kernel_output_ports = {0}}},
             {.aliases = {{.step_index = 1}}});
     ASSERT_FALSE(invalid.ok());
-    EXPECT_EQ(invalid.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(invalid.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionBindings, BuildsCanonicalActivationStorageAndSurvivesMove) {
@@ -493,7 +490,7 @@ TEST(ExecutionBindings, RejectsExternalDtypeAndSymbolIdentityDrift) {
                            {.value = {.index = 1}, .tensor = TensorView(rhs, DataType::Float32(), rhs_shape, strides)}}},
             allocator);
     ASSERT_FALSE(bindings.ok());
-    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(bindings.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(Executor, RunsCachedPreparedExecutionBindingsWithoutPerStepBindingApi) {
@@ -581,7 +578,7 @@ TEST(PreparedExecutionBindings, CreateRejectsDifferentPlanWithMatchingStepCountA
     const auto mismatched_context = ExecutionContext::Create(
             *second_plan, std::move(*table), nullptr);
     EXPECT_FALSE(mismatched_context.ok());
-    EXPECT_EQ(mismatched_context.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(mismatched_context.status(), StatusCode::kInvalidArgument);
 
     auto copied_table = PrepareExecutionBindings(
             *first_plan,
@@ -613,7 +610,7 @@ TEST(ExecutionContext, ClearInvalidatesPreparedBindingsWithoutResettingBorrowedR
     context->Clear();
 
     EXPECT_EQ(context->prepared_bindings(), nullptr);
-    EXPECT_EQ(Executor::Execute(*plan, *context).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(Executor::Execute(*plan, *context), StatusCode::kFailedPrecondition);
 }
 
 TEST(PreparedExecutionBindings, PreparedParamsStayStableAcrossMoveAndParameterlessStepsYieldNull) {
@@ -713,7 +710,7 @@ TEST(ExecutionBindings, RejectsWhenKernelParamsBuilderFails) {
                             .tensor = TensorView(input, DataType::Float32(), shape, strides)}}},
             allocator);
     ASSERT_FALSE(bindings.ok());
-    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(bindings.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(g_invocations, 0);
 }
 

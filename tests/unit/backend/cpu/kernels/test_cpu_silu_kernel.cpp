@@ -97,7 +97,7 @@ TEST(CPUKernelSilu, ResolvesF32ReferenceDescriptor) {
 TEST(CPUKernelSilu, Float16SelectorDoesNotResolve) {
     const auto kernel = PrepareSiluKernel(DataType::Float(16));
     ASSERT_FALSE(kernel.ok());
-    EXPECT_EQ(kernel.status().code(), StatusCode::kNotFound) << kernel.status().ToString();
+    EXPECT_EQ(kernel.status(), StatusCode::kNotFound) << kernel.status().ToString();
 }
 
 TEST(CPUKernelSilu, ContiguousValuesUseStableLargeMagnitudeFormula) {
@@ -199,7 +199,7 @@ TEST(CPUKernelSilu, RejectsPartialInputOutputOverlap) {
             .input = TensorView{storage.data(), DataType::Float32(), shape, strides},
             .output = MutableTensorView{storage.data() + 1, DataType::Float32(), shape, strides},
     });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelSilu, RejectsNonInjectiveOutputMapping) {
@@ -213,7 +213,7 @@ TEST(CPUKernelSilu, RejectsNonInjectiveOutputMapping) {
             .input = TensorView{input.data(), DataType::Float32(), shape, input_strides},
             .output = MutableTensorView{output.data(), DataType::Float32(), shape, output_strides},
     });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelSilu, RejectsOutputLayoutWhoseInjectivityCannotBeProven) {
@@ -227,7 +227,7 @@ TEST(CPUKernelSilu, RejectsOutputLayoutWhoseInjectivityCannotBeProven) {
             .input = TensorView{input.data(), DataType::Float32(), shape, input_strides},
             .output = MutableTensorView{output.data(), DataType::Float32(), shape, output_strides},
     });
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kUnimplemented) << status.ToString();
 }
 
 TEST(CPUKernelSilu, ReportsUndecidableStridedInputOutputOverlap) {
@@ -239,7 +239,7 @@ TEST(CPUKernelSilu, ReportsUndecidableStridedInputOutputOverlap) {
             .input = TensorView{storage.data(), DataType::Float32(), shape, strides},
             .output = MutableTensorView{storage.data() + 1, DataType::Float32(), shape, strides},
     });
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kUnimplemented) << status.ToString();
 }
 
 TEST(CPUKernelSilu, RejectsMismatchedShapesAndDtypes) {
@@ -254,13 +254,13 @@ TEST(CPUKernelSilu, RejectsMismatchedShapesAndDtypes) {
             .input = TensorView{input, DataType::Float32(), input_shape, input_strides},
             .output = MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
     });
-    EXPECT_EQ(shape_status.code(), StatusCode::kInvalidArgument) << shape_status.ToString();
+    EXPECT_EQ(shape_status, StatusCode::kInvalidArgument) << shape_status.ToString();
 
     const Status dtype_status = RunSilu(SiluTestViews{
             .input = TensorView{input, DataType::Float32(), output_shape, output_strides},
             .output = MutableTensorView{output, DataType::Float(16), output_shape, output_strides},
     });
-    EXPECT_EQ(dtype_status.code(), StatusCode::kInvalidArgument) << dtype_status.ToString();
+    EXPECT_EQ(dtype_status, StatusCode::kInvalidArgument) << dtype_status.ToString();
 }
 
 TEST(CPUKernelSilu, RejectsAddressOverflowDuringBinding) {
@@ -273,7 +273,7 @@ TEST(CPUKernelSilu, RejectsAddressOverflowDuringBinding) {
             .input = TensorView{input, DataType::Float32(), shape, huge_strides},
             .output = MutableTensorView{output, DataType::Float32(), shape, huge_strides},
     });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelSilu, ParamsBuilderRejectsWrongArityAndInvalidViews) {
@@ -290,7 +290,7 @@ TEST(CPUKernelSilu, ParamsBuilderRejectsWrongArityAndInvalidViews) {
                     .attrs = kernel->attrs,
             },
             prepared.storage.data());
-    EXPECT_EQ(arity_status.code(), StatusCode::kInvalidArgument) << arity_status.ToString();
+    EXPECT_EQ(arity_status, StatusCode::kInvalidArgument) << arity_status.ToString();
 
     const std::array<TensorView, 1> invalid_input{TensorView{}};
     const Status view_status = kernel->params_builder(
@@ -300,7 +300,7 @@ TEST(CPUKernelSilu, ParamsBuilderRejectsWrongArityAndInvalidViews) {
                     .attrs = kernel->attrs,
             },
             prepared.storage.data());
-    EXPECT_EQ(view_status.code(), StatusCode::kInvalidArgument) << view_status.ToString();
+    EXPECT_EQ(view_status, StatusCode::kInvalidArgument) << view_status.ToString();
 }
 
 } // namespace

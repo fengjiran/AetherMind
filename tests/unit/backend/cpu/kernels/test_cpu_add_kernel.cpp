@@ -150,7 +150,7 @@ TEST(AddKernel, RejectsInvalidViews) {
     const AddTestViews params{};
     const Status status = RunAdd(params);
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(AddKernel, RejectsMismatchedDTypes) {
@@ -167,7 +167,7 @@ TEST(AddKernel, RejectsMismatchedDTypes) {
     };
     const Status status = RunAdd(params, DataType::Int(32));
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(AddKernel, RejectsUnsupportedDType) {
@@ -186,7 +186,7 @@ TEST(AddKernel, RejectsUnsupportedDType) {
     // fail in PrepareKernel with kNotFound and never reach the entry check.
     const Status status = RunAdd(params);
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(AddKernel, RejectsIncompatibleBroadcast) {
@@ -207,7 +207,7 @@ TEST(AddKernel, RejectsIncompatibleBroadcast) {
     };
     const Status status = RunAdd(params);
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(AddKernel, RejectsWrongOutputShape) {
@@ -228,7 +228,7 @@ TEST(AddKernel, RejectsWrongOutputShape) {
     };
     const Status status = RunAdd(params);
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(AddKernel, ZeroElementOutputReturnsOk) {
@@ -308,7 +308,7 @@ TEST(AddKernel, RejectsOutputShiftedIntoLhs) {
             .output_tensor = MutableTensorView{lhs + 1, DataType::Float32(), shape, strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(AddKernel, RejectsBroadcastInputInsideOutputRegion) {
@@ -327,7 +327,7 @@ TEST(AddKernel, RejectsBroadcastInputInsideOutputRegion) {
             .output_tensor = MutableTensorView{storage, DataType::Float32(), shape, strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(AddKernel, RejectsNonInjectiveOutputLayout) {
@@ -343,7 +343,7 @@ TEST(AddKernel, RejectsNonInjectiveOutputLayout) {
             .output_tensor = MutableTensorView{output, DataType::Float32(), shape, strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(AddKernel, ReportsUndecidableStridedOverlapAsUnimplemented) {
@@ -361,7 +361,7 @@ TEST(AddKernel, ReportsUndecidableStridedOverlapAsUnimplemented) {
             .output_tensor = MutableTensorView{storage + 1, DataType::Float32(), shape, holed_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kUnimplemented) << status.ToString();
 }
 
 TEST(AddKernel, OnePlusZeroYieldsZero) {
@@ -459,7 +459,7 @@ TEST(AddKernel, ReportsIntegerOverflow) {
 
     const Status status = RunAdd(params, DataType::Int(32));
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+    EXPECT_EQ(status, StatusCode::kOverflow);
 }
 
 TEST(AddKernel, ScalarBroadcast) {
@@ -854,7 +854,7 @@ TEST(AddKernel, RejectsIncompatibleRuntimeBroadcastShapes) {
 
     const auto bindings = binding_collector.CreateContext();
     EXPECT_FALSE(bindings.ok());
-    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(bindings.status(), StatusCode::kInvalidArgument);
 }
 
 // TDD red-proof: after consolidation, the frozen registry must contain exactly
@@ -914,7 +914,7 @@ TEST(AddKernel, ResolveAddWithUndefinedWeightDtypeReturnsNotFound) {
     const auto resolved = backend.PrepareKernel(
             OpType::kAdd, selector, OpParams{AddParams{}});
     EXPECT_FALSE(resolved.ok());
-    EXPECT_EQ(resolved.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(resolved.status(), StatusCode::kNotFound);
 }
 
 } // namespace

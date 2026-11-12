@@ -187,7 +187,7 @@ TEST(ConstEvaluator, SkipsAddBroadcastOutputMismatch) {
     const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(plan.status(), StatusCode::kUnimplemented);
 }
 
 TEST(ConstEvaluator, PlansAddScalarBroadcastRankZeroLhs) {
@@ -245,7 +245,7 @@ TEST(ConstEvaluator, SkipsAddUnsupportedDType) {
     const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(plan.status(), StatusCode::kUnimplemented);
 }
 
 TEST(ConstEvaluator, SkipsAddMismatchedShape) {
@@ -262,7 +262,7 @@ TEST(ConstEvaluator, SkipsAddMismatchedShape) {
     const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(plan.status(), StatusCode::kUnimplemented);
 }
 
 TEST(ConstEvaluator, EvaluatesAddFloat32) {
@@ -384,7 +384,7 @@ TEST(ConstEvaluator, SkipsAddInt32Overflow) {
 
     const Status status = evaluator->Evaluate(inputs, outputs, AddParams{});
 
-    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+    EXPECT_EQ(status, StatusCode::kOverflow);
 }
 
 TEST(ConstEvaluator, SkipsAddBroadcastInt32Overflow) {
@@ -409,7 +409,7 @@ TEST(ConstEvaluator, SkipsAddBroadcastInt32Overflow) {
 
     const Status status = evaluator->Evaluate(inputs, outputs, AddParams{});
 
-    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+    EXPECT_EQ(status, StatusCode::kOverflow);
 }
 
 TEST(ConstEvaluator, SkipsAddInt64Overflow) {
@@ -430,7 +430,7 @@ TEST(ConstEvaluator, SkipsAddInt64Overflow) {
 
     const Status status = evaluator->Evaluate(inputs, outputs, AddParams{});
 
-    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+    EXPECT_EQ(status, StatusCode::kOverflow);
 }
 
 // ── Add rank-zero scalar tests ──
@@ -579,7 +579,7 @@ TEST(ConstEvaluator, SkipsAddRankZeroUnsupportedDType) {
     const auto plan = evaluator->Plan(inputs, outputs, AddParams{}, ConstEvalPolicy{});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(plan.status(), StatusCode::kUnimplemented);
 }
 
 // Add rank-zero adversarial — integer overflow
@@ -601,7 +601,7 @@ TEST(ConstEvaluator, SkipsAddRankZeroInt32Overflow) {
 
     const Status status = evaluator->Evaluate(inputs, outputs, AddParams{});
 
-    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+    EXPECT_EQ(status, StatusCode::kOverflow);
 }
 
 } // namespace

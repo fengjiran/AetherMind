@@ -181,7 +181,7 @@ TEST_P(KVCacheSessionViewOomTest, DiagnosticAllocationFailureReturnsResourceExha
     test::BeginMallocCallCounting();
     const Status original = diagnostic.invoke(view_, storage_.layout);
     const auto counts = test::EndMallocCallCounting();
-    EXPECT_EQ(original.code(), diagnostic.code);
+    EXPECT_EQ(original, diagnostic.code);
     EXPECT_FALSE(original.message().empty());
     EXPECT_GT(counts.malloc_calls, 0U);
 
@@ -190,7 +190,7 @@ TEST_P(KVCacheSessionViewOomTest, DiagnosticAllocationFailureReturnsResourceExha
     for (size_t skip = 0; skip < counts.malloc_calls; ++skip) {
         SCOPED_TRACE(skip);
         const Status before_failure = diagnostic.invoke(view_, storage_.layout);
-        EXPECT_EQ(before_failure.code(), diagnostic.code);
+        EXPECT_EQ(before_failure, diagnostic.code);
         EXPECT_FALSE(before_failure.message().empty());
 
         test::ScopedMallocFailure failure(0, skip);
@@ -198,7 +198,7 @@ TEST_P(KVCacheSessionViewOomTest, DiagnosticAllocationFailureReturnsResourceExha
         const auto result = failure.Stop();
 
         EXPECT_TRUE(result.allocation_failed);
-        EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+        EXPECT_EQ(status, StatusCode::kResourceExhausted);
         EXPECT_TRUE(status.message().empty());
         ExpectUnchanged();
         ExpectUsable();

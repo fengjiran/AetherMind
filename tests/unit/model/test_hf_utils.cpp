@@ -50,7 +50,7 @@ TEST(ModelLoader_HfUtilsTest, RejectsUnknownDType) {
     const auto dtype = ParseSafetensorsDType("F4");
 
     ASSERT_FALSE(dtype.ok());
-    EXPECT_EQ(dtype.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(dtype.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(dtype.status().message().find("Unsupported safetensors dtype"),
               std::string::npos);
 }
@@ -59,7 +59,7 @@ TEST(ModelLoader_HfUtilsTest, RejectsLowercaseDTypeName) {
     const auto dtype = ParseSafetensorsDType("f32");
 
     ASSERT_FALSE(dtype.ok());
-    EXPECT_EQ(dtype.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(dtype.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfUtilsTest, ReadFileTextReadsContent) {
@@ -79,7 +79,7 @@ TEST(ModelLoader_HfUtilsTest, ReadFileTextMissingFile) {
     const auto text = ReadFileText(temp_dir.path() / "missing.json");
 
     ASSERT_FALSE(text.ok());
-    EXPECT_EQ(text.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(text.status(), StatusCode::kNotFound);
 }
 
 TEST(ModelLoader_HfUtilsTest, ReadFileTextRejectsDirectory) {
@@ -88,7 +88,7 @@ TEST(ModelLoader_HfUtilsTest, ReadFileTextRejectsDirectory) {
     const auto text = ReadFileText(temp_dir.path());
 
     ASSERT_FALSE(text.ok());
-    EXPECT_EQ(text.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(text.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(text.status().message().find("not a regular file"),
               std::string::npos);
 }
@@ -103,7 +103,7 @@ TEST(ModelLoader_HfUtilsTest, ReadFileTextRejectsSymlink) {
     const auto text = ReadFileText(link);
 
     ASSERT_FALSE(text.ok());
-    EXPECT_EQ(text.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(text.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(text.status().message().find("must not be a symlink"),
               std::string::npos);
 }
@@ -126,7 +126,7 @@ TEST(ModelLoader_HfUtilsTest, ReadFileTextRejectsOversizedFile) {
     const auto text = ReadFileText(path);
 
     ASSERT_FALSE(text.ok());
-    EXPECT_EQ(text.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(text.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(text.status().message().find("exceeds maximum size"),
               std::string::npos);
 }
@@ -160,7 +160,7 @@ TEST(ModelLoader_HfUtilsTest, RejectExistingPathIfSymlinkRejectsFileSymlink) {
     const auto status = RejectExistingPathIfSymlink(link, "config.json");
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("must not be a symlink"), std::string::npos);
 }
 
@@ -174,7 +174,7 @@ TEST(ModelLoader_HfUtilsTest, RejectExistingPathIfSymlinkRejectsDirectorySymlink
     const auto status = RejectExistingPathIfSymlink(link, "model dir");
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 } // namespace

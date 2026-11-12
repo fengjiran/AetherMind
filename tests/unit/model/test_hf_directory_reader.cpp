@@ -71,7 +71,7 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsMissingConfigJson) {
     const auto layout = HfDirectoryReader::InspectDirectory(temp_dir.path());
 
     ASSERT_FALSE(layout.ok());
-    EXPECT_EQ(layout.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(layout.status(), StatusCode::kNotFound);
 }
 
 TEST(ModelLoader_HfDirectoryReaderTest, RejectsConfigJsonThatIsNotARegularFile) {
@@ -82,7 +82,7 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsConfigJsonThatIsNotARegularFile) 
     const auto layout = HfDirectoryReader::InspectDirectory(temp_dir.path());
 
     ASSERT_FALSE(layout.ok());
-    EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(layout.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfDirectoryReaderTest, RejectsConfigJsonSymlink) {
@@ -102,7 +102,7 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsConfigJsonSymlink) {
     const auto layout = HfDirectoryReader::InspectDirectory(temp_dir.path());
 
     ASSERT_FALSE(layout.ok());
-    EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(layout.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfDirectoryReaderTest, RejectsMissingSafetensorsFile) {
@@ -112,7 +112,7 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsMissingSafetensorsFile) {
     const auto layout = HfDirectoryReader::InspectDirectory(temp_dir.path());
 
     ASSERT_FALSE(layout.ok());
-    EXPECT_EQ(layout.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(layout.status(), StatusCode::kNotFound);
 }
 
 TEST(ModelLoader_HfDirectoryReaderTest, RejectsNonDirectoryPath) {
@@ -123,7 +123,7 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsNonDirectoryPath) {
     const auto layout = HfDirectoryReader::InspectDirectory(file_path);
 
     ASSERT_FALSE(layout.ok());
-    EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(layout.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfDirectoryReaderTest, RejectsConflictingSingleAndShardedLayout) {
@@ -135,7 +135,7 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsConflictingSingleAndShardedLayout
     const auto layout = HfDirectoryReader::InspectDirectory(temp_dir.path());
 
     ASSERT_FALSE(layout.ok());
-    EXPECT_EQ(layout.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(layout.status(), StatusCode::kFailedPrecondition);
 }
 
 TEST(ModelLoader_HfDirectoryReaderTest, RejectsSingleSafetensorsSymlink) {
@@ -155,7 +155,7 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsSingleSafetensorsSymlink) {
     const auto layout = HfDirectoryReader::InspectDirectory(temp_dir.path());
 
     ASSERT_FALSE(layout.ok());
-    EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(layout.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfDirectoryReaderTest, InspectShardedDirectory) {
@@ -204,7 +204,7 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsSafetensorsIndexLoadFromSymlink) 
     const auto index = HfSafetensorsIndex::Load(temp_dir.path() / "model.safetensors.index.json");
 
     ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(index.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfDirectoryReaderTest, RejectsShardedIndexPathThatIsNotARegularFile) {
@@ -215,7 +215,7 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsShardedIndexPathThatIsNotARegular
     const auto layout = HfDirectoryReader::InspectDirectory(temp_dir.path());
 
     ASSERT_FALSE(layout.ok());
-    EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(layout.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfDirectoryReaderTest, RejectsShardedIndexSymlink) {
@@ -235,7 +235,7 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsShardedIndexSymlink) {
     const auto layout = HfDirectoryReader::InspectDirectory(temp_dir.path());
 
     ASSERT_FALSE(layout.ok());
-    EXPECT_EQ(layout.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(layout.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfDirectoryReaderTest, LoadsShardedRawWeightTable) {
@@ -288,7 +288,7 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsMissingShardFile) {
     const auto raw_weights = reader->LoadRawWeightTable();
 
     ASSERT_FALSE(raw_weights.ok());
-    EXPECT_EQ(raw_weights.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(raw_weights.status(), StatusCode::kNotFound);
 }
 
 TEST(ModelLoader_HfDirectoryReaderTest, RejectsShardTensorNotListedInIndex) {
@@ -306,7 +306,7 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsShardTensorNotListedInIndex) {
     const auto raw_weights = reader->LoadRawWeightTable();
 
     ASSERT_FALSE(raw_weights.ok());
-    EXPECT_EQ(raw_weights.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(raw_weights.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfDirectoryReaderTest, RejectsShardAssignmentMismatch) {
@@ -327,7 +327,7 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsShardAssignmentMismatch) {
     const auto raw_weights = reader->LoadRawWeightTable();
 
     ASSERT_FALSE(raw_weights.ok());
-    EXPECT_EQ(raw_weights.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(raw_weights.status(), StatusCode::kFailedPrecondition);
 }
 
 TEST(ModelLoader_HfDirectoryReaderTest, RejectsMissingTensorInShard) {
@@ -346,7 +346,7 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsMissingTensorInShard) {
     const auto raw_weights = reader->LoadRawWeightTable();
 
     ASSERT_FALSE(raw_weights.ok());
-    EXPECT_EQ(raw_weights.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(raw_weights.status(), StatusCode::kNotFound);
 }
 
 TEST(ModelLoader_HfDirectoryReaderTest, RejectsShardSymlinkEscape) {
@@ -373,7 +373,7 @@ TEST(ModelLoader_HfDirectoryReaderTest, RejectsShardSymlinkEscape) {
     const auto raw_weights = reader->LoadRawWeightTable();
 
     ASSERT_FALSE(raw_weights.ok());
-    EXPECT_EQ(raw_weights.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(raw_weights.status(), StatusCode::kInvalidArgument);
 }
 
 } // namespace

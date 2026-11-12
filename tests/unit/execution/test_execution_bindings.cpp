@@ -413,7 +413,7 @@ TEST(ExternalReadRequirements, QueryAgreesWithPrepareExecutionBindings) {
                                    static_cast<ptrdiff_t>(dropped));
         const auto rejected = PrepareExecutionBindings(plan, incomplete, allocator);
         ASSERT_FALSE(rejected.ok()) << "dropping entry " << dropped << " was accepted";
-        EXPECT_EQ(rejected.status().code(), StatusCode::kFailedPrecondition);
+        EXPECT_EQ(rejected.status(), StatusCode::kFailedPrecondition);
     }
 }
 

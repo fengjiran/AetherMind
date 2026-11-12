@@ -190,12 +190,10 @@ TEST(Fp16BatchConversion, RejectsInvalidRangesBeforeWriting) {
               StatusCode::kInvalidArgument);
     const Fp16ConversionFuncs missing{nullptr, nullptr};
     EXPECT_EQ(ConvertFp16ToFp32(src.first(4),
-                                dst.subspan(32, 8), missing)
-                      .code(),
+                                dst.subspan(32, 8), missing),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(ConvertFp32ToFp16(src.first(8),
-                                dst.subspan(32, 4), missing)
-                      .code(),
+                                dst.subspan(32, 4), missing),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(bytes, original);
 }

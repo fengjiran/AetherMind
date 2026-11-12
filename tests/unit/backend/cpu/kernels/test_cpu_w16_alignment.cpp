@@ -139,7 +139,7 @@ private:
 };
 
 TEST_P(W16ProjectionAlignment, RejectsMisalignedInputBeforeExecution) {
-    EXPECT_EQ(Prepare(1, {}).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(Prepare(1, {}), StatusCode::kInvalidArgument);
     for (size_t i = 0; i < OutputCount(); ++i) {
         ExpectOutputUnchanged(i);
     }
@@ -150,7 +150,7 @@ TEST_P(W16ProjectionAlignment, RejectsEachMisalignedOutputBeforeExecution) {
         SCOPED_TRACE(i);
         std::array<size_t, 3> offsets{};
         offsets[i] = 1;
-        EXPECT_EQ(Prepare(0, offsets).code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(Prepare(0, offsets), StatusCode::kInvalidArgument);
         ExpectOutputUnchanged(i);
     }
 }
@@ -160,7 +160,7 @@ TEST_P(W16ProjectionAlignment, ZeroInnerDimensionStillRejectsMisalignedOutputs) 
         SCOPED_TRACE(i);
         std::array<size_t, 3> offsets{};
         offsets[i] = 1;
-        EXPECT_EQ(Prepare(0, offsets, 1, 0).code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(Prepare(0, offsets, 1, 0), StatusCode::kInvalidArgument);
         ExpectOutputUnchanged(i);
     }
 }

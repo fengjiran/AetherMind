@@ -144,7 +144,7 @@ TEST(PackedWeightCollectionOwnership, AllocationFailureReleasesArtifactAndDoesNo
     const Status status = collection.Insert(key, std::move(artifact));
     const auto result = failure.Stop();
 
-    EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(status, StatusCode::kResourceExhausted);
     EXPECT_TRUE(result.allocation_failed);
     EXPECT_TRUE(destroyed);
     EXPECT_TRUE(collection.empty());
@@ -209,7 +209,7 @@ TEST(PackedWeightCollectionOwnership, InsertRejectsDuplicatePackedWeightEntries)
                          OpType::kLinear, selector, MakeTestBuffer(64), nullptr));
 
     ASSERT_FALSE(duplicate_status.ok());
-    EXPECT_EQ(duplicate_status.code(), StatusCode::kAlreadyExists);
+    EXPECT_EQ(duplicate_status, StatusCode::kAlreadyExists);
 }
 
 TEST(PackedWeightCollectionOwnership, InsertRejectsKeyFromDifferentSourceArtifact) {
@@ -227,7 +227,7 @@ TEST(PackedWeightCollectionOwnership, InsertRejectsKeyFromDifferentSourceArtifac
                     OpType::kLinear, selector, MakeTestBuffer(64), nullptr));
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("source artifact"), std::string::npos);
     EXPECT_TRUE(packed_weight_collection.empty());
     EXPECT_EQ(packed_weight_collection.source_id(), 7U);
@@ -262,7 +262,7 @@ TEST(PackedWeightCollectionOwnership, FirstInsertedKeyBindsTheCollectionSource) 
                     OpType::kLinear, selector, MakeTestBuffer(64), nullptr));
 
     ASSERT_FALSE(foreign_status.ok());
-    EXPECT_EQ(foreign_status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(foreign_status, StatusCode::kInvalidArgument);
     EXPECT_EQ(packed_weight_collection.size(), 1U);
 }
 
@@ -320,7 +320,7 @@ TEST(PackedWeightCollectionOwnership, InsertRejectsUnspecifiedLayoutWithoutBindi
             key, std::make_shared<CountingPackedWeight>(
                          OpType::kLinear, selector, MakeTestBuffer(64), nullptr, recipe));
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_TRUE(collection.empty());
     EXPECT_EQ(collection.Find(key), nullptr);
     EXPECT_EQ(collection.source_id(), 0U);
@@ -343,7 +343,7 @@ TEST(PackedWeightCollectionOwnership, InsertRejectsUnknownLayoutWithoutBindingSo
             key, std::make_shared<CountingPackedWeight>(
                          OpType::kLinear, selector, MakeTestBuffer(64), nullptr, recipe));
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_TRUE(collection.empty());
     EXPECT_EQ(collection.source_id(), 0U);
 }
@@ -364,7 +364,7 @@ void ExpectLogicalDTypeRejected(DataType dtype, const std::vector<int64_t>& logi
 
     const auto status = collection.Insert(key, std::move(artifact));
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
     EXPECT_TRUE(destroyed);
     EXPECT_TRUE(collection.empty());
     EXPECT_EQ(collection.Find(key), nullptr);
@@ -431,7 +431,7 @@ TEST(PackedWeightCollectionOwnership, InsertUsesFixedVectorLogicalElementByteSiz
 
     const auto rejected = collection.Insert(key, undersized);
 
-    EXPECT_EQ(rejected.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(rejected, StatusCode::kInvalidArgument);
     EXPECT_TRUE(collection.empty());
     EXPECT_EQ(collection.source_id(), 0U);
 
@@ -483,7 +483,7 @@ TEST(PackedWeightCollectionOwnership, InsertRejectsNegativeDimensionAfterZero) {
 
     const auto status = collection.Insert(key, artifact);
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_TRUE(collection.empty());
     EXPECT_TRUE(collection.SetSourceId(7).ok());
 }
@@ -500,7 +500,7 @@ TEST(PackedWeightCollectionOwnership, InsertRejectsLogicalElementCountOverflow) 
 
     const auto status = collection.Insert(key, artifact);
 
-    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+    EXPECT_EQ(status, StatusCode::kOverflow);
     EXPECT_TRUE(collection.empty());
 }
 
@@ -516,7 +516,7 @@ TEST(PackedWeightCollectionOwnership, InsertRejectsLogicalByteSizeOverflow) {
 
     const auto status = collection.Insert(key, artifact);
 
-    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+    EXPECT_EQ(status, StatusCode::kOverflow);
     EXPECT_TRUE(collection.empty());
 }
 
@@ -531,7 +531,7 @@ TEST(PackedWeightCollectionOwnership, InsertRejectsUndersizedLogicalStorage) {
 
     const auto status = collection.Insert(key, artifact);
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_TRUE(collection.empty());
 }
 

@@ -184,7 +184,7 @@ TEST(ModelGraphBuildOptions, RejectsUnsupportedActivationDTypeBeforeWeightInspec
         const auto graph = BuildLlamaDense(config, {}, {.activation_dtype = dtype});
 
         ASSERT_FALSE(graph.ok());
-        EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(graph.status(), StatusCode::kInvalidArgument);
         EXPECT_NE(graph.status().message().find("activation_dtype"), std::string::npos);
     }
 }
@@ -197,7 +197,7 @@ TEST(ModelGraphBuildOptions, RejectsUnsupportedKvDTypeBeforeWeightInspection) {
         const auto graph = BuildLlamaDense(config, {}, {.kv_dtype = dtype});
 
         ASSERT_FALSE(graph.ok());
-        EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(graph.status(), StatusCode::kInvalidArgument);
         EXPECT_NE(graph.status().message().find("kv_dtype"), std::string::npos);
     }
 }
@@ -210,7 +210,7 @@ TEST(ModelGraphBuildOptions, RejectsActivationOverrideWithoutConvertingEmbedding
                                        {.activation_dtype = DataType::Float(16)});
 
     ASSERT_FALSE(graph.ok());
-    EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(graph.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(graph.status().message().find("output_dtype"), std::string::npos);
 }
 
@@ -280,7 +280,7 @@ TEST(ModelGraphBuildOptions, RejectsMixedKvDTypeWithoutConversionSemantics) {
                                         .kv_dtype = DataType::Float(16)});
 
     ASSERT_FALSE(graph.ok());
-    EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(graph.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(graph.status().message().find("dtype"), std::string::npos);
 }
 
@@ -660,7 +660,7 @@ TEST(LlamaDenseGraphBuilder, RejectsLayerCountOutsideUint32) {
     const StatusOr<ModelGraph> graph = BuildLlamaDense(config, {});
 
     ASSERT_FALSE(graph.ok());
-    EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(graph.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(graph.status().message().find("num_hidden_layers"), std::string::npos);
 }
 
@@ -672,7 +672,7 @@ TEST(LlamaDenseGraphBuilder, RejectsInvalidConfig) {
     const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
     ASSERT_FALSE(graph.ok());
-    EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(graph.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(LlamaDenseGraphBuilder, RejectsUnsupportedHiddenActivation) {
@@ -686,7 +686,7 @@ TEST(LlamaDenseGraphBuilder, RejectsUnsupportedHiddenActivation) {
         const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
         EXPECT_FALSE(graph.ok());
-        EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(graph.status(), StatusCode::kInvalidArgument);
     }
 }
 
@@ -698,7 +698,7 @@ TEST(LlamaDenseGraphBuilder, RejectsResolvedLayerCountMismatch) {
     const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
 
     ASSERT_FALSE(graph.ok());
-    EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(graph.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(LlamaDenseGraphBuilder, AssignsPyTorchStyleDebugNames) {
@@ -891,7 +891,7 @@ TEST(LlamaDenseGraphBuilder, RejectsUnknownHfRoPEAlgorithm) {
 
     const StatusOr<ModelGraph> graph = BuildLlamaDense(config, weights);
     ASSERT_FALSE(graph.ok());
-    EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(graph.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(graph.status().message().find("not supported"), std::string::npos);
 }
 
@@ -901,13 +901,13 @@ TEST(LlamaDenseGraphBuilder, RejectsIncompleteAndConflictingExtendedRoPEConfig) 
     config.rope.high_frequency_factor = 4.0;
     config.rope.original_context_length.reset();
     const ResolvedModelWeights weights = MakeWeights(config);
-    EXPECT_EQ(BuildLlamaDense(config, weights).status().code(),
+    EXPECT_EQ(BuildLlamaDense(config, weights).status(),
               StatusCode::kInvalidArgument);
 
     config = MakeExtendedRoPEConfig(HfRoPEAlgorithm::kDynamicNtk);
     config.rope.partial_rotary_factor = 0.5;
     config.rope.rotary_dim = 4;
-    EXPECT_EQ(BuildLlamaDense(config, weights).status().code(),
+    EXPECT_EQ(BuildLlamaDense(config, weights).status(),
               StatusCode::kInvalidArgument);
 }
 

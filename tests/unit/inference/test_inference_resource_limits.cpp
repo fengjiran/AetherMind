@@ -114,7 +114,7 @@ TEST(InferenceResourceLimits, RequestBoundaryRejectsBeforeReservationAndPayloadA
                 stats->requests.clear();
                 auto generated = session->Generate(prompt, {.max_new_tokens = 3});
                 if (cap < usage->peak_payload_bytes) {
-                    EXPECT_EQ(generated.status().code(), StatusCode::kResourceExhausted);
+                    EXPECT_EQ(generated.status(), StatusCode::kResourceExhausted);
                     EXPECT_TRUE(stats->requests.empty());
                     auto free = runtime.GetKVCacheManager()->ReserveForSession(1, 0);
                     ASSERT_TRUE(free.ok());
@@ -148,7 +148,7 @@ TEST(InferenceResourceLimits, WorkspaceLimitAppliesWithoutWorkspaceManager) {
         stats->requests.clear();
         auto generated = session->Generate(prompt, {.max_new_tokens = 2});
         if (cap < usage->workspace_bytes) {
-            EXPECT_EQ(generated.status().code(), StatusCode::kResourceExhausted);
+            EXPECT_EQ(generated.status(), StatusCode::kResourceExhausted);
             EXPECT_TRUE(stats->requests.empty());
         } else {
             EXPECT_TRUE(generated.ok()) << generated.status().ToString();
@@ -182,11 +182,11 @@ TEST(InferenceResourceLimits, CapacityAndBusyErrorsPrecedeBudgetRejection) {
     auto session = InferenceSession::Create(runtime, model, {.max_request_payload_bytes = 1});
     ASSERT_TRUE(session.ok());
     std::array<uint32_t, 9> long_prompt{};
-    EXPECT_EQ(session->Generate(long_prompt, {.max_new_tokens = 1}).status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(session->Generate(long_prompt, {.max_new_tokens = 1}).status(), StatusCode::kOutOfRange);
     auto occupied = runtime.GetKVCacheManager()->ReserveForSession(1, 0);
     ASSERT_TRUE(occupied.ok());
     std::array<uint32_t, 1> prompt{7};
-    EXPECT_EQ(session->Generate(prompt, {.max_new_tokens = 1}).status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(session->Generate(prompt, {.max_new_tokens = 1}).status(), StatusCode::kFailedPrecondition);
     EXPECT_TRUE(occupied->valid());
     EXPECT_TRUE(runtime.GetKVCacheManager()->ReleaseSession(*occupied).ok());
 }
@@ -204,7 +204,7 @@ TEST(InferenceResourceLimits, BoundedAllocationFailureCanRetryWithoutPublishingT
     stats->requests.clear();
     stats->fail_on_call = 1;
     std::array<uint32_t, 1> prompt{7};
-    EXPECT_EQ(session->Generate(prompt, {.max_new_tokens = 3}).status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(session->Generate(prompt, {.max_new_tokens = 3}).status(), StatusCode::kResourceExhausted);
     stats->fail_on_call = std::numeric_limits<size_t>::max();
     EXPECT_TRUE(session->Generate(prompt, {.max_new_tokens = 3}).ok());
 }
@@ -219,10 +219,10 @@ TEST(ModelResourceLimits, FinitePackedAndModelCapsRejectBeforePacking) {
     EXPECT_TRUE(usage.weights.backing_usage_complete);
     stats->requests.clear();
     auto short_packed = ExecutableModel::Load(runtime, ResourceModelDir(), {.preset = CompilePreset::kO2Packed, .limits = {.max_packed_weight_bytes = usage.packed_weight_bytes - 1}});
-    EXPECT_EQ(short_packed.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(short_packed.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(stats->requests.empty());
     auto short_model = ExecutableModel::Load(runtime, ResourceModelDir(), {.preset = CompilePreset::kO2Packed, .limits = {.max_model_payload_bytes = usage.managed_payload_bytes - 1}});
-    EXPECT_EQ(short_model.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(short_model.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(stats->requests.empty());
     auto equal = ExecutableModel::Load(runtime, ResourceModelDir(), {.preset = CompilePreset::kO2Packed, .limits = {.max_model_payload_bytes = usage.managed_payload_bytes, .max_packed_weight_bytes = usage.packed_weight_bytes}});
     ASSERT_TRUE(equal.ok()) << equal.status().ToString();
@@ -245,7 +245,7 @@ TEST(ModelResourceLimits, UnknownSourceOnlyRejectsCorrespondingModelCap) {
     auto first = compile();
     ASSERT_TRUE(first.ok());
     stats->requests.clear();
-    EXPECT_EQ(ExecutableModel::Prepare(runtime, std::move(*first), {.max_model_payload_bytes = 10000000}).status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(ExecutableModel::Prepare(runtime, std::move(*first), {.max_model_payload_bytes = 10000000}).status(), StatusCode::kUnimplemented);
     EXPECT_TRUE(stats->requests.empty());
     auto second = compile();
     ASSERT_TRUE(second.ok());
@@ -273,7 +273,7 @@ TEST(ModelResourceLimits, InlineConstantsAreChargedOnceBeforeAnyPacking) {
     };
     auto bad = build();
     ASSERT_TRUE(bad.ok());
-    EXPECT_EQ(ExecutableModel::Prepare(runtime, std::move(*bad), {.max_model_payload_bytes = 15}).status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(ExecutableModel::Prepare(runtime, std::move(*bad), {.max_model_payload_bytes = 15}).status(), StatusCode::kResourceExhausted);
     auto good = build();
     ASSERT_TRUE(good.ok());
     auto model = ExecutableModel::Prepare(runtime, std::move(*good), {.max_model_payload_bytes = 16});
@@ -324,7 +324,7 @@ TEST(ModelResourceLimits, SharedOwnerDistinctConstantVectorsAreBothCharged) {
     Runtime runtime = ResourceRuntime(stats);
     auto artifact = build();
     ASSERT_TRUE(artifact.ok());
-    EXPECT_EQ(ExecutableModel::Prepare(runtime, std::move(*artifact), {.max_model_payload_bytes = 47}).status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(ExecutableModel::Prepare(runtime, std::move(*artifact), {.max_model_payload_bytes = 47}).status(), StatusCode::kResourceExhausted);
     auto retry = build();
     ASSERT_TRUE(retry.ok());
     auto model = ExecutableModel::Prepare(runtime, std::move(*retry), {.max_model_payload_bytes = 48});

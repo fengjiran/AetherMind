@@ -23,8 +23,7 @@ TEST(AddInference, AcceptsEverySupportedDType) {
 TEST(AddInference, RejectsInvalidInputs) {
     const TensorSpec valid = MakeSpec(DataType::Float32(), {2, 3});
     EXPECT_EQ(InferOperator(OpType::kAdd, AddParams{}, std::span{&valid, size_t{1}})
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kInvalidArgument);
 
     const TensorSpec mismatched_dtype[2] = {
@@ -32,8 +31,7 @@ TEST(AddInference, RejectsInvalidInputs) {
             valid,
     };
     EXPECT_EQ(InferOperator(OpType::kAdd, AddParams{}, mismatched_dtype)
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kInvalidArgument);
 
     const TensorSpec unsupported_dtype[2] = {
@@ -41,8 +39,7 @@ TEST(AddInference, RejectsInvalidInputs) {
             MakeSpec(DataType::Float(16), {2, 3}),
     };
     EXPECT_EQ(InferOperator(OpType::kAdd, AddParams{}, unsupported_dtype)
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kInvalidArgument);
 
     const TensorSpec incompatible_shape[2] = {
@@ -50,15 +47,14 @@ TEST(AddInference, RejectsInvalidInputs) {
             MakeSpec(DataType::Float32(), {4, 3}),
     };
     EXPECT_EQ(InferOperator(OpType::kAdd, AddParams{}, incompatible_shape)
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kInvalidArgument);
 
     const TensorSpec unranked[2] = {
             MakeSpec(DataType::Float32()),
             valid,
     };
-    EXPECT_EQ(InferOperator(OpType::kAdd, AddParams{}, unranked).status().code(),
+    EXPECT_EQ(InferOperator(OpType::kAdd, AddParams{}, unranked).status(),
               StatusCode::kInvalidArgument);
 }
 
@@ -67,7 +63,7 @@ TEST(AddInference, RejectsWrongParamsVariant) {
             MakeSpec(DataType::Float32(), {2, 3}),
             MakeSpec(DataType::Float32(), {2, 3}),
     };
-    EXPECT_EQ(InferOperator(OpType::kAdd, RmsNormParams{}, inputs).status().code(),
+    EXPECT_EQ(InferOperator(OpType::kAdd, RmsNormParams{}, inputs).status(),
               StatusCode::kInvalidArgument);
 }
 

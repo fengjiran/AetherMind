@@ -114,8 +114,7 @@ TEST(CpuWeightPackingRequirements, QueryDoesNotReadPayloadAndRejectsInvalidMetad
 
     EXPECT_EQ(cpu::internal::GetWeightPackingRequirementsWithRecipe(
                       OpType::kLinear, values, Selector(), {})
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kInvalidArgument);
     constexpr std::array<int64_t, 3> huge{
             0, std::numeric_limits<int64_t>::max(), 2},
@@ -125,8 +124,7 @@ TEST(CpuWeightPackingRequirements, QueryDoesNotReadPayloadAndRejectsInvalidMetad
                        DataType::Float32(), huge, huge_stride, 4)};
     EXPECT_EQ(cpu::internal::GetWeightPackingRequirementsWithRecipe(
                       OpType::kLinear, overflow, Selector(), CpuIdentityPackingRecipe())
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kOverflow);
 }
 
@@ -140,8 +138,7 @@ TEST(PackingResourceLimits, ChecksWholeBatchBeforeAnyAllocation) {
     EXPECT_EQ(PrepackWeightRequests(
                       backend,
                       {first, second}, allocator, 119)
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kResourceExhausted);
     EXPECT_TRUE(stats->requests.empty());
     auto packed = PrepackWeightRequests(
@@ -160,8 +157,7 @@ TEST(PackingResourceLimits, UnknownQueryOnlyPermittedForUnlimitedBatch) {
     test::ResourceRecordingAllocator allocator(stats);
     EXPECT_EQ(PrepackWeightRequests(
                       backend, {Request(owner)}, allocator, 100)
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kUnimplemented);
     EXPECT_TRUE(stats->requests.empty());
     auto packed = PrepackWeightRequests(
@@ -178,8 +174,7 @@ TEST(PackingResourceLimits, RejectsQueryAndActualStorageMismatch) {
     test::ResourceRecordingAllocator allocator(stats);
     EXPECT_EQ(PrepackWeightRequests(
                       backend, {Request(owner)}, allocator, 100)
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kInternal);
 }
 

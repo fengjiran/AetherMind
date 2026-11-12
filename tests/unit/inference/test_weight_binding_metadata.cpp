@@ -67,7 +67,7 @@ TEST(WeightBindingMetadata, RejectsMisalignedDataWithoutPublishingEntry) {
     for (const auto dtype: types) {
         SCOPED_TRACE(ToString(dtype));
         const auto result = metadata.Add(bytes + 1, dtype, {2});
-        EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
         EXPECT_EQ(metadata.size(), 1U);
         EXPECT_TRUE(original->is_valid());
         EXPECT_EQ(Copy(original->shape()), (std::vector<int64_t>{2}));
@@ -109,7 +109,7 @@ TEST(WeightBindingMetadata, RankZeroShapeHasNoStrides) {
 TEST(WeightBindingMetadata, ShapeProductOverflowReturnsStatus) {
     WeightBindingMetadata metadata;
     const auto result = metadata.Add(nullptr, DataType::Float32(), {int64_t{1} << 62, 8});
-    EXPECT_EQ(result.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(result.status(), StatusCode::kOverflow);
     EXPECT_TRUE(metadata.empty());
 }
 
@@ -125,7 +125,7 @@ TEST(WeightBindingMetadata, InvalidShapesPreserveEarlierViewsAndAllowRetry) {
     };
     for (const auto& shape: invalid_shapes) {
         const auto result = metadata.Add(nullptr, DataType::Float32(), shape);
-        EXPECT_EQ(result.status().code(), shape[0] < 0 ? StatusCode::kInvalidArgument : StatusCode::kOverflow);
+        EXPECT_EQ(result.status(), shape[0] < 0 ? StatusCode::kInvalidArgument : StatusCode::kOverflow);
         EXPECT_EQ(metadata.size(), 1U);
         EXPECT_EQ(original->data(), data);
         EXPECT_EQ(Copy(original->shape()), (std::vector<int64_t>{2, 3}));

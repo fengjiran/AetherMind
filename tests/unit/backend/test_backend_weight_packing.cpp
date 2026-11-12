@@ -85,7 +85,7 @@ TEST(BackendWeightPacking, DefaultExplicitPackingReturnsUnimplementedWithoutReci
     const auto packed = backend.PackWeights(
             OpType::kLinear, components, MakePackedSelector(), recipe, test::TestCpuAllocator());
 
-    EXPECT_EQ(packed.status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(packed.status(), StatusCode::kUnimplemented);
     EXPECT_EQ(backend.recipe_queries, 0U);
 }
 
@@ -99,7 +99,7 @@ TEST(BackendWeightPacking, ExplicitPackingForwardsRecipeAndInputsToVirtualImplem
     const auto packed = abstract_backend.PackWeights(
             OpType::kLinear, components, selector, recipe, test::TestCpuAllocator());
 
-    EXPECT_EQ(packed.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(packed.status(), StatusCode::kResourceExhausted);
     EXPECT_EQ(packed.status().message(), "Test packing failure");
     EXPECT_EQ(backend.recipe_queries, 0U);
     EXPECT_EQ(backend.pack_calls, 1U);

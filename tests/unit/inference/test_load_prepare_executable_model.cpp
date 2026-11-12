@@ -89,7 +89,7 @@ TEST_P(ModelLoadPath, LoadsPreparesAndGeneratesFromHfDirectory) {
     const auto mismatched_session =
             InferenceSession::Create(other_runtime, shared_model);
     ASSERT_FALSE(mismatched_session.ok());
-    EXPECT_EQ(mismatched_session.status().code(),
+    EXPECT_EQ(mismatched_session.status(),
               StatusCode::kFailedPrecondition);
 }
 
@@ -158,7 +158,7 @@ TEST(ModelLoad, ReportsRequestedBackendWhenUnavailable) {
             const auto result = ExecutableModel::Load(
                     runtime, TinyLlamaModelDir(), {.preset = preset, .target = target});
             ASSERT_FALSE(result.ok());
-            EXPECT_EQ(result.status().code(), StatusCode::kNotFound);
+            EXPECT_EQ(result.status(), StatusCode::kNotFound);
             EXPECT_NE(result.status().message().find(DeviceType2Str(target)), std::string::npos)
                     << result.status().message();
         }

@@ -53,7 +53,7 @@ TEST(AddRmsNormInference, RejectsWrongParamsArityDtypeAndBroadcasting) {
             MakeSpec(DataType::Float32(), {8}),
     };
     const Status status = InferOperator(OpType::kAddRmsNorm, AddRmsNormParams{}, broadcast).status();
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("broadcasting is unsupported"), std::string::npos);
 
     const TensorSpec static_mismatch[3] = {

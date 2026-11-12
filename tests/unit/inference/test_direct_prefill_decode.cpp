@@ -534,7 +534,7 @@ void ExpectGenerateRecoversFromAllocationFailure(
         EXPECT_TRUE(failure_result.last_aligned_allocation_released);
     }
     ASSERT_FALSE(failed.ok());
-    EXPECT_EQ(failed.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(failed.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(failed.status().message().empty());
 
     KVCacheManager* const manager = runtime.GetKVCacheManager();
@@ -952,7 +952,7 @@ bool RunFailureCleanupScenario(Runtime& runtime,
 
     const Status decode_status = Executor::Execute(plan, decode_context);
     EXPECT_FALSE(decode_status.ok());
-    EXPECT_EQ(decode_status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(decode_status, StatusCode::kInvalidArgument);
     EXPECT_EQ(cache_view.current_pos(), prompt.size());
 
     decode_context.Clear();
@@ -1103,7 +1103,7 @@ TEST_P(TinyLlamaExecution, RejectsRuntimeDifferentFromPreparationRuntime) {
     Runtime other_runtime = MakeCpuRuntime();
     auto session = InferenceSession::Create(other_runtime, shared_model);
     ASSERT_FALSE(session.ok());
-    EXPECT_EQ(session.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(session.status(), StatusCode::kFailedPrecondition);
 }
 
 TEST_P(TinyLlamaExecution, TinyGenerateMatchesScalarOracleAndStartsFreshEachCall) {
@@ -1276,7 +1276,7 @@ TEST_P(TinyLlamaExecution, HandlesZeroOneEosAndExactKvCapacity) {
     const GenerationConfig over_capacity{.max_new_tokens = 7};
     auto over = session.Generate(prompt, over_capacity);
     ASSERT_FALSE(over.ok());
-    EXPECT_EQ(over.status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(over.status(), StatusCode::kOutOfRange);
 }
 
 TEST_P(TinyLlamaExecution, RejectsContextLimitAndArithmeticOverflowBeforeReservation) {
@@ -1290,14 +1290,14 @@ TEST_P(TinyLlamaExecution, RejectsContextLimitAndArithmeticOverflowBeforeReserva
     auto over_context = session.Generate(
             prompt, GenerationConfig{.max_new_tokens = 127});
     ASSERT_FALSE(over_context.ok());
-    EXPECT_EQ(over_context.status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(over_context.status(), StatusCode::kOutOfRange);
 
     auto overflow = session.Generate(
             prompt, GenerationConfig{
                             .max_new_tokens = std::numeric_limits<size_t>::max(),
                     });
     ASSERT_FALSE(overflow.ok());
-    EXPECT_EQ(overflow.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(overflow.status(), StatusCode::kOverflow);
 
     KVCacheManager* const manager = runtime.GetKVCacheManager();
     ASSERT_NE(manager, nullptr);
@@ -1322,20 +1322,20 @@ TEST_P(TinyLlamaExecution, ZeroLimitDoesNotRequireKvAndInputsAreValidated) {
     auto no_manager = session.Generate(
             prompt, GenerationConfig{.max_new_tokens = 1});
     ASSERT_FALSE(no_manager.ok());
-    EXPECT_EQ(no_manager.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(no_manager.status(), StatusCode::kFailedPrecondition);
 
     auto empty_prompt = session.Generate(
             std::span<const uint32_t>{},
             GenerationConfig{.max_new_tokens = 0});
     ASSERT_FALSE(empty_prompt.ok());
-    EXPECT_EQ(empty_prompt.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(empty_prompt.status(), StatusCode::kInvalidArgument);
 
     constexpr std::array<uint32_t, 1> invalid_token{
             static_cast<uint32_t>(kVocabSize)};
     auto bad_prompt = session.Generate(
             invalid_token, GenerationConfig{.max_new_tokens = 0});
     ASSERT_FALSE(bad_prompt.ok());
-    EXPECT_EQ(bad_prompt.status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(bad_prompt.status(), StatusCode::kOutOfRange);
 
     auto bad_eos = session.Generate(
             prompt, GenerationConfig{
@@ -1343,7 +1343,7 @@ TEST_P(TinyLlamaExecution, ZeroLimitDoesNotRequireKvAndInputsAreValidated) {
                             .eos_token_id = static_cast<uint32_t>(kVocabSize),
                     });
     ASSERT_FALSE(bad_eos.ok());
-    EXPECT_EQ(bad_eos.status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(bad_eos.status(), StatusCode::kOutOfRange);
 }
 
 // KV planes are now allocated through the Runtime allocator, so a KV-enabled
@@ -1365,7 +1365,7 @@ TEST(TinyLlamaSession, KvCacheWithoutCpuAllocatorFailsAtBuild) {
     builder.RegisterBackendFactory(DeviceType::kCPU, std::make_unique<CpuBackendFactory>());
     auto result = builder.TryBuild();
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(result.status(), StatusCode::kFailedPrecondition);
 
     RuntimeBuilder death_builder;
     death_builder.WithOptions(options);
@@ -1390,7 +1390,7 @@ TEST_P(TinyLlamaExecution, HandlesPromptSizedCapacityAndReservationCleanup) {
     auto needs_decode = exact_session.Generate(
             prompt, GenerationConfig{.max_new_tokens = 2});
     ASSERT_FALSE(needs_decode.ok());
-    EXPECT_EQ(needs_decode.status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(needs_decode.status(), StatusCode::kOutOfRange);
 
     Runtime mismatch_runtime = MakeCpuRuntimeWithKVCache(kKvHeads - 1);
     ResolvedModelWeights mismatch_weights;
@@ -1406,7 +1406,7 @@ TEST_P(TinyLlamaExecution, HandlesPromptSizedCapacityAndReservationCleanup) {
     ASSERT_TRUE(held.ok()) << held.status().ToString();
     auto contended = mismatch_session.Generate(prompt, one_token);
     ASSERT_FALSE(contended.ok());
-    EXPECT_EQ(contended.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(contended.status(), StatusCode::kFailedPrecondition);
     ReleaseTestSession(*manager, *held);
 
     auto execution_failure = mismatch_session.Generate(prompt, one_token);
@@ -1681,7 +1681,7 @@ StatusOr<inference::detail::PhaseContract> BuildAndValidateContract(
 void ExpectContractUnimplemented(ContractPlanParts parts) {
     auto contract = BuildAndValidateContract(std::move(parts));
     ASSERT_FALSE(contract.ok()) << "expected the plan contract to be rejected";
-    EXPECT_EQ(contract.status().code(), StatusCode::kUnimplemented)
+    EXPECT_EQ(contract.status(), StatusCode::kUnimplemented)
             << contract.status().ToString();
 }
 

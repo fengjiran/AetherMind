@@ -46,14 +46,14 @@ TEST(InferenceRunOptions, RejectsEmptyModelDirectory) {
     RunOptions options = Options();
     options.model_dir.clear();
     const Status status = ValidateRunOptions(options, Configuration());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(InferenceRunOptions, RejectsEmptyPrompt) {
     RunOptions options = Options();
     options.prompt_tokens.clear();
     const Status status = ValidateRunOptions(options, Configuration());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(InferenceRunOptions, ChecksVocabularyBoundaryForEveryPromptToken) {
@@ -64,7 +64,7 @@ TEST(InferenceRunOptions, ChecksVocabularyBoundaryForEveryPromptToken) {
 
     options.prompt_tokens.back() = static_cast<uint32_t>(config.vocab_size);
     const Status status = ValidateRunOptions(options, config);
-    EXPECT_EQ(status.code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(status, StatusCode::kOutOfRange);
 }
 
 TEST(InferenceRunOptions, ChecksExplicitEosVocabularyBoundary) {
@@ -75,7 +75,7 @@ TEST(InferenceRunOptions, ChecksExplicitEosVocabularyBoundary) {
 
     options.generation.eos_token_id = static_cast<uint32_t>(config.vocab_size);
     const Status status = ValidateRunOptions(options, config);
-    EXPECT_EQ(status.code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(status, StatusCode::kOutOfRange);
 }
 
 TEST(InferenceRunOptions, RejectsPromptBeyondModelContext) {
@@ -85,7 +85,7 @@ TEST(InferenceRunOptions, RejectsPromptBeyondModelContext) {
     options.context_tokens = 1;
     options.generation.max_new_tokens = 0;
     const Status status = ValidateRunOptions(options, config);
-    EXPECT_EQ(status.code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(status, StatusCode::kOutOfRange);
 }
 
 TEST(InferenceRunOptions, RequiresPositiveCapacityEvenForZeroGeneration) {
@@ -93,7 +93,7 @@ TEST(InferenceRunOptions, RequiresPositiveCapacityEvenForZeroGeneration) {
     options.context_tokens = 0;
     options.generation.max_new_tokens = 0;
     const Status status = ValidateRunOptions(options, Configuration());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(InferenceRunOptions, RejectsCapacityBeyondModelContext) {
@@ -101,7 +101,7 @@ TEST(InferenceRunOptions, RejectsCapacityBeyondModelContext) {
     RunOptions options = Options();
     options.context_tokens = static_cast<size_t>(config.max_position_embeddings) + 1;
     const Status status = ValidateRunOptions(options, config);
-    EXPECT_EQ(status.code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(status, StatusCode::kOutOfRange);
 }
 
 TEST(InferenceRunOptions, CountsOnlyDecodeAppendsAgainstCapacity) {
@@ -115,7 +115,7 @@ TEST(InferenceRunOptions, RejectsOneTokenBeyondCapacity) {
     RunOptions options = Options();
     options.context_tokens = options.prompt_tokens.size() + options.generation.max_new_tokens - 2;
     const Status status = ValidateRunOptions(options, Configuration());
-    EXPECT_EQ(status.code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(status, StatusCode::kOutOfRange);
 }
 
 TEST(InferenceRunOptions, DoesNotRelyOnEosToReduceRequestedCapacity) {
@@ -123,14 +123,14 @@ TEST(InferenceRunOptions, DoesNotRelyOnEosToReduceRequestedCapacity) {
     options.context_tokens = options.prompt_tokens.size();
     options.generation.eos_token_id = 1;
     const Status status = ValidateRunOptions(options, Configuration());
-    EXPECT_EQ(status.code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(status, StatusCode::kOutOfRange);
 }
 
 TEST(InferenceRunOptions, RejectsRequestedTokenCountOverflow) {
     RunOptions options = Options();
     options.generation.max_new_tokens = std::numeric_limits<size_t>::max();
     const Status status = ValidateRunOptions(options, Configuration());
-    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+    EXPECT_EQ(status, StatusCode::kOverflow);
 }
 
 TEST(InferenceRunOptions, ZeroGenerationAllowsPromptBeyondPhysicalCapacity) {
@@ -147,7 +147,7 @@ TEST(InferenceRunOptions, ZeroGenerationStillRejectsInvalidPromptToken) {
     options.generation.max_new_tokens = 0;
     options.prompt_tokens.back() = static_cast<uint32_t>(config.vocab_size);
     const Status status = ValidateRunOptions(options, config);
-    EXPECT_EQ(status.code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(status, StatusCode::kOutOfRange);
 }
 
 TEST(InferenceRunOptions, ZeroGenerationStillRejectsInvalidEos) {
@@ -156,14 +156,14 @@ TEST(InferenceRunOptions, ZeroGenerationStillRejectsInvalidEos) {
     options.generation.max_new_tokens = 0;
     options.generation.eos_token_id = static_cast<uint32_t>(config.vocab_size);
     const Status status = ValidateRunOptions(options, config);
-    EXPECT_EQ(status.code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(status, StatusCode::kOutOfRange);
 }
 
 TEST(InferenceRunOptions, RejectsUnknownPreset) {
     RunOptions options = Options();
     options.preset = static_cast<CompilePreset>(255);
     const Status status = ValidateRunOptions(options, Configuration());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(InferenceRunOptions, RejectsNonpositiveModelBoundsBeforeUnsignedConversion) {
@@ -172,12 +172,12 @@ TEST(InferenceRunOptions, RejectsNonpositiveModelBoundsBeforeUnsignedConversion)
         HfModelConfig config = Configuration();
         config.vocab_size = value;
         const Status vocab_status = ValidateRunOptions(Options(), config);
-        EXPECT_EQ(vocab_status.code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(vocab_status, StatusCode::kInvalidArgument);
         EXPECT_EQ(vocab_status.message(), "vocab_size must be positive");
         config = Configuration();
         config.max_position_embeddings = value;
         const Status context_status = ValidateRunOptions(Options(), config);
-        EXPECT_EQ(context_status.code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(context_status, StatusCode::kInvalidArgument);
         EXPECT_EQ(context_status.message(), "max_position_embeddings must be positive");
     }
 }
@@ -207,13 +207,13 @@ TEST(InferenceCompilePreset, ExplicitlySelectsO2PackedWithoutForcingAllStepsPack
 TEST(InferenceCompilePreset, RejectsUnknownPresetWithoutFallback) {
     const auto compile = MakeCompileOptions(static_cast<CompilePreset>(255), DeviceType::kCPU);
     EXPECT_FALSE(compile.ok());
-    EXPECT_EQ(compile.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(compile.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(InferenceCompilePreset, RejectsInvalidTargetsWithoutFallback) {
     for (const auto target: {DeviceType::kUndefined, static_cast<DeviceType>(255)}) {
         const auto compile = MakeCompileOptions(CompilePreset::kO1Plain, target);
-        EXPECT_EQ(compile.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(compile.status(), StatusCode::kInvalidArgument);
     }
 }
 

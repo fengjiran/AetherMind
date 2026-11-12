@@ -116,7 +116,7 @@ TEST(ElementwiseMulKernel, RejectsOutputShiftedIntoLhs) {
             .output_tensor = MutableTensorView{lhs + 1, DataType::Float32(), shape, strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(ElementwiseMulKernel, TrailingBroadcast) {
@@ -188,7 +188,7 @@ TEST(ElementwiseMulKernel, RejectsIncompatibleBroadcastAtBindingTime) {
             .rhs_tensor = TensorView{rhs, DataType::Float32(), rhs_shape, rhs_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
     });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(ElementwiseMulKernel, RejectsNonFloat32AtBindingTime) {
@@ -203,7 +203,7 @@ TEST(ElementwiseMulKernel, RejectsNonFloat32AtBindingTime) {
             .rhs_tensor = TensorView{rhs, DataType::Double(), shape, strides},
             .output_tensor = MutableTensorView{output, DataType::Double(), shape, strides},
     });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 } // namespace

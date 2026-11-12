@@ -119,13 +119,11 @@ TEST(CPUKernelGateUpLinear, CpuBackendPreparesPackedF32ReferenceKernel) {
                              OpType::kGateUpLinear, plain,
                              OpParams{GateUpLinearParams{.gate_out_features = 4,
                                                          .up_out_features = 7}})
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kNotFound);
-    EXPECT_EQ(PrepareGateUpKernel(4, 7, true).status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(PrepareGateUpKernel(4, 7, true).status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(PrepareGateUpKernel(std::numeric_limits<int64_t>::max(), 1)
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kOverflow);
 }
 
@@ -342,8 +340,7 @@ TEST(CPUKernelGateUpLinear, RejectsAliasingAndUndecidablePackedStorageOverlap) {
                                                  gate_strides, 64),
                        .up = MutableTensorView(up, DataType::Float32(), scalar_shape,
                                                scalar_strides, 64)},
-                      MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape))
-                      .code(),
+                      MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape)),
               StatusCode::kInvalidArgument);
     alignas(64) float separate_input[3]{};
     alignas(64) float shared_output[2]{};
@@ -355,8 +352,7 @@ TEST(CPUKernelGateUpLinear, RejectsAliasingAndUndecidablePackedStorageOverlap) {
                                                  gate_strides, 64),
                        .up = MutableTensorView(shared_output, DataType::Float32(), scalar_shape,
                                                scalar_strides, 64)},
-                      MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape))
-                      .code(),
+                      MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape)),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(RunGateUpEntry(
                       *kernel,
@@ -366,8 +362,7 @@ TEST(CPUKernelGateUpLinear, RejectsAliasingAndUndecidablePackedStorageOverlap) {
                                                  gate_strides, 64),
                        .up = MutableTensorView(up, DataType::Float32(), scalar_shape,
                                                scalar_strides, 64)},
-                      MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape))
-                      .code(),
+                      MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape)),
               StatusCode::kInvalidArgument);
 
     constexpr int64_t hole_input_shape[2] = {1, 1};
@@ -390,8 +385,7 @@ TEST(CPUKernelGateUpLinear, RejectsAliasingAndUndecidablePackedStorageOverlap) {
                        .up = MutableTensorView(nullptr, DataType::Float32(), empty_shape,
                                                empty_strides, 64)},
                       MakeIdentityPackedWeight(hole_storage + 1, 2 * sizeof(float),
-                                               hole_packed_shape))
-                      .code(),
+                                               hole_packed_shape)),
               StatusCode::kUnimplemented);
 }
 
@@ -418,54 +412,49 @@ TEST(CPUKernelGateUpLinear, RejectsMalformedPackedMetadataAndTensorViews) {
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
 
     EXPECT_EQ(RunGateUpEntry(*kernel, views,
-                             MakeIdentityPackedWeight(packed, sizeof(packed), wrong_packed_shape))
-                      .code(),
+                             MakeIdentityPackedWeight(packed, sizeof(packed), wrong_packed_shape)),
               StatusCode::kInvalidArgument);
     PackedWeightView wrong_recipe =
             MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape);
     wrong_recipe.logical_dtype = DataType::Float(16);
-    EXPECT_EQ(RunGateUpEntry(*kernel, views, wrong_recipe).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(RunGateUpEntry(*kernel, views, wrong_recipe), StatusCode::kInvalidArgument);
     wrong_recipe = MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape);
     wrong_recipe.recipe_layout = PackingLayout::kCpuBPanelF32Kc512Nr16;
-    EXPECT_EQ(RunGateUpEntry(*kernel, views, wrong_recipe).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(RunGateUpEntry(*kernel, views, wrong_recipe), StatusCode::kInvalidArgument);
     wrong_recipe = MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape);
     wrong_recipe.recipe_alignment = 32;
-    EXPECT_EQ(RunGateUpEntry(*kernel, views, wrong_recipe).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(RunGateUpEntry(*kernel, views, wrong_recipe), StatusCode::kInvalidArgument);
     wrong_recipe = MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape);
     wrong_recipe.alignment = 32;
-    EXPECT_EQ(RunGateUpEntry(*kernel, views, wrong_recipe).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(RunGateUpEntry(*kernel, views, wrong_recipe), StatusCode::kInvalidArgument);
     EXPECT_EQ(RunGateUpEntry(*kernel, views,
-                             MakeIdentityPackedWeight(packed, 2 * sizeof(float), packed_shape))
-                      .code(),
+                             MakeIdentityPackedWeight(packed, 2 * sizeof(float), packed_shape)),
               StatusCode::kInvalidArgument);
 
     GateUpTestViews wrong_dtype = views;
     wrong_dtype.input = TensorView(input, DataType::Float(16), input_shape, input_strides, 64);
     EXPECT_EQ(RunGateUpEntry(*kernel, wrong_dtype,
-                             MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape))
-                      .code(),
+                             MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape)),
               StatusCode::kInvalidArgument);
     GateUpTestViews wrong_shape = views;
     wrong_shape.gate = MutableTensorView(gate, DataType::Float32(), wrong_gate_shape,
                                          gate_strides, 64);
     EXPECT_EQ(RunGateUpEntry(*kernel, wrong_shape,
-                             MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape))
-                      .code(),
+                             MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape)),
               StatusCode::kInvalidArgument);
 
     const std::array<TensorView, 1> inputs{views.input};
     const std::array<MutableTensorView, 2> outputs{views.gate, views.up};
     PreparedKernelParams prepared;
     EXPECT_EQ(kernel->params_builder(
-                            KernelParamsBuildContext{
-                                    .inputs = inputs,
-                                    .outputs = outputs,
-                                    .attrs = {},
-                                    .packed_weight = MakeIdentityPackedWeight(
-                                            packed, sizeof(packed), packed_shape),
-                            },
-                            prepared.storage.data())
-                      .code(),
+                      KernelParamsBuildContext{
+                              .inputs = inputs,
+                              .outputs = outputs,
+                              .attrs = {},
+                              .packed_weight = MakeIdentityPackedWeight(
+                                      packed, sizeof(packed), packed_shape),
+                      },
+                      prepared.storage.data()),
               StatusCode::kInvalidArgument);
     const cpu::detail::GateUpLinearF32KernelMetadata invalid_metadata{
             .gate_out_features = -1,
@@ -474,15 +463,14 @@ TEST(CPUKernelGateUpLinear, RejectsMalformedPackedMetadataAndTensorViews) {
     const auto invalid_metadata_attrs =
             std::as_bytes(std::span{&invalid_metadata, size_t{1}});
     EXPECT_EQ(kernel->params_builder(
-                            KernelParamsBuildContext{
-                                    .inputs = inputs,
-                                    .outputs = outputs,
-                                    .attrs = invalid_metadata_attrs,
-                                    .packed_weight = MakeIdentityPackedWeight(
-                                            packed, sizeof(packed), packed_shape),
-                            },
-                            prepared.storage.data())
-                      .code(),
+                      KernelParamsBuildContext{
+                              .inputs = inputs,
+                              .outputs = outputs,
+                              .attrs = invalid_metadata_attrs,
+                              .packed_weight = MakeIdentityPackedWeight(
+                                      packed, sizeof(packed), packed_shape),
+                      },
+                      prepared.storage.data()),
               StatusCode::kInvalidArgument);
 }
 
@@ -547,7 +535,7 @@ TEST(CPUKernelGateUpLinear, PackedArtifactParticipatesInDeferredShapeChecks) {
                                                  input_strides, 64)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_FALSE(bindings.ok());
-    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(bindings.status(), StatusCode::kInvalidArgument);
 }
 
 class FloatRawStorage final : public RawStorage {

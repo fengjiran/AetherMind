@@ -13,7 +13,7 @@ TEST(ReorderInference, WrongVariantRejectedBeforeArity) {
     const std::vector<TensorSpec> empty_inputs;
     const auto result = InferOperator(OpType::kReorder, AddParams{}, empty_inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(result.status().message(), "Reorder node requires ReorderParams");
 }
 
@@ -21,7 +21,7 @@ TEST(ReorderInference, ZeroInputsRejected) {
     const std::vector<TensorSpec> empty_inputs;
     const auto result = InferOperator(OpType::kReorder, ReorderParams{}, empty_inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ReorderInference, TwoInputsRejected) {
@@ -30,7 +30,7 @@ TEST(ReorderInference, TwoInputsRejected) {
             MakeSpec(DataType::Float32(), {2, 3})};
     const auto result = InferOperator(OpType::kReorder, ReorderParams{}, inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 // --- Valid inference ---

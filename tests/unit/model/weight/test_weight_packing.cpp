@@ -175,7 +175,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsBackendWithoutPacking) {
     NoPackingTestBackend backend;
     const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
     EXPECT_FALSE(prepacked.ok());
-    EXPECT_EQ(prepacked.status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(prepacked.status(), StatusCode::kUnimplemented);
 }
 
 TEST(WeightPacking, PrepackWeightRequestsRejectsEmptyComponentsBeforeBackendCall) {
@@ -191,7 +191,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsEmptyComponentsBeforeBackendCall
 
     const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
-    EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(prepacked.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(prepacked.status().message().find("non-empty weight components"), std::string::npos);
     EXPECT_EQ(backend.pack_calls, 0U);
 }
@@ -217,7 +217,7 @@ TEST_P(WeightPackingNonContiguous, RejectsRawComponentBeforeBackendCall) {
 
     const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
-    EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(prepacked.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(prepacked.status().message().find("contiguous"), std::string::npos);
     EXPECT_EQ(backend.pack_calls, 0U);
 }
@@ -239,7 +239,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsSuccessfulNullBackendArtifact) {
 
     const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
-    EXPECT_EQ(prepacked.status().code(), StatusCode::kInternal);
+    EXPECT_EQ(prepacked.status(), StatusCode::kInternal);
     EXPECT_EQ(backend.pack_calls, 1U);
 }
 
@@ -261,7 +261,7 @@ TEST(WeightPacking, PrepackMetadataAllocationFailureReturnsResourceExhaustedBefo
     const auto prepacked = PrepackWeightRequests(backend, requests, TestCpuAllocator());
     const auto result = failure.Stop();
 
-    EXPECT_EQ(prepacked.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(prepacked.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(result.allocation_failed);
     EXPECT_EQ(backend.pack_calls, 0U);
 }
@@ -292,7 +292,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsUnspecifiedLayoutBeforeBackendCa
     const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
     EXPECT_FALSE(prepacked.ok());
-    EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(prepacked.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(prepacked.status().message().find("explicit packing recipe"), std::string::npos);
 }
 
@@ -311,7 +311,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsUnknownLayoutBeforeBackendCall) 
     const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
     EXPECT_FALSE(prepacked.ok());
-    EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(prepacked.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(prepacked.status().message().find("explicit packing recipe"), std::string::npos);
 }
 
@@ -389,7 +389,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsMisalignedDataBeforeBackendCall)
     };
     EXPECT_TRUE(ValidateRawWeightView(request.components.front()).ok());
     const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
-    EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(prepacked.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(prepacked.status().message().find("natural alignment"), std::string::npos);
     EXPECT_EQ(backend.pack_calls, 0U);
 }
@@ -412,7 +412,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsStrideOverflowBeforeBackendCall)
 
     const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
-    EXPECT_EQ(prepacked.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(prepacked.status(), StatusCode::kOverflow);
     EXPECT_EQ(backend.pack_calls, 0U);
 }
 
@@ -439,7 +439,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsCompositeStrideOverflowBeforeBac
 
     const auto prepacked = PrepackWeightRequests(backend, {request}, TestCpuAllocator());
 
-    EXPECT_EQ(prepacked.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(prepacked.status(), StatusCode::kOverflow);
     EXPECT_EQ(backend.pack_calls, 0U);
 }
 
@@ -486,7 +486,7 @@ TEST(WeightPacking, PrepackWeightRequestsRejectsMixedSourceIds) {
     const auto prepacked = PrepackWeightRequests(backend, {first, second}, TestCpuAllocator());
 
     ASSERT_FALSE(prepacked.ok());
-    EXPECT_EQ(prepacked.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(prepacked.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(prepacked.status().message().find("source artifact"), std::string::npos);
 }
 

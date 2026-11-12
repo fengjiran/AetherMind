@@ -95,7 +95,7 @@ TEST(CpuWeightPacking, BufferMetadataFailureReturnsResourceExhaustedAndReleasesP
     const auto result = failure.Stop();
 
     ASSERT_FALSE(packed.ok());
-    EXPECT_EQ(packed.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(packed.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(result.allocation_failed);
     EXPECT_EQ(result.aligned_allocation_calls, 1U);
     EXPECT_TRUE(result.last_aligned_allocation_released);
@@ -146,7 +146,7 @@ TEST_P(CpuWeightPackingMetadataFailure, ReturnsResourceExhaustedAndReleasesPaylo
     const auto result = failure.Stop();
 
     ASSERT_FALSE(packed.ok());
-    EXPECT_EQ(packed.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(packed.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(result.allocation_failed);
     EXPECT_EQ(result.aligned_allocation_calls, 1U);
     EXPECT_TRUE(result.last_aligned_allocation_released);
@@ -184,11 +184,11 @@ TEST_P(CpuWeightPackingOverflow, PublicAndInternalPackingReturnOverflowBeforeRea
     const auto public_packed = backend.PackWeights(
             OpType::kLinear, components, selector, CpuIdentityPackingRecipe(),
             test::TestCpuAllocator());
-    EXPECT_EQ(public_packed.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(public_packed.status(), StatusCode::kOverflow);
     const auto internal_packed = cpu::internal::PackWeightsWithRecipe(
             OpType::kLinear, components, selector, CpuIdentityPackingRecipe(),
             test::TestCpuAllocator());
-    EXPECT_EQ(internal_packed.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(internal_packed.status(), StatusCode::kOverflow);
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -208,7 +208,7 @@ TEST(CpuWeightPacking, BpanelRejectsPaddedByteOverflowBeforeReadingData) {
             OpType::kLinear, components, MakePackedCpuSelector(), cpu::CpuBPanelF32Kc512Nr16Recipe(),
             test::TestCpuAllocator());
 
-    EXPECT_EQ(packed.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(packed.status(), StatusCode::kOverflow);
 }
 
 TEST(CpuWeightPacking, IdentityPackingAcceptsHugeLeadingDimensionsBeforeZeroExtent) {
@@ -311,7 +311,7 @@ TEST(CpuWeightPacking, IdentityPackingRejectsNonContiguousSingleComponent) {
             test::TestCpuAllocator());
 
     ASSERT_FALSE(packed.ok());
-    EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(packed.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(packed.status().message().find("contiguous"), std::string::npos);
 }
 
@@ -323,7 +323,7 @@ TEST(CpuWeightPacking, PackRejectsInvalidSingleComponent) {
             test::TestCpuAllocator());
 
     ASSERT_FALSE(packed.ok());
-    EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(packed.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(CpuWeightPacking, BpanelPacksLogicalMatrixAndZeroPadsEveryTail) {
@@ -387,7 +387,7 @@ TEST(CpuWeightPacking, BpanelRejectsUnknownRecipe) {
             OpType::kLinear, components, MakePackedCpuSelector(), unknown,
             test::TestCpuAllocator());
     ASSERT_FALSE(packed.ok());
-    EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(packed.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(CpuWeightPacking, PackRejectsNonPackedWeightFormatRequests) {
@@ -403,7 +403,7 @@ TEST(CpuWeightPacking, PackRejectsNonPackedWeightFormatRequests) {
             test::TestCpuAllocator());
 
     ASSERT_FALSE(packed.ok());
-    EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(packed.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(CpuWeightPacking, PackRejectsUnknownOpType) {
@@ -418,7 +418,7 @@ TEST(CpuWeightPacking, PackRejectsUnknownOpType) {
             test::TestCpuAllocator());
 
     ASSERT_FALSE(packed.ok());
-    EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(packed.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(CpuWeightPacking, PackRejectsNonCpuSelector) {
@@ -435,7 +435,7 @@ TEST(CpuWeightPacking, PackRejectsNonCpuSelector) {
             test::TestCpuAllocator());
 
     ASSERT_FALSE(packed.ok());
-    EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(packed.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(CpuWeightPacking, PackSingleComponentCopiesLogicalBytes) {
@@ -517,7 +517,7 @@ TEST(CpuWeightPacking, PackComponentsRejectsDtypeMismatch) {
             test::TestCpuAllocator());
 
     ASSERT_FALSE(packed.ok());
-    EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(packed.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(packed.status().message().find("share one dtype"),
               std::string::npos);
 }
@@ -559,7 +559,7 @@ TEST(CpuWeightPacking, PackComponentsRejectsFeatureCountMismatch) {
             test::TestCpuAllocator());
 
     ASSERT_FALSE(packed.ok());
-    EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(packed.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(packed.status().message().find("feature count"),
               std::string::npos);
 }
@@ -584,7 +584,7 @@ TEST(CpuWeightPacking, PackComponentsRejectsNonRank2View) {
             test::TestCpuAllocator());
 
     ASSERT_FALSE(packed.ok());
-    EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(packed.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(packed.status().message().find("rank 2"), std::string::npos);
 }
 
@@ -596,7 +596,7 @@ TEST(CpuWeightPacking, PackComponentsRejectsEmptyComponentList) {
             test::TestCpuAllocator());
 
     ASSERT_FALSE(packed.ok());
-    EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(packed.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(packed.status().message().find("at least one"),
               std::string::npos);
 }

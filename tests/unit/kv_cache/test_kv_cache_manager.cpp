@@ -46,7 +46,7 @@ void ExpectEmptyManager(const KVCacheManager& manager) {
 void ExpectEmptyManagerCanRetry(KVCacheManager& manager,
                                 const KVCacheSessionView& old_view) {
     ExpectEmptyManager(manager);
-    EXPECT_EQ(manager.ReserveForSession(1, 1).status().code(),
+    EXPECT_EQ(manager.ReserveForSession(1, 1).status(),
               StatusCode::kFailedPrecondition);
     EXPECT_FALSE(old_view.valid());
 
@@ -59,7 +59,7 @@ void ExpectEmptyManagerCanRetry(KVCacheManager& manager,
     EXPECT_EQ(fresh->num_layers(), 2U);
     EXPECT_EQ(fresh->num_kv_heads(), 3U);
     EXPECT_FALSE(old_view.valid());
-    EXPECT_EQ(manager.ResetSession(old_view).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(manager.ResetSession(old_view), StatusCode::kFailedPrecondition);
     EXPECT_TRUE(fresh->valid());
     EXPECT_TRUE(manager.ReleaseSession(*fresh).ok());
 }
@@ -94,7 +94,7 @@ TEST_P(KVCacheManagerInitFailure, LeavesEmptyStateAndCanRetry) {
                                            param.num_kv_heads, param.max_tokens,
                                            param.head_dim, param.dtype, param.alignment);
 
-        EXPECT_EQ(status.code(), param.expected_code);
+        EXPECT_EQ(status, param.expected_code);
         ExpectEmptyManagerCanRetry(manager, old_view);
     }
 }
@@ -150,7 +150,7 @@ TEST_P(KVCacheManagerInitAllocationFailure, LeavesEmptyStateAndCanRetry) {
         const auto result = failure.Stop();
 
         EXPECT_TRUE(result.allocation_failed);
-        EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+        EXPECT_EQ(status, StatusCode::kResourceExhausted);
         const size_t allocated_planes = param.skip_matching_allocations + (metadata_failure ? 1 : 0);
         EXPECT_EQ(result.aligned_allocation_calls, allocated_planes);
         if (allocated_planes != 0) {
@@ -190,7 +190,7 @@ TEST(KVCacheManager, InitDiagnosticAllocationFailureLeavesEmptyStateAndCanRetry)
         const auto result = failure.Stop();
 
         EXPECT_TRUE(result.allocation_failed);
-        EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+        EXPECT_EQ(status, StatusCode::kResourceExhausted);
         EXPECT_TRUE(status.message().empty());
         ExpectEmptyManagerCanRetry(manager, old_view);
     }
@@ -273,29 +273,29 @@ TEST(KVLayoutContract, RejectsStridesInconsistentWithGeometry) {
     // token_stride must be a multiple of the element size.
     auto bad_element = MakeTestLayout();
     bad_element.token_stride = 15;
-    EXPECT_EQ(bad_element.Validate().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(bad_element.Validate(), StatusCode::kInvalidArgument);
 
     // token_stride must be aligned to the layout alignment.
     auto unaligned = MakeTestLayout(/*token_stride=*/8, /*head_stride=*/32,
                                     /*layer_stride=*/96);
-    EXPECT_EQ(unaligned.Validate().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(unaligned.Validate(), StatusCode::kInvalidArgument);
 
     // token_stride must cover the full head row.
     auto overlapping_row = MakeTestLayout(/*token_stride=*/8, /*head_stride=*/32,
                                           /*layer_stride=*/96,
                                           /*alignment=*/8);
-    EXPECT_EQ(overlapping_row.Validate().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(overlapping_row.Validate(), StatusCode::kInvalidArgument);
 
     // head_stride must cover all tokens of a head.
     auto short_head = MakeTestLayout();
     short_head.head_stride = 32;
     short_head.layer_stride = 96;
-    EXPECT_EQ(short_head.Validate().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(short_head.Validate(), StatusCode::kInvalidArgument);
 
     // layer_stride must cover all heads of a layer.
     auto short_layer = MakeTestLayout();
     short_layer.layer_stride = 128;
-    EXPECT_EQ(short_layer.Validate().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(short_layer.Validate(), StatusCode::kInvalidArgument);
 }
 
 TEST(KVCacheManager, InitAndReserveCreatesValidView) {
@@ -380,7 +380,7 @@ TEST(KVCacheManager, BufferMetadataFailureReturnsResourceExhaustedAndReleasesPay
     const Status status = manager.Init(test::TestCpuAllocator(), 1, 1, 16, 8, MakeKVType(), 64);
     const auto result = failure.Stop();
 
-    EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(status, StatusCode::kResourceExhausted);
     EXPECT_FALSE(manager.is_initialized());
     EXPECT_TRUE(result.allocation_failed);
     EXPECT_EQ(result.aligned_allocation_calls, 1U);
@@ -433,7 +433,7 @@ TEST(KVCacheSessionView, RejectsStorageSmallerThanLayout) {
     const auto key = view.KeyData(0, 0, 0);
 
     ASSERT_FALSE(key.ok());
-    EXPECT_EQ(key.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(key.status(), StatusCode::kFailedPrecondition);
 }
 
 TEST(KVCacheSessionView, RejectsCpuPlaneBaseBreakingRowAlignment) {
@@ -471,7 +471,7 @@ TEST(KVCacheSessionView, RejectsCpuPlaneBaseBreakingRowAlignment) {
     const auto key = view.KeyData(0, 0, 0);
 
     ASSERT_FALSE(key.ok());
-    EXPECT_EQ(key.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(key.status(), StatusCode::kFailedPrecondition);
 }
 
 TEST(KVCacheSessionView, AcceptsUnderDeclaredBasesWhenActuallyAligned) {
@@ -518,7 +518,7 @@ TEST(KVCacheManager, ReserveRejectsSecondActiveSession) {
     const StatusOr<KVCacheSessionView> second = manager.ReserveForSession(2, 2);
 
     ASSERT_FALSE(second.ok());
-    EXPECT_EQ(second.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(second.status(), StatusCode::kFailedPrecondition);
 }
 
 TEST(KVCacheManager, OccupiedReserveDiagnosticFailurePreservesReservation) {
@@ -536,7 +536,7 @@ TEST(KVCacheManager, OccupiedReserveDiagnosticFailurePreservesReservation) {
     const auto result = failure.Stop();
 
     EXPECT_TRUE(result.allocation_failed);
-    EXPECT_EQ(second.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(second.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(second.status().message().empty());
     EXPECT_TRUE(view->valid());
     EXPECT_EQ(view->current_pos(), 2U);
@@ -671,7 +671,7 @@ TEST(KVCacheManager, ResetRejectsForeignViewWithoutChangingEitherReservation) {
 
     const Status status = other.ResetSession(*owner_view);
 
-    EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(status, StatusCode::kFailedPrecondition);
     EXPECT_TRUE(owner_view->valid());
     EXPECT_TRUE(other_view->valid());
     EXPECT_EQ(owner_view->current_pos(), 2U);
@@ -706,7 +706,7 @@ TEST(KVCacheManager, ForeignResetDiagnosticFailurePreservesBothReservations) {
     const auto result = failure.Stop();
 
     EXPECT_TRUE(result.allocation_failed);
-    EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(status, StatusCode::kResourceExhausted);
     EXPECT_TRUE(status.message().empty());
     EXPECT_TRUE(owner_view->valid());
     EXPECT_TRUE(other_view->valid());
@@ -736,7 +736,7 @@ TEST(KVCacheManager, ReleaseRejectsForeignViewWithoutChangingEitherReservation) 
 
     const Status status = other.ReleaseSession(*owner_view);
 
-    EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(status, StatusCode::kFailedPrecondition);
     EXPECT_TRUE(owner_view->valid());
     EXPECT_TRUE(other_view->valid());
     EXPECT_EQ(owner_view->current_pos(), 2U);
@@ -771,7 +771,7 @@ TEST(KVCacheManager, ForeignReleaseDiagnosticFailurePreservesBothReservations) {
     const auto result = failure.Stop();
 
     EXPECT_TRUE(result.allocation_failed);
-    EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(status, StatusCode::kResourceExhausted);
     EXPECT_TRUE(status.message().empty());
     EXPECT_TRUE(owner_view->valid());
     EXPECT_TRUE(other_view->valid());
@@ -807,8 +807,8 @@ TEST(KVCacheManager, ReinitializationPermanentlyInvalidatesActiveViewCopies) {
     EXPECT_FALSE(old_copy.BindLayerForAppend(0, 0, 3).ok());
     EXPECT_FALSE(old_copy.KeyData(0, 0, 0).ok());
     EXPECT_FALSE(old_copy.ValueData(0, 0, 0).ok());
-    EXPECT_EQ(manager.ResetSession(old_copy).code(), StatusCode::kFailedPrecondition);
-    EXPECT_EQ(manager.ReleaseSession(old_copy).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(manager.ResetSession(old_copy), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(manager.ReleaseSession(old_copy), StatusCode::kFailedPrecondition);
     EXPECT_TRUE(fresh_view->valid());
     EXPECT_EQ(fresh_view->current_pos(), 2U);
     EXPECT_EQ(fresh_view->token_capacity(), 6U);
@@ -826,7 +826,7 @@ TEST(KVCacheManager, FailedReinitializationPermanentlyInvalidatesActiveViewCopie
 
     const Status status = manager.Init(test::TestCpuAllocator(), 1, 1, 0, 8, MakeKVType(), 64);
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_FALSE(manager.is_initialized());
     EXPECT_EQ(manager.total_bytes(), 0U);
     EXPECT_FALSE(old_view->valid());
@@ -838,8 +838,8 @@ TEST(KVCacheManager, FailedReinitializationPermanentlyInvalidatesActiveViewCopie
 
     EXPECT_FALSE(old_view->valid());
     EXPECT_FALSE(old_copy.valid());
-    EXPECT_EQ(manager.ResetSession(old_copy).code(), StatusCode::kFailedPrecondition);
-    EXPECT_EQ(manager.ReleaseSession(old_copy).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(manager.ResetSession(old_copy), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(manager.ReleaseSession(old_copy), StatusCode::kFailedPrecondition);
     EXPECT_TRUE(fresh_view->valid());
     EXPECT_EQ(fresh_view->current_pos(), 2U);
     EXPECT_FALSE(manager.ReserveForSession(1, 1).ok());
@@ -861,7 +861,7 @@ TEST(KVCacheManager, ReleasedViewCopyRemainsStaleAfterReinitialization) {
 
     EXPECT_FALSE(old_copy.valid());
     EXPECT_TRUE(fresh_view->valid());
-    EXPECT_EQ(manager.ReleaseSession(old_copy).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(manager.ReleaseSession(old_copy), StatusCode::kFailedPrecondition);
     EXPECT_TRUE(fresh_view->valid());
     EXPECT_TRUE(manager.ReleaseSession(*fresh_view).ok());
 }
@@ -889,7 +889,7 @@ TEST(KVCacheManager, ReserveRejectsRequestsBeyondPhysicalCapacity) {
     const StatusOr<KVCacheSessionView> view = manager.ReserveForSession(6, 4);
 
     ASSERT_FALSE(view.ok());
-    EXPECT_EQ(view.status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(view.status(), StatusCode::kOutOfRange);
 }
 
 TEST(KVCacheManager, ReserveRejectsEmptyPrompt) {
@@ -899,7 +899,7 @@ TEST(KVCacheManager, ReserveRejectsEmptyPrompt) {
     const StatusOr<KVCacheSessionView> view = manager.ReserveForSession(0, 1);
 
     ASSERT_FALSE(view.ok());
-    EXPECT_EQ(view.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(view.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(KVCacheSessionView, AppendBindingRequiresTheCommittedFrontier) {

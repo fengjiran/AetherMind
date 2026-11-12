@@ -172,10 +172,10 @@ TEST_F(Prefill, ReturnsLastPositionTokenAfterCommittingPrompt) {
 TEST_F(Prefill, RejectsInvalidPromptLengthBeforeExecution) {
     ASSERT_TRUE(PrepareContext().ok());
 
-    EXPECT_EQ(Run(0).status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(Run(0).status(), StatusCode::kInvalidArgument);
     if constexpr (std::numeric_limits<size_t>::max() >
                   static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
-        EXPECT_EQ(Run(std::numeric_limits<size_t>::max()).status().code(),
+        EXPECT_EQ(Run(std::numeric_limits<size_t>::max()).status(),
                   StatusCode::kInvalidArgument);
     }
     EXPECT_EQ(workspace_.reset_count, 0U);
@@ -186,7 +186,7 @@ TEST_F(Prefill, RejectsInvalidPromptLengthBeforeExecution) {
 TEST_F(Prefill, RejectsZeroVocabularyBeforeExecution) {
     ASSERT_TRUE(PrepareContext().ok());
 
-    EXPECT_EQ(Run(kPromptLength, 0).status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(Run(kPromptLength, 0).status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(workspace_.reset_count, 0U);
     EXPECT_EQ(token_kernel_calls_, 0U);
     EXPECT_EQ(view_.current_pos(), 0U);
@@ -195,7 +195,7 @@ TEST_F(Prefill, RejectsZeroVocabularyBeforeExecution) {
 TEST_F(Prefill, RejectsMissingKVSessionBeforeExecution) {
     ASSERT_TRUE(PrepareContext(/*append=*/false, /*with_kv=*/false).ok());
 
-    EXPECT_EQ(Run().status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(Run().status(), StatusCode::kFailedPrecondition);
     EXPECT_EQ(workspace_.reset_count, 0U);
     EXPECT_EQ(token_kernel_calls_, 0U);
 }
@@ -203,7 +203,7 @@ TEST_F(Prefill, RejectsMissingKVSessionBeforeExecution) {
 TEST_F(Prefill, RejectsReservationLengthMismatchBeforeExecution) {
     ASSERT_TRUE(PrepareContext().ok());
 
-    EXPECT_EQ(Run(1).status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(Run(1).status(), StatusCode::kFailedPrecondition);
     EXPECT_EQ(workspace_.reset_count, 0U);
     EXPECT_EQ(token_kernel_calls_, 0U);
     EXPECT_EQ(view_.current_pos(), 0U);
@@ -213,7 +213,7 @@ TEST_F(Prefill, RejectsRepeatedPrefillBeforeExecution) {
     ASSERT_TRUE(PrepareContext().ok());
     ASSERT_TRUE(Run().ok());
 
-    EXPECT_EQ(Run().status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(Run().status(), StatusCode::kFailedPrecondition);
     EXPECT_EQ(workspace_.reset_count, 1U);
     EXPECT_EQ(token_kernel_calls_, 1U);
     EXPECT_EQ(view_.current_pos(), kPromptLength);
@@ -224,7 +224,7 @@ TEST_F(Prefill, PropagatesKernelFailureWithoutCommittingKV) {
 
     const auto token = Run();
 
-    EXPECT_EQ(token.status().code(), StatusCode::kAborted);
+    EXPECT_EQ(token.status(), StatusCode::kAborted);
     EXPECT_EQ(token.status().message(), "synthetic token kernel failure");
     EXPECT_EQ(view_.current_pos(), 0U);
     EXPECT_TRUE(view_.awaiting_prefill());
@@ -235,7 +235,7 @@ TEST_F(Prefill, PropagatesKernelFailureWithoutCommittingKV) {
 TEST_F(Prefill, RejectsPlanThatDoesNotCommitThePrompt) {
     ASSERT_TRUE(PrepareContext(/*append=*/false).ok());
 
-    EXPECT_EQ(Run().status().code(), StatusCode::kInternal);
+    EXPECT_EQ(Run().status(), StatusCode::kInternal);
     EXPECT_EQ(view_.current_pos(), 0U);
     EXPECT_TRUE(view_.awaiting_prefill());
     EXPECT_EQ(token_kernel_calls_, 1U);
@@ -244,7 +244,7 @@ TEST_F(Prefill, RejectsPlanThatDoesNotCommitThePrompt) {
 TEST_F(Prefill, InvalidOutputShapeDoesNotRollBackCommittedKV) {
     ASSERT_TRUE(PrepareContext().ok());
 
-    EXPECT_EQ(Run(kPromptLength, kVocabSize, {.index = 0}).status().code(), StatusCode::kInternal);
+    EXPECT_EQ(Run(kPromptLength, kVocabSize, {.index = 0}).status(), StatusCode::kInternal);
     EXPECT_EQ(view_.current_pos(), kPromptLength);
     EXPECT_FALSE(view_.awaiting_prefill());
     EXPECT_EQ(token_kernel_calls_, 1U);
@@ -257,7 +257,7 @@ TEST_P(PrefillInvalidToken, RejectsTokenWithoutRollingBackCommittedKV) {
     ASSERT_TRUE(PrepareContext().ok());
     const size_t vocab_size = std::numeric_limits<size_t>::max();
 
-    EXPECT_EQ(Run(kPromptLength, vocab_size).status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(Run(kPromptLength, vocab_size).status(), StatusCode::kOutOfRange);
     EXPECT_EQ(view_.current_pos(), kPromptLength);
     EXPECT_FALSE(view_.awaiting_prefill());
 }
@@ -270,7 +270,7 @@ TEST_F(Prefill, OutOfVocabularyTokenDoesNotRollBackCommittedKV) {
     tokens_.back() = static_cast<int64_t>(kVocabSize);
     ASSERT_TRUE(PrepareContext().ok());
 
-    EXPECT_EQ(Run().status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(Run().status(), StatusCode::kOutOfRange);
     EXPECT_EQ(view_.current_pos(), kPromptLength);
     EXPECT_FALSE(view_.awaiting_prefill());
 }

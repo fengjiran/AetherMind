@@ -222,7 +222,7 @@ TEST(Fp32CompatibilityAdmission, StrictModeStillRejectsReducedCheckpointBeforePa
         Runtime runtime = MakeCompatibilityRuntime(2, stats);
         stats->requests.clear();
         const auto result = ExecutableModel::Load(runtime, pair.source, ModelLoadOptions{});
-        EXPECT_EQ(result.status().code(), StatusCode::kUnimplemented);
+        EXPECT_EQ(result.status(), StatusCode::kUnimplemented);
         EXPECT_TRUE(stats->requests.empty());
     }
 }
@@ -236,7 +236,7 @@ TEST(Fp32CompatibilityAdmission, ModelBudgetRejectsBeforeConversionAndAcceptsExa
     options.limits.max_model_payload_bytes = pair.fp32_payload_bytes - 1;
     stats->requests.clear();
     const auto rejected = ExecutableModel::Load(runtime, pair.source, options);
-    EXPECT_EQ(rejected.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(rejected.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(stats->requests.empty());
     options.limits.max_model_payload_bytes = 0;
     const auto baseline = ExecutableModel::Load(runtime, pair.source, options);
@@ -255,7 +255,7 @@ TEST(Fp32CompatibilityAdmission, ConversionAllocationFailureAllowsFreshRetryAndG
     stats->requests.clear();
     stats->fail_on_call = 1;
     const auto failed = ExecutableModel::Load(runtime, pair.source, CompatibilityOptions());
-    EXPECT_EQ(failed.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(failed.status(), StatusCode::kResourceExhausted);
     ASSERT_EQ(stats->requests.size(), 2U);
     stats->fail_on_call = std::numeric_limits<size_t>::max();
     auto retried = ExecutableModel::Load(runtime, pair.source, CompatibilityOptions());
@@ -281,22 +281,22 @@ TEST(Fp32CompatibilityAdmission, UnsupportedAndUnknownPresetsRejectBeforePayload
     for (const auto target: {DeviceType::kCUDA, DeviceType::kCANN}) {
         options = CompatibilityOptions();
         options.target = target;
-        EXPECT_EQ(ExecutableModel::Load(runtime, pair.source, options).status().code(),
+        EXPECT_EQ(ExecutableModel::Load(runtime, pair.source, options).status(),
                   StatusCode::kUnimplemented);
         EXPECT_TRUE(stats->requests.empty());
     }
     options = CompatibilityOptions();
     options.target = static_cast<DeviceType>(255);
-    EXPECT_EQ(ExecutableModel::Load(runtime, pair.source, options).status().code(),
+    EXPECT_EQ(ExecutableModel::Load(runtime, pair.source, options).status(),
               StatusCode::kInvalidArgument);
     EXPECT_TRUE(stats->requests.empty());
     options = CompatibilityOptions();
     options.weights = static_cast<WeightPolicy>(255);
-    EXPECT_EQ(ExecutableModel::Load(runtime, pair.source, options).status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ExecutableModel::Load(runtime, pair.source, options).status(), StatusCode::kInvalidArgument);
     EXPECT_TRUE(stats->requests.empty());
     options = CompatibilityOptions();
     options.preset = static_cast<CompilePreset>(255);
-    EXPECT_EQ(ExecutableModel::Load(runtime, pair.source, options).status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ExecutableModel::Load(runtime, pair.source, options).status(), StatusCode::kInvalidArgument);
     EXPECT_TRUE(stats->requests.empty());
 }
 

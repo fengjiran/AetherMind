@@ -68,7 +68,7 @@ TEST(RuntimeBackendIntegration, GetBackendForUnregisteredDeviceFails) {
     auto backend_or = context.GetBackend(DeviceType::kCUDA);
 
     EXPECT_FALSE(backend_or.ok());
-    EXPECT_EQ(backend_or.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(backend_or.status(), StatusCode::kNotFound);
 }
 
 class MockBackend : public Backend {

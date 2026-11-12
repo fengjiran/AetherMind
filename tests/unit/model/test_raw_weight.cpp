@@ -30,10 +30,10 @@ TEST(RawWeightValidation, RejectsScalableAndReservedLaneEncodings) {
         SCOPED_TRACE(ToString(dtype));
         auto view = MakeView(dtype);
         EXPECT_FALSE(view.IsValid());
-        EXPECT_EQ(ValidateRawWeightView(view).code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(ValidateRawWeightView(view), StatusCode::kInvalidArgument);
         view.shape = {0, 2};
         view.bytes = 0;
-        EXPECT_EQ(ValidateRawWeightView(view).code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(ValidateRawWeightView(view), StatusCode::kInvalidArgument);
     }
 }
 
@@ -43,7 +43,7 @@ TEST(RawWeightValidation, RejectsZeroLaneElementDTypes) {
         auto view = MakeView(dtype);
         view.bytes = 0;
         EXPECT_FALSE(view.IsValid());
-        EXPECT_EQ(ValidateRawWeightView(view).code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(ValidateRawWeightView(view), StatusCode::kInvalidArgument);
     }
 }
 
@@ -52,7 +52,7 @@ TEST(RawWeightValidation, RejectsUndefinedAndVoidElements) {
         auto view = MakeView(dtype);
         view.bytes = 0;
         EXPECT_FALSE(view.IsValid());
-        EXPECT_EQ(ValidateRawWeightView(view).code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(ValidateRawWeightView(view), StatusCode::kInvalidArgument);
     }
 }
 
@@ -72,7 +72,7 @@ TEST(RawWeightValidation, CountsFixedVectorLanesInElementByteSize) {
     EXPECT_TRUE(view.IsValid());
     EXPECT_TRUE(ValidateRawWeightView(view).ok());
     view.bytes = 24;
-    EXPECT_EQ(ValidateRawWeightView(view).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ValidateRawWeightView(view), StatusCode::kInvalidArgument);
 }
 
 TEST(RawWeightValidation, AcceptsScalarWeight) {

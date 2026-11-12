@@ -144,7 +144,7 @@ TEST(OpParamsSerde, EmbeddingRejectsMalformedOutputDType) {
         const auto parsed = ParseOpParams(text);
         EXPECT_FALSE(parsed.ok()) << text;
         if (!parsed.ok()) {
-            EXPECT_EQ(parsed.status().code(), StatusCode::kInvalidArgument) << text;
+            EXPECT_EQ(parsed.status(), StatusCode::kInvalidArgument) << text;
         }
     }
 }
@@ -154,7 +154,7 @@ TEST(OpParamsSerde, EmbeddingRejectsInvalidExplicitOutputDuringSerialization) {
     const Status status = SerializeOpParams(
             OpParams{EmbeddingParams{.output_dtype = DataType::Float(16)}}, os);
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_TRUE(os.str().empty());
 }
 
@@ -191,21 +191,21 @@ TEST(OpParamsSerde, RejectsUnknownKind) {
     const StatusOr<OpParams> parsed = ParseOpParams("UnknownOp foo=1");
 
     ASSERT_FALSE(parsed.ok());
-    EXPECT_EQ(parsed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(parsed.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(OpParamsSerde, RejectsMissingField) {
     const StatusOr<OpParams> parsed = ParseOpParams("RmsNorm");
 
     ASSERT_FALSE(parsed.ok());
-    EXPECT_EQ(parsed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(parsed.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(OpParamsSerde, RejectsUnexpectedField) {
     const StatusOr<OpParams> parsed = ParseOpParams("Embedding extra=1");
 
     ASSERT_FALSE(parsed.ok());
-    EXPECT_EQ(parsed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(parsed.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(OpParamsSerde, ReshapeKindName) {
@@ -298,7 +298,7 @@ TEST(OpParamsSerde, ReshapeRejectsMalformedShapes) {
         const StatusOr<OpParams> parsed = ParseOpParams(text);
         EXPECT_FALSE(parsed.ok()) << "Expected rejection for: " << text;
         if (!parsed.ok()) {
-            EXPECT_EQ(parsed.status().code(), StatusCode::kInvalidArgument) << "Text: " << text;
+            EXPECT_EQ(parsed.status(), StatusCode::kInvalidArgument) << "Text: " << text;
         }
     }
 }
@@ -352,7 +352,7 @@ TEST(OpParamsSerde, QkvLinearRejectsMalformedFields) {
         const StatusOr<OpParams> parsed = ParseOpParams(text);
         EXPECT_FALSE(parsed.ok()) << "Expected rejection for: " << text;
         if (!parsed.ok()) {
-            EXPECT_EQ(parsed.status().code(), StatusCode::kInvalidArgument) << "Text: " << text;
+            EXPECT_EQ(parsed.status(), StatusCode::kInvalidArgument) << "Text: " << text;
         }
     }
 }
@@ -380,7 +380,7 @@ TEST(OpParamsSerde, AddRmsNormRejectsMalformedFields) {
         const StatusOr<OpParams> parsed = ParseOpParams(text);
         EXPECT_FALSE(parsed.ok()) << "Expected rejection for: " << text;
         if (!parsed.ok()) {
-            EXPECT_EQ(parsed.status().code(), StatusCode::kInvalidArgument) << "Text: " << text;
+            EXPECT_EQ(parsed.status(), StatusCode::kInvalidArgument) << "Text: " << text;
         }
     }
 }
@@ -469,7 +469,7 @@ TEST(OpParamsSerde, PermuteRejectsMalformedPermutations) {
         const StatusOr<OpParams> parsed = ParseOpParams(text);
         EXPECT_FALSE(parsed.ok()) << "Expected rejection for: " << text;
         if (!parsed.ok()) {
-            EXPECT_EQ(parsed.status().code(), StatusCode::kInvalidArgument)
+            EXPECT_EQ(parsed.status(), StatusCode::kInvalidArgument)
                     << "Text: " << text;
         }
     }

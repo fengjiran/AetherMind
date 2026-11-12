@@ -25,7 +25,7 @@ TEST(SiluInference, RejectsWrongArity) {
                                   OpType::kSilu, OpParams{SiluParams{}}, std::span(inputs))
                                   .status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(SiluInference, RejectsNonFloat32Input) {
@@ -34,7 +34,7 @@ TEST(SiluInference, RejectsNonFloat32Input) {
     };
     const Status status = InferOperator(OpType::kSilu, OpParams{SiluParams{}}, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(SiluInference, AcceptsArbitraryShape) {
@@ -67,7 +67,7 @@ TEST(SiluInference, InferOperatorRejectsWrongArity) {
     };
     const StatusOr<InferenceResult> inference = InferOperator(OpType::kSilu, OpParams{SiluParams{}}, inputs);
     EXPECT_FALSE(inference.ok());
-    EXPECT_EQ(inference.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(inference.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(SiluInference, InferOperatorRejectsNonFloat32) {
@@ -76,7 +76,7 @@ TEST(SiluInference, InferOperatorRejectsNonFloat32) {
     };
     const StatusOr<InferenceResult> inference = InferOperator(OpType::kSilu, OpParams{SiluParams{}}, inputs);
     EXPECT_FALSE(inference.ok());
-    EXPECT_EQ(inference.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(inference.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(SiluInference, InfersIdenticalOutputShape) {

@@ -167,7 +167,7 @@ TEST(KVCacheLayoutPlanning, RejectsZeroDimensions) {
                 PlanKVCacheLayout(dimensions[0], dimensions[1],
                                   dimensions[2], dimensions[3],
                                   DataType::Float32(), 64);
-        EXPECT_EQ(planned.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(planned.status(), StatusCode::kInvalidArgument);
     }
 }
 
@@ -177,7 +177,7 @@ TEST(KVCacheLayoutPlanning, RejectsInvalidAlignment) {
         const auto planned =
                 PlanKVCacheLayout(1, 1, 1, 1,
                                   DataType::Float32(), alignment);
-        EXPECT_EQ(planned.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(planned.status(), StatusCode::kInvalidArgument);
     }
 }
 
@@ -191,11 +191,11 @@ TEST(KVCacheLayoutPlanning, RejectsDTypesWithoutFixedPositiveLanes) {
         const auto planned =
                 PlanKVCacheLayout(1, 1, 1, 1,
                                   dtype, 64);
-        EXPECT_EQ(planned.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(planned.status(), StatusCode::kInvalidArgument);
         auto invalid = *valid;
         invalid.kv_dtype = dtype;
         EXPECT_EQ(invalid.ElementBytes(), 0U);
-        EXPECT_EQ(invalid.Validate().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(invalid.Validate(), StatusCode::kInvalidArgument);
     }
 }
 
@@ -228,7 +228,7 @@ TEST(KVCacheLayoutPlanning, RejectsOverflowAtEveryLayoutStage) {
                 PlanKVCacheLayout(expected.layers, expected.heads,
                                   expected.tokens, expected.head_dim,
                                   expected.dtype, expected.alignment);
-        EXPECT_EQ(planned.status().code(), StatusCode::kOverflow);
+        EXPECT_EQ(planned.status(), StatusCode::kOverflow);
     }
 }
 
@@ -267,19 +267,19 @@ TEST(KVCacheLayoutPlanning, TotalBytesRejectsInvalidLayoutsAndPlaneOverflow) {
     ASSERT_TRUE(planned.ok());
     auto invalid = *planned;
     invalid.token_stride = 15;
-    EXPECT_EQ(invalid.TotalBytes().status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(invalid.TotalBytes().status(), StatusCode::kInvalidArgument);
     invalid = *planned;
     invalid.kv_dtype = DataType::ScalableFloat(32, 2);
     EXPECT_EQ(invalid.ElementBytes(), 0U);
-    EXPECT_EQ(invalid.Validate().code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(invalid.TotalBytes().status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(invalid.Validate(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(invalid.TotalBytes().status(), StatusCode::kInvalidArgument);
     auto plane_overflow = *planned;
     plane_overflow.num_layers = kMaxSize / 64 + 1;
-    EXPECT_EQ(plane_overflow.TotalBytes().status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(plane_overflow.TotalBytes().status(), StatusCode::kOverflow);
     auto total_overflow = *planned;
     total_overflow.num_layers = kMaxSize / 128 + 1;
     ASSERT_TRUE(total_overflow.BytesPerPlane().ok());
-    EXPECT_EQ(total_overflow.TotalBytes().status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(total_overflow.TotalBytes().status(), StatusCode::kOverflow);
 }
 
 TEST(KVCacheLayoutPlanning, ManagerAllocatesExactlyThePlannedPlanes) {
@@ -314,7 +314,7 @@ TEST(KVCacheLayoutPlanning, SecondPlaneFailureReleasesStorageAndCanRetry) {
     KVCacheManager manager;
     const auto status = manager.Init(allocator, 2, 3, 4,
                                      17, DataType::Float32(), 64);
-    EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(status, StatusCode::kResourceExhausted);
     EXPECT_FALSE(manager.is_initialized());
     EXPECT_EQ(manager.total_bytes(), 0U);
     EXPECT_EQ(manager.capacity_tokens(), 0U);
@@ -347,7 +347,7 @@ TEST(KVCacheLayoutPlanning, PlanningFailureClearsOldStorageBeforeReturning) {
 
     const auto status = manager.Init(allocator, 1, 1, 1,
                                      kMaxSize, DataType::UInt(8), 64);
-    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+    EXPECT_EQ(status, StatusCode::kOverflow);
     EXPECT_FALSE(manager.is_initialized());
     EXPECT_EQ(manager.total_bytes(), 0U);
     EXPECT_EQ(manager.capacity_tokens(), 0U);
@@ -364,7 +364,7 @@ TEST(KVCacheLayoutPlanning, PlanningFailureClearsOldStorageBeforeReturning) {
     ASSERT_TRUE(fresh.ok());
     EXPECT_TRUE(fresh->valid());
     EXPECT_FALSE(old.valid());
-    EXPECT_EQ(manager.ResetSession(old).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(manager.ResetSession(old), StatusCode::kFailedPrecondition);
     EXPECT_TRUE(manager.ReleaseSession(*fresh).ok());
 }
 
@@ -414,7 +414,7 @@ TEST(KVCacheLayoutPlanningDiagnosticFailure, ReturnsResourceExhaustedWithoutPubl
         const auto observed = failure.Stop();
 
         EXPECT_TRUE(observed.allocation_failed);
-        EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+        EXPECT_EQ(status, StatusCode::kResourceExhausted);
         EXPECT_TRUE(status.message().empty());
     }
 }

@@ -214,7 +214,7 @@ TEST(ModelLoader_HfConfigTest, PreservesInvalidExplicitKvHeadsForValidation) {
         const auto config = reader->ParseConfig();
         ASSERT_TRUE(config.ok()) << config.status().ToString();
         EXPECT_EQ(config->num_key_value_heads, heads);
-        EXPECT_EQ(HfModelValidator::ValidateConfig(*config).code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(HfModelValidator::ValidateConfig(*config), StatusCode::kInvalidArgument);
     }
 }
 
@@ -232,7 +232,7 @@ TEST(ModelLoader_HfConfigTest, RejectsConflictingRopeThetaRegardlessOfOrder) {
             auto reader = OpenTempDir(temp_dir);
             ASSERT_TRUE(reader.ok()) << reader.status().ToString();
             const auto config = reader->ParseConfig();
-            EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
+            EXPECT_EQ(config.status(), StatusCode::kInvalidArgument);
             EXPECT_NE(config.status().message().find("Conflicting RoPE rope_theta"), std::string::npos);
         }
     }
@@ -334,7 +334,7 @@ TEST_P(HfSlidingWindowInvalidParserTest, RejectsInvalidValueWithFieldContext) {
     const auto config = reader->ParseConfig();
 
     ASSERT_FALSE(config.ok());
-    EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(config.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(config.status().message().find("sliding_window"), std::string::npos);
 }
 
@@ -359,7 +359,7 @@ TEST_P(HfConfigMissingRequiredFieldTest, DefersMissingRequiredFieldToValidator) 
     const Status status = HfModelValidator::ValidateConfig(*config);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find(missing_field), std::string::npos);
 }
 
@@ -389,7 +389,7 @@ TEST(ModelLoader_HfConfigTest, RejectsMalformedJson) {
     const auto config = reader->ParseConfig();
 
     ASSERT_FALSE(config.ok());
-    EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(config.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfConfigTest, RejectsWrongFieldType) {
@@ -411,7 +411,7 @@ TEST(ModelLoader_HfConfigTest, RejectsWrongFieldType) {
     const auto config = reader->ParseConfig();
 
     ASSERT_FALSE(config.ok());
-    EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(config.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfConfigTest, ParsesNullRopeScalingAsAbsent) {
@@ -608,7 +608,7 @@ TEST(ModelLoader_HfConfigTest, DefersUnsupportedDTypeToValidator) {
 
     const Status status = HfModelValidator::ValidateConfig(*config);
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfConfigTest, SkipsUnknownFloatingJsonValue) {
@@ -652,7 +652,7 @@ TEST(ModelLoader_HfConfigTest, RejectsNonJsonNumbersInKnownAndUnknownFields) {
         auto reader = OpenTempDir(temp_dir);
         ASSERT_TRUE(reader.ok()) << reader.status().ToString();
         const auto config = reader->ParseConfig();
-        EXPECT_EQ(config.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(config.status(), StatusCode::kInvalidArgument);
         EXPECT_NE(config.status().message().find("at byte offset "), std::string::npos);
         EXPECT_NE(config.status().message().find("config.json"), std::string::npos);
     }
@@ -680,7 +680,7 @@ TEST(ModelLoader_HfConfigTest, RejectsOutOfRangeConsumedNumbers) {
         WriteMinimalSafetensors(temp_dir.Path());
         auto reader = OpenTempDir(temp_dir);
         ASSERT_TRUE(reader.ok()) << reader.status().ToString();
-        EXPECT_EQ(reader->ParseConfig().status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(reader->ParseConfig().status(), StatusCode::kInvalidArgument);
     }
 }
 
@@ -696,7 +696,7 @@ TEST(ModelLoader_HfConfigTest, RejectsNonJsonWhitespace) {
             WriteMinimalSafetensors(temp_dir.Path());
             auto reader = OpenTempDir(temp_dir);
             ASSERT_TRUE(reader.ok()) << reader.status().ToString();
-            EXPECT_EQ(reader->ParseConfig().status().code(), StatusCode::kInvalidArgument);
+            EXPECT_EQ(reader->ParseConfig().status(), StatusCode::kInvalidArgument);
         }
     }
 }

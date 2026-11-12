@@ -64,7 +64,7 @@ TEST(CpuInfo, PolicyRejectsDisabledRequiredFeature) {
                     .required_features = features,
             });
 
-    EXPECT_EQ(applied.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(applied.status(), StatusCode::kFailedPrecondition);
 }
 
 TEST(CpuInfo, PolicyRejectsInvalidSnapshot) {
@@ -75,7 +75,7 @@ TEST(CpuInfo, PolicyRejectsInvalidSnapshot) {
 
     const auto applied = ApplyCpuFeaturePolicy(snapshot, {});
 
-    EXPECT_EQ(applied.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(applied.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(CpuInfo, EmptyPolicyIsIdentity) {

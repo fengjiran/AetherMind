@@ -81,7 +81,7 @@ TEST(PackingRequestResolution, RejectsSharedValueWithIncompatibleRecipes) {
             {MakeRequest(4, OpType::kLinear), MakeRequest(4, OpType::kQkvLinear)},
             DeviceType::kCPU);
     ASSERT_FALSE(resolved.ok());
-    EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(resolved.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(resolved.status().message().find("incompatible op types or packing recipes"),
               std::string::npos);
 }

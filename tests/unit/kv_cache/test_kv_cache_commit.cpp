@@ -100,7 +100,7 @@ protected:
 TEST_F(KVCacheCommitTest, PartialPrefillDoesNotPublishState) {
     const auto before = state_;
 
-    EXPECT_EQ(view_.CommitAppend(0, 1).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(view_.CommitAppend(0, 1), StatusCode::kFailedPrecondition);
 
     ExpectStateUnchanged(state_, before);
     EXPECT_FALSE(view_.KeyData(0, 0, 0).ok());
@@ -109,7 +109,7 @@ TEST_F(KVCacheCommitTest, PartialPrefillDoesNotPublishState) {
 TEST_F(KVCacheCommitTest, PrefillCannotIncludeDecodePositions) {
     const auto before = state_;
 
-    EXPECT_EQ(view_.CommitAppend(0, 3).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(view_.CommitAppend(0, 3), StatusCode::kFailedPrecondition);
 
     ExpectStateUnchanged(state_, before);
 }
@@ -118,7 +118,7 @@ TEST_F(KVCacheCommitTest, NoncontiguousBeginDoesNotPublishState) {
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(view_, 2).ok());
     const auto before = state_;
 
-    EXPECT_EQ(view_.CommitAppend(1, 3).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(view_.CommitAppend(1, 3), StatusCode::kInvalidArgument);
 
     ExpectStateUnchanged(state_, before);
 }
@@ -127,7 +127,7 @@ TEST_F(KVCacheCommitTest, DecodeCannotSkipPositions) {
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(view_, 2).ok());
     const auto before = state_;
 
-    EXPECT_EQ(view_.CommitAppend(2, 4).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(view_.CommitAppend(2, 4), StatusCode::kInvalidArgument);
 
     ExpectStateUnchanged(state_, before);
     EXPECT_FALSE(view_.KeyData(0, 0, 2).ok());
@@ -137,7 +137,7 @@ TEST_F(KVCacheCommitTest, DuplicateCommitDoesNotPublishState) {
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(view_, 3).ok());
     const auto before = state_;
 
-    EXPECT_EQ(view_.CommitAppend(2, 3).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(view_.CommitAppend(2, 3), StatusCode::kInvalidArgument);
 
     ExpectStateUnchanged(state_, before);
 }
@@ -146,7 +146,7 @@ TEST_F(KVCacheCommitTest, EmptyAppendDoesNotPublishState) {
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(view_, 2).ok());
     const auto before = state_;
 
-    EXPECT_EQ(view_.CommitAppend(2, 2).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(view_.CommitAppend(2, 2), StatusCode::kInvalidArgument);
 
     ExpectStateUnchanged(state_, before);
 }
@@ -155,7 +155,7 @@ TEST_F(KVCacheCommitTest, AppendBeyondReservationDoesNotPublishState) {
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(view_, 6).ok());
     const auto before = state_;
 
-    EXPECT_EQ(view_.CommitAppend(6, 7).code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(view_.CommitAppend(6, 7), StatusCode::kOutOfRange);
 
     ExpectStateUnchanged(state_, before);
 }
@@ -166,7 +166,7 @@ TEST_F(KVCacheCommitTest, WrongEpochCannotChangeTheFreshReservation) {
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(fresh_view, 2).ok());
     const auto before = state_;
 
-    EXPECT_EQ(view_.CommitAppend(2, 3).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(view_.CommitAppend(2, 3), StatusCode::kFailedPrecondition);
 
     ExpectStateUnchanged(state_, before);
     EXPECT_FALSE(view_.valid());
@@ -189,7 +189,7 @@ TEST_F(KVCacheCommitTest, SaturatedGenerationDoesNotReviveAnIdleView) {
     const auto before = state_;
 
     EXPECT_FALSE(last_view.valid());
-    EXPECT_EQ(last_view.CommitAppend(0, 2).code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(last_view.CommitAppend(0, 2), StatusCode::kFailedPrecondition);
     ExpectStateUnchanged(state_, before);
 }
 
@@ -205,7 +205,7 @@ TEST_F(KVCacheCommitTest, CommitDiagnosticFailurePreservesTheEntireState) {
     const auto result = failure.Stop();
 
     EXPECT_TRUE(result.allocation_failed);
-    EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(status, StatusCode::kResourceExhausted);
     EXPECT_TRUE(status.message().empty());
     ExpectStateUnchanged(state_, before);
 }
@@ -222,7 +222,7 @@ TEST_F(KVCacheCommitTest, StaleCommitDiagnosticFailurePreservesTheEntireState) {
     const auto result = failure.Stop();
 
     EXPECT_TRUE(result.allocation_failed);
-    EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(status, StatusCode::kResourceExhausted);
     EXPECT_TRUE(status.message().empty());
     ExpectStateUnchanged(state_, before);
 }
@@ -239,7 +239,7 @@ TEST_F(KVCacheCommitTest, MalformedReservationDiagnosticFailurePreservesTheEntir
     const auto result = failure.Stop();
 
     EXPECT_TRUE(result.allocation_failed);
-    EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(status, StatusCode::kResourceExhausted);
     EXPECT_TRUE(status.message().empty());
     ExpectStateUnchanged(state_, before);
 }
@@ -258,7 +258,7 @@ TEST_F(KVCacheCommitTest, InvalidLayoutDiagnosticFailurePreservesTheEntireState)
     const auto result = failure.Stop();
 
     EXPECT_TRUE(result.allocation_failed);
-    EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(status, StatusCode::kResourceExhausted);
     EXPECT_TRUE(status.message().empty());
     ExpectStateUnchanged(state_, before);
 }

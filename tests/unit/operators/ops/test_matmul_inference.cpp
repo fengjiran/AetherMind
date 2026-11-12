@@ -27,7 +27,7 @@ TEST(MatMulInference, RejectsWrongArity) {
     };
     const Status status = InferOperator(OpType::kMatMul, params, std::span(inputs)).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulInference, RejectsNonFloat32Input) {
@@ -38,7 +38,7 @@ TEST(MatMulInference, RejectsNonFloat32Input) {
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulInference, RejectsUnrankedLhs) {
@@ -49,7 +49,7 @@ TEST(MatMulInference, RejectsUnrankedLhs) {
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulInference, RejectsUnrankedRhs) {
@@ -60,7 +60,7 @@ TEST(MatMulInference, RejectsUnrankedRhs) {
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulInference, RejectsRank1Lhs) {
@@ -71,7 +71,7 @@ TEST(MatMulInference, RejectsRank1Lhs) {
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulInference, RejectsRank1Rhs) {
@@ -82,7 +82,7 @@ TEST(MatMulInference, RejectsRank1Rhs) {
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulInference, RejectsStaticInnerMismatch) {
@@ -93,7 +93,7 @@ TEST(MatMulInference, RejectsStaticInnerMismatch) {
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulInference, RejectsStaticInnerMismatchWithTransposeRhs) {
@@ -104,7 +104,7 @@ TEST(MatMulInference, RejectsStaticInnerMismatchWithTransposeRhs) {
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulInference, RejectsStaticIncompatibleBatch) {
@@ -115,7 +115,7 @@ TEST(MatMulInference, RejectsStaticIncompatibleBatch) {
     };
     const Status status = InferOperator(OpType::kMatMul, params, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulInference, AcceptsRank2Inputs) {
@@ -204,7 +204,7 @@ TEST(MatMulInference, InferOperatorRejectsNonFloat32) {
     };
     const StatusOr<InferenceResult> inference = InferOperator(OpType::kMatMul, params, inputs);
     EXPECT_FALSE(inference.ok());
-    EXPECT_EQ(inference.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(inference.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(MatMulInference, InfersRank2Output) {

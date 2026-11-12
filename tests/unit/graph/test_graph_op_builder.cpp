@@ -778,7 +778,7 @@ TEST(GraphOpBuilder, AddReshapeFailureDuplicateInferAtomicallyAborts) {
 
     auto output_or = AddReshape(graph, std::nullopt, input, target_shape, "reshape");
     ASSERT_FALSE(output_or.ok());
-    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(output_or.status(), StatusCode::kInvalidArgument);
 
     EXPECT_EQ(graph.GetNodes().size(), nodes_before);
     EXPECT_EQ(graph.GetValues().size(), values_before);
@@ -798,7 +798,7 @@ TEST(GraphOpBuilder, AddReshapeFailureOutOfRangeInputAxisAtomicallyAborts) {
 
     auto output_or = AddReshape(graph, std::nullopt, input, target_shape, "reshape");
     ASSERT_FALSE(output_or.ok());
-    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(output_or.status(), StatusCode::kInvalidArgument);
 
     EXPECT_EQ(graph.GetNodes().size(), nodes_before);
     EXPECT_EQ(graph.GetValues().size(), values_before);
@@ -1034,7 +1034,7 @@ TEST(GraphOpBuilder, AddPermuteFailureDuplicateAxesAtomicallyAborts) {
 
     auto output_or = AddPermute(graph, std::nullopt, input, permutation, "permute");
     ASSERT_FALSE(output_or.ok());
-    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(output_or.status(), StatusCode::kInvalidArgument);
 
     EXPECT_EQ(graph.GetNodes().size(), nodes_before);
     EXPECT_EQ(graph.GetValues().size(), values_before);
@@ -1053,7 +1053,7 @@ TEST(GraphOpBuilder, AddPermuteFailureLengthMismatchAtomicallyAborts) {
 
     auto output_or = AddPermute(graph, std::nullopt, input, permutation, "permute");
     ASSERT_FALSE(output_or.ok());
-    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(output_or.status(), StatusCode::kInvalidArgument);
 
     EXPECT_EQ(graph.GetNodes().size(), nodes_before);
     EXPECT_EQ(graph.GetValues().size(), values_before);
@@ -1072,7 +1072,7 @@ TEST(GraphOpBuilder, AddPermuteFailureOutOfRangeAxisAtomicallyAborts) {
 
     auto output_or = AddPermute(graph, std::nullopt, input, permutation, "permute");
     ASSERT_FALSE(output_or.ok());
-    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(output_or.status(), StatusCode::kInvalidArgument);
 
     EXPECT_EQ(graph.GetNodes().size(), nodes_before);
     EXPECT_EQ(graph.GetValues().size(), values_before);
@@ -1116,7 +1116,7 @@ TEST(GraphOpBuilder, AddReshapeRejectsFabricatedInputValueIdWithoutAborting) {
 
     auto output_or = AddReshape(graph, std::nullopt, fabricated, target_shape, "reshape");
     ASSERT_FALSE(output_or.ok());
-    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(output_or.status(), StatusCode::kInvalidArgument);
 
     // Graph unchanged.
     EXPECT_EQ(graph.GetNodes().size(), nodes_before);
@@ -1138,7 +1138,7 @@ TEST(GraphOpBuilder, AddPermuteRejectsFabricatedInputValueIdWithoutAborting) {
 
     auto output_or = AddPermute(graph, std::nullopt, fabricated, permutation, "permute");
     ASSERT_FALSE(output_or.ok());
-    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(output_or.status(), StatusCode::kInvalidArgument);
 
     // Graph unchanged.
     EXPECT_EQ(graph.GetNodes().size(), nodes_before);
@@ -1259,7 +1259,7 @@ TEST(GraphOpBuilder, AddReorderRejectsFabricatedInputValueIdWithoutAborting) {
 
     auto output_or = AddReorder(graph, std::nullopt, fabricated, "reorder");
     ASSERT_FALSE(output_or.ok());
-    EXPECT_EQ(output_or.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(output_or.status(), StatusCode::kInvalidArgument);
 
     EXPECT_EQ(graph.GetNodes().size(), nodes_before);
     EXPECT_EQ(graph.GetValues().size(), values_before);
@@ -1283,7 +1283,7 @@ TEST(GraphOpBuilder, AddNodeReorderWrongParamsAtomicallyAborts) {
                                 {},
                                 "bad_reorder");
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 
     EXPECT_EQ(graph.GetNodes().size(), nodes_before);
     EXPECT_EQ(graph.GetValues().size(), values_before);
@@ -1309,7 +1309,7 @@ TEST(GraphOpBuilder, AddNodeReorderWrongArityAtomicallyAborts) {
                                 {},
                                 "bad_reorder");
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 
     EXPECT_EQ(graph.GetNodes().size(), nodes_before);
     EXPECT_EQ(graph.GetValues().size(), values_before);

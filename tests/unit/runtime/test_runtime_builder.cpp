@@ -119,7 +119,7 @@ TEST(RuntimeBuilderTryBuild, ReportsInvalidKvGeometryInsteadOfAborting) {
 
     const auto result = builder.TryBuild();
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(RuntimeBuilderTryBuild, ReportsInvalidKvAlignmentInsteadOfAborting) {
@@ -130,7 +130,7 @@ TEST(RuntimeBuilderTryBuild, ReportsInvalidKvAlignmentInsteadOfAborting) {
 
     const auto result = builder.TryBuild();
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(RuntimeBuilderTryBuild, FailureStillConsumesPendingRegistrations) {
@@ -181,7 +181,7 @@ TEST(RuntimeBuilderTryBuild, AllocatorProviderTransferOutOfMemoryStaysReusable) 
         ASSERT_TRUE(injected.allocation_failed)
                 << "injection missed the allocator provider transfer";
         ASSERT_FALSE(first.ok());
-        EXPECT_EQ(first.status().code(), StatusCode::kResourceExhausted);
+        EXPECT_EQ(first.status(), StatusCode::kResourceExhausted);
     }
 
     // The failed transfer already surrendered the provider to the discarded
@@ -211,7 +211,7 @@ TEST(RuntimeBuilderTryBuild, BackendFactoryTransferOutOfMemoryStaysReusable) {
         ASSERT_TRUE(injected.allocation_failed)
                 << "injection missed the backend factory transfer";
         ASSERT_FALSE(first.ok());
-        EXPECT_EQ(first.status().code(), StatusCode::kResourceExhausted);
+        EXPECT_EQ(first.status(), StatusCode::kResourceExhausted);
     }
 
     auto retry = builder.TryBuild();

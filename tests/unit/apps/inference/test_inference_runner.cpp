@@ -266,7 +266,7 @@ TEST(InferenceRunnerFailure, ReportsLoadingFailureBeforeCreatingRuntimeResources
         RunStage stage = RunStage::kGenerate;
         const auto result = runner_test::RunInferenceWithBuilder(options, builder, &stage);
         EXPECT_FALSE(result.ok());
-        EXPECT_EQ(result.status().code(), StatusCode::kNotFound);
+        EXPECT_EQ(result.status(), StatusCode::kNotFound);
         EXPECT_EQ(stage, RunStage::kLoad);
         EXPECT_EQ(resources->allocator_creations, 0U);
         EXPECT_EQ(resources->allocation_attempts, 0U);
@@ -289,7 +289,7 @@ TEST(InferenceRunnerFailure, RejectsSlidingWindowBeforeCreatingRuntimeResources)
         const auto result = runner_test::RunInferenceWithBuilder(options, builder, &stage);
 
         ASSERT_FALSE(result.ok());
-        EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
         EXPECT_NE(result.status().message().find("sliding_window"), std::string::npos);
         EXPECT_EQ(stage, RunStage::kLoad);
         EXPECT_EQ(resources->allocator_creations, 0U);
@@ -309,7 +309,7 @@ TEST(InferenceRunnerFailure, ReportsInvalidRequestBeforeCreatingRuntimeResources
         RunStage stage = RunStage::kNone;
         const auto result = runner_test::RunInferenceWithBuilder(options, builder, &stage);
         EXPECT_FALSE(result.ok());
-        EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
         EXPECT_EQ(stage, RunStage::kParameters);
         EXPECT_EQ(resources->allocator_creations, 0U);
         EXPECT_EQ(resources->allocation_attempts, 0U);
@@ -327,7 +327,7 @@ TEST(InferenceRunnerFailure, ReportsCapacityErrorBeforeCreatingRuntimeResources)
         RunStage stage = RunStage::kNone;
         const auto result = runner_test::RunInferenceWithBuilder(options, builder, &stage);
         EXPECT_FALSE(result.ok());
-        EXPECT_EQ(result.status().code(), StatusCode::kOutOfRange);
+        EXPECT_EQ(result.status(), StatusCode::kOutOfRange);
         EXPECT_EQ(stage, RunStage::kParameters);
         EXPECT_EQ(resources->allocation_attempts, 0U);
     }
@@ -346,7 +346,7 @@ TEST_P(RunnerKvAllocationFailure, PreservesStatusAndReleasesPartialKvStorage) {
     const auto result = runner_test::RunInferenceWithBuilder(RunnerOptions(), builder, &stage);
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kAborted);
+    EXPECT_EQ(result.status(), StatusCode::kAborted);
     EXPECT_EQ(result.status().message(), kAllocationFailure);
     EXPECT_EQ(stage, RunStage::kRuntimeBuild);
     EXPECT_EQ(resources->allocation_attempts, GetParam());
@@ -372,7 +372,7 @@ TEST(InferenceRunnerFailure, ReportsLazyBackendFactoryFailureAsPreparationFailur
     const auto result = runner_test::RunInferenceWithBuilder(RunnerOptions(), builder, &stage);
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kUnavailable);
+    EXPECT_EQ(result.status(), StatusCode::kUnavailable);
     EXPECT_EQ(result.status().message(), kBackendFailure);
     EXPECT_EQ(stage, RunStage::kPrepare);
     EXPECT_EQ(resources->allocations, 2U);
@@ -392,7 +392,7 @@ TEST(InferenceRunnerFailure, ConvertsEscapingBadAllocToEmptyMessageAndReleasesSt
     const auto result = runner_test::RunInferenceWithBuilder(RunnerOptions(), builder, &stage);
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(result.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(result.status().message().empty());
     EXPECT_EQ(stage, RunStage::kPrepare);
     EXPECT_EQ(resources->allocations, 2U);
@@ -413,7 +413,7 @@ TEST(InferenceRunnerFailure, PreservesExecutionFailureAndReleasesRequestAndKvSto
     const auto result = runner_test::RunInferenceWithBuilder(RunnerOptions(), builder, &stage);
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kAborted);
+    EXPECT_EQ(result.status(), StatusCode::kAborted);
     EXPECT_EQ(result.status().message(), kExecutionFailure);
     EXPECT_EQ(stage, RunStage::kGenerate);
     EXPECT_GT(resources->allocations, 2U);
@@ -460,7 +460,7 @@ TEST_P(RunnerFp32Admission, RejectsLoaderAcceptedPrecisionBeforeAllocatingKv) {
         RunStage stage = RunStage::kNone;
         const auto result = runner_test::RunInferenceWithBuilder(options, builder, &stage);
         EXPECT_FALSE(result.ok());
-        EXPECT_EQ(result.status().code(), StatusCode::kUnimplemented);
+        EXPECT_EQ(result.status(), StatusCode::kUnimplemented);
         EXPECT_NE(result.status().message().find("required Float32"), std::string::npos);
         EXPECT_EQ(stage, RunStage::kModelAdmission);
         EXPECT_EQ(resources->allocator_creations, 0U);
@@ -490,7 +490,7 @@ TEST(InferenceRunnerFailure, RejectsUnsupportedFamilyAtCompileBeforeAllocatingKv
         RunStage stage = RunStage::kNone;
         const auto result = runner_test::RunInferenceWithBuilder(options, builder, &stage);
         EXPECT_FALSE(result.ok());
-        EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
         EXPECT_NE(result.status().message().find("unsupported model type"), std::string::npos);
         EXPECT_EQ(stage, RunStage::kCompile);
         EXPECT_EQ(resources->allocator_creations, 0U);
@@ -516,7 +516,7 @@ TEST(InferenceRunnerFailure, RejectsUnknownRopeAtCompileBeforeAllocatingKv) {
         RunStage stage = RunStage::kNone;
         const auto result = runner_test::RunInferenceWithBuilder(options, builder, &stage);
         EXPECT_FALSE(result.ok());
-        EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
         EXPECT_NE(result.status().message().find("RoPE"), std::string::npos);
         EXPECT_EQ(stage, RunStage::kCompile);
         EXPECT_EQ(resources->allocator_creations, 0U);

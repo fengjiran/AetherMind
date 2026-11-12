@@ -50,12 +50,12 @@ protected:
     }
 
     void ExpectAccessRejected(StatusCode code) const {
-        EXPECT_EQ(view_.BindLayerForAppend(2, 2, 3).status().code(), code);
-        EXPECT_EQ(view_.BindLayerForRead(2, 2, 2).status().code(), code);
-        EXPECT_EQ(view_.ValidateWrite(2, 1, 2, 1).code(), code);
-        EXPECT_EQ(view_.ValidateRead(2, 1, 1, 2).code(), code);
-        EXPECT_EQ(view_.KeyData(2, 1, 1, 4).status().code(), code);
-        EXPECT_EQ(view_.ValueData(2, 1, 1, 4).status().code(), code);
+        EXPECT_EQ(view_.BindLayerForAppend(2, 2, 3).status(), code);
+        EXPECT_EQ(view_.BindLayerForRead(2, 2, 2).status(), code);
+        EXPECT_EQ(view_.ValidateWrite(2, 1, 2, 1), code);
+        EXPECT_EQ(view_.ValidateRead(2, 1, 1, 2), code);
+        EXPECT_EQ(view_.KeyData(2, 1, 1, 4).status(), code);
+        EXPECT_EQ(view_.ValueData(2, 1, 1, 4).status(), code);
     }
 
     static constexpr size_t kBufferBytes = 3072;
@@ -109,12 +109,12 @@ TEST_F(KVCacheBindingValidationTest, ElementReadsPreservePaddedOffsetsAndIndexCh
     const auto* value_base = static_cast<const std::byte*>(storage_.value_buffer.data());
     EXPECT_EQ(*key, key_base + 1608);
     EXPECT_EQ(*value, value_base + 1608);
-    EXPECT_EQ(view_.BindLayerForAppend(3, 2, 3).status().code(), StatusCode::kOutOfRange);
-    EXPECT_EQ(view_.ValidateWrite(2, 2, 2, 1).code(), StatusCode::kOutOfRange);
-    EXPECT_EQ(view_.KeyData(3, 1, 1, 4).status().code(), StatusCode::kOutOfRange);
-    EXPECT_EQ(view_.ValueData(2, 2, 1, 4).status().code(), StatusCode::kOutOfRange);
-    EXPECT_EQ(view_.KeyData(2, 1, 1, 5).status().code(), StatusCode::kOutOfRange);
-    EXPECT_EQ(view_.ValueData(2, 1, 2, 4).status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(view_.BindLayerForAppend(3, 2, 3).status(), StatusCode::kOutOfRange);
+    EXPECT_EQ(view_.ValidateWrite(2, 2, 2, 1), StatusCode::kOutOfRange);
+    EXPECT_EQ(view_.KeyData(3, 1, 1, 4).status(), StatusCode::kOutOfRange);
+    EXPECT_EQ(view_.ValueData(2, 2, 1, 4).status(), StatusCode::kOutOfRange);
+    EXPECT_EQ(view_.KeyData(2, 1, 1, 5).status(), StatusCode::kOutOfRange);
+    EXPECT_EQ(view_.ValueData(2, 1, 2, 4).status(), StatusCode::kOutOfRange);
 }
 
 TEST_F(KVCacheBindingValidationTest, RevalidatesLayoutOnEveryCall) {
@@ -131,8 +131,8 @@ TEST_F(KVCacheBindingValidationTest, RevalidatesLayoutOnEveryCall) {
         }
 
         ExpectAccessRejected(StatusCode::kInvalidArgument);
-        EXPECT_EQ(storage_.layout.Offset(2, 1, 1, 4).status().code(), StatusCode::kInvalidArgument);
-        EXPECT_EQ(storage_.layout.BytesPerPlane().status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(storage_.layout.Offset(2, 1, 1, 4).status(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(storage_.layout.BytesPerPlane().status(), StatusCode::kInvalidArgument);
     }
 }
 
@@ -160,8 +160,8 @@ TEST_F(KVCacheBindingValidationTest, RefreshesBindingsAfterValidLayoutChange) {
 TEST_F(KVCacheBindingValidationTest, RejectsSequencePositionOverflowInElementReads) {
     constexpr size_t kMaxSize = std::numeric_limits<size_t>::max();
 
-    EXPECT_EQ(view_.KeyData(0, 0, kMaxSize, 0).status().code(), StatusCode::kOutOfRange);
-    EXPECT_EQ(view_.ValueData(0, 0, kMaxSize, 0).status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(view_.KeyData(0, 0, kMaxSize, 0).status(), StatusCode::kOutOfRange);
+    EXPECT_EQ(view_.ValueData(0, 0, kMaxSize, 0).status(), StatusCode::kOutOfRange);
 }
 
 TEST_F(KVCacheBindingValidationTest, RejectsPlaneSizeOverflowAfterLayoutChange) {
@@ -169,7 +169,7 @@ TEST_F(KVCacheBindingValidationTest, RejectsPlaneSizeOverflowAfterLayoutChange) 
     ASSERT_TRUE(storage_.layout.Validate().ok());
 
     ExpectAccessRejected(StatusCode::kOverflow);
-    EXPECT_EQ(storage_.layout.BytesPerPlane().status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(storage_.layout.BytesPerPlane().status(), StatusCode::kOverflow);
 }
 
 TEST_F(KVCacheBindingValidationTest, RevalidatesReplacedBackingBuffers) {
@@ -200,8 +200,8 @@ TEST_F(KVCacheBindingValidationTest, RechecksCommittedWatermark) {
     EXPECT_TRUE(view_.BindLayerForRead(2, 2, 2).ok());
     ASSERT_TRUE(test::InitializeAndCommitKVForTest(view_, 3).ok());
 
-    EXPECT_EQ(view_.BindLayerForAppend(2, 2, 3).status().code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(view_.BindLayerForRead(2, 2, 3).status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(view_.BindLayerForAppend(2, 2, 3).status(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(view_.BindLayerForRead(2, 2, 3).status(), StatusCode::kInvalidArgument);
     EXPECT_TRUE(view_.BindLayerForAppend(2, 3, 4).ok());
     EXPECT_TRUE(view_.BindLayerForRead(2, 3, 3).ok());
 }

@@ -819,7 +819,7 @@ TEST_F(CAbiKVValidation, MissingManagerIsFailedPrecondition) {
     auto runtime = builder.TryBuild();
     ASSERT_TRUE(runtime.ok()) << runtime.status().ToString();
     const auto result = c_api::detail::ValidateRuntimeModelKV(*runtime, *artifact_);
-    EXPECT_EQ(result.code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(result, StatusCode::kFailedPrecondition);
 }
 
 TEST_F(CAbiKVValidation, RuntimeDtypeMustMatchCompiledStateDtype) {
@@ -836,7 +836,7 @@ TEST_F(CAbiKVValidation, RuntimeDtypeMustMatchCompiledStateDtype) {
     builder.WithOptions(options);
     auto runtime = builder.TryBuild();
     ASSERT_TRUE(runtime.ok()) << runtime.status().ToString();
-    EXPECT_EQ(c_api::detail::ValidateRuntimeModelKV(*runtime, *artifact_).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(c_api::detail::ValidateRuntimeModelKV(*runtime, *artifact_), StatusCode::kInvalidArgument);
 }
 
 TEST_F(CAbiKVValidation, RejectsNonFirstLayerStateDtype) {
@@ -854,7 +854,7 @@ TEST_F(CAbiKVValidation, RejectsNonFirstLayerStateDtype) {
     ReplaceGraph(std::move(builder));
     ASSERT_FALSE(::testing::Test::HasFatalFailure());
     const auto result = c_api::detail::ValidateRuntimeModelKV(*runtime_, *artifact_);
-    EXPECT_EQ(result.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result, StatusCode::kInvalidArgument);
 }
 
 TEST_F(CAbiKVValidation, RejectsNonFloat32AliasOutputEvenWhenRootIsFloat32) {
@@ -864,7 +864,7 @@ TEST_F(CAbiKVValidation, RejectsNonFloat32AliasOutputEvenWhenRootIsFloat32) {
     ReplaceGraph(std::move(builder));
     ASSERT_FALSE(::testing::Test::HasFatalFailure());
     const auto result = c_api::detail::ValidateRuntimeModelKV(*runtime_, *artifact_);
-    EXPECT_EQ(result.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result, StatusCode::kInvalidArgument);
 }
 
 TEST_F(CAbiKVValidation, RejectsMissingNonFirstLayerValueState) {
@@ -881,7 +881,7 @@ TEST_F(CAbiKVValidation, RejectsMissingNonFirstLayerValueState) {
     ASSERT_GT(changed, 0U);
     ReplaceGraph(std::move(builder));
     ASSERT_FALSE(::testing::Test::HasFatalFailure());
-    EXPECT_EQ(c_api::detail::ValidateRuntimeModelKV(*runtime_, *artifact_).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(c_api::detail::ValidateRuntimeModelKV(*runtime_, *artifact_), StatusCode::kInvalidArgument);
 }
 
 TEST_F(CAbiKVValidation, RejectsAdditionalDuplicateRootState) {
@@ -894,7 +894,7 @@ TEST_F(CAbiKVValidation, RejectsAdditionalDuplicateRootState) {
     builder.values.push_back(copied);
     ReplaceGraph(std::move(builder));
     ASSERT_FALSE(::testing::Test::HasFatalFailure());
-    EXPECT_EQ(c_api::detail::ValidateRuntimeModelKV(*runtime_, *artifact_).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(c_api::detail::ValidateRuntimeModelKV(*runtime_, *artifact_), StatusCode::kInvalidArgument);
 }
 
 } // namespace

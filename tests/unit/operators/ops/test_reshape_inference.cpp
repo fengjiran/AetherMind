@@ -15,7 +15,7 @@ TEST(ReshapeInference, RejectsWrongVariantBeforeInputChecks) {
     const auto result = InferOperator(
             OpType::kReshape, AddParams{}, empty_inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(result.status().message(), "Reshape node requires ReshapeParams");
 }
 
@@ -27,7 +27,7 @@ TEST(ReshapeInference, RejectsNegativeLiteralBeforeInputChecks) {
     constexpr std::vector<TensorSpec> empty_inputs;
     const auto result = InferOperator(OpType::kReshape, params, empty_inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ReshapeInference, RejectsDuplicateInferBeforeInputChecks) {
@@ -38,7 +38,7 @@ TEST(ReshapeInference, RejectsDuplicateInferBeforeInputChecks) {
     constexpr std::vector<TensorSpec> empty_inputs;
     const auto result = InferOperator(OpType::kReshape, params, empty_inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ReshapeInference, RejectsWrongInputCount) {
@@ -48,7 +48,7 @@ TEST(ReshapeInference, RejectsWrongInputCount) {
     constexpr std::vector<TensorSpec> empty_inputs;
     const auto result = InferOperator(OpType::kReshape, params, empty_inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ReshapeInference, RejectsUnrankedInput) {
@@ -57,7 +57,7 @@ TEST(ReshapeInference, RejectsUnrankedInput) {
     const std::vector<TensorSpec> inputs = {MakeSpec(DataType::Float32())};
     const auto result = InferOperator(OpType::kReshape, params, inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ReshapeInference, RejectsOutOfRangeInputAxis) {
@@ -67,7 +67,7 @@ TEST(ReshapeInference, RejectsOutOfRangeInputAxis) {
     const std::vector<TensorSpec> inputs = {MakeSpec(DataType::Float32(), {2, 3})};
     const auto result = InferOperator(OpType::kReshape, params, inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ReshapeInference, RejectsStaticVolumeMismatch) {
@@ -77,7 +77,7 @@ TEST(ReshapeInference, RejectsStaticVolumeMismatch) {
     const std::vector<TensorSpec> inputs = {MakeSpec(DataType::Float32(), {2, 3})};
     const auto result = InferOperator(OpType::kReshape, params, inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ReshapeInference, RejectsAmbiguousZeroVolumeInfer) {
@@ -87,7 +87,7 @@ TEST(ReshapeInference, RejectsAmbiguousZeroVolumeInfer) {
     const std::vector<TensorSpec> inputs = {MakeSpec(DataType::Float32(), {0, 3})};
     const auto result = InferOperator(OpType::kReshape, params, inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ReshapeInference, RejectsStaticOverflow) {
@@ -101,7 +101,7 @@ TEST(ReshapeInference, RejectsStaticOverflow) {
     const std::vector<TensorSpec> inputs = {MakeSpec(DataType::Float32(), {2, 3})};
     const auto result = InferOperator(OpType::kReshape, params, inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(result.status(), StatusCode::kOverflow);
 }
 
 // --- Reshape inference ---
@@ -127,7 +127,7 @@ TEST(ReshapeInference, RankZeroFailsOnVolumeMismatch) {
     const std::vector<TensorSpec> inputs = {MakeSpec(DataType::Float32(), {2})};
     const auto result = InferOperator(OpType::kReshape, params, inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ReshapeInference, StaticInferResolvesQuotient) {

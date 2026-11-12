@@ -195,7 +195,7 @@ TEST(ModelGraph, ValidateRejectsMissingOpParams) {
             {{.payload = ActivationValue{}}});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsWrongOpParamsForOpType) {
@@ -213,7 +213,7 @@ TEST(ModelGraph, ValidateRejectsWrongOpParamsForOpType) {
             RmsNormParams{});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsInvalidRmsNormEps) {
@@ -231,7 +231,7 @@ TEST(ModelGraph, ValidateRejectsInvalidRmsNormEps) {
             RmsNormParams{.eps = 0.0F});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateAcceptsSiluNodeWithSiluParams) {
@@ -262,7 +262,7 @@ TEST(ModelGraph, ValidateRejectsSiluNodeWithWrongParams) {
             EmbeddingParams{});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateAcceptsElementwiseMulNodeWithElementwiseMulParams) {
@@ -295,7 +295,7 @@ TEST(ModelGraph, ValidateRejectsElementwiseMulNodeWithWrongParams) {
             AddParams{});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsInvalidRoPEParams) {
@@ -316,7 +316,7 @@ TEST(ModelGraph, ValidateRejectsInvalidRoPEParams) {
                        .max_pos_embeddings = 128});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsMonostatePayload) {
@@ -324,7 +324,7 @@ TEST(ModelGraph, ValidateRejectsMonostatePayload) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsActivationWithoutProducer) {
@@ -335,7 +335,7 @@ TEST(ModelGraph, ValidateRejectsActivationWithoutProducer) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsExternalValueWithProducer) {
@@ -350,7 +350,7 @@ TEST(ModelGraph, ValidateRejectsExternalValueWithProducer) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, PublicApiCreatesStateValues) {
@@ -446,7 +446,7 @@ TEST(ModelGraph, ValidateRejectsConstantValueWithProducer) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateAcceptsStateUpdateNode) {
@@ -539,7 +539,7 @@ TEST(ModelGraph, ValidateRejectsKVCacheUpdateAcrossDecoderLayerStateFamilies) {
             KVCacheUpdateParams{});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(graph.GetNodes().size(), node_count_before);
     EXPECT_EQ(graph.GetValues().size(), value_count_before);
 }
@@ -563,7 +563,7 @@ TEST(ModelGraph, ValidateRejectsKVCacheUpdateKStateFamilyMismatch) {
             KVCacheUpdateParams{});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsKVCacheUpdateVStateFamilyMismatch) {
@@ -585,7 +585,7 @@ TEST(ModelGraph, ValidateRejectsKVCacheUpdateVStateFamilyMismatch) {
             KVCacheUpdateParams{});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsKVCacheUpdateWithSwappedKeyValueStateSlots) {
@@ -607,7 +607,7 @@ TEST(ModelGraph, ValidateRejectsKVCacheUpdateWithSwappedKeyValueStateSlots) {
             KVCacheUpdateParams{});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsKVCacheUpdateWithMixedKeyValueStateLayers) {
@@ -629,7 +629,7 @@ TEST(ModelGraph, ValidateRejectsKVCacheUpdateWithMixedKeyValueStateLayers) {
             KVCacheUpdateParams{});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsAttentionWithSwappedKeyValueStateSlots) {
@@ -649,7 +649,7 @@ TEST(ModelGraph, ValidateRejectsAttentionWithSwappedKeyValueStateSlots) {
             AttentionParams{1, 1, 8});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsAttentionWithWrongCacheLayer) {
@@ -669,7 +669,7 @@ TEST(ModelGraph, ValidateRejectsAttentionWithWrongCacheLayer) {
             AttentionParams{1, 1, 8});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsStateValueWithInvalidProducer) {
@@ -684,7 +684,7 @@ TEST(ModelGraph, ValidateRejectsStateValueWithInvalidProducer) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsInvalidKvCacheStateBindingSlot) {
@@ -699,7 +699,7 @@ TEST(ModelGraph, ValidateRejectsInvalidKvCacheStateBindingSlot) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsStateValueAsGraphOutput) {
@@ -711,7 +711,7 @@ TEST(ModelGraph, ValidateRejectsStateValueAsGraphOutput) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsKVCacheUpdateWithActivationOutput) {
@@ -733,7 +733,7 @@ TEST(ModelGraph, ValidateRejectsKVCacheUpdateWithActivationOutput) {
             KVCacheUpdateParams{});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsNodeOutputReusingInputValue) {
@@ -773,7 +773,7 @@ TEST(ModelGraph, ValidateRejectsNodeOutputReusingInputValue) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsSchemaPortKindMismatch) {
@@ -799,7 +799,7 @@ TEST(ModelGraph, ValidateRejectsSchemaPortKindMismatch) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsSchemaArityMismatch) {
@@ -821,7 +821,7 @@ TEST(ModelGraph, ValidateRejectsSchemaArityMismatch) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsOutputOnExternalValue) {
@@ -844,7 +844,7 @@ TEST(ModelGraph, ValidateRejectsOutputOnExternalValue) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsWeightSlotMismatchWithOperator) {
@@ -860,7 +860,7 @@ TEST(ModelGraph, ValidateRejectsWeightSlotMismatchWithOperator) {
             LinearParams{});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, AddRmsNormRejectsCompositeWeightBinding) {
@@ -882,7 +882,7 @@ TEST(ModelGraph, AddRmsNormRejectsCompositeWeightBinding) {
             AddRmsNormParams{});
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(result.status().message().find("direct weight binding"), std::string::npos);
 }
 
@@ -899,7 +899,7 @@ TEST(ModelGraph, ValidateRejectsWeightSlotMismatchWithSemanticRole) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, QkvLinearRequiresQkvWeightBindingAtAddNode) {
@@ -923,7 +923,7 @@ TEST(ModelGraph, QkvLinearRequiresQkvWeightBindingAtAddNode) {
                             .v_out_features = 8});
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(result.status().message().find("QkvWeightBinding"), std::string::npos);
 }
 
@@ -1001,7 +1001,7 @@ TEST(ModelGraph, QkvLinearRejectsWeightLayerMismatchingNodeAtAddNode) {
                             .v_out_features = 8});
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(result.status().message().find("decoder_layer_index"), std::string::npos);
 }
 
@@ -1100,7 +1100,7 @@ TEST(ModelGraph, ValidateRejectsPerLayerRoleWithoutDecoderLayerIndex) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateRejectsModelLevelRoleWithDecoderLayerIndex) {
@@ -1112,7 +1112,7 @@ TEST(ModelGraph, ValidateRejectsModelLevelRoleWithDecoderLayerIndex) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, ValidateAcceptsMonostateSemanticRoleForGenericGraph) {
@@ -1227,7 +1227,7 @@ TEST(ModelGraph, TopologicalOrderRejectsActivationCycle) {
     const auto order = graph.TopologicalOrder();
 
     ASSERT_FALSE(order.ok());
-    EXPECT_EQ(order.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(order.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraph, FindNodesByOpTypeReturnsMatchingIdsInIndexOrder) {
@@ -1333,7 +1333,7 @@ TEST(ModelGraphSemanticValidation, AddNodeRejectsInvalidInputId) {
             RmsNormParams{});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     const std::string msg = result.status().ToString();
     EXPECT_NE(msg.find("invalid value id"), std::string::npos);
     EXPECT_NE(msg.find("RmsNorm"), std::string::npos);
@@ -1361,7 +1361,7 @@ TEST(ModelGraphSemanticValidation, AddNodeRejectsOutputCountMismatch) {
             RmsNormParams{});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     const std::string msg = result.status().ToString();
     EXPECT_NE(msg.find("RmsNorm"), std::string::npos);
     EXPECT_EQ(graph.GetNodes().size(), node_count_before);
@@ -1384,7 +1384,7 @@ TEST(ModelGraphSemanticValidation, AddNodeRejectsInputCountMismatch) {
             RmsNormParams{});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(graph.GetNodes().size(), node_count_before);
     EXPECT_EQ(graph.GetValues().size(), value_count_before);
 }
@@ -1408,7 +1408,7 @@ TEST(ModelGraphSemanticValidation, AddNodeRejectsBadDtype) {
             RmsNormParams{});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     const std::string msg = result.status().ToString();
     EXPECT_NE(msg.find("RmsNorm"), std::string::npos);
     EXPECT_EQ(graph.GetNodes().size(), node_count_before);
@@ -1461,7 +1461,7 @@ TEST(ModelGraphSemanticValidation, ValidateRejectsForgedOutputSpec) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraphSemanticValidation, ValidateRejectsStaleRuntimeCheckCondition) {
@@ -1519,7 +1519,7 @@ TEST(ModelGraphSemanticValidation, ValidateRejectsStaleRuntimeCheckCondition) {
 
     const Status status = graph.Validate();
     ASSERT_FALSE(status.ok()) << status.ToString();
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     const std::string msg = status.ToString();
     EXPECT_NE(msg.find("stale runtime check"), std::string::npos);
 }
@@ -1575,7 +1575,7 @@ TEST(ModelGraphSemanticValidation, ValidateRejectsSameConditionWithStaleErrorCon
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     const std::string msg = status.ToString();
     EXPECT_NE(msg.find("stale runtime check"), std::string::npos);
 }
@@ -1609,7 +1609,7 @@ TEST(ModelGraphSemanticValidation, ValidateRejectsStoredOutputCountMismatch) {
     const Status status = graph.Validate();
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ModelGraphSemanticValidation, AddNodeErrorsContainOpContext) {

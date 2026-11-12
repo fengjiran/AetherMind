@@ -86,7 +86,7 @@ TEST_F(AlignedCpuBuffer, RejectsNonPowerOfTwoAlignmentBeforeAllocating) {
         const auto counts = test::EndMallocCallCounting();
 
         EXPECT_FALSE(allocation.ok());
-        EXPECT_EQ(allocation.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(allocation.status(), StatusCode::kInvalidArgument);
         // Validation precedes storage, so a rejected request does not touch
         // the system allocator.
         EXPECT_EQ(counts.posix_memalign_calls, 0U);
@@ -137,7 +137,7 @@ TEST_F(AlignedCpuBuffer, SystemAllocationFailureReturnsStatusAndCanRetry) {
 
     EXPECT_TRUE(result.allocation_failed);
     EXPECT_FALSE(allocation.ok());
-    EXPECT_EQ(allocation.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(allocation.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(allocation.status().message().empty());
     auto retry = allocator_.TryAllocate({.nbytes = 128, .alignment = 64});
     ASSERT_TRUE(retry.ok()) << retry.status().ToString();
@@ -161,7 +161,7 @@ TEST_F(AlignedCpuBuffer, MetadataFailureReleasesPayloadAndCanRetry) {
 
     EXPECT_TRUE(result.allocation_failed);
     EXPECT_FALSE(allocation.ok());
-    EXPECT_EQ(allocation.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(allocation.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(allocation.status().message().empty());
     EXPECT_EQ(result.aligned_allocation_calls, 1U);
     EXPECT_TRUE(result.last_aligned_allocation_released);
@@ -197,7 +197,7 @@ TEST(CPUAllocatorDeathTest, HugePageWarningOutOfMemoryReleasesStorage) {
                                        injection.aligned_allocation_calls == 1 &&
                                        injection.last_aligned_allocation_released &&
                                        !allocation.ok() &&
-                                       allocation.status().code() == StatusCode::kResourceExhausted &&
+                                       allocation.status() == StatusCode::kResourceExhausted &&
                                        allocation.status().message().empty();
                 std::_Exit(recovered ? 0 : 2);
             },
@@ -556,7 +556,7 @@ TEST_P(AllocatorHookContract, RejectsInvalidStorageAndReleasesOwnedPayload) {
     const auto result = allocator.TryAllocate({.nbytes = 128, .alignment = 64});
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInternal);
+    EXPECT_EQ(result.status(), StatusCode::kInternal);
     EXPECT_EQ(releases, test_case.owns_storage ? 1U : 0U);
 }
 

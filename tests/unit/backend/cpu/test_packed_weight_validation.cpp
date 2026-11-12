@@ -1,11 +1,10 @@
 #include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/backend/cpu/packed_weight_validation.h"
 
-#include <gtest/gtest.h>
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <gtest/gtest.h>
 #include <limits>
 #include <span>
 
@@ -52,33 +51,35 @@ TEST(CpuBpanelPackedWeight, RequiresExactLayoutSizeAndRealAlignment) {
                         .ok());
     EXPECT_EQ(cpu::detail::ValidateBPanelF32PackedWeight(
                       MakeBpanelPackedWeight(storage.data(), required + 4, shape),
-                      shape, "PackedWeightUtilsTest")
-                      .code(),
+                      shape, "PackedWeightUtilsTest"),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(cpu::detail::ValidateBPanelF32PackedWeight(
                       MakeBpanelPackedWeight(storage.data() + 1, required, shape),
-                      shape, "PackedWeightUtilsTest")
-                      .code(),
+                      shape, "PackedWeightUtilsTest"),
               StatusCode::kInvalidArgument);
 }
 
 TEST(CpuBpanelPackedWeight, RejectsUnknownLayoutIdentity) {
     alignas(64) std::array<std::byte, 32768> storage{};
     constexpr std::array<int64_t, 2> shape{1, 1};
-    PackedWeightView packed = MakeBpanelPackedWeight(storage.data(), storage.size(), shape);
+    PackedWeightView packed = MakeBpanelPackedWeight(
+            storage.data(), storage.size(), shape);
     packed.recipe_layout = static_cast<PackingLayout>(0xFF);
 
-    EXPECT_EQ(cpu::detail::ValidateBPanelF32PackedWeight(packed, shape, "LayoutTest").code(),
+    EXPECT_EQ(cpu::detail::ValidateBPanelF32PackedWeight(
+                      packed, shape, "LayoutTest"),
               StatusCode::kInvalidArgument);
 }
 
 TEST(CpuIdentityPackedWeight, RejectsUnspecifiedLayoutIdentity) {
     alignas(64) float storage[3]{};
     constexpr std::array<int64_t, 1> shape{3};
-    PackedWeightView packed = MakeIdentityPackedWeight(storage, sizeof(storage), shape);
+    PackedWeightView packed = MakeIdentityPackedWeight(
+            storage, sizeof(storage), shape);
     packed.recipe_layout = PackingLayout::kNone;
 
-    EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(packed, shape, "LayoutTest").code(),
+    EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
+                      packed, shape, "LayoutTest"),
               StatusCode::kInvalidArgument);
 }
 
@@ -86,7 +87,8 @@ TEST(CpuIdentityPackedWeight, ValidatesRankOneAndRankTwoShapes) {
     alignas(64) float rank_one_storage[3]{};
     constexpr std::array<int64_t, 1> rank_one_shape{3};
     EXPECT_TRUE(cpu::detail::ValidateIdentityPackedWeight(
-                        MakeIdentityPackedWeight(rank_one_storage, sizeof(rank_one_storage),
+                        MakeIdentityPackedWeight(rank_one_storage,
+                                                 sizeof(rank_one_storage),
                                                  rank_one_shape),
                         rank_one_shape, "PackedWeightUtilsTest")
                         .ok());
@@ -94,7 +96,8 @@ TEST(CpuIdentityPackedWeight, ValidatesRankOneAndRankTwoShapes) {
     alignas(64) float rank_two_storage[6]{};
     constexpr std::array<int64_t, 2> rank_two_shape{2, 3};
     EXPECT_TRUE(cpu::detail::ValidateIdentityPackedWeight(
-                        MakeIdentityPackedWeight(rank_two_storage, sizeof(rank_two_storage),
+                        MakeIdentityPackedWeight(rank_two_storage,
+                                                 sizeof(rank_two_storage),
                                                  rank_two_shape),
                         rank_two_shape, "PackedWeightUtilsTest")
                         .ok());
@@ -107,51 +110,45 @@ TEST(CpuIdentityPackedWeight, RejectsMalformedMetadataRecipeAndStorage) {
 
     EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
                       MakeIdentityPackedWeight(storage, sizeof(storage), wrong_shape),
-                      expected_shape, "PackedWeightUtilsTest")
-                      .code(),
+                      expected_shape, "PackedWeightUtilsTest"),
               StatusCode::kInvalidArgument);
 
     constexpr std::array<int64_t, 2> rank_mismatch_shape{1, 3};
     EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
-                      MakeIdentityPackedWeight(storage, sizeof(storage), rank_mismatch_shape),
-                      expected_shape, "PackedWeightUtilsTest")
-                      .code(),
+                      MakeIdentityPackedWeight(storage, sizeof(storage),
+                                               rank_mismatch_shape),
+                      expected_shape, "PackedWeightUtilsTest"),
               StatusCode::kInvalidArgument);
 
     PackedWeightView wrong_dtype =
             MakeIdentityPackedWeight(storage, sizeof(storage), expected_shape);
     wrong_dtype.logical_dtype = DataType::Float(16);
     EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
-                      wrong_dtype, expected_shape, "PackedWeightUtilsTest")
-                      .code(),
+                      wrong_dtype, expected_shape, "PackedWeightUtilsTest"),
               StatusCode::kInvalidArgument);
 
     PackedWeightView wrong_recipe =
             MakeIdentityPackedWeight(storage, sizeof(storage), expected_shape);
     wrong_recipe.recipe_layout = PackingLayout::kCpuBPanelF32Kc512Nr16;
     EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
-                      wrong_recipe, expected_shape, "PackedWeightUtilsTest")
-                      .code(),
+                      wrong_recipe, expected_shape, "PackedWeightUtilsTest"),
               StatusCode::kInvalidArgument);
 
     wrong_recipe = MakeIdentityPackedWeight(storage, sizeof(storage), expected_shape);
     wrong_recipe.recipe_alignment = cpu::kCpuIdentityPackingAlignment / 2U;
     EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
-                      wrong_recipe, expected_shape, "PackedWeightUtilsTest")
-                      .code(),
+                      wrong_recipe, expected_shape, "PackedWeightUtilsTest"),
               StatusCode::kInvalidArgument);
 
     wrong_recipe = MakeIdentityPackedWeight(storage, sizeof(storage), expected_shape);
     wrong_recipe.alignment = cpu::kCpuIdentityPackingAlignment / 2U;
     EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
-                      wrong_recipe, expected_shape, "PackedWeightUtilsTest")
-                      .code(),
+                      wrong_recipe, expected_shape, "PackedWeightUtilsTest"),
               StatusCode::kInvalidArgument);
 
     EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
                       MakeIdentityPackedWeight(storage, sizeof(float), expected_shape),
-                      expected_shape, "PackedWeightUtilsTest")
-                      .code(),
+                      expected_shape, "PackedWeightUtilsTest"),
               StatusCode::kInvalidArgument);
 }
 
@@ -159,25 +156,25 @@ TEST(CpuIdentityPackedWeight, ChecksNegativeDimensionsAndProducts) {
     alignas(64) float storage[1]{};
     constexpr std::array<int64_t, 1> negative_shape{-1};
     EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
-                      MakeIdentityPackedWeight(storage, sizeof(storage), negative_shape),
-                      negative_shape, "PackedWeightUtilsTest")
-                      .code(),
+                      MakeIdentityPackedWeight(storage, sizeof(storage),
+                                               negative_shape),
+                      negative_shape, "PackedWeightUtilsTest"),
               StatusCode::kInvalidArgument);
 
     constexpr std::array<int64_t, 2> element_overflow_shape{
             std::numeric_limits<int64_t>::max(), 2};
     EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
-                      MakeIdentityPackedWeight(storage, sizeof(storage), element_overflow_shape),
-                      element_overflow_shape, "PackedWeightUtilsTest")
-                      .code(),
+                      MakeIdentityPackedWeight(storage, sizeof(storage),
+                                               element_overflow_shape),
+                      element_overflow_shape, "PackedWeightUtilsTest"),
               StatusCode::kOverflow);
 
     constexpr std::array<int64_t, 2> byte_overflow_shape{
             std::numeric_limits<int64_t>::max(), 1};
     EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
-                      MakeIdentityPackedWeight(storage, sizeof(storage), byte_overflow_shape),
-                      byte_overflow_shape, "PackedWeightUtilsTest")
-                      .code(),
+                      MakeIdentityPackedWeight(storage, sizeof(storage),
+                                               byte_overflow_shape),
+                      byte_overflow_shape, "PackedWeightUtilsTest"),
               StatusCode::kOverflow);
 }
 
@@ -185,7 +182,8 @@ TEST(CpuIdentityPackedWeight, ValidatesReducedWeightDTypeAndElementWidth) {
     alignas(64) std::array<std::byte, 12> storage{};
     constexpr std::array<int64_t, 2> shape{2, 3};
     for (const DataType dtype: {DataType::Float(16), DataType::BFloat(16)}) {
-        PackedWeightView packed = MakeIdentityPackedWeight(storage.data(), storage.size(), shape);
+        PackedWeightView packed = MakeIdentityPackedWeight(
+                storage.data(), storage.size(), shape);
         packed.logical_dtype = dtype;
         EXPECT_TRUE(cpu::detail::ValidateIdentityPackedWeight(
                             packed, shape, "PackedWeightUtilsTest", dtype)
@@ -194,20 +192,19 @@ TEST(CpuIdentityPackedWeight, ValidatesReducedWeightDTypeAndElementWidth) {
         // F32 default must not accept a reduced artifact, and the reduced
         // expectation must not accept an F32 artifact.
         EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
-                          packed, shape, "PackedWeightUtilsTest")
-                          .code(),
+                          packed, shape, "PackedWeightUtilsTest"),
                   StatusCode::kInvalidArgument);
-        PackedWeightView fp32_packed = MakeIdentityPackedWeight(storage.data(), storage.size(), shape);
+        PackedWeightView fp32_packed = MakeIdentityPackedWeight(
+                storage.data(), storage.size(), shape);
         EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
-                          fp32_packed, shape, "PackedWeightUtilsTest", dtype)
-                          .code(),
+                          fp32_packed, shape, "PackedWeightUtilsTest", dtype),
                   StatusCode::kInvalidArgument);
 
-        PackedWeightView undersized = MakeIdentityPackedWeight(storage.data(), 10, shape);
+        PackedWeightView undersized = MakeIdentityPackedWeight(
+                storage.data(), 10, shape);
         undersized.logical_dtype = dtype;
         EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
-                          undersized, shape, "PackedWeightUtilsTest", dtype)
-                          .code(),
+                          undersized, shape, "PackedWeightUtilsTest", dtype),
                   StatusCode::kInvalidArgument);
     }
 }
@@ -215,11 +212,11 @@ TEST(CpuIdentityPackedWeight, ValidatesReducedWeightDTypeAndElementWidth) {
 TEST(CpuIdentityPackedWeight, RejectsNonScalarExpectedDType) {
     alignas(64) std::array<std::byte, 12> storage{};
     constexpr std::array<int64_t, 2> shape{2, 3};
-    const PackedWeightView packed = MakeIdentityPackedWeight(storage.data(), storage.size(), shape);
+    const PackedWeightView packed = MakeIdentityPackedWeight(
+            storage.data(), storage.size(), shape);
     EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
                       packed, shape, "PackedWeightUtilsTest",
-                      DataType(DLDataTypeCode::kFloat, 16, 2, true))
-                      .code(),
+                      DataType(DLDataTypeCode::kFloat, 16, 2, true)),
               StatusCode::kInvalidArgument);
 }
 

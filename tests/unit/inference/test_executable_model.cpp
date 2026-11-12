@@ -203,7 +203,7 @@ TEST(ExecutableModel, RejectsMisalignedRawWeightsBeforePlainOrPackedExecution) {
         auto artifact = ModelCompiler::Compile(std::move(loaded), *options);
         ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
         const auto model = ExecutableModel::Prepare(runtime, std::move(*artifact));
-        EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(model.status(), StatusCode::kInvalidArgument);
         EXPECT_NE(model.status().message().find("natural alignment"), std::string::npos);
     }
 }
@@ -430,7 +430,7 @@ TEST(ExecutableModel, RejectsArtifactWithoutLoadedModel) {
     const auto model = ExecutableModel::Prepare(runtime, LoweredModelArtifact{});
 
     ASSERT_FALSE(model.ok());
-    EXPECT_EQ(model.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(model.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutableModel, MaterializesConstantFromInlineData) {
@@ -505,7 +505,7 @@ TEST(ExecutableModel, RejectsConstantWithoutInlineData) {
     const auto model = ExecutableModel::Prepare(runtime, std::move(*artifact));
 
     ASSERT_FALSE(model.ok());
-    EXPECT_EQ(model.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(model.status(), StatusCode::kFailedPrecondition);
 }
 
 TEST(ExecutableModel, RejectsEmptyConstantWithUnrepresentableStridesAndAllowsRetry) {
@@ -523,7 +523,7 @@ TEST(ExecutableModel, RejectsEmptyConstantWithUnrepresentableStridesAndAllowsRet
         ASSERT_TRUE(artifact.ok()) << artifact.status().ToString();
         const auto model = ExecutableModel::Prepare(runtime, std::move(*artifact));
         if (overflow) {
-            EXPECT_EQ(model.status().code(), StatusCode::kOverflow);
+            EXPECT_EQ(model.status(), StatusCode::kOverflow);
         } else {
             ASSERT_TRUE(model.ok()) << model.status().ToString();
             const auto bindings = model->immutable_weight_bindings(ExecPhase::kBoth);
@@ -563,7 +563,7 @@ TEST(ExecutableModel, RejectsConstantWhoseInlineSizeDisagreesWithShape) {
     const auto model = ExecutableModel::Prepare(runtime, std::move(*artifact));
 
     ASSERT_FALSE(model.ok());
-    EXPECT_EQ(model.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(model.status(), StatusCode::kFailedPrecondition);
 }
 
 TEST(ExecutableModel, PackedSubgraphKeepsWeightOutOfBindingTable) {
@@ -674,7 +674,7 @@ TEST(ExecutableModel, RejectsWeightWithNoDenseStorageRole) {
     const auto model = ExecutableModel::Prepare(runtime, std::move(*artifact));
 
     ASSERT_FALSE(model.ok());
-    EXPECT_EQ(model.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(model.status(), StatusCode::kFailedPrecondition);
     const std::string message = model.status().message();
     EXPECT_NE(message.find("value " + std::to_string(weight.index)), std::string::npos)
             << message;
@@ -707,7 +707,7 @@ TEST(ExecutableModel, RejectsWeightWhoseLayerIndexHasNoStorage) {
     const auto model = ExecutableModel::Prepare(runtime, std::move(*artifact));
 
     ASSERT_FALSE(model.ok());
-    EXPECT_EQ(model.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(model.status(), StatusCode::kFailedPrecondition);
     const std::string message = model.status().message();
     EXPECT_NE(message.find("value " + std::to_string(weight.index)), std::string::npos)
             << message;
@@ -749,10 +749,10 @@ TEST(ExecutableModel, PhaseSpecificArtifactRejectsUnmatchedPhaseQueries) {
     for (const ExecPhase mismatched: {ExecPhase::kDecode, ExecPhase::kBoth}) {
         const auto plan = model->plan(mismatched);
         ASSERT_FALSE(plan.ok()) << ToString(mismatched);
-        EXPECT_EQ(plan.status().code(), StatusCode::kFailedPrecondition);
+        EXPECT_EQ(plan.status(), StatusCode::kFailedPrecondition);
         const auto bindings = model->immutable_weight_bindings(mismatched);
         ASSERT_FALSE(bindings.ok()) << ToString(mismatched);
-        EXPECT_EQ(bindings.status().code(), StatusCode::kFailedPrecondition);
+        EXPECT_EQ(bindings.status(), StatusCode::kFailedPrecondition);
 
         // Ordinary phase checks above run on every platform. The glibc build
         // additionally replays every diagnostic allocation, including Status
@@ -768,7 +768,7 @@ TEST(ExecutableModel, PhaseSpecificArtifactRejectsUnmatchedPhaseQueries) {
                 BeginMallocCallCounting();
                 const auto original = query();
                 const auto counts = EndMallocCallCounting();
-                EXPECT_EQ(original.code(), StatusCode::kFailedPrecondition);
+                EXPECT_EQ(original, StatusCode::kFailedPrecondition);
                 ASSERT_GT(counts.malloc_calls, 0U);
                 for (size_t skip = 0; skip < counts.malloc_calls; ++skip) {
                     SCOPED_TRACE(skip);
@@ -776,11 +776,11 @@ TEST(ExecutableModel, PhaseSpecificArtifactRejectsUnmatchedPhaseQueries) {
                     const auto status = query();
                     const auto injected = failure.Stop();
                     EXPECT_TRUE(injected.allocation_failed);
-                    EXPECT_EQ(status.code(), StatusCode::kResourceExhausted);
+                    EXPECT_EQ(status, StatusCode::kResourceExhausted);
                     EXPECT_TRUE(status.message().empty());
                     EXPECT_TRUE(model->plan(ExecPhase::kPrefill).ok());
                     EXPECT_TRUE(model->immutable_weight_bindings(ExecPhase::kPrefill).ok());
-                    EXPECT_EQ(query().code(), StatusCode::kFailedPrecondition);
+                    EXPECT_EQ(query(), StatusCode::kFailedPrecondition);
                 }
             }
         }
@@ -837,7 +837,7 @@ TEST(ExecutableModel, RejectsArtifactWhoseStepsMixPhases) {
             runtime, MakeArtifactFrom(std::move(*mixed), std::move(weights)));
 
     ASSERT_FALSE(model.ok());
-    EXPECT_EQ(model.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(model.status(), StatusCode::kFailedPrecondition);
     EXPECT_NE(model.status().message().find("mixes execution phases"), std::string::npos)
             << model.status().message();
 }

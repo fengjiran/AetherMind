@@ -134,7 +134,7 @@ TEST(ModelCompiler, RejectsNullLoadedModel) {
     const auto lowered = ModelCompiler::Compile(nullptr);
 
     ASSERT_FALSE(lowered.ok());
-    EXPECT_EQ(lowered.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(lowered.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelCompilerGraphBuildOptions, PropagatesExplicitFp32DTypesAndPreservesSourceHint) {
@@ -170,7 +170,7 @@ TEST(ModelCompilerGraphBuildOptions, ReportsGraphConstructionDTypeError) {
     const auto artifact = ModelCompiler::Compile(std::move(model), options);
 
     ASSERT_FALSE(artifact.ok());
-    EXPECT_EQ(artifact.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(artifact.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(artifact.status().message().find("Model graph construction failed"),
               std::string::npos);
     EXPECT_NE(artifact.status().message().find("activation_dtype"), std::string::npos);

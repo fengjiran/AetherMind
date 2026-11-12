@@ -291,19 +291,19 @@ TEST(CPUKernelRmsNorm, PackedIdentityBuilderChecksZeroSizeMetadataAndAlias) {
                                    input_shape, io_strides);
     PackedWeightView wrong_recipe = packed_view;
     wrong_recipe.recipe_layout = PackingLayout::kCpuBPanelF32Kc512Nr16;
-    EXPECT_EQ(build(input, output, wrong_recipe).code(),
+    EXPECT_EQ(build(input, output, wrong_recipe),
               StatusCode::kInvalidArgument);
     constexpr std::array<int64_t, 1> wrong_shape{3};
     PackedWeightView wrong_metadata = packed_view;
     wrong_metadata.logical_shape = wrong_shape;
-    EXPECT_EQ(build(input, output, wrong_metadata).code(),
+    EXPECT_EQ(build(input, output, wrong_metadata),
               StatusCode::kInvalidArgument);
 
     auto* const aliased_output_data = const_cast<float*>(
             static_cast<const float*>((*packed)->storage().data()));
     const MutableTensorView aliased_output(
             aliased_output_data, DataType::Float32(), input_shape, io_strides);
-    EXPECT_EQ(build(input, aliased_output, packed_view).code(),
+    EXPECT_EQ(build(input, aliased_output, packed_view),
               StatusCode::kInvalidArgument);
 }
 
@@ -698,7 +698,7 @@ TEST(CPUKernelRmsNormEntry, RejectsNonCollapsibleLeadingDimensions) {
             .output_tensor = MutableTensorView{output.data(), DataType::Float32(), io_shape, output_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kUnimplemented) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, RejectsAddressOffsetOverflow) {
@@ -717,7 +717,7 @@ TEST(CPUKernelRmsNormEntry, RejectsAddressOffsetOverflow) {
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, output_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, RejectsRankZeroInput) {
@@ -733,7 +733,7 @@ TEST(CPUKernelRmsNormEntry, RejectsRankZeroInput) {
             .output_tensor = MutableTensorView{&output, DataType::Float32(), {}, {}},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, RejectsZeroHiddenSize) {
@@ -751,7 +751,7 @@ TEST(CPUKernelRmsNormEntry, RejectsZeroHiddenSize) {
             .output_tensor = MutableTensorView{&output, DataType::Float32(), io_shape, io_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, RejectsMismatchedOutputShape) {
@@ -771,7 +771,7 @@ TEST(CPUKernelRmsNormEntry, RejectsMismatchedOutputShape) {
             .output_tensor = MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, RejectsSameBasePointerWithDifferentStrides) {
@@ -789,7 +789,7 @@ TEST(CPUKernelRmsNormEntry, RejectsSameBasePointerWithDifferentStrides) {
             .output_tensor = MutableTensorView{storage.data(), DataType::Float32(), io_shape, output_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, RejectsOverlappingOutputRows) {
@@ -807,7 +807,7 @@ TEST(CPUKernelRmsNormEntry, RejectsOverlappingOutputRows) {
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, RejectsStridedColumnsWithOverlappingRows) {
@@ -826,7 +826,7 @@ TEST(CPUKernelRmsNormEntry, RejectsStridedColumnsWithOverlappingRows) {
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, RejectsOutputAliasingWeight) {
@@ -849,7 +849,7 @@ TEST(CPUKernelRmsNormEntry, RejectsOutputAliasingWeight) {
             .output_tensor = MutableTensorView{weight_storage.data(), DataType::Float32(), io_shape, io_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, RejectsInputOverlapAtDistinctBasePointer) {
@@ -866,7 +866,7 @@ TEST(CPUKernelRmsNormEntry, RejectsInputOverlapAtDistinctBasePointer) {
             .output_tensor = MutableTensorView{storage.data() + 1, DataType::Float32(), io_shape, io_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, RejectsWeightOverlapAtDistinctBasePointer) {
@@ -883,7 +883,7 @@ TEST(CPUKernelRmsNormEntry, RejectsWeightOverlapAtDistinctBasePointer) {
             .output_tensor = MutableTensorView{weight_storage.data() + 1, DataType::Float32(), io_shape, io_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, ReportsUndecidableColumnStrideOverlapAsUnimplemented) {
@@ -900,7 +900,7 @@ TEST(CPUKernelRmsNormEntry, ReportsUndecidableColumnStrideOverlapAsUnimplemented
             .output_tensor = MutableTensorView{storage.data() + 1, DataType::Float32(), io_shape, io_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kUnimplemented) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, RejectsNonFloat32Tensors) {
@@ -918,7 +918,7 @@ TEST(CPUKernelRmsNormEntry, RejectsNonFloat32Tensors) {
             .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, io_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, RejectsNonPositiveStridesForNonEmptyTensor) {
@@ -936,13 +936,13 @@ TEST(CPUKernelRmsNormEntry, RejectsNonPositiveStridesForNonEmptyTensor) {
             .output_tensor = MutableTensorView{&output, DataType::Float32(), io_shape, io_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, PrepareRejectsInvalidEpsilon) {
     const StatusOr<ResolvedKernel> kernel = PrepareReferenceRmsNormKernel(0.0F);
     ASSERT_FALSE(kernel.ok());
-    EXPECT_EQ(kernel.status().code(), StatusCode::kInvalidArgument) << kernel.status().ToString();
+    EXPECT_EQ(kernel.status(), StatusCode::kInvalidArgument) << kernel.status().ToString();
 }
 
 TEST(CPUKernelRmsNormEntry, Avx2RejectsNonUnitColumnStridesWhenAvailable) {
@@ -968,7 +968,7 @@ TEST(CPUKernelRmsNormEntry, Avx2RejectsNonUnitColumnStridesWhenAvailable) {
                                                                .output_tensor = MutableTensorView{output, DataType::Float32(), io_shape, output_strides},
                                                        });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelRmsNorm, ExecutionPlanBuilderRunsResolvedKernel) {
@@ -1077,7 +1077,7 @@ TEST(CPUKernelRmsNormEntry, OverlappingOutputRowsFailAtPrepareExecutionBindings)
                                                        overlapping_output_strides)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_FALSE(table.ok());
-    EXPECT_EQ(table.status().code(), StatusCode::kInvalidArgument) << table.status().ToString();
+    EXPECT_EQ(table.status(), StatusCode::kInvalidArgument) << table.status().ToString();
 }
 
 TEST(CPUKernelRmsNorm, PreparedParamsExecuteRepeatedlyWithoutRevalidation) {

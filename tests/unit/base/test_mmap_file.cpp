@@ -179,7 +179,7 @@ TEST(MemoryMappedFile, AdviseRejectsInvalidMapping) {
     const Status status = mmap.Advise(MemoryMappedFile::Advice::kNormal);
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(MemoryMappedFile, AdvisesMappedFileAccessPattern) {
@@ -314,7 +314,7 @@ TEST(MemoryMappedFile, MapRejectsNonExistentPath) {
     const auto result = MemoryMappedFile::Map(path);
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(result.status(), StatusCode::kNotFound);
 }
 
 TEST(MemoryMappedFile, MapRejectsNonExistentDirectory) {
@@ -323,7 +323,7 @@ TEST(MemoryMappedFile, MapRejectsNonExistentDirectory) {
     const auto result = MemoryMappedFile::Map(path);
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(result.status(), StatusCode::kNotFound);
 }
 
 TEST(MemoryMappedFile, MapRejectsDirectoryAsPath) {
@@ -332,7 +332,7 @@ TEST(MemoryMappedFile, MapRejectsDirectoryAsPath) {
     const auto result = MemoryMappedFile::Map(temp_dir.path());
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(MemoryMappedFile, MapRejectsEmptyFile) {
@@ -344,7 +344,7 @@ TEST(MemoryMappedFile, MapRejectsEmptyFile) {
     const auto result = MemoryMappedFile::Map(path);
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(MemoryMappedFile, MapRejectsUnreadableFile) {
@@ -359,8 +359,8 @@ TEST(MemoryMappedFile, MapRejectsUnreadableFile) {
     const auto result = MemoryMappedFile::Map(path);
 
     EXPECT_FALSE(result.ok());
-    EXPECT_TRUE(result.status().code() == StatusCode::kPermissionDenied ||
-                result.status().code() == StatusCode::kInternal)
+    EXPECT_TRUE(result.status() == StatusCode::kPermissionDenied ||
+                result.status() == StatusCode::kInternal)
             << "Actual status: " << result.status().ToString();
 
     std::filesystem::permissions(path,
@@ -380,7 +380,7 @@ TEST(MemoryMappedFile, MapRejectsNonRegularFileSymlink) {
     const auto result = MemoryMappedFile::Map(link);
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(MemoryMappedFile, MapAbsolutePath) {
@@ -599,7 +599,7 @@ TEST(MemoryMappedFile, MapDotPath) {
 
     const auto dot_result = MemoryMappedFile::Map(std::filesystem::path("."));
     EXPECT_FALSE(dot_result.ok());
-    EXPECT_EQ(dot_result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(dot_result.status(), StatusCode::kInvalidArgument);
 
     std::filesystem::current_path(original);
 }
@@ -732,7 +732,7 @@ TEST(MemoryMappedFile, MapDevZero) {
     const auto result = MemoryMappedFile::Map(std::filesystem::path("/dev/zero"));
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(MemoryMappedFile, MapZeroByteFile) {
@@ -746,7 +746,7 @@ TEST(MemoryMappedFile, MapZeroByteFile) {
     const auto result = MemoryMappedFile::Map(path);
 
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(MemoryMappedFile, MoveAssignmentFromDefaultConstructed) {

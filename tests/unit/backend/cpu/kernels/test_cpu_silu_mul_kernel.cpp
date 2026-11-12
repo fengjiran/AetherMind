@@ -103,7 +103,7 @@ TEST(CPUKernelSiluMul, ResolvesF32ReferenceDescriptor) {
 TEST(CPUKernelSiluMul, Float16SelectorDoesNotResolve) {
     const auto kernel = PrepareSiluMulKernel(DataType::Float(16));
     ASSERT_FALSE(kernel.ok());
-    EXPECT_EQ(kernel.status().code(), StatusCode::kNotFound) << kernel.status().ToString();
+    EXPECT_EQ(kernel.status(), StatusCode::kNotFound) << kernel.status().ToString();
 }
 
 TEST(CPUKernelSiluMul, ContiguousValuesUseStableLargeMagnitudeFormula) {
@@ -250,7 +250,7 @@ TEST(CPUKernelSiluMul, RejectsBroadcastGateInsideOutputRegion) {
             .up = TensorView{up.data(), DataType::Float32(), output_shape, output_strides},
             .output = MutableTensorView{storage.data(), DataType::Float32(), output_shape, output_strides},
     });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelSiluMul, RejectsBroadcastUpInsideOutputRegion) {
@@ -266,7 +266,7 @@ TEST(CPUKernelSiluMul, RejectsBroadcastUpInsideOutputRegion) {
             .up = TensorView{storage.data(), DataType::Float32(), scalar_shape, scalar_strides},
             .output = MutableTensorView{storage.data(), DataType::Float32(), output_shape, output_strides},
     });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelSiluMul, RejectsPartialGateOutputOverlap) {
@@ -280,7 +280,7 @@ TEST(CPUKernelSiluMul, RejectsPartialGateOutputOverlap) {
             .up = TensorView{up.data(), DataType::Float32(), shape, strides},
             .output = MutableTensorView{storage.data() + 1, DataType::Float32(), shape, strides},
     });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelSiluMul, RejectsNonInjectiveOutputMapping) {
@@ -296,7 +296,7 @@ TEST(CPUKernelSiluMul, RejectsNonInjectiveOutputMapping) {
             .up = TensorView{up.data(), DataType::Float32(), shape, input_strides},
             .output = MutableTensorView{output.data(), DataType::Float32(), shape, output_strides},
     });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelSiluMul, RejectsOutputLayoutWhoseInjectivityCannotBeProven) {
@@ -312,7 +312,7 @@ TEST(CPUKernelSiluMul, RejectsOutputLayoutWhoseInjectivityCannotBeProven) {
             .up = TensorView{up.data(), DataType::Float32(), shape, input_strides},
             .output = MutableTensorView{output.data(), DataType::Float32(), shape, output_strides},
     });
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kUnimplemented) << status.ToString();
 }
 
 TEST(CPUKernelSiluMul, ReportsUndecidableStridedOutputInputOverlap) {
@@ -326,7 +326,7 @@ TEST(CPUKernelSiluMul, ReportsUndecidableStridedOutputInputOverlap) {
             .up = TensorView{up.data(), DataType::Float32(), shape, strides},
             .output = MutableTensorView{storage.data() + 1, DataType::Float32(), shape, strides},
     });
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kUnimplemented) << status.ToString();
 }
 
 TEST(CPUKernelSiluMul, RejectsIncompatibleBroadcastDtypesAndAddressOverflow) {
@@ -344,14 +344,14 @@ TEST(CPUKernelSiluMul, RejectsIncompatibleBroadcastDtypesAndAddressOverflow) {
             .up = TensorView{up, DataType::Float32(), up_shape, up_strides},
             .output = MutableTensorView{output, DataType::Float32(), output_shape, gate_strides},
     });
-    EXPECT_EQ(broadcast_status.code(), StatusCode::kInvalidArgument) << broadcast_status.ToString();
+    EXPECT_EQ(broadcast_status, StatusCode::kInvalidArgument) << broadcast_status.ToString();
 
     const Status dtype_status = RunSiluMul(SiluMulTestViews{
             .gate = TensorView{gate, DataType::Float32(), gate_shape, gate_strides},
             .up = TensorView{gate, DataType::Float32(), gate_shape, gate_strides},
             .output = MutableTensorView{output, DataType::Float(16), gate_shape, gate_strides},
     });
-    EXPECT_EQ(dtype_status.code(), StatusCode::kInvalidArgument) << dtype_status.ToString();
+    EXPECT_EQ(dtype_status, StatusCode::kInvalidArgument) << dtype_status.ToString();
 
     constexpr int64_t huge_strides[2] = {std::numeric_limits<int64_t>::max(), 1};
     const Status overflow_status = RunSiluMul(SiluMulTestViews{
@@ -359,7 +359,7 @@ TEST(CPUKernelSiluMul, RejectsIncompatibleBroadcastDtypesAndAddressOverflow) {
             .up = TensorView{gate, DataType::Float32(), gate_shape, huge_strides},
             .output = MutableTensorView{output, DataType::Float32(), gate_shape, huge_strides},
     });
-    EXPECT_EQ(overflow_status.code(), StatusCode::kInvalidArgument) << overflow_status.ToString();
+    EXPECT_EQ(overflow_status, StatusCode::kInvalidArgument) << overflow_status.ToString();
 }
 
 TEST(CPUKernelSiluMul, ParamsBuilderRejectsWrongArityAndInvalidViews) {
@@ -376,7 +376,7 @@ TEST(CPUKernelSiluMul, ParamsBuilderRejectsWrongArityAndInvalidViews) {
                     .attrs = kernel->attrs,
             },
             prepared.storage.data());
-    EXPECT_EQ(arity_status.code(), StatusCode::kInvalidArgument) << arity_status.ToString();
+    EXPECT_EQ(arity_status, StatusCode::kInvalidArgument) << arity_status.ToString();
 
     const std::array<TensorView, 2> invalid_inputs{TensorView{}, TensorView{}};
     const Status view_status = kernel->params_builder(
@@ -386,7 +386,7 @@ TEST(CPUKernelSiluMul, ParamsBuilderRejectsWrongArityAndInvalidViews) {
                     .attrs = kernel->attrs,
             },
             prepared.storage.data());
-    EXPECT_EQ(view_status.code(), StatusCode::kInvalidArgument) << view_status.ToString();
+    EXPECT_EQ(view_status, StatusCode::kInvalidArgument) << view_status.ToString();
 }
 
 } // namespace

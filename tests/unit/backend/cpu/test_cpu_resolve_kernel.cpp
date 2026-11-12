@@ -55,7 +55,7 @@ TEST(CpuPrepareKernel, RejectsInvalidKernelMetadata) {
             OpType::kRmsNorm, MakeCpuSelector(), OpParams{RmsNormParams{.eps = 0.0F}});
 
     EXPECT_FALSE(resolved.ok());
-    EXPECT_EQ(resolved.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(resolved.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(CpuPrepareKernel, DebugRegistryIsExposedForInspection) {

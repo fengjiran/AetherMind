@@ -113,7 +113,7 @@ TEST(ConstEvaluator, SkipsSiluMulRankZeroScalarTensorMismatch) {
     const auto plan = evaluator->Plan(inputs, outputs, SiluMulParams{}, ConstEvalPolicy{});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(plan.status(), StatusCode::kUnimplemented);
 }
 
 // ── SiluMul dtype coverage — mirrors kSiluMulSupportedDTypes ──
@@ -169,7 +169,7 @@ TEST(ConstEvaluator, SkipsSiluMulUnsupportedDType) {
         const auto plan = evaluator->Plan(inputs, outputs, SiluMulParams{}, ConstEvalPolicy{});
 
         ASSERT_FALSE(plan.ok());
-        EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+        EXPECT_EQ(plan.status(), StatusCode::kUnimplemented);
     }
 }
 

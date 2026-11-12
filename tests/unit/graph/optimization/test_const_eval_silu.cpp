@@ -112,7 +112,7 @@ TEST(ConstEvaluator, SkipsSiluUnsupportedDType) {
         const auto plan = evaluator->Plan(inputs, outputs, SiluParams{}, ConstEvalPolicy{});
 
         ASSERT_FALSE(plan.ok());
-        EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+        EXPECT_EQ(plan.status(), StatusCode::kUnimplemented);
     }
 }
 
@@ -129,7 +129,7 @@ TEST(ConstEvaluator, SkipsSiluMismatchedShape) {
     const auto plan = evaluator->Plan(inputs, outputs, SiluParams{}, ConstEvalPolicy{});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(plan.status(), StatusCode::kUnimplemented);
 }
 
 TEST(ConstEvaluator, SkipsSiluRankZeroInputOutputMismatch) {
@@ -145,7 +145,7 @@ TEST(ConstEvaluator, SkipsSiluRankZeroInputOutputMismatch) {
     const auto plan = evaluator->Plan(inputs, outputs, SiluParams{}, ConstEvalPolicy{});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(plan.status(), StatusCode::kUnimplemented);
 }
 
 TEST(ConstEvaluator, PlansSiluCostOverComputeBudget) {
@@ -168,7 +168,7 @@ TEST(ConstEvaluator, PlansSiluCostOverComputeBudget) {
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     EXPECT_EQ(plan->cost.compute_ops, 3U * 32768U);
     EXPECT_EQ(plan->cost.output_bytes, 65536U);
-    EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}).code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}), StatusCode::kUnimplemented);
 }
 
 TEST(ConstEvaluator, PlansSiluCostOverOutputByteBudget) {
@@ -191,7 +191,7 @@ TEST(ConstEvaluator, PlansSiluCostOverOutputByteBudget) {
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     EXPECT_EQ(plan->cost.compute_ops, 3U * 16385U);
     EXPECT_EQ(plan->cost.output_bytes, 65540U);
-    EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}).code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}), StatusCode::kUnimplemented);
 }
 
 TEST(ConstEvaluator, EvaluatesSiluFloat32) {

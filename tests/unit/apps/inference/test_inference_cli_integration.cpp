@@ -279,7 +279,7 @@ TEST_P(InferenceCliIntegration, BothPathsRejectOneTokenBeyondPhysicalCapacity) {
     request.capacity = 3;
     const auto expected = DirectSessionGenerate(model_directory_, GetParam(), request);
     ASSERT_FALSE(expected.ok());
-    EXPECT_EQ(expected.status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(expected.status(), StatusCode::kOutOfRange);
     const auto captured = test::cli_process::Run(binary_, Arguments(request));
     ASSERT_TRUE(captured.ok()) << captured.status().ToString();
     EXPECT_EQ(captured->exit_code, 2);

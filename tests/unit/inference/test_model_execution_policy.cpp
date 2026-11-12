@@ -53,7 +53,7 @@ TEST(Fp32KVCacheOptions, RejectsNegativeExplicitHeadDimensionInsteadOfFallingBac
     auto config = Configuration();
     config.head_dim = -1;
     const auto mapped = MakeFp32KVCacheOptions(config, 8);
-    EXPECT_EQ(mapped.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(mapped.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(Fp32KVCacheOptions, RejectsNonintegralDerivedHeadDimension) {
@@ -61,7 +61,7 @@ TEST(Fp32KVCacheOptions, RejectsNonintegralDerivedHeadDimension) {
     config.head_dim = 0;
     config.hidden_size = 9;
     const auto mapped = MakeFp32KVCacheOptions(config, 8);
-    EXPECT_EQ(mapped.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(mapped.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(Fp32KVCacheOptions, RejectsNonpositiveGeometryBeforeUnsignedConversion) {
@@ -74,7 +74,7 @@ TEST(Fp32KVCacheOptions, RejectsNonpositiveGeometryBeforeUnsignedConversion) {
             auto config = Configuration();
             config.*field = value;
             const auto mapped = MakeFp32KVCacheOptions(config, 8);
-            EXPECT_EQ(mapped.status().code(), StatusCode::kInvalidArgument);
+            EXPECT_EQ(mapped.status(), StatusCode::kInvalidArgument);
             EXPECT_EQ(mapped.status().message(), std::string(name) + " must be positive");
         }
     }
@@ -90,7 +90,7 @@ TEST(Fp32KVCacheOptions, RejectsNonpositiveHeadDimensionDivisionOperands) {
             config.head_dim = 0;
             config.*field = value;
             const auto mapped = MakeFp32KVCacheOptions(config, 8);
-            EXPECT_EQ(mapped.status().code(), StatusCode::kInvalidArgument);
+            EXPECT_EQ(mapped.status(), StatusCode::kInvalidArgument);
         }
     }
 }
@@ -107,9 +107,9 @@ TEST(Fp32KVCacheOptions, AcceptsCapacityBelowOrAtModelContext) {
 TEST(Fp32KVCacheOptions, RejectsZeroCapacityAndCapacityBeyondModelContext) {
     const auto config = Configuration();
     const auto zero = MakeFp32KVCacheOptions(config, 0);
-    EXPECT_EQ(zero.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(zero.status(), StatusCode::kInvalidArgument);
     const auto over = MakeFp32KVCacheOptions(config, static_cast<size_t>(config.max_position_embeddings) + 1);
-    EXPECT_EQ(over.status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(over.status(), StatusCode::kOutOfRange);
 }
 
 TEST(Fp32KVCacheOptions, ReturnsOwningValuesIndependentOfConfigLifetime) {
@@ -132,7 +132,7 @@ TEST(Fp32KVCacheOptions, ChecksSizeRepresentabilityWithoutMaterializingPlanes) {
     config.num_hidden_layers = std::numeric_limits<int64_t>::max();
     const auto mapped = MakeFp32KVCacheOptions(config, 8);
     if constexpr (sizeof(size_t) < sizeof(int64_t)) {
-        EXPECT_EQ(mapped.status().code(), StatusCode::kOutOfRange);
+        EXPECT_EQ(mapped.status(), StatusCode::kOutOfRange);
         EXPECT_EQ(mapped.status().message(), "num_hidden_layers is not representable as size_t");
     } else {
         ASSERT_TRUE(mapped.ok()) << mapped.status().ToString();

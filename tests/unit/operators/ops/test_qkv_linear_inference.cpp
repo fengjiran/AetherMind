@@ -45,7 +45,7 @@ TEST(QkvLinearInference, RejectsRankZeroInput) {
     const Status status = InferOperator(OpType::kQkvLinear, MakeParams(), inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(QkvLinearInference, RejectsRankZeroWeight) {
@@ -57,7 +57,7 @@ TEST(QkvLinearInference, RejectsRankZeroWeight) {
     const Status status = InferOperator(OpType::kQkvLinear, MakeParams(), inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(QkvLinearInference, RejectsRank1Weight) {
@@ -69,7 +69,7 @@ TEST(QkvLinearInference, RejectsRank1Weight) {
     const Status status = InferOperator(OpType::kQkvLinear, MakeParams(), inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(QkvLinearInference, RejectsPackedRowsMismatch) {
@@ -82,7 +82,7 @@ TEST(QkvLinearInference, RejectsPackedRowsMismatch) {
     const Status status = InferOperator(OpType::kQkvLinear, MakeParams(), inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(QkvLinearInference, RejectsNegativeOutFeatures) {
@@ -96,7 +96,7 @@ TEST(QkvLinearInference, RejectsNegativeOutFeatures) {
                                   .status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(QkvLinearInference, RejectsOverflowingCombinedOutFeatures) {
@@ -109,7 +109,7 @@ TEST(QkvLinearInference, RejectsOverflowingCombinedOutFeatures) {
                                   MakeParams(std::numeric_limits<int64_t>::max(), 1, 0), inputs)
                                   .status();
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(QkvLinearInference, RejectsHasBias) {
@@ -125,7 +125,7 @@ TEST(QkvLinearInference, RejectsHasBias) {
     const Status status = InferOperator(OpType::kQkvLinear, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(QkvLinearInference, RejectsWrongInputCount) {
@@ -134,7 +134,7 @@ TEST(QkvLinearInference, RejectsWrongInputCount) {
     const Status status = InferOperator(OpType::kQkvLinear, MakeParams(), inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(QkvLinearInference, RejectsStaticKMismatch) {
@@ -146,7 +146,7 @@ TEST(QkvLinearInference, RejectsStaticKMismatch) {
     const Status status = InferOperator(OpType::kQkvLinear, MakeParams(), inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 // --- Inference ---

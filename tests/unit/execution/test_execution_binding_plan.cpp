@@ -55,20 +55,20 @@ TEST(ExecutionBindingPlanning, RejectsWrongPlanAndMovedFromBeforeAllocation) {
     ASSERT_TRUE(layout.ok());
     auto stats = std::make_shared<test::ResourceAllocationStats>();
     test::ResourceRecordingAllocator allocator(stats);
-    EXPECT_EQ(MaterializeExecutionBindings(*second, std::move(*layout), allocator).status().code(), StatusCode::kFailedPrecondition);
-    EXPECT_EQ(MaterializeExecutionBindings(*first, std::move(*layout), allocator).status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(MaterializeExecutionBindings(*second, std::move(*layout), allocator).status(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(MaterializeExecutionBindings(*first, std::move(*layout), allocator).status(), StatusCode::kFailedPrecondition);
     EXPECT_TRUE(stats->requests.empty());
 }
 TEST(ExecutionBindingPlanning, RejectsMissingAndDuplicateExternalBindings) {
     auto plan = MakeResourcePlan();
     ASSERT_TRUE(plan.ok());
-    EXPECT_EQ(PlanExecutionBindings(*plan, {}).status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(PlanExecutionBindings(*plan, {}).status(), StatusCode::kFailedPrecondition);
     std::array<float, 17> input{};
     const std::array<int64_t, 1> shape{17}, stride{1};
     ExternalTensorBindings external;
     auto binding = ExternalReadOnlyValueBinding{{.index = 0}, TensorView(input.data(), DataType::Float32(), shape, stride, 4)};
     external.read_only = {binding, binding};
-    EXPECT_EQ(PlanExecutionBindings(*plan, external).status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(PlanExecutionBindings(*plan, external).status(), StatusCode::kInvalidArgument);
 }
 TEST(ExecutionBindingPlanning, WritableExternalOutputDoesNotConsumeArenaBytes) {
     auto plan = MakeResourcePlan();
@@ -96,7 +96,7 @@ TEST(ExecutionBindingPlanning, StorageFailureLeavesPlanAndInputsUsableForRetry) 
     auto stats = std::make_shared<test::ResourceAllocationStats>();
     stats->fail_on_call = 0;
     test::ResourceRecordingAllocator allocator(stats);
-    EXPECT_EQ(MaterializeExecutionBindings(*plan, std::move(*layout), allocator).status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(MaterializeExecutionBindings(*plan, std::move(*layout), allocator).status(), StatusCode::kResourceExhausted);
     auto retry = PlanWithLocalMetadata(*plan, input.data());
     ASSERT_TRUE(retry.ok());
     EXPECT_TRUE(MaterializeExecutionBindings(*plan, std::move(*retry), allocator).ok());

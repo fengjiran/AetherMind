@@ -114,8 +114,7 @@ TEST(CPUKernelAttention, CpuBackendPreparesPlainF32ReferenceKernel) {
                                     OpParams{AttentionParams{.num_q_heads = 1,
                                                              .num_kv_heads = 1,
                                                              .head_dim = 2}})
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kNotFound);
 }
 
@@ -235,7 +234,7 @@ TEST(CPUKernelAttention, ReferenceHandlesFirstTokenDecode) {
 }
 
 TEST(CPUKernelAttention, ReferenceRejectsInvalidMetadataAndConcreteBindings) {
-    EXPECT_EQ(PrepareAttentionKernel(3, 2, 1).status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(PrepareAttentionKernel(3, 2, 1).status(), StatusCode::kInvalidArgument);
 
     const auto kernel = PrepareAttentionKernel();
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
@@ -252,8 +251,7 @@ TEST(CPUKernelAttention, ReferenceRejectsInvalidMetadataAndConcreteBindings) {
                       {.query = TensorView(query.data(), DataType::Float32(), wrong_width_shape, strides),
                        .output = MutableTensorView(output.data(), DataType::Float32(), wrong_width_shape,
                                                    strides)},
-                      MakeReadBinding(key.data(), value.data(), 1, 1, 2, 2, 2, 1, 0, 1))
-                      .code(),
+                      MakeReadBinding(key.data(), value.data(), 1, 1, 2, 2, 2, 1, 0, 1)),
               StatusCode::kInvalidArgument);
 
     constexpr int64_t colliding_output_strides[2] = {2, 0};
@@ -262,8 +260,7 @@ TEST(CPUKernelAttention, ReferenceRejectsInvalidMetadataAndConcreteBindings) {
                       {.query = TensorView(query.data(), DataType::Float32(), shape, strides),
                        .output = MutableTensorView(output.data(), DataType::Float32(), shape,
                                                    colliding_output_strides)},
-                      MakeReadBinding(key.data(), value.data(), 1, 1, 2, 2, 2, 1, 0, 1))
-                      .code(),
+                      MakeReadBinding(key.data(), value.data(), 1, 1, 2, 2, 2, 1, 0, 1)),
               StatusCode::kInvalidArgument);
 
     constexpr int64_t multirow_shape[2] = {2, 2};
@@ -280,16 +277,14 @@ TEST(CPUKernelAttention, ReferenceRejectsInvalidMetadataAndConcreteBindings) {
                                                    multirow_shape,
                                                    positive_colliding_strides)},
                       MakeReadBinding(multirow_key.data(), multirow_value.data(), 1, 2, 2,
-                                      2, 4, 2, 0, 2))
-                      .code(),
+                                      2, 4, 2, 0, 2)),
               StatusCode::kInvalidArgument);
 
     EXPECT_EQ(RunAttentionEntry(
                       *kernel,
                       {.query = TensorView(query.data(), DataType::Float32(), shape, strides),
                        .output = MutableTensorView(query.data(), DataType::Float32(), shape, strides)},
-                      MakeReadBinding(key.data(), value.data(), 1, 1, 2, 2, 2, 1, 0, 1))
-                      .code(),
+                      MakeReadBinding(key.data(), value.data(), 1, 1, 2, 2, 2, 1, 0, 1)),
               StatusCode::kInvalidArgument);
 }
 
@@ -308,16 +303,16 @@ TEST(CPUKernelAttention, ReferenceRejectsInvalidReadGeometryAndAliases) {
     };
 
     auto invalid_frontier = MakeReadBinding(key.data(), value.data(), 1, 2, 2, 2, 4, 1, 1, 1);
-    EXPECT_EQ(RunAttentionEntry(*kernel, views, invalid_frontier).code(),
+    EXPECT_EQ(RunAttentionEntry(*kernel, views, invalid_frontier),
               StatusCode::kInvalidArgument);
 
     auto invalid_stride = MakeReadBinding(key.data(), value.data(), 1, 2, 2, 2, 4, 1, 0, 1);
     invalid_stride.storage.token_stride_bytes = 10;
-    EXPECT_EQ(RunAttentionEntry(*kernel, views, invalid_stride).code(),
+    EXPECT_EQ(RunAttentionEntry(*kernel, views, invalid_stride),
               StatusCode::kInvalidArgument);
 
     auto output_alias = MakeReadBinding(output.data(), value.data(), 1, 1, 2, 2, 2, 1, 0, 1);
-    EXPECT_EQ(RunAttentionEntry(*kernel, views, output_alias).code(),
+    EXPECT_EQ(RunAttentionEntry(*kernel, views, output_alias),
               StatusCode::kInvalidArgument);
 }
 

@@ -104,7 +104,7 @@ TEST(CpuAliasUtils, BuildContiguousByteRangeRejectsAddressOverflow) {
             near_address_limit, 2, sizeof(float), "test range");
 
     ASSERT_FALSE(range.ok());
-    EXPECT_EQ(range.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(range.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(range.status().message(), "test range address range overflow");
 }
 
@@ -129,11 +129,11 @@ TEST(CpuAliasUtils, ViewFootprintOverloadsValidateViewsAndBindStridesCoherently)
     EXPECT_EQ(immutable_footprint->envelope().begin, mutable_footprint->envelope().begin);
     EXPECT_EQ(immutable_footprint->envelope().end, mutable_footprint->envelope().end);
     ASSERT_FALSE(default_immutable.ok());
-    EXPECT_EQ(default_immutable.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(default_immutable.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(default_immutable.status().message(),
               "default immutable requires a valid tensor view");
     ASSERT_FALSE(default_mutable.ok());
-    EXPECT_EQ(default_mutable.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(default_mutable.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(default_mutable.status().message(), "default mutable requires a valid tensor view");
 }
 
@@ -168,7 +168,7 @@ TEST(CpuAliasUtils, ContiguousViewOverloadsHandleNormalRankZeroAndEmptyViews) {
     EXPECT_EQ(rank_zero->end - rank_zero->begin, sizeof(float));
     EXPECT_EQ(empty->begin, empty->end);
     ASSERT_FALSE(default_view.ok());
-    EXPECT_EQ(default_view.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(default_view.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(default_view.status().message(),
               "default contiguous requires a valid tensor view");
 }
@@ -186,11 +186,11 @@ TEST(CpuAliasUtils, ContiguousViewOverloadReportsEmptyViewStrideProductOverflow)
     ASSERT_TRUE(immutable_footprint.ok()) << immutable_footprint.status().ToString();
     EXPECT_TRUE(immutable_footprint->is_empty());
     ASSERT_FALSE(immutable_range.ok());
-    EXPECT_EQ(immutable_range.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(immutable_range.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(immutable_range.status().message(),
               "empty immutable contiguous stride product overflow");
     ASSERT_FALSE(mutable_range.ok());
-    EXPECT_EQ(mutable_range.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(mutable_range.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(mutable_range.status().message(),
               "empty mutable contiguous stride product overflow");
 }
@@ -216,7 +216,7 @@ TEST(CpuAliasUtils, ContiguousViewOverloadRejectsHoledViewBeforeFalseDisjointAli
     ASSERT_TRUE(last_element.ok()) << last_element.status().ToString();
     EXPECT_FALSE(ByteRangesOverlap(*raw_assumption, *last_element));
     ASSERT_FALSE(checked_view.ok());
-    EXPECT_EQ(checked_view.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(checked_view.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(checked_view.status().message(),
               "holed view requires a row-major contiguous tensor view");
 }
@@ -234,19 +234,19 @@ TEST(CpuAliasUtils, RowwiseViewAnalyzersRejectInvalidViews) {
             AnalyzeRowwiseColumnVector(MutableTensorView{}, "default mutable vector");
 
     ASSERT_FALSE(default_row_view.ok());
-    EXPECT_EQ(default_row_view.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(default_row_view.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(default_row_view.status().message(),
               "default row view requires a valid tensor view");
     ASSERT_FALSE(default_mutable.ok());
-    EXPECT_EQ(default_mutable.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(default_mutable.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(default_mutable.status().message(),
               "default mutable row view requires a valid tensor view");
     ASSERT_FALSE(default_vector.ok());
-    EXPECT_EQ(default_vector.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(default_vector.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(default_vector.status().message(),
               "default column vector requires a valid tensor view");
     ASSERT_FALSE(default_mutable_vector.ok());
-    EXPECT_EQ(default_mutable_vector.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(default_mutable_vector.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(default_mutable_vector.status().message(),
               "default mutable vector requires a valid tensor view");
 }
@@ -266,10 +266,10 @@ TEST(CpuAliasUtils, RowwiseViewAnalyzersStillRejectUnsupportedRanks) {
             "matrix as vector");
 
     ASSERT_FALSE(rank_zero.ok());
-    EXPECT_EQ(rank_zero.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(rank_zero.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(rank_zero.status().message(), "rank zero requires rank >= 1");
     ASSERT_FALSE(matrix_as_vector.ok());
-    EXPECT_EQ(matrix_as_vector.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(matrix_as_vector.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(matrix_as_vector.status().message(), "matrix as vector requires rank-1 tensor");
 }
 
@@ -298,8 +298,7 @@ TEST(CpuAliasUtils, RowwiseFootprintsProveActualOverlapWithoutHoles) {
     ASSERT_TRUE(lhs.ok()) << lhs.status().ToString();
     ASSERT_TRUE(rhs.ok()) << rhs.status().ToString();
     EXPECT_EQ(ValidateRowwiseDisjoint(
-                      "TestKernel", lhs->footprint(), "output", rhs->footprint(), "input")
-                      .code(),
+                      "TestKernel", lhs->footprint(), "output", rhs->footprint(), "input"),
               StatusCode::kInvalidArgument);
 }
 
@@ -327,8 +326,7 @@ TEST(CpuAliasUtils, RowwiseFootprintsReportUnknownForColumnStrideHoles) {
     ASSERT_TRUE(lhs.ok()) << lhs.status().ToString();
     ASSERT_TRUE(rhs.ok()) << rhs.status().ToString();
     EXPECT_EQ(ValidateRowwiseDisjoint(
-                      "TestKernel", lhs->footprint(), "output", rhs->footprint(), "input")
-                      .code(),
+                      "TestKernel", lhs->footprint(), "output", rhs->footprint(), "input"),
               StatusCode::kUnimplemented);
 }
 
@@ -345,12 +343,10 @@ TEST(CpuAliasUtils, RowwiseFootprintsProveOverlapAtSharedBaseAddress) {
     ASSERT_TRUE(lhs.ok()) << lhs.status().ToString();
     ASSERT_TRUE(rhs.ok()) << rhs.status().ToString();
     EXPECT_EQ(ValidateRowwiseDisjoint(
-                      "TestKernel", lhs->footprint(), "output", rhs->footprint(), "input")
-                      .code(),
+                      "TestKernel", lhs->footprint(), "output", rhs->footprint(), "input"),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(ValidateRowwiseDisjoint(
-                      "TestKernel", rhs->footprint(), "output", lhs->footprint(), "input")
-                      .code(),
+                      "TestKernel", rhs->footprint(), "output", lhs->footprint(), "input"),
               StatusCode::kInvalidArgument);
 }
 
@@ -390,7 +386,7 @@ TEST(CpuAliasUtils, AnalyzeRowwiseViewRejectsAddressOverflow) {
             near_address_limit, 1, 2, 2, 1, sizeof(float), "test layout");
 
     ASSERT_FALSE(analysis.ok());
-    EXPECT_EQ(analysis.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(analysis.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(CpuAliasUtils, AnalyzeRowwiseViewDistinguishesElementAndByteOverflow) {
@@ -406,14 +402,14 @@ TEST(CpuAliasUtils, AnalyzeRowwiseViewDistinguishesElementAndByteOverflow) {
             TensorView{storage.data(), DataType::Float32(), shape, element_overflow_strides},
             "element overflow");
     ASSERT_FALSE(element_overflow.ok());
-    EXPECT_EQ(element_overflow.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(element_overflow.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(element_overflow.status().message(), "element overflow element offset overflow");
 
     const auto byte_overflow = AnalyzeRowwiseView(
             TensorView{storage.data(), DataType::Float32(), byte_overflow_shape, byte_overflow_strides},
             "byte overflow");
     ASSERT_FALSE(byte_overflow.ok());
-    EXPECT_EQ(byte_overflow.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(byte_overflow.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(byte_overflow.status().message(), "byte overflow address range overflow");
 }
 
@@ -433,7 +429,7 @@ TEST(CpuAliasUtils, AnalyzeRowwiseViewSeparatesInputFactsFromOutputPolicy) {
     EXPECT_EQ(input_analysis->injectivity(), InjectivityClassification::kProvenNonInjective);
 
     const Status output_status = ValidateRowwiseOutputLayout("TestKernel", *output_analysis);
-    EXPECT_EQ(output_status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(output_status, StatusCode::kInvalidArgument);
     EXPECT_EQ(output_status.message(), "TestKernel requires disjoint output row envelopes");
 }
 
@@ -454,7 +450,7 @@ TEST(CpuAliasUtils, AnalyzeRowwiseViewValidatesActualStridesButAllowsDerivedRank
     const auto zero_column_stride = AnalyzeRowwiseView(
             TensorView{storage.data(), DataType::Float32(), rank_one_shape, zero_stride}, "zero stride");
     ASSERT_FALSE(zero_column_stride.ok());
-    EXPECT_EQ(zero_column_stride.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(zero_column_stride.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(zero_column_stride.status().message(), "zero stride requires positive strides");
 }
 
@@ -504,7 +500,7 @@ TEST(CpuAliasUtils, ValidateRowwiseDisjointRejectsProvenOverlap) {
     ASSERT_TRUE(input.ok()) << input.status().ToString();
     const Status status = ValidateRowwiseDisjoint(
             "TestKernel", output->footprint(), "output", input->footprint(), "input");
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_EQ(status.message(), "TestKernel output must not overlap input");
 }
 
@@ -519,7 +515,7 @@ TEST(CpuAliasUtils, ValidateRowwiseDisjointReportsUnknownAsUnimplemented) {
     ASSERT_TRUE(input.ok()) << input.status().ToString();
     const Status status = ValidateRowwiseDisjoint(
             "TestKernel", output->footprint(), "output", input->footprint(), "input");
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(status, StatusCode::kUnimplemented);
     EXPECT_EQ(status.message(),
               "TestKernel cannot prove output is disjoint from input "
               "for the requested strided layouts");
@@ -579,9 +575,9 @@ TEST(CpuAliasUtils, StridedFootprintExposesInjectivityProofsWithoutClassifierAcc
     // Extent-1 axes never affect injectivity, whatever their stride.
     EXPECT_EQ(unit_axis->injectivity(),
               InjectivityClassification::kProvenInjective);
-    EXPECT_EQ(ValidateLayoutInjectivity("TestKernel", colliding->injectivity(), "output").code(),
+    EXPECT_EQ(ValidateLayoutInjectivity("TestKernel", colliding->injectivity(), "output"),
               StatusCode::kInvalidArgument);
-    EXPECT_EQ(ValidateLayoutInjectivity("TestKernel", irregular->injectivity(), "output").code(),
+    EXPECT_EQ(ValidateLayoutInjectivity("TestKernel", irregular->injectivity(), "output"),
               StatusCode::kUnimplemented);
     EXPECT_TRUE(ValidateLayoutInjectivity("TestKernel", transposed->injectivity(), "output").ok());
 }
@@ -661,21 +657,17 @@ TEST(CpuAliasUtils, ValidateStridedDisjointDistinguishesProofFromUnknown) {
                         "TestKernel", *dense_base, "output", *dense_far, "input")
                         .ok());
     EXPECT_EQ(ValidateStridedDisjoint(
-                      "TestKernel", *dense_base, "output", *dense_shifted, "input")
-                      .code(),
+                      "TestKernel", *dense_base, "output", *dense_shifted, "input"),
               StatusCode::kInvalidArgument);
     // A shared base address proves overlap even when neither view is dense.
     EXPECT_EQ(ValidateStridedDisjoint(
-                      "TestKernel", *holed_base, "output", *dense_base, "input")
-                      .code(),
+                      "TestKernel", *holed_base, "output", *dense_base, "input"),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(ValidateStridedDisjoint(
-                      "TestKernel", *holed_base, "output", *holed_shifted, "input")
-                      .code(),
+                      "TestKernel", *holed_base, "output", *holed_shifted, "input"),
               StatusCode::kUnimplemented);
     EXPECT_EQ(ValidateStridedDisjoint(
-                      "TestKernel", *holed_base, "output", *dense_shifted, "input")
-                      .code(),
+                      "TestKernel", *holed_base, "output", *dense_shifted, "input"),
               StatusCode::kUnimplemented);
     // An empty view never overlaps, not even at a shared base address.
     EXPECT_TRUE(ValidateStridedDisjoint(
@@ -690,12 +682,12 @@ TEST(CpuAliasUtils, ValidateLayoutInjectivityMapsProofOntoStatus) {
 
     const Status collision = ValidateLayoutInjectivity(
             "TestKernel", InjectivityClassification::kProvenNonInjective, "output");
-    EXPECT_EQ(collision.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(collision, StatusCode::kInvalidArgument);
     EXPECT_EQ(collision.message(), "TestKernel output logical elements must not overlap");
 
     const Status undecidable = ValidateLayoutInjectivity(
             "TestKernel", InjectivityClassification::kUnknown, "output");
-    EXPECT_EQ(undecidable.code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(undecidable, StatusCode::kUnimplemented);
     EXPECT_EQ(undecidable.message(),
               "TestKernel cannot prove output maps distinct coordinates to distinct offsets");
 }
@@ -727,12 +719,12 @@ TEST(CpuAliasUtils, ValidateStridedDisjointMapsProofOntoStatus) {
 
     const Status overlap = ValidateStridedDisjoint(
             "TestKernel", *dense_base, "output", *dense_shifted, "input");
-    EXPECT_EQ(overlap.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(overlap, StatusCode::kInvalidArgument);
     EXPECT_EQ(overlap.message(), "TestKernel output must not overlap input");
 
     const Status unknown = ValidateStridedDisjoint(
             "TestKernel", *dense_base, "output", *holed_shifted, "input");
-    EXPECT_EQ(unknown.code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(unknown, StatusCode::kUnimplemented);
     EXPECT_EQ(unknown.message(),
               "TestKernel cannot prove output is disjoint from input "
               "for the requested strided layouts");
@@ -764,7 +756,7 @@ TEST(CpuAliasUtils, ValidateContiguousDisjointRejectsProvenOverlap) {
     ASSERT_TRUE(input.ok()) << input.status().ToString();
     const Status status = ValidateContiguousDisjoint(
             "TestKernel", *output, "output", *input, "input");
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_EQ(status.message(), "TestKernel output must not overlap input");
 }
 
@@ -815,7 +807,7 @@ TEST(CpuAliasUtils, BuildStridedAddressFootprintRejectsAddressOverflow) {
             near_address_limit, shape, strides, sizeof(float), "test footprint");
 
     ASSERT_FALSE(footprint.ok());
-    EXPECT_EQ(footprint.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(footprint.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(footprint.status().message(), "test footprint address range overflow");
 }
 

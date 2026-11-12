@@ -38,7 +38,7 @@ TEST(OperatorSchema, RejectsUnknownOpType) {
     const StatusOr<OperatorSchema> schema = GetOperatorSchema(OpType::kUnknown);
 
     ASSERT_FALSE(schema.ok());
-    EXPECT_EQ(schema.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(schema.status(), StatusCode::kNotFound);
 }
 
 TEST(OperatorSchema, EmbeddingSchemaUsesModelInputAndWeight) {

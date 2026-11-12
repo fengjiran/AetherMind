@@ -204,12 +204,11 @@ TEST_F(RawWeightFp32BatchConversion, NullCallbackAndBudgetFailurePrecedeAllocati
     LoadedModel model(MakeConfig(), MakeWeights(MakeView(source, DataType::Float(16), 8)));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, {.fp16_to_fp32 = nullptr}).status().code(),
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, {.fp16_to_fp32 = nullptr}).status(),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator,
                                            {.max_owned_weight_bytes = 1, .fp16_to_fp32 = Widen})
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kResourceExhausted);
     EXPECT_EQ(stats->calls, 0U);
     EXPECT_EQ(calls_, 0U);
@@ -282,13 +281,12 @@ TEST_F(RawWeightFp32BatchConversion, BfloatNullCallbackAndBudgetFailurePrecedeAl
     LoadedModel model(MakeConfig(DataType::BFloat(16)), MakeWeights(MakeView(source, DataType::BFloat(16), 8)));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, {.bf16_to_fp32 = nullptr}).status().code(),
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, {.bf16_to_fp32 = nullptr}).status(),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(ConvertRawModelWeightsToFp32(
                       model, allocator,
                       {.max_owned_weight_bytes = 1, .bf16_to_fp32 = WidenBfloat})
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kResourceExhausted);
     EXPECT_EQ(stats->calls, 0U);
     EXPECT_EQ(bfloat_calls_, 0U);
@@ -417,7 +415,7 @@ TEST(RawWeightFp32Conversion, EnforcesFinalOwnedBudgetBeforeAnyPayloadAllocation
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
     auto rejected = ConvertRawModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 15});
-    EXPECT_EQ(rejected.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(rejected.status(), StatusCode::kResourceExhausted);
     EXPECT_EQ(stats->calls, 0U);
     auto accepted = ConvertRawModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 16});
     ASSERT_TRUE(accepted.ok()) << accepted.status().ToString();
@@ -436,7 +434,7 @@ TEST(RawWeightFp32Conversion, CountsRetainedFloat32BackingAlongsideConvertedPayl
     LoadedModel model(MakeConfig(), std::move(weights));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 39}).status().code(),
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 39}).status(),
               StatusCode::kResourceExhausted);
     EXPECT_EQ(stats->calls, 0U);
     auto converted = ConvertRawModelWeightsToFp32(model, allocator, {.max_owned_weight_bytes = 40});
@@ -456,7 +454,7 @@ TEST(RawWeightFp32Conversion, UnknownSourceIsReportedAndFiniteRetainedCapFailsCl
     EXPECT_TRUE((*converted)->GetWeightFp32ConversionUsage()->converted_weights.backing_usage_complete);
     LoadedModel fp32(MakeConfig(), MakeWeights(MakeView(source, DataType::Float32(), 2)));
     const auto calls = stats->calls;
-    EXPECT_EQ(ConvertRawModelWeightsToFp32(fp32, allocator, {.max_owned_weight_bytes = 16}).status().code(),
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(fp32, allocator, {.max_owned_weight_bytes = 16}).status(),
               StatusCode::kFailedPrecondition);
     EXPECT_EQ(stats->calls, calls);
     EXPECT_TRUE(ConvertRawModelWeightsToFp32(fp32, allocator).ok());
@@ -471,7 +469,7 @@ TEST(RawWeightFp32Conversion, PartialAllocationFailureReleasesCandidatesAndAllow
     stats->fail_on_call = 1;
     TrackingAllocator allocator(stats);
     auto result = ConvertRawModelWeightsToFp32(model, allocator);
-    EXPECT_EQ(result.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(result.status(), StatusCode::kResourceExhausted);
     EXPECT_EQ(result.status().message(), "test allocation failure");
     EXPECT_EQ(stats->live, 0U);
     EXPECT_EQ(stats->released, 1U);
@@ -546,7 +544,7 @@ TEST(RawWeightFp32Conversion, RejectsTargetSizeOverflowBeforeAllocationOrPayload
     LoadedModel model(MakeConfig(), MakeWeights(huge));
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator).status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator).status(), StatusCode::kOverflow);
     EXPECT_EQ(stats->calls, 0U);
 }
 
@@ -691,7 +689,7 @@ TEST_P(RawWeightNormFp32Conversion, EnforcesFinalBudget24AndReportsPeak28BeforeA
     LoadedModel model(MakeConfig(dtype()), fixture.weights);
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, options(23)).status().code(),
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, options(23)).status(),
               StatusCode::kResourceExhausted);
     EXPECT_EQ(stats->calls, 0U);
     EXPECT_EQ(calls(), 0U);
@@ -712,7 +710,7 @@ TEST_P(RawWeightNormFp32Conversion, CountsSharedBackingOnceWithFinal28AndPeak28)
     LoadedModel model(MakeConfig(dtype()), fixture.weights);
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, options(27)).status().code(),
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, options(27)).status(),
               StatusCode::kResourceExhausted);
     EXPECT_EQ(stats->calls, 0U);
     EXPECT_EQ(calls(), 0U);
@@ -792,7 +790,7 @@ TEST_P(RawWeightNormFp32Conversion, UnknownRetainedW16BackingFailsFiniteCapBefor
     LoadedModel model(MakeConfig(dtype()), fixture.weights);
     auto stats = std::make_shared<AllocationStats>();
     TrackingAllocator allocator(stats);
-    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, options(24)).status().code(),
+    EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, options(24)).status(),
               StatusCode::kFailedPrecondition);
     EXPECT_EQ(stats->calls, 0U);
     EXPECT_EQ(calls(), 0U);
@@ -828,7 +826,7 @@ TEST_P(RawWeightNormFp32Conversion, InvalidScopeCallbacksAndUnselectedMetadataPr
         } else {
             invalid.bf16_to_fp32 = nullptr;
         }
-        EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, invalid).status().code(),
+        EXPECT_EQ(ConvertRawModelWeightsToFp32(model, allocator, invalid).status(),
                   StatusCode::kInvalidArgument);
     }
     for (size_t index = 0; index < 5; ++index) {
@@ -866,7 +864,7 @@ TEST_P(RawWeightNormFp32Conversion, PartialNormAllocationFailureReleasesCandidat
     stats->fail_on_call = 1;
     TrackingAllocator allocator(stats);
     auto failed = ConvertRawModelWeightsToFp32(model, allocator, options());
-    EXPECT_EQ(failed.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(failed.status(), StatusCode::kResourceExhausted);
     EXPECT_EQ(stats->live, 0U);
     EXPECT_EQ(stats->released, 1U);
     EXPECT_EQ(calls(), 1U);

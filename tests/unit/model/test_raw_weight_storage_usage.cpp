@@ -89,13 +89,13 @@ TEST(RawWeightStorageUsage, ExplicitViewsPermitEmptySelectionAndDefaultEmptyView
 
 TEST(RawWeightStorageUsage, ExplicitViewsRejectNullPointersAndMalformedMetadata) {
     const std::array<const RawWeightView*, 1> null_view{nullptr};
-    EXPECT_EQ(ComputeRawWeightViewStorageUsage(null_view).status().code(),
+    EXPECT_EQ(ComputeRawWeightViewStorageUsage(null_view).status(),
               StatusCode::kInvalidArgument);
     auto owner = std::make_shared<ResourceRawStorage>();
     auto malformed = View(owner, 0, 4, DataType::Float(16));
     --malformed.bytes;
     const std::array<const RawWeightView*, 1> selected{&malformed};
-    EXPECT_EQ(ComputeRawWeightViewStorageUsage(selected).status().code(),
+    EXPECT_EQ(ComputeRawWeightViewStorageUsage(selected).status(),
               StatusCode::kInvalidArgument);
 }
 
@@ -269,7 +269,7 @@ TEST(RawWeightStorageUsage, RejectsInvalidDTypeFiltersForEmptyWeights) {
                             DataType::Float(32, 65536)}) {
         SCOPED_TRACE(dtype.raw_lanes());
 
-        EXPECT_EQ(ComputeRawWeightStorageUsage({}, dtype).status().code(),
+        EXPECT_EQ(ComputeRawWeightStorageUsage({}, dtype).status(),
                   StatusCode::kInvalidArgument);
     }
 }
@@ -291,12 +291,12 @@ TEST(RawWeightStorageUsage, UnknownBackingIsExplicitAndKnownCategoriesRemainPart
 TEST(RawWeightStorageUsage, RejectsMalformedAndUnderreportedBacking) {
     ResolvedModelWeights weights;
     weights.final_norm.bytes = 1;
-    EXPECT_EQ(ComputeRawWeightStorageUsage(weights).status().code(),
+    EXPECT_EQ(ComputeRawWeightStorageUsage(weights).status(),
               StatusCode::kInvalidArgument);
     auto owner = std::make_shared<ResourceRawStorage>();
     owner->info = RawStorageFootprint{RawStorageKind::kOwned, 8};
     weights.final_norm = View(owner, 0, 16);
-    EXPECT_EQ(ComputeRawWeightStorageUsage(weights).status().code(),
+    EXPECT_EQ(ComputeRawWeightStorageUsage(weights).status(),
               StatusCode::kInvalidArgument);
 }
 
@@ -354,7 +354,7 @@ TEST(RawWeightStorageUsageDiagnosticFailure, MetadataFailureReturnsResourceExhau
     auto result = ComputeRawWeightStorageUsage(weights);
     const auto observed = failure.Stop();
     EXPECT_TRUE(observed.allocation_failed);
-    EXPECT_EQ(result.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(result.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(result.status().message().empty());
 }
 
@@ -375,7 +375,7 @@ TEST(RawWeightStorageUsageDiagnosticFailure, FilteredMetadataFailureReturnsResou
     const auto observed = failure.Stop();
 
     EXPECT_TRUE(observed.allocation_failed);
-    EXPECT_EQ(result.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(result.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(result.status().message().empty());
 }
 
@@ -393,7 +393,7 @@ TEST(RawWeightStorageUsageDiagnosticFailure, ExplicitViewMetadataFailureReturnsR
     const auto observed = failure.Stop();
 
     EXPECT_TRUE(observed.allocation_failed);
-    EXPECT_EQ(result.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(result.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(result.status().message().empty());
 }
 } // namespace

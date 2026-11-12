@@ -88,7 +88,7 @@ TEST(RmsNormInference, RejectsStaticHiddenMismatch) {
     const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(RmsNormInference, RejectsRankZeroInput) {
@@ -101,7 +101,7 @@ TEST(RmsNormInference, RejectsRankZeroInput) {
     const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(RmsNormInference, RejectsRankZeroWeight) {
@@ -114,7 +114,7 @@ TEST(RmsNormInference, RejectsRankZeroWeight) {
     const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
 
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(RmsNormInference, AcceptsZeroBatchDimension) {
@@ -137,7 +137,7 @@ TEST(RmsNormInference, RejectsZeroHiddenDimension) {
     };
     const Status status = InferOperator(OpType::kRmsNorm, params, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(RmsNormInference, EmitsPositiveConstraintForSymbolicHiddenDimension) {

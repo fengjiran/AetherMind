@@ -231,7 +231,7 @@ TEST(CPUKernelLinear, RejectsSelectorsWithoutPlainF32ReferenceSupport) {
     const auto fp16 = backend.PrepareKernel(
             OpType::kLinear, selector, OpParams{LinearParams{}});
     EXPECT_FALSE(fp16.ok());
-    EXPECT_EQ(fp16.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(fp16.status(), StatusCode::kNotFound);
 }
 
 TEST(CPUKernelLinearW16, CpuBackendPreparesBothReducedWeightReferencesForBothPhases) {
@@ -358,8 +358,7 @@ TEST(CPUKernelLinearW16, RejectsOutputAliasAndPreservesZeroKSemantics) {
                                                   .input_tensor = TensorView{input.data(), DataType::Float32(), shape, strides},
                                                   .weight_tensor = TensorView{weight.data(), DataType::BFloat(16), shape, strides},
                                                   .output_tensor = MutableTensorView{input.data(), DataType::Float32(), shape, strides},
-                                          })
-                      .code(),
+                                          }),
               StatusCode::kInvalidArgument);
 
     constexpr int64_t input_zero_shape[2] = {2, 0};
@@ -394,7 +393,7 @@ TEST(CPUKernelLinearW16, RejectsWeightFormatDifferentFromResolvedSelector) {
                                                {.input_tensor = TensorView{&input, DataType::Float32(), shape, strides},
                                                 .weight_tensor = TensorView{&weight, wrong, shape, strides},
                                                 .output_tensor = MutableTensorView{&output, DataType::Float32(), shape, strides}});
-        EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(status, StatusCode::kInvalidArgument);
         EXPECT_EQ(output, 42.0F);
     }
 }
@@ -683,14 +682,14 @@ TEST(CPUKernelLinearEntry, RejectsInvalidDtypeRankAndShape) {
             .weight_tensor = TensorView{data, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
     });
-    EXPECT_EQ(wrong_dtype.code(), StatusCode::kInvalidArgument) << wrong_dtype.ToString();
+    EXPECT_EQ(wrong_dtype, StatusCode::kInvalidArgument) << wrong_dtype.ToString();
 
     const Status rank_zero = RunLinearEntry(LinearTestViews{
             .input_tensor = TensorView{data, DataType::Float32(), {}, {}},
             .weight_tensor = TensorView{data, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), {}, {}},
     });
-    EXPECT_EQ(rank_zero.code(), StatusCode::kInvalidArgument) << rank_zero.ToString();
+    EXPECT_EQ(rank_zero, StatusCode::kInvalidArgument) << rank_zero.ToString();
 
     constexpr int64_t bad_weight_shape[2] = {2, 3};
     const Status mismatched_shape = RunLinearEntry(LinearTestViews{
@@ -698,7 +697,7 @@ TEST(CPUKernelLinearEntry, RejectsInvalidDtypeRankAndShape) {
             .weight_tensor = TensorView{data, DataType::Float32(), bad_weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
     });
-    EXPECT_EQ(mismatched_shape.code(), StatusCode::kInvalidArgument) << mismatched_shape.ToString();
+    EXPECT_EQ(mismatched_shape, StatusCode::kInvalidArgument) << mismatched_shape.ToString();
 }
 
 TEST(CPUKernelLinearEntry, RejectsInvalidViewAndNonPositiveStrides) {
@@ -717,14 +716,14 @@ TEST(CPUKernelLinearEntry, RejectsInvalidViewAndNonPositiveStrides) {
             .weight_tensor = TensorView{data, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
     });
-    EXPECT_EQ(invalid_view.code(), StatusCode::kInvalidArgument) << invalid_view.ToString();
+    EXPECT_EQ(invalid_view, StatusCode::kInvalidArgument) << invalid_view.ToString();
 
     const Status bad_stride = RunLinearEntry(LinearTestViews{
             .input_tensor = TensorView{data, DataType::Float32(), input_shape, zero_strides},
             .weight_tensor = TensorView{data, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
     });
-    EXPECT_EQ(bad_stride.code(), StatusCode::kInvalidArgument) << bad_stride.ToString();
+    EXPECT_EQ(bad_stride, StatusCode::kInvalidArgument) << bad_stride.ToString();
 }
 
 TEST(CPUKernelLinearEntry, RejectsAddressOffsetOverflow) {
@@ -742,7 +741,7 @@ TEST(CPUKernelLinearEntry, RejectsAddressOffsetOverflow) {
             .weight_tensor = TensorView{&scalar, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
     });
-    EXPECT_EQ(address_overflow.code(), StatusCode::kInvalidArgument) << address_overflow.ToString();
+    EXPECT_EQ(address_overflow, StatusCode::kInvalidArgument) << address_overflow.ToString();
 }
 
 TEST(CPUKernelLinearEntry, RejectsNonCollapsibleOrOverlappingOutputRows) {
@@ -761,7 +760,7 @@ TEST(CPUKernelLinearEntry, RejectsNonCollapsibleOrOverlappingOutputRows) {
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output.data(), DataType::Float32(), high_rank_output_shape, output_strides},
     });
-    EXPECT_EQ(noncollapsible.code(), StatusCode::kUnimplemented) << noncollapsible.ToString();
+    EXPECT_EQ(noncollapsible, StatusCode::kUnimplemented) << noncollapsible.ToString();
 
     constexpr int64_t input_shape[2] = {2, 2};
     constexpr int64_t input_strides[2] = {2, 1};
@@ -772,7 +771,7 @@ TEST(CPUKernelLinearEntry, RejectsNonCollapsibleOrOverlappingOutputRows) {
             .weight_tensor = TensorView{weight, DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{output.data(), DataType::Float32(), overlap_shape, overlap_strides},
     });
-    EXPECT_EQ(overlap.code(), StatusCode::kInvalidArgument) << overlap.ToString();
+    EXPECT_EQ(overlap, StatusCode::kInvalidArgument) << overlap.ToString();
 }
 
 TEST(CPUKernelLinearEntry, RejectsOutputBasePointerAliases) {
@@ -790,14 +789,14 @@ TEST(CPUKernelLinearEntry, RejectsOutputBasePointerAliases) {
             .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{input.data(), DataType::Float32(), output_shape, output_strides},
     });
-    EXPECT_EQ(aliases_input.code(), StatusCode::kInvalidArgument) << aliases_input.ToString();
+    EXPECT_EQ(aliases_input, StatusCode::kInvalidArgument) << aliases_input.ToString();
 
     const Status aliases_weight = RunLinearEntry(LinearTestViews{
             .input_tensor = TensorView{input.data(), DataType::Float32(), input_shape, input_strides},
             .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
             .output_tensor = MutableTensorView{weight.data(), DataType::Float32(), output_shape, output_strides},
     });
-    EXPECT_EQ(aliases_weight.code(), StatusCode::kInvalidArgument) << aliases_weight.ToString();
+    EXPECT_EQ(aliases_weight, StatusCode::kInvalidArgument) << aliases_weight.ToString();
 }
 
 TEST(CPUKernelLinearEntry, RejectsInputOverlapAtDistinctBasePointer) {
@@ -816,7 +815,7 @@ TEST(CPUKernelLinearEntry, RejectsInputOverlapAtDistinctBasePointer) {
             .output_tensor = MutableTensorView{storage.data() + 1, DataType::Float32(), output_shape, output_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelLinearEntry, RejectsWeightOverlapAtDistinctBasePointer) {
@@ -835,7 +834,7 @@ TEST(CPUKernelLinearEntry, RejectsWeightOverlapAtDistinctBasePointer) {
             .output_tensor = MutableTensorView{weight_storage.data() + 1, DataType::Float32(), output_shape, output_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelLinearEntry, ReportsUndecidableColumnStrideOverlapAsUnimplemented) {
@@ -854,7 +853,7 @@ TEST(CPUKernelLinearEntry, ReportsUndecidableColumnStrideOverlapAsUnimplemented)
             .output_tensor = MutableTensorView{storage.data() + 1, DataType::Float32(), output_shape, output_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kUnimplemented) << status.ToString();
 }
 
 TEST(CPUKernelLinear, ExecutionPlanBuilderRunsPreparedReferenceKernel) {
@@ -992,14 +991,13 @@ TEST(CPUKernelLinearW16, PackedIdentityExecutesAndValidatesReducedArtifact) {
                 .alignment = (*packed)->storage().alignment(),
         };
         EXPECT_EQ(kernel->params_builder(
-                                KernelParamsBuildContext{
-                                        .inputs = std::array<TensorView, 1>{input_view},
-                                        .outputs = std::array<MutableTensorView, 1>{output_view},
-                                        .attrs = kernel->attrs,
-                                        .packed_weight = wrong_dtype,
-                                },
-                                prepared.storage.data())
-                          .code(),
+                          KernelParamsBuildContext{
+                                  .inputs = std::array<TensorView, 1>{input_view},
+                                  .outputs = std::array<MutableTensorView, 1>{output_view},
+                                  .attrs = kernel->attrs,
+                                  .packed_weight = wrong_dtype,
+                          },
+                          prepared.storage.data()),
                   StatusCode::kInvalidArgument);
     }
 }

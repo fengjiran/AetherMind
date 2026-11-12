@@ -200,14 +200,12 @@ TEST(CPUKernelRoPE, CpuBackendPreparesPlainF32ReferenceKernel) {
     KernelSelector unsupported = MakeRoPESelector();
     unsupported.act_dtype = DataType::Float(16);
     EXPECT_EQ(backend.PrepareKernel(OpType::kRoPE, unsupported, OpParams{MakeRoPEParams()})
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kNotFound);
     unsupported = MakeRoPESelector();
     unsupported.weight_format = WeightFormat::kPacked;
     EXPECT_EQ(backend.PrepareKernel(OpType::kRoPE, unsupported, OpParams{MakeRoPEParams()})
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kNotFound);
 }
 
@@ -340,7 +338,7 @@ TEST(CPUKernelRoPE, ReferenceRejectsPartialAndCrossTensorAliases) {
         };
     };
     const auto expect_invalid = [&](RoPETestViews views) {
-        EXPECT_EQ(RunRoPEEntry(MakeRoPEParams(4, 1, 1), views).code(),
+        EXPECT_EQ(RunRoPEEntry(MakeRoPEParams(4, 1, 1), views),
                   StatusCode::kInvalidArgument);
     };
 
@@ -388,7 +386,7 @@ TEST(CPUKernelRoPE, ReferenceReportsConservativeStridedAliasAsUnsupported) {
                                                                         .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, contiguous_strides},
                                                                 });
 
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kUnimplemented) << status.ToString();
 }
 
 TEST(CPUKernelRoPE, ReferenceAllowsSameAllocationWithRowSeparatedViews) {
@@ -538,14 +536,14 @@ TEST(CPUKernelRoPEEntry, RejectsByteAndAddressRangeOverflow) {
 
     auto views = make_views();
     views.q = TensorView{q.data(), DataType::Float32(), shape, byte_overflow_strides};
-    EXPECT_EQ(RunRoPEEntry(MakeRoPEParams(4, 1, 1), views).code(),
+    EXPECT_EQ(RunRoPEEntry(MakeRoPEParams(4, 1, 1), views),
               StatusCode::kInvalidArgument);
 
     const auto near_address_limit = reinterpret_cast<const float*>(
             std::numeric_limits<std::uintptr_t>::max() - std::uintptr_t{3});
     views = make_views();
     views.q = TensorView{near_address_limit, DataType::Float32(), shape, strides};
-    EXPECT_EQ(RunRoPEEntry(MakeRoPEParams(4, 1, 1), views).code(),
+    EXPECT_EQ(RunRoPEEntry(MakeRoPEParams(4, 1, 1), views),
               StatusCode::kInvalidArgument);
 }
 
@@ -568,7 +566,7 @@ TEST(CPUKernelRoPEEntry, RejectsMaxPositionSequenceLengthOverflow) {
                                                                         .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, strides},
                                                                 });
 
-    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+    EXPECT_EQ(status, StatusCode::kOverflow);
 }
 
 TEST(CPUKernelRoPEEntry, AcceptsOutputInsideStridedPositionIdsGap) {
@@ -618,8 +616,7 @@ TEST(CPUKernelRoPE, PreparedParamsRejectUnrepresentableInverseFrequency) {
                                            .position_ids = TensorView{positions, DataType::Int(64), position_shape, position_strides},
                                            .q_output = MutableTensorView{q_output.data(), DataType::Float32(), shape, strides},
                                            .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, strides},
-                                   })
-                      .code(),
+                                   }),
               StatusCode::kOverflow);
 }
 
@@ -645,7 +642,7 @@ TEST(CPUKernelRoPEEntry, ParamsBuilderRejectsCorruptFrozenFrequencyAttrs) {
 
     auto truncated = *kernel;
     truncated.attrs.pop_back();
-    EXPECT_EQ(BuildRoPEPreparedParams(truncated, views).status().code(),
+    EXPECT_EQ(BuildRoPEPreparedParams(truncated, views).status(),
               StatusCode::kInvalidArgument);
 
     auto invalid_frequency = *kernel;
@@ -653,27 +650,24 @@ TEST(CPUKernelRoPEEntry, ParamsBuilderRejectsCorruptFrozenFrequencyAttrs) {
     std::memcpy(invalid_frequency.attrs.data() +
                         sizeof(cpu::detail::RoPEF32KernelMetadata),
                 &nan, sizeof(nan));
-    EXPECT_EQ(BuildRoPEPreparedParams(invalid_frequency, views).status().code(),
+    EXPECT_EQ(BuildRoPEPreparedParams(invalid_frequency, views).status(),
               StatusCode::kOverflow);
 }
 
 TEST(CPUKernelRoPEEntry, RejectsInvalidParamsLayoutsAndAliases) {
     CpuBackend backend;
     EXPECT_EQ(backend.PrepareKernel(OpType::kRoPE, MakeRoPESelector(), OpParams{RmsNormParams{}})
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kInvalidArgument);
     auto invalid = MakeRoPEParams();
     invalid.head_dim = 3;
     EXPECT_EQ(backend.PrepareKernel(OpType::kRoPE, MakeRoPESelector(), OpParams{invalid})
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kInvalidArgument);
     invalid = MakeRoPEParams();
     invalid.rotary_dim = 3;
     EXPECT_EQ(backend.PrepareKernel(OpType::kRoPE, MakeRoPESelector(), OpParams{invalid})
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kInvalidArgument);
 
     constexpr int64_t shape[2] = {2, 4};
@@ -699,7 +693,7 @@ TEST(CPUKernelRoPEEntry, RejectsInvalidParamsLayoutsAndAliases) {
         };
     };
     const auto expect_invalid = [&](RoPETestViews views) {
-        EXPECT_EQ(RunRoPEEntry(MakeRoPEParams(4, 1, 1), views).code(),
+        EXPECT_EQ(RunRoPEEntry(MakeRoPEParams(4, 1, 1), views),
                   StatusCode::kInvalidArgument);
     };
     auto views = make_views();
@@ -759,7 +753,7 @@ TEST(CPUKernelRoPE, PreparedParamsRevalidateMutablePositionContentsBeforeWrites)
     q_output.fill(11.0F);
     k_output.fill(13.0F);
     positions[1] = -1;
-    EXPECT_EQ(RunRoPEEntry(*kernel, *prepared).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(RunRoPEEntry(*kernel, *prepared), StatusCode::kInvalidArgument);
     for (float value: q_output) EXPECT_EQ(value, 11.0F);
     for (float value: k_output) EXPECT_EQ(value, 13.0F);
 }
@@ -790,7 +784,7 @@ TEST(CPUKernelRoPE, PreparedParamsRevalidateDynamicAngleRangeBeforeWrites) {
     q_output.fill(17.0F);
     k_output.fill(19.0F);
     positions[0] = 1;
-    EXPECT_EQ(RunRoPEEntry(*kernel, *prepared).code(), StatusCode::kOverflow);
+    EXPECT_EQ(RunRoPEEntry(*kernel, *prepared), StatusCode::kOverflow);
     for (float value: q_output) EXPECT_EQ(value, 17.0F);
     for (float value: k_output) EXPECT_EQ(value, 19.0F);
 }
@@ -819,7 +813,7 @@ TEST(CPUKernelRoPE, PreparedParamsRejectFinitePositionAngleOverflowBeforeInPlace
                                                                    .k_output = MutableTensorView{k.data(), DataType::Float32(), shape, strides},
                                                            });
     ASSERT_TRUE(prepared.ok()) << prepared.status().ToString();
-    EXPECT_EQ(RunRoPEEntry(*kernel, *prepared).code(), StatusCode::kOverflow);
+    EXPECT_EQ(RunRoPEEntry(*kernel, *prepared), StatusCode::kOverflow);
     EXPECT_EQ(q, original_q);
     EXPECT_EQ(k, original_k);
 
@@ -941,7 +935,7 @@ TEST(CPUKernelRoPE, DynamicNtkRejectsSubunitBaseFrequencyOverflowBeforeWrites) {
                                                        .q_output = MutableTensorView{q_output.data(), DataType::Float32(), shape, strides},
                                                        .k_output = MutableTensorView{k_output.data(), DataType::Float32(), shape, strides},
                                                });
-    EXPECT_EQ(status.code(), StatusCode::kOverflow);
+    EXPECT_EQ(status, StatusCode::kOverflow);
     for (float value: q_output) EXPECT_EQ(value, 17.0F);
     for (float value: k_output) EXPECT_EQ(value, 19.0F);
 }

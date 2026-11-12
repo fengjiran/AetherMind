@@ -45,7 +45,7 @@ TEST(OperatorSemanticsValidate, WrongVariantPrecedesInputValidationForEveryOp) {
         const auto result = InferOperator(
                 test_case.op_type, test_case.wrong_params, empty_inputs);
         ASSERT_FALSE(result.ok());
-        EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
         EXPECT_EQ(result.status().message(), test_case.expected_message);
     }
 }
@@ -196,7 +196,7 @@ TEST(OperatorSelectorDTypes, RejectsUndefinedActivationDType) {
     const auto derived = DeriveSelectorDTypes(*schema, inputs, outputs);
 
     ASSERT_FALSE(derived.ok());
-    EXPECT_EQ(derived.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(derived.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(derived.status().message().find("undefined"), std::string::npos);
 }
 
@@ -214,7 +214,7 @@ TEST(OperatorSelectorDTypes, RejectsInconsistentActivationDTypes) {
     const auto derived = DeriveSelectorDTypes(*schema, inputs, outputs);
 
     ASSERT_FALSE(derived.ok());
-    EXPECT_EQ(derived.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(derived.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(derived.status().message().find("inconsistent"), std::string::npos);
 }
 
@@ -231,7 +231,7 @@ TEST(OperatorSelectorDTypes, RejectsSpecCountMismatch) {
     const auto derived = DeriveSelectorDTypes(*schema, inputs, outputs);
 
     ASSERT_FALSE(derived.ok());
-    EXPECT_EQ(derived.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(derived.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(OperatorSelectorDTypes, RejectsSchemaWithoutActivationSource) {
@@ -240,7 +240,7 @@ TEST(OperatorSelectorDTypes, RejectsSchemaWithoutActivationSource) {
     const auto derived = DeriveSelectorDTypes(schema, {}, {});
 
     ASSERT_FALSE(derived.ok());
-    EXPECT_EQ(derived.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(derived.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(derived.status().message().find("activation dtype source"),
               std::string::npos);
 }

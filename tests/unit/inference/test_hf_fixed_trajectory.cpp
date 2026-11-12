@@ -211,7 +211,7 @@ TEST(HfNumericalComparison, MissingReferenceStagesAreRejected) {
     const auto reference = LoadReference(path);
 
     ASSERT_FALSE(reference.ok());
-    EXPECT_EQ(reference.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(reference.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(reference.status().message().find("incomplete"), std::string::npos);
 }
 

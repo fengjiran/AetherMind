@@ -19,7 +19,7 @@ LoadedModel MakeModel(HfModelConfig config) {
 }
 
 void ExpectPrecisionFailure(const Status& status, const char* role) {
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kUnimplemented) << status.ToString();
     EXPECT_NE(status.message().find(role), std::string::npos) << status.ToString();
 }
 
@@ -146,7 +146,7 @@ TEST(Fp32CompatibilityPolicy, StrictPolicyRemainsFp32SourceAndExecutionAdmission
 TEST(Fp32CompatibilityPolicy, RejectsUnknownWeightPolicy) {
     const LoadedModel model = MakeModel(test::MakeTinyLlamaConfig(1, false));
     const auto status = ValidateSourceWeights(model, static_cast<WeightPolicy>(255));
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 } // namespace

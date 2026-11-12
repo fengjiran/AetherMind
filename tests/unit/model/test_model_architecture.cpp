@@ -58,7 +58,7 @@ TEST(BuildModelGraph, RejectsUnsupportedFamilyBeforeWeightInspection) {
     const StatusOr<ModelGraph> graph = BuildModelGraph(config, empty_weights);
 
     EXPECT_FALSE(graph.ok());
-    EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(graph.status(), StatusCode::kInvalidArgument);
 }
 
 class GraphSlidingWindow : public ::testing::TestWithParam<int64_t> {};
@@ -70,7 +70,7 @@ TEST_P(GraphSlidingWindow, DispatchRejectsBeforeWeightInspection) {
     const auto graph = BuildModelGraph(config, ResolvedModelWeights{});
 
     ASSERT_FALSE(graph.ok());
-    EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(graph.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(graph.status().message().find("sliding_window"), std::string::npos);
 }
 
@@ -81,7 +81,7 @@ TEST_P(GraphSlidingWindow, LlamaBuilderRejectsBeforeWeightInspection) {
     const auto graph = BuildLlamaDense(config, ResolvedModelWeights{});
 
     ASSERT_FALSE(graph.ok());
-    EXPECT_EQ(graph.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(graph.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(graph.status().message().find("sliding_window"), std::string::npos);
 }
 

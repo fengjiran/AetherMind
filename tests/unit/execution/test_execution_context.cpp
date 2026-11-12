@@ -85,7 +85,7 @@ TEST(ExecutionContext, NonZeroWorkspaceWithoutArenaFails) {
             WorkspaceRequirement{.bytes = 32, .alignment = 32, .offset = 0});
 
     ASSERT_FALSE(binding.ok());
-    EXPECT_EQ(binding.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(binding.status(), StatusCode::kFailedPrecondition);
 }
 
 TEST(ExecutionContext, BindWorkspaceDelegatesToArena) {
@@ -122,7 +122,7 @@ TEST(ExecutionContext, BindWorkspaceRejectsInsufficientBinding) {
             WorkspaceRequirement{.bytes = 64, .alignment = 32, .offset = 0});
 
     ASSERT_FALSE(binding.ok());
-    EXPECT_EQ(binding.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(binding.status(), StatusCode::kFailedPrecondition);
     EXPECT_EQ(arena.bind_calls(), 1);
 }
 
@@ -139,7 +139,7 @@ TEST(ExecutionContext, CreateRejectsIncompatiblePreparedBindings) {
     const auto context = ExecutionContext::Create(*second_plan, std::move(*prepared), nullptr);
 
     ASSERT_FALSE(context.ok());
-    EXPECT_EQ(context.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(context.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ExecutionContext, CreateRequiresWorkspaceForPlanRequirement) {
@@ -153,7 +153,7 @@ TEST(ExecutionContext, CreateRequiresWorkspaceForPlanRequirement) {
     const auto context = ExecutionContext::Create(*plan, std::move(*prepared), nullptr);
 
     ASSERT_FALSE(context.ok());
-    EXPECT_EQ(context.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(context.status(), StatusCode::kFailedPrecondition);
 }
 
 TEST(ExecutionContext, CreateRequiresKVViewForStateAliases) {
@@ -205,7 +205,7 @@ TEST(ExecutionContext, CreateRequiresKVViewForStateAliases) {
     const auto context = ExecutionContext::Create(*plan, std::move(*prepared), nullptr);
 
     EXPECT_FALSE(context.ok());
-    EXPECT_EQ(context.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(context.status(), StatusCode::kFailedPrecondition);
 }
 
 TEST(ExecutionContext, ClearDoesNotResetBorrowedWorkspaceArena) {
@@ -241,7 +241,7 @@ TEST(ExecutionContext, InvalidAlignmentIsRejectedBeforeArenaBinding) {
             WorkspaceRequirement{.bytes = 16, .alignment = 3, .offset = 0});
 
     ASSERT_FALSE(binding.ok());
-    EXPECT_EQ(binding.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(binding.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(arena.bind_calls(), 0);
 }
 

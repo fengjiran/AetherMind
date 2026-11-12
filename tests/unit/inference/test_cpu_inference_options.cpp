@@ -168,7 +168,7 @@ TEST(CpuRuntimeConfiguration, KvCapRejectsBeforePayloadAndCanRetry) {
     auto resolved = MakeCpuRuntimeOptions(Configuration(), {.context_tokens = 8, .kv_max_bytes = 4095});
     ASSERT_TRUE(resolved.ok());
     builder.WithOptions(*resolved);
-    EXPECT_EQ(builder.TryBuild().status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(builder.TryBuild().status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(stats->requests.empty());
 
     // A resource-admission failure retains the existing registration-transfer

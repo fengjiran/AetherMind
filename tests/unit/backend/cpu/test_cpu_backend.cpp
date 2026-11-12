@@ -90,7 +90,7 @@ TEST(CpuBackend, RejectsRecipeNotSelectedByItsFeaturePolicy) {
             OpType::kLinear, components, selector,
             cpu::CpuBPanelF32Kc512Nr16Recipe(), test::TestCpuAllocator());
     ASSERT_FALSE(packed.ok());
-    EXPECT_EQ(packed.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(packed.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(packed.status().message().find("not selected"), std::string::npos);
 }
 

@@ -80,7 +80,7 @@ TEST(OffsetAlignment, RejectsZeroAndNonPowerOfTwoAlignment) {
         const StatusOr<size_t> offset = AlignOffsetUp(8, alignment);
 
         ASSERT_FALSE(offset.ok());
-        EXPECT_EQ(offset.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(offset.status(), StatusCode::kInvalidArgument);
     }
 }
 
@@ -89,7 +89,7 @@ TEST(OffsetAlignment, DetectsAlignmentOverflow) {
             AlignOffsetUp(std::numeric_limits<size_t>::max() - 3, 8);
 
     ASSERT_FALSE(offset.ok());
-    EXPECT_EQ(offset.status().code(), StatusCode::kOverflow);
+    EXPECT_EQ(offset.status(), StatusCode::kOverflow);
 }
 
 class OffsetAlignmentDiagnosticFailure : public ::testing::TestWithParam<bool> {};
@@ -107,7 +107,7 @@ TEST_P(OffsetAlignmentDiagnosticFailure, ReturnsResourceExhaustedWithEmptyMessag
 
     EXPECT_TRUE(injection.allocation_failed);
     ASSERT_FALSE(offset.ok());
-    EXPECT_EQ(offset.status().code(), StatusCode::kResourceExhausted);
+    EXPECT_EQ(offset.status(), StatusCode::kResourceExhausted);
     EXPECT_TRUE(offset.status().message().empty());
 }
 

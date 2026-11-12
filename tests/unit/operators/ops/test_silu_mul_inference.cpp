@@ -25,7 +25,7 @@ TEST(SiluMulInference, RejectsWrongArity) {
     };
     const Status status = InferOperator(OpType::kSiluMul, OpParams{SiluMulParams{}}, std::span(inputs)).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(SiluMulInference, RejectsNonFloat32Input) {
@@ -35,7 +35,7 @@ TEST(SiluMulInference, RejectsNonFloat32Input) {
     };
     const Status status = InferOperator(OpType::kSiluMul, OpParams{SiluMulParams{}}, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(SiluMulInference, RejectsStaticIncompatibleBroadcast) {
@@ -45,7 +45,7 @@ TEST(SiluMulInference, RejectsStaticIncompatibleBroadcast) {
     };
     const Status status = InferOperator(OpType::kSiluMul, OpParams{SiluMulParams{}}, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(SiluMulInference, RejectsUnrankedInput) {
@@ -55,7 +55,7 @@ TEST(SiluMulInference, RejectsUnrankedInput) {
     };
     const Status status = InferOperator(OpType::kSiluMul, OpParams{SiluMulParams{}}, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(SiluMulInference, AcceptsSameShape) {
@@ -107,7 +107,7 @@ TEST(SiluMulInference, InferOperatorRejectsNonFloat32) {
     };
     const StatusOr<InferenceResult> inference = InferOperator(OpType::kSiluMul, OpParams{SiluMulParams{}}, inputs);
     EXPECT_FALSE(inference.ok());
-    EXPECT_EQ(inference.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(inference.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(SiluMulInference, InfersSameShapeOutput) {
@@ -250,7 +250,7 @@ TEST(SiluMulInference, RejectsMixedDTypes) {
     std::vector<TensorSpec> inputs = {gate, up};
     auto result = InferOperator(OpType::kSiluMul, SiluMulParams{}, inputs);
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(result.status().message().find("same dtype"), std::string::npos);
 }
 

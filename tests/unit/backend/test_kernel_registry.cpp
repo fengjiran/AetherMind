@@ -50,14 +50,14 @@ TEST(KernelRegistry, PackedDefRequiresValidRecipeAlignment) {
             .layout = PackingLayout::kCpuIdentity,
             .alignment = alignof(void*) / 2U,
     };
-    EXPECT_EQ(ValidateKernelDef(descriptor).code(),
+    EXPECT_EQ(ValidateKernelDef(descriptor),
               StatusCode::kInvalidArgument);
 
     descriptor.packing_recipe.alignment = alignof(void*);
     EXPECT_TRUE(ValidateKernelDef(descriptor).ok());
 
     descriptor.selector.weight_format = WeightFormat::kPlain;
-    EXPECT_EQ(ValidateKernelDef(descriptor).code(),
+    EXPECT_EQ(ValidateKernelDef(descriptor),
               StatusCode::kInvalidArgument);
 }
 
@@ -78,7 +78,7 @@ TEST(KernelRegistry, RegisterRejectsUnspecifiedPackedLayout) {
     descriptor.selector.weight_format = WeightFormat::kPacked;
     descriptor.packing_recipe = {.layout = PackingLayout::kNone, .alignment = 64};
 
-    EXPECT_EQ(registry.Register(descriptor).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(registry.Register(descriptor), StatusCode::kInvalidArgument);
 }
 
 TEST(KernelRegistry, RegisterRejectsUnknownPackedLayout) {
@@ -89,7 +89,7 @@ TEST(KernelRegistry, RegisterRejectsUnknownPackedLayout) {
             .layout = static_cast<PackingLayout>(0xFF),
             .alignment = 64};
 
-    EXPECT_EQ(registry.Register(descriptor).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(registry.Register(descriptor), StatusCode::kInvalidArgument);
 }
 
 TEST(KernelRegistry, RegisterRejectsUnknownLayoutForPlainWeights) {
@@ -97,7 +97,7 @@ TEST(KernelRegistry, RegisterRejectsUnknownLayoutForPlainWeights) {
     KernelDef descriptor = MakeTestKernelDef();
     descriptor.packing_recipe.layout = static_cast<PackingLayout>(0xFF);
 
-    EXPECT_EQ(registry.Register(descriptor).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(registry.Register(descriptor), StatusCode::kInvalidArgument);
 }
 
 TEST(KernelRegistry, FindCandidatesReturnsStructuralMatches) {
@@ -129,7 +129,7 @@ TEST(KernelRegistry, FindCandidatesRejectsUnknownOpType) {
     const auto candidates = registry.FindCandidates(OpType::kUnknown, MakeMissingSelector());
 
     ASSERT_FALSE(candidates.ok());
-    EXPECT_EQ(candidates.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(candidates.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(KernelRegistry, FindCandidatesBeforeFreezeFails) {
@@ -139,7 +139,7 @@ TEST(KernelRegistry, FindCandidatesBeforeFreezeFails) {
     ASSERT_TRUE(registry.Register(descriptor).ok());
 
     const auto candidates = registry.FindCandidates(OpType::kRmsNorm, descriptor.selector);
-    EXPECT_EQ(candidates.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(candidates.status(), StatusCode::kFailedPrecondition);
 }
 
 TEST(KernelRegistry, FindByOpTypeBeforeFreezeFails) {
@@ -149,7 +149,7 @@ TEST(KernelRegistry, FindByOpTypeBeforeFreezeFails) {
     ASSERT_TRUE(registry.Register(descriptor).ok());
 
     const auto found = registry.FindByOpType(OpType::kRmsNorm);
-    EXPECT_EQ(found.status().code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(found.status(), StatusCode::kFailedPrecondition);
 }
 
 TEST(KernelRegistry, RegisterAfterFreezeFails) {
@@ -165,7 +165,7 @@ TEST(KernelRegistry, RegisterAfterFreezeFails) {
     extra.name = "test::other_op";
 
     const Status status = registry.Register(extra);
-    EXPECT_EQ(status.code(), StatusCode::kFailedPrecondition);
+    EXPECT_EQ(status, StatusCode::kFailedPrecondition);
 }
 
 TEST(KernelRegistry, DuplicateRegistrationFails) {
@@ -173,7 +173,7 @@ TEST(KernelRegistry, DuplicateRegistrationFails) {
     const KernelDef descriptor = MakeTestKernelDef();
 
     ASSERT_TRUE(registry.Register(descriptor).ok());
-    EXPECT_EQ(registry.Register(descriptor).code(), StatusCode::kAlreadyExists);
+    EXPECT_EQ(registry.Register(descriptor), StatusCode::kAlreadyExists);
 }
 
 TEST(KernelRegistry, RegisterRejectsEmptyKernelName) {
@@ -183,7 +183,7 @@ TEST(KernelRegistry, RegisterRejectsEmptyKernelName) {
 
     const Status status = registry.Register(descriptor);
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(KernelRegistry, RegisterRejectsCpuRequirementsForNonCpuKernel) {
@@ -194,7 +194,7 @@ TEST(KernelRegistry, RegisterRejectsCpuRequirementsForNonCpuKernel) {
 
     const Status status = registry.Register(descriptor);
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(KernelRegistry, FindByOpTypeReturnsMatchingDefs) {

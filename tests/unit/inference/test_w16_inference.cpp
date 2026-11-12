@@ -258,7 +258,7 @@ TEST_P(W16Inference, HandlesEosStoppingAndExactKvCapacity) {
 
     const auto over = session->Generate(prompt, {.max_new_tokens = 7});
     ASSERT_FALSE(over.ok());
-    EXPECT_EQ(over.status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(over.status(), StatusCode::kOutOfRange);
 
     const auto retry = session->Generate(prompt, {.max_new_tokens = 6});
     ASSERT_TRUE(retry.ok()) << retry.status().ToString();
@@ -517,7 +517,7 @@ TEST_F(W16Preparation, BudgetRejectsBeforeNormCallbackAndAcceptsExactManagedPayl
         options.limits.max_model_payload_bytes = pair.converted_norm_bytes - 1;
         const auto rejected = ExecutableModel::Load(runtime, pair.source, options);
         ASSERT_FALSE(rejected.ok());
-        EXPECT_EQ(rejected.status().code(), StatusCode::kResourceExhausted);
+        EXPECT_EQ(rejected.status(), StatusCode::kResourceExhausted);
         EXPECT_TRUE(stats->requests.empty());
         EXPECT_EQ(ConversionCalls::fp16_calls + ConversionCalls::bf16_calls, 0U);
         options.limits.max_model_payload_bytes = 0;
@@ -540,7 +540,7 @@ TEST_F(W16Preparation, NormAllocationFailureAllowsLoadRetryAndGenerate) {
         stats->fail_on_call = 1;
         const auto failed = ExecutableModel::Load(runtime, pair.source, W16Options(bfloat16));
         ASSERT_FALSE(failed.ok());
-        EXPECT_EQ(failed.status().code(), StatusCode::kResourceExhausted);
+        EXPECT_EQ(failed.status(), StatusCode::kResourceExhausted);
         EXPECT_EQ(stats->requests.size(), 2U);
         stats->fail_on_call = std::numeric_limits<size_t>::max();
         auto retried = ExecutableModel::Load(runtime, pair.source, W16Options(bfloat16));
@@ -567,7 +567,7 @@ TEST_F(W16Preparation, KnownHintsPreserveActualDtypeAdmission) {
             stats->requests.clear();
             const auto wrong_matrix = ExecutableModel::Load(runtime, pair.source, W16Options(!bfloat16));
             ASSERT_FALSE(wrong_matrix.ok());
-            EXPECT_EQ(wrong_matrix.status().code(), StatusCode::kUnimplemented);
+            EXPECT_EQ(wrong_matrix.status(), StatusCode::kUnimplemented);
             EXPECT_TRUE(stats->requests.empty());
         }
     }

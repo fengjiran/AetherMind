@@ -25,7 +25,7 @@ TEST(ElementwiseMulInference, RejectsWrongArity) {
     };
     const Status status = InferOperator(OpType::kElementwiseMul, OpParams{ElementwiseMulParams{}}, std::span(inputs)).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ElementwiseMulInference, RejectsNonFloat32Input) {
@@ -35,7 +35,7 @@ TEST(ElementwiseMulInference, RejectsNonFloat32Input) {
     };
     const Status status = InferOperator(OpType::kElementwiseMul, OpParams{ElementwiseMulParams{}}, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ElementwiseMulInference, RejectsStaticIncompatibleBroadcast) {
@@ -45,7 +45,7 @@ TEST(ElementwiseMulInference, RejectsStaticIncompatibleBroadcast) {
     };
     const Status status = InferOperator(OpType::kElementwiseMul, OpParams{ElementwiseMulParams{}}, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ElementwiseMulInference, RejectsUnrankedInput) {
@@ -55,7 +55,7 @@ TEST(ElementwiseMulInference, RejectsUnrankedInput) {
     };
     const Status status = InferOperator(OpType::kElementwiseMul, OpParams{ElementwiseMulParams{}}, inputs).status();
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 TEST(ElementwiseMulInference, AcceptsSameShape) {
@@ -107,7 +107,7 @@ TEST(ElementwiseMulInference, InferOperatorRejectsNonFloat32) {
     };
     const StatusOr<InferenceResult> inference = InferOperator(OpType::kElementwiseMul, OpParams{ElementwiseMulParams{}}, inputs);
     EXPECT_FALSE(inference.ok());
-    EXPECT_EQ(inference.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(inference.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ElementwiseMulInference, InfersSameShapeOutput) {

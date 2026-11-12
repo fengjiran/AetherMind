@@ -163,14 +163,13 @@ TEST_P(EmbeddingW16Kernel, RequiresExplicitFloat32OutputParams) {
                                   .weight_dtype = WeightDType(GetParam()),
                                   .weight_format = WeightFormat::kPlain,
                                   .phase = ExecPhase::kBoth};
-    EXPECT_EQ(backend.PrepareKernel(OpType::kEmbedding, selector, EmbeddingParams{}).status().code(),
+    EXPECT_EQ(backend.PrepareKernel(OpType::kEmbedding, selector, EmbeddingParams{}).status(),
               StatusCode::kInvalidArgument);
-    EXPECT_EQ(backend.PrepareKernel(OpType::kEmbedding, selector, LinearParams{}).status().code(),
+    EXPECT_EQ(backend.PrepareKernel(OpType::kEmbedding, selector, LinearParams{}).status(),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(backend.PrepareKernel(OpType::kEmbedding, selector,
                                     EmbeddingParams{.output_dtype = DataType::Float(16)})
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kInvalidArgument);
 }
 
@@ -262,7 +261,7 @@ TEST_P(EmbeddingW16Kernel, OutOfRangeTokenPreservesPreviouslyCompletedRows) {
             GetParam(), {TensorView(tokens.data(), DataType::Int(64), token_shape, token_stride),
                          TensorView(weight.data(), WeightDType(GetParam()), weight_shape, weight_stride),
                          MutableTensorView(output.data(), DataType::Float32(), output_shape, output_stride)});
-    EXPECT_EQ(status.code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(status, StatusCode::kOutOfRange);
     EXPECT_EQ(output[0], WideningOracle(weight[2], GetParam()));
     EXPECT_EQ(output[1], WideningOracle(weight[3], GetParam()));
     EXPECT_TRUE(std::all_of(output.begin() + 2, output.end(), [](uint32_t bits) { return bits == 0xDEADBEEFU; }));
@@ -279,7 +278,7 @@ TEST_P(EmbeddingW16Kernel, RejectsUnsignedTokenAboveVocabularyWithoutWriting) {
             GetParam(), {TensorView(&token, DataType::UInt(32), token_shape, token_stride),
                          TensorView(weight.data(), WeightDType(GetParam()), weight_shape, weight_stride),
                          MutableTensorView(output.data(), DataType::Float32(), output_shape, output_stride)});
-    EXPECT_EQ(status.code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(status, StatusCode::kOutOfRange);
     EXPECT_EQ(output, (std::array<uint32_t, 2>{0xDEADBEEFU, 0xDEADBEEFU}));
 }
 
@@ -295,17 +294,14 @@ TEST_P(EmbeddingW16Kernel, RejectsMismatchedWeightDtypeAndInvalidOutputGeometry)
     const TensorView tokens(&token, DataType::Int(64), token_shape, token_stride);
     const MutableTensorView output_view(output.data(), DataType::Float32(), output_shape, output_stride);
     EXPECT_EQ(RunEmbeddingW16(GetParam(),
-                              {tokens, TensorView(weight.data(), WeightDType(!GetParam()), weight_shape, weight_stride), output_view})
-                      .code(),
+                              {tokens, TensorView(weight.data(), WeightDType(!GetParam()), weight_shape, weight_stride), output_view}),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(RunEmbeddingW16(GetParam(),
-                              {tokens, TensorView(weight.data(), WeightDType(GetParam()), weight_shape, strided_weight_stride), output_view})
-                      .code(),
+                              {tokens, TensorView(weight.data(), WeightDType(GetParam()), weight_shape, strided_weight_stride), output_view}),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(RunEmbeddingW16(GetParam(),
                               {tokens, TensorView(weight.data(), WeightDType(GetParam()), weight_shape, weight_stride),
-                               MutableTensorView(output.data(), DataType::Float32(), wrong_output_shape, wrong_output_stride)})
-                      .code(),
+                               MutableTensorView(output.data(), DataType::Float32(), wrong_output_shape, wrong_output_stride)}),
               StatusCode::kInvalidArgument);
 }
 
@@ -319,14 +315,12 @@ TEST_P(EmbeddingW16Kernel, RejectsOutputOverlappingWeightOrTokens) {
     EXPECT_EQ(RunEmbeddingW16(GetParam(),
                               {TensorView(&token, DataType::Int(64), token_shape, token_stride),
                                TensorView(storage.data(), WeightDType(GetParam()), weight_shape, weight_stride),
-                               MutableTensorView(storage.data() + 2, DataType::Float32(), output_shape, output_stride)})
-                      .code(),
+                               MutableTensorView(storage.data() + 2, DataType::Float32(), output_shape, output_stride)}),
               StatusCode::kInvalidArgument);
     EXPECT_EQ(RunEmbeddingW16(GetParam(),
                               {TensorView(storage.data(), DataType::Int(64), token_shape, token_stride),
                                TensorView(weight.data(), WeightDType(GetParam()), weight_shape, weight_stride),
-                               MutableTensorView(storage.data() + 4, DataType::Float32(), output_shape, output_stride)})
-                      .code(),
+                               MutableTensorView(storage.data() + 4, DataType::Float32(), output_shape, output_stride)}),
               StatusCode::kInvalidArgument);
 }
 
@@ -360,7 +354,7 @@ TEST_P(EmbeddingW16Kernel, RejectsAddressRangeOverflowBeforeReadingOrWriting) {
             GetParam(), {TensorView(&token, DataType::Int(64), token_shape, token_stride),
                          TensorView(invalid_weight, WeightDType(GetParam()), weight_shape, weight_stride),
                          MutableTensorView(output.data(), DataType::Float32(), output_shape, output_stride)});
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_EQ(output, (std::array<uint32_t, 2>{0xDEADBEEFU, 0xDEADBEEFU}));
 }
 
@@ -493,14 +487,13 @@ TEST_P(EmbeddingW16Kernel, PackedIdentityGathersWidenedRowsAndRejectsFp32Artifac
             .alignment = (*packed)->storage().alignment(),
     };
     EXPECT_EQ(kernel->params_builder(
-                            KernelParamsBuildContext{
-                                    .inputs = std::array<TensorView, 1>{tokens},
-                                    .outputs = std::array<MutableTensorView, 1>{output_view},
-                                    .attrs = kernel->attrs,
-                                    .packed_weight = wrong_dtype,
-                            },
-                            storage.data())
-                      .code(),
+                      KernelParamsBuildContext{
+                              .inputs = std::array<TensorView, 1>{tokens},
+                              .outputs = std::array<MutableTensorView, 1>{output_view},
+                              .attrs = kernel->attrs,
+                              .packed_weight = wrong_dtype,
+                      },
+                      storage.data()),
               StatusCode::kInvalidArgument);
 }
 

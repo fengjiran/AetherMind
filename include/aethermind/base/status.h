@@ -22,6 +22,7 @@
 #include "c_api.h"
 
 #include <concepts>
+#include <iosfwd>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -403,6 +404,16 @@ private:
     StatusCode code_;
     std::string message_;
 };
+
+/// @brief Streams the same text as `Status::ToString()`.
+///
+/// Declared with `<iosfwd>` and defined out of line so this widely included
+/// header does not pull in `<ostream>`. Test frameworks also use it to print
+/// Status operands instead of a raw byte dump.
+/// @param os Destination stream.
+/// @param status Status to format.
+/// @return `os`.
+std::ostream& operator<<(std::ostream& os, const Status& status);
 
 template<typename T>
 class StatusOr;

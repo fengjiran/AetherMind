@@ -341,15 +341,15 @@ TEST(Bf16BatchConversion, InvalidRangesAreRejectedBeforeWriting) {
     const auto original = bytes;
     const auto src = std::span<const std::byte>(bytes);
     auto dst = std::span(bytes);
-    EXPECT_EQ(ConvertBf16ToFp32(src.first(3), dst.subspan(32, 4)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToBf16(src.first(3), dst.subspan(32, 2)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertBf16ToFp32(src.first(4), dst.subspan(32, 4)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToBf16(src.first(8), dst.subspan(32, 8)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertBf16ToFp32({}, dst.first(2)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToBf16({}, dst.first(2)).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertBf16ToFp32(src.first(3), dst.subspan(32, 4)), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToBf16(src.first(3), dst.subspan(32, 2)), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertBf16ToFp32(src.first(4), dst.subspan(32, 4)), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToBf16(src.first(8), dst.subspan(32, 8)), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertBf16ToFp32({}, dst.first(2)), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToBf16({}, dst.first(2)), StatusCode::kInvalidArgument);
     const Bf16ConversionFuncs missing{nullptr, nullptr};
-    EXPECT_EQ(ConvertBf16ToFp32(src.first(4), dst.subspan(32, 8), missing).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToBf16(src.first(8), dst.subspan(32, 4), missing).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertBf16ToFp32(src.first(4), dst.subspan(32, 8), missing), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToBf16(src.first(8), dst.subspan(32, 4), missing), StatusCode::kInvalidArgument);
     EXPECT_EQ(bytes, original);
 }
 
@@ -359,12 +359,12 @@ TEST(Bf16BatchConversion, OverlapInEitherAddressOrderIsRejectedBeforeWriting) {
     const auto original = bytes;
     const auto src = std::span<const std::byte>(bytes);
     auto dst = std::span(bytes);
-    EXPECT_EQ(ConvertBf16ToFp32(src.first(8), dst.first(16)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertBf16ToFp32(src.first(8), dst.subspan(1, 16)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertBf16ToFp32(src.subspan(8, 8), dst.first(16)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToBf16(src.first(16), dst.first(8)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToBf16(src.first(16), dst.subspan(1, 8)).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(ConvertFp32ToBf16(src.subspan(4, 16), dst.first(8)).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertBf16ToFp32(src.first(8), dst.first(16)), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertBf16ToFp32(src.first(8), dst.subspan(1, 16)), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertBf16ToFp32(src.subspan(8, 8), dst.first(16)), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToBf16(src.first(16), dst.first(8)), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToBf16(src.first(16), dst.subspan(1, 8)), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ConvertFp32ToBf16(src.subspan(4, 16), dst.first(8)), StatusCode::kInvalidArgument);
     EXPECT_EQ(bytes, original);
 }
 

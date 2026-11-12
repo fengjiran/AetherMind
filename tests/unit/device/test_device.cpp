@@ -50,17 +50,17 @@ TEST(Device, MakeCpuValidIndices) {
 TEST(Device, MakeRejectsInvalidIndex) {
     StatusOr<Device> negative = Device::Make(kCPU, -2);
     EXPECT_FALSE(negative.ok());
-    EXPECT_EQ(negative.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(negative.status(), StatusCode::kInvalidArgument);
 
     StatusOr<Device> positive = Device::Make(kCPU, 1);
     EXPECT_FALSE(positive.ok());
-    EXPECT_EQ(positive.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(positive.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(Device, MakeRejectsUndefinedType) {
     StatusOr<Device> undefined = Device::Make(kUndefined, -1);
     EXPECT_FALSE(undefined.ok());
-    EXPECT_EQ(undefined.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(undefined.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(Device, MakeAcceptsKnownKinds) {

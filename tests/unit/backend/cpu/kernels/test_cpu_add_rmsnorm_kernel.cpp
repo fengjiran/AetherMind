@@ -397,7 +397,7 @@ TEST(CPUKernelAddRmsNorm, ZeroRowsValidateMetadataButNeedNoStorage) {
     PackedWeightView wrong_recipe =
             MakeIdentityPackedWeight(nullptr, 3 * sizeof(float), weight_shape);
     wrong_recipe.recipe_layout = PackingLayout::kCpuBPanelF32Kc512Nr16;
-    EXPECT_EQ(BuildPackedPreparedParams(*packed, views, wrong_recipe).status().code(),
+    EXPECT_EQ(BuildPackedPreparedParams(*packed, views, wrong_recipe).status(),
               StatusCode::kInvalidArgument);
 
     const size_t excessive_nbytes =
@@ -405,8 +405,7 @@ TEST(CPUKernelAddRmsNorm, ZeroRowsValidateMetadataButNeedNoStorage) {
     EXPECT_EQ(BuildPackedPreparedParams(
                       *packed, views,
                       MakeIdentityPackedWeight(nullptr, excessive_nbytes, weight_shape))
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kOverflow);
 }
 
@@ -435,35 +434,34 @@ TEST(CPUKernelAddRmsNorm, RejectsInvalidMetadataShapesLayoutsAndPointers) {
     const std::array<TensorView, 3> inputs{valid.input, valid.residual, valid.weight};
     const std::array<MutableTensorView, 2> outputs{valid.output, valid.new_residual};
     EXPECT_EQ(kernel->params_builder(
-                            KernelParamsBuildContext{.inputs = inputs, .outputs = outputs},
-                            prepared.storage.data())
-                      .code(),
+                      KernelParamsBuildContext{.inputs = inputs, .outputs = outputs},
+                      prepared.storage.data()),
               StatusCode::kInvalidArgument);
 
     AddRmsNormTestViews wrong_dtype = valid;
     wrong_dtype.residual = TensorView(residual, DataType::Float(16), shape, strides, 64);
-    EXPECT_EQ(BuildPlainPreparedParams(*kernel, wrong_dtype).status().code(),
+    EXPECT_EQ(BuildPlainPreparedParams(*kernel, wrong_dtype).status(),
               StatusCode::kInvalidArgument);
 
     constexpr std::array<int64_t, 2> wrong_shape{1, 2};
     AddRmsNormTestViews wrong_activation_shape = valid;
     wrong_activation_shape.residual = TensorView(residual, DataType::Float32(), wrong_shape,
                                                  strides, 64);
-    EXPECT_EQ(BuildPlainPreparedParams(*kernel, wrong_activation_shape).status().code(),
+    EXPECT_EQ(BuildPlainPreparedParams(*kernel, wrong_activation_shape).status(),
               StatusCode::kInvalidArgument);
 
     constexpr std::array<int64_t, 2> rank_two_weight_shape{1, 3};
     AddRmsNormTestViews wrong_weight = valid;
     wrong_weight.weight = TensorView(weight, DataType::Float32(), rank_two_weight_shape,
                                      strides, 64);
-    EXPECT_EQ(BuildPlainPreparedParams(*kernel, wrong_weight).status().code(),
+    EXPECT_EQ(BuildPlainPreparedParams(*kernel, wrong_weight).status(),
               StatusCode::kInvalidArgument);
 
     // TensorView forbids constructing a non-empty null-data view, so this
     // represents the only untrusted null/default view reaching the builder.
     AddRmsNormTestViews invalid_input = valid;
     invalid_input.input = TensorView{};
-    EXPECT_EQ(BuildPlainPreparedParams(*kernel, invalid_input).status().code(),
+    EXPECT_EQ(BuildPlainPreparedParams(*kernel, invalid_input).status(),
               StatusCode::kInvalidArgument);
 
     constexpr std::array<int64_t, 3> noncollapsible_shape{2, 2, 3};
@@ -479,7 +477,7 @@ TEST(CPUKernelAddRmsNorm, RejectsInvalidMetadataShapesLayoutsAndPointers) {
             .new_residual = MutableTensorView(new_residual, DataType::Float32(),
                                               noncollapsible_shape, noncollapsible_strides, 64),
     };
-    EXPECT_EQ(BuildPlainPreparedParams(*kernel, noncollapsible).status().code(),
+    EXPECT_EQ(BuildPlainPreparedParams(*kernel, noncollapsible).status(),
               StatusCode::kUnimplemented);
 
     constexpr std::array<int64_t, 2> two_row_shape{2, 3};
@@ -493,7 +491,7 @@ TEST(CPUKernelAddRmsNorm, RejectsInvalidMetadataShapesLayoutsAndPointers) {
             TensorView(residual, DataType::Float32(), two_row_shape, strides, 64);
     overlapping_rows.new_residual = MutableTensorView(new_residual, DataType::Float32(),
                                                       two_row_shape, strides, 64);
-    EXPECT_EQ(BuildPlainPreparedParams(*kernel, overlapping_rows).status().code(),
+    EXPECT_EQ(BuildPlainPreparedParams(*kernel, overlapping_rows).status(),
               StatusCode::kInvalidArgument);
 
     constexpr std::array<int64_t, 2> overflowing_shape{2, 3};
@@ -512,7 +510,7 @@ TEST(CPUKernelAddRmsNorm, RejectsInvalidMetadataShapesLayoutsAndPointers) {
             .new_residual = MutableTensorView(new_residual, DataType::Float32(),
                                               overflowing_shape, overflowing_strides, 64),
     };
-    EXPECT_EQ(BuildPlainPreparedParams(*kernel, overflowing_rows).status().code(),
+    EXPECT_EQ(BuildPlainPreparedParams(*kernel, overflowing_rows).status(),
               StatusCode::kInvalidArgument);
 
     const auto packed_kernel = PrepareAddRmsNormKernel(WeightFormat::kPacked);
@@ -520,8 +518,7 @@ TEST(CPUKernelAddRmsNorm, RejectsInvalidMetadataShapesLayoutsAndPointers) {
     EXPECT_EQ(BuildPackedPreparedParams(
                       *packed_kernel, valid,
                       MakeIdentityPackedWeight(nullptr, sizeof(weight), weight_shape))
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kInvalidArgument);
 }
 
@@ -550,7 +547,7 @@ TEST(CPUKernelAddRmsNorm, RejectsPlainAndPackedOutputAliases) {
         plain_alias.output = MutableTensorView(output_data, DataType::Float32(), shape, strides, 64);
         plain_alias.new_residual =
                 MutableTensorView(new_residual_data, DataType::Float32(), shape, strides, 64);
-        EXPECT_EQ(BuildPlainPreparedParams(*plain, plain_alias).status().code(),
+        EXPECT_EQ(BuildPlainPreparedParams(*plain, plain_alias).status(),
                   StatusCode::kInvalidArgument);
     };
     expect_plain_alias_rejected(input, new_residual);    // output/input
@@ -574,8 +571,7 @@ TEST(CPUKernelAddRmsNorm, RejectsPlainAndPackedOutputAliases) {
     EXPECT_EQ(BuildPackedPreparedParams(
                       *packed, packed_output_alias,
                       MakeIdentityPackedWeight(packed_weight, sizeof(packed_weight), weight_shape))
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kInvalidArgument);
 
     packed_output_alias.output = MutableTensorView(output, DataType::Float32(), shape, strides,
@@ -585,8 +581,7 @@ TEST(CPUKernelAddRmsNorm, RejectsPlainAndPackedOutputAliases) {
     EXPECT_EQ(BuildPackedPreparedParams(
                       *packed, packed_output_alias,
                       MakeIdentityPackedWeight(packed_weight, sizeof(packed_weight), weight_shape))
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kInvalidArgument);
 }
 
@@ -612,7 +607,7 @@ TEST(CPUKernelAddRmsNorm, ReportsUnimplementedForPackedWeightInOutputStrideHole)
                                                                      contiguous_strides, 64)},
                                   MakeIdentityPackedWeight(output_storage + 1, 2 * sizeof(float), weight_shape))
                                   .status();
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(status, StatusCode::kUnimplemented);
 }
 
 TEST(CPUKernelAddRmsNorm, PreparedParamsExecuteRepeatedlyWithoutRevalidation) {

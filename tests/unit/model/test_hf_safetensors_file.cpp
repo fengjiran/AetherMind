@@ -146,7 +146,7 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsInvalidHeaderLength) {
     const auto file = HfSafetensorsFile::Open(path);
 
     ASSERT_FALSE(file.ok());
-    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(file.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfSafetensorsFileTest, RejectsMalformedHeaderJson) {
@@ -157,7 +157,7 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsMalformedHeaderJson) {
     const auto file = HfSafetensorsFile::Open(path);
 
     ASSERT_FALSE(file.ok());
-    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(file.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfSafetensorsFileTest, RejectsUnknownDType) {
@@ -171,7 +171,7 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsUnknownDType) {
     const auto file = HfSafetensorsFile::Open(path);
 
     ASSERT_FALSE(file.ok());
-    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(file.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfSafetensorsFileTest, RejectsOutOfRangeTensorOffsets) {
@@ -185,7 +185,7 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsOutOfRangeTensorOffsets) {
     const auto file = HfSafetensorsFile::Open(path);
 
     ASSERT_FALSE(file.ok());
-    EXPECT_EQ(file.status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(file.status(), StatusCode::kOutOfRange);
 }
 
 TEST(ModelLoader_HfSafetensorsFileTest, RejectsShapeByteSizeMismatch) {
@@ -199,7 +199,7 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsShapeByteSizeMismatch) {
     const auto file = HfSafetensorsFile::Open(path);
 
     ASSERT_FALSE(file.ok());
-    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(file.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfSafetensorsFileTest, FindReturnsNullptrForUnknownTensor) {
@@ -270,7 +270,7 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsEmptyHeaderWithTrailingDataBytes)
     const auto file = HfSafetensorsFile::Open(path);
 
     ASSERT_FALSE(file.ok());
-    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(file.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(file.status().message().find("no tensor entries"),
               std::string::npos);
 }
@@ -286,7 +286,7 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsMetadataOnlyHeaderWithTrailingDat
     const auto file = HfSafetensorsFile::Open(path);
 
     ASSERT_FALSE(file.ok());
-    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(file.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(file.status().message().find("no tensor entries"),
               std::string::npos);
 }
@@ -301,7 +301,7 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsShapeNumelOverflow) {
     const auto file = HfSafetensorsFile::Open(path);
 
     ASSERT_FALSE(file.ok());
-    EXPECT_EQ(file.status().code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(file.status(), StatusCode::kOutOfRange);
     EXPECT_NE(file.status().message().find("Integer overflow while computing safetensors shape"),
               std::string::npos);
 }
@@ -320,7 +320,7 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsHeaderExceedingMaxSize) {
     const auto file = HfSafetensorsFile::Open(path);
 
     ASSERT_FALSE(file.ok());
-    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(file.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(file.status().message().find("header exceeds maximum size"),
               std::string::npos);
 }
@@ -331,7 +331,7 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsMissingShapeInsteadOfTreatingItAs
     const auto path = WriteSafetensorsFile(
             temp_dir.Path(), R"({"w":{"dtype":"F32","data_offsets":[0,4]}})", bytes);
     const auto file = HfSafetensorsFile::Open(path);
-    EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(file.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(file.status().message().find("missing required 'shape'"), std::string::npos);
 }
 
@@ -361,7 +361,7 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsDuplicateTensorFields) {
         const auto path = WriteSafetensorsFile(
                 temp_dir.Path(), "{\"w\":" + std::string(entry) + "}", bytes);
         const auto file = HfSafetensorsFile::Open(path);
-        EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(file.status(), StatusCode::kInvalidArgument);
         EXPECT_NE(file.status().message().find("Duplicate"), std::string::npos);
     }
 }
@@ -375,7 +375,7 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsDuplicateHeaderKeys) {
         SCOPED_TRACE(header);
         TempDirectory temp_dir;
         const auto file = HfSafetensorsFile::Open(WriteSafetensorsFile(temp_dir.Path(), header, {}));
-        EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(file.status(), StatusCode::kInvalidArgument);
         EXPECT_NE(file.status().message().find("Duplicate"), std::string::npos);
     }
 }
@@ -395,7 +395,7 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsMetadataOutsideStringMapContract)
         TempDirectory temp_dir;
         const std::string header = "{\"__metadata__\":" + std::string(value) + "}";
         const auto file = HfSafetensorsFile::Open(WriteSafetensorsFile(temp_dir.Path(), header, {}));
-        EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(file.status(), StatusCode::kInvalidArgument);
     }
 }
 
@@ -412,7 +412,7 @@ TEST(ModelLoader_HfSafetensorsFileTest, RejectsTrailingContentAfterEmptyHeader) 
     for (const std::string_view header: {"{} garbage", "{}{}"}) {
         TempDirectory temp_dir;
         const auto file = HfSafetensorsFile::Open(WriteSafetensorsFile(temp_dir.Path(), header, {}));
-        EXPECT_EQ(file.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(file.status(), StatusCode::kInvalidArgument);
     }
 }
 

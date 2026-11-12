@@ -63,9 +63,9 @@ TEST(ModelLoader_HfJsonReaderTest, RejectsMalformedUnicodeEscapes) {
     for (const auto input: inputs) {
         SCOPED_TRACE(input);
         hf::HfJsonReader reader(input);
-        EXPECT_EQ(reader.ParseString().status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(reader.ParseString().status(), StatusCode::kInvalidArgument);
         hf::HfJsonReader skipped(input);
-        EXPECT_EQ(skipped.SkipValue().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(skipped.SkipValue(), StatusCode::kInvalidArgument);
     }
 }
 
@@ -74,9 +74,9 @@ TEST(ModelLoader_HfJsonReaderTest, RejectsUnescapedControlCharacters) {
         SCOPED_TRACE(static_cast<int>(control));
         const std::string json = "\"a" + std::string(1, control) + "b\"";
         hf::HfJsonReader reader(json);
-        EXPECT_EQ(reader.ParseString().status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(reader.ParseString().status(), StatusCode::kInvalidArgument);
         hf::HfJsonReader skipped(json);
-        EXPECT_EQ(skipped.SkipValue().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(skipped.SkipValue(), StatusCode::kInvalidArgument);
     }
 }
 
@@ -99,9 +99,9 @@ TEST(ModelLoader_HfJsonReaderTest, RejectsMalformedUtf8) {
         SCOPED_TRACE(::testing::PrintToString(input));
         const std::string json = "\"" + std::string(input) + "\"";
         hf::HfJsonReader reader(json);
-        EXPECT_EQ(reader.ParseString().status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(reader.ParseString().status(), StatusCode::kInvalidArgument);
         hf::HfJsonReader skipped(json);
-        EXPECT_EQ(skipped.SkipValue().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(skipped.SkipValue(), StatusCode::kInvalidArgument);
     }
 }
 
@@ -200,7 +200,7 @@ TEST(ModelLoader_HfJsonReaderTest, ExpectFailsWithContext) {
     const auto status = reader.Expect('{', "at start of value");
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("Expected '{' at start of value"),
               std::string::npos);
 }
@@ -211,7 +211,7 @@ TEST(ModelLoader_HfJsonReaderTest, RejectsNonStringValue) {
     const auto value = reader.ParseString();
 
     ASSERT_FALSE(value.ok());
-    EXPECT_EQ(value.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(value.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(value.status().message().find("Expected JSON string"),
               std::string::npos);
 }
@@ -423,9 +423,9 @@ TEST(ModelLoader_HfJsonReaderTest, RejectsNonJsonNumberSyntax) {
     for (const auto input: inputs) {
         SCOPED_TRACE(::testing::PrintToString(input));
         hf::HfJsonReader typed(input);
-        EXPECT_EQ(typed.ParseDouble().status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(typed.ParseDouble().status(), StatusCode::kInvalidArgument);
         hf::HfJsonReader skipped(input);
-        EXPECT_EQ(skipped.SkipValue().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(skipped.SkipValue(), StatusCode::kInvalidArgument);
     }
 }
 
@@ -460,12 +460,12 @@ TEST(ModelLoader_HfJsonReaderTest, IntegerReadersRejectNonIntegerTokensAndLeadin
     for (const std::string_view input: {"01", "00", "1.0", "1e0", "1x"}) {
         SCOPED_TRACE(input);
         hf::HfJsonReader signed_reader(input);
-        EXPECT_EQ(signed_reader.ParseInt64().status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(signed_reader.ParseInt64().status(), StatusCode::kInvalidArgument);
         hf::HfJsonReader unsigned_reader(input);
-        EXPECT_EQ(unsigned_reader.ParseUInt64().status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(unsigned_reader.ParseUInt64().status(), StatusCode::kInvalidArgument);
     }
     hf::HfJsonReader negative_zero("-0");
-    EXPECT_EQ(negative_zero.ParseUInt64().status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(negative_zero.ParseUInt64().status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfJsonReaderTest, IntegerReadersPreserveRangeChecks) {
@@ -479,10 +479,10 @@ TEST(ModelLoader_HfJsonReaderTest, IntegerReadersPreserveRangeChecks) {
     EXPECT_EQ(*max_value, std::numeric_limits<int64_t>::max());
     for (const std::string_view input: {"9223372036854775808", "-9223372036854775809"}) {
         hf::HfJsonReader reader(input);
-        EXPECT_EQ(reader.ParseInt64().status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(reader.ParseInt64().status(), StatusCode::kInvalidArgument);
     }
     hf::HfJsonReader unsigned_overflow("18446744073709551616");
-    EXPECT_EQ(unsigned_overflow.ParseUInt64().status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(unsigned_overflow.ParseUInt64().status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfJsonReaderTest, SkipsNumbersWithoutRequiringMachineRepresentation) {
@@ -490,7 +490,7 @@ TEST(ModelLoader_HfJsonReaderTest, SkipsNumbersWithoutRequiringMachineRepresenta
     for (const auto input: inputs) {
         SCOPED_TRACE(input);
         hf::HfJsonReader typed(input);
-        EXPECT_EQ(typed.ParseDouble().status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(typed.ParseDouble().status(), StatusCode::kInvalidArgument);
         hf::HfJsonReader skipped(input);
         EXPECT_TRUE(skipped.SkipValue().ok());
         EXPECT_TRUE(skipped.AtEnd());
@@ -521,7 +521,7 @@ TEST(ModelLoader_HfJsonReaderTest, AcceptsOnlyJsonWhitespace) {
     for (const char c: {'\f', '\v'}) {
         for (const auto& input: {std::string(1, c) + "[1]", "[1," + std::string(1, c) + "2]"}) {
             hf::HfJsonReader reader(input);
-            EXPECT_EQ(reader.SkipValue().code(), StatusCode::kInvalidArgument);
+            EXPECT_EQ(reader.SkipValue(), StatusCode::kInvalidArgument);
         }
     }
 }
@@ -529,11 +529,11 @@ TEST(ModelLoader_HfJsonReaderTest, AcceptsOnlyJsonWhitespace) {
 TEST(ModelLoader_HfJsonReaderTest, RejectsInvalidLiteralSuffixes) {
     for (const std::string_view input: {"truex", "false0", "truefalse"}) {
         hf::HfJsonReader typed(input);
-        EXPECT_EQ(typed.ParseBool().status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(typed.ParseBool().status(), StatusCode::kInvalidArgument);
     }
     for (const std::string_view input: {"truex", "false0", "nullx", "nulltrue"}) {
         hf::HfJsonReader skipped(input);
-        EXPECT_EQ(skipped.SkipValue().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(skipped.SkipValue(), StatusCode::kInvalidArgument);
     }
 }
 
@@ -542,7 +542,7 @@ TEST(ModelLoader_HfJsonReaderTest, ReportsByteOffsetForNumberSyntaxErrors) {
     for (const auto& [input, offset]: cases) {
         hf::HfJsonReader reader(input);
         const auto value = reader.ParseDouble();
-        EXPECT_EQ(value.status().code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(value.status(), StatusCode::kInvalidArgument);
         EXPECT_NE(value.status().message().find("at byte offset " + std::to_string(offset)), std::string::npos);
     }
 }
@@ -551,7 +551,7 @@ TEST(ModelLoader_HfJsonReaderTest, ReportsUtf8ByteOffsetForDelimiterErrors) {
     hf::HfJsonReader reader("\"\xe4\xb8\xad\" ?");
     ASSERT_TRUE(reader.ParseString().ok());
     const auto status = reader.Expect('[', "after string");
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
     EXPECT_NE(status.message().find("Expected '[' after string at byte offset 6"), std::string::npos);
 }
 
@@ -561,7 +561,7 @@ TEST(ModelLoader_HfJsonReaderTest, RejectsEveryTruncationOfNestedDocument) {
         SCOPED_TRACE(length);
         hf::HfJsonReader reader(json.substr(0, length));
         const auto status = reader.SkipValue();
-        EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+        EXPECT_EQ(status, StatusCode::kInvalidArgument);
         EXPECT_NE(status.message().find("at byte offset "), std::string::npos);
     }
     hf::HfJsonReader complete(json);
@@ -577,7 +577,7 @@ TEST(ModelLoader_HfJsonReaderTest, EnforcesExactScalarNestingBoundary) {
     EXPECT_TRUE(accepted.AtEnd());
     const std::string beyond_limit = "[" + within_limit + "]";
     hf::HfJsonReader rejected(beyond_limit);
-    EXPECT_EQ(rejected.SkipValue().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(rejected.SkipValue(), StatusCode::kInvalidArgument);
 }
 
 TEST(ModelLoader_HfJsonReaderTest, SkipsLongStringsAndNumbersWithoutAllocating) {

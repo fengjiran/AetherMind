@@ -968,7 +968,7 @@ TEST(ConstantFoldingPass, RejectsSiluMulInt32Inputs) {
     // Int32 inputs during validation, so the folding pipeline cannot
     // produce a valid output graph for invalid inputs.
     EXPECT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(ConstantFoldingPass, FoldsSiluMulThenAddChainedConstants) {

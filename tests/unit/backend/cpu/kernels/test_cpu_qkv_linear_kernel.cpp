@@ -120,13 +120,11 @@ TEST(CPUKernelQkvLinear, CpuBackendPreparesPackedF32ReferenceKernel) {
                              OpParams{QkvLinearParams{.q_out_features = 4,
                                                       .k_out_features = 2,
                                                       .v_out_features = 2}})
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kNotFound);
     EXPECT_FALSE(PrepareQkvKernel(4, 2, 2, true).ok());
     EXPECT_EQ(PrepareQkvKernel(std::numeric_limits<int64_t>::max(), 1, 0)
-                      .status()
-                      .code(),
+                      .status(),
               StatusCode::kOverflow);
 }
 
@@ -327,8 +325,7 @@ TEST(CPUKernelQkvLinear, RejectsInputOutputAndPackedWeightAliasing) {
             .value = MutableTensorView(value, DataType::Float32(), scalar_shape, scalar_strides, 64),
     };
     EXPECT_EQ(RunQkvEntry(*kernel, input_alias,
-                          MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape))
-                      .code(),
+                          MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape)),
               StatusCode::kInvalidArgument);
 
     alignas(64) float separate_input[3] = {1.0F, 2.0F, 3.0F};
@@ -339,8 +336,7 @@ TEST(CPUKernelQkvLinear, RejectsInputOutputAndPackedWeightAliasing) {
             .value = MutableTensorView(value, DataType::Float32(), scalar_shape, scalar_strides, 64),
     };
     EXPECT_EQ(RunQkvEntry(*kernel, packed_alias,
-                          MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape))
-                      .code(),
+                          MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape)),
               StatusCode::kInvalidArgument);
 
     alignas(64) float distinct_input[3] = {1.0F, 2.0F, 3.0F};
@@ -352,8 +348,7 @@ TEST(CPUKernelQkvLinear, RejectsInputOutputAndPackedWeightAliasing) {
             .value = MutableTensorView(value, DataType::Float32(), scalar_shape, scalar_strides, 64),
     };
     EXPECT_EQ(RunQkvEntry(*kernel, output_alias,
-                          MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape))
-                      .code(),
+                          MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape)),
               StatusCode::kInvalidArgument);
 }
 
@@ -380,33 +375,29 @@ TEST(CPUKernelQkvLinear, RejectsMalformedPackedMetadataAndTensorViews) {
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
 
     EXPECT_EQ(RunQkvEntry(*kernel, views,
-                          MakeIdentityPackedWeight(packed, sizeof(packed), wrong_packed_shape))
-                      .code(),
+                          MakeIdentityPackedWeight(packed, sizeof(packed), wrong_packed_shape)),
               StatusCode::kInvalidArgument);
 
     PackedWeightView wrong_recipe =
             MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape);
     wrong_recipe.recipe_layout = PackingLayout::kCpuBPanelF32Kc512Nr16;
-    EXPECT_EQ(RunQkvEntry(*kernel, views, wrong_recipe).code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(RunQkvEntry(*kernel, views, wrong_recipe), StatusCode::kInvalidArgument);
 
     EXPECT_EQ(RunQkvEntry(*kernel, views,
-                          MakeIdentityPackedWeight(packed, 2 * sizeof(float), packed_shape))
-                      .code(),
+                          MakeIdentityPackedWeight(packed, 2 * sizeof(float), packed_shape)),
               StatusCode::kInvalidArgument);
 
     QkvTestViews wrong_dtype = views;
     wrong_dtype.input = TensorView(input, DataType::Float(16), input_shape, input_strides, 64);
     EXPECT_EQ(RunQkvEntry(*kernel, wrong_dtype,
-                          MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape))
-                      .code(),
+                          MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape)),
               StatusCode::kInvalidArgument);
 
     QkvTestViews wrong_shape = views;
     wrong_shape.query = MutableTensorView(query, DataType::Float32(), wrong_output_shape,
                                           output_strides, 64);
     EXPECT_EQ(RunQkvEntry(*kernel, wrong_shape,
-                          MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape))
-                      .code(),
+                          MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape)),
               StatusCode::kInvalidArgument);
 
     constexpr std::array<int64_t, 0> scalar_shape{};
@@ -414,8 +405,7 @@ TEST(CPUKernelQkvLinear, RejectsMalformedPackedMetadataAndTensorViews) {
     QkvTestViews rank_zero = views;
     rank_zero.input = TensorView(input, DataType::Float32(), scalar_shape, scalar_strides, 64);
     EXPECT_EQ(RunQkvEntry(*kernel, rank_zero,
-                          MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape))
-                      .code(),
+                          MakeIdentityPackedWeight(packed, sizeof(packed), packed_shape)),
               StatusCode::kInvalidArgument);
 }
 
@@ -443,7 +433,7 @@ TEST(CPUKernelQkvLinear, ReportsUnimplementedForPackedStorageOnlyInOutputColumnH
                                         empty_strides, 64)},
             MakeIdentityPackedWeight(output_storage + 1, 2 * sizeof(float), packed_shape));
 
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(status, StatusCode::kUnimplemented);
 }
 
 TEST(CPUKernelQkvLinear, PackedArtifactParticipatesInDeferredShapeChecks) {
@@ -514,7 +504,7 @@ TEST(CPUKernelQkvLinear, PackedArtifactParticipatesInDeferredShapeChecks) {
                                                  input_strides, 64)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_FALSE(bindings.ok());
-    EXPECT_EQ(bindings.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(bindings.status(), StatusCode::kInvalidArgument);
 }
 
 class FloatRawStorage final : public RawStorage {

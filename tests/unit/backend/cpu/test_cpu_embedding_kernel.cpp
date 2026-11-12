@@ -249,19 +249,19 @@ TEST(EmbeddingKernel, PackedIdentityBuilderChecksZeroSizeMetadataAndAlias) {
                                    output_shape, output_stride);
     PackedWeightView wrong_recipe = packed_view;
     wrong_recipe.recipe_layout = PackingLayout::kCpuBPanelF32Kc512Nr16;
-    EXPECT_EQ(build(tokens, output, wrong_recipe).code(),
+    EXPECT_EQ(build(tokens, output, wrong_recipe),
               StatusCode::kInvalidArgument);
     constexpr std::array<int64_t, 2> wrong_shape{4, 4};
     PackedWeightView wrong_metadata = packed_view;
     wrong_metadata.logical_shape = wrong_shape;
-    EXPECT_EQ(build(tokens, output, wrong_metadata).code(),
+    EXPECT_EQ(build(tokens, output, wrong_metadata),
               StatusCode::kInvalidArgument);
 
     auto* const aliased_output_data = const_cast<float*>(
             static_cast<const float*>((*packed)->storage().data()));
     const MutableTensorView aliased_output(
             aliased_output_data, DataType::Float32(), output_shape, output_stride);
-    EXPECT_EQ(build(tokens, aliased_output, packed_view).code(),
+    EXPECT_EQ(build(tokens, aliased_output, packed_view),
               StatusCode::kInvalidArgument);
 }
 
@@ -387,7 +387,7 @@ TEST(EmbeddingKernel, RejectsOutputOverlappingWeight) {
             .output = MutableTensorView{storage.data() + 1, DataType::Float32(), output_shape, output_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(EmbeddingKernel, RejectsOutputOverlappingTokenIds) {
@@ -410,7 +410,7 @@ TEST(EmbeddingKernel, RejectsOutputOverlappingTokenIds) {
                                         DataType::Float32(), output_shape, output_strides},
     });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(EmbeddingKernel, AcceptsDisjointOutputInsideWeightAllocation) {
@@ -470,7 +470,7 @@ TEST(EmbeddingKernel, RejectsOutOfRangeTokenId) {
     const Status status = RunEmbedding(params);
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kOutOfRange);
+    EXPECT_EQ(status, StatusCode::kOutOfRange);
 }
 
 TEST(EmbeddingKernel, ComputesExpectedRowsWithRank2Tokens) {
@@ -565,7 +565,7 @@ TEST(EmbeddingKernel, RejectsOutputRankMismatchingTokenRank) {
     const Status status = RunEmbedding(params);
 
     ASSERT_FALSE(status.ok());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(status, StatusCode::kInvalidArgument);
 }
 
 // --- Supported token-id dtype contract test ---

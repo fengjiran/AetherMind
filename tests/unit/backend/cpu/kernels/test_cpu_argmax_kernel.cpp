@@ -304,7 +304,7 @@ TEST(CPUKernelArgmax, PrepareRejectsFloat16Selector) {
             MakeArgmaxSelector(DataType::Float(16)),
             OpParams{ArgmaxParams{.axis = -1}});
     ASSERT_FALSE(kernel.ok());
-    EXPECT_EQ(kernel.status().code(), StatusCode::kNotFound) << kernel.status().ToString();
+    EXPECT_EQ(kernel.status(), StatusCode::kNotFound) << kernel.status().ToString();
 }
 
 TEST(CPUKernelArgmax, PrepareRejectsBFloat16Selector) {
@@ -314,7 +314,7 @@ TEST(CPUKernelArgmax, PrepareRejectsBFloat16Selector) {
             MakeArgmaxSelector(DataType::BFloat(16)),
             OpParams{ArgmaxParams{.axis = -1}});
     ASSERT_FALSE(kernel.ok());
-    EXPECT_EQ(kernel.status().code(), StatusCode::kNotFound) << kernel.status().ToString();
+    EXPECT_EQ(kernel.status(), StatusCode::kNotFound) << kernel.status().ToString();
 }
 
 TEST(CPUKernelArgmaxEntry, PrepareRejectsWrongOpParams) {
@@ -324,7 +324,7 @@ TEST(CPUKernelArgmaxEntry, PrepareRejectsWrongOpParams) {
             MakeArgmaxSelector(),
             OpParams{RmsNormParams{.eps = 1.0e-5F}});
     ASSERT_FALSE(kernel.ok());
-    EXPECT_EQ(kernel.status().code(), StatusCode::kInvalidArgument)
+    EXPECT_EQ(kernel.status(), StatusCode::kInvalidArgument)
             << kernel.status().ToString();
 }
 
@@ -650,7 +650,7 @@ TEST(CPUKernelArgmaxEntry, ZeroReductionExtentIsRejected) {
                                                         .output_tensor = MutableTensorView{output, DataType::Int(64), output_shape,
                                                                                            output_strides},
                                                 });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
     EXPECT_EQ(output[0], kSentinel);
 }
 
@@ -668,7 +668,7 @@ TEST(CPUKernelArgmaxEntry, ZeroReductionExtentOnFirstAxisIsRejected) {
                                                        .output_tensor = MutableTensorView{output, DataType::Int(64), output_shape,
                                                                                           output_strides},
                                                });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelArgmaxEntry, RejectsRankZeroInput) {
@@ -679,7 +679,7 @@ TEST(CPUKernelArgmaxEntry, RejectsRankZeroInput) {
                                                        .input_tensor = TensorView{&input, DataType::Float32(), {}, {}},
                                                        .output_tensor = MutableTensorView{&output, DataType::Int(64), {}, {}},
                                                });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelArgmaxEntry, RejectsAxisBeyondInputRank) {
@@ -696,9 +696,9 @@ TEST(CPUKernelArgmaxEntry, RejectsAxisBeyondInputRank) {
                                                output_strides},
     };
 
-    EXPECT_EQ(RunArgmaxWithAxis(5, views).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(RunArgmaxWithAxis(-3, views).code(), StatusCode::kInvalidArgument);
-    EXPECT_EQ(RunArgmaxWithAxis(std::numeric_limits<int64_t>::min(), views).code(),
+    EXPECT_EQ(RunArgmaxWithAxis(5, views), StatusCode::kInvalidArgument);
+    EXPECT_EQ(RunArgmaxWithAxis(-3, views), StatusCode::kInvalidArgument);
+    EXPECT_EQ(RunArgmaxWithAxis(std::numeric_limits<int64_t>::min(), views),
               StatusCode::kInvalidArgument);
 }
 
@@ -717,7 +717,7 @@ TEST(CPUKernelArgmaxEntry, RejectsInvalidViews) {
                     .input_tensor = TensorView{},
                     .output_tensor = MutableTensorView{&output, DataType::Int(64), {}, {}},
             });
-    EXPECT_EQ(missing_input.code(), StatusCode::kInvalidArgument)
+    EXPECT_EQ(missing_input, StatusCode::kInvalidArgument)
             << missing_input.ToString();
 
     const Status missing_output = RunArgmaxEntryWith(
@@ -727,7 +727,7 @@ TEST(CPUKernelArgmaxEntry, RejectsInvalidViews) {
                                                input_strides},
                     .output_tensor = MutableTensorView{},
             });
-    EXPECT_EQ(missing_output.code(), StatusCode::kInvalidArgument)
+    EXPECT_EQ(missing_output, StatusCode::kInvalidArgument)
             << missing_output.ToString();
 }
 
@@ -752,7 +752,7 @@ TEST(CPUKernelArgmaxEntry, RejectsWrongArity) {
                                      .outputs = outputs,
                                      .attrs = kernel->attrs},
             prepared.storage.data());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelArgmaxEntry, RejectsMissingAttrs) {
@@ -772,7 +772,7 @@ TEST(CPUKernelArgmaxEntry, RejectsMissingAttrs) {
     const Status status = kernel->params_builder(
             KernelParamsBuildContext{.inputs = inputs, .outputs = outputs, .attrs = {}},
             prepared.storage.data());
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelArgmaxEntry, RejectsWrongInputDType) {
@@ -786,7 +786,7 @@ TEST(CPUKernelArgmaxEntry, RejectsWrongInputDType) {
                                                                                            input_strides},
                                                                 .output_tensor = MutableTensorView{&output, DataType::Int(64), {}, {}},
                                                         });
-    EXPECT_EQ(float64_status.code(), StatusCode::kInvalidArgument)
+    EXPECT_EQ(float64_status, StatusCode::kInvalidArgument)
             << float64_status.ToString();
 
     const Status float16_status = RunArgmaxWithAxis(-1, ArgmaxTestViews{
@@ -794,7 +794,7 @@ TEST(CPUKernelArgmaxEntry, RejectsWrongInputDType) {
                                                                                            input_strides},
                                                                 .output_tensor = MutableTensorView{&output, DataType::Int(64), {}, {}},
                                                         });
-    EXPECT_EQ(float16_status.code(), StatusCode::kInvalidArgument)
+    EXPECT_EQ(float16_status, StatusCode::kInvalidArgument)
             << float16_status.ToString();
 }
 
@@ -809,7 +809,7 @@ TEST(CPUKernelArgmaxEntry, RejectsWrongOutputDType) {
                                                                                    input_strides},
                                                         .output_tensor = MutableTensorView{&output, DataType::Int(32), {}, {}},
                                                 });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelArgmaxEntry, RejectsWrongOutputRank) {
@@ -826,7 +826,7 @@ TEST(CPUKernelArgmaxEntry, RejectsWrongOutputRank) {
                                                         .output_tensor = MutableTensorView{output, DataType::Int(64), output_shape,
                                                                                            output_strides},
                                                 });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelArgmaxEntry, RejectsWrongOutputShape) {
@@ -843,7 +843,7 @@ TEST(CPUKernelArgmaxEntry, RejectsWrongOutputShape) {
                                                         .output_tensor = MutableTensorView{output, DataType::Int(64), output_shape,
                                                                                            output_strides},
                                                 });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelArgmaxEntry, RejectsNonPositiveOutputStride) {
@@ -860,7 +860,7 @@ TEST(CPUKernelArgmaxEntry, RejectsNonPositiveOutputStride) {
                                                         .output_tensor = MutableTensorView{output, DataType::Int(64), output_shape,
                                                                                            output_strides},
                                                 });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelArgmaxEntry, RejectsProvenNonInjectiveOutputLayout) {
@@ -880,7 +880,7 @@ TEST(CPUKernelArgmaxEntry, RejectsProvenNonInjectiveOutputLayout) {
                                                         .output_tensor = MutableTensorView{output, DataType::Int(64), output_shape,
                                                                                            output_strides},
                                                 });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelArgmaxEntry, ReportsInjectiveIrregularOutputAsUnimplemented) {
@@ -901,7 +901,7 @@ TEST(CPUKernelArgmaxEntry, ReportsInjectiveIrregularOutputAsUnimplemented) {
                                                         .output_tensor = MutableTensorView{output.data(), DataType::Int(64), output_shape,
                                                                                            output_strides},
                                                 });
-    EXPECT_EQ(status.code(), StatusCode::kUnimplemented) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kUnimplemented) << status.ToString();
 }
 
 TEST(CPUKernelArgmaxEntry, AcceptsTransposedOutputLayout) {
@@ -933,7 +933,7 @@ TEST(CPUKernelArgmaxEntry, RejectsAliasedInputOutputBasePointer) {
                                                         .output_tensor = MutableTensorView{storage.data(), DataType::Int(64),
                                                                                            output_shape, output_strides},
                                                 });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelArgmaxEntry, RejectsInputOverlapAtDistinctBasePointer) {
@@ -953,7 +953,7 @@ TEST(CPUKernelArgmaxEntry, RejectsInputOverlapAtDistinctBasePointer) {
                                                                                            DataType::Int(64), output_shape, output_strides},
                                                 });
 
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelArgmaxEntry, AcceptsDisjointInputOutputInsideOneAllocation) {
@@ -995,7 +995,7 @@ TEST(CPUKernelArgmaxEntry, RejectsInputOffsetOverflow) {
                                                         .output_tensor = MutableTensorView{output, DataType::Int(64), output_shape,
                                                                                            output_strides},
                                                 });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelArgmaxEntry, RejectsOutputOffsetOverflow) {
@@ -1012,7 +1012,7 @@ TEST(CPUKernelArgmaxEntry, RejectsOutputOffsetOverflow) {
                                                         .output_tensor = MutableTensorView{&output, DataType::Int(64), output_shape,
                                                                                            output_strides},
                                                 });
-    EXPECT_EQ(status.code(), StatusCode::kInvalidArgument) << status.ToString();
+    EXPECT_EQ(status, StatusCode::kInvalidArgument) << status.ToString();
 }
 
 TEST(CPUKernelArgmax, PreparedParamsExecuteRepeatedlyWithoutRevalidation) {
@@ -1151,7 +1151,7 @@ TEST(CPUKernelArgmaxEntry, OverlappingOutputFailsAtPrepareExecutionBindings) {
                                                        overlapping_output_strides)}}},
             runtime.GetAllocator(Device::CPU()));
     ASSERT_FALSE(table.ok());
-    EXPECT_EQ(table.status().code(), StatusCode::kInvalidArgument)
+    EXPECT_EQ(table.status(), StatusCode::kInvalidArgument)
             << table.status().ToString();
     EXPECT_EQ(output[0], kSentinel);
     EXPECT_EQ(output[1], kSentinel);

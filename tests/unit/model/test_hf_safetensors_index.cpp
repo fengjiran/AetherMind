@@ -101,7 +101,7 @@ TEST(ModelLoader_HfSafetensorsIndexTest, RejectsMissingIndexFile) {
             temp_dir.path() / "missing.index.json");
 
     ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kNotFound);
+    EXPECT_EQ(index.status(), StatusCode::kNotFound);
 }
 
 TEST(ModelLoader_HfSafetensorsIndexTest, RejectsMissingWeightMap) {
@@ -112,7 +112,7 @@ TEST(ModelLoader_HfSafetensorsIndexTest, RejectsMissingWeightMap) {
             temp_dir.path() / "model.safetensors.index.json");
 
     ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(index.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(index.status().message().find("missing required weight_map"),
               std::string::npos);
 }
@@ -125,7 +125,7 @@ TEST(ModelLoader_HfSafetensorsIndexTest, RejectsEmptyWeightMap) {
             temp_dir.path() / "model.safetensors.index.json");
 
     ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(index.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(index.status().message().find("must not be empty"),
               std::string::npos);
 }
@@ -141,7 +141,7 @@ TEST(ModelLoader_HfSafetensorsIndexTest, RejectsDuplicateWeightMapField) {
             temp_dir.path() / "model.safetensors.index.json");
 
     ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(index.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(index.status().message().find("duplicate weight_map field"),
               std::string::npos);
 }
@@ -158,7 +158,7 @@ TEST(ModelLoader_HfSafetensorsIndexTest, RejectsDuplicateMetadataField) {
             temp_dir.path() / "model.safetensors.index.json");
 
     ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(index.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(index.status().message().find("duplicate metadata field"),
               std::string::npos);
 }
@@ -174,7 +174,7 @@ TEST(ModelLoader_HfSafetensorsIndexTest, RejectsDuplicateTotalSize) {
             temp_dir.path() / "model.safetensors.index.json");
 
     ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(index.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(index.status().message().find("duplicate total_size field"),
               std::string::npos);
 }
@@ -190,7 +190,7 @@ TEST(ModelLoader_HfSafetensorsIndexTest, RejectsInvalidTotalSizeString) {
             temp_dir.path() / "model.safetensors.index.json");
 
     ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(index.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(index.status().message().find("total_size string is not a valid"),
               std::string::npos);
 }
@@ -204,7 +204,7 @@ TEST(ModelLoader_HfSafetensorsIndexTest, RejectsTrailingJsonContent) {
             temp_dir.path() / "model.safetensors.index.json");
 
     ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(index.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(index.status().message().find("trailing JSON content"),
               std::string::npos);
 }
@@ -217,7 +217,7 @@ TEST(ModelLoader_HfSafetensorsIndexTest, RejectsEmptyShardFilename) {
             temp_dir.path() / "model.safetensors.index.json");
 
     ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(index.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(index.status().message().find("must not be empty"),
               std::string::npos);
 }
@@ -231,7 +231,7 @@ TEST(ModelLoader_HfSafetensorsIndexTest, RejectsUriSchemeShardFilename) {
             temp_dir.path() / "model.safetensors.index.json");
 
     ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(index.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(index.status().message().find("URI schemes"), std::string::npos);
 }
 
@@ -244,7 +244,7 @@ TEST(ModelLoader_HfSafetensorsIndexTest, RejectsAbsoluteShardFilename) {
             temp_dir.path() / "model.safetensors.index.json");
 
     ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(index.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(index.status().message().find("must be relative"),
               std::string::npos);
 }
@@ -258,7 +258,7 @@ TEST(ModelLoader_HfSafetensorsIndexTest, RejectsDotDotShardFilename) {
             temp_dir.path() / "model.safetensors.index.json");
 
     ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(index.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(index.status().message().find("must not contain '..'"),
               std::string::npos);
 }
@@ -276,7 +276,7 @@ TEST(ModelLoader_HfSafetensorsIndexTest, RejectsDuplicateTensorName) {
             temp_dir.path() / "model.safetensors.index.json");
 
     ASSERT_FALSE(index.ok());
-    EXPECT_EQ(index.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(index.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(index.status().message().find("duplicate tensor name"),
               std::string::npos);
 }

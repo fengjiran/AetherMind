@@ -132,7 +132,7 @@ TEST(KVCacheUpdateInference, RejectsStaticHiddenDimensionOverflow) {
     const auto result = InferOperator(OpType::kKVCacheUpdate, KVCacheUpdateParams{}, inputs);
 
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     EXPECT_NE(result.status().message().find("overflows int64_t"), std::string::npos);
 }
 

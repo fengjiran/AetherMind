@@ -15,7 +15,7 @@ TEST(PermuteInference, RejectsWrongVariantBeforeInputChecks) {
     const auto result = InferOperator(
             OpType::kPermute, AddParams{}, empty_inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
     EXPECT_EQ(result.status().message(), "Permute node requires PermuteParams");
 }
 
@@ -27,7 +27,7 @@ TEST(PermuteInference, RejectsDuplicateAxesBeforeInputChecks) {
     constexpr std::vector<TensorSpec> empty_inputs;
     const auto result = InferOperator(OpType::kPermute, params, empty_inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(PermuteInference, RejectsWrongInputCount) {
@@ -37,7 +37,7 @@ TEST(PermuteInference, RejectsWrongInputCount) {
     constexpr std::vector<TensorSpec> empty_inputs;
     const auto result = InferOperator(OpType::kPermute, params, empty_inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(PermuteInference, RejectsUnrankedInput) {
@@ -46,7 +46,7 @@ TEST(PermuteInference, RejectsUnrankedInput) {
     const std::vector<TensorSpec> inputs = {MakeSpec(DataType::Float32())};
     const auto result = InferOperator(OpType::kPermute, params, inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(PermuteInference, RejectsPermutationLengthMismatch) {
@@ -56,7 +56,7 @@ TEST(PermuteInference, RejectsPermutationLengthMismatch) {
     const std::vector<TensorSpec> inputs = {MakeSpec(DataType::Float32(), {2, 3})};
     const auto result = InferOperator(OpType::kPermute, params, inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 TEST(PermuteInference, RejectsOutOfRangeAxis) {
@@ -66,7 +66,7 @@ TEST(PermuteInference, RejectsOutOfRangeAxis) {
     const std::vector<TensorSpec> inputs = {MakeSpec(DataType::Float32(), {2, 3, 4})};
     const auto result = InferOperator(OpType::kPermute, params, inputs);
     ASSERT_FALSE(result.ok());
-    EXPECT_EQ(result.status().code(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(result.status(), StatusCode::kInvalidArgument);
 }
 
 // --- Permute inference happy paths ---

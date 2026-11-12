@@ -173,7 +173,7 @@ TEST(ConstEvaluator, SkipsMulMismatchedShape) {
     const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(plan.status(), StatusCode::kUnimplemented);
 }
 
 TEST(ConstEvaluator, SkipsMulRankZeroScalarTensorMismatch) {
@@ -190,7 +190,7 @@ TEST(ConstEvaluator, SkipsMulRankZeroScalarTensorMismatch) {
     const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(plan.status(), StatusCode::kUnimplemented);
 }
 
 TEST(ConstEvaluator, SkipsMulUnsupportedDType) {
@@ -208,7 +208,7 @@ TEST(ConstEvaluator, SkipsMulUnsupportedDType) {
     const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(plan.status(), StatusCode::kUnimplemented);
 }
 
 TEST(ConstEvaluator, PlansMulCostOverComputeBudget) {
@@ -229,7 +229,7 @@ TEST(ConstEvaluator, PlansMulCostOverComputeBudget) {
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     EXPECT_EQ(plan->cost.compute_ops, static_cast<uint64_t>(kExceed));
     EXPECT_EQ(plan->cost.output_bytes, static_cast<size_t>(kExceed) * sizeof(float));
-    EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}).code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}), StatusCode::kUnimplemented);
 }
 
 TEST(ConstEvaluator, PlansMulCostOverOutputByteBudget) {
@@ -251,7 +251,7 @@ TEST(ConstEvaluator, PlansMulCostOverOutputByteBudget) {
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
     EXPECT_EQ(plan->cost.compute_ops, 32772U);
     EXPECT_EQ(plan->cost.output_bytes, 65544U);
-    EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}).code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(CheckFoldingBudget(plan->cost, ConstEvalPolicy{}), StatusCode::kUnimplemented);
 }
 
 TEST(ConstEvaluator, EvaluatesMulFloat32) {
@@ -387,7 +387,7 @@ TEST(ConstEvaluator, SkipsMulRankZeroUnsupportedDType) {
     const auto plan = evaluator->Plan(inputs, outputs, ElementwiseMulParams{}, ConstEvalPolicy{});
 
     ASSERT_FALSE(plan.ok());
-    EXPECT_EQ(plan.status().code(), StatusCode::kUnimplemented);
+    EXPECT_EQ(plan.status(), StatusCode::kUnimplemented);
 }
 
 } // namespace

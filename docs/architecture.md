@@ -27,8 +27,8 @@ flowchart TB
 
     subgraph L3["3. 计算图语义层<br/>语义图构建与 backend-independent transforms"]
         direction LR
-        MGB["BuildModelGraph / BuildLlamaDense<br/>(已实现)"]
-        SEM["GraphRewrite / GraphPassManager<br/>具体 semantic passes (已实现)"]
+        MGB["BuildModelGraph / BuildLlamaDense<br/>(model 模块)"]
+        SEM["GraphRewrite / GraphPassManager<br/>具体 semantic passes (graph 模块)"]
     end
 
     subgraph L4["4. Compiler 层<br/>pipeline composition 与 lowering"]
@@ -47,7 +47,7 @@ flowchart TB
         direction LR
         LRUN["LayerRunner::Run<br/>(已实现)"]
         OPS["Operators / Backend<br/>+ KernelRegistry (已实现)"]
-        AMM["ammalloc / WorkspaceArena<br/>(已实现)"]
+        AMM["CPUAllocator / WorkspaceArena<br/>(已实现)"]
     end
 
     subgraph HW["CPU 后端: x86_64 AVX2/FMA（当前实现）"]
@@ -130,7 +130,7 @@ API 服务层是 AetherMind **进程内**集成/服务边界。它不是 HTTP/gR
 | **当前模块** | `RuntimeBuilder`、`Runtime`、`Executor`、`KVCacheManager`、`PreparedExecutionBindings`、`ExecutionContext`、`ModelLoader`、`ExecutableModel::Prepare`/`ExecutableModel`、`InferenceSession` |
 | **主要输入** | 已编译的 `ExecutionPlan`、其对应的模型 artifact（必要时含 `PackedWeightCollection`）、Prompt Token 序列、`GenerationConfig{max_new_tokens, eos_token_id}` |
 | **主要输出** | 执行步骤结果（tensor 写入 workspace / KV cache 位置）；`InferenceSession::Generate` 返回本次新生成的 Token IDs（含 Prefill 预测的首 token 与触发停止的 EOS） |
-| **当前缺口** | C ABI 与同步 Generate 已闭环（session reservation → Prefill → Decode loop → Argmax/stop → 释放预约），见 [InferenceSession 模块设计](designs/inference/02-inference-session.md)。仓库中不存在独立的 `PrefillPath`/`DecodePath` 类型：phase 区分由 `ExecutableModel::plan(phase)` 与 Session 的两份 `PhaseContract` 承担。剩余缺口为跨调用 KV 复用、多 Session/并发 Generate、采样策略与算子覆盖扩展 |
+| **当前缺口** | C ABI 与同步 Generate 已闭环（session reservation → Prefill → Decode loop → Argmax/stop → 释放预约），见 [InferenceSession 模块设计](modules/inference.md)。仓库中不存在独立的 `PrefillPath`/`DecodePath` 类型：phase 区分由 `ExecutableModel::plan(phase)` 与 Session 的两份 `PhaseContract` 承担。剩余缺口为跨调用 KV 复用、多 Session/并发 Generate、采样策略与算子覆盖扩展 |
 | **禁止责任泄漏** | 不得承担请求排队/批处理、不得处理网络 IO、不得承担算子级 dispatch 决策（仅为调用方） |
 
 > 当前生命周期为 `RuntimeBuilder::Build → Runtime`、`ModelCompiler::Compile → LoweredModelArtifact`、`ExecutableModel::Prepare → ExecutableModel`（内含 `ExecutionPlanBuilder::Build → ExecutionPlan`）、`InferenceSession::Create/Generate`，其请求内为 `PrepareExecutionBindings → PreparedExecutionBindings`、`ExecutionContext::Create → Executor::Execute`。shape/layout/aliasing premise、deferred shape constraints 和 kernel params 均在 `PrepareExecutionBindings` 冷路径验证；`LayerRunner` 只读取已准备的 bindings，绑定 step workspace 并调用冻结的 `step.kernel.fn`。Generate 状态机（session reservation → Prefill → Decode loop → Argmax/stop）与 C ABI 均已实现（v1.0 尚未发布）；跨调用 KV 复用、多 Session 并发与采样策略仍未承诺。
@@ -141,14 +141,14 @@ API 服务层是 AetherMind **进程内**集成/服务边界。它不是 HTTP/gR
 
 ### 定位
 
-计算图语义层只负责将已加载并校验的模型配置与权重语义构建为 `ModelGraph`，并在其上执行 backend-independent semantic transforms。优化 pipeline 的组装、lowering 和 compiler artifact 归独立 compiler 层；execution planning 不属于 graph。
+计算图语义层定义 backend-independent 的 `ModelGraph` IR 与 semantic transforms。HF → 语义图的构建入口由 `model` 模块提供；`graph` 只拥有 IR、rewrite framework 与 semantic passes，不依赖 model。优化 pipeline 的组装、lowering 和 compiler artifact 归独立 compiler 层；execution planning 不属于 graph。
 
 ### 职责
 
 | 维度 | 说明 |
 |------|------|
 | **责任** | 基于已解析的模型配置与权重语义构建 Llama dense 语义图；提供 GraphRewrite/GraphPassManager 与常量折叠、语义融合、DCE 等 semantic passes |
-| **当前模块** | `BuildModelGraph` 及 per-family builders（`BuildLlamaDense`）、`ModelGraph`、GraphRewrite/GraphPassManager、具体 semantic passes |
+| **当前模块** | `model`：`BuildModelGraph` 及 per-family builders（`BuildLlamaDense`）；`graph`：`ModelGraph`、GraphRewrite/GraphPassManager、具体 semantic passes |
 | **主要输入** | `LoadedModel` 中的模型配置与 resolved weights |
 | **主要输出** | validated `ModelGraph`；compiler 接收它来生成 `LoweredGraph` |
 | **当前缺口** | Llama Dense 的 `Load → Compile → Prepare → Generate` 主路径已闭环；其他模型家族、更完整的算子覆盖与性能优化仍在推进 |
@@ -190,7 +190,7 @@ flowchart LR
 | 维度 | 说明 |
 |------|------|
 | **责任** | 暴露 kernel resolve 能力（供 `ExecutionPlanBuilder` 在 plan-build-time 调用）；注册与选择后端 kernel；在工作空间绑定和 shape 校验后执行逐步骤算子调用；提供 workspace 复用与 KV cache 物理访问契约 |
-| **当前模块** | `LayerRunner`（执行私有）、`KernelInvoker`、`CpuBackend`、`KernelRegistry`（全局 singleton + `AM_REGISTER_KERNEL` 静态注册）、`ammalloc`；`WorkspaceArena`/`WorkspaceBinding` 为 base 层共享契约，backend 与 execution 均单向依赖 |
+| **当前模块** | `LayerRunner`（执行私有）、`KernelInvoker`、`CpuBackend`、`KernelRegistry`（全局 singleton + `AM_REGISTER_KERNEL` 静态注册）、`CPUAllocator`；`WorkspaceArena`/`WorkspaceBinding` 为 base 层共享契约，backend 与 execution 均单向依赖 |
 | **主要输入** | `ExecutionPlan`（已 resolve 的 `ExecutionStep` 序列）、`ExecutionContext`（workspace base、KV view 等动态绑定） |
 | **主要输出** | 各 step 计算结果的 tensor 写入（workspace + KV cache 位置）；Token IDs 由 `InferenceSession::Generate` 经 Argmax 产生 |
 | **当前缺口** | CPU backend/kernel dispatch 已通过 plan-build-time resolve 就位；更完整的 Llama layer 算子覆盖、W16/A32 与 KV16 之外的精度的支持仍在推进 |
@@ -345,7 +345,7 @@ flowchart TB
     end
 
     subgraph BACKEND["backend / runtime：硬件执行"]
-        D["Backend / KernelRegistry / LayerRunner<br/>WorkspaceArena / ammalloc"]
+        D["Backend / KernelRegistry / LayerRunner<br/>WorkspaceArena / CPUAllocator"]
     end
 
     S["operators / shape_inference / base"]
@@ -376,7 +376,7 @@ flowchart TB
 3. **graph 仅依赖 operators、shape_inference 与 base**，禁止依赖 compiler、execution、backend、model；graph 构建入口（`BuildModelGraph` / per-family builders）位于 model，graph 只拥有语义 IR、rewrite framework 与 backend-independent semantic passes。
 4. **compiler 可依赖 model、graph 与 semantic base**，负责优化 pipeline composition、lowering 和 `LoweredGraph`；禁止依赖 execution、backend、runtime 或查询 kernel registry。
 5. **execution 实现消费 compiler artifact，并负责 StateAliasPlan、workspace 与 kernel planning**；execution 不得依赖 graph，public headers 只前向声明 `LoweredGraph`。
-6. **backend/runtime 禁止依赖 graph、compiler、model**。Kernel 函数不允许持有 `Runtime*`、`SessionState*` 等宽对象指针。
+6. **backend/runtime 禁止依赖 graph、compiler、model**。Kernel 函数不允许持有 `Runtime*`、`InferenceSession*` 等宽对象指针。
 7. **不可变产物的所有权由上游持有**：`LoweredModelArtifact` 持有 `LoadedModel` 与 `LoweredGraph`，`ExecutionPlan` 由调用方或模型管理侧持有；execution/backend 只消费引用或按值冻结的 plan 数据。
 
 **软规则（设计原则）**：
@@ -422,7 +422,7 @@ flowchart TB
 | **KV Cache** | `KVCacheManager`（静态预分配 Init + ReserveForSession）、`KVCacheSessionView`（逻辑读写）；Runtime 按值拥有 Manager | 跨请求 KV 复用 | PagedAttention、动态扩容 |
 | **采样** | Argmax 已集成到 Generate 循环 | - | Temperature / top-k / top-p |
 | **Backend** | CPU Backend（`CpuBackend` factory/freeze/resolve、`KernelRegistry` 全局 singleton + `AM_REGISTER_KERNEL`）；C++ W16/A32 与 KV16 执行策略 | 更完整的 Llama-layer 算子覆盖与 SIMD kernel | GPU/CUDA、CANN |
-| **内存** | `ammalloc`（ThreadCache/CentralCache/PageCache）、`WorkspaceArena`（Bind/Reset） | - | - |
+| **内存** | `CPUAllocator`（`posix_memalign`、junk fill、可选 THP）、`WorkspaceArena`（Bind/Reset） | - | - |
 
 当前主路径为 `ModelLoader::Load → ModelCompiler::Compile → ExecutableModel::Prepare → InferenceSession::Generate`；`Executor::Execute`/`LayerRunner::Run` 只负责按已冻结的 plan 逐 step 执行。
 
@@ -474,7 +474,7 @@ flowchart TB
 |---|---|---|---|
 | Model Weights | 模型级（长） | 只读、大块、长期驻留（mmap 或加载后驻留） | `LoadedModel` / `PackedWeightCollection` |
 | KV Cache | Session 级（中） | 静态预分配、按 token 位置递增写入、不动态扩容 | `KVCacheManager`（kv_cache 模块；由 `Runtime` 按值拥有） |
-| Workspace / Scratch | 执行期（短/中） | 预留、复用（Bind/Reset） | `WorkspaceArena`（可经 ammalloc） |
+| Workspace / Scratch | 执行期（短/中） | 预留、复用（Bind/Reset） | `WorkspaceArena`（由调用方分配，`CPUAllocator` 提供存储） |
 
 ### 11.2 稳态零分配定义
 
@@ -544,10 +544,18 @@ flowchart TB
 | 文档 | 覆盖内容 |
 |------|----------|
 | [product.md](product.md) | 当前产品需求、验收标准、边界定义 |
-| [designs/graph_compilation_flow.md](designs/graph_compilation_flow.md) | 图编译流程（ModelGraph → LoweredGraph → ExecutionPlan）的详细实现追踪 |
-| [designs/backend_design.md](designs/backend_design.md) | Backend 层三阶段执行模型（注册/构建/执行）、CPU Backend 设计 |
-| [designs/dispatch_design.md](designs/dispatch_design.md) | Dispatch 模块（全局 KernelRegistry + AM_REGISTER_KERNEL + plan-build-time resolve） |
-| [designs/executor_design.md](designs/executor_design.md) | Executor 设计（Prefill/Decode 状态机、SessionState、ExecContext、LayerRunner 骨架） |
+| [modules/foundation.md](modules/foundation.md) | base / dtypes / memory：Status、TensorView、分配器与 workspace 契约 |
+| [modules/amstring.md](modules/amstring.md) | SSO 字符串库的布局、存储与策略 |
+| [modules/shape-inference.md](modules/shape-inference.md) | 符号维度、shape 约束与执行期保障 |
+| [modules/model.md](modules/model.md) | HF 加载、家族识别、权重绑定与打包请求 |
+| [modules/graph.md](modules/graph.md) | 语义图 IR、rewrite、passes 与不变量 |
+| [modules/operators.md](modules/operators.md) | 算子 schema、OpParams、Infer* 与序列化 |
+| [modules/compiler.md](modules/compiler.md) | 编译阶段、优化 pipeline、lowering 与 artifact |
+| [modules/execution.md](modules/execution.md) | ExecutionPlan、bindings、context 与逐 step 执行 |
+| [modules/runtime.md](modules/runtime.md) | Runtime 装配、资源所有权与 workspace 规划 |
+| [modules/kv-cache.md](modules/kv-cache.md) | KV 布局、静态分配、reservation 与 commit |
+| [modules/backend.md](modules/backend.md) | KernelRegistry、kernel resolve、packing 与 CPU 能力 |
+| [modules/inference.md](modules/inference.md) | ExecutableModel、InferenceSession 与 Generate |
 
 ### 维护规则
 

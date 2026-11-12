@@ -374,7 +374,6 @@ Examples:
 Note:
 
 - The STL guidance above is general and does not override subsystem constraints.
-- In `ammalloc`, avoid heap-allocating STL containers and regular heap `new`/`delete` to prevent allocator recursion; follow `ammalloc/AGENTS.md` and `AGENTS.md`.
 
 ------
 

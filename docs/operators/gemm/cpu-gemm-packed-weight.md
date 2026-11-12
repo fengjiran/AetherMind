@@ -4,9 +4,9 @@
 - **版本**: 1.9
 - **日期**: 2026-10-09
 - **文档定位**: `exact recipe` 与 `packed-B` 阶段（[CPU GEMM 优化方案](cpu-gemm-optimization.md) §7）的具体化设计；只含方案内容，状态与机器级证据不在此维护。
-- **产品边界**: [AetherMind 当前产品 PRD](../../products/aethermind_prd.md)
+- **产品边界**: [AetherMind 当前产品需求](../../product.md)
 - **工作流规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
-- **架构基线**: [架构总览](../../designs/architecture/architecture_overview.md)
+- **架构基线**: [架构总览](../../architecture.md)
 - **关联代码**: `src/backend/cpu/cpu_backend.cpp`、`src/backend/cpu/cpu_packed_weight_layout.cpp`、`src/backend/cpu/kernels/gemm/`、`include/aethermind/backend/cpu/packed_weight_validation.h` / `src/backend/cpu/packed_weight_validation.cpp`（消费侧校验）、`src/compiler/weight_packing_request_builder.cpp`（请求生成）、`src/inference/executable_model.cpp`（recipe 注入与合并）、`include/aethermind/backend/{packing_recipe,packed_weight,resolved_kernel}.h`、`include/aethermind/model/weight/{weight_packing_request,packed_weight_collection}.h`
 - **关联测试**: `tests/unit/backend/cpu/kernels/`、`tests/unit/model/weight/test_weight_packing.cpp`、`tests/benchmark/cpu_kernels/`
 - **关联 ADR**: 无（exact recipe 合同落地时新建）

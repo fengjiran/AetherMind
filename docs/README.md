@@ -15,6 +15,8 @@
 | [issues.md](issues.md) | 已知缺陷与待办 | 短生命周期 |
 | [archive/](archive/) | 历史资料 | 不权威、不维护 |
 
+> `modules/` 当前包含：foundation、amstring、shape-inference、graph、operators、compiler、execution、kv-cache、runtime、model、inference、backend。
+>
 > `docs/agent/` 仅保存代理上下文（`memory/project.md`、`handoff.md`），不属于人类文档权威体系。
 
 ## 权威顺序
@@ -55,5 +57,5 @@
 | KVCacheManager | 静态 KV 存储、单 session reservation 与提交水位管理 |
 | W16/A32 | 保留 16-bit 矩阵权重、FP32 activation 的执行策略 |
 | KV16 | 16-bit KV 存储；仅在显式策略下准入 |
-| ammalloc | 自研用户态分配器（ThreadCache / CentralCache / PageCache） |
+| CPUAllocator | 当前 CPU 分配器：`posix_memalign`、junk fill、可选 THP |
 | Argmax | 当前产品唯一的贪婪采样策略 |

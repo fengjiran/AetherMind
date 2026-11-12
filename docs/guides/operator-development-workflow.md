@@ -142,6 +142,6 @@ FLOPs 口径统一（MAC = 2 FLOPs）；Bytes 按实际内存层级流量估算�
 
 ### 7.11 工程落地
 
-- **Kernel dispatch**：按 op type → dtype/weight_format/phase 结构化过滤 → CPU 按 `effective_features ⊇ cpu_requirements` 过滤 → priority 选择 → shape 特化 kernel 内二次分发 → fallback 必须存在。`CpuFeature` 模型见 `docs/designs/dispatch_design.md`。
+- **Kernel dispatch**：按 op type → dtype/weight_format/phase 结构化过滤 → CPU 按 `effective_features ⊇ cpu_requirements` 过滤 → priority 选择 → shape 特化 kernel 内二次分发 → fallback 必须存在。`CpuFeature` 模型见 `docs/modules/backend.md`。
 - **Steady-state zero allocation**：临时 buffer 由 workspace 预分配；初始化阶段分配、推理稳态零分配；小临时用 stack/寄存器。
 - **Benchmark 与 CI 三层**：Correctness CI（每次提交、覆盖各 ISA 与关键 shape）；Performance smoke（每日、宽松阈值）；Full benchmark（定期/手动、供优化决策）。

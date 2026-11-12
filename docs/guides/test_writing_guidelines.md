@@ -6,7 +6,7 @@ Scope and precedence:
 
 - This document expands test conventions used in this repository.
 - If this document conflicts with `AGENTS.md` or verified repository constraints, follow `AGENTS.md` and repository facts.
-- Subsystem-specific constraints override generic guidance (for example, `ammalloc/AGENTS.md`).
+- Subsystem-specific constraints override generic guidance.
 
 ---
 
@@ -48,8 +48,7 @@ Place tests under `tests/unit/` mirroring the source layout:
 | `include/aethermind/execution/`     | `tests/unit/execution/`                |
 | `src/execution/`                    | `tests/unit/execution/`                |
 | `src/backend/cpu/kernels/`          | `tests/unit/backend/cpu/kernels/`      |
-| `ammalloc/src/`                     | `tests/unit/memory/`                   |
-| `src/container/`                    | `tests/unit/tensor/`                   |
+| `src/container/`                    | `tests/unit/amstring/`                 |
 
 Name test files `test_<unit>.cpp` (for example `test_rmsnorm_op.cpp`).
 
@@ -185,21 +184,17 @@ Use `TEST_F` when multiple tests share expensive setup or need deterministic res
 Name the fixture `<Unit>Test` and keep `SetUp`/`TearDown` minimal.
 
 ```cpp
-class ThreadCacheTest : public ::testing::Test {
+class GlobalStateTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        central_cache_.Reset();
-        page_cache_.Reset();
+        // reset the shared registry/cache/allocator state
     }
     void TearDown() override {
-        central_cache_.Reset();
-        page_cache_.Reset();
+        // restore the shared state
     }
-    CentralCache& central_cache_ = CentralCache::GetInstance();
-    PageCache&   page_cache_     = PageCache::GetInstance();
 };
 
-TEST_F(ThreadCacheTest, BasicAllocate) { ... }
+TEST_F(GlobalStateTest, ...) { ... }
 ```
 
 ### 5.3 TEST_P — Parameterized
@@ -409,7 +404,7 @@ fs::path TestModelDir() {
 ## 10. Determinism and Isolation
 
 - Tests must not depend on execution order. Do not rely on global state mutated by an earlier test.
-- When a test touches a global singleton (cache, registry), reset it in `SetUp`/`TearDown` (see `ThreadCacheTest` above).
+- When a test touches a global singleton (cache, registry), reset it in `SetUp`/`TearDown`.
 - Use fresh fixtures or local variables per test. Avoid sharing mutable state across tests in the same file.
 - For random data, seed the RNG explicitly (`std::mt19937 rng(42);`) so failures are reproducible.
 

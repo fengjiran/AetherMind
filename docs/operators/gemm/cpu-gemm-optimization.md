@@ -4,8 +4,8 @@
 - **版本**: 2.5
 - **日期**: 2026-09-23
 - **文档定位**: 本算子的优化原理、合同、阶段与状态。**机器级实测数值、噪声 floor 与 Roofline 百分比不在本文详述**，权威位置见 [GEMM 证据记录](README.md)
-- **产品边界**: [AetherMind 当前产品 PRD](../../products/aethermind_prd.md)
-- **架构基线**: [架构总览](../../designs/architecture/architecture_overview.md)
+- **产品边界**: [AetherMind 当前产品需求](../../product.md)
+- **架构基线**: [架构总览](../../architecture.md)
 - **优化方法基线**: [算子开发与优化工作流 §7 优化方法](../../guides/operator-development-workflow.md#7-优化方法)
 - **工作流规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
 - **关联代码**: `src/backend/cpu/kernels/gemm/`、`src/backend/cpu/cpu_backend.cpp`、`src/backend/cpu/cpu_backend_internal.h`
@@ -586,11 +586,11 @@ runtime thread-pool contract + 单线程证据 ──> 多线程与 NUMA
 ## 10. 相关文档
 
 - [算子开发与优化工作流](../../guides/operator-development-workflow.md)：O0–O4 门禁、记录文件格式、Benchmark 与原始数据规范、§7 优化方法。
-- [AetherMind 当前产品 PRD](../../products/aethermind_prd.md)：产品范围、单线程边界、INT8/INT4 目标。
-- [架构总览](../../designs/architecture/architecture_overview.md)：模块边界与执行数据流。
+- [AetherMind 当前产品需求](../../product.md)：产品范围、单线程边界、INT8/INT4 目标。
+- [架构总览](../../architecture.md)：模块边界与执行数据流。
 - [算子开发与优化工作流 §7 优化方法](../../guides/operator-development-workflow.md#7-优化方法)：Roofline、SIMD、packing、blocking、fusion 与 benchmark 通用方法；§7.2 为噪声 floor 与最小可信 delta 的方法权威。
 - [GEMM 证据记录](README.md)：本算子全部机器级数值、噪声 floor、反汇编与 Roofline 定位的权威位置。
-- [Dispatch 设计](../../designs/dispatch_design.md)：kernel registry、selector 与 capability dispatch。
+- [Dispatch 设计](../../modules/backend.md)：kernel registry、selector 与 capability dispatch。
 - [InferenceSession / Generate 前置闭环计划](../../improvement-plan/01-inference-session-generate-readiness.md)：真实 Prefill/Decode vertical slice 与端到端门禁。
 
 ## 11. 变更记录

@@ -545,7 +545,7 @@ M1/M2 保留为本 PRD 的验收分组，不再绑定未校准的周数。10 号
 - [公共 API](api/public-api.md) 与 [Runtime C ABI v1](api/runtime-c-abi.md)
 - [FP32 compatibility](guides/fp32-compatible-inference.md) 与 [W16/A32](guides/w16-fp32-inference.md)
 - [CPU Runtime 配置](guides/runtime-configuration.md) 与 [资源预算](guides/resource-budgeting.md)
-- [Allocator 公共接口](../include/aethermind/memory/allocator.h) 与 [统一分配器设计](designs/unified_allocator_design.md)
+- [Allocator 公共接口](../include/aethermind/memory/allocator.h) 与 [基础库模块设计](modules/foundation.md)
 - [算子开发与证据流程](guides/operator-development-workflow.md)
 - [最终验证指南](guides/final-validation.md) 与 [模型测量指南](../tests/benchmark/models/README.md)
 

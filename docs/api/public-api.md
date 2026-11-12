@@ -165,7 +165,7 @@ KV16 Load 要求已有、地址稳定的 Runtime KV Manager，其实际 dtype �
 
 prompt 必须非空；prompt/EOS 必须在词表范围内，prompt 长度须满足模型 context。N=0 仍进行这些校验，随后返回空 vector，不预约 KV、不执行模型，也不要求 prompt 满足物理 KV capacity。request buffer、binding、workspace 或 activation 分配传播出的 `std::bad_alloc` 转为空 message 的 `ResourceExhausted`。
 
-共享同一 Runtime 的所有 Generate 调用必须由宿主串行化，包括不同 Session；当前接口不承诺并发 Session。推荐销毁顺序为 Session → ExecutableModel → Runtime。阶段执行与资源细节见 [Session 设计](../designs/inference/02-inference-session.md)。
+共享同一 Runtime 的所有 Generate 调用必须由宿主串行化，包括不同 Session；当前接口不承诺并发 Session。推荐销毁顺序为 Session → ExecutableModel → Runtime。阶段执行与资源细节见 [InferenceSession 模块设计](../modules/inference.md)。
 
 ### `Allocator::TryAllocate`（include/aethermind/memory/allocator.h）
 
@@ -359,5 +359,5 @@ prompt 必须非空；prompt/EOS 必须在词表范围内，prompt 长度须满�
 
 - 头文件：`include/c_api.h`、`include/aethermind/model/model_loader.h`、`include/aethermind/compiler/model_compiler.h`、`include/aethermind/runtime/runtime_builder.h`、`include/aethermind/inference/executable_model.h`、`include/aethermind/inference/inference_session.h`、`include/aethermind/execution/executor.h`（Doxygen 注释为语义事实源）
 - 架构总览：[docs/architecture.md](../architecture.md)（§一 API 服务层、§八 当前实现与未闭环项）
-- ModelLoader 模块设计：[docs/designs/model/01-model-loader.md](../designs/model/01-model-loader.md)
+- ModelLoader 模块设计：[docs/modules/model.md](../modules/model.md)
 - 注释规范：[docs/guides/cpp_comment_guidelines.md](../guides/cpp_comment_guidelines.md)

@@ -88,11 +88,13 @@ AetherMind/
 │   └── benchmark/           # Google Benchmark targets
 ├── cmake/                   # CMake helper modules
 ├── 3rdparty/                # Third-party code (libbacktrace)
-├── docs/                    # Architecture, design, and guide documents
-│   ├── products/            # PRD
-│   ├── designs/             # Architecture & module designs
-│   ├── guides/              # Coding style & test writing guides
-│   └── reviews/             # Design and code reviews
+├── docs/                    # Documentation
+│   ├── README.md            # Documentation map, authority order, writing rules
+│   ├── architecture.md      # System architecture
+│   ├── product.md           # Product scope and acceptance criteria
+│   ├── modules/             # One design document per module
+│   ├── guides/              # Coding style, tests, operator workflow
+│   └── operators/           # Operator contracts and evidence
 └── tools/                   # Development and maintenance tools
 ```
 

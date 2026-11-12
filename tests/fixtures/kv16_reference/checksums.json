@@ -1,0 +1,258 @@
+{
+  "calibration_manifest_sha256": "5c9dc628f4fbe90fde8a28bdd30d313d0c4a17ecf12d79b3875d39bb474f93e7",
+  "calibrator_sha256": "0c1b0be328c4dcb2453631ec27b125138119dad97df652cc48eccffb8affaba6",
+  "files": {
+    "gqa-tail/wbf16/config.json": {
+      "bytes": 594,
+      "fnv1a64": "a5dc87d009b9e8ee",
+      "sha256": "973ec63b14b5664e7ad074ee6045e2823e868d9c2c9b91c1d5d237ba9c371c52"
+    },
+    "gqa-tail/wbf16/derivation.json": {
+      "bytes": 1279,
+      "fnv1a64": "d5116412d381d5df",
+      "sha256": "946805bd3d5b19168f4a3e47de2580210fafa597c37b8243f7845674f1f61343"
+    },
+    "gqa-tail/wbf16/model.safetensors": {
+      "bytes": 23072,
+      "fnv1a64": "c9ae2915c5e1f139",
+      "sha256": "963d6e882b5e832e5e37abd01a89b6801538e5ca0c79975e2884ea0d4efa30b3"
+    },
+    "gqa-tail/wbf16/oracle-kvbf16.safetensors": {
+      "bytes": 4712,
+      "fnv1a64": "5efb8343d1c21302",
+      "sha256": "79aeaac3b9875b198b751eb3232b3d53324b866f2f04fc7ee1ab4f059594e23d"
+    },
+    "gqa-tail/wbf16/oracle-kvf16.safetensors": {
+      "bytes": 4712,
+      "fnv1a64": "407772d48dfbb156",
+      "sha256": "59471d932c51b95305e6a4d50e937a09464e62dd4316e249f8ed15d5f176dd8d"
+    },
+    "gqa-tail/wf16/config.json": {
+      "bytes": 594,
+      "fnv1a64": "a5dc87d009b9e8ee",
+      "sha256": "973ec63b14b5664e7ad074ee6045e2823e868d9c2c9b91c1d5d237ba9c371c52"
+    },
+    "gqa-tail/wf16/derivation.json": {
+      "bytes": 1278,
+      "fnv1a64": "67a71f60ccc01cba",
+      "sha256": "0dc897075bbdefe465c8a9f9710e147bd23637648e58bab4e22d8d9708396229"
+    },
+    "gqa-tail/wf16/model.safetensors": {
+      "bytes": 23056,
+      "fnv1a64": "74d3116fec721966",
+      "sha256": "ebe8ce3113dd45c44b838b06ae049586c9ef918bac88060d14d350d12c1ddf17"
+    },
+    "gqa-tail/wf16/oracle-kvbf16.safetensors": {
+      "bytes": 4712,
+      "fnv1a64": "c1f0c6fd8602dacd",
+      "sha256": "4f7edd5388e3e9c8ad026d959759af8fea190fd2d1b7050e02ddd5c10fe90ade"
+    },
+    "gqa-tail/wf16/oracle-kvf16.safetensors": {
+      "bytes": 4712,
+      "fnv1a64": "841a3568f0e45eee",
+      "sha256": "e958ad5f9b6037dcbb71aced4afb306428c4a55b2c511b5afcc64b8612b22bdb"
+    },
+    "mha-near-limit/wbf16/config.json": {
+      "bytes": 726,
+      "fnv1a64": "ab971d9f44982610",
+      "sha256": "8b0b513b2c8709da249074537153124033fd8e2f9cbc6479dabb2dd57bb22dfb"
+    },
+    "mha-near-limit/wbf16/derivation.json": {
+      "bytes": 1279,
+      "fnv1a64": "3c5801210f68e1bf",
+      "sha256": "fd9affba4d3ef15065dea8bbe524cea311f634a0307b3220dea8eb030c2bc658"
+    },
+    "mha-near-limit/wbf16/model.safetensors": {
+      "bytes": 2066832,
+      "fnv1a64": "e27cbf62cefbd441",
+      "sha256": "ca4771b9824974faa1767b4d4f7ba58af09494884f3da13f774e26d1e41360df"
+    },
+    "mha-near-limit/wbf16/oracle-kvbf16.safetensors": {
+      "bytes": 1990644,
+      "fnv1a64": "3b40558b36e2185a",
+      "sha256": "4d2570b9c4204eb2627f8671414b9635a3f1f702ba667acaea920720ae2bb8ba"
+    },
+    "mha-near-limit/wbf16/oracle-kvf16.safetensors": {
+      "bytes": 1990644,
+      "fnv1a64": "9f53d54de35eacd6",
+      "sha256": "8687675a65c87af662564fee2910df0189d1da368b5453b0e2ba5fef31d5eafb"
+    },
+    "mha-near-limit/wf16/config.json": {
+      "bytes": 726,
+      "fnv1a64": "ab971d9f44982610",
+      "sha256": "8b0b513b2c8709da249074537153124033fd8e2f9cbc6479dabb2dd57bb22dfb"
+    },
+    "mha-near-limit/wf16/derivation.json": {
+      "bytes": 1278,
+      "fnv1a64": "c1cfd74a2136a9c9",
+      "sha256": "e87645689df7ee96b7d7f5412fa776313a6d259cf0df4b0e47d31b054600395d"
+    },
+    "mha-near-limit/wf16/model.safetensors": {
+      "bytes": 2066816,
+      "fnv1a64": "a212880af9131b0d",
+      "sha256": "3f2c56fe2a4d9c86063f1a7c889130c9749a990d3d03f1caa52fad6c8891915b"
+    },
+    "mha-near-limit/wf16/oracle-kvbf16.safetensors": {
+      "bytes": 1990644,
+      "fnv1a64": "4c1c3657968b46c2",
+      "sha256": "98b531477bd01b8ca960d811b27a88fbfd59cdecd14cbea45fa52744decd4e39"
+    },
+    "mha-near-limit/wf16/oracle-kvf16.safetensors": {
+      "bytes": 1990644,
+      "fnv1a64": "7e6952a75ff156ea",
+      "sha256": "e68454a3bd5ee580161d24603586697b79439b05dae958725da08d5c77a04c19"
+    },
+    "mha-tied/wbf16/config.json": {
+      "bytes": 725,
+      "fnv1a64": "a389ffe6d243bb03",
+      "sha256": "8b640531228bc8190b620f30f60f4b4220ba2aca47525ca6d73f87c7c4cfee5d"
+    },
+    "mha-tied/wbf16/derivation.json": {
+      "bytes": 1257,
+      "fnv1a64": "6b9e4cc60f104736",
+      "sha256": "91036d893e81422ca959082cf26770390aaa5eb26bb7818e5a099620390d25d5"
+    },
+    "mha-tied/wbf16/model.safetensors": {
+      "bytes": 1042752,
+      "fnv1a64": "df8d936741d23c93",
+      "sha256": "02a45cdb5176489c2d45b770ffbdae3b471b3c1572dfc1535682ed35ad01df78"
+    },
+    "mha-tied/wbf16/oracle-kvbf16.safetensors": {
+      "bytes": 644900,
+      "fnv1a64": "c0d1a77b2a7d8ca0",
+      "sha256": "828bcf9e29d2338f94316635233ad39a1cb3a1c65eaa1c60117e1f59f1c59098"
+    },
+    "mha-tied/wbf16/oracle-kvf16.safetensors": {
+      "bytes": 644900,
+      "fnv1a64": "9c8c8600d155fc6b",
+      "sha256": "44d5932c9ddfd6239c96ee9ac6b160b1ded7be9d3bd8470c19f7669e1e42d376"
+    },
+    "mha-tied/wf16/config.json": {
+      "bytes": 725,
+      "fnv1a64": "a389ffe6d243bb03",
+      "sha256": "8b640531228bc8190b620f30f60f4b4220ba2aca47525ca6d73f87c7c4cfee5d"
+    },
+    "mha-tied/wf16/derivation.json": {
+      "bytes": 1256,
+      "fnv1a64": "3ef24378bc5edffd",
+      "sha256": "c4d22038e732836de1c77bbdd1455f176812e8cdb6b6bdba3125cb31d5850513"
+    },
+    "mha-tied/wf16/model.safetensors": {
+      "bytes": 1042736,
+      "fnv1a64": "3624f193d296e5b9",
+      "sha256": "e29f332e2dbffc31d659905be2dc8556eb2b3a59dad77caa69e3e9f8614bf8d2"
+    },
+    "mha-tied/wf16/oracle-kvbf16.safetensors": {
+      "bytes": 644900,
+      "fnv1a64": "8dcf1dfe416337a2",
+      "sha256": "569b689a6c9b98b5688335fae79a416b16cbdee38128893a82bf103445378fd0"
+    },
+    "mha-tied/wf16/oracle-kvf16.safetensors": {
+      "bytes": 644900,
+      "fnv1a64": "c59b13dcf91b9c71",
+      "sha256": "8fa454a71c3abab0c3bacd49f7045302bc13451e6972ed2f61a4334aa9a19a66"
+    },
+    "mha-untied/wbf16/config.json": {
+      "bytes": 726,
+      "fnv1a64": "ab971d9f44982610",
+      "sha256": "8b0b513b2c8709da249074537153124033fd8e2f9cbc6479dabb2dd57bb22dfb"
+    },
+    "mha-untied/wbf16/derivation.json": {
+      "bytes": 1279,
+      "fnv1a64": "3c5801210f68e1bf",
+      "sha256": "fd9affba4d3ef15065dea8bbe524cea311f634a0307b3220dea8eb030c2bc658"
+    },
+    "mha-untied/wbf16/model.safetensors": {
+      "bytes": 2066832,
+      "fnv1a64": "e27cbf62cefbd441",
+      "sha256": "ca4771b9824974faa1767b4d4f7ba58af09494884f3da13f774e26d1e41360df"
+    },
+    "mha-untied/wbf16/oracle-kvbf16.safetensors": {
+      "bytes": 644900,
+      "fnv1a64": "abb9e38372f748d0",
+      "sha256": "80e3b244a7a1fecec3af0543c976f8cb777c7cd13e0e40037f4224a01c929c88"
+    },
+    "mha-untied/wbf16/oracle-kvf16.safetensors": {
+      "bytes": 644900,
+      "fnv1a64": "ba788145349007c6",
+      "sha256": "c12c98c56282328e1d8e929c6bb77e25a4eef5cfda7e5586e40988053a39016c"
+    },
+    "mha-untied/wf16/config.json": {
+      "bytes": 726,
+      "fnv1a64": "ab971d9f44982610",
+      "sha256": "8b0b513b2c8709da249074537153124033fd8e2f9cbc6479dabb2dd57bb22dfb"
+    },
+    "mha-untied/wf16/derivation.json": {
+      "bytes": 1278,
+      "fnv1a64": "c1cfd74a2136a9c9",
+      "sha256": "e87645689df7ee96b7d7f5412fa776313a6d259cf0df4b0e47d31b054600395d"
+    },
+    "mha-untied/wf16/model.safetensors": {
+      "bytes": 2066816,
+      "fnv1a64": "a212880af9131b0d",
+      "sha256": "3f2c56fe2a4d9c86063f1a7c889130c9749a990d3d03f1caa52fad6c8891915b"
+    },
+    "mha-untied/wf16/oracle-kvbf16.safetensors": {
+      "bytes": 644900,
+      "fnv1a64": "ae11e19353ce2b53",
+      "sha256": "015fed6daeba4d9d4e52c97aff5ceca5fb06607968c24861a9a822d7eebcc012"
+    },
+    "mha-untied/wf16/oracle-kvf16.safetensors": {
+      "bytes": 644900,
+      "fnv1a64": "c1afd32ab3f138a4",
+      "sha256": "acb0726cf87432f4d07f1409a482730967f38be4e32027b93020d85060d8fd20"
+    },
+    "mqa-tail/wbf16/config.json": {
+      "bytes": 594,
+      "fnv1a64": "4cdc9b76c6de40b1",
+      "sha256": "ea97309132caa90ac202666cc86fbb64237541d44d749271e6a76a477bfec583"
+    },
+    "mqa-tail/wbf16/derivation.json": {
+      "bytes": 869,
+      "fnv1a64": "47374f6ddd597d9f",
+      "sha256": "a4e9294547a7c445ba5d4bae9bb500342764076cdbcac1e599c7580e4383a3a9"
+    },
+    "mqa-tail/wbf16/model.safetensors": {
+      "bytes": 7544,
+      "fnv1a64": "e3901febf5641d95",
+      "sha256": "95500108a007d9b83464a8ddfa54b25b33ff2daa3295e90679bb2687f8b5ad65"
+    },
+    "mqa-tail/wbf16/oracle-kvbf16.safetensors": {
+      "bytes": 2928,
+      "fnv1a64": "7fb3f14d063cab66",
+      "sha256": "631e029be40ed78d30a732d78ad4f6a0585acc1bd9535e298780c9e0b832307a"
+    },
+    "mqa-tail/wbf16/oracle-kvf16.safetensors": {
+      "bytes": 2928,
+      "fnv1a64": "d978dd564449a605",
+      "sha256": "85ab74d5eedf858f9a82c9fc4f689236e4eafee344b4602cc733b41f18a72ec7"
+    },
+    "mqa-tail/wf16/config.json": {
+      "bytes": 594,
+      "fnv1a64": "4cdc9b76c6de40b1",
+      "sha256": "ea97309132caa90ac202666cc86fbb64237541d44d749271e6a76a477bfec583"
+    },
+    "mqa-tail/wf16/derivation.json": {
+      "bytes": 868,
+      "fnv1a64": "723d3e9b52448a38",
+      "sha256": "3704f5366629ee5fd6f9fd20f20d4a9fbb0b13315e469a23f1f50179dbd5ec43"
+    },
+    "mqa-tail/wf16/model.safetensors": {
+      "bytes": 7536,
+      "fnv1a64": "d79f067110b63194",
+      "sha256": "0995e380faa9ba72c4ce9941654917734f37d60e0a5242f0323713c087b0efe6"
+    },
+    "mqa-tail/wf16/oracle-kvbf16.safetensors": {
+      "bytes": 2928,
+      "fnv1a64": "3c95bcad2806bad0",
+      "sha256": "05959ae0e44af64efa2ab951bc6df7284b994ae817e94a20cd099bee49e9755d"
+    },
+    "mqa-tail/wf16/oracle-kvf16.safetensors": {
+      "bytes": 2928,
+      "fnv1a64": "06ea989b1c449601",
+      "sha256": "e213cdbc080290a278683364da1be7ecb0cb0c8cb922c99b172f58db414b00b4"
+    }
+  },
+  "schema_version": 1,
+  "source_bundle_sha256": "1e87d57b04d5612bcfe2fdb5b0af9f99e5f6d702f1e2cb7bdbf217463ad5d1b3"
+}

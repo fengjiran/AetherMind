@@ -158,6 +158,40 @@ TEST(KVCacheLayoutPlanning, ComputesPhysicalGeometryAndOffsets) {
     }
 }
 
+TEST(KVCacheLayoutPlanning, TwoByteLogicalPayloadHalvesButPhysicalRowMayNot) {
+    // head_dim=16, alignment=64: the F32 token row is 64 bytes; the KV16 logical
+    // row is 32 bytes but pads back to 64, so the physical token stride (and
+    // total plane bytes) is unchanged. Logical payload halves; physical need not.
+    const auto f32 = PlanKVCacheLayout(2, 4, 8, 16, DataType::Float32(), 64);
+    const auto f16 = PlanKVCacheLayout(2, 4, 8, 16, DataType::Float(16), 64);
+    ASSERT_TRUE(f32.ok()) << f32.status().ToString();
+    ASSERT_TRUE(f16.ok()) << f16.status().ToString();
+    EXPECT_EQ(f32->ElementBytes(), 4U);
+    EXPECT_EQ(f16->ElementBytes(), 2U);
+    EXPECT_EQ(f32->token_stride, 64U);
+    EXPECT_EQ(f16->token_stride, 64U);
+    EXPECT_EQ(f16->padded_head_dim, 32U);
+    EXPECT_EQ(f16->head_dim * f16->ElementBytes(), 32U);
+    ASSERT_TRUE(f32->BytesPerPlane().ok());
+    ASSERT_TRUE(f16->BytesPerPlane().ok());
+    EXPECT_EQ(*f32->BytesPerPlane(), *f16->BytesPerPlane());
+    ASSERT_TRUE(f32->TotalBytes().ok());
+    ASSERT_TRUE(f16->TotalBytes().ok());
+    EXPECT_EQ(*f32->TotalBytes(), *f16->TotalBytes());
+
+    // head_dim=32, alignment=64: F32 row=128 bytes, KV16 row=64 bytes, so the
+    // physical total does halve here. The accounting must distinguish the two.
+    const auto f32_wide = PlanKVCacheLayout(2, 4, 8, 32, DataType::Float32(), 64);
+    const auto f16_wide = PlanKVCacheLayout(2, 4, 8, 32, DataType::Float(16), 64);
+    ASSERT_TRUE(f32_wide.ok()) << f32_wide.status().ToString();
+    ASSERT_TRUE(f16_wide.ok()) << f16_wide.status().ToString();
+    EXPECT_EQ(f32_wide->token_stride, 128U);
+    EXPECT_EQ(f16_wide->token_stride, 64U);
+    ASSERT_TRUE(f32_wide->TotalBytes().ok());
+    ASSERT_TRUE(f16_wide->TotalBytes().ok());
+    EXPECT_EQ(*f16_wide->TotalBytes(), *f32_wide->TotalBytes() / 2);
+}
+
 TEST(KVCacheLayoutPlanning, RejectsZeroDimensions) {
     for (size_t zero_index = 0; zero_index < 4; ++zero_index) {
         SCOPED_TRACE(zero_index);

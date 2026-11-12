@@ -39,6 +39,8 @@ struct CpuRuntimeAssemblyOptions {
     size_t kv_max_bytes = 0;
     size_t workspace_limit_bytes = 0;
     CpuFeaturePolicy cpu_feature_policy{};
+    /// KV storage element dtype; scalar F32/F16/BF16. Defaults to FP32.
+    DataType kv_dtype = DataType::Float32();
 };
 
 /// @brief Resolves CPU defaults, FP32 KV geometry, budgets and feature policy.

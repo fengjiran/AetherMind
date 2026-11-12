@@ -35,15 +35,21 @@ enum class WeightPolicy : uint8_t {
 ///       they need not match actual matrix dtypes.
 Status ValidateSourceWeights(const LoadedModel& model, WeightPolicy policy);
 
-/// @brief Maps validated model geometry and explicit capacity to FP32 KV options.
+/// @brief Maps validated model geometry and explicit capacity to KV options.
 /// @param config Configuration already validated by ModelLoader.
 /// @param context_tokens Positive KV capacity no larger than the model context.
-/// @return Owning KV options with logical head dimension, scalar Float32 and
-///         64-byte alignment, or a conversion/geometry/capacity error; diagnostic
-///         allocation failure returns empty ResourceExhausted.
+/// @param kv_dtype Scalar Float32, Float16 or BFloat16 KV storage element type.
+/// @return Owning KV options with logical head dimension, the requested scalar
+///         dtype and 64-byte alignment, or a conversion/geometry/capacity error;
+///         diagnostic allocation failure returns empty ResourceExhausted.
 /// @note Reads metadata only. It does not allocate storage, build a Runtime,
 ///       inspect backends, or validate an existing Runtime/model pair. Only an
 ///       absent head_dim (zero) falls back to exact hidden_size/head-count division.
+///       Undefined, scalable, non-scalar and other dtypes are rejected.
+StatusOr<KVCacheRuntimeOptions> MakeKVCacheOptions(
+        const HfModelConfig& config, size_t context_tokens, DataType kv_dtype);
+
+/// @brief FP32 wrapper over MakeKVCacheOptions retained for existing callers.
 StatusOr<KVCacheRuntimeOptions> MakeFp32KVCacheOptions(
         const HfModelConfig& config, size_t context_tokens);
 

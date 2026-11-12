@@ -4,6 +4,8 @@
 #include "aethermind/backend/cpu/cpu_workspace_arena.h"
 #include "aethermind/base/status.h"
 #include "aethermind/compiler/model_compiler.h"
+#include "aethermind/dtypes/bfloat16.h"
+#include "aethermind/dtypes/half.h"
 #include "aethermind/execution/execution_context.h"
 #include "aethermind/execution/execution_plan.h"
 #include "aethermind/execution/executor.h"
@@ -319,7 +321,11 @@ inline StatusOr<StageSnapshot> CaptureStage(const ExecutionContext& context,
     AM_ASSIGN_OR_RETURN(const auto logits_id, FindLogits(plan));
     const auto logits = FindOutput(context, plan, logits_id);
     const auto tokens = FindOutput(context, plan, plan.model_outputs()[0]);
-    if (!cache_view.valid() || cache_view.kv_dtype() != DataType::Float32() ||
+    const DataType kv_dtype = cache_view.kv_dtype();
+    const bool kv_dtype_supported = kv_dtype == DataType::Float32() ||
+                                    kv_dtype == DataType::Float(16) ||
+                                    kv_dtype == DataType::BFloat(16);
+    if (!cache_view.valid() || !kv_dtype_supported ||
         !logits.is_valid() || logits.dtype() != DataType::Float32() || logits.rank() != 2 ||
         logits.dim(0) != static_cast<int64_t>(sequence_length) || logits.dim(1) <= 0 ||
         logits.stride(1) != 1 || logits.stride(0) != logits.dim(1) ||
@@ -356,12 +362,20 @@ inline StatusOr<StageSnapshot> CaptureStage(const ExecutionContext& context,
                 for (size_t dim = 0; dim < cache_view.head_dim(); ++dim) {
                     AM_ASSIGN_OR_RETURN(const auto key, cache_view.KeyData(layer, head, position, dim));
                     AM_ASSIGN_OR_RETURN(const auto value, cache_view.ValueData(layer, head, position, dim));
-                    float key_value = 0;
-                    float value_value = 0;
-                    std::memcpy(&key_value, key, sizeof(float));
-                    std::memcpy(&value_value, value, sizeof(float));
-                    result.keys.values.push_back(key_value);
-                    result.values.values.push_back(value_value);
+                    const auto widen = [kv_dtype](const void* element) -> float {
+                        if (kv_dtype == DataType::Float32()) {
+                            float result = 0;
+                            std::memcpy(&result, element, sizeof(float));
+                            return result;
+                        }
+                        uint16_t bits = 0;
+                        std::memcpy(&bits, element, sizeof(uint16_t));
+                        return kv_dtype == DataType::Float(16)
+                                       ? static_cast<float>(Half(bits, Half::from_bits()))
+                                       : aethermind::detail::bf16_to_fp32_value(bits);
+                    };
+                    result.keys.values.push_back(widen(key));
+                    result.values.values.push_back(widen(value));
                 }
             }
         }

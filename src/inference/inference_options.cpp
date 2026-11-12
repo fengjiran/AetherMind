@@ -32,7 +32,7 @@ StatusOr<RuntimeOptions> MakeCpuRuntimeOptions(
         const HfModelConfig& config,
         const CpuRuntimeAssemblyOptions& options) try {
     AM_ASSIGN_OR_RETURN(auto kv_cache,
-                        MakeFp32KVCacheOptions(config, options.context_tokens));
+                        MakeKVCacheOptions(config, options.context_tokens, options.kv_dtype));
     kv_cache.max_bytes = options.kv_max_bytes;
     return RuntimeOptions{
             .allocator = {.enable_cpu = true,

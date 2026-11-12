@@ -28,6 +28,14 @@ expect_label("KVCacheLayoutPlanningNoAllocation.SucceedsWithoutHeapAllocation" v
 expect_label("KVCacheLayoutPlanningDiagnosticFailure.ReturnsResourceExhaustedWithoutPublishingLayout" interposer TRUE)
 expect_label("KVCacheLayoutPlanningDiagnosticFailure.ReturnsResourceExhaustedWithoutPublishingLayout" validation TRUE)
 expect_label("ModelCompiler.LoadAndCompileTinyLlamaAtO2" model TRUE)
+expect_label("KV16CalibratedAcceptance.ShortFixturesMatchIndependentQuantizedOracle" numerical-model TRUE)
+expect_label("KV16CalibratedAcceptance.ShortFixturesMatchIndependentQuantizedOracle" kv16-model TRUE)
+expect_label("KV16CalibratedAcceptance.ShortFixturesMatchIndependentQuantizedOracle" validation TRUE)
+expect_label("KV16CalibratedAcceptance.ShortFixturesMatchIndependentQuantizedOracle" long-context FALSE)
+expect_label("KV16CalibratedAcceptance.NearLimitFourCombinationsMatchKv32WithinFrozenBudgets" long-context TRUE)
+expect_label("KV16CalibratedAcceptance.NearLimitFourCombinationsMatchKv32WithinFrozenBudgets" kv16-model TRUE)
+expect_label("KV16ModelAcceptance.DecodeExecutionHasNoMallocFamilyCallsAfterBinding" interposer TRUE)
+expect_label("CPUKernelKVCacheUpdateKV16.PreparedAppendIsZeroAllocation" interposer TRUE)
 
 foreach (name IN ITEMS
         "ModelLoad.PreservesLoadErrorCodeAndAddsContext"

@@ -81,6 +81,8 @@ function(aethermind_test_labels name output)
             CpuWeightPackingMetadataFailure.ReturnsResourceExhaustedAndReleasesPayload
             PackedWeightCollectionOwnership.AllocationFailureReleasesArtifactAndDoesNotBindSource
             WeightPacking.PrepackMetadataAllocationFailureReturnsResourceExhaustedBeforeBackendCall
+            CPUKernelKVCacheUpdateKV16.PreparedAppendIsZeroAllocation
+            KV16ModelAcceptance.DecodeExecutionHasNoMallocFamilyCallsAfterBinding
     )
     foreach (case IN LISTS interposer_cases)
         string(REPLACE "." "\\." pattern "${case}")
@@ -140,6 +142,19 @@ function(aethermind_test_labels name output)
 
     if (name MATCHES "(^|/)(HfFixedTrajectory|HfNearContextLimit|HfNumericalFaultInjection)\\.")
         list(APPEND labels model numerical numerical-model)
+    endif ()
+
+    if (name MATCHES "(^|/)KV16CalibratedAcceptance\\.")
+        list(APPEND labels model numerical numerical-model kv16-model)
+        if (name MATCHES "(NearLimit|NearContext|2048)")
+            list(APPEND labels long-context)
+        else ()
+            list(APPEND labels validation)
+        endif ()
+    endif ()
+
+    if (name MATCHES "(^|/)(KV16ModelAcceptance|KV16LoadChain|KVCacheUpdateKV16Transaction|CPUKernelAttentionKV16|CPUKernelKVCacheUpdateKV16)\\.")
+        list(APPEND labels numerical validation)
     endif ()
 
     if (name MATCHES "(^|/)(HfFixedTrajectory|HfNumericalFaultInjection|HfNumericalComparison)\\.")
@@ -244,7 +259,8 @@ function(aethermind_set_discovered_test_properties
     foreach (name IN LISTS ${tests_variable})
         aethermind_test_labels("${name}" labels)
         set(reason "")
-        if ("numerical-model" IN_LIST labels AND NOT ARGV11 AND NOT required_assets)
+        if ("numerical-model" IN_LIST labels AND NOT "kv16-model" IN_LIST labels AND
+                NOT ARGV11 AND NOT required_assets)
             set(reason missing_numerical_assets)
         elseif ("isa-avx2" IN_LIST labels AND NOT ARGV10)
             set(reason not_compiled_avx2)
@@ -280,7 +296,11 @@ function(aethermind_set_discovered_test_properties
         endif ()
 
         if ("numerical-model" IN_LIST labels)
-            set_tests_properties("${name}" PROPERTIES FIXTURES_REQUIRED aethermind_numerical_assets)
+            if ("kv16-model" IN_LIST labels)
+                set_tests_properties("${name}" PROPERTIES FIXTURES_REQUIRED aethermind_kv16_reference_assets)
+            else ()
+                set_tests_properties("${name}" PROPERTIES FIXTURES_REQUIRED aethermind_numerical_assets)
+            endif ()
             math(EXPR numerical_case_count "${numerical_case_count} + 1")
             if ("long-context" IN_LIST labels)
                 set_tests_properties("${name}" PROPERTIES TIMEOUT 600)
@@ -365,6 +385,20 @@ function(aethermind_register_tests target)
         set_tests_properties(fixture.numerical_assets PROPERTIES
                 DISABLED TRUE LABELS "fixture;numerical;missing_numerical_assets")
     endif ()
+
+    # KV16 references own their model/oracle identities and fail closed when
+    # selected without the prepared bundle. They do not depend on the presence
+    # of the original FP32 bundle after preparation.
+    if (Python3_Interpreter_FOUND)
+        add_test(NAME fixture.kv16_reference_assets COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tools/prepare_kv16_reference.py" verify
+                --output "${AETHERMIND_TEST_MODELS_DIR}/kv16-reference")
+    else ()
+        add_test(NAME fixture.kv16_reference_assets COMMAND "${CMAKE_COMMAND}" -E false)
+    endif ()
+    set_tests_properties(fixture.kv16_reference_assets PROPERTIES
+            LABELS "fixture;numerical;kv16-model"
+            FIXTURES_SETUP aethermind_kv16_reference_assets TIMEOUT 120)
 
     if (AETHERMIND_HAS_AVX2_FMA)
         set(expected_avx2 ON)

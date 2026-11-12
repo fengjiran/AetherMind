@@ -558,8 +558,31 @@ StatusOr<ExecutableModel> ExecutableModel::Load(Runtime& runtime,
         return Status::Unimplemented("Retained W16 weights require CPU O1/plain or O2/packed");
     }
 
+    if (!options.kv_dtype.IsScalar() ||
+        (options.kv_dtype != DataType::Float32() && options.kv_dtype != DataType::Float(16) &&
+         options.kv_dtype != DataType::BFloat(16))) {
+        return Status::InvalidArgument("kv_dtype must be scalar float32, float16 or bfloat16");
+    }
+    const bool kv16 = options.kv_dtype == DataType::Float(16) ||
+                      options.kv_dtype == DataType::BFloat(16);
+    if (kv16 && options.weights != WeightPolicy::kKeepFp16WeightsFp32Activation &&
+        options.weights != WeightPolicy::kKeepBf16WeightsFp32Activation) {
+        return Status::Unimplemented("KV16 requires a retained W16 weight policy");
+    }
+    // The Runtime owns the physical KV layout; Load must not rebuild it. Verify
+    // the requested dtype matches the existing Manager before any conversion or
+    // packing so an inconsistent pair fails early.
+    if (KVCacheManager* manager = runtime.GetKVCacheManager(); manager != nullptr) {
+        if (manager->layout().kv_dtype != options.kv_dtype) {
+            return Status::InvalidArgument(
+                    "Runtime KV cache dtype does not match the requested kv_dtype");
+        }
+    } else if (kv16) {
+        return Status::FailedPrecondition("KV16 requires an enabled KV cache manager");
+    }
+
     compile_options.graph_build.activation_dtype = DataType::Float32();
-    compile_options.graph_build.kv_dtype = DataType::Float32();
+    compile_options.graph_build.kv_dtype = options.kv_dtype;
 
     auto loaded = ModelLoader::Load(directory);
     if (!loaded.ok()) {

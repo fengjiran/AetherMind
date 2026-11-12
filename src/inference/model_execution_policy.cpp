@@ -203,11 +203,21 @@ Status inference::internal::ValidatePreparedWeights(
     return Status::ResourceExhausted({});
 }
 
-StatusOr<KVCacheRuntimeOptions> MakeFp32KVCacheOptions(
-        const HfModelConfig& config, size_t context_tokens) try {
-    AM_ASSIGN_OR_RETURN(const size_t num_layers, PositiveSize(config.num_hidden_layers, "num_hidden_layers"));
-    AM_ASSIGN_OR_RETURN(const size_t num_kv_heads, PositiveSize(config.num_key_value_heads, "num_key_value_heads"));
-    AM_ASSIGN_OR_RETURN(const size_t model_context, PositiveSize(config.max_position_embeddings, "max_position_embeddings"));
+StatusOr<KVCacheRuntimeOptions> MakeKVCacheOptions(
+        const HfModelConfig& config, size_t context_tokens, DataType kv_dtype) try {
+    if (!kv_dtype.IsScalar() ||
+        (kv_dtype != DataType::Float32() && kv_dtype != DataType::Float(16) &&
+         kv_dtype != DataType::BFloat(16))) {
+        return Status::InvalidArgument(
+                "kv_dtype must be scalar float32, float16 or bfloat16");
+    }
+
+    AM_ASSIGN_OR_RETURN(const size_t num_layers,
+                        PositiveSize(config.num_hidden_layers, "num_hidden_layers"));
+    AM_ASSIGN_OR_RETURN(const size_t num_kv_heads,
+                        PositiveSize(config.num_key_value_heads, "num_key_value_heads"));
+    AM_ASSIGN_OR_RETURN(const size_t model_context,
+                        PositiveSize(config.max_position_embeddings, "max_position_embeddings"));
     if (context_tokens == 0) {
         return Status::InvalidArgument("context_tokens must be positive");
     }
@@ -235,10 +245,15 @@ StatusOr<KVCacheRuntimeOptions> MakeFp32KVCacheOptions(
                                  .num_kv_heads = num_kv_heads,
                                  .max_tokens = context_tokens,
                                  .head_dim = head_dim,
-                                 .kv_dtype = DataType::Float32(),
+                                 .kv_dtype = kv_dtype,
                                  .alignment = 64};
 } catch (const std::bad_alloc&) {
     return Status::ResourceExhausted({});
+}
+
+StatusOr<KVCacheRuntimeOptions> MakeFp32KVCacheOptions(
+        const HfModelConfig& config, size_t context_tokens) {
+    return MakeKVCacheOptions(config, context_tokens, DataType::Float32());
 }
 
 } // namespace aethermind

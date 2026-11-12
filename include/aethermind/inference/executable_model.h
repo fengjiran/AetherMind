@@ -44,6 +44,9 @@ struct ModelLoadOptions {
     DeviceType target = DeviceType::kCPU;
     WeightPolicy weights = WeightPolicy::kRequireFp32;
     ModelLimits limits{};
+    /// KV storage element dtype; scalar F32/F16/BF16. KV16 is only admitted for
+    /// the retained-W16 policies and must match the Runtime's physical KV dtype.
+    DataType kv_dtype = DataType::Float32();
 };
 
 /// @brief Immutable, execution-ready model owned between compilation and sessions.

@@ -1,13 +1,13 @@
 # InferenceSession / Generate 前置闭环计划
 
-> 当前 C++ API 已收敛为 `ExecutableModel::Load/Prepare`；下文旧名称属于实现时记录。当前签名、权重策略与迁移方式见 [ExecutableModel 设计](../designs/inference/01-executable-model.md) §5–§6。
+> 当前 C++ API 已收敛为 `ExecutableModel::Load/Prepare`；下文旧名称属于实现时记录。当前签名、权重策略与迁移方式见 [ExecutableModel 设计](../archive/designs/inference/01-executable-model.md) §5–§6。
 
 - **状态**: Implemented
 - **版本**: 1.12
 - **日期**: 2026-09-03
 - **最近更新**: 2026-09-24
-- **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
-- **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
+- **产品边界**: [AetherMind 当前产品 PRD](../product.md)
+- **架构基线**: [架构总览](../architecture.md)
 - **关联模块**: compiler / execution / runtime / backend / model / API orchestration
 
 ## 1. 结论与范围
@@ -227,7 +227,7 @@ Runtime
 
 ### 4.2 已落地接口
 
-实现已落地，签名以头文件为准；职责与错误码细节见 [ExecutableModel 模块设计](../designs/inference/01-executable-model.md) §5 与 [InferenceSession 模块设计](../designs/inference/02-inference-session.md) §5：
+实现已落地，签名以头文件为准；职责与错误码细节见 [ExecutableModel 模块设计](../archive/designs/inference/01-executable-model.md) §5 与 [InferenceSession 模块设计](../archive/designs/inference/02-inference-session.md) §5：
 
 ```cpp
 StatusOr<ExecutableModel> PrepareExecutableModel(Runtime& runtime,
@@ -517,8 +517,8 @@ Decode 循环中不得变化：
 | 2026-09-17 | 1.5 | 同步 Attention kernel 与 read binding query interval：§2.2（15 类 21 描述符）、§3.1、M3 6/6、门禁 kernel 项勾选 |
 | 2026-09-23 | 1.6 | 按 §9 流转规则（M1 已闭环）将状态由 Draft 转为 In Progress；复核确认 §2.2 描述符计数（15 类 21 个）与 §3.2–§3.5 缺口描述仍与仓库一致：`ExecutableModel`/`PrepareExecutableModel`、`InferenceSession`、真实权重 external binding 生产 API、完整 Llama plan 构建与 Prefill→Decode 端到端测试均未落地，§9 其余 9 项门禁保持未勾选；M2 细化拆出为 [07 号提案](07-executable-model-preparation.md) |
 | 2026-09-23 | 1.7 | 07 号提案 M2.4 落地后同步：§9 勾选 "baseline pipeline 可通过真实 CpuBackend 构建完整 plan"、"`PrepareExecutableModel` 可从真实 artifact 构建"、"real weights 可自动生成完整 external bindings" 三项；§2.3 补记 kEmbedding 亦无 kPacked 变体，并写明其后果——`enable_packed_weights=true` 的完整 Llama 在 kernel resolve 即失败，packed 取证只能走子图 |
-| 2026-09-23 | 1.8 | 07 号提案 M2.5 落地后同步：§9 勾选 "Prefill/Decode phase-plan 合同已验证"（共享单 plan、phase 不匹配报错、混合 phase prepare 期拒绝三项由 M2.5 测试覆盖，见 07 §4.5/§7）；07 转 Implemented，实现描述由 [designs/inference/01-executable-model.md](../designs/inference/01-executable-model.md) 承接。剩余五项门禁（Prefill/Decode 数值、KV content/commit、重复 decode、malloc-hook、KV reservation teardown）属 M4/M5，未勾选 |
+| 2026-09-23 | 1.8 | 07 号提案 M2.5 落地后同步：§9 勾选 "Prefill/Decode phase-plan 合同已验证"（共享单 plan、phase 不匹配报错、混合 phase prepare 期拒绝三项由 M2.5 测试覆盖，见 07 §4.5/§7）；07 转 Implemented，实现描述由 [designs/inference/01-executable-model.md](../archive/designs/inference/01-executable-model.md) 承接。剩余五项门禁（Prefill/Decode 数值、KV content/commit、重复 decode、malloc-hook、KV reservation teardown）属 M4/M5，未勾选 |
 | 2026-09-23 | 1.9 | 按当前代码状态同步 packed-weight 能力：§2.2 描述符计数 21→27（新增 kLinear/kEmbedding/kRmsNorm 的 packed identity 与 Qkv/GateUp/Linear 的 `cpu_bpanel_f32_v1_avx2` 候选），表格 packed 相关行更新，段末"剩余准入项"改为端到端数值证据；§2.3 "仍未具备" 重写——kLinear/kEmbedding kPacked 变体与 tile/block recipe 已补齐（`PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 缺口测试已由 `PackedLoweringPreparesAllWeightConsumers` 取代），仅剩"bpanel 升为默认（待 benchmark）"与 unfused e2e 数值验证；§9 括注同步。另注：§3.2–§3.5 的缺口叙述（如"缺少 ExecutableModel 准备入口"）早于本次同步即已过期，待该文件自身维护时重写 |
 | 2026-09-24 | 1.10 | 更正 §3.2–§3.4 中过期的 M2 缺口描述；记录 M4 真实 CpuBackend tiny Llama Prefill + 两步 Decode 的数值、KV、确定性、失败清理与 glibc/Linux steady-state allocation 证据。M4 修复符号化 cache_len 与 KVCacheSessionView geometry 的执行校验冲突，并将 KVCacheUpdate/Attention 热路径的 eager diagnostic string 改为固定 string_view；§7 同步说明 commit 由 Executor 在完整 plan 成功后自动推进，§9 五项 M4 门禁全部勾选。M5 public Generate 仍未实现。|
 | 2026-09-24 | 1.11 | 落地 M5 public C++ `InferenceSession::Generate`：冻结 ExecutableModel 的词表/context 元数据，精确按 prompt + N−1 预约 KV，增加请求级 RAII、Decode loop 复用和 Session oracle/边界/清理/分配测试，并校验 preparation Runtime 身份与 CPU allocator；状态更新为 Implemented。|
-| 2026-09-24 | 1.12 | 修正三处过期表述：§2.2 packed 计数 6 → 实测 9 个描述符声明 `weight_format = kPacked`（并列明其构成）；§2.1 KV 行由"部分实现"改为"已实现（静态 contiguous baseline）"并指向 05 号提案的演进范围；§4.2 由"推荐接口轮廓"改为"已落地接口"，替换为实际签名、删除"落地 M2 前需更新 AGENTS.md"的过期句并记录与初版示意的三处差异。M5 实现描述另由 [InferenceSession 模块设计](../designs/inference/02-inference-session.md) 承接 |
+| 2026-09-24 | 1.12 | 修正三处过期表述：§2.2 packed 计数 6 → 实测 9 个描述符声明 `weight_format = kPacked`（并列明其构成）；§2.1 KV 行由"部分实现"改为"已实现（静态 contiguous baseline）"并指向 05 号提案的演进范围；§4.2 由"推荐接口轮廓"改为"已落地接口"，替换为实际签名、删除"落地 M2 前需更新 AGENTS.md"的过期句并记录与初版示意的三处差异。M5 实现描述另由 [InferenceSession 模块设计](../archive/designs/inference/02-inference-session.md) 承接 |

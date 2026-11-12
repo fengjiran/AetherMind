@@ -1,6 +1,6 @@
 # AetherMind 演进提案索引
 
-> 本目录存放未来架构演进提案（"将来要做什么"）。写作与命名规范见 [文档系统规范](../guides/documentation-guide.md#74-演进提案)。
+> 本目录存放未来架构演进提案（"将来要做什么"）。当前优先级入口见 [roadmap.md](../roadmap.md)，通用写作规则见 [docs/README.md](../README.md)。
 >
 > 专题文档章节规范：现状分析 / 目标架构 / 方案与备选 / 实施步骤 / 风险与依赖 / 验收标准。
 > 状态流转：Draft → In Progress → Implemented → Superseded。
@@ -11,7 +11,7 @@
 |---|---|---|---|
 | 01 | [InferenceSession / Generate 前置闭环计划](01-inference-session-generate-readiness.md) | Implemented | 2026-09-24 |
 | 02 | [工程质量体系建设方案](02-engineering-quality-system.md) | Draft | 2026-10-22 |
-| 03 | [文档系统稳定化方案](03-documentation-stabilization.md) | In Progress | 2026-09-17 |
+| 03 | [文档系统稳定化方案](03-documentation-stabilization.md) | Superseded | 2026-09-17 |
 | 05 | [KVCache Manager 演进方案](05-kv-cache-manager-evolution.md) | Superseded | 2026-09-24 |
 | 06 | [AetherMind 系统能力演进路线图](06-system-capability-evolution-roadmap.md) | Draft | 2026-10-22 |
 | 07 | [ExecutableModel 生产准备入口方案](07-executable-model-preparation.md) | Implemented | 2026-09-23 |

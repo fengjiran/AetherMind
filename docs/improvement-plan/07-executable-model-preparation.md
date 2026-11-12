@@ -1,14 +1,14 @@
 # ExecutableModel 生产准备入口方案
 
-> 当前 C++ API 已收敛为 `ExecutableModel::Load/Prepare`；下文旧名称属于实现时记录。当前签名、权重策略与迁移方式见 [ExecutableModel 设计](../designs/inference/01-executable-model.md) §5–§6。
+> 当前 C++ API 已收敛为 `ExecutableModel::Load/Prepare`；下文旧名称属于实现时记录。当前签名、权重策略与迁移方式见 [ExecutableModel 设计](../archive/designs/inference/01-executable-model.md) §5–§6。
 
 - **状态**: Implemented
 - **版本**: 1.13
 - **日期**: 2026-09-23
 - **最近更新**: 2026-10-08
-- **实现承接**: [ExecutableModel 模块设计](../designs/inference/01-executable-model.md)
-- **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
-- **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
+- **实现承接**: [ExecutableModel 模块设计](../archive/designs/inference/01-executable-model.md)
+- **产品边界**: [AetherMind 当前产品 PRD](../product.md)
+- **架构基线**: [架构总览](../architecture.md)
 - **关联计划**: [InferenceSession / Generate 前置闭环计划](01-inference-session-generate-readiness.md)（本提案是其 M2 的细化）
 - **关联模块**: model / compiler / execution / runtime / inference（新增）
 
@@ -355,7 +355,7 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 - [05 号提案](05-kv-cache-manager-evolution.md)：KV/state 子路径细化，与本提案不重叠；`ExecutableModel` 不持有 KV 资源，KV reservation 属 Session。
 - [06 号路线图](06-system-capability-evolution-roadmap.md)：§9.1 P0 "ExecutableModel preparation" 的详细设计即本提案。
 - 根 `AGENTS.md` §2.1：M2.3 新增 `inference` 行，规则为"inference → execution + compiler + model + runtime；不得被上述模块反向依赖"。
-- 已验证实现描述已由 [`docs/designs/inference/01-executable-model.md`](../designs/inference/01-executable-model.md) 承接（Current），本提案转为 Implemented。
+- 已验证实现描述已由 [`docs/designs/inference/01-executable-model.md`](../archive/designs/inference/01-executable-model.md) 承接（Current），本提案转为 Implemented。
 
 ## 10. 关联代码
 
@@ -391,10 +391,10 @@ model 禁止依赖 execution/runtime，而准备入口必须调用 `ExecutionPla
 | 2026-09-23 | 1.3 | M2.2 落地：`ComputeExternalReadRequirements` 提升为 execution 公共 API，`PrepareExecutionBindings` 共用同一实现；新增 `test_execution_bindings.cpp`（4 例，真实 CpuBackend），全量 3503 测试通过。修正初版的不可达验收前提——`LowerModelGraph` 对所有含权重 step 统一赋 `weight_format`、`ExecutionPlanNodeSpec` 不携带输入 value id，故"同一权重同时被 packed 与 plain step 消费"当前不可构造，测试改为覆盖 plain/packed/一致性三个可达形态（§4.2、M2.2）；§3.4 step 5 函数名与实际 API 对齐；§2.2 标注 M2.1/M2.2 已闭环 |
 | 2026-09-23 | 1.4 | M2.3 落地：新增 `inference/` 模块与 `WeightBindingStorage`（含 8 例稳定性测试），根 `AGENTS.md` §2.1 新增 inference 行与依赖规则，实测确认 CMake 的 `GLOB_RECURSE` 自动收录新目录；全量 3511 测试通过。范围调整：`ExecutableModel` 本体移至 M2.4 与 `PrepareExecutableModel` 同批交付，避免留下无构造入口的半成品类型。§4.4 精度修正：`PrepareExecutionBindings` 经 `SnapshotMetadata` 深拷贝 shape/stride、只借用 `data()`，故堆稳定性的真实理由是绑定表被反复交付；`alignment` 统一以 0（未指定）交付并记录依据 |
 | 2026-09-23 | 1.5 | M2.4 落地：`ExecutableModel` 与 `PrepareExecutableModel` 按 §3.4 八步实现，修正四处失实注释，新增 8 例真实 artifact 测试与字节后备 tiny GQA Llama fixture；全量 3519 测试通过，仓库首次经生产路径构建出完整 Llama plan，01 §9 三项门禁可勾选。§3.3 更新为已实现签名并记录三处落地偏差（去 options、phase 访问器改为可失败、不暴露 packed store）；§2.2 新增实测发现——packed lowering 对含 `Embedding`/`Linear` 的完整模型不可解析（比 01 §2.3 记录的更宽）；M2.5 范围据此重划 |
-| 2026-09-23 | 1.6 | M2.5 落地并转 Implemented：补多层（2 层 21 权重不串层）、常量物化与两条拒绝路径、packed 子图（`AddRmsNorm`）三个 M2.5 覆盖面；补 teardown（`PreparedBindingsAreReleasedBeforeTheModel`，ASAN/TSAN 验证）、phase 合同（`PhaseSpecificArtifactRejectsUnmatchedPhaseQueries`、`RejectsArtifactWhoseStepsMixPhases` 经 `LoweredGraph::Builder` 测试缝）与权重解析错误路径（`kMoERouter`、越界 layer，消息含 value index 与 role）三处验收缺口；`ResolveWeightBinding` 失败消息在 inference 侧补 role/layer 标签。删除 legacy `WeightPrepackPlanner::BuildRequests` 与 `MakePackedSelector` 及其 3 例测试，三个 graph-driven 用例更名为 `BuildWeightPackingRequests*`。`ExecutableModel` 删除移动赋值（只可移动构造，契约由 `IsMoveConstructibleButNotAssignable` 钉住），并相应移除 base 层 `StatusOr` 的 nothrow move-assignable 断言（见 §3.3 第 4 条）。实现描述由 [docs/designs/inference/01-executable-model.md](../designs/inference/01-executable-model.md) 承接；01 §9 "Prefill/Decode phase-plan 合同已验证" 可勾选。`ExecutableModel` 20 例、`WeightPrepackPlanner` 16 例、全量 3533 例通过 |
+| 2026-09-23 | 1.6 | M2.5 落地并转 Implemented：补多层（2 层 21 权重不串层）、常量物化与两条拒绝路径、packed 子图（`AddRmsNorm`）三个 M2.5 覆盖面；补 teardown（`PreparedBindingsAreReleasedBeforeTheModel`，ASAN/TSAN 验证）、phase 合同（`PhaseSpecificArtifactRejectsUnmatchedPhaseQueries`、`RejectsArtifactWhoseStepsMixPhases` 经 `LoweredGraph::Builder` 测试缝）与权重解析错误路径（`kMoERouter`、越界 layer，消息含 value index 与 role）三处验收缺口；`ResolveWeightBinding` 失败消息在 inference 侧补 role/layer 标签。删除 legacy `WeightPrepackPlanner::BuildRequests` 与 `MakePackedSelector` 及其 3 例测试，三个 graph-driven 用例更名为 `BuildWeightPackingRequests*`。`ExecutableModel` 删除移动赋值（只可移动构造，契约由 `IsMoveConstructibleButNotAssignable` 钉住），并相应移除 base 层 `StatusOr` 的 nothrow move-assignable 断言（见 §3.3 第 4 条）。实现描述由 [docs/designs/inference/01-executable-model.md](../archive/designs/inference/01-executable-model.md) 承接；01 §9 "Prefill/Decode phase-plan 合同已验证" 可勾选。`ExecutableModel` 20 例、`WeightPrepackPlanner` 16 例、全量 3533 例通过 |
 | 2026-09-23 | 1.7 | 结构整理（与 M2 实现无关的路径维护）：权重组装三件套迁入 `include/aethermind/model/weight/` 与 `src/model/weight/`（`packed_weight_store`、`weight_binding_resolver`、`weight_prepack_planner`），与 `model/formats/hf/` 的子目录风格一致；全仓 include 与本文档 §10 关联路径同步。CMake 的 `GLOB_RECURSE ... CONFIGURE_DEPENDS` 自动收录新目录（实测新路径 `.o` 生成），全量 3533 例通过 |
 | 2026-09-23 | 1.8 | 形态整理：`WeightPrepackPlanner` 静态工具类函数化——`PrepackAndStore` → 自由函数 `PrepackWeightRequests`，嵌套 `Request` → 顶层 `WeightPackingRequest`，文件 `weight_prepack_planner.{h,cpp}` → `weight_packing.{h,cpp}`，与 compiler 侧 `BuildWeightPackingRequests` 命名对称；测试文件与套件更名 `test_weight_packing.cpp` / `WeightPacking`（`PrepackWeightRequests*` 用例名同步）。类零状态单静态方法、且 `BuildRequests` 删除后名实不符，仓库同类形态已统一为自由函数（`BuildModelGraph`/`BuildLlamaDense`）。全量 3533 例通过 |
-| 2026-09-23 | 1.9 | 与并行重构同步（非本提案实施）：model/weight 三件套合并为 `weight_packing.{h,cpp}`——`ResolveWeightBinding`、`WeightPackingRequest`、`PrepackWeightRequests`、`WeightArtifactKey`/`PackedWeightStore` 同址；打包执行改经 `Backend::PackWeights`（composite 物化/对齐/分配归 backend，key 的 recipe 由产物回读）；`hf_weight_resolver` 更名为 `hf_tensor_resolver` 以区分两个 resolver。本文档 §2.1/§2.2/§3.4/§4.1/§4.6/§10 的链接与行号已同步；命名与依赖红线见 [02-weight-data-concepts.md](../designs/model/02-weight-data-concepts.md)。全量 3539 例通过 |
+| 2026-09-23 | 1.9 | 与并行重构同步（非本提案实施）：model/weight 三件套合并为 `weight_packing.{h,cpp}`——`ResolveWeightBinding`、`WeightPackingRequest`、`PrepackWeightRequests`、`WeightArtifactKey`/`PackedWeightStore` 同址；打包执行改经 `Backend::PackWeights`（composite 物化/对齐/分配归 backend，key 的 recipe 由产物回读）；`hf_weight_resolver` 更名为 `hf_tensor_resolver` 以区分两个 resolver。本文档 §2.1/§2.2/§3.4/§4.1/§4.6/§10 的链接与行号已同步；命名与依赖红线见 [02-weight-data-concepts.md](../archive/designs/model/02-weight-data-concepts.md)。全量 3539 例通过 |
 | 2026-09-23 | 1.10 | 测试文件向库单元对齐：`test_packed_weight_store_ownership.cpp`（原在 `tests/unit/backend/`，与所测类型不同层）与 `test_weight_binding_resolver.cpp` 并入 `tests/unit/model/weight/test_weight_packing.cpp`，与单一库单元同址同层；三个套件（`WeightPacking` 17 例、`WeightBindingResolver` 12 例、`PackedWeightStoreOwnership` 5 例）共 34 例。全量 3539 例通过 |
 | 2026-09-23 | 1.11 | packed 缺口闭环同步：§2.2 末行与 M2.4/M2.5 两处不再把"完整模型 packed 不可解析"记为现状——`Embedding`/`RmsNorm`/`Linear` 的 packed identity descriptor 已落地，缺口测试 `PackedLoweringIsUnresolvableForOpsWithoutPackedKernels` 被正向的 `PackedLoweringPreparesAllWeightConsumers` 取代；同时 recipe 传递链（`KernelDef::packing_recipe` → `Backend::GetPackingRecipe` → `WeightPackingRequest::recipe` → `PackWeights(..., recipe)`）与 bpanel 打包/消费链已落地，详见 [GEMM 提案](../operators/gemm/cpu-gemm-packed-weight.md) 与 01 §2.3 |
 | 2026-10-05 | 1.12 | `PrepackWeightRequests` 签名同步为 `StatusOr<PackedWeightStore> PrepackWeightRequests(const Backend&, const std::vector<WeightPackingRequest>&)`：store 由函数创建、绑定批内 source 并作为返回值（失败全有或全无；空批返回未绑定空 store），§2.1 表与 §3.4 第 3 步同步，生产准备不再显式 `SetSourceId`。全量 3574 例通过 |

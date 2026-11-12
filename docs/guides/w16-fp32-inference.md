@@ -39,7 +39,7 @@ auto model = ExecutableModel::Load(
 
 K 在既有 F32 RoPE 后 narrow，V 在写 cache 时 narrow，采用固定 RNE、gradual underflow 与 quiet NaN 合同。Prefill 当前 token 也先写 cache16，Attention 再 widening 并用 F32 计算；不保留平行 F32 cache。模型对独立量化 oracle 的实现误差与同 W16/KV32 的质量差分别验收，不能混用两套预算。
 
-实际 KV 字节由 padded layout 决定；小 head_dim 的两字节元素可能仍占相同的对齐行，不能保证物理 KV 或整个进程内存减半。数值、四组合 O1/O2、2048 context、零分配与 baseline 范围见 [P3 验收记录](../tests/kv16_execution_validation_2026-11-12.md)。
+实际 KV 字节由 padded layout 决定；小 head_dim 的两字节元素可能仍占相同的对齐行，不能保证物理 KV 或整个进程内存减半。数值、四组合 O1/O2、2048 context、零分配与 baseline 范围见 [P3 验收记录](../archive/tests/kv16_execution_validation_2026-11-12.md)。
 
 ## 准备与所有权
 

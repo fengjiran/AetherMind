@@ -87,4 +87,4 @@ CLI 和 model benchmark 都复用此映射；它们的既有命令行参数和 b
 
 C ABI v1 的生命周期是先 `am_runtime_create`、后 `am_model_load`。因此它仍由 ABI config 显式提供 KV geometry，并在加载模型后校验 Runtime/model 一致性；不能等待模型 metadata 后再创建 Runtime。其 CPU 默认值直接来自 `RuntimeOptions{}`，没有复制 CLI/benchmark 的模型感知映射。C ABI 的签名、配置 struct 和 strict FP32 准入均未改变。
 
-验证结果见 [运行前 Runtime 配置验证](../tests/runtime_configuration_validation_2026-10-30.md)。
+验证结果见 [运行前 Runtime 配置验证](../archive/tests/runtime_configuration_validation_2026-10-30.md)。

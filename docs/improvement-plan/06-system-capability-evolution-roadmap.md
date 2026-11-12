@@ -4,8 +4,8 @@
 - **版本**: 1.7
 - **日期**: 2026-09-16
 - **最近更新**: 2026-10-22
-- **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
-- **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
+- **产品边界**: [AetherMind 当前产品 PRD](../product.md)
+- **架构基线**: [架构总览](../architecture.md)
 - **工程质量基线**: [工程质量体系建设方案](02-engineering-quality-system.md)
 - **定位**: 全仓库 capability gap 总表与实施排序；专题细节见 [提案索引](README.md)，多架构/MoE 扩展由 [09 号提案](09-qwen-and-moe-architecture-support.md) 承载，FP16/BF16 执行由 [11 号提案](11-fp16-bf16-execution-support.md) 承载，未来 CUDA 执行由 [12 号提案](12-cuda-backend-execution-support.md) 承载
 

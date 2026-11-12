@@ -4,7 +4,7 @@
 - **版本**: 1.4
 - **日期**: 2026-09-17
 - **主方案**: [03-documentation-stabilization.md](03-documentation-stabilization.md)
-- **规范来源**: [文档系统规范](../guides/documentation-guide.md)
+- **规范来源**: [文档系统规范](../archive/guides/documentation-guide.md)
 
 本表是 [03 号方案](03-documentation-stabilization.md) §5 D2 的一次性清查交付物，登记范围内所有 .md 文档的类型、状态、事实权威、当前性、问题、处置与优先级。**本清查阶段不批量重命名或移动文件**，"处置" 列仅记录建议值，实际执行放到 D3 及后续 workstream。
 
@@ -28,7 +28,7 @@
 ## 2. 清查范围
 
 - **包含（治理范围）**：仓库根 `README.md`、`AGENTS.md`、`CHANGELOG.md`；`docs/` 下全部 .md（含 `archive/`、`improvement-plan/`、`templates/`）。
-- **包含（仅登记，Out of Scope）**：`docs/agent/` 下全部 .md——按 [documentation-guide.md §1](../guides/documentation-guide.md) 准入条件，`docs/agent/` 是独立子系统。清查表为全景统计列出，但排除在 E1–E9、状态迁移、命名和 metadata 门禁之外。
+- **包含（仅登记，Out of Scope）**：`docs/agent/` 下全部 .md——按 [documentation-guide.md §1](../archive/guides/documentation-guide.md) 准入条件，`docs/agent/` 是独立子系统。清查表为全景统计列出，但排除在 E1–E9、状态迁移、命名和 metadata 门禁之外。
 - **排除**：`3rdparty/`、`build*/`、`.models/`、`.qoder/`、`.trae/`、`.omo/`、`.sisyphus/`、`.codex/`、`.gemini/`、`.idea/`、`.vscode/`、`.cache/`、`.agents/`、`tools/agent_memory/`。
 - **总数**：143 篇（根 3 + `docs/` 140）；其中治理范围 89 篇，Out of Scope 54 篇（`docs/agent/`）。
 
@@ -131,7 +131,7 @@
 | docs/archive/model_loader/model_loader_implementation_plan.md | archive | Deprecated | 否 | 未核验 | - | 保留 | P2 |
 | docs/archive/model_loader/model_validator_design.md | archive | Deprecated | 否 | 未核验 | 过长（1330 行） | 保留 | P2 |
 | docs/archive/model_loader/model_weight_packing_strategy.md | archive | Deprecated | 否 | 未核验 | - | 保留 | P2 |
-| docs/decisions/0001-documentation-system.md | decision | Accepted | 否 | 部分核验 | 唯一 ADR，与 documentation-guide.md 同步 | 保留 | P1 |
+| docs/archive/decisions/0001-documentation-system.md | decision | Accepted | 否 | 部分核验 | 唯一 ADR，与 documentation-guide.md 同步 | 保留 | P1 |
 | docs/designs/amstring/BasicStringCore_design.md | design | Unverified | 否 | 未核验 | 命名违规（无 NN- 前缀） | 待 D3 排序确认（重命名） | P2 |
 | docs/designs/amstring/CharLayoutPolicy_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认（重命名） | P2 |
 | docs/designs/amstring/GenericLayoutPolicy_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认（重命名） | P2 |
@@ -145,7 +145,7 @@
 | docs/designs/cpu_capability_design.md | design | **Moved**（2026-09-19） | 否 | 已处理 | 命名违规 | 曾暂迁 operators，2026-09-19 回流 docs/designs/cpu_capability_design.md | Resolved |
 | docs/designs/dispatch_design.md | design | **Moved**（2026-09-19） | 否 | 已处理 | 过长（1061 行）+ 命名违规 | 曾暂迁 operators，2026-09-19 回流 docs/designs/dispatch_design.md | Resolved |
 | docs/designs/executor_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
-| docs/designs/graph_compilation_flow.md | design | Unverified | 否 | 未核验 | 命名违规 + 与 docs/reviews/graph_compilation_flow.md 同名冲突 | 待 D3 排序确认（重命名或移动） | P1 |
+| docs/designs/graph_compilation_flow.md | design | Unverified | 否 | 未核验 | 命名违规 + 与 docs/archive/reviews/graph_compilation_flow.md 同名冲突 | 待 D3 排序确认（重命名或移动） | P1 |
 | docs/designs/graph_invariants_and_validator_architecture.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
 | docs/designs/graph_lowering_design.md | design | Unverified | 否 | 未核验 | 过长（1005 行）+ 命名违规 | 待 D3 排序确认（拆分 + 移动） | P2 |
 | docs/designs/kernel_dev/LinearOp算子契约.md | design | **Moved**（2026-09-19） | 否 | 已处理 | 中文文件名 + 命名违规 | 已归入 docs/operators/linear/LinearOp算子契约.md | Resolved |
@@ -161,10 +161,10 @@
 | docs/designs/tensor_view_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
 | docs/designs/unified_allocator_design.md | design | Unverified | 否 | 未核验 | 命名违规 | 待 D3 排序确认 | P2 |
 | docs/designs/已证明约束的执行阶段保障方案.md | design | Unverified | 否 | 未核验 | 中文文件名 + 命名违规 | 待 D3 排序确认（重命名） | P2 |
-| docs/guides/code_review_guide.md | guide | Deprecated | 否 | 已核验 | 失效命令（第 49 行）+ ammalloc 专项残留（5 处）+ 硬阈值无依据（第 26 行）+ 与 AGENTS.md §6 不一致 | 已标 Deprecated（2026-09-14），待重写 | P0 |
+| docs/archive/guides/code_review_guide.md | guide | Deprecated | 否 | 已核验 | 失效命令（第 49 行）+ ammalloc 专项残留（5 处）+ 硬阈值无依据（第 26 行）+ 与 AGENTS.md §6 不一致 | 已标 Deprecated（2026-09-14），待重写 | P0 |
 | docs/guides/cpp_coding_style_guidelines.md | guide | Current | 否 | 部分核验 | - | 保留 | P1 |
 | docs/guides/cpp_comment_guidelines.md | guide | Current | 否 | 部分核验 | - | 保留 | P1 |
-| docs/guides/documentation-guide.md | guide | Current | 是（文档规范元） | 已核验 | - | 保留（D1 核验） | P0 |
+| docs/archive/guides/documentation-guide.md | guide | Current | 是（文档规范元） | 已核验 | - | 保留（D1 核验） | P0 |
 | docs/guides/operator_optimization_guide.md | guide | **Removed**（2026-09-19） | 否 | 已处理 | 过长（2110 行） | 已压缩合并入算子开发工作流附录 C 后删除 | Resolved |
 | docs/guides/test_writing_guidelines.md | guide | Current | 否 | 部分核验 | - | 保留 | P1 |
 | docs/improvement-plan/01-inference-session-generate-readiness.md | plan | Draft | 否 | 部分核验 | 漂移已修复（§2.2 Linear/RoPE/Argmax 更新为 FP32 reference / 可用，2026-09-14） | 保留（其余章节待核验） | P0 |
@@ -173,20 +173,20 @@
 | docs/improvement-plan/03-documentation-stabilization.md | plan | Draft | 否 | 未核验 | 本方案主文档（Draft 提案，不是治理权威） | 保留（Batch -1 完成后迁移到 Implemented） | P0 |
 | docs/improvement-plan/README.md | index | Current | 是（演进提案索引） | 已核验 | - | 保留 | P0 |
 | docs/issues.md | index | Current | 是（已知问题） | 已核验 | - | 保留 | P0 |
-| docs/logs/development_log.md | log | Current | 否 | 部分核验 | 追加式过程记录，696 行 | 保留 | P2 |
-| docs/products/aethermind_prd.md | prd | Current | 是（产品能力） | 已核验 | 术语已迁移（2026-09-17） | 保留（D1 核验） | P0 |
-| docs/reviews/graph_compilation_flow.md | review | Historical Snapshot | 否 | 未核验 | 命名违规（无日期）+ 与 designs/ 同名冲突 + docs/README.md 已标"已过时" | 重命名加日期（D3 P1） | P1 |
-| docs/reviews/model_graph_data_structure_review.md | review | Historical Snapshot | 否 | 未核验 | 命名违规（无日期）+ docs/README.md 标 Current 但无快照日期 | 重命名加日期（D3 P1） | P1 |
-| docs/reviews/operator_kernel_architecture_review_2026-07-18.md | review | Historical Snapshot | 否 | 未核验 | -（canonical 命名） | 保留 | P2 |
-| docs/reviews/operator_semantic_layer_review.md | review | Historical Snapshot | 否 | 未核验 | 命名违规（无日期） | 重命名加日期 | P1 |
-| docs/reviews/prd/prd_review.md | review | Historical Snapshot | 否 | 未核验 | 命名违规（无日期） | 重命名加日期 | P1 |
-| docs/templates/adr.md | template | Current | 否 | 部分核验 | - | 保留 | P2 |
-| docs/templates/module-design.md | template | Current | 否 | 部分核验 | - | 保留 | P2 |
-| docs/tests/ammalloc_benchmark_rigorous_20260303.md | test | Historical Snapshot | 否 | 未核验 | ammalloc 已移出仓库 | 保留（历史验证快照） | P2 |
-| docs/tests/amstring_charlayout_m7_validation_20260429.md | test | Historical Snapshot | 否 | 未核验 | - | 保留 | P2 |
-| docs/tests/amstring_m6_validation_20260428.md | test | Historical Snapshot | 否 | 未核验 | - | 保留 | P2 |
-| docs/tests/amstring_sso_boundary_validation_20260502.md | test | Historical Snapshot | 否 | 未核验 | - | 保留 | P2 |
-| docs/tests/size_class_benchmark_20260310.md | test | Historical Snapshot | 否 | 未核验 | ammalloc 已移出仓库 | 保留 | P2 |
+| docs/archive/logs/development_log.md | log | Current | 否 | 部分核验 | 追加式过程记录，696 行 | 保留 | P2 |
+| docs/product.md | prd | Current | 是（产品能力） | 已核验 | 术语已迁移（2026-09-17） | 保留（D1 核验） | P0 |
+| docs/archive/reviews/graph_compilation_flow.md | review | Historical Snapshot | 否 | 未核验 | 命名违规（无日期）+ 与 designs/ 同名冲突 + docs/README.md 已标"已过时" | 重命名加日期（D3 P1） | P1 |
+| docs/archive/reviews/model_graph_data_structure_review.md | review | Historical Snapshot | 否 | 未核验 | 命名违规（无日期）+ docs/README.md 标 Current 但无快照日期 | 重命名加日期（D3 P1） | P1 |
+| docs/archive/reviews/operator_kernel_architecture_review_2026-07-18.md | review | Historical Snapshot | 否 | 未核验 | -（canonical 命名） | 保留 | P2 |
+| docs/archive/reviews/operator_semantic_layer_review.md | review | Historical Snapshot | 否 | 未核验 | 命名违规（无日期） | 重命名加日期 | P1 |
+| docs/archive/reviews/prd/prd_review.md | review | Historical Snapshot | 否 | 未核验 | 命名违规（无日期） | 重命名加日期 | P1 |
+| docs/archive/templates/adr.md | template | Current | 否 | 部分核验 | - | 保留 | P2 |
+| docs/archive/templates/module-design.md | template | Current | 否 | 部分核验 | - | 保留 | P2 |
+| docs/archive/tests/ammalloc_benchmark_rigorous_20260303.md | test | Historical Snapshot | 否 | 未核验 | ammalloc 已移出仓库 | 保留（历史验证快照） | P2 |
+| docs/archive/tests/amstring_charlayout_m7_validation_20260429.md | test | Historical Snapshot | 否 | 未核验 | - | 保留 | P2 |
+| docs/archive/tests/amstring_m6_validation_20260428.md | test | Historical Snapshot | 否 | 未核验 | - | 保留 | P2 |
+| docs/archive/tests/amstring_sso_boundary_validation_20260502.md | test | Historical Snapshot | 否 | 未核验 | - | 保留 | P2 |
+| docs/archive/tests/size_class_benchmark_20260310.md | test | Historical Snapshot | 否 | 未核验 | ammalloc 已移出仓库 | 保留 | P2 |
 
 ## 4. 汇总统计
 
@@ -255,13 +255,13 @@
 |---|---|---|---|
 | `docs/issues.md` 未解决条目为空 | 第 9 行 `- （无）` | docs/issues.md 行 | Batch -1 P0 |
 | 01 号方案 §2.2 Linear/RoPE/Argmax 状态漂移 | 实际存在 `src/backend/cpu/kernels/{linear,rope,argmax}/*_f32_reference.cpp` | docs/improvement-plan/01-* 行 | Batch -1 P0 |
-| `code_review_guide.md` 失效命令 + ammalloc 残留 | 第 49 行 `make --build build`；第 32/52/199/216/312/482-698 行 ammalloc 专项 | docs/guides/code_review_guide.md 行 | Batch -1 P0 |
+| `code_review_guide.md` 失效命令 + ammalloc 残留 | 第 49 行 `make --build build`；第 32/52/199/216/312/482-698 行 ammalloc 专项 | docs/archive/guides/code_review_guide.md 行 | Batch -1 P0 |
 | `docs/designs/` 混入 development plan / milestones / task checklist | 已修复：3 篇归档到 `docs/archive/designs-legacy/`（2026-09-14） | 对应 3 行 | 已完成 |
 | `graph_compilation_flow.md` 同名冲突 | designs/ 与 reviews/ 并存 | 对应 2 行 | Batch -1 P1 |
-| 4 篇 review 无日期 | `graph_compilation_flow.md`、`model_graph_data_structure_review.md`、`operator_semantic_layer_review.md`、`prd/prd_review.md` | docs/reviews/ 对应 4 行 | Batch -1 P1 |
+| 4 篇 review 无日期 | `graph_compilation_flow.md`、`model_graph_data_structure_review.md`、`operator_semantic_layer_review.md`、`prd/prd_review.md` | docs/archive/reviews/ 对应 4 行 | Batch -1 P1 |
 | 3 篇非归档文档超长（>1000 行）（原 4 篇，operator_optimization_guide.md 已于 2026-09-19 移除） | ~~`operator_optimization_guide.md` 2110~~、`model_graph_design.md` 1706、`dispatch_design.md` 1061、`graph_lowering_design.md` 1005 | 对应 3 行 | 后续 workstream（P2） |
 | 24 篇 designs/ 命名违规 | 全部 29 篇中：canonical 1（`model/01-model-loader.md`）、存量例外 1（`architecture_overview.md`）、plan 分类错误 3、真正命名违规 24 | docs/designs/ 对应 24 行 | 后续 workstream（P2） |
-| 术语过时（`Phase 1`） | `docs/README.md` 第 37/158 行；`docs/products/aethermind_prd.md`；architecture_overview 索引行 | 对应各行 | D4 术语迁移（Batch -1 内启动，后续完成） |
+| 术语过时（`Phase 1`） | `docs/README.md` 第 37/158 行；`docs/product.md`；architecture_overview 索引行 | 对应各行 | D4 术语迁移（Batch -1 内启动，后续完成） |
 | `verify_docs.py` 覆盖不足 | 第 7 行 anchors 不校验；第 39 行 improvement-plan 排除；第 128-134 行 loose symbol 匹配；第 155-158 行目录级索引覆盖 | 不在清查表（工具而非文档） | D5a Batch -1 内完成 |
 
 ## 6. 版本历史

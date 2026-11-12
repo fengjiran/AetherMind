@@ -3,7 +3,7 @@
 - **状态**: In Progress
 - **版本**: 1.3
 - **日期**: 2026-10-29
-- **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)；CPU-only、单请求、同步 Generate、静态 KV
+- **产品边界**: [AetherMind 当前产品 PRD](../product.md)；CPU-only、单请求、同步 Generate、静态 KV
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1；`kv_cache` 拥有 KV 物理状态域，Runtime 按值聚合 Manager，execution 建立窄绑定，backend 执行 kernel
 - **相关历史草案**: [05 号 KVCache Manager 演进方案](05-kv-cache-manager-evolution.md)（已被本提案取代；其接口草图不得视为当前实现）
 - **算子工作流**: [算子开发与优化工作流](../guides/operator-development-workflow.md)
@@ -126,13 +126,13 @@ PagedAttention 的目标是让 Attention 消费非连续物理 KV blocks；它�
 
 新增 `PlanKVCacheLayout` 与 `KVCacheLayout::TotalBytes()`，由 `KVCacheManager::Init` 复用同一布局算法。成功规划不分配内存；padding 使用 `alignment / gcd(alignment, element_bytes)` 的完整元素粒度，所有对齐与字节乘法均 checked。未初始化、scalable 或保留 lane 编码通过状态拒绝，避免调用要求固定 lane 的 dtype 查询触发断言。Init 保持失败时释放旧 storage/reservation、保留 generation 的语义。
 
-本批只交付物理布局及字节规划，不增加预算限额、资源汇总或 CPU dtype 支持。新定长多 lane 几何的物理测试不能作为模型执行支持声明。聚焦命令、实际覆盖及结果见[静态 KV 规划验证记录](../tests/kv_layout_planning_validation_2026-10-29.md)。
+本批只交付物理布局及字节规划，不增加预算限额、资源汇总或 CPU dtype 支持。新定长多 lane 几何的物理测试不能作为模型执行支持声明。聚焦命令、实际覆盖及结果见[静态 KV 规划验证记录](../archive/tests/kv_layout_planning_validation_2026-10-29.md)。
 
 ### 5.4 2026-10-29：分阶段 payload budget
 
 第二步复用 5.3 的 layout planner，在 RuntimeBuilder 的 KV plane、Session workspace/request activation、model preparation 的 raw/constant/packed payload 三个阶段分别预检。binding specialization 拆为无 activation allocation 的 `PlanExecutionBindings` 与受控 materialization；Prefill 释放后才建立 Decode arena，因此请求 payload 以两阶段 activation 的 max 计算。CPU backend 为 exact recipe 增加 metadata-only packing requirements query，有限 cap 不能以未知 query 作为零字节继续分配。
 
-`RawStorage` 的 optional footprint 让模型汇总区分 mapped、owned、external 和 unknown backing；未知 source 仅在对应 model cap 下拒绝，不能误伤 unlimited generic Prepare 或仅有 packed cap 的路径。该实现是当前模型/请求的 payload admission，不是 Runtime 多模型全局 live-byte ledger，也不覆盖 allocator rounding、metadata、RSS 或外部 storage。Runtime 仍保持连续单 reservation KV，不引入 Paged KV、并发调度或 FP16/BF16 KV 可执行声明。接口、证据范围和未覆盖项见[资源预算指南](../guides/resource-budgeting.md)及[验证记录](../tests/resource_budgeting_validation_2026-10-29.md)。
+`RawStorage` 的 optional footprint 让模型汇总区分 mapped、owned、external 和 unknown backing；未知 source 仅在对应 model cap 下拒绝，不能误伤 unlimited generic Prepare 或仅有 packed cap 的路径。该实现是当前模型/请求的 payload admission，不是 Runtime 多模型全局 live-byte ledger，也不覆盖 allocator rounding、metadata、RSS 或外部 storage。Runtime 仍保持连续单 reservation KV，不引入 Paged KV、并发调度或 FP16/BF16 KV 可执行声明。接口、证据范围和未覆盖项见[资源预算指南](../guides/resource-budgeting.md)及[验证记录](../archive/tests/resource_budgeting_validation_2026-10-29.md)。
 
 ## 6. 风险与依赖
 
@@ -147,7 +147,7 @@ PagedAttention 的目标是让 Attention 消费非连续物理 KV blocks；它�
 
 ## 7. 关联资料与变更记录
 
-- [当前产品 PRD](../products/aethermind_prd.md)：当前产品范围与 KV 内存目标。
+- [当前产品 PRD](../product.md)：当前产品范围与 KV 内存目标。
 - [M4/M5 执行闭环](01-inference-session-generate-readiness.md)：真实 CPU FP32 Prefill→Decode 与同步 Generate 的已实现证据。
 - [05 号历史草案](05-kv-cache-manager-evolution.md)：存档的 lease/transaction/paged 接口草图；其中 2026-09-16 的“当前状态”已过期。
 - [FlashAttention 原论文](https://arxiv.org/abs/2205.14135)、[PagedAttention 原论文](https://doi.org/10.1145/3600006.3613165)：机制来源，不能直接证明 AetherMind 的 CPU 收益。

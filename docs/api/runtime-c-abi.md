@@ -9,7 +9,7 @@
 
 ## 1. 交付状态与边界
 
-M5 冻结本合同、公共 C 声明与 C11/C++20 编译合同；M6 已在 [c_api_runtime.cpp](../../src/c_api_runtime.cpp) 实现 runtime/model/session 和 `am_get_abi_version`，可由纯 C 调用方链接 shared library。当前范围与验证限制见 [M6 验收报告](../tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md)，不据此宣称全部 PRD 能力、零泄漏或发行门禁达成。
+M5 冻结本合同、公共 C 声明与 C11/C++20 编译合同；M6 已在 [c_api_runtime.cpp](../../src/c_api_runtime.cpp) 实现 runtime/model/session 和 `am_get_abi_version`，可由纯 C 调用方链接 shared library。当前范围与验证限制见 [M6 验收报告](../archive/tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md)，不据此宣称全部 PRD 能力、零泄漏或发行门禁达成。
 
 既有 `am_error_create/destroy/code/message` 已实现；M5 修复 message 分配失败时的对象泄漏。既有 `ObjectHandle` 引用计数接口保持不变，不用于操作下述三类 runtime handle。
 

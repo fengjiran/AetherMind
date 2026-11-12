@@ -24,4 +24,4 @@
 | AVX2 bpanel | Candidate / correctness verified | KC512 layout、Linear/QKV/GateUp scan/blocked 与尾块测试已落地；global identity descriptor 保持默认 |
 | 性能与 KC 选择 | **Needs More Data** | 当前 WSL2 小样本不能量化可信噪声 floor；无 KC256 同机对照，不提升 candidate priority |
 
-决策合同见 [ADR-0002](../../decisions/0002-cpu-gemm-packed-weight.md)。本机诊断采样见 [54H5MMI GEMM 记录](benchmarks/54h5mmi-gemm.md)；其他机器数据不得由该记录代替。
+决策合同见 [backend 模块设计](../../modules/backend.md) 的 packed weight 与布局章节。本机诊断采样见 [54H5MMI GEMM 记录](benchmarks/54h5mmi-gemm.md)；其他机器数据不得由该记录代替。

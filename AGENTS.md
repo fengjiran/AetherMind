@@ -131,6 +131,8 @@ AETHERMIND_INFER_BINARY="$PWD/build-infer/apps/inference/aethermind_infer" \
 ```
 若本地可用，可基于 `build/compile_commands.json` 运行 `clang-tidy`。
 
+文档相对链接检查：`python3 tools/check_docs_links.py`（扫描 `docs/`，排除 `docs/archive/`）。
+
 ## 7. 代码风格规范
 
 - prefer modern C++ adopted by the project (C++20)

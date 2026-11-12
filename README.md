@@ -36,7 +36,7 @@ The [product document](docs/product.md) defines broader product targets, includi
 | `kKeepFp16WeightsFp32Activation` | F16 matrices retained; Norm weights converted to FP32              | O1/plain, O2/identity-packed |
 | `kKeepBf16WeightsFp32Activation` | BF16 matrices retained; Norm weights converted to FP32             | O1/plain, O2/identity-packed |
 
-Retained-W16 policies keep Embedding, Linear and LM-head matrices in the selected 16-bit format, with FP32 activations, accumulation, KV and logits. Linear currently uses reference kernels; two-byte matrix storage does not imply higher throughput. See the [FP32 compatibility guide](docs/guides/fp32-compatible-inference.md), [W16/A32 guide](docs/guides/w16-fp32-inference.md), and [scoped W16 validation](docs/tests/w16_fp32_execution_validation_2026-11-11.md).
+Retained-W16 policies keep Embedding, Linear and LM-head matrices in the selected 16-bit format, with FP32 activations, accumulation, KV and logits. Linear currently uses reference kernels; two-byte matrix storage does not imply higher throughput. See the [FP32 compatibility guide](docs/guides/fp32-compatible-inference.md), [W16/A32 guide](docs/guides/w16-fp32-inference.md), and [scoped W16 validation](docs/archive/tests/w16_fp32_execution_validation_2026-11-11.md).
 
 ## Key Features
 
@@ -284,7 +284,7 @@ The inference admission fixture tests require generated HF variants. Follow the 
 
 The [independent HF numerical reference instructions](tests/fixtures/inference_numerical/README.md) describe pinned CPU FP32 golden generation, asset verification, and candidate review. Prepare that bundle before the numerical model tests. Only offline reference generation needs PyTorch/transformers; the checker uses standard-library Python and the C++ tests read serialized tensors. Run `ctest --preset validation-numerical` after configuring and building `validation-avx2` to include fixed Prefill/Decode, independent greedy Token IDs, and near-context-limit coverage for the listed MHA/GQA/MQA fixtures. Set the absolute `AETHERMIND_TEST_NUMERICAL_DIR` cache path to test an externally prepared bundle.
 
-The Linux CLI/direct-Session integration suite additionally requires the standalone executable from Run Inference above. Set `AETHERMIND_INFER_BINARY` to its absolute path; missing executables or unsupported platforms fail this integration gate explicitly. This variable is consumed by tests only. The Python CLI tests also require the existing C toolchain for Linux/glibc failure injection. Commands and scoped results are recorded in the [M4 validation report](docs/tests/upper_level_runtime_assembly_m4_validation_2026-10-22.md).
+The Linux CLI/direct-Session integration suite additionally requires the standalone executable from Run Inference above. Set `AETHERMIND_INFER_BINARY` to its absolute path; missing executables or unsupported platforms fail this integration gate explicitly. This variable is consumed by tests only. The Python CLI tests also require the existing C toolchain for Linux/glibc failure injection. Commands and scoped results are recorded in the [M4 validation report](docs/archive/tests/upper_level_runtime_assembly_m4_validation_2026-10-22.md).
 
 ```bash
 # Run all unit tests after preparing fixtures and building the standalone CLI
@@ -413,6 +413,7 @@ Use `IsValidAlignment(alignment)` and `AlignOffsetUp(offset, alignment)` from `a
 | [docs/README.md](docs/README.md)                                                             | Documentation map, authority order, and writing rules     |
 | [docs/architecture.md](docs/architecture.md)                                                 | System architecture, dependency rules, and invariants     |
 | [docs/product.md](docs/product.md)                                                           | Current product requirements and acceptance criteria      |
+| [docs/roadmap.md](docs/roadmap.md)                                                           | Active engineering directions and priorities              |
 | [AGENTS.md](AGENTS.md)                                                                       | Repository-wide engineering guide                         |
 
 ## Product Scope and Evolution

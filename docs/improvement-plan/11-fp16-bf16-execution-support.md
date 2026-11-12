@@ -3,13 +3,13 @@
 - **状态**: In Progress
 - **版本**: 2.6
 - **日期**: 2026-11-12
-- **产品边界**: [当前产品 PRD](../products/aethermind_prd.md)；CPU-only、单进程、同步、单请求、Token IDs I/O、Llama Dense、静态连续 KV
+- **产品边界**: [当前产品 PRD](../product.md)；CPU-only、单进程、同步、单请求、Token IDs I/O、Llama Dense、静态连续 KV
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联计划**: [06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[07 模型准备入口](07-executable-model-preparation.md)、[08 KV/Attention 演进](08-kv-cache-and-attention-capability-evolution.md)、[09 模型家族扩展](09-qwen-and-moe-architecture-support.md)、[10 Runtime 组装入口](10-upper-level-runtime-assembly.md)
 - **算子工作流**: [算子开发与优化工作流](../guides/operator-development-workflow.md)
 - **关联模块**: dtypes / model / operators / graph / compiler / backend / execution / kv_cache / runtime / inference
 
-本文是阶段化提案。P1 的显式 FP32 compatibility 已完成限定实现和 tiny checkpoint 验证，见 [FP32 兼容推理指南](../guides/fp32-compatible-inference.md) 与 [P1 验证报告](../tests/fp32_compatibility_validation_2026-10-29.md)。P2 首批 CPU/O1/plain 与 O2/identity-packed、W16/A32/KV32 已完成限定验收，入口见 [W16 指南](../guides/w16-fp32-inference.md)，源码身份与 sanitizer 范围见 [P2 验收记录](../tests/w16_fp32_execution_validation_2026-11-11.md)。P3 步骤 1–10 核心已完成：首批合同（§2.7–2.8）冻结与独立校准、mixed-KV 语义、`state_dtype` 身份迁移、布局账本、KV16 读写 reference、plan 事务、显式 `kv_dtype` 配置链、reduced fixture 四组合模型验收、§2.8 冻结预算校准 fixture（2048）正式生产验收、ASan/UBSan、prepared-operator baseline 与文档收口。KV16 在 CPU O1/O2 上端到端可执行并通过冻结预算验收；production ExecutionStep/模型级 baseline 与 SIMD 优化为后续 refinement；C ABI/CLI 保持 strict F32；P4 仍为未来工作。
+本文是阶段化提案。P1 的显式 FP32 compatibility 已完成限定实现和 tiny checkpoint 验证，见 [FP32 兼容推理指南](../guides/fp32-compatible-inference.md) 与 [P1 验证报告](../archive/tests/fp32_compatibility_validation_2026-10-29.md)。P2 首批 CPU/O1/plain 与 O2/identity-packed、W16/A32/KV32 已完成限定验收，入口见 [W16 指南](../guides/w16-fp32-inference.md)，源码身份与 sanitizer 范围见 [P2 验收记录](../archive/tests/w16_fp32_execution_validation_2026-11-11.md)。P3 步骤 1–10 核心已完成：首批合同（§2.7–2.8）冻结与独立校准、mixed-KV 语义、`state_dtype` 身份迁移、布局账本、KV16 读写 reference、plan 事务、显式 `kv_dtype` 配置链、reduced fixture 四组合模型验收、§2.8 冻结预算校准 fixture（2048）正式生产验收、ASan/UBSan、prepared-operator baseline 与文档收口。KV16 在 CPU O1/O2 上端到端可执行并通过冻结预算验收；production ExecutionStep/模型级 baseline 与 SIMD 优化为后续 refinement；C ABI/CLI 保持 strict F32；P4 仍为未来工作。
 
 P2 的转换基础已包括 [FP16 批量转换](../operators/fp16_conversion/README.md) 的 scalar、F16C widening、AVX2 narrowing，以及 [BF16 批量转换](../operators/bf16_conversion/README.md) 的双向 scalar/AVX2、checked byte spans、prepared Backend 函数表和 P1 callback。下文冻结 P2 的准入、Embedding、Norm-only 和 kernel args 合同，P2 能力状态由各批次退出门禁判定。
 
@@ -39,7 +39,7 @@ P1 建立可执行基线，不是低内存方案；P2 是首个保留 16-bit 权
 | 多数 Llama 算子语义允许 reduced dtype；`Add` 白名单有 BF16、缺 F16 | [Linear 合同](../../include/aethermind/operators/ops/linear_op.h)、[Add 合同](../../include/aethermind/operators/ops/add_op.h) | 补齐 F16 Add 时同步 semantic inference、constant folding、CPU 注册及测试 |
 | `BuildLlamaDense` 接受显式 activation/KV dtype；W16 Load 指定 A32/KV32，Embedding 显式输出 F32 | [Llama builder](../../src/model/llama_dense_graph_builder.cpp)、[Load](../../src/inference/executable_model.cpp)、[Embedding inference](../../src/operators/ops/embedding_op.cpp) | P3 复用 graph-build options；公开 KV 精度选项必须与 Runtime 物理布局一致，不从源 hint 推测 |
 | Linear/RMSNorm 语义分别校验 activation 与 weight，输出跟随 activation；Attention/KVUpdate 要求 activation 与 cache 同 dtype | [Linear inference](../../src/operators/ops/linear_op.cpp)、[RMSNorm inference](../../src/operators/ops/rmsnorm_op.cpp)、[Attention inference](../../src/operators/ops/attention_op.cpp)、[KVUpdate inference](../../src/operators/ops/kvcache_update_op.cpp) | W16/A32 有现成扩展基础；mixed KV 必须先扩展语义 |
-| P2 W16/A32/KV32 的 plain/identity-packed 链已限定验收；CPU Attention/KVUpdate 仍只消费 F32 cache | [P2 验收](../tests/w16_fp32_execution_validation_2026-11-11.md)、[Attention entry](../../src/backend/cpu/kernels/attention/attention_entry.cpp)、[KVUpdate entry](../../src/backend/cpu/kernels/kvcache_update/kvcache_update_entry.cpp) | KV16 需要独立的读写 reference 和完整模型证据，不因 Manager 接受两字节元素就获得执行支持 |
+| P2 W16/A32/KV32 的 plain/identity-packed 链已限定验收；CPU Attention/KVUpdate 仍只消费 F32 cache | [P2 验收](../archive/tests/w16_fp32_execution_validation_2026-11-11.md)、[Attention entry](../../src/backend/cpu/kernels/attention/attention_entry.cpp)、[KVUpdate entry](../../src/backend/cpu/kernels/kvcache_update/kvcache_update_entry.cpp) | KV16 需要独立的读写 reference 和完整模型证据，不因 Manager 接受两字节元素就获得执行支持 |
 | `KernelSelector` 严格匹配 activation/weight dtype；`DeriveSelectorDTypes` 忽略 state，未独立表达 output dtype | [selector](../../include/aethermind/base/kernel_selector.h)、[dtype 派生](../../src/operators/operator_inference.cpp) | W16/A32 可复用；mixed KV 和后续 mixed output 才扩展匹配身份 |
 | identity packing 保留源 dtype；现有 B-panel 只有 `kCpuBPanelF32Kc512Nr16`，packer/validator 限定 F32 | [CPU packing](../../src/backend/cpu/cpu_backend.cpp)、[recipe](../../include/aethermind/backend/packing_recipe.h)、[packed validation](../../src/backend/cpu/packed_weight_validation.cpp) | 16-bit B-panel 需要独立物理布局身份，不复用 F32 ID |
 | `Half(float)` 软件标量转换使用固定 RNE + gradual underflow，双向转换 quiet NaN；BF16 转换使用 RNE 并保留 sign 与截断后的 NaN payload | [Half 转换](../../src/dtypes/half.cpp)、[BF16 转换](../../src/dtypes/bfloat16.cpp) | Half 的 FTZ 行为已独立迁移；软件转换的合同和测试不代表 native 16-bit kernel 已支持 |
@@ -229,7 +229,7 @@ FP16 与 BF16 的指数范围和有效精度不同，不能按“都是 16-bit�
 
 ### 2.7 P3 首批执行合同（步骤 1 冻结；实现与验收见 §4.4）
 
-本节定义并冻结实现必须满足的合同；当前实现与限定验收状态见 §4.4 和 [P3 验收记录](../tests/kv16_execution_validation_2026-11-12.md)。算子细节分别归 [KVCacheUpdate](../operators/kv_cache_update/README.md) 和 [Attention](../operators/attention/README.md)。
+本节定义并冻结实现必须满足的合同；当前实现与限定验收状态见 §4.4 和 [P3 验收记录](../archive/tests/kv16_execution_validation_2026-11-12.md)。算子细节分别归 [KVCacheUpdate](../operators/kv_cache_update/README.md) 和 [Attention](../operators/attention/README.md)。
 
 | 矩阵 W | activation / residual / logits | 所有层 K/V storage | 首批 preset 与状态 |
 |---|---|---|---|
@@ -332,16 +332,16 @@ P1 的限定实现与验收已完成。P0 中 graph options 和 widening 数值�
 5. **实现 O1/plain reference kernel。** Embedding 按选中 W16 row 写 F32 output，Linear/LM head 使用 §2.5 的专用 W16 args 和 F32 累加。分别注册 `{A=F32,W=F16}`、`{A=F32,W=BF16}`，覆盖 Prefill/Decode、合法 stride、非对齐、尾部、零 M/N/K、alias 和执行期零分配。
 6. **接通公开 Load 链。** [executable_model.cpp](../../src/inference/executable_model.cpp) 编排 source 准入→Backend widening 选择→Norm-only conversion→prepared 角色校验→Compile(A32/KV32)→Prepare→Session。转换后校验 Norm=F32、矩阵=W16，复用原有 owner 链，分别闭环两种 policy。
 7. **完成 P2-O1 模型级验收。** 对同一 reduced checkpoint 比较 P2 与 P1，按 §6 的 logits abs/rel、top-k、top-1 margin 验证 Prefill、多次 Decode 和 Generate。覆盖 MHA/GQA、tied/untied、EOS/容量、OOM 重试、owner lifetime、持久矩阵两字节存储与 Decode 稳态零分配，执行相关 sanitizer profile。
-8. **采集 O1 baseline 并优化。** 记录 registered/prepared、production ExecutionStep 与端到端准备/生成指标，新增 scratch 经现有 workspace 规划链提供。**当前状态**为 [Linear baseline](../operators/linear/benchmarks/desktop-54h5mmi-linear.md)、[Embedding 行级 SIMD 对照](../operators/embedding/benchmarks/desktop-54h5mmi-embedding.md) 和 [模型级记录](../tests/benchmarks/models/desktop-54h5mmi-model.md) 已完成。Embedding 复用既有 F16C/AVX2 converter，完整位模式、feature-policy fallback、O1/O2 轨迹与零分配已回归。Linear 后续优化由其 baseline 和 profiling 决定。
+8. **采集 O1 baseline 并优化。** 记录 registered/prepared、production ExecutionStep 与端到端准备/生成指标，新增 scratch 经现有 workspace 规划链提供。**当前状态**为 [Linear baseline](../operators/linear/benchmarks/desktop-54h5mmi-linear.md)、[Embedding 行级 SIMD 对照](../operators/embedding/benchmarks/desktop-54h5mmi-embedding.md) 和 [模型级记录](../archive/tests/benchmarks/models/desktop-54h5mmi-model.md) 已完成。Embedding 复用既有 F16C/AVX2 converter，完整位模式、feature-policy fallback、O1/O2 轨迹与零分配已回归。Linear 后续优化由其 baseline 和 profiling 决定。
 9. **完成 P2-O2/packed。** 按预期 dtype 和 itemsize 验证 identity packed weight，补齐 W16 Embedding/Linear、QKV/GateUp composite、reference、参数准备与绑定，回归 AddRmsNorm 等实际 fusion。完整 O2 图通过后，再依据性能证据决定是否新增 W16 B-panel 及其独立布局身份。**状态：identity 批次已完成**，O2 preset 对两个 W16 policy 开放；W16 B-panel 评估为延后——baseline 证明瓶颈在 scalar widening 而非布局，identity 已保持 2 字节 composite payload，新布局须待 widening 优化后的独立证据（决策记录见 Linear 基准记录）。
 
 步骤 1 完成后，步骤 2/3/4 可以并行推进。步骤 5/6 汇合语义、权重与 backend 实现，步骤 7 是 O1 批次退出门禁，步骤 9 另有 O2 退出门禁。
 
-退出条件为两个 W16/A32 policy 均完成生成，持久矩阵保留 16-bit，plain/packed 支持范围分别记录，Decode 稳态分配合同通过。**首批达成**范围包括 tiny reduced checkpoint 的 O1/O2 Prefill/Decode/Generate、EOS、容量边界、失败重试和 owner lifetime，模型账本确认矩阵两字节且转换字节仅来自 Norm。当前工作树的 ASan/UBSan 与独立 Release malloc-family 门禁见 [验收记录](../tests/w16_fp32_execution_validation_2026-11-11.md)，其中明确 LSan 的环境限制。
+退出条件为两个 W16/A32 policy 均完成生成，持久矩阵保留 16-bit，plain/packed 支持范围分别记录，Decode 稳态分配合同通过。**首批达成**范围包括 tiny reduced checkpoint 的 O1/O2 Prefill/Decode/Generate、EOS、容量边界、失败重试和 owner lifetime，模型账本确认矩阵两字节且转换字节仅来自 Norm。当前工作树的 ASan/UBSan 与独立 Release malloc-family 门禁见 [验收记录](../archive/tests/w16_fp32_execution_validation_2026-11-11.md)，其中明确 LSan 的环境限制。
 
 ### 4.4 P3：独立 16-bit KV
 
-步骤 1 的合同见 §2.7–2.8；它的完成与后续 KV16 可执行状态分开记录。步骤 1–10 核心已完成：合同冻结与独立校准、mixed-KV 语义、state_dtype 身份迁移、布局账本、KV16 读写 reference、plan 事务、kv_dtype 配置链、reduced fixture 四组合模型验收、§2.8 冻结预算的 2048 near-limit 正式验收、ASan/UBSan 与 prepared-operator baseline。production ExecutionStep/模型级 baseline 和 SIMD 优化为后续 refinement，见 [P3 验收记录](../tests/kv16_execution_validation_2026-11-12.md)。
+步骤 1 的合同见 §2.7–2.8；它的完成与后续 KV16 可执行状态分开记录。步骤 1–10 核心已完成：合同冻结与独立校准、mixed-KV 语义、state_dtype 身份迁移、布局账本、KV16 读写 reference、plan 事务、kv_dtype 配置链、reduced fixture 四组合模型验收、§2.8 冻结预算的 2048 near-limit 正式验收、ASan/UBSan 与 prepared-operator baseline。production ExecutionStep/模型级 baseline 和 SIMD 优化为后续 refinement，见 [P3 验收记录](../archive/tests/kv16_execution_validation_2026-11-12.md)。
 
 | 步骤 | 交付与门禁 | 当前状态 |
 |---|---|---|

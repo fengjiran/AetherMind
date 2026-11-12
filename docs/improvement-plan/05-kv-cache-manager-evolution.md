@@ -4,9 +4,9 @@
 - **版本**: 1.1
 - **日期**: 2026-09-16
 - **最近更新**: 2026-09-24
-- **产品边界**: [AetherMind 当前产品 PRD](../products/aethermind_prd.md)
-- **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
-- **当前实现说明**: [KV Cache 设计](../designs/kv_cache_design.md)
+- **产品边界**: [AetherMind 当前产品 PRD](../product.md)
+- **架构基线**: [架构总览](../architecture.md)
+- **当前实现说明**: [KV Cache 设计](../archive/designs/kv_cache_design.md)
 - **关联计划**: [InferenceSession / Generate 前置闭环计划](01-inference-session-generate-readiness.md)
 - **关联模块**: runtime / execution / backend / model orchestration
 
@@ -737,8 +737,8 @@ Block[group][layer-in-group][K/V][token-in-block][head][dim]
 
 ## 15. 与现有文档的关系
 
-- [当前产品 PRD](../products/aethermind_prd.md) 决定“静态 KV、单请求、无 PagedAttention”的当前交付边界；本提案不能扩大该范围。
-- [KV Cache 设计](../designs/kv_cache_design.md) 描述存量静态设计与实现背景；其中与当前代码不一致或属于未来 API 的内容，应在本提案实施时逐步校正，不能把本提案当成已实现事实。
+- [当前产品 PRD](../product.md) 决定“静态 KV、单请求、无 PagedAttention”的当前交付边界；本提案不能扩大该范围。
+- [KV Cache 设计](../archive/designs/kv_cache_design.md) 描述存量静态设计与实现背景；其中与当前代码不一致或属于未来 API 的内容，应在本提案实施时逐步校正，不能把本提案当成已实现事实。
 - [InferenceSession / Generate 前置闭环计划](01-inference-session-generate-readiness.md) 定义公开 Generate 的整体门禁；本提案的 M0–M4 是其中 KV/state 子路径的细化。
 - Paged KV、prefix cache、continuous batching 仍属于长期方向。除非 PRD 和专项提案明确更新，不进入当前 implementation scope。
 

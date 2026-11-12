@@ -10,7 +10,7 @@
 - **工作流规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
 - **关联代码**: `src/backend/cpu/kernels/gemm/`、`src/backend/cpu/cpu_backend.cpp`、`src/backend/cpu/cpu_backend_internal.h`
 - **关联测试**: `tests/unit/backend/cpu/kernels/`、`tests/benchmark/cpu_kernels/`
-- **关联 ADR**: [ADR-0002: CPU GEMM packed-weight recipe](../../decisions/0002-cpu-gemm-packed-weight.md)
+- **关联 ADR**: 决策结论已并入 [backend 模块设计](../../modules/backend.md) 的 packed weight 与布局章节
 - **关联模块**: backend / execution / model / benchmark
 
 ## 1. 结论与范围
@@ -471,7 +471,7 @@ runtime thread-pool contract + 单线程证据 ──> 多线程与 NUMA
 
 目标是建立真实 immutable weight packing，而不是继续把 aligned identity copy 当作优化布局。
 
-**实现状态（2026-09-23）**：descriptor-owned recipe、inference 注入和 exact artifact key 已实现。AVX2 bpanel packing/scan/blocked drivers 与 Linear/QKV/GateUp candidate 已有 correctness 覆盖；当前 recipe 名含 `_candidate`，global resolver 因 identity 同优先级且先注册仍选择 `cpu_identity`。同机性能与 KC 选择状态为 **Needs More Data**，见 [ADR-0002](../../decisions/0002-cpu-gemm-packed-weight.md) 和 [机器级证据](benchmarks/54h5mmi-gemm.md)。
+**实现状态（2026-09-23）**：descriptor-owned recipe、inference 注入和 exact artifact key 已实现。AVX2 bpanel packing/scan/blocked drivers 与 Linear/QKV/GateUp candidate 已有 correctness 覆盖；当前 recipe 名含 `_candidate`，global resolver 因 identity 同优先级且先注册仍选择 `cpu_identity`。同机性能与 KC 选择状态为 **Needs More Data**，见 [backend 模块设计](../../modules/backend.md) 和 [机器级证据](benchmarks/54h5mmi-gemm.md)。
 
 - `KernelDef`/prepared kernel 提供其精确 `PackingRecipe`；
 - compiler 只构造 backend-independent packing request；inference 使用 backend.GetPackingRecipe 注入 descriptor-owned exact recipe，再按共享 value/selector 检查 consumer 冲突并 coalesce；

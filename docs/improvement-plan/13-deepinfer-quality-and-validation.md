@@ -3,7 +3,7 @@
 - **状态**: In Progress
 - **版本**: 1.6
 - **日期**: 2026-10-28
-- **产品边界**: [当前产品 PRD](../products/aethermind_prd.md)
+- **产品边界**: [当前产品 PRD](../product.md)
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联计划**: [02 工程质量](02-engineering-quality-system.md)、[06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[10 产品推理入口](10-upper-level-runtime-assembly.md)
 - **关联模块**: model / graph / compiler / execution / inference / backend / 测试与构建 / 应用入口
@@ -150,7 +150,7 @@ Decode 上下文随生成增长。固定上下文实验应在计时区外用独�
 
 ### 4.1 Q1：模型准入与公开入口证据（P0）
 
-- **准入子项已实现（2026-10-26）**：model 显式解析 sliding_window，缺失/null 保持当前全注意力语义；正整数因不支持滑动窗口而拒绝，0/负数因非法值而拒绝，非法类型、小数/指数、非法后缀和整数溢出在解析时拒绝。覆盖 reader→validator→loader、直接 BuildModelGraph/BuildLlamaDense 与 runner 的 Runtime 分配前失败边界，沿用已有 activation 与 RoPE 权威。实现和限定验证证据见 [第一批验收记录](../tests/sliding_window_admission_validation_2026-10-26.md)。本子项不表示 Q1 全部退出条件或 Q2–Q5 已完成。
+- **准入子项已实现（2026-10-26）**：model 显式解析 sliding_window，缺失/null 保持当前全注意力语义；正整数因不支持滑动窗口而拒绝，0/负数因非法值而拒绝，非法类型、小数/指数、非法后缀和整数溢出在解析时拒绝。覆盖 reader→validator→loader、直接 BuildModelGraph/BuildLlamaDense 与 runner 的 Runtime 分配前失败边界，沿用已有 activation 与 RoPE 权威。实现和限定验证证据见 [第一批验收记录](../archive/tests/sliding_window_admission_validation_2026-10-26.md)。本子项不表示 Q1 全部退出条件或 Q2–Q5 已完成。
 - 按 10 实施 apps/inference 下的独立入口，默认 O1/plain，O2/packed 显式选择；完成模型和请求失败边界、Runtime 稳定地址、stderr/stdout 与退出码合同。
 - 固定 fixture 来源、checksum、命令和预期样本集合；复用已有 ExecutableModel::Load/Generate 测试。输出第一版能力证据记录，尚未运行的组合明确标记。
 
@@ -158,8 +158,8 @@ Decode 上下文随生成增长。固定上下文实验应在计时区外用独�
 
 ### 4.2 Q2：CTest、sanitizer 与 ISA 基础设施（P0）
 
-- **第二批已实施（2026-10-26）**：CTest 逐 case 发现既有 GTest，注册 Python fixture/CLI 检查与模型 checksum fixture；新增 target-scoped ASAN/UBSAN、独立 TSAN 和正式验证 presets；旧的 ENABLE_TSAN 入口已迁移到 AETHERMIND_SANITIZER 并移除。ASAN/TSAN 下移除测试程序的全局 malloc interposer 覆盖，正常构建保留故障注入；必需 skip、缺二进制和空 discovery 不再返回假通过。限定验收结果与平台边界见 [第二批验收记录](../tests/ctest_sanitizer_validation_2026-10-26.md)。
-- **第三批已实施（2026-10-27）**：移除 unit target 的全局 AVX2/FMA flags，intrinsic 仅在四个库实现与一个学习 helper TU 编译；wrapper/dispatch 保持 baseline。新增不编译可选实现的 baseline preset、硬件准入的 AVX2 preset、精确 ISA labels 与 compile_commands 隔离门禁；补齐 QKV/GateUp/Linear packed-B 专用入口的条件编译边界。baseline 和 AVX 构建分别完成完整模型生成及 scalar oracle 回归，候选另有真实 AVX2/FMA 与 ASAN/UBSAN/LSAN 证据，详见 [第三批验收记录](../tests/cpu_isa_isolation_validation_2026-10-27.md)。当前主机具有 AVX2/FMA；物理无 AVX 硬件、warnings profile 及完整平台门禁仍待验收，Q2 保持部分实施状态。
+- **第二批已实施（2026-10-26）**：CTest 逐 case 发现既有 GTest，注册 Python fixture/CLI 检查与模型 checksum fixture；新增 target-scoped ASAN/UBSAN、独立 TSAN 和正式验证 presets；旧的 ENABLE_TSAN 入口已迁移到 AETHERMIND_SANITIZER 并移除。ASAN/TSAN 下移除测试程序的全局 malloc interposer 覆盖，正常构建保留故障注入；必需 skip、缺二进制和空 discovery 不再返回假通过。限定验收结果与平台边界见 [第二批验收记录](../archive/tests/ctest_sanitizer_validation_2026-10-26.md)。
+- **第三批已实施（2026-10-27）**：移除 unit target 的全局 AVX2/FMA flags，intrinsic 仅在四个库实现与一个学习 helper TU 编译；wrapper/dispatch 保持 baseline。新增不编译可选实现的 baseline preset、硬件准入的 AVX2 preset、精确 ISA labels 与 compile_commands 隔离门禁；补齐 QKV/GateUp/Linear packed-B 专用入口的条件编译边界。baseline 和 AVX 构建分别完成完整模型生成及 scalar oracle 回归，候选另有真实 AVX2/FMA 与 ASAN/UBSAN/LSAN 证据，详见 [第三批验收记录](../archive/tests/cpu_isa_isolation_validation_2026-10-27.md)。当前主机具有 AVX2/FMA；物理无 AVX 硬件、warnings profile 及完整平台门禁仍待验收，Q2 保持部分实施状态。
 - 根 CMake 接入 CTest 和 GoogleTest 发现，按 02 的 target-scoped helper 实施 warnings、ASAN+UBSAN、独立 TSAN；ASAN/UBSAN 与 TSAN 不合并，第三方不继承项目 Werror。
 - 建立 smoke、numerical、lifecycle、long-context、performance labels，明确 build profile 与 test label 是两个维度。缺数据的本地可选测试可报告 skip；发布必需 fixture 由 CI 准备，缺失即失败。
 - 移除单测 target 全局 AVX2/FMA flags，仅对需要的 translation units 启用；baseline 构建配合已有有效 feature 控制验证 fallback，另用具备硬件的节点验证 AVX2。
@@ -169,7 +169,7 @@ Decode 上下文随生成增长。固定上下文实验应在计时区外用独�
 
 ### 4.3 Q3：数值与优化等价回归（P1）
 
-- **第四批已实施（2026-10-27）**：在测试层复用 execution 观察 helper，增加独立 HF/PyTorch CPU FP32 固定轨迹及独立 greedy 参考。固定 revision 的 untied/tied MHA、合成 GQA/MQA 尾部形状与 context=2048 上限附近共 5 组、120 个参考 tensor；O1/plain 和 O2/packed 对比多 token Prefill、两步 Decode 的 logits/全部 committed KV/token/watermark，并验证四组短模型的公开 Generate 与连续新请求。新增只写新 candidate 的导出器、严格 checksum/完整性校验、逐 tensor 差异报告、真实权重扰动及独立 numerical CTest fixture；参考框架仅为开发依赖。限定结果、近上限仅保留末行 Prefill logits 的边界及复现命令见 [第四批验收记录](../tests/hf_numerical_reference_validation_2026-10-27.md)。本批覆盖 standard RoPE 与列明 FP32 组合，未据此关闭全部 rewrite/kernel 层定位、扩展 RoPE、质量/性能评测或物理平台门禁，Q3 保持部分实施状态。
+- **第四批已实施（2026-10-27）**：在测试层复用 execution 观察 helper，增加独立 HF/PyTorch CPU FP32 固定轨迹及独立 greedy 参考。固定 revision 的 untied/tied MHA、合成 GQA/MQA 尾部形状与 context=2048 上限附近共 5 组、120 个参考 tensor；O1/plain 和 O2/packed 对比多 token Prefill、两步 Decode 的 logits/全部 committed KV/token/watermark，并验证四组短模型的公开 Generate 与连续新请求。新增只写新 candidate 的导出器、严格 checksum/完整性校验、逐 tensor 差异报告、真实权重扰动及独立 numerical CTest fixture；参考框架仅为开发依赖。限定结果、近上限仅保留末行 Prefill logits 的边界及复现命令见 [第四批验收记录](../archive/tests/hf_numerical_reference_validation_2026-10-27.md)。本批覆盖 standard RoPE 与列明 FP32 组合，未据此关闭全部 rewrite/kernel 层定位、扩展 RoPE、质量/性能评测或物理平台门禁，Q3 保持部分实施状态。
 - 在 tests 下提取共享 fixture/轨迹/snapshot helper；读取元数据和 snapshot 的分配不计入 Decode 零分配区间。
 - 先扩展 tiny scalar oracle，再加入带固定 revision 的小型真实模型及外部参考数据；覆盖多 token Prefill、至少两步 Decode、GQA/MHA/MQA 中实际准入的形状、非 SIMD 整除尺寸和上下文上限附近。
 - 分别检查等价 rewrite、packing、prepared operator 与完整模型；增加 candidate golden 生成/比较工具和缺样本、NaN/Inf、位置错位的负面测试。
@@ -179,7 +179,7 @@ Decode 上下文随生成增长。固定上下文实验应在计时区外用独�
 
 ### 4.4 Q4：模型性能与质量评测（P1）
 
-- **第五批基线子项已实施（2026-10-27）**：新增 Linux 开发用 `aethermind_model_benchmark`，在既有 BUILD_BENCHMARKS 下独立于 Google Benchmark main，Release 及 baseline presets 可在 BUILD_TESTS=OFF 时构建。分别测量 Load/Compile/Runtime/Prepare、内部 prepared Prefill/逐步 Decode 和公开 Generate；计时、profile 与 Runtime allocator 请求诊断采用独立进程，未改生产 API/kernel 选择。stdlib 驱动保存模型（含 index 引用的嵌套 shard）、源码/二进制/机器/环境身份及全部 repetitions，校验实际 EOS、G-1 Decode、上下文区间与报告完整性；统计不跨 KV 长度混组，小样本不出尾分位数，A/A 噪声观测不产生固定回退阈值。实际构建/正确性结果、原始观测和元数据补齐过程见 [第五批验收记录](../tests/model_benchmark_validation_2026-10-27.md)。当前 tiny fixture/WSL 观测仅验证采集链；冷启动、PMU 归因、代表性大模型、优化候选推广及质量评测尚待独立验收，Q4 保持部分实施状态。
+- **第五批基线子项已实施（2026-10-27）**：新增 Linux 开发用 `aethermind_model_benchmark`，在既有 BUILD_BENCHMARKS 下独立于 Google Benchmark main，Release 及 baseline presets 可在 BUILD_TESTS=OFF 时构建。分别测量 Load/Compile/Runtime/Prepare、内部 prepared Prefill/逐步 Decode 和公开 Generate；计时、profile 与 Runtime allocator 请求诊断采用独立进程，未改生产 API/kernel 选择。stdlib 驱动保存模型（含 index 引用的嵌套 shard）、源码/二进制/机器/环境身份及全部 repetitions，校验实际 EOS、G-1 Decode、上下文区间与报告完整性；统计不跨 KV 长度混组，小样本不出尾分位数，A/A 噪声观测不产生固定回退阈值。实际构建/正确性结果、原始观测和元数据补齐过程见 [第五批验收记录](../archive/tests/model_benchmark_validation_2026-10-27.md)。当前 tiny fixture/WSL 观测仅验证采集链；冷启动、PMU 归因、代表性大模型、优化候选推广及质量评测尚待独立验收，Q4 保持部分实施状态。
 - 新增模型级 benchmark，优先组合既有公开构建块；内部阶段诊断与完整 Generate 分开命名，不能把内部路径称为公开 consumer。
 - 保存完整配置、实际 token/step/时间、模型与机器身份、全部 repetitions 和 raw artifact；增加 profile 与计时隔离、EOS 分母及上下文区间校验。
 - 先建立同机噪声 floor 与趋势报告，再为可靠 workload 配置 regression gate；不得使用跨机器绝对数字或全局固定回退百分比。
@@ -197,7 +197,7 @@ Decode 上下文随生成增长。固定上下文实验应在计时区外用独�
 
 ### 4.6 五批集成与限定最终验收
 
-- **集成入口已实施（2026-10-28）**：统一运行已实现五批的 baseline、AVX、外部数值、ASAN/UBSAN/LSAN、独立 TSAN、独立 CLI 和模型 benchmark 行为合同；冻结发现清单及 unittest 方法摘要，核对 JUnit 的完整执行、源码/资产前后身份，并保留失败与进程级 TSAN 启动适配证据。使用方式见 [统一验收指南](../guides/final-validation.md)，限定验收结果见 [集成记录](../tests/final_validation_2026-10-28.md)。
+- **集成入口已实施（2026-10-28）**：统一运行已实现五批的 baseline、AVX、外部数值、ASAN/UBSAN/LSAN、独立 TSAN、独立 CLI 和模型 benchmark 行为合同；冻结发现清单及 unittest 方法摘要，核对 JUnit 的完整执行、源码/资产前后身份，并保留失败与进程级 TSAN 启动适配证据。使用方式见 [统一验收指南](../guides/final-validation.md)，限定验收结果见 [集成记录](../archive/tests/final_validation_2026-10-28.md)。
 - 本入口的 milestone_complete 仅指所选环境中已实现的五批验收矩阵；不会将 Q1–Q5 全部关闭。warnings profile、物理无 AVX 平台、其余分层定位/模型质量/优化推广、机械架构依赖检查与 install/export consumer 等继续按原工作包推进，本提案保持 In Progress。
 
 ### 4.7 依赖与实施批次

@@ -1,11 +1,11 @@
 # AetherMind 文档系统稳定化方案
 
-- **状态**: In Progress
+- **状态**: Superseded（Phase 0–4 文档重构已完成；本文仅保留历史背景）
 - **版本**: 2.2
 - **日期**: 2026-09-17
-- **产品范围**: [AetherMind 产品需求](../products/aethermind_prd.md)
-- **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
-- **文档规范**: [文档系统规范](../guides/documentation-guide.md)
+- **产品范围**: [AetherMind 产品需求](../product.md)
+- **架构基线**: [架构总览](../architecture.md)
+- **文档规范**: [文档系统规范](../archive/guides/documentation-guide.md)
 - **关联模块**: 全仓库文档
 - **配套清查表**: [03-documentation-stabilization-inventory.md](03-documentation-stabilization-inventory.md)
 
@@ -26,7 +26,7 @@
 
 ### 1.1 与既有文档规范的关系
 
-[文档系统规范](../guides/documentation-guide.md) 是文档分类、命名、交叉引用与质量标准的**唯一规范来源**。本方案是迁移实施计划，不是规范文档。本方案自身是 `improvement-plan/` 下的 Draft 提案，**不是文档治理权威**。
+[文档系统规范](../archive/guides/documentation-guide.md) 是文档分类、命名、交叉引用与质量标准的**唯一规范来源**。本方案是迁移实施计划，不是规范文档。本方案自身是 `improvement-plan/` 下的 Draft 提案，**不是文档治理权威**。
 
 本方案的职责：
 
@@ -101,7 +101,7 @@
 
 ### 2.2 `tools/verify_docs.py` 只覆盖有限结构条件
 
-[tools/verify_docs.py](../../tools/verify_docs.py) 报 `0 problems` 不能证明文档事实正确，其覆盖范围明确排除以下内容：
+`tools/verify_docs.py`（Phase 0 已删除）报 `0 problems` 不能证明文档事实正确，其覆盖范围明确排除以下内容：
 
 - 第 7 行注释：`anchors are not validated`（不校验 heading anchor）；
 - 第 39 行：`EXCLUDED_PARTS = ("templates", "archive", "agent", "improvement-plan")`（改进计划与归档完全不参与检查）；
@@ -121,7 +121,7 @@
 
 ### 2.4 开发指南含失效命令与专项残留
 
-[docs/guides/code_review_guide.md](../guides/code_review_guide.md) 存在多类问题：
+[docs/archive/guides/code_review_guide.md](../archive/guides/code_review_guide.md) 存在多类问题：
 
 - 第 49 行：`make --build build --target aethermind_unit_tests` 语法错误（应为 `cmake --build build`）；
 - 第 52 行：`--gtest_filter="*SizeClass*:*Span*"` 引用 ammalloc 专项测试，但 ammalloc 已移出仓库；
@@ -133,29 +133,29 @@
 
 ### 2.5 `docs/designs/` 存在分类与命名违规
 
-按 [文档系统规范 §1 准入条件](../guides/documentation-guide.md)："`designs/` 下所有文档只描述已验证实现；草稿/提案不得进入"。当前违规条目：
+按 [文档系统规范 §1 准入条件](../archive/guides/documentation-guide.md)："`designs/` 下所有文档只描述已验证实现；草稿/提案不得进入"。当前违规条目：
 
 - [docs/archive/designs-legacy/amstring_development_plan.md](../archive/designs-legacy/amstring_development_plan.md)：development plan 而非设计（已归档 2026-09-14）；
 - [docs/archive/designs-legacy/amstring_milestones.md](../archive/designs-legacy/amstring_milestones.md)：milestones 而非设计（已归档 2026-09-14）；
 - [docs/archive/designs-legacy/amstring_task_checklist.md](../archive/designs-legacy/amstring_task_checklist.md)：task checklist 而非设计（已归档 2026-09-14）；
-- 命名违规统计（分母重新定义）：`docs/designs/` 现有 26 篇文件（原 30 篇：3 篇 plan 已归档、1 篇 superseded 草案已删除），其中 canonical module design 1 篇（`model/01-model-loader.md`）、存量例外 1 篇（`architecture/architecture_overview.md`，见 [documentation-guide.md §2](../guides/documentation-guide.md)）、**真正待迁移的命名违规 24 篇**；
+- 命名违规统计（分母重新定义）：`docs/designs/` 现有 26 篇文件（原 30 篇：3 篇 plan 已归档、1 篇 superseded 草案已删除），其中 canonical module design 1 篇（`model/01-model-loader.md`）、存量例外 1 篇（`architecture/architecture_overview.md`，见 [documentation-guide.md §2](../archive/guides/documentation-guide.md)）、**真正待迁移的命名违规 24 篇**；
 - 中文文件名：`status设计方案.md`、`已证明约束的执行阶段保障方案.md`、`kernel_dev/*.md` 全部；
-- 同名冲突：[docs/designs/graph_compilation_flow.md](../designs/graph_compilation_flow.md) 与 [docs/reviews/graph_compilation_flow.md](../reviews/graph_compilation_flow.md) 并存，容易混淆权威来源。
+- 同名冲突：[docs/designs/graph_compilation_flow.md](../archive/designs/graph_compilation_flow.md) 与 [docs/archive/reviews/graph_compilation_flow.md](../archive/reviews/graph_compilation_flow.md) 并存，容易混淆权威来源。
 
 ### 2.6 超长文档违反可读性标准
 
-按 [文档系统规范 §4](../guides/documentation-guide.md)："单文档 ≤ 1000 行"。当前超限（非归档）：
+按 [文档系统规范 §4](../archive/guides/documentation-guide.md)："单文档 ≤ 1000 行"。当前超限（非归档）：
 
 - ~~operator_optimization_guide.md~~ 2110 行（2026-09-19 已压缩合并入算子开发工作流附录 C 后移除）；
-- [docs/designs/model_graph_design.md](../designs/model_graph_design.md) 1706 行；
-- dispatch_design.md 1061 行（2026-09-19 迁入 [docs/designs/](../designs/dispatch_design.md)）；
-- [docs/designs/graph_lowering_design.md](../designs/graph_lowering_design.md) 1005 行。
+- [docs/designs/model_graph_design.md](../archive/designs/model_graph_design.md) 1706 行；
+- dispatch_design.md 1061 行（2026-09-19 迁入 [docs/designs/](../archive/designs/dispatch_design.md)）；
+- [docs/designs/graph_lowering_design.md](../archive/designs/graph_lowering_design.md) 1005 行。
 
 归档区超限文档（`docs/archive/kernel_dev/*.md` 等）不作为 Batch -1 优先项，仅在清查表登记。
 
 ### 2.7 大量文档无明确状态
 
-`docs/designs/`、`docs/guides/`、`docs/reviews/` 中多数文档头部无 `状态: Current / Draft / Historical Snapshot / Superseded / Deprecated` 字段，或状态与内容不匹配（例如 code_review_guide.md 标 Current 但含失效命令）。无法从文档本身判定当前性。
+`docs/designs/`、`docs/guides/`、`docs/archive/reviews/` 中多数文档头部无 `状态: Current / Draft / Historical Snapshot / Superseded / Deprecated` 字段，或状态与内容不匹配（例如 code_review_guide.md 标 Current 但含失效命令）。无法从文档本身判定当前性。
 
 ### 2.8 阶段性术语散布
 
@@ -169,20 +169,20 @@
 
 | 事实 | 权威来源 | 备注 |
 |---|---|---|
-| 当前产品能力与范围 | [docs/products/aethermind_prd.md](../products/aethermind_prd.md) | 唯一权威 |
+| 当前产品能力与范围 | [docs/product.md](../product.md) | 唯一权威 |
 | 模块 ownership 与依赖 | [AGENTS.md](../../AGENTS.md) §2.1 | 设计文档引用不复制 |
-| 当前架构 | [docs/designs/architecture/architecture_overview.md](../designs/architecture/architecture_overview.md) | 全系统唯一权威总览 |
+| 当前架构 | [docs/designs/architecture/architecture_overview.md](../architecture.md) | 全系统唯一权威总览 |
 | Public API 语义 | 头文件 Doxygen + [docs/api/public-api.md](../api/public-api.md) | 同源同步 |
 | 构建选项与运行配置 | 根 [README.md](../../README.md) + CMake | 单一事实源 |
 | 未来工作与演进提案 | [docs/improvement-plan/](../improvement-plan/) | 编号专题 |
 | 已知短生命周期缺陷 | [docs/issues.md](../issues.md) | 每条目 `[x]`/`[ ]` |
-| 历史架构决策 | [docs/decisions/](../decisions/) | ADR，编号全局只增 |
-| 历史审查结果 | [docs/reviews/](../reviews/) | 必须注明快照日期 |
-| 文档分类与命名规范 | [docs/guides/documentation-guide.md](../guides/documentation-guide.md) | 元规范 |
+| 历史架构决策 | [docs/archive/decisions/](../archive/decisions/) | ADR，编号全局只增 |
+| 历史审查结果 | [docs/archive/reviews/](../archive/reviews/) | 必须注明快照日期 |
+| 文档分类与命名规范 | [docs/archive/guides/documentation-guide.md](../archive/guides/documentation-guide.md) | 元规范 |
 
 ### 3.2 状态取值（清查表工作标签）
 
-以下状态取值用于清查表"状态"列，作为迁移期间的工作标签。文档头部的正式状态字段仍遵循 [documentation-guide.md §1](../guides/documentation-guide.md) 的按类型定义。
+以下状态取值用于清查表"状态"列，作为迁移期间的工作标签。文档头部的正式状态字段仍遵循 [documentation-guide.md §1](../archive/guides/documentation-guide.md) 的按类型定义。
 
 | 清查表标签 | 含义 | 对应 documentation-guide.md 状态 |
 |---|---|---|
@@ -201,7 +201,7 @@
 - **无法证明当前性的文档默认不能标为 `Current`**；未核验时统一填 `Unverified`（清查表用）或 `Draft`（文档头部用）；
 - `designs/` 中的 `Draft` 内容必须迁移到 `improvement-plan/` 或标记为调研备忘；
 - `reviews/` 中的 `Historical Snapshot` 必须在头部注明快照日期；
-- `Current` 状态的文档在事实变化时必须同 PR 更新（[文档系统规范 §6.1](../guides/documentation-guide.md)）。
+- `Current` 状态的文档在事实变化时必须同 PR 更新（[文档系统规范 §6.1](../archive/guides/documentation-guide.md)）。
 
 ## 4. D1：可信核心文档集
 
@@ -212,9 +212,9 @@
 | 1 | [AGENTS.md](../../AGENTS.md) | 仓库级执行指南、模块 ownership |
 | 2 | [README.md](../../README.md) | 构建选项与运行配置 |
 | 3 | [docs/README.md](../README.md) | 文档唯一入口、索引与术语表 |
-| 4 | [docs/guides/documentation-guide.md](../guides/documentation-guide.md) | 文档治理唯一规范 |
-| 5 | [docs/products/aethermind_prd.md](../products/aethermind_prd.md) | 产品能力与验收标准 |
-| 6 | [docs/designs/architecture/architecture_overview.md](../designs/architecture/architecture_overview.md) | 当前架构 |
+| 4 | [docs/archive/guides/documentation-guide.md](../archive/guides/documentation-guide.md) | 文档治理唯一规范 |
+| 5 | [docs/product.md](../product.md) | 产品能力与验收标准 |
+| 6 | [docs/designs/architecture/architecture_overview.md](../architecture.md) | 当前架构 |
 | 7 | [docs/api/public-api.md](../api/public-api.md) | Public API 汇总 |
 | 8 | [docs/issues.md](../issues.md) | 已知问题跟踪 |
 | 9 | [docs/improvement-plan/README.md](README.md) | 演进提案索引 |
@@ -242,7 +242,7 @@
 
 - [docs/issues.md](../issues.md)：从 `- （无）` 更新为反映 §2.3–§2.8 列出的已知缺口；
 - [docs/improvement-plan/01-inference-session-generate-readiness.md](01-inference-session-generate-readiness.md) §2.2：Linear、RoPE、Argmax 三行改为反映当前实现状态；
-- [docs/guides/code_review_guide.md](../guides/code_review_guide.md)：§2.4 列出的失效命令与 ammalloc 专项残留必须在 Batch -1 内修复或标为 `Deprecated`；
+- [docs/archive/guides/code_review_guide.md](../archive/guides/code_review_guide.md)：§2.4 列出的失效命令与 ammalloc 专项残留必须在 Batch -1 内修复或标为 `Deprecated`；
 - [docs/README.md](../README.md)：术语表与索引行的 `Phase 1` 表述按 §7 D4 规则处理。
 
 ### 4.4 D1 核验记录（2026-09-14/17，修正于 2026-09-17）
@@ -295,7 +295,7 @@ E1 完全满足需要：(a) 补充上述深度核验，或 (b) 明确裁决结�
 ### 5.2 清查范围
 
 - **包含（治理范围）**：仓库根 `README.md`、`AGENTS.md`、`CHANGELOG.md`；`docs/` 下全部 .md（含 `archive/`、`improvement-plan/`、`templates/`）；
-- **包含（仅登记，Out of Scope）**：`docs/agent/` 下全部 .md——按 [documentation-guide.md §1 准入条件](../guides/documentation-guide.md)，`docs/agent/` 是独立子系统，本规范不适用于其内部文档。清查表为全景统计列出这些文件，但**排除在 E1–E9、状态迁移、命名和 metadata 门禁之外**。唯一交叉点是 ADR 互链（documentation-guide.md §3.3）；
+- **包含（仅登记，Out of Scope）**：`docs/agent/` 下全部 .md——按 [documentation-guide.md §1 准入条件](../archive/guides/documentation-guide.md)，`docs/agent/` 是独立子系统，本规范不适用于其内部文档。清查表为全景统计列出这些文件，但**排除在 E1–E9、状态迁移、命名和 metadata 门禁之外**。唯一交叉点是 ADR 互链（documentation-guide.md §3.3）；
 - **排除**：`3rdparty/`、`build*/`、`.models/`、`.qoder/`、`.trae/`、`.omo/`、`.sisyphus/`、`.codex/`、`.gemini/`、`.idea/`、`.vscode/`、`.cache/`、`.agents/`、`tools/agent_memory/`（外部代码、构建产物、工具元数据、历史草稿）。
 
 ### 5.3 硬约束
@@ -331,20 +331,20 @@ E1 完全满足需要：(a) 补充上述深度核验，或 (b) 明确裁决结�
 ### 6.1 P0 首批对象（依据 §2 证据）
 
 - [docs/improvement-plan/01-inference-session-generate-readiness.md](01-inference-session-generate-readiness.md) §2.2（错误描述当前实现）；
-- [docs/guides/code_review_guide.md](../guides/code_review_guide.md)（失效命令 + ammalloc 残留 + 被当作执行规范）；
+- [docs/archive/guides/code_review_guide.md](../archive/guides/code_review_guide.md)（失效命令 + ammalloc 残留 + 被当作执行规范）；
 - [docs/issues.md](../issues.md)（未反映真实问题，权威事实源）；
 - [docs/README.md](../README.md)（索引与术语表，权威事实源）；
-- [docs/designs/architecture/architecture_overview.md](../designs/architecture/architecture_overview.md)（当前架构权威）。
+- [docs/designs/architecture/architecture_overview.md](../architecture.md)（当前架构权威）。
 
 ### 6.2 P1 首批对象
 
 - `docs/archive/designs-legacy/amstring_development_plan.md`、`amstring_milestones.md`、`amstring_task_checklist.md`（名为 design、实际是计划；已归档 2026-09-14）；
-- [docs/reviews/graph_compilation_flow.md](../reviews/graph_compilation_flow.md)、`model_graph_data_structure_review.md`、`operator_semantic_layer_review.md`、`prd/prd_review.md`（未注明日期）；
-- [docs/designs/graph_compilation_flow.md](../designs/graph_compilation_flow.md) 与 reviews 同名冲突。
+- [docs/archive/reviews/graph_compilation_flow.md](../archive/reviews/graph_compilation_flow.md)、`model_graph_data_structure_review.md`、`operator_semantic_layer_review.md`、`prd/prd_review.md`（未注明日期）；
+- [docs/designs/graph_compilation_flow.md](../archive/designs/graph_compilation_flow.md) 与 reviews 同名冲突。
 
 ### 6.3 P2 首批对象
 
-- ~~operator_optimization_guide.md~~ 2110 行（2026-09-19 已压缩合并入算子开发工作流附录 C 后移除）、[docs/designs/model_graph_design.md](../designs/model_graph_design.md) 1706 行、`dispatch_design.md` 1061 行、`graph_lowering_design.md` 1005 行（超长，内容正确性待核验后决定是否拆分）；
+- ~~operator_optimization_guide.md~~ 2110 行（2026-09-19 已压缩合并入算子开发工作流附录 C 后移除）、[docs/designs/model_graph_design.md](../archive/designs/model_graph_design.md) 1706 行、`dispatch_design.md` 1061 行、`graph_lowering_design.md` 1005 行（超长，内容正确性待核验后决定是否拆分）；
 - 中文文件名、非 canonical 命名（待 D3 排序后统一处理）。
 
 ## 7. D4：阶段术语弱化

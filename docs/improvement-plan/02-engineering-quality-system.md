@@ -4,8 +4,8 @@
 - **版本**: 1.3
 - **日期**: 2026-09-14
 - **最近更新**: 2026-10-22
-- **产品范围**: [AetherMind 产品需求](../products/aethermind_prd.md)
-- **架构基线**: [架构总览](../designs/architecture/architecture_overview.md)
+- **产品范围**: [AetherMind 产品需求](../product.md)
+- **架构基线**: [架构总览](../architecture.md)
 - **关联模块**: 全仓库
 - **实施专题**: [13 DeepInfer 生产验证与质量实施](13-deepinfer-quality-and-validation.md)
 
@@ -477,8 +477,8 @@ Batch -1 的退出条件 E1–E9（见 [03 号方案 §9](03-documentation-stabi
 文档演进顺序：
 
 1. 本提案定义目标、工作流和门禁模型；
-2. `docs/reviews/` 记录事实基线与专项审核；
-3. `docs/tests/` 记录重要动态验证；
+2. `docs/archive/reviews/` 记录事实基线与专项审核；
+3. `docs/archive/tests/` 记录重要动态验证；
 4. `docs/issues.md` 跟踪短生命周期缺陷；
 5. 经过至少两个 vertical slice 验证后，将稳定且通用的规则提炼到开发指南；
 6. 只有涉及长期架构、ABI 或并发约束时才新增 ADR；

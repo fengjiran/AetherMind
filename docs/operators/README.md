@@ -20,7 +20,7 @@ docs/operators/
 
 ## 规则
 
-- 新增算子的契约、专项提案、证据记录全部建在本目录对应算子子目录下；**不得**再写入 `docs/archive/`、`docs/improvement-plan/` 或 `docs/tests/`。
+- 新增算子的契约、专项提案、证据记录全部建在本目录对应算子子目录下；**不得**再写入 `docs/archive/`、`docs/improvement-plan/` 或新建独立验证目录。
 - 专项提案（原 `improvement-plan/04-*`）已迁入本目录对应算子子目录（2026-09-19）：提案只承载优化原理、合同与工作包状态，证据记入 `benchmarks/` 记录文件，机器级数值不回填提案。
 - 本目录只放**算子层**文档：跨算子共享的算子体系/契约设计平铺在本目录（上述两份）。原 `backend_design.md`、`dispatch_design.md`、`cpu_capability_design.md`、`op_evaluator.md` 已合并进 [backend 模块设计](../modules/backend.md) 与 [graph 模块设计](../modules/graph.md)，不再单独维护。
 

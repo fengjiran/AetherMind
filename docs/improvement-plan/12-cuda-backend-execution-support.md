@@ -4,7 +4,7 @@
 - **版本**: 1.1
 - **日期**: 2026-10-21
 - **最近更新**: 2026-11-05
-- **当前产品合同**: [AetherMind PRD](../products/aethermind_prd.md)；当前仍为 CPU-only，本提案定义未来 CUDA 专项范围，不扩大当前已交付能力
+- **当前产品合同**: [AetherMind PRD](../product.md)；当前仍为 CPU-only，本提案定义未来 CUDA 专项范围，不扩大当前已交付能力
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联提案**: [06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[08 KV/Attention 演进](08-kv-cache-and-attention-capability-evolution.md)、[09 模型家族扩展](09-qwen-and-moe-architecture-support.md)、[10 Runtime 组装入口](10-upper-level-runtime-assembly.md)、[11 FP16/BF16 执行支持](11-fp16-bf16-execution-support.md)
 - **算子工作流**: [算子开发与优化工作流](../guides/operator-development-workflow.md)

@@ -1,18 +1,18 @@
 # 上层 Runtime 组装与推理入口实施方案
 
-> 本文同时作为当前上层装配参考，API 名称与现有源码保持一致。完整签名与权重策略见 [ExecutableModel 设计](../designs/inference/01-executable-model.md) §5–§6；各阶段历史测试命令与受测身份见对应验收报告。
+> 本文同时作为当前上层装配参考，API 名称与现有源码保持一致。完整签名与权重策略见 [ExecutableModel 设计](../archive/designs/inference/01-executable-model.md) §5–§6；各阶段历史测试命令与受测身份见对应验收报告。
 
 - **状态**: Implemented
 - **版本**: 1.15
 - **日期**: 2026-10-19
 - **最近更新**: 2026-11-05
-- **产品边界**: [当前产品 PRD](../products/aethermind_prd.md)
+- **产品边界**: [当前产品 PRD](../product.md)
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联计划**: [01 Generate 闭环](01-inference-session-generate-readiness.md)、[02 工程质量](02-engineering-quality-system.md)、[06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[07 模型准备入口](07-executable-model-preparation.md)
 - **关联模块**: 应用入口 / inference / runtime / model / compiler / API
 - **验证专题**: [13 DeepInfer 生产验证与质量实施](13-deepinfer-quality-and-validation.md)
 
-M0–M6 已按本方案限定的 CPU FP32 Llama Dense 范围完成：测试资产、共享策略、同步 runner、独立 CLI、C++ 验收、C ABI 合同与正式适配。C++ 证据见 §4.0–§4.2 和 [M4 报告](../tests/upper_level_runtime_assembly_m4_validation_2026-10-22.md)，合同迁移见 [M5 报告](../tests/upper_level_runtime_assembly_m5_validation_2026-10-22.md)，最终 C ABI、回归和 sanitizer 边界见 §4.3 与 [M6 报告](../tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md)。Implemented 不代表量化、其他家族、7B 性能、离线发行或全部 PRD hard gates 达成；既有 LSAN 基线未清零。
+M0–M6 已按本方案限定的 CPU FP32 Llama Dense 范围完成：测试资产、共享策略、同步 runner、独立 CLI、C++ 验收、C ABI 合同与正式适配。C++ 证据见 §4.0–§4.2 和 [M4 报告](../archive/tests/upper_level_runtime_assembly_m4_validation_2026-10-22.md)，合同迁移见 [M5 报告](../archive/tests/upper_level_runtime_assembly_m5_validation_2026-10-22.md)，最终 C ABI、回归和 sanitizer 边界见 §4.3 与 [M6 报告](../archive/tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md)。Implemented 不代表量化、其他家族、7B 性能、离线发行或全部 PRD hard gates 达成；既有 LSAN 基线未清零。
 
 ## 1. 现状分析
 
@@ -294,7 +294,7 @@ M3 提供独立构建与基础 CLI 合同，M4 完成 C++ 验收；M5 冻结 C A
 
 #### M4：C++ 首版验收收口（已完成，2026-10-22）
 
-完整来源、配置、门禁映射、命令、受测文件 hashes 和 sanitizer 限制见 [M4 验收报告](../tests/upper_level_runtime_assembly_m4_validation_2026-10-22.md)。本轮新增测试与文档，不改变生产 runner、kernel、packing 或并发合同。
+完整来源、配置、门禁映射、命令、受测文件 hashes 和 sanitizer 限制见 [M4 验收报告](../archive/tests/upper_level_runtime_assembly_m4_validation_2026-10-22.md)。本轮新增测试与文档，不改变生产 runner、kernel、packing 或并发合同。
 
 | 验证 | 结果与证据边界 |
 |---|---|
@@ -340,7 +340,7 @@ runner 在入口边界捕获 `std::bad_alloc` 并返回空 message 的 ResourceE
 - 新增三类 typed opaque handle、固定 v1 配置/version 与完整 owner/error/buffer 合同；统一 PRD 的 error out、错误命名及 Generate 返回码。仅声明新函数，不提供 stub，不声称 runtime C ABI 可链接。
 - 共享 `ValidateSourceWeights` 与 `MakeFp32KVCacheOptions` 已归 inference，CLI 直接调用公共头，删除应用副本与旧声明；家族/RoPE 语义继续由 Compile 判定，Runtime/model 比较留 adapter。
 - 真实 C11 translation unit 与 C++20 检查签名、数值、layout 和 opaque 类型；C 编译调用既有 error ABI。修复 `am_error_create` message 构造抛出时的泄漏，确定性 OOM 用例验证命中与分配释放平衡，旧实现负向回归可检出原问题。
-- M5 的聚焦回归、CLI 验证与 sanitizer 证据见 [M5 验收报告](../tests/upper_level_runtime_assembly_m5_validation_2026-10-22.md)。M5 当时尚待的 A10/A14 动态 owner、buffer、error-out、KV 跨对象测试，以及 A13 第二生产消费者，现已由 M6 完成。
+- M5 的聚焦回归、CLI 验证与 sanitizer 证据见 [M5 验收报告](../archive/tests/upper_level_runtime_assembly_m5_validation_2026-10-22.md)。M5 当时尚待的 A10/A14 动态 owner、buffer、error-out、KV 跨对象测试，以及 A13 第二生产消费者，现已由 M6 完成。
 
 #### M6：正式适配与独立 C 验收（已完成，2026-10-22）
 
@@ -354,7 +354,7 @@ M6 在 [c_api_runtime.cpp](../../src/c_api_runtime.cpp) 实现全部冻结函数
 | 回归 | 290 项既有聚焦回归、48 项 CLI/Session 对照、38 项 Python CLI 通过；共 438 项选中 C++/C ABI 测试，无跳过 |
 | sanitizer | 87 项普通 C ABI/矩阵 ASAN/UBSAN 通过；13 项 interposer 故障由普通构建独立验证。LSAN 零用例与 87 项均为既有 1384 bytes / 17 allocations、归一化栈相同；整体零泄漏门禁未通过 |
 
-完整命令、来源、受测源码身份、独立 C 程序和 sanitizer 限制见 [M6 验收报告](../tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md)。下面保留已实现的适配约束，作为后续维护合同。
+完整命令、来源、受测源码身份、独立 C 程序和 sanitizer 限制见 [M6 验收报告](../archive/tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md)。下面保留已实现的适配约束，作为后续维护合同。
 
 必须先处理 C ABI 中“Runtime 先创建、模型后加载”与 KV 几何来自模型之间的时序：保持当前 builder 行为的首版选择，是 runtime config 显式提供 KV 几何/容量，由 C ABI adapter 在模型加载/编译后执行跨对象校验。`ModelLoader` 与 model 模块不读取 Runtime。若要求模型加载后才能初始化 KV，需单独评审 Runtime 初始化 API，不能直接在 C wrapper 里更改已使用 Runtime 的 KV storage。
 

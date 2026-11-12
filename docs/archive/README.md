@@ -10,6 +10,17 @@
 - 架构总览：[docs/architecture.md](../architecture.md)
 - 产品范围：[docs/product.md](../product.md)
 
+## 过程资料归档
+
+| 目录 | 内容 | 当前权威 |
+|---|---|---|
+| [reviews/](reviews/)（5 篇） | 历史设计/代码评审快照 | `docs/modules/` 与 `docs/issues.md` |
+| [tests/](tests/)（20 篇） | 历史验证报告与基准记录 | `CHANGELOG.md` 与 `docs/operators/*/benchmarks/` |
+| [logs/](logs/)（1 篇） | 开发过程日志 | git history |
+| [decisions/](decisions/)（2 篇） | 旧 ADR；关键结论已并入模块文档 | `docs/modules/` 与 `docs/README.md` |
+| [templates/](templates/)（2 篇） | 旧模块/ADR 模板 | `docs/README.md` 的写作规则 |
+| [guides/](guides/)（2 篇） | 已废弃的文档规范与审查指南 | `docs/README.md` |
+
 ## 其他历史资料
 
 | 文档 | 原位置 | 说明 | 当前权威文档 |
@@ -22,5 +33,5 @@
 ## 规则
 
 1. 归档文档不修改、不索引、不参与链接检查。
-2. 新文档不得写入本目录；过时文档直接删除或合并，历史由 git 保留。
+2. 过时文档移入本目录；活跃目录不保留历史副本。
 3. `docs/agent/` 不属于本归档区。

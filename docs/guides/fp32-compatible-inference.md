@@ -1,6 +1,6 @@
 # FP32 兼容推理指南
 
-状态：Current。适用范围是 CPU Llama Dense 的 P1：将已由 loader 接受的 F16/BF16 checkpoint 权重显式拓宽为 FP32，再复用既有 FP32 O1/plain 执行链。实现和验证范围见 [11 号方案](../improvement-plan/11-fp16-bf16-execution-support.md) 与 [P1 验证报告](../tests/fp32_compatibility_validation_2026-10-29.md)。
+状态：Current。适用范围是 CPU Llama Dense 的 P1：将已由 loader 接受的 F16/BF16 checkpoint 权重显式拓宽为 FP32，再复用既有 FP32 O1/plain 执行链。实现和验证范围见 [11 号方案](../improvement-plan/11-fp16-bf16-execution-support.md) 与 [P1 验证报告](../archive/tests/fp32_compatibility_validation_2026-10-29.md)。
 
 ## 使用入口
 

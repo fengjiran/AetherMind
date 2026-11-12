@@ -6,7 +6,7 @@
 
 ## 1. C ABI（include/c_api.h）
 
-> Runtime/model/session 的 v1 合同由 M5 冻结、M6 实现，声明见 `include/c_api.h`，实现见 `src/c_api_runtime.cpp`。完整 [Runtime C ABI 合同](runtime-c-abi.md) 规定 version/config、owner、error 与 buffer 规则；[M6 报告](../tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md) 记录纯 C 调用与验证边界。既有对象引用计数、错误处理和 traceback 原语保留。
+> Runtime/model/session 的 v1 合同由 M5 冻结、M6 实现，声明见 `include/c_api.h`，实现见 `src/c_api_runtime.cpp`。完整 [Runtime C ABI 合同](runtime-c-abi.md) 规定 version/config、owner、error 与 buffer 规则；[M6 报告](../archive/tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md) 记录纯 C 调用与验证边界。既有对象引用计数、错误处理和 traceback 原语保留。
 
 | Runtime C 接口 | 返回与生命周期 |
 |---|---|
@@ -148,7 +148,7 @@ M5 将这两项规则归入 inference，CLI 与 M6 C adapter 消费同一实现�
 | `artifact_id()` / `phase()` / `context_limit()` / `vocab_size()` | 查询编译产物身份、phase、模型 context 上限与词表大小。 |
 | `IsPreparedFor(const Runtime&)` | 检查模型 resolve 的 kernels 是否属于该 Runtime。 |
 
-KV16 Load 要求已有、地址稳定的 Runtime KV Manager，其实际 dtype 必须与 `ModelLoadOptions::kv_dtype` 一致；不一致在权重转换和 packing 前失败，Load 不重建 Runtime。Graph state spec、`KernelSelector::state_dtype`、view/layout 和调用期 binding 保持相同 dtype。无 state 的 selector 使用唯一 undefined，按严格相等匹配。KVUpdate 在 K 经 RoPE 后和 V 写入 cache 时 narrow；Attention 从 cache widening 后以 F32 归约。C++ options/selector 布局变化要求消费者重新构建，C ABI/产品 CLI 保持 strict FP32。限定模型、数值与验证范围见 [P3 验收记录](../tests/kv16_execution_validation_2026-11-12.md)。
+KV16 Load 要求已有、地址稳定的 Runtime KV Manager，其实际 dtype 必须与 `ModelLoadOptions::kv_dtype` 一致；不一致在权重转换和 packing 前失败，Load 不重建 Runtime。Graph state spec、`KernelSelector::state_dtype`、view/layout 和调用期 binding 保持相同 dtype。无 state 的 selector 使用唯一 undefined，按严格相等匹配。KVUpdate 在 K 经 RoPE 后和 V 写入 cache 时 narrow；Attention 从 cache widening 后以 F32 归约。C++ options/selector 布局变化要求消费者重新构建，C ABI/产品 CLI 保持 strict FP32。限定模型、数值与验证范围见 [P3 验收记录](../archive/tests/kv16_execution_validation_2026-11-12.md)。
 
 任意 `ModelCompileOptions` 的调用方显式调用 `ModelLoader`、`ModelCompiler`，再调用 `ExecutableModel::Prepare`。CLI 保持 Compile 成功后构建 Runtime；C adapter 保持 Prepare 前的 Runtime/model KV 校验。旧创建自由函数与转发 overload 已删除，无兼容别名。
 

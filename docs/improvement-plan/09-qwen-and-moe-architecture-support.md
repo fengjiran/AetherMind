@@ -4,7 +4,7 @@
 - **版本**: 1.2
 - **日期**: 2026-10-19
 - **最近更新**: 2026-10-20
-- **产品边界**: [当前产品 PRD](../products/aethermind_prd.md)；本提案规划扩展模型支持范围，保留 CPU-only、单进程、单请求、同步、Token IDs I/O、静态连续 KV
+- **产品边界**: [当前产品 PRD](../product.md)；本提案规划扩展模型支持范围，保留 CPU-only、单进程、单请求、同步、Token IDs I/O、静态连续 KV
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联计划**: [06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[07 ExecutableModel 准备入口](07-executable-model-preparation.md)、[08 KV/Attention 演进](08-kv-cache-and-attention-capability-evolution.md)
 - **算子工作流**: [算子开发与优化工作流](../guides/operator-development-workflow.md)

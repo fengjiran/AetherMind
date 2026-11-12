@@ -72,16 +72,16 @@
 
 ### 1.4 当前能力与验证状态
 
-| 能力 | 当前实现与支持范围 | 验证证据 / 剩余要求 |
-|------|--------------------|--------------------|
-| C++ FP32 Llama Dense | CPU O1/plain、O2/packed；同步 Prefill/Decode/Generate | [HF 数值验证](tests/hf_numerical_reference_validation_2026-10-27.md)，限定所列 tiny 模型与配置 |
-| C++ FP32 compatibility | 显式将 F16/BF16 权重拓宽为 FP32；CPU O1/plain | [兼容执行验证](tests/fp32_compatibility_validation_2026-10-29.md)；不保留 16-bit 矩阵 |
-| C++ W16/A32 | 保留 F16 或 BF16 矩阵，仅转换 Norm；FP32 activation、累加、KV、logits；CPU O1/plain、O2/identity-packed | [W16 执行验证](tests/w16_fp32_execution_validation_2026-11-11.md)，含专项正确性、资源与生命周期证据；Linear 当前为 reference 路径 |
-| 独立 CLI / C ABI v1.0 | 已实现，继续采用 CPU strict FP32 source admission | [CLI 验证](tests/upper_level_runtime_assembly_m4_validation_2026-10-22.md)、[C ABI 验证](tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md)；不开放 C++ reduced-weight policy |
-| 静态 KV 与资源预算 | KV 默认 F32，C++ retained-W16 可显式选择 F16/BF16；支持模型、packed、KV、workspace 与请求 payload 限额及资源查询 | [资源预算指南](guides/resource-budgeting.md)；payload、padding 与进程 RSS 分别测量 |
-| INT8/INT4 仅权重量化 | 保留为当前产品交付需求；尚无本 PRD 可据以验收的端到端量化执行链 | loader 接受某种 dtype/metadata 不等于 quantized graph、packing、kernel 与生成已接通 |
-| FP16/BF16 KV | C++ CPU W16/A32 的四种 W×KV 组合、O1/plain 与 O2/identity-packed reference 已接通 | [P3 限定验收](tests/kv16_execution_validation_2026-11-12.md)：独立量化 oracle、最长 2048-token fixture、Decode 零分配与分层 baseline；不代表任意模型/平台质量或加速保证 |
-| 算子内并行 | 尚未建立 OpenMP/线程池生产执行与验收证据 | 在同步单请求边界内另行明确线程所有权、确定性、零分配与 TSAN 合同 |
+| 能力 | 当前实现与支持范围 | 边界 |
+|------|--------------------|------|
+| C++ FP32 Llama Dense | CPU O1/plain、O2/packed；同步 Prefill/Decode/Generate | tiny HF / 生成 checkpoint 的限定验证；不代表大模型质量 |
+| C++ FP32 compatibility | 显式将 F16/BF16 权重拓宽为 FP32；CPU O1/plain | 不保留 16-bit 矩阵 |
+| C++ W16/A32 | 保留 F16 或 BF16 矩阵，仅转换 Norm；FP32 activation、累加、KV、logits；CPU O1/plain、O2/identity-packed | Linear 当前为 reference 路径 |
+| 独立 CLI / C ABI v1.0 | 已实现，继续采用 CPU strict FP32 source admission | 不开放 C++ reduced-weight policy |
+| 静态 KV 与资源预算 | KV 默认 F32，C++ retained-W16 可显式选择 F16/BF16；支持模型、packed、KV、workspace 与请求 payload 限额及资源查询 | 见 [资源预算指南](guides/resource-budgeting.md) |
+| INT8/INT4 仅权重量化 | 保留为当前产品交付需求；尚无端到端量化执行链 | loader 接受 dtype/metadata 不等于 quantized graph、packing、kernel 与生成已接通 |
+| FP16/BF16 KV | C++ CPU W16/A32 的四种 W×KV 组合、O1/plain 与 O2/identity-packed reference 已接通 | 限定 fixture 验收；不代表任意模型/平台质量或加速保证 |
+| 算子内并行 | 尚未建立 OpenMP/线程池生产执行与验收证据 | 需另行明确线程所有权、确定性、零分配与 TSAN 合同 |
 | 7B 量化模型与目标性能 | 目标见 §4.1，尚未完成代表性模型验收 | tiny fixture 或 microbenchmark 不能替代大模型质量、冷启动、RSS 与吞吐证据 |
 
 当前模型级证据主要来自 Linux/x86_64 的 tiny HF 与生成 checkpoint。其他 compiler、OS、architecture、物理无 AVX 平台及生产规模模型的覆盖，按各专题验证记录解释。FP16/BF16 activations（A16）也尚未交付，其支持范围需独立定义。
@@ -90,62 +90,18 @@
 
 ## 2. 当前产品架构（严格边界内）
 
-### 2.1 分层架构
+### 2.1 分层与边界
 
-下图表示准备与执行的数据/调用顺序；源码依赖与所有权以随后的模块规则为准。
+当前产品采用 `inference → compiler/model/graph/execution/backend/runtime/kv_cache` 的分层调用。唯一权威分层图、依赖方向与模块地图见 [architecture.md](architecture.md)，模块细节见 [modules/](modules/)。
 
-```text
-外部入口：独立 CLI / 公共 C++ API / 已实现的 C ABI v1.0
-    │
-    ▼
-inference：权重准入、Load/Prepare、预算、Session/Generate 编排
-    │
-    ├─ model：ModelLoader → LoadedModel（config + resolved raw weights）
-    │           └─ 显式 WeightPolicy 可在构图前调用逻辑权重转换
-    │
-    ├─ compiler：ModelCompiler
-    │      ├─ model 家族 builder → semantic ModelGraph
-    │      ├─ graph semantic passes（使用 operators / shape_inference 契约）
-    │      └─ lowering → LoweredModelArtifact
-    │
-    └─ ExecutableModel::Prepare
-           ├─ model 权重组装 → Backend::PackWeights → packed artifacts
-           └─ execution：ExecutionPlanBuilder
-                  └─ Backend::PrepareKernel → 冻结的 ExecutionPlan
-    │
-    ▼
-InferenceSession → prepared bindings / ExecutionContext → Executor
-    │
-    └─ backend CPU reference / optional ISA kernels（Prefill、Decode）
+产品级硬约束：
 
-Runtime 按值拥有 KVCacheManager，并拥有 backend / allocator registries；
-plan、model 与 session 借用其执行资源。KV 物理状态归 kv_cache。
-```
-
-**架构执行准则**：
-
-- **前端语义分析**：算子输入验证、dtype/rank 校验、输出 shape 推导由 per-op 类型化自由函数 `Infer*`（位于 `src/operators/*_op.cpp`，如 `InferRoPE`、`InferSiluMul`、`InferRmsNorm`）统一完成；结果写入 semantic graph，compiler lowering 按值携带 output specs 与 deferred ShapeConstraints，execution 对 finalized `LoweredGraph` 不重复推理。
-- **图编译与绑定管道**：`ModelLoader` 只产生 backend-independent 的 `LoadedModel`（HF I/O、validation、resolved raw weights）；compiler 模块中的 `ModelCompiler` 串联 `BuildModelGraph`、`OptimizeModelGraph` 与 `LowerModelGraph`，产出拥有 `LoadedModel` 的 `LoweredModelArtifact`。`LoweredGraph` 是不可变且经结构验证的 compiler artifact，含 `LoweredStepSpec` steps、按 `GraphValueId` 稠密索引的 value metadata 和 unresolved state aliases；execution 的 `ExecutionPlanBuilder` 将 aliases 转为 `StateAliasPlan`，通过 Runtime 的 backend resolve kernel，并按需消费 packed artifacts。随后 binding planning 在 cold path 校验 external tensors 的 shape/layout/aliasing，materialization 分配 activation 并准备 kernel params；`ExecutionContext::Create` 聚合 prepared bindings、borrowed workspace 和 KV view。`Execute` 消费冻结的 `ResolvedKernel` 与 prepared params，不重新进行 semantic shape inference 或 registry 查找；token/position 等运行时数据边界仍按算子合同检查。
-- **核心计算模型**：当前产品以 **decoder-only Transformer** 为执行核心，运行时显式区分 **Prefill** 与 **Decode** 两个执行阶段。
-- **核心组件**：当前已实现的底层组件为 `Runtime`（生命周期与资源聚合，按值拥有 `KVCacheManager`）、`kv_cache`（静态 KV layout/storage/session reservation/view）、`ExecutableModel`（模型准备与权重所有权）、`PreparedExecutionBindings`（plan 的物理 tensor specialization）、`ExecutionContext`（窄执行资源）与 `Executor`（同步执行已 specialize 的 `ExecutionPlan`）。真实 CpuBackend 的 tiny Llama Prefill→Decode 执行链已有数值与 KV 证据；C++ `InferenceSession::Generate` 已实现同步 greedy Argmax 编排，返回本次新 token（包含 EOS），每次调用重新 Prefill 并释放 KV reservation。Runtime C ABI 的 M5 合同已冻结，M6 已实现适配及 CPU FP32 范围的 C 调用链；不代表全部产品 hard gates 通过。
-- **模块所有权（源码目录-职责冻结）**：
-  - **`graph/`（顶层）**：通用 Graph IR、GraphOpBuilder、GraphRewrite/GraphPassManager 与 backend-independent semantic passes、诊断 dump — 设备/ISA 独立，不允许包含 compiler/execution/backend/model。
-  - **`operators/`（顶层）**：OpType、OperatorSchema、OpParams（typed variant）、`Infer*` 自由函数、OpParams serde — 语义层，不允许包含执行/图容器细节。
-  - **`compiler/`（顶层）**：默认 semantic pipeline composition、`ModelCompiler`、`ModelCompileOptions`、`LowerModelGraph`、`LoweredGraph`/`LoweredStepSpec`/`LoweredModelArtifact` 与结构验证。可携带 base `KernelSelector`，但不依赖 execution/backend/runtime。
-  - **`execution/`（顶层）**：ExecutionPlan、仅供 untrusted 手工/低层请求的 ExecutionPlanNodeSpec、StateAliasPlan、LayerRunner、ExecutionPlanBuilder。Public headers 不依赖 compiler；实现层消费 compiler artifact，负责 state alias runtime conversion、workspace 和 kernel planning。
-  - **`kv_cache/`（顶层）**：公开独立的布局值类型 `KVCacheLayout` 与 generation-checked `KVCacheSessionView`；Manager-owned 的 storage/session state 保持在 `detail/`，storage 按值拥有 layout 与 K/V Buffer，`KVCacheManager` 按值持有 storage/session state。View 仅借用 storage/session state，通过 storage 获取布局，不暴露 Buffer。仅依赖 base/dtypes/memory；`Runtime` 按值拥有 Manager，execution/inference 可直接消费其窄 view/binding；算子语义和 whole-plan KV transaction 不属于本模块。
-  - **`model/`**：HF 加载/校验、`LoadedModel`、ModelLoader、**模型家族识别与图构建**（`ParseModelArchitecture` 是家族判定唯一权威；`BuildModelGraph` 是前端→语义图的唯一转换权威入口，按家族分发到 `BuildLlamaDense` 等 per-family builder，HF RoPE 字段在其中规范化为 typed `RoPEAlgorithmParams`，unknown type 拒绝）。ModelCompiler 归 compiler；ModelLoader 不执行 graph build、kernel resolve 或 prepack。权重重排/materialization 必须由优化图的具体 weight binding 驱动。`PackedWeightCollection`/`PrepackWeightRequests` 负责 packed 产物所有权与批量打包，生产准备由 inference 的 `ExecutableModel::Prepare` 编排。
-  - **`runtime/`**：Runtime/RuntimeBuilder 与 workspace planning；依赖 backend、kv_cache、memory，不依赖 model/graph/compiler/execution/inference。Runtime 不拥有模型权重或执行图。
-  - **`inference/`**：`ExecutableModel::Load/Prepare`、`InferenceSession`、权重策略、模型感知 Runtime 配置及资源准入；拥有 compiler artifact、packed artifacts、immutable bindings 与 ExecutionPlan。任何下层模块不得反向依赖 inference。
-  - **`backend/` 与 CPU kernels**：kernel registry/selection、物理 packing 布局与 `Backend::PackWeights` 实现；不依赖 graph/model，不承担 HF 字段解释或 semantic rewrite。`operators/` 定义语义，CPU kernels 实现执行。
-  - 构建目标保持单一 `AetherMind` shared（`src/**` 由 GLOB_RECURSE 收集），无 graph/operators 专用 target。
-- 无请求调度器：当前产品不引入 `Request Scheduler`，不承担请求排队、批处理、连续批处理或多会话仲裁职责。
-- 准备期选核：Backend 冷路径允许 virtual 接口；registry 按 selector、effective CPU features 与 priority 选择 descriptor，结果冻结进 plan。执行期使用缓存函数指针。
-- 稳态零分配：门禁区间为完成 Decode binding/params preparation 后的重复执行；请求初始化、Prefill/Decode context 构造、输出 vector 与失败诊断另行统计。`Generate` 整体不是零分配接口。
-- 受管存储：KV 在 Runtime 构造时静态分配；workspace 与 activation 按请求规划，通过 Allocator/Buffer 管理。请求中不自动扩容 KV；Paged KV 为长期方向。
-- 模块边界：以 [AGENTS.md](../AGENTS.md) 的所有权规则为准，不以是否使用 Concepts 或模板作为隔离依据。
-
-**装配与 lifetime**：CLI 采用 Load → strict FP32 admission/配置映射 → Compile → Runtime 构造/KV 分配 → Prepare → Session → Generate，使编译错误先于 KV 分配发生。`ExecutableModel::Load` 接受已有 Runtime，在内部编排 Load → 准入/可选转换 → Compile → Prepare；C ABI 也先创建 Runtime，再加载并校验模型。Runtime 从 Prepare 起必须保持地址稳定，并活得比借用它的 model/plan/session 更久；C adapter 通过稳定 owner 链保持这一约束。
+- 外部入口只有 Token IDs：独立 CLI、C++ API、C ABI v1；tokenizer、HTTP、异步/流式 API 不在当前范围。
+- 单进程、同步、单请求；不承诺 request scheduler、批处理或多 Session 并发 Generate。
+- 单 active KV session slot；KV 静态预分配、不自动扩容；Paged KV 为长期方向。
+- 准备期选核，执行期只调用冻结 kernel；Decode 稳态零分配，`Generate` 整体不是零分配接口。
+- 模块所有权以 [AGENTS.md](../AGENTS.md) §2.1 为准；产品边界不以 Concepts 或模板等语言特性定义。
+- 编译错误必须先于 KV 分配；Runtime 从 Prepare 起保持地址稳定，并长于 model、plan 与 session。
 
 ### 2.2 API 边界定义
 
@@ -314,7 +270,7 @@ Output Tokens
 
 #### 版本化策略
 
-- **当前产品目标是发布 ABI v1.0**。M5 冻结 [公共 C 声明](../include/c_api.h) 与 [完整合同](api/runtime-c-abi.md)，M6 已提供 Runtime/model/session 与版本查询定义及纯 C 调用证据。实现完成不等于发行或全部 PRD 门禁通过，范围见 [M6 验收报告](tests/upper_level_runtime_assembly_m6_validation_2026-10-22.md)。
+- **当前产品目标是发布 ABI v1.0**。M5 冻结 [公共 C 声明](../include/c_api.h) 与 [完整合同](api/runtime-c-abi.md)，M6 已提供 Runtime/model/session 与版本查询定义及纯 C 调用证据。实现完成不等于发行或全部产品门禁通过。
 - `AM_ABI_VERSION = (major << 16) | minor`，v1.0 为 `0x00010000`；`am_get_abi_version` 返回库实际实现的版本。
 - `am_config_t` / `am_session_config_t` 使用 `struct_size`、`abi_version` 与固定宽度字段；v1 大小分别为 48 / 24 bytes，原布局固定。拒绝不支持的 major、更高 minor、尺寸不符和非法字段，不隐式猜测默认配置。
 - v1.x 保持旧结构、字段 offset、常量数值和函数签名；扩展使用另命名的结构/函数，破坏性变更通过 `_v2` 显式区分。
@@ -374,7 +330,7 @@ Generate 的 output_len 必填；正数 N 要求 output_capacity 至少 N，短 
 
 执行前按根 [README](../README.md) 准备 fixtures、configure 和 build。CTest presets 的 `noTestsAction=error` 防止空发现；[最终验证驱动](../tools/run_final_validation.py) 进一步核对冻结 inventory 与实际 JUnit 的集合、数量、skip 和退出状态。新增精度/算子测试是否纳入某个 preset，须核对 [测试分类](../cmake/AetherMindTests.cmake) 与 [冻结清单](../tests/fixtures/final_validation/policy.json)，不能由 suite 存在或历史通过推定。
 
-TSAN 在 `main` 前因主机环境启动失败须单独记录；sanitizer 不兼容的 interposer 测试须由普通构建补足。设置 `detect_leaks=0`、LSan 因 ptrace 环境退出、跳过或未执行，都不能记为泄漏门禁通过。现有 [五批集成验证](tests/final_validation_2026-10-28.md) 与 [W16 专项验证](tests/w16_fp32_execution_validation_2026-11-11.md) 的范围和限制分别保留，不构成当前全部产品 hard gates 已通过的声明。
+TSAN 在 `main` 前因主机环境启动失败须单独记录；sanitizer 不兼容的 interposer 测试须由普通构建补足。设置 `detect_leaks=0`、LSan 因 ptrace 环境退出、跳过或未执行，都不能记为泄漏门禁通过。现有五批集成验证与 W16 专项验证的范围和限制分别保留，不构成当前全部产品 hard gates 已通过的声明。
 
 **目标基准（Target Benchmarks，允许基于量化误差进行经评审的小幅校准）**：
 
@@ -387,7 +343,7 @@ TSAN 在 `main` 前因主机环境启动失败须单独记录；sanitizer 不兼
 
 上述数值继续作为目标，尚未取得 7B 量化模型的完整验收证据。采集时须冻结模型 revision、attention/KV geometry、quantization scheme、build/ISA、线程与 affinity、warmup、repetitions、缓存状态、计时区间和内存计量单位。总内存包含实际驻留权重、额外 packed artifacts、KV、request resources 与运行时开销，不能仅用 7B × 4 bits 的逻辑权重估算代替。
 
-现有 model benchmark 区分 Load、转换、Compile、Runtime、Prepare、内部 prepared Prefill/Decode 与公开 Generate。artifact driver 在执行前读取模型以收集身份，故当前 load timing 不能验收冷文件缓存启动目标。吞吐、TTFT 与启动目标需采用各自完整的测量区间；方法见 [模型测量指南](../tests/benchmark/models/README.md)。
+现有 model benchmark 区分 Load、转换、Compile、Runtime、Prepare、内部 prepared Prefill/Decode 与公开 Generate。artifact driver 在执行前读取模型以收集身份，故当前 load timing 不能验收冷文件缓存启动目标。吞吐、TTFT 与启动目标需采用各自完整的测量区间；方法与证据规范见 [算子开发流程](guides/operator-development-workflow.md) 与根 [README](../README.md)。
 
 ### 4.2 工程规范
 
@@ -407,20 +363,17 @@ TSAN 在 `main` 前因主机环境启动失败须单独记录；sanitizer 不兼
 
 ### 5.1 当前测试入口与待完成门禁
 
-下表列出当前源码中的实际 suite 或测试源；它是能力到测试的映射，不声明某次工作树已执行通过。参数化/typed suite 的完整 case 名称由 GTest/CTest 发现，执行清单须非空且与预期覆盖一致。
+下表是能力到验收入口的映射，不声明某次工作树已执行通过。
 
-| 范围 | 当前测试入口 | 验收边界 |
-|------|--------------|----------|
-| HF 配置、目录、Safetensors 与准入 | `ModelLoader_HfConfigTest`、`ModelLoader_HfModelValidatorTest`、`ModelLoader_HfSafetensorsFileTest`、`ModelLoader_PipelineTest`；[model tests](../tests/unit/model/) | parser/loader 契约；不据此推导可执行 dtype/家族支持 |
-| 真实执行与 Session 生命周期 | `TinyLlamaExecution`；[直接 Prefill/Decode 测试](../tests/unit/inference/test_direct_prefill_decode.cpp) | scalar oracle、Generate、OOM/重试、KV/owner 生命周期和 prepared Decode 分配计数 |
-| 独立 HF 数值 | `HfFixedTrajectory`、`HfNearContextLimit`、`HfNumericalFaultInjection` | `validation-numerical`；必须准备固定数值 bundle，near-limit 不等于所有 4k 模型覆盖 |
-| FP32 compatibility | `Fp32CompatibleInference`、`Fp32CompatibilityAdmission`；[测试源](../tests/unit/inference/test_fp32_compatible_inference.cpp) | F16/BF16 源转换后的数值、预算、callback 与 OOM 原子性 |
-| W16/A32 | `W16Inference`、`W16WeightPolicy`、`W16Preparation`；[模型测试](../tests/unit/inference/test_w16_inference.cpp)、[policy 测试](../tests/unit/inference/test_w16_weight_policy.cpp) | O1/O2、两种矩阵 dtype、Norm source、误差/排名、EOS/容量、owner 与 Decode 分配；专项范围按 W16 验证记录 |
-| 静态 KV | `KVCacheManager`、`KVCacheSessionView`、`KVCacheLayoutPlanning`；[KV tests](../tests/unit/kv_cache/) | generation/lifecycle、commit frontier、几何/overflow、失败恢复和物理布局 |
-| 资源预算 | `RuntimeResourceLimits`、`InferenceResourceLimits`、`ModelResourceLimits` | 分配前准入、payload peak 与 query；不替代 RSS 测量 |
-| C ABI 与 CLI | `CAbiRuntime`、`CAbiModel`、`CAbiSession`、`CAbiGenerate`、`CAbiRuntimeIntegration`、`InferenceCliIntegration`；[Python CLI tests](../tests/unit/apps/inference/test_inference_cli.py) | CPU strict FP32、buffer/error/owner 合同与 CLI 黑盒行为 |
-| ISA 与内存/线程检测 | baseline/AVX2、ASan/UBSan/LSan 与 TSAN presets，见 §4.1 | 每个候选与 fallback 的适用覆盖；不扩展并发 Session 合同 |
-| 待完成目标 | INT8/INT4 scheme-specific 算子/packing/模型测试、FP16/BF16 KV、代表性 4k/7B 模型、100 次确定性记录、其他平台与完整交付检查 | 必须取得实际实现与可执行门禁，不能以规划 suite 名称视为已覆盖 |
+| 范围 | 验收入口 | 边界 |
+|------|----------|------|
+| HF 加载/准入 | `ModelLoader_*`、`HfFixedTrajectory` | parser/loader 与固定轨迹；不代表所有模型 |
+| 执行/Session | `TinyLlamaExecution`、`DirectPrefillDecode` | scalar oracle、Generate、OOM/重试、KV 生命周期 |
+| 精度策略 | `Fp32CompatibleInference`、`W16*`、`KV16*` | 转换/保留策略的数值、预算与零分配 |
+| KV/资源 | `KVCache*`、`*ResourceLimits` | generation/commit、payload cap；不替代 RSS |
+| C ABI/CLI | `CAbi*`、`InferenceCliIntegration` | strict FP32、buffer/error/owner |
+| ISA/sanitizer | baseline/AVX2、ASan/UBSan/LSan、TSAN presets | 每个候选与 fallback 的适用覆盖 |
+| 待完成 | INT8/INT4、A16、代表性 4k/7B、100 次确定性、其他平台 | 需实际实现与可执行门禁 |
 
 既有五批集成入口：
 
@@ -460,33 +413,7 @@ ctest --preset validation-numerical
 | KV 与分配器 | 使用当前 benchmark executable 的实际发现清单选择对应 case | latency、payload 与 allocation/data movement 按 workload 留档，不使用不存在的规划 benchmark 名称充当执行入口 |
 | 量化 Linear | 待实现 INT8/INT4 kernel/packing 与量化 benchmark | 保留与 FP32/适用 BLAS baseline 的误差和性能对比目标；冻结形状、scheme、线程与 ISA 后才作结论 |
 
-方法、raw artifact、baseline/candidate 身份和性能结论必须满足 [算子开发流程](guides/operator-development-workflow.md) 与 [模型测量指南](../tests/benchmark/models/README.md)。测量合同测试通过仅验证工具行为，不表示性能目标达成。
-
----
-
-## 6. 当前产品里程碑
-
-M1/M2 保留为本 PRD 的验收分组，不再绑定未校准的周数。10 号装配方案中的 M0–M6 是该方案的实施记录，与本节分组分别解释。下表状态依据已有实现与限定验证，整体产品仍需补齐开放门禁。
-
-### M1: 基础运行时
-
-| 任务 | 当前交付物 | 状态与剩余验收 |
-|------|------------|----------------|
-| 1.1 运行时契约 | `include/aethermind/runtime/`、`execution/`、`inference/`、`kv_cache/` 公共接口 | 已有 C++ consumer/生命周期契约；正式 install/export 及安装树 consumer 仍单独验收 |
-| 1.2 模型配置 | HF parser/validator、家族判定与 Llama Dense builder | 已有支持/拒绝测试；新增精度、RoPE 或家族按垂直链补齐证据 |
-| 1.3 执行上下文 | Runtime + Allocator/Buffer + prepared bindings/context | 已有 prepared Decode 零分配及预算/失败恢复证据；不表示整个 Generate 无分配 |
-| 1.4 算子分发 | selector、effective-feature policy、registry 与 ResolvedKernel | 准备期解析、执行期函数指针复用已实现；每种交付精度与候选需各自门禁 |
-
-### M2: 内核与集成
-
-| 任务 | 交付物 / 目标 | 状态与剩余验收 |
-|------|---------------|----------------|
-| 1.5 参考内核 | RMSNorm、RoPE、Attention、SwiGLU、Embedding 与 Linear | CPU FP32 与 W16 专项路径已有证据，范围按算法、dtype、layout 与模型组合记录 |
-| 1.6 量化内核 | INT8/INT4 GEMM、metadata/packing 与生成链 | 待交付；误差 < 1% 的统计定义、模型质量与 7B 性能仍需冻结并验证 |
-| 1.7 KV 缓存 | 静态预分配、generation/session/commit 合同 | FP32 高层路径已实现；FP16/BF16 KV 与代表性 4k 序列另行验收 |
-| 1.8 解码执行 | Llama Prefill/Decode/Generate、FP32 compatibility、W16/A32 | tiny fixture 的 logits/KV/greedy 与生命周期回归已建立；大模型质量与 100 次确定性记录仍开放 |
-| 1.9 C ABI | v1.0 Runtime/model/session 接口 | 冻结与 CPU strict FP32 实现及限定 C 调用验证已完成；正式发行与安装交付独立验收 |
-| 1.10 工程加固 | 统一验证入口、sanitizer、ISA 与 benchmark 合同/证据 | 既有五批集成矩阵有历史通过记录；后续源码、平台、精度、完整 leak 检查与性能目标按实际覆盖重新验证 |
+方法、raw artifact、baseline/candidate 身份和性能结论必须满足 [算子开发流程](guides/operator-development-workflow.md) 与根 [README](../README.md)。测量合同测试通过仅验证工具行为，不表示性能目标达成。
 
 ---
 
@@ -547,10 +474,6 @@ M1/M2 保留为本 PRD 的验收分组，不再绑定未校准的周数。10 号
 - [CPU Runtime 配置](guides/runtime-configuration.md) 与 [资源预算](guides/resource-budgeting.md)
 - [Allocator 公共接口](../include/aethermind/memory/allocator.h) 与 [基础库模块设计](modules/foundation.md)
 - [算子开发与证据流程](guides/operator-development-workflow.md)
-- [最终验证指南](guides/final-validation.md) 与 [模型测量指南](../tests/benchmark/models/README.md)
+- [最终验证指南](guides/final-validation.md)
 
 ---
-
-**文档所有者**: AetherMind 架构团队
-**当前状态**: 产品需求与当前实现/验证状态已区分；量化、代表性模型性能、平台与正式交付门禁仍开放
-**下次更新触发**: 支持矩阵、公开契约、数值/资源门禁或交付证据发生变化时同步修订

@@ -302,6 +302,9 @@ void DumpOpParams(const OpParams& params, std::ostream& os) {
             [&](const AddRmsNormParams& p) {
                 os << "AddRmsNormParams{eps=" << p.eps << '}';
             },
+            [&](const CastParams& p) {
+                os << "CastParams{target_dtype=" << ToString(p.target_dtype) << '}';
+            },
     };
     std::visit(visitor, params);
 }

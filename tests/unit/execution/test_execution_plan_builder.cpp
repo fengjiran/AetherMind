@@ -250,6 +250,7 @@ ExecutionPlanNodeSpec MakeRmsNormNodeSpec() {
             .selector = {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPlain,
                     .phase = ExecPhase::kBoth,
@@ -569,6 +570,7 @@ TEST(ExecutionPlanBuilder, BuildUsesPreparedKernelWorkspaceRequirementsForRawNod
                 .selector = {
                         .device_type = DeviceType::kCPU,
                         .act_dtype = DataType::Float32(),
+                        .output_dtype = DataType::Float32(),
                         .weight_dtype = DataType::Float32(),
                         .weight_format = WeightFormat::kPlain,
                         .phase = ExecPhase::kBoth,
@@ -640,6 +642,7 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightCollection) {
     KernelSelector selector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .phase = ExecPhase::kBoth,
@@ -673,6 +676,7 @@ TEST(ExecutionPlanBuilder, BuildBindsPackedWeightsFromPackedWeightCollection) {
             .selector = {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPacked,
                     .phase = ExecPhase::kBoth,
@@ -711,6 +715,7 @@ TEST(ExecutionPlanBuilder, BuildRejectsPackedWeightNodeWithoutPackedWeightCollec
             .selector = {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPacked,
                     .phase = ExecPhase::kBoth,
@@ -741,6 +746,7 @@ TEST(ExecutionPlanBuilder, PrepareKernelForNodeRejectsUnknownOpType) {
                                                                .selector = {
                                                                        .device_type = DeviceType::kCPU,
                                                                        .act_dtype = DataType::Float32(),
+                                                                       .output_dtype = DataType::Float32(),
                                                                        .weight_dtype = DataType::Float32(),
                                                                },
                                                        });
@@ -1115,6 +1121,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesPreservesInferredMetadata) {
             .selector = {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPlain,
                     .phase = ExecPhase::kBoth,
@@ -1245,6 +1252,7 @@ TEST(ExecutionPlanBuilder, BuildFromRawNodesRejectsSelectorWeightDTypeWithoutWei
             .selector = {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float(16),
                     .weight_format = WeightFormat::kPlain,
                     .phase = ExecPhase::kBoth,

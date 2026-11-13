@@ -1,4 +1,5 @@
 #include "aethermind/graph/graph_op_builder.h"
+#include "aethermind/operators/ops/cast_op.h"
 
 #include <string>
 #include <utility>
@@ -39,21 +40,25 @@ StatusOr<GraphValueId> AddLinear(ModelGraph& graph,
                                  int64_t out_features,
                                  DataType weight_dtype,
                                  WeightBinding binding,
-                                 std::string name) {
+                                 std::string name,
+                                 DataType output_dtype) {
     if (out_features <= 0) {
-        return Status::InvalidArgument("Linear out_features must be positive");
+        return Status::InvalidArgument(
+                "Linear out_features must be positive");
     }
 
     // Snapshot input specs BEFORE graph mutation — graph.AddWeight/AddNode may
     // reallocate the graph's value storage and invalidate references into it.
     const TensorSpec input_spec = graph.GetValue(input).spec;
     if (!input_spec.shape.IsRanked()) {
-        return Status::InvalidArgument("Linear input shape must be ranked");
+        return Status::InvalidArgument(
+                "Linear input shape must be ranked");
     }
 
     const std::vector<ShapeSymbol> input_shape = *input_spec.shape.shape();
     if (input_shape.empty()) {
-        return Status::InvalidArgument("Linear input rank must be at least 1");
+        return Status::InvalidArgument(
+                "Linear input rank must be at least 1");
     }
 
     // The in_features dimension may be dynamic (unknown or a named symbol); the
@@ -78,7 +83,7 @@ StatusOr<GraphValueId> AddLinear(ModelGraph& graph,
                                       binding.decoder_layer_index,
                                       {input, weight},
                                       {ActivationOutput()},
-                                      LinearParams{},
+                                      LinearParams{.output_dtype = output_dtype},
                                       {},
                                       std::move(name)));
     return OnlyOneOutput(node);
@@ -322,6 +327,32 @@ StatusOr<GraphValueId> AddElementwiseMul(ModelGraph& graph,
                                       {lhs, rhs},
                                       {ActivationOutput()},
                                       ElementwiseMulParams{},
+                                      {},
+                                      std::move(name)));
+    return OnlyOneOutput(node);
+}
+
+StatusOr<GraphValueId> AddCast(ModelGraph& graph,
+                               std::optional<uint32_t> decoder_layer_index,
+                               GraphValueId input,
+                               DataType target_dtype,
+                               std::string name) {
+    const TensorSpec input_spec = graph.GetValue(input).spec;
+    if (!IsCastSupportedDType(target_dtype)) {
+        return Status::InvalidArgument(MakeCastUnsupportedDTypeMessage("Cast target"));
+    }
+
+    if (target_dtype == input_spec.dtype) {
+        return Status::InvalidArgument(
+                "Cast target dtype must differ from the input dtype");
+    }
+
+    AM_ASSIGN_OR_RETURN(AddedNode node,
+                        graph.AddNode(OpType::kCast,
+                                      decoder_layer_index,
+                                      {input},
+                                      {ActivationOutput()},
+                                      CastParams{.target_dtype = target_dtype},
                                       {},
                                       std::move(name)));
     return OnlyOneOutput(node);

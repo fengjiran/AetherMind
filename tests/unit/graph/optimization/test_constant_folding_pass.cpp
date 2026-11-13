@@ -1386,4 +1386,44 @@ TEST(ConstantFoldingPass, SkipsOverflowShapeConstantInput) {
     EXPECT_EQ(result->FindNodesByOpType(OpType::kAdd).size(), 1U);
 }
 
+TEST(ConstantFoldingPass, FoldsCastFromFloat32ToBFloat16Bits) {
+    ModelGraph graph;
+    const GraphValueId input = AddTypedConstant<float>(
+            graph, DataType::Float32(), {1.0F, -2.5F, 0.0F, 3.5F}, {4}, "input");
+    auto cast_or = AddCast(graph, std::nullopt, input, DataType::BFloat(16), "cast");
+    ASSERT_TRUE(cast_or.ok()) << cast_or.status().ToString();
+    graph.MarkOutput(*cast_or);
+
+    const StatusOr<ModelGraph> result = RunConstantFoldingThenDce(graph);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    ASSERT_EQ(result->FindNodesByOpType(OpType::kCast).size(), 0U);
+
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    EXPECT_EQ(output.spec.dtype, DataType::BFloat(16));
+    EXPECT_EQ(BFloat16Bits(ReadTypedConstant<BFloat16>(output)),
+              (std::vector<uint16_t>{0x3F80, 0xC020, 0x0000, 0x4060}));
+}
+
+TEST(ConstantFoldingPass, FoldsCastFromBFloat16ToFloat32) {
+    ModelGraph graph;
+    const GraphValueId input = AddTypedConstant<BFloat16>(
+            graph, DataType::BFloat(16),
+            {BFloat16(1.0F), BFloat16(-0.5F)}, {2}, "input");
+    auto cast_or = AddCast(graph, std::nullopt, input, DataType::Float32(), "cast");
+    ASSERT_TRUE(cast_or.ok()) << cast_or.status().ToString();
+    graph.MarkOutput(*cast_or);
+
+    const StatusOr<ModelGraph> result = RunConstantFolding(graph);
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+
+    const GraphValue& output = result->GetValue(result->GetOutputs()[0].value);
+    EXPECT_EQ(output.spec.dtype, DataType::Float32());
+    const std::vector<float> values = ReadTypedConstant<float>(output);
+    ASSERT_EQ(values.size(), 2U);
+    EXPECT_EQ(values[0], 1.0F);
+    EXPECT_EQ(values[1], -0.5F);
+}
+
 } // namespace

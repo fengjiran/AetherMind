@@ -55,6 +55,9 @@ AM_NODISCARD GraphValueId AddState(ModelGraph& graph,
 /// @param weight_dtype Dtype of the registered weight tensor.
 /// @param binding Weight binding metadata (slot, layer index, semantic role).
 /// @param name Debug name stem; `.weight` is appended for the weight value.
+/// @param output_dtype Optional explicit output dtype for mixed-output
+///        projections (e.g. an A16 LMHead emitting FP32 logits). Undefined
+///        keeps the default rule where the output follows the activation.
 /// @return Value id of the linear output, or an error status on validation
 ///         failure.
 StatusOr<GraphValueId> AddLinear(ModelGraph& graph,
@@ -62,7 +65,8 @@ StatusOr<GraphValueId> AddLinear(ModelGraph& graph,
                                  int64_t out_features,
                                  DataType weight_dtype,
                                  WeightBinding binding,
-                                 std::string name = {});
+                                 std::string name = {},
+                                 DataType output_dtype = {});
 
 /// @brief Builds an RmsNorm node and registers its scale weight tensor
 ///        internally.
@@ -235,6 +239,24 @@ StatusOr<GraphValueId> AddElementwiseMul(ModelGraph& graph,
                                          GraphValueId lhs,
                                          GraphValueId rhs,
                                          std::string name = {});
+
+/// @brief Builds a storage-format Cast node.
+///
+/// The target must be scalar Float32, Float16, or BFloat16 and must differ from
+/// the input dtype; the output shape equals the input shape.
+///
+/// @param graph Graph to mutate.
+/// @param decoder_layer_index Decoder layer index assigned to the new node.
+/// @param input Value id of the source activation.
+/// @param target_dtype Storage dtype of the cast output.
+/// @param name Debug name for the new node.
+/// @return Value id of the cast output, or an error status on validation
+///         failure.
+StatusOr<GraphValueId> AddCast(ModelGraph& graph,
+                               std::optional<uint32_t> decoder_layer_index,
+                               GraphValueId input,
+                               DataType target_dtype,
+                               std::string name = {});
 
 /// @brief Builds an Argmax node selecting the index of the maximum value
 ///        along `axis`.

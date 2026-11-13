@@ -12,7 +12,6 @@
 
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <cstring>
 #include <new>
 #include <span>
@@ -52,7 +51,8 @@ Status ValidateMetadataLayout(const RoPEF32KernelMetadata& metadata,
     if (const uint8_t expected_table_count = ExpectedFrequencyTableCount(metadata.algorithm);
         expected_table_count == 255 || metadata.freq_table_count != expected_table_count ||
         metadata.freq_count != static_cast<uint32_t>(metadata.rotary_dim / 2)) {
-        return Status::InvalidArgument("CPU RoPE kernel attrs have invalid frequency tables");
+        return Status::InvalidArgument(
+                "CPU RoPE kernel attrs have invalid frequency tables");
     }
 
     switch (metadata.algorithm) {
@@ -62,7 +62,8 @@ Status ValidateMetadataLayout(const RoPEF32KernelMetadata& metadata,
         case RoPEAlgorithm::kDynamicNtk:
             if (metadata.rotary_dim <= 2 || !IsFinitePositive(metadata.factor) ||
                 metadata.original_context_length <= 0) {
-                return Status::InvalidArgument("CPU RoPE Dynamic NTK attrs are invalid");
+                return Status::InvalidArgument(
+                        "CPU RoPE Dynamic NTK attrs are invalid");
             }
             break;
         case RoPEAlgorithm::kYarn:
@@ -108,7 +109,8 @@ StatusOr<std::array<double, 2>> ValidateFrequencyTablesAndFindMax(
         for (uint32_t pair = 0; pair < metadata.freq_count; ++pair) {
             auto freq = ReadStaticInvFreqUnchecked(metadata.freq_count, attrs, table, pair);
             if (!IsFinitePositive(freq)) {
-                return Status::Overflow("CPU RoPE inverse frequency attrs are invalid");
+                return Status::Overflow(
+                        "CPU RoPE inverse frequency attrs are invalid");
             }
             max_inv_freqs[table] = std::max(max_inv_freqs[table], freq);
         }
@@ -128,7 +130,8 @@ StatusOr<RoPEF32KernelMetadata> MakeRoPEF32KernelMetadata(const RoPEParams& para
     const int64_t pair_count = rotary_dim / 2;
     const RoPEAlgorithm rope_algorithm = GetRoPEAlgorithm(params.algorithm);
     if (!std::in_range<uint32_t>(pair_count)) {
-        return Status::InvalidArgument("CPU RoPE rotary pair count exceeds metadata range");
+        return Status::InvalidArgument(
+                "CPU RoPE rotary pair count exceeds metadata range");
     }
 
     int64_t q_width = 0;
@@ -242,7 +245,8 @@ Status BuildRoPEF32Metadata(const OpParams& params, std::vector<std::byte>& attr
     AM_RETURN_IF_ERROR(std::visit(visitor, rope_params->algorithm));
 
     if (tables.size() != metadata.freq_table_count) {
-        return Status::Internal("CPU RoPE metadata table count does not match algorithm");
+        return Status::Internal(
+                "CPU RoPE metadata table count does not match algorithm");
     }
 
     const auto bytes = std::as_bytes(std::span{&metadata, size_t{1}});
@@ -250,7 +254,8 @@ Status BuildRoPEF32Metadata(const OpParams& params, std::vector<std::byte>& attr
     for (const auto& table: tables) {
         const auto& inv_freqs = table.inv_freqs;
         if (inv_freqs.size() != metadata.freq_count) {
-            return Status::Internal("CPU RoPE resolver returned invalid frequency count");
+            return Status::Internal(
+                    "CPU RoPE resolver returned invalid frequency count");
         }
 
         const auto append = [&](const std::vector<double>& freqs) {
@@ -265,7 +270,8 @@ Status BuildRoPEF32Metadata(const OpParams& params, std::vector<std::byte>& attr
 Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
                                  void* params_buffer) noexcept {
     if (context.attrs.size() < sizeof(RoPEF32KernelMetadata)) {
-        return Status::InvalidArgument("CPU RoPE requires frozen metadata attrs");
+        return Status::InvalidArgument(
+                "CPU RoPE requires frozen metadata attrs");
     }
 
     RoPEF32KernelMetadata metadata{};
@@ -294,7 +300,8 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
     const MutableTensorView& k_output = outputs[1];
     if (!q.is_valid() || !k.is_valid() || !pos_ids.is_valid() ||
         !q_output.is_valid() || !k_output.is_valid()) {
-        return Status::InvalidArgument("CPU RoPE requires valid TensorViews");
+        return Status::InvalidArgument(
+                "CPU RoPE requires valid TensorViews");
     }
 
     if (const auto fp32 = DataType::Float32();
@@ -312,19 +319,22 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
 
     const int64_t seq_len = q.dim(0);
     if (seq_len <= 0) {
-        return Status::InvalidArgument("CPU RoPE requires positive seq_len");
+        return Status::InvalidArgument(
+                "CPU RoPE requires positive seq_len");
     }
 
     if (k.dim(0) != seq_len || pos_ids.dim(0) != seq_len ||
         q_output.dim(0) != seq_len || k_output.dim(0) != seq_len) {
-        return Status::InvalidArgument("CPU RoPE requires matching sequence lengths");
+        return Status::InvalidArgument(
+                "CPU RoPE requires matching sequence lengths");
     }
 
     const int64_t q_width = checked_q_width;
     const int64_t k_width = checked_kv_width;
     if (q.dim(1) != q_width || q_output.dim(1) != q_width ||
         k.dim(1) != k_width || k_output.dim(1) != k_width) {
-        return Status::InvalidArgument("CPU RoPE tensor widths do not match RoPEParams");
+        return Status::InvalidArgument(
+                "CPU RoPE tensor widths do not match RoPEParams");
     }
 
     AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis q_analysis,
@@ -414,6 +424,7 @@ AM_REGISTER_KERNEL(
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
                         .act_dtype = DataType::Float32(),
+                        .output_dtype = DataType::Float32(),
                         .weight_dtype = DataType::Float32(),
                         .weight_format = WeightFormat::kPlain,
                         .phase = ExecPhase::kBoth,

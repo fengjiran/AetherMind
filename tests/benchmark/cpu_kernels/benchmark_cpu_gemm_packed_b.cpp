@@ -195,6 +195,7 @@ void BenchmarkPackedLinear(benchmark::State& state, CacheMode mode) {
     const KernelSelector selector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .phase = ExecPhase::kBoth,
@@ -289,6 +290,7 @@ void BenchmarkPackedLinear(benchmark::State& state, CacheMode mode) {
     const KernelSelector plain_selector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .phase = ExecPhase::kBoth,
@@ -414,6 +416,7 @@ void BM_WeightPackingCpuBpanel(benchmark::State& state) {
     const KernelSelector selector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .phase = ExecPhase::kBoth,

@@ -38,10 +38,12 @@ SymbolicShape StaticShape(std::initializer_list<int64_t> dims) {
 
 KernelSelector MakeArgmaxSelector(const DataType& act_dtype = DataType::Float32()) {
     // ArgMax has no weight port, so DeriveSelectorDTypes falls back to act_dtype
-    // for weight_dtype; the descriptor advertises the same pair.
+    // for weight_dtype; the descriptor advertises the same pair. Its activation
+    // output is always Int64.
     return KernelSelector{
             .device_type = DeviceType::kCPU,
             .act_dtype = act_dtype,
+            .output_dtype = DataType::Int(64),
             .weight_dtype = act_dtype,
             .weight_format = WeightFormat::kPlain,
             .phase = ExecPhase::kBoth,

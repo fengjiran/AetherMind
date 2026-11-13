@@ -64,7 +64,8 @@ StatusOr<KernelArgs> ValidateAndBuildRmsNormArgs(
 
     const int32_t rank = input.rank();
     if (rank < 1) {
-        return Status::InvalidArgument("RmsNormKernelEntry requires input rank >= 1");
+        return Status::InvalidArgument(
+                "RmsNormKernelEntry requires input rank >= 1");
     }
 
     if (weight.rank() != 1) {
@@ -95,7 +96,8 @@ StatusOr<KernelArgs> ValidateAndBuildRmsNormArgs(
                 "RmsNormKernelEntry requires weight length to match hidden_size");
     }
 
-    const StatusOr<int64_t> row_count = ComputeFlattenedRowCount(input, "RmsNormKernelEntry");
+    const StatusOr<int64_t> row_count = ComputeFlattenedRowCount(input,
+                                                                 "RmsNormKernelEntry");
     if (!row_count.ok()) {
         return row_count.status();
     }
@@ -124,12 +126,14 @@ StatusOr<KernelArgs> ValidateAndBuildRmsNormArgs(
     // each output element is written after its own input element was read.
     if (!HaveIdenticalViewMapping(input, output)) {
         AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
-                "CPU RmsNorm", output_analysis.footprint(), "output", input_analysis.footprint(), "input"));
+                "CPU RmsNorm", output_analysis.footprint(),
+                "output", input_analysis.footprint(), "input"));
     }
 
     // The weight is re-read for every row, so no output element may land in it.
     AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
-            "CPU RmsNorm", output_analysis.footprint(), "output", weight_analysis.footprint(), "weight"));
+            "CPU RmsNorm", output_analysis.footprint(),
+            "output", weight_analysis.footprint(), "weight"));
 
     args.input = static_cast<decltype(args.input)>(input.data());
     args.weight = static_cast<decltype(args.weight)>(weight.data());
@@ -150,7 +154,8 @@ StatusOr<RmsNormF32KernelArgs> ValidateAndBuildF32Args(
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
-        return Status::InvalidArgument("RmsNorm requires 2 inputs and 1 output");
+        return Status::InvalidArgument(
+                "RmsNorm requires 2 inputs and 1 output");
     }
 
     if (inputs[0].dtype() != DataType::Float32() || inputs[1].dtype() != DataType::Float32() ||
@@ -177,10 +182,12 @@ Status BuildRmsNormF32PackedIdentityArgs(
         return Status::InvalidArgument(
                 "Packed RmsNorm requires one input, one output, and a weight artifact");
     }
+
     if (context.attrs.size() != sizeof(float)) {
         return Status::InvalidArgument(
                 "RmsNormKernelEntry requires epsilon in KernelContext.attrs");
     }
+
     float eps = 0.0F;
     std::memcpy(&eps, context.attrs.data(), sizeof(eps));
     if (!std::isfinite(eps) || eps <= 0.0F) {
@@ -196,8 +203,10 @@ Status BuildRmsNormF32PackedIdentityArgs(
         output.dtype() != DataType::Float32() || input.rank() < 1 ||
         output.rank() != input.rank() || packed.logical_shape.size() != 1U) {
         return Status::InvalidArgument(
-                "Packed RmsNorm requires rank-matched float32 activation views and rank-1 weight");
+                "Packed RmsNorm requires rank-matched float32 activation "
+                "views and rank-1 weight");
     }
+
     for (int32_t i = 0; i < input.rank(); ++i) {
         if (output.dim(i) != input.dim(i)) {
             return Status::InvalidArgument(
@@ -209,7 +218,8 @@ Status BuildRmsNormF32PackedIdentityArgs(
         return Status::InvalidArgument(
                 "Packed RmsNorm weight length must match positive hidden size");
     }
-    const std::array<int64_t, 1> expected_shape{hidden_size};
+
+    const std::array expected_shape{hidden_size};
     AM_RETURN_IF_ERROR(ValidateIdentityPackedWeight(
             packed, expected_shape, "RmsNormKernelEntry"));
 
@@ -221,10 +231,12 @@ Status BuildRmsNormF32PackedIdentityArgs(
             .weight_stride = 1,
             .eps = eps,
     };
+
     if (row_count == 0) {
         ::new (params_buffer) RmsNormF32KernelArgs(args);
         return Status::Ok();
     }
+
     if (input.data() == nullptr || output.data() == nullptr || packed.data == nullptr) {
         return Status::InvalidArgument(
                 "Packed RmsNorm requires non-null storage for non-empty tensors");
@@ -241,16 +253,18 @@ Status BuildRmsNormF32PackedIdentityArgs(
                 "CPU RmsNorm", output_analysis.footprint(), "output",
                 input_analysis.footprint(), "input"));
     }
+
     if (!std::in_range<int64_t>(packed.nbytes)) {
         return Status::Overflow("Packed RmsNorm artifact byte range exceeds int64_t");
     }
+
     AM_ASSIGN_OR_RETURN(const ByteAddressRange packed_range,
                         BuildContiguousByteRange(
                                 packed.data, static_cast<int64_t>(packed.nbytes),
                                 size_t{1}, "RmsNormKernelEntry packed weight"));
     AM_RETURN_IF_ERROR(ValidateContiguousDisjoint(
-            "CPU RmsNorm", output_analysis.footprint().envelope(), "output",
-            packed_range, "packed weight"));
+            "CPU RmsNorm", output_analysis.footprint().envelope(),
+            "output", packed_range, "packed weight"));
 
     args.input = input.data<float>();
     args.weight = static_cast<const float*>(packed.data);
@@ -281,11 +295,13 @@ Status BuildRmsNormF32Metadata(const OpParams& params,
                                std::vector<std::byte>& attrs) {
     const auto* rmsnorm_params = std::get_if<RmsNormParams>(&params);
     if (rmsnorm_params == nullptr) {
-        return Status::InvalidArgument("RmsNorm kernel requires RmsNormParams");
+        return Status::InvalidArgument(
+                "RmsNorm kernel requires RmsNormParams");
     }
 
     if (!std::isfinite(rmsnorm_params->eps) || rmsnorm_params->eps <= 0.0F) {
-        return Status::InvalidArgument("RmsNorm kernel requires finite positive epsilon");
+        return Status::InvalidArgument(
+                "RmsNorm kernel requires finite positive epsilon");
     }
 
     const auto eps_bytes = std::as_bytes(std::span{&rmsnorm_params->eps, size_t{1}});
@@ -319,6 +335,7 @@ AM_REGISTER_KERNEL(
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
                         .act_dtype = DataType::Float32(),
+                        .output_dtype = DataType::Float32(),
                         .weight_dtype = DataType::Float32(),
                         .weight_format = WeightFormat::kPlain,
                         .phase = ExecPhase::kBoth,
@@ -337,6 +354,7 @@ AM_REGISTER_KERNEL(
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
                         .act_dtype = DataType::Float32(),
+                        .output_dtype = DataType::Float32(),
                         .weight_dtype = DataType::Float32(),
                         .weight_format = WeightFormat::kPacked,
                         .phase = ExecPhase::kBoth,
@@ -357,6 +375,7 @@ AM_REGISTER_KERNEL(
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
                         .act_dtype = DataType::Float32(),
+                        .output_dtype = DataType::Float32(),
                         .weight_dtype = DataType::Float32(),
                         .weight_format = WeightFormat::kPlain,
                         .phase = ExecPhase::kBoth,

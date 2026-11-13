@@ -73,6 +73,8 @@ StatusOr<InferenceResult> InferOperator(OpType op_type,
             return detail::InferPermute(params, inputs);
         case OpType::kReorder:
             return detail::InferReorder(params, inputs);
+        case OpType::kCast:
+            return detail::InferCast(params, inputs);
         case OpType::kUnknown:
             return Status::InvalidArgument(
                     "Unknown op type cannot have validated graph params");
@@ -158,10 +160,24 @@ StatusOr<SelectorDTypes> DeriveSelectorDTypes(const OperatorSchema& schema,
         }
     }
 
+    // Output dtype is the single dtype shared by every activation output port.
+    // It is undefined only for state-only steps; it never falls back to
+    // act_dtype, because an operator may legitimately emit a different dtype
+    // (Argmax emits I64, Linear may override its output dtype).
+    std::optional<DataType> output_dtype;
+    for (size_t i = 0; i < schema.output_ports.size(); ++i) {
+        if (schema.output_ports[i].kind != OperatorPortKind::kActivation) {
+            continue;
+        }
+        AM_RETURN_IF_ERROR(SetSelectorDTypeCandidate(
+                output_specs[i], output_dtype, "output"));
+    }
+
     return SelectorDTypes{
             .act_dtype = *act_dtype,
             .weight_dtype = weight_dtype.value_or(*act_dtype),
             .state_dtype = state_dtype.value_or(DataType{}),
+            .output_dtype = output_dtype.value_or(DataType{}),
     };
 }
 

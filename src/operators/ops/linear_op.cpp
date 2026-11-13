@@ -64,6 +64,17 @@ StatusOr<InferenceResult> InferLinear(const OpParams& params,
                 "Linear input last dimension must match weight input dimension");
     }
 
+    const auto& linear_params = std::get<LinearParams>(params);
+    const DataType output_dtype = linear_params.output_dtype.IsUndefined()
+                                          ? input_spec.dtype
+                                          : linear_params.output_dtype;
+    if (!linear_params.output_dtype.IsUndefined() &&
+        (!IsLinearSupportedActivationDType(linear_params.output_dtype) ||
+         !linear_params.output_dtype.IsScalar())) {
+        return Status::InvalidArgument(
+                "Linear output_dtype must be scalar Float32, Float16, or BFloat16");
+    }
+
     std::vector<ShapeSymbol> output_shape;
     output_shape.reserve(*input_rank);
     for (size_t i = 0; i < *input_rank - 1; ++i) {
@@ -71,7 +82,7 @@ StatusOr<InferenceResult> InferLinear(const OpParams& params,
     }
     output_shape.push_back(out_features);
 
-    res.outputs.emplace_back(input_spec.dtype, SymbolicShape(std::move(output_shape)));
+    res.outputs.emplace_back(output_dtype, SymbolicShape(std::move(output_shape)));
 
     return res;
 }

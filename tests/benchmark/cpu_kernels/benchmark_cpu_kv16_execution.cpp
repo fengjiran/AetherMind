@@ -32,9 +32,10 @@ TensorSpec Spec(DataType dtype, std::initializer_list<int64_t> shape) {
     return {.dtype = dtype, .shape = SymbolicShape(IntArrayView(dimensions))};
 }
 
-KernelSelector Selector(DataType kv_dtype) {
+KernelSelector Selector(DataType kv_dtype, DataType output_dtype = DataType{}) {
     return {.device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = output_dtype,
             .weight_dtype = DataType::Float32(),
             .state_dtype = kv_dtype,
             .weight_format = WeightFormat::kPlain,
@@ -113,7 +114,7 @@ StatusOr<LoweredGraph> MakeGraph(DataType kv_dtype, int64_t rows,
             graph.model_outputs.push_back(output);
             graph.steps.push_back({
                     .spec = {.op_type = OpType::kAttention,
-                             .selector = Selector(kv_dtype),
+                             .selector = Selector(kv_dtype, DataType::Float32()),
                              .input_specs = {query, cache, cache},
                              .output_specs = {query},
                              .op_params = AttentionParams{.num_q_heads = kQueryHeads,

@@ -75,6 +75,7 @@ void ExpectPackedDriverMatchesReference(int64_t m,
     KernelSelector selector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .phase = ExecPhase::kBoth,
@@ -182,6 +183,7 @@ TEST(CpuGemmPackedB, RegisteredCandidateDescriptorPacksAndExecutes) {
     const KernelSelector selector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .phase = ExecPhase::kBoth,

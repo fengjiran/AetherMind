@@ -39,6 +39,7 @@ enum class OpType : uint8_t {
     kReshape,
     kPermute,
     kReorder,
+    kCast,
     kGateUpLinear,
 };
 

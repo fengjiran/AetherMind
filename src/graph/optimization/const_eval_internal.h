@@ -70,7 +70,8 @@ Status EvaluateBinaryFlatByDType(const DataType& dtype,
     if (dtype == DataType::Int(64)) {
         return EvaluateBinaryFlatTyped<Op, int64_t>(inputs, outputs, numel);
     }
-    return Status::InvalidArgument("binary constant evaluator received unsupported dtype");
+    return Status::InvalidArgument(
+            "binary constant evaluator received unsupported dtype");
 }
 
 // Strided iteration: walks the output in linear order and computes input
@@ -115,29 +116,36 @@ Status EvaluateBinaryStridedByDType(const DataType& dtype,
                                     std::span<const int64_t> lhs_strides,
                                     std::span<const int64_t> rhs_strides) {
     if (dtype == DataType::Float32()) {
-        return EvaluateBinaryStridedKernel<Op, float>(inputs, outputs, lhs_strides, rhs_strides);
+        return EvaluateBinaryStridedKernel<Op, float>(
+                inputs, outputs, lhs_strides, rhs_strides);
     }
 
     if (dtype == DataType::Double()) {
-        return EvaluateBinaryStridedKernel<Op, double>(inputs, outputs, lhs_strides, rhs_strides);
+        return EvaluateBinaryStridedKernel<Op, double>(
+                inputs, outputs, lhs_strides, rhs_strides);
     }
 
     if (dtype == DataType::BFloat(16)) {
-        return EvaluateBinaryStridedKernel<Op, BFloat16>(inputs, outputs, lhs_strides, rhs_strides);
+        return EvaluateBinaryStridedKernel<Op, BFloat16>(
+                inputs, outputs, lhs_strides, rhs_strides);
     }
 
     if (dtype == DataType::Float(16)) {
-        return EvaluateBinaryStridedKernel<Op, Half>(inputs, outputs, lhs_strides, rhs_strides);
+        return EvaluateBinaryStridedKernel<Op, Half>(
+                inputs, outputs, lhs_strides, rhs_strides);
     }
 
     if (dtype == DataType::Int(32)) {
-        return EvaluateBinaryStridedKernel<Op, int32_t>(inputs, outputs, lhs_strides, rhs_strides);
+        return EvaluateBinaryStridedKernel<Op, int32_t>(
+                inputs, outputs, lhs_strides, rhs_strides);
     }
 
     if (dtype == DataType::Int(64)) {
-        return EvaluateBinaryStridedKernel<Op, int64_t>(inputs, outputs, lhs_strides, rhs_strides);
+        return EvaluateBinaryStridedKernel<Op, int64_t>(
+                inputs, outputs, lhs_strides, rhs_strides);
     }
-    return Status::InvalidArgument("binary constant evaluator received unsupported dtype");
+    return Status::InvalidArgument(
+            "binary constant evaluator received unsupported dtype");
 }
 
 // ── Shared unary kernel templates ──
@@ -187,11 +195,52 @@ Status EvaluateUnaryStridedKernel(std::span<const TensorView> inputs,
     return Status::Ok();
 }
 
+// ── Cross-type unary kernel templates (storage-format Cast) ──
+// Input and output element types differ; the conversion always routes through
+// float so Half/BFloat16 narrowing follows their frozen bit contracts.
+template<typename In, typename Out>
+Status EvaluateCastFlatTyped(std::span<const TensorView> inputs,
+                             std::span<MutableTensorView> outputs,
+                             int64_t numel) {
+    const auto* in = inputs[0].data<In>();
+    auto* out = outputs[0].data<Out>();
+    for (int64_t i = 0; i < numel; ++i) {
+        out[i] = static_cast<Out>(static_cast<float>(in[i]));
+    }
+    return Status::Ok();
+}
+
+template<typename In, typename Out>
+Status EvaluateCastStridedKernel(std::span<const TensorView> inputs,
+                                 std::span<MutableTensorView> outputs,
+                                 std::span<const int64_t> input_strides) {
+    const auto* in = inputs[0].data<In>();
+    auto* out = outputs[0].data<Out>();
+    const auto shape = outputs[0].shape();
+    std::vector<int64_t> coordinates(shape.size());
+    int64_t input_offset = 0;
+    for (int64_t output_index = 0; output_index < outputs[0].numel(); ++output_index) {
+        out[output_index] = static_cast<Out>(static_cast<float>(in[input_offset]));
+        for (size_t remaining = shape.size(); remaining > 0U; --remaining) {
+            const size_t axis = remaining - 1U;
+            ++coordinates[axis];
+            input_offset += input_strides[axis];
+            if (coordinates[axis] < shape[axis]) {
+                break;
+            }
+            coordinates[axis] = 0;
+            input_offset -= input_strides[axis] * shape[axis];
+        }
+    }
+    return Status::Ok();
+}
+
 // ── Accessor declarations ──
 const ConstEvaluator& GetAddConstEvaluator() noexcept;
 const ConstEvaluator& GetMulConstEvaluator() noexcept;
 const ConstEvaluator& GetSiluConstEvaluator() noexcept;
 const ConstEvaluator& GetSiluMulConstEvaluator() noexcept;
+const ConstEvaluator& GetCastConstEvaluator() noexcept;
 
 // ── Cost estimation ──
 // EstimateCost (declared in const_evaluator.h) implements the generic
@@ -202,6 +251,7 @@ constexpr uint64_t kAddOpsPerElement = 1U;     // 1 arithmetic op
 constexpr uint64_t kMulOpsPerElement = 1U;     // 1 arithmetic op
 constexpr uint64_t kSiluOpsPerElement = 3U;    // exp + div + add
 constexpr uint64_t kSiluMulOpsPerElement = 4U; // exp + div + add + mul
+constexpr uint64_t kCastOpsPerElement = 1U;    // one format conversion
 
 } // namespace aethermind::detail
 

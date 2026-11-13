@@ -80,16 +80,17 @@ StatusOr<int64_t> ValidateActivationViews(
     return hidden_size;
 }
 
-StatusOr<AddRmsNormF32KernelArgs> BuildNonEmptyArgs(const TensorView& input,
-                                                    const TensorView& residual,
-                                                    const MutableTensorView& output,
-                                                    const MutableTensorView& new_residual,
-                                                    const float* weight,
-                                                    int64_t weight_stride,
-                                                    const RowwiseViewAnalysis* plain_weight_analysis,
-                                                    const PackedWeightView* packed_weight,
-                                                    int64_t hidden_size,
-                                                    float eps) noexcept {
+StatusOr<AddRmsNormF32KernelArgs> BuildNonEmptyArgs(
+        const TensorView& input,
+        const TensorView& residual,
+        const MutableTensorView& output,
+        const MutableTensorView& new_residual,
+        const float* weight,
+        int64_t weight_stride,
+        const RowwiseViewAnalysis* plain_weight_analysis,
+        const PackedWeightView* packed_weight,
+        int64_t hidden_size,
+        float eps) noexcept {
     if (input.data() == nullptr || residual.data() == nullptr || weight == nullptr ||
         output.data() == nullptr || new_residual.data() == nullptr) {
         return Status::InvalidArgument("AddRmsNormKernelEntry requires "
@@ -189,7 +190,8 @@ Status BuildAddRmsNormF32PlainArgs(const KernelParamsBuildContext& context,
     if (!weight.is_valid() || weight.dtype() != DataType::Float32() ||
         weight.rank() != 1 || weight.dim(0) != hidden_size) {
         return Status::InvalidArgument(
-                "AddRmsNormKernelEntry requires rank-1 float32 weight matching hidden_size");
+                "AddRmsNormKernelEntry requires rank-1 "
+                "float32 weight matching hidden_size");
     }
 
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
@@ -220,6 +222,7 @@ Status BuildAddRmsNormF32PackedIdentityArgs(
         return Status::InvalidArgument(
                 "AddRmsNorm packed kernel requires input, residual and two outputs");
     }
+
     if (!context.packed_weight.has_value()) {
         return Status::InvalidArgument(
                 "AddRmsNorm packed kernel requires a packed weight artifact");
@@ -256,6 +259,7 @@ Status BuildAddRmsNormF32PackedIdentityArgs(
         return Status::InvalidArgument(
                 "AddRmsNormKernelEntry requires packed weight data for non-empty tensors");
     }
+
     AM_ASSIGN_OR_RETURN(const AddRmsNormF32KernelArgs args,
                         BuildNonEmptyArgs(
                                 input, residual, output, new_residual,
@@ -269,11 +273,13 @@ Status BuildAddRmsNormF32Metadata(const OpParams& params,
                                   std::vector<std::byte>& attrs) {
     const auto* add_rmsnorm_params = std::get_if<AddRmsNormParams>(&params);
     if (add_rmsnorm_params == nullptr) {
-        return Status::InvalidArgument("AddRmsNorm kernel requires AddRmsNormParams");
+        return Status::InvalidArgument(
+                "AddRmsNorm kernel requires AddRmsNormParams");
     }
 
     if (!std::isfinite(add_rmsnorm_params->eps) || add_rmsnorm_params->eps <= 0.0F) {
-        return Status::InvalidArgument("AddRmsNorm kernel requires finite positive epsilon");
+        return Status::InvalidArgument(
+                "AddRmsNorm kernel requires finite positive epsilon");
     }
 
     const auto eps_bytes = std::as_bytes(std::span{&add_rmsnorm_params->eps, size_t{1}});
@@ -300,6 +306,7 @@ AM_REGISTER_KERNEL(
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
                         .act_dtype = DataType::Float32(),
+                        .output_dtype = DataType::Float32(),
                         .weight_dtype = DataType::Float32(),
                         .weight_format = WeightFormat::kPlain,
                         .phase = ExecPhase::kBoth,
@@ -318,6 +325,7 @@ AM_REGISTER_KERNEL(
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
                         .act_dtype = DataType::Float32(),
+                        .output_dtype = DataType::Float32(),
                         .weight_dtype = DataType::Float32(),
                         .weight_format = WeightFormat::kPacked,
                         .phase = ExecPhase::kBoth,

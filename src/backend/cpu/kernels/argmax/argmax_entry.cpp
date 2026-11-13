@@ -62,13 +62,15 @@ Status BuildArgmaxF32ReferenceArgs(const KernelParamsBuildContext& context,
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 1 || outputs.size() != 1) {
-        return Status::InvalidArgument("CPU ArgMax requires 1 input and 1 output");
+        return Status::InvalidArgument(
+                "CPU ArgMax requires 1 input and 1 output");
     }
 
     const TensorView& input = inputs[0];
     const MutableTensorView& output = outputs[0];
     if (!input.is_valid()) {
-        return Status::InvalidArgument("CPU ArgMax requires a valid input TensorView");
+        return Status::InvalidArgument(
+                "CPU ArgMax requires a valid input TensorView");
     }
 
     if (!output.is_valid()) {
@@ -127,6 +129,7 @@ Status BuildArgmaxF32ReferenceArgs(const KernelParamsBuildContext& context,
         return Status::InvalidArgument(
                 "CPU ArgMax requires a non-empty reduction axis");
     }
+
     args.reduction_size = reduction_size;
     args.reduction_stride = input.stride(static_cast<int32_t>(reduction_axis));
 
@@ -140,7 +143,8 @@ Status BuildArgmaxF32ReferenceArgs(const KernelParamsBuildContext& context,
 
         int64_t next_numel = 0;
         if (CheckOverflowMul(output_numel, extent, &next_numel)) {
-            return Status::InvalidArgument("CPU ArgMax output element count overflow");
+            return Status::InvalidArgument(
+                    "CPU ArgMax output element count overflow");
         }
         output_numel = next_numel;
     }
@@ -215,6 +219,7 @@ AM_REGISTER_KERNEL(
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
                         .act_dtype = DataType::Float32(),
+                        .output_dtype = DataType::Int(64),
                         .weight_dtype = DataType::Float32(),
                         .weight_format = WeightFormat::kPlain,
                         .phase = ExecPhase::kBoth,

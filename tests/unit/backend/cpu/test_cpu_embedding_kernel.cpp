@@ -79,6 +79,7 @@ StatusOr<ResolvedKernel> PrepareEmbeddingKernel() {
             KernelSelector{
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPlain,
                     .phase = ExecPhase::kBoth,
@@ -129,6 +130,7 @@ TEST(EmbeddingKernel, PackedIdentityDescriptorComputesExpectedRows) {
     const KernelSelector selector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .phase = ExecPhase::kBoth,
@@ -189,6 +191,7 @@ TEST(EmbeddingKernel, PackedIdentityBuilderChecksZeroSizeMetadataAndAlias) {
     const KernelSelector selector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .phase = ExecPhase::kBoth,
@@ -650,6 +653,7 @@ TEST(EmbeddingKernel, ExecutionPlanBuilderRunsResolvedKernel) {
             .selector = {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPlain,
                     .phase = ExecPhase::kBoth,
@@ -738,6 +742,7 @@ TEST(EmbeddingKernel, Rank2TokensRunThroughExecutionPlan) {
             .selector = {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPlain,
                     .phase = ExecPhase::kBoth,

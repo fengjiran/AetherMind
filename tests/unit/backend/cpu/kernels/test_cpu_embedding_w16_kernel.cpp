@@ -38,6 +38,7 @@ StatusOr<ResolvedKernel> ResolveEmbeddingW16(bool bfloat, ExecPhase phase = Exec
             OpType::kEmbedding,
             {.device_type = DeviceType::kCPU,
              .act_dtype = DataType::Float32(),
+             .output_dtype = DataType::Float32(),
              .weight_dtype = WeightDType(bfloat),
              .weight_format = WeightFormat::kPlain,
              .phase = phase},
@@ -87,6 +88,7 @@ TEST_P(EmbeddingW16Kernel, SelectedRowWideningMatchesEveryBitPatternAndHonorsFea
     const CpuBackend backend;
     const KernelSelector selector{.device_type = DeviceType::kCPU,
                                   .act_dtype = DataType::Float32(),
+                                  .output_dtype = DataType::Float32(),
                                   .weight_dtype = WeightDType(GetParam()),
                                   .weight_format = WeightFormat::kPlain,
                                   .phase = ExecPhase::kBoth};
@@ -160,6 +162,7 @@ TEST_P(EmbeddingW16Kernel, RequiresExplicitFloat32OutputParams) {
     const CpuBackend backend(CpuCapabilities{});
     const KernelSelector selector{.device_type = DeviceType::kCPU,
                                   .act_dtype = DataType::Float32(),
+                                  .output_dtype = DataType::Float32(),
                                   .weight_dtype = WeightDType(GetParam()),
                                   .weight_format = WeightFormat::kPlain,
                                   .phase = ExecPhase::kBoth};
@@ -425,6 +428,7 @@ TEST_P(EmbeddingW16Kernel, PackedIdentityGathersWidenedRowsAndRejectsFp32Artifac
                                  weight_shape, weight_strides);
     const KernelSelector selector{.device_type = DeviceType::kCPU,
                                   .act_dtype = DataType::Float32(),
+                                  .output_dtype = DataType::Float32(),
                                   .weight_dtype = WeightDType(bfloat),
                                   .weight_format = WeightFormat::kPacked,
                                   .phase = ExecPhase::kBoth};

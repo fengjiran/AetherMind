@@ -548,26 +548,33 @@ StatusOr<ExecutableModel> ExecutableModel::Load(Runtime& runtime,
     AM_ASSIGN_OR_RETURN(auto compile_options, MakeCompileOptions(options.preset, options.target));
     if (options.weights == WeightPolicy::kConvertToFp32 &&
         (options.target != DeviceType::kCPU || options.preset != CompilePreset::kO1Plain)) {
-        return Status::Unimplemented("FP32 compatibility requires CPU O1/plain");
+        return Status::Unimplemented(
+                "FP32 compatibility requires CPU O1/plain");
     }
+
     if ((options.weights == WeightPolicy::kKeepFp16WeightsFp32Activation ||
          options.weights == WeightPolicy::kKeepBf16WeightsFp32Activation) &&
         (options.target != DeviceType::kCPU ||
          (options.preset != CompilePreset::kO1Plain &&
           options.preset != CompilePreset::kO2Packed))) {
-        return Status::Unimplemented("Retained W16 weights require CPU O1/plain or O2/packed");
+        return Status::Unimplemented(
+                "Retained W16 weights require CPU O1/plain or O2/packed");
     }
 
     if (!options.kv_dtype.IsScalar() ||
-        (options.kv_dtype != DataType::Float32() && options.kv_dtype != DataType::Float(16) &&
+        (options.kv_dtype != DataType::Float32() &&
+         options.kv_dtype != DataType::Float(16) &&
          options.kv_dtype != DataType::BFloat(16))) {
-        return Status::InvalidArgument("kv_dtype must be scalar float32, float16 or bfloat16");
+        return Status::InvalidArgument(
+                "kv_dtype must be scalar float32, float16 or bfloat16");
     }
+
     const bool kv16 = options.kv_dtype == DataType::Float(16) ||
                       options.kv_dtype == DataType::BFloat(16);
     if (kv16 && options.weights != WeightPolicy::kKeepFp16WeightsFp32Activation &&
         options.weights != WeightPolicy::kKeepBf16WeightsFp32Activation) {
-        return Status::Unimplemented("KV16 requires a retained W16 weight policy");
+        return Status::Unimplemented(
+                "KV16 requires a retained W16 weight policy");
     }
     // The Runtime owns the physical KV layout; Load must not rebuild it. Verify
     // the requested dtype matches the existing Manager before any conversion or
@@ -578,10 +585,42 @@ StatusOr<ExecutableModel> ExecutableModel::Load(Runtime& runtime,
                     "Runtime KV cache dtype does not match the requested kv_dtype");
         }
     } else if (kv16) {
-        return Status::FailedPrecondition("KV16 requires an enabled KV cache manager");
+        return Status::FailedPrecondition(
+                "KV16 requires an enabled KV cache manager");
     }
 
-    compile_options.graph_build.activation_dtype = DataType::Float32();
+    if (!options.activation_dtype.IsScalar() ||
+        (options.activation_dtype != DataType::Float32() &&
+         options.activation_dtype != DataType::Float(16) &&
+         options.activation_dtype != DataType::BFloat(16))) {
+        return Status::InvalidArgument(
+                "activation_dtype must be scalar float32, float16 or bfloat16");
+    }
+
+    if (options.activation_dtype == DataType::Float(16) ||
+        options.activation_dtype == DataType::BFloat(16)) {
+        if (options.target != DeviceType::kCPU ||
+            (options.preset != CompilePreset::kO1Plain &&
+             options.preset != CompilePreset::kO2Packed)) {
+            return Status::Unimplemented(
+                    "A16 activation requires CPU O1/plain or O2/packed");
+        }
+
+        // Same-dtype presets only: an F16 activation needs the F16 weight
+        // policy, a BF16 activation the BF16 weight policy.
+        const DataType policy_weight_dtype =
+                options.weights == WeightPolicy::kKeepFp16WeightsFp32Activation
+                        ? DataType::Float(16)
+                : options.weights == WeightPolicy::kKeepBf16WeightsFp32Activation
+                        ? DataType::BFloat(16)
+                        : DataType{};
+        if (policy_weight_dtype != options.activation_dtype) {
+            return Status::Unimplemented(
+                    "A16 activation requires the same-dtype retained W16 weight policy");
+        }
+    }
+
+    compile_options.graph_build.activation_dtype = options.activation_dtype;
     compile_options.graph_build.kv_dtype = options.kv_dtype;
 
     auto loaded = ModelLoader::Load(directory);

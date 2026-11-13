@@ -64,6 +64,11 @@ struct SelectorDTypes {
     /// Undefined when the operator has no state ports; otherwise the single
     /// dtype shared by all state input/output ports.
     DataType state_dtype{};
+    /// The single dtype shared by all activation output ports, or undefined
+    /// when the operator has no activation output port (state-only steps such
+    /// as KVCacheUpdate). Never a wildcard: selectors must carry this concrete
+    /// value.
+    DataType output_dtype{};
 };
 
 /// @brief Derives the selector dtypes an operator's specs imply.
@@ -78,6 +83,8 @@ struct SelectorDTypes {
 ///   (all must agree), independent of contributes_tensor_spec; it is undefined
 ///   when the operator has no state port. kModelInput/kConstant ports never
 ///   contribute a dtype.
+/// - output_dtype comes from the activation output ports (all must agree); it
+///   is undefined only when the schema has no activation output port.
 ///
 /// @param schema Operator schema defining port kinds and participation.
 /// @param input_specs Full schema-port-ordered input specs.
@@ -122,6 +129,7 @@ StatusOr<InferenceResult> InferElementwiseMul(const OpParams& params, std::span<
 StatusOr<InferenceResult> InferReshape(const OpParams& params, std::span<const TensorSpec> inputs);
 StatusOr<InferenceResult> InferPermute(const OpParams& params, std::span<const TensorSpec> inputs);
 StatusOr<InferenceResult> InferReorder(const OpParams& params, std::span<const TensorSpec> inputs);
+StatusOr<InferenceResult> InferCast(const OpParams& params, std::span<const TensorSpec> inputs);
 
 } // namespace detail
 

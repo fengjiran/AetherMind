@@ -34,6 +34,7 @@ StatusOr<ResolvedKernel> PrepareEmbeddingKernel(DataType weight_dtype, bool scal
             KernelSelector{
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
                     .weight_dtype = weight_dtype,
                     .weight_format = WeightFormat::kPlain,
                     .phase = ExecPhase::kBoth,

@@ -11,6 +11,7 @@ TEST(KernelSelector, EqualityMatchesIdenticalSelectors) {
     const KernelSelector lhs{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .phase = ExecPhase::kDecode,
@@ -24,6 +25,7 @@ TEST(KernelSelector, EqualityDetectsDifferentPhase) {
     const KernelSelector lhs{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .phase = ExecPhase::kPrefill,
@@ -31,12 +33,29 @@ TEST(KernelSelector, EqualityDetectsDifferentPhase) {
     const KernelSelector rhs{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .phase = ExecPhase::kDecode,
     };
 
     EXPECT_NE(lhs, rhs);
+}
+
+TEST(KernelSelector, EqualityDetectsDifferentOutputDType) {
+    const KernelSelector lhs{
+            .device_type = DeviceType::kCPU,
+            .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPlain,
+            .phase = ExecPhase::kBoth,
+    };
+    KernelSelector rhs = lhs;
+    rhs.output_dtype = DataType::BFloat(16);
+
+    EXPECT_NE(lhs, rhs);
+    EXPECT_NE(std::hash<KernelSelector>{}(lhs), std::hash<KernelSelector>{}(rhs));
 }
 
 TEST(ExecPhaseToString, AllKnownPhasesHaveStringRepresentation) {
@@ -66,6 +85,7 @@ TEST(KernelSelectorToString, ReturnsDescriptiveString) {
     KernelSelector selector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float(16),
             .weight_format = WeightFormat::kQuantizedInt8,
             .phase = ExecPhase::kPrefill,
@@ -83,6 +103,7 @@ TEST(KernelSelectorToString, ContainsAllFieldNames) {
     KernelSelector selector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .phase = ExecPhase::kBoth,
@@ -100,6 +121,7 @@ TEST(KernelSelectorState, EqualityDetectsDifferentStateDType) {
     KernelSelector lhs{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .state_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
@@ -115,6 +137,7 @@ TEST(KernelSelectorState, MatchesRequiresExactStateDType) {
     KernelSelector f32_state{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .state_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
@@ -135,6 +158,7 @@ TEST(KernelSelectorState, UndefinedStateIsNotWildcard) {
     KernelSelector stateless{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .phase = ExecPhase::kBoth,
@@ -152,6 +176,7 @@ TEST(KernelSelectorState, HashConsistentWithEquality) {
     KernelSelector lhs{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .state_dtype = DataType::BFloat(16),
             .weight_format = WeightFormat::kPlain,
@@ -169,6 +194,7 @@ TEST(KernelSelectorToString, ContainsStateDType) {
     KernelSelector selector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .state_dtype = DataType::Float(16),
             .weight_format = WeightFormat::kPlain,

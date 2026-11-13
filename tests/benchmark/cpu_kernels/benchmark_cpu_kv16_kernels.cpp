@@ -23,10 +23,11 @@ using namespace aethermind;
 // KV binding. These are scalar reference kernels (no SIMD); the numbers are a
 // correctness-path baseline for future optimization, not a performance claim.
 
-KernelSelector MakeSelector(DataType kv_dtype) {
+KernelSelector MakeSelector(DataType kv_dtype, DataType output_dtype = DataType{}) {
     return KernelSelector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = output_dtype,
             .weight_dtype = DataType::Float32(),
             .state_dtype = kv_dtype,
             .weight_format = WeightFormat::kPlain,
@@ -126,7 +127,7 @@ void BenchmarkAttentionKV16(benchmark::State& state, DataType kv_dtype) {
 
     CpuBackend backend;
     auto kernel = backend.PrepareKernel(
-            OpType::kAttention, MakeSelector(kv_dtype),
+            OpType::kAttention, MakeSelector(kv_dtype, DataType::Float32()),
             OpParams{AttentionParams{.num_q_heads = static_cast<int64_t>(q_heads),
                                      .num_kv_heads = static_cast<int64_t>(kv_heads),
                                      .head_dim = static_cast<int64_t>(head_dim)}});

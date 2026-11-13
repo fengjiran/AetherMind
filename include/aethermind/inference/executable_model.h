@@ -47,6 +47,11 @@ struct ModelLoadOptions {
     /// KV storage element dtype; scalar F32/F16/BF16. KV16 is only admitted for
     /// the retained-W16 policies and must match the Runtime's physical KV dtype.
     DataType kv_dtype = DataType::Float32();
+    /// Activation/residual compute dtype; scalar F32/F16/BF16. A16 (F16/BF16)
+    /// is admitted only together with the same-dtype retained-W16 policy on CPU
+    /// O1/plain or O2/packed, and keeps logits in F32. Defaults to FP32, which
+    /// preserves the P1-P3 contracts.
+    DataType activation_dtype = DataType::Float32();
 };
 
 /// @brief Immutable, execution-ready model owned between compilation and sessions.

@@ -347,6 +347,11 @@ StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
         return Status::Internal(
                 "BuildLlamaDense: lm_head binding did not resolve");
     }
+    // A16 presets keep logits in F32: the LM head must not narrow logits and
+    // widen them back. FP32 presets keep the undefined default (output follows
+    // the activation) so existing serialized params stay byte-compatible.
+    const DataType lm_head_output_dtype =
+            act_dtype == DataType::Float32() ? DataType{} : DataType::Float32();
     AM_ASSIGN_OR_RETURN(const GraphValueId logits,
                         AddLinear(
                                 graph,
@@ -354,7 +359,8 @@ StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
                                 lm_head_weight->shape[0],
                                 lm_head_weight->dtype,
                                 lm_head_binding,
-                                detail::WeightDebugName(TransformerWeightRole::kLmHead, std::nullopt)));
+                                detail::WeightDebugName(TransformerWeightRole::kLmHead, std::nullopt),
+                                lm_head_output_dtype));
     AM_ASSIGN_OR_RETURN(const GraphValueId output_tokens,
                         AddArgmax(graph,
                                   std::nullopt,

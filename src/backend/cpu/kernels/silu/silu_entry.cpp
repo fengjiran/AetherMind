@@ -6,7 +6,6 @@
 #include "aethermind/base/check.h"
 #include "silu_internal.h"
 
-#include <cstddef>
 #include <type_traits>
 
 namespace aethermind::cpu::detail {
@@ -110,6 +109,7 @@ AM_REGISTER_KERNEL(CpuSiluF32Reference,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,
                                    .act_dtype = DataType::Float32(),
+                                   .output_dtype = DataType::Float32(),
                                    .weight_dtype = DataType::Float32(),
                                    .weight_format = WeightFormat::kPlain,
                                    .phase = ExecPhase::kBoth,

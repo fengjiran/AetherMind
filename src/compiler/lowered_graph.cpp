@@ -215,6 +215,32 @@ Status ValidateLoweredGraph(const LoweredGraph& lowered) {
                     " selector.state_dtype does not match state specs");
         }
 
+        // Activation-output identity: selector.output_dtype must equal the
+        // single dtype shared by every activation output port, or be undefined
+        // when the schema has no activation output (state-only steps).
+        DataType expected_output_dtype{};
+        bool has_activation_output = false;
+        for (size_t j = 0; j < schema->output_ports.size(); ++j) {
+            if (schema->output_ports[j].kind != OperatorPortKind::kActivation) {
+                continue;
+            }
+
+            const DataType& dtype = step.spec.output_specs[j].dtype;
+            if (has_activation_output && expected_output_dtype != dtype) {
+                return Status::Internal(
+                        "ValidateLoweredGraph: step " + std::to_string(i) +
+                        " has inconsistent activation output dtypes");
+            }
+            expected_output_dtype = dtype;
+            has_activation_output = true;
+        }
+
+        if (step.spec.selector.output_dtype != expected_output_dtype) {
+            return Status::Internal(
+                    "ValidateLoweredGraph: step " + std::to_string(i) +
+                    " selector.output_dtype does not match output specs");
+        }
+
         const auto weight_input_count = static_cast<size_t>(std::count_if(
                 schema->input_ports.begin(), schema->input_ports.end(),
                 [](const OperatorInputPort& port) {

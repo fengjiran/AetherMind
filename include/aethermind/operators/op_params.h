@@ -31,7 +31,15 @@ struct RmsNormParams {
     float eps = 1.0e-5f;
 };
 
-struct LinearParams {};
+/// @brief Semantic parameters for a dense projection.
+///
+/// An undefined `output_dtype` preserves the existing contract: the output
+/// dtype follows the activation input. An explicit value (scalar Float32,
+/// Float16, or BFloat16) requests a mixed-output projection such as an A16
+/// LMHead that emits FP32 logits.
+struct LinearParams {
+    DataType output_dtype{};
+};
 
 /// @brief Element pairing used by a rotary embedding.
 ///
@@ -338,6 +346,14 @@ struct GateUpLinearParams {
     bool has_bias = false;
 };
 
+/// @brief Semantic parameters for a storage-format Cast.
+///
+/// `target_dtype` must be one of scalar Float32, Float16, or BFloat16 and must
+/// differ from the input dtype; the output shape always equals the input shape.
+struct CastParams {
+    DataType target_dtype{};
+};
+
 /// @brief Semantic parameters for fused add + RMS normalization.
 ///
 /// Input order is `[input, residual, weight]` with semantics
@@ -365,6 +381,7 @@ using OpParams = std::variant<std::monostate,
                               ReshapeParams,
                               PermuteParams,
                               ReorderParams,
+                              CastParams,
                               QkvLinearParams,
                               AddRmsNormParams,
                               GateUpLinearParams>;

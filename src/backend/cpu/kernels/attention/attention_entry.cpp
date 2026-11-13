@@ -177,13 +177,14 @@ StatusOr<StridedAddressFootprint> BuildOutputFootprint(
                 "CPU Attention output hidden width overflow");
     }
 
-    const std::array<int64_t, 2> shape = {args.seq_len, hidden};
-    const std::array<int64_t, 2> strides = {
+    const std::array shape = {args.seq_len, hidden};
+    const std::array strides = {
             args.output_row_stride,
             args.output_col_stride,
     };
-    return BuildStridedAddressFootprint(args.output, shape, strides,
-                                        sizeof(float), "CPU Attention output");
+    return BuildStridedAddressFootprint(
+            args.output, shape, strides,
+            sizeof(float), "CPU Attention output");
 }
 
 Status ValidateReadBinding(const AttentionF32KernelArgs& args,
@@ -259,7 +260,8 @@ Status BuildAttentionF32Metadata(const OpParams& params,
                                  std::vector<std::byte>& attrs) {
     const auto* attention = std::get_if<AttentionParams>(&params);
     if (attention == nullptr) {
-        return Status::InvalidArgument("CPU Attention kernel requires AttentionParams");
+        return Status::InvalidArgument(
+                "CPU Attention kernel requires AttentionParams");
     }
 
     const AttentionF32KernelMetadata metadata{
@@ -425,6 +427,7 @@ AM_REGISTER_KERNEL(
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
                         .act_dtype = DataType::Float32(),
+                        .output_dtype = DataType::Float32(),
                         .weight_dtype = DataType::Float32(),
                         .state_dtype = DataType::Float32(),
                         .weight_format = WeightFormat::kPlain,
@@ -444,6 +447,7 @@ AM_REGISTER_KERNEL(
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
                         .act_dtype = DataType::Float32(),
+                        .output_dtype = DataType::Float32(),
                         .weight_dtype = DataType::Float32(),
                         .state_dtype = DataType::Float(16),
                         .weight_format = WeightFormat::kPlain,
@@ -463,6 +467,7 @@ AM_REGISTER_KERNEL(
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
                         .act_dtype = DataType::Float32(),
+                        .output_dtype = DataType::Float32(),
                         .weight_dtype = DataType::Float32(),
                         .state_dtype = DataType::BFloat(16),
                         .weight_format = WeightFormat::kPlain,

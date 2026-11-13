@@ -25,7 +25,8 @@ namespace {
 
 // ── FP32 weight ──────────────────────────────────────────────────────────────
 
-Status BuildEmbeddingF32ReferenceArgs(const KernelParamsBuildContext& context, void* params_buffer) noexcept {
+Status BuildEmbeddingF32ReferenceArgs(
+        const KernelParamsBuildContext& context, void* params_buffer) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
@@ -90,19 +91,22 @@ Status BuildEmbeddingF32ReferenceArgs(const KernelParamsBuildContext& context, v
     // is linear over the flattened token ids, so any contiguous rank works.
     if (output.rank() != token_ids.rank() + 1 || !output.is_contiguous()) {
         return Status::InvalidArgument(
-                "EmbeddingKernel requires contiguous output with rank = token ids rank + 1");
+                "EmbeddingKernel requires contiguous output "
+                "with rank = token ids rank + 1");
     }
 
     for (int32_t i = 0; i < token_ids.rank(); ++i) {
         if (output.dim(i) != token_ids.dim(i)) {
             return Status::InvalidArgument(
-                    "EmbeddingKernel output shape must be [token ids..., hidden_size]");
+                    "EmbeddingKernel output shape must be "
+                    "[token ids..., hidden_size]");
         }
     }
 
     if (output.dim(token_ids.rank()) != hidden_size) {
         return Status::InvalidArgument(
-                "EmbeddingKernel output shape must be [token ids..., hidden_size]");
+                "EmbeddingKernel output shape must be "
+                "[token ids..., hidden_size]");
     }
 
     // Empty output: no token ids to gather, nothing to write. Null data is
@@ -187,7 +191,8 @@ Status BuildEmbeddingF32PackedIdentityArgs(const KernelParamsBuildContext& conte
     if (output.dtype() != DataType::Float32() ||
         output.rank() != token_ids.rank() + 1 || !output.is_contiguous()) {
         return Status::InvalidArgument(
-                "Packed Embedding requires contiguous float32 output with an appended hidden axis");
+                "Packed Embedding requires contiguous float32 output "
+                "with an appended hidden axis");
     }
 
     if (packed.logical_shape.size() != 2U ||
@@ -204,13 +209,15 @@ Status BuildEmbeddingF32PackedIdentityArgs(const KernelParamsBuildContext& conte
     for (int32_t i = 0; i < token_ids.rank(); ++i) {
         if (output.dim(i) != token_ids.dim(i)) {
             return Status::InvalidArgument(
-                    "Packed Embedding output shape must be [token ids..., hidden_size]");
+                    "Packed Embedding output shape must be "
+                    "[token ids..., hidden_size]");
         }
     }
 
     if (output.dim(token_ids.rank()) != hidden_size) {
         return Status::InvalidArgument(
-                "Packed Embedding output shape must be [token ids..., hidden_size]");
+                "Packed Embedding output shape must be "
+                "[token ids..., hidden_size]");
     }
 
     const int64_t token_count = token_ids.numel();
@@ -516,6 +523,7 @@ KernelDef VectorEmbedding(bool packed, CpuFeatureSet requirements, std::string_v
             .op_type = OpType::kEmbedding,
             .selector = {.device_type = DeviceType::kCPU,
                          .act_dtype = DataType::Float32(),
+                         .output_dtype = DataType::Float32(),
                          .weight_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16),
                          .weight_format = packed ? WeightFormat::kPacked : WeightFormat::kPlain,
                          .phase = ExecPhase::kBoth},
@@ -546,6 +554,7 @@ AM_REGISTER_KERNEL(CpuEmbeddingF32Reference,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,
                                    .act_dtype = DataType::Float32(),
+                                   .output_dtype = DataType::Float32(),
                                    .weight_dtype = DataType::Float32(),
                                    .weight_format = WeightFormat::kPlain,
                                    .phase = ExecPhase::kBoth,
@@ -563,6 +572,7 @@ AM_REGISTER_KERNEL(CpuEmbeddingF32PackedIdentityReference,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,
                                    .act_dtype = DataType::Float32(),
+                                   .output_dtype = DataType::Float32(),
                                    .weight_dtype = DataType::Float32(),
                                    .weight_format = WeightFormat::kPacked,
                                    .phase = ExecPhase::kBoth,
@@ -602,6 +612,7 @@ AM_REGISTER_KERNEL(CpuEmbeddingF32F16Reference,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,
                                    .act_dtype = DataType::Float32(),
+                                   .output_dtype = DataType::Float32(),
                                    .weight_dtype = DataType::Float(16),
                                    .weight_format = WeightFormat::kPlain,
                                    .phase = ExecPhase::kBoth,
@@ -620,6 +631,7 @@ AM_REGISTER_KERNEL(CpuEmbeddingF32Bf16Reference,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,
                                    .act_dtype = DataType::Float32(),
+                                   .output_dtype = DataType::Float32(),
                                    .weight_dtype = DataType::BFloat(16),
                                    .weight_format = WeightFormat::kPlain,
                                    .phase = ExecPhase::kBoth,
@@ -638,6 +650,7 @@ AM_REGISTER_KERNEL(CpuEmbeddingF32F16PackedIdentityReference,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,
                                    .act_dtype = DataType::Float32(),
+                                   .output_dtype = DataType::Float32(),
                                    .weight_dtype = DataType::Float(16),
                                    .weight_format = WeightFormat::kPacked,
                                    .phase = ExecPhase::kBoth,
@@ -657,6 +670,7 @@ AM_REGISTER_KERNEL(CpuEmbeddingF32Bf16PackedIdentityReference,
                            .selector = KernelSelector{
                                    .device_type = DeviceType::kCPU,
                                    .act_dtype = DataType::Float32(),
+                                   .output_dtype = DataType::Float32(),
                                    .weight_dtype = DataType::BFloat(16),
                                    .weight_format = WeightFormat::kPacked,
                                    .phase = ExecPhase::kBoth,

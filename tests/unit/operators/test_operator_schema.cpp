@@ -12,7 +12,7 @@ using namespace aethermind;
 TEST(OperatorSchema, ContainsAllM1Ops) {
     const auto schemas = GetOperatorSchemas();
 
-    ASSERT_EQ(schemas.size(), 19U);
+    ASSERT_EQ(schemas.size(), 20U);
     EXPECT_TRUE(GetOperatorSchema(OpType::kEmbedding).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kRmsNorm).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kLinear).ok());
@@ -32,6 +32,7 @@ TEST(OperatorSchema, ContainsAllM1Ops) {
     EXPECT_TRUE(GetOperatorSchema(OpType::kReshape).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kPermute).ok());
     EXPECT_TRUE(GetOperatorSchema(OpType::kReorder).ok());
+    EXPECT_TRUE(GetOperatorSchema(OpType::kCast).ok());
 }
 
 TEST(OperatorSchema, RejectsUnknownOpType) {

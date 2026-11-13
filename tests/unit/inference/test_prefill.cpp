@@ -90,6 +90,7 @@ protected:
 
         const KernelSelector selector{.device_type = DeviceType::kCPU,
                                       .act_dtype = DataType::Float32(),
+                                      .output_dtype = DataType::Int(64),
                                       .weight_dtype = DataType::Float32()};
         const KernelSelector state_selector{.device_type = DeviceType::kCPU,
                                             .act_dtype = DataType::Float32(),

@@ -20,6 +20,12 @@ TEST(OpParamsSerde, RoundTripsEveryVariant) {
             EmbeddingParams{.output_dtype = DataType::Float32()},
             RmsNormParams{.eps = 1.0e-6F},
             LinearParams{},
+            LinearParams{.output_dtype = DataType::Float32()},
+            LinearParams{.output_dtype = DataType::Float(16)},
+            LinearParams{.output_dtype = DataType::BFloat(16)},
+            CastParams{.target_dtype = DataType::Float32()},
+            CastParams{.target_dtype = DataType::Float(16)},
+            CastParams{.target_dtype = DataType::BFloat(16)},
             RoPEParams{.head_dim = 8,
                        .num_q_heads = 4,
                        .num_kv_heads = 2,
@@ -185,6 +191,48 @@ TEST(OpParamsSerde, MigratesLegacyRoPEAndRejectsUnknownVersionedTags) {
                          "num_kv_heads=1 max_pos_embeddings=128 theta=10000 "
                          "pairing=split_half algorithm=unknown")
                          .ok());
+}
+
+TEST(OpParamsSerde, CastRoundTripsCanonicalForms) {
+    const struct {
+        OpParams params;
+        const char* text;
+    } cases[] = {
+            {CastParams{.target_dtype = DataType::Float32()}, "Cast target_dtype=float32"},
+            {CastParams{.target_dtype = DataType::Float(16)}, "Cast target_dtype=float16"},
+            {CastParams{.target_dtype = DataType::BFloat(16)}, "Cast target_dtype=bfloat16"},
+    };
+    for (const auto& test_case: cases) {
+        EXPECT_EQ(SerializeToString(test_case.params), test_case.text);
+        const StatusOr<OpParams> parsed = ParseOpParams(test_case.text);
+        ASSERT_TRUE(parsed.ok()) << parsed.status().ToString();
+        EXPECT_EQ(SerializeToString(*parsed), test_case.text);
+    }
+    EXPECT_EQ(ParseOpParams("Cast").status(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(ParseOpParams("Cast target_dtype=float64").status(),
+              StatusCode::kInvalidArgument);
+    EXPECT_EQ(ParseOpParams("Cast target_dtype=bfloat16 extra=1").status(),
+              StatusCode::kInvalidArgument);
+}
+
+TEST(OpParamsSerde, LinearOutputDTypeIsOptionalAndCanonical) {
+    EXPECT_EQ(SerializeToString(LinearParams{}), "Linear");
+    EXPECT_EQ(SerializeToString(LinearParams{.output_dtype = DataType::Float32()}),
+              "Linear output_dtype=float32");
+    EXPECT_EQ(SerializeToString(LinearParams{.output_dtype = DataType::BFloat(16)}),
+              "Linear output_dtype=bfloat16");
+
+    const StatusOr<OpParams> legacy = ParseOpParams("Linear");
+    ASSERT_TRUE(legacy.ok()) << legacy.status().ToString();
+    EXPECT_TRUE(std::get<LinearParams>(*legacy).output_dtype.IsUndefined());
+
+    const StatusOr<OpParams> explicit_output =
+            ParseOpParams("Linear output_dtype=float32");
+    ASSERT_TRUE(explicit_output.ok()) << explicit_output.status().ToString();
+    EXPECT_EQ(std::get<LinearParams>(*explicit_output).output_dtype,
+              DataType::Float32());
+    EXPECT_EQ(ParseOpParams("Linear output_dtype=float64").status(),
+              StatusCode::kInvalidArgument);
 }
 
 TEST(OpParamsSerde, RejectsUnknownKind) {

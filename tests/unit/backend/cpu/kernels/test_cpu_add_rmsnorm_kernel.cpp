@@ -40,6 +40,7 @@ KernelSelector MakeAddRmsNormSelector(WeightFormat weight_format) {
     return KernelSelector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = weight_format,
             .phase = ExecPhase::kBoth,

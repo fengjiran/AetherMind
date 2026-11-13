@@ -21,6 +21,7 @@ KernelSelector MakeSelector(const DataType& dtype = DataType::Float32()) {
     return KernelSelector{
             .device_type = DeviceType::kCPU,
             .act_dtype = dtype,
+            .output_dtype = dtype,
             .weight_dtype = dtype,
             .weight_format = WeightFormat::kPlain,
             .phase = ExecPhase::kBoth,

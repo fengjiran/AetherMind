@@ -10,7 +10,7 @@ using namespace aethermind;
 // --- Validation ---
 
 TEST(LinearInference, ValidatesStaticInputContract) {
-    constexpr LinearParams params;
+    const LinearParams params;
     const TensorSpec inputs[2] = {
             MakeSpec(DataType::Float32(), {4, 8}),
             MakeSpec(DataType::Float32(), {16, 8}),
@@ -20,7 +20,7 @@ TEST(LinearInference, ValidatesStaticInputContract) {
 }
 
 TEST(LinearInference, AcceptsRank1Input) {
-    constexpr LinearParams params;
+    const LinearParams params;
     const TensorSpec inputs[2] = {
             MakeSpec(DataType::Float32(), {8}),
             MakeSpec(DataType::Float32(), {16, 8}),
@@ -30,7 +30,7 @@ TEST(LinearInference, AcceptsRank1Input) {
 }
 
 TEST(LinearInference, RejectsRankZeroInput) {
-    constexpr LinearParams params;
+    const LinearParams params;
     const TensorSpec inputs[2] = {
             MakeSpec(DataType::Float32(), {}),
             MakeSpec(DataType::Float32(), {16, 8}),
@@ -43,7 +43,7 @@ TEST(LinearInference, RejectsRankZeroInput) {
 }
 
 TEST(LinearInference, RejectsRankZeroWeight) {
-    constexpr LinearParams params;
+    const LinearParams params;
     const TensorSpec inputs[2] = {
             MakeSpec(DataType::Float32(), {4, 8}),
             MakeSpec(DataType::Float32(), {}),
@@ -56,7 +56,7 @@ TEST(LinearInference, RejectsRankZeroWeight) {
 }
 
 TEST(LinearInference, RejectsRank3Input) {
-    constexpr LinearParams params;
+    const LinearParams params;
     const TensorSpec inputs[2] = {
             MakeSpec(DataType::Float32(), {2, 4, 3}),
             MakeSpec(DataType::Float32(), {16, 8}),
@@ -69,7 +69,7 @@ TEST(LinearInference, RejectsRank3Input) {
 }
 
 TEST(LinearInference, RejectsWeightRank1) {
-    constexpr LinearParams params;
+    const LinearParams params;
     const TensorSpec inputs[2] = {
             MakeSpec(DataType::Float32(), {4, 8}),
             MakeSpec(DataType::Float32(), {8}),
@@ -82,7 +82,7 @@ TEST(LinearInference, RejectsWeightRank1) {
 }
 
 TEST(LinearInference, RejectsStaticKMismatch) {
-    constexpr LinearParams params;
+    const LinearParams params;
     const TensorSpec inputs[2] = {
             MakeSpec(DataType::Float32(), {4, 8}),
             MakeSpec(DataType::Float32(), {16, 16}),
@@ -97,7 +97,7 @@ TEST(LinearInference, RejectsStaticKMismatch) {
 // --- Inference ---
 
 TEST(LinearInference, InfersOutputShapeFromWeight) {
-    constexpr LinearParams params;
+    const LinearParams params;
     const TensorSpec inputs[2] = {
             MakeSpec(DataType::Float32(), {4, 4096}),
             MakeSpec(DataType::Float32(), {11008, 4096}),
@@ -115,7 +115,7 @@ TEST(LinearInference, InfersOutputShapeFromWeight) {
 }
 
 TEST(LinearInference, InfersRank1OutputShape) {
-    constexpr LinearParams params;
+    const LinearParams params;
     const TensorSpec inputs[2] = {
             MakeSpec(DataType::Float32(), {4096}),
             MakeSpec(DataType::Float32(), {11008, 4096}),
@@ -131,7 +131,7 @@ TEST(LinearInference, InfersRank1OutputShape) {
 }
 
 TEST(LinearInference, EmitsRuntimeCheckForDistinctSymbolicK) {
-    constexpr LinearParams params;
+    const LinearParams params;
     const ShapeSymbol batch = ShapeSymbol::Create();
     const ShapeSymbol input_k = ShapeSymbol::Create();
     const ShapeSymbol out_features = ShapeSymbol::Create();
@@ -159,7 +159,7 @@ TEST(LinearInference, EmitsRuntimeCheckForDistinctSymbolicK) {
 }
 
 TEST(LinearInference, AcceptsSharedSymbolicK) {
-    constexpr LinearParams params;
+    const LinearParams params;
     const ShapeSymbol batch = ShapeSymbol::Create();
     const ShapeSymbol k = ShapeSymbol::Create();
     const ShapeSymbol out_features = ShapeSymbol::Create();
@@ -175,7 +175,7 @@ TEST(LinearInference, AcceptsSharedSymbolicK) {
 
 TEST(LinearInference, AcceptsZeroBatchDim) {
     // Zero batch yields empty output [0, out]; valid NumPy/PyTorch MatMul semantics.
-    constexpr LinearParams params;
+    const LinearParams params;
     const TensorSpec inputs[2] = {
             MakeSpec(DataType::Float32(), {0, 8}),
             MakeSpec(DataType::Float32(), {16, 8}),
@@ -185,7 +185,7 @@ TEST(LinearInference, AcceptsZeroBatchDim) {
 
 TEST(LinearInference, AcceptsZeroInFeatures) {
     // Zero in_features (K=0) yields zero-valued output; valid NumPy/PyTorch MatMul.
-    constexpr LinearParams params;
+    const LinearParams params;
     const TensorSpec inputs[2] = {
             MakeSpec(DataType::Float32(), {4, 0}),
             MakeSpec(DataType::Float32(), {16, 0}),
@@ -195,7 +195,7 @@ TEST(LinearInference, AcceptsZeroInFeatures) {
 
 TEST(LinearInference, AcceptsZeroOutFeatures) {
     // Zero out_features yields empty output; valid NumPy/PyTorch MatMul.
-    constexpr LinearParams params;
+    const LinearParams params;
     const TensorSpec inputs[2] = {
             MakeSpec(DataType::Float32(), {4, 8}),
             MakeSpec(DataType::Float32(), {0, 8}),

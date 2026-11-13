@@ -18,6 +18,22 @@ namespace {
 
 using FieldMap = std::unordered_map<std::string, std::string>;
 
+/// Canonical text for the Cast target dtype; nullopt for any other dtype.
+std::optional<std::string_view> CastDTypeName(const DataType& dtype) noexcept {
+    if (dtype == DataType::Float32()) {
+        return "float32";
+    }
+
+    if (dtype == DataType::Float(16)) {
+        return "float16";
+    }
+
+    if (dtype == DataType::BFloat(16)) {
+        return "bfloat16";
+    }
+    return std::nullopt;
+}
+
 StatusOr<int64_t> ParseInt64(const FieldMap& fields, std::string_view name) {
     const auto it = fields.find(std::string(name));
     if (it == fields.end()) {
@@ -428,6 +444,7 @@ const char* OpParamsKindName(const OpParams& params) noexcept {
             [](const QkvLinearParams&) noexcept { return "QkvLinear"; },
             [](const GateUpLinearParams&) noexcept { return "GateUpLinear"; },
             [](const AddRmsNormParams&) noexcept { return "AddRmsNorm"; },
+            [](const CastParams&) noexcept { return "Cast"; },
     };
     return std::visit(visitor, params);
 }
@@ -441,6 +458,19 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
                 "SerializeOpParams: Embedding output_dtype must be scalar float32 when specified");
     }
 
+    if (const auto* cast = std::get_if<CastParams>(&params);
+        cast != nullptr && !CastDTypeName(cast->target_dtype).has_value()) {
+        return Status::InvalidArgument(
+                "SerializeOpParams: Cast target_dtype must be scalar float32, float16, or bfloat16");
+    }
+
+    if (const auto* linear = std::get_if<LinearParams>(&params);
+        linear != nullptr && !linear->output_dtype.IsUndefined() &&
+        !CastDTypeName(linear->output_dtype).has_value()) {
+        return Status::InvalidArgument(
+                "SerializeOpParams: Linear output_dtype must be scalar float32, float16, or bfloat16");
+    }
+
     auto visitor = overloaded{
             [&](const std::monostate&) { os << "monostate"; },
             [&](const EmbeddingParams& p) {
@@ -450,7 +480,12 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
                 }
             },
             [&](const RmsNormParams& p) { os << "RmsNorm eps=" << p.eps; },
-            [&](const LinearParams&) { os << "Linear"; },
+            [&](const LinearParams& p) {
+                os << "Linear";
+                if (!p.output_dtype.IsUndefined()) {
+                    os << " output_dtype=" << *CastDTypeName(p.output_dtype);
+                }
+            },
             [&](const RoPEParams& p) {
                 os << "RoPE version=2 head_dim=" << p.head_dim
                    << " rotary_dim=" << EffectiveRoPERotaryDim(p)
@@ -530,6 +565,9 @@ Status SerializeOpParams(const OpParams& params, std::ostream& os) {
             [&](const AddRmsNormParams& p) {
                 os << "AddRmsNorm eps=" << p.eps;
             },
+            [&](const CastParams& p) {
+                os << "Cast target_dtype=" << *CastDTypeName(p.target_dtype);
+            },
     };
     std::visit(visitor, params);
     return Status::Ok();
@@ -571,8 +609,29 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
     }
 
     if (kind == "Linear") {
-        AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 0));
-        return OpParams{LinearParams{}};
+        if (fields.empty()) {
+            return OpParams{LinearParams{}};
+        }
+        AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 1));
+        const auto output_dtype = fields.find("output_dtype");
+        if (output_dtype == fields.end()) {
+            return Status::InvalidArgument(
+                    "ParseOpParams: Linear accepts only output_dtype");
+        }
+
+        if (output_dtype->second == "float32") {
+            return OpParams{LinearParams{.output_dtype = DataType::Float32()}};
+        }
+
+        if (output_dtype->second == "float16") {
+            return OpParams{LinearParams{.output_dtype = DataType::Float(16)}};
+        }
+
+        if (output_dtype->second == "bfloat16") {
+            return OpParams{LinearParams{.output_dtype = DataType::BFloat(16)}};
+        }
+        return Status::InvalidArgument(
+                "ParseOpParams: Linear output_dtype must be float32, float16, or bfloat16");
     }
 
     if (kind == "RoPE") {
@@ -758,6 +817,29 @@ StatusOr<OpParams> ParseOpParams(std::string_view text) {
     if (kind == "ElementwiseMul") {
         AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 0));
         return OpParams{ElementwiseMulParams{}};
+    }
+
+    if (kind == "Cast") {
+        AM_RETURN_IF_ERROR(EnsureNoExtraFields(fields, 1));
+        const auto target = fields.find("target_dtype");
+        if (target == fields.end()) {
+            return Status::InvalidArgument(
+                    "ParseOpParams: Cast requires target_dtype");
+        }
+
+        if (target->second == "float32") {
+            return OpParams{CastParams{.target_dtype = DataType::Float32()}};
+        }
+
+        if (target->second == "float16") {
+            return OpParams{CastParams{.target_dtype = DataType::Float(16)}};
+        }
+
+        if (target->second == "bfloat16") {
+            return OpParams{CastParams{.target_dtype = DataType::BFloat(16)}};
+        }
+        return Status::InvalidArgument(
+                "ParseOpParams: Cast target_dtype must be float32, float16, or bfloat16");
     }
 
     if (kind == "KVCacheUpdate") {

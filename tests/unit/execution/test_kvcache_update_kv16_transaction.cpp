@@ -30,9 +30,10 @@ TensorSpec Spec(DataType dtype, std::initializer_list<int64_t> dimensions) {
     return {.dtype = dtype, .shape = SymbolicShape(IntArrayView(copied))};
 }
 
-KernelSelector Selector(DataType kv_dtype) {
+KernelSelector Selector(DataType kv_dtype, DataType output_dtype = DataType{}) {
     return {.device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = output_dtype,
             .weight_dtype = DataType::Float32(),
             .state_dtype = kv_dtype,
             .weight_format = WeightFormat::kPlain,
@@ -307,7 +308,7 @@ TEST(KVCacheUpdateKV16Transaction, UpdateThenAttentionReadsVisibleRangeAndCommit
         ASSERT_TRUE(view.ok());
         auto backend_or = runtime.GetBackend(DeviceType::kCPU);
         ASSERT_TRUE(backend_or.ok()) << backend_or.status().ToString();
-        const auto attention = (*backend_or)->PrepareKernel(OpType::kAttention, Selector(kv_dtype), OpParams{AttentionParams{.num_q_heads = 2, .num_kv_heads = 2, .head_dim = 2}});
+        const auto attention = (*backend_or)->PrepareKernel(OpType::kAttention, Selector(kv_dtype, DataType::Float32()), OpParams{AttentionParams{.num_q_heads = 2, .num_kv_heads = 2, .head_dim = 2}});
         ASSERT_TRUE(attention.ok()) << attention.status().ToString();
         const auto plan = BuildUpdateThenAttentionPlan(runtime, kv_dtype, 2, *attention);
         ASSERT_TRUE(plan.ok()) << plan.status().ToString();

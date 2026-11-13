@@ -39,6 +39,7 @@ KernelSelector MakeLinearSelector() {
     return KernelSelector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
             .phase = ExecPhase::kBoth,

@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <cstdint>
 #include <new>
 #include <type_traits>
 
@@ -29,22 +28,27 @@ Status BuildMatMulF32Metadata(const OpParams& params, std::vector<std::byte>& at
 Status BuildMatMulF32ReferenceArgs(const KernelParamsBuildContext& context,
                                    void* params_buffer) noexcept {
     if (context.attrs.size() != 1) {
-        return Status::InvalidArgument("MatMulKernelEntry requires transpose_rhs metadata");
+        return Status::InvalidArgument(
+                "MatMulKernelEntry requires transpose_rhs metadata");
     }
-    const uint8_t transpose_rhs = std::to_integer<uint8_t>(context.attrs[0]);
+
+    const auto transpose_rhs = std::to_integer<uint8_t>(context.attrs[0]);
     if (transpose_rhs > 1) {
-        return Status::InvalidArgument("MatMulKernelEntry has invalid transpose_rhs metadata");
+        return Status::InvalidArgument(
+                "MatMulKernelEntry has invalid transpose_rhs metadata");
     }
 
     if (context.inputs.size() != 2 || context.outputs.size() != 1) {
-        return Status::InvalidArgument("MatMul requires 2 inputs and 1 output");
+        return Status::InvalidArgument(
+                "MatMul requires 2 inputs and 1 output");
     }
 
     const TensorView& lhs = context.inputs[0];
     const TensorView& rhs = context.inputs[1];
     const MutableTensorView& output = context.outputs[0];
     if (!lhs.is_valid() || !rhs.is_valid() || !output.is_valid()) {
-        return Status::InvalidArgument("MatMulKernelEntry requires valid TensorViews");
+        return Status::InvalidArgument(
+                "MatMulKernelEntry requires valid TensorViews");
     }
 
     const DataType fp32 = DataType::Float32();
@@ -54,7 +58,8 @@ Status BuildMatMulF32ReferenceArgs(const KernelParamsBuildContext& context,
     }
 
     if (lhs.rank() < 2 || rhs.rank() < 2) {
-        return Status::InvalidArgument("MatMulKernelEntry requires input rank >= 2");
+        return Status::InvalidArgument(
+                "MatMulKernelEntry requires input rank >= 2");
     }
 
     const int32_t lhs_rank = lhs.rank();
@@ -63,7 +68,8 @@ Status BuildMatMulF32ReferenceArgs(const KernelParamsBuildContext& context,
     const int32_t rhs_batch_rank = rhs_rank - 2;
     const int32_t batch_rank = std::max(lhs_batch_rank, rhs_batch_rank);
     if (output.rank() != batch_rank + 2) {
-        return Status::InvalidArgument("MatMulKernelEntry output rank does not match broadcast rank");
+        return Status::InvalidArgument(
+                "MatMulKernelEntry output rank does not match broadcast rank");
     }
 
     const int64_t m = lhs.dim(lhs_rank - 2);
@@ -71,11 +77,14 @@ Status BuildMatMulF32ReferenceArgs(const KernelParamsBuildContext& context,
     const int32_t rhs_k_axis = transpose_rhs == 0 ? rhs_rank - 2 : rhs_rank - 1;
     const int32_t rhs_n_axis = transpose_rhs == 0 ? rhs_rank - 1 : rhs_rank - 2;
     if (rhs.dim(rhs_k_axis) != k) {
-        return Status::InvalidArgument("MatMul inner dimensions must be equal");
+        return Status::InvalidArgument(
+                "MatMul inner dimensions must be equal");
     }
+
     const int64_t n = rhs.dim(rhs_n_axis);
     if (output.dim(batch_rank) != m || output.dim(batch_rank + 1) != n) {
-        return Status::InvalidArgument("MatMulKernelEntry output matrix shape is incorrect");
+        return Status::InvalidArgument(
+                "MatMulKernelEntry output matrix shape is incorrect");
     }
 
     MatMulF32KernelArgs built_args{
@@ -101,12 +110,14 @@ Status BuildMatMulF32ReferenceArgs(const KernelParamsBuildContext& context,
         const int64_t lhs_dim = lhs_axis < 0 ? 1 : lhs.dim(lhs_axis);
         const int64_t rhs_dim = rhs_axis < 0 ? 1 : rhs.dim(rhs_axis);
         if (lhs_dim != rhs_dim && lhs_dim != 1 && rhs_dim != 1) {
-            return Status::InvalidArgument("MatMul batch dimensions must be broadcastable");
+            return Status::InvalidArgument(
+                    "MatMul batch dimensions must be broadcastable");
         }
 
         const int64_t batch_dim = lhs_dim == 1 ? rhs_dim : lhs_dim;
         if (output.dim(axis) != batch_dim) {
-            return Status::InvalidArgument("MatMulKernelEntry output batch shape is incorrect");
+            return Status::InvalidArgument(
+                    "MatMulKernelEntry output batch shape is incorrect");
         }
 
         built_args.batch_dims[axis] = batch_dim;
@@ -118,7 +129,8 @@ Status BuildMatMulF32ReferenceArgs(const KernelParamsBuildContext& context,
 
         int64_t next_batch_count = 0;
         if (CheckOverflowMul(built_args.batch_count, batch_dim, &next_batch_count)) {
-            return Status::InvalidArgument("MatMulKernelEntry batch count overflow");
+            return Status::InvalidArgument(
+                    "MatMulKernelEntry batch count overflow");
         }
         built_args.batch_count = next_batch_count;
     }
@@ -169,6 +181,7 @@ AM_REGISTER_KERNEL(
                 .selector = KernelSelector{
                         .device_type = DeviceType::kCPU,
                         .act_dtype = DataType::Float32(),
+                        .output_dtype = DataType::Float32(),
                         .weight_dtype = DataType::Float32(),
                         .weight_format = WeightFormat::kPlain,
                         .phase = ExecPhase::kBoth,

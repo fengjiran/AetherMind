@@ -46,6 +46,8 @@ const char* ToString(OpType op_type) noexcept {
             return "Permute";
         case OpType::kReorder:
             return "Reorder";
+        case OpType::kCast:
+            return "Cast";
         default:
             return "Unknown";
     }

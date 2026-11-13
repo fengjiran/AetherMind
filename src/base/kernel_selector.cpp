@@ -12,6 +12,8 @@ std::string ToString(const KernelSelector& selector) {
            std::to_string(selector.weight_dtype.bits()) +
            "bit, state_dtype=" +
            std::to_string(selector.state_dtype.bits()) +
+           "bit, output_dtype=" +
+           std::to_string(selector.output_dtype.bits()) +
            "bit" + ", weight_format=" +
            ToString(selector.weight_format) +
            ", phase=" + ToString(selector.phase) + "}";

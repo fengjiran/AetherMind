@@ -43,6 +43,7 @@ protected:
         const KernelSelector selector{
                 .device_type = DeviceType::kCPU,
                 .act_dtype = DataType::Float32(),
+                .output_dtype = DataType::Float32(),
                 .weight_dtype = dtype,
                 .weight_format = kind == ProjectionKind::kPlainLinear ? WeightFormat::kPlain : WeightFormat::kPacked,
                 .phase = ExecPhase::kBoth,

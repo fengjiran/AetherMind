@@ -216,6 +216,7 @@ TEST(ExecutionPlanImmutability, StepsReturnsConstViewAfterConstruction) {
             .selector = {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
             },
             .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape}, TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
@@ -251,6 +252,7 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
             .selector = {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .phase = ExecPhase::kPrefill,
             },
@@ -265,6 +267,7 @@ TEST(ExecutionPlanImmutability, WorkspaceOffsetsAreFrozenAfterBuilderPlanning) {
             .selector = {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .phase = ExecPhase::kDecode,
             },
@@ -300,6 +303,7 @@ TEST(ExecutionPlanImmutability, PackedWeightLifetimeManagedByPackedWeightCollect
     KernelSelector selector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPacked,
             .phase = ExecPhase::kBoth,
@@ -336,6 +340,7 @@ TEST(ExecutionPlanImmutability, PackedWeightLifetimeManagedByPackedWeightCollect
                 .selector = {
                         .device_type = DeviceType::kCPU,
                         .act_dtype = DataType::Float32(),
+                        .output_dtype = DataType::Float32(),
                         .weight_dtype = DataType::Float32(),
                         .weight_format = WeightFormat::kPacked,
                 },
@@ -381,6 +386,7 @@ TEST(ExecutionPlanImmutability, ExecutorConsumesFrozenPlanWithoutModification) {
             .selector = {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
             },
             .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape}, TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},
@@ -442,6 +448,7 @@ TEST(ExecutionPlanImmutability, PlanDoesNotContainRuntimeBindings) {
             .selector = {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
             },
             .input_specs = {TensorSpec{.dtype = DataType::Float32(), .shape = act_shape}, TensorSpec{.dtype = DataType::Float32(), .shape = weight_shape}},

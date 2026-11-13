@@ -342,6 +342,15 @@ StatusOr<PreparedNode> PrepareNode(OpType op_type,
                                    " does not match semantic specs");
     }
 
+    if (selector.output_dtype != selector_dtypes->output_dtype) {
+        return untrusted ? Status::InvalidArgument(
+                                   "ExecutionPlanNodeSpec.selector.output_dtype"
+                                   " does not match semantic specs")
+                         : Status::Internal(
+                                   "Finalized LoweredStepSpec.selector.output_dtype"
+                                   " does not match semantic specs");
+    }
+
     auto remapped_checks =
             RemapRuntimeChecks(runtime_checks, inference_input_ports,
                                kernel_outputs,

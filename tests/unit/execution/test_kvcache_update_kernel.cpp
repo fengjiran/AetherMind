@@ -41,10 +41,11 @@ TensorSpec F32Spec(std::initializer_list<int64_t> dimensions) {
     return {.dtype = DataType::Float32(), .shape = SymbolicShape(IntArrayView(copied))};
 }
 
-KernelSelector F32CpuSelector() {
+KernelSelector F32CpuSelector(DataType output_dtype = DataType{}) {
     return {
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = output_dtype,
             .weight_dtype = DataType::Float32(),
             .state_dtype = DataType::Float32(),
             .weight_format = WeightFormat::kPlain,
@@ -658,7 +659,7 @@ TEST(KVCacheUpdateKernel, FP32AttentionReferenceRunsPrefillThenDecode) {
     const auto backend = runtime.GetBackend(DeviceType::kCPU);
     ASSERT_TRUE(backend.ok()) << backend.status().ToString();
     const auto attention_kernel = backend.value()->PrepareKernel(
-            OpType::kAttention, F32CpuSelector(),
+            OpType::kAttention, F32CpuSelector(DataType::Float32()),
             OpParams{AttentionParams{
                     .num_q_heads = 2,
                     .num_kv_heads = 2,

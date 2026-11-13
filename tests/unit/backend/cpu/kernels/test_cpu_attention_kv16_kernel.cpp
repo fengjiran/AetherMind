@@ -26,6 +26,7 @@ KernelSelector MakeSelector(DataType state_dtype) {
     return KernelSelector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType::Float32(),
             .state_dtype = state_dtype,
             .weight_format = WeightFormat::kPlain,

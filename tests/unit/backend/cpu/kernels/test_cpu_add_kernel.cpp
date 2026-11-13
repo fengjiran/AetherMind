@@ -38,6 +38,7 @@ KernelSelector MakeAddSelector(const DataType& dtype) {
     return KernelSelector{
             .device_type = DeviceType::kCPU,
             .act_dtype = dtype,
+            .output_dtype = dtype,
             .weight_dtype = dtype,
             .weight_format = WeightFormat::kPlain,
             .phase = ExecPhase::kBoth,
@@ -584,6 +585,7 @@ TEST(AddKernel, ResolvesThroughCpuBackend) {
         const auto selector = KernelSelector{
                 .device_type = DeviceType::kCPU,
                 .act_dtype = dtype,
+                .output_dtype = dtype,
                 .weight_dtype = dtype,
                 .weight_format = WeightFormat::kPlain,
                 .phase = ExecPhase::kBoth,
@@ -744,6 +746,7 @@ TEST(AddKernel, Int64EndToEndThroughExecutionRequestAndExecutor) {
             .selector = {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Int(64),
+                    .output_dtype = DataType::Int(64),
                     .weight_dtype = DataType::Int(64),
                     .weight_format = WeightFormat::kPlain,
                     .phase = ExecPhase::kBoth,
@@ -814,6 +817,7 @@ TEST(AddKernel, RejectsIncompatibleRuntimeBroadcastShapes) {
             .selector = {
                     .device_type = DeviceType::kCPU,
                     .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
                     .weight_dtype = DataType::Float32(),
                     .weight_format = WeightFormat::kPlain,
                     .phase = ExecPhase::kBoth,
@@ -907,6 +911,7 @@ TEST(AddKernel, ResolveAddWithUndefinedWeightDtypeReturnsNotFound) {
     const auto selector = KernelSelector{
             .device_type = DeviceType::kCPU,
             .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
             .weight_dtype = DataType{},
             .weight_format = WeightFormat::kPlain,
             .phase = ExecPhase::kBoth,

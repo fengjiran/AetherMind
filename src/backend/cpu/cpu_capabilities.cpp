@@ -28,6 +28,7 @@ constexpr std::array<const char*, static_cast<size_t>(CpuFeature::kCount)> kCpuF
         "BF16",
         "SVE",
         "SVE2",
+        "AVX512FP16",
 };
 
 } // namespace

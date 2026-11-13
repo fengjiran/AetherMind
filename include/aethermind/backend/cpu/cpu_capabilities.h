@@ -56,6 +56,9 @@ enum class CpuFeature : uint8_t {
     kSve,
     kSve2,
 
+    // x86-64; appended to keep existing enum values stable.
+    kAvx512Fp16,
+
     kCount
 };
 

@@ -133,6 +133,7 @@ CpuCapabilities DetectX86Capabilities() noexcept {
     const bool has_avx512bw = HasBit(leaf7.ebx, 30);
     const bool has_avx512vnni = HasBit(leaf7.ecx, 11);
     const bool has_avx512bf16 = HasBit(leaf7_1.eax, 5);
+    const bool has_avx512fp16 = HasBit(leaf7.edx, 23);
     const bool has_avxvnni = HasBit(leaf7_1.eax, 4);
     const bool has_amx_tile = HasBit(leaf7.edx, 24);
     const bool has_amx_int8 = HasBit(leaf7.edx, 25);
@@ -149,6 +150,7 @@ CpuCapabilities DetectX86Capabilities() noexcept {
     record_hardware(has_avx512bw, CpuFeature::kAvx512Bw);
     record_hardware(has_avx512vnni, CpuFeature::kAvx512Vnni);
     record_hardware(has_avx512bf16, CpuFeature::kAvx512Bf16);
+    record_hardware(has_avx512fp16, CpuFeature::kAvx512Fp16);
     record_hardware(has_avxvnni, CpuFeature::kAvxVnni);
     record_hardware(has_amx_tile, CpuFeature::kAmxTile);
     record_hardware(has_amx_int8, CpuFeature::kAmxInt8);
@@ -180,6 +182,12 @@ CpuCapabilities DetectX86Capabilities() noexcept {
 
         if (has_avx512bf16) {
             capabilities.usable_features.Enable(CpuFeature::kAvx512Bf16);
+        }
+
+        // AVX512-FP16 uses ZMM/opmask state only; the AVX-512 XSAVE check
+        // above already covers it.
+        if (has_avx512fp16) {
+            capabilities.usable_features.Enable(CpuFeature::kAvx512Fp16);
         }
     }
 

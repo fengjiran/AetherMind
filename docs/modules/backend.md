@@ -88,7 +88,7 @@ backend 是**设备族执行能力与 kernel 目录层**：它登记 kernel desc
 
 | 类型 | 关键内容 | 语义 |
 |---|---|---|
-| `CpuFeature` | x86：SSE4.1、AVX、AVX2、FMA、F16C、AVX512F/BW/VNNI/BF16、AVXVNNI、AMX TILE/INT8/BF16；AArch64：NEON、FP16、DotProd、I8MM、BF16、SVE、SVE2 | 扁平 append-only；特征互不隐含；`kCount` 为哨兵 |
+| `CpuFeature` | x86：SSE4.1、AVX、AVX2、FMA、F16C、AVX512F/BW/VNNI/BF16/FP16、AVXVNNI、AMX TILE/INT8/BF16；AArch64：NEON、FP16、DotProd、I8MM、BF16、SVE、SVE2 | 扁平 append-only；特征互不隐含；`kCount` 为哨兵 |
 | `CpuFeatureSet` | 两个 `uint64_t`，`kWordCount = 2` | 无堆分配、`constexpr`/`noexcept`；`Contains`、`ContainsAll`、`Intersect`、`Difference`、`Hash` |
 | `CpuCapabilities` | `architecture`、`hardware_features`、`usable_features`、`effective_features`、`sve_vector_bytes` | 值类型快照；不变量 `hardware ⊇ usable ⊇ effective`；kernel 选择只看 `effective_features` |
 | `CpuFeaturePolicy` | `disabled_features`、`required_features` | 只能削减，不能启用；required 必须留在 effective |

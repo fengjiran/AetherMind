@@ -43,6 +43,7 @@ enum class CpuFeature : uint8_t {
     kAvx512Vnni,
     kAvxVnni,
     kAvx512Bf16,
+    kAvx512Fp16,
     kAmxTile,
     kAmxInt8,
     kAmxBf16,
@@ -55,9 +56,6 @@ enum class CpuFeature : uint8_t {
     kBf16,
     kSve,
     kSve2,
-
-    // x86-64; appended to keep existing enum values stable.
-    kAvx512Fp16,
 
     kCount
 };

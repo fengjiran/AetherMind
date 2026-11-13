@@ -18,6 +18,7 @@ constexpr std::array<const char*, static_cast<size_t>(CpuFeature::kCount)> kCpuF
         "AVX512VNNI",
         "AVXVNNI",
         "AVX512BF16",
+        "AVX512FP16",
         "AMX_TILE",
         "AMX_INT8",
         "AMX_BF16",
@@ -28,7 +29,6 @@ constexpr std::array<const char*, static_cast<size_t>(CpuFeature::kCount)> kCpuF
         "BF16",
         "SVE",
         "SVE2",
-        "AVX512FP16",
 };
 
 } // namespace

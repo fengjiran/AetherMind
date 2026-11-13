@@ -19,7 +19,7 @@ namespace aethermind {
 /// folding) must reference these definitions instead of maintaining private
 /// copies. The CPU Add registrations in add_entry.cpp must cover exactly
 /// these dtypes; test_cpu_add_kernel.cpp asserts the count at compile time.
-inline const std::array<DataType, 5> kAddSupportedDTypes = {
+inline const std::array kAddSupportedDTypes = {
         DataType::Float32(),
         DataType::Double(),
         DataType::BFloat(16),
@@ -32,9 +32,10 @@ inline const std::array<DataType, 5> kAddSupportedDTypes = {
 /// @param dtype Data type to check.
 /// @return True if `dtype` is in `kAddSupportedDTypes`.
 inline bool IsAddSupportedDType(const DataType& dtype) noexcept {
-    return std::ranges::any_of(kAddSupportedDTypes, [&](const DataType& supported) {
-        return dtype == supported;
-    });
+    return std::ranges::any_of(kAddSupportedDTypes,
+                               [&](const DataType& supported) {
+                                   return dtype == supported;
+                               });
 }
 
 /// @brief Builds a consistent unsupported-dtype message for Add.

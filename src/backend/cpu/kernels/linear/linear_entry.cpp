@@ -350,6 +350,7 @@ Status BuildLinearF32W16PackedIdentityArgs(const KernelParamsBuildContext& conte
             .in_features = in_features,
             .out_features = out_features,
     };
+
     if (row_count == 0 || out_features == 0) {
         ::new (params_buffer) LinearF32W16KernelArgs(args);
         return Status::Ok();
@@ -382,6 +383,7 @@ Status BuildLinearF32W16PackedIdentityArgs(const KernelParamsBuildContext& conte
         return Status::InvalidArgument(
                 "Packed W16 Linear requires non-null input and packed weight data");
     }
+
     AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis input_analysis,
                         AnalyzeRowwiseView(input, "LinearW16KernelEntry input"));
     AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
@@ -522,8 +524,8 @@ StatusOr<LinearF32KernelArgs> BuildLinearF32PackedBase(
                                 packed.data, static_cast<int64_t>(packed.nbytes),
                                 size_t{1}, "LinearKernelEntry packed weight"));
     AM_RETURN_IF_ERROR(ValidateContiguousDisjoint(
-            "CPU Linear", output_analysis.footprint().envelope(), "output",
-            packed_range, "packed weight"));
+            "CPU Linear", output_analysis.footprint().envelope(),
+            "output", packed_range, "packed weight"));
 
     args.input = input.data<float>();
     args.weight = static_cast<const float*>(packed.data);

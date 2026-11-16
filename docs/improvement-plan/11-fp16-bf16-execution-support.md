@@ -182,7 +182,7 @@ Norm 与矩阵共享 backing 时，Norm 创建 F32 storage，矩阵保留原 vie
 
 **P2：复用已有 act/weight selector。** Linear 使用 `{act=F32, weight=F16}` 或 `{act=F32, weight=BF16}`，输出 F32；Embedding 从显式 activation output 得出 act dtype。reference 读取 16-bit weight 并提升为 float，用 FP32 累加，直接写回 F32。不得用 reduced wrapper 的 `operator+=` 作为归约，也不在每个 token 展开整份 FP32 权重。
 
-**P2 W16 Linear args 合同（当前实现）。** 现有 [LinearF32KernelArgs](../../src/backend/cpu/kernels/linear/linear_internal.h) 持有 `const float* weight`。新增 CPU-private `LinearF32W16KernelArgs`，由注册的 params builder 一次构造。
+**P2 W16 Linear args 合同（当前实现）。** 现有 [LinearA32W32KernelArgs](../../src/backend/cpu/kernels/linear/linear_internal.h) 持有 `const float* weight`。新增 CPU-private `LinearA32W16KernelArgs`，由注册的 params builder 一次构造。
 
 | 字段 / 行为 | 合同 |
 |---|---|

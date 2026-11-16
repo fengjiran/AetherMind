@@ -108,10 +108,10 @@ TEST(CPUKernelGateUpLinear, CpuBackendPreparesPackedF32ReferenceKernel) {
     const auto kernel = PrepareGateUpKernel(4, 7);
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     EXPECT_EQ(kernel->op_type, OpType::kGateUpLinear);
-    EXPECT_EQ(std::string_view{kernel->name}, "cpu::gate_up_linear_f32_reference");
+    EXPECT_EQ(std::string_view{kernel->name}, "cpu::gate_up_linear_f32_w32_reference");
     EXPECT_NE(kernel->fn, nullptr);
     EXPECT_NE(kernel->params_builder, nullptr);
-    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::GateUpLinearF32KernelArgs));
+    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::GateUpLinearA32W32KernelArgs));
 
     CpuBackend backend;
     KernelSelector plain = MakeGateUpSelector();
@@ -773,8 +773,8 @@ TEST(CPUKernelGateUpLinear, PackedW16ReferenceProjectsReducedCompositeWithFp32Ac
                                             .has_bias = false}});
         ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
         EXPECT_EQ(kernel->name, dtype == DataType::Float(16)
-                                        ? "cpu::gate_up_linear_f32_f16_reference"
-                                        : "cpu::gate_up_linear_f32_bf16_reference");
+                                        ? "cpu::gate_up_linear_f32_wf16_reference"
+                                        : "cpu::gate_up_linear_f32_wbf16_reference");
 
         const PackedWeightView packed_view{
                 .data = (*packed)->storage().data(),

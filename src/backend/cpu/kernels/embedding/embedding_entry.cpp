@@ -112,7 +112,7 @@ Status BuildEmbeddingF32ReferenceArgs(
     // Empty output: no token ids to gather, nothing to write. Null data is
     // permitted for zero-element tensors (see TensorView [0] semantics).
     if (token_count == 0) {
-        ::new (params_buffer) EmbeddingF32KernelArgs{
+        ::new (params_buffer) EmbeddingA32W32KernelArgs{
                 .token_dtype = token_ids.dtype(),
                 .token_count = 0,
                 .vocab_size = vocab_size,
@@ -154,7 +154,7 @@ Status BuildEmbeddingF32ReferenceArgs(
             "CPU Embedding", output_range,
             "output", weight_range, "weight"));
 
-    ::new (params_buffer) EmbeddingF32KernelArgs{
+    ::new (params_buffer) EmbeddingA32W32KernelArgs{
             .token_ids_data = token_ids.data(),
             .token_dtype = token_ids.dtype(),
             .weight_data = weight.data<float>(),
@@ -222,7 +222,7 @@ Status BuildEmbeddingF32PackedIdentityArgs(const KernelParamsBuildContext& conte
 
     const int64_t token_count = token_ids.numel();
     if (token_count == 0) {
-        ::new (params_buffer) EmbeddingF32KernelArgs{
+        ::new (params_buffer) EmbeddingA32W32KernelArgs{
                 .token_dtype = token_ids.dtype(),
                 .token_count = 0,
                 .vocab_size = vocab_size,
@@ -259,7 +259,7 @@ Status BuildEmbeddingF32PackedIdentityArgs(const KernelParamsBuildContext& conte
             "CPU Embedding", output_range, "output", packed_range,
             "packed weight"));
 
-    ::new (params_buffer) EmbeddingF32KernelArgs{
+    ::new (params_buffer) EmbeddingA32W32KernelArgs{
             .token_ids_data = token_ids.data(),
             .token_dtype = token_ids.dtype(),
             .weight_data = static_cast<const float*>(packed.data),
@@ -272,7 +272,7 @@ Status BuildEmbeddingF32PackedIdentityArgs(const KernelParamsBuildContext& conte
 }
 
 Status EmbeddingF32ReferenceEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const EmbeddingF32KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const EmbeddingA32W32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunEmbeddingF32Reference(*args);
 }
@@ -350,7 +350,7 @@ Status BuildEmbeddingF32W16Args(const KernelParamsBuildContext& context,
 
     const int64_t token_count = tokens.numel();
     if (token_count == 0) {
-        ::new (params_buffer) EmbeddingF32W16KernelArgs{};
+        ::new (params_buffer) EmbeddingA32W16KernelArgs{};
         return Status::Ok();
     }
 
@@ -386,7 +386,7 @@ Status BuildEmbeddingF32W16Args(const KernelParamsBuildContext& context,
 
     // The complete tensor footprints prove all selected row offsets are in range.
     // The prepared conversion function has no borrowed backend or feature state.
-    ::new (params_buffer) EmbeddingF32W16KernelArgs{
+    ::new (params_buffer) EmbeddingA32W16KernelArgs{
             .token_ids = static_cast<const std::byte*>(tokens.data()),
             .token_dtype = tokens.dtype(),
             .weight = static_cast<const std::byte*>(weight.data()),
@@ -461,7 +461,7 @@ Status BuildEmbeddingF32W16PackedIdentityArgs(const KernelParamsBuildContext& co
 
     const int64_t token_count = tokens.numel();
     if (token_count == 0) {
-        ::new (params_buffer) EmbeddingF32W16KernelArgs{};
+        ::new (params_buffer) EmbeddingA32W16KernelArgs{};
         return Status::Ok();
     }
 
@@ -504,7 +504,7 @@ Status BuildEmbeddingF32W16PackedIdentityArgs(const KernelParamsBuildContext& co
             "CPU W16 Embedding", output_range,
             "output", packed_range, "packed weight"));
 
-    ::new (params_buffer) EmbeddingF32W16KernelArgs{
+    ::new (params_buffer) EmbeddingA32W16KernelArgs{
             .token_ids = static_cast<const std::byte*>(tokens.data()),
             .token_dtype = tokens.dtype(),
             .weight = static_cast<const std::byte*>(packed.data),
@@ -520,7 +520,7 @@ Status BuildEmbeddingF32W16PackedIdentityArgs(const KernelParamsBuildContext& co
 }
 
 Status EmbeddingF32W16ReferenceEntry(const KernelContext& context) noexcept {
-    const auto* args = static_cast<const EmbeddingF32W16KernelArgs*>(context.kernel_params);
+    const auto* args = static_cast<const EmbeddingA32W16KernelArgs*>(context.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunEmbeddingF32W16Reference(*args);
 }
@@ -607,7 +607,7 @@ Status BuildEmbeddingA16Args(const KernelParamsBuildContext& context,
 
     const int64_t token_count = tokens.numel();
     if (token_count == 0) {
-        ::new (params_buffer) EmbeddingA16KernelArgs{};
+        ::new (params_buffer) EmbeddingA16W16KernelArgs{};
         return Status::Ok();
     }
 
@@ -673,7 +673,7 @@ Status BuildEmbeddingA16Args(const KernelParamsBuildContext& context,
                 weight_range, "weight"));
     }
 
-    ::new (params_buffer) EmbeddingA16KernelArgs{
+    ::new (params_buffer) EmbeddingA16W16KernelArgs{
             .token_ids = static_cast<const std::byte*>(tokens.data()),
             .token_dtype = tokens.dtype(),
             .weight = weight_data,
@@ -688,7 +688,7 @@ Status BuildEmbeddingA16Args(const KernelParamsBuildContext& context,
 }
 
 Status EmbeddingA16ReferenceEntry(const KernelContext& context) noexcept {
-    const auto* args = static_cast<const EmbeddingA16KernelArgs*>(context.kernel_params);
+    const auto* args = static_cast<const EmbeddingA16W16KernelArgs*>(context.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunEmbeddingA16Reference(*args);
 }
@@ -707,7 +707,7 @@ KernelDef A16Embedding(std::string_view name) {
             .packing_recipe = Packed ? CpuIdentityPackingRecipe() : PackingRecipe{},
             .kernel_func = &EmbeddingA16ReferenceEntry,
             .priority = 10,
-            .params_size = sizeof(EmbeddingA16KernelArgs),
+            .params_size = sizeof(EmbeddingA16W16KernelArgs),
             .params_builder = &BuildEmbeddingA16Args<Bfloat, Packed>,
             .name = name,
     };
@@ -728,7 +728,7 @@ KernelDef VectorEmbedding(bool packed, CpuFeatureSet requirements, std::string_v
             .cpu_requirements = requirements,
             .kernel_func = &EmbeddingF32W16ReferenceEntry,
             .priority = 20,
-            .params_size = sizeof(EmbeddingF32W16KernelArgs),
+            .params_size = sizeof(EmbeddingA32W16KernelArgs),
             .params_builder = packed ? &BuildEmbeddingF32W16PackedIdentityArgs<Bfloat, Widen> : &BuildEmbeddingF32W16Args<Bfloat, Widen>,
             .metadata_builder = &BuildEmbeddingF32W16Metadata,
             .name = name,
@@ -738,14 +738,14 @@ KernelDef VectorEmbedding(bool packed, CpuFeatureSet requirements, std::string_v
 } // namespace
 
 // The prepared args must satisfy the PreparedExecutionBindings params arena contract.
-static_assert(std::is_trivially_destructible_v<EmbeddingF32KernelArgs>);
-static_assert(alignof(EmbeddingF32KernelArgs) <= alignof(std::max_align_t));
-static_assert(std::is_trivially_destructible_v<EmbeddingF32W16KernelArgs>);
-static_assert(alignof(EmbeddingF32W16KernelArgs) <= alignof(std::max_align_t));
-static_assert(sizeof(EmbeddingF32W16KernelArgs) <= kMaxKernelParamsSize);
-static_assert(std::is_trivially_destructible_v<EmbeddingA16KernelArgs>);
-static_assert(alignof(EmbeddingA16KernelArgs) <= alignof(std::max_align_t));
-static_assert(sizeof(EmbeddingA16KernelArgs) <= kMaxKernelParamsSize);
+static_assert(std::is_trivially_destructible_v<EmbeddingA32W32KernelArgs>);
+static_assert(alignof(EmbeddingA32W32KernelArgs) <= alignof(std::max_align_t));
+static_assert(std::is_trivially_destructible_v<EmbeddingA32W16KernelArgs>);
+static_assert(alignof(EmbeddingA32W16KernelArgs) <= alignof(std::max_align_t));
+static_assert(sizeof(EmbeddingA32W16KernelArgs) <= kMaxKernelParamsSize);
+static_assert(std::is_trivially_destructible_v<EmbeddingA16W16KernelArgs>);
+static_assert(alignof(EmbeddingA16W16KernelArgs) <= alignof(std::max_align_t));
+static_assert(sizeof(EmbeddingA16W16KernelArgs) <= kMaxKernelParamsSize);
 
 AM_REGISTER_KERNEL(CpuEmbeddingF32Reference,
                    KernelDef{
@@ -760,9 +760,9 @@ AM_REGISTER_KERNEL(CpuEmbeddingF32Reference,
                            },
                            .kernel_func = &EmbeddingF32ReferenceEntry,
                            .priority = 10,
-                           .params_size = sizeof(EmbeddingF32KernelArgs),
+                           .params_size = sizeof(EmbeddingA32W32KernelArgs),
                            .params_builder = &BuildEmbeddingF32ReferenceArgs,
-                           .name = "cpu::embedding_f32_reference",
+                           .name = "cpu::embedding_f32_w32_reference",
                    })
 
 AM_REGISTER_KERNEL(CpuEmbeddingF32PackedIdentityReference,
@@ -779,30 +779,30 @@ AM_REGISTER_KERNEL(CpuEmbeddingF32PackedIdentityReference,
                            .packing_recipe = CpuIdentityPackingRecipe(),
                            .kernel_func = &EmbeddingF32ReferenceEntry,
                            .priority = 10,
-                           .params_size = sizeof(EmbeddingF32KernelArgs),
+                           .params_size = sizeof(EmbeddingA32W32KernelArgs),
                            .params_builder = &BuildEmbeddingF32PackedIdentityArgs,
-                           .name = "cpu::embedding_f32_packed_identity_reference",
+                           .name = "cpu::embedding_f32_w32_packed_identity_reference",
                    })
 
 #if defined(FP16_HAS_F16C_CONVERSION)
 AM_REGISTER_KERNEL(CpuEmbeddingF32F16F16c,
                    (VectorEmbedding<false, ConvertFp16ToFp32F16c>(
                            false, CpuFeatureSet::From({CpuFeature::kAvx, CpuFeature::kF16c}),
-                           "cpu::embedding_f32_f16_f16c")))
+                           "cpu::embedding_f32_wf16_f16c")))
 AM_REGISTER_KERNEL(CpuEmbeddingF32F16PackedF16c,
                    (VectorEmbedding<false, ConvertFp16ToFp32F16c>(
                            true, CpuFeatureSet::From({CpuFeature::kAvx, CpuFeature::kF16c}),
-                           "cpu::embedding_f32_f16_packed_identity_f16c")))
+                           "cpu::embedding_f32_wf16_packed_identity_f16c")))
 #endif
 #if defined(BF16_HAS_AVX2_CONVERSION)
 AM_REGISTER_KERNEL(CpuEmbeddingF32Bf16Avx2,
                    (VectorEmbedding<true, ConvertBf16ToFp32Avx2>(
                            false, CpuFeatureSet::From({CpuFeature::kAvx, CpuFeature::kAvx2}),
-                           "cpu::embedding_f32_bf16_avx2")))
+                           "cpu::embedding_f32_wbf16_avx2")))
 AM_REGISTER_KERNEL(CpuEmbeddingF32Bf16PackedAvx2,
                    (VectorEmbedding<true, ConvertBf16ToFp32Avx2>(
                            true, CpuFeatureSet::From({CpuFeature::kAvx, CpuFeature::kAvx2}),
-                           "cpu::embedding_f32_bf16_packed_identity_avx2")))
+                           "cpu::embedding_f32_wbf16_packed_identity_avx2")))
 #endif
 
 AM_REGISTER_KERNEL(CpuEmbeddingF32F16Reference,
@@ -818,10 +818,10 @@ AM_REGISTER_KERNEL(CpuEmbeddingF32F16Reference,
                            },
                            .kernel_func = &EmbeddingF32W16ReferenceEntry,
                            .priority = 10,
-                           .params_size = sizeof(EmbeddingF32W16KernelArgs),
+                           .params_size = sizeof(EmbeddingA32W16KernelArgs),
                            .params_builder = &BuildEmbeddingF32W16Args<false>,
                            .metadata_builder = &BuildEmbeddingF32W16Metadata,
-                           .name = "cpu::embedding_f32_f16_reference",
+                           .name = "cpu::embedding_f32_wf16_reference",
                    })
 
 AM_REGISTER_KERNEL(CpuEmbeddingF32Bf16Reference,
@@ -837,10 +837,10 @@ AM_REGISTER_KERNEL(CpuEmbeddingF32Bf16Reference,
                            },
                            .kernel_func = &EmbeddingF32W16ReferenceEntry,
                            .priority = 10,
-                           .params_size = sizeof(EmbeddingF32W16KernelArgs),
+                           .params_size = sizeof(EmbeddingA32W16KernelArgs),
                            .params_builder = &BuildEmbeddingF32W16Args<true>,
                            .metadata_builder = &BuildEmbeddingF32W16Metadata,
-                           .name = "cpu::embedding_f32_bf16_reference",
+                           .name = "cpu::embedding_f32_wbf16_reference",
                    })
 
 AM_REGISTER_KERNEL(CpuEmbeddingF32F16PackedIdentityReference,
@@ -857,10 +857,10 @@ AM_REGISTER_KERNEL(CpuEmbeddingF32F16PackedIdentityReference,
                            .packing_recipe = CpuIdentityPackingRecipe(),
                            .kernel_func = &EmbeddingF32W16ReferenceEntry,
                            .priority = 10,
-                           .params_size = sizeof(EmbeddingF32W16KernelArgs),
+                           .params_size = sizeof(EmbeddingA32W16KernelArgs),
                            .params_builder = &BuildEmbeddingF32W16PackedIdentityArgs<false>,
                            .metadata_builder = &BuildEmbeddingF32W16Metadata,
-                           .name = "cpu::embedding_f32_f16_packed_identity_reference",
+                           .name = "cpu::embedding_f32_wf16_packed_identity_reference",
                    })
 
 AM_REGISTER_KERNEL(CpuEmbeddingF32Bf16PackedIdentityReference,
@@ -877,19 +877,19 @@ AM_REGISTER_KERNEL(CpuEmbeddingF32Bf16PackedIdentityReference,
                            .packing_recipe = CpuIdentityPackingRecipe(),
                            .kernel_func = &EmbeddingF32W16ReferenceEntry,
                            .priority = 10,
-                           .params_size = sizeof(EmbeddingF32W16KernelArgs),
+                           .params_size = sizeof(EmbeddingA32W16KernelArgs),
                            .params_builder = &BuildEmbeddingF32W16PackedIdentityArgs<true>,
                            .metadata_builder = &BuildEmbeddingF32W16Metadata,
-                           .name = "cpu::embedding_f32_bf16_packed_identity_reference",
+                           .name = "cpu::embedding_f32_wbf16_packed_identity_reference",
                    })
 
 AM_REGISTER_KERNEL(CpuEmbeddingA16F16Reference,
-                   (A16Embedding<false, false>("cpu::embedding_a16_f16_reference")))
+                   (A16Embedding<false, false>("cpu::embedding_f16_wf16_reference")))
 AM_REGISTER_KERNEL(CpuEmbeddingA16Bf16Reference,
-                   (A16Embedding<true, false>("cpu::embedding_a16_bf16_reference")))
+                   (A16Embedding<true, false>("cpu::embedding_bf16_wbf16_reference")))
 AM_REGISTER_KERNEL(CpuEmbeddingA16F16PackedIdentityReference,
-                   (A16Embedding<false, true>("cpu::embedding_a16_f16_packed_identity_reference")))
+                   (A16Embedding<false, true>("cpu::embedding_f16_wf16_packed_identity_reference")))
 AM_REGISTER_KERNEL(CpuEmbeddingA16Bf16PackedIdentityReference,
-                   (A16Embedding<true, true>("cpu::embedding_a16_bf16_packed_identity_reference")))
+                   (A16Embedding<true, true>("cpu::embedding_bf16_wbf16_packed_identity_reference")))
 
 } // namespace aethermind::cpu::detail

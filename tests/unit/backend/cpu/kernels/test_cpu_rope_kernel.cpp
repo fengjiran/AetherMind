@@ -195,7 +195,7 @@ TEST(CPUKernelRoPE, CpuBackendPreparesPlainF32ReferenceKernel) {
     EXPECT_EQ(std::string_view{kernel->name}, "cpu::rope_f32_reference");
     EXPECT_NE(kernel->fn, nullptr);
     EXPECT_NE(kernel->params_builder, nullptr);
-    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::RoPEF32KernelArgs));
+    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::RoPEA32KernelArgs));
 
     CpuBackend backend;
     KernelSelector unsupported = MakeRoPESelector();

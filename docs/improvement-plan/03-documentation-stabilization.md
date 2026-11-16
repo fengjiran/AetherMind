@@ -113,8 +113,8 @@
 
 [docs/improvement-plan/01-inference-session-generate-readiness.md](01-inference-session-generate-readiness.md) §2.2 表格将 Linear、RoPE、Argmax 标注为"无 kernel / 阻塞"，但仓库中实际存在：
 
-- [src/backend/cpu/kernels/linear/linear_f32_reference.cpp](../../src/backend/cpu/kernels/linear/linear_f32_reference.cpp)
-- [src/backend/cpu/kernels/rope/rope_f32_reference.cpp](../../src/backend/cpu/kernels/rope/rope_f32_reference.cpp)
+- [src/backend/cpu/kernels/linear/linear_a32_w32_reference.cpp](../../src/backend/cpu/kernels/linear/linear_a32_w32_reference.cpp)
+- [src/backend/cpu/kernels/rope/rope_a32_reference.cpp](../../src/backend/cpu/kernels/rope/rope_a32_reference.cpp)
 - [src/backend/cpu/kernels/argmax/argmax_f32_reference.cpp](../../src/backend/cpu/kernels/argmax/argmax_f32_reference.cpp)
 
 这是典型的"文档事实落后于实现"，且直接位于 02 号方案 Batch 0 的输入侧。

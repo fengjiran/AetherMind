@@ -305,7 +305,7 @@ TEST(ExecutionPlanBuilder, PrepareKernelForNodeBuildsTypedMetadata) {
     float epsilon = 0.0F;
     std::memcpy(&epsilon, resolved->attrs.data(), sizeof(epsilon));
     EXPECT_FLOAT_EQ(epsilon, 42.0F);
-    EXPECT_EQ(resolved->name, "cpu::rmsnorm_f32_reference");
+    EXPECT_EQ(resolved->name, "cpu::rmsnorm_f32_w32_reference");
 }
 
 TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
@@ -349,7 +349,7 @@ TEST(ExecutionPlanBuilder, BuildFreezesResolvedKernelIntoExecutionPlan) {
     EXPECT_EQ(step.workspace_requirement.alignment, 64U);
     EXPECT_EQ(step.workspace_requirement.offset, 0U);
     EXPECT_FLOAT_EQ(stored_epsilon, 11.0F);
-    EXPECT_EQ(step_kernel.name, "cpu::rmsnorm_f32_reference");
+    EXPECT_EQ(step_kernel.name, "cpu::rmsnorm_f32_w32_reference");
 }
 
 TEST(ExecutionPlanBuilder, BuildFromRawNodesValidatesInferredMetadata) {

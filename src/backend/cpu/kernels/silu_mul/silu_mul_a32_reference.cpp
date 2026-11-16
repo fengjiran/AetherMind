@@ -7,7 +7,7 @@
 
 namespace aethermind::cpu::detail {
 
-Status RunSiluMulF32Reference(const SiluMulF32KernelArgs& args) noexcept {
+Status RunSiluMulF32Reference(const SiluMulA32KernelArgs& args) noexcept {
     if (args.numel == 0) {
         return Status::Ok();
     }

@@ -121,7 +121,7 @@ Status BuildAttentionF32ReferenceArgs(const KernelParamsBuildContext& context,
             kKernelName, output_footprint, "output",
             query_footprint, "query"));
 
-    ::new (params_buffer) AttentionF32KernelArgs{
+    ::new (params_buffer) AttentionA32KernelArgs{
             .query = query.data<float>(),
             .output = output.data<float>(),
             .seq_len = query.dim(0),
@@ -171,7 +171,7 @@ StatusOr<StridedAddressFootprint> BuildKVFootprint(const KVCacheLayerStorageBind
 }
 
 StatusOr<StridedAddressFootprint> BuildOutputFootprint(
-        const AttentionF32KernelArgs& args) noexcept {
+        const AttentionA32KernelArgs& args) noexcept {
     int64_t hidden = 0;
     if (CheckOverflowMul(args.num_q_heads, args.head_dim, &hidden)) {
         return Status::InvalidArgument(
@@ -188,7 +188,7 @@ StatusOr<StridedAddressFootprint> BuildOutputFootprint(
             sizeof(float), "CPU Attention output");
 }
 
-Status ValidateReadBinding(const AttentionF32KernelArgs& args,
+Status ValidateReadBinding(const AttentionA32KernelArgs& args,
                            const KVCacheReadBinding& read) noexcept {
     const KVCacheLayerStorageBinding& storage = read.storage;
     if (storage.dtype != DataType::Float32() || storage.key_data == nullptr ||
@@ -281,7 +281,7 @@ Status BuildAttentionF32Metadata(const OpParams& params,
 }
 
 Status AttentionF32ReferenceEntry(const KernelContext& ctx) noexcept {
-    const auto* const args = static_cast<const AttentionF32KernelArgs*>(ctx.kernel_params);
+    const auto* const args = static_cast<const AttentionA32KernelArgs*>(ctx.kernel_params);
     if (args == nullptr || ctx.kv_read == nullptr) {
         return Status::FailedPrecondition(
                 "CPU Attention requires prepared args and a KV read binding");
@@ -332,7 +332,7 @@ StatusOr<StridedAddressFootprint> BuildKVFootprintKV16(
     return BuildStridedAddressFootprint(data, shape, strides, 2, cache_label);
 }
 
-Status ValidateReadBindingKV16(const AttentionF32KernelArgs& args,
+Status ValidateReadBindingKV16(const AttentionA32KernelArgs& args,
                                const KVCacheReadBinding& read,
                                DataType expected_dtype) noexcept {
     const KVCacheLayerStorageBinding& storage = read.storage;
@@ -397,7 +397,7 @@ Status ValidateReadBindingKV16(const AttentionF32KernelArgs& args,
 
 Status AttentionKV16ReferenceEntry(const KernelContext& ctx,
                                    DataType expected_dtype) noexcept {
-    const auto* const args = static_cast<const AttentionF32KernelArgs*>(ctx.kernel_params);
+    const auto* const args = static_cast<const AttentionA32KernelArgs*>(ctx.kernel_params);
     if (args == nullptr || ctx.kv_read == nullptr) {
         return Status::FailedPrecondition(
                 "CPU Attention requires prepared args and a KV read binding");
@@ -591,9 +591,9 @@ Status AttentionA16ReferenceEntry(const KernelContext& ctx) noexcept {
 } // namespace
 
 static_assert(std::is_trivially_copyable_v<AttentionF32KernelMetadata>);
-static_assert(std::is_trivially_destructible_v<AttentionF32KernelArgs>);
-static_assert(alignof(AttentionF32KernelArgs) <= alignof(std::max_align_t));
-static_assert(sizeof(AttentionF32KernelArgs) <= kMaxKernelParamsSize);
+static_assert(std::is_trivially_destructible_v<AttentionA32KernelArgs>);
+static_assert(alignof(AttentionA32KernelArgs) <= alignof(std::max_align_t));
+static_assert(sizeof(AttentionA32KernelArgs) <= kMaxKernelParamsSize);
 static_assert(std::is_trivially_destructible_v<AttentionA16KernelArgs>);
 static_assert(alignof(AttentionA16KernelArgs) <= alignof(std::max_align_t));
 static_assert(sizeof(AttentionA16KernelArgs) <= kMaxKernelParamsSize);
@@ -613,10 +613,10 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &AttentionF32ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(AttentionF32KernelArgs),
+                .params_size = sizeof(AttentionA32KernelArgs),
                 .params_builder = &BuildAttentionF32ReferenceArgs,
                 .metadata_builder = &BuildAttentionF32Metadata,
-                .name = "cpu::attention_f32_reference"})
+                .name = "cpu::attention_f32_kv32_reference"})
 
 AM_REGISTER_KERNEL(
         CpuAttentionF16Reference,
@@ -633,10 +633,10 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &AttentionF16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(AttentionF32KernelArgs),
+                .params_size = sizeof(AttentionA32KernelArgs),
                 .params_builder = &BuildAttentionF32ReferenceArgs,
                 .metadata_builder = &BuildAttentionF32Metadata,
-                .name = "cpu::attention_f16_reference"})
+                .name = "cpu::attention_f32_kvf16_reference"})
 
 AM_REGISTER_KERNEL(
         CpuAttentionBF16Reference,
@@ -653,10 +653,10 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &AttentionBF16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(AttentionF32KernelArgs),
+                .params_size = sizeof(AttentionA32KernelArgs),
                 .params_builder = &BuildAttentionF32ReferenceArgs,
                 .metadata_builder = &BuildAttentionF32Metadata,
-                .name = "cpu::attention_bf16_reference"})
+                .name = "cpu::attention_f32_kvbf16_reference"})
 
 template<bool Bfloat>
 KernelDef A16Attention(std::string_view name) {
@@ -681,8 +681,8 @@ KernelDef A16Attention(std::string_view name) {
 }
 
 AM_REGISTER_KERNEL(CpuAttentionA16F16Reference,
-                   (A16Attention<false>("cpu::attention_a16_f16_reference")))
+                   (A16Attention<false>("cpu::attention_f16_kvf16_reference")))
 AM_REGISTER_KERNEL(CpuAttentionA16Bf16Reference,
-                   (A16Attention<true>("cpu::attention_a16_bf16_reference")))
+                   (A16Attention<true>("cpu::attention_bf16_kvbf16_reference")))
 
 } // namespace aethermind::cpu::detail

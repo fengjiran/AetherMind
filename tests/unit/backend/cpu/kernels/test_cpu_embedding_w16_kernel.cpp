@@ -101,8 +101,8 @@ TEST_P(EmbeddingW16Kernel, SelectedRowWideningMatchesEveryBitPatternAndHonorsFea
     auto scalar = restricted.PrepareKernel(OpType::kEmbedding, selector,
                                            EmbeddingParams{.output_dtype = DataType::Float32()});
     ASSERT_TRUE(scalar.ok()) << scalar.status().ToString();
-    EXPECT_EQ(scalar->name, GetParam() ? "cpu::embedding_f32_bf16_reference"
-                                       : "cpu::embedding_f32_f16_reference");
+    EXPECT_EQ(scalar->name, GetParam() ? "cpu::embedding_f32_wbf16_reference"
+                                       : "cpu::embedding_f32_wf16_reference");
 
     auto capabilities = cpu::DetectCpuCapabilities();
     ASSERT_TRUE(capabilities.ok());
@@ -151,8 +151,8 @@ TEST_P(EmbeddingW16Kernel, ResolvesBothExecutionPhasesWithNoCpuFeatures) {
     for (const auto phase: {ExecPhase::kBoth, ExecPhase::kPrefill, ExecPhase::kDecode}) {
         const auto kernel = ResolveEmbeddingW16(GetParam(), phase);
         ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
-        EXPECT_EQ(kernel->name, GetParam() ? "cpu::embedding_f32_bf16_reference"
-                                           : "cpu::embedding_f32_f16_reference");
+        EXPECT_EQ(kernel->name, GetParam() ? "cpu::embedding_f32_wbf16_reference"
+                                           : "cpu::embedding_f32_wf16_reference");
         EXPECT_NE(kernel->params_builder, nullptr);
         EXPECT_LE(kernel->params_size, kMaxKernelParamsSize);
     }
@@ -446,8 +446,8 @@ TEST_P(EmbeddingW16Kernel, PackedIdentityGathersWidenedRowsAndRejectsFp32Artifac
             OpType::kEmbedding, selector,
             EmbeddingParams{.output_dtype = DataType::Float32()});
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
-    EXPECT_EQ(kernel->name, bfloat ? "cpu::embedding_f32_bf16_packed_identity_reference"
-                                   : "cpu::embedding_f32_f16_packed_identity_reference");
+    EXPECT_EQ(kernel->name, bfloat ? "cpu::embedding_f32_wbf16_packed_identity_reference"
+                                   : "cpu::embedding_f32_wf16_packed_identity_reference");
     const PackedWeightView packed_view{
             .data = (*packed)->storage().data(),
             .nbytes = (*packed)->storage().nbytes(),

@@ -21,7 +21,7 @@ float DotProduct(const float* query,
 
 } // namespace
 
-Status RunAttentionF32Reference(const AttentionF32KernelArgs& args,
+Status RunAttentionF32Reference(const AttentionA32KernelArgs& args,
                                 const KVCacheReadBinding& read) noexcept {
     const KVCacheLayerStorageBinding& storage = read.storage;
     const auto group_size = static_cast<size_t>(args.num_q_heads / args.num_kv_heads);

@@ -21,7 +21,7 @@ struct QkvLinearF32KernelMetadata {
 ///
 /// `q_weight`, `k_weight`, and `v_weight` reference the Q, K, and V row
 /// ranges of the identity-packed `[Q + K + V, in_features]` artifact.
-struct QkvLinearF32KernelArgs {
+struct QkvLinearA32W32KernelArgs {
     const float* input{};
     const float* q_weight{};
     const float* k_weight{};
@@ -45,14 +45,14 @@ struct QkvLinearF32KernelArgs {
 };
 
 /// @brief Executes the compute-ready scalar FP32 QKV projection.
-Status RunQkvLinearF32Reference(const QkvLinearF32KernelArgs& args) noexcept;
+Status RunQkvLinearF32Reference(const QkvLinearA32W32KernelArgs& args) noexcept;
 
 /// @brief Pre-validated arguments for the scalar packed W16 QKV projection.
 ///
 /// Weight pointers reference the Q, K, and V byte ranges of the
 /// identity-packed `[Q + K + V, in_features]` artifact; strides are element
 /// strides and the payload is byte-addressed like the plain W16 Linear args.
-struct QkvLinearF32W16KernelArgs {
+struct QkvLinearA32W16KernelArgs {
     const float* input{};
     const std::byte* q_weight{};
     const std::byte* k_weight{};
@@ -78,10 +78,10 @@ struct QkvLinearF32W16KernelArgs {
 
 /// @brief Executes the compute-ready scalar W16 QKV projection with FP32
 ///        accumulation, delegating each slice to the W16 Linear reference.
-Status RunQkvLinearF32W16Reference(const QkvLinearF32W16KernelArgs& args) noexcept;
+Status RunQkvLinearF32W16Reference(const QkvLinearA32W16KernelArgs& args) noexcept;
 
 /// @brief Prepared bpanel args for the three output slices of packed QKV.
-struct QkvLinearF32PackedBKernelArgs {
+struct QkvLinearA32W32PackedBKernelArgs {
     PackedGemmF32Args query{};
     PackedGemmF32Args key{};
     PackedGemmF32Args value{};
@@ -89,7 +89,7 @@ struct QkvLinearF32PackedBKernelArgs {
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status RunQkvLinearF32PackedB(
-        const QkvLinearF32PackedBKernelArgs& args) noexcept;
+        const QkvLinearA32W32PackedBKernelArgs& args) noexcept;
 #endif
 
 } // namespace aethermind::cpu::detail

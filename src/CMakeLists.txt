@@ -5,7 +5,7 @@ file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS
 
 set(AETHERMIND_AVX2_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/common/dot_product_f32_avx2.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_f32_avx2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a32_w32_avx2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_f32_avx2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_packed_b_avx2.cpp
 )
@@ -27,16 +27,16 @@ if (NOT AETHERMIND_HAS_AVX2)
 endif ()
 
 set(AETHERMIND_A16_AVX2_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_avx2.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_avx2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_w16_avx2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_w32_avx2.cpp
 )
 set(AETHERMIND_A16_AVX512BF16_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_avx512bf16.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_avx512bf16.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_w16_avx512bf16.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_w32_avx512bf16.cpp
 )
 set(AETHERMIND_A16_AVX512FP16_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_avx512fp16.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_avx512fp16.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_w16_avx512fp16.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_w32_avx512fp16.cpp
 )
 
 if (NOT AETHERMIND_HAS_AVX2_FMA OR NOT AETHERMIND_HAS_F16C)
@@ -54,33 +54,25 @@ endif ()
 add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 
-# Reference W16 reductions use a rounded F32 product followed by a rounded F32
-# add in ascending K order. ISA kernels may define their own numerical contract.
-set(AETHERMIND_W16_REFERENCE_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_w16_reference.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_reference.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/embedding/embedding_a16_reference.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_reference.cpp
+# Reference kernels with an explicit rounded-F32 reduction contract (ascending
+# K / head_dim / visible-token order). FMA contraction must stay off. The list
+# spans the W16 (a32_w16), KV16 (a32_kv16) and A16 (a16_w16 / a16_w32 /
+# a16_kv16) reference families.
+set(AETHERMIND_STRICT_FP_REFERENCE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a32_w16_reference.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_w16_reference.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/embedding/embedding_a16_w16_reference.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_w32_reference.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rope/rope_a16_reference.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/silu_mul/silu_mul_a16_reference.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/kvcache_update/kvcache_update_a16_reference.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/kvcache_update/kvcache_update_a16_kv16_reference.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/attention/attention_a32_kv16_reference.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/attention/attention_a16_kv16_reference.cpp
 )
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    set_property(SOURCE ${AETHERMIND_W16_REFERENCE_SOURCES} APPEND PROPERTY COMPILE_OPTIONS -ffp-contract=off)
+    set_property(SOURCE ${AETHERMIND_STRICT_FP_REFERENCE_SOURCES} APPEND PROPERTY COMPILE_OPTIONS -ffp-contract=off)
 elseif (MSVC)
-    set_property(SOURCE ${AETHERMIND_W16_REFERENCE_SOURCES} APPEND PROPERTY COMPILE_OPTIONS /fp:strict)
-endif ()
-
-# P3 KV16 Attention reference fixes an independent rounded F32 product/add in
-# ascending head_dim and visible-token order; FMA contraction must stay off.
-set(AETHERMIND_KV16_REFERENCE_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/attention/attention_kv16_reference.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/attention/attention_a16_reference.cpp
-)
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    set_property(SOURCE ${AETHERMIND_KV16_REFERENCE_SOURCES} APPEND PROPERTY COMPILE_OPTIONS -ffp-contract=off)
-elseif (MSVC)
-    set_property(SOURCE ${AETHERMIND_KV16_REFERENCE_SOURCES} APPEND PROPERTY COMPILE_OPTIONS /fp:strict)
+    set_property(SOURCE ${AETHERMIND_STRICT_FP_REFERENCE_SOURCES} APPEND PROPERTY COMPILE_OPTIONS /fp:strict)
 endif ()
 
 if (AETHERMIND_HAS_F16C)

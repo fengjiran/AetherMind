@@ -292,7 +292,7 @@ TEST(KVCacheUpdateKernel, ExecutesThroughCpuBackendPlanAndPreservesPadding) {
     ASSERT_TRUE(lowered.ok()) << lowered.status().ToString();
     const auto plan = ExecutionPlanBuilder::Build(runtime, *lowered);
     ASSERT_TRUE(plan.ok()) << plan.status().ToString();
-    ASSERT_EQ(plan->steps()[0].kernel.name, "cpu::kvcache_update_f32_reference");
+    ASSERT_EQ(plan->steps()[0].kernel.name, "cpu::kvcache_update_f32_kv32_reference");
 
     std::array<float, 16> key_storage{};
     std::array<float, 20> value_storage{};

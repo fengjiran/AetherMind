@@ -31,7 +31,7 @@ AM_ALWAYS_INLINE void RmsNormF32RowReference(float* output,
 } // namespace
 
 
-Status RunRmsNormF32Reference(const RmsNormF32KernelArgs& args) noexcept {
+Status RunRmsNormF32Reference(const RmsNormA32W32KernelArgs& args) noexcept {
     for (int64_t row = 0; row < args.row_count; ++row) {
         RmsNormF32RowReference(args.output + row * args.output_row_stride,
                                args.input + row * args.input_row_stride,

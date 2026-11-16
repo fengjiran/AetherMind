@@ -29,7 +29,7 @@ struct AttentionF32KernelMetadata {
 ///
 /// KV storage, visibility frontiers, and query positions are invocation-local
 /// state supplied through KernelContext::kv_read, never prepared bindings.
-struct AttentionF32KernelArgs {
+struct AttentionA32KernelArgs {
     const float* query{};
     float* output{};
     int64_t seq_len{};
@@ -44,7 +44,7 @@ struct AttentionF32KernelArgs {
 };
 
 /// @brief Runs prevalidated causal scaled dot-product FP32 Attention.
-Status RunAttentionF32Reference(const AttentionF32KernelArgs& args,
+Status RunAttentionF32Reference(const AttentionA32KernelArgs& args,
                                 const KVCacheReadBinding& read) noexcept;
 
 /// @brief Runs prevalidated causal scaled dot-product Attention over a KV16 cache.
@@ -54,7 +54,7 @@ Status RunAttentionF32Reference(const AttentionF32KernelArgs& args,
 /// visible token order); this TU is compiled with FMA contraction disabled.
 /// `kv_dtype` must be scalar Float(16) or BFloat(16) and match the read
 /// binding's storage dtype (validated by the caller).
-Status RunAttentionKV16Reference(const AttentionF32KernelArgs& args,
+Status RunAttentionKV16Reference(const AttentionA32KernelArgs& args,
                                  const KVCacheReadBinding& read,
                                  DataType kv_dtype) noexcept;
 

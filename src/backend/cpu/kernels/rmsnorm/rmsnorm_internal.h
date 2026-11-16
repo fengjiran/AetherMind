@@ -4,7 +4,7 @@
 /// @file rmsnorm_internal.h
 /// Internal declarations for the CPU RMSNorm kernel.
 ///
-/// Defines the pre-validated FP32 compute-ready args (`RmsNormF32KernelArgs`)
+/// Defines the pre-validated FP32 compute-ready args (`RmsNormA32W32KernelArgs`)
 /// and the FP32 reference/AVX2 micro-kernels. The shared templated
 /// `ValidateAndBuildRmsNormArgs` validation core is TU-local to
 /// rmsnorm_entry.cpp. Args are prepared once per PreparedExecutionBindings by
@@ -26,7 +26,7 @@ namespace aethermind::cpu::detail {
 /// implementations. Separates validation from compute. `row_count` is the
 /// product of every input dimension except the last, so rank-1 input is
 /// represented by one row.
-struct RmsNormF32KernelArgs {
+struct RmsNormA32W32KernelArgs {
     const float* input{};
     const float* weight{};
     float* output{};
@@ -45,7 +45,7 @@ struct RmsNormF32KernelArgs {
 /// @param args Pre-validated kernel arguments. All pointers must be non-null
 ///        and strides must be consistent with `row_count` and `hidden_size`.
 /// @return Ok on success, or an error when arguments are invalid.
-Status RunRmsNormF32Reference(const RmsNormF32KernelArgs& args) noexcept;
+Status RunRmsNormF32Reference(const RmsNormA32W32KernelArgs& args) noexcept;
 
 #if defined(RMSNORM_HAS_AVX2_FMA_KERNEL)
 /// @brief Runs the AVX2/FMA FP32 RMSNorm micro-kernel.
@@ -57,7 +57,7 @@ Status RunRmsNormF32Reference(const RmsNormF32KernelArgs& args) noexcept;
 ///        reference entry point. The `hidden_size` tail is handled by scalar
 ///        fallback.
 /// @return Ok on success, or an error when arguments are invalid.
-Status RunRmsNormF32Avx2Fma(const RmsNormF32KernelArgs& args) noexcept;
+Status RunRmsNormF32Avx2Fma(const RmsNormA32W32KernelArgs& args) noexcept;
 #endif
 
 /// @brief Pre-validated A16 activation / FP32 weight RMSNorm arguments.
@@ -67,7 +67,7 @@ Status RunRmsNormF32Avx2Fma(const RmsNormF32KernelArgs& args) noexcept;
 /// single FP32 copy (P2 Norm-only policy). The reference widens each activation
 /// element, reduces the variance in F32, and narrows the normalized product
 /// exactly once (frozen P4 rounding placement).
-struct RmsNormA16KernelArgs {
+struct RmsNormA16W32KernelArgs {
     const std::byte* input{};
     const float* weight{};
     std::byte* output{};
@@ -83,7 +83,7 @@ struct RmsNormA16KernelArgs {
 };
 
 /// @brief Runs the scalar A16 RMSNorm reference micro-kernel.
-Status RunRmsNormA16Reference(const RmsNormA16KernelArgs& args) noexcept;
+Status RunRmsNormA16Reference(const RmsNormA16W32KernelArgs& args) noexcept;
 
 #if defined(A16_HAS_AVX2_FMA_KERNEL)
 /// @brief Runs the A16 RMSNorm AVX2/FMA widening kernel.
@@ -92,7 +92,7 @@ Status RunRmsNormA16Reference(const RmsNormA16KernelArgs& args) noexcept;
 /// the scalar reference. The F32 variance reduction and the normalized product
 /// use eight-lane FMA groups, so the summation order differs from the scalar
 /// reference contract.
-Status RunRmsNormA16Avx2Fma(const RmsNormA16KernelArgs& args) noexcept;
+Status RunRmsNormA16Avx2Fma(const RmsNormA16W32KernelArgs& args) noexcept;
 #endif
 
 #if defined(A16_HAS_AVX512BF16_KERNEL)
@@ -101,7 +101,7 @@ Status RunRmsNormA16Avx2Fma(const RmsNormA16KernelArgs& args) noexcept;
 /// Widens BF16 with an exact left shift, reduces the variance in 16 F32 lanes,
 /// and narrows with the native BF16 conversion. Requires unit column strides;
 /// other layouts delegate to the scalar reference.
-Status RunRmsNormA16Bf16Avx512Bf16(const RmsNormA16KernelArgs& args) noexcept;
+Status RunRmsNormA16Bf16Avx512Bf16(const RmsNormA16W32KernelArgs& args) noexcept;
 #endif
 
 #if defined(A16_HAS_AVX512FP16_KERNEL)
@@ -110,7 +110,7 @@ Status RunRmsNormA16Bf16Avx512Bf16(const RmsNormA16KernelArgs& args) noexcept;
 /// Widens and narrows FP16 with the native conversions and reduces the variance
 /// in 16 F32 lanes. Requires unit column strides; other layouts delegate to the
 /// scalar reference.
-Status RunRmsNormA16F16Avx512Fp16(const RmsNormA16KernelArgs& args) noexcept;
+Status RunRmsNormA16F16Avx512Fp16(const RmsNormA16W32KernelArgs& args) noexcept;
 #endif
 
 } // namespace aethermind::cpu::detail

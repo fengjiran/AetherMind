@@ -73,7 +73,7 @@ inline double ReadStaticInvFreqUnchecked(uint32_t freq_count,
 /// with an invocation. Algorithm parameters and precomputed static frequency
 /// tables are immutable attrs owned by the resolved kernel; the args retain no
 /// borrowed vector pointers into those attrs.
-struct RoPEF32KernelArgs {
+struct RoPEA32KernelArgs {
     const float* q{};
     const float* k{};
     const int64_t* pos_ids{};
@@ -120,7 +120,7 @@ struct RoPEF32KernelArgs {
 /// @return InvalidArgument when a runtime position id is negative, Overflow
 ///         when its derived angle is not finite, or Ok after rotating both
 ///         outputs. A position failure occurs before any output write.
-Status RunRoPEF32Reference(const RoPEF32KernelArgs& args,
+Status RunRoPEF32Reference(const RoPEA32KernelArgs& args,
                            std::span<const std::byte> attrs) noexcept;
 
 /// @brief Pre-validated A16 arguments for all supported RoPE algorithms.

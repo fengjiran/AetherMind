@@ -75,7 +75,7 @@ Status BuildKVCacheUpdateF32ReferenceArgs(const KernelParamsBuildContext& contex
     AM_RETURN_IF_ERROR(BuildStridedAddressFootprint(key, "CPU KVCacheUpdate key"));
     AM_RETURN_IF_ERROR(BuildStridedAddressFootprint(value, "CPU KVCacheUpdate value"));
 
-    ::new (params_buffer) KVCacheUpdateF32KernelArgs{
+    ::new (params_buffer) KVCacheUpdateA32KernelArgs{
             .key_data = static_cast<const float*>(key.data()),
             .value_data = static_cast<const float*>(value.data()),
             .seq_len = key.dim(0),
@@ -138,7 +138,7 @@ StatusOr<StridedAddressFootprint> BuildTargetFootprint(
             data + begin_bytes, shape, strides, sizeof(float), cache_label);
 }
 
-Status ValidateNoOverlap(const KVCacheUpdateF32KernelArgs& args,
+Status ValidateNoOverlap(const KVCacheUpdateA32KernelArgs& args,
                          const KVCacheAppendBinding& append) noexcept {
     const std::array<int64_t, 2> src_shape = {args.seq_len, args.hidden};
     const std::array<int64_t, 2> key_strides = {args.key_row_stride, args.key_col_stride};
@@ -188,7 +188,7 @@ Status ValidateNoOverlap(const KVCacheUpdateF32KernelArgs& args,
                             value_target, "value");
 }
 
-Status ValidateAppend(const KVCacheUpdateF32KernelArgs& args,
+Status ValidateAppend(const KVCacheUpdateA32KernelArgs& args,
                       const KVCacheAppendBinding& append) noexcept {
     const KVCacheLayerStorageBinding& storage = append.storage;
     if (storage.dtype != DataType::Float32()) {
@@ -239,7 +239,7 @@ Status ValidateAppend(const KVCacheUpdateF32KernelArgs& args,
 }
 
 Status KVCacheUpdateF32ReferenceEntry(const KernelContext& ctx) noexcept {
-    const auto* const args = static_cast<const KVCacheUpdateF32KernelArgs*>(ctx.kernel_params);
+    const auto* const args = static_cast<const KVCacheUpdateA32KernelArgs*>(ctx.kernel_params);
     if (args == nullptr || ctx.kv_append == nullptr) {
         return Status::FailedPrecondition(
                 "CPU KVCacheUpdate requires prepared args and an append binding");
@@ -300,7 +300,7 @@ StatusOr<StridedAddressFootprint> BuildTargetFootprintKV16(
                                         shape, strides, 2, cache_label);
 }
 
-Status ValidateNoOverlapKV16(const KVCacheUpdateF32KernelArgs& args,
+Status ValidateNoOverlapKV16(const KVCacheUpdateA32KernelArgs& args,
                              const KVCacheAppendBinding& append) noexcept {
     const std::array src_shape = {args.seq_len, args.hidden};
     const std::array key_strides = {args.key_row_stride, args.key_col_stride};
@@ -346,7 +346,7 @@ Status ValidateNoOverlapKV16(const KVCacheUpdateF32KernelArgs& args,
     return require_disjoint(value_source, "value", value_target, "value");
 }
 
-Status ValidateAppendKV16(const KVCacheUpdateF32KernelArgs& args,
+Status ValidateAppendKV16(const KVCacheUpdateA32KernelArgs& args,
                           const KVCacheAppendBinding& append,
                           DataType expected_dtype) noexcept {
     const KVCacheLayerStorageBinding& storage = append.storage;
@@ -395,7 +395,7 @@ Status ValidateAppendKV16(const KVCacheUpdateF32KernelArgs& args,
 
 Status KVCacheUpdateKV16ReferenceEntry(const KernelContext& ctx,
                                        DataType expected_dtype) noexcept {
-    const auto* const args = static_cast<const KVCacheUpdateF32KernelArgs*>(ctx.kernel_params);
+    const auto* const args = static_cast<const KVCacheUpdateA32KernelArgs*>(ctx.kernel_params);
     if (args == nullptr || ctx.kv_append == nullptr) {
         return Status::FailedPrecondition(
                 "CPU KVCacheUpdate requires prepared args and an append binding");
@@ -583,9 +583,9 @@ Status KVCacheUpdateA16ReferenceEntry(const KernelContext& ctx) noexcept {
 
 } // namespace
 
-static_assert(std::is_trivially_destructible_v<KVCacheUpdateF32KernelArgs>);
-static_assert(alignof(KVCacheUpdateF32KernelArgs) <= alignof(std::max_align_t));
-static_assert(sizeof(KVCacheUpdateF32KernelArgs) <= kMaxKernelParamsSize);
+static_assert(std::is_trivially_destructible_v<KVCacheUpdateA32KernelArgs>);
+static_assert(alignof(KVCacheUpdateA32KernelArgs) <= alignof(std::max_align_t));
+static_assert(sizeof(KVCacheUpdateA32KernelArgs) <= kMaxKernelParamsSize);
 static_assert(std::is_trivially_destructible_v<KVCacheUpdateA16KernelArgs>);
 static_assert(alignof(KVCacheUpdateA16KernelArgs) <= alignof(std::max_align_t));
 static_assert(sizeof(KVCacheUpdateA16KernelArgs) <= kMaxKernelParamsSize);
@@ -603,9 +603,9 @@ AM_REGISTER_KERNEL(CpuKVCacheUpdateF32Reference,
                            },
                            .kernel_func = &KVCacheUpdateF32ReferenceEntry,
                            .priority = 10,
-                           .params_size = sizeof(KVCacheUpdateF32KernelArgs),
+                           .params_size = sizeof(KVCacheUpdateA32KernelArgs),
                            .params_builder = &BuildKVCacheUpdateF32ReferenceArgs,
-                           .name = "cpu::kvcache_update_f32_reference",
+                           .name = "cpu::kvcache_update_f32_kv32_reference",
                    })
 
 AM_REGISTER_KERNEL(CpuKVCacheUpdateF16Reference,
@@ -621,9 +621,9 @@ AM_REGISTER_KERNEL(CpuKVCacheUpdateF16Reference,
                            },
                            .kernel_func = &KVCacheUpdateF16ReferenceEntry,
                            .priority = 10,
-                           .params_size = sizeof(KVCacheUpdateF32KernelArgs),
+                           .params_size = sizeof(KVCacheUpdateA32KernelArgs),
                            .params_builder = &BuildKVCacheUpdateF32ReferenceArgs,
-                           .name = "cpu::kvcache_update_f16_reference",
+                           .name = "cpu::kvcache_update_f32_kvf16_reference",
                    })
 
 AM_REGISTER_KERNEL(CpuKVCacheUpdateBF16Reference,
@@ -639,9 +639,9 @@ AM_REGISTER_KERNEL(CpuKVCacheUpdateBF16Reference,
                            },
                            .kernel_func = &KVCacheUpdateBF16ReferenceEntry,
                            .priority = 10,
-                           .params_size = sizeof(KVCacheUpdateF32KernelArgs),
+                           .params_size = sizeof(KVCacheUpdateA32KernelArgs),
                            .params_builder = &BuildKVCacheUpdateF32ReferenceArgs,
-                           .name = "cpu::kvcache_update_bf16_reference",
+                           .name = "cpu::kvcache_update_f32_kvbf16_reference",
                    })
 
 template<bool Bfloat>
@@ -665,8 +665,8 @@ KernelDef A16KVCacheUpdate(std::string_view name) {
 }
 
 AM_REGISTER_KERNEL(CpuKVCacheUpdateA16F16Reference,
-                   (A16KVCacheUpdate<false>("cpu::kvcache_update_a16_f16_reference")))
+                   (A16KVCacheUpdate<false>("cpu::kvcache_update_f16_kvf16_reference")))
 AM_REGISTER_KERNEL(CpuKVCacheUpdateA16Bf16Reference,
-                   (A16KVCacheUpdate<true>("cpu::kvcache_update_a16_bf16_reference")))
+                   (A16KVCacheUpdate<true>("cpu::kvcache_update_bf16_kvbf16_reference")))
 
 } // namespace aethermind::cpu::detail

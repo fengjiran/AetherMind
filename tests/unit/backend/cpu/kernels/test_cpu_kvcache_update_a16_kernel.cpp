@@ -79,10 +79,10 @@ void WriteBits(std::byte* destination, uint16_t bits, size_t index) {
 TEST(CPUKernelKVCacheUpdateA16, ResolvesF16AndBF16References) {
     const auto f16 = PrepareKernel(DataType::Float(16));
     ASSERT_TRUE(f16.ok()) << f16.status().ToString();
-    EXPECT_EQ(std::string_view{f16->name}, "cpu::kvcache_update_a16_f16_reference");
+    EXPECT_EQ(std::string_view{f16->name}, "cpu::kvcache_update_f16_kvf16_reference");
     const auto bf16 = PrepareKernel(DataType::BFloat(16));
     ASSERT_TRUE(bf16.ok()) << bf16.status().ToString();
-    EXPECT_EQ(std::string_view{bf16->name}, "cpu::kvcache_update_a16_bf16_reference");
+    EXPECT_EQ(std::string_view{bf16->name}, "cpu::kvcache_update_bf16_kvbf16_reference");
 }
 
 TEST(CPUKernelKVCacheUpdateA16, CopiesStoredBitsWithoutRounding) {

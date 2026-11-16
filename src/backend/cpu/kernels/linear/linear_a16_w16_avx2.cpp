@@ -57,7 +57,7 @@ float DotProduct(const std::byte* input, const std::byte* weight, int64_t in_fea
 }
 
 template<bool Bfloat>
-Status RunAvx2(const LinearA16KernelArgs& args) noexcept {
+Status RunAvx2(const LinearA16W16KernelArgs& args) noexcept {
     // The vector loop requires unit column strides; any other positive layout
     // uses the scalar reference so the prepared arguments never fail.
     if (args.input_col_stride != 1 || args.weight_col_stride != 1 ||
@@ -92,7 +92,7 @@ Status RunAvx2(const LinearA16KernelArgs& args) noexcept {
 } // namespace
 
 #if defined(__AVX2__) && defined(__FMA__) && defined(__F16C__)
-Status RunLinearA16Avx2Fma(const LinearA16KernelArgs& args) noexcept {
+Status RunLinearA16Avx2Fma(const LinearA16W16KernelArgs& args) noexcept {
     if (args.act_dtype == DataType::BFloat(16)) {
         return RunAvx2<true>(args);
     }

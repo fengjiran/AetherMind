@@ -20,7 +20,7 @@
 namespace aethermind::cpu::detail {
 namespace {
 
-bool HasUnitColumnStrides(const RmsNormF32KernelArgs& args) noexcept {
+bool HasUnitColumnStrides(const RmsNormA32W32KernelArgs& args) noexcept {
     return args.input_col_stride == 1 && args.weight_stride == 1 && args.output_col_stride == 1;
 }
 
@@ -159,7 +159,7 @@ StatusOr<KernelArgs> ValidateAndBuildRmsNormArgs(
     return args;
 }
 
-StatusOr<RmsNormF32KernelArgs> ValidateAndBuildF32Args(
+StatusOr<RmsNormA32W32KernelArgs> ValidateAndBuildF32Args(
         const KernelParamsBuildContext& context) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
@@ -174,13 +174,13 @@ StatusOr<RmsNormF32KernelArgs> ValidateAndBuildF32Args(
                 "RmsNormKernelEntry requires float32 input, weight, and output TensorViews");
     }
 
-    return ValidateAndBuildRmsNormArgs<RmsNormF32KernelArgs>(context);
+    return ValidateAndBuildRmsNormArgs<RmsNormA32W32KernelArgs>(context);
 }
 
 Status BuildRmsNormF32ReferenceArgs(const KernelParamsBuildContext& context,
                                     void* params_buffer) noexcept {
-    AM_ASSIGN_OR_RETURN(const RmsNormF32KernelArgs args, ValidateAndBuildF32Args(context));
-    ::new (params_buffer) RmsNormF32KernelArgs(args);
+    AM_ASSIGN_OR_RETURN(const RmsNormA32W32KernelArgs args, ValidateAndBuildF32Args(context));
+    ::new (params_buffer) RmsNormA32W32KernelArgs(args);
     return Status::Ok();
 }
 
@@ -235,7 +235,7 @@ Status BuildRmsNormF32PackedIdentityArgs(
 
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "RmsNormKernelEntry"));
-    RmsNormF32KernelArgs args{
+    RmsNormA32W32KernelArgs args{
             .row_count = row_count,
             .hidden_size = hidden_size,
             .weight_stride = 1,
@@ -243,7 +243,7 @@ Status BuildRmsNormF32PackedIdentityArgs(
     };
 
     if (row_count == 0) {
-        ::new (params_buffer) RmsNormF32KernelArgs(args);
+        ::new (params_buffer) RmsNormA32W32KernelArgs(args);
         return Status::Ok();
     }
 
@@ -284,27 +284,27 @@ Status BuildRmsNormF32PackedIdentityArgs(
     args.input_col_stride = input_analysis.column_stride();
     args.output_row_stride = output_analysis.row_stride();
     args.output_col_stride = output_analysis.column_stride();
-    ::new (params_buffer) RmsNormF32KernelArgs(args);
+    ::new (params_buffer) RmsNormA32W32KernelArgs(args);
     return Status::Ok();
 }
 
 Status BuildRmsNormF32Avx2FmaArgs(const KernelParamsBuildContext& context,
                                   void* params_buffer) noexcept {
-    AM_ASSIGN_OR_RETURN(const RmsNormF32KernelArgs args, ValidateAndBuildF32Args(context));
+    AM_ASSIGN_OR_RETURN(const RmsNormA32W32KernelArgs args, ValidateAndBuildF32Args(context));
 
     if (args.row_count != 0 && !HasUnitColumnStrides(args)) {
         return Status::InvalidArgument(
                 "RmsNormKernelEntry AVX2 requires unit column strides");
     }
 
-    ::new (params_buffer) RmsNormF32KernelArgs(args);
+    ::new (params_buffer) RmsNormA32W32KernelArgs(args);
     return Status::Ok();
 }
 
 // ── A16 activation / F32 weight ──────────────────────────────────────────────
 
 template<bool Bfloat>
-StatusOr<RmsNormA16KernelArgs> ValidateAndBuildA16Args(
+StatusOr<RmsNormA16W32KernelArgs> ValidateAndBuildA16Args(
         const KernelParamsBuildContext& context) noexcept {
     const DataType expected = Bfloat ? DataType::BFloat(16) : DataType::Float(16);
     const auto inputs = context.inputs;
@@ -320,8 +320,8 @@ StatusOr<RmsNormA16KernelArgs> ValidateAndBuildA16Args(
                 "and a float32 weight");
     }
 
-    AM_ASSIGN_OR_RETURN(RmsNormA16KernelArgs args,
-                        ValidateAndBuildRmsNormArgs<RmsNormA16KernelArgs>(context));
+    AM_ASSIGN_OR_RETURN(RmsNormA16W32KernelArgs args,
+                        ValidateAndBuildRmsNormArgs<RmsNormA16W32KernelArgs>(context));
     args.act_dtype = expected;
     return args;
 }
@@ -329,9 +329,9 @@ StatusOr<RmsNormA16KernelArgs> ValidateAndBuildA16Args(
 template<bool Bfloat>
 Status BuildRmsNormA16ReferenceArgs(const KernelParamsBuildContext& context,
                                     void* params_buffer) noexcept {
-    AM_ASSIGN_OR_RETURN(const RmsNormA16KernelArgs args,
+    AM_ASSIGN_OR_RETURN(const RmsNormA16W32KernelArgs args,
                         ValidateAndBuildA16Args<Bfloat>(context));
-    ::new (params_buffer) RmsNormA16KernelArgs(args);
+    ::new (params_buffer) RmsNormA16W32KernelArgs(args);
     return Status::Ok();
 }
 
@@ -389,7 +389,7 @@ Status BuildRmsNormA16PackedIdentityArgs(const KernelParamsBuildContext& context
 
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "RmsNormKernelEntry"));
-    RmsNormA16KernelArgs args{
+    RmsNormA16W32KernelArgs args{
             .act_dtype = expected,
             .row_count = row_count,
             .hidden_size = hidden_size,
@@ -398,7 +398,7 @@ Status BuildRmsNormA16PackedIdentityArgs(const KernelParamsBuildContext& context
     };
 
     if (row_count == 0) {
-        ::new (params_buffer) RmsNormA16KernelArgs(args);
+        ::new (params_buffer) RmsNormA16W32KernelArgs(args);
         return Status::Ok();
     }
 
@@ -438,7 +438,7 @@ Status BuildRmsNormA16PackedIdentityArgs(const KernelParamsBuildContext& context
     args.input_col_stride = input_analysis.column_stride();
     args.output_row_stride = output_analysis.row_stride();
     args.output_col_stride = output_analysis.column_stride();
-    ::new (params_buffer) RmsNormA16KernelArgs(args);
+    ::new (params_buffer) RmsNormA16W32KernelArgs(args);
     return Status::Ok();
 }
 
@@ -461,20 +461,20 @@ Status BuildRmsNormF32Metadata(const OpParams& params,
 }
 
 Status RmsNormF32ReferenceEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const RmsNormF32KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const RmsNormA32W32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunRmsNormF32Reference(*args);
 }
 
 Status RmsNormA16ReferenceEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const RmsNormA16KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const RmsNormA16W32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunRmsNormA16Reference(*args);
 }
 
 #if defined(A16_HAS_AVX2_FMA_KERNEL)
 Status RmsNormA16Avx2FmaEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const RmsNormA16KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const RmsNormA16W32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunRmsNormA16Avx2Fma(*args);
 }
@@ -482,7 +482,7 @@ Status RmsNormA16Avx2FmaEntry(const KernelContext& ctx) noexcept {
 
 #if defined(A16_HAS_AVX512BF16_KERNEL)
 Status RmsNormA16Bf16Avx512Bf16Entry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const RmsNormA16KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const RmsNormA16W32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunRmsNormA16Bf16Avx512Bf16(*args);
 }
@@ -490,7 +490,7 @@ Status RmsNormA16Bf16Avx512Bf16Entry(const KernelContext& ctx) noexcept {
 
 #if defined(A16_HAS_AVX512FP16_KERNEL)
 Status RmsNormA16F16Avx512Fp16Entry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const RmsNormA16KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const RmsNormA16W32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunRmsNormA16F16Avx512Fp16(*args);
 }
@@ -498,7 +498,7 @@ Status RmsNormA16F16Avx512Fp16Entry(const KernelContext& ctx) noexcept {
 
 #if defined(RMSNORM_HAS_AVX2_FMA_KERNEL)
 Status RmsNormF32Avx2FmaEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const RmsNormF32KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const RmsNormA32W32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunRmsNormF32Avx2Fma(*args);
 }
@@ -506,11 +506,11 @@ Status RmsNormF32Avx2FmaEntry(const KernelContext& ctx) noexcept {
 
 } // namespace
 
-static_assert(std::is_trivially_destructible_v<RmsNormF32KernelArgs>);
-static_assert(alignof(RmsNormF32KernelArgs) <= alignof(std::max_align_t));
-static_assert(std::is_trivially_destructible_v<RmsNormA16KernelArgs>);
-static_assert(alignof(RmsNormA16KernelArgs) <= alignof(std::max_align_t));
-static_assert(sizeof(RmsNormA16KernelArgs) <= kMaxKernelParamsSize);
+static_assert(std::is_trivially_destructible_v<RmsNormA32W32KernelArgs>);
+static_assert(alignof(RmsNormA32W32KernelArgs) <= alignof(std::max_align_t));
+static_assert(std::is_trivially_destructible_v<RmsNormA16W32KernelArgs>);
+static_assert(alignof(RmsNormA16W32KernelArgs) <= alignof(std::max_align_t));
+static_assert(sizeof(RmsNormA16W32KernelArgs) <= kMaxKernelParamsSize);
 
 AM_REGISTER_KERNEL(
         CpuRmsNormF32Reference,
@@ -526,10 +526,10 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &RmsNormF32ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(RmsNormF32KernelArgs),
+                .params_size = sizeof(RmsNormA32W32KernelArgs),
                 .params_builder = &BuildRmsNormF32ReferenceArgs,
                 .metadata_builder = &BuildRmsNormF32Metadata,
-                .name = "cpu::rmsnorm_f32_reference"});
+                .name = "cpu::rmsnorm_f32_w32_reference"});
 
 AM_REGISTER_KERNEL(
         CpuRmsNormF32PackedIdentityReference,
@@ -546,10 +546,10 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &RmsNormF32ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(RmsNormF32KernelArgs),
+                .params_size = sizeof(RmsNormA32W32KernelArgs),
                 .params_builder = &BuildRmsNormF32PackedIdentityArgs,
                 .metadata_builder = &BuildRmsNormF32Metadata,
-                .name = "cpu::rmsnorm_f32_packed_identity_reference"});
+                .name = "cpu::rmsnorm_f32_w32_packed_identity_reference"});
 
 template<bool Bfloat, bool Packed>
 KernelDef A16RmsNorm(std::string_view name) {
@@ -566,20 +566,20 @@ KernelDef A16RmsNorm(std::string_view name) {
             .packing_recipe = Packed ? CpuIdentityPackingRecipe() : PackingRecipe{},
             .kernel_func = &RmsNormA16ReferenceEntry,
             .priority = 10,
-            .params_size = sizeof(RmsNormA16KernelArgs),
+            .params_size = sizeof(RmsNormA16W32KernelArgs),
             .params_builder = Packed ? &BuildRmsNormA16PackedIdentityArgs<Bfloat> : &BuildRmsNormA16ReferenceArgs<Bfloat>,
             .metadata_builder = &BuildRmsNormF32Metadata,
             .name = name};
 }
 
 AM_REGISTER_KERNEL(CpuRmsNormA16F16Reference,
-                   (A16RmsNorm<false, false>("cpu::rmsnorm_a16_f16_reference")))
+                   (A16RmsNorm<false, false>("cpu::rmsnorm_f16_w32_reference")))
 AM_REGISTER_KERNEL(CpuRmsNormA16Bf16Reference,
-                   (A16RmsNorm<true, false>("cpu::rmsnorm_a16_bf16_reference")))
+                   (A16RmsNorm<true, false>("cpu::rmsnorm_bf16_w32_reference")))
 AM_REGISTER_KERNEL(CpuRmsNormA16F16PackedIdentityReference,
-                   (A16RmsNorm<false, true>("cpu::rmsnorm_a16_f16_packed_identity_reference")))
+                   (A16RmsNorm<false, true>("cpu::rmsnorm_f16_w32_packed_identity_reference")))
 AM_REGISTER_KERNEL(CpuRmsNormA16Bf16PackedIdentityReference,
-                   (A16RmsNorm<true, true>("cpu::rmsnorm_a16_bf16_packed_identity_reference")))
+                   (A16RmsNorm<true, true>("cpu::rmsnorm_bf16_w32_packed_identity_reference")))
 
 namespace {
 
@@ -602,7 +602,7 @@ KernelDef A16RmsNormDef(Status (*entry)(const KernelContext&) noexcept,
             .cpu_requirements = requirements,
             .kernel_func = entry,
             .priority = priority,
-            .params_size = sizeof(RmsNormA16KernelArgs),
+            .params_size = sizeof(RmsNormA16W32KernelArgs),
             .params_builder = Packed ? &BuildRmsNormA16PackedIdentityArgs<Bfloat> : &BuildRmsNormA16ReferenceArgs<Bfloat>,
             .metadata_builder = &BuildRmsNormF32Metadata,
             .name = name,
@@ -617,25 +617,25 @@ AM_REGISTER_KERNEL(
         (A16RmsNormDef<false, false>(&RmsNormA16Avx2FmaEntry,
                                      CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma,
                                                           CpuFeature::kF16c}),
-                                     20, "cpu::rmsnorm_a16_f16_avx2_fma")))
+                                     20, "cpu::rmsnorm_f16_w32_avx2_fma")))
 AM_REGISTER_KERNEL(
         CpuRmsNormA16Bf16Avx2Fma,
         (A16RmsNormDef<true, false>(&RmsNormA16Avx2FmaEntry,
                                     CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma,
                                                          CpuFeature::kF16c}),
-                                    20, "cpu::rmsnorm_a16_bf16_avx2_fma")))
+                                    20, "cpu::rmsnorm_bf16_w32_avx2_fma")))
 AM_REGISTER_KERNEL(
         CpuRmsNormA16F16PackedIdentityAvx2Fma,
         (A16RmsNormDef<false, true>(&RmsNormA16Avx2FmaEntry,
                                     CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma,
                                                          CpuFeature::kF16c}),
-                                    20, "cpu::rmsnorm_a16_f16_packed_identity_avx2_fma")))
+                                    20, "cpu::rmsnorm_f16_w32_packed_identity_avx2_fma")))
 AM_REGISTER_KERNEL(
         CpuRmsNormA16Bf16PackedIdentityAvx2Fma,
         (A16RmsNormDef<true, true>(&RmsNormA16Avx2FmaEntry,
                                    CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma,
                                                         CpuFeature::kF16c}),
-                                   20, "cpu::rmsnorm_a16_bf16_packed_identity_avx2_fma")))
+                                   20, "cpu::rmsnorm_bf16_w32_packed_identity_avx2_fma")))
 #endif
 
 #if defined(A16_HAS_AVX512BF16_KERNEL)
@@ -644,13 +644,13 @@ AM_REGISTER_KERNEL(
         (A16RmsNormDef<true, false>(
                 &RmsNormA16Bf16Avx512Bf16Entry,
                 CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Bf16}),
-                30, "cpu::rmsnorm_a16_bf16_avx512_bf16")))
+                30, "cpu::rmsnorm_bf16_w32_avx512_bf16")))
 AM_REGISTER_KERNEL(
         CpuRmsNormA16Bf16PackedIdentityAvx512Bf16,
         (A16RmsNormDef<true, true>(
                 &RmsNormA16Bf16Avx512Bf16Entry,
                 CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Bf16}),
-                30, "cpu::rmsnorm_a16_bf16_packed_identity_avx512_bf16")))
+                30, "cpu::rmsnorm_bf16_w32_packed_identity_avx512_bf16")))
 #endif
 
 #if defined(A16_HAS_AVX512FP16_KERNEL)
@@ -659,13 +659,13 @@ AM_REGISTER_KERNEL(
         (A16RmsNormDef<false, false>(
                 &RmsNormA16F16Avx512Fp16Entry,
                 CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Fp16}),
-                30, "cpu::rmsnorm_a16_f16_avx512_fp16")))
+                30, "cpu::rmsnorm_f16_w32_avx512_fp16")))
 AM_REGISTER_KERNEL(
         CpuRmsNormA16F16PackedIdentityAvx512Fp16,
         (A16RmsNormDef<false, true>(
                 &RmsNormA16F16Avx512Fp16Entry,
                 CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Fp16}),
-                30, "cpu::rmsnorm_a16_f16_packed_identity_avx512_fp16")))
+                30, "cpu::rmsnorm_f16_w32_packed_identity_avx512_fp16")))
 #endif
 
 #if defined(RMSNORM_HAS_AVX2_FMA_KERNEL)
@@ -684,10 +684,10 @@ AM_REGISTER_KERNEL(
                 .cpu_requirements = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
                 .kernel_func = &RmsNormF32Avx2FmaEntry,
                 .priority = 20,
-                .params_size = sizeof(RmsNormF32KernelArgs),
+                .params_size = sizeof(RmsNormA32W32KernelArgs),
                 .params_builder = &BuildRmsNormF32Avx2FmaArgs,
                 .metadata_builder = &BuildRmsNormF32Metadata,
-                .name = "cpu::rmsnorm_f32_avx2_fma"});
+                .name = "cpu::rmsnorm_f32_w32_avx2_fma"});
 #endif
 
 } // namespace aethermind::cpu::detail

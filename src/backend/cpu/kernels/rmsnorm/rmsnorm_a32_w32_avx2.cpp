@@ -97,7 +97,7 @@ AM_ALWAYS_INLINE void RmsNormF32RowAvx2Fma(float* output,
 /// output_col_stride all equal 1), finite positive epsilon, and sufficient
 /// backing storage for every addressed element. Runtime validation belongs in
 /// the RMSNorm entry.
-Status RunRmsNormF32Avx2Fma(const RmsNormF32KernelArgs& args) noexcept {
+Status RunRmsNormF32Avx2Fma(const RmsNormA32W32KernelArgs& args) noexcept {
     for (int64_t row = 0; row < args.row_count; ++row) {
         RmsNormF32RowAvx2Fma(args.output + row * args.output_row_stride,
                              args.input + row * args.input_row_stride,

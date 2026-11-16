@@ -16,7 +16,7 @@
 namespace {
 
 using namespace aethermind;
-using cpu::detail::SiluMulF32KernelArgs;
+using cpu::detail::SiluMulA32KernelArgs;
 
 KernelSelector MakeSelector(const DataType& dtype = DataType::Float32()) {
     return KernelSelector{
@@ -96,7 +96,7 @@ TEST(CPUKernelSiluMul, ResolvesF32ReferenceDescriptor) {
 
     EXPECT_EQ(kernel->name, "cpu::silu_mul_f32_reference");
     EXPECT_EQ(kernel->op_type, OpType::kSiluMul);
-    EXPECT_EQ(kernel->params_size, sizeof(SiluMulF32KernelArgs));
+    EXPECT_EQ(kernel->params_size, sizeof(SiluMulA32KernelArgs));
     EXPECT_NE(kernel->params_builder, nullptr);
     EXPECT_TRUE(kernel->attrs.empty());
     EXPECT_EQ(kernel->workspace_requirement.bytes, 0U);
@@ -105,7 +105,7 @@ TEST(CPUKernelSiluMul, ResolvesF32ReferenceDescriptor) {
 TEST(CPUKernelSiluMul, Float16SelectorResolvesA16Reference) {
     const auto kernel = PrepareSiluMulKernel(DataType::Float(16));
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
-    EXPECT_EQ(std::string_view{kernel->name}, "cpu::silu_mul_a16_f16_reference");
+    EXPECT_EQ(std::string_view{kernel->name}, "cpu::silu_mul_f16_reference");
 }
 
 TEST(CPUKernelSiluMul, ContiguousValuesUseStableLargeMagnitudeFormula) {

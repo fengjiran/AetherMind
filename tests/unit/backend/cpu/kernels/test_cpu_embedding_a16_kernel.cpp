@@ -66,8 +66,8 @@ TEST(CPUKernelEmbeddingA16, ResolvesPlainReferencesForBothDtypes) {
                 OpParams{EmbeddingParams{}});
         ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
         EXPECT_EQ(std::string_view{kernel->name},
-                  dtype == DataType::Float(16) ? "cpu::embedding_a16_f16_reference"
-                                               : "cpu::embedding_a16_bf16_reference");
+                  dtype == DataType::Float(16) ? "cpu::embedding_f16_wf16_reference"
+                                               : "cpu::embedding_bf16_wbf16_reference");
     }
 }
 
@@ -172,7 +172,7 @@ TEST(CPUKernelEmbeddingA16, PackedIdentityGatherCopiesStoredBits) {
             OpType::kEmbedding, selector, OpParams{EmbeddingParams{}});
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     EXPECT_EQ(std::string_view{kernel->name},
-              "cpu::embedding_a16_bf16_packed_identity_reference");
+              "cpu::embedding_bf16_wbf16_packed_identity_reference");
 
     constexpr int64_t token_ids[1] = {1};
     constexpr int64_t token_shape[1] = {1};

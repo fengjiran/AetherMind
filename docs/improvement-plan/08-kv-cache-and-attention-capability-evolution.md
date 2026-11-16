@@ -32,7 +32,7 @@
 | `KVCacheStorage` 按值拥有 layout 与 K/V Buffer；`KVCacheSessionView` 仅借用 Manager 的 storage/session state 并经 storage 读取布局，`valid()` 检查 generation；Manager 在 Reset/Release 校验这两个借用指针的身份 | [KV view](../../src/kv_cache/kv_cache_session_view.cpp)、[KV manager](../../src/kv_cache/kv_cache_manager.cpp) | view 可复制；Manager 必须长于所有 view、保持地址稳定，访问由调用方串行化 |
 | `LayerRunner` 完整 plan 成功后提交 KV watermark；`KVCacheUpdate`/`Attention` 已有窄绑定与真实 tiny Llama 执行证据 | [LayerRunner](../../src/execution/layer_runner.cpp)、[M4/M5 测试](../../tests/unit/inference/test_direct_prefill_decode.cpp) | 这是正确性 baseline；不等于 KV 生命周期全部边界已经验证 |
 | CPU KVCacheUpdate 与 Attention descriptor 只接受 FP32 KV storage | [KVCacheUpdate entry](../../src/backend/cpu/kernels/kvcache_update/kvcache_update_entry.cpp)、[Attention entry](../../src/backend/cpu/kernels/attention/attention_entry.cpp) | PRD 的 FP16/BF16 KV 图示尚无 production kernel 证据 |
-| FP32 Attention reference 对每个 query/head 扫描 K 两遍，第二遍读 V；不物化完整 score 矩阵 | [reference 实现](../../src/backend/cpu/kernels/attention/attention_f32_reference.cpp) | CPU blocked/online 方案的收益仍需 benchmark；不可直接套用 GPU 结论 |
+| FP32 Attention reference 对每个 query/head 扫描 K 两遍，第二遍读 V；不物化完整 score 矩阵 | [reference 实现](../../src/backend/cpu/kernels/attention/attention_a32_kv32_reference.cpp) | CPU blocked/online 方案的收益仍需 benchmark；不可直接套用 GPU 结论 |
 
 [tests/unit/kv_cache/test_kv_cache_manager.cpp](../../tests/unit/kv_cache/test_kv_cache_manager.cpp) 覆盖基本 reserve/reset/release、越界、cross-manager Reset/Release 拒绝、成功或失败 re-init 后旧 view 永不复活，以及未借用 view 时的 Manager 移动。下述旧行为保留为缺陷背景，当前实现与验证边界分别说明。
 

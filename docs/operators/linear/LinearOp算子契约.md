@@ -224,13 +224,13 @@ kernel 解析与冻结由 `ExecutionPlanBuilder::PrepareKernelForNode` 按 `Kern
 执行期参数绑定：
 
 - `ExecutionPlanBuilder::Build` 解析并冻结 kernel，但不绑定 concrete TensorView。
-- 调用方提供 external bindings；`PrepareExecutionBindings` 生成 per-value/per-step TensorViews，并在 cold path 调用 `params_builder`（`BuildLinearF32ReferenceArgs`）完成全部 dtype/rank/shape/stride/alias/溢出校验并 placement-new `LinearF32KernelArgs`。
+- 调用方提供 external bindings；`PrepareExecutionBindings` 生成 per-value/per-step TensorViews，并在 cold path 调用 `params_builder`（`BuildLinearF32ReferenceArgs`）完成全部 dtype/rank/shape/stride/alias/溢出校验并 placement-new `LinearA32W32KernelArgs`。
 - `ExecutionContext` 按值持有 `PreparedExecutionBindings`；执行热路径通过 `InvokePreparedKernel` 直接使用已准备的 params，不再按 step 构造或校验。
 - params 由 `PreparedExecutionBindings` 的 arena 持有（trivially destructible）；external data pointer、shape、stride、dtype 或 alias 变化时必须重新 prepare。
 
 `LinearF32ReferenceEntry` 负责：
 
-- `static_cast` 出 `LinearF32KernelArgs`（`AM_DCHECK` 非空）并调用 `RunLinearF32Reference`；不做热路径校验。
+- `static_cast` 出 `LinearA32W32KernelArgs`（`AM_DCHECK` 非空）并调用 `RunLinearF32Reference`；不做热路径校验。
 
 `RunLinearF32Reference` 是已验证参数上的 typed compute primitive：
 

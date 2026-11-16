@@ -93,8 +93,8 @@ void ExpectRoPEMatchesOracle(DataType dtype) {
             OpType::kRoPE, MakeSelector(dtype), OpParams{MakeParams()});
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     EXPECT_EQ(std::string_view{kernel->name},
-              dtype == DataType::Float(16) ? "cpu::rope_a16_f16_reference"
-                                           : "cpu::rope_a16_bf16_reference");
+              dtype == DataType::Float(16) ? "cpu::rope_f16_reference"
+                                           : "cpu::rope_bf16_reference");
 
     const std::array<int64_t, 2> positions{0, 1};
     constexpr std::array<float, 8> q_values{

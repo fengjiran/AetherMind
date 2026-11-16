@@ -104,10 +104,10 @@ TEST(CPUKernelAttention, CpuBackendPreparesPlainF32ReferenceKernel) {
     const auto kernel = PrepareAttentionKernel();
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     EXPECT_EQ(kernel->op_type, OpType::kAttention);
-    EXPECT_EQ(std::string_view{kernel->name}, "cpu::attention_f32_reference");
+    EXPECT_EQ(std::string_view{kernel->name}, "cpu::attention_f32_kv32_reference");
     EXPECT_NE(kernel->fn, nullptr);
     EXPECT_NE(kernel->params_builder, nullptr);
-    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::AttentionF32KernelArgs));
+    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::AttentionA32KernelArgs));
 
     CpuBackend backend;
     KernelSelector unsupported = MakeAttentionSelector();

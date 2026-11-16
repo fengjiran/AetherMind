@@ -36,7 +36,7 @@ KV 指针、read frontiers 和 query positions 只通过本次 `kv_read` binding
 4. 第二遍按同序重算 score，使用 F32 `exp(score - max)`，按序累加 F32 denominator 和独立 product/add 的 weighted V。
 5. 每个 output component 最后以 F32 denominator 相除。
 
-新 P3 reference TU 禁用 FMA contraction 和 fast-math。既有 [F32 reference](../../../src/backend/cpu/kernels/attention/attention_f32_reference.cpp) 不因 KV16 合同自动取得该新增的局部编译要求，也不要求在本步修改其数值行为。优化路径在固定误差门禁下独立验收，不能隐式将 Q 窄化。
+新 P3 reference TU 禁用 FMA contraction 和 fast-math。既有 [F32 reference](../../../src/backend/cpu/kernels/attention/attention_a32_kv32_reference.cpp) 不因 KV16 合同自动取得该新增的局部编译要求，也不要求在本步修改其数值行为。优化路径在固定误差门禁下独立验收，不能隐式将 Q 窄化。
 
 质量/误差门禁采用 FE_TONEAREST、F32 gradual underflow（x86 FTZ/DAZ 关闭）。Attention 不设置或恢复调用方浮点控制；`*`、`+`、`exp`、`/` 可以产生浮点异常 flags。cache widening 自身仍须满足 [FP16](../fp16_conversion/README.md) / [BF16](../bf16_conversion/README.md) 的转换环境合同。
 

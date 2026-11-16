@@ -19,7 +19,7 @@ namespace aethermind::cpu::detail {
 /// injectivity, address arithmetic, and alias safety before this structure is
 /// executed without allocation or registry lookup. Operands carry their
 /// semantic names: gate is activated, up is multiplied directly.
-struct SiluMulF32KernelArgs {
+struct SiluMulA32KernelArgs {
     const float* gate_data{};
     const float* up_data{};
     float* output_data{};
@@ -37,7 +37,7 @@ struct SiluMulF32KernelArgs {
 };
 
 /// Runs the FP32, broadcast- and stride-aware SiluMul reference micro-kernel.
-Status RunSiluMulF32Reference(const SiluMulF32KernelArgs& args) noexcept;
+Status RunSiluMulF32Reference(const SiluMulA32KernelArgs& args) noexcept;
 
 /// Pre-validated A16 arguments for the broadcast-aware SiluMul reference kernel.
 ///

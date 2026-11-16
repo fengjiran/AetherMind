@@ -19,7 +19,7 @@ uint16_t NarrowElement(float value, DataType kv_dtype) noexcept {
 
 } // namespace
 
-Status RunKVCacheUpdateKV16Reference(const KVCacheUpdateF32KernelArgs& args,
+Status RunKVCacheUpdateKV16Reference(const KVCacheUpdateA32KernelArgs& args,
                                      const KVCacheAppendBinding& append,
                                      DataType kv_dtype) noexcept {
     const KVCacheLayerStorageBinding& storage = append.storage;

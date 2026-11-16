@@ -80,7 +80,7 @@ StatusOr<int64_t> ValidateActivationViews(
     return hidden_size;
 }
 
-StatusOr<AddRmsNormF32KernelArgs> BuildNonEmptyArgs(
+StatusOr<AddRmsNormA32W32KernelArgs> BuildNonEmptyArgs(
         const TensorView& input,
         const TensorView& residual,
         const MutableTensorView& output,
@@ -150,7 +150,7 @@ StatusOr<AddRmsNormF32KernelArgs> BuildNonEmptyArgs(
                 packed_range, "packed weight"));
     }
 
-    return AddRmsNormF32KernelArgs{
+    return AddRmsNormA32W32KernelArgs{
             .input = input.data<float>(),
             .residual = residual.data<float>(),
             .weight = weight,
@@ -197,7 +197,7 @@ Status BuildAddRmsNormF32PlainArgs(const KernelParamsBuildContext& context,
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "AddRmsNormKernelEntry"));
     if (row_count == 0) {
-        ::new (params_buffer) AddRmsNormF32KernelArgs{
+        ::new (params_buffer) AddRmsNormA32W32KernelArgs{
                 .row_count = 0,
                 .hidden_size = hidden_size,
                 .eps = eps,
@@ -207,11 +207,11 @@ Status BuildAddRmsNormF32PlainArgs(const KernelParamsBuildContext& context,
 
     AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis weight_analysis,
                         AnalyzeRowwiseView(weight, "AddRmsNormKernelEntry weight"));
-    AM_ASSIGN_OR_RETURN(const AddRmsNormF32KernelArgs args,
+    AM_ASSIGN_OR_RETURN(const AddRmsNormA32W32KernelArgs args,
                         BuildNonEmptyArgs(input, residual, output, new_residual,
                                           weight.data<float>(), weight_analysis.column_stride(),
                                           &weight_analysis, nullptr, hidden_size, eps));
-    ::new (params_buffer) AddRmsNormF32KernelArgs(args);
+    ::new (params_buffer) AddRmsNormA32W32KernelArgs(args);
     return Status::Ok();
 }
 
@@ -247,7 +247,7 @@ Status BuildAddRmsNormF32PackedIdentityArgs(
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "AddRmsNormKernelEntry"));
     if (row_count == 0) {
-        ::new (params_buffer) AddRmsNormF32KernelArgs{
+        ::new (params_buffer) AddRmsNormA32W32KernelArgs{
                 .row_count = 0,
                 .hidden_size = hidden_size,
                 .eps = eps,
@@ -260,12 +260,12 @@ Status BuildAddRmsNormF32PackedIdentityArgs(
                 "AddRmsNormKernelEntry requires packed weight data for non-empty tensors");
     }
 
-    AM_ASSIGN_OR_RETURN(const AddRmsNormF32KernelArgs args,
+    AM_ASSIGN_OR_RETURN(const AddRmsNormA32W32KernelArgs args,
                         BuildNonEmptyArgs(
                                 input, residual, output, new_residual,
                                 static_cast<const float*>(context.packed_weight->data), 1,
                                 nullptr, &*context.packed_weight, hidden_size, eps));
-    ::new (params_buffer) AddRmsNormF32KernelArgs(args);
+    ::new (params_buffer) AddRmsNormA32W32KernelArgs(args);
     return Status::Ok();
 }
 
@@ -288,16 +288,16 @@ Status BuildAddRmsNormF32Metadata(const OpParams& params,
 }
 
 Status AddRmsNormF32ReferenceEntry(const KernelContext& context) noexcept {
-    const auto* args = static_cast<const AddRmsNormF32KernelArgs*>(context.kernel_params);
+    const auto* args = static_cast<const AddRmsNormA32W32KernelArgs*>(context.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunAddRmsNormF32Reference(*args);
 }
 
 } // namespace
 
-static_assert(std::is_trivially_destructible_v<AddRmsNormF32KernelArgs>);
-static_assert(sizeof(AddRmsNormF32KernelArgs) <= kMaxKernelParamsSize);
-static_assert(alignof(AddRmsNormF32KernelArgs) <= alignof(std::max_align_t));
+static_assert(std::is_trivially_destructible_v<AddRmsNormA32W32KernelArgs>);
+static_assert(sizeof(AddRmsNormA32W32KernelArgs) <= kMaxKernelParamsSize);
+static_assert(alignof(AddRmsNormA32W32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
         CpuAddRmsNormF32Reference,
@@ -313,10 +313,10 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &AddRmsNormF32ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(AddRmsNormF32KernelArgs),
+                .params_size = sizeof(AddRmsNormA32W32KernelArgs),
                 .params_builder = &BuildAddRmsNormF32PlainArgs,
                 .metadata_builder = &BuildAddRmsNormF32Metadata,
-                .name = "cpu::add_rmsnorm_f32_reference"})
+                .name = "cpu::add_rmsnorm_f32_w32_reference"})
 
 AM_REGISTER_KERNEL(
         CpuAddRmsNormF32PackedIdentityReference,
@@ -333,9 +333,9 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &AddRmsNormF32ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(AddRmsNormF32KernelArgs),
+                .params_size = sizeof(AddRmsNormA32W32KernelArgs),
                 .params_builder = &BuildAddRmsNormF32PackedIdentityArgs,
                 .metadata_builder = &BuildAddRmsNormF32Metadata,
-                .name = "cpu::add_rmsnorm_f32_packed_identity_reference"})
+                .name = "cpu::add_rmsnorm_f32_w32_packed_identity_reference"})
 
 } // namespace aethermind::cpu::detail

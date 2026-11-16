@@ -21,7 +21,7 @@ struct GateUpLinearF32KernelMetadata {
 /// `gate_weight` and `up_weight` reference the Gate and Up row ranges of the
 /// identity-packed `[gate_out_features + up_out_features, in_features]`
 /// artifact. Activation and multiplication remain separate semantic nodes.
-struct GateUpLinearF32KernelArgs {
+struct GateUpLinearA32W32KernelArgs {
     const float* input{};
     const float* gate_weight{};
     const float* up_weight{};
@@ -40,14 +40,14 @@ struct GateUpLinearF32KernelArgs {
 };
 
 /// @brief Executes the compute-ready scalar FP32 Gate-Up projection.
-Status RunGateUpLinearF32Reference(const GateUpLinearF32KernelArgs& args) noexcept;
+Status RunGateUpLinearF32Reference(const GateUpLinearA32W32KernelArgs& args) noexcept;
 
 /// @brief Pre-validated arguments for the scalar packed W16 Gate-Up projection.
 ///
 /// Weight pointers reference the Gate and Up byte ranges of the
 /// identity-packed `[gate_out_features + up_out_features, in_features]`
 /// artifact; strides are element strides and the payload is byte-addressed.
-struct GateUpLinearF32W16KernelArgs {
+struct GateUpLinearA32W16KernelArgs {
     const float* input{};
     const std::byte* gate_weight{};
     const std::byte* up_weight{};
@@ -68,16 +68,16 @@ struct GateUpLinearF32W16KernelArgs {
 
 /// @brief Executes the compute-ready scalar W16 Gate-Up projection with FP32
 ///        accumulation, delegating each slice to the W16 Linear reference.
-Status RunGateUpLinearF32W16Reference(const GateUpLinearF32W16KernelArgs& args) noexcept;
+Status RunGateUpLinearF32W16Reference(const GateUpLinearA32W16KernelArgs& args) noexcept;
 
 /// @brief Prepared bpanel args for Gate and Up output slices.
-struct GateUpLinearF32PackedBKernelArgs {
+struct GateUpLinearA32W32PackedBKernelArgs {
     PackedGemmF32Args gate{};
     PackedGemmF32Args up{};
 };
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
-Status RunGateUpLinearF32PackedB(const GateUpLinearF32PackedBKernelArgs& args) noexcept;
+Status RunGateUpLinearF32PackedB(const GateUpLinearA32W32PackedBKernelArgs& args) noexcept;
 #endif
 
 } // namespace aethermind::cpu::detail

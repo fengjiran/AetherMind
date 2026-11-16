@@ -40,7 +40,7 @@ TEST_P(CpuIsaFallbackPolicy, RmsNormResolvesReferenceWhenRequiredFeatureIsDisabl
 
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
     EXPECT_FALSE(backend.cpu_capabilities().effective_features.Contains(disabled));
-    EXPECT_EQ(resolved->name, "cpu::rmsnorm_f32_reference");
+    EXPECT_EQ(resolved->name, "cpu::rmsnorm_f32_w32_reference");
     EXPECT_NE(resolved->fn, nullptr);
 }
 
@@ -59,7 +59,7 @@ TEST_P(CpuIsaFallbackPolicy, PackedLinearKeepsIdentityRecipeWhenRequiredFeatureI
     EXPECT_FALSE(backend.cpu_capabilities().effective_features.Contains(disabled));
     EXPECT_EQ(*recipe, CpuIdentityPackingRecipe());
     EXPECT_EQ(resolved->expected_packing_recipe, *recipe);
-    EXPECT_EQ(resolved->name, "cpu::linear_f32_packed_identity_reference");
+    EXPECT_EQ(resolved->name, "cpu::linear_f32_w32_packed_identity_reference");
     EXPECT_NE(resolved->fn, nullptr);
 }
 

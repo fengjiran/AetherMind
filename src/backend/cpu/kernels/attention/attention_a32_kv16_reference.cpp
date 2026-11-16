@@ -43,7 +43,7 @@ float DotProductKV16(const float* query,
 
 } // namespace
 
-Status RunAttentionKV16Reference(const AttentionF32KernelArgs& args,
+Status RunAttentionKV16Reference(const AttentionA32KernelArgs& args,
                                  const KVCacheReadBinding& read,
                                  DataType kv_dtype) noexcept {
     const KVCacheLayerStorageBinding& storage = read.storage;

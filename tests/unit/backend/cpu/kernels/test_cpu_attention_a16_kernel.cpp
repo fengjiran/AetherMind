@@ -201,10 +201,10 @@ void ExpectMatchesOracle(DataType dtype, int64_t num_q_heads, int64_t num_kv_hea
 TEST(CPUKernelAttentionA16, ResolvesF16AndBF16References) {
     const auto f16 = PrepareKernel(DataType::Float(16), 1, 1, 2);
     ASSERT_TRUE(f16.ok()) << f16.status().ToString();
-    EXPECT_EQ(std::string_view{f16->name}, "cpu::attention_a16_f16_reference");
+    EXPECT_EQ(std::string_view{f16->name}, "cpu::attention_f16_kvf16_reference");
     const auto bf16 = PrepareKernel(DataType::BFloat(16), 1, 1, 2);
     ASSERT_TRUE(bf16.ok()) << bf16.status().ToString();
-    EXPECT_EQ(std::string_view{bf16->name}, "cpu::attention_a16_bf16_reference");
+    EXPECT_EQ(std::string_view{bf16->name}, "cpu::attention_bf16_kvbf16_reference");
 }
 
 TEST(CPUKernelAttentionA16, Float16PrefillMatchesIndependentOracle) {

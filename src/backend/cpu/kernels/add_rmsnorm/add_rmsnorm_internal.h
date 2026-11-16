@@ -15,7 +15,7 @@ namespace aethermind::cpu::detail {
 /// The params builders specialize TensorViews once per PreparedExecutionBindings.
 /// `new_residual` stores the FP32-rounded addition result before the second
 /// pass uses it to compute the normalized output.
-struct AddRmsNormF32KernelArgs {
+struct AddRmsNormA32W32KernelArgs {
     const float* input{};
     const float* residual{};
     const float* weight{};
@@ -36,7 +36,7 @@ struct AddRmsNormF32KernelArgs {
 };
 
 /// @brief Executes the scalar FP32 AddRmsNorm reference micro-kernel.
-Status RunAddRmsNormF32Reference(const AddRmsNormF32KernelArgs& args) noexcept;
+Status RunAddRmsNormF32Reference(const AddRmsNormA32W32KernelArgs& args) noexcept;
 
 } // namespace aethermind::cpu::detail
 

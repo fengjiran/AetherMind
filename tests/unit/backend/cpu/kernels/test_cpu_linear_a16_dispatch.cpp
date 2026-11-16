@@ -80,18 +80,18 @@ float ReadA16(const std::byte* source, DataType dtype, size_t index) {
 TEST(LinearA16Dispatch, ReferenceSelectedWithoutVectorFeatures) {
     const auto capabilities = Synthetic(CpuFeatureSet{});
     EXPECT_EQ(ResolvedName(capabilities, DataType::BFloat(16), DataType::BFloat(16)),
-              "cpu::linear_a16_bf16_reference");
+              "cpu::linear_bf16_wbf16_reference");
     EXPECT_EQ(ResolvedName(capabilities, DataType::Float(16), DataType::Float32()),
-              "cpu::linear_a16_f16_fp32_output_reference");
+              "cpu::linear_f16_wf16_out32_reference");
 }
 
 TEST(LinearA16Dispatch, Avx2FmaSelectedWhenWideningFeaturesArePresent) {
     const auto capabilities = Synthetic(CpuFeatureSet::From(
             {CpuFeature::kAvx, CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c}));
     EXPECT_EQ(ResolvedName(capabilities, DataType::BFloat(16), DataType::BFloat(16)),
-              "cpu::linear_a16_bf16_avx2_fma");
+              "cpu::linear_bf16_wbf16_avx2_fma");
     EXPECT_EQ(ResolvedName(capabilities, DataType::Float(16), DataType::Float(16)),
-              "cpu::linear_a16_f16_avx2_fma");
+              "cpu::linear_f16_wf16_avx2_fma");
 }
 
 TEST(LinearA16Dispatch, F16Avx2RequiresF16cAndFallsBackWithoutIt) {
@@ -101,11 +101,11 @@ TEST(LinearA16Dispatch, F16Avx2RequiresF16cAndFallsBackWithoutIt) {
     const auto no_f16c = Synthetic(CpuFeatureSet::From(
             {CpuFeature::kAvx, CpuFeature::kAvx2, CpuFeature::kFma}));
     EXPECT_EQ(ResolvedName(no_f16c, DataType::Float(16), DataType::Float(16)),
-              "cpu::linear_a16_f16_reference");
+              "cpu::linear_f16_wf16_reference");
     EXPECT_EQ(ResolvedName(no_f16c, DataType::Float(16), DataType::Float32()),
-              "cpu::linear_a16_f16_fp32_output_reference");
+              "cpu::linear_f16_wf16_out32_reference");
     EXPECT_EQ(ResolvedName(no_f16c, DataType::BFloat(16), DataType::BFloat(16)),
-              "cpu::linear_a16_bf16_avx2_fma");
+              "cpu::linear_bf16_wbf16_avx2_fma");
 }
 
 TEST(LinearA16Dispatch, Avx512Bf16NativeNeedsBothAvx512Features) {
@@ -115,18 +115,18 @@ TEST(LinearA16Dispatch, Avx512Bf16NativeNeedsBothAvx512Features) {
             {CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c,
              CpuFeature::kAvx512F}));
     EXPECT_EQ(ResolvedName(partial, DataType::BFloat(16), DataType::BFloat(16)),
-              "cpu::linear_a16_bf16_avx2_fma");
+              "cpu::linear_bf16_wbf16_avx2_fma");
 
     const auto native = Synthetic(CpuFeatureSet::From(
             {CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c,
              CpuFeature::kAvx512F, CpuFeature::kAvx512Bf16}));
     EXPECT_EQ(ResolvedName(native, DataType::BFloat(16), DataType::BFloat(16)),
-              "cpu::linear_a16_bf16_avx512_bf16");
+              "cpu::linear_bf16_wbf16_avx512_bf16");
     EXPECT_EQ(ResolvedName(native, DataType::BFloat(16), DataType::Float32()),
-              "cpu::linear_a16_bf16_fp32_output_avx512_bf16");
+              "cpu::linear_bf16_wbf16_out32_avx512_bf16");
     // The FP16 native kernel is not eligible from BF16-only AVX-512 support.
     EXPECT_EQ(ResolvedName(native, DataType::Float(16), DataType::Float(16)),
-              "cpu::linear_a16_f16_avx2_fma");
+              "cpu::linear_f16_wf16_avx2_fma");
 }
 
 TEST(LinearA16Dispatch, Avx512Fp16NativeNeedsFp16Feature) {
@@ -134,11 +134,11 @@ TEST(LinearA16Dispatch, Avx512Fp16NativeNeedsFp16Feature) {
             {CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c,
              CpuFeature::kAvx512F, CpuFeature::kAvx512Fp16}));
     EXPECT_EQ(ResolvedName(native, DataType::Float(16), DataType::Float(16)),
-              "cpu::linear_a16_f16_avx512_fp16");
+              "cpu::linear_f16_wf16_avx512_fp16");
     EXPECT_EQ(ResolvedName(native, DataType::Float(16), DataType::Float32()),
-              "cpu::linear_a16_f16_fp32_output_avx512_fp16");
+              "cpu::linear_f16_wf16_out32_avx512_fp16");
     EXPECT_EQ(ResolvedName(native, DataType::BFloat(16), DataType::BFloat(16)),
-              "cpu::linear_a16_bf16_avx2_fma");
+              "cpu::linear_bf16_wbf16_avx2_fma");
 }
 
 TEST(LinearA16Dispatch, PackedIdentitySelectsTheVectorKernel) {
@@ -150,7 +150,7 @@ TEST(LinearA16Dispatch, PackedIdentitySelectsTheVectorKernel) {
     const auto kernel = backend.PrepareKernel(OpType::kLinear, selector,
                                               OpParams{LinearParams{}});
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
-    EXPECT_EQ(std::string{kernel->name}, "cpu::linear_a16_bf16_packed_identity_avx2_fma");
+    EXPECT_EQ(std::string{kernel->name}, "cpu::linear_bf16_wbf16_packed_identity_avx2_fma");
 }
 
 // Numeric evidence for the AVX2/FMA widening fallback. The native AVX-512
@@ -181,8 +181,8 @@ TEST(LinearA16Avx2Fma, MatchesDoublePrecisionOracleWithTailElements) {
                                                   OpParams{LinearParams{}});
         ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
         ASSERT_EQ(std::string{kernel->name},
-                  dtype == DataType::Float(16) ? "cpu::linear_a16_f16_avx2_fma"
-                                               : "cpu::linear_a16_bf16_avx2_fma");
+                  dtype == DataType::Float(16) ? "cpu::linear_f16_wf16_avx2_fma"
+                                               : "cpu::linear_bf16_wbf16_avx2_fma");
 
         std::vector<std::byte> input(static_cast<size_t>(kRows * kIn) * 2);
         std::vector<std::byte> weight(static_cast<size_t>(kOut * kIn) * 2);

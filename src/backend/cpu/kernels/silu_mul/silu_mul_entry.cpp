@@ -28,7 +28,7 @@ Status BuildSiluMulF32ReferenceArgs(const KernelParamsBuildContext& context,
     AM_ASSIGN_OR_RETURN(const ElementwiseBroadcastArgs prepared,
                         ValidateAndBuildBroadcastArgs(context, "SiluMulKernel",
                                                       "gate", "up"));
-    SiluMulF32KernelArgs args{};
+    SiluMulA32KernelArgs args{};
     args.gate_data = static_cast<const float*>(prepared.lhs_data);
     args.up_data = static_cast<const float*>(prepared.rhs_data);
     args.output_data = static_cast<float*>(prepared.output_data);
@@ -52,12 +52,12 @@ Status BuildSiluMulF32ReferenceArgs(const KernelParamsBuildContext& context,
         args.output_strides[i] = prepared.output_strides[i];
     }
 
-    ::new (params_buffer) SiluMulF32KernelArgs(args);
+    ::new (params_buffer) SiluMulA32KernelArgs(args);
     return Status::Ok();
 }
 
 Status SiluMulF32ReferenceEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const SiluMulF32KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const SiluMulA32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunSiluMulF32Reference(*args);
 }
@@ -139,9 +139,9 @@ KernelDef A16SiluMul(std::string_view name) {
 
 } // namespace
 
-static_assert(std::is_trivially_destructible_v<SiluMulF32KernelArgs>);
-static_assert(alignof(SiluMulF32KernelArgs) <= alignof(std::max_align_t));
-static_assert(sizeof(SiluMulF32KernelArgs) <= kMaxKernelParamsSize);
+static_assert(std::is_trivially_destructible_v<SiluMulA32KernelArgs>);
+static_assert(alignof(SiluMulA32KernelArgs) <= alignof(std::max_align_t));
+static_assert(sizeof(SiluMulA32KernelArgs) <= kMaxKernelParamsSize);
 static_assert(std::is_trivially_destructible_v<SiluMulA16KernelArgs>);
 static_assert(alignof(SiluMulA16KernelArgs) <= alignof(std::max_align_t));
 static_assert(sizeof(SiluMulA16KernelArgs) <= kMaxKernelParamsSize);
@@ -159,14 +159,14 @@ AM_REGISTER_KERNEL(CpuSiluMulF32Reference,
                            },
                            .kernel_func = &SiluMulF32ReferenceEntry,
                            .priority = 10,
-                           .params_size = sizeof(SiluMulF32KernelArgs),
+                           .params_size = sizeof(SiluMulA32KernelArgs),
                            .params_builder = &BuildSiluMulF32ReferenceArgs,
                            .name = "cpu::silu_mul_f32_reference",
                    })
 
 AM_REGISTER_KERNEL(CpuSiluMulA16F16Reference,
-                   (A16SiluMul<false>("cpu::silu_mul_a16_f16_reference")))
+                   (A16SiluMul<false>("cpu::silu_mul_f16_reference")))
 AM_REGISTER_KERNEL(CpuSiluMulA16Bf16Reference,
-                   (A16SiluMul<true>("cpu::silu_mul_a16_bf16_reference")))
+                   (A16SiluMul<true>("cpu::silu_mul_bf16_reference")))
 
 } // namespace aethermind::cpu::detail

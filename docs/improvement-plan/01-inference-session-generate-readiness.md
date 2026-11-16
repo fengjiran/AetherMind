@@ -122,7 +122,7 @@ LoweredGraph StateBinding
 
 - [kv_cache_binding.h](../../include/aethermind/base/kv_cache_binding.h)：`KVCacheLayerStorageBinding`（key/value 指针、dtype、layer、kv_heads、head_dim、capacity、strides）+ `KVCacheAppendBinding`（本 plan 写入窗口 `[begin, end)`，`end` 为本地可见前沿）+ `KVCacheReadBinding`（`[0, committed_end)` 跨 plan 可见，`[committed_end, visible_end)` 仅同一 plan 内后续已验证 step 可读；`query_begin/query_end` 为 attention query 行的绝对位置区间，由 LayerRunner 填充）。
 - commit 事务：`LayerRunner` 只在完整 plan 成功后推进 commit watermark；plan 级 append/commit 语义由 `KVCacheUpdateKernel.*` 覆盖、read 侧 query interval 与几何由 `CPUKernelAttention.*` 覆盖；manager 级前沿与越界由 `test_kv_cache_manager.cpp` 覆盖。
-- kernel 侧只接收窄绑定：KV 存储指针与窗口经 `KernelContext` 逐调用传入（`KVCacheUpdateF32KernelArgs` 刻意不携带 cache 指针与位置），不进 prepared params。
+- kernel 侧只接收窄绑定：KV 存储指针与窗口经 `KernelContext` 逐调用传入（`KVCacheUpdateA32KernelArgs` 刻意不携带 cache 指针与位置），不进 prepared params。
 
 硬性约束（已落实）：
 

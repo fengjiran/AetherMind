@@ -8,7 +8,7 @@
 
 namespace aethermind::cpu::detail {
 
-Status RunRmsNormA16Reference(const RmsNormA16KernelArgs& args) noexcept {
+Status RunRmsNormA16Reference(const RmsNormA16W32KernelArgs& args) noexcept {
     const size_t act_bytes = A16ElementBytes(args.act_dtype);
     for (int64_t row = 0; row < args.row_count; ++row) {
         const std::byte* const input_row =

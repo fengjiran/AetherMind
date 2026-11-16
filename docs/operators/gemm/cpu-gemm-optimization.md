@@ -601,6 +601,6 @@ runtime thread-pool contract + 单线程证据 ──> 多线程与 NUMA
 | 2026-09-21 | 2.4 | 去除提案内的工作包编号：§7 改为按名称的阶段描述，§1/§2/§4.3/§8 的引用与依赖图同步 | 编号与精简后的证据组织不再对应 | — |
 | 2026-09-21 | 2.3 | 证据组织改为"一机器一文件"（`benchmarks/<machine>-<op>.md`）；删除全部历史证据文件，待重采 | 证据按日期/报告类型拆分导致文件膨胀，且与机器级数据分区不一致 | — |
 | 2026-09-20 | 2.2 | §2 scalar optimized 反映 small-M（`M<=8`）与 generic-M driver；引用改指瘦身后工作流的 §7 优化方法，移除已废止的 Change Profile 字段 | 代码扩展了 candidate 覆盖范围；工作流撤除了 Change Profile 与附录编号 | `17d7d544` |
-| 2026-09-19 | 2.1 | 核对代码后修正 §2 三处过期事实：scalar optimized 已落地（仅覆盖 `M=1`、编译期 opt-in）；默认 Linear descriptor 走 Linear 私有的 double 累加循环、**未复用共享 GEMM primitive**；candidate 与 reference 编译期互斥，因此 reference↔candidate 对比必须构建两个二进制（新增 §8 风险行） | 提案的"当前状态"与仓库事实不符会直接误导 scalar/AVX2 候选的采集协议 | `src/backend/cpu/kernels/linear/linear_f32_reference.cpp:20-32`、`linear_entry.cpp:170-204` |
+| 2026-09-19 | 2.1 | 核对代码后修正 §2 三处过期事实：scalar optimized 已落地（仅覆盖 `M=1`、编译期 opt-in）；默认 Linear descriptor 走 Linear 私有的 double 累加循环、**未复用共享 GEMM primitive**；candidate 与 reference 编译期互斥，因此 reference↔candidate 对比必须构建两个二进制（新增 §8 风险行） | 提案的"当前状态"与仓库事实不符会直接误导 scalar/AVX2 候选的采集协议 | `src/backend/cpu/kernels/linear/linear_a32_w32_reference.cpp:20-32`、`linear_entry.cpp:170-204` |
 | 2026-09-19 | 2.0 | 按文档拓扑拆分：§6.8.1 的逐机噪声 floor 表与判读改为原则+链接，方法权威上移指南 §2.4.2；§7 两段机器级采集记录与 scalar 实施记录改为逐机状态表+报告链接；补模板要求的 Change Profile / 关联代码 / 关联测试 / 关联 ADR / 本文档定位字段 | 工作流要求专项提案只保留工作包状态、当前结论与验证报告链接，不粘贴原始 benchmark 数据；同时消除与 `docs/operators/gemm/` 的重复事实 | `70b1f8d8` |
 | 2026-09-18/19 | 1.9 | 采集机 `DESKTOP-QHIHOGQ` 基线与逐机门禁归属 | 第二台机器独立采集，验证噪声 floor 的机器属性 | 证据已清空，2026-09-21 重采 |

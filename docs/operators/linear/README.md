@@ -10,4 +10,4 @@ reference 以 `memcpy` 读取 W16，按 K 升序执行独立的 F32 product 和 
 
 O2 identity/composite artifacts 保留 W16 元素，QKV/GateUp 复用同一 reduction。当前 W16 路径属于 reference 实现，prepared/kernel 与模型准备/执行的性能观察见 [本机记录](benchmarks/desktop-54h5mmi-linear.md)。新 B-panel 的布局评估也在该记录中。
 
-实现见 [Linear reference](../../../src/backend/cpu/kernels/linear/linear_w16_reference.cpp)，测试见 [Linear regression](../../../tests/unit/backend/cpu/kernels/test_cpu_linear_kernel.cpp)，模型使用见 [W16 指南](../../guides/w16-fp32-inference.md)。遵循 [算子工作流](../../guides/operator-development-workflow.md)。
+实现见 [Linear reference](../../../src/backend/cpu/kernels/linear/linear_a32_w16_reference.cpp)，测试见 [Linear regression](../../../tests/unit/backend/cpu/kernels/test_cpu_linear_kernel.cpp)，模型使用见 [W16 指南](../../guides/w16-fp32-inference.md)。遵循 [算子工作流](../../guides/operator-development-workflow.md)。

@@ -36,7 +36,7 @@ AM_ALWAYS_INLINE __m256 LoadEight(const std::byte* data) noexcept {
 }
 
 template<bool Bfloat>
-Status RunAvx2(const RmsNormA16KernelArgs& args) noexcept {
+Status RunAvx2(const RmsNormA16W32KernelArgs& args) noexcept {
     const DataType dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16);
     if (args.input_col_stride != 1 || args.weight_stride != 1 ||
         args.output_col_stride != 1 || args.row_count == 0 || args.hidden_size <= 0) {
@@ -90,7 +90,7 @@ Status RunAvx2(const RmsNormA16KernelArgs& args) noexcept {
 } // namespace
 
 #if defined(__AVX2__) && defined(__FMA__) && defined(__F16C__)
-Status RunRmsNormA16Avx2Fma(const RmsNormA16KernelArgs& args) noexcept {
+Status RunRmsNormA16Avx2Fma(const RmsNormA16W32KernelArgs& args) noexcept {
     if (args.act_dtype == DataType::BFloat(16)) {
         return RunAvx2<true>(args);
     }

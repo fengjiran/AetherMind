@@ -4,13 +4,13 @@
 namespace aethermind::cpu::detail {
 namespace {
 
-Status RunProjection(const GateUpLinearF32W16KernelArgs& args,
+Status RunProjection(const GateUpLinearA32W16KernelArgs& args,
                      const std::byte* weight,
                      float* output,
                      int64_t out_features,
                      int64_t output_row_stride,
                      int64_t output_col_stride) noexcept {
-    return RunLinearF32W16Reference(LinearF32W16KernelArgs{
+    return RunLinearF32W16Reference(LinearA32W16KernelArgs{
             .input = args.input,
             .weight = weight,
             .output = output,
@@ -29,7 +29,7 @@ Status RunProjection(const GateUpLinearF32W16KernelArgs& args,
 
 } // namespace
 
-Status RunGateUpLinearF32W16Reference(const GateUpLinearF32W16KernelArgs& args) noexcept {
+Status RunGateUpLinearF32W16Reference(const GateUpLinearA32W16KernelArgs& args) noexcept {
     if (args.row_count == 0) {
         return Status::Ok();
     }

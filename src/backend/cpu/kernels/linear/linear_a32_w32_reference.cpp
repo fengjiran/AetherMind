@@ -2,7 +2,7 @@
 
 namespace aethermind::cpu::detail {
 
-Status RunLinearF32Reference(const LinearF32KernelArgs& args) noexcept {
+Status RunLinearF32Reference(const LinearA32W32KernelArgs& args) noexcept {
     if (args.row_count == 0 || args.out_features == 0) {
         return Status::Ok();
     }

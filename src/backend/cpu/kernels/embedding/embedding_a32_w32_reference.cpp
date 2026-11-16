@@ -30,7 +30,7 @@ int64_t ReadTokenId(const void* token_ids_data,
 
 } // namespace
 
-Status RunEmbeddingF32Reference(const EmbeddingF32KernelArgs& args) noexcept {
+Status RunEmbeddingF32Reference(const EmbeddingA32W32KernelArgs& args) noexcept {
     if (args.token_count == 0) {
         return Status::Ok();
     }

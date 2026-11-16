@@ -95,8 +95,8 @@ void ExpectRmsNormMatchesOracle(DataType dtype) {
             OpParams{RmsNormParams{.eps = kEps}});
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     EXPECT_EQ(std::string_view{kernel->name},
-              dtype == DataType::Float(16) ? "cpu::rmsnorm_a16_f16_reference"
-                                           : "cpu::rmsnorm_a16_bf16_reference");
+              dtype == DataType::Float(16) ? "cpu::rmsnorm_f16_w32_reference"
+                                           : "cpu::rmsnorm_bf16_w32_reference");
 
     constexpr std::array<float, 4> input_values{1.0F, 2.0F, 3.0F, 4.0F};
     constexpr std::array<float, 4> weight_values{1.0F, 2.0F, 3.0F, 4.0F};
@@ -380,7 +380,7 @@ TEST(CPUKernelRmsNormA16, PackedIdentityConsumesFloat32Artifact) {
             OpType::kRmsNorm, selector, OpParams{RmsNormParams{.eps = kEps}});
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     EXPECT_EQ(std::string_view{kernel->name},
-              "cpu::rmsnorm_a16_bf16_packed_identity_reference");
+              "cpu::rmsnorm_bf16_w32_packed_identity_reference");
 
     std::array<std::byte, 4> input{};
     WriteA16(input.data(), 2.0F, DataType::BFloat(16), 0);
@@ -473,8 +473,8 @@ TEST(CPUKernelRmsNormA16, Avx2FmaMatchesDoubleOracleWithTailElements) {
                 OpParams{RmsNormParams{.eps = kEps}});
         ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
         ASSERT_EQ(std::string_view{kernel->name},
-                  dtype == DataType::Float(16) ? "cpu::rmsnorm_a16_f16_avx2_fma"
-                                               : "cpu::rmsnorm_a16_bf16_avx2_fma");
+                  dtype == DataType::Float(16) ? "cpu::rmsnorm_f16_w32_avx2_fma"
+                                               : "cpu::rmsnorm_bf16_w32_avx2_fma");
 
         std::array<std::byte, kHidden * 2> input_bytes{};
         std::array<std::byte, kHidden * 2> output_bytes{};

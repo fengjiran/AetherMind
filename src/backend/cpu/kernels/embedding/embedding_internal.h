@@ -20,7 +20,7 @@ namespace aethermind::cpu::detail {
 /// Produced by the `KernelParamsBuilder` registered with this kernel
 /// (BuildEmbeddingF32ReferenceArgs in embedding_entry.cpp) and consumed by
 /// the registered kernel entry via KernelContext::kernel_params.
-struct EmbeddingF32KernelArgs {
+struct EmbeddingA32W32KernelArgs {
     const void* token_ids_data{};
     DataType token_dtype{};
     const float* weight_data{};
@@ -34,7 +34,7 @@ struct EmbeddingF32KernelArgs {
 ///
 /// `args` must have been produced by the binding-time params builder. A zero
 /// `token_count` is a no-op; every token must lie in [0, vocab_size).
-Status RunEmbeddingF32Reference(const EmbeddingF32KernelArgs& args) noexcept;
+Status RunEmbeddingF32Reference(const EmbeddingA32W32KernelArgs& args) noexcept;
 
 /// Widens one embedding row from its stored 16-bit format into FP32 output.
 using EmbeddingRowWiden = void (*)(const std::byte*, std::byte*, size_t) noexcept;
@@ -46,7 +46,7 @@ using EmbeddingRowWiden = void (*)(const std::byte*, std::byte*, size_t) noexcep
 /// embedding_w16_reference.cpp via KernelContext::kernel_params.
 /// `weight_row_bytes` and `output_row_bytes` carry the source/output strides
 /// because the formats differ in width.
-struct EmbeddingF32W16KernelArgs {
+struct EmbeddingA32W16KernelArgs {
     const std::byte* token_ids{};
     DataType token_dtype{};
     const std::byte* weight{};
@@ -63,14 +63,14 @@ struct EmbeddingF32W16KernelArgs {
 ///
 /// `args` must have been produced by the binding-time params builder. A zero
 /// `token_count` is a no-op; every token must lie in [0, vocab_size).
-Status RunEmbeddingF32W16Reference(const EmbeddingF32W16KernelArgs& args) noexcept;
+Status RunEmbeddingF32W16Reference(const EmbeddingA32W16KernelArgs& args) noexcept;
 
 /// Compute-ready args for the CPU A16 x W16 Embedding kernel.
 ///
 /// Row bytes equal `hidden_size * 2` on both sides: an A16 gather copies the
 /// stored 16-bit payload unchanged, so it introduces no rounding (frozen P4
 /// rounding placement).
-struct EmbeddingA16KernelArgs {
+struct EmbeddingA16W16KernelArgs {
     const std::byte* token_ids{};
     DataType token_dtype{};
     const std::byte* weight{};
@@ -83,7 +83,7 @@ struct EmbeddingA16KernelArgs {
 };
 
 /// @brief Copies FP16/BF16 weight rows selected by token ids without rounding.
-Status RunEmbeddingA16Reference(const EmbeddingA16KernelArgs& args) noexcept;
+Status RunEmbeddingA16Reference(const EmbeddingA16W16KernelArgs& args) noexcept;
 
 } // namespace aethermind::cpu::detail
 

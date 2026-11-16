@@ -148,7 +148,7 @@ TEST(CpuQkvLinearPackedB, UnalignedComponentBoundariesUseCorrectSlices) {
     KernelRegistry isolated_registry;
     const auto descriptor = ResolveCandidate(
             OpType::kQkvLinear,
-            "cpu::qkv_linear_f32_packed_bpanel_candidate",
+            "cpu::qkv_linear_f32_w32_packed_bpanel_candidate",
             selector, *caps, isolated_registry);
     ASSERT_TRUE(descriptor.ok()) << descriptor.status().ToString();
     const auto recipe = cpu::internal::ResolvePackingRecipeFromRegistry(
@@ -258,7 +258,7 @@ TEST(CpuGateUpLinearPackedB, UnalignedComponentBoundaryUsesCorrectSlices) {
     KernelRegistry isolated_registry;
     const auto descriptor = ResolveCandidate(
             OpType::kGateUpLinear,
-            "cpu::gate_up_linear_f32_packed_bpanel_candidate",
+            "cpu::gate_up_linear_f32_w32_packed_bpanel_candidate",
             selector, *caps, isolated_registry);
     ASSERT_TRUE(descriptor.ok()) << descriptor.status().ToString();
     const auto recipe = cpu::internal::ResolvePackingRecipeFromRegistry(

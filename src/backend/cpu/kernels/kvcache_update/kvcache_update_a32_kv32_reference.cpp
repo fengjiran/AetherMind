@@ -4,7 +4,7 @@
 
 namespace aethermind::cpu::detail {
 
-Status RunKVCacheUpdateF32Reference(const KVCacheUpdateF32KernelArgs& args,
+Status RunKVCacheUpdateF32Reference(const KVCacheUpdateA32KernelArgs& args,
                                     const KVCacheAppendBinding& append) noexcept {
     const auto& storage = append.storage;
     const size_t token_count = append.end - append.begin;

@@ -108,10 +108,10 @@ TEST(CPUKernelQkvLinear, CpuBackendPreparesPackedF32ReferenceKernel) {
     const auto kernel = PrepareQkvKernel(4, 2, 2);
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     EXPECT_EQ(kernel->op_type, OpType::kQkvLinear);
-    EXPECT_EQ(std::string_view{kernel->name}, "cpu::qkv_linear_f32_reference");
+    EXPECT_EQ(std::string_view{kernel->name}, "cpu::qkv_linear_f32_w32_reference");
     EXPECT_NE(kernel->fn, nullptr);
     EXPECT_NE(kernel->params_builder, nullptr);
-    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::QkvLinearF32KernelArgs));
+    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::QkvLinearA32W32KernelArgs));
 
     CpuBackend backend;
     KernelSelector plain = MakeQkvSelector();
@@ -764,8 +764,8 @@ TEST(CPUKernelQkvLinear, PackedW16ReferenceProjectsReducedCompositeWithFp32Accum
                                          .has_bias = false}});
         ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
         EXPECT_EQ(kernel->name, dtype == DataType::Float(16)
-                                        ? "cpu::qkv_linear_f32_f16_reference"
-                                        : "cpu::qkv_linear_f32_bf16_reference");
+                                        ? "cpu::qkv_linear_f32_wf16_reference"
+                                        : "cpu::qkv_linear_f32_wbf16_reference");
 
         const PackedWeightView packed_view{
                 .data = (*packed)->storage().data(),

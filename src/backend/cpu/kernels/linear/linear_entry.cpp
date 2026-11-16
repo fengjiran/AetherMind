@@ -97,7 +97,7 @@ Status BuildLinearF32Args(const KernelParamsBuildContext& context,
     }
 
     if (row_count.value() == 0 || out_features == 0) {
-        ::new (params_buffer) LinearF32KernelArgs{
+        ::new (params_buffer) LinearA32W32KernelArgs{
                 .row_count = row_count.value(),
                 .in_features = in_features,
                 .out_features = out_features,
@@ -110,7 +110,7 @@ Status BuildLinearF32Args(const KernelParamsBuildContext& context,
     AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout("LinearKernelEntry", output_analysis));
 
     if (in_features == 0) {
-        ::new (params_buffer) LinearF32KernelArgs{
+        ::new (params_buffer) LinearA32W32KernelArgs{
                 .output = output.data<float>(),
                 .row_count = output_analysis.row_count(),
                 .in_features = 0,
@@ -148,7 +148,7 @@ Status BuildLinearF32Args(const KernelParamsBuildContext& context,
             weight_analysis.footprint(),
             "weight"));
 
-    ::new (params_buffer) LinearF32KernelArgs{
+    ::new (params_buffer) LinearA32W32KernelArgs{
             .input = input.data<float>(),
             .weight = weight.data<float>(),
             .output = output.data<float>(),
@@ -217,7 +217,7 @@ Status BuildLinearF32W16Args(const KernelParamsBuildContext& context,
                         ComputeFlattenedRowCount(input,
                                                  "LinearF32W16 input"));
     if (row_count == 0 || out_features == 0) {
-        ::new (params_buffer) LinearF32W16KernelArgs{
+        ::new (params_buffer) LinearA32W16KernelArgs{
                 .weight_dtype = weight_dtype,
                 .row_count = row_count,
                 .in_features = in_features,
@@ -238,7 +238,7 @@ Status BuildLinearF32W16Args(const KernelParamsBuildContext& context,
                         AnalyzeRowwiseView(output, "LinearF32W16 output"));
     AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout("LinearF32W16", output_analysis));
     if (in_features == 0) {
-        ::new (params_buffer) LinearF32W16KernelArgs{
+        ::new (params_buffer) LinearA32W16KernelArgs{
                 .output = output.data<float>(),
                 .weight_dtype = weight_dtype,
                 .row_count = output_analysis.row_count(),
@@ -267,7 +267,7 @@ Status BuildLinearF32W16Args(const KernelParamsBuildContext& context,
             "CPU LinearF32W16", output_analysis.footprint(), "output",
             weight_analysis.footprint(), "weight"));
 
-    ::new (params_buffer) LinearF32W16KernelArgs{
+    ::new (params_buffer) LinearA32W16KernelArgs{
             .input = input.data<float>(),
             .weight = static_cast<const std::byte*>(weight.data()),
             .output = output.data<float>(),
@@ -344,7 +344,7 @@ Status BuildLinearF32W16PackedIdentityArgs(const KernelParamsBuildContext& conte
 
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "LinearW16KernelEntry"));
-    LinearF32W16KernelArgs args{
+    LinearA32W16KernelArgs args{
             .weight_dtype = weight_dtype,
             .row_count = row_count,
             .in_features = in_features,
@@ -352,7 +352,7 @@ Status BuildLinearF32W16PackedIdentityArgs(const KernelParamsBuildContext& conte
     };
 
     if (row_count == 0 || out_features == 0) {
-        ::new (params_buffer) LinearF32W16KernelArgs(args);
+        ::new (params_buffer) LinearA32W16KernelArgs(args);
         return Status::Ok();
     }
 
@@ -375,7 +375,7 @@ Status BuildLinearF32W16PackedIdentityArgs(const KernelParamsBuildContext& conte
     args.output_row_stride = output_analysis.row_stride();
     args.output_col_stride = output_analysis.column_stride();
     if (in_features == 0) {
-        ::new (params_buffer) LinearF32W16KernelArgs(args);
+        ::new (params_buffer) LinearA32W16KernelArgs(args);
         return Status::Ok();
     }
 
@@ -409,7 +409,7 @@ Status BuildLinearF32W16PackedIdentityArgs(const KernelParamsBuildContext& conte
     args.input_col_stride = input_analysis.column_stride();
     args.weight_row_stride = in_features;
     args.weight_col_stride = 1;
-    ::new (params_buffer) LinearF32W16KernelArgs(args);
+    ::new (params_buffer) LinearA32W16KernelArgs(args);
     return Status::Ok();
 }
 
@@ -465,7 +465,7 @@ Status BuildLinearA16Args(const KernelParamsBuildContext& context,
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "A16 Linear input"));
     if (row_count == 0 || out_features == 0) {
-        ::new (params_buffer) LinearA16KernelArgs{
+        ::new (params_buffer) LinearA16W16KernelArgs{
                 .act_dtype = act_dtype,
                 .output_dtype = output_dtype,
                 .row_count = row_count,
@@ -479,7 +479,7 @@ Status BuildLinearA16Args(const KernelParamsBuildContext& context,
                         AnalyzeRowwiseView(output, "A16 Linear output"));
     AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout("A16 Linear output", output_analysis));
     if (in_features == 0) {
-        ::new (params_buffer) LinearA16KernelArgs{
+        ::new (params_buffer) LinearA16W16KernelArgs{
                 .output = static_cast<std::byte*>(output.data()),
                 .act_dtype = act_dtype,
                 .output_dtype = output_dtype,
@@ -508,7 +508,7 @@ Status BuildLinearA16Args(const KernelParamsBuildContext& context,
             "CPU A16 Linear", output_analysis.footprint(), "output",
             weight_analysis.footprint(), "weight"));
 
-    ::new (params_buffer) LinearA16KernelArgs{
+    ::new (params_buffer) LinearA16W16KernelArgs{
             .input = static_cast<const std::byte*>(input.data()),
             .weight = static_cast<const std::byte*>(weight.data()),
             .output = static_cast<std::byte*>(output.data()),
@@ -592,7 +592,7 @@ Status BuildLinearA16PackedIdentityArgs(const KernelParamsBuildContext& context,
 
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "LinearA16KernelEntry"));
-    LinearA16KernelArgs args{
+    LinearA16W16KernelArgs args{
             .act_dtype = act_dtype,
             .output_dtype = output_dtype,
             .row_count = row_count,
@@ -600,7 +600,7 @@ Status BuildLinearA16PackedIdentityArgs(const KernelParamsBuildContext& context,
             .out_features = out_features,
     };
     if (row_count == 0 || out_features == 0) {
-        ::new (params_buffer) LinearA16KernelArgs(args);
+        ::new (params_buffer) LinearA16W16KernelArgs(args);
         return Status::Ok();
     }
 
@@ -620,7 +620,7 @@ Status BuildLinearA16PackedIdentityArgs(const KernelParamsBuildContext& context,
     // Zero K only zero-fills the output and reads neither input nor weight, so
     // their empty buffers may legally carry null data pointers.
     if (in_features == 0) {
-        ::new (params_buffer) LinearA16KernelArgs(args);
+        ::new (params_buffer) LinearA16W16KernelArgs(args);
         return Status::Ok();
     }
 
@@ -654,11 +654,11 @@ Status BuildLinearA16PackedIdentityArgs(const KernelParamsBuildContext& context,
     args.input_col_stride = input_analysis.column_stride();
     args.weight_row_stride = in_features;
     args.weight_col_stride = 1;
-    ::new (params_buffer) LinearA16KernelArgs(args);
+    ::new (params_buffer) LinearA16W16KernelArgs(args);
     return Status::Ok();
 }
 
-StatusOr<LinearF32KernelArgs> BuildLinearF32PackedBase(
+StatusOr<LinearA32W32KernelArgs> BuildLinearF32PackedBase(
         const KernelParamsBuildContext& context,
         bool bpanel) noexcept {
     if (context.inputs.size() != 1U || context.outputs.size() != 1U ||
@@ -722,7 +722,7 @@ StatusOr<LinearF32KernelArgs> BuildLinearF32PackedBase(
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "LinearKernelEntry"));
 
-    LinearF32KernelArgs args{
+    LinearA32W32KernelArgs args{
             .row_count = row_count,
             .in_features = in_features,
             .out_features = out_features,
@@ -785,16 +785,16 @@ StatusOr<LinearF32KernelArgs> BuildLinearF32PackedBase(
 Status BuildLinearF32PackedIdentityArgs(
         const KernelParamsBuildContext& context,
         void* params_buffer) noexcept {
-    AM_ASSIGN_OR_RETURN(const LinearF32KernelArgs args,
+    AM_ASSIGN_OR_RETURN(const LinearA32W32KernelArgs args,
                         BuildLinearF32PackedBase(context, false));
-    ::new (params_buffer) LinearF32KernelArgs(args);
+    ::new (params_buffer) LinearA32W32KernelArgs(args);
     return Status::Ok();
 }
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status BuildLinearF32BpanelArgs(const KernelParamsBuildContext& context,
                                 void* params_buffer) noexcept {
-    AM_ASSIGN_OR_RETURN(const LinearF32KernelArgs base,
+    AM_ASSIGN_OR_RETURN(const LinearA32W32KernelArgs base,
                         BuildLinearF32PackedBase(context, true));
     const int64_t n_blocks = base.out_features /
                                      kCpuBPanelF32Kc512Nr16NR +
@@ -830,26 +830,26 @@ Status LinearF32PackedBEntry(const KernelContext& ctx) noexcept {
 #endif
 
 Status LinearF32ReferenceEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const LinearF32KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const LinearA32W32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunLinearF32Reference(*args);
 }
 
 Status LinearF32W16ReferenceEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const LinearF32W16KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const LinearA32W16KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunLinearF32W16Reference(*args);
 }
 
 Status LinearA16ReferenceEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const LinearA16KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const LinearA16W16KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunLinearA16Reference(*args);
 }
 
 #if defined(A16_HAS_AVX2_FMA_KERNEL)
 Status LinearA16Avx2FmaEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const LinearA16KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const LinearA16W16KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunLinearA16Avx2Fma(*args);
 }
@@ -857,7 +857,7 @@ Status LinearA16Avx2FmaEntry(const KernelContext& ctx) noexcept {
 
 #if defined(A16_HAS_AVX512BF16_KERNEL)
 Status LinearA16Bf16Avx512Bf16Entry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const LinearA16KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const LinearA16W16KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunLinearA16Bf16Avx512Bf16(*args);
 }
@@ -865,7 +865,7 @@ Status LinearA16Bf16Avx512Bf16Entry(const KernelContext& ctx) noexcept {
 
 #if defined(A16_HAS_AVX512FP16_KERNEL)
 Status LinearA16F16Avx512Fp16Entry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const LinearA16KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const LinearA16W16KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunLinearA16F16Avx512Fp16(*args);
 }
@@ -873,11 +873,11 @@ Status LinearA16F16Avx512Fp16Entry(const KernelContext& ctx) noexcept {
 
 } // namespace
 
-static_assert(std::is_trivially_destructible_v<LinearF32KernelArgs>);
-static_assert(alignof(LinearF32KernelArgs) <= alignof(std::max_align_t));
-static_assert(std::is_trivially_destructible_v<LinearF32W16KernelArgs>);
-static_assert(alignof(LinearF32W16KernelArgs) <= alignof(std::max_align_t));
-static_assert(sizeof(LinearF32W16KernelArgs) <= kMaxKernelParamsSize);
+static_assert(std::is_trivially_destructible_v<LinearA32W32KernelArgs>);
+static_assert(alignof(LinearA32W32KernelArgs) <= alignof(std::max_align_t));
+static_assert(std::is_trivially_destructible_v<LinearA32W16KernelArgs>);
+static_assert(alignof(LinearA32W16KernelArgs) <= alignof(std::max_align_t));
+static_assert(sizeof(LinearA32W16KernelArgs) <= kMaxKernelParamsSize);
 
 AM_REGISTER_KERNEL(
         CpuLinearF32Reference,
@@ -893,9 +893,9 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &LinearF32ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearF32KernelArgs),
+                .params_size = sizeof(LinearA32W32KernelArgs),
                 .params_builder = &BuildLinearF32Args,
-                .name = "cpu::linear_f32_reference"})
+                .name = "cpu::linear_f32_w32_reference"})
 
 AM_REGISTER_KERNEL(
         CpuLinearF32F16Reference,
@@ -911,9 +911,9 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &LinearF32W16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearF32W16KernelArgs),
+                .params_size = sizeof(LinearA32W16KernelArgs),
                 .params_builder = &BuildLinearF32W16Args<false>,
-                .name = "cpu::linear_f32_f16_reference"})
+                .name = "cpu::linear_f32_wf16_reference"})
 
 AM_REGISTER_KERNEL(
         CpuLinearF32Bf16Reference,
@@ -929,9 +929,9 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &LinearF32W16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearF32W16KernelArgs),
+                .params_size = sizeof(LinearA32W16KernelArgs),
                 .params_builder = &BuildLinearF32W16Args<true>,
-                .name = "cpu::linear_f32_bf16_reference"})
+                .name = "cpu::linear_f32_wbf16_reference"})
 
 AM_REGISTER_KERNEL(
         CpuLinearF32F16PackedIdentityReference,
@@ -948,9 +948,9 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &LinearF32W16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearF32W16KernelArgs),
+                .params_size = sizeof(LinearA32W16KernelArgs),
                 .params_builder = &BuildLinearF32W16PackedIdentityArgs<false>,
-                .name = "cpu::linear_f32_f16_packed_identity_reference"})
+                .name = "cpu::linear_f32_wf16_packed_identity_reference"})
 
 AM_REGISTER_KERNEL(
         CpuLinearF32Bf16PackedIdentityReference,
@@ -967,9 +967,9 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &LinearF32W16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearF32W16KernelArgs),
+                .params_size = sizeof(LinearA32W16KernelArgs),
                 .params_builder = &BuildLinearF32W16PackedIdentityArgs<true>,
-                .name = "cpu::linear_f32_bf16_packed_identity_reference"})
+                .name = "cpu::linear_f32_wbf16_packed_identity_reference"})
 
 
 AM_REGISTER_KERNEL(
@@ -987,9 +987,9 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &LinearF32ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearF32KernelArgs),
+                .params_size = sizeof(LinearA32W32KernelArgs),
                 .params_builder = &BuildLinearF32PackedIdentityArgs,
-                .name = "cpu::linear_f32_packed_identity_reference"})
+                .name = "cpu::linear_f32_w32_packed_identity_reference"})
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 static_assert(std::is_trivially_destructible_v<PackedGemmF32Args>);
@@ -1014,12 +1014,12 @@ AM_REGISTER_KERNEL(
                 .priority = 10,
                 .params_size = sizeof(PackedGemmF32Args),
                 .params_builder = &BuildLinearF32BpanelArgs,
-                .name = "cpu::linear_f32_packed_bpanel_candidate"})
+                .name = "cpu::linear_f32_w32_packed_bpanel_candidate"})
 #endif
 
-static_assert(std::is_trivially_destructible_v<LinearA16KernelArgs>);
-static_assert(alignof(LinearA16KernelArgs) <= alignof(std::max_align_t));
-static_assert(sizeof(LinearA16KernelArgs) <= kMaxKernelParamsSize);
+static_assert(std::is_trivially_destructible_v<LinearA16W16KernelArgs>);
+static_assert(alignof(LinearA16W16KernelArgs) <= alignof(std::max_align_t));
+static_assert(sizeof(LinearA16W16KernelArgs) <= kMaxKernelParamsSize);
 
 AM_REGISTER_KERNEL(
         CpuLinearA16F16Reference,
@@ -1035,9 +1035,9 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16KernelArgs),
+                .params_size = sizeof(LinearA16W16KernelArgs),
                 .params_builder = &BuildLinearA16Args<false>,
-                .name = "cpu::linear_a16_f16_reference"})
+                .name = "cpu::linear_f16_wf16_reference"})
 
 AM_REGISTER_KERNEL(
         CpuLinearA16Bf16Reference,
@@ -1053,9 +1053,9 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16KernelArgs),
+                .params_size = sizeof(LinearA16W16KernelArgs),
                 .params_builder = &BuildLinearA16Args<true>,
-                .name = "cpu::linear_a16_bf16_reference"})
+                .name = "cpu::linear_bf16_wbf16_reference"})
 
 AM_REGISTER_KERNEL(
         CpuLinearA16F16Fp32OutputReference,
@@ -1071,9 +1071,9 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16KernelArgs),
+                .params_size = sizeof(LinearA16W16KernelArgs),
                 .params_builder = &BuildLinearA16Args<false>,
-                .name = "cpu::linear_a16_f16_fp32_output_reference"})
+                .name = "cpu::linear_f16_wf16_out32_reference"})
 
 AM_REGISTER_KERNEL(
         CpuLinearA16Bf16Fp32OutputReference,
@@ -1089,9 +1089,9 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16KernelArgs),
+                .params_size = sizeof(LinearA16W16KernelArgs),
                 .params_builder = &BuildLinearA16Args<true>,
-                .name = "cpu::linear_a16_bf16_fp32_output_reference"})
+                .name = "cpu::linear_bf16_wbf16_out32_reference"})
 
 AM_REGISTER_KERNEL(
         CpuLinearA16F16PackedIdentityReference,
@@ -1108,9 +1108,9 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16KernelArgs),
+                .params_size = sizeof(LinearA16W16KernelArgs),
                 .params_builder = &BuildLinearA16PackedIdentityArgs<false>,
-                .name = "cpu::linear_a16_f16_packed_identity_reference"})
+                .name = "cpu::linear_f16_wf16_packed_identity_reference"})
 
 AM_REGISTER_KERNEL(
         CpuLinearA16Bf16PackedIdentityReference,
@@ -1127,9 +1127,9 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16KernelArgs),
+                .params_size = sizeof(LinearA16W16KernelArgs),
                 .params_builder = &BuildLinearA16PackedIdentityArgs<true>,
-                .name = "cpu::linear_a16_bf16_packed_identity_reference"})
+                .name = "cpu::linear_bf16_wbf16_packed_identity_reference"})
 
 AM_REGISTER_KERNEL(
         CpuLinearA16F16Fp32OutputPackedIdentityReference,
@@ -1146,9 +1146,9 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16KernelArgs),
+                .params_size = sizeof(LinearA16W16KernelArgs),
                 .params_builder = &BuildLinearA16PackedIdentityArgs<false>,
-                .name = "cpu::linear_a16_f16_fp32_output_packed_identity_reference"})
+                .name = "cpu::linear_f16_wf16_out32_packed_identity_reference"})
 
 AM_REGISTER_KERNEL(
         CpuLinearA16Bf16Fp32OutputPackedIdentityReference,
@@ -1165,9 +1165,9 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16KernelArgs),
+                .params_size = sizeof(LinearA16W16KernelArgs),
                 .params_builder = &BuildLinearA16PackedIdentityArgs<true>,
-                .name = "cpu::linear_a16_bf16_fp32_output_packed_identity_reference"})
+                .name = "cpu::linear_bf16_wbf16_out32_packed_identity_reference"})
 
 // --- A16 ISA kernels ---
 // The reference stays registered at priority 10. AVX2/FMA widening fallback and
@@ -1197,7 +1197,7 @@ KernelDef A16LinearDef(Status (*entry)(const KernelContext&) noexcept,
             .cpu_requirements = requirements,
             .kernel_func = entry,
             .priority = priority,
-            .params_size = sizeof(LinearA16KernelArgs),
+            .params_size = sizeof(LinearA16W16KernelArgs),
             .params_builder = Packed ? &BuildLinearA16PackedIdentityArgs<Bfloat> : &BuildLinearA16Args<Bfloat>,
             .name = name,
     };
@@ -1210,44 +1210,44 @@ AM_REGISTER_KERNEL(
         CpuLinearA16F16Avx2Fma,
         (A16LinearDef<false, false, false>(&LinearA16Avx2FmaEntry,
                                            CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c}),
-                                           20, "cpu::linear_a16_f16_avx2_fma")))
+                                           20, "cpu::linear_f16_wf16_avx2_fma")))
 AM_REGISTER_KERNEL(
         CpuLinearA16Bf16Avx2Fma,
         (A16LinearDef<true, false, false>(&LinearA16Avx2FmaEntry,
                                           CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
-                                          20, "cpu::linear_a16_bf16_avx2_fma")))
+                                          20, "cpu::linear_bf16_wbf16_avx2_fma")))
 AM_REGISTER_KERNEL(
         CpuLinearA16F16Fp32OutputAvx2Fma,
         (A16LinearDef<false, false, true>(&LinearA16Avx2FmaEntry,
                                           CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c}),
-                                          20, "cpu::linear_a16_f16_fp32_output_avx2_fma")))
+                                          20, "cpu::linear_f16_wf16_out32_avx2_fma")))
 AM_REGISTER_KERNEL(
         CpuLinearA16Bf16Fp32OutputAvx2Fma,
         (A16LinearDef<true, false, true>(&LinearA16Avx2FmaEntry,
                                          CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
-                                         20, "cpu::linear_a16_bf16_fp32_output_avx2_fma")))
+                                         20, "cpu::linear_bf16_wbf16_out32_avx2_fma")))
 AM_REGISTER_KERNEL(
         CpuLinearA16F16PackedIdentityAvx2Fma,
         (A16LinearDef<false, true, false>(&LinearA16Avx2FmaEntry,
                                           CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c}),
-                                          20, "cpu::linear_a16_f16_packed_identity_avx2_fma")))
+                                          20, "cpu::linear_f16_wf16_packed_identity_avx2_fma")))
 AM_REGISTER_KERNEL(
         CpuLinearA16Bf16PackedIdentityAvx2Fma,
         (A16LinearDef<true, true, false>(&LinearA16Avx2FmaEntry,
                                          CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
-                                         20, "cpu::linear_a16_bf16_packed_identity_avx2_fma")))
+                                         20, "cpu::linear_bf16_wbf16_packed_identity_avx2_fma")))
 AM_REGISTER_KERNEL(
         CpuLinearA16F16Fp32OutputPackedIdentityAvx2Fma,
         (A16LinearDef<false, true, true>(&LinearA16Avx2FmaEntry,
                                          CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c}),
                                          20,
-                                         "cpu::linear_a16_f16_fp32_output_packed_identity_avx2_fma")))
+                                         "cpu::linear_f16_wf16_out32_packed_identity_avx2_fma")))
 AM_REGISTER_KERNEL(
         CpuLinearA16Bf16Fp32OutputPackedIdentityAvx2Fma,
         (A16LinearDef<true, true, true>(&LinearA16Avx2FmaEntry,
                                         CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
                                         20,
-                                        "cpu::linear_a16_bf16_fp32_output_packed_identity_avx2_fma")))
+                                        "cpu::linear_bf16_wbf16_out32_packed_identity_avx2_fma")))
 #endif
 
 #if defined(A16_HAS_AVX512BF16_KERNEL)
@@ -1256,25 +1256,25 @@ AM_REGISTER_KERNEL(
         (A16LinearDef<true, false, false>(
                 &LinearA16Bf16Avx512Bf16Entry,
                 CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Bf16}),
-                30, "cpu::linear_a16_bf16_avx512_bf16")))
+                30, "cpu::linear_bf16_wbf16_avx512_bf16")))
 AM_REGISTER_KERNEL(
         CpuLinearA16Bf16Fp32OutputAvx512Bf16,
         (A16LinearDef<true, false, true>(
                 &LinearA16Bf16Avx512Bf16Entry,
                 CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Bf16}),
-                30, "cpu::linear_a16_bf16_fp32_output_avx512_bf16")))
+                30, "cpu::linear_bf16_wbf16_out32_avx512_bf16")))
 AM_REGISTER_KERNEL(
         CpuLinearA16Bf16PackedIdentityAvx512Bf16,
         (A16LinearDef<true, true, false>(
                 &LinearA16Bf16Avx512Bf16Entry,
                 CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Bf16}),
-                30, "cpu::linear_a16_bf16_packed_identity_avx512_bf16")))
+                30, "cpu::linear_bf16_wbf16_packed_identity_avx512_bf16")))
 AM_REGISTER_KERNEL(
         CpuLinearA16Bf16Fp32OutputPackedIdentityAvx512Bf16,
         (A16LinearDef<true, true, true>(
                 &LinearA16Bf16Avx512Bf16Entry,
                 CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Bf16}),
-                30, "cpu::linear_a16_bf16_fp32_output_packed_identity_avx512_bf16")))
+                30, "cpu::linear_bf16_wbf16_out32_packed_identity_avx512_bf16")))
 #endif
 
 #if defined(A16_HAS_AVX512FP16_KERNEL)
@@ -1283,25 +1283,25 @@ AM_REGISTER_KERNEL(
         (A16LinearDef<false, false, false>(
                 &LinearA16F16Avx512Fp16Entry,
                 CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Fp16}),
-                30, "cpu::linear_a16_f16_avx512_fp16")))
+                30, "cpu::linear_f16_wf16_avx512_fp16")))
 AM_REGISTER_KERNEL(
         CpuLinearA16F16Fp32OutputAvx512Fp16,
         (A16LinearDef<false, false, true>(
                 &LinearA16F16Avx512Fp16Entry,
                 CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Fp16}),
-                30, "cpu::linear_a16_f16_fp32_output_avx512_fp16")))
+                30, "cpu::linear_f16_wf16_out32_avx512_fp16")))
 AM_REGISTER_KERNEL(
         CpuLinearA16F16PackedIdentityAvx512Fp16,
         (A16LinearDef<false, true, false>(
                 &LinearA16F16Avx512Fp16Entry,
                 CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Fp16}),
-                30, "cpu::linear_a16_f16_packed_identity_avx512_fp16")))
+                30, "cpu::linear_f16_wf16_packed_identity_avx512_fp16")))
 AM_REGISTER_KERNEL(
         CpuLinearA16F16Fp32OutputPackedIdentityAvx512Fp16,
         (A16LinearDef<false, true, true>(
                 &LinearA16F16Avx512Fp16Entry,
                 CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Fp16}),
-                30, "cpu::linear_a16_f16_fp32_output_packed_identity_avx512_fp16")))
+                30, "cpu::linear_f16_wf16_out32_packed_identity_avx512_fp16")))
 #endif
 
 } // namespace aethermind::cpu::detail

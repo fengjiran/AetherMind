@@ -39,7 +39,7 @@ bool IsBf16NativeDotProductSafe(const std::byte* input,
     return true;
 }
 
-Status RunLinearA16Reference(const LinearA16KernelArgs& args) noexcept {
+Status RunLinearA16Reference(const LinearA16W16KernelArgs& args) noexcept {
     if (args.row_count == 0 || args.out_features == 0) {
         return Status::Ok();
     }

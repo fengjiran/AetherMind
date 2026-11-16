@@ -128,7 +128,7 @@ Status RunReferenceRmsNormEntry(const RmsNormTestViews& views) noexcept {
 }
 
 bool IsAvx2FmaRmsNormKernel(const ResolvedKernel& kernel) noexcept {
-    return kernel.name == "cpu::rmsnorm_f32_avx2_fma";
+    return kernel.name == "cpu::rmsnorm_f32_w32_avx2_fma";
 }
 
 void ExpectRowsNear(const float* input,

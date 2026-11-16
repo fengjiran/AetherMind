@@ -46,7 +46,7 @@ TEST(CpuPrepareKernel, LinearKeyReturnsConfiguredPreparedKernel) {
             OpType::kLinear, MakeCpuSelector(), OpParams{LinearParams{}});
 
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
-    EXPECT_EQ(resolved->name, "cpu::linear_f32_reference");
+    EXPECT_EQ(resolved->name, "cpu::linear_f32_w32_reference");
 }
 
 TEST(CpuPrepareKernel, RejectsInvalidKernelMetadata) {

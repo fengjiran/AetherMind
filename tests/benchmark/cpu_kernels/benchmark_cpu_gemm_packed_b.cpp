@@ -61,7 +61,7 @@ StatusOr<const KernelDef*> FindCandidateDescriptor(
                         registry.FindByOpType(OpType::kLinear));
     const auto candidate = std::find_if(
             descriptors.begin(), descriptors.end(), [](const KernelDef* d) {
-                return d->name == "cpu::linear_f32_packed_bpanel_candidate";
+                return d->name == "cpu::linear_f32_w32_packed_bpanel_candidate";
             });
     if (candidate == descriptors.end()) {
         return Status::NotFound("Linear packed-B candidate descriptor is missing");

@@ -111,7 +111,7 @@ Status BuildGateUpLinearF32ReferenceArgs(const KernelParamsBuildContext& context
                         ComputeFlattenedRowCount(input, "GateUpLinearKernelEntry"));
 
     if (row_count == 0) {
-        ::new (params_buffer) GateUpLinearF32KernelArgs{
+        ::new (params_buffer) GateUpLinearA32W32KernelArgs{
                 .row_count = 0,
                 .in_features = in_features,
                 .gate_out_features = metadata.gate_out_features,
@@ -132,7 +132,7 @@ Status BuildGateUpLinearF32ReferenceArgs(const KernelParamsBuildContext& context
             "CPU GateUpLinear", gate_analysis.footprint(), "gate output",
             up_analysis.footprint(), "up output"));
 
-    GateUpLinearF32KernelArgs args{
+    GateUpLinearA32W32KernelArgs args{
             .gate = gate.data<float>(),
             .up = up.data<float>(),
             .row_count = row_count,
@@ -146,7 +146,7 @@ Status BuildGateUpLinearF32ReferenceArgs(const KernelParamsBuildContext& context
     };
 
     if (total_out_features == 0) {
-        ::new (params_buffer) GateUpLinearF32KernelArgs(args);
+        ::new (params_buffer) GateUpLinearA32W32KernelArgs(args);
         return Status::Ok();
     }
 
@@ -159,7 +159,7 @@ Status BuildGateUpLinearF32ReferenceArgs(const KernelParamsBuildContext& context
     }
 
     if (in_features == 0) {
-        ::new (params_buffer) GateUpLinearF32KernelArgs(args);
+        ::new (params_buffer) GateUpLinearA32W32KernelArgs(args);
         return Status::Ok();
     }
 
@@ -202,7 +202,7 @@ Status BuildGateUpLinearF32ReferenceArgs(const KernelParamsBuildContext& context
     args.up_weight = packed_data + up_weight_offset;
     args.input_row_stride = input_analysis.row_stride();
     args.input_col_stride = input_analysis.column_stride();
-    ::new (params_buffer) GateUpLinearF32KernelArgs(args);
+    ::new (params_buffer) GateUpLinearA32W32KernelArgs(args);
     return Status::Ok();
 }
 
@@ -268,7 +268,7 @@ Status BuildGateUpLinearF32W16ReferenceArgs(const KernelParamsBuildContext& cont
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "GateUpLinearW16KernelEntry"));
     if (row_count == 0) {
-        ::new (params_buffer) GateUpLinearF32W16KernelArgs{
+        ::new (params_buffer) GateUpLinearA32W16KernelArgs{
                 .weight_dtype = weight_dtype,
                 .row_count = 0,
                 .in_features = in_features,
@@ -297,7 +297,7 @@ Status BuildGateUpLinearF32W16ReferenceArgs(const KernelParamsBuildContext& cont
             "CPU GateUpLinearW16", gate_analysis.footprint(), "gate output",
             up_analysis.footprint(), "up output"));
 
-    GateUpLinearF32W16KernelArgs args{
+    GateUpLinearA32W16KernelArgs args{
             .weight_dtype = weight_dtype,
             .gate = gate.data<float>(),
             .up = up.data<float>(),
@@ -312,7 +312,7 @@ Status BuildGateUpLinearF32W16ReferenceArgs(const KernelParamsBuildContext& cont
     };
 
     if (total_out_features == 0) {
-        ::new (params_buffer) GateUpLinearF32W16KernelArgs(args);
+        ::new (params_buffer) GateUpLinearA32W16KernelArgs(args);
         return Status::Ok();
     }
 
@@ -325,7 +325,7 @@ Status BuildGateUpLinearF32W16ReferenceArgs(const KernelParamsBuildContext& cont
     }
 
     if (in_features == 0) {
-        ::new (params_buffer) GateUpLinearF32W16KernelArgs(args);
+        ::new (params_buffer) GateUpLinearA32W16KernelArgs(args);
         return Status::Ok();
     }
 
@@ -374,7 +374,7 @@ Status BuildGateUpLinearF32W16ReferenceArgs(const KernelParamsBuildContext& cont
     args.up_weight = packed_data + up_weight_bytes;
     args.input_row_stride = input_analysis.row_stride();
     args.input_col_stride = input_analysis.column_stride();
-    ::new (params_buffer) GateUpLinearF32W16KernelArgs(args);
+    ::new (params_buffer) GateUpLinearA32W16KernelArgs(args);
     return Status::Ok();
 }
 
@@ -467,7 +467,7 @@ Status BuildGateUpLinearF32BpanelArgs(
         };
     };
 
-    GateUpLinearF32PackedBKernelArgs args{
+    GateUpLinearA32W32PackedBKernelArgs args{
             .gate = build_gemm(gate, gate_analysis,
                                metadata.gate_out_features, 0),
             .up = build_gemm(up, up_analysis,
@@ -476,7 +476,7 @@ Status BuildGateUpLinearF32BpanelArgs(
     };
 
     if (row_count == 0 || total_n == 0 || in_features == 0) {
-        ::new (params_buffer) GateUpLinearF32PackedBKernelArgs(args);
+        ::new (params_buffer) GateUpLinearA32W32PackedBKernelArgs(args);
         return Status::Ok();
     }
 
@@ -516,12 +516,12 @@ Status BuildGateUpLinearF32BpanelArgs(
     args.up.gemm.lhs_m_stride = input_analysis.row_stride();
     args.gate.gemm.lhs_k_stride = input_analysis.column_stride();
     args.up.gemm.lhs_k_stride = input_analysis.column_stride();
-    ::new (params_buffer) GateUpLinearF32PackedBKernelArgs(args);
+    ::new (params_buffer) GateUpLinearA32W32PackedBKernelArgs(args);
     return Status::Ok();
 }
 
 Status GateUpLinearF32PackedBEntry(const KernelContext& context) noexcept {
-    const auto* args = static_cast<const GateUpLinearF32PackedBKernelArgs*>(
+    const auto* args = static_cast<const GateUpLinearA32W32PackedBKernelArgs*>(
             context.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunGateUpLinearF32PackedB(*args);
@@ -548,13 +548,13 @@ Status BuildGateUpLinearF32Metadata(const OpParams& params,
 }
 
 Status GateUpLinearF32ReferenceEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const GateUpLinearF32KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const GateUpLinearA32W32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunGateUpLinearF32Reference(*args);
 }
 
 Status GateUpLinearF32W16ReferenceEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const GateUpLinearF32W16KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const GateUpLinearA32W16KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunGateUpLinearF32W16Reference(*args);
 }
@@ -563,16 +563,16 @@ Status GateUpLinearF32W16ReferenceEntry(const KernelContext& ctx) noexcept {
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status RunGateUpLinearF32PackedB(
-        const GateUpLinearF32PackedBKernelArgs& args) noexcept {
+        const GateUpLinearA32W32PackedBKernelArgs& args) noexcept {
     AM_RETURN_IF_ERROR(RunGemmF32PackedB(args.gate));
     return RunGemmF32PackedB(args.up);
 }
 #endif
 
 static_assert(std::is_trivially_copyable_v<GateUpLinearF32KernelMetadata>);
-static_assert(std::is_trivially_destructible_v<GateUpLinearF32KernelArgs>);
-static_assert(sizeof(GateUpLinearF32KernelArgs) <= kMaxKernelParamsSize);
-static_assert(alignof(GateUpLinearF32KernelArgs) <= alignof(std::max_align_t));
+static_assert(std::is_trivially_destructible_v<GateUpLinearA32W32KernelArgs>);
+static_assert(sizeof(GateUpLinearA32W32KernelArgs) <= kMaxKernelParamsSize);
+static_assert(alignof(GateUpLinearA32W32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
         CpuGateUpLinearF32Reference,
@@ -589,14 +589,14 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &GateUpLinearF32ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(GateUpLinearF32KernelArgs),
+                .params_size = sizeof(GateUpLinearA32W32KernelArgs),
                 .params_builder = &BuildGateUpLinearF32ReferenceArgs,
                 .metadata_builder = &BuildGateUpLinearF32Metadata,
-                .name = "cpu::gate_up_linear_f32_reference"})
+                .name = "cpu::gate_up_linear_f32_w32_reference"})
 
-static_assert(std::is_trivially_destructible_v<GateUpLinearF32W16KernelArgs>);
-static_assert(sizeof(GateUpLinearF32W16KernelArgs) <= kMaxKernelParamsSize);
-static_assert(alignof(GateUpLinearF32W16KernelArgs) <= alignof(std::max_align_t));
+static_assert(std::is_trivially_destructible_v<GateUpLinearA32W16KernelArgs>);
+static_assert(sizeof(GateUpLinearA32W16KernelArgs) <= kMaxKernelParamsSize);
+static_assert(alignof(GateUpLinearA32W16KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
         CpuGateUpLinearF32F16Reference,
@@ -613,10 +613,10 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &GateUpLinearF32W16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(GateUpLinearF32W16KernelArgs),
+                .params_size = sizeof(GateUpLinearA32W16KernelArgs),
                 .params_builder = &BuildGateUpLinearF32W16ReferenceArgs<false>,
                 .metadata_builder = &BuildGateUpLinearF32Metadata,
-                .name = "cpu::gate_up_linear_f32_f16_reference"})
+                .name = "cpu::gate_up_linear_f32_wf16_reference"})
 
 AM_REGISTER_KERNEL(
         CpuGateUpLinearF32Bf16Reference,
@@ -633,16 +633,16 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &GateUpLinearF32W16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(GateUpLinearF32W16KernelArgs),
+                .params_size = sizeof(GateUpLinearA32W16KernelArgs),
                 .params_builder = &BuildGateUpLinearF32W16ReferenceArgs<true>,
                 .metadata_builder = &BuildGateUpLinearF32Metadata,
-                .name = "cpu::gate_up_linear_f32_bf16_reference"})
+                .name = "cpu::gate_up_linear_f32_wbf16_reference"})
 
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
-static_assert(std::is_trivially_destructible_v<GateUpLinearF32PackedBKernelArgs>);
-static_assert(sizeof(GateUpLinearF32PackedBKernelArgs) <= kMaxKernelParamsSize);
-static_assert(alignof(GateUpLinearF32PackedBKernelArgs) <= alignof(std::max_align_t));
+static_assert(std::is_trivially_destructible_v<GateUpLinearA32W32PackedBKernelArgs>);
+static_assert(sizeof(GateUpLinearA32W32PackedBKernelArgs) <= kMaxKernelParamsSize);
+static_assert(alignof(GateUpLinearA32W32PackedBKernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
         CpuGateUpLinearF32PackedBpanelCandidate,
@@ -660,10 +660,10 @@ AM_REGISTER_KERNEL(
                 .cpu_requirements = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
                 .kernel_func = &GateUpLinearF32PackedBEntry,
                 .priority = 10,
-                .params_size = sizeof(GateUpLinearF32PackedBKernelArgs),
+                .params_size = sizeof(GateUpLinearA32W32PackedBKernelArgs),
                 .params_builder = &BuildGateUpLinearF32BpanelArgs,
                 .metadata_builder = &BuildGateUpLinearF32Metadata,
-                .name = "cpu::gate_up_linear_f32_packed_bpanel_candidate"})
+                .name = "cpu::gate_up_linear_f32_w32_packed_bpanel_candidate"})
 #endif
 
 } // namespace aethermind::cpu::detail

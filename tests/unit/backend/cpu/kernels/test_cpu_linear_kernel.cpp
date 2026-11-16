@@ -219,10 +219,10 @@ TEST(CPUKernelLinear, CpuBackendPreparesPlainF32ReferenceKernel) {
     const auto kernel = PrepareLinearKernel();
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     EXPECT_EQ(kernel->op_type, OpType::kLinear);
-    EXPECT_EQ(std::string_view{kernel->name}, "cpu::linear_f32_reference");
+    EXPECT_EQ(std::string_view{kernel->name}, "cpu::linear_f32_w32_reference");
     EXPECT_NE(kernel->fn, nullptr);
     EXPECT_NE(kernel->params_builder, nullptr);
-    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::LinearF32KernelArgs));
+    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::LinearA32W32KernelArgs));
 }
 
 TEST(CPUKernelLinear, RejectsSelectorsWithoutPlainF32ReferenceSupport) {
@@ -240,10 +240,10 @@ TEST(CPUKernelLinearW16, CpuBackendPreparesBothReducedWeightReferencesForBothPha
         for (const ExecPhase phase: {ExecPhase::kPrefill, ExecPhase::kDecode}) {
             const auto kernel = PrepareLinearW16Kernel(dtype, phase);
             ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
-            EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::LinearF32W16KernelArgs));
+            EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::LinearA32W16KernelArgs));
             EXPECT_EQ(std::string_view{kernel->name},
-                      dtype == DataType::Float(16) ? "cpu::linear_f32_f16_reference"
-                                                   : "cpu::linear_f32_bf16_reference");
+                      dtype == DataType::Float(16) ? "cpu::linear_f32_wf16_reference"
+                                                   : "cpu::linear_f32_wbf16_reference");
         }
     }
 }
@@ -429,7 +429,7 @@ TEST(CPUKernelLinear, PreparesPackedIdentityFallback) {
             OpType::kLinear, selector, OpParams{LinearParams{}});
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     EXPECT_EQ(std::string_view{packed->name},
-              "cpu::linear_f32_packed_identity_reference");
+              "cpu::linear_f32_w32_packed_identity_reference");
     EXPECT_EQ(packed->expected_packing_recipe, CpuIdentityPackingRecipe());
 }
 
@@ -945,8 +945,8 @@ TEST(CPUKernelLinearW16, PackedIdentityExecutesAndValidatesReducedArtifact) {
                 OpType::kLinear, selector, OpParams{LinearParams{}});
         ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
         EXPECT_EQ(kernel->name, dtype == DataType::Float(16)
-                                        ? "cpu::linear_f32_f16_packed_identity_reference"
-                                        : "cpu::linear_f32_bf16_packed_identity_reference");
+                                        ? "cpu::linear_f32_wf16_packed_identity_reference"
+                                        : "cpu::linear_f32_wbf16_packed_identity_reference");
         const PackedWeightView packed_view{
                 .data = (*packed)->storage().data(),
                 .nbytes = (*packed)->storage().nbytes(),

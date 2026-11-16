@@ -47,8 +47,8 @@ void ExpectSiluMulMatchesOracle(DataType dtype) {
             OpType::kSiluMul, MakeSelector(dtype), OpParams{SiluMulParams{}});
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     EXPECT_EQ(std::string_view{kernel->name},
-              dtype == DataType::Float(16) ? "cpu::silu_mul_a16_f16_reference"
-                                           : "cpu::silu_mul_a16_bf16_reference");
+              dtype == DataType::Float(16) ? "cpu::silu_mul_f16_reference"
+                                           : "cpu::silu_mul_bf16_reference");
 
     constexpr std::array<float, 4> gate_values{-1.0F, 0.0F, 1.0F, 2.0F};
     constexpr std::array<float, 4> up_values{1.0F, 2.0F, 3.0F, 4.0F};

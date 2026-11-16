@@ -116,7 +116,7 @@ Status BuildQkvLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "QkvLinearKernelEntry"));
     if (row_count == 0) {
-        ::new (params_buffer) QkvLinearF32KernelArgs{
+        ::new (params_buffer) QkvLinearA32W32KernelArgs{
                 .row_count = 0,
                 .in_features = in_features,
                 .q_out_features = metadata.q_out_features,
@@ -148,7 +148,7 @@ Status BuildQkvLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
             "CPU QkvLinear", key_analysis.footprint(), "k output",
             value_analysis.footprint(), "v output"));
 
-    QkvLinearF32KernelArgs args{
+    QkvLinearA32W32KernelArgs args{
             .query = query.data<float>(),
             .key = key.data<float>(),
             .value = value.data<float>(),
@@ -166,7 +166,7 @@ Status BuildQkvLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
     };
 
     if (in_features == 0 || total_out_features == 0) {
-        ::new (params_buffer) QkvLinearF32KernelArgs(args);
+        ::new (params_buffer) QkvLinearA32W32KernelArgs(args);
         return Status::Ok();
     }
 
@@ -228,7 +228,7 @@ Status BuildQkvLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
     args.v_weight = packed_data + value_weight_offset;
     args.input_row_stride = input_analysis.row_stride();
     args.input_col_stride = input_analysis.column_stride();
-    ::new (params_buffer) QkvLinearF32KernelArgs(args);
+    ::new (params_buffer) QkvLinearA32W32KernelArgs(args);
     return Status::Ok();
 }
 
@@ -296,7 +296,7 @@ Status BuildQkvLinearF32W16ReferenceArgs(const KernelParamsBuildContext& context
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "QkvLinearW16KernelEntry"));
     if (row_count == 0) {
-        ::new (params_buffer) QkvLinearF32W16KernelArgs{
+        ::new (params_buffer) QkvLinearA32W16KernelArgs{
                 .weight_dtype = weight_dtype,
                 .row_count = 0,
                 .in_features = in_features,
@@ -337,7 +337,7 @@ Status BuildQkvLinearF32W16ReferenceArgs(const KernelParamsBuildContext& context
             "CPU QkvLinearW16", key_analysis.footprint(), "k output",
             value_analysis.footprint(), "v output"));
 
-    QkvLinearF32W16KernelArgs args{
+    QkvLinearA32W16KernelArgs args{
             .weight_dtype = weight_dtype,
             .query = query.data<float>(),
             .key = key.data<float>(),
@@ -356,7 +356,7 @@ Status BuildQkvLinearF32W16ReferenceArgs(const KernelParamsBuildContext& context
     };
 
     if (in_features == 0 || total_out_features == 0) {
-        ::new (params_buffer) QkvLinearF32W16KernelArgs(args);
+        ::new (params_buffer) QkvLinearA32W16KernelArgs(args);
         return Status::Ok();
     }
 
@@ -428,7 +428,7 @@ Status BuildQkvLinearF32W16ReferenceArgs(const KernelParamsBuildContext& context
     args.v_weight = packed_data + value_weight_bytes;
     args.input_row_stride = input_analysis.row_stride();
     args.input_col_stride = input_analysis.column_stride();
-    ::new (params_buffer) QkvLinearF32W16KernelArgs(args);
+    ::new (params_buffer) QkvLinearA32W16KernelArgs(args);
     return Status::Ok();
 }
 
@@ -535,7 +535,7 @@ Status BuildQkvLinearF32BpanelArgs(
         };
     };
 
-    QkvLinearF32PackedBKernelArgs args{
+    QkvLinearA32W32PackedBKernelArgs args{
             .query = build_gemm(query, q_analysis, metadata.q_out_features, 0),
             .key = build_gemm(key, k_analysis, metadata.k_out_features,
                               metadata.q_out_features),
@@ -545,7 +545,7 @@ Status BuildQkvLinearF32BpanelArgs(
     };
 
     if (row_count == 0 || total_n == 0 || in_features == 0) {
-        ::new (params_buffer) QkvLinearF32PackedBKernelArgs(args);
+        ::new (params_buffer) QkvLinearA32W32PackedBKernelArgs(args);
         return Status::Ok();
     }
 
@@ -595,13 +595,13 @@ Status BuildQkvLinearF32BpanelArgs(
         args.key.gemm.lhs_k_stride = input_analysis.column_stride();
         args.value.gemm.lhs_k_stride = input_analysis.column_stride();
     }
-    ::new (params_buffer) QkvLinearF32PackedBKernelArgs(args);
+    ::new (params_buffer) QkvLinearA32W32PackedBKernelArgs(args);
     return Status::Ok();
 }
 
 Status QkvLinearF32PackedBEntry(const KernelContext& context) noexcept {
     const auto* args =
-            static_cast<const QkvLinearF32PackedBKernelArgs*>(context.kernel_params);
+            static_cast<const QkvLinearA32W32PackedBKernelArgs*>(context.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunQkvLinearF32PackedB(*args);
 }
@@ -628,13 +628,13 @@ Status BuildQkvLinearF32Metadata(const OpParams& params,
 }
 
 Status QkvLinearF32ReferenceEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const QkvLinearF32KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const QkvLinearA32W32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunQkvLinearF32Reference(*args);
 }
 
 Status QkvLinearF32W16ReferenceEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const QkvLinearF32W16KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const QkvLinearA32W16KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunQkvLinearF32W16Reference(*args);
 }
@@ -642,7 +642,7 @@ Status QkvLinearF32W16ReferenceEntry(const KernelContext& ctx) noexcept {
 } // namespace
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
-Status RunQkvLinearF32PackedB(const QkvLinearF32PackedBKernelArgs& args) noexcept {
+Status RunQkvLinearF32PackedB(const QkvLinearA32W32PackedBKernelArgs& args) noexcept {
     AM_RETURN_IF_ERROR(RunGemmF32PackedB(args.query));
     AM_RETURN_IF_ERROR(RunGemmF32PackedB(args.key));
     return RunGemmF32PackedB(args.value);
@@ -650,9 +650,9 @@ Status RunQkvLinearF32PackedB(const QkvLinearF32PackedBKernelArgs& args) noexcep
 #endif
 
 static_assert(std::is_trivially_copyable_v<QkvLinearF32KernelMetadata>);
-static_assert(std::is_trivially_destructible_v<QkvLinearF32KernelArgs>);
-static_assert(sizeof(QkvLinearF32KernelArgs) <= kMaxKernelParamsSize);
-static_assert(alignof(QkvLinearF32KernelArgs) <= alignof(std::max_align_t));
+static_assert(std::is_trivially_destructible_v<QkvLinearA32W32KernelArgs>);
+static_assert(sizeof(QkvLinearA32W32KernelArgs) <= kMaxKernelParamsSize);
+static_assert(alignof(QkvLinearA32W32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
         CpuQkvLinearF32Reference,
@@ -669,14 +669,14 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &QkvLinearF32ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(QkvLinearF32KernelArgs),
+                .params_size = sizeof(QkvLinearA32W32KernelArgs),
                 .params_builder = &BuildQkvLinearF32ReferenceArgs,
                 .metadata_builder = &BuildQkvLinearF32Metadata,
-                .name = "cpu::qkv_linear_f32_reference"})
+                .name = "cpu::qkv_linear_f32_w32_reference"})
 
-static_assert(std::is_trivially_destructible_v<QkvLinearF32W16KernelArgs>);
-static_assert(sizeof(QkvLinearF32W16KernelArgs) <= kMaxKernelParamsSize);
-static_assert(alignof(QkvLinearF32W16KernelArgs) <= alignof(std::max_align_t));
+static_assert(std::is_trivially_destructible_v<QkvLinearA32W16KernelArgs>);
+static_assert(sizeof(QkvLinearA32W16KernelArgs) <= kMaxKernelParamsSize);
+static_assert(alignof(QkvLinearA32W16KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
         CpuQkvLinearF32F16Reference,
@@ -693,10 +693,10 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &QkvLinearF32W16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(QkvLinearF32W16KernelArgs),
+                .params_size = sizeof(QkvLinearA32W16KernelArgs),
                 .params_builder = &BuildQkvLinearF32W16ReferenceArgs<false>,
                 .metadata_builder = &BuildQkvLinearF32Metadata,
-                .name = "cpu::qkv_linear_f32_f16_reference"})
+                .name = "cpu::qkv_linear_f32_wf16_reference"})
 
 AM_REGISTER_KERNEL(
         CpuQkvLinearF32Bf16Reference,
@@ -713,16 +713,16 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &QkvLinearF32W16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(QkvLinearF32W16KernelArgs),
+                .params_size = sizeof(QkvLinearA32W16KernelArgs),
                 .params_builder = &BuildQkvLinearF32W16ReferenceArgs<true>,
                 .metadata_builder = &BuildQkvLinearF32Metadata,
-                .name = "cpu::qkv_linear_f32_bf16_reference"})
+                .name = "cpu::qkv_linear_f32_wbf16_reference"})
 
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
-static_assert(std::is_trivially_destructible_v<QkvLinearF32PackedBKernelArgs>);
-static_assert(sizeof(QkvLinearF32PackedBKernelArgs) <= kMaxKernelParamsSize);
-static_assert(alignof(QkvLinearF32PackedBKernelArgs) <= alignof(std::max_align_t));
+static_assert(std::is_trivially_destructible_v<QkvLinearA32W32PackedBKernelArgs>);
+static_assert(sizeof(QkvLinearA32W32PackedBKernelArgs) <= kMaxKernelParamsSize);
+static_assert(alignof(QkvLinearA32W32PackedBKernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
         CpuQkvLinearF32PackedBpanelCandidate,
@@ -740,10 +740,10 @@ AM_REGISTER_KERNEL(
                 .cpu_requirements = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
                 .kernel_func = &QkvLinearF32PackedBEntry,
                 .priority = 10,
-                .params_size = sizeof(QkvLinearF32PackedBKernelArgs),
+                .params_size = sizeof(QkvLinearA32W32PackedBKernelArgs),
                 .params_builder = &BuildQkvLinearF32BpanelArgs,
                 .metadata_builder = &BuildQkvLinearF32Metadata,
-                .name = "cpu::qkv_linear_f32_packed_bpanel_candidate"})
+                .name = "cpu::qkv_linear_f32_w32_packed_bpanel_candidate"})
 #endif
 
 } // namespace aethermind::cpu::detail

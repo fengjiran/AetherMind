@@ -16,7 +16,7 @@ namespace aethermind::cpu::detail {
 /// execution. `row_count` flattens input leading dimensions; rank-1 input is
 /// represented by one row. The logical mapping is
 /// `output[row, out] = sum(input[row, in] * weight[out, in])`.
-struct LinearF32KernelArgs {
+struct LinearA32W32KernelArgs {
     const float* input{};
     const float* weight{};
     float* output{};
@@ -36,7 +36,7 @@ struct LinearF32KernelArgs {
 /// `args` must have been produced by the binding-time params builder. A zero
 /// `row_count` or `out_features` is a no-op. With zero `in_features`, the
 /// kernel writes zero to every output element without reading input or weight.
-Status RunLinearF32Reference(const LinearF32KernelArgs& args) noexcept;
+Status RunLinearF32Reference(const LinearA32W32KernelArgs& args) noexcept;
 
 /// @brief Pre-validated FP32-activation, reduced-precision-weight arguments.
 ///
@@ -44,7 +44,7 @@ Status RunLinearF32Reference(const LinearF32KernelArgs& args) noexcept;
 /// model storage need not contain live C++ Half/BFloat16 objects or meet their
 /// alignment. The reference widens each element and accumulates in FP32.
 /// FP32 input/output addresses that are accessed must satisfy alignof(float).
-struct LinearF32W16KernelArgs {
+struct LinearA32W16KernelArgs {
     const float* input{};
     const std::byte* weight{};
     float* output{};
@@ -61,7 +61,7 @@ struct LinearF32W16KernelArgs {
 };
 
 /// @brief Runs the scalar FP32-accumulating F16/BF16 Linear reference kernel.
-Status RunLinearF32W16Reference(const LinearF32W16KernelArgs& args) noexcept;
+Status RunLinearF32W16Reference(const LinearA32W16KernelArgs& args) noexcept;
 
 /// @brief Pre-validated 16-bit activation and weight Linear arguments.
 ///
@@ -70,7 +70,7 @@ Status RunLinearF32W16Reference(const LinearF32W16KernelArgs& args) noexcept;
 /// ascending K order, and writes the output as either 16-bit (standard
 /// projections) or FP32 (an A16 LMHead that must not narrow logits). Input and
 /// output data may be arbitrarily aligned because every access uses memcpy.
-struct LinearA16KernelArgs {
+struct LinearA16W16KernelArgs {
     const std::byte* input{};
     const std::byte* weight{};
     std::byte* output{};
@@ -88,7 +88,7 @@ struct LinearA16KernelArgs {
 };
 
 /// @brief Runs the scalar A16 x W16 Linear reference kernel.
-Status RunLinearA16Reference(const LinearA16KernelArgs& args) noexcept;
+Status RunLinearA16Reference(const LinearA16W16KernelArgs& args) noexcept;
 
 /// @brief Checks whether a contiguous BF16 dot-product segment is safe from
 /// VDPBF16PS's unconditional DAZ/FTZ behavior.
@@ -104,7 +104,7 @@ bool IsBf16NativeDotProductSafe(const std::byte* input,
 /// F16 uses F16C widening and BF16 uses an exact left-shift widening; both
 /// accumulate in F32 with fused multiply-add. Non-unit column strides delegate
 /// to the scalar reference so the prepared-args contract never fails on layout.
-Status RunLinearA16Avx2Fma(const LinearA16KernelArgs& args) noexcept;
+Status RunLinearA16Avx2Fma(const LinearA16W16KernelArgs& args) noexcept;
 #endif
 
 #if defined(A16_HAS_AVX512BF16_KERNEL)
@@ -116,7 +116,7 @@ Status RunLinearA16Avx2Fma(const LinearA16KernelArgs& args) noexcept;
 /// reference and is verified independently against an FP64 oracle.
 /// Segments outside IsBf16NativeDotProductSafe's domain use the reference,
 /// including normal operands whose products can cancel into an F32 subnormal.
-Status RunLinearA16Bf16Avx512Bf16(const LinearA16KernelArgs& args) noexcept;
+Status RunLinearA16Bf16Avx512Bf16(const LinearA16W16KernelArgs& args) noexcept;
 #endif
 
 #if defined(A16_HAS_AVX512FP16_KERNEL)
@@ -125,7 +125,7 @@ Status RunLinearA16Bf16Avx512Bf16(const LinearA16KernelArgs& args) noexcept;
 /// Widens 16 FP16 elements to F32 with the native conversion and accumulates
 /// with fused multiply-add over 16 lanes, then reduces lanes in ascending
 /// order. The fused accumulation order differs from the scalar reference.
-Status RunLinearA16F16Avx512Fp16(const LinearA16KernelArgs& args) noexcept;
+Status RunLinearA16F16Avx512Fp16(const LinearA16W16KernelArgs& args) noexcept;
 #endif
 
 } // namespace aethermind::cpu::detail

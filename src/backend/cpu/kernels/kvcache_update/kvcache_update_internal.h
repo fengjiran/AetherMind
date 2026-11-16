@@ -17,7 +17,7 @@ namespace aethermind::cpu::detail {
 ///
 /// Cache pointers and append positions are intentionally absent: they are
 /// per-invocation state supplied by KernelContext::kv_append.
-struct KVCacheUpdateF32KernelArgs {
+struct KVCacheUpdateA32KernelArgs {
     const float* key_data = nullptr;
     const float* value_data = nullptr;
     int64_t seq_len = 0;
@@ -30,7 +30,7 @@ struct KVCacheUpdateF32KernelArgs {
 
 /// @brief Runs the prevalidated FP32 cache update for one append window.
 Status RunKVCacheUpdateF32Reference(
-        const KVCacheUpdateF32KernelArgs& args,
+        const KVCacheUpdateA32KernelArgs& args,
         const KVCacheAppendBinding& append) noexcept;
 
 /// @brief Narrows F32 K/V activations to F16/BF16 and writes one append window.
@@ -40,7 +40,7 @@ Status RunKVCacheUpdateF32Reference(
 /// BFloat(16) and match the append binding's storage dtype (validated by the
 /// caller). Writes are byte-safe and touch only the logical head_dim.
 Status RunKVCacheUpdateKV16Reference(
-        const KVCacheUpdateF32KernelArgs& args,
+        const KVCacheUpdateA32KernelArgs& args,
         const KVCacheAppendBinding& append,
         DataType kv_dtype) noexcept;
 

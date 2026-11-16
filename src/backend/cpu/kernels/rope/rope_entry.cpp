@@ -411,10 +411,10 @@ StatusOr<KernelArgs> ValidateAndBuildRoPEArgs(const KernelParamsBuildContext& co
 
 Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
                                  void* params_buffer) noexcept {
-    AM_ASSIGN_OR_RETURN(const RoPEF32KernelArgs args,
-                        ValidateAndBuildRoPEArgs<RoPEF32KernelArgs>(
+    AM_ASSIGN_OR_RETURN(const RoPEA32KernelArgs args,
+                        ValidateAndBuildRoPEArgs<RoPEA32KernelArgs>(
                                 context, DataType::Float32()));
-    ::new (params_buffer) RoPEF32KernelArgs(args);
+    ::new (params_buffer) RoPEA32KernelArgs(args);
     return Status::Ok();
 }
 
@@ -430,7 +430,7 @@ Status BuildRoPEA16ReferenceArgs(const KernelParamsBuildContext& context,
 }
 
 Status RoPEF32ReferenceEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const RoPEF32KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const RoPEA32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
     return RunRoPEF32Reference(*args, ctx.attrs);
 }
@@ -443,9 +443,9 @@ Status RoPEA16ReferenceEntry(const KernelContext& ctx) noexcept {
 
 } // namespace
 
-static_assert(std::is_trivially_destructible_v<RoPEF32KernelArgs>);
-static_assert(alignof(RoPEF32KernelArgs) <= alignof(std::max_align_t));
-static_assert(sizeof(RoPEF32KernelArgs) <= kMaxKernelParamsSize);
+static_assert(std::is_trivially_destructible_v<RoPEA32KernelArgs>);
+static_assert(alignof(RoPEA32KernelArgs) <= alignof(std::max_align_t));
+static_assert(sizeof(RoPEA32KernelArgs) <= kMaxKernelParamsSize);
 static_assert(std::is_trivially_destructible_v<RoPEA16KernelArgs>);
 static_assert(alignof(RoPEA16KernelArgs) <= alignof(std::max_align_t));
 static_assert(sizeof(RoPEA16KernelArgs) <= kMaxKernelParamsSize);
@@ -464,7 +464,7 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &RoPEF32ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(RoPEF32KernelArgs),
+                .params_size = sizeof(RoPEA32KernelArgs),
                 .params_builder = &BuildRoPEF32ReferenceArgs,
                 .metadata_builder = &BuildRoPEF32Metadata,
                 .name = "cpu::rope_f32_reference"})
@@ -492,8 +492,8 @@ KernelDef A16RoPE(std::string_view name) {
 }
 
 AM_REGISTER_KERNEL(CpuRoPEA16F16Reference,
-                   (A16RoPE<false>("cpu::rope_a16_f16_reference")))
+                   (A16RoPE<false>("cpu::rope_f16_reference")))
 AM_REGISTER_KERNEL(CpuRoPEA16Bf16Reference,
-                   (A16RoPE<true>("cpu::rope_a16_bf16_reference")))
+                   (A16RoPE<true>("cpu::rope_bf16_reference")))
 
 } // namespace aethermind::cpu::detail

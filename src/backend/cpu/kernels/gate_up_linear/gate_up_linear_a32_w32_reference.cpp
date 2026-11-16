@@ -1,10 +1,10 @@
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
-#include "qkv_linear_internal.h"
+#include "gate_up_linear_internal.h"
 
 namespace aethermind::cpu::detail {
 namespace {
 
-Status RunProjection(const QkvLinearF32KernelArgs& args,
+Status RunProjection(const GateUpLinearA32W32KernelArgs& args,
                      const float* weight,
                      float* output,
                      int64_t out_features,
@@ -28,20 +28,17 @@ Status RunProjection(const QkvLinearF32KernelArgs& args,
 
 } // namespace
 
-Status RunQkvLinearF32Reference(const QkvLinearF32KernelArgs& args) noexcept {
+Status RunGateUpLinearF32Reference(const GateUpLinearA32W32KernelArgs& args) noexcept {
     if (args.row_count == 0) {
         return Status::Ok();
     }
 
-    AM_RETURN_IF_ERROR(RunProjection(args, args.q_weight, args.query,
-                                     args.q_out_features, args.query_row_stride,
-                                     args.query_col_stride));
-    AM_RETURN_IF_ERROR(RunProjection(args, args.k_weight, args.key,
-                                     args.k_out_features, args.key_row_stride,
-                                     args.key_col_stride));
-    return RunProjection(args, args.v_weight, args.value,
-                         args.v_out_features, args.value_row_stride,
-                         args.value_col_stride);
+    AM_RETURN_IF_ERROR(RunProjection(args, args.gate_weight, args.gate,
+                                     args.gate_out_features, args.gate_row_stride,
+                                     args.gate_col_stride));
+    return RunProjection(args, args.up_weight, args.up,
+                         args.up_out_features, args.up_row_stride,
+                         args.up_col_stride);
 }
 
 } // namespace aethermind::cpu::detail

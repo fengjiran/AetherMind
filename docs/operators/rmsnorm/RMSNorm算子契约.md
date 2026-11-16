@@ -119,14 +119,14 @@ PrepareExecutionBindings（PreparedExecutionBindings 构建，cold path）
     -> BuildRmsNormF32ReferenceArgs / BuildRmsNormF32Avx2FmaArgs
     -> ValidateAndBuildF32Args（dtype 专用壳层：支持集检查 + 调模板）
     -> ValidateAndBuildRmsNormArgs（dtype 无关共享模板：epsilon、rank、shape、row count、layout、pointer、stride、alias）
-    -> PreparedExecutionBindings 持有 compute-ready RmsNormF32KernelArgs
+    -> PreparedExecutionBindings 持有 compute-ready RmsNormA32W32KernelArgs
 
 每次 Execute（hot path）
     -> RmsNormF32ReferenceEntry / RmsNormF32Avx2FmaEntry
     -> RunRmsNormF32Reference / RunRmsNormF32Avx2Fma
 ```
 
-- prepared params（`RmsNormF32KernelArgs`）由 `PreparedExecutionBindings` 的 params arena 持有，生命周期等于 PreparedExecutionBindings；PreparedExecutionBindings 内存续期内 data pointer / shape / stride / dtype 不变，任何变化都必须重建 PreparedExecutionBindings。
+- prepared params（`RmsNormA32W32KernelArgs`）由 `PreparedExecutionBindings` 的 params arena 持有，生命周期等于 PreparedExecutionBindings；PreparedExecutionBindings 内存续期内 data pointer / shape / stride / dtype 不变，任何变化都必须重建 PreparedExecutionBindings。
 
 - `ValidateAndBuildRmsNormArgs` 是 dtype 无关的共享模板验证核心，负责 epsilon、rank、shape、row count、layout、pointer、stride 和 alias 检查；它是 TU-local（rmsnorm\_entry.cpp 匿名命名空间），返回 `StatusOr<KernelArgs>`：校验成功后直接构造出完整的 compute-ready args 值，`KernelParamsBuilder` 再将其 placement-new 进 params arena；失败时 arena 中不构造任何对象。它在 `PrepareExecutionBindings` 阶段执行，非法 binding 在该阶段返回错误，而不是在 Execute 时失败。dtype 专用壳层 `ValidateAndBuildF32Args` 先做支持集检查，再调用模板即可。
 
@@ -134,7 +134,7 @@ PrepareExecutionBindings（PreparedExecutionBindings 构建，cold path）
 
 - entry 是 thin wrapper：只做一次 pointer 转换并调用 compute，不再解析 attrs、读取 TensorView 或重复 shape/stride/alias 校验。
 
-- `RmsNormF32KernelArgs` 是只供已验证 compute primitive 使用的内部类型；compute 不重复验证，也不拥有内存。其 alignment 不超过 `max_align_t` 且 trivially destructible，满足 PreparedExecutionBindings params arena 的类型约束。
+- `RmsNormA32W32KernelArgs` 是只供已验证 compute primitive 使用的内部类型；compute 不重复验证，也不拥有内存。其 alignment 不超过 `max_align_t` 且 trivially destructible，满足 PreparedExecutionBindings params arena 的类型约束。
 
 - 不提供 public `LaunchRmsNorm` / `RmsNormArgs` SDK。benchmark 和测试均通过 prepared `ResolvedKernel` 调用 production entry。
 

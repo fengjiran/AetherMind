@@ -173,7 +173,7 @@ TEST(CpuGemmPackedB, RegisteredCandidateDescriptorPacksAndExecutes) {
     ASSERT_TRUE(registered.ok()) << registered.status().ToString();
     const auto candidate = std::find_if(
             registered->begin(), registered->end(), [](const KernelDef* descriptor) {
-                return descriptor->name == "cpu::linear_f32_packed_bpanel_candidate";
+                return descriptor->name == "cpu::linear_f32_w32_packed_bpanel_candidate";
             });
     ASSERT_NE(candidate, registered->end());
 
@@ -193,7 +193,7 @@ TEST(CpuGemmPackedB, RegisteredCandidateDescriptorPacksAndExecutes) {
             capabilities->effective_features);
     ASSERT_TRUE(resolved_descriptor.ok()) << resolved_descriptor.status().ToString();
     ASSERT_EQ((*resolved_descriptor)->name,
-              "cpu::linear_f32_packed_bpanel_candidate");
+              "cpu::linear_f32_w32_packed_bpanel_candidate");
 
     const auto candidate_recipe = cpu::internal::ResolvePackingRecipeFromRegistry(
             isolated_registry, OpType::kLinear, selector,

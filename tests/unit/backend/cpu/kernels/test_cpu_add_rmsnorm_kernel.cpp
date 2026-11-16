@@ -195,16 +195,16 @@ void ExpectRowsNear(const float* input,
 TEST(CPUKernelAddRmsNorm, ResolvesPlainAndPackedIdentityDescriptors) {
     const auto plain = PrepareAddRmsNormKernel(WeightFormat::kPlain);
     ASSERT_TRUE(plain.ok()) << plain.status().ToString();
-    EXPECT_EQ(std::string_view(plain->name), "cpu::add_rmsnorm_f32_reference");
-    EXPECT_EQ(plain->params_size, sizeof(cpu::detail::AddRmsNormF32KernelArgs));
+    EXPECT_EQ(std::string_view(plain->name), "cpu::add_rmsnorm_f32_w32_reference");
+    EXPECT_EQ(plain->params_size, sizeof(cpu::detail::AddRmsNormA32W32KernelArgs));
     EXPECT_NE(plain->fn, nullptr);
     EXPECT_NE(plain->params_builder, nullptr);
 
     const auto packed = PrepareAddRmsNormKernel(WeightFormat::kPacked);
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
     EXPECT_EQ(std::string_view(packed->name),
-              "cpu::add_rmsnorm_f32_packed_identity_reference");
-    EXPECT_EQ(packed->params_size, sizeof(cpu::detail::AddRmsNormF32KernelArgs));
+              "cpu::add_rmsnorm_f32_w32_packed_identity_reference");
+    EXPECT_EQ(packed->params_size, sizeof(cpu::detail::AddRmsNormA32W32KernelArgs));
     EXPECT_NE(packed->fn, nullptr);
     EXPECT_NE(packed->params_builder, nullptr);
     EXPECT_FALSE(PrepareAddRmsNormKernel(WeightFormat::kPlain, 0.0F).ok());

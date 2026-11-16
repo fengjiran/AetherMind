@@ -5,7 +5,7 @@
 namespace aethermind::cpu::detail {
 namespace {
 
-void RunAddRmsNormF32RowReference(const AddRmsNormF32KernelArgs& args,
+void RunAddRmsNormF32RowReference(const AddRmsNormA32W32KernelArgs& args,
                                   int64_t row) noexcept {
     const float* const input_row = args.input + row * args.input_row_stride;
     const float* const residual_row = args.residual + row * args.residual_row_stride;
@@ -33,7 +33,7 @@ void RunAddRmsNormF32RowReference(const AddRmsNormF32KernelArgs& args,
 
 } // namespace
 
-Status RunAddRmsNormF32Reference(const AddRmsNormF32KernelArgs& args) noexcept {
+Status RunAddRmsNormF32Reference(const AddRmsNormA32W32KernelArgs& args) noexcept {
     for (int64_t row = 0; row < args.row_count; ++row) {
         RunAddRmsNormF32RowReference(args, row);
     }

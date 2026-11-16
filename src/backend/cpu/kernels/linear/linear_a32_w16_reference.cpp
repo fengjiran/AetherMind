@@ -18,7 +18,7 @@ float LoadW16(const std::byte* data, DataType dtype) noexcept {
 
 } // namespace
 
-Status RunLinearF32W16Reference(const LinearF32W16KernelArgs& args) noexcept {
+Status RunLinearF32W16Reference(const LinearA32W16KernelArgs& args) noexcept {
     if (args.row_count == 0 || args.out_features == 0) {
         return Status::Ok();
     }

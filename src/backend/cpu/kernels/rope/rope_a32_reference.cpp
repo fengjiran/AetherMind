@@ -16,7 +16,7 @@ struct RoPERuntimeState {
     uint8_t static_frequency_table{};
 };
 
-StatusOr<int64_t> ValidatePosIdsAndGetMaxPos(const RoPEF32KernelArgs& args) noexcept {
+StatusOr<int64_t> ValidatePosIdsAndGetMaxPos(const RoPEA32KernelArgs& args) noexcept {
     int64_t max_pos = 0;
     for (int64_t token = 0; token < args.seq_len; ++token) {
         const int64_t pos = args.pos_ids[token * args.pos_stride];
@@ -29,7 +29,7 @@ StatusOr<int64_t> ValidatePosIdsAndGetMaxPos(const RoPEF32KernelArgs& args) noex
     return max_pos;
 }
 
-StatusOr<double> DynamicMaxInverseFrequency(const RoPEF32KernelArgs& args,
+StatusOr<double> DynamicMaxInverseFrequency(const RoPEA32KernelArgs& args,
                                             double dynamic_base) noexcept {
     AM_DCHECK(std::isfinite(dynamic_base));
     AM_DCHECK(dynamic_base > 0.0);
@@ -47,7 +47,7 @@ StatusOr<double> DynamicMaxInverseFrequency(const RoPEF32KernelArgs& args,
     return max_frequency;
 }
 
-double FrequencyForPairUnchecked(const RoPEF32KernelArgs& args,
+double FrequencyForPairUnchecked(const RoPEA32KernelArgs& args,
                                  std::span<const std::byte> attrs,
                                  const RoPERuntimeState& runtime,
                                  int64_t pair) noexcept {
@@ -60,12 +60,12 @@ double FrequencyForPairUnchecked(const RoPEF32KernelArgs& args,
     return std::pow(runtime.dynamic_base, exponent);
 }
 
-double EffectivePositionUnchecked(const RoPEF32KernelArgs& args,
+double EffectivePositionUnchecked(const RoPEA32KernelArgs& args,
                                   int64_t position) noexcept {
     return static_cast<double>(position) / args.position_divisor;
 }
 
-StatusOr<RoPERuntimeState> PrepareRuntimeState(const RoPEF32KernelArgs& args) noexcept {
+StatusOr<RoPERuntimeState> PrepareRuntimeState(const RoPEA32KernelArgs& args) noexcept {
     AM_ASSIGN_OR_RETURN(const int64_t max_pos, ValidatePosIdsAndGetMaxPos(args));
     int64_t effective_seq_len = 0;
     if (CheckOverflowAdd(max_pos, int64_t{1}, &effective_seq_len)) {
@@ -139,7 +139,7 @@ void CopyUnrotatedTail(const float* input, float* output,
 
 } // namespace
 
-Status RunRoPEF32Reference(const RoPEF32KernelArgs& args,
+Status RunRoPEF32Reference(const RoPEA32KernelArgs& args,
                            std::span<const std::byte> attrs) noexcept {
     AM_ASSIGN_OR_RETURN(const RoPERuntimeState runtime, PrepareRuntimeState(args));
 

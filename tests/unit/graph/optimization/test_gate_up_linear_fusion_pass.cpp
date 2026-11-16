@@ -31,7 +31,8 @@ StatusOr<GraphValueId> AddProjection(ModelGraph& graph,
                                      uint32_t layer,
                                      TransformerWeightRole role,
                                      DataType weight_dtype,
-                                     std::string name) {
+                                     std::string name,
+                                     DataType output_dtype = {}) {
     const TensorSpec& input_spec = graph.GetValue(input).spec;
     if (!input_spec.shape.IsRanked() || input_spec.shape.rank() == 0U) {
         return Status::InvalidArgument("projection requires ranked input");
@@ -48,7 +49,7 @@ StatusOr<GraphValueId> AddProjection(ModelGraph& graph,
             layer,
             {input, weight},
             {NodeOutputDesc{.payload = ActivationValue{}, .name = std::move(name)}},
-            LinearParams{});
+            LinearParams{.output_dtype = output_dtype});
     if (!node.ok()) {
         return node.status();
     }
@@ -60,7 +61,9 @@ GateUpProjections AddGateUpProjections(ModelGraph& graph,
                                        int64_t gate_rows = 16,
                                        int64_t up_rows = 16,
                                        std::optional<GraphValueId> input = std::nullopt,
-                                       bool up_before_gate = false) {
+                                       bool up_before_gate = false,
+                                       DataType gate_output_dtype = {},
+                                       DataType up_output_dtype = {}) {
     if (!input.has_value()) {
         input = AddActivation(graph, "hidden");
     }
@@ -73,7 +76,8 @@ GateUpProjections AddGateUpProjections(ModelGraph& graph,
                              layer,
                              TransformerWeightRole::kMlpGate,
                              DataType::Float32(),
-                             "layers." + std::to_string(layer) + ".mlp.gate_proj");
+                             "layers." + std::to_string(layer) + ".mlp.gate_proj",
+                             gate_output_dtype);
     };
     const auto add_up = [&] {
         return AddProjection(graph,
@@ -82,7 +86,8 @@ GateUpProjections AddGateUpProjections(ModelGraph& graph,
                              layer,
                              TransformerWeightRole::kMlpUp,
                              DataType::Float32(),
-                             "layers." + std::to_string(layer) + ".mlp.up_proj");
+                             "layers." + std::to_string(layer) + ".mlp.up_proj",
+                             up_output_dtype);
     };
     StatusOr<GraphValueId> gate = Status::Unknown("uninitialized gate projection");
     StatusOr<GraphValueId> up = Status::Unknown("uninitialized up projection");
@@ -404,6 +409,34 @@ TEST(GateUpLinearFusionPass, HonorsFlagRunsAtO2AndRemainsIdempotentAfterDce) {
     const StatusOr<ModelGraph> o2_result = OptimizeModelGraph(graph);
     ASSERT_TRUE(o2_result.ok()) << o2_result.status().ToString();
     EXPECT_EQ(o2_result->FindNodesByOpType(OpType::kGateUpLinear).size(), 1U);
+}
+
+TEST(GateUpLinearFusionPass, SkipsProjectionsWithMixedOutputDtype) {
+    ModelGraph graph;
+    const GateUpProjections projections = AddGateUpProjections(
+            graph, 0U, 16, 16, std::nullopt, false, DataType::BFloat(16),
+            DataType::Float32());
+    graph.MarkOutput(projections.gate);
+    graph.MarkOutput(projections.up);
+    ASSERT_TRUE(graph.Validate().ok());
+
+    const StatusOr<ModelGraph> result = RunGateUpFusion(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_TRUE(result->FindNodesByOpType(OpType::kGateUpLinear).empty());
+    const std::vector<GraphNodeId> linear_nodes =
+            result->FindNodesByOpType(OpType::kLinear);
+    ASSERT_EQ(linear_nodes.size(), 2U);
+    for (const GraphNodeId node_id: linear_nodes) {
+        const GraphNode& node = result->GetNode(node_id);
+        ASSERT_EQ(node.outputs.size(), 1U);
+        const auto& output = result->GetValue(node.outputs[0]);
+        const DataType expected = output.name == "layers.0.mlp.up_proj"
+                                          ? DataType::Float32()
+                                          : DataType::BFloat(16);
+        EXPECT_EQ(output.spec.dtype, expected) << output.name;
+    }
 }
 
 } // namespace

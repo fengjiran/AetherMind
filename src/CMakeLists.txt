@@ -26,6 +26,31 @@ if (NOT AETHERMIND_HAS_AVX2)
     list(REMOVE_ITEM SRC_FILES ${AETHERMIND_AVX2_CONVERSION_SOURCE} ${AETHERMIND_AVX2_BF16_CONVERSION_SOURCE})
 endif ()
 
+set(AETHERMIND_A16_AVX2_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_avx2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_avx2.cpp
+)
+set(AETHERMIND_A16_AVX512BF16_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_avx512bf16.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_avx512bf16.cpp
+)
+set(AETHERMIND_A16_AVX512FP16_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_avx512fp16.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_avx512fp16.cpp
+)
+
+if (NOT AETHERMIND_HAS_AVX2_FMA OR NOT AETHERMIND_HAS_F16C)
+    list(REMOVE_ITEM SRC_FILES ${AETHERMIND_A16_AVX2_SOURCES})
+endif ()
+
+if (NOT AETHERMIND_HAS_AVX512BF16)
+    list(REMOVE_ITEM SRC_FILES ${AETHERMIND_A16_AVX512BF16_SOURCES})
+endif ()
+
+if (NOT AETHERMIND_HAS_AVX512FP16)
+    list(REMOVE_ITEM SRC_FILES ${AETHERMIND_A16_AVX512FP16_SOURCES})
+endif ()
+
 add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 
@@ -33,6 +58,12 @@ target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 # add in ascending K order. ISA kernels may define their own numerical contract.
 set(AETHERMIND_W16_REFERENCE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_w16_reference.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_reference.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/embedding/embedding_a16_reference.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_reference.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rope/rope_a16_reference.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/silu_mul/silu_mul_a16_reference.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/kvcache_update/kvcache_update_a16_reference.cpp
 )
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set_property(SOURCE ${AETHERMIND_W16_REFERENCE_SOURCES} APPEND PROPERTY COMPILE_OPTIONS -ffp-contract=off)
@@ -44,6 +75,7 @@ endif ()
 # ascending head_dim and visible-token order; FMA contraction must stay off.
 set(AETHERMIND_KV16_REFERENCE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/attention/attention_kv16_reference.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/attention/attention_a16_reference.cpp
 )
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set_property(SOURCE ${AETHERMIND_KV16_REFERENCE_SOURCES} APPEND PROPERTY COMPILE_OPTIONS -ffp-contract=off)
@@ -111,4 +143,22 @@ if (AETHERMIND_HAS_AVX2_FMA)
     target_compile_definitions(${PROJECT_NAME} PUBLIC RMSNORM_HAS_AVX2_FMA_KERNEL=1)
     target_compile_definitions(${PROJECT_NAME} PUBLIC GEMM_HAS_AVX2_FMA_KERNEL=1)
     target_compile_definitions(${PROJECT_NAME} PUBLIC DOT_PRODUCT_HAS_AVX2_FMA_KERNEL=1)
+endif ()
+
+# The A16 AVX2 fallback widens FP16 with F16C and BF16 with an exact shift, so
+# it needs both toolchain capabilities.
+if (AETHERMIND_HAS_AVX2_FMA AND AETHERMIND_HAS_F16C)
+    aethermind_configure_avx2_sources(${AETHERMIND_A16_AVX2_SOURCES})
+    aethermind_configure_f16c_sources(${AETHERMIND_A16_AVX2_SOURCES})
+    target_compile_definitions(${PROJECT_NAME} PUBLIC A16_HAS_AVX2_FMA_KERNEL=1)
+endif ()
+
+if (AETHERMIND_HAS_AVX512BF16)
+    aethermind_configure_avx512bf16_sources(${AETHERMIND_A16_AVX512BF16_SOURCES})
+    target_compile_definitions(${PROJECT_NAME} PUBLIC A16_HAS_AVX512BF16_KERNEL=1)
+endif ()
+
+if (AETHERMIND_HAS_AVX512FP16)
+    aethermind_configure_avx512fp16_sources(${AETHERMIND_A16_AVX512FP16_SOURCES})
+    target_compile_definitions(${PROJECT_NAME} PUBLIC A16_HAS_AVX512FP16_KERNEL=1)
 endif ()

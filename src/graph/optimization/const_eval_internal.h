@@ -77,7 +77,10 @@ Status EvaluateBinaryFlatByDType(const DataType& dtype,
 // Strided iteration: walks the output in linear order and computes input
 // offsets via strides. An inner carry loop advances per-axis coordinates
 // and resets on dimension boundaries, enabling non-contiguous access without
-// materializing the full coordinate space.
+// materializing the full coordinate space. Singleton axes are never advanced
+// (their stride cannot change an offset) and the final element does not
+// advance, so arbitrary strides on size-1 axes never enter the carry
+// arithmetic.
 template<typename Op, typename T>
     requires BinaryScalarOp<Op, T>
 Status EvaluateBinaryStridedKernel(std::span<const TensorView> inputs,
@@ -88,13 +91,21 @@ Status EvaluateBinaryStridedKernel(std::span<const TensorView> inputs,
     const auto* rhs = inputs[1].data<T>();
     auto* out = outputs[0].data<T>();
     const auto shape = outputs[0].shape();
+    const int64_t numel = outputs[0].numel();
     std::vector<int64_t> coordinates(shape.size());
     int64_t lhs_offset = 0;
     int64_t rhs_offset = 0;
-    for (int64_t output_index = 0; output_index < outputs[0].numel(); ++output_index) {
+    for (int64_t output_index = 0; output_index < numel; ++output_index) {
         AM_RETURN_IF_ERROR(Op::Apply(lhs[lhs_offset], rhs[rhs_offset], out[output_index]));
+        if (output_index + 1 == numel) {
+            break;
+        }
+
         for (size_t remaining = shape.size(); remaining > 0U; --remaining) {
             const size_t axis = remaining - 1U;
+            if (shape[axis] == 1) {
+                continue;
+            }
             ++coordinates[axis];
             lhs_offset += lhs_strides[axis];
             rhs_offset += rhs_strides[axis];
@@ -177,12 +188,20 @@ Status EvaluateUnaryStridedKernel(std::span<const TensorView> inputs,
     const auto* in = inputs[0].data<T>();
     auto* out = outputs[0].data<T>();
     const auto shape = outputs[0].shape();
+    const int64_t numel = outputs[0].numel();
     std::vector<int64_t> coordinates(shape.size());
     int64_t input_offset = 0;
-    for (int64_t output_index = 0; output_index < outputs[0].numel(); ++output_index) {
+    for (int64_t output_index = 0; output_index < numel; ++output_index) {
         AM_RETURN_IF_ERROR(Op::Apply(in[input_offset], out[output_index]));
+        if (output_index + 1 == numel) {
+            break;
+        }
+
         for (size_t remaining = shape.size(); remaining > 0U; --remaining) {
             const size_t axis = remaining - 1U;
+            if (shape[axis] == 1) {
+                continue;
+            }
             ++coordinates[axis];
             input_offset += input_strides[axis];
             if (coordinates[axis] < shape[axis]) {
@@ -217,12 +236,20 @@ Status EvaluateCastStridedKernel(std::span<const TensorView> inputs,
     const auto* in = inputs[0].data<In>();
     auto* out = outputs[0].data<Out>();
     const auto shape = outputs[0].shape();
+    const int64_t numel = outputs[0].numel();
     std::vector<int64_t> coordinates(shape.size());
     int64_t input_offset = 0;
-    for (int64_t output_index = 0; output_index < outputs[0].numel(); ++output_index) {
+    for (int64_t output_index = 0; output_index < numel; ++output_index) {
         out[output_index] = static_cast<Out>(static_cast<float>(in[input_offset]));
+        if (output_index + 1 == numel) {
+            break;
+        }
+
         for (size_t remaining = shape.size(); remaining > 0U; --remaining) {
             const size_t axis = remaining - 1U;
+            if (shape[axis] == 1) {
+                continue;
+            }
             ++coordinates[axis];
             input_offset += input_strides[axis];
             if (coordinates[axis] < shape[axis]) {

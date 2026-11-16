@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <gtest/gtest.h>
+#include <string>
 
 namespace {
 using namespace aethermind;
@@ -21,8 +22,8 @@ Runtime MakeRuntime() {
 TEST(A16LoadAdmission, RejectsCrossDtypeActivationAndWeightPolicy) {
     Runtime runtime = MakeRuntime();
     const ModelLoadOptions options{
-            .weights = WeightPolicy::kKeepBf16WeightsFp32Activation,
-            .activation_dtype = DataType::Float(16)};
+            .weights = WeightPolicy::kKeepFp16WeightsFp32Activation,
+            .activation_dtype = DataType::BFloat(16)};
     const auto model = ExecutableModel::Load(runtime, kMissingDirectory, options);
     EXPECT_EQ(model.status(), StatusCode::kUnimplemented);
 }
@@ -61,15 +62,25 @@ TEST(A16LoadAdmission, RejectsNonCpuTarget) {
 
 TEST(A16LoadAdmission, AcceptsSameDtypePresetAndForwardsToLoader) {
     Runtime runtime = MakeRuntime();
-    for (const bool bfloat: {false, true}) {
-        const DataType activation = bfloat ? DataType::BFloat(16) : DataType::Float(16);
-        const WeightPolicy policy = bfloat ? WeightPolicy::kKeepBf16WeightsFp32Activation
-                                           : WeightPolicy::kKeepFp16WeightsFp32Activation;
-        const ModelLoadOptions options{.weights = policy, .activation_dtype = activation};
-        const auto model = ExecutableModel::Load(runtime, kMissingDirectory, options);
-        EXPECT_FALSE(model.ok());
-        EXPECT_NE(model.status(), StatusCode::kUnimplemented);
-    }
+    const ModelLoadOptions options{
+            .weights = WeightPolicy::kKeepBf16WeightsFp32Activation,
+            .activation_dtype = DataType::BFloat(16)};
+    const auto model = ExecutableModel::Load(runtime, kMissingDirectory, options);
+    EXPECT_FALSE(model.ok());
+    EXPECT_NE(model.status(), StatusCode::kUnimplemented);
+}
+
+TEST(A16LoadAdmission, RejectsFloat16ActivationUntilP4bResidualCastsExist) {
+    // P4-A executes the full-same-type BF16 preset only; FP16 keeps an F32
+    // residual stream and needs Cast kernels on that boundary (P4-B).
+    Runtime runtime = MakeRuntime();
+    const ModelLoadOptions options{
+            .weights = WeightPolicy::kKeepFp16WeightsFp32Activation,
+            .activation_dtype = DataType::Float(16)};
+    const auto model = ExecutableModel::Load(runtime, kMissingDirectory, options);
+    EXPECT_EQ(model.status(), StatusCode::kUnimplemented);
+    EXPECT_NE(model.status().message().find("P4-B"), std::string::npos)
+            << model.status().message();
 }
 
 } // namespace

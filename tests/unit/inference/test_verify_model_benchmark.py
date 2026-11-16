@@ -323,6 +323,37 @@ class ReportContracts(unittest.TestCase):
                 with self.assertRaisesRegex(CHECKER.VerificationError, "invalid kv_dtype"):
                     CHECKER.verify_report(document)
 
+    def test_a16_activation_requires_same_dtype_policy_and_kv(self):
+        document = weight_policy(kv_precision(report(), "bf16"), "keep-bf16", conversion_ns=50)
+        document["engine"]["workload"]["activation_dtype"] = "bf16"
+        CHECKER.verify_report(document)
+
+        wrong_policy = weight_policy(kv_precision(report(), "bf16"), "keep-fp16", conversion_ns=50)
+        wrong_policy["engine"]["workload"]["activation_dtype"] = "bf16"
+        with self.assertRaisesRegex(CHECKER.VerificationError, "same-dtype"):
+            CHECKER.verify_report(wrong_policy)
+
+        wrong_kv = weight_policy(kv_precision(report(), "f32"), "keep-bf16", conversion_ns=50)
+        wrong_kv["engine"]["workload"]["activation_dtype"] = "bf16"
+        with self.assertRaisesRegex(CHECKER.VerificationError, "KV storage dtype"):
+            CHECKER.verify_report(wrong_kv)
+
+    def test_f16_activation_is_rejected_until_the_p4b_cast_path(self):
+        document = weight_policy(kv_precision(report(), "f16"), "keep-fp16", conversion_ns=50)
+        document["engine"]["workload"]["activation_dtype"] = "f16"
+        with self.assertRaisesRegex(CHECKER.VerificationError, "P4-B"):
+            CHECKER.verify_report(document)
+
+    def test_unknown_activation_dtype_is_rejected(self):
+        for value in (None, True, 16, "float32", "", []):
+            with self.subTest(value=value):
+                document = weight_policy(kv_precision(report(), "bf16"), "keep-bf16",
+                                         conversion_ns=50)
+                document["engine"]["workload"]["activation_dtype"] = value
+                with self.assertRaisesRegex(CHECKER.VerificationError,
+                                           "invalid activation_dtype"):
+                    CHECKER.verify_report(document)
+
     def test_version_two_requires_explicit_nonnegative_activation_bytes(self):
         for field in ("prefill_activation_bytes", "decode_activation_bytes"):
             with self.subTest(field=field):

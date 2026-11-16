@@ -83,6 +83,7 @@ function(aethermind_test_labels name output)
             WeightPacking.PrepackMetadataAllocationFailureReturnsResourceExhaustedBeforeBackendCall
             CPUKernelKVCacheUpdateKV16.PreparedAppendIsZeroAllocation
             KV16ModelAcceptance.DecodeExecutionHasNoMallocFamilyCallsAfterBinding
+            A16ModelAcceptance.DecodeExecutionHasNoMallocFamilyCallsAfterBinding
     )
     foreach (case IN LISTS interposer_cases)
         string(REPLACE "." "\\." pattern "${case}")
@@ -153,7 +154,16 @@ function(aethermind_test_labels name output)
         endif ()
     endif ()
 
-    if (name MATCHES "(^|/)(KV16ModelAcceptance|KV16LoadChain|KVCacheUpdateKV16Transaction|CPUKernelAttentionKV16|CPUKernelKVCacheUpdateKV16)\\.")
+    if (name MATCHES "(^|/)A16CalibratedAcceptance\\.")
+        list(APPEND labels model numerical numerical-model a16-model)
+        if (name MATCHES "(NearLimit|NearContext|2048)")
+            list(APPEND labels long-context)
+        else ()
+            list(APPEND labels validation)
+        endif ()
+    endif ()
+
+    if (name MATCHES "(^|/)(KV16ModelAcceptance|KV16LoadChain|KVCacheUpdateKV16Transaction|CPUKernelAttentionKV16|CPUKernelKVCacheUpdateKV16|A16ModelAcceptance)\\.")
         list(APPEND labels numerical validation)
     endif ()
 
@@ -211,7 +221,7 @@ function(aethermind_test_labels name output)
             "PrefillInvalidToken|KVCacheCommitTest|KVCacheSessionView|KVCacheInvalidStateTest|"
             "KernelInvoker|ExecutionContext|RuntimeBuilderTryBuild|KVCacheLayoutPlanning|RuntimeResourceLimits|ExecutionBindingPlanning|CpuWeightPackingRequirements|PackingResourceLimits|RawWeightStorageUsage|ModelResourceLimits|InferenceResourceLimits|"
             "CpuRuntimeAssembly|CpuRuntimeConfiguration|RuntimeOptionsValidation|"
-            "RawWeightFp32Conversion|ModelGraphBuildOptions|ModelCompilerGraphBuildOptions|Fp32CompatibilityPolicy|Fp32CompatibleInference|Fp32CompatibilityAdmission|"
+            "RawWeightFp32Conversion|ModelGraphBuildOptions|ModelCompilerGraphBuildOptions|Fp32CompatibilityPolicy|Fp32CompatibleInference|Fp32CompatibilityAdmission|A16LoadAdmission|"
             "RawWeightValidation|RawWeightConsumers|"
             "ModelLoad(Path)?|InferenceRunnerFailure|InferenceRunnerEquivalence|"
             "InferenceCliIntegration|CAbiRuntimeIntegration|MallocInterposerContract|"
@@ -260,7 +270,7 @@ function(aethermind_set_discovered_test_properties
         aethermind_test_labels("${name}" labels)
         set(reason "")
         if ("numerical-model" IN_LIST labels AND NOT "kv16-model" IN_LIST labels AND
-                NOT ARGV11 AND NOT required_assets)
+                NOT "a16-model" IN_LIST labels AND NOT ARGV11 AND NOT required_assets)
             set(reason missing_numerical_assets)
         elseif ("isa-avx2" IN_LIST labels AND NOT ARGV10)
             set(reason not_compiled_avx2)
@@ -298,6 +308,8 @@ function(aethermind_set_discovered_test_properties
         if ("numerical-model" IN_LIST labels)
             if ("kv16-model" IN_LIST labels)
                 set_tests_properties("${name}" PROPERTIES FIXTURES_REQUIRED aethermind_kv16_reference_assets)
+            elseif ("a16-model" IN_LIST labels)
+                set_tests_properties("${name}" PROPERTIES FIXTURES_REQUIRED aethermind_a16_reference_assets)
             else ()
                 set_tests_properties("${name}" PROPERTIES FIXTURES_REQUIRED aethermind_numerical_assets)
             endif ()
@@ -400,6 +412,19 @@ function(aethermind_register_tests target)
             LABELS "fixture;numerical;kv16-model"
             FIXTURES_SETUP aethermind_kv16_reference_assets TIMEOUT 120)
 
+    # A16 references own their model/oracle identities and fail closed when
+    # selected without the prepared bundle, independent of the FP32 bundle.
+    if (Python3_Interpreter_FOUND)
+        add_test(NAME fixture.a16_reference_assets COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tools/prepare_a16_reference.py" verify
+                --output "${AETHERMIND_TEST_MODELS_DIR}/a16-reference")
+    else ()
+        add_test(NAME fixture.a16_reference_assets COMMAND "${CMAKE_COMMAND}" -E false)
+    endif ()
+    set_tests_properties(fixture.a16_reference_assets PROPERTIES
+            LABELS "fixture;numerical;a16-model"
+            FIXTURES_SETUP aethermind_a16_reference_assets TIMEOUT 120)
+
     if (AETHERMIND_HAS_AVX2_FMA)
         set(expected_avx2 ON)
     else ()
@@ -412,7 +437,10 @@ function(aethermind_register_tests target)
                 --source-dir "${PROJECT_SOURCE_DIR}" --build-dir "${PROJECT_BINARY_DIR}"
                 --expect-avx2 "${expected_avx2}"
                 --expect-f16c "$<IF:$<BOOL:${AETHERMIND_HAS_F16C}>,ON,OFF>"
-                --expect-avx2-conversion "$<IF:$<BOOL:${AETHERMIND_HAS_AVX2}>,ON,OFF>")
+                --expect-avx2-conversion "$<IF:$<BOOL:${AETHERMIND_HAS_AVX2}>,ON,OFF>"
+                --expect-a16-avx2 "$<IF:$<AND:$<BOOL:${AETHERMIND_HAS_AVX2_FMA}>,$<BOOL:${AETHERMIND_HAS_F16C}>>,ON,OFF>"
+                --expect-a16-avx512bf16 "$<IF:$<BOOL:${AETHERMIND_HAS_AVX512BF16}>,ON,OFF>"
+                --expect-a16-avx512fp16 "$<IF:$<BOOL:${AETHERMIND_HAS_AVX512FP16}>,ON,OFF>")
     else ()
         add_test(NAME fixture.cpu_isa_build COMMAND "${CMAKE_COMMAND}" -E false)
     endif ()

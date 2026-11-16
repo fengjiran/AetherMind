@@ -193,6 +193,10 @@ def verify_engine(engine):
     }
     if engine["schema_version"] == 2:
         workload_keys.add("kv_dtype")
+    # activation_dtype was added after the initial schema-2 KV16 reports, so it
+    # stays optional for verification; absence means FP32 activations.
+    if "activation_dtype" in workload:
+        workload_keys.add("activation_dtype")
     exact_keys(workload, workload_keys, "workload")
     require(isinstance(workload["preset"], str)
             and workload["preset"] in {"o1-plain", "o2-packed"}, "workload: invalid preset")
@@ -205,6 +209,19 @@ def verify_engine(engine):
             "workload: invalid kv_dtype")
     require(kv_dtype == "f32" or workload["weights"] in {"keep-fp16", "keep-bf16"},
             "workload: KV16 requires a retained W16 policy")
+    # A16 is recorded in schema 2 as well. Historical schema-2 reports predate
+    # the field and are treated as FP32 activations.
+    activation_dtype = workload.get("activation_dtype", "f32")
+    require(isinstance(activation_dtype, str) and activation_dtype in KV_DTYPES,
+            "workload: invalid activation_dtype")
+    if activation_dtype != "f32":
+        expected_weight = "keep-fp16" if activation_dtype == "f16" else "keep-bf16"
+        require(activation_dtype != "f16",
+                "workload: A16 FP16 activation is not executable before the P4-B cast path")
+        require(workload["weights"] == expected_weight,
+                "workload: A16 requires the same-dtype retained W16 policy")
+        require(kv_dtype == activation_dtype,
+                "workload: A16 requires the KV storage dtype to match the activation dtype")
     prompt = workload["prompt_tokens"]
     vocab = geometry["vocab_size"]
     _tokens(prompt, vocab, "workload.prompt_tokens", nonempty=True)

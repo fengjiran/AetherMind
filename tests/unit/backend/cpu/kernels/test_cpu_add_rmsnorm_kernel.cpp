@@ -589,11 +589,13 @@ TEST(CPUKernelAddRmsNorm, RejectsPlainAndPackedOutputAliases) {
 TEST(CPUKernelAddRmsNorm, ReportsUnimplementedForPackedWeightInOutputStrideHole) {
     constexpr std::array<int64_t, 2> shape{1, 2};
     constexpr std::array<int64_t, 2> contiguous_strides{2, 1};
-    constexpr std::array<int64_t, 2> output_strides{3, 2};
+    // Both the output base and packed payload are truly 64-byte aligned. The
+    // payload begins at element 16, between the output's elements 0 and 32.
+    constexpr std::array<int64_t, 2> output_strides{64, 32};
     constexpr std::array<int64_t, 1> weight_shape{2};
     alignas(64) float input[2]{};
     alignas(64) float residual[2]{};
-    alignas(64) float output_storage[4]{};
+    alignas(64) float output_storage[33]{};
     alignas(64) float new_residual[2]{};
     const auto kernel = PrepareAddRmsNormKernel(WeightFormat::kPacked);
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
@@ -606,7 +608,7 @@ TEST(CPUKernelAddRmsNorm, ReportsUnimplementedForPackedWeightInOutputStrideHole)
                                                                output_strides, 64),
                                    .new_residual = MutableTensorView(new_residual, DataType::Float32(), shape,
                                                                      contiguous_strides, 64)},
-                                  MakeIdentityPackedWeight(output_storage + 1, 2 * sizeof(float), weight_shape))
+                                  MakeIdentityPackedWeight(output_storage + 16, 2 * sizeof(float), weight_shape))
                                   .status();
     EXPECT_EQ(status, StatusCode::kUnimplemented);
 }

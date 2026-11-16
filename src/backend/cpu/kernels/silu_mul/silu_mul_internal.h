@@ -6,8 +6,10 @@
 
 #include "aethermind/backend/cpu/kernels/common/broadcast_utils.h"
 #include "aethermind/base/status.h"
+#include "aethermind/dtypes/data_type.h"
 
 #include <array>
+#include <cstddef>
 
 namespace aethermind::cpu::detail {
 
@@ -36,6 +38,32 @@ struct SiluMulF32KernelArgs {
 
 /// Runs the FP32, broadcast- and stride-aware SiluMul reference micro-kernel.
 Status RunSiluMulF32Reference(const SiluMulF32KernelArgs& args) noexcept;
+
+/// Pre-validated A16 arguments for the broadcast-aware SiluMul reference kernel.
+///
+/// Element buffers are byte-addressed 16-bit storage; strides stay in elements
+/// of that storage. The reference widens both operands, applies SiLU and the
+/// product in F32, and narrows the result exactly once (frozen P4 placement).
+struct SiluMulA16KernelArgs {
+    const std::byte* gate_data{};
+    const std::byte* up_data{};
+    std::byte* output_data{};
+    DataType act_dtype{};
+    int64_t numel{};
+    bool is_flat{};
+    int32_t gate_rank{};
+    int32_t up_rank{};
+    int32_t output_rank{};
+    std::array<int64_t, kMaxRank> gate_shape{};
+    std::array<int64_t, kMaxRank> gate_strides{};
+    std::array<int64_t, kMaxRank> up_shape{};
+    std::array<int64_t, kMaxRank> up_strides{};
+    std::array<int64_t, kMaxRank> output_shape{};
+    std::array<int64_t, kMaxRank> output_strides{};
+};
+
+/// Runs the A16, broadcast- and stride-aware SiluMul reference micro-kernel.
+Status RunSiluMulA16Reference(const SiluMulA16KernelArgs& args) noexcept;
 
 } // namespace aethermind::cpu::detail
 

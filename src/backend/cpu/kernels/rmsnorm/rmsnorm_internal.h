@@ -12,6 +12,9 @@
 /// `KernelContext::kernel_params` on every execution.
 
 #include "aethermind/base/status.h"
+#include "aethermind/dtypes/data_type.h"
+
+#include <cstddef>
 
 namespace aethermind::cpu::detail {
 
@@ -55,6 +58,59 @@ Status RunRmsNormF32Reference(const RmsNormF32KernelArgs& args) noexcept;
 ///        fallback.
 /// @return Ok on success, or an error when arguments are invalid.
 Status RunRmsNormF32Avx2Fma(const RmsNormF32KernelArgs& args) noexcept;
+#endif
+
+/// @brief Pre-validated A16 activation / FP32 weight RMSNorm arguments.
+///
+/// Activations are byte-addressed 16-bit elements with element strides; the
+/// weight stays FP32 because retained-W16 conversion covers Norm roles with a
+/// single FP32 copy (P2 Norm-only policy). The reference widens each activation
+/// element, reduces the variance in F32, and narrows the normalized product
+/// exactly once (frozen P4 rounding placement).
+struct RmsNormA16KernelArgs {
+    const std::byte* input{};
+    const float* weight{};
+    std::byte* output{};
+    DataType act_dtype{};
+    int64_t row_count{};
+    int64_t hidden_size{};
+    int64_t input_row_stride{};
+    int64_t input_col_stride{1};
+    int64_t weight_stride{1};
+    int64_t output_row_stride{};
+    int64_t output_col_stride{1};
+    float eps{1.0e-5f};
+};
+
+/// @brief Runs the scalar A16 RMSNorm reference micro-kernel.
+Status RunRmsNormA16Reference(const RmsNormA16KernelArgs& args) noexcept;
+
+#if defined(A16_HAS_AVX2_FMA_KERNEL)
+/// @brief Runs the A16 RMSNorm AVX2/FMA widening kernel.
+///
+/// Requires unit column strides for the vector path; other layouts delegate to
+/// the scalar reference. The F32 variance reduction and the normalized product
+/// use eight-lane FMA groups, so the summation order differs from the scalar
+/// reference contract.
+Status RunRmsNormA16Avx2Fma(const RmsNormA16KernelArgs& args) noexcept;
+#endif
+
+#if defined(A16_HAS_AVX512BF16_KERNEL)
+/// @brief Runs the BF16 RMSNorm AVX512-BF16 kernel.
+///
+/// Widens BF16 with an exact left shift, reduces the variance in 16 F32 lanes,
+/// and narrows with the native BF16 conversion. Requires unit column strides;
+/// other layouts delegate to the scalar reference.
+Status RunRmsNormA16Bf16Avx512Bf16(const RmsNormA16KernelArgs& args) noexcept;
+#endif
+
+#if defined(A16_HAS_AVX512FP16_KERNEL)
+/// @brief Runs the F16 RMSNorm AVX512-FP16 kernel.
+///
+/// Widens and narrows FP16 with the native conversions and reduces the variance
+/// in 16 F32 lanes. Requires unit column strides; other layouts delegate to the
+/// scalar reference.
+Status RunRmsNormA16F16Avx512Fp16(const RmsNormA16KernelArgs& args) noexcept;
 #endif
 
 } // namespace aethermind::cpu::detail

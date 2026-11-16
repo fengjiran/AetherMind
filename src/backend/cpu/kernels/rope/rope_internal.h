@@ -123,6 +123,56 @@ struct RoPEF32KernelArgs {
 Status RunRoPEF32Reference(const RoPEF32KernelArgs& args,
                            std::span<const std::byte> attrs) noexcept;
 
+/// @brief Pre-validated A16 arguments for all supported RoPE algorithms.
+///
+/// q/k inputs and outputs are byte-addressed 16-bit storage; strides stay in
+/// elements. Trigonometry and rotation are computed in F32-or-better precision
+/// from widened inputs and the output is narrowed exactly once (frozen P4
+/// placement: Q/K therefore accumulate two roundings, one from the producing
+/// Linear and one here).
+struct RoPEA16KernelArgs {
+    const std::byte* q{};
+    const std::byte* k{};
+    const int64_t* pos_ids{};
+    std::byte* q_output{};
+    std::byte* k_output{};
+    DataType act_dtype{};
+
+    int64_t seq_len{};
+    int64_t head_dim{};
+    int64_t rotary_dim{};
+    int64_t num_q_heads{};
+    int64_t num_kv_heads{};
+
+    int64_t q_row_stride{};
+    int64_t q_col_stride{1};
+    int64_t k_row_stride{};
+    int64_t k_col_stride{1};
+    int64_t pos_stride{1};
+    int64_t q_output_row_stride{};
+    int64_t q_output_col_stride{1};
+    int64_t k_output_row_stride{};
+    int64_t k_output_col_stride{1};
+
+    int64_t original_context_length{};
+    double theta{};
+    double factor{};
+    double position_divisor{1.0};
+    double rotary_output_scale{1.0};
+    double short_max_inv_freq{};
+    double long_max_inv_freq{};
+    uint32_t freq_count{};
+
+    RoPEPairing pairing{RoPEPairing::kSplitHalf};
+    RoPEAlgorithm algorithm{RoPEAlgorithm::kStandard};
+};
+
+/// @brief Runs the scalar A16 RoPE reference kernel.
+///
+/// Same validation and failure contract as RunRoPEF32Reference.
+Status RunRoPEA16Reference(const RoPEA16KernelArgs& args,
+                           std::span<const std::byte> attrs) noexcept;
+
 
 } // namespace aethermind::cpu::detail
 

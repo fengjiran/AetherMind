@@ -22,6 +22,22 @@ F16C_SOURCE = "src/backend/cpu/fp16_conversion_f16c.cpp"
 AVX2_CONVERSION_SOURCE = "src/backend/cpu/fp16_conversion_avx2.cpp"
 BF16_AVX2_CONVERSION_SOURCE = "src/backend/cpu/bf16_conversion_avx2.cpp"
 
+A16_AVX2_SOURCES = {
+    "src/backend/cpu/kernels/linear/linear_a16_avx2.cpp",
+    "src/backend/cpu/kernels/rmsnorm/rmsnorm_a16_avx2.cpp",
+}
+A16_AVX512BF16_SOURCES = {
+    "src/backend/cpu/kernels/linear/linear_a16_avx512bf16.cpp",
+    "src/backend/cpu/kernels/rmsnorm/rmsnorm_a16_avx512bf16.cpp",
+}
+A16_AVX512FP16_SOURCES = {
+    "src/backend/cpu/kernels/linear/linear_a16_avx512fp16.cpp",
+    "src/backend/cpu/kernels/rmsnorm/rmsnorm_a16_avx512fp16.cpp",
+}
+A16_AVX2_MACRO = "A16_HAS_AVX2_FMA_KERNEL"
+A16_AVX512BF16_MACRO = "A16_HAS_AVX512BF16_KERNEL"
+A16_AVX512FP16_MACRO = "A16_HAS_AVX512FP16_KERNEL"
+
 
 def uplift_options(arguments):
     result = set()
@@ -65,7 +81,8 @@ def project_sources(source, source_dir):
     return included, True
 
 
-def verify(source_dir, build_dir, expect_avx2, expect_f16c=False, expect_avx2_conversion=False):
+def verify(source_dir, build_dir, expect_avx2, expect_f16c=False, expect_avx2_conversion=False,
+           expect_a16_avx2=False, expect_a16_avx512bf16=False, expect_a16_avx512fp16=False):
     source_dir = source_dir.resolve()
     entries = json.loads((build_dir / "compile_commands.json").read_text())
     cache = (build_dir / "CMakeCache.txt").read_text()
@@ -73,7 +90,10 @@ def verify(source_dir, build_dir, expect_avx2, expect_f16c=False, expect_avx2_co
                         if line.startswith("BUILD_TESTS:BOOL=")), "OFF").upper()
     tests_enabled = tests_value not in {"", "0", "OFF", "NO", "FALSE", "N", "IGNORE", "NOTFOUND"}
     legacy_sources = LIBRARY_SOURCES | {TEST_SOURCE}
-    optional_sources = legacy_sources | {F16C_SOURCE, AVX2_CONVERSION_SOURCE, BF16_AVX2_CONVERSION_SOURCE}
+    a16_sources = A16_AVX2_SOURCES | A16_AVX512BF16_SOURCES | A16_AVX512FP16_SOURCES
+    optional_sources = (legacy_sources
+                        | {F16C_SOURCE, AVX2_CONVERSION_SOURCE, BF16_AVX2_CONVERSION_SOURCE}
+                        | a16_sources)
     expected = {name: {"-mavx2", "-mfma"} for name in
                 ((LIBRARY_SOURCES | ({TEST_SOURCE} if tests_enabled else set())) if expect_avx2 else set())}
     if expect_f16c:
@@ -81,6 +101,12 @@ def verify(source_dir, build_dir, expect_avx2, expect_f16c=False, expect_avx2_co
     if expect_avx2_conversion:
         expected[AVX2_CONVERSION_SOURCE] = {"-mavx2"}
         expected[BF16_AVX2_CONVERSION_SOURCE] = {"-mavx2"}
+    if expect_a16_avx2:
+        expected.update({name: {"-mavx2", "-mfma", "-mavx", "-mf16c"} for name in A16_AVX2_SOURCES})
+    if expect_a16_avx512bf16:
+        expected.update({name: {"-mavx512f", "-mavx512bf16"} for name in A16_AVX512BF16_SOURCES})
+    if expect_a16_avx512fp16:
+        expected.update({name: {"-mavx512f", "-mavx512fp16"} for name in A16_AVX512FP16_SOURCES})
     seen = set()
     project_entries = 0
     for entry in entries:
@@ -100,8 +126,18 @@ def verify(source_dir, build_dir, expect_avx2, expect_f16c=False, expect_avx2_co
         options = uplift_options(arguments)
         if relative in optional_sources:
             if relative not in expected:
-                kind = "AVX2" if relative in legacy_sources else (
-                    "BF16" if relative == BF16_AVX2_CONVERSION_SOURCE else "FP16")
+                if relative in legacy_sources:
+                    kind = "AVX2"
+                elif relative == BF16_AVX2_CONVERSION_SOURCE:
+                    kind = "BF16"
+                elif relative in A16_AVX2_SOURCES:
+                    kind = "A16 AVX2"
+                elif relative in A16_AVX512BF16_SOURCES:
+                    kind = "A16 AVX512-BF16"
+                elif relative in A16_AVX512FP16_SOURCES:
+                    kind = "A16 AVX512-FP16"
+                else:
+                    kind = "FP16"
                 raise ValueError(f"Optional {kind} source compiled in baseline: {relative}")
             lto_options = [argument for argument in arguments
                            if argument.startswith("-flto") or argument == "-fno-lto"]
@@ -117,6 +153,12 @@ def verify(source_dir, build_dir, expect_avx2, expect_f16c=False, expect_avx2_co
         if not expect_avx2_conversion:
             forbidden.add("FP16_HAS_AVX2_CONVERSION")
             forbidden.add("BF16_HAS_AVX2_CONVERSION")
+        if not expect_a16_avx2:
+            forbidden.add(A16_AVX2_MACRO)
+        if not expect_a16_avx512bf16:
+            forbidden.add(A16_AVX512BF16_MACRO)
+        if not expect_a16_avx512fp16:
+            forbidden.add(A16_AVX512FP16_MACRO)
         if forbidden.intersection(definitions):
             raise ValueError(f"Optional ISA availability macro in baseline: {relative}")
     if project_entries == 0:
@@ -126,6 +168,9 @@ def verify(source_dir, build_dir, expect_avx2, expect_f16c=False, expect_avx2_co
     return {"optional_avx2_compiled": expect_avx2,
             "optional_f16c_compiled": expect_f16c,
             "optional_avx2_conversion_compiled": expect_avx2_conversion,
+            "optional_a16_avx2_compiled": expect_a16_avx2,
+            "optional_a16_avx512bf16_compiled": expect_a16_avx512bf16,
+            "optional_a16_avx512fp16_compiled": expect_a16_avx512fp16,
             "project_compile_commands": project_entries,
             "isa_translation_units": sorted(seen)}
 
@@ -137,10 +182,16 @@ def main():
     parser.add_argument("--expect-avx2", required=True, choices=("ON", "OFF"))
     parser.add_argument("--expect-f16c", default="OFF", choices=("ON", "OFF"))
     parser.add_argument("--expect-avx2-conversion", default="OFF", choices=("ON", "OFF"))
+    parser.add_argument("--expect-a16-avx2", default="OFF", choices=("ON", "OFF"))
+    parser.add_argument("--expect-a16-avx512bf16", default="OFF", choices=("ON", "OFF"))
+    parser.add_argument("--expect-a16-avx512fp16", default="OFF", choices=("ON", "OFF"))
     options = parser.parse_args()
     try:
         result = verify(options.source_dir, options.build_dir, options.expect_avx2 == "ON",
-                        options.expect_f16c == "ON", options.expect_avx2_conversion == "ON")
+                        options.expect_f16c == "ON", options.expect_avx2_conversion == "ON",
+                        options.expect_a16_avx2 == "ON",
+                        options.expect_a16_avx512bf16 == "ON",
+                        options.expect_a16_avx512fp16 == "ON")
     except (OSError, ValueError, KeyError, TypeError) as error:
         print(f"CPU ISA build verification failed: {error}", file=sys.stderr)
         return 1

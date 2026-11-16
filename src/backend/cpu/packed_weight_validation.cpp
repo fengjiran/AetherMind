@@ -2,6 +2,7 @@
 #include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "utils/overflow_check.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
@@ -70,6 +71,14 @@ Status ValidateIdentityPackedWeight(const PackedWeightView& packed,
         packed.alignment < kCpuIdentityPackingAlignment) {
         return Status::InvalidArgument(std::string(kernel_name) +
                                        " requires the cpu_identity packed weight recipe");
+    }
+
+    // The descriptor's alignment is a claim; typed consumers also need the
+    // actual address to satisfy the identity recipe before binding pointers.
+    if (packed.data != nullptr &&
+        reinterpret_cast<std::uintptr_t>(packed.data) % kCpuIdentityPackingAlignment != 0) {
+        return Status::InvalidArgument(std::string(kernel_name) +
+                                       " requires 64-byte-aligned cpu_identity packed data");
     }
 
     AM_ASSIGN_OR_RETURN(const size_t required_bytes,

@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <string_view>
 
 namespace {
 
@@ -101,10 +102,10 @@ TEST(CPUKernelSiluMul, ResolvesF32ReferenceDescriptor) {
     EXPECT_EQ(kernel->workspace_requirement.bytes, 0U);
 }
 
-TEST(CPUKernelSiluMul, Float16SelectorDoesNotResolve) {
+TEST(CPUKernelSiluMul, Float16SelectorResolvesA16Reference) {
     const auto kernel = PrepareSiluMulKernel(DataType::Float(16));
-    ASSERT_FALSE(kernel.ok());
-    EXPECT_EQ(kernel.status(), StatusCode::kNotFound) << kernel.status().ToString();
+    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+    EXPECT_EQ(std::string_view{kernel->name}, "cpu::silu_mul_a16_f16_reference");
 }
 
 TEST(CPUKernelSiluMul, ContiguousValuesUseStableLargeMagnitudeFormula) {

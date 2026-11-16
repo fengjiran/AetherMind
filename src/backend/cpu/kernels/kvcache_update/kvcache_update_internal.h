@@ -6,7 +6,9 @@
 
 #include "aethermind/base/kv_cache_binding.h"
 #include "aethermind/base/status.h"
+#include "aethermind/dtypes/data_type.h"
 
+#include <cstddef>
 #include <cstdint>
 
 namespace aethermind::cpu::detail {
@@ -41,6 +43,32 @@ Status RunKVCacheUpdateKV16Reference(
         const KVCacheUpdateF32KernelArgs& args,
         const KVCacheAppendBinding& append,
         DataType kv_dtype) noexcept;
+
+/// @brief Cold-path-stable A16 K/V activation views for one append window.
+///
+/// Strides are element strides in 16-bit storage. The cache and the activation
+/// share the kernel dtype, so the update is a write-through copy with no
+/// rounding (frozen P4 placement).
+struct KVCacheUpdateA16KernelArgs {
+    const std::byte* key_data{};
+    const std::byte* value_data{};
+    DataType act_dtype{};
+    int64_t seq_len{};
+    int64_t hidden{};
+    int64_t key_row_stride{};
+    int64_t key_col_stride{};
+    int64_t value_row_stride{};
+    int64_t value_col_stride{};
+};
+
+/// @brief Copies one A16 append window into an A16 cache without rounding.
+///
+/// `act_dtype` must be scalar Float(16) or BFloat(16) and match the append
+/// binding's storage dtype (validated by the caller). Writes are byte-safe and
+/// touch only the logical head_dim.
+Status RunKVCacheUpdateA16Reference(
+        const KVCacheUpdateA16KernelArgs& args,
+        const KVCacheAppendBinding& append) noexcept;
 
 } // namespace aethermind::cpu::detail
 

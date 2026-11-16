@@ -267,8 +267,9 @@ Status BuildRoPEF32Metadata(const OpParams& params, std::vector<std::byte>& attr
     return Status::Ok();
 }
 
-Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
-                                 void* params_buffer) noexcept {
+template<typename KernelArgs>
+StatusOr<KernelArgs> ValidateAndBuildRoPEArgs(const KernelParamsBuildContext& context,
+                                              DataType expected_act) noexcept {
     if (context.attrs.size() < sizeof(RoPEF32KernelMetadata)) {
         return Status::InvalidArgument(
                 "CPU RoPE requires frozen metadata attrs");
@@ -304,11 +305,15 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
                 "CPU RoPE requires valid TensorViews");
     }
 
-    if (const auto fp32 = DataType::Float32();
-        q.dtype() != fp32 || k.dtype() != fp32 || q_output.dtype() != fp32 ||
-        k_output.dtype() != fp32 || pos_ids.dtype() != DataType::Int(64)) {
+    if (q.dtype() != expected_act || k.dtype() != expected_act ||
+        q_output.dtype() != expected_act || k_output.dtype() != expected_act ||
+        pos_ids.dtype() != DataType::Int(64)) {
         return Status::InvalidArgument(
-                "CPU RoPE reference requires float32 q/k/outputs and int64 position_ids");
+                expected_act == DataType::Float32()
+                        ? "CPU RoPE reference requires float32 q/k/outputs "
+                          "and int64 position_ids"
+                        : "CPU A16 RoPE requires 16-bit q/k/outputs matching the "
+                          "kernel dtype and int64 position_ids");
     }
 
     if (q.rank() != 2 || k.rank() != 2 || q_output.rank() != 2 ||
@@ -371,12 +376,12 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
     AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
             "CPU RoPE", k_output_analysis.footprint(), "k output", position_analysis.footprint(), "position_ids"));
 
-    ::new (params_buffer) RoPEF32KernelArgs{
-            .q = q.data<float>(),
-            .k = k.data<float>(),
+    return KernelArgs{
+            .q = static_cast<decltype(KernelArgs::q)>(q.data()),
+            .k = static_cast<decltype(KernelArgs::k)>(k.data()),
             .pos_ids = pos_ids.data<int64_t>(),
-            .q_output = q_output.data<float>(),
-            .k_output = k_output.data<float>(),
+            .q_output = static_cast<decltype(KernelArgs::q_output)>(q_output.data()),
+            .k_output = static_cast<decltype(KernelArgs::k_output)>(k_output.data()),
             .seq_len = seq_len,
             .head_dim = metadata.head_dim,
             .rotary_dim = metadata.rotary_dim,
@@ -402,6 +407,25 @@ Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
             .pairing = metadata.pairing,
             .algorithm = metadata.algorithm,
     };
+}
+
+Status BuildRoPEF32ReferenceArgs(const KernelParamsBuildContext& context,
+                                 void* params_buffer) noexcept {
+    AM_ASSIGN_OR_RETURN(const RoPEF32KernelArgs args,
+                        ValidateAndBuildRoPEArgs<RoPEF32KernelArgs>(
+                                context, DataType::Float32()));
+    ::new (params_buffer) RoPEF32KernelArgs(args);
+    return Status::Ok();
+}
+
+template<bool Bfloat>
+Status BuildRoPEA16ReferenceArgs(const KernelParamsBuildContext& context,
+                                 void* params_buffer) noexcept {
+    const DataType expected = Bfloat ? DataType::BFloat(16) : DataType::Float(16);
+    AM_ASSIGN_OR_RETURN(RoPEA16KernelArgs args,
+                        ValidateAndBuildRoPEArgs<RoPEA16KernelArgs>(context, expected));
+    args.act_dtype = expected;
+    ::new (params_buffer) RoPEA16KernelArgs(args);
     return Status::Ok();
 }
 
@@ -411,11 +435,20 @@ Status RoPEF32ReferenceEntry(const KernelContext& ctx) noexcept {
     return RunRoPEF32Reference(*args, ctx.attrs);
 }
 
+Status RoPEA16ReferenceEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const RoPEA16KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunRoPEA16Reference(*args, ctx.attrs);
+}
+
 } // namespace
 
 static_assert(std::is_trivially_destructible_v<RoPEF32KernelArgs>);
 static_assert(alignof(RoPEF32KernelArgs) <= alignof(std::max_align_t));
 static_assert(sizeof(RoPEF32KernelArgs) <= kMaxKernelParamsSize);
+static_assert(std::is_trivially_destructible_v<RoPEA16KernelArgs>);
+static_assert(alignof(RoPEA16KernelArgs) <= alignof(std::max_align_t));
+static_assert(sizeof(RoPEA16KernelArgs) <= kMaxKernelParamsSize);
 
 AM_REGISTER_KERNEL(
         CpuRoPEF32Reference,
@@ -435,5 +468,32 @@ AM_REGISTER_KERNEL(
                 .params_builder = &BuildRoPEF32ReferenceArgs,
                 .metadata_builder = &BuildRoPEF32Metadata,
                 .name = "cpu::rope_f32_reference"})
+
+template<bool Bfloat>
+KernelDef A16RoPE(std::string_view name) {
+    return KernelDef{
+            .op_type = OpType::kRoPE,
+            .selector = KernelSelector{
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16),
+                    .output_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16),
+                    // RoPE has no weight port; the derived weight dtype falls
+                    // back to the activation dtype.
+                    .weight_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16),
+                    .weight_format = WeightFormat::kPlain,
+                    .phase = ExecPhase::kBoth,
+            },
+            .kernel_func = &RoPEA16ReferenceEntry,
+            .priority = 10,
+            .params_size = sizeof(RoPEA16KernelArgs),
+            .params_builder = &BuildRoPEA16ReferenceArgs<Bfloat>,
+            .metadata_builder = &BuildRoPEF32Metadata,
+            .name = name};
+}
+
+AM_REGISTER_KERNEL(CpuRoPEA16F16Reference,
+                   (A16RoPE<false>("cpu::rope_a16_f16_reference")))
+AM_REGISTER_KERNEL(CpuRoPEA16Bf16Reference,
+                   (A16RoPE<true>("cpu::rope_a16_bf16_reference")))
 
 } // namespace aethermind::cpu::detail

@@ -65,6 +65,26 @@ struct EmbeddingF32W16KernelArgs {
 /// `token_count` is a no-op; every token must lie in [0, vocab_size).
 Status RunEmbeddingF32W16Reference(const EmbeddingF32W16KernelArgs& args) noexcept;
 
+/// Compute-ready args for the CPU A16 x W16 Embedding kernel.
+///
+/// Row bytes equal `hidden_size * 2` on both sides: an A16 gather copies the
+/// stored 16-bit payload unchanged, so it introduces no rounding (frozen P4
+/// rounding placement).
+struct EmbeddingA16KernelArgs {
+    const std::byte* token_ids{};
+    DataType token_dtype{};
+    const std::byte* weight{};
+    std::byte* output{};
+    size_t token_count{};
+    size_t vocab_size{};
+    size_t hidden_size{};
+    size_t weight_row_bytes{};
+    size_t output_row_bytes{};
+};
+
+/// @brief Copies FP16/BF16 weight rows selected by token ids without rounding.
+Status RunEmbeddingA16Reference(const EmbeddingA16KernelArgs& args) noexcept;
+
 } // namespace aethermind::cpu::detail
 
 #endif // AETHERMIND_BACKEND_CPU_KERNELS_EMBEDDING_INTERNAL_H

@@ -56,6 +56,8 @@ struct Options {
     std::string weights_name = "require-fp32";
     DataType kv_dtype = DataType::Float32();
     std::string kv_dtype_name = "f32";
+    DataType activation_dtype = DataType::Float32();
+    std::string activation_dtype_name = "f32";
     size_t warmup = 1;
     size_t repetitions = 5;
     std::string mode = "timing";
@@ -226,6 +228,15 @@ Options ParseOptions(int argc, char** argv) {
                 options.kv_dtype = DataType::BFloat(16);
             else
                 throw std::invalid_argument("--kv-dtype requires f32, f16 or bf16");
+        } else if (name == "--activation-dtype") {
+            options.activation_dtype_name = value;
+            if (value == "f32") options.activation_dtype = DataType::Float32();
+            else if (value == "f16")
+                options.activation_dtype = DataType::Float(16);
+            else if (value == "bf16")
+                options.activation_dtype = DataType::BFloat(16);
+            else
+                throw std::invalid_argument("--activation-dtype requires f32, f16 or bf16");
         } else if (name == "--warmup")
             options.warmup = ParseUnsigned<size_t>(value, name);
         else if (name == "--repetitions") {
@@ -252,6 +263,18 @@ Options ParseOptions(int argc, char** argv) {
         options.weights != WeightPolicy::kKeepFp16WeightsFp32Activation &&
         options.weights != WeightPolicy::kKeepBf16WeightsFp32Activation) {
         throw std::invalid_argument("--kv-dtype f16/bf16 requires --weights keep-fp16 or keep-bf16");
+    }
+    if (options.activation_dtype != DataType::Float32()) {
+        const bool same_weight_policy =
+                (options.activation_dtype == DataType::Float(16) &&
+                 options.weights == WeightPolicy::kKeepFp16WeightsFp32Activation) ||
+                (options.activation_dtype == DataType::BFloat(16) &&
+                 options.weights == WeightPolicy::kKeepBf16WeightsFp32Activation);
+        if (!same_weight_policy || options.kv_dtype != options.activation_dtype) {
+            throw std::invalid_argument(
+                    "--activation-dtype f16/bf16 requires the same-dtype keep-* weight "
+                    "policy and a matching --kv-dtype");
+        }
     }
     return options;
 }
@@ -502,7 +525,7 @@ StatusOr<Run> RunSample(const Options& options, size_t index) {
     // The private prepared-weight validator is unavailable to this public-header
     // build; Compile/Prepare below reject inconsistent converted weights.
     AM_ASSIGN_OR_RETURN(sample.raw_unique_visible_bytes, RawBytes(loaded->GetResolvedWeights()));
-    compile_options.graph_build.activation_dtype = DataType::Float32();
+    compile_options.graph_build.activation_dtype = options.activation_dtype;
     compile_options.graph_build.kv_dtype = options.kv_dtype;
     Timer compile_timer(timing);
     AM_ASSIGN_OR_RETURN(auto artifact, ModelCompiler::Compile(std::move(loaded), compile_options));
@@ -660,6 +683,8 @@ void WriteDocument(std::ostream& s, const Options& options, const std::vector<Ru
     String(s, options.weights_name);
     s << ",\"kv_dtype\":";
     String(s, options.kv_dtype_name);
+    s << ",\"activation_dtype\":";
+    String(s, options.activation_dtype_name);
     s << ",\"prompt_tokens\":";
     Array(s, options.prompt);
     s << ",\"max_new_tokens\":" << options.max_new_tokens << ",\"eos_token_id\":";
@@ -678,6 +703,7 @@ int RunCommandLine(int argc, char** argv) {
                      "  --preset o1-plain|o2-packed [--warmup N] [--repetitions N]\n"
                      "  [--weights require-fp32|convert-fp32|keep-fp16|keep-bf16]\n"
                      "  [--kv-dtype f32|f16|bf16]\n"
+                     "  [--activation-dtype f32|f16|bf16]\n"
                      "  [--mode timing|profile|allocations] [--eos-token ID]\n";
         return std::cout ? 0 : 1;
     }

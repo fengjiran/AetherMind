@@ -150,6 +150,13 @@ StatusOr<std::optional<LinearProjectionCandidate>> FindLinearProjectionCandidate
         return std::optional<LinearProjectionCandidate>{};
     }
 
+    // The fused QkvLinear derives every output dtype from the activation
+    // input, so a mixed-output Linear (explicit LinearParams::output_dtype)
+    // cannot join the fused contract.
+    if (output_desc->spec.dtype != input_desc->spec.dtype) {
+        return std::optional<LinearProjectionCandidate>{};
+    }
+
     const ShapeSymbol& output_features = weight_desc->spec.shape[0];
     if (!output_features.IsStatic() || output_features.GetStaticValue() <= 0 ||
         !HasConsistentLinearMetadata(*node, *input_desc, *weight_desc, *output_desc)) {

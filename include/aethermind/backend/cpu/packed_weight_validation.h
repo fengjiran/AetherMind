@@ -24,11 +24,13 @@ namespace aethermind::cpu::detail {
 ///
 /// Requires exact logical metadata (rank, every dimension, and dtype), the
 /// canonical CPU identity-packing recipe with 64-byte alignment, matching
-/// storage alignment, and enough storage for every logical element at the
+/// declared storage alignment and actual non-null data address alignment,
+/// and enough storage for every logical element at the
 /// expected dtype's byte width. Shape products are checked before converting
 /// them to bytes. Used by the binding-time KernelParamsBuilders of the
 /// packed-only weight kernels; callers derive operand pointers from the
 /// artifact's logical ranges after this check passes.
+/// Empty logical weights may retain a null data pointer.
 ///
 /// @param packed Packed weight artifact exposed to the params builder.
 /// @param expected_shape Expected logical shape; the rank and every dimension

@@ -30,9 +30,24 @@ class CpuIsaBuildContract(unittest.TestCase):
                            for name in sorted(ISA.LIBRARY_SOURCES | {ISA.TEST_SOURCE}))
         return entries
 
-    def verify(self, entries, avx2, f16c=False, conversion=False):
+    def a16_entries(self, a16_avx2=False, a16_avx512bf16=False, a16_avx512fp16=False):
+        entries = []
+        if a16_avx2:
+            entries.extend(self.entry(name, ("-mavx2", "-mfma", "-mavx", "-mf16c", "-fno-lto"))
+                           for name in sorted(ISA.A16_AVX2_SOURCES))
+        if a16_avx512bf16:
+            entries.extend(self.entry(name, ("-mavx512f", "-mavx512bf16", "-fno-lto"))
+                           for name in sorted(ISA.A16_AVX512BF16_SOURCES))
+        if a16_avx512fp16:
+            entries.extend(self.entry(name, ("-mavx512f", "-mavx512fp16", "-fno-lto"))
+                           for name in sorted(ISA.A16_AVX512FP16_SOURCES))
+        return entries
+
+    def verify(self, entries, avx2, f16c=False, conversion=False,
+               a16_avx2=False, a16_avx512bf16=False, a16_avx512fp16=False):
         (self.build_dir / "compile_commands.json").write_text(json.dumps(entries))
-        return ISA.verify(SOURCE_DIR, self.build_dir, avx2, f16c, conversion)
+        return ISA.verify(SOURCE_DIR, self.build_dir, avx2, f16c, conversion,
+                          a16_avx2, a16_avx512bf16, a16_avx512fp16)
 
     def test_conversion_implementations_are_independently_optional(self):
         for f16c, conversion in ((False, True), (True, False), (True, True)):
@@ -134,6 +149,67 @@ class CpuIsaBuildContract(unittest.TestCase):
                         "arguments": ["c++", "-c", str(unity)]})
         with self.assertRaisesRegex(ValueError, "merged into Unity"):
             self.verify(entries, True)
+
+    def test_a16_implementations_have_isolated_options(self):
+        entries = self.commands(False) + self.a16_entries(True, True, True)
+        result = self.verify(entries, False, a16_avx2=True, a16_avx512bf16=True, a16_avx512fp16=True)
+        self.assertEqual(len(result["isa_translation_units"]), 6)
+        self.assertTrue(result["optional_a16_avx2_compiled"])
+        self.assertTrue(result["optional_a16_avx512bf16_compiled"])
+        self.assertTrue(result["optional_a16_avx512fp16_compiled"])
+
+    def test_a16_groups_are_independently_optional(self):
+        for kwargs in ({"a16_avx2": True}, {"a16_avx512bf16": True}, {"a16_avx512fp16": True}):
+            with self.subTest(**kwargs):
+                entries = self.commands(False) + self.a16_entries(**kwargs)
+                result = self.verify(entries, False, **kwargs)
+                self.assertEqual(len(result["isa_translation_units"]), 2)
+
+    def test_baseline_rejects_a16_source(self):
+        groups = (
+            ({"a16_avx2": True}, "A16 AVX2"),
+            ({"a16_avx512bf16": True}, "A16 AVX512-BF16"),
+            ({"a16_avx512fp16": True}, "A16 AVX512-FP16"),
+        )
+        for kwargs, kind in groups:
+            with self.subTest(kind=kind), self.assertRaisesRegex(ValueError, f"Optional {kind} source"):
+                entries = self.commands(False) + self.a16_entries(**kwargs)
+                self.verify(entries, False)
+
+    def test_baseline_rejects_a16_availability_macro(self):
+        for macro in (ISA.A16_AVX2_MACRO, ISA.A16_AVX512BF16_MACRO, ISA.A16_AVX512FP16_MACRO):
+            entries = self.commands(False)
+            entries[0]["arguments"].append("-D" + macro + "=1")
+            with self.subTest(macro=macro), self.assertRaisesRegex(ValueError, "availability macro"):
+                self.verify(entries, False)
+
+    def test_a16_rejects_extra_isa_and_lto_override(self):
+        cases = (
+            ({"a16_avx2": True}, "-mavx512f"),
+            ({"a16_avx512bf16": True}, "-mavx512fp16"),
+            ({"a16_avx512fp16": True}, "-mavx512bf16"),
+        )
+        for kwargs, foreign in cases:
+            for flag in (foreign, "-flto"):
+                entries = self.commands(False) + self.a16_entries(**kwargs)
+                entries[-1]["arguments"].append(flag)
+                with self.subTest(flag=flag, **kwargs), self.assertRaisesRegex(ValueError, "invalid ISA/LTO"):
+                    self.verify(entries, False, **kwargs)
+
+    def test_a16_implementation_cannot_merge_into_unity(self):
+        unity = self.build_dir / "CMakeFiles/unit.dir/Unity/unity_0_cxx.cxx"
+        unity.parent.mkdir(parents=True)
+        unity.write_text('#include "' + str(SOURCE_DIR / sorted(ISA.A16_AVX2_SOURCES)[0]) + '"\n')
+        entries = self.commands(False) + self.a16_entries(a16_avx2=True)
+        entries.append({"directory": str(self.build_dir), "file": str(unity),
+                        "arguments": ["c++", "-c", str(unity)]})
+        with self.assertRaisesRegex(ValueError, "merged into Unity"):
+            self.verify(entries, False, a16_avx2=True)
+
+    def test_missing_a16_implementation_fails(self):
+        entries = self.commands(False) + self.a16_entries(a16_avx2=True)[:-1]
+        with self.assertRaisesRegex(ValueError, "Missing optional implementation"):
+            self.verify(entries, False, a16_avx2=True)
 
 
 if __name__ == "__main__":

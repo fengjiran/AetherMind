@@ -421,7 +421,8 @@ Status BuildEmbeddingF32W16PackedIdentityArgs(const KernelParamsBuildContext& co
     if (!IsSupportedTokenIdDType(tokens.dtype()) || tokens.rank() < 1 ||
         !tokens.is_contiguous()) {
         return Status::InvalidArgument(
-                "Packed W16 Embedding requires contiguous supported token ids with rank >= 1");
+                "Packed W16 Embedding requires contiguous supported "
+                "token ids with rank >= 1");
     }
 
     if (output.dtype() != DataType::Float32() ||
@@ -434,7 +435,8 @@ Status BuildEmbeddingF32W16PackedIdentityArgs(const KernelParamsBuildContext& co
     if (packed.logical_shape.size() != 2U ||
         packed.logical_shape[0] <= 0 || packed.logical_shape[1] <= 0) {
         return Status::InvalidArgument(
-                "Packed W16 Embedding requires positive rank-2 logical weight dimensions");
+                "Packed W16 Embedding requires positive "
+                "rank-2 logical weight dimensions");
     }
 
     const int64_t vocab_size = packed.logical_shape[0];
@@ -446,13 +448,15 @@ Status BuildEmbeddingF32W16PackedIdentityArgs(const KernelParamsBuildContext& co
     for (int32_t axis = 0; axis < tokens.rank(); ++axis) {
         if (output.dim(axis) != tokens.dim(axis)) {
             return Status::InvalidArgument(
-                    "Packed W16 Embedding output shape must be [token ids..., hidden_size]");
+                    "Packed W16 Embedding output shape "
+                    "must be [token ids..., hidden_size]");
         }
     }
 
     if (output.dim(tokens.rank()) != hidden_size) {
         return Status::InvalidArgument(
-                "Packed W16 Embedding output shape must be [token ids..., hidden_size]");
+                "Packed W16 Embedding output shape "
+                "must be [token ids..., hidden_size]");
     }
 
     const int64_t token_count = tokens.numel();
@@ -463,7 +467,8 @@ Status BuildEmbeddingF32W16PackedIdentityArgs(const KernelParamsBuildContext& co
 
     if (tokens.data() == nullptr || output.data() == nullptr || packed.data == nullptr) {
         return Status::InvalidArgument(
-                "Packed W16 Embedding requires non-null storage for non-empty tensors");
+                "Packed W16 Embedding requires non-null "
+                "storage for non-empty tensors");
     }
 
     size_t count = 0;
@@ -475,7 +480,8 @@ Status BuildEmbeddingF32W16PackedIdentityArgs(const KernelParamsBuildContext& co
         CheckNarrow(hidden_size, &hidden) ||
         CheckOverflowMul(hidden, sizeof(uint16_t), &weight_row_bytes) ||
         CheckOverflowMul(hidden, sizeof(float), &output_row_bytes)) {
-        return Status::Overflow("Packed W16 Embedding dimensions exceed host byte geometry");
+        return Status::Overflow("Packed W16 Embedding dimensions "
+                                "exceed host byte geometry");
     }
 
     AM_ASSIGN_OR_RETURN(const ByteAddressRange tokens_range,
@@ -486,8 +492,10 @@ Status BuildEmbeddingF32W16PackedIdentityArgs(const KernelParamsBuildContext& co
             "CPU W16 Embedding", output_range,
             "output", tokens_range, "token ids"));
     if (!std::in_range<int64_t>(packed.nbytes)) {
-        return Status::Overflow("Packed W16 Embedding artifact byte range exceeds int64_t");
+        return Status::Overflow("Packed W16 Embedding artifact "
+                                "byte range exceeds int64_t");
     }
+
     AM_ASSIGN_OR_RETURN(const ByteAddressRange packed_range,
                         BuildContiguousByteRange(packed.data,
                                                  static_cast<int64_t>(packed.nbytes),
@@ -517,23 +525,211 @@ Status EmbeddingF32W16ReferenceEntry(const KernelContext& context) noexcept {
     return RunEmbeddingF32W16Reference(*args);
 }
 
+// ── A16 x W16 (same-dtype gather) ─────────────────────────────────────────────
+
+template<bool Bfloat, bool Packed>
+Status BuildEmbeddingA16Args(const KernelParamsBuildContext& context,
+                             void* params_buffer) noexcept {
+    const DataType expected = Bfloat ? DataType::BFloat(16) : DataType::Float(16);
+    const size_t expected_inputs = Packed ? 1U : 2U;
+    if (context.inputs.size() != expected_inputs || context.outputs.size() != 1U ||
+        context.packed_weight.has_value() != Packed) {
+        return Status::InvalidArgument(
+                Packed ? "Packed A16 Embedding requires token ids, output, and a weight artifact"
+                       : "A16 Embedding requires token ids, weight, and output");
+    }
+
+    const TensorView& tokens = context.inputs[0];
+    const MutableTensorView& output = context.outputs[0];
+    if (!tokens.is_valid() || !output.is_valid()) {
+        return Status::InvalidArgument(
+                "A16 Embedding requires valid token id and output tensor views");
+    }
+
+    if (!IsSupportedTokenIdDType(tokens.dtype()) || tokens.rank() < 1 ||
+        !tokens.is_contiguous()) {
+        return Status::InvalidArgument(
+                "A16 Embedding requires contiguous int32, uint32, "
+                "or int64 token ids with rank >= 1");
+    }
+
+    if (output.dtype() != expected || output.rank() != tokens.rank() + 1 ||
+        !output.is_contiguous()) {
+        return Status::InvalidArgument(
+                "A16 Embedding requires contiguous output matching the weight dtype "
+                "with an appended hidden axis");
+    }
+
+    int64_t vocab_size = 0;
+    int64_t hidden_size = 0;
+    if constexpr (Packed) {
+        const PackedWeightView& packed = *context.packed_weight;
+        if (packed.logical_shape.size() != 2U ||
+            packed.logical_shape[0] <= 0 || packed.logical_shape[1] <= 0) {
+            return Status::InvalidArgument(
+                    "Packed A16 Embedding requires positive "
+                    "rank-2 logical weight dimensions");
+        }
+
+        vocab_size = packed.logical_shape[0];
+        hidden_size = packed.logical_shape[1];
+        AM_RETURN_IF_ERROR(ValidateIdentityPackedWeight(
+                packed, std::array{vocab_size, hidden_size},
+                "EmbeddingA16KernelEntry", expected));
+    } else {
+        const TensorView& weight = context.inputs[1];
+        if (!weight.is_valid() || weight.dtype() != expected ||
+            weight.rank() != 2 || !weight.is_contiguous()) {
+            return Status::InvalidArgument(
+                    "A16 Embedding requires a contiguous rank-2 weight "
+                    "matching the kernel dtype");
+        }
+
+        vocab_size = weight.dim(0);
+        hidden_size = weight.dim(1);
+        if (vocab_size <= 0 || hidden_size <= 0) {
+            return Status::InvalidArgument(
+                    "A16 Embedding requires positive vocab and hidden sizes");
+        }
+    }
+
+    for (int32_t axis = 0; axis < tokens.rank(); ++axis) {
+        if (output.dim(axis) != tokens.dim(axis)) {
+            return Status::InvalidArgument(
+                    "A16 Embedding output shape must be [token ids..., hidden_size]");
+        }
+    }
+
+    if (output.dim(tokens.rank()) != hidden_size) {
+        return Status::InvalidArgument(
+                "A16 Embedding output shape must be [token ids..., hidden_size]");
+    }
+
+    const int64_t token_count = tokens.numel();
+    if (token_count == 0) {
+        ::new (params_buffer) EmbeddingA16KernelArgs{};
+        return Status::Ok();
+    }
+
+    const std::byte* weight_data = nullptr;
+    if constexpr (Packed) {
+        if (context.packed_weight->data == nullptr) {
+            return Status::InvalidArgument(
+                    "Packed A16 Embedding requires non-null artifact storage");
+        }
+        weight_data = static_cast<const std::byte*>(context.packed_weight->data);
+    } else {
+        if (context.inputs[1].data() == nullptr) {
+            return Status::InvalidArgument(
+                    "A16 Embedding requires non-null weight storage");
+        }
+        weight_data = static_cast<const std::byte*>(context.inputs[1].data());
+    }
+
+    if (tokens.data() == nullptr || output.data() == nullptr) {
+        return Status::InvalidArgument(
+                "A16 Embedding requires non-null storage for non-empty tensors");
+    }
+
+    size_t count = 0;
+    size_t vocab = 0;
+    size_t hidden = 0;
+    size_t row_bytes = 0;
+    if (CheckNarrow(token_count, &count) || CheckNarrow(vocab_size, &vocab) ||
+        CheckNarrow(hidden_size, &hidden) ||
+        CheckOverflowMul(hidden, sizeof(uint16_t), &row_bytes)) {
+        return Status::Overflow(
+                "A16 Embedding dimensions exceed host byte geometry");
+    }
+
+    AM_ASSIGN_OR_RETURN(const ByteAddressRange tokens_range,
+                        BuildContiguousByteRange(tokens, "A16 Embedding token ids"));
+    AM_ASSIGN_OR_RETURN(const ByteAddressRange output_range,
+                        BuildContiguousByteRange(output, "A16 Embedding output"));
+    AM_RETURN_IF_ERROR(ValidateContiguousDisjoint(
+            "CPU A16 Embedding", output_range, "output",
+            tokens_range, "token ids"));
+
+    if constexpr (Packed) {
+        if (!std::in_range<int64_t>(context.packed_weight->nbytes)) {
+            return Status::Overflow(
+                    "Packed A16 Embedding artifact byte range exceeds int64_t");
+        }
+
+        AM_ASSIGN_OR_RETURN(const ByteAddressRange packed_range,
+                            BuildContiguousByteRange(
+                                    context.packed_weight->data,
+                                    static_cast<int64_t>(context.packed_weight->nbytes),
+                                    size_t{1}, "A16 Embedding packed weight"));
+        AM_RETURN_IF_ERROR(ValidateContiguousDisjoint(
+                "CPU A16 Embedding", output_range, "output",
+                packed_range, "packed weight"));
+    } else {
+        AM_ASSIGN_OR_RETURN(const ByteAddressRange weight_range,
+                            BuildContiguousByteRange(context.inputs[1],
+                                                     "A16 Embedding weight"));
+        AM_RETURN_IF_ERROR(ValidateContiguousDisjoint(
+                "CPU A16 Embedding", output_range, "output",
+                weight_range, "weight"));
+    }
+
+    ::new (params_buffer) EmbeddingA16KernelArgs{
+            .token_ids = static_cast<const std::byte*>(tokens.data()),
+            .token_dtype = tokens.dtype(),
+            .weight = weight_data,
+            .output = static_cast<std::byte*>(output.data()),
+            .token_count = count,
+            .vocab_size = vocab,
+            .hidden_size = hidden,
+            .weight_row_bytes = row_bytes,
+            .output_row_bytes = row_bytes,
+    };
+    return Status::Ok();
+}
+
+Status EmbeddingA16ReferenceEntry(const KernelContext& context) noexcept {
+    const auto* args = static_cast<const EmbeddingA16KernelArgs*>(context.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunEmbeddingA16Reference(*args);
+}
+
+template<bool Bfloat, bool Packed>
+KernelDef A16Embedding(std::string_view name) {
+    return {
+            .op_type = OpType::kEmbedding,
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16),
+                    .output_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16),
+                    .weight_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16),
+                    .weight_format = Packed ? WeightFormat::kPacked : WeightFormat::kPlain,
+                    .phase = ExecPhase::kBoth},
+            .packing_recipe = Packed ? CpuIdentityPackingRecipe() : PackingRecipe{},
+            .kernel_func = &EmbeddingA16ReferenceEntry,
+            .priority = 10,
+            .params_size = sizeof(EmbeddingA16KernelArgs),
+            .params_builder = &BuildEmbeddingA16Args<Bfloat, Packed>,
+            .name = name,
+    };
+}
+
 template<bool Bfloat, EmbeddingRowWiden Widen>
 KernelDef VectorEmbedding(bool packed, CpuFeatureSet requirements, std::string_view name) {
     return {
             .op_type = OpType::kEmbedding,
-            .selector = {.device_type = DeviceType::kCPU,
-                         .act_dtype = DataType::Float32(),
-                         .output_dtype = DataType::Float32(),
-                         .weight_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16),
-                         .weight_format = packed ? WeightFormat::kPacked : WeightFormat::kPlain,
-                         .phase = ExecPhase::kBoth},
+            .selector = {
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
+                    .weight_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16),
+                    .weight_format = packed ? WeightFormat::kPacked : WeightFormat::kPlain,
+                    .phase = ExecPhase::kBoth},
             .packing_recipe = packed ? CpuIdentityPackingRecipe() : PackingRecipe{},
             .cpu_requirements = requirements,
             .kernel_func = &EmbeddingF32W16ReferenceEntry,
             .priority = 20,
             .params_size = sizeof(EmbeddingF32W16KernelArgs),
-            .params_builder = packed ? &BuildEmbeddingF32W16PackedIdentityArgs<Bfloat, Widen>
-                                     : &BuildEmbeddingF32W16Args<Bfloat, Widen>,
+            .params_builder = packed ? &BuildEmbeddingF32W16PackedIdentityArgs<Bfloat, Widen> : &BuildEmbeddingF32W16Args<Bfloat, Widen>,
             .metadata_builder = &BuildEmbeddingF32W16Metadata,
             .name = name,
     };
@@ -547,6 +743,9 @@ static_assert(alignof(EmbeddingF32KernelArgs) <= alignof(std::max_align_t));
 static_assert(std::is_trivially_destructible_v<EmbeddingF32W16KernelArgs>);
 static_assert(alignof(EmbeddingF32W16KernelArgs) <= alignof(std::max_align_t));
 static_assert(sizeof(EmbeddingF32W16KernelArgs) <= kMaxKernelParamsSize);
+static_assert(std::is_trivially_destructible_v<EmbeddingA16KernelArgs>);
+static_assert(alignof(EmbeddingA16KernelArgs) <= alignof(std::max_align_t));
+static_assert(sizeof(EmbeddingA16KernelArgs) <= kMaxKernelParamsSize);
 
 AM_REGISTER_KERNEL(CpuEmbeddingF32Reference,
                    KernelDef{
@@ -683,5 +882,14 @@ AM_REGISTER_KERNEL(CpuEmbeddingF32Bf16PackedIdentityReference,
                            .metadata_builder = &BuildEmbeddingF32W16Metadata,
                            .name = "cpu::embedding_f32_bf16_packed_identity_reference",
                    })
+
+AM_REGISTER_KERNEL(CpuEmbeddingA16F16Reference,
+                   (A16Embedding<false, false>("cpu::embedding_a16_f16_reference")))
+AM_REGISTER_KERNEL(CpuEmbeddingA16Bf16Reference,
+                   (A16Embedding<true, false>("cpu::embedding_a16_bf16_reference")))
+AM_REGISTER_KERNEL(CpuEmbeddingA16F16PackedIdentityReference,
+                   (A16Embedding<false, true>("cpu::embedding_a16_f16_packed_identity_reference")))
+AM_REGISTER_KERNEL(CpuEmbeddingA16Bf16PackedIdentityReference,
+                   (A16Embedding<true, true>("cpu::embedding_a16_bf16_packed_identity_reference")))
 
 } // namespace aethermind::cpu::detail

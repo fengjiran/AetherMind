@@ -103,6 +103,34 @@ TEST(CpuIdentityPackedWeight, ValidatesRankOneAndRankTwoShapes) {
                         .ok());
 }
 
+TEST(CpuIdentityPackedWeight, RejectsMisalignedStorageDespiteDeclaredAlignment) {
+    alignas(64) std::array<std::byte, 128> storage{};
+    constexpr std::array<int64_t, 1> shape{3};
+    for (const auto dtype: {DataType::Float32(), DataType::Float(16), DataType::BFloat(16)}) {
+        for (const size_t offset: {size_t{1}, size_t{alignof(float)}}) {
+            SCOPED_TRACE(dtype);
+            SCOPED_TRACE(offset);
+            auto packed = MakeIdentityPackedWeight(
+                    storage.data() + offset, 3 * dtype.nbytes(), shape);
+            packed.logical_dtype = dtype;
+            EXPECT_EQ(cpu::detail::ValidateIdentityPackedWeight(
+                              packed, shape, "PackedWeightUtilsTest", dtype),
+                      StatusCode::kInvalidArgument);
+        }
+    }
+}
+
+TEST(CpuIdentityPackedWeight, AllowsNullStorageForEmptyLogicalWeights) {
+    constexpr std::array<int64_t, 2> shape{3, 0};
+    for (const auto dtype: {DataType::Float32(), DataType::Float(16), DataType::BFloat(16)}) {
+        auto packed = MakeIdentityPackedWeight(nullptr, 0, shape);
+        packed.logical_dtype = dtype;
+        EXPECT_TRUE(cpu::detail::ValidateIdentityPackedWeight(
+                            packed, shape, "PackedWeightUtilsTest", dtype)
+                            .ok());
+    }
+}
+
 TEST(CpuIdentityPackedWeight, RejectsMalformedMetadataRecipeAndStorage) {
     alignas(64) float storage[3]{};
     constexpr std::array<int64_t, 1> expected_shape{3};

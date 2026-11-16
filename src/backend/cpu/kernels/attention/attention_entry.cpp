@@ -28,7 +28,8 @@ Status ValidateMetadata(const AttentionF32KernelMetadata& metadata) noexcept {
         metadata.head_dim <= 0 ||
         metadata.num_q_heads % metadata.num_kv_heads != 0 ||
         !std::isfinite(metadata.scale) || metadata.scale <= 0.0F) {
-        return Status::InvalidArgument("CPU Attention has invalid frozen head geometry");
+        return Status::InvalidArgument(
+                "CPU Attention has invalid frozen head geometry");
     }
 
     int64_t hidden = 0;
@@ -413,12 +414,189 @@ Status AttentionBF16ReferenceEntry(const KernelContext& ctx) noexcept {
     return AttentionKV16ReferenceEntry(ctx, DataType::BFloat(16));
 }
 
+// --- A16 (Q, K/V cache, and output share one 16-bit dtype) path ---
+// Query/output addressing is byte-safe: two-byte elements, element strides, and
+// no float alignment requirement. Cache read validation reuses the KV16
+// footprints with the A16 activation dtype as the expected storage dtype.
+
+template<bool Bfloat>
+Status BuildAttentionA16ReferenceArgs(const KernelParamsBuildContext& context,
+                                      void* params_buffer) noexcept {
+    const DataType expected = Bfloat ? DataType::BFloat(16) : DataType::Float(16);
+    if (context.inputs.size() != 1 || context.outputs.size() != 1) {
+        return Status::InvalidArgument(
+                "CPU A16 Attention requires one query input and one output");
+    }
+
+    AM_ASSIGN_OR_RETURN(const AttentionF32KernelMetadata metadata, ReadMetadata(context.attrs));
+    const TensorView& query = context.inputs[0];
+    const MutableTensorView& output = context.outputs[0];
+    if (!query.is_valid() || !output.is_valid()) {
+        return Status::InvalidArgument(
+                "CPU A16 Attention requires valid query and output TensorViews");
+    }
+
+    if (query.dtype() != expected || output.dtype() != expected) {
+        return Status::InvalidArgument(
+                "CPU A16 Attention requires query and output matching the kernel dtype");
+    }
+
+    if (query.rank() != 2 || output.rank() != 2 ||
+        query.dim(0) <= 0 || query.dim(1) <= 0) {
+        return Status::InvalidArgument(
+                "CPU A16 Attention requires query shape [seq_len, hidden] "
+                "with positive dimensions");
+    }
+
+    if (query.stride(0) <= 0 || query.stride(1) <= 0 ||
+        output.stride(0) <= 0 || output.stride(1) <= 0) {
+        return Status::InvalidArgument(
+                "CPU A16 Attention requires positive query and output strides");
+    }
+
+    if (query.shape() != output.shape()) {
+        return Status::InvalidArgument(
+                "CPU A16 Attention requires output shape to match query shape");
+    }
+
+    int64_t hidden = 0;
+    if (CheckOverflowMul(metadata.num_q_heads, metadata.head_dim, &hidden) ||
+        query.dim(1) != hidden) {
+        return Status::InvalidArgument(
+                "CPU A16 Attention query hidden width does not match frozen head geometry");
+    }
+
+    if (query.data() == nullptr || output.data() == nullptr) {
+        return Status::InvalidArgument(
+                "CPU A16 Attention requires non-null query and output data");
+    }
+
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint query_footprint,
+                        BuildStridedAddressFootprint(query, "CPU A16 Attention query"));
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint output_footprint,
+                        BuildStridedAddressFootprint(output, "CPU A16 Attention output"));
+    AM_RETURN_IF_ERROR(ValidateLayoutInjectivity(
+            kKernelName, output_footprint.injectivity(), "output"));
+    AM_RETURN_IF_ERROR(ValidateStridedDisjoint(
+            kKernelName, output_footprint, "output",
+            query_footprint, "query"));
+
+    ::new (params_buffer) AttentionA16KernelArgs{
+            .query = static_cast<const std::byte*>(query.data()),
+            .output = static_cast<std::byte*>(output.data()),
+            .act_dtype = expected,
+            .seq_len = query.dim(0),
+            .num_q_heads = metadata.num_q_heads,
+            .num_kv_heads = metadata.num_kv_heads,
+            .head_dim = metadata.head_dim,
+            .query_row_stride = query.stride(0),
+            .query_col_stride = query.stride(1),
+            .output_row_stride = output.stride(0),
+            .output_col_stride = output.stride(1),
+            .scale = metadata.scale,
+    };
+    return Status::Ok();
+}
+
+StatusOr<StridedAddressFootprint> BuildOutputFootprintA16(
+        const AttentionA16KernelArgs& args) noexcept {
+    int64_t hidden = 0;
+    if (CheckOverflowMul(args.num_q_heads, args.head_dim, &hidden)) {
+        return Status::InvalidArgument(
+                "CPU A16 Attention output hidden width overflow");
+    }
+
+    const std::array shape = {args.seq_len, hidden};
+    const std::array strides = {
+            args.output_row_stride,
+            args.output_col_stride,
+    };
+    return BuildStridedAddressFootprint(
+            args.output, shape, strides,
+            sizeof(uint16_t), "CPU A16 Attention output");
+}
+
+Status ValidateReadBindingA16(const AttentionA16KernelArgs& args,
+                              const KVCacheReadBinding& read) noexcept {
+    const KVCacheLayerStorageBinding& storage = read.storage;
+    if (storage.dtype != args.act_dtype) {
+        return Status::InvalidArgument(
+                "CPU A16 Attention KV cache storage dtype does not "
+                "match the kernel activation dtype");
+    }
+
+    if (storage.key_data == nullptr || storage.value_data == nullptr ||
+        storage.num_kv_heads == 0 || storage.head_dim == 0 || storage.token_capacity == 0) {
+        return Status::InvalidArgument(
+                "CPU A16 Attention has invalid KV cache storage binding");
+    }
+
+    if (storage.num_kv_heads != static_cast<size_t>(args.num_kv_heads) ||
+        storage.head_dim != static_cast<size_t>(args.head_dim)) {
+        return Status::InvalidArgument(
+                "CPU A16 Attention KV cache geometry does not match head metadata");
+    }
+
+    if (read.committed_end > read.visible_end ||
+        read.visible_end > storage.token_capacity ||
+        read.query_begin > read.query_end ||
+        read.query_end > read.visible_end) {
+        return Status::InvalidArgument(
+                "CPU A16 Attention has invalid KV cache read frontiers");
+    }
+
+    if (read.query_end - read.query_begin != static_cast<size_t>(args.seq_len)) {
+        return Status::InvalidArgument(
+                "CPU A16 Attention query interval does not match query sequence length");
+    }
+
+    size_t minimum_token_stride = 0;
+    size_t minimum_head_stride = 0;
+    if (CheckOverflowMul(storage.head_dim, sizeof(uint16_t), &minimum_token_stride) ||
+        CheckOverflowMul(storage.token_capacity, storage.token_stride_bytes,
+                         &minimum_head_stride) ||
+        storage.token_stride_bytes < minimum_token_stride ||
+        storage.head_stride_bytes < minimum_head_stride) {
+        return Status::InvalidArgument(
+                "CPU A16 Attention KV cache strides do not cover its geometry");
+    }
+
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint key_footprint,
+                        BuildKVFootprintKV16(storage, storage.key_data, read.visible_end, "key"));
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint value_footprint,
+                        BuildKVFootprintKV16(storage, storage.value_data, read.visible_end, "value"));
+    AM_ASSIGN_OR_RETURN(const StridedAddressFootprint output_footprint,
+                        BuildOutputFootprintA16(args));
+    AM_RETURN_IF_ERROR(ValidateStridedDisjoint(
+            kKernelName, key_footprint, "key cache",
+            value_footprint, "value cache"));
+    AM_RETURN_IF_ERROR(ValidateStridedDisjoint(
+            kKernelName, output_footprint, "output",
+            key_footprint, "key cache"));
+    return ValidateStridedDisjoint(
+            kKernelName, output_footprint, "output",
+            value_footprint, "value cache");
+}
+
+Status AttentionA16ReferenceEntry(const KernelContext& ctx) noexcept {
+    const auto* const args = static_cast<const AttentionA16KernelArgs*>(ctx.kernel_params);
+    if (args == nullptr || ctx.kv_read == nullptr) {
+        return Status::FailedPrecondition(
+                "CPU A16 Attention requires prepared args and a KV read binding");
+    }
+    AM_RETURN_IF_ERROR(ValidateReadBindingA16(*args, *ctx.kv_read));
+    return RunAttentionA16Reference(*args, *ctx.kv_read);
+}
+
 } // namespace
 
 static_assert(std::is_trivially_copyable_v<AttentionF32KernelMetadata>);
 static_assert(std::is_trivially_destructible_v<AttentionF32KernelArgs>);
 static_assert(alignof(AttentionF32KernelArgs) <= alignof(std::max_align_t));
 static_assert(sizeof(AttentionF32KernelArgs) <= kMaxKernelParamsSize);
+static_assert(std::is_trivially_destructible_v<AttentionA16KernelArgs>);
+static_assert(alignof(AttentionA16KernelArgs) <= alignof(std::max_align_t));
+static_assert(sizeof(AttentionA16KernelArgs) <= kMaxKernelParamsSize);
 
 AM_REGISTER_KERNEL(
         CpuAttentionF32Reference,
@@ -479,5 +657,32 @@ AM_REGISTER_KERNEL(
                 .params_builder = &BuildAttentionF32ReferenceArgs,
                 .metadata_builder = &BuildAttentionF32Metadata,
                 .name = "cpu::attention_bf16_reference"})
+
+template<bool Bfloat>
+KernelDef A16Attention(std::string_view name) {
+    return KernelDef{
+            .op_type = OpType::kAttention,
+            .selector = KernelSelector{
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16),
+                    .output_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16),
+                    .weight_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16),
+                    .state_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16),
+                    .weight_format = WeightFormat::kPlain,
+                    .phase = ExecPhase::kBoth,
+            },
+            .kernel_func = &AttentionA16ReferenceEntry,
+            .priority = 10,
+            .params_size = sizeof(AttentionA16KernelArgs),
+            .params_builder = &BuildAttentionA16ReferenceArgs<Bfloat>,
+            .metadata_builder = &BuildAttentionF32Metadata,
+            .name = name,
+    };
+}
+
+AM_REGISTER_KERNEL(CpuAttentionA16F16Reference,
+                   (A16Attention<false>("cpu::attention_a16_f16_reference")))
+AM_REGISTER_KERNEL(CpuAttentionA16Bf16Reference,
+                   (A16Attention<true>("cpu::attention_a16_bf16_reference")))
 
 } // namespace aethermind::cpu::detail

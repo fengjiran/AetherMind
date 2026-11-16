@@ -159,6 +159,7 @@ def stub_engine(options):
                      "num_hidden_layers": 2, "num_attention_heads": 4, "num_key_value_heads": 2,
                      "head_dim": 4, "max_position_embeddings": 32},
         "workload": {"preset": options.preset, "weights": options.weights, "kv_dtype": options.kv_dtype,
+                     "activation_dtype": options.activation_dtype,
                      "prompt_tokens": options.prompt, "max_new_tokens": options.max_new_tokens,
                      "eos_token_id": options.eos_token, "context_capacity": context,
                      "warmup": options.warmup, "repetitions": options.repetitions},
@@ -200,7 +201,8 @@ class ModelBenchmarkDriverCommand(unittest.TestCase):
         result = argparse.Namespace(
             binary=self.binary, model=self.model, prompt=[1, 7, 3], max_new_tokens=3,
             eos_token=None, preset="o1-plain", warmup=0, repetitions=1, mode="timing",
-            weights="require-fp32", kv_dtype="f32", output_root=self.output, variant="", timeout_seconds=60)
+            weights="require-fp32", kv_dtype="f32", activation_dtype="f32",
+            output_root=self.output, variant="", timeout_seconds=60)
         for name, value in changes.items():
             setattr(result, name, value)
         return result
@@ -248,6 +250,24 @@ class ModelBenchmarkDriverCommand(unittest.TestCase):
         options = self.options(weights="keep-fp16", kv_dtype="bf16")
         wrong = stub_engine(options)
         wrong["workload"]["kv_dtype"] = "f32"
+        with mock.patch.object(runner.subprocess, "run", return_value=subprocess.CompletedProcess(
+                [], 0, stdout=json.dumps(wrong), stderr="")):
+            with self.assertRaisesRegex(ValueError, "workload/mode differs"):
+                runner.run(options)
+
+    def test_a16_activation_is_forwarded_and_recorded(self):
+        path = self.run_driver(self.options(weights="keep-bf16", kv_dtype="bf16",
+                                            activation_dtype="bf16"))
+        invocation = json.loads((path.parent / "invocation.json").read_text())
+        command = invocation["engine_command"]
+        self.assertEqual(command[command.index("--activation-dtype") + 1], "bf16")
+        report = json.loads(path.read_text())
+        self.assertEqual(report["engine"]["workload"]["activation_dtype"], "bf16")
+
+    def test_engine_cannot_silently_change_requested_activation_dtype(self):
+        options = self.options(weights="keep-bf16", kv_dtype="bf16", activation_dtype="bf16")
+        wrong = stub_engine(options)
+        wrong["workload"]["activation_dtype"] = "f32"
         with mock.patch.object(runner.subprocess, "run", return_value=subprocess.CompletedProcess(
                 [], 0, stdout=json.dumps(wrong), stderr="")):
             with self.assertRaisesRegex(ValueError, "workload/mode differs"):

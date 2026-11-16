@@ -369,12 +369,14 @@ TEST(CPUKernelGateUpLinear, RejectsAliasingAndUndecidablePackedStorageOverlap) {
     constexpr int64_t hole_input_shape[2] = {1, 1};
     constexpr int64_t hole_input_strides[2] = {1, 1};
     constexpr int64_t hole_gate_shape[2] = {1, 2};
-    constexpr int64_t hole_gate_strides[2] = {32, 16};
+    // Keep both views actually 64-byte aligned while placing the packed bytes
+    // at element 16, between the gate elements 0 and 32.
+    constexpr int64_t hole_gate_strides[2] = {64, 32};
     constexpr int64_t empty_shape[2] = {1, 0};
     constexpr int64_t empty_strides[2] = {1, 1};
     constexpr std::array<int64_t, 2> hole_packed_shape{2, 1};
     alignas(64) float hole_input[1] = {1.0F};
-    alignas(64) float hole_storage[20]{};
+    alignas(64) float hole_storage[33]{};
     const auto hole_kernel = PrepareGateUpKernel(2, 0);
     ASSERT_TRUE(hole_kernel.ok()) << hole_kernel.status().ToString();
     EXPECT_EQ(RunGateUpEntry(
@@ -385,7 +387,7 @@ TEST(CPUKernelGateUpLinear, RejectsAliasingAndUndecidablePackedStorageOverlap) {
                                                  hole_gate_strides, 64),
                        .up = MutableTensorView(nullptr, DataType::Float32(), empty_shape,
                                                empty_strides, 64)},
-                      MakeIdentityPackedWeight(hole_storage + 1, 2 * sizeof(float),
+                      MakeIdentityPackedWeight(hole_storage + 16, 2 * sizeof(float),
                                                hole_packed_shape)),
               StatusCode::kUnimplemented);
 }

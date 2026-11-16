@@ -606,6 +606,14 @@ StatusOr<ExecutableModel> ExecutableModel::Load(Runtime& runtime,
                     "A16 activation requires CPU O1/plain or O2/packed");
         }
 
+        // P4-A executes the full-same-type BF16 preset. An FP16 activation keeps
+        // its residual stream in F32 for overflow safety, which requires Cast
+        // kernels on the residual boundary; that path belongs to P4-B.
+        if (options.activation_dtype == DataType::Float(16)) {
+            return Status::Unimplemented(
+                    "A16 FP16 activation requires the P4-B F32 residual Cast path");
+        }
+
         // Same-dtype presets only: an F16 activation needs the F16 weight
         // policy, a BF16 activation the BF16 weight policy.
         const DataType policy_weight_dtype =

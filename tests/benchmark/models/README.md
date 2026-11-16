@@ -59,7 +59,16 @@ The policy is recorded in the workload and participates in comparison identity; 
 `--kv-dtype f32|f16|bf16` independently selects KV storage and defaults to `f32`.
 F16/BF16 KV requires `--weights keep-fp16` or `keep-bf16`; all four W16/KV16
 combinations support the verified O1/plain and O2/identity-packed paths. The same
-KV dtype drives physical Runtime allocation and graph state specs. For example:
+KV dtype drives physical Runtime allocation and graph state specs.
+
+`--activation-dtype f32|f16|bf16` selects the A16 preset and defaults to `f32`.
+A non-F32 activation requires the same-dtype `keep-fp16`/`keep-bf16` weight
+policy and a matching `--kv-dtype`, so the recorded workload identifies the full
+same-type triplet. The P4-A admission path executes only the BF16 triplet:
+`--activation-dtype f16` is rejected by `ExecutableModel::Load` until the P4-B
+F32-residual cast path exists, so this benchmark cannot measure an FP16 A16
+workload. The flag records `workload.activation_dtype`; comparisons include it
+in their identity. For example:
 
 ```bash
 python3 tools/run_model_benchmark.py \

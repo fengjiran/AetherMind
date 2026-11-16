@@ -413,6 +413,251 @@ Status BuildLinearF32W16PackedIdentityArgs(const KernelParamsBuildContext& conte
     return Status::Ok();
 }
 
+template<bool Bfloat>
+Status BuildLinearA16Args(const KernelParamsBuildContext& context,
+                          void* params_buffer) noexcept {
+    const auto inputs = context.inputs;
+    const auto outputs = context.outputs;
+    if (inputs.size() != 2 || outputs.size() != 1) {
+        return Status::InvalidArgument("A16 Linear requires 2 inputs and 1 output");
+    }
+
+    const TensorView& input = inputs[0];
+    const TensorView& weight = inputs[1];
+    const MutableTensorView& output = outputs[0];
+    if (!input.is_valid() || !weight.is_valid() || !output.is_valid()) {
+        return Status::InvalidArgument(
+                "A16 Linear requires valid input, weight, and output TensorViews");
+    }
+
+    const DataType act_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16);
+    if (input.dtype() != act_dtype || weight.dtype() != act_dtype) {
+        return Status::InvalidArgument(
+                "A16 Linear requires activation and weight dtype matching its selector");
+    }
+
+    const DataType output_dtype = output.dtype();
+    if (output_dtype != act_dtype && output_dtype != DataType::Float32()) {
+        return Status::InvalidArgument(
+                "A16 Linear output must be the activation dtype or float32");
+    }
+
+    const int32_t rank = input.rank();
+    if (rank < 1 || weight.rank() != 2 || output.rank() != rank) {
+        return Status::InvalidArgument(
+                "A16 Linear requires rank >= 1 input/output and rank-2 weight");
+    }
+
+    for (int32_t dim = 0; dim < rank - 1; ++dim) {
+        if (output.dim(dim) != input.dim(dim)) {
+            return Status::InvalidArgument(
+                    "A16 Linear requires output leading dimensions to match input");
+        }
+    }
+
+    const int64_t in_features = input.dim(rank - 1);
+    const int64_t out_features = weight.dim(0);
+    if (weight.dim(1) != in_features || output.dim(rank - 1) != out_features) {
+        return Status::InvalidArgument(
+                "A16 Linear input, weight, and output feature dimensions do not match");
+    }
+
+    AM_ASSIGN_OR_RETURN(const int64_t row_count,
+                        ComputeFlattenedRowCount(input, "A16 Linear input"));
+    if (row_count == 0 || out_features == 0) {
+        ::new (params_buffer) LinearA16KernelArgs{
+                .act_dtype = act_dtype,
+                .output_dtype = output_dtype,
+                .row_count = row_count,
+                .in_features = in_features,
+                .out_features = out_features,
+        };
+        return Status::Ok();
+    }
+
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis output_analysis,
+                        AnalyzeRowwiseView(output, "A16 Linear output"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout("A16 Linear output", output_analysis));
+    if (in_features == 0) {
+        ::new (params_buffer) LinearA16KernelArgs{
+                .output = static_cast<std::byte*>(output.data()),
+                .act_dtype = act_dtype,
+                .output_dtype = output_dtype,
+                .row_count = output_analysis.row_count(),
+                .in_features = 0,
+                .out_features = out_features,
+                .output_row_stride = output_analysis.row_stride(),
+                .output_col_stride = output_analysis.column_stride(),
+        };
+        return Status::Ok();
+    }
+
+    if (input.data() == nullptr || weight.data() == nullptr || output.data() == nullptr) {
+        return Status::InvalidArgument(
+                "A16 Linear requires non-null data pointers for non-empty tensors");
+    }
+
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis input_analysis,
+                        AnalyzeRowwiseView(input, "A16 Linear input"));
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis weight_analysis,
+                        AnalyzeRowwiseView(weight, "A16 Linear weight"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU A16 Linear", output_analysis.footprint(), "output",
+            input_analysis.footprint(), "input"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU A16 Linear", output_analysis.footprint(), "output",
+            weight_analysis.footprint(), "weight"));
+
+    ::new (params_buffer) LinearA16KernelArgs{
+            .input = static_cast<const std::byte*>(input.data()),
+            .weight = static_cast<const std::byte*>(weight.data()),
+            .output = static_cast<std::byte*>(output.data()),
+            .act_dtype = act_dtype,
+            .output_dtype = output_dtype,
+            .row_count = input_analysis.row_count(),
+            .in_features = in_features,
+            .out_features = out_features,
+            .input_row_stride = input_analysis.row_stride(),
+            .input_col_stride = input_analysis.column_stride(),
+            .weight_row_stride = weight_analysis.row_stride(),
+            .weight_col_stride = weight_analysis.column_stride(),
+            .output_row_stride = output_analysis.row_stride(),
+            .output_col_stride = output_analysis.column_stride(),
+    };
+    return Status::Ok();
+}
+
+template<bool Bfloat>
+Status BuildLinearA16PackedIdentityArgs(const KernelParamsBuildContext& context,
+                                        void* params_buffer) noexcept {
+    if (context.inputs.size() != 1U || context.outputs.size() != 1U ||
+        !context.packed_weight.has_value()) {
+        return Status::InvalidArgument(
+                "Packed A16 Linear requires one activation, one output, and an artifact");
+    }
+
+    const TensorView& input = context.inputs[0];
+    const MutableTensorView& output = context.outputs[0];
+    const PackedWeightView& packed = *context.packed_weight;
+    if (!input.is_valid() || !output.is_valid()) {
+        return Status::InvalidArgument(
+                "Packed A16 Linear requires valid input and output TensorViews");
+    }
+
+    const DataType act_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16);
+    if (input.dtype() != act_dtype) {
+        return Status::InvalidArgument(
+                "Packed A16 Linear requires the activation dtype of its selector");
+    }
+
+    const DataType output_dtype = output.dtype();
+    if (output_dtype != act_dtype && output_dtype != DataType::Float32()) {
+        return Status::InvalidArgument(
+                "Packed A16 Linear output must be the activation dtype or float32");
+    }
+
+    if (input.rank() < 1 || packed.logical_shape.size() != 2U) {
+        return Status::InvalidArgument(
+                "Packed A16 Linear requires rank >= 1 input and a rank-2 weight artifact");
+    }
+
+    const int64_t in_features = input.dim(input.rank() - 1);
+    const int64_t out_features = packed.logical_shape[0];
+    if (out_features < 0 || packed.logical_shape[1] != in_features) {
+        return Status::InvalidArgument(
+                "Packed A16 Linear weight shape does not match the input feature dimension");
+    }
+
+    AM_RETURN_IF_ERROR(ValidateIdentityPackedWeight(
+            packed, std::array{out_features, in_features},
+            "LinearA16KernelEntry", act_dtype));
+
+    const int32_t rank = input.rank();
+    if (output.rank() != rank) {
+        return Status::InvalidArgument(
+                "Packed A16 Linear requires output rank to match input rank");
+    }
+
+    for (int32_t dim = 0; dim < rank - 1; ++dim) {
+        if (output.dim(dim) != input.dim(dim)) {
+            return Status::InvalidArgument(
+                    "Packed A16 Linear requires output leading dimensions to match input");
+        }
+    }
+
+    if (output.dim(rank - 1) != out_features) {
+        return Status::InvalidArgument(
+                "Packed A16 Linear output feature dimension does not match the weight");
+    }
+
+    AM_ASSIGN_OR_RETURN(const int64_t row_count,
+                        ComputeFlattenedRowCount(input, "LinearA16KernelEntry"));
+    LinearA16KernelArgs args{
+            .act_dtype = act_dtype,
+            .output_dtype = output_dtype,
+            .row_count = row_count,
+            .in_features = in_features,
+            .out_features = out_features,
+    };
+    if (row_count == 0 || out_features == 0) {
+        ::new (params_buffer) LinearA16KernelArgs(args);
+        return Status::Ok();
+    }
+
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis output_analysis,
+                        AnalyzeRowwiseView(output, "LinearA16KernelEntry output"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout(
+            "LinearA16KernelEntry output", output_analysis));
+    if (output.data() == nullptr) {
+        return Status::InvalidArgument(
+                "Packed A16 Linear requires non-null output for non-empty tensors");
+    }
+
+    args.output = static_cast<std::byte*>(output.data());
+    args.output_row_stride = output_analysis.row_stride();
+    args.output_col_stride = output_analysis.column_stride();
+
+    // Zero K only zero-fills the output and reads neither input nor weight, so
+    // their empty buffers may legally carry null data pointers.
+    if (in_features == 0) {
+        ::new (params_buffer) LinearA16KernelArgs(args);
+        return Status::Ok();
+    }
+
+    if (input.data() == nullptr || packed.data == nullptr) {
+        return Status::InvalidArgument(
+                "Packed A16 Linear requires non-null input and packed weight data");
+    }
+
+    AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis input_analysis,
+                        AnalyzeRowwiseView(input, "LinearA16KernelEntry input"));
+    AM_RETURN_IF_ERROR(ValidateRowwiseDisjoint(
+            "CPU A16 Linear", output_analysis.footprint(), "output",
+            input_analysis.footprint(), "input"));
+    if (!std::in_range<int64_t>(packed.nbytes)) {
+        return Status::Overflow(
+                "Packed A16 Linear artifact byte range exceeds int64_t");
+    }
+
+    AM_ASSIGN_OR_RETURN(const ByteAddressRange packed_range,
+                        BuildContiguousByteRange(
+                                packed.data, static_cast<int64_t>(packed.nbytes),
+                                size_t{1}, "LinearA16KernelEntry packed weight"));
+    AM_RETURN_IF_ERROR(ValidateContiguousDisjoint(
+            "CPU A16 Linear", output_analysis.footprint().envelope(), "output",
+            packed_range, "packed weight"));
+
+    args.input = static_cast<const std::byte*>(input.data());
+    args.weight = static_cast<const std::byte*>(packed.data);
+    args.row_count = input_analysis.row_count();
+    args.input_row_stride = input_analysis.row_stride();
+    args.input_col_stride = input_analysis.column_stride();
+    args.weight_row_stride = in_features;
+    args.weight_col_stride = 1;
+    ::new (params_buffer) LinearA16KernelArgs(args);
+    return Status::Ok();
+}
+
 StatusOr<LinearF32KernelArgs> BuildLinearF32PackedBase(
         const KernelParamsBuildContext& context,
         bool bpanel) noexcept {
@@ -596,6 +841,36 @@ Status LinearF32W16ReferenceEntry(const KernelContext& ctx) noexcept {
     return RunLinearF32W16Reference(*args);
 }
 
+Status LinearA16ReferenceEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const LinearA16KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunLinearA16Reference(*args);
+}
+
+#if defined(A16_HAS_AVX2_FMA_KERNEL)
+Status LinearA16Avx2FmaEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const LinearA16KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunLinearA16Avx2Fma(*args);
+}
+#endif
+
+#if defined(A16_HAS_AVX512BF16_KERNEL)
+Status LinearA16Bf16Avx512Bf16Entry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const LinearA16KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunLinearA16Bf16Avx512Bf16(*args);
+}
+#endif
+
+#if defined(A16_HAS_AVX512FP16_KERNEL)
+Status LinearA16F16Avx512Fp16Entry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const LinearA16KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunLinearA16F16Avx512Fp16(*args);
+}
+#endif
+
 } // namespace
 
 static_assert(std::is_trivially_destructible_v<LinearF32KernelArgs>);
@@ -740,6 +1015,293 @@ AM_REGISTER_KERNEL(
                 .params_size = sizeof(PackedGemmF32Args),
                 .params_builder = &BuildLinearF32BpanelArgs,
                 .name = "cpu::linear_f32_packed_bpanel_candidate"})
+#endif
+
+static_assert(std::is_trivially_destructible_v<LinearA16KernelArgs>);
+static_assert(alignof(LinearA16KernelArgs) <= alignof(std::max_align_t));
+static_assert(sizeof(LinearA16KernelArgs) <= kMaxKernelParamsSize);
+
+AM_REGISTER_KERNEL(
+        CpuLinearA16F16Reference,
+        KernelDef{
+                .op_type = OpType::kLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float(16),
+                        .output_dtype = DataType::Float(16),
+                        .weight_dtype = DataType::Float(16),
+                        .weight_format = WeightFormat::kPlain,
+                        .phase = ExecPhase::kBoth,
+                },
+                .kernel_func = &LinearA16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(LinearA16KernelArgs),
+                .params_builder = &BuildLinearA16Args<false>,
+                .name = "cpu::linear_a16_f16_reference"})
+
+AM_REGISTER_KERNEL(
+        CpuLinearA16Bf16Reference,
+        KernelDef{
+                .op_type = OpType::kLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::BFloat(16),
+                        .output_dtype = DataType::BFloat(16),
+                        .weight_dtype = DataType::BFloat(16),
+                        .weight_format = WeightFormat::kPlain,
+                        .phase = ExecPhase::kBoth,
+                },
+                .kernel_func = &LinearA16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(LinearA16KernelArgs),
+                .params_builder = &BuildLinearA16Args<true>,
+                .name = "cpu::linear_a16_bf16_reference"})
+
+AM_REGISTER_KERNEL(
+        CpuLinearA16F16Fp32OutputReference,
+        KernelDef{
+                .op_type = OpType::kLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float(16),
+                        .output_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float(16),
+                        .weight_format = WeightFormat::kPlain,
+                        .phase = ExecPhase::kBoth,
+                },
+                .kernel_func = &LinearA16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(LinearA16KernelArgs),
+                .params_builder = &BuildLinearA16Args<false>,
+                .name = "cpu::linear_a16_f16_fp32_output_reference"})
+
+AM_REGISTER_KERNEL(
+        CpuLinearA16Bf16Fp32OutputReference,
+        KernelDef{
+                .op_type = OpType::kLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::BFloat(16),
+                        .output_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::BFloat(16),
+                        .weight_format = WeightFormat::kPlain,
+                        .phase = ExecPhase::kBoth,
+                },
+                .kernel_func = &LinearA16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(LinearA16KernelArgs),
+                .params_builder = &BuildLinearA16Args<true>,
+                .name = "cpu::linear_a16_bf16_fp32_output_reference"})
+
+AM_REGISTER_KERNEL(
+        CpuLinearA16F16PackedIdentityReference,
+        KernelDef{
+                .op_type = OpType::kLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float(16),
+                        .output_dtype = DataType::Float(16),
+                        .weight_dtype = DataType::Float(16),
+                        .weight_format = WeightFormat::kPacked,
+                        .phase = ExecPhase::kBoth,
+                },
+                .packing_recipe = CpuIdentityPackingRecipe(),
+                .kernel_func = &LinearA16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(LinearA16KernelArgs),
+                .params_builder = &BuildLinearA16PackedIdentityArgs<false>,
+                .name = "cpu::linear_a16_f16_packed_identity_reference"})
+
+AM_REGISTER_KERNEL(
+        CpuLinearA16Bf16PackedIdentityReference,
+        KernelDef{
+                .op_type = OpType::kLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::BFloat(16),
+                        .output_dtype = DataType::BFloat(16),
+                        .weight_dtype = DataType::BFloat(16),
+                        .weight_format = WeightFormat::kPacked,
+                        .phase = ExecPhase::kBoth,
+                },
+                .packing_recipe = CpuIdentityPackingRecipe(),
+                .kernel_func = &LinearA16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(LinearA16KernelArgs),
+                .params_builder = &BuildLinearA16PackedIdentityArgs<true>,
+                .name = "cpu::linear_a16_bf16_packed_identity_reference"})
+
+AM_REGISTER_KERNEL(
+        CpuLinearA16F16Fp32OutputPackedIdentityReference,
+        KernelDef{
+                .op_type = OpType::kLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::Float(16),
+                        .output_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::Float(16),
+                        .weight_format = WeightFormat::kPacked,
+                        .phase = ExecPhase::kBoth,
+                },
+                .packing_recipe = CpuIdentityPackingRecipe(),
+                .kernel_func = &LinearA16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(LinearA16KernelArgs),
+                .params_builder = &BuildLinearA16PackedIdentityArgs<false>,
+                .name = "cpu::linear_a16_f16_fp32_output_packed_identity_reference"})
+
+AM_REGISTER_KERNEL(
+        CpuLinearA16Bf16Fp32OutputPackedIdentityReference,
+        KernelDef{
+                .op_type = OpType::kLinear,
+                .selector = KernelSelector{
+                        .device_type = DeviceType::kCPU,
+                        .act_dtype = DataType::BFloat(16),
+                        .output_dtype = DataType::Float32(),
+                        .weight_dtype = DataType::BFloat(16),
+                        .weight_format = WeightFormat::kPacked,
+                        .phase = ExecPhase::kBoth,
+                },
+                .packing_recipe = CpuIdentityPackingRecipe(),
+                .kernel_func = &LinearA16ReferenceEntry,
+                .priority = 10,
+                .params_size = sizeof(LinearA16KernelArgs),
+                .params_builder = &BuildLinearA16PackedIdentityArgs<true>,
+                .name = "cpu::linear_a16_bf16_fp32_output_packed_identity_reference"})
+
+// --- A16 ISA kernels ---
+// The reference stays registered at priority 10. AVX2/FMA widening fallback and
+// the AVX-512 native kernels are added at higher priority with explicit CPU
+// requirements, so CpuBackend selects them only when the effective feature set
+// contains every required feature. On hardware without AVX-512 the native
+// descriptors are never eligible.
+namespace {
+
+template<bool Bfloat, bool Packed, bool Fp32Output>
+KernelDef A16LinearDef(Status (*entry)(const KernelContext&) noexcept,
+                       CpuFeatureSet requirements,
+                       int priority,
+                       std::string_view name) {
+    const DataType act = Bfloat ? DataType::BFloat(16) : DataType::Float(16);
+    return KernelDef{
+            .op_type = OpType::kLinear,
+            .selector = KernelSelector{
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = act,
+                    .output_dtype = Fp32Output ? DataType::Float32() : act,
+                    .weight_dtype = act,
+                    .weight_format = Packed ? WeightFormat::kPacked : WeightFormat::kPlain,
+                    .phase = ExecPhase::kBoth,
+            },
+            .packing_recipe = Packed ? CpuIdentityPackingRecipe() : PackingRecipe{},
+            .cpu_requirements = requirements,
+            .kernel_func = entry,
+            .priority = priority,
+            .params_size = sizeof(LinearA16KernelArgs),
+            .params_builder = Packed ? &BuildLinearA16PackedIdentityArgs<Bfloat> : &BuildLinearA16Args<Bfloat>,
+            .name = name,
+    };
+}
+
+} // namespace
+
+#if defined(A16_HAS_AVX2_FMA_KERNEL)
+AM_REGISTER_KERNEL(
+        CpuLinearA16F16Avx2Fma,
+        (A16LinearDef<false, false, false>(&LinearA16Avx2FmaEntry,
+                                           CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c}),
+                                           20, "cpu::linear_a16_f16_avx2_fma")))
+AM_REGISTER_KERNEL(
+        CpuLinearA16Bf16Avx2Fma,
+        (A16LinearDef<true, false, false>(&LinearA16Avx2FmaEntry,
+                                          CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
+                                          20, "cpu::linear_a16_bf16_avx2_fma")))
+AM_REGISTER_KERNEL(
+        CpuLinearA16F16Fp32OutputAvx2Fma,
+        (A16LinearDef<false, false, true>(&LinearA16Avx2FmaEntry,
+                                          CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c}),
+                                          20, "cpu::linear_a16_f16_fp32_output_avx2_fma")))
+AM_REGISTER_KERNEL(
+        CpuLinearA16Bf16Fp32OutputAvx2Fma,
+        (A16LinearDef<true, false, true>(&LinearA16Avx2FmaEntry,
+                                         CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
+                                         20, "cpu::linear_a16_bf16_fp32_output_avx2_fma")))
+AM_REGISTER_KERNEL(
+        CpuLinearA16F16PackedIdentityAvx2Fma,
+        (A16LinearDef<false, true, false>(&LinearA16Avx2FmaEntry,
+                                          CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c}),
+                                          20, "cpu::linear_a16_f16_packed_identity_avx2_fma")))
+AM_REGISTER_KERNEL(
+        CpuLinearA16Bf16PackedIdentityAvx2Fma,
+        (A16LinearDef<true, true, false>(&LinearA16Avx2FmaEntry,
+                                         CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
+                                         20, "cpu::linear_a16_bf16_packed_identity_avx2_fma")))
+AM_REGISTER_KERNEL(
+        CpuLinearA16F16Fp32OutputPackedIdentityAvx2Fma,
+        (A16LinearDef<false, true, true>(&LinearA16Avx2FmaEntry,
+                                         CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c}),
+                                         20,
+                                         "cpu::linear_a16_f16_fp32_output_packed_identity_avx2_fma")))
+AM_REGISTER_KERNEL(
+        CpuLinearA16Bf16Fp32OutputPackedIdentityAvx2Fma,
+        (A16LinearDef<true, true, true>(&LinearA16Avx2FmaEntry,
+                                        CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
+                                        20,
+                                        "cpu::linear_a16_bf16_fp32_output_packed_identity_avx2_fma")))
+#endif
+
+#if defined(A16_HAS_AVX512BF16_KERNEL)
+AM_REGISTER_KERNEL(
+        CpuLinearA16Bf16Avx512Bf16,
+        (A16LinearDef<true, false, false>(
+                &LinearA16Bf16Avx512Bf16Entry,
+                CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Bf16}),
+                30, "cpu::linear_a16_bf16_avx512_bf16")))
+AM_REGISTER_KERNEL(
+        CpuLinearA16Bf16Fp32OutputAvx512Bf16,
+        (A16LinearDef<true, false, true>(
+                &LinearA16Bf16Avx512Bf16Entry,
+                CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Bf16}),
+                30, "cpu::linear_a16_bf16_fp32_output_avx512_bf16")))
+AM_REGISTER_KERNEL(
+        CpuLinearA16Bf16PackedIdentityAvx512Bf16,
+        (A16LinearDef<true, true, false>(
+                &LinearA16Bf16Avx512Bf16Entry,
+                CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Bf16}),
+                30, "cpu::linear_a16_bf16_packed_identity_avx512_bf16")))
+AM_REGISTER_KERNEL(
+        CpuLinearA16Bf16Fp32OutputPackedIdentityAvx512Bf16,
+        (A16LinearDef<true, true, true>(
+                &LinearA16Bf16Avx512Bf16Entry,
+                CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Bf16}),
+                30, "cpu::linear_a16_bf16_fp32_output_packed_identity_avx512_bf16")))
+#endif
+
+#if defined(A16_HAS_AVX512FP16_KERNEL)
+AM_REGISTER_KERNEL(
+        CpuLinearA16F16Avx512Fp16,
+        (A16LinearDef<false, false, false>(
+                &LinearA16F16Avx512Fp16Entry,
+                CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Fp16}),
+                30, "cpu::linear_a16_f16_avx512_fp16")))
+AM_REGISTER_KERNEL(
+        CpuLinearA16F16Fp32OutputAvx512Fp16,
+        (A16LinearDef<false, false, true>(
+                &LinearA16F16Avx512Fp16Entry,
+                CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Fp16}),
+                30, "cpu::linear_a16_f16_fp32_output_avx512_fp16")))
+AM_REGISTER_KERNEL(
+        CpuLinearA16F16PackedIdentityAvx512Fp16,
+        (A16LinearDef<false, true, false>(
+                &LinearA16F16Avx512Fp16Entry,
+                CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Fp16}),
+                30, "cpu::linear_a16_f16_packed_identity_avx512_fp16")))
+AM_REGISTER_KERNEL(
+        CpuLinearA16F16Fp32OutputPackedIdentityAvx512Fp16,
+        (A16LinearDef<false, true, true>(
+                &LinearA16F16Avx512Fp16Entry,
+                CpuFeatureSet::From({CpuFeature::kAvx512F, CpuFeature::kAvx512Fp16}),
+                30, "cpu::linear_a16_f16_fp32_output_packed_identity_avx512_fp16")))
 #endif
 
 } // namespace aethermind::cpu::detail

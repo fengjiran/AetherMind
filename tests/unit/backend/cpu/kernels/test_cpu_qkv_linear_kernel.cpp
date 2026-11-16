@@ -414,12 +414,14 @@ TEST(CPUKernelQkvLinear, ReportsUnimplementedForPackedStorageOnlyInOutputColumnH
     constexpr int64_t input_shape[2] = {1, 1};
     constexpr int64_t input_strides[2] = {1, 1};
     constexpr int64_t query_shape[2] = {1, 2};
-    constexpr int64_t query_strides[2] = {32, 16};
+    // Keep both views actually 64-byte aligned while placing the packed bytes
+    // at element 16, between the query elements 0 and 32.
+    constexpr int64_t query_strides[2] = {64, 32};
     constexpr int64_t empty_shape[2] = {1, 0};
     constexpr int64_t empty_strides[2] = {1, 1};
     constexpr std::array<int64_t, 2> packed_shape{2, 1};
     alignas(64) float input[1] = {1.0F};
-    alignas(64) float output_storage[20]{};
+    alignas(64) float output_storage[33]{};
 
     const auto kernel = PrepareQkvKernel(2, 0, 0);
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
@@ -432,7 +434,7 @@ TEST(CPUKernelQkvLinear, ReportsUnimplementedForPackedStorageOnlyInOutputColumnH
                                       empty_strides, 64),
              .value = MutableTensorView(nullptr, DataType::Float32(), empty_shape,
                                         empty_strides, 64)},
-            MakeIdentityPackedWeight(output_storage + 1, 2 * sizeof(float), packed_shape));
+            MakeIdentityPackedWeight(output_storage + 16, 2 * sizeof(float), packed_shape));
 
     EXPECT_EQ(status, StatusCode::kUnimplemented);
 }

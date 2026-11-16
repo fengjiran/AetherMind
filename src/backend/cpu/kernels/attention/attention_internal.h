@@ -6,7 +6,9 @@
 
 #include "aethermind/base/kv_cache_binding.h"
 #include "aethermind/base/status.h"
+#include "aethermind/dtypes/data_type.h"
 
+#include <cstddef>
 #include <cstdint>
 
 namespace aethermind::cpu::detail {
@@ -55,6 +57,37 @@ Status RunAttentionF32Reference(const AttentionF32KernelArgs& args,
 Status RunAttentionKV16Reference(const AttentionF32KernelArgs& args,
                                  const KVCacheReadBinding& read,
                                  DataType kv_dtype) noexcept;
+
+/// @brief Cold-path-bound A16 query/output views for one Attention step.
+///
+/// Q, K/V cache, and output share one 16-bit dtype. Score, softmax, and value
+/// accumulation stay in F32 and the output is narrowed exactly once (frozen P4
+/// placement).
+struct AttentionA16KernelArgs {
+    const std::byte* query{};
+    std::byte* output{};
+    DataType act_dtype{};
+    int64_t seq_len{};
+    int64_t num_q_heads{};
+    int64_t num_kv_heads{};
+    int64_t head_dim{};
+    int64_t query_row_stride{};
+    int64_t query_col_stride{};
+    int64_t output_row_stride{};
+    int64_t output_col_stride{};
+    float scale{};
+};
+
+/// @brief Runs prevalidated causal scaled dot-product A16 Attention.
+///
+/// `act_dtype` must be scalar Float(16) or BFloat(16) and match the read
+/// binding's storage dtype (validated by the caller). The reduction is fixed
+/// F32 (independent product/add, ascending head_dim and visible token order);
+/// this TU is compiled with FMA contraction disabled. Output head elements are
+/// accumulated over a fixed-size stack block so the 16-bit output is narrowed
+/// exactly once without per-invocation allocation.
+Status RunAttentionA16Reference(const AttentionA16KernelArgs& args,
+                                const KVCacheReadBinding& read) noexcept;
 
 } // namespace aethermind::cpu::detail
 

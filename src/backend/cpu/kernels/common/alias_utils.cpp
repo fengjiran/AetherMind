@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -112,8 +111,9 @@ enum class OverlapClassification : uint8_t {
     kUnknown
 };
 
-AM_NODISCARD InjectivityClassification ClassifyLayoutInjectivity(std::span<const int64_t> shape,
-                                                                 std::span<const int64_t> strides) noexcept {
+AM_NODISCARD InjectivityClassification ClassifyLayoutInjectivity(
+        std::span<const int64_t> shape,
+        std::span<const int64_t> strides) noexcept {
     AM_DCHECK(shape.size() == strides.size());
     AM_DCHECK(shape.size() <= ShapeAndStride::kMaxRank);
 
@@ -193,21 +193,25 @@ Status InvalidContiguousGeometry(std::string_view context) {
 }
 
 Status InvalidStridedGeometry(std::string_view context) {
-    return Status::InvalidArgument(std::string(context) +
-                                   " has invalid strided address geometry");
+    return Status::InvalidArgument(
+            std::string(context) +
+            " has invalid strided address geometry");
 }
 
 Status InvalidTensorView(std::string_view context) {
-    return Status::InvalidArgument(std::string(context) + " requires a valid tensor view");
+    return Status::InvalidArgument(
+            std::string(context) + " requires a valid tensor view");
 }
 
 Status NonContiguousTensorView(std::string_view context) {
-    return Status::InvalidArgument(std::string(context) +
-                                   " requires a row-major contiguous tensor view");
+    return Status::InvalidArgument(
+            std::string(context) +
+            " requires a row-major contiguous tensor view");
 }
 
 Status AddressComputationOverflow(std::string_view context) {
-    return Status::InvalidArgument(std::string(context) + " address range overflow");
+    return Status::InvalidArgument(
+            std::string(context) + " address range overflow");
 }
 
 AM_NODISCARD ByteAddressRange RowAddressEnvelope(const RowwiseAddressFootprint& footprint,
@@ -379,8 +383,9 @@ StatusOr<RowwiseViewAnalysis> AnalyzeRowwiseColumnVectorImpl(const TensorLike& t
                                     tensor.itemsize(), context);
 }
 
-AM_NODISCARD OverlapClassification ClassifyRowwiseOverlap(const RowwiseAddressFootprint& lhs,
-                                                          const RowwiseAddressFootprint& rhs) noexcept {
+AM_NODISCARD OverlapClassification ClassifyRowwiseOverlap(
+        const RowwiseAddressFootprint& lhs,
+        const RowwiseAddressFootprint& rhs) noexcept {
     if (lhs.is_empty() || rhs.is_empty() ||
         !ByteRangesOverlap(lhs.envelope(), rhs.envelope())) {
         return OverlapClassification::kProvenDisjoint;

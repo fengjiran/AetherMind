@@ -42,7 +42,8 @@ StatusOr<GraphValueId> AddNamedProjection(ModelGraph& graph,
                                           int64_t rows,
                                           uint32_t layer,
                                           TransformerWeightRole role,
-                                          std::string name) {
+                                          std::string name,
+                                          DataType output_dtype = {}) {
     const TensorSpec input_spec = graph.GetValue(input).spec;
     if (!input_spec.shape.IsRanked() || input_spec.shape.rank() == 0U) {
         return Status::InvalidArgument("named projection requires ranked activation input");
@@ -58,7 +59,7 @@ StatusOr<GraphValueId> AddNamedProjection(ModelGraph& graph,
             layer,
             {input, weight},
             {NodeOutputDesc{.payload = ActivationValue{}, .name = std::move(name)}},
-            LinearParams{});
+            LinearParams{.output_dtype = output_dtype});
     if (!node.ok()) {
         return node.status();
     }
@@ -70,7 +71,8 @@ QkvProjections AddQkvProjections(
         uint32_t layer,
         std::array<int64_t, 3> rows = {8, 8, 8},
         std::array<TransformerWeightRole, 3> insertion_order = kQkvRoles,
-        std::optional<GraphValueId> input = std::nullopt) {
+        std::optional<GraphValueId> input = std::nullopt,
+        DataType output_dtype = {}) {
     if (!input.has_value()) {
         input = AddActivation(graph, "hidden");
     }
@@ -89,7 +91,8 @@ QkvProjections AddQkvProjections(
                 role,
                 "layers." + std::to_string(layer) + "." +
                         (projection == 0U ? "q_proj" : projection == 1U ? "k_proj"
-                                                                        : "v_proj"));
+                                                                        : "v_proj"),
+                output_dtype);
         AM_CHECK(output.ok(), "AddLinear failed: {}", output.status().ToString());
         result.outputs[projection] = *output;
     }
@@ -486,6 +489,30 @@ TEST(QkvLinearFusionPass, DefaultPipelineHonorsQkvFusionFlag) {
     ASSERT_TRUE(result->Validate().ok());
     EXPECT_EQ(result->FindNodesByOpType(OpType::kQkvLinear).size(), 0U);
     EXPECT_EQ(result->FindNodesByOpType(OpType::kLinear).size(), 3U);
+}
+
+TEST(QkvLinearFusionPass, SkipsMixedOutputProjectionsInsteadOfFailing) {
+    ModelGraph graph;
+    const QkvProjections projections =
+            AddQkvProjections(graph, 1U, {8, 8, 8}, kQkvRoles, std::nullopt,
+                              DataType::BFloat(16));
+    MarkOutputs(graph, projections);
+    ASSERT_TRUE(graph.Validate().ok());
+
+    const StatusOr<ModelGraph> result = RunQkvFusion(graph);
+
+    ASSERT_TRUE(result.ok()) << result.status().ToString();
+    ASSERT_TRUE(result->Validate().ok());
+    EXPECT_TRUE(result->FindNodesByOpType(OpType::kQkvLinear).empty());
+    const std::vector<GraphNodeId> linear_nodes =
+            result->FindNodesByOpType(OpType::kLinear);
+    ASSERT_EQ(linear_nodes.size(), 3U);
+    for (const GraphNodeId node_id: linear_nodes) {
+        const GraphNode& node = result->GetNode(node_id);
+        ASSERT_EQ(node.outputs.size(), 1U);
+        EXPECT_EQ(result->GetValue(node.outputs[0]).spec.dtype,
+                  DataType::BFloat(16));
+    }
 }
 
 TEST(QkvLinearFusionPass, DefaultPipelineSkipsQkvAtOptLevelOne) {

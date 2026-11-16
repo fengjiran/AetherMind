@@ -246,6 +246,7 @@ def run(options):
         "--repetitions", str(options.repetitions), "--mode", options.mode,
         "--weights", options.weights,
         "--kv-dtype", options.kv_dtype,
+        "--activation-dtype", options.activation_dtype,
     ]
     if options.eos_token is not None:
         command += ["--eos-token", str(options.eos_token)]
@@ -277,6 +278,7 @@ def run(options):
         (destination / "engine.json").write_text(json_text(engine))
         expected_workload = {
             "preset": options.preset, "weights": options.weights, "kv_dtype": options.kv_dtype,
+            "activation_dtype": options.activation_dtype,
             "prompt_tokens": options.prompt,
             "max_new_tokens": options.max_new_tokens, "eos_token_id": options.eos_token,
             "context_capacity": len(options.prompt) + max(options.max_new_tokens - 1, 0),
@@ -336,6 +338,7 @@ def main():
                         choices=("require-fp32", "convert-fp32", "keep-fp16", "keep-bf16"),
                         default="require-fp32")
     parser.add_argument("--kv-dtype", choices=("f32", "f16", "bf16"), default="f32")
+    parser.add_argument("--activation-dtype", choices=("f32", "f16", "bf16"), default="f32")
     parser.add_argument("--warmup", type=unsigned, default=1)
     parser.add_argument("--repetitions", type=unsigned, default=5)
     parser.add_argument("--mode", choices=("timing", "profile", "allocations"), default="timing")
@@ -349,6 +352,11 @@ def main():
         parser.error("timeout-seconds must be positive")
     if options.kv_dtype != "f32" and options.weights not in {"keep-fp16", "keep-bf16"}:
         parser.error("kv-dtype f16/bf16 requires weights keep-fp16 or keep-bf16")
+    if options.activation_dtype != "f32":
+        if options.activation_dtype == "f16":
+            parser.error("activation-dtype f16 is not executable before the P4-B cast path")
+        if options.weights != "keep-bf16" or options.kv_dtype != "bf16":
+            parser.error("activation-dtype bf16 requires weights keep-bf16 and kv-dtype bf16")
     if options.variant and not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,63}", options.variant):
         parser.error("variant must be 1..64 lowercase letters, digits, dots or hyphens")
     try:

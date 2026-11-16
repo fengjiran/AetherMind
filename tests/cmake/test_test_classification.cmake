@@ -37,6 +37,18 @@ expect_label("KV16CalibratedAcceptance.NearLimitFourCombinationsMatchKv32WithinF
 expect_label("KV16ModelAcceptance.DecodeExecutionHasNoMallocFamilyCallsAfterBinding" interposer TRUE)
 expect_label("CPUKernelKVCacheUpdateKV16.PreparedAppendIsZeroAllocation" interposer TRUE)
 
+expect_label("A16CalibratedAcceptance.ShortFixturesMatchIndependentQuantizedOracle" numerical-model TRUE)
+expect_label("A16CalibratedAcceptance.ShortFixturesMatchIndependentQuantizedOracle" a16-model TRUE)
+expect_label("A16CalibratedAcceptance.ShortFixturesMatchIndependentQuantizedOracle" validation TRUE)
+expect_label("A16CalibratedAcceptance.ShortFixturesMatchIndependentQuantizedOracle" long-context FALSE)
+expect_label("A16CalibratedAcceptance.NearLimitMatchesIndependentQuantizedOracleAndKv32Quality" long-context TRUE)
+expect_label("A16CalibratedAcceptance.NearLimitMatchesIndependentQuantizedOracleAndKv32Quality" a16-model TRUE)
+expect_label("A16ModelAcceptance.DecodeExecutionHasNoMallocFamilyCallsAfterBinding" interposer TRUE)
+expect_label("A16ModelAcceptance.SameDtypeCombinationsMatchKv32WithinCalibratedBudgetsO1ThenO2" numerical TRUE)
+expect_label("A16ModelAcceptance.SameDtypeCombinationsMatchKv32WithinCalibratedBudgetsO1ThenO2" validation TRUE)
+expect_label("A16ModelAcceptance.SameDtypeCombinationsMatchKv32WithinCalibratedBudgetsO1ThenO2" numerical-model FALSE)
+expect_label("A16LoadAdmission.RejectsCrossDtypeActivationAndWeightPolicy" validation TRUE)
+
 foreach (name IN ITEMS
         "ModelLoad.PreservesLoadErrorCodeAndAddsContext"
         "ModelLoad.PreservesPreparationErrorCodeAndAddsContext"

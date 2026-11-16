@@ -13,7 +13,9 @@ from pathlib import Path
 
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 SKIP_PREFIXES = ("http://", "https://", "#", "mailto:", "file://")
-CODE_LIKE = ("::", "*", "<", ">", "[", "]", "(", ")", ",")
+CODE_LIKE = ("::", "*", "<", ">")
+CODE_FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
+INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
 LINE_SUFFIX_RE = re.compile(r":\d+$")
 
 
@@ -28,7 +30,10 @@ def iter_docs(root: Path, include_archive: bool):
 
 def check_file(path: Path) -> list[str]:
     broken: list[str] = []
-    for match in LINK_RE.finditer(path.read_text(encoding="utf-8")):
+    text = path.read_text(encoding="utf-8")
+    text = CODE_FENCE_RE.sub("", text)
+    text = INLINE_CODE_RE.sub("", text)
+    for match in LINK_RE.finditer(text):
         target = match.group(1).strip()
         if target.startswith(SKIP_PREFIXES) or any(c in target for c in CODE_LIKE):
             continue

@@ -24,6 +24,7 @@
 
 ## 推荐阅读路径
 
+- [CPU 算子覆盖与性能演进路线图](../operators/cpu-operator-evolution.md)：跨算子优先级、CPU-01–10 工作包、线程/资源/量化依赖及生产验收；文档归算子目录，复用既有 GEMM、KV 与精度专题。
 - [01-inference-session-generate-readiness.md](01-inference-session-generate-readiness.md)：从 execution state/resource contract、ExecutableModel、reference kernel 到 public Generate 的实施门禁。
 - [02-engineering-quality-system.md](02-engineering-quality-system.md)：以 capability、风险台账、变更 profile 和 vertical slice 组织全仓库质量建设。
 - [03-documentation-stabilization.md](03-documentation-stabilization.md)：Batch -1 前置里程碑，D0–D5 与退出条件 E1–E9；配套清查表 [03-documentation-stabilization-inventory.md](03-documentation-stabilization-inventory.md)。

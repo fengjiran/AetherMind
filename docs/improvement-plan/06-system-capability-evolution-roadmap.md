@@ -501,22 +501,17 @@ Kernel descriptor/resolve 需要逐步表达：
 
 ## 12. CPU Kernel 演进
 
+本节保留系统级入口；当前跨算子实施顺序、源码基线、工作包依赖与退出条件统一见 [CPU 算子覆盖与性能演进路线图](../operators/cpu-operator-evolution.md)。单算子方案与机器证据仍归 `docs/operators/<op>/`。
+
 ### 12.1 P0：完整 reference chain
 
-**状态（2026-09-17）：主链已齐备**——`KVCacheUpdate` 与 causal `Attention`（含 GQA、Prefill/Decode 与稳定 softmax）均已落地（`cpu::kvcache_update_f32_reference` / `cpu::attention_f32_reference`），layout/alias/bounds 与数值测试覆盖于 `KVCacheUpdateKernel.*` / `CPUKernelAttention.*`。
+FP32 主链已由 `KVCacheUpdate`、causal `Attention`、tiny Llama Prefill→Decode 与同步 `InferenceSession::Generate` 闭环（见 [01](01-inference-session-generate-readiness.md)、[07](07-executable-model-preparation.md)）。W16/A32、KV16 与限定 BF16 A16 的当前入口及验证范围见 [CPU 路线图 §1](../operators/cpu-operator-evolution.md#1-现状分析) 和 [11 精度专题](11-fp16-bf16-execution-support.md)；FP16 A16 的 kernel 覆盖不等于模型路径已接通。
 
-production Executor vertical slice 已由 `PrepareExecutableModel`、tiny Llama Prefill→Decode 与同步 `InferenceSession::Generate` 闭环（见 [01](01-inference-session-generate-readiness.md)、[07](07-executable-model-preparation.md)）。下一步按 [08 号提案](08-kv-cache-and-attention-capability-evolution.md) 先建立 Prefill/Decode 分组的 Attention 基线，再决定 fused/paged/SIMD 优化。
+Attention 优化继续保持 [08 号提案](08-kv-cache-and-attention-capability-evolution.md) 的静态 KV 与发布权合同；当前优先推进 SIMD、KV/GQA 复用和 blocking，Paged KV 仍按独立需求准入。
 
 ### 12.2 P1：性能优先级
 
-1. Decode Linear/GEMV 与 fused QKV/Gate-Up；
-2. Prefill blocked GEMM；
-3. Decode Attention 的历史 KV 扫描；
-4. Prefill Attention；
-5. RMSNorm/AddRmsNorm/SiluMul/Embedding 等 bandwidth-bound kernels；
-6. INT8/INT4 weight-only kernels；
-7. 多线程与 NUMA；
-8. AArch64 NEON/SVE（仅在目标硬件纳入验收后）。
+默认主线为矩阵计算 → Attention → 按 profile 补小算子/精度覆盖 → 算子内并行 → 量化优化 → 目标平台扩展。量化合同/reference 可提前开展；并行、量化和平台工作按各自依赖接入，不要求全部串行完成。具体首批队列、资源前置和退出条件见 [CPU 路线图 §4](../operators/cpu-operator-evolution.md#4-实施步骤)。
 
 GEMM 细节见 [CPU GEMM 优化方案](../operators/gemm/cpu-gemm-optimization.md)。
 

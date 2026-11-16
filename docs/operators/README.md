@@ -2,11 +2,14 @@
 
 本目录是 **AetherMind 全部算子文档的唯一存放位置**（2026-09-19 由 `docs/designs/kernel_dev/`、`docs/improvement-plan/04-*` 与 `docs/tests/operators/` 归一）。规范、门禁与方法见唯一规范文档 [算子开发与优化工作流](../guides/operator-development-workflow.md)；实例文档一律按算子沉淀在本目录。
 
+后续实施顺序见 [CPU 算子覆盖与性能演进路线图](cpu-operator-evolution.md)：覆盖台账与生产基线、矩阵计算、Attention、小算子/精度覆盖、线程与资源、量化及目标平台扩展。该入口组织跨算子工作包；具体合同、优化方案与机器证据继续归各算子目录。
+
 ## 目录结构
 
 ```text
 docs/operators/
 ├── README.md                      # 本入口
+├── cpu-operator-evolution.md       # CPU 算子演进顺序、依赖与验收
 ├── operator_contract_design.md    # Operator Contract 层设计（跨算子）
 ├── 算子系统设计.md                 # 算子体系设计（原 kernel_dev/算子系统设计.md）
 └── <operator>/                    # 每算子一个自包含目录

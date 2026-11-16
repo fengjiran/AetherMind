@@ -1,9 +1,9 @@
 # Qwen 与 MoE 模型架构支持方案
 
 - **状态**: Draft
-- **版本**: 1.2
+- **版本**: 1.3
 - **日期**: 2026-10-19
-- **最近更新**: 2026-10-20
+- **最近更新**: 2026-11-17
 - **产品边界**: [当前产品 PRD](../product.md)；本提案规划扩展模型支持范围，保留 CPU-only、单进程、单请求、同步、Token IDs I/O、静态连续 KV
 - **架构边界**: [AGENTS.md](../../AGENTS.md) §2.1
 - **关联计划**: [06 系统能力路线图](06-system-capability-evolution-roadmap.md)、[07 ExecutableModel 准备入口](07-executable-model-preparation.md)、[08 KV/Attention 演进](08-kv-cache-and-attention-capability-evolution.md)
@@ -33,23 +33,29 @@ Qwen 是模型家族，MoE 是 FFN 结构；支持 MoE 不以先支持多个 Den
 
 先验证 Qwen3 Dense 是建立数值基线、隔离 Attention 与 MoE 错误的交付选择；MoE 算子和准备链可以并行开发。部署不要求依次完成全部家族，也不要求先完成 INT8/INT4 才能证明 F32 架构正确性。
 
+按当前源码，通用加载、编译、模型准备、同步 Session、资源预算和 HF 数值对照设施已具备，建议启动 M0，并以 FP32 / O1 plain 的 Qwen3 Dense 为首个纵向交付。M2/M3 在 M0 相关接口冻结后推进；M4 仍以 M1/M2/M3 的退出证据为前置。此判断是静态实施准备度评估，当前构建与回归基线须在实现开始时验证，所有新增家族工作包仍为待实施。
+
 ### 1.2 源码基线与证据边界
 
-以下为 2026-10-19 的静态源码核对结果，2026-10-20 补充复核 kernel/workspace preparation 与 Session I/O 合同。文档编写没有修改实现，也没有重新构建或运行 C++ 测试；既有源码和历史测试不作为本提案已实施的证据。
+以下为 2026-11-17 的静态源码核对结果。本次仅更新提案，没有修改实现，也没有重新构建或运行 C++ 测试；源码、既有测试用例和历史验证记录分别说明实现与验证范围，均不作为 Qwen/MoE 已实施的证据。
 
 | 当前事实 | 源码依据 | 必须补齐的能力 |
 |---|---|---|
 | `ParseModelArchitecture` 只接受 `llama`；Qwen/MoE 枚举预留，构图只分派 Llama | [识别](../../src/model/model_architecture.cpp)、[枚举](../../include/aethermind/model/model_architecture.h)、[dispatch](../../src/model/build_model_graph.cpp) | 明确家族识别、兼容性校验与 per-family builder |
-| HF config 没有逐层 attention/FFN、专家或滑窗配置，未知字段跳过 | [配置](../../include/aethermind/model/formats/hf/hf_model_config.h)、[parser](../../src/model/formats/hf/hf_directory_reader.cpp) | 对行为字段显式解析和规范化 |
+| HF config 已解析 `sliding_window`，缺失/null 表示 full attention，显式窗口仍拒绝；尚无逐层 attention/FFN、专家及家族窗口开关规范化 | [配置](../../include/aethermind/model/formats/hf/hf_model_config.h)、[parser](../../src/model/formats/hf/hf_directory_reader.cpp)、[validator](../../src/model/formats/hf/hf_model_validator.cpp) | 补齐行为字段、缺失/非法值表示与家族规范化，保留未支持窗口的拒绝行为 |
 | validator 强制 `head_dim=hidden/heads`，Q/O 方阵，无条件拒绝 MoE 权重 | [validator](../../src/model/formats/hf/hf_model_validator.cpp) | 正确的投影 shape 与家族权重 schema |
 | `ResolvedModelWeights` 只有 Dense FFN，无 bias、QK norm、专家集合 | [结构](../../include/aethermind/model/resolved_model_weights.h)、[resolver](../../src/model/formats/hf/hf_tensor_resolver.cpp) | typed 权重结构和完整角色解析 |
-| validator 接受 `gelu/relu`，Llama builder 固定生成 `SiluMul` | [validator](../../src/model/formats/hf/hf_model_validator.cpp)、[builder](../../src/model/llama_dense_graph_builder.cpp) | 先消除 accepted config 与实际计算语义的不一致 |
-| `QkvLinear` 明确拒绝 bias；CPU Linear 输入、权重、输出要求 F32 | [QkvLinear](../../src/operators/ops/qkv_linear_op.cpp)、[CPU Linear](../../src/backend/cpu/kernels/linear/linear_entry.cpp) | bias 合同与逐 dtype 执行闭环 |
-| Reshape 已有语义推导，compiler/execution/backend 中尚无对应执行处理 | [Reshape inference](../../src/operators/ops/reshape_op.cpp) | 不能仅凭 Infer 成功宣称 QK norm 的 reshape 路径可执行 |
+| validator 已将 activation 限定为 `silu`，与 Llama 的 `SiluMul` 构图一致 | [validator](../../src/model/formats/hf/hf_model_validator.cpp)、[builder](../../src/model/llama_dense_graph_builder.cpp)、[拒绝测试](../../tests/unit/model/test_hf_model_validator.cpp) | 保持该准入边界；其他激活按家族单独贯通与验收 |
+| `QkvLinear` 仍拒绝 bias；现有 C++ Llama 路径已有 FP32、显式 F16/BF16→FP32 转换与 W16/A32，retained-W16 可选择 F16/BF16 KV；CLI/C ABI 继续 strict FP32 | [QkvLinear](../../src/operators/ops/qkv_linear_op.cpp)、[权重策略](../../src/inference/model_execution_policy.cpp)、[Load/Prepare](../../src/inference/executable_model.cpp)、[PRD 能力边界](../product.md#14-当前能力与验证状态) | 新增 bias 合同；现有精度设施逐家族复用和验收，不能自动扩展到 Qwen/MoE |
+| 权重准入、FP32 转换和 raw storage 统计仍逐项遍历 Dense 权重；Norm 分类不含 Q/K norm | [准入](../../src/inference/model_execution_policy.cpp)、[转换](../../src/model/weight/raw_weight_fp32_conversion.cpp)、[统计](../../src/model/weight/raw_weight_storage_usage.cpp) | 扩展逻辑权重时同步覆盖新角色、Dense/MoE variant、转换 scope 与 owner 去重 |
+| RMSNorm 已支持沿最后一维归一化；Reshape 已有语义推导，尚无 CPU registered/prepared 执行路径 | [RMSNorm inference](../../src/operators/ops/rmsnorm_op.cpp)、[CPU RMSNorm](../../src/backend/cpu/kernels/rmsnorm/rmsnorm_entry.cpp)、[Reshape inference](../../src/operators/ops/reshape_op.cpp) | 复用 RMSNorm，补齐 contiguous Reshape reference 与真实执行证据 |
 | packed lowered step 必须恰好一个 weight；请求构建在首个 weight 后停止 | [lowered validator](../../src/compiler/lowered_graph.cpp)、[request builder](../../src/compiler/weight_packing_request_builder.cpp) | 按语义端口关联多 packed artifacts |
 | `ExecutionStep` 持单个 packed artifact；workspace planner 对各 step 求和 | [plan](../../include/aethermind/execution/execution_plan.h)、[planner](../../src/runtime/workspace_planner.cpp) | 多权重 ownership 与有界 scratch 复用 |
 | `Backend::PrepareKernel` 不接收 concrete shape，CPU prepare 返回默认空 workspace；plan 构建时已计算并冻结 workspace layout | [Backend 接口](../../include/aethermind/backend/backend.h)、[CPU prepare](../../src/backend/cpu/cpu_backend.cpp)、[plan builder](../../src/execution/execution_plan_builder.cpp) | 在现有 binding specialization 中补齐 shape-dependent scratch，而非在 kernel 内分配 |
+| 已有 `PlanExecutionBindings` / `ExecutionBindingPlan` / `MaterializeExecutionBindings`：先只读规划 concrete metadata 与 activation bytes，再分配 activation 和构建 params；尚未规划 shape-dependent workspace | [接口](../../include/aethermind/execution/execution_bindings.h)、[实现](../../src/execution/execution_bindings.cpp) | 在只读规划阶段加入 scratch query/layout，将同一结果移交 prepared bindings |
+| 已有模型/packed/KV/workspace/request payload 限额和 `InferenceSession::PlanResources`；Session 的 workspace 查询、限额检查与分配仍读取 plan 总量 | [模型预算](../../src/inference/executable_model.cpp)、[Session](../../src/inference/inference_session.cpp)、[预算口径](../guides/resource-budgeting.md) | 同步迁移资源查询、预算检查和实际分配；继续在 tensor payload 分配前拒绝超限 |
 | Session 按 Llama builder 的输入顺序绑定 token/position；Prefill/Decode 当前共用一个 immutable plan | [I/O 合同](../../src/inference/inference_internal.h)、[Session](../../src/inference/inference_session.cpp)、[ExecutableModel](../../include/aethermind/inference/executable_model.h) | 统一 decoder 输入输出 ABI，并保持模型准备与请求 specialization 的区别 |
+| 已有固定版本 HF Llama 的 teacher-forcing logits/KV 与独立 greedy 生成对照，尚无 Qwen3 Dense/MoE oracle | [fixture 合同](../../tests/fixtures/inference_numerical/README.md)、[生成器](../../tools/generate_llama_numerical_reference.py)、[生产路径测试](../../tests/unit/inference/test_hf_fixed_trajectory.cpp) | 复用资产与数值校验机制，新增 Qwen fixture、逐层/router 对照和独立验收 |
 
 ### 1.3 与产品及其他计划的关系
 
@@ -57,7 +63,9 @@ PRD 当前仍限定 Llama Dense，并排除 MoE。本提案记录用户要求的
 
 06 保留通用 correctness、physical planning、量化和发布路线，本提案负责多架构/MoE 的具体依赖与集成；07 的 `ExecutableModel::Prepare` 仍是唯一生产准备入口；08 继续负责 KV 物理状态、提交权威、Attention 优化及资源预算。MoE 不要求 Paged KV、服务化、GPU 或专家并行。
 
-[10 上层 Runtime 组装提案](10-upper-level-runtime-assembly.md) 负责当前 Llama FP32 产品入口与对象生命周期，不是多架构改造的完整交付前置；本提案也不阻塞其基线入口。两者共享“模型只 Load/Compile/Prepare 一次、请求在冷路径 specialize”的边界，workspace Buffer 继续归请求，不移入 RuntimeBuilder 或工具层。
+[10 上层 Runtime 组装提案](10-upper-level-runtime-assembly.md) 对应的当前 Llama 产品入口、CLI/C ABI 和对象生命周期已有实现，本提案复用现有入口。模型只 Load/Compile/Prepare 一次，请求在冷路径 plan/materialize；workspace Buffer 继续归请求，不移入 RuntimeBuilder 或工具层。
+
+[11 FP16/BF16 执行提案](11-fp16-bf16-execution-support.md) 的已有转换、W16/A32 与 KV16 设施可按合同复用。它们的 Llama 实现或验证不等于 Qwen/MoE 支持；本提案首版仍冻结 FP32 架构基线，后续精度扩展逐组合验收。
 
 ## 2. 目标架构
 
@@ -69,7 +77,7 @@ PRD 当前仍限定 Llama Dense，并排除 MoE。本提案记录用户要求的
 | operators | BiasAdd、RouterTopK、RoutedSwiGLU 的端口、typed params、dtype/shape/数值合同与 serde | 不表达 CPU 分桶、tile、workspace 或 packed layout |
 | graph | semantic builder、binding 与合法 rewrite | 不依赖 backend，不把 grouped GEMM 当作前端模型语义 |
 | compiler | 组合 semantic pipeline，lowering 和多 weight requests | 不查询 registry 或选择实际 kernel |
-| execution | 按端口绑定 artifacts、specialize tensor 与每步 workspace、校验执行计划与资源 | specialized layout 归 PreparedExecutionBindings；public header 不 include compiler；不接管专家 packing 算法 |
+| execution | 按端口绑定 artifacts；在 PlanExecutionBindings 中规划 concrete tensor 与每步 workspace，再 materialize 和校验执行资源 | 同一 layout 从 ExecutionBindingPlan 移交 PreparedExecutionBindings；public header 不 include compiler；不接管专家 packing 算法 |
 | backend | reference/optimized kernels、bank layout、`Backend::PackWeights`、shape-to-scratch query | 不读取 HF 配置或 Graph IR；query 不读取运行时路由数据 |
 | runtime | 通用 scratch 规划、资源聚合 | 不解析 MoE，也不依赖 graph/compiler/execution |
 | inference | 编排 recipe、packing、plan、统一 decoder I/O、请求 specialization 与 workspace Buffer 所有权 | 不另设第二套模型准备/执行入口；不承担 scratch 大小算法 |
@@ -86,8 +94,10 @@ PRD 当前仍限定 Llama Dense，并排除 MoE。本提案记录用户要求的
 7. Decode 稳态不做堆分配、registry lookup、shape inference、repack 或按路由重新编译。
 8. MoE kernel 不自行提交 KV；完整 plan 成功后才发布 watermark，失败不发布。
 9. 架构、checkpoint 表示、activation/weight/KV dtype、packing 与执行证据分别记录。
-10. immutable plan 冻结已 resolve 的 kernel 和准备回调；每次 specialization 的最终 workspace layout 只有一个权威，归 PreparedExecutionBindings，Buffer 归 Session 请求。
+10. immutable plan 冻结已 resolve 的 kernel 和准备回调；每次 specialization 只规划一次最终 workspace layout，由 ExecutionBindingPlan 持有并移交 PreparedExecutionBindings，Buffer 归 Session 请求。
 11. family builder 遵守统一 decoder I/O ABI；相同 dtype/rank 不能证明 token 与 position 的角色未互换，须由构图合同和集成证据保证。
+12. 权重准入、角色解析、转换与存储统计覆盖同一组实际逻辑权重；新增 Q/K norm、bias、router 或专家时，不能遗漏任何消费者，也不能重复计入共享 backing。
+13. 资源查询、有限预算检查和实际 materialization 消费同一规划结果；shape/scratch 规划只读元数据，不读取 tensor payload、不创建 tensor Buffer、不构建 prepared kernel params。
 
 ### 2.3 支持矩阵与范围
 
@@ -137,11 +147,11 @@ Qwen3-Next 的 hybrid attention、其他 recurrent state、multimodal、encoder-
 | 编号 | 改造 | 主要落点与交付物 | 详细方案 | 工作包 |
 |---|---|---|---|---|
 | R1 | 统一配置规范化 | model 的 raw HF config→typed decoder/layer 描述；validator/resolver/builder 共用维度、默认值与行为规则 | §3.1 | M0 |
-| R2 | 扩展逻辑权重 | bias、Q/K norm、Dense/MoE variant、专家/shared expert；独立/fused/二维/三维来源统一为有 owner 的逻辑 slices | §3.2 | M0、M3、相应家族适配 |
+| R2 | 扩展逻辑权重 | bias、Q/K norm、Dense/MoE variant、专家/shared expert；有 owner 的逻辑 slices；准入/转换/存储统计完整遍历 | §3.2 | M0、M3、相应家族适配 |
 | R3 | per-family 构图与安全 rewrite | 复用通用 Graph IR，显式表达各家族的 norm、位置编码、attention、FFN；保留 consumer/residual/binding | §3.3、§3.8、§3.9 | M1、D2–D6、M4 |
 | R4 | 算子语义与 CPU 执行 | BiasAdd、Reshape 执行、norm/activation/scaling、local attention、RouterTopK/RoutedSwiGLU 的完整 schema→Infer→kernel 链 | §3.3–3.4、§3.8 | M1、M2、A1、家族工作包 |
 | R5 | 多 packed weight 合同 | compiler requests、recipe、ExecutionStep、kernel context 按语义 weight port 关联真实 artifacts | §3.5 | M3 |
-| R6 | shape-dependent workspace 冷准备 | descriptor query→PreparedExecutionBindings requirements/layout→Session 分配/复用→ExecutionContext 借用 | §3.6 | M3 |
+| R6 | shape-dependent workspace 冷准备 | descriptor query→ExecutionBindingPlan requirements/layout→资源查询/预算→分配/materialize→PreparedExecutionBindings→context/runner | §3.6 | M3 |
 | R7 | 统一 decoder Session 协议 | token/position 的顺序、类型和输出 Argmax 合同；所有 family builder 遵守，Session 不做品牌分支 | §3.10 | M0、M1、M4 |
 | R8 | 支持矩阵与生产验收 | checkpoint/dtype/plain-packed/phase/资源/evidence 逐组合登记；完整生产入口 Prefill→多步 Decode 对照 | §3.7、§3.11、§6 | 全部工作包，部署增量归 M5 |
 
@@ -151,7 +161,7 @@ Qwen3-Next 的 hybrid attention、其他 recurrent state、multimodal、encoder-
 
 ### 3.1 配置规范化与家族 dispatch
 
-在 `model` 内拟新增纯配置规范化 helper，返回 typed decoder/layer 描述，供 validator 和 family builder 复用；HF 原始字段仍留在 `HfModelConfig`。优先保持现有 `BuildModelGraph(config, weights)` 入口，不把新描述泄漏到 backend。
+在 `model` 内拟新增纯配置规范化 helper，返回 typed decoder/layer 描述，供 validator、resolver 和 family builder 复用；HF 原始字段仍留在 `HfModelConfig`。保持现有 `BuildModelGraph(config, weights, options)` 及默认 options 重载，不把新描述泄漏到 backend。
 
 规范化描述至少确定：`hidden_size`、Q/KV heads、有效 head_dim、各投影 bias 策略、QK norm、每层 attention/FFN 类型、RoPE、专家数 E、top-k K、专家宽度 I、`norm_topk_prob`。同一规则供配置校验、权重 shape 校验和构图使用，避免三处分别推导。
 
@@ -162,7 +172,7 @@ Qwen3-Next 的 hybrid attention、其他 recurrent state、multimodal、encoder-
 - Qwen2 的 Q/K/V bias 按其架构规定，不能因 config 未提供 `attention_bias` 就推断为无 bias。
 - MoE 解析 `num_experts`、`num_experts_per_tok`、`moe_intermediate_size`、`norm_topk_prob`、`decoder_sparse_step`、`mlp_only_layers`；dense 与 expert intermediate size 独立校验，专家宽度允许小于 hidden。
 - 已知未支持的行为或量化格式明确拒绝；无关 metadata 继续跳过。eval 下禁用 dropout，训练 aux loss/jitter 元数据不直接等同于推理能力缺口。
-- 先把现有固定 SwiGLU builder 的 accepted activation 收敛到 `silu`；其他激活只有在完成对应图与执行实现后再开放。
+- 维持已实现的 `silu` 准入与固定 SwiGLU 构图的一致性；其他激活只有在完成对应图与执行实现后再开放。
 
 当前家族数量使用显式 switch 和 per-family adapter 足够，不引入插件注册系统。共享 block helpers 只复用已相同的计算结构，不通过猜测 tensor 名称判定架构。
 
@@ -188,6 +198,15 @@ MoEFFNWeights
 
 validator/resolver 按实际层类型检查所需 tensor，不能继续要求 MoE 层具备 Dense gate/up/down。检查 expert ID 连续性、缺失/重复/多余权重、投影方向、dtype 和字节数；bias/norm 等角色同步贯通 `ParameterSlot` 映射、诊断、绑定校验与 resolver。
 
+现有 `model_execution_policy.cpp` 的 required-role 列表、`raw_weight_fp32_conversion.cpp` 的 `CollectViews` 和 `raw_weight_storage_usage.cpp` 的遍历均绑定旧 Dense 结构。R2 的迁移范围必须包含这些消费者：
+
+- 在 model 内提供覆盖实际层 variant 的逻辑权重遍历 helper，携带角色、layer/expert 身份及 Norm 分类；const/mutable 访问保持同一规则，优先作为私有共享 helper，不建立通用 capability registry。
+- inference 的 source/prepared dtype 准入按实际层角色检查，MoE FFN 要求其 router/experts 而非 Dense gate/up/down，Q/K norm 与 bias 不得漏验；保持策略判断归 inference、逻辑权重枚举归 model 的边界。
+- 显式 FP32 conversion 覆盖全部待转换 slices；retained-W16 的 Norm-only scope 包含 Q/K norm，bias/router/expert 的 dtype 规则在对应精度工作包中冻结，未验收组合明确拒绝。
+- storage usage 继续按 RawStorage owner 去重，处理 tied weights、专家 slices 与重叠来源；保留已知 owned/mapped/external footprint 和未知 footprint 的原有语义，新增权重不能被当作零字节。
+
+上述完整性属于 M0/R2 与 M3 的基础合同；Q/K norm 的 FP32 准入和统计随 M1 交付，专家部分随 M3/M4 交付。M5 负责新增精度组合，不能承担补救 FP32 路径漏检或漏计的职责。
+
 专家 bank 的拟新增 binding 表达“当前 decoder layer 的某个专家投影集合”，expert 按 ID 排序。整个 bank 的 E 和维度以 `TensorSpec` 为权威；如需单专家绑定，在 typed binding 中显式记录 expert index，不通过 debug name 解析身份。
 
 对独立二维专家 tensor 直接保留 `RawWeightView`；对连续三维来源按 expert 切成二维 slices。每个 slice 保留原 `RawStorage` 的 shared ownership，并严格验证 offset/bytes 溢出与范围。
@@ -204,6 +223,8 @@ O:   [H, Nq * D]       Qwen3 Q/K norm scales: [D]
 ```
 
 当 D 显式提供时，不再以 `H % Nq == 0` 或 `Nq*D == H` 作为通用条件；仍验证 heads、D 为正、GQA 可整除及乘积无溢出。官方 Qwen3-0.6B 的 H=1024、Nq=16、D=128，是必须覆盖的非方阵案例。
+
+现有 `MakeKVCacheOptions` 已优先使用显式 head_dim，只有缺失表示为零时才回退到整除推导。M0 的规范化结果须让 validator、resolver、builder 与该运行配置映射保持一致；不能只放开配置检查而继续用旧的 Q/O 方阵或 KV geometry。Llama 的既有家族合同保持回归覆盖。
 
 Qwen3 的 Q/K norm 使用现有 RMSNorm 语义，图中明确表示：
 
@@ -230,7 +251,7 @@ Qwen2/2.5 的 baseline 拟新增 `BiasAdd(x[...,D], bias[D])`，端口为 activa
 
 ```text
 Expert_e(x) = Wdown_e * (SiLU(Wgate_e * x) ⊙ (Wup_e * x))
-y[t] = sum_j routing_weights[t,j] * Expert_expert_ids[t,j](x[t])
+y[t] = sum_j routing_weights[t,j] * Expert_e(x[t]),  e = expert_ids[t,j]
 ```
 
 冻结合同：`1 <= K <= E`；平分时以 expert ID 升序确定次序；RouterTopK 拒绝非有限 logits；RoutedSwiGLU 拒绝越界/重复 expert IDs 或非有限 routing weights。错误不得导致越界写入或 KV watermark 发布。各操作允许 T=0 的空输出，生产请求仍遵守 Session 的非空 prompt 合同。首版输出与输入不 alias，输出累加使用 F32。
@@ -282,45 +303,56 @@ plan 步骤固定，expert_ids/counts/offsets 是执行数据。在 binding spec
 
 当前 `PrepareKernel(op, selector, params)` 无 concrete shape；CPU prepare 初始化空 workspace，`ExecutionPlanBuilder` 却已经汇总 requirements 并把 offsets/layout 冻结到 plan。仅在 MoE params builder 中计算 T*K 并不能改变已分配的 workspace，必须贯通准备合同。
 
-推荐扩展已有 `PreparedExecutionBindings` 的 cold-path specialization，分开 kernel resolution 和 concrete workspace query：
+当前 binding specialization 已拆为 `PlanExecutionBindings` / `ExecutionBindingPlan` / `MaterializeExecutionBindings`；`PrepareExecutionBindings` 是规划后直接物化的便捷入口。推荐将 workspace query 加入已有只读规划阶段，使预算检查发生在 activation/workspace Buffer 分配之前：
 
 ```text
 ExecutableModel::Prepare / ExecutionPlanBuilder
   → 按 descriptor resolve kernel，冻结 attrs、params builder、workspace query
   → 一个 immutable plan，不提前假设当前请求的 T
 
-PrepareExecutionBindings(plan, actual external tensors)
+PlanExecutionBindings(plan, actual external tensor metadata)
   → 推导并验证 concrete shapes / strides / constraints
-  → 以 concrete 元数据、attrs、packed views 查询每步 scratch requirement
+  → 以 concrete 元数据、attrs、packed descriptor 元数据查询每步 scratch requirement
   → runtime 的通用 planner 计算 offsets/layout
-  → PreparedExecutionBindings 持有该次 specialization 的 requirements/layout
+  → ExecutionBindingPlan 持有 activation 规划及 workspace requirements/layout
+  → 不分配 tensor Buffer、不构建 kernel params、不读取 tensor payload
 
 Session 请求
-  → 根据 prepared layout 分配或复用 workspace Buffer
+  → 规划 Prefill 及需要时的 T=1 Decode，查询资源并检查限额
+  → 按同一规划结果分配/复用请求 workspace Buffer
+  → MaterializeExecutionBindings 消费 binding plan，分配 activation、构建 params
+  → 同一 requirements/layout 随 metadata 移交 PreparedExecutionBindings
   → 将 prepared bindings 移入 ExecutionContext；context 借用请求 arena 与 KV view
   → LayerRunner 从 prepared bindings 取每步 requirement 后执行
 ```
 
-拟新增 query 由 backend descriptor 提供，随已 resolve 的 kernel 一次性冻结；只依赖 shape/dtype/stride、冻结的参数和 packed descriptor 元数据，不读取 activation/路由内容、不访问 registry。没有 shape-dependent scratch 的既有 kernel，以其固定 requirement（包括零字节）参与同一 specialization 路径。
+拟新增 query 由 backend descriptor 提供，随已 resolve 的 kernel 一次性冻结；只依赖 shape/dtype/stride、冻结的参数和 packed descriptor 元数据，不要求 activation 已分配，不读取权重/activation/路由内容，不访问 registry。没有 shape-dependent scratch 的既有 kernel，以其明确的固定 requirement（包括零字节）参与同一规划路径；缺失接口不能被解释成 MoE 无 scratch 需求。
 
 职责和迁移范围如下：
 
 | 对象/模块 | 拟承担的职责 | 约束 |
 |---|---|---|
 | KernelDef / ResolvedKernel | 冻结 sizing callback、固定元数据和静态 requirement 合同 | query 对同一元数据结果确定；部署容量不混入 semantic OpParams |
-| PreparedExecutionBindings | 拥有每步 requirements 和该次最终 layout，保持 metadata 堆稳定 | 与 plan identity、step 和 concrete shapes 相容；move 后借用仍有效 |
+| ExecutionBindingPlan | 只读规划 concrete metadata、activation 与 workspace requirements/layout，暴露资源大小供查询和预算检查 | 不创建 tensor Buffer 或 kernel params；拒绝错误 plan identity、空/已移走对象 |
+| PreparedExecutionBindings | materialize 时接收同一 requirements/layout，保持 metadata 堆稳定 | 不重算尺寸或偏移；与 plan identity、step 和 concrete shapes 相容，move 后借用仍有效 |
 | runtime workspace planner | 通用 checked bytes/alignment/offset 与窄 lifetime 复用 | 不依赖 execution 或理解 MoE |
-| Session / RequestResources | 拥有实际 Buffer，按 prepared layout 分配/复用并处理 OOM | 不自行实现 scratch 尺寸公式；无活动借用时才替换存储 |
+| Session / RequestResources | 通过 binding plan 查询/检查资源，拥有实际 workspace Buffer，按同一 layout 分配/复用并处理 OOM | 不自行实现 scratch 尺寸公式；无活动借用时才替换存储 |
 | ExecutionContext | 按现有合同拥有移入的 PreparedExecutionBindings，借用请求 arena 与 KV view，校验 arena 能满足 prepared layout | context 清理时释放其 bindings/activation，不释放请求拥有的 workspace 或 KV reservation |
 | LayerRunner | 从 context 拥有的 prepared bindings 读取每步 requirement 并绑定对应切片 | 不从旧 plan offset 推导实际分配，也不延长 scratch 的合法访问期 |
 
-相应迁移 `ExecutionPlan::total_workspace_bytes`/step offsets 的实际执行用途、`ExecutionContext::Create` 的检查和 `LayerRunner::RunStep` 的 workspace 来源；不能留下 plan 与 prepared bindings 两套相互竞争的最终 layout。untrusted plan 调用方提供的 resource assertions 仍须按 backend 的固定/shape-query 合同校验，不能覆盖真实需求；按 shape 可判定的容量不足或算术溢出必须在 Execute 前报错。实际路由中的非法 ID 等执行数据错误由 kernel 校验并报告，不要求冷路径读取尚未计算的路由内容。
+相应迁移 `ExecutionPlan::total_workspace_bytes`/step offsets 的实际执行用途、`InferenceSession::PlanResources`、Generate 的 workspace/request cap 检查与分配，以及 `ExecutionContext::Create` 和 `LayerRunner::RunStep` 的 workspace 来源。layout 只有一次计算和连续的所有权移交，不能留下 immutable plan、binding plan 与 prepared bindings 三套相互竞争的最终尺寸或偏移。
+
+untrusted plan 调用方提供的 resource assertions 仍须按 backend 的固定/shape-query 合同校验，不能覆盖真实需求；按 shape 可判定的容量不足或算术溢出在规划阶段报错。实际路由中的非法 ID 等执行数据错误由 kernel 校验并报告，不要求冷路径读取尚未计算的路由内容。
 
 备选是在模型准备时传入独立的 execution capacity bound，例如最大 prompt tokens，按上界冻结 plan scratch；它需要新增部署配置和超限拒绝路径，且不等同于 KV context limit。首版选择上述 binding specialization，避免无实际请求形状时预留模型全部 context 的 MoE scratch，不同时引入两套准备模式。
 
 #### 3.6.3 Session 的阶段准备顺序
 
-将当前“先按 plan 总量分配 workspace，再 PrepareContext”的顺序改为 `specialize → allocate/reuse workspace → Create context`。Prefill 使用实际 prompt 长度；读取其输出并清理 context 后，Decode 以 T=1 specialize，在进入 Decode loop 前复用或必要时增大 Buffer。Buffer 增长时不得存在借用旧 arena/storage 的 context。
+当前有限 request cap 路径已在 materialize 前规划 Prefill/Decode activation，但 workspace 大小仍从 immutable plan 读取。迁移后统一为 `plan required phases → check budgets → allocate workspace → materialize phase → Create context`。Prefill 使用实际 prompt 长度；`max_new_tokens > 1` 时另规划 T=1 Decode；保留零生成请求的现有短路合同。
+
+令 Wp/Wd 为各阶段规划的 workspace bytes，Ap/Ad 为 activation bytes。沿用当前请求 Buffer 所有权，一次按 `max(Wp, Wd)` 和两阶段最大 alignment 分配 workspace，并按 `max(Wp, Wd) + max(Ap, Ad)` checked 计算 request payload；无需 Decode 的请求不计其资源。`PlanResources` 与 Generate 使用同一公式和 execution 规划入口，有限 workspace/request cap 在对应 tensor payload 分配及 KV reservation 前检查。metadata 分配仍允许发生。
+
+Prefill 结束并读取输出后先清理 context/activation，再物化已规划的 Decode；两阶段复用同一 workspace Buffer，进入 Decode loop 前完成 params 构建。已有 `PrepareExecutionBindings` 便捷入口也须委托同一 plan/materialize 实现。任何替换 workspace 存储的低层调用都必须先释放其活动借用。
 
 每步 Decode 继续使用同一 prepared bindings、kernel params 和 workspace，只更新合法输入数据与 KV view；循环内不分配、不 query、不重新 resolve 或 packing。kernel 从当次 `KernelContext` 获得 workspace，不能在 prepared params 中固化该基址。
 
@@ -328,17 +360,19 @@ Session 请求
 
 #### 3.6.4 scratch 复用与总预算
 
-当前 planner 对所有 step scratch 求和。推荐最小扩展为：仅 `lifetime=kPerOperator && reusable=true` 的同步串行 step 共用一块按最大 bytes/最大 alignment 规划的区域；其余 scope 独立。此规划应用于该次 prepared requirements。合同要求 kernel 返回前完成全部访问，禁止保留 scratch 指针。没有该改动前必须按逐 step 求和计预算，不能宣称已跨层复用；通用 activation liveness 仍属 06 的独立工作。
+当前 planner 对所有 step scratch 求和。推荐最小扩展为：仅 `lifetime=kPerOperator && reusable=true` 的同步串行 step 共用一块按最大 bytes/最大 alignment 规划的区域；其余 scope 独立。此规划在 ExecutionBindingPlan 阶段应用于该次 requirements，结果随 materialize 移交。合同要求 kernel 返回前完成全部访问，禁止保留 scratch 指针。没有该改动前必须按逐 step 求和计预算，不能宣称已跨层复用；通用 activation liveness 仍属 06 的独立工作。
 
-资源预算覆盖 raw mmap 驻留/packed artifacts 重叠、所有 activation、共享与非共享 scratch、静态 KV、元数据和准备期临时内存。A3B 是激活参数规模，不能作为完整 checkpoint 或运行内存规模。先用 tiny MoE 证明正确性，再按真实机器预算决定完整模型验收；不把逐 token 按需 packing 作为内存不足的补救。
+已有 `ModelLimits`、KV `max_bytes`、Runtime workspace limit、Session request payload limit 与资源查询继续有效，精确口径复用[资源预算指南](../guides/resource-budgeting.md)。M3 必须让 shape-dependent scratch 进入同一查询、限额检查和分配路径，并补溢出、超限与 OOM 证据。`workspace.enable_workspace_manager` 仍未实现，workspace limit 也不等于进程总内存上限。
 
-若产品加入预算上限，须让其进入实际 checked allocation/preparation 路径并补 OOM 证据；不能把尚未生效的 `RuntimeOptions.workspace` 或单独 KV capacity 当作已有进程总预算限制。
+payload 账本与部署内存证据分别记录：账本继续区分 owned/mapped/external backing，不能把所有 mmap 字节或元数据直接并入现有 request cap；部署报告另测 raw mmap 驻留、raw/packed 重叠、全部 activation、scratch、静态 KV、元数据和准备峰值/RSS。A3B 是激活参数规模，不能作为完整 checkpoint 或运行内存规模。先用 tiny MoE 证明正确性，再按真实机器预算决定完整模型验收；不把逐 token 按需 packing 作为内存不足的补救。
 
 ### 3.7 dtype 与量化的独立纵向闭环
 
 首版采用 F32 activation/weights/KV 和固定版本 HF F32 oracle。小型真实 Qwen 可以使用明确记录来源的 F32 导出 checkpoint；这只能标为相应 F32 组合支持，不能宣称官方 BF16 文件已可直接运行，也不能只修改 config dtype 而不转换数据。
 
-BF16/FP16 权重、activation、KV 分别列入 capability matrix。若引入转换，明确其时机、所有权、计算精度与峰值内存。INT8/INT4 选择具体 scheme 后完整贯通 metadata、scale/zero-point/group size、bank slices、binding、packing、kernel 与数值验收；不把 `allow_quantized_tensors` 当作执行支持。
+已有 `WeightPolicy::kConvertToFp32` 与 retained-F16/BF16 W16/A32 policy，后者在 Llama 路径只转换 Norm，KV 默认 F32、可显式选 F16/BF16。新家族复用时必须先贯通 §3.2 的完整权重遍历；现有转换、Linear 或 KV16 kernel 不证明 Q/K norm、Reshape、router 和专家链已支持相同精度。CLI/C ABI 继续 strict FP32，其他 policy 的产品开放另行验收。
+
+BF16/FP16 权重、activation、KV 分别列入 capability matrix。复用转换时继续明确其时机、所有权、计算精度与峰值内存；retained-W16、KV16 与 A16 各有独立的数值及执行门禁。INT8/INT4 选择具体 scheme 后完整贯通 metadata、scale/zero-point/group size、bank slices、binding、packing、kernel 与数值验收；不把 `allow_quantized_tensors` 当作执行支持。
 
 ### 3.8 后续家族的具体适配边界
 
@@ -408,24 +442,26 @@ model 私有 input/output 构图 helper 固定顺序，各 family builder 使用
 
 | 工作包 | 范围与主要落点 | 前置 | 退出证据 | 状态 |
 |---|---|---|---|---|
-| M0 公共前端合同 | 配置规范化、typed layer/FFN、逻辑权重、统一 decoder I/O；冻结多 packed 与 workspace query 接口边界 | 无 | 家族冲突/拒绝与配置行为测试；Llama 回归；R1/R2/R5/R6/R7 合同和拟支持矩阵明确 | 待实施 |
-| M1 Qwen3 Dense 基线 | per-family builder、独立 head_dim、Q/K norm roles、Reshape reference、图/融合与统一 I/O | M0 | 真实 CpuBackend 经生产入口完成 tiny Qwen3 Prefill→多步 Decode 的逐层/logits/KV 对照，I/O 无品牌分支 | 待实施 |
+| M0 公共前端合同 | 配置规范化、typed layer/FFN、逻辑权重遍历与全部消费者、统一 decoder I/O；冻结多 packed 与 plan/query/materialize 接口边界 | 无额外架构能力前置；实现前记录当前 Llama 回归基线 | 家族冲突/拒绝与配置行为测试；权重角色/转换 scope/统计完整性；Llama 回归；R1/R2/R5/R6/R7 合同、PRD 规划和拟支持矩阵明确 | 可启动，待实施 |
+| M1 Qwen3 Dense 基线 | FP32/O1 plain；per-family builder、独立 head_dim、Q/K norm roles 及准入/统计、Reshape reference、图/融合与统一 I/O | M0 相关合同落地 | 真实 CpuBackend 经生产入口完成 tiny Qwen3 Prefill→多步 Decode 的逐层/logits/KV 对照，包含 Nq*D != H，I/O 无品牌分支 | 待实施 |
 | M2 MoE semantic/reference | RouterTopK、RoutedSwiGLU 的 schema/params/Infer/serde 与独立 F32 reference | M0 合同冻结；prepared 路径与 M3 汇合 | O0/O1、K=1/2/8 与不均匀路由；M3 就绪后补真实 prepared operator 对照 | 待实施，可与 M1/M3 并行 |
-| M3 专家准备与资源 | bank slices/packing、多 packed bindings；query→prepared requirements/layout→Session Buffer→context 全链与窄复用 | M0 接口边界冻结 | 多端口/ownership/布局/溢出/OOM；不同 T specialization、共用 plan、单权重与固定 scratch 回归 | 待实施，可与 M1/M2 并行 |
+| M3 专家准备与资源 | bank slices/packing、多 packed bindings、专家权重遍历；query→ExecutionBindingPlan→查询/预算→分配/materialize→prepared layout→context/runner 与窄复用 | M0 接口边界冻结 | 多端口/ownership/布局/权重统计/溢出/OOM；不同 T specialization、PlanResources 与实际分配一致；共用 plan、单权重与固定 scratch 回归 | 待实施，可与 M1/M2 并行 |
 | M4 Qwen3 MoE 集成 | MoE family builder、Dense/MoE 混合层、生产准备与 Session 集成 | M1/M2/M3 | 完整 Load→Compile→Prepare→Prefill→多步 Decode；router/experts/hidden/logits/KV 数值及零分配证据 | 待实施 |
-| M5 部署与性能 | 按需求补 BF16/FP16/量化；优化 expert GEMV/GEMM、packing、路由与内存 | 对应 F32 集成基线 | O2–O4、真实模型资源与端到端基准；逐组合标记支持 | 待实施 |
+| M5 部署与性能 | 按新家族复用/扩展转换、W16、KV16，按需新增 A16/量化组合；优化 expert GEMV/GEMM、packing、路由与内存 | 对应 F32 集成基线；具体 checkpoint/dtype/机器预算已冻结 | O2–O4、真实模型资源与端到端基准；逐组合标记支持 | 待实施 |
 | D2 Qwen2/2.5 Dense | QKV bias、BiasAdd、家族默认值、builder 与 fixtures | M0；不依赖 MoE | 自身生产链端到端对照；带 bias 的优化图不丢语义 | 可并行选做 |
 | X 后续家族 | §4.3 的其他 Dense 家族、第二个 MoE 家族及 shared expert 分支 | 仅依赖所复用的具体能力 | 每个家族独立 fixture、实际支持矩阵和端到端对照 | 按需求进入 |
 
 M1 是推荐集成顺序，不阻塞 M2/M3 的独立实现；M2 的真实 prepared operator 门禁依赖 M3 资源链，不得用独立算术测试替代。M4 汇合全部生产准备与执行证据。M0–M4 不以完成 D2、Mixtral、滑窗、通用动态 shape 或量化为门禁。M5 不是先做性能再验证正确性；每项 dtype/优化都从已验证基线开始。
 
+启动时先验证最窄相关的 Llama loader/compiler/Prepare/Session、单权重 packing、资源预算与数值对照基线，并记录实际执行范围。首个可执行新组合固定为 FP32 / O1 plain；Qwen3 Dense 的 O2/packed 作为后续独立组合验收。MoE 的专家 bank 物理布局即使使用 F32 行主序，也必须经过 M3 的真实 artifacts/bindings 合同，不能用 Dense plain 路径替代。
+
 ### 4.2 改动落点与审查单元
 
-1. `model`：修改 HF config/parser/validator、architecture 与现有 weights/resolver；拟新增 Qwen3 Dense/MoE builder 和必要的共享 normalization helper。
+1. `model/inference`：修改 HF config/parser/validator、architecture 与现有 weights/resolver；新增 model 内的完整权重遍历并迁移 source/prepared 准入、conversion 和 storage usage 消费者；拟新增 Qwen3 Dense/MoE builder 和必要的共享 normalization helper。
 2. `operators/graph`：新增 RouterTopK/RoutedSwiGLU，按需新增 BiasAdd；同步 schema、typed OpParams、Infer、serde、graph builder、binding 及相关 validator。
 3. `compiler/execution/backend/inference`：将多 packed bindings 作为一条完整合同变更审查，覆盖所有 producer/consumer，保留单权重路径证据。
-4. `backend/execution/runtime/inference`：将 sizing query、prepared requirements/layout、通用 planner、Session Buffer、context/runner 消费作为完整合同迁移；不增加第二资源 owner，也不引入线程池或通用异步 allocator。
-5. `tests/tools/docs`：扩展现有 HF fixture 与生产入口测试，新增固定版本 oracle 生成工具；算子设计、状态与机器级证据按 O0–O4 工作流归档，更新模型能力矩阵。
+4. `backend/execution/runtime/inference`：将 sizing query、ExecutionBindingPlan 的只读规划、PlanResources/预算检查、MaterializeExecutionBindings 的所有权移交、通用 planner、Session Buffer 和 context/runner 作为完整合同迁移；不增加第二资源 owner，也不引入线程池或通用异步 allocator。
+5. `tests/tools/docs`：复用现有 HF fixture、manifest/checksum、teacher-forcing 与独立 greedy 对照机制，扩展固定版本 Qwen oracle 生成及生产入口测试；算子设计、状态与机器级证据按 O0–O4 工作流归档，更新模型能力矩阵。
 
 工作包可按合同、reference、integration 拆成可构建的小提交，不能在仍无法绑定/执行时先开放 loader 的支持开关。新增/扩展算子遵守 O0–O4；优化记录不堆积在本系统提案中。
 
@@ -453,6 +489,7 @@ M1 是推荐集成顺序，不阻塞 M2/M3 的独立实现；M2 的真实 prepar
 | 只开放配置/枚举 | 可能加载成功但语义错误；支持声明绑定到 checkpoint/图/准备/执行证据 |
 | 公共合同或 ABI 变化 | OpType、OpParams、WeightBinding、kernel context 与 plan 同步修改；已有值不任意重排，序列化/公开 ABI 按仓库版本规则处理 |
 | bank slice 或 span 悬空 | 保留 RawStorage 与 artifacts ownership；metadata 堆稳定；测试构建临时对象销毁后的执行与 move 后有效性 |
+| 权重消费者仍假定 Dense | 统一遍历实际层 variant；新 norm/bias/router/expert 同步进入准入、转换、binding 和 owner 去重统计，防止错误拒绝、漏转换或漏预算 |
 | 路由数值敏感 | 精度或 tie 改变 expert 集合；比较 logits/probabilities/IDs/专家输出，平分单独验合同 |
 | 多层 scratch 与 activation 累积 | 窄 scratch 复用不等于 activation liveness；准备预算与实测峰值分别记录 |
 | BF16/FP16/量化被过度承诺 | loader 接受 dtype 与 kernel 可执行分别登记；每种部署组合独立闭环 |
@@ -462,8 +499,9 @@ M1 是推荐集成顺序，不阻塞 M2/M3 的独立实现；M2 的真实 prepar
 | 品牌与底座混淆 | 基于实际 config、权重及语义识别；SmolLM2/蒸馏模型通过不等于新家族或原生 DeepSeek 已支持 |
 | 将家族差异误作参数默认值 | RoPE/NoPE、norm axis、GELU 变体和 local mask 明确表达；新能力仅对已验收目标开放 |
 | 将滑窗语义等同于存储压缩 | 完整静态 KV 可先保证正确读取，但仍按完整 context 分配；ring/eviction 另立资源方案 |
-| plan 与 prepared layout 竞争 | 将实际分配和 step 绑定统一到本次 prepared layout；迁移 context/runner/Session，不能只新增 callback |
-| workspace Buffer 增长导致悬空 | 先释放借用旧 arena 的 context 再增长；params 不缓存基址；覆盖阶段切换/OOM/move 后执行 |
+| 查询/预算/执行 layout 不一致 | ExecutionBindingPlan 只规划一次并向 prepared bindings 移交；PlanResources、Generate、context/runner 同步迁移，不能只新增 callback |
+| 规划之前已分配 tensor payload | query 放在只读 PlanExecutionBindings 阶段；有限 workspace/request cap 先于 payload 分配和 KV reservation，metadata 分配另计 |
+| workspace 借用失效 | 请求按所需阶段最大 bytes/alignment 分配同一 Buffer，context 清理后切换阶段；存储替换前释放全部借用，params 不缓存基址；覆盖 OOM/move 后执行 |
 | 把 I/O 类型校验误作角色证明 | 统一 builder 顺序 ABI，测试 token/position 互换；runtime 的相同 rank/dtype 校验不能证明角色 |
 | prepared 门禁与资源链脱节 | M2 reference 可并行，真实 prepared operator 与 M3 汇合后才验收，M4 不跳过该门禁 |
 
@@ -477,6 +515,8 @@ M1 是推荐集成顺序，不阻塞 M2/M3 的独立实现；M2 的真实 prepar
 - [ ] Qwen3 覆盖 `Nq*D != H`，Q/K norm scale 为 `[D]`，norm 在 RoPE 前；Qwen2 覆盖 config 缺省仍要求 QKV bias。
 - [ ] expert 数量/ID、router、各投影 shape/方向/dtype/bytes、shared expert、tied embeddings 缺失和冲突可诊断。
 - [ ] fused/独立专家来源经 slices 解析得到同一逻辑权重，跨 expert 非连续区域未伪装为 contiguous。
+- [ ] 权重遍历覆盖 Q/K norm、bias、router、全部专家与已支持的 shared expert；MoE 层不要求 Dense FFN 权重，source/prepared 准入与实际执行角色一致。
+- [ ] 对应 policy 的显式 FP32 转换覆盖全部角色/slices，Norm-only scope 包含 Q/K norm；tied/sliced/shared backing 的统计去重正确，未知 footprint 不默认为零，限额能发现新增 owned/packed payload。
 - [ ] 图优化前后计算一致；consumer、residual、层边界、bias/norm 和权重 binding 不丢失。
 
 ### 6.2 算子、packing 与资源
@@ -488,9 +528,12 @@ M1 是推荐集成顺序，不阻塞 M2/M3 的独立实现；M2 的真实 prepar
 - [ ] bank 布局按精确公式检查 expert offset、padding、alignment、tail 与越界；packed/reference 输出一致。
 - [ ] scratch planner 验证可复用区的最大尺寸/对齐、非复用区不重叠、失败不部分提交；kernel 不跨返回保留 scratch。
 - [ ] 准备资源上界、OOM、乘积溢出与实际分配一致；Decode 测量边界内无 allocation/lookup/repack。
-- [ ] shape-to-scratch query 只读元数据，对所有合法路由分布给出足够上界；不同 T 与 T=1 Decode 产生相应 prepared requirements/layout，immutable plan 和已 resolve kernel 不变。
+- [ ] shape-to-scratch query 在 PlanExecutionBindings 中只读元数据，无需 activation Buffer 或路由值，对所有合法路由分布给出足够上界；不同 T 与 T=1 Decode 产生相应 requirements/layout，immutable plan 和已 resolve kernel 不变。
 - [ ] 固定/零 scratch 的既有 kernel 走同一 prepared layout 权威；untrusted resource assertions 不能覆盖 backend 的实际需求；无回调或接口缺失不默认为 MoE 零 scratch。
-- [ ] Session 顺序为 specialize→allocate/reuse→Create；Buffer 增长前清理旧 context，kernel params 无 workspace 基址，跨阶段、move 和 OOM 清理无悬空或错误 KV 发布。
+- [ ] ExecutionBindingPlan 不创建 tensor Buffer/params；materialize 消费同一 activation/workspace 规划，空/已移走/错误 plan identity 被拒绝，move 后 metadata 和 layout 借用有效。
+- [ ] PlanResources、Generate 的 workspace/request cap 与实际分配使用同一规划入口及阶段最大值公式；超限先于对应 tensor payload 分配和 KV reservation，查询不预约 KV、不读取 payload。
+- [ ] Session 顺序为 plan required phases→check budgets→allocate workspace→materialize→Create；Prefill context 清理后才物化 Decode，两阶段复用同一 workspace；kernel params 无 workspace 基址，跨阶段、move 和 OOM 清理无悬空或错误 KV 发布。
+- [ ] max_new_tokens 为 0/1/多步及 EOS 提前结束保持既有合同；无需 Decode 时不规划其资源，多步请求按所需两阶段上界准入，即使最终提前 EOS 也不绕过预算。
 - [ ] Context/LayerRunner 使用 prepared layout 校验和绑定，不再依靠旧 plan offsets/总量；参数与布局准备只在冷路径发生。
 
 ### 6.3 生产入口与数值 oracle
@@ -498,6 +541,8 @@ M1 是推荐集成顺序，不阻塞 M2/M3 的独立实现；M2 的真实 prepar
 每个拟标记支持的组合通过 `ModelLoader → ModelCompiler → ExecutableModel::Prepare → InferenceSession` 和真实 CpuBackend，不用手工拼接 bindings 的测试代替集成门禁。
 
 先采用可再生成 tiny HF checkpoints：Qwen3 Dense；Qwen3 MoE 的纯 MoE 与混合 Dense/MoE 层；按需追加 Qwen2/Mixtral/shared expert。固定权重、token IDs、Transformers 版本、checkpoint revision/hash、eval/attention 实现与 dtype。
+
+复用[既有数值 fixture 合同](../../tests/fixtures/inference_numerical/README.md)的独立生成、manifest/checksum、teacher-forcing 与闭环 greedy 分离机制。当前 Llama reference environment 固定 `transformers==4.57.1` 等依赖；Qwen 生成器须单独登记相关 HF source hash、环境和所有产物身份，扩展逐层/QK norm/router/专家结果。仅复用同一依赖版本或通过 Llama 对照不更新 Qwen 支持状态。
 
 对比 embedding、Q/K norm、RoPE、router logits/probabilities/IDs、单专家结果、加权合并、逐层 hidden、最终 logits 与 KV。覆盖 Prefill 和至少两个 Decode step，多个 prompt 长度、非零 position、context 边界、失败后 KV 不发布及后续恢复。
 
@@ -528,6 +573,7 @@ tiny fixture 证明架构闭环，真实小模型验证实际 checkpoint 与词�
 
 - [ ] R1–R8 均有唯一 owner、对应工作包和证据位置，未实施部分保持 Draft/待验证，不把文档更新当作实现。
 - [ ] validator、resolver、builder 对投影维度、缺失/非法值、逐层 norm/position/FFN 使用同一规范化规则，未新增平行默认值逻辑。
+- [ ] M0 已冻结完整逻辑权重遍历与其消费者，以及 plan/query/budget/materialize 的接口边界；已有 precision/预算设施按实际能力复用，未将本次文档更新计为实现或回归证据。
 - [ ] 不同层节点数合法；优化前后 bias、Q/K norm、activation、consumer/residual 和 weight/state layer identity 保持。
 - [ ] 所有 family builder 的输入为 token_ids/position_ids 顺序 ABI，输出遵守 greedy Argmax 合同；非零 position 和不同 token/position 数据可暴露误绑定，Session 不按品牌切换生成逻辑。
 - [ ] kernel resolution、packing 与请求 specialization 分离；同一 kBoth 模型不因两阶段 bindings/layout 而重复加载/编译/模型准备。
@@ -562,3 +608,4 @@ tiny fixture 证明架构闭环，真实小模型验证实际 checkpoint 与词�
 | 2026-10-19 | 1.0 | 建立 Qwen3 Dense→Qwen3 MoE 主线，明确并行工作、家族边界、多 packed bindings、资源预算和端到端门禁；未修改实现 |
 | 2026-10-19 | 1.1 | 补充 Mistral/Phi/SmolLM3/Gemma 与 Mixtral/OLMoE 的优先级、底座兼容目标、分支工作包和验收；保留 Qwen3 主线与当前执行边界 |
 | 2026-10-20 | 1.2 | 增加 R1–R8 工程改造追踪；明确 binding 冷路径 workspace specialization、统一 decoder I/O、per-family rewrite 与支持矩阵，调整 M2/M3 验收依赖；未修改实现 |
+| 2026-11-17 | 1.3 | 按当前源码更新 SiLU/滑窗准入、precision/预算和 HF 对照基线；补齐完整权重遍历的迁移范围；workspace query 接入 PlanExecutionBindings，统一资源查询、预算、materialize 与执行 layout；明确 M0 可启动、FP32/O1 Dense 首交付及后续门禁；仅更新提案，未修改实现或重跑 C++ 验证 |

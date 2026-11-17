@@ -54,8 +54,8 @@ StatusOr<QkvLinearF32KernelMetadata> ReadMetadata(
     return metadata;
 }
 
-Status BuildQkvLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
-                                      void* params_buffer) noexcept {
+Status BuildQkvLinearF32IdentityArgs(const KernelParamsBuildContext& context,
+                                     void* params_buffer) noexcept {
     if (context.inputs.size() != 1U || context.outputs.size() != 3U) {
         return Status::InvalidArgument(
                 "QkvLinear requires one activation input and three outputs");
@@ -509,15 +509,15 @@ Status BuildQkvLinearF32BpanelArgs(
 
     const int64_t n_blocks = total_n / kCpuBPanelF32Kc512Nr16NR +
                              (total_n % kCpuBPanelF32Kc512Nr16NR != 0);
-    const auto* const packed_data = static_cast<const float*>(context.packed_weight->data);
+    const auto* const packed_data = static_cast<const std::byte*>(context.packed_weight->data);
     const auto build_gemm = [&](const MutableTensorView& output,
                                 const RowwiseViewAnalysis& output_analysis,
                                 int64_t output_n,
                                 int64_t n_offset) {
         return PackedGemmF32Args{
-                .gemm = GemmF32Args{
-                        .lhs = input.data<float>(),
-                        .output = output.data<float>(),
+                .gemm = GemmArgs{
+                        .lhs = static_cast<const std::byte*>(input.data()),
+                        .output = static_cast<std::byte*>(output.data()),
                         .m = row_count,
                         .n = output_n,
                         .k = in_features,
@@ -627,10 +627,10 @@ Status BuildQkvLinearF32Metadata(const OpParams& params,
     return Status::Ok();
 }
 
-Status QkvLinearF32ReferenceEntry(const KernelContext& ctx) noexcept {
+Status QkvLinearF32ScalarEntry(const KernelContext& ctx) noexcept {
     const auto* args = static_cast<const QkvLinearA32W32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
-    return RunQkvLinearF32Reference(*args);
+    return RunQkvLinearF32Scalar(*args);
 }
 
 Status QkvLinearF32W16ReferenceEntry(const KernelContext& ctx) noexcept {
@@ -655,7 +655,7 @@ static_assert(sizeof(QkvLinearA32W32KernelArgs) <= kMaxKernelParamsSize);
 static_assert(alignof(QkvLinearA32W32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
-        CpuQkvLinearF32Reference,
+        CpuQkvLinearF32Scalar,
         KernelDef{
                 .op_type = OpType::kQkvLinear,
                 .selector = KernelSelector{
@@ -667,12 +667,12 @@ AM_REGISTER_KERNEL(
                         .phase = ExecPhase::kBoth,
                 },
                 .packing_recipe = CpuIdentityPackingRecipe(),
-                .kernel_func = &QkvLinearF32ReferenceEntry,
+                .kernel_func = &QkvLinearF32ScalarEntry,
                 .priority = 10,
                 .params_size = sizeof(QkvLinearA32W32KernelArgs),
-                .params_builder = &BuildQkvLinearF32ReferenceArgs,
+                .params_builder = &BuildQkvLinearF32IdentityArgs,
                 .metadata_builder = &BuildQkvLinearF32Metadata,
-                .name = "cpu::qkv_linear_f32_w32_reference"})
+                .name = "cpu::qkv_linear_f32_w32_scalar"})
 
 static_assert(std::is_trivially_destructible_v<QkvLinearA32W16KernelArgs>);
 static_assert(sizeof(QkvLinearA32W16KernelArgs) <= kMaxKernelParamsSize);
@@ -744,6 +744,82 @@ AM_REGISTER_KERNEL(
                 .params_builder = &BuildQkvLinearF32BpanelArgs,
                 .metadata_builder = &BuildQkvLinearF32Metadata,
                 .name = "cpu::qkv_linear_f32_w32_packed_bpanel_candidate"})
+#endif
+
+
+namespace {
+
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+Status QkvLinearF32Avx2FmaEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const QkvLinearA32W32KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunQkvLinearF32Avx2Fma(*args);
+}
+#endif
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+Status QkvLinearF32Bf16Avx2FmaEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const QkvLinearA32W16KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunQkvLinearF32Bf16Avx2Fma(*args);
+}
+#endif
+#if defined(GEMM_HAS_A32_F16_AVX2_FMA_KERNEL)
+Status QkvLinearF32F16Avx2FmaEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const QkvLinearA32W16KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunQkvLinearF32F16Avx2Fma(*args);
+}
+#endif
+
+template<bool Reduced>
+KernelDef QkvLinearOptimizedDef(DataType weight_dtype, KernelFunc entry,
+                                KernelParamsBuilder builder, CpuFeatureSet requirements,
+                                std::string_view name) {
+    return KernelDef{
+            .op_type = OpType::kQkvLinear,
+            .selector = KernelSelector{
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
+                    .weight_dtype = weight_dtype,
+                    .weight_format = WeightFormat::kPacked,
+                    .phase = ExecPhase::kBoth,
+            },
+            .packing_recipe = CpuIdentityPackingRecipe(),
+            .cpu_requirements = requirements,
+            .kernel_func = entry,
+            .priority = 20,
+            .params_size = Reduced ? sizeof(QkvLinearA32W16KernelArgs) : sizeof(QkvLinearA32W32KernelArgs),
+            .params_builder = builder,
+            .metadata_builder = &BuildQkvLinearF32Metadata,
+            .name = name,
+    };
+}
+
+} // namespace
+
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+AM_REGISTER_KERNEL(
+        CpuQkvLinearF32Avx2Optimized,
+        (QkvLinearOptimizedDef<false>(DataType::Float32(), &QkvLinearF32Avx2FmaEntry,
+                                      &BuildQkvLinearF32IdentityArgs, CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
+                                      "cpu::qkv_linear_f32_w32_avx2_fma")))
+#endif
+
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+AM_REGISTER_KERNEL(
+        CpuQkvLinearBf16Avx2Optimized,
+        (QkvLinearOptimizedDef<true>(DataType::BFloat(16), &QkvLinearF32Bf16Avx2FmaEntry,
+                                     &BuildQkvLinearF32W16ReferenceArgs<true>, CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
+                                     "cpu::qkv_linear_f32_wbf16_avx2_fma")))
+#endif
+
+#if defined(GEMM_HAS_A32_F16_AVX2_FMA_KERNEL)
+AM_REGISTER_KERNEL(
+        CpuQkvLinearF16Avx2Optimized,
+        (QkvLinearOptimizedDef<true>(DataType::Float(16), &QkvLinearF32F16Avx2FmaEntry,
+                                     &BuildQkvLinearF32W16ReferenceArgs<false>, CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c}),
+                                     "cpu::qkv_linear_f32_wf16_avx2_fma")))
 #endif
 
 } // namespace aethermind::cpu::detail

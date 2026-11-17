@@ -38,6 +38,13 @@ struct LinearA32W32KernelArgs {
 /// kernel writes zero to every output element without reading input or weight.
 Status RunLinearF32Reference(const LinearA32W32KernelArgs& args) noexcept;
 
+/// @brief Portable F32 optimized driver with compatible reference fallback.
+Status RunLinearF32Scalar(const LinearA32W32KernelArgs& args) noexcept;
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+/// @brief F32 SIMD driver; eligibility is established by the descriptor.
+Status RunLinearF32Avx2Fma(const LinearA32W32KernelArgs& args) noexcept;
+#endif
+
 /// @brief Pre-validated FP32-activation, reduced-precision-weight arguments.
 ///
 /// Weight strides are element strides; `weight` is byte-addressed because raw
@@ -62,6 +69,15 @@ struct LinearA32W16KernelArgs {
 
 /// @brief Runs the scalar FP32-accumulating F16/BF16 Linear reference kernel.
 Status RunLinearF32W16Reference(const LinearA32W16KernelArgs& args) noexcept;
+
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+/// @brief F32 x BF16 SIMD/blocking with full reference fallback on rejection.
+Status RunLinearF32Bf16Avx2Fma(const LinearA32W16KernelArgs& args) noexcept;
+#endif
+#if defined(GEMM_HAS_A32_F16_AVX2_FMA_KERNEL)
+/// @brief F32 x F16 SIMD/blocking; requires AVX2/FMA/F16C.
+Status RunLinearF32F16Avx2Fma(const LinearA32W16KernelArgs& args) noexcept;
+#endif
 
 /// @brief Pre-validated 16-bit activation and weight Linear arguments.
 ///

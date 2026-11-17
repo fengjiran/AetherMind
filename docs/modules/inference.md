@@ -78,12 +78,14 @@ inference 位于依赖最上层，负责把编译产物准备成可执行模型�
 | 类型 | 关键内容 | 语义 |
 |---|---|---|
 | `ModelLimits` | `max_model_payload_bytes`、`max_packed_weight_bytes` | 零表示不限；model cap 要求 raw backing footprint 完整 |
-| `ModelLoadOptions` | `preset`、`target`、`weights`、`limits`、`kv_dtype` | `target` 进入 compile options 与 lowered selectors；`kv_dtype` 为 F32/F16/BF16 |
+| `ModelLoadOptions` | `preset`、`target`、`weights`、`limits`、`kv_dtype`、`activation_dtype` | `target` 进入 compile options 与 lowered selectors；KV 为 F32/F16/BF16，activation 默认 F32，A16 的高层准入限 BF16 同型组合 |
 | `WeightPolicy` | `kRequireFp32`、`kConvertToFp32`、`kKeepFp16WeightsFp32Activation`、`kKeepBf16WeightsFp32Activation` | strict FP32、显式全量转换、保留 W16 矩阵仅加宽 Norm |
 | `CompilePreset` | `kO1Plain`、`kO2Packed` | 映射 `opt_level` 与 `enable_packed_weights` |
 | `CpuRuntimeAssemblyOptions` | `context_tokens`、`kv_max_bytes`、`workspace_limit_bytes`、`cpu_feature_policy`、`kv_dtype` | 用户设置；`MakeCpuRuntimeOptions` 与模型几何合并 |
 
 `ModelLoadOptions{}` 的默认值为 CPU、O1/plain、strict FP32、无限制、KV F32。`kConvertToFp32` 允许 F32/F16/BF16 源权重，转换后权重、activation、KV 与 logits 均为 F32，当前仅允许 CPU O1/plain。两个 retained-W16 policy 在 CPU O1/plain 或 O2/packed 下保留匹配的 F16/BF16 矩阵，只把 Norm 加宽为 F32；KV 可显式选择 F16/BF16，但必须与 Runtime 的物理 KV dtype 一致，且仅 retained-W16 policy 准入。
+
+retained-W16 的 activation 默认 F32；BF16 A16 显式使用 BF16 policy、`activation_dtype = BFloat(16)` 和 `kv_dtype = BFloat(16)`，Runtime KV 同型。该路径的矩阵/activation/KV/residual 为 BF16，Norm 权重与 logits 为 F32；policy 枚举名中的 `Fp32Activation` 不覆盖显式 activation 字段。FP16 A16 在 Load 阶段返回引用 P4-B 的 `Unimplemented`，等待 FP32 residual 的 Cast 边界；A16 的 QKV/GateUp/AddRmsNorm fusion 当前关闭。限定 fixture 与逐 ISA 验证范围见 [产品能力表](../product.md#14-当前能力与验证状态) 和 [精度专题 §4.5](../improvement-plan/11-fp16-bf16-execution-support.md#45-p416-bit-activation-与-native-compute首批设计已冻结)。
 
 ### 2.4 `InferenceSession` 与请求级资源
 

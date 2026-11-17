@@ -159,6 +159,7 @@ ExecutionContext / LayerRunner
 | `CpuFeature` / `CpuFeatureSet` / `CpuCapabilities` / `CpuFeaturePolicy` | CPU 能力数据模型 | [cpu_capabilities.h](../../include/aethermind/backend/cpu/cpu_capabilities.h) / [cpu_capabilities.cpp](../../src/backend/cpu/cpu_capabilities.cpp) |
 | `CpuIdentityPackingRecipe` / `CpuBPanelF32Kc512Nr16Recipe` / `CpuBPanelF32Kc512Nr16PackedByteSize` | CPU 布局契约与尺寸公式 | [cpu_packed_weight_layout.h](../../include/aethermind/backend/cpu/cpu_packed_weight_layout.h) / [cpu_packed_weight_layout.cpp](../../src/backend/cpu/cpu_packed_weight_layout.cpp) |
 | `ValidateIdentityPackedWeight` / `ValidateBPanelF32PackedWeight` | 绑定期校验 recipe、alignment、逻辑 metadata 与存储大小 | [packed_weight_validation.h](../../include/aethermind/backend/cpu/packed_weight_validation.h) / [packed_weight_validation.cpp](../../src/backend/cpu/packed_weight_validation.cpp) |
+| `GemmArgs` / `PackedGemmF32Args` / `RunGemmF32*` | backend-private byte 指针参数与元素 stride；具体 entry 决定精度，packed-B 保持独立的 F32 布局合同；调用方验证 dtype、alignment、alias 与范围并保证借用 lifetime | [gemm_internal.h](../../src/backend/cpu/kernels/gemm/gemm_internal.h) / [GEMM 方案](../operators/gemm/cpu-gemm-optimization.md#41-backend-internal-contracts) |
 | `CpuWorkspaceArena::Bind` / `Reset` | 预分配 arena 的切片绑定；`Reset` 为空操作 | [cpu_workspace_arena.h](../../include/aethermind/backend/cpu/cpu_workspace_arena.h) / [cpu_workspace_arena.cpp](../../src/backend/cpu/cpu_workspace_arena.cpp) |
 | `KernelSelector` / `SelectorMatches` / `ExecPhase` / `WeightFormat` | 跨层纯数据选择契约 | [kernel_selector.h](../../include/aethermind/base/kernel_selector.h) / [kernel_attrs.h](../../include/aethermind/base/kernel_attrs.h) |
 | `WorkspaceRequirement` / `WorkspaceBinding` / `WorkspaceArena` | 执行期 workspace 共享契约 | [workspace_types.h](../../include/aethermind/base/workspace_types.h) / [workspace_arena.h](../../include/aethermind/base/workspace_arena.h) |
@@ -207,6 +208,8 @@ ExecutionPlanBuilder::Build
 ```
 
 选择顺序固定为：**结构匹配 → CPU 特征子集过滤 → priority 取舍**。`priority` 只表示“多个可用实现谁更优”，不承担表达能力匹配；CPU 指令集不是全序关系，因此不使用 `candidate.isa <= request.isa` 这类上限规则。priority 由各 descriptor 自行声明；相同 priority 时先注册者胜。
+
+A16 Linear/RMSNorm 的现有 priority 为 AVX-512 native 30、AVX2 widening 20、reference 10。已编译且 effective features 满足时 native 会自动选中；验证状态记录不参与 eligibility。真实硬件数值与性能证据仍待补齐，不能把编译或合成 capabilities 的 dispatch 测试解释为硬件验收；逐 ISA 状态与补验项见 [精度专题 §6.4](../improvement-plan/11-fp16-bf16-execution-support.md#64-性能资源与发布状态)。需要削减 native 时使用既有 `CpuFeaturePolicy.disabled_features`。
 
 `GetPackingRecipe` 复用同一个 `ResolveEligibleDescriptor`，并要求 selector 为 CPU + `WeightFormat::kPacked`；缺少合法 recipe 返回 `Internal`。`GetWeightPackingRequirements` 与 `PackWeights` 会再次核对调用方传入的 recipe 等于 `GetPackingRecipe` 的结果，不等则返回 `InvalidArgument`。
 

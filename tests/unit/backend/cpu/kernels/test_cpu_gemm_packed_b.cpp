@@ -86,9 +86,9 @@ void ExpectPackedDriverMatchesReference(int64_t m,
     const int64_t n_blocks = logical_n / cpu::kCpuBPanelF32Kc512Nr16NR +
                              (logical_n % cpu::kCpuBPanelF32Kc512Nr16NR != 0);
     const cpu::detail::PackedGemmF32Args packed_args{
-            .gemm = cpu::detail::GemmF32Args{
-                    .lhs = lhs.data(),
-                    .output = packed_output.data(),
+            .gemm = cpu::detail::GemmArgs{
+                    .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+                    .output = reinterpret_cast<std::byte*>(packed_output.data()),
                     .m = m,
                     .n = output_n,
                     .k = k,
@@ -97,17 +97,17 @@ void ExpectPackedDriverMatchesReference(int64_t m,
                     .output_m_stride = output_stride,
                     .output_n_stride = 1,
             },
-            .packed_b = packed_data,
+            .packed_b = reinterpret_cast<const std::byte*>(packed_data),
             .packed_nbytes = artifact->storage().nbytes(),
             .logical_n = logical_n,
             .logical_k = k,
             .weight_n_offset = weight_n_offset,
             .n_blocks = n_blocks,
     };
-    const cpu::detail::GemmF32Args reference_args{
-            .lhs = lhs.data(),
-            .rhs = weights.data() + weight_n_offset * k,
-            .output = reference_output.data(),
+    const cpu::detail::GemmArgs reference_args{
+            .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+            .rhs = reinterpret_cast<const std::byte*>(weights.data() + weight_n_offset * k),
+            .output = reinterpret_cast<std::byte*>(reference_output.data()),
             .m = m,
             .n = output_n,
             .k = k,
@@ -252,10 +252,10 @@ TEST(CpuGemmPackedB, RegisteredCandidateDescriptorPacksAndExecutes) {
                                                     })
                         .ok());
 
-    const cpu::detail::GemmF32Args reference{
-            .lhs = input.data(),
-            .rhs = weights.data(),
-            .output = expected.data(),
+    const cpu::detail::GemmArgs reference{
+            .lhs = reinterpret_cast<const std::byte*>(input.data()),
+            .rhs = reinterpret_cast<const std::byte*>(weights.data()),
+            .output = reinterpret_cast<std::byte*>(expected.data()),
             .m = m,
             .n = n,
             .k = k,

@@ -51,4 +51,4 @@ KV 指针、read frontiers 和 query positions 只通过本次 `kv_read` binding
 - 模型实现正确性与同 W16 的 KV32 质量对照分开验收；固定预算、校准资产与四种 W×KV 组合以 [11 号提案 §2.8](../../improvement-plan/11-fp16-bf16-execution-support.md) 为唯一准入来源。
 - O1/plain 与 O2/identity-packed 均已闭环；SIMD 与任何性能收益须另有 prepared、production-path 和端到端证据。
 
-当前源码入口见 [attention_entry.cpp](../../../src/backend/cpu/kernels/attention/attention_entry.cpp)，已有 F32 回归见 [test_cpu_attention_kernel.cpp](../../../tests/unit/backend/cpu/kernels/test_cpu_attention_kernel.cpp)，事务回归见 [test_kvcache_update_kernel.cpp](../../../tests/unit/execution/test_kvcache_update_kernel.cpp)。
+当前源码入口见 [attention_entry.cpp](../../../src/backend/cpu/kernels/attention/attention_entry.cpp)，已有 F32 回归见 [test_cpu_attention_kernel.cpp](../../../tests/unit/backend/cpu/kernels/test_cpu_attention_kernel.cpp)，事务回归见 [test_kvcache_update_kernel.cpp](../../../tests/unit/execution/test_kvcache_update_kernel.cpp)。F32/KV16/A16 各组合的真实生产选核身份（当前均为 reference）见 [CPU 覆盖台账 §3.3](../cpu-coverage-baseline.md#33-attention--kv--ropeplain-为生产请求无-weight-packing)。

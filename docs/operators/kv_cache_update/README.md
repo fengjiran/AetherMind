@@ -42,4 +42,4 @@ cache 的 token/head stride 按字节计，必须是实际两字节元素的整�
 - 两种 KV16 都覆盖 Prefill/Decode、多层成功、后续失败不发布、重试、capacity、generation/stale view 及 prepared 执行零分配。
 - 真实资源按 KVCacheLayout 与 allocator 请求记账：两字节 logical elements 不等于任何 alignment 下 physical bytes 恰好减半。
 
-当前源码见 [entry](../../../src/backend/cpu/kernels/kvcache_update/kvcache_update_entry.cpp)、[F32 reference](../../../src/backend/cpu/kernels/kvcache_update/kvcache_update_a32_kv32_reference.cpp)。已有事务回归见 [test_kvcache_update_kernel.cpp](../../../tests/unit/execution/test_kvcache_update_kernel.cpp)。[QHIHOGQ 机器记录](benchmarks/qhihogq-kv-cache-update.md) 是历史 F32 执行片段证据，不能解释为 P3 KV16 性能或数值验证。
+当前源码见 [entry](../../../src/backend/cpu/kernels/kvcache_update/kvcache_update_entry.cpp)、[F32 reference](../../../src/backend/cpu/kernels/kvcache_update/kvcache_update_a32_kv32_reference.cpp)。已有事务回归见 [test_kvcache_update_kernel.cpp](../../../tests/unit/execution/test_kvcache_update_kernel.cpp)。[QHIHOGQ 机器记录](benchmarks/qhihogq-kv-cache-update.md) 是历史 F32 执行片段证据，不能解释为 P3 KV16 性能或数值验证。五路同型/A32→KV16/A16 组合的真实生产选核身份（当前均为 reference）见 [CPU 覆盖台账 §3.3](../cpu-coverage-baseline.md#33-attention--kv--ropeplain-为生产请求无-weight-packing)。

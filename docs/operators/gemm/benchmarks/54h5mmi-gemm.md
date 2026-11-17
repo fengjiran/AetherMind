@@ -146,3 +146,41 @@ Cold packing：`N=4096,K=4096` median 66.83 ms，packed size 64 MiB（amplificat
 - 结果：构建成功，137/137 聚焦测试和 29/29 UBSan 测试通过，无 sanitizer 诊断。代码只保留带 recipe 的四参数 `PackWeights`，CPU 不再需要 using 声明；独立 `GetPackingRecipe` 查询保留。显式参数/错误传递、默认 Unimplemented、CPU recipe policy、tiny Llama Prefill→Decode 与稳态零分配验证通过。
 - raw：`benchmark-results/operators/gemm/20261009T074302Z_9b5b7ff52376_54h5mmi_explicit-pack-only/`（`metadata.json`、`patch.diff`、`focused.log`、`ubsan.log`，补丁包含协议测试最终版本）。
 - 结论：Accepted（单一打包入口）。三参数源码调用须改为显式传入 recipe；相对此前单虚入口版本，删除非虚便利函数不再调整 vtable。性能未测量，物理布局与 kernel priority 无调整。
+
+## GEMM 参数统一为 byte 指针与明确精度入口
+
+- commit：`cab0c145`（dirty；源码补丁及 SHA-256 见 raw）。非模板 `GemmArgs` 替代旧 FP32 参数名，A/B/output 统一为 byte 指针、stride 保持元素单位；`RunGemmF32*` entry 与 reference/optimized 各自数值合同保留。`PackedGemmF32Args` 独立描述 F32 B-panel，边缘切片先按 float 元素偏移再转 byte 地址。
+- 命令：`cmake --build build --target aethermind_unit_tests aethermind_benchmark -j 4`；先跑 `--gtest_filter=CpuGemmPackedB.BlockedHandlesMAndNTailsWithoutOverwritingEdges`，再跑 `--gtest_filter='*Gemm*:*MatMul*:*QkvLinear*:*GateUpLinear*:*TinyLlama*:*DirectPrefillDecode*:*HfFixedTrajectory*:*CPUKernelLinear*:*LinearA16*'`。同过滤器运行 Debug ASan/UBSan（`ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1`）；完整命令、构建日志与 XML 见 raw。
+- 结果：Release **302/302 通过**；ASan/UBSan **291 通过、11 skip、0 失败**，无地址/UB 诊断。11 项为 sanitizer 下既有 malloc-interposer 不兼容测试，Release 均已通过；本轮未启用 LSan。覆盖 plain/packed、M/N/K tail、strides/guards、zero-size、fallback、fused consumers、HF/tiny-model Prefill/Decode/Generate 与 Release Decode 零分配。
+- 构建纠正：首次 Debug 链接发现适配层的 `TensorView::data<std::byte>()` 请求了未支持的 dtype 映射；改用无类型 `data()` 的 byte cast 后，Release 与 Debug 均重新构建并完成上述回归。初次失败日志与源码快照保留。
+- benchmark smoke：`--benchmark_filter='^(BM_GemmF32(Reference|ScalarOptimized|Avx2Fma).*M:1/K:33/N:31|BM_LinearPreparedHot/M:1/K:33/N:31|BM_LinearPackedBpanelHot/M:(1|16)/K:4096/N:4096)$' --benchmark_min_time=0.01s --benchmark_repetitions=3`；8 组 × 3 repetitions 完成，独立正确性守卫全部通过、无 error。包含 direct reference/scalar/AVX2 诊断、真实 prepared Linear 与 B-panel candidate。默认 affinity、单线程；未做交错 A/B，不据此判定性能变化。
+- raw：`benchmark-results/operators/gemm/20261117T021356Z_cab0c145_54h5mmi_gemm-byte-args/`（metadata/checksums、源码补丁、构建/测试日志、XML、benchmark JSON；本地 gitignored 留存，无远端 retention）。
+- 结论：**Accepted（参数合同迁移与限定正确性回归）**。内部参数类型及 F32 primitive 的 C++ 符号发生变化，引用内部头的调用方须重新编译；不新增精度入口，不改变 packing bytes、recipe、线程、资源所有权或 production priority，不作性能收益结论。
+
+## Scalar N-contiguous 的 K-panel 调度与连续 N 遍历
+
+- commit：`cab0c145c845`（dirty；进入任务前已有 byte 参数迁移及其他修改，分别保存在 raw 的 `initial-worktree.patch` / `initial-status.txt`；最终源码、二进制及校验和亦保留）。
+- 实现：K-contiguous 算法保留；N-contiguous 独立使用 `NC=128, KC=128`，在同一 K panel 内处理相邻 N 块，保持升序 K 的 FP32 accumulator，首 panel 不读原输出。一个 N 块可覆盖输出时不分割 K；多行且 `N<=64,K<=128,rhs_k_stride<=64` 时使用轻量 4 列路径。固定 accumulator 暂存最多 2 KiB，无 heap/workspace、intrinsic、线程或执行期 autotuning。
+- 命令：`cmake --build build --target aethermind_unit_tests aethermind_benchmark -j 4`；`TMPDIR=/tmp ./build/tests/unit/aethermind_unit_tests --gtest_filter='*Gemm*:*MatMul*:*CPUKernelLinear*'`。性能命令由 raw 中 `sweep.sh`、`shortlist.sh`、`paired.sh` 保存；最终 `paired.sh` 为独立进程 A₁/B₁/B₂/A₂，`--benchmark_min_time=0.1s --benchmark_repetitions=5`，默认 affinity、单线程。baseline 使用修复前 scalar，最终 candidate 为 `candidate-tiny/`；loader 路径与二进制 SHA-256 已核对。
+- correctness：Release **183/183 通过、0 skip**，覆盖 M/N/K 边界、NC/KC 尾块、padded/unaligned views、NaN 原输出覆盖写、输入与输出 padding guards、跨 K panel 的抵消次序、重复调用、零尺寸、AVX2 fallback 与直接 scalar 稳态零 malloc。prepared Linear hot/tail 与 streaming smoke 共 2 组 × 3 repetitions 通过，实际 resolve 仍为 `cpu::linear_f32_w32_reference`；该 smoke 不执行新 scalar 路径，不作为其生产收益证据。
+- 调参过程：保留仅增大 NC 的初版，以及 `NC∈{16,32,64,128} × KC∈{32,128,512}` 共 12 组诊断数据；每组 8 个 shape、3 repetitions。随后对 3 个候选及旧实现复测 13 个 shape、5 repetitions。`NC32/KC32` 对部分大 M=1 用例较快，但对 small/generic-M 和小工作集不均衡；选择 `NC128/KC128` 作为本机较均衡的静态候选。初版宽暂存对 `M=2,K=32,N=33` 产生额外开销，故增加 tiny 多行分支；初版 AB 与失败/撤销实验全部留存，后段曾与增量 build 重叠，不用于最终数值。最终 32 组 shape/layout 完整重新采集，保留每侧 2×5 个 raw repetitions。
+- 结果：下表为每进程 5 次 `real_time` 的 median，再取两进程 median 的 median；时间单位 ms。全部是同布局、同 shape 的旧/新实现比较，logical GB/s 不代表 DRAM traffic。
+
+| layout | M / K / N | baseline | candidate | baseline/candidate |
+|---|---|---:|---:|---:|
+| N-contiguous | 1 / 4096 / 4096 | 41.725 | 4.609 | 9.05× |
+| N-contiguous | 4 / 4096 / 4096 | 77.215 | 8.761 | 8.81× |
+| N-contiguous | 8 / 4096 / 4096 | 161.819 | 17.329 | 9.34× |
+| N-contiguous | 16 / 4096 / 4096 | 186.619 | 20.471 | 9.12× |
+| N-contiguous | 1 / 4096 / 512 | 1.681 | 0.231 | 7.29× |
+| N-contiguous | 1 / 1024 / 4096 | 2.901 | 0.629 | 4.61× |
+| N-contiguous | 16 / 512 / 512 | 0.274 | 0.216 | 1.27× |
+| N-contiguous | 1 / 1024 / 4093 | 1.687 | 0.708 | 2.38× |
+| N-contiguous，stride=N+13 | 1 / 4096 / 4096 | 21.093 | 4.702 | 4.49× |
+| N-contiguous，stride=N+13 | 4 / 4096 / 4096 | 54.340 | 9.740 | 5.58× |
+
+- tiny 检查：`M=2,K=32,N=33` 最终 baseline/candidate 为 0.148/0.137 µs；只用于确认轻量分支移除了初版设置开销，不将百分比级差异作为可信收益。`M=4,K=129,N=65` 为 2.535/1.903 µs。
+- 控制组与限制：6 个 K-contiguous 控制 case 的 A₁→A₂ 自比最大变化为 **35.26%**；最终 K-contiguous `M=16,K=4096,N=4096` 为 53.115/61.544 ms（+15.87%），不能隐去或宣称全部 shape 零回退。补充检查确认 MR=1/2 的 K-contiguous helper `.text` 字节一致；generic-M 主函数的自动向量化生成代码有变化。使用仅含 primitive 的共享对象，在同进程、相同数据、guest CPU 2 上交错 12 对调用，该 generic-M case 为 53.116/54.175 ms（+1.99%，命令与明细见 raw）。两种协议不一致，该组仍需裸机复核；guest affinity 不能保证宿主核类别。此处未建立新的逐组可信噪声 floor，5% 不作自动通过/回退判据。
+- 诊断边界：反汇编包含 compiler-generated SSE，未建设 strict non-SIMD 变体；malloc interposer 与符号检查均未发现新 heap 调用。WSL2 的 `perf` 缺少匹配 kernel 工具，未获得 PMU/TLB/DRAM 计数。补充交错 harness 初次同时加载两份完整引擎库时发生 SIGSEGV，该实验失败、无 kernel 结论；之后改为仅 primitive 共享对象、共用单份引擎依赖，成功完成交错测量。未采集新 scalar 的 streaming、跨机器或端到端 token 数据。
+- raw：`benchmark-results/operators/gemm/20261117T052606Z_cab0c145c845_54h5mmi_scalar-n-contiguous/`（source snapshots、初始/最终 patch、完整 sweep、最终 `final-*.json` / `final-paired-summary.txt`、183 项测试 XML、prepared smoke、反汇编、交错 harness、context 与 SHA-256；本地 gitignored 留存，无远端 retention）。
+- 结论：**Accepted（限定实现与正确性修复）；Needs More Data（生产性能门禁）**。大 N/small-M 的完整 K 跨步扫描已改为 panel 内连续 N 遍历，本机诊断显示明显改善；NC/KC 与 tiny 阈值不是跨平台最优值。生产 descriptor、priority、packing bytes 与资源合同不变；不得把这些 microkernel 数据转为端到端收益或 production promotion 依据。

@@ -4,6 +4,7 @@
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/operators/op_params.h"
 #include "backend/cpu/kernels/rmsnorm/rmsnorm_internal.h"
+#include "backend/cpu/kernels/test_cpu_linear_optimized_helpers.h"
 
 #include <gtest/gtest.h>
 
@@ -46,7 +47,7 @@ TEST(CpuPrepareKernel, LinearKeyReturnsConfiguredPreparedKernel) {
             OpType::kLinear, MakeCpuSelector(), OpParams{LinearParams{}});
 
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
-    EXPECT_EQ(resolved->name, "cpu::linear_f32_w32_reference");
+    EXPECT_EQ(resolved->name, test::ExpectedA32ProjectionKernelName(OpType::kLinear, DataType::Float32()));
 }
 
 TEST(CpuPrepareKernel, RejectsInvalidKernelMetadata) {

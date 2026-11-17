@@ -3,7 +3,7 @@
 > 产品范围、验收标准与非目标的唯一权威。系统架构见 [architecture.md](architecture.md)，模块设计见 [modules/](modules/)。
 
 - **核心目标**：交付生产级桌面/服务器 CPU 本地推理引擎，并为服务化、异构计算和分布式演进保留可验证的架构边界。
-- **关键技术**：C++20、Safetensors、FP32 / W16-A32、Static KV Cache；INT8/INT4 为待交付目标。
+- **关键技术**：C++20、Safetensors、FP32 / W16-A32 / BF16 A16、Static KV Cache；INT8/INT4 为待交付目标。
 
 ---
 
@@ -77,6 +77,8 @@
 | C++ FP32 Llama Dense | CPU O1/plain、O2/packed；同步 Prefill/Decode/Generate | tiny HF / 生成 checkpoint 的限定验证；不代表大模型质量 |
 | C++ FP32 compatibility | 显式将 F16/BF16 权重拓宽为 FP32；CPU O1/plain | 不保留 16-bit 矩阵 |
 | C++ W16/A32 | 保留 F16 或 BF16 矩阵，仅转换 Norm；FP32 activation、累加、KV、logits；CPU O1/plain、O2/identity-packed | Linear 当前为 reference 路径 |
+| C++ BF16 A16 | 显式选择 BF16 activation、矩阵、KV 与跨层 residual，Norm 权重及 logits 为 F32；CPU O1/plain、O2/identity-packed | 已有高层 Load/Generate 与限定 fixture 验收；A16 的 QKV/GateUp/AddRmsNorm fusion 关闭，范围见 [精度专题 §4.5](improvement-plan/11-fp16-bf16-execution-support.md#45-p416-bit-activation-与-native-compute首批设计已冻结) |
+| C++ FP16 A16 | 已有 kernel 实现；高层 Load 返回 `Unimplemented` | 模型路径等待 P4-B 的 FP32 residual 与边界 Cast；不能由 kernel 可调用推导模型支持 |
 | 独立 CLI / C ABI v1.0 | 已实现，继续采用 CPU strict FP32 source admission | 不开放 C++ reduced-weight policy |
 | 静态 KV 与资源预算 | KV 默认 F32，C++ retained-W16 可显式选择 F16/BF16；支持模型、packed、KV、workspace 与请求 payload 限额及资源查询 | 见 [资源预算指南](guides/resource-budgeting.md) |
 | INT8/INT4 仅权重量化 | 保留为当前产品交付需求；尚无端到端量化执行链 | loader 接受 dtype/metadata 不等于 quantized graph、packing、kernel 与生成已接通 |
@@ -84,7 +86,7 @@
 | 算子内并行 | 尚未建立 OpenMP/线程池生产执行与验收证据 | 需另行明确线程所有权、确定性、零分配与 TSAN 合同 |
 | 7B 量化模型与目标性能 | 目标见 §4.1，尚未完成代表性模型验收 | tiny fixture 或 microbenchmark 不能替代大模型质量、冷启动、RSS 与吞吐证据 |
 
-当前模型级证据主要来自 Linux/x86_64 的 tiny HF 与生成 checkpoint。其他 compiler、OS、architecture、物理无 AVX 平台及生产规模模型的覆盖，按各专题验证记录解释。FP16/BF16 activations（A16）也尚未交付，其支持范围需独立定义。
+当前模型级证据主要来自 Linux/x86_64 的 tiny HF 与生成 checkpoint。其他 compiler、OS、architecture、物理无 AVX 平台及生产规模模型的覆盖，按各专题验证记录解释。BF16 A16 的已有模型级证据来自 reference/AVX2 路径，包含 2046→2048 near-limit 校准 fixture；AVX-512 的编译与合成 dispatch 验证不替代真实硬件数值/性能验收。已编译且 effective features 满足时，现有 AVX-512 descriptor 会因更高 priority 自动选中；“硬件证据待采集”不构成运行时禁用条件。
 
 ---
 
@@ -116,7 +118,9 @@
 | `WeightPolicy::kKeepFp16WeightsFp32Activation` | 保留 F16 矩阵，仅转换 Norm 为 FP32 | O1/plain、O2/identity-packed |
 | `WeightPolicy::kKeepBf16WeightsFp32Activation` | 保留 BF16 矩阵，仅转换 Norm 为 FP32 | O1/plain、O2/identity-packed |
 
-W16/A32 要求 Embedding、Linear/LM head 等矩阵的实际 dtype 匹配选定 policy，Norm 源可为 scalar F32/F16/BF16；activation、residual、logits 为 FP32，W16 projection 使用 FP32 累加。KV 默认 FP32，retained-W16 policy 可显式选择 F16/BF16，与矩阵精度独立，所有层 K/V 同型。O2 的 W16 identity/composite artifacts 保留两字节元素，并产生额外 packed storage。使用与数值合同见 [FP32 compatibility](guides/fp32-compatible-inference.md) 和 [W16/A32](guides/w16-fp32-inference.md)。这些 C++ policy 不改变 CLI/C ABI 的 strict FP32 准入。
+上表按默认 `ModelLoadOptions::activation_dtype = Float32()` 描述。W16/A32 要求 Embedding、Linear/LM head 等矩阵的实际 dtype 匹配选定 policy，Norm 源可为 scalar F32/F16/BF16；activation、residual、logits 为 FP32，W16 projection 使用 FP32 累加。KV 默认 FP32，retained-W16 policy 可显式选择 F16/BF16，与矩阵精度独立，所有层 K/V 同型。O2 的 W16 identity/composite artifacts 保留两字节元素，并产生额外 packed storage。使用与数值合同见 [FP32 compatibility](guides/fp32-compatible-inference.md) 和 [W16/A32](guides/w16-fp32-inference.md)。这些 C++ policy 不改变 CLI/C ABI 的 strict FP32 准入。
+
+C++ BF16 A16 通过 `kKeepBf16WeightsFp32Activation` 配合显式 `activation_dtype = BFloat(16)`、`kv_dtype = BFloat(16)` 选择，Runtime KV dtype 也必须为 BF16。policy 名中的 `Fp32Activation` 是历史命名，实际 activation 以独立字段为准。该路径仅接受同型 BF16 矩阵/activation/KV/residual，Norm 权重与 logits 为 F32；不开放 A16×KV32 或 F16/BF16 交叉组合。FP16 activation 在 Load 阶段返回指向 P4-B 的 `Unimplemented`。逐端口 rounding、数值预算与验证范围以精度专题 §4.5 为准。
 
 ```cpp
 // C++ API
@@ -181,7 +185,7 @@ am_status_code am_session_generate(
 | attention | GQA、MQA、MHA | sliding window、MoE、encoder-decoder 拒绝 |
 | activation | `hidden_act = "silu"`，构建 SwiGLU | 其他 activation 拒绝，新增支持须贯通语义、graph、kernel 与模型测试 |
 | norm | RMSNorm | 不提供 LayerNorm 模型执行 |
-| weight precision | strict FP32、显式 FP32 compatibility、显式 F16/BF16 W16/A32 | 按 §2.2 的 policy 和实际 resolved weight dtype 准入；不隐式转换 |
+| weight / activation precision | strict FP32、显式 FP32 compatibility、F16/BF16 W16/A32、BF16 A16 | 按 §2.2 的 policy、activation/KV 选项和实际 resolved weight dtype 准入；FP16 A16 模型路径拒绝，不隐式转换 |
 | quantization | 目标：INT8 per-channel、INT4 group-wise（group_size=128） | 待端到端实现与 scheme-specific 验收；其他 scheme 不承诺 |
 
 ### 3.2 内存管理
@@ -190,7 +194,7 @@ am_status_code am_session_generate(
 
 ```text
 当前高层执行的存储组成：
-Model weights：FP32，或 W16 矩阵 + FP32 Norm
+Model weights：FP32，或 W16 矩阵 + FP32 Norm（包括 BF16 A16）
     └─ O2 按 recipe 另持有 packed artifacts
 KV cache：默认 FP32；C++ retained-W16 可显式选 F16/BF16 K/V planes，Runtime 构造时静态分配
     └─ [layer][head][token][head_dim]，物理 padding/strides 由 layout 决定
@@ -199,6 +203,8 @@ Request：workspace + max(Prefill activation, Decode activation)
 ```
 
 KV capacity 由调用方显式设置并受模型 context、checked layout bytes 和预算约束；4k 是长序列验收目标，不是统一的硬编码容量上限。请求内不自动扩容 KV。FP16/BF16 KV 的当前数值验收限定于 P3 记录列出的 fixture 与 2048-token 范围；更大上下文独立验收。INT8/INT4 权重及约 3.5 GB 的 7B INT4 逻辑 payload 属于目标估算，不能据此推导总内存占用已达标。
+
+BF16 A16 使用同型 BF16 K/V planes 与 activation/residual，不保留平行的全量 F32 KV 或 residual 副本；其精度与 2048 near-limit 验收按 P4-A 单独解释，不能沿用 P3 的 W×KV 交叉支持矩阵。
 
 **资源预算与失败行为**：
 
@@ -369,11 +375,11 @@ TSAN 在 `main` 前因主机环境启动失败须单独记录；sanitizer 不兼
 |------|----------|------|
 | HF 加载/准入 | `ModelLoader_*`、`HfFixedTrajectory` | parser/loader 与固定轨迹；不代表所有模型 |
 | 执行/Session | `TinyLlamaExecution`、`DirectPrefillDecode` | scalar oracle、Generate、OOM/重试、KV 生命周期 |
-| 精度策略 | `Fp32CompatibleInference`、`W16*`、`KV16*` | 转换/保留策略的数值、预算与零分配 |
+| 精度策略 | `Fp32CompatibleInference`、`W16*`、`KV16*`、`A16LoadAdmission`、`A16ModelAcceptance`、`A16CalibratedAcceptance` | 转换/保留策略及 BF16 A16 的数值、预算与零分配；FP16 A16 高层拒绝 |
 | KV/资源 | `KVCache*`、`*ResourceLimits` | generation/commit、payload cap；不替代 RSS |
 | C ABI/CLI | `CAbi*`、`InferenceCliIntegration` | strict FP32、buffer/error/owner |
 | ISA/sanitizer | baseline/AVX2、ASan/UBSan/LSan、TSAN presets | 每个候选与 fallback 的适用覆盖 |
-| 待完成 | INT8/INT4、A16、代表性 4k/7B、100 次确定性、其他平台 | 需实际实现与可执行门禁 |
+| 待完成 | INT8/INT4、FP16 A16 模型路径、AVX-512 硬件数值/性能验收、代表性 4k/7B、100 次确定性、其他平台 | 需实际实现与可执行门禁 |
 
 既有五批集成入口：
 

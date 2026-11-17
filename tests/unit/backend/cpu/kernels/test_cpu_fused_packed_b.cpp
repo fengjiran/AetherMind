@@ -66,10 +66,10 @@ void ExpectSegmentNearReference(const std::vector<float>& input,
                                 const std::vector<float>& output,
                                 float guard) {
     std::vector<float> expected(static_cast<size_t>(rows * output_stride), guard);
-    const cpu::detail::GemmF32Args reference{
-            .lhs = input.data(),
-            .rhs = weights.data() + weight_row_offset * k,
-            .output = expected.data(),
+    const cpu::detail::GemmArgs reference{
+            .lhs = reinterpret_cast<const std::byte*>(input.data()),
+            .rhs = reinterpret_cast<const std::byte*>(weights.data() + weight_row_offset * k),
+            .output = reinterpret_cast<std::byte*>(expected.data()),
             .m = rows,
             .n = output_n,
             .k = k,

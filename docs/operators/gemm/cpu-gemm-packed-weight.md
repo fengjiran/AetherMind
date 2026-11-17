@@ -177,7 +177,7 @@ Load HF → BuildLlamaDense → Lower            Execute (zero alloc):
 
    备选：kc=256 使 4096/11008/14336 全整除（11008=43×256），K=768 放大降为 0，块降至 16KB、A 面板 buffer 降至 48KB。但 kc 减半 → k_panels 翻倍 → 输出 C 的 read-modify-write 趟数与 microkernel 调用次数翻倍（`MicroKernel4x16` 每面板都 load-add-store 输出，`gemm_f32_avx2.cpp:169-188`）；A 打包总量不变（恒 M×K×4）。大 M 下这是二阶成本，方向与 pad 收益相反——kc 定值归 M3 消费侧 benchmark。kc 是 layout 常量，无论取哪个值都编入 layout 名。
 
-2. **独立 `PackedGemmF32Args` vs 扩展 `GemmF32Args`** → 独立结构。plain 合同是普通指针 + 步长，packed 需要切片描述，混合只会互相拖累。
+2. **独立 `PackedGemmF32Args` vs 扩展 `GemmArgs`** → 独立结构。plain 合同是 byte 指针 + 元素步长，具体 entry 确定精度；packed 需要 exact 布局与切片描述。`PackedGemmF32Args` 保留 F32 布局身份，`packed_b` 借用 byte storage，由 F32 driver 解释，不把 packed bytes 当作 plain RHS。
 
 3. **params arena 硬约束**：`KernelParamsBuilder` 产物必须 trivially destructible 且 `params_size <= kMaxKernelParamsSize = 512`（`kernel_types.h`）。`PackingRecipe` 含 `std::string`，不能整体入 params——`PackedGemmF32Args` 只存 POD 切片（指针 + int64 切片尺寸）；layout 常量在每个 driver TU 内编译期绑定（§3.1 已立约 layout 名唯一确定 nr/kc，不引入 op/selector→layout 的二级查表，避免再添一层可漂移映射）。
 

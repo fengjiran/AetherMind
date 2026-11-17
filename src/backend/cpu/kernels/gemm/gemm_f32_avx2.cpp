@@ -6,6 +6,7 @@
 #include <cstddef>
 
 #if defined(__AVX2__) && defined(__FMA__)
+#include "gemm_avx2_internal.h"
 #include <immintrin.h>
 #endif
 
@@ -102,11 +103,11 @@ void RunRowPairAvx2(const float* lhs0, const float* lhs1, const float* rhs,
 // accumulators plus 2 streaming B vectors, and the 8 FMAs issued per K step
 // cover 64 output lanes to saturate both FMA ports.
 
-constexpr int64_t kBlockedMR = 4;
-constexpr int64_t kBlockedNR = 16;
-constexpr int64_t kBlockedKC = 512;
+constexpr int64_t kBlockedMR = kGemmAvx2MR;
+constexpr int64_t kBlockedNR = kGemmAvx2NR;
+constexpr int64_t kBlockedKC = kGemmAvx2KC;
 // A rows kept resident per K panel; 48 rows x 512 K x 4B = 96 KiB.
-constexpr int64_t kBlockedMB = 48;
+constexpr int64_t kBlockedMB = kGemmAvx2MB;
 
 void PackAPanel(const float* lhs, int64_t lhs_m_stride, int64_t kb,
                 int64_t mb_base, int64_t mb_rows, int64_t kc_len,
@@ -132,63 +133,13 @@ void PackBPanel(const float* rhs, int64_t rhs_n_stride, int64_t kb,
 
 // out rows use unit output_n_stride (validated by the caller);
 // out_row points at output[mb_base][nb_base].
-void MicroKernel4x16(const float* buf_a, const float* buf_b,
-                     int64_t kc_len, int64_t output_m_stride,
-                     float* out_row0) noexcept {
-    __m256 acc00 = _mm256_setzero_ps();
-    __m256 acc01 = _mm256_setzero_ps();
-    __m256 acc10 = _mm256_setzero_ps();
-    __m256 acc11 = _mm256_setzero_ps();
-    __m256 acc20 = _mm256_setzero_ps();
-    __m256 acc21 = _mm256_setzero_ps();
-    __m256 acc30 = _mm256_setzero_ps();
-    __m256 acc31 = _mm256_setzero_ps();
 
-    const float* a0 = buf_a;
-    const float* a1 = a0 + kBlockedKC;
-    const float* a2 = a1 + kBlockedKC;
-    const float* a3 = a2 + kBlockedKC;
 
-    for (int64_t kk = 0; kk < kc_len; ++kk) {
-        const __m256 x0 = _mm256_set1_ps(a0[kk]);
-        const __m256 x1 = _mm256_set1_ps(a1[kk]);
-        const __m256 x2 = _mm256_set1_ps(a2[kk]);
-        const __m256 x3 = _mm256_set1_ps(a3[kk]);
-        const __m256 b0 = _mm256_loadu_ps(buf_b + kk * kBlockedNR);
-        const __m256 b1 = _mm256_loadu_ps(buf_b + kk * kBlockedNR + 8);
-        acc00 = _mm256_fmadd_ps(x0, b0, acc00);
-        acc01 = _mm256_fmadd_ps(x0, b1, acc01);
-        acc10 = _mm256_fmadd_ps(x1, b0, acc10);
-        acc11 = _mm256_fmadd_ps(x1, b1, acc11);
-        acc20 = _mm256_fmadd_ps(x2, b0, acc20);
-        acc21 = _mm256_fmadd_ps(x2, b1, acc21);
-        acc30 = _mm256_fmadd_ps(x3, b0, acc30);
-        acc31 = _mm256_fmadd_ps(x3, b1, acc31);
-    }
+void RunBlockedGemmAvx2(const GemmArgs& args, int64_t m_full, int64_t n_full) noexcept {
+    const float* const lhs_data = reinterpret_cast<const float*>(args.lhs);
+    const float* const rhs_data = reinterpret_cast<const float*>(args.rhs);
+    float* const output_data = reinterpret_cast<float*>(args.output);
 
-    float* out0 = out_row0;
-    float* out1 = out0 + output_m_stride;
-    float* out2 = out1 + output_m_stride;
-    float* out3 = out2 + output_m_stride;
-    __m256 o00 = _mm256_loadu_ps(out0);
-    __m256 o01 = _mm256_loadu_ps(out0 + 8);
-    __m256 o10 = _mm256_loadu_ps(out1);
-    __m256 o11 = _mm256_loadu_ps(out1 + 8);
-    __m256 o20 = _mm256_loadu_ps(out2);
-    __m256 o21 = _mm256_loadu_ps(out2 + 8);
-    __m256 o30 = _mm256_loadu_ps(out3);
-    __m256 o31 = _mm256_loadu_ps(out3 + 8);
-    _mm256_storeu_ps(out0, _mm256_add_ps(o00, acc00));
-    _mm256_storeu_ps(out0 + 8, _mm256_add_ps(o01, acc01));
-    _mm256_storeu_ps(out1, _mm256_add_ps(o10, acc10));
-    _mm256_storeu_ps(out1 + 8, _mm256_add_ps(o11, acc11));
-    _mm256_storeu_ps(out2, _mm256_add_ps(o20, acc20));
-    _mm256_storeu_ps(out2 + 8, _mm256_add_ps(o21, acc21));
-    _mm256_storeu_ps(out3, _mm256_add_ps(o30, acc30));
-    _mm256_storeu_ps(out3 + 8, _mm256_add_ps(o31, acc31));
-}
-
-void RunBlockedGemmAvx2(const GemmF32Args& args, int64_t m_full, int64_t n_full) noexcept {
     alignas(32) float buf_a[static_cast<size_t>(kBlockedMB * kBlockedKC)];
     alignas(32) float buf_b[static_cast<size_t>(kBlockedKC * kBlockedNR)];
 
@@ -196,13 +147,13 @@ void RunBlockedGemmAvx2(const GemmF32Args& args, int64_t m_full, int64_t n_full)
         const int64_t kc_len = std::min(kBlockedKC, args.k - kb);
         for (int64_t mb = 0; mb < m_full; mb += kBlockedMB) {
             const int64_t mb_rows = std::min(kBlockedMB, m_full - mb);
-            PackAPanel(args.lhs, args.lhs_m_stride, kb, mb, mb_rows, kc_len, buf_a);
+            PackAPanel(lhs_data, args.lhs_m_stride, kb, mb, mb_rows, kc_len, buf_a);
             for (int64_t nb = 0; nb < n_full; nb += kBlockedNR) {
-                PackBPanel(args.rhs, args.rhs_n_stride, kb, nb, kc_len, buf_b);
+                PackBPanel(rhs_data, args.rhs_n_stride, kb, nb, kc_len, buf_b);
                 for (int64_t row = 0; row < mb_rows; row += kBlockedMR) {
-                    MicroKernel4x16(buf_a + row * kBlockedKC, buf_b, kc_len,
-                                    args.output_m_stride,
-                                    args.output + (mb + row) * args.output_m_stride + nb);
+                    AccumulateF32Tile4x16Avx2(buf_a + row * kBlockedKC, buf_b, kc_len,
+                                              args.output_m_stride,
+                                              output_data + (mb + row) * args.output_m_stride + nb);
                 }
             }
         }
@@ -214,7 +165,11 @@ void RunBlockedGemmAvx2(const GemmF32Args& args, int64_t m_full, int64_t n_full)
 } // namespace
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
-Status RunGemmF32Avx2Fma(const GemmF32Args& args) noexcept {
+Status RunGemmF32Avx2Fma(const GemmArgs& args) noexcept {
+    const float* const lhs_data = reinterpret_cast<const float*>(args.lhs);
+    const float* const rhs_data = reinterpret_cast<const float*>(args.rhs);
+    float* const output_data = reinterpret_cast<float*>(args.output);
+
     if (args.m >= 1 && args.m <= 8 && args.k > 0 && args.n >= 0 &&
         args.lhs_k_stride == 1 && args.rhs_k_stride == 1 &&
         args.output_n_stride == 1) {
@@ -226,19 +181,19 @@ Status RunGemmF32Avx2Fma(const GemmF32Args& args) noexcept {
         // outweighed the cache reuse win (see benchmark history for details).
         int64_t row = 0;
         for (; row + kAvx2RowsPerPair <= args.m; row += kAvx2RowsPerPair) {
-            RunRowPairAvx2(args.lhs + row * args.lhs_m_stride,
-                           args.lhs + (row + 1) * args.lhs_m_stride,
-                           args.rhs, args.k, args.n, args.rhs_n_stride,
-                           args.output + row * args.output_m_stride,
-                           args.output + (row + 1) * args.output_m_stride);
+            RunRowPairAvx2(lhs_data + row * args.lhs_m_stride,
+                           lhs_data + (row + 1) * args.lhs_m_stride,
+                           rhs_data, args.k, args.n, args.rhs_n_stride,
+                           output_data + row * args.output_m_stride,
+                           output_data + (row + 1) * args.output_m_stride);
         }
 
         if (row < args.m) {
             DotProductF32MultiTargetAvx2(
-                    args.lhs + row * args.lhs_m_stride, args.rhs,
+                    lhs_data + row * args.lhs_m_stride, rhs_data,
                     static_cast<std::size_t>(args.k), static_cast<std::size_t>(args.n),
                     static_cast<std::size_t>(args.rhs_n_stride),
-                    args.output + row * args.output_m_stride);
+                    output_data + row * args.output_m_stride);
         }
         return Status::Ok();
     }
@@ -253,7 +208,7 @@ Status RunGemmF32Avx2Fma(const GemmF32Args& args) noexcept {
         const int64_t m_full = args.m - args.m % kBlockedMR;
         const int64_t n_full = args.n - args.n % kBlockedNR;
         for (int64_t row = 0; row < m_full; ++row) {
-            float* out_row = args.output + row * args.output_m_stride;
+            float* out_row = output_data + row * args.output_m_stride;
             for (int64_t col = 0; col < n_full; ++col) {
                 out_row[col] = 0.0f;
             }
@@ -263,40 +218,40 @@ Status RunGemmF32Avx2Fma(const GemmF32Args& args) noexcept {
         if (const int64_t n_tail = args.n - n_full; n_tail > 0) {
             int64_t row = 0;
             for (; row + kAvx2RowsPerPair <= m_full; row += kAvx2RowsPerPair) {
-                RunRowPairAvx2(args.lhs + row * args.lhs_m_stride,
-                               args.lhs + (row + 1) * args.lhs_m_stride,
-                               args.rhs + n_full * args.rhs_n_stride,
+                RunRowPairAvx2(lhs_data + row * args.lhs_m_stride,
+                               lhs_data + (row + 1) * args.lhs_m_stride,
+                               rhs_data + n_full * args.rhs_n_stride,
                                args.k, n_tail, args.rhs_n_stride,
-                               args.output + row * args.output_m_stride + n_full,
-                               args.output + (row + 1) * args.output_m_stride + n_full);
+                               output_data + row * args.output_m_stride + n_full,
+                               output_data + (row + 1) * args.output_m_stride + n_full);
             }
 
             if (row < m_full) {
                 DotProductF32MultiTargetAvx2(
-                        args.lhs + row * args.lhs_m_stride,
-                        args.rhs + n_full * args.rhs_n_stride,
+                        lhs_data + row * args.lhs_m_stride,
+                        rhs_data + n_full * args.rhs_n_stride,
                         static_cast<std::size_t>(args.k),
                         static_cast<std::size_t>(n_tail),
                         static_cast<std::size_t>(args.rhs_n_stride),
-                        args.output + row * args.output_m_stride + n_full);
+                        output_data + row * args.output_m_stride + n_full);
             }
         }
 
         int64_t row = m_full;
         for (; row + kAvx2RowsPerPair <= args.m; row += kAvx2RowsPerPair) {
-            RunRowPairAvx2(args.lhs + row * args.lhs_m_stride,
-                           args.lhs + (row + 1) * args.lhs_m_stride,
-                           args.rhs, args.k, args.n, args.rhs_n_stride,
-                           args.output + row * args.output_m_stride,
-                           args.output + (row + 1) * args.output_m_stride);
+            RunRowPairAvx2(lhs_data + row * args.lhs_m_stride,
+                           lhs_data + (row + 1) * args.lhs_m_stride,
+                           rhs_data, args.k, args.n, args.rhs_n_stride,
+                           output_data + row * args.output_m_stride,
+                           output_data + (row + 1) * args.output_m_stride);
         }
 
         if (row < args.m) {
             DotProductF32MultiTargetAvx2(
-                    args.lhs + row * args.lhs_m_stride, args.rhs,
+                    lhs_data + row * args.lhs_m_stride, rhs_data,
                     static_cast<std::size_t>(args.k), static_cast<std::size_t>(args.n),
                     static_cast<std::size_t>(args.rhs_n_stride),
-                    args.output + row * args.output_m_stride);
+                    output_data + row * args.output_m_stride);
         }
         return Status::Ok();
     }

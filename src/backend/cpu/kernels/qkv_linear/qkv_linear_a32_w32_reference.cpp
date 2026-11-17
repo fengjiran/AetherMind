@@ -10,10 +10,10 @@ Status RunProjection(const QkvLinearA32W32KernelArgs& args,
                      int64_t out_features,
                      int64_t output_row_stride,
                      int64_t output_col_stride) noexcept {
-    return RunGemmF32Reference(GemmF32Args{
-            .lhs = args.in_features == 0 ? nullptr : args.input,
-            .rhs = args.in_features == 0 ? nullptr : weight,
-            .output = output,
+    return RunGemmF32Reference(GemmArgs{
+            .lhs = reinterpret_cast<const std::byte*>(args.in_features == 0 ? nullptr : args.input),
+            .rhs = reinterpret_cast<const std::byte*>(args.in_features == 0 ? nullptr : weight),
+            .output = reinterpret_cast<std::byte*>(output),
             .m = args.row_count,
             .n = out_features,
             .k = args.in_features,

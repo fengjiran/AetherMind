@@ -32,8 +32,8 @@ bool CanExecuteAvx2Fma() {
            capabilities->effective_features.Contains(CpuFeature::kFma);
 }
 
-void ExpectAvx2NearReference(const cpu::detail::GemmF32Args& candidate_args,
-                             const cpu::detail::GemmF32Args& reference_args) {
+void ExpectAvx2NearReference(const cpu::detail::GemmArgs& candidate_args,
+                             const cpu::detail::GemmArgs& reference_args) {
     const Status candidate = cpu::detail::RunGemmF32Avx2Fma(candidate_args);
     ASSERT_TRUE(candidate.ok()) << candidate.ToString();
     const Status reference = cpu::detail::RunGemmF32Reference(reference_args);
@@ -43,10 +43,10 @@ void ExpectAvx2NearReference(const cpu::detail::GemmF32Args& candidate_args,
             2.0e-4F + 2.0e-5F * std::sqrt(static_cast<float>(candidate_args.k));
     for (int64_t row = 0; row < candidate_args.m; ++row) {
         for (int64_t col = 0; col < candidate_args.n; ++col) {
-            const float actual = candidate_args.output[row * candidate_args.output_m_stride +
-                                                       col * candidate_args.output_n_stride];
-            const float expected = reference_args.output[row * reference_args.output_m_stride +
-                                                         col * reference_args.output_n_stride];
+            const float actual = reinterpret_cast<const float*>(candidate_args.output)[row * candidate_args.output_m_stride +
+                                                                                       col * candidate_args.output_n_stride];
+            const float expected = reinterpret_cast<const float*>(reference_args.output)[row * reference_args.output_m_stride +
+                                                                                         col * reference_args.output_n_stride];
             const float absolute_error = std::fabs(actual - expected);
             const float relative_error = absolute_error / std::max(std::fabs(expected), 1.0e-6F);
             EXPECT_TRUE(absolute_error <= scale_adjusted_absolute_tolerance ||
@@ -83,10 +83,10 @@ TEST_P(CPUKernelGemmAvx2FastPathTest, MatchesDoubleReferenceForKAndNTails) {
     FillValues(lhs);
     FillValues(rhs);
 
-    const cpu::detail::GemmF32Args candidate_args{
-            .lhs = lhs.data(),
-            .rhs = rhs.data(),
-            .output = candidate_output.data(),
+    const cpu::detail::GemmArgs candidate_args{
+            .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+            .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
+            .output = reinterpret_cast<std::byte*>(candidate_output.data()),
             .m = 1,
             .n = test_case.n,
             .k = test_case.k,
@@ -98,7 +98,7 @@ TEST_P(CPUKernelGemmAvx2FastPathTest, MatchesDoubleReferenceForKAndNTails) {
             .output_n_stride = 1,
     };
     auto reference_args = candidate_args;
-    reference_args.output = reference_output.data();
+    reference_args.output = reinterpret_cast<std::byte*>(reference_output.data());
     ExpectAvx2NearReference(candidate_args, reference_args);
 }
 
@@ -139,10 +139,10 @@ TEST(CPUKernelGemmAvx2, SupportsPaddedUnalignedInputsAndOutputGuards) {
     FillValues(lhs_storage);
     FillValues(rhs_storage);
 
-    const cpu::detail::GemmF32Args candidate_args{
-            .lhs = lhs_storage.data() + 1,
-            .rhs = rhs_storage.data() + 1,
-            .output = candidate_storage.data() + 1,
+    const cpu::detail::GemmArgs candidate_args{
+            .lhs = reinterpret_cast<const std::byte*>(lhs_storage.data() + 1),
+            .rhs = reinterpret_cast<const std::byte*>(rhs_storage.data() + 1),
+            .output = reinterpret_cast<std::byte*>(candidate_storage.data() + 1),
             .m = 1,
             .n = n,
             .k = k,
@@ -154,7 +154,7 @@ TEST(CPUKernelGemmAvx2, SupportsPaddedUnalignedInputsAndOutputGuards) {
             .output_n_stride = 1,
     };
     auto reference_args = candidate_args;
-    reference_args.output = reference_storage.data() + 1;
+    reference_args.output = reinterpret_cast<std::byte*>(reference_storage.data() + 1);
     ExpectAvx2NearReference(candidate_args, reference_args);
     EXPECT_EQ(candidate_storage.front(), 31.0F);
     EXPECT_EQ(candidate_storage.back(), 31.0F);
@@ -167,9 +167,9 @@ TEST(CPUKernelGemmAvx2, FallsBackForNContiguousLayouts) {
         GTEST_SKIP() << "AVX2+FMA GEMM kernel is unavailable on this host";
     }
 
-    constexpr int64_t m = 2;
-    constexpr int64_t k = 33;
-    constexpr int64_t n = 5;
+    constexpr int64_t m = 3;
+    constexpr int64_t k = 257;
+    constexpr int64_t n = 129;
     constexpr int64_t lhs_m_stride = k + 3;
     constexpr int64_t output_m_stride = n + 2;
     constexpr int64_t rhs_k_stride = n + 4;
@@ -180,10 +180,10 @@ TEST(CPUKernelGemmAvx2, FallsBackForNContiguousLayouts) {
     FillValues(lhs);
     FillValues(rhs);
 
-    const cpu::detail::GemmF32Args candidate_args{
-            .lhs = lhs.data(),
-            .rhs = rhs.data(),
-            .output = candidate_output.data(),
+    const cpu::detail::GemmArgs candidate_args{
+            .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+            .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
+            .output = reinterpret_cast<std::byte*>(candidate_output.data()),
             .m = m,
             .n = n,
             .k = k,
@@ -195,8 +195,13 @@ TEST(CPUKernelGemmAvx2, FallsBackForNContiguousLayouts) {
             .output_n_stride = 1,
     };
     auto reference_args = candidate_args;
-    reference_args.output = reference_output.data();
+    reference_args.output = reinterpret_cast<std::byte*>(reference_output.data());
     ExpectAvx2NearReference(candidate_args, reference_args);
+    for (int64_t row = 0; row < m; ++row) {
+        for (int64_t col = n; col < output_m_stride; ++col) {
+            EXPECT_EQ(candidate_output[static_cast<size_t>(row * output_m_stride + col)], 13.0F);
+        }
+    }
 }
 
 struct SmallMShape {
@@ -230,10 +235,10 @@ TEST_P(CPUKernelGemmAvx2SmallMTest, MatchesDoubleReference) {
     FillValues(lhs);
     FillValues(rhs);
 
-    const cpu::detail::GemmF32Args candidate_args{
-            .lhs = lhs.data(),
-            .rhs = rhs.data(),
-            .output = candidate_output.data(),
+    const cpu::detail::GemmArgs candidate_args{
+            .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+            .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
+            .output = reinterpret_cast<std::byte*>(candidate_output.data()),
             .m = test_case.m,
             .n = test_case.n,
             .k = test_case.k,
@@ -245,7 +250,7 @@ TEST_P(CPUKernelGemmAvx2SmallMTest, MatchesDoubleReference) {
             .output_n_stride = 1,
     };
     auto reference_args = candidate_args;
-    reference_args.output = reference_output.data();
+    reference_args.output = reinterpret_cast<std::byte*>(reference_output.data());
     ExpectAvx2NearReference(candidate_args, reference_args);
 
     // Output guards stay untouched in the padding past each logical row end.
@@ -290,10 +295,10 @@ TEST_P(CPUKernelGemmAvx2BlockedTest, MatchesDoubleReference) {
     FillValues(lhs);
     FillValues(rhs);
 
-    const cpu::detail::GemmF32Args candidate_args{
-            .lhs = lhs.data(),
-            .rhs = rhs.data(),
-            .output = candidate_output.data(),
+    const cpu::detail::GemmArgs candidate_args{
+            .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+            .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
+            .output = reinterpret_cast<std::byte*>(candidate_output.data()),
             .m = test_case.m,
             .n = test_case.n,
             .k = test_case.k,
@@ -305,7 +310,7 @@ TEST_P(CPUKernelGemmAvx2BlockedTest, MatchesDoubleReference) {
             .output_n_stride = 1,
     };
     auto reference_args = candidate_args;
-    reference_args.output = reference_output.data();
+    reference_args.output = reinterpret_cast<std::byte*>(reference_output.data());
     ExpectAvx2NearReference(candidate_args, reference_args);
 
     for (int64_t row = 0; row < test_case.m; ++row) {
@@ -341,10 +346,10 @@ TEST(CPUKernelGemmAvx2, FallsBackForGenericMAndNonUnitStrides) {
     FillValues(lhs);
     FillValues(rhs);
 
-    const cpu::detail::GemmF32Args candidate_args{
-            .lhs = lhs.data(),
-            .rhs = rhs.data(),
-            .output = candidate_output.data(),
+    const cpu::detail::GemmArgs candidate_args{
+            .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+            .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
+            .output = reinterpret_cast<std::byte*>(candidate_output.data()),
             .m = m,
             .n = n,
             .k = k,
@@ -356,13 +361,13 @@ TEST(CPUKernelGemmAvx2, FallsBackForGenericMAndNonUnitStrides) {
             .output_n_stride = 1,
     };
     auto reference_args = candidate_args;
-    reference_args.output = reference_output.data();
+    reference_args.output = reinterpret_cast<std::byte*>(reference_output.data());
     ExpectAvx2NearReference(candidate_args, reference_args);
 
-    const cpu::detail::GemmF32Args strided_args{
-            .lhs = lhs.data(),
-            .rhs = rhs.data(),
-            .output = candidate_output.data(),
+    const cpu::detail::GemmArgs strided_args{
+            .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+            .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
+            .output = reinterpret_cast<std::byte*>(candidate_output.data()),
             .m = 1,
             .n = 2,
             .k = 3,
@@ -374,7 +379,7 @@ TEST(CPUKernelGemmAvx2, FallsBackForGenericMAndNonUnitStrides) {
             .output_n_stride = 2,
     };
     auto strided_reference_args = strided_args;
-    strided_reference_args.output = reference_output.data();
+    strided_reference_args.output = reinterpret_cast<std::byte*>(reference_output.data());
     ExpectAvx2NearReference(strided_args, strided_reference_args);
 }
 
@@ -385,8 +390,8 @@ TEST(CPUKernelGemmAvx2, PreservesZeroDimensionAndOverwriteSemantics) {
 
     std::array<float, 8> zero_output{};
     zero_output.fill(-7.0F);
-    const Status zero_k = cpu::detail::RunGemmF32Avx2Fma(cpu::detail::GemmF32Args{
-            .output = zero_output.data(),
+    const Status zero_k = cpu::detail::RunGemmF32Avx2Fma(cpu::detail::GemmArgs{
+            .output = reinterpret_cast<std::byte*>(zero_output.data()),
             .m = 1,
             .n = 3,
             .k = 0,
@@ -399,13 +404,13 @@ TEST(CPUKernelGemmAvx2, PreservesZeroDimensionAndOverwriteSemantics) {
         EXPECT_FALSE(std::signbit(zero_output[static_cast<size_t>(col)]));
     }
 
-    EXPECT_TRUE(cpu::detail::RunGemmF32Avx2Fma(cpu::detail::GemmF32Args{
+    EXPECT_TRUE(cpu::detail::RunGemmF32Avx2Fma(cpu::detail::GemmArgs{
                                                        .m = 0,
                                                        .n = 3,
                                                        .k = 7,
                                                })
                         .ok());
-    EXPECT_TRUE(cpu::detail::RunGemmF32Avx2Fma(cpu::detail::GemmF32Args{
+    EXPECT_TRUE(cpu::detail::RunGemmF32Avx2Fma(cpu::detail::GemmArgs{
                                                        .m = 1,
                                                        .n = 0,
                                                        .k = 7,
@@ -422,10 +427,10 @@ TEST(CPUKernelGemmAvx2, PreservesZeroDimensionAndOverwriteSemantics) {
             4.0F,
     };
     std::array<float, 2> output = {101.0F, -101.0F};
-    const Status overwrite = cpu::detail::RunGemmF32Avx2Fma(cpu::detail::GemmF32Args{
-            .lhs = lhs.data(),
-            .rhs = rhs.data(),
-            .output = output.data(),
+    const Status overwrite = cpu::detail::RunGemmF32Avx2Fma(cpu::detail::GemmArgs{
+            .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+            .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
+            .output = reinterpret_cast<std::byte*>(output.data()),
             .m = 1,
             .n = 2,
             .k = 3,

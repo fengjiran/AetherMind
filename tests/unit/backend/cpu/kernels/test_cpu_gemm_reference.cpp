@@ -24,10 +24,10 @@ TEST(CPUKernelGemmReference, ComputesStridedMatrices) {
     rhs[10] = -2.0F;
     rhs[13] = 1.0F;
 
-    const Status status = cpu::detail::RunGemmF32Reference(cpu::detail::GemmF32Args{
-            .lhs = lhs.data(),
-            .rhs = rhs.data(),
-            .output = output.data(),
+    const Status status = cpu::detail::RunGemmF32Reference(cpu::detail::GemmArgs{
+            .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+            .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
+            .output = reinterpret_cast<std::byte*>(output.data()),
             .m = 2,
             .n = 2,
             .k = 3,
@@ -56,10 +56,10 @@ TEST(CPUKernelGemmReference, OverwritesExistingOutputInsteadOfAccumulating) {
     };
     std::array<float, 2> output = {100.0F, -100.0F};
 
-    const Status status = cpu::detail::RunGemmF32Reference(cpu::detail::GemmF32Args{
-            .lhs = lhs.data(),
-            .rhs = rhs.data(),
-            .output = output.data(),
+    const Status status = cpu::detail::RunGemmF32Reference(cpu::detail::GemmArgs{
+            .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+            .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
+            .output = reinterpret_cast<std::byte*>(output.data()),
             .m = 1,
             .n = 2,
             .k = 2,
@@ -80,8 +80,8 @@ TEST(CPUKernelGemmReference, ZeroInnerDimensionWritesZeroWithoutInputPointers) {
     std::array<float, 10> output{};
     output.fill(3.0F);
 
-    const Status status = cpu::detail::RunGemmF32Reference(cpu::detail::GemmF32Args{
-            .output = output.data(),
+    const Status status = cpu::detail::RunGemmF32Reference(cpu::detail::GemmArgs{
+            .output = reinterpret_cast<std::byte*>(output.data()),
             .m = 2,
             .n = 3,
             .k = 0,
@@ -99,7 +99,7 @@ TEST(CPUKernelGemmReference, ZeroInnerDimensionWritesZeroWithoutInputPointers) {
 }
 
 TEST(CPUKernelGemmReference, EmptyOutputIsSuccessfulNoOp) {
-    const Status status = cpu::detail::RunGemmF32Reference(cpu::detail::GemmF32Args{
+    const Status status = cpu::detail::RunGemmF32Reference(cpu::detail::GemmArgs{
             .m = 0,
             .n = 3,
             .k = 2,

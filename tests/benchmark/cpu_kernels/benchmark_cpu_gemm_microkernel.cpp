@@ -14,7 +14,7 @@ namespace {
 
 using namespace aethermind;
 
-using GemmRunner = Status (*)(const cpu::detail::GemmF32Args&) noexcept;
+using GemmRunner = Status (*)(const cpu::detail::GemmArgs&) noexcept;
 
 enum class RhsLayout {
     /// Logical B[K,N] is stored row-major; N is contiguous.
@@ -46,20 +46,20 @@ const char* LayoutName(RhsLayout layout) noexcept {
     return "unknown";
 }
 
-Status ValidateGemmOutput(const cpu::detail::GemmF32Args& args, float error_tolerance) {
+Status ValidateGemmOutput(const cpu::detail::GemmArgs& args, float error_tolerance) {
     for (int64_t row = 0; row < args.m; ++row) {
         for (int64_t col = 0; col < args.n; ++col) {
             double expected = 0.0;
             for (int64_t inner = 0; inner < args.k; ++inner) {
-                auto a = static_cast<double>(args.lhs[row * args.lhs_m_stride +
-                                                      inner * args.lhs_k_stride]);
-                auto b = static_cast<double>(args.rhs[inner * args.rhs_k_stride +
-                                                      col * args.rhs_n_stride]);
+                auto a = static_cast<double>(reinterpret_cast<const float*>(args.lhs)[row * args.lhs_m_stride +
+                                                                                      inner * args.lhs_k_stride]);
+                auto b = static_cast<double>(reinterpret_cast<const float*>(args.rhs)[inner * args.rhs_k_stride +
+                                                                                      col * args.rhs_n_stride]);
                 expected += a * b;
             }
 
-            const float actual = args.output[row * args.output_m_stride +
-                                             col * args.output_n_stride];
+            const float actual = reinterpret_cast<const float*>(args.output)[row * args.output_m_stride +
+                                                                             col * args.output_n_stride];
             const auto ref = static_cast<float>(expected);
             if (!std::isfinite(actual) || !std::isfinite(ref)) {
                 return Status::Internal(
@@ -99,12 +99,14 @@ void SetGemmCounters(benchmark::State& state, int64_t m, int64_t k, int64_t n) {
 }
 
 void BenchmarkGemmF32(benchmark::State& state, RhsLayout rhs_layout, GemmRunner runner,
-                      float error_tolerance) {
+                      float error_tolerance, int64_t rhs_padding = 0) {
     const int64_t m = state.range(0);
     const int64_t k = state.range(1);
     const int64_t n = state.range(2);
     const auto lhs_elements = static_cast<size_t>(m * k);
-    const auto rhs_elements = static_cast<size_t>(k * n);
+    const auto rhs_elements = static_cast<size_t>(rhs_layout == RhsLayout::kNContiguous
+                                                          ? k * (n + rhs_padding)
+                                                          : n * (k + rhs_padding));
     const auto output_elements = static_cast<size_t>(m * n);
 
     std::vector<float> lhs(lhs_elements);
@@ -113,17 +115,17 @@ void BenchmarkGemmF32(benchmark::State& state, RhsLayout rhs_layout, GemmRunner 
     FillDeterministic(lhs);
     FillDeterministic(rhs);
 
-    const cpu::detail::GemmF32Args args{
-            .lhs = lhs.data(),
-            .rhs = rhs.data(),
-            .output = output.data(),
+    const cpu::detail::GemmArgs args{
+            .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+            .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
+            .output = reinterpret_cast<std::byte*>(output.data()),
             .m = m,
             .n = n,
             .k = k,
             .lhs_m_stride = k,
             .lhs_k_stride = 1,
-            .rhs_k_stride = rhs_layout == RhsLayout::kNContiguous ? n : 1,
-            .rhs_n_stride = rhs_layout == RhsLayout::kNContiguous ? 1 : k,
+            .rhs_k_stride = rhs_layout == RhsLayout::kNContiguous ? n + rhs_padding : 1,
+            .rhs_n_stride = rhs_layout == RhsLayout::kNContiguous ? 1 : k + rhs_padding,
             .output_m_stride = n,
             .output_n_stride = 1,
     };
@@ -148,6 +150,7 @@ void BenchmarkGemmF32(benchmark::State& state, RhsLayout rhs_layout, GemmRunner 
     }
 
     SetGemmCounters(state, m, k, n);
+    state.counters["rhs padding floats"] = static_cast<double>(rhs_padding);
 }
 
 void BM_GemmF32ReferenceNContiguous(benchmark::State& state) {
@@ -172,6 +175,12 @@ void BM_GemmF32ScalarOptimizedKContiguous(benchmark::State& state) {
     BenchmarkGemmF32(state, RhsLayout::kKContiguous,
                      &cpu::detail::RunGemmF32Scalar,
                      1.0e-4F);
+}
+
+void BM_GemmF32ScalarOptimizedNContiguousPadded(benchmark::State& state) {
+    BenchmarkGemmF32(state, RhsLayout::kNContiguous,
+                     &cpu::detail::RunGemmF32Scalar,
+                     1.0e-4F, 13);
 }
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
@@ -219,7 +228,7 @@ constexpr std::array<GemmShape, 12> kReferenceShapes{{
 // (2..kScalarSmallMMax), and generic M (>kScalarSmallMMax); keep every case
 // on the scalar fast path and shape-identical with the reference registration
 // for direct pairing.
-constexpr std::array<GemmShape, 13> kScalarShapes{{
+constexpr std::array<GemmShape, 21> kScalarShapes{{
         // M=1 Decode projections shared with the reference and AVX2
         // registrations for direct pairing.
         {1, 4096, 4096},
@@ -238,6 +247,16 @@ constexpr std::array<GemmShape, 13> kScalarShapes{{
         // row-block case.
         {9, 4096, 4096},
         {16, 4096, 4096},
+        // Distinguish working-set size, power-of-two stride conflicts, and
+        // cache-block boundaries when comparing the two physical layouts.
+        {1, 4096, 512},
+        {1, 1024, 4096},
+        {16, 512, 512},
+        {1, 1024, 4093},
+        {4, 1024, 4093},
+        {1, 128, 64},
+        {1, 129, 65},
+        {4, 129, 65},
 }};
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
@@ -303,6 +322,9 @@ const auto* const kGemmF32ScalarOptimizedNContiguous = RegisterScalarGemmShapes(
 const auto* const kGemmF32ScalarOptimizedKContiguous = RegisterScalarGemmShapes(
         benchmark::RegisterBenchmark("BM_GemmF32ScalarOptimizedKContiguous",
                                      &BM_GemmF32ScalarOptimizedKContiguous));
+const auto* const kGemmF32ScalarOptimizedNContiguousPadded = RegisterScalarGemmShapes(
+        benchmark::RegisterBenchmark("BM_GemmF32ScalarOptimizedNContiguousPadded",
+                                     &BM_GemmF32ScalarOptimizedNContiguousPadded));
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 const auto* const kGemmF32Avx2FmaKContiguous = RegisterAvx2GemmShapes(
         benchmark::RegisterBenchmark("BM_GemmF32Avx2FmaKContiguous",

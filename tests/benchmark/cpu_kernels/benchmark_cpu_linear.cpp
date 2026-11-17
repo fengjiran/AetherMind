@@ -4,6 +4,7 @@
 #include "aethermind/base/tensor_view.h"
 #include "aethermind/dtypes/bfloat16.h"
 #include "aethermind/dtypes/half.h"
+#include "aethermind/memory/cpu_allocator.h"
 #include "aethermind/operators/op_params.h"
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
 
@@ -16,6 +17,9 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <memory>
+#include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -50,10 +54,11 @@ KernelSelector MakePlainLinearSelector(DataType weight_dtype = DataType::Float32
     };
 }
 
-StatusOr<ResolvedKernel> PreparePlainLinearKernel(DataType weight_dtype = DataType::Float32()) {
+StatusOr<ResolvedKernel> PrepareLinearKernel(DataType weight_dtype = DataType::Float32(), WeightFormat format = WeightFormat::kPlain) {
     CpuBackend backend;
-    return backend.PrepareKernel(
-            OpType::kLinear, MakePlainLinearSelector(weight_dtype), OpParams{LinearParams{}});
+    auto selector = MakePlainLinearSelector(weight_dtype);
+    selector.weight_format = format;
+    return backend.PrepareKernel(OpType::kLinear, selector, OpParams{LinearParams{}});
 }
 
 float DeterministicValue(size_t index) {
@@ -77,7 +82,8 @@ Status BuildLinearPreparedParams(const ResolvedKernel& kernel,
                                  int64_t m,
                                  int64_t k,
                                  int64_t n,
-                                 PreparedLinearInvocation& prepared) noexcept {
+                                 PreparedLinearInvocation& prepared,
+                                 const PackedWeight* artifact = nullptr) noexcept {
     const std::array<int64_t, 2> input_shape = {m, k};
     const std::array<int64_t, 2> input_strides = {k, 1};
     const std::array<int64_t, 2> weight_shape = {n, k};
@@ -91,10 +97,23 @@ Status BuildLinearPreparedParams(const ResolvedKernel& kernel,
     const std::array<MutableTensorView, 1> outputs{
             MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
     };
+    std::optional<PackedWeightView> packed_view;
+    if (artifact != nullptr) {
+        packed_view = PackedWeightView{
+                .data = artifact->storage().data(),
+                .nbytes = artifact->storage().nbytes(),
+                .logical_dtype = artifact->logical_dtype(),
+                .logical_shape = artifact->logical_shape(),
+                .recipe_layout = artifact->recipe().layout,
+                .recipe_alignment = artifact->recipe().alignment,
+                .alignment = artifact->storage().alignment(),
+        };
+    }
     return kernel.params_builder(KernelParamsBuildContext{
-                                         .inputs = inputs,
+                                         .inputs = artifact == nullptr ? std::span<const TensorView>(inputs) : std::span<const TensorView>(inputs.data(), 1),
                                          .outputs = outputs,
                                          .attrs = kernel.attrs,
+                                         .packed_weight = packed_view,
                                  },
                                  prepared.params.data());
 }
@@ -119,10 +138,10 @@ Status ValidateLinearAgainstGemmReference(const ResolvedKernel& kernel,
     const auto output_elements = static_cast<size_t>(m * n);
     std::vector<float> expected(output_elements,
                                 std::numeric_limits<float>::quiet_NaN());
-    AM_RETURN_IF_ERROR(cpu::detail::RunGemmF32Reference(cpu::detail::GemmF32Args{
-            .lhs = input,
-            .rhs = weight,
-            .output = expected.data(),
+    AM_RETURN_IF_ERROR(cpu::detail::RunGemmF32Reference(cpu::detail::GemmArgs{
+            .lhs = reinterpret_cast<const std::byte*>(input),
+            .rhs = reinterpret_cast<const std::byte*>(weight),
+            .output = reinterpret_cast<std::byte*>(expected.data()),
             .m = m,
             .n = n,
             .k = k,
@@ -219,7 +238,7 @@ void SetLinearCounters(benchmark::State& state,
             bytes, benchmark::Counter::kIsRate, benchmark::Counter::OneK::kIs1000);
 }
 
-void BenchmarkLinearPreparedPath(benchmark::State& state, LinearBenchmarkMode mode) {
+void BenchmarkLinearPreparedPath(benchmark::State& state, LinearBenchmarkMode mode, bool packed_identity = false) {
     const int64_t m = state.range(0);
     const int64_t k = state.range(1);
     const int64_t n = state.range(2);
@@ -237,7 +256,7 @@ void BenchmarkLinearPreparedPath(benchmark::State& state, LinearBenchmarkMode mo
     FillDeterministic(input);
     FillDeterministic(weights);
 
-    const StatusOr<ResolvedKernel> resolved = PreparePlainLinearKernel();
+    const StatusOr<ResolvedKernel> resolved = PrepareLinearKernel(DataType::Float32(), packed_identity ? WeightFormat::kPacked : WeightFormat::kPlain);
     if (!resolved.ok()) {
         state.SkipWithError(resolved.status().ToString());
         return;
@@ -249,11 +268,28 @@ void BenchmarkLinearPreparedPath(benchmark::State& state, LinearBenchmarkMode mo
         return;
     }
 
+    CpuBackend pack_backend;
+    CPUAllocator allocator(Device::CPU());
+    std::vector<std::unique_ptr<PackedWeight>> artifacts(replica_count);
     std::vector<PreparedLinearInvocation> prepared(replica_count);
     for (size_t replica = 0; replica < replica_count; ++replica) {
+        if (packed_identity) {
+            const std::array<int64_t, 2> shape{n, k};
+            const std::array<int64_t, 2> strides{k, 1};
+            const std::array<TensorView, 1> components{TensorView(weights.data() + replica * weight_elements, DataType::Float32(), shape, strides)};
+            auto selector = MakePlainLinearSelector();
+            selector.weight_format = WeightFormat::kPacked;
+            auto artifact = pack_backend.PackWeights(OpType::kLinear, components, selector,
+                                                     resolved->expected_packing_recipe, allocator);
+            if (!artifact.ok()) {
+                state.SkipWithError(artifact.status().ToString());
+                return;
+            }
+            artifacts[replica] = std::move(*artifact);
+        }
         const Status status = BuildLinearPreparedParams(
                 *resolved, input.data(), weights.data() + replica * weight_elements,
-                DataType::Float32(), output.data(), m, k, n, prepared[replica]);
+                DataType::Float32(), output.data(), m, k, n, prepared[replica], artifacts[replica].get());
         if (!status.ok()) {
             state.SkipWithError(status.ToString());
             return;
@@ -280,7 +316,7 @@ void BenchmarkLinearPreparedPath(benchmark::State& state, LinearBenchmarkMode mo
         if (mode == LinearBenchmarkMode::kBindingSpecialization) {
             status = BuildLinearPreparedParams(
                     *resolved, input.data(), weights.data() + replica * weight_elements,
-                    DataType::Float32(), output.data(), m, k, n, prepared[replica]);
+                    DataType::Float32(), output.data(), m, k, n, prepared[replica], artifacts[replica].get());
         } else {
             status = InvokePreparedLinear(*resolved, prepared[replica]);
         }
@@ -350,6 +386,14 @@ Status ValidateLinearW16AgainstDoubleOracle(const ResolvedKernel& kernel,
     const double gamma = (2.0 * static_cast<double>(k) * unit_roundoff) /
                          (1.0 - 2.0 * static_cast<double>(k) * unit_roundoff);
     const auto output_elements = static_cast<size_t>(m * n);
+    // Cold oracle storage is independent of the implementation and is never
+    // passed to a kernel. Decode each weight once, outside the measured loop.
+    std::vector<float> decoded_weights(static_cast<size_t>(n * k));
+    for (size_t i = 0; i < decoded_weights.size(); ++i) {
+        uint16_t bits;
+        std::memcpy(&bits, weight + i * sizeof(bits), sizeof(bits));
+        decoded_weights[i] = WidenFromBits(bits, dtype);
+    }
     std::vector<float> expected(output_elements);
     std::vector<double> bounds(output_elements);
     for (int64_t row = 0; row < m; ++row) {
@@ -357,12 +401,8 @@ Status ValidateLinearW16AgainstDoubleOracle(const ResolvedKernel& kernel,
             double sum = 0.0;
             double absolute_products = 0.0;
             for (int64_t t = 0; t < k; ++t) {
-                uint16_t bits = 0;
-                std::memcpy(&bits,
-                            weight + static_cast<size_t>(col * k + t) * sizeof(bits),
-                            sizeof(bits));
                 const double product = static_cast<double>(input[row * k + t]) *
-                                       static_cast<double>(WidenFromBits(bits, dtype));
+                                       static_cast<double>(decoded_weights[static_cast<size_t>(col * k + t)]);
                 sum += product;
                 absolute_products += std::abs(product);
             }
@@ -390,7 +430,7 @@ Status ValidateLinearW16AgainstDoubleOracle(const ResolvedKernel& kernel,
 
 void BenchmarkLinearW16PreparedPath(benchmark::State& state,
                                     LinearBenchmarkMode mode,
-                                    DataType weight_dtype) {
+                                    DataType weight_dtype, bool packed_identity = false) {
     const int64_t m = state.range(0);
     const int64_t k = state.range(1);
     const int64_t n = state.range(2);
@@ -411,7 +451,7 @@ void BenchmarkLinearW16PreparedPath(benchmark::State& state,
         std::memcpy(weights.data() + index * sizeof(bits), &bits, sizeof(bits));
     }
 
-    const StatusOr<ResolvedKernel> resolved = PreparePlainLinearKernel(weight_dtype);
+    const StatusOr<ResolvedKernel> resolved = PrepareLinearKernel(weight_dtype, packed_identity ? WeightFormat::kPacked : WeightFormat::kPlain);
     if (!resolved.ok()) {
         state.SkipWithError(resolved.status().ToString());
         return;
@@ -422,11 +462,28 @@ void BenchmarkLinearW16PreparedPath(benchmark::State& state,
         return;
     }
 
+    CpuBackend pack_backend;
+    CPUAllocator allocator(Device::CPU());
+    std::vector<std::unique_ptr<PackedWeight>> artifacts(replica_count);
     std::vector<PreparedLinearInvocation> prepared(replica_count);
     for (size_t replica = 0; replica < replica_count; ++replica) {
+        if (packed_identity) {
+            const std::array<int64_t, 2> shape{n, k};
+            const std::array<int64_t, 2> strides{k, 1};
+            const std::array<TensorView, 1> components{TensorView(weights.data() + replica * weight_bytes, weight_dtype, shape, strides)};
+            auto selector = MakePlainLinearSelector(weight_dtype);
+            selector.weight_format = WeightFormat::kPacked;
+            auto artifact = pack_backend.PackWeights(OpType::kLinear, components, selector,
+                                                     resolved->expected_packing_recipe, allocator);
+            if (!artifact.ok()) {
+                state.SkipWithError(artifact.status().ToString());
+                return;
+            }
+            artifacts[replica] = std::move(*artifact);
+        }
         const Status status = BuildLinearPreparedParams(
                 *resolved, input.data(), weights.data() + replica * weight_bytes,
-                weight_dtype, output.data(), m, k, n, prepared[replica]);
+                weight_dtype, output.data(), m, k, n, prepared[replica], artifacts[replica].get());
         if (!status.ok()) {
             state.SkipWithError(status.ToString());
             return;
@@ -441,7 +498,7 @@ void BenchmarkLinearW16PreparedPath(benchmark::State& state,
         return;
     }
 
-    state.SetLabel(BenchmarkLabel(*resolved, mode));
+    state.SetLabel(BenchmarkLabel(*resolved, mode) + " recipe=" + std::string(ToString(resolved->expected_packing_recipe.layout)));
     size_t iteration = 0;
     for (auto _: state) {
         const size_t replica =
@@ -452,7 +509,7 @@ void BenchmarkLinearW16PreparedPath(benchmark::State& state,
         if (mode == LinearBenchmarkMode::kBindingSpecialization) {
             status = BuildLinearPreparedParams(
                     *resolved, input.data(), weights.data() + replica * weight_bytes,
-                    weight_dtype, output.data(), m, k, n, prepared[replica]);
+                    weight_dtype, output.data(), m, k, n, prepared[replica], artifacts[replica].get());
         } else {
             status = InvokePreparedLinear(*resolved, prepared[replica]);
         }
@@ -482,6 +539,21 @@ void BM_LinearW16BindingSpecialization(benchmark::State& state, DataType dtype) 
     BenchmarkLinearW16PreparedPath(state, LinearBenchmarkMode::kBindingSpecialization, dtype);
 }
 
+void BM_LinearW16PackedIdentityHot(benchmark::State& state, DataType dtype) {
+    BenchmarkLinearW16PreparedPath(state, LinearBenchmarkMode::kPreparedHot, dtype, true);
+}
+void BM_LinearW16PackedIdentityStreaming(benchmark::State& state, DataType dtype) {
+    BenchmarkLinearW16PreparedPath(state, LinearBenchmarkMode::kPreparedStreaming, dtype, true);
+}
+
+
+void BM_LinearPackedIdentityHot(benchmark::State& state) {
+    BenchmarkLinearPreparedPath(state, LinearBenchmarkMode::kPreparedHot, true);
+}
+void BM_LinearPackedIdentityStreaming(benchmark::State& state) {
+    BenchmarkLinearPreparedPath(state, LinearBenchmarkMode::kPreparedStreaming, true);
+}
+
 BENCHMARK(BM_LinearPreparedHot)
         // Decode projections.
         ->Args({1, 4096, 4096})
@@ -498,6 +570,15 @@ BENCHMARK(BM_LinearPreparedHot)
         // Small/tail shapes used to guard future tile-specific paths.
         ->Args({1, 33, 31})
         ->Args({2, 32, 33})
+        ->Args({2, 512, 512})
+        ->Args({4, 512, 512})
+        ->Args({8, 512, 512})
+        ->Args({32, 512, 512})
+        ->Args({128, 512, 512})
+        ->Args({512, 512, 512})
+        ->Args({1, 1, 3})
+        ->Args({1, 7, 5})
+        ->Args({8, 7, 19})
         ->ArgNames({"M", "K", "N"});
 
 BENCHMARK(BM_LinearPreparedStreaming)
@@ -540,6 +621,15 @@ BENCHMARK_CAPTURE(BM_LinearW16PreparedHot, f16, DataType::Float(16))
         // Small/tail shapes used to guard future tile-specific paths.
         ->Args({1, 33, 31})
         ->Args({2, 32, 33})
+        ->Args({2, 512, 512})
+        ->Args({4, 512, 512})
+        ->Args({8, 512, 512})
+        ->Args({32, 512, 512})
+        ->Args({128, 512, 512})
+        ->Args({512, 512, 512})
+        ->Args({1, 1, 3})
+        ->Args({1, 7, 5})
+        ->Args({8, 7, 19})
         ->ArgNames({"M", "K", "N"});
 
 BENCHMARK_CAPTURE(BM_LinearW16PreparedHot, bf16, DataType::BFloat(16))
@@ -551,6 +641,15 @@ BENCHMARK_CAPTURE(BM_LinearW16PreparedHot, bf16, DataType::BFloat(16))
         ->Args({64, 4096, 4096})
         ->Args({1, 33, 31})
         ->Args({2, 32, 33})
+        ->Args({2, 512, 512})
+        ->Args({4, 512, 512})
+        ->Args({8, 512, 512})
+        ->Args({32, 512, 512})
+        ->Args({128, 512, 512})
+        ->Args({512, 512, 512})
+        ->Args({1, 1, 3})
+        ->Args({1, 7, 5})
+        ->Args({8, 7, 19})
         ->ArgNames({"M", "K", "N"});
 
 BENCHMARK_CAPTURE(BM_LinearW16PreparedStreaming, f16, DataType::Float(16))
@@ -587,6 +686,55 @@ BENCHMARK_CAPTURE(BM_LinearW16BindingSpecialization, bf16, DataType::BFloat(16))
         ->Args({1, 4096, 32000})
         ->Args({1, 33, 31})
         ->Args({2, 32, 33})
+        ->ArgNames({"M", "K", "N"});
+
+BENCHMARK_CAPTURE(BM_LinearW16PackedIdentityHot, f16, DataType::Float(16))
+        ->Args({1, 4096, 4096})
+        ->Args({16, 4096, 4096})
+        ->Args({64, 4096, 4096})
+        ->Args({1, 33, 31})
+        ->Args({1, 1, 3})
+        ->Args({1, 7, 5})
+        ->Args({8, 7, 19})
+        ->ArgNames({"M", "K", "N"});
+
+BENCHMARK_CAPTURE(BM_LinearW16PackedIdentityHot, bf16, DataType::BFloat(16))
+        ->Args({1, 4096, 4096})
+        ->Args({16, 4096, 4096})
+        ->Args({64, 4096, 4096})
+        ->Args({1, 33, 31})
+        ->Args({1, 1, 3})
+        ->Args({1, 7, 5})
+        ->Args({8, 7, 19})
+        ->ArgNames({"M", "K", "N"});
+
+BENCHMARK_CAPTURE(BM_LinearW16PackedIdentityStreaming, f16, DataType::Float(16))
+        ->Args({1, 4096, 4096})
+        ->Args({16, 4096, 4096})
+        ->Args({64, 4096, 4096})
+        ->Args({1, 33, 31})
+        ->ArgNames({"M", "K", "N"});
+
+BENCHMARK_CAPTURE(BM_LinearW16PackedIdentityStreaming, bf16, DataType::BFloat(16))
+        ->Args({1, 4096, 4096})
+        ->Args({16, 4096, 4096})
+        ->Args({64, 4096, 4096})
+        ->Args({1, 33, 31})
+        ->ArgNames({"M", "K", "N"});
+
+BENCHMARK(BM_LinearPackedIdentityHot)
+        ->Args({1, 4096, 4096})
+        ->Args({16, 4096, 4096})
+        ->Args({64, 4096, 4096})
+        ->Args({1, 1, 3})
+        ->Args({1, 7, 5})
+        ->Args({8, 7, 19})
+        ->ArgNames({"M", "K", "N"});
+
+BENCHMARK(BM_LinearPackedIdentityStreaming)
+        ->Args({1, 4096, 4096})
+        ->Args({16, 4096, 4096})
+        ->Args({64, 4096, 4096})
         ->ArgNames({"M", "K", "N"});
 
 } // namespace

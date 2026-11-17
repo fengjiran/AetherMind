@@ -40,7 +40,7 @@ Status KernelRegistry::Register(const KernelDef& descriptor) {
     }
 
     if (const RegistrationKey key{
-                descriptor.op_type, descriptor.selector, descriptor.cpu_requirements};
+                descriptor.op_type, descriptor.selector, descriptor.cpu_requirements, descriptor.packing_recipe};
         !registration_keys_.insert(key).second) {
         return Status::AlreadyExists("Duplicate kernel registration");
     }

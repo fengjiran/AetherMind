@@ -492,6 +492,16 @@ residual Add 零新增：BF16 语义白名单与 CPU reference 已存在（[add_
 - 证据按 [算子工作流](../guides/operator-development-workflow.md) 写入对应算子机器记录及 raw artifact，不在本提案填入未经验证的加速倍数或占位 benchmark 文件。
 - 每个 preset、phase、layout、ISA/fallback 单独标记状态；只有实际通过相应门禁后，才同步更新模块设计、算子合同/API 文档、产品 capability 和行为变更记录。该 Draft 不修改 PRD 的已交付状态。
 
+**A16 逐 ISA 状态。** 下表区分当前选核行为与验证范围；沿用 §4.5 的自动 eligibility 策略，验证状态不构成运行时禁用条件。对应 descriptor 已编译、selector 匹配且 effective features 满足时，Linear/RMSNorm 会优先选择 native，具体 priority 见 [backend 选核规则](../modules/backend.md#42-准备期解析)。合成 capabilities 只用于选核测试，不能用于在缺少指令的机器上执行 native entry。
+
+| 路径 | 编译 / dispatch 证据 | 真实硬件数值 / 模型证据 | 性能状态 |
+|---|---|---|---|
+| reference / AVX2 widening | 主线构建；[Linear dispatch](../../tests/unit/backend/cpu/kernels/test_cpu_linear_a16_dispatch.cpp) 与 [RMSNorm](../../tests/unit/backend/cpu/kernels/test_cpu_rmsnorm_a16_kernel.cpp) 回归；真实本机选核见 [Linear 记录](../operators/linear/benchmarks/desktop-54h5mmi-linear.md#a16-实际选核身份与验证边界核对) / [RMSNorm 记录](../operators/rmsnorm/benchmarks/desktop-54h5mmi-rmsnorm.md#a16-实际选核身份与验证边界核对) | §4.5 步骤 4–5 的 kernel 验收与 BF16 O1/O2 模型/2048 near-limit 验收；FP16 仅 kernel 层 | §4.5 步骤 6 的限定 BF16 fixture baseline，不推导跨机器收益 |
+| AVX-512 BF16 Linear/RMSNorm | per-TU 编译与 descriptor 注册；Linear 合成特征 dispatch 已覆盖；BF16 安全域/窄化的 portable 回归已覆盖 | **not-run：缺少 AVX-512 BF16 目标硬件**；portable 安全域证明不替代 native 指令执行 | **not-run**：native latency、保护预扫描、fallback 占比与降频成本待测 |
+| AVX-512 FP16 Linear/RMSNorm | per-TU 编译与 descriptor 注册；Linear 合成特征 dispatch 已覆盖 | **not-run：缺少 AVX-512 FP16 目标硬件**；高层 FP16 A16 仍被 Load 拒绝 | **not-run**：kernel 性能待测；模型性能依赖 P4-B |
+
+目标硬件补验须保留真实 `DetectCpuCapabilities` 与 feature policy、完整 selector、实际 `ResolvedKernel::name` 和 exact recipe，分别覆盖 plain/identity-packed、Prefill/Decode、A16/F32 output（Linear）、tail/stride/fallback 和特殊值。先完成 Linear/RMSNorm 的 native 执行与冻结预算对拍，再在 BF16 硬件上运行 §4.5 的 BF16 模型/near-limit 验收；FP16 的模型项保持 blocked-by-P4-B，不能伪记为通过。性能另做同合同、同机交错 A/B，包含 prepared、ExecutionPlan 与可执行模型路径及 native 数值保护成本。原始证据与结果按算子工作流入对应机器记录，并由 CPU-01 台账链接；没有目标硬件的项目保留 not-run。
+
 ## 7. 一手资料
 
 以下资料用于数值与指令机制，不作为 AetherMind 已实现或性能收益的证据：

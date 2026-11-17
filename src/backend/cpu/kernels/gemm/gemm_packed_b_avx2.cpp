@@ -14,7 +14,7 @@ namespace aethermind::cpu::detail {
 namespace {
 
 Status ValidatePackedBArgs(const PackedGemmF32Args& packed) noexcept {
-    const GemmF32Args& args = packed.gemm;
+    const GemmArgs& args = packed.gemm;
     if (args.m < 0 || args.n < 0 || args.k < 0 || packed.logical_n < 0 ||
         packed.logical_k < 0 || args.k != packed.logical_k ||
         packed.weight_n_offset < 0 || packed.n_blocks < 0 ||
@@ -132,7 +132,7 @@ void MicroKernel4x16(const float* buf_a,
 } // namespace
 
 Status RunGemmF32PackedBScan(const PackedGemmF32Args& packed) noexcept {
-    const GemmF32Args& args = packed.gemm;
+    const GemmArgs& args = packed.gemm;
     AM_RETURN_IF_ERROR(ValidatePackedBArgs(packed));
     if (args.m == 0 || args.n == 0) {
         return Status::Ok();
@@ -152,10 +152,13 @@ Status RunGemmF32PackedBScan(const PackedGemmF32Args& packed) noexcept {
     if (args.output_n_stride != 1) {
         return RunGemmF32PackedBReference(packed);
     }
+    const float* const lhs_data = reinterpret_cast<const float*>(args.lhs);
+    float* const output_data = reinterpret_cast<float*>(args.output);
+    const float* const packed_b_data = reinterpret_cast<const float*>(packed.packed_b);
 
     for (int64_t row = 0; row < args.m; ++row) {
-        const float* const lhs_row = args.lhs + row * args.lhs_m_stride;
-        float* const output_row = args.output + row * args.output_m_stride;
+        const float* const lhs_row = lhs_data + row * args.lhs_m_stride;
+        float* const output_row = output_data + row * args.output_m_stride;
         int64_t col = 0;
         for (; col < args.n &&
                (packed.weight_n_offset + col) % kPackedBNR != 0;
@@ -164,7 +167,7 @@ Status RunGemmF32PackedBScan(const PackedGemmF32Args& packed) noexcept {
             const int64_t weight_n = packed.weight_n_offset + col;
             for (int64_t k = 0; k < args.k; ++k) {
                 sum += static_cast<double>(lhs_row[k * args.lhs_k_stride]) *
-                       static_cast<double>(packed.packed_b[PackedBIndex(weight_n, k, packed.n_blocks)]);
+                       static_cast<double>(packed_b_data[PackedBIndex(weight_n, k, packed.n_blocks)]);
             }
             output_row[col] = static_cast<float>(sum);
         }
@@ -181,7 +184,7 @@ Status RunGemmF32PackedBScan(const PackedGemmF32Args& packed) noexcept {
                 const size_t panel_index =
                         (k_panel * static_cast<size_t>(packed.n_blocks) + n_block) *
                         static_cast<size_t>(kPackedBKC * kPackedBNR);
-                const float* const b_panel = packed.packed_b + panel_index;
+                const float* const b_panel = packed_b_data + panel_index;
                 for (int64_t kk = 0; kk < kc_len; ++kk) {
                     const __m256 x = _mm256_set1_ps(
                             lhs_row[(kb + kk) * args.lhs_k_stride]);
@@ -201,7 +204,7 @@ Status RunGemmF32PackedBScan(const PackedGemmF32Args& packed) noexcept {
             const int64_t weight_n = packed.weight_n_offset + col;
             for (int64_t k = 0; k < args.k; ++k) {
                 sum += static_cast<double>(lhs_row[k * args.lhs_k_stride]) *
-                       static_cast<double>(packed.packed_b[PackedBIndex(weight_n, k, packed.n_blocks)]);
+                       static_cast<double>(packed_b_data[PackedBIndex(weight_n, k, packed.n_blocks)]);
             }
             output_row[col] = static_cast<float>(sum);
         }
@@ -211,7 +214,7 @@ Status RunGemmF32PackedBScan(const PackedGemmF32Args& packed) noexcept {
 }
 
 Status RunGemmF32PackedBBlocked(const PackedGemmF32Args& packed) noexcept {
-    const GemmF32Args& args = packed.gemm;
+    const GemmArgs& args = packed.gemm;
     AM_RETURN_IF_ERROR(ValidatePackedBArgs(packed));
     if (args.m == 0 || args.n == 0 || args.k == 0) {
         return RunGemmF32PackedBScan(packed);
@@ -229,9 +232,12 @@ Status RunGemmF32PackedBBlocked(const PackedGemmF32Args& packed) noexcept {
     if (m_full == 0 || n_full == 0) {
         return RunGemmF32PackedBScan(packed);
     }
+    const float* const lhs_data = reinterpret_cast<const float*>(args.lhs);
+    float* const output_data = reinterpret_cast<float*>(args.output);
+    const float* const packed_b_data = reinterpret_cast<const float*>(packed.packed_b);
 
     for (int64_t row = 0; row < m_full; ++row) {
-        float* const output_row = args.output + row * args.output_m_stride;
+        float* const output_row = output_data + row * args.output_m_stride;
         std::fill_n(output_row, n_full, 0.0F);
     }
 
@@ -242,7 +248,7 @@ Status RunGemmF32PackedBBlocked(const PackedGemmF32Args& packed) noexcept {
         const int64_t kc_len = std::min(kPackedBKC, args.k - kb);
         for (int64_t mb = 0; mb < m_full; mb += kPackedBMB) {
             const int64_t mb_rows = std::min(kPackedBMB, m_full - mb);
-            PackAPanel(args.lhs, args.lhs_m_stride, kb, mb, mb_rows, kc_len,
+            PackAPanel(lhs_data, args.lhs_m_stride, kb, mb, mb_rows, kc_len,
                        buf_a);
             for (int64_t nb = 0; nb < n_full; nb += kPackedBNR) {
                 const int64_t weight_n = packed.weight_n_offset + nb;
@@ -250,12 +256,12 @@ Status RunGemmF32PackedBBlocked(const PackedGemmF32Args& packed) noexcept {
                 const size_t panel_index =
                         (k_panel * static_cast<size_t>(packed.n_blocks) + n_block) *
                         static_cast<size_t>(kPackedBKC * kPackedBNR);
-                const float* const b_panel = packed.packed_b + panel_index;
+                const float* const b_panel = packed_b_data + panel_index;
                 for (int64_t row = 0; row < mb_rows; row += kPackedBMR) {
                     MicroKernel4x16(
                             buf_a + row * kPackedBKC, b_panel, kc_len,
                             args.output_m_stride,
-                            args.output + (mb + row) * args.output_m_stride + nb);
+                            output_data + (mb + row) * args.output_m_stride + nb);
                 }
             }
         }
@@ -267,14 +273,14 @@ Status RunGemmF32PackedBBlocked(const PackedGemmF32Args& packed) noexcept {
         PackedGemmF32Args right_edge = packed;
         right_edge.gemm.m = m_full;
         right_edge.gemm.n = args.n - n_full;
-        right_edge.gemm.output += n_full;
+        right_edge.gemm.output = reinterpret_cast<std::byte*>(output_data + n_full);
         right_edge.weight_n_offset += n_full;
         AM_RETURN_IF_ERROR(RunGemmF32PackedBScan(right_edge));
     }
     if (m_full < args.m) {
         PackedGemmF32Args bottom_edge = packed;
-        bottom_edge.gemm.lhs += m_full * args.lhs_m_stride;
-        bottom_edge.gemm.output += m_full * args.output_m_stride;
+        bottom_edge.gemm.lhs = reinterpret_cast<const std::byte*>(lhs_data + m_full * args.lhs_m_stride);
+        bottom_edge.gemm.output = reinterpret_cast<std::byte*>(output_data + m_full * args.output_m_stride);
         bottom_edge.gemm.m = args.m - m_full;
         AM_RETURN_IF_ERROR(RunGemmF32PackedBScan(bottom_edge));
     }

@@ -4,12 +4,15 @@
 
 后续实施顺序见 [CPU 算子覆盖与性能演进路线图](cpu-operator-evolution.md)：覆盖台账与生产基线、矩阵计算、Attention、小算子/精度覆盖、线程与资源、量化及目标平台扩展。该入口组织跨算子工作包；具体合同、优化方案与机器证据继续归各算子目录。
 
+跨算子覆盖台账与公共基准（参考机器/构建身份、代表模型 revision、真实生产选核身份、覆盖缺口）见 [CPU 算子覆盖与生产基线台账](cpu-coverage-baseline.md)（CPU-01）。
+
 ## 目录结构
 
 ```text
 docs/operators/
 ├── README.md                      # 本入口
 ├── cpu-operator-evolution.md       # CPU 算子演进顺序、依赖与验收
+├── cpu-coverage-baseline.md        # CPU-01 跨算子覆盖台账与公共基准（机器/模型/选核身份）
 ├── operator_contract_design.md    # Operator Contract 层设计（跨算子）
 ├── 算子系统设计.md                 # 算子体系设计（原 kernel_dev/算子系统设计.md）
 └── <operator>/                    # 每算子一个自包含目录

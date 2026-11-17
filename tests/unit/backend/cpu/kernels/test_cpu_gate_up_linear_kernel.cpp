@@ -18,6 +18,7 @@
 #include "aethermind/runtime/runtime_builder.h"
 #include "backend/cpu/cpu_backend_internal.h"
 #include "backend/cpu/kernels/gate_up_linear/gate_up_linear_internal.h"
+#include "backend/cpu/kernels/test_cpu_linear_optimized_helpers.h"
 #include "test_utils/test_allocator.h"
 
 #include <array>
@@ -104,11 +105,11 @@ PackedWeightView MakeIdentityPackedWeight(const float* data,
     };
 }
 
-TEST(CPUKernelGateUpLinear, CpuBackendPreparesPackedF32ReferenceKernel) {
+TEST(CPUKernelGateUpLinear, CpuBackendPreparesConfiguredPackedF32Kernel) {
     const auto kernel = PrepareGateUpKernel(4, 7);
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     EXPECT_EQ(kernel->op_type, OpType::kGateUpLinear);
-    EXPECT_EQ(std::string_view{kernel->name}, "cpu::gate_up_linear_f32_w32_reference");
+    EXPECT_EQ(std::string_view{kernel->name}, test::ExpectedA32ProjectionKernelName(OpType::kGateUpLinear, DataType::Float32()));
     EXPECT_NE(kernel->fn, nullptr);
     EXPECT_NE(kernel->params_builder, nullptr);
     EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::GateUpLinearA32W32KernelArgs));
@@ -728,7 +729,7 @@ float WidenReducedBits(uint16_t bits, DataType dtype) {
     return static_cast<float>(BFloat16(bits, BFloat16::from_bits()));
 }
 
-TEST(CPUKernelGateUpLinear, PackedW16ReferenceProjectsReducedCompositeWithFp32Accumulation) {
+TEST(CPUKernelGateUpLinear, PackedW16ProjectsReducedCompositeWithFp32Accumulation) {
     constexpr int64_t gate_features = 2;
     constexpr int64_t up_features = 3;
     constexpr int64_t in_features = 3;
@@ -772,9 +773,7 @@ TEST(CPUKernelGateUpLinear, PackedW16ReferenceProjectsReducedCompositeWithFp32Ac
                                             .up_out_features = up_features,
                                             .has_bias = false}});
         ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
-        EXPECT_EQ(kernel->name, dtype == DataType::Float(16)
-                                        ? "cpu::gate_up_linear_f32_wf16_reference"
-                                        : "cpu::gate_up_linear_f32_wbf16_reference");
+        EXPECT_EQ(kernel->name, test::ExpectedA32ProjectionKernelName(OpType::kGateUpLinear, dtype));
 
         const PackedWeightView packed_view{
                 .data = (*packed)->storage().data(),

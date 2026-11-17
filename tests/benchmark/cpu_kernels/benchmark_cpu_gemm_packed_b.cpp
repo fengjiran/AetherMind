@@ -130,10 +130,10 @@ Status CheckAgainstReference(const ResolvedKernel& kernel,
                              int64_t n) {
     std::vector<float> expected(static_cast<size_t>(m * n),
                                 std::numeric_limits<float>::quiet_NaN());
-    AM_RETURN_IF_ERROR(cpu::detail::RunGemmF32Reference(cpu::detail::GemmF32Args{
-            .lhs = input.data(),
-            .rhs = weights.data(),
-            .output = expected.data(),
+    AM_RETURN_IF_ERROR(cpu::detail::RunGemmF32Reference(cpu::detail::GemmArgs{
+            .lhs = reinterpret_cast<const std::byte*>(input.data()),
+            .rhs = reinterpret_cast<const std::byte*>(weights.data()),
+            .output = reinterpret_cast<std::byte*>(expected.data()),
             .m = m,
             .n = n,
             .k = k,
@@ -402,7 +402,7 @@ void BM_LinearPackedBpanelStreaming(benchmark::State& state) {
     BenchmarkPackedLinear(state, CacheMode::kStreaming);
 }
 
-void BM_WeightPackingCpuBpanel(benchmark::State& state) {
+void BenchmarkWeightPacking(benchmark::State& state, bool bpanel) {
     const int64_t n = state.range(0);
     const int64_t k = state.range(1);
     const size_t elements = static_cast<size_t>(n * k);
@@ -421,14 +421,14 @@ void BM_WeightPackingCpuBpanel(benchmark::State& state) {
             .weight_format = WeightFormat::kPacked,
             .phase = ExecPhase::kBoth,
     };
-    const PackingRecipe recipe = cpu::CpuBPanelF32Kc512Nr16Recipe();
+    const PackingRecipe recipe = bpanel ? cpu::CpuBPanelF32Kc512Nr16Recipe() : CpuIdentityPackingRecipe();
     CPUAllocator allocator(Device::CPU());
     auto checked = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, recipe, allocator);
     if (!checked.ok()) {
         state.SkipWithError(checked.status().ToString());
         return;
     }
-    if ((*checked)->storage().nbytes() != *cpu::CpuBPanelF32Kc512Nr16PackedByteSize(n, k)) {
+    if ((*checked)->storage().nbytes() != (bpanel ? *cpu::CpuBPanelF32Kc512Nr16PackedByteSize(n, k) : logical_bytes)) {
         state.SkipWithError("packed size amplification correctness guard failed");
         return;
     }
@@ -455,6 +455,95 @@ void BM_WeightPackingCpuBpanel(benchmark::State& state) {
             benchmark::Counter::kIsRate, benchmark::Counter::OneK::kIs1000);
 }
 
+void BM_WeightPackingCpuBpanel(benchmark::State& state) { BenchmarkWeightPacking(state, true); }
+void BM_WeightPackingCpuIdentity(benchmark::State& state) { BenchmarkWeightPacking(state, false); }
+
+void BenchmarkPackingInclusive(benchmark::State& state, bool bpanel) {
+    const int64_t m = state.range(0), k = state.range(1), n = state.range(2), calls = state.range(3);
+    CpuBackend backend;
+    const KernelSelector selector{
+            .device_type = DeviceType::kCPU,
+            .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPacked,
+            .phase = ExecPhase::kBoth};
+    auto resolved = backend.PrepareKernel(OpType::kLinear, selector, OpParams{LinearParams{}});
+    if (!resolved.ok()) {
+        state.SkipWithError(resolved.status().ToString());
+        return;
+    }
+    if (bpanel) {
+        auto descriptor = FindCandidateDescriptor(KernelRegistry::Global());
+        if (!descriptor.ok() || !backend.cpu_capabilities().effective_features.ContainsAll((*descriptor)->cpu_requirements)) {
+            state.SkipWithError("B-panel candidate is not eligible");
+            return;
+        }
+        resolved = ResolvedKernel{
+                .op_type = OpType::kLinear,
+                .fn = (*descriptor)->kernel_func,
+                .attrs = {},
+                .name = (*descriptor)->name,
+                .params_builder = (*descriptor)->params_builder,
+                .params_size = (*descriptor)->params_size,
+                .workspace_requirement = {},
+                .expected_packing_recipe = (*descriptor)->packing_recipe};
+    }
+    std::vector<float> input(static_cast<size_t>(m * k)), weights(static_cast<size_t>(n * k)), output(static_cast<size_t>(m * n));
+    Fill(input);
+    Fill(weights);
+    const std::array<int64_t, 2> input_shape{m, k}, input_strides{k, 1}, weight_shape{n, k}, weight_strides{k, 1}, output_shape{m, n}, output_strides{n, 1};
+    const TensorView input_view(input.data(), DataType::Float32(), input_shape, input_strides);
+    const MutableTensorView output_view(output.data(), DataType::Float32(), output_shape, output_strides);
+    const std::array<TensorView, 1> components{TensorView(weights.data(), DataType::Float32(), weight_shape, weight_strides)};
+    CPUAllocator allocator(Device::CPU());
+    PreparedInvocation prepared;
+    const auto pack = [&]() {
+        // Experimental recipes use the same CPU packing implementation as the
+        // backend service, without changing the global production recipe.
+        return cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector,
+                                                    resolved->expected_packing_recipe, allocator);
+    };
+    auto checked = pack();
+    if (!checked.ok()) {
+        state.SkipWithError(checked.status().ToString());
+        return;
+    }
+    if (const Status status = BuildPackedParams(*resolved, input_view, output_view, **checked, prepared); !status.ok()) {
+        state.SkipWithError(status.ToString());
+        return;
+    }
+    if (const Status status = CheckAgainstReference(*resolved, prepared, input, weights, output, m, k, n); !status.ok()) {
+        state.SkipWithError(status.ToString());
+        return;
+    }
+    checked = std::unique_ptr<PackedWeight>{};
+    state.SetLabel(std::string("kernel=") + std::string(resolved->name) + " boundary=pack+bind+execute+release");
+    state.counters["execution calls"] = static_cast<double>(calls);
+    for (auto _: state) {
+        auto artifact = pack();
+        if (!artifact.ok()) {
+            state.SkipWithError(artifact.status().ToString());
+            break;
+        }
+        const Status built = BuildPackedParams(*resolved, input_view, output_view, **artifact, prepared);
+        if (!built.ok()) {
+            state.SkipWithError(built.ToString());
+            break;
+        }
+        for (int64_t i = 0; i < calls; ++i) {
+            if (const Status run = RunPrepared(*resolved, prepared); !run.ok()) {
+                state.SkipWithError(run.ToString());
+                break;
+            }
+        }
+        benchmark::DoNotOptimize(output.data());
+    }
+}
+
+void BM_LinearBpanelPackingInclusive(benchmark::State& state) { BenchmarkPackingInclusive(state, true); }
+void BM_LinearIdentityPackingInclusive(benchmark::State& state) { BenchmarkPackingInclusive(state, false); }
+
 BENCHMARK(BM_LinearPackedBpanelHot)
         ->Args({1, 4096, 4096})
         ->Args({1, 4096, 11008})
@@ -474,6 +563,25 @@ BENCHMARK(BM_WeightPackingCpuBpanel)
         ->Args({4096, 768})
         ->Args({11008, 4096})
         ->ArgNames({"N", "K"});
+
+BENCHMARK(BM_WeightPackingCpuIdentity)
+        ->Args({4096, 4096})
+        ->Args({4096, 768})
+        ->Args({11008, 4096})
+        ->ArgNames({"N", "K"});
+
+BENCHMARK(BM_LinearBpanelPackingInclusive)
+        ->Args({1, 4096, 4096, 1})
+        ->Args({1, 4096, 4096, 16})
+        ->Args({16, 4096, 4096, 1})
+        ->Args({16, 4096, 4096, 16})
+        ->ArgNames({"M", "K", "N", "Calls"});
+BENCHMARK(BM_LinearIdentityPackingInclusive)
+        ->Args({1, 4096, 4096, 1})
+        ->Args({1, 4096, 4096, 16})
+        ->Args({16, 4096, 4096, 1})
+        ->Args({16, 4096, 4096, 16})
+        ->ArgNames({"M", "K", "N", "Calls"});
 
 #endif
 

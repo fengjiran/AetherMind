@@ -18,6 +18,7 @@
 #include "aethermind/runtime/runtime_builder.h"
 #include "backend/cpu/cpu_backend_internal.h"
 #include "backend/cpu/kernels/qkv_linear/qkv_linear_internal.h"
+#include "backend/cpu/kernels/test_cpu_linear_optimized_helpers.h"
 #include "test_utils/test_allocator.h"
 
 #include <gtest/gtest.h>
@@ -104,11 +105,11 @@ PackedWeightView MakeIdentityPackedWeight(const float* data,
     };
 }
 
-TEST(CPUKernelQkvLinear, CpuBackendPreparesPackedF32ReferenceKernel) {
+TEST(CPUKernelQkvLinear, CpuBackendPreparesConfiguredPackedF32Kernel) {
     const auto kernel = PrepareQkvKernel(4, 2, 2);
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
     EXPECT_EQ(kernel->op_type, OpType::kQkvLinear);
-    EXPECT_EQ(std::string_view{kernel->name}, "cpu::qkv_linear_f32_w32_reference");
+    EXPECT_EQ(std::string_view{kernel->name}, test::ExpectedA32ProjectionKernelName(OpType::kQkvLinear, DataType::Float32()));
     EXPECT_NE(kernel->fn, nullptr);
     EXPECT_NE(kernel->params_builder, nullptr);
     EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::QkvLinearA32W32KernelArgs));
@@ -714,7 +715,7 @@ float WidenReducedBits(uint16_t bits, DataType dtype) {
     return static_cast<float>(BFloat16(bits, BFloat16::from_bits()));
 }
 
-TEST(CPUKernelQkvLinear, PackedW16ReferenceProjectsReducedCompositeWithFp32Accumulation) {
+TEST(CPUKernelQkvLinear, PackedW16ProjectsReducedCompositeWithFp32Accumulation) {
     constexpr int64_t q_features = 4;
     constexpr int64_t k_features = 2;
     constexpr int64_t v_features = 2;
@@ -763,9 +764,7 @@ TEST(CPUKernelQkvLinear, PackedW16ReferenceProjectsReducedCompositeWithFp32Accum
                                          .v_out_features = v_features,
                                          .has_bias = false}});
         ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
-        EXPECT_EQ(kernel->name, dtype == DataType::Float(16)
-                                        ? "cpu::qkv_linear_f32_wf16_reference"
-                                        : "cpu::qkv_linear_f32_wbf16_reference");
+        EXPECT_EQ(kernel->name, test::ExpectedA32ProjectionKernelName(OpType::kQkvLinear, dtype));
 
         const PackedWeightView packed_view{
                 .data = (*packed)->storage().data(),

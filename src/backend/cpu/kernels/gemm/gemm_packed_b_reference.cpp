@@ -23,7 +23,7 @@ size_t PackedBIndex(int64_t n, int64_t k, int64_t n_blocks) noexcept {
 } // namespace
 
 Status RunGemmF32PackedBReference(const PackedGemmF32Args& packed) noexcept {
-    const GemmF32Args& args = packed.gemm;
+    const GemmArgs& args = packed.gemm;
     if (args.m < 0 || args.n < 0 || args.k < 0 || packed.logical_n < 0 ||
         packed.logical_k < 0 || args.k != packed.logical_k ||
         packed.weight_n_offset < 0 || packed.n_blocks < 0 ||
@@ -57,10 +57,11 @@ Status RunGemmF32PackedBReference(const PackedGemmF32Args& packed) noexcept {
     if (args.output == nullptr) {
         return Status::InvalidArgument("Packed GEMM requires non-null output data");
     }
+    float* const output_data = reinterpret_cast<float*>(args.output);
     if (args.k == 0) {
         for (int64_t row = 0; row < args.m; ++row) {
             for (int64_t col = 0; col < args.n; ++col) {
-                args.output[row * args.output_m_stride +
+                output_data[row * args.output_m_stride +
                             col * args.output_n_stride] = 0.0F;
             }
         }
@@ -70,16 +71,18 @@ Status RunGemmF32PackedBReference(const PackedGemmF32Args& packed) noexcept {
         return Status::InvalidArgument(
                 "Packed GEMM requires non-null input data");
     }
+    const float* const lhs_data = reinterpret_cast<const float*>(args.lhs);
+    const float* const packed_b_data = reinterpret_cast<const float*>(packed.packed_b);
 
     for (int64_t row = 0; row < args.m; ++row) {
-        const float* const lhs_row = args.lhs + row * args.lhs_m_stride;
-        float* const output_row = args.output + row * args.output_m_stride;
+        const float* const lhs_row = lhs_data + row * args.lhs_m_stride;
+        float* const output_row = output_data + row * args.output_m_stride;
         for (int64_t col = 0; col < args.n; ++col) {
             const int64_t weight_n = packed.weight_n_offset + col;
             double sum = 0.0;
             for (int64_t k = 0; k < args.k; ++k) {
                 sum += static_cast<double>(lhs_row[k * args.lhs_k_stride]) *
-                       static_cast<double>(packed.packed_b[PackedBIndex(weight_n, k, packed.n_blocks)]);
+                       static_cast<double>(packed_b_data[PackedBIndex(weight_n, k, packed.n_blocks)]);
             }
             output_row[col * args.output_n_stride] = static_cast<float>(sum);
         }

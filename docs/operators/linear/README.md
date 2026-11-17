@@ -8,6 +8,6 @@ W16 plain/identity-packed Linear、QKV 和 GateUp 在准备期校验实际读写
 
 reference 以 `memcpy` 读取 W16，按 K 升序执行独立的 F32 product 和 add，TU 禁用 FMA contraction。输入 activation 的 F32 精度参与乘法。F32 reference 的 double 累加与 W16 F32 累加分别通过自己的数值合同和独立 oracle 验证。
 
-O2 identity/composite artifacts 保留 W16 元素，QKV/GateUp 复用同一 reduction。当前 W16 路径属于 reference 实现，prepared/kernel 与模型准备/执行的性能观察见 [本机记录](benchmarks/desktop-54h5mmi-linear.md)。新 B-panel 的布局评估也在该记录中。
+O2 identity/composite artifacts 保留 W16 元素，QKV/GateUp 复用同一 reduction。当前 W16 路径属于 reference 实现，prepared/kernel 与模型准备/执行的性能观察见 [本机记录](benchmarks/desktop-54h5mmi-linear.md)。新 B-panel 的布局评估也在该记录中。F32/W16/A16 各组合的真实生产选核身份、B-panel candidate 与 identity 的 priority tie 见 [CPU 覆盖台账 §3.1/§4](../cpu-coverage-baseline.md#31-矩阵计算)。
 
 实现见 [Linear reference](../../../src/backend/cpu/kernels/linear/linear_a32_w16_reference.cpp)，测试见 [Linear regression](../../../tests/unit/backend/cpu/kernels/test_cpu_linear_kernel.cpp)，模型使用见 [W16 指南](../../guides/w16-fp32-inference.md)。遵循 [算子工作流](../../guides/operator-development-workflow.md)。

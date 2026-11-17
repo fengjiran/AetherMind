@@ -7,11 +7,18 @@ set(AETHERMIND_AVX2_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/common/dot_product_f32_avx2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a32_w32_avx2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_f32_avx2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_a32_bf16_avx2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_packed_b_avx2.cpp
 )
 
 if (NOT AETHERMIND_HAS_AVX2_FMA)
     list(REMOVE_ITEM SRC_FILES ${AETHERMIND_AVX2_SOURCES})
+endif ()
+
+set(AETHERMIND_GEMM_A32_F16_SOURCE
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_a32_f16_avx2.cpp)
+if (NOT AETHERMIND_HAS_AVX2_FMA OR NOT AETHERMIND_HAS_F16C)
+    list(REMOVE_ITEM SRC_FILES ${AETHERMIND_GEMM_A32_F16_SOURCE})
 endif ()
 
 set(AETHERMIND_F16C_CONVERSION_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/fp16_conversion_f16c.cpp)
@@ -135,6 +142,12 @@ if (AETHERMIND_HAS_AVX2_FMA)
     target_compile_definitions(${PROJECT_NAME} PUBLIC RMSNORM_HAS_AVX2_FMA_KERNEL=1)
     target_compile_definitions(${PROJECT_NAME} PUBLIC GEMM_HAS_AVX2_FMA_KERNEL=1)
     target_compile_definitions(${PROJECT_NAME} PUBLIC DOT_PRODUCT_HAS_AVX2_FMA_KERNEL=1)
+endif ()
+
+if (AETHERMIND_HAS_AVX2_FMA AND AETHERMIND_HAS_F16C)
+    aethermind_configure_avx2_sources(${AETHERMIND_GEMM_A32_F16_SOURCE})
+    aethermind_configure_f16c_sources(${AETHERMIND_GEMM_A32_F16_SOURCE})
+    target_compile_definitions(${PROJECT_NAME} PUBLIC GEMM_HAS_A32_F16_AVX2_FMA_KERNEL=1)
 endif ()
 
 # The A16 AVX2 fallback widens FP16 with F16C and BF16 with an exact shift, so

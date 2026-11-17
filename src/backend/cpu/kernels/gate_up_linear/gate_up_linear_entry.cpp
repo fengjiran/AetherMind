@@ -51,8 +51,8 @@ StatusOr<GateUpLinearF32KernelMetadata> ReadMetadata(
     return metadata;
 }
 
-Status BuildGateUpLinearF32ReferenceArgs(const KernelParamsBuildContext& context,
-                                         void* params_buffer) noexcept {
+Status BuildGateUpLinearF32IdentityArgs(const KernelParamsBuildContext& context,
+                                        void* params_buffer) noexcept {
     if (context.inputs.size() != 1U || context.outputs.size() != 2U) {
         return Status::InvalidArgument("GateUpLinear requires one activation "
                                        "input and two outputs");
@@ -441,15 +441,15 @@ Status BuildGateUpLinearF32BpanelArgs(
 
     const int64_t n_blocks = total_n / kCpuBPanelF32Kc512Nr16NR +
                              (total_n % kCpuBPanelF32Kc512Nr16NR != 0);
-    const auto* const packed_data = static_cast<const float*>(context.packed_weight->data);
+    const auto* const packed_data = static_cast<const std::byte*>(context.packed_weight->data);
     const auto build_gemm = [&](const MutableTensorView& output,
                                 const RowwiseViewAnalysis& output_analysis,
                                 int64_t output_n,
                                 int64_t n_offset) {
         return PackedGemmF32Args{
-                .gemm = GemmF32Args{
-                        .lhs = input.data<float>(),
-                        .output = output.data<float>(),
+                .gemm = GemmArgs{
+                        .lhs = static_cast<const std::byte*>(input.data()),
+                        .output = static_cast<std::byte*>(output.data()),
                         .m = row_count,
                         .n = output_n,
                         .k = in_features,
@@ -547,10 +547,10 @@ Status BuildGateUpLinearF32Metadata(const OpParams& params,
     return Status::Ok();
 }
 
-Status GateUpLinearF32ReferenceEntry(const KernelContext& ctx) noexcept {
+Status GateUpLinearF32ScalarEntry(const KernelContext& ctx) noexcept {
     const auto* args = static_cast<const GateUpLinearA32W32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
-    return RunGateUpLinearF32Reference(*args);
+    return RunGateUpLinearF32Scalar(*args);
 }
 
 Status GateUpLinearF32W16ReferenceEntry(const KernelContext& ctx) noexcept {
@@ -575,7 +575,7 @@ static_assert(sizeof(GateUpLinearA32W32KernelArgs) <= kMaxKernelParamsSize);
 static_assert(alignof(GateUpLinearA32W32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
-        CpuGateUpLinearF32Reference,
+        CpuGateUpLinearF32Scalar,
         KernelDef{
                 .op_type = OpType::kGateUpLinear,
                 .selector = KernelSelector{
@@ -587,12 +587,12 @@ AM_REGISTER_KERNEL(
                         .phase = ExecPhase::kBoth,
                 },
                 .packing_recipe = CpuIdentityPackingRecipe(),
-                .kernel_func = &GateUpLinearF32ReferenceEntry,
+                .kernel_func = &GateUpLinearF32ScalarEntry,
                 .priority = 10,
                 .params_size = sizeof(GateUpLinearA32W32KernelArgs),
-                .params_builder = &BuildGateUpLinearF32ReferenceArgs,
+                .params_builder = &BuildGateUpLinearF32IdentityArgs,
                 .metadata_builder = &BuildGateUpLinearF32Metadata,
-                .name = "cpu::gate_up_linear_f32_w32_reference"})
+                .name = "cpu::gate_up_linear_f32_w32_scalar"})
 
 static_assert(std::is_trivially_destructible_v<GateUpLinearA32W16KernelArgs>);
 static_assert(sizeof(GateUpLinearA32W16KernelArgs) <= kMaxKernelParamsSize);
@@ -664,6 +664,82 @@ AM_REGISTER_KERNEL(
                 .params_builder = &BuildGateUpLinearF32BpanelArgs,
                 .metadata_builder = &BuildGateUpLinearF32Metadata,
                 .name = "cpu::gate_up_linear_f32_w32_packed_bpanel_candidate"})
+#endif
+
+
+namespace {
+
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+Status GateUpLinearF32Avx2FmaEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const GateUpLinearA32W32KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunGateUpLinearF32Avx2Fma(*args);
+}
+#endif
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+Status GateUpLinearF32Bf16Avx2FmaEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const GateUpLinearA32W16KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunGateUpLinearF32Bf16Avx2Fma(*args);
+}
+#endif
+#if defined(GEMM_HAS_A32_F16_AVX2_FMA_KERNEL)
+Status GateUpLinearF32F16Avx2FmaEntry(const KernelContext& ctx) noexcept {
+    const auto* args = static_cast<const GateUpLinearA32W16KernelArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr);
+    return RunGateUpLinearF32F16Avx2Fma(*args);
+}
+#endif
+
+template<bool Reduced>
+KernelDef GateUpLinearOptimizedDef(DataType weight_dtype, KernelFunc entry,
+                                   KernelParamsBuilder builder, CpuFeatureSet requirements,
+                                   std::string_view name) {
+    return KernelDef{
+            .op_type = OpType::kGateUpLinear,
+            .selector = KernelSelector{
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
+                    .weight_dtype = weight_dtype,
+                    .weight_format = WeightFormat::kPacked,
+                    .phase = ExecPhase::kBoth,
+            },
+            .packing_recipe = CpuIdentityPackingRecipe(),
+            .cpu_requirements = requirements,
+            .kernel_func = entry,
+            .priority = 20,
+            .params_size = Reduced ? sizeof(GateUpLinearA32W16KernelArgs) : sizeof(GateUpLinearA32W32KernelArgs),
+            .params_builder = builder,
+            .metadata_builder = &BuildGateUpLinearF32Metadata,
+            .name = name,
+    };
+}
+
+} // namespace
+
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+AM_REGISTER_KERNEL(
+        CpuGateUpLinearF32Avx2Optimized,
+        (GateUpLinearOptimizedDef<false>(DataType::Float32(), &GateUpLinearF32Avx2FmaEntry,
+                                         &BuildGateUpLinearF32IdentityArgs, CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
+                                         "cpu::gate_up_linear_f32_w32_avx2_fma")))
+#endif
+
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+AM_REGISTER_KERNEL(
+        CpuGateUpLinearBf16Avx2Optimized,
+        (GateUpLinearOptimizedDef<true>(DataType::BFloat(16), &GateUpLinearF32Bf16Avx2FmaEntry,
+                                        &BuildGateUpLinearF32W16ReferenceArgs<true>, CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
+                                        "cpu::gate_up_linear_f32_wbf16_avx2_fma")))
+#endif
+
+#if defined(GEMM_HAS_A32_F16_AVX2_FMA_KERNEL)
+AM_REGISTER_KERNEL(
+        CpuGateUpLinearF16Avx2Optimized,
+        (GateUpLinearOptimizedDef<true>(DataType::Float(16), &GateUpLinearF32F16Avx2FmaEntry,
+                                        &BuildGateUpLinearF32W16ReferenceArgs<false>, CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c}),
+                                        "cpu::gate_up_linear_f32_wf16_avx2_fma")))
 #endif
 
 } // namespace aethermind::cpu::detail

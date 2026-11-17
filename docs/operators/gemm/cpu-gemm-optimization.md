@@ -1,8 +1,8 @@
 # CPU GEMM 优化方案
 
 - **状态**: In Progress
-- **版本**: 2.5
-- **日期**: 2026-09-23
+- **版本**: 2.6
+- **日期**: 2026-11-17
 - **文档定位**: 本算子的优化原理、合同、阶段与状态。**机器级实测数值、噪声 floor 与 Roofline 百分比不在本文详述**，权威位置见 [GEMM 证据记录](README.md)
 - **产品边界**: [AetherMind 当前产品需求](../../product.md)
 - **架构基线**: [架构总览](../../architecture.md)
@@ -43,7 +43,7 @@ AetherMind 不应新增 semantic `Gemm` operator。当前 GEMM 是 CPU backend �
 | 能力 | 当前实现 | 对优化的影响 |
 |---|---|---|
 | GEMM primitive | `RunGemmF32Reference`，三重循环，double accumulator，支持二维 stride | correctness baseline，不是性能基线 |
-| scalar optimized | `RunGemmF32Scalar` 已覆盖 `M=1`、small-M（`M<=8`）与 generic-M 三类 driver，共用 4 列输出块与 K 展开 2；前提仍是 lhs K 与 output N 单位 stride 且 RHS K 或 N 连续，`k==0` 与非连续 RHS 等布局仍委托 reference。当前只由 GEMM 微内核 benchmark 直接驱动，未接入 Linear descriptor | 结构覆盖已到位，但 loop/register reuse 收益尚无证据；`kScalarSmallMMax=8` 是保守划分而非实测阈值；不能取代 double-accumulation reference oracle |
+| scalar optimized | `RunGemmF32Scalar` 覆盖 `M=1`、small-M（`M<=8`）与 generic-M；K-contiguous 保留 4 列寄存器块，N-contiguous 使用独立 NC/KC 分块并在 K panel 内遍历相邻 N 块，均保留 K 展开 2。前提仍是 lhs K 与 output N 单位 stride 且 RHS K 或 N 连续，`k==0` 与其他布局委托 reference。由 direct benchmark 与 AVX2 primitive fallback 消费，未接入 plain Linear/MatMul descriptor | N-contiguous 局部修复与目标机诊断见机器记录；生产性能仍 Needs More Data；`kScalarSmallMMax=8` 是保守划分而非实测阈值；不能取代 double-accumulation reference oracle |
 | MatMul | FP32 reference；支持 batch broadcast、`transpose_rhs` 和任意已验证 stride | 通用性高，首轮优化不应受其最宽 layout 合同约束 |
 | Linear | plain selector 仍走 double reference；packed identity descriptor 是当前默认 packed 路径；另有 AVX2 bpanel candidate 和 packed scan/blocked driver，绑定期固化 args | candidate 与 identity priority 相同且后注册，当前 global resolve 保持 identity；candidate 只由隔离 registry 测试/benchmark 驱动 |
 | QkvLinear / GateUpLinear | identity-packed reference 保持默认；AVX2 bpanel candidate 对每个输出 slice 使用完整 artifact 的 logical N offset，非 NR 对齐边界走兼容 scan/reference | QKV/GateUp bpanel 的未对齐 component 边界和输出 guard 有 focused tests；全局 priority 未提升 |
@@ -117,6 +117,8 @@ GEMM driver
 
 ### 4.1 Backend-internal contracts
 
+当前调用参数为非模板 `GemmArgs`：A/B 使用 `const std::byte*`，output 使用 `std::byte*`，M/N/K 与六个元素 stride 保持原合同。`RunGemmF32Reference` / `RunGemmF32Scalar` / `RunGemmF32Avx2Fma` 明确按 F32 解释存储，内部使用经过调用方验证的 typed pointer；byte 指针不放宽 alignment、对象访问或 dtype 约束。reference 的 double accumulation 与 optimized 的 F32/FMA 归约继续独立。packed-B 仍由独立 `PackedGemmF32Args` 描述 exact F32 布局。本次参数迁移不新增 W16/A16 GEMM entry、不修改 recipe 或 production priority；引用该内部头的调用方须重新编译。
+
 建议引入 backend-private 数据结构，名称仅为设计草案：
 
 ```cpp
@@ -179,6 +181,10 @@ scalar optimized 必须是独立实现，不能修改或覆盖 `RunGemmF32Refere
 - 不适配 fast path 的合法 stride/layout 走 reference-compatible fallback，不缩窄 operator 合同。
 
 scalar optimized 不使用 intrinsic，但**允许编译器 auto-vectorization**：不建设 strict non-SIMD 归因变体，也不做 loop/layout 与 vectorization 的贡献拆分（strict 目标曾实现并验证，2026-09-18 按简化决策撤销）。scalar 候选、未来 SIMD 候选与 reference 使用同一 shape/layout 测试矩阵与正确性合同。
+
+N-contiguous driver 使用独立的 N 遍历块 `NC` 和 K panel `KC`，与 K-contiguous 的 4 列寄存器块分开。当前静态候选为 `NC=128, KC=128`：按 row block → K panel → N block → K → row → 连续 N 的顺序访问，缩短相邻列块使用同一 B 页/cache line 的间隔。一个 N 块即可覆盖输出时，直接累加完整 K，避免无复用收益的部分结果读写。多行 row block 在 `N<=64, K<=128, rhs_k_stride<=64`（B 物理跨度不超过 32 KiB）时保留独立的轻量 4 列寄存器路径，以避免 tiny shape 的宽暂存设置开销；大 stride 不进入该路径。NC 是遍历块，不要求 `Rows × NC` 个 scalar accumulator 全驻留寄存器；最多 4 行的固定栈暂存为 2 KiB，不分配 heap/workspace，也不做执行期 autotuning。参数来自目标机局部 NC/KC sweep，不能视为跨平台最优值，过程与结果见 [机器记录](benchmarks/54h5mmi-gemm.md)。
+
+第一个 K panel 从零累加且不读取原输出，后续 panel 加载此前的 FP32 accumulator，继续按升序 K 累加；不先独立归约各 K panel 再合并，保持 `C=A×B` 覆盖写与既有累加顺序。N/K 尾块按有效长度处理，保留 padded/unaligned views、zero-size 与 reference-compatible fallback。benchmark 补充缓存工作集、非幂次尺寸及 `rhs_k_stride=N+13` 的诊断组；正确性测试覆盖 NC/KC 边界、guard、NaN 原输出、跨 panel 抵消、AVX2 fallback 与稳态零 malloc。生产 descriptor 和 priority 保持原状。
 
 ### 4.4 ISA microkernel
 
@@ -597,6 +603,7 @@ runtime thread-pool contract + 单线程证据 ──> 多线程与 NUMA
 
 | 日期 | 版本 | 变更 | 原因 | 证据/PR |
 |---|---|---|---|---|
+| 2026-11-17 | 2.6 | N-contiguous scalar 使用独立 NC/KC 调度，保留 tiny 多行寄存器路径；补充分块、guard、累加顺序、零 malloc 测试与 padded benchmark | 原 4 列块跨完整 K 扫描，使相邻列的 cache-line/page 复用距离过长；修复不改变 production descriptor/priority | [本机记录](benchmarks/54h5mmi-gemm.md)、`test_cpu_gemm_scalar.cpp`、`test_cpu_gemm_avx2.cpp` |
 | 2026-09-23 | 2.5 | 同步 exact recipe/bpanel candidate、全图 identity packed 前置和 fused candidate 的已验证状态；明确 KC512 与 performance gate 仍为 Needs More Data | packed vertical slice 已实现，但同机噪声 floor/KC256 对照尚未通过，避免把 candidate 记为生产提优 | ADR-0002、tests/unit/backend/cpu/kernels/test_cpu_fused_packed_b.cpp |
 | 2026-09-21 | 2.4 | 去除提案内的工作包编号：§7 改为按名称的阶段描述，§1/§2/§4.3/§8 的引用与依赖图同步 | 编号与精简后的证据组织不再对应 | — |
 | 2026-09-21 | 2.3 | 证据组织改为"一机器一文件"（`benchmarks/<machine>-<op>.md`）；删除全部历史证据文件，待重采 | 证据按日期/报告类型拆分导致文件膨胀，且与机器级数据分区不一致 | — |

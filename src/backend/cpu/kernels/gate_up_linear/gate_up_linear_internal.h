@@ -80,6 +80,21 @@ struct GateUpLinearA32W32PackedBKernelArgs {
 Status RunGateUpLinearF32PackedB(const GateUpLinearA32W32PackedBKernelArgs& args) noexcept;
 #endif
 
+/// @brief Uses the shared Linear optimized driver and its compatible fallback.
+Status RunGateUpLinearF32Scalar(const GateUpLinearA32W32KernelArgs& args) noexcept;
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+/// @brief Uses the shared Linear optimized driver and its compatible fallback.
+Status RunGateUpLinearF32Avx2Fma(const GateUpLinearA32W32KernelArgs& args) noexcept;
+#endif
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+/// @brief Uses the shared Linear optimized driver and its compatible fallback.
+Status RunGateUpLinearF32Bf16Avx2Fma(const GateUpLinearA32W16KernelArgs& args) noexcept;
+#endif
+#if defined(GEMM_HAS_A32_F16_AVX2_FMA_KERNEL)
+/// @brief Uses the shared Linear optimized driver and its compatible fallback.
+Status RunGateUpLinearF32F16Avx2Fma(const GateUpLinearA32W16KernelArgs& args) noexcept;
+#endif
+
 } // namespace aethermind::cpu::detail
 
 #endif // AETHERMIND_BACKEND_CPU_KERNELS_GATE_UP_LINEAR_GATE_UP_LINEAR_INTERNAL_H

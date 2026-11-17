@@ -31,3 +31,21 @@
 - 观察：streaming 与 hot 时延基本一致，瓶颈是 scalar widening 而非权重布局/缓存缺失；identity packing 已保持 2 字节元素并支持 QKV/GateUp composite 拼接，O2 fused consumer 全部 resolve。
 - 决策：**暂不新增 W16 B-panel**。现有 `kCpuBPanelF32Kc512Nr16` 按冻结合同仅限 F32，W16 不得复用其布局身份；新物理格式须独立 `PackingLayout` 并同步 byte formula、packer、validator、artifact key 与 consumer。在 widening SIMD 化落地且 profiling 证明布局收益之前，新增 W16 B-panel 缺乏证据支撑，列为后续 O4 优化批次候选。
 - 结论：**Accepted（评估决策）**；O2/packed 首批以 identity 布局交付，W16 B-panel 不进入本批支持范围。
+
+## A16 实际选核身份与验证边界核对
+
+- commit：`cab0c145`，dirty（产品/路线图及证据说明修订，无 kernel 或 priority 变更）。
+- 命令：`cmake --build build --target AetherMind -j 4`、`cmake --build build --target aethermind_unit_tests -j 4`；实际选核探针 `/tmp/aethermind-a16-dispatch-probe`，源码及编译命令保留于 raw；聚焦回归 `./build/tests/unit/aethermind_unit_tests --gtest_filter='A16LoadAdmission.*:LinearA16Dispatch.*:LinearA16Avx2Fma.*:CPUKernelRmsNormA16.*:A16ModelAcceptance.*'`。
+- 配置：Release，默认 CPU feature policy；真实 `DetectCpuCapabilities` 返回 `{SSE4.1, AVX, AVX2, FMA, F16C, AVXVNNI}`，没有 AVX-512。探针只调用正式 `PrepareKernel` / `GetPackingRecipe`，不执行 kernel；不沿用文件头旧 benchmark 的绑核设置。
+- 结果：Prefill/Decode 的 16 个 Linear selector 全部 resolve 为 AVX2/FMA；plain recipe 为 `none`/alignment 0，packed 为 `cpu_identity`/alignment 64，packing query 与 resolved recipe 一致。各 phase 的实际名称相同：
+
+| A=W | output | plain kernel | identity-packed kernel |
+|---|---|---|---|
+| BF16 | BF16 | `cpu::linear_bf16_wbf16_avx2_fma` | `cpu::linear_bf16_wbf16_packed_identity_avx2_fma` |
+| BF16 | F32 | `cpu::linear_bf16_wbf16_out32_avx2_fma` | `cpu::linear_bf16_wbf16_out32_packed_identity_avx2_fma` |
+| F16 | F16 | `cpu::linear_f16_wf16_avx2_fma` | `cpu::linear_f16_wf16_packed_identity_avx2_fma` |
+| F16 | F32 | `cpu::linear_f16_wf16_out32_avx2_fma` | `cpu::linear_f16_wf16_out32_packed_identity_avx2_fma` |
+
+- 回归：27 项通过、0 skip，其中 Linear dispatch 6 项、AVX2 数值 1 项；其余覆盖 RMSNorm、Load 准入和 BF16 O1/O2 模型路径。合成 AVX-512 capabilities 的测试只验证 dispatch；本轮不重跑 2048 near-limit 校准。
+- raw：`benchmark-results/operators/linear/20261117T013309Z_cab0c145_desktop-54h5mmi_a16-dispatch-audit/`（逐 selector TSV、探针源码、metadata、测试 XML/log；本地 gitignored 留存，无远端 retention）。
+- 结论：**Accepted（本机选核身份与限定回归）**。native BF16/FP16 的实际执行、数值与性能均为 **not-run**；FP16 A16 高层继续由 Load 拒绝。本次没有性能采样，不调整 priority，不推导加速收益。

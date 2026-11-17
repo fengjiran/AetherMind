@@ -19,11 +19,13 @@ struct RegistrationKey {
     OpType op_type = OpType::kUnknown;
     KernelSelector selector{};
     CpuFeatureSet cpu_requirements{};
+    PackingRecipe packing_recipe{};
 
     friend bool operator==(const RegistrationKey& lhs, const RegistrationKey& rhs) noexcept {
         return lhs.op_type == rhs.op_type &&
                lhs.selector == rhs.selector &&
-               lhs.cpu_requirements == rhs.cpu_requirements;
+               lhs.cpu_requirements == rhs.cpu_requirements &&
+               lhs.packing_recipe == rhs.packing_recipe;
     }
 };
 
@@ -33,6 +35,8 @@ struct RegistrationKeyHash {
         seed = hash_combine(seed, std::hash<OpType>{}(key.op_type));
         seed = hash_combine(seed, std::hash<KernelSelector>{}(key.selector));
         seed = hash_combine(seed, key.cpu_requirements.Hash());
+        seed = hash_combine(seed, static_cast<size_t>(key.packing_recipe.layout));
+        seed = hash_combine(seed, key.packing_recipe.alignment);
         return seed;
     }
 };

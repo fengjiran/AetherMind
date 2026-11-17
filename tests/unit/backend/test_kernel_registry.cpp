@@ -83,6 +83,25 @@ TEST(KernelRegistry, RegisterRejectsUnspecifiedPackedLayout) {
     EXPECT_EQ(registry.Register(descriptor), StatusCode::kInvalidArgument);
 }
 
+TEST(KernelRegistry, DistinguishesExactRecipesWithTheSameSelectorAndCpuRequirements) {
+    KernelRegistry registry;
+    auto identity = MakeTestKernelDef();
+    identity.selector.weight_format = WeightFormat::kPacked;
+    identity.packing_recipe = {.layout = PackingLayout::kCpuIdentity, .alignment = 64};
+    auto bpanel = identity;
+    bpanel.packing_recipe.layout = PackingLayout::kCpuBPanelF32Kc512Nr16;
+    ASSERT_TRUE(registry.Register(identity).ok());
+    ASSERT_TRUE(registry.Register(bpanel).ok());
+    auto duplicate = identity;
+    duplicate.priority = 100;
+    duplicate.name = "test::same_recipe_different_priority";
+    EXPECT_EQ(registry.Register(duplicate), StatusCode::kAlreadyExists);
+    ASSERT_TRUE(registry.Freeze().ok());
+    const auto candidates = registry.FindCandidates(identity.op_type, identity.selector);
+    ASSERT_TRUE(candidates.ok());
+    EXPECT_EQ(candidates->size(), 2U);
+}
+
 TEST(KernelRegistry, RegisterRejectsUnknownPackedLayout) {
     KernelRegistry registry;
     KernelDef descriptor = MakeTestKernelDef();

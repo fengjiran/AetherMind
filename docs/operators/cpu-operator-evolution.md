@@ -22,7 +22,7 @@
 | 算子内并行 / 量化 | 当前 Runtime 未提供生产 worker pool；INT8/INT4 尚无完整加载、准备、kernel、Generate 链 | 分别建立 threading 和 quantization 纵向合同；见 [RuntimeOptions](../../include/aethermind/runtime/runtime_options.h)、[HF validator](../../src/model/formats/hf/hf_model_validator.cpp) |
 | 资源复用 | workspace requirement 与 activation arena 主要按顺序累计，尚无完整 lifetime/liveness reuse | 在引入 tile/worker scratch 时纳入规划与预算；见 [workspace planner](../../src/runtime/workspace_planner.cpp)、[activation planning](../../src/execution/execution_bindings.cpp) |
 
-精度状态以实际入口和专题证据为准。顶层 product 关于“A16 尚未交付”的表述与 BF16 已有路径存在漂移，CPU-01 应同步核对并修订相关能力描述；限定 fixture 验收不能扩展为任意模型、平台或上下文的承诺。
+精度状态以实际入口和专题证据为准。[product §1.4](../product.md#14-当前能力与验证状态) 分别记录 BF16 A16 的限定模型路径、FP16 A16 的高层拒绝与 native ISA 的待验证状态；限定 fixture 验收不能扩展为任意模型、平台或上下文的承诺。
 
 ### 1.2 优先级的机制依据
 
@@ -74,7 +74,7 @@ Prefill 的多行输入可以复用权重，重点是 register/cache blocking �
 | runtime / kv_cache | Runtime 拥有拟议的长驻 worker pool；kv_cache 保持静态物理状态与 session lifecycle；通用 workspace offset 规划归 runtime | runtime 不反向依赖 execution/compiler/model；并行任务不能修改 KV 发布权 |
 | inference | 精度/量化准入、Load/Prepare 编排、资源预算与请求 owner 聚合 | 不复制 kernel、packing 或量化计算算法 |
 
-共享计算数据继续从现有 `GemmF32Args`、Linear 各精度 prepared args、`KernelSelector`、`PackingRecipe` 和 `WorkspaceRequirement` 演进，避免新建平行 planner/registry。不同精度共享 driver 结构和调优方法，不强行合并 storage、转换与归约合同。
+共享计算数据继续从现有 `GemmArgs`、Linear 各精度 prepared args、`KernelSelector`、`PackingRecipe` 和 `WorkspaceRequirement` 演进，避免新建平行 planner/registry。`GemmArgs` 使用 byte 指针与元素 stride，精度由具体 kernel entry 定义；不同精度共享 driver 结构和调优方法，不强行合并 storage、转换与归约合同。
 
 ### 2.3 准备与执行数据流
 
@@ -180,11 +180,15 @@ scheme/metadata 合同 → INT8 reference → W8/A32 优化
 保持 [CPU ISA 构建隔离](../../src/CMakeLists.txt) 与 runtime effective feature filtering，不给整个库使用 `-march=native`。每种 ISA 分别记录编译、dispatch/fallback、真实硬件数值与性能状态。
 
 1. AVX2/FMA/F16C：首批生产优化与稳定 fallback。
-2. AVX-512 BF16/FP16：验证已有 kernel，测量数值保护检查、转换、归约与降频等实际成本；不能根据向量宽度直接提高 priority。现有 registry 已给予 AVX-512 kernel 高于 AVX2 的 selector score，在真实硬件数值/性能证据完成前不视为已验证的生产默认；CPU-01 台账须记录 AVX-512 机器上实际 resolve 的 kernel 身份。
+2. AVX-512 BF16/FP16：验证已有 kernel，测量数值保护检查、转换、归约与降频等实际成本。现有 Linear/RMSNorm native descriptor 的 priority 高于 AVX2/reference（数值见 [backend 选核规则](../modules/backend.md#42-准备期解析)）；已编译且 effective features 满足时，native **已会被生产准备入口自动选中**。这是精度专题 §4.5 的既有策略，不代表真实硬件数值/性能已验收，状态文字也不会阻止选核。后续 priority 调整仍须生产证据，不能根据向量宽度推定收益；逐 ISA 状态与硬件补验项见 [精度专题 §6.4](../improvement-plan/11-fp16-bf16-execution-support.md#64-性能资源与发布状态)。
 3. AMX：在目标硬件、OS 状态管理与允许的精度合同齐备后，优先研究大 M Prefill；Decode 独立评估。
 4. AArch64：目标平台进入验收后建设 NEON，随后按硬件与 workload 决定 BF16/I8MM/SVE；保留 portable fallback。
 
 不穷举所有 dtype × ISA × layout。每个组合都需要明确 consumer、机器、workload 与性能价值。
+
+CPU-01 的 ISA 台账必须分别记录真实检测与合成 capabilities：机器/build、effective features、feature policy、完整 selector（含 phase、output dtype 与 plain/packed）、`ResolvedKernel::name` 和 exact recipe。合成 dispatch 只证明选择逻辑；真实执行另记数值测试、fallback、prepared/ExecutionPlan/模型级结果与性能状态。没有目标硬件时明确记为 not-run，不能把 AVX2 结果归给 AVX-512。部署方需要暂时排除 native 时，可用既有 `CpuFeaturePolicy.disabled_features` 削减对应特征；这不是新增准入门。
+
+已有本机选核记录：[A16 Linear](linear/benchmarks/desktop-54h5mmi-linear.md#a16-实际选核身份与验证边界核对)、[A16 RMSNorm](rmsnorm/benchmarks/desktop-54h5mmi-rmsnorm.md#a16-实际选核身份与验证边界核对)。记录来自真实 capability detection；本机无 AVX-512，不能完成 native 硬件验收，也不据此关闭整个 CPU-01 工作包。跨算子完整 selector 台账（含 F32/W16/A32 矩阵、Attention/KV、小算子与语义-only 算子的真实 `ResolvedKernel::name` 与 exact recipe）见 [CPU 覆盖与生产基线台账 §3](cpu-coverage-baseline.md#3-生产选核身份台账真实检测)。
 
 ## 4. 实施步骤
 
@@ -194,7 +198,7 @@ scheme/metadata 合同 → INT8 reference → W8/A32 优化
 
 | 工作包 | 状态 | 交付内容 / 主要位置 | 依赖 | 退出条件 |
 |---|---|---|---|---|
-| CPU-01 覆盖与基线 | 待实施 | 算子 README 能力表、prepared/ExecutionPlan/model benchmark、真实 kernel/recipe 身份；冻结参考机器规格与代表模型 revision；修订相关状态漂移 | 当前生产入口 | 主要组合可追溯，明确 unsupported/not-run；取得同实现噪声与主路径耗时分布 |
+| CPU-01 覆盖与基线 | 进行中（[覆盖台账](cpu-coverage-baseline.md)：参考机器/构建与代表模型 revision 已冻结、跨算子真实选核身份已记、同实现噪声与主路径耗时分布已取得限定观测；M0 基准达成，单算子 README 能力表与状态漂移修订收尾中） | 算子 README 能力表、prepared/ExecutionPlan/model benchmark、真实 kernel/recipe 身份；冻结参考机器规格与代表模型 revision；修订相关状态漂移 | 当前生产入口 | 主要组合可追溯，明确 unsupported/not-run；取得同实现噪声与主路径耗时分布 |
 | CPU-02 W16/A32 矩阵计算 | 待实施 | backend Linear SIMD widening、Decode/small-M、QKV/GateUp 复用，随后 Prefill blocking | CPU-01 与既有 W16 合同 | F16/BF16、plain/identity、tail/stride/fallback 数值通过；生产收益稳定，稳态零分配 |
 | CPU-03 FP32 GEMM 生产闭环 | 待实施 | 已有 scalar/AVX2 driver 接入；B-panel candidate 与 composite consumers 的 promotion 决策 | CPU-01；可与 CPU-02 独立实施 | registered/prepared、fused/unfused、模型路径与 packing 摊销均有证据；保留无收益组合的 fallback |
 | CPU-04 Attention / KV | 待实施 | SIMD 基线 → Decode GQA/KV blocking → Prefill blocking/online softmax | CPU-01；引入 scratch 时补相应规划 | context/geometry/精度矩阵、事务/visibility 与数值门禁通过；短长 context 收益和资源成本分别可解释 |
@@ -207,7 +211,7 @@ scheme/metadata 合同 → INT8 reference → W8/A32 优化
 
 ### 4.2 第一批实施队列
 
-1. **CPU-01**：补齐矩阵/Attention 主路径台账，复用现有 runner 记录实际 descriptor/recipe、热点和噪声；冻结参考机器规格与代表模型 revision 作为公共基准，并记录 AVX-512 机器上实际 resolve 的 kernel 身份；不新建 capability runtime registry。
+1. **CPU-01**：补齐矩阵/Attention 主路径台账，复用现有 runner 记录实际 descriptor/recipe、热点和噪声；冻结参考机器规格与代表模型 revision 作为公共基准，并记录 AVX-512 机器上实际 resolve 的 kernel 身份；不新建 capability runtime registry。进展见 [覆盖台账](cpu-coverage-baseline.md)：`desktop-54h5mmi` 机器/构建身份与 tiny fixture 代表模型 revision 已冻结，跨算子真实选核身份与覆盖缺口已记，4 进程同实现噪声 floor 与主路径耗时分布已取得限定观测（M0 基准达成）；native AVX-512 仍 not-run，单算子 README 能力表与状态漂移修订收尾中。
 2. **CPU-02 首段**：实现 W16/A32 plain/identity AVX2 widening 与 `M=1` GEMV，保持数值策略；随后覆盖 QKV/GateUp 与 small-M。
 3. **CPU-03**：为已有 FP32 driver 完成生产 descriptor/adapter；补齐 B-panel 对照、tail、packing 与 Generate 证据，再决定 promotion。
 4. **CPU-04 首段**：实现 Attention SIMD 候选，建立 F32/KV16/BF16 A16 的对应 baseline；随后推进 GQA 复用与 blocking。

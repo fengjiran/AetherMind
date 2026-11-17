@@ -4,6 +4,7 @@
 #include "aethermind/dtypes/data_type.h"
 #include "aethermind/operators/op_params.h"
 #include "aethermind/runtime/runtime_builder.h"
+#include "backend/cpu/kernels/test_cpu_linear_optimized_helpers.h"
 #include "test_utils/test_allocator.h"
 
 #include <gtest/gtest.h>
@@ -49,7 +50,7 @@ TEST(CpuBackend, PrepareKernelFindsConfiguredLinearDescriptor) {
     const StatusOr<ResolvedKernel> resolved = backend.PrepareKernel(
             OpType::kLinear, MakeCpuSelector(), OpParams{LinearParams{}});
     ASSERT_TRUE(resolved.ok()) << resolved.status().ToString();
-    EXPECT_EQ(resolved->name, "cpu::linear_f32_w32_reference");
+    EXPECT_EQ(resolved->name, test::ExpectedA32ProjectionKernelName(OpType::kLinear, DataType::Float32()));
 }
 
 TEST(CpuBackend, PacksUsingExplicitSelectedRecipe) {

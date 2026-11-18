@@ -1,6 +1,6 @@
 # GEMM 算子文档
 
-- **优化提案**: [CPU GEMM 优化方案](cpu-gemm-optimization.md)（方案、合同与实施顺序）
+- **优化提案**: [GEMM 优化方案](cpu-gemm-optimization.md)（FP32、FP16、BF16 的 CPU 优化与 CUDA 接续路线）
 - **专项提案**: [CPU GEMM Packed Weight 提案](cpu-gemm-packed-weight.md)（exact recipe 与 packed-B 具体化）
 - **规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
 
@@ -10,7 +10,7 @@
 
 | 机器 | 记录 | 状态 |
 |---|---|---|
-| 54H5MMI | [54h5mmi-gemm.md](benchmarks/54h5mmi-gemm.md) | Needs More Data（2026-11-17 scalar N-contiguous 修复与 WSL2 diagnostic；不用于 promotion） |
+| 54H5MMI | [54h5mmi-gemm.md](benchmarks/54h5mmi-gemm.md) | CPU-03 identity 已验收（WSL2 限定），KC 选择与裸机证据待补 |
 | QHIHOGQ | 首次采集时新建 | 待重采（2026-09-21 清空） |
 
 原始 artifact 目录 `benchmark-results/operators/gemm/<run-id>/` 被 `.gitignore` 忽略，只存在于各采集机本地。与机器无关、可由源码复核的部分（benchmark/测试/采集脚本、correctness 契约、候选入口与 fallback 边界）随代码评审，不进入本目录。
@@ -26,5 +26,6 @@
 | AVX2 bpanel | Candidate / correctness verified | KC512 layout、Linear/QKV/GateUp scan/blocked 与尾块测试已落地；global identity descriptor 保持默认 |
 | identity/scalar/AVX2 生产性能 | Accepted（本机限定） | [CPU-03 记录](benchmarks/54h5mmi-gemm.md#cpu-03-fp32-gemm-生产闭环与布局-promotion-决策)：registered/prepared、Generate、M sweep、fused/unfused 与 packing-inclusive 均已对照；参考实现独立保留 |
 | 性能与 KC 选择 | **B-panel 全局 promotion 拒绝；KC 选择仍 Needs More Data** | CPU-02/03 的本机实现对照单独记账；B-panel 与 identity 的全边界比较决定 promotion，KC256 未测，不宣称 KC512 最优 |
+| 下一轮 CPU 与 CUDA | Proposed | 先验证现有布局下的 W16/A32 Prefill panel 与各精度 Decode，随后扩展 A16 blocking。CUDA 从 FP32 O1/plain 基线开始。见 [实施顺序](cpu-gemm-optimization.md#71-cpu-0203-之后的实施顺序) |
 
-决策合同见 [backend 模块设计](../../modules/backend.md) 的 packed weight 与布局章节。本机诊断采样见 [54H5MMI GEMM 记录](benchmarks/54h5mmi-gemm.md)；其他机器数据不得由该记录代替。当前生产默认 resolve 身份（F32 Linear/QKV/GateUp packed 为 identity optimized，B-panel candidate 已注册 eligible，priority 保持低于 identity）见 [CPU 覆盖台账 §3.1/§4](../cpu-coverage-baseline.md#31-矩阵计算)。
+决策合同见 [backend 模块设计](../../modules/backend.md) 的 packed weight 与布局章节。F32 Linear/QKV/GateUp 的默认 packed descriptor 为 identity optimized，B-panel candidate 以较低 priority 注册。各组合见 [CPU 覆盖台账 §3.1/§4](../cpu-coverage-baseline.md#31-矩阵计算)。

@@ -225,3 +225,12 @@ Cold packing：`N=4096,K=4096` median 66.83 ms，packed size 64 MiB（amplificat
 - 固定栈：F32 plain/identity blocked 单函数 `-fstack-usage` 实测 131584 B；该成本与 caller frames 均不同于 tensor workspace/payload。没有新增线程或全局 autotuner。
 - raw：`benchmark-results/operators/gemm/20261117T084348Z_cab0c145_54h5mmi_cpu02-03/`；`qualified-identity.json`、`packing-instrumentation-cleanup.json`、各 phase 原始 JSON/log、model report/comparison、源码快照/二进制、stack-usage 与验证 XML 全部保留。命令见采集脚本与各 `commands.json`；本地 gitignored，无远端 retention。
 - 结论：**Accepted（CPU-03 identity/scalar/AVX2 生产闭环）**；**Rejected（B-panel 全局提升）**；fusion 自身收益与其他机器/ISA 仍按 Needs More Data/not-run 解释。不以 tiny fixture 代替 7B 产品质量、内存或性能验收。
+
+## K-contiguous scalar 复用单行模板
+
+- commit：`33de2046460a`（工作树 dirty）。`M=1` 和多行 driver 的单行尾块共用 `RunKContiguousRowBlock<1>`，保持 4 列分块、奇数 K 处理、升序 FP32 累加和覆盖写。
+- 构建与 correctness：`cmake --build build --target aethermind_benchmark aethermind_unit_tests -j 4`，Release 下 `--gtest_filter='*Gemm*:*Linear*:*MatMul*'` **539/539 通过**。同进程对照的 11 组输入逐元素比较，旧版与最终版输出相等。
+- 性能诊断：`collect.sh` 测量 19 组 direct hot case，旧/新两个独立进程各 5 次 repetitions，顺序 A₁/B₁/B₂/A₂。GCC 14.2 将直接调用共享 `RunRowBlock<1, true>` 的尝试生成了独立函数调用和不同的内循环，`1/1024/4093` 与 `1/128/64` 在该轮的延迟中位数分别增加约 46% 和 43%。最终仅在 K-contiguous 行块调度上保留内联，使编译器能看到 `first_row=0`。两组复测中位数分别为 1.113/1.040 ms 和 1.846/1.595 μs。其余组存在波动，例如 `1/4096/6144` 慢 17.2%，同一候选的两进程相差 25.9%。
+- 同进程复核：`interleaved.sh` 将同配置的两个 primitive 放在同一进程下交替执行，每组 10 对，数据与输出缓冲相同。最终版的 8 个单行 K-contiguous 用例，成对延迟差的中位数为 −6.1% 至 +2.3%。两种采集方式对部分形状仍有差异，生产性能门禁维持 Needs More Data。
+- Prepared Linear smoke：用 `CpuFeaturePolicy` 屏蔽 AVX2，经实际 prepare/bind/execute 解析到 `cpu::linear_f32_w32_scalar`。旧版与最终版的 `1/33/31` hot 均通过原 `1e-5` guard，`1/4096/4096` streaming 均触发该 guard。临时 harness 使用 direct scalar 已有 `1e-4` 容差后，两组各 3 次重复均通过。原 guard 失败记录保留，仓库 benchmark 的容差保持原值。
+- raw：`benchmark-results/operators/gemm/20261118T023144Z_33de2046460a_54h5mmi_kcontig-single-row-dedup/`，包含两轮 direct 采集、源码快照、反汇编、同进程对照、prepared smoke 与测试 XML。本地 gitignored。

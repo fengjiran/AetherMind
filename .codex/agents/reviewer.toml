@@ -7,7 +7,7 @@ Focus on correctness, concurrency, memory safety,
 performance, regressions, API compatibility and tests.
 """
 
-model = "gpt-6.1-sol"
+model = "gpt-6.2-sol"
 model_reasoning_effort = "ultra"
 
 # 使用 1M 上下文

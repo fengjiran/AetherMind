@@ -6,7 +6,7 @@ architecture changes, cross-module changes,
 and tasks that require an implementation strategy before coding.
 """
 
-model = "gpt-6-astra"
+model = "gpt-6.2-astra"
 model_reasoning_effort = "high"
 
 # 使用 1M 上下文

@@ -1,5 +1,7 @@
 #include "gemm_internal.h"
 
+#include "aethermind/base/macros.h"
+
 #include <algorithm>
 #include <array>
 
@@ -14,65 +16,6 @@ constexpr int64_t kScalarNContiguousKBlock = 128;
 // This is a conservative driver split for the first scalar candidate, not a
 // measured dispatch threshold.
 constexpr int64_t kScalarSmallMMax = 8;
-
-void RunM1KContiguous(const GemmArgs& args) noexcept {
-    const auto* const lhs_data = reinterpret_cast<const float*>(args.lhs);
-    const auto* const rhs_data = reinterpret_cast<const float*>(args.rhs);
-    auto* const output_data = reinterpret_cast<float*>(args.output);
-
-    int64_t col = 0;
-    for (; col + kScalarKContiguousOutputBlock <= args.n; col += kScalarKContiguousOutputBlock) {
-        const float* weight0 = rhs_data + col * args.rhs_n_stride;
-        const float* weight1 = weight0 + args.rhs_n_stride;
-        const float* weight2 = weight1 + args.rhs_n_stride;
-        const float* weight3 = weight2 + args.rhs_n_stride;
-        float sum0 = 0.0f;
-        float sum1 = 0.0f;
-        float sum2 = 0.0f;
-        float sum3 = 0.0f;
-
-        int64_t inner = 0;
-        for (; inner + 1 < args.k; inner += 2) {
-            const float lhs0 = lhs_data[inner];
-            const float lhs1 = lhs_data[inner + 1];
-            sum0 += lhs0 * weight0[0];
-            sum0 += lhs1 * weight0[1];
-            sum1 += lhs0 * weight1[0];
-            sum1 += lhs1 * weight1[1];
-            sum2 += lhs0 * weight2[0];
-            sum2 += lhs1 * weight2[1];
-            sum3 += lhs0 * weight3[0];
-            sum3 += lhs1 * weight3[1];
-            weight0 += 2;
-            weight1 += 2;
-            weight2 += 2;
-            weight3 += 2;
-        }
-
-        if (inner < args.k) {
-            const float lhs0 = lhs_data[inner];
-            sum0 += lhs0 * weight0[0];
-            sum1 += lhs0 * weight1[0];
-            sum2 += lhs0 * weight2[0];
-            sum3 += lhs0 * weight3[0];
-        }
-
-        output_data[col] = sum0;
-        output_data[col + 1] = sum1;
-        output_data[col + 2] = sum2;
-        output_data[col + 3] = sum3;
-    }
-
-    for (; col < args.n; ++col) {
-        const float* input = lhs_data;
-        const float* weight = rhs_data + col * args.rhs_n_stride;
-        float sum = 0.0f;
-        for (int64_t inner = 0; inner < args.k; ++inner) {
-            sum += *input++ * *weight++;
-        }
-        output_data[col] = sum;
-    }
-}
 
 template<int Rows>
 void RunNContiguousSmallRowBlock(const GemmArgs& args, int64_t first_row) noexcept {
@@ -199,7 +142,8 @@ void RunNContiguousRowBlock(const GemmArgs& args, int64_t first_row) noexcept {
 }
 
 template<int Rows>
-void RunKContiguousOutputBlock(const GemmArgs& args, int64_t first_row, int64_t first_col) noexcept {
+void RunKContiguousOutputBlock(const GemmArgs& args, int64_t first_row,
+                               int64_t first_col) noexcept {
     const auto* const lhs_data = reinterpret_cast<const float*>(args.lhs);
     const auto* const rhs_data = reinterpret_cast<const float*>(args.rhs);
     auto* const output_data = reinterpret_cast<float*>(args.output);
@@ -278,19 +222,26 @@ void RunKContiguousOutputTail(const GemmArgs& args, int64_t first_row,
     }
 }
 
+// Keep row zero visible when called from the M=1 dispatch. GCC generates a
+// different inner loop when it shares the out-of-line path for arbitrary rows.
+template<int Rows>
+AM_ALWAYS_INLINE void RunKContiguousRowBlock(const GemmArgs& args, int64_t first_row) noexcept {
+    int64_t col = 0;
+    for (; col + kScalarKContiguousOutputBlock <= args.n; col += kScalarKContiguousOutputBlock) {
+        RunKContiguousOutputBlock<Rows>(args, first_row, col);
+    }
+
+    if (col < args.n) {
+        RunKContiguousOutputTail<Rows>(args, first_row, col);
+    }
+}
+
 template<int Rows, bool RhsKContiguous>
 void RunRowBlock(const GemmArgs& args, int64_t first_row) noexcept {
-    if constexpr (!RhsKContiguous) {
-        RunNContiguousRowBlock<Rows>(args, first_row);
+    if constexpr (RhsKContiguous) {
+        RunKContiguousRowBlock<Rows>(args, first_row);
     } else {
-        int64_t col = 0;
-        for (; col + kScalarKContiguousOutputBlock <= args.n; col += kScalarKContiguousOutputBlock) {
-            RunKContiguousOutputBlock<Rows>(args, first_row, col);
-        }
-
-        if (col < args.n) {
-            RunKContiguousOutputTail<Rows>(args, first_row, col);
-        }
+        RunNContiguousRowBlock<Rows>(args, first_row);
     }
 }
 
@@ -338,7 +289,7 @@ Status RunGemmF32Scalar(const GemmArgs& args) noexcept {
 
     if (args.rhs_k_stride == 1) {
         if (args.m == 1) {
-            RunM1KContiguous(args);
+            RunKContiguousRowBlock<1>(args, 0);
         } else if (args.m <= kScalarSmallMMax) {
             RunSmallM<true>(args);
         } else {

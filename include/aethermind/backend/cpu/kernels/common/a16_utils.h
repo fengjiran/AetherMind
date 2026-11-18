@@ -10,6 +10,10 @@
 /// object is required at the storage address. Narrowing follows the frozen
 /// conversion contract (RNE, gradual underflow, signed zero, overflow to
 /// infinity) because it reuses the `Half`/`BFloat16` constructors.
+///
+/// Internal linkage keeps these helpers local to each translation unit.
+/// In non-inlined builds, weak symbol coalescing could otherwise route a
+/// baseline caller to a body compiled for an optional ISA.
 
 #include "aethermind/dtypes/bfloat16.h"
 #include "aethermind/dtypes/data_type.h"
@@ -22,19 +26,19 @@
 namespace aethermind::cpu::detail {
 
 /// @brief True for the scalar 16-bit activation dtypes executed by A16 kernels.
-inline bool IsA16DType(const DataType& dtype) noexcept {
+static inline bool IsA16DType(const DataType& dtype) noexcept {
     return dtype == DataType::Float(16) || dtype == DataType::BFloat(16);
 }
 
 /// @brief Byte width of one scalar element of `dtype`.
-inline size_t A16ElementBytes(const DataType& dtype) noexcept {
+static inline size_t A16ElementBytes(const DataType& dtype) noexcept {
     return static_cast<size_t>(dtype.nbytes());
 }
 
 /// @brief Widens one stored scalar to F32 without alignment assumptions.
 ///
 /// Precondition: `dtype` is Float32, Float(16), or BFloat(16).
-inline float LoadA16Element(const std::byte* data, const DataType& dtype) noexcept {
+static inline float LoadA16Element(const std::byte* data, const DataType& dtype) noexcept {
     if (dtype == DataType::Float32()) {
         float value = 0.0F;
         std::memcpy(&value, data, sizeof(value));
@@ -52,7 +56,7 @@ inline float LoadA16Element(const std::byte* data, const DataType& dtype) noexce
 /// @brief Narrows one F32 value into a stored scalar, or stores it as F32.
 ///
 /// Precondition: `dtype` is Float32, Float(16), or BFloat(16).
-inline void StoreA16Element(std::byte* data, float value, const DataType& dtype) noexcept {
+static inline void StoreA16Element(std::byte* data, float value, const DataType& dtype) noexcept {
     if (dtype == DataType::Float32()) {
         std::memcpy(data, &value, sizeof(value));
         return;

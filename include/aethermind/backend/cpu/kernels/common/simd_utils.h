@@ -10,6 +10,9 @@
 namespace aethermind {
 
 #if defined(__AVX2__)
+// NOLINTBEGIN(portability-simd-intrinsics)
+// This helper is intentionally AVX2-specific; per-ISA kernels are the
+// backend's design, so the portability check does not apply.
 AM_NODISCARD AM_ALWAYS_INLINE float HorizontalSumAvx2(__m256 v) noexcept {
     const __m128 vlow = _mm256_castps256_ps128(v);
     const __m128 vhigh = _mm256_extractf128_ps(v, 1);
@@ -18,6 +21,7 @@ AM_NODISCARD AM_ALWAYS_INLINE float HorizontalSumAvx2(__m256 v) noexcept {
     vsum = _mm_hadd_ps(vsum, vsum);
     return _mm_cvtss_f32(vsum);
 }
+// NOLINTEND(portability-simd-intrinsics)
 #endif
 
 } // namespace aethermind

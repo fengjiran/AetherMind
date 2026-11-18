@@ -23,6 +23,9 @@ constexpr std::size_t kTail16 = 16;
 
 #if defined(__AVX2__) && defined(__FMA__)
 
+// NOLINTBEGIN(portability-simd-intrinsics)
+// These entry points are intentionally AVX2/FMA-specific; per-ISA kernels are
+// the backend's design, so the portability check does not apply.
 float DotProductF32Avx2(const float* a, const float* b, std::size_t n) noexcept {
     __m256 sum0 = _mm256_setzero_ps();
     __m256 sum1 = _mm256_setzero_ps();
@@ -143,6 +146,7 @@ void DotProductF32MultiTargetAvx2(const float* lhs, const float* rhs, std::size_
         out[t] = DotProductF32Avx2(lhs, rhs + t * rhs_stride, n);
     }
 }
+// NOLINTEND(portability-simd-intrinsics)
 
 #endif
 

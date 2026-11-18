@@ -145,8 +145,9 @@ void RunBlockedGemmAvx2(const GemmArgs& args, int64_t m_full, int64_t n_full) no
         for (int64_t nb = 0; nb < n_full; nb += kBlockedNR) {
             PackBPanel(rhs_data, args.rhs_n_stride, kb, nb, kc_len, buf_b);
             for (int64_t row = 0; row < m_full; row += kBlockedMR) {
-                AccumulateF32Tile4x16Avx2(lhs_data + row * args.lhs_m_stride + kb, buf_b, kc_len,
-                                          args.output_m_stride, output_data + row * args.output_m_stride + nb,
+                AccumulateF32Tile4x16Avx2(lhs_data + row * args.lhs_m_stride + kb,
+                                          buf_b, kc_len, args.output_m_stride,
+                                          output_data + row * args.output_m_stride + nb,
                                           args.lhs_m_stride);
             }
         }

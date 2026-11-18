@@ -6,6 +6,8 @@
 
 ### Added
 
+- CPU W16/A32 Linear/LM head、QKV/GateUp 的 plain/identity AVX2/FMA widening、small-M 与 Prefill blocking；FP16 另需 F16C，BF16 不依赖 F16C。参考路径、冻结误差预算与 Decode 零分配保留；同机验收范围见 [CPU 算子路线图](docs/operators/cpu-operator-evolution.md)。
+
 - CPU Llama Dense 的 retained-W16 C++ policy 支持显式 F16/BF16 KV，W 与 KV 独立选择，activation/residual/logits 保持 F32。新增 `ModelLoadOptions::kv_dtype`、`CpuRuntimeAssemblyOptions::kv_dtype`、通用 `MakeKVCacheOptions` 和严格匹配的 `KernelSelector::state_dtype`；KVUpdate 在写入时 narrow、Attention 在读取时 widen，完整 plan 成功后发布 watermark。独立量化 oracle、四组合 O1/O2、2048 context、Decode 零分配和 prepared/ExecutionStep/model baseline 的范围见 [P3 验收](docs/archive/tests/kv16_execution_validation_2026-11-12.md)。C++ 消费者需重新构建，C ABI/产品 CLI 保持 strict FP32。
 - CPU Llama Dense 新增 W16/A32 C++ policy，保留 F16/BF16 矩阵，仅转换 Norm，activation/KV/logits 使用 F32。O1/plain 与 O2/identity-packed 覆盖 Embedding、Linear/LM head 和 QKV/GateUp fused consumer，Embedding 按有效 CPU 特性使用 F16C/AVX2 行级 widening。新增 `EmbeddingParams::output_dtype`、Norm-only scope 和 retained-view 账本接口，C++ 消费者须重编译。见 [W16 执行指南](docs/guides/w16-fp32-inference.md)。
 - BF16/FP32 checked byte-batch API、双向 scalar、可选 AVX2 整数实现与 prepared 函数表：固定 RNE、gradual underflow、signed zero，NaN 保留 sign/payload 并 quiet，浮点环境不变。Backend 默认返回 scalar，CPU 在 effective features 含 AVX 与 AVX2 时选择 AVX2，短尾部复用 scalar；`ExecutableModel::Load` 将独立 BF16 widening callback 接入权重准备，每个唯一 BF16 tensor 调用一次。新增 C++ virtual 查询与 options 字段要求消费者重新编译；C ABI v1 准入不变。
@@ -16,6 +18,8 @@
 - `docs/archive/decisions/` 决策记录目录与 `docs/archive/` 归档区建立。
 
 ### Changed
+
+- FP32 Linear/QKV/GateUp 生产入口接入 portable scalar/AVX2 GEMM，F32 Linear 在 binding 期冻结兼容 driver；reference 独立保留，B-panel 本轮未提升为全局默认。`RegistrationKey` 纳入 exact `PackingRecipe`，相同 selector/ISA 的不同布局可共存；C++ 消费者须重新编译，C ABI v1 不变。
 
 - `Half(float)` 的 FP32→FP16 转换从 FTZ 迁移为固定 RNE + gradual underflow，保留 signed zero，正确处理 subnormal 舍入进位与溢出；NaN 继续 quiet 并保留 sign 与可容纳的 payload。转换不依赖浮点环境、不设置异常标志；构造、二元算术、复合赋值及数学 helper 的窄化结果现在可产生 FP16 subnormal。`numeric_limits<Half>::round_style` 显式为 `round_to_nearest`，`is_iec559` 保持 false。
 - `Half` 转为 Float32 时，所有 NaN 统一 quiet，保留 sign 与 payload；转换使用整数位运算，即使输入为 signaling NaN 也不触发浮点异常。原始 binary16 存储与逐位取负合同保持不变；FP16 权重拓宽复用该转换，删除重复 quieting。

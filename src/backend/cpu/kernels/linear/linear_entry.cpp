@@ -829,10 +829,40 @@ Status LinearF32PackedBEntry(const KernelContext& ctx) noexcept {
 }
 #endif
 
+template<bool Packed, bool Native>
+Status BuildLinearF32OptimizedArgs(const KernelParamsBuildContext& context, void* params_buffer) noexcept {
+    LinearA32W32KernelArgs bound;
+    if constexpr (Packed) {
+        AM_RETURN_IF_ERROR(BuildLinearF32PackedIdentityArgs(context, &bound));
+    } else {
+        AM_RETURN_IF_ERROR(BuildLinearF32Args(context, &bound));
+    }
+    auto driver = &RunLinearF32Scalar;
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+    if constexpr (Native) {
+        if (bound.weight_col_stride == 1) {
+            driver = &RunLinearF32Avx2Fma;
+        }
+    }
+#endif
+    // No K-vector body exists here; prepared A/B evidence showed a material
+    // small-M regression. Freeze the compatible oracle rather than dispatching
+    // through the SIMD driver on every execution. Empty outputs also avoid all
+    // input pointer arithmetic, including the native driver's row setup.
+    if (bound.row_count == 0 || bound.out_features == 0 || bound.in_features == 0 ||
+        (bound.in_features < 8 && (bound.row_count <= 8 || bound.out_features < 16)) ||
+        bound.input_col_stride != 1 || bound.output_col_stride != 1 ||
+        (bound.weight_col_stride != 1 && bound.weight_row_stride != 1)) {
+        driver = &RunLinearF32Reference;
+    }
+    ::new (params_buffer) LinearA32W32PreparedArgs{bound, driver};
+    return Status::Ok();
+}
+
 Status LinearF32ScalarEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const LinearA32W32KernelArgs*>(ctx.kernel_params);
-    AM_DCHECK(args != nullptr);
-    return RunLinearF32Scalar(*args);
+    const auto* args = static_cast<const LinearA32W32PreparedArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr && args->driver != nullptr);
+    return args->driver(args->linear);
 }
 
 Status LinearF32W16ReferenceEntry(const KernelContext& ctx) noexcept {
@@ -874,6 +904,9 @@ Status LinearA16F16Avx512Fp16Entry(const KernelContext& ctx) noexcept {
 } // namespace
 
 static_assert(std::is_trivially_destructible_v<LinearA32W32KernelArgs>);
+static_assert(std::is_trivially_copyable_v<LinearA32W32PreparedArgs>);
+static_assert(sizeof(LinearA32W32PreparedArgs) <= kMaxKernelParamsSize);
+static_assert(alignof(LinearA32W32PreparedArgs) <= alignof(std::max_align_t));
 static_assert(alignof(LinearA32W32KernelArgs) <= alignof(std::max_align_t));
 static_assert(std::is_trivially_destructible_v<LinearA32W16KernelArgs>);
 static_assert(alignof(LinearA32W16KernelArgs) <= alignof(std::max_align_t));
@@ -893,8 +926,8 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &LinearF32ScalarEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA32W32KernelArgs),
-                .params_builder = &BuildLinearF32Args,
+                .params_size = sizeof(LinearA32W32PreparedArgs),
+                .params_builder = &BuildLinearF32OptimizedArgs<false, false>,
                 .name = "cpu::linear_f32_w32_scalar"})
 
 AM_REGISTER_KERNEL(
@@ -987,8 +1020,8 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &LinearF32ScalarEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA32W32KernelArgs),
-                .params_builder = &BuildLinearF32PackedIdentityArgs,
+                .params_size = sizeof(LinearA32W32PreparedArgs),
+                .params_builder = &BuildLinearF32OptimizedArgs<true, false>,
                 .name = "cpu::linear_f32_w32_packed_identity_scalar"})
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
@@ -1309,9 +1342,9 @@ namespace {
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status LinearF32Avx2FmaEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const LinearA32W32KernelArgs*>(ctx.kernel_params);
-    AM_DCHECK(args != nullptr);
-    return RunLinearF32Avx2Fma(*args);
+    const auto* args = static_cast<const LinearA32W32PreparedArgs*>(ctx.kernel_params);
+    AM_DCHECK(args != nullptr && args->driver != nullptr);
+    return args->driver(args->linear);
 }
 #endif
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
@@ -1347,7 +1380,7 @@ KernelDef LinearOptimizedDef(DataType weight_dtype, KernelFunc entry,
             .cpu_requirements = requirements,
             .kernel_func = entry,
             .priority = 20,
-            .params_size = Reduced ? sizeof(LinearA32W16KernelArgs) : sizeof(LinearA32W32KernelArgs),
+            .params_size = Reduced ? sizeof(LinearA32W16KernelArgs) : sizeof(LinearA32W32PreparedArgs),
             .params_builder = builder,
             .name = name,
     };
@@ -1359,12 +1392,12 @@ KernelDef LinearOptimizedDef(DataType weight_dtype, KernelFunc entry,
 AM_REGISTER_KERNEL(
         CpuLinearF32Avx2Optimized,
         (LinearOptimizedDef<false, false>(DataType::Float32(), &LinearF32Avx2FmaEntry,
-                                          &BuildLinearF32Args, CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
+                                          &BuildLinearF32OptimizedArgs<false, true>, CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
                                           "cpu::linear_f32_w32_avx2_fma")))
 AM_REGISTER_KERNEL(
         CpuLinearF32PackedIdentityAvx2Optimized,
         (LinearOptimizedDef<false, true>(DataType::Float32(), &LinearF32Avx2FmaEntry,
-                                         &BuildLinearF32PackedIdentityArgs, CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
+                                         &BuildLinearF32OptimizedArgs<true, true>, CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}),
                                          "cpu::linear_f32_w32_packed_identity_avx2_fma")))
 #endif
 

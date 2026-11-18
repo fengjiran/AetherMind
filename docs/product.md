@@ -76,13 +76,13 @@
 |------|--------------------|------|
 | C++ FP32 Llama Dense | CPU O1/plain、O2/packed；同步 Prefill/Decode/Generate | tiny HF / 生成 checkpoint 的限定验证；不代表大模型质量 |
 | C++ FP32 compatibility | 显式将 F16/BF16 权重拓宽为 FP32；CPU O1/plain | 不保留 16-bit 矩阵 |
-| C++ W16/A32 | 保留 F16 或 BF16 矩阵，仅转换 Norm；FP32 activation、累加、KV、logits；CPU O1/plain、O2/identity-packed | Linear 当前为 reference 路径 |
+| C++ W16/A32 | 保留 F16 或 BF16 矩阵，仅转换 Norm；FP32 activation、累加、KV、logits；CPU O1/plain、O2/identity-packed | Linear/LM head 与 QKV/GateUp 按有效 ISA 选择 SIMD/blocking；不适用时回退 reference，见 [Linear](operators/linear/README.md) |
 | C++ BF16 A16 | 显式选择 BF16 activation、矩阵、KV 与跨层 residual，Norm 权重及 logits 为 F32；CPU O1/plain、O2/identity-packed | 已有高层 Load/Generate 与限定 fixture 验收；A16 的 QKV/GateUp/AddRmsNorm fusion 关闭，范围见 [精度专题 §4.5](improvement-plan/11-fp16-bf16-execution-support.md#45-p416-bit-activation-与-native-compute首批设计已冻结) |
 | C++ FP16 A16 | 已有 kernel 实现；高层 Load 返回 `Unimplemented` | 模型路径等待 P4-B 的 FP32 residual 与边界 Cast；不能由 kernel 可调用推导模型支持 |
 | 独立 CLI / C ABI v1.0 | 已实现，继续采用 CPU strict FP32 source admission | 不开放 C++ reduced-weight policy |
 | 静态 KV 与资源预算 | KV 默认 F32，C++ retained-W16 可显式选择 F16/BF16；支持模型、packed、KV、workspace 与请求 payload 限额及资源查询 | 见 [资源预算指南](guides/resource-budgeting.md) |
 | INT8/INT4 仅权重量化 | 保留为当前产品交付需求；尚无端到端量化执行链 | loader 接受 dtype/metadata 不等于 quantized graph、packing、kernel 与生成已接通 |
-| FP16/BF16 KV | C++ CPU W16/A32 的四种 W×KV 组合、O1/plain 与 O2/identity-packed reference 已接通 | 限定 fixture 验收；不代表任意模型/平台质量或加速保证 |
+| FP16/BF16 KV | C++ CPU W16/A32 的四种 W×KV 组合、O1/plain 与 O2/identity-packed 已接通 | 限定 fixture 验收；不代表任意模型/平台质量或加速保证 |
 | 算子内并行 | 尚未建立 OpenMP/线程池生产执行与验收证据 | 需另行明确线程所有权、确定性、零分配与 TSAN 合同 |
 | 7B 量化模型与目标性能 | 目标见 §4.1，尚未完成代表性模型验收 | tiny fixture 或 microbenchmark 不能替代大模型质量、冷启动、RSS 与吞吐证据 |
 

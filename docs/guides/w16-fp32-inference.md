@@ -53,10 +53,10 @@ inference 冷路径取得 Backend 的两个 widening callback，调用 `ConvertR
 
 Embedding 使用显式 F32 output spec，字节范围和 alias 在准备期检查，token vocabulary bounds 在执行时检查，每个 token 读取一行原始 W16 bytes。默认 reference 可在全部 CPU feature 禁用时运行，effective AVX+F16C 或 AVX+AVX2 分别选择 F16/BF16 行级 SIMD widening，短尾部复用 scalar。
 
-W16 Linear/LM head reference 支持预验证的元素单位 row/column strides，原始 weight 通过 byte-safe 读取拓宽。累加按 K 升序执行 F32 product 与 F32 add，源文件禁用 FMA contraction。QKV/GateUp 的 identity-packed reference 复用相同 reduction。Norm、RoPE、Attention 和 KV 采用现有 F32 执行合同。
+W16 Linear/LM head reference 支持预验证的元素单位 row/column strides，原始 weight 通过 byte-safe 读取拓宽。累加按 K 升序执行 F32 product 与 F32 add，源文件禁用 FMA contraction。QKV/GateUp 的 identity-packed reference 复用相同 reduction；optimized 复用共享 GEMM driver，保留上述 reference 作为兼容 fallback/oracle。Norm、RoPE、Attention 和 KV 采用现有 F32 执行合同。
 
 模型回归以同一 reduced checkpoint 的 P1 FP32 compatibility 为对照，tiny fixture 使用 `abs_error <= 1e-5 + 1e-4 * abs(reference)`。top-1 margin 大于该步 logits 最大绝对误差的两倍时要求 argmax 一致。算子额外使用独立 double oracle 与 gamma 误差界。P1 的 double 累加 reference 与 W16 F32 累加分别按各自合同验证。
 
 O1/O2 的测试覆盖 Prefill、多次 Decode、Generate、MHA/GQA、tied/untied、Norm source dtype、EOS、容量、失败重试、owner lifetime 和 binding 完成后的 Decode malloc-family 零分配。当前实现与验证矩阵见 [P2 提案](../improvement-plan/11-fp16-bf16-execution-support.md)，单机性能记录见 [Linear](../operators/linear/benchmarks/desktop-54h5mmi-linear.md) 和 [Embedding](../operators/embedding/benchmarks/desktop-54h5mmi-embedding.md)。
 
-Linear 当前交付 reference 路径，吞吐与准备/资源指标按记录中的具体 workload 解释。C ABI v1 与独立 inference CLI 使用其既有 strict FP32 准入。
+Linear/LM head、QKV/GateUp 已接入 AVX2/FMA W16 driver：FP16 还需要 F16C，BF16 不需要 F16C；合法 stride/特殊值等不适合快路径的情况保留 reference。optimized 的 FMA/归约重排独立验收，吞吐与准备/资源指标按记录中的具体 workload 解释。C ABI v1 与独立 inference CLI 使用其既有 strict FP32 准入。

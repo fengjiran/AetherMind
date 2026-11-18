@@ -184,3 +184,44 @@ Cold packing：`N=4096,K=4096` median 66.83 ms，packed size 64 MiB（amplificat
 - 诊断边界：反汇编包含 compiler-generated SSE，未建设 strict non-SIMD 变体；malloc interposer 与符号检查均未发现新 heap 调用。WSL2 的 `perf` 缺少匹配 kernel 工具，未获得 PMU/TLB/DRAM 计数。补充交错 harness 初次同时加载两份完整引擎库时发生 SIGSEGV，该实验失败、无 kernel 结论；之后改为仅 primitive 共享对象、共用单份引擎依赖，成功完成交错测量。未采集新 scalar 的 streaming、跨机器或端到端 token 数据。
 - raw：`benchmark-results/operators/gemm/20261117T052606Z_cab0c145c845_54h5mmi_scalar-n-contiguous/`（source snapshots、初始/最终 patch、完整 sweep、最终 `final-*.json` / `final-paired-summary.txt`、183 项测试 XML、prepared smoke、反汇编、交错 harness、context 与 SHA-256；本地 gitignored 留存，无远端 retention）。
 - 结论：**Accepted（限定实现与正确性修复）；Needs More Data（生产性能门禁）**。大 N/small-M 的完整 K 跨步扫描已改为 panel 内连续 N 遍历，本机诊断显示明显改善；NC/KC 与 tiny 阈值不是跨平台最优值。生产 descriptor、priority、packing bytes 与资源合同不变；不得把这些 microkernel 数据转为端到端收益或 production promotion 依据。
+
+
+## CPU-03 FP32 GEMM 生产闭环与布局 promotion 决策
+
+- 身份：baseline 保存于 `cab0c145` + 当时 GemmArgs 工作树；candidate 为 `e502fe11` + F32 cold-driver 修正。全量源码补丁、逐文件/二进制 SHA-256 见 raw `qualified-identity.json`、`baseline/identity.json`、`candidate/source.patch`。测量时 HEAD 已是 e502fe11，官方 baseline collector 以该 HEAD + 恢复旧源码的差异表达同一旧树，不能仅看 commit 判断实现相同。
+- 机器/配置：本文件头的 Core Ultra 9 285H / GCC 14.2 / WSL2；Release，单线程，affinity=`{2}`（不推导物理核类别），default effective ISA；无 AVX-512。A/B 各用匹配其头文件的测量程序与独立保存的库，`LD_LIBRARY_PATH='$ORIGIN'`；4 对独立进程交错 A/B（AB/BA/AB/BA），Google Benchmark 每进程 3 repetitions（模型报告另按下文 5 repetitions），保存全部原始值。表中为进程内 median 再取 4 进程 median，单位 ms；`hot` 为复用一份权重，不代表超过 LLC 的工作集驻留 L3，streaming 工作集 256 MiB。
+- 正确性/平台：最终 Release 聚焦集 **935/935**（含 C ABI 与 glibc malloc 注入）；原长上下文 ASan/UBSan 集 **795 pass / 33 skip / 0 fail**，覆盖 W16/KV16/BF16 A16 的冻结 2048 门禁；F32 cold 参数修正后的适用回归 **562 pass / 16 skip / 0 fail**。LSan 未启用。额外 ASan C ABI 扩围曾有 13 项 `MallocInterposerAvailable()==false` 前置失败，原始失败保留，不计作通过；这 13 项由 Release 实际验证，适用 sanitizer 集明确排除它们。
+- ISA 变体：AVX2/F16C 均编译禁用，191 项中 187 pass、4 个 native 专用项 skip；AVX2 开启/F16C 禁用，189 pass、2 个 F16 native 专用项 skip。该证据是在本机执行编译 fallback，不冒充物理无 AVX 主机验收。
+
+| 精度 / layout | Decode M=1 baseline → candidate | 倍数 | Prefill M=16 baseline → candidate | 倍数 |
+|---|---:|---:|---:|---:|
+| F32 / plain | 10.135 → 2.408 | 4.21× | 164.483 → 8.675 | 18.96× |
+| F32 / identity | 10.600 → 2.168 | 4.89× | 167.358 → 7.691 | 21.76× |
+
+模型测量使用 CPU-01 冻结的 tiny MHA untied 几何（hidden 16 / intermediate 64 / vocab 32000 / 2 层 / context 2048）及同源 retained-W16 checkpoint：F32 为 `.models/inference-numerical/mha-untied/model`，F16/BF16 为 `.models/kv16-acceptance/mha-near-limit-wf16|wbf16`。prompt 为 128 个固定 IDs、max_new_tokens=4、KV=F32、warmup=1、repetitions=5；每策略/preset 有 4 对进程，48 份官方报告与 24 份同 workload 比较全部校验通过，token 轨迹一致。内部 Execute 与公开 Generate 边界分开；本表不属于跨精度 A/B、不验收冷文件缓存启动，也不代表 7B/真实大模型质量或吞吐。主要收益来自原默认 scalar/reference 被共享优化 engine 替代，不能归因为“16-bit 必然更快”。
+
+| 策略 / preset | 内部 Prefill baseline → candidate | 内部 3 Decode 合计 baseline → candidate | 公开 Generate baseline → candidate | Generate 倍数 |
+|---|---:|---:|---:|---:|
+| f32-o1-plain | 32.628 → 11.714 | 0.947 → 0.676 | 35.875 → 14.998 | 2.39× |
+| f32-o2-packed | 51.865 → 9.616 | 1.332 → 0.510 | 56.527 → 11.659 | 4.85× |
+
+- cold dispatch：初始纯 SIMD descriptor 在 M=1/K<8 的 F32 小形状出现显著回退，原始探索保留。最终 binding 冻结 `LinearA32W32KernelArgs + driver`，小形状/不适用布局使用原独立 Linear reference，执行期只调用该已冻结函数。最终 4 对进程的 M1/K1/N3、M1/K7/N5、M8/K7/N19 回退大多处于进程噪声范围；不对纳秒级边界强设全平台百分比阈值。M1/K33/N31 仍稳定改善。
+- 注册合同：`RegistrationKey` 加入 exact `{layout, alignment}`，同一 selector/ISA 的 identity 与 B-panel 可共存；相同 exact recipe 仅更换 name/priority 仍判重复。没有改变注册锁/冻结同步策略。F32 scalar 与 reference 函数独立；reference 保留作 oracle/兼容 fallback，不用修改 oracle 来制造优化收益。
+
+| B-panel / identity 对照，K=N=4096 | identity | B-panel | B-panel / identity |
+|---|---:|---:|---:|
+| compute-only hot Decode | 2.140 ms | 3.616 ms | 1.690× |
+| compute-only hot Prefill M16 | 7.929 ms | 6.778 ms | 0.855× |
+| compute-only streaming Decode | 2.306 ms | 3.717 ms | 1.612× |
+| cold packing（分配/释放包含） | 14.416 ms | 47.479 ms | 3.294× |
+| pack+bind+1 Decode+release | 16.153 ms | 39.073 ms | 2.419× |
+| pack+bind+16 Decode+release | 47.319 ms | 91.113 ms | 1.926× |
+| pack+bind+1 Prefill+release | 21.688 ms | 41.172 ms | 1.898× |
+| pack+bind+16 Prefill+release | 146.462 ms | 144.578 ms | 0.987× |
+
+- 上表每边 4 个独立进程、每进程 3 repetitions，均包含独立数值 guard。compute-only 的 M16/M64 Prefill 有局部改善，但 Decode 稳定慢 61%–69%；packing-inclusive 在 1 次调用下明显不利，16 次 Prefill 也只落在噪声区间。冷 packing 的两个 source generator 虽不同，均做等字节纯拷贝/重排；最严格的 inclusive 对照在同一 helper、相同数据上完成。
+- **Rejected（全局 B-panel promotion）**：identity optimized priority 20，B-panel candidate 10。resolve 尚无 concrete shape，而当前模型共用 Prefill/Decode recipe；不为局部 Prefill 收益默认复制全模型双布局。B-panel 的 existing numerical/composite-slice 覆盖保持，KC256 与 B-panel 整模型质量/性能未因本表自动验收。
+- instrumentation 纠正：首次 cold packing 发现两个匿名函数注册同名 Identity benchmark，聚合器拒绝该批（status=rejected-instrumentation），8 份原始进程输出保留。删除重复入口，复用既有 canonical identity packing benchmark后重采；未把歧义数据混入上表。此前 B-panel compute 的旧测量 binary 仍独立保留。
+- 固定栈：F32 plain/identity blocked 单函数 `-fstack-usage` 实测 131584 B；该成本与 caller frames 均不同于 tensor workspace/payload。没有新增线程或全局 autotuner。
+- raw：`benchmark-results/operators/gemm/20261117T084348Z_cab0c145_54h5mmi_cpu02-03/`；`qualified-identity.json`、`packing-instrumentation-cleanup.json`、各 phase 原始 JSON/log、model report/comparison、源码快照/二进制、stack-usage 与验证 XML 全部保留。命令见采集脚本与各 `commands.json`；本地 gitignored，无远端 retention。
+- 结论：**Accepted（CPU-03 identity/scalar/AVX2 生产闭环）**；**Rejected（B-panel 全局提升）**；fusion 自身收益与其他机器/ISA 仍按 Needs More Data/not-run 解释。不以 tiny fixture 代替 7B 产品质量、内存或性能验收。

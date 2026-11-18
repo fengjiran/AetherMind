@@ -54,7 +54,7 @@ backend 是**设备族执行能力与 kernel 目录层**：它登记 kernel desc
 | `ResolvedKernel` | `op_type`、`fn`、`attrs`、`name`、`params_builder`、`params_size`、`workspace_requirement`、`expected_packing_recipe` | 值类型；**拥有** `attrs` 字节；**借用** `name`；由 `ExecutionStep` 持有并重复调用 |
 | `KernelContext` | `device_type`、`stream`、`workspace`、`workspace_binding`、`packed_weights`、`kernel_params`、`kv_append`、`kv_read`、`attrs` | 单次调用的窄句柄；workspace、params、packed weight、KV binding 均为借用；KV binding 只在本次同步调用内有效，禁止缓存 |
 | `KernelRegistry` | `kernels_`、`buckets_`（`OpType` → 下标）、`registration_keys_`、`frozen_`、`mutex_` | 全局 function-local static singleton；`Register`/`Freeze` 加锁；`frozen_` 为 release/acquire 同步点；冻结后 `FindCandidates` 无锁读 |
-| `RegistrationKey` | `op_type + selector + cpu_requirements` | 重复注册判定包含特征集；scalar 与 AVX2 变体可同 selector 共存 |
+| `RegistrationKey` | `op_type + selector + cpu_requirements + exact packing_recipe` | 重复注册判定包含特征集与 exact recipe；scalar 与 AVX2 变体可同 selector 共存 |
 | `BackendFactory` / `BackendRegistry` | factory 按 `DeviceType` 注册；`backends_` 懒创建并缓存 | registry move-only、无内部锁；`SetFactory` 驱逐同 device 缓存实例 |
 
 关键不变量：
@@ -342,3 +342,5 @@ LayerRunner 逐 step
 ```
 
 并发相关改动至少运行 TSAN 构建下的 `KernelRegistry.ConcurrentFreezeIsIdempotent`。新增 kernel、布局或打包路径时，按 [算子开发工作流](../guides/operator-development-workflow.md) 补齐 reference/optimized 证据；测试命名与断言规范见 [测试编写指南](../guides/test_writing_guidelines.md)。
+
+CPU-02/03 的矩阵 driver 与本机退出证据见 [Linear 方案](../operators/linear/linear-optimization.md) 和 [GEMM 生产闭环](../operators/gemm/benchmarks/54h5mmi-gemm.md#cpu-03-fp32-gemm-生产闭环与布局-promotion-决策)。F32 Linear 的 shape/stride fallback 在 binding 冷路径冻结，W16 内核的幅值安全域与数据相关完整重算保留在同一已选 kernel 内；不因 fallback 再查 registry。注册键新增 exact recipe 改变 C++ 类型/ABI，相关消费者须重新编译；C ABI v1 不变。

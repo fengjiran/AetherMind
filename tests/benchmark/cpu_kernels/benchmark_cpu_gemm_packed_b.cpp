@@ -402,7 +402,7 @@ void BM_LinearPackedBpanelStreaming(benchmark::State& state) {
     BenchmarkPackedLinear(state, CacheMode::kStreaming);
 }
 
-void BenchmarkWeightPacking(benchmark::State& state, bool bpanel) {
+void BM_WeightPackingCpuBpanel(benchmark::State& state) {
     const int64_t n = state.range(0);
     const int64_t k = state.range(1);
     const size_t elements = static_cast<size_t>(n * k);
@@ -421,14 +421,14 @@ void BenchmarkWeightPacking(benchmark::State& state, bool bpanel) {
             .weight_format = WeightFormat::kPacked,
             .phase = ExecPhase::kBoth,
     };
-    const PackingRecipe recipe = bpanel ? cpu::CpuBPanelF32Kc512Nr16Recipe() : CpuIdentityPackingRecipe();
+    const PackingRecipe recipe = cpu::CpuBPanelF32Kc512Nr16Recipe();
     CPUAllocator allocator(Device::CPU());
     auto checked = cpu::internal::PackWeightsWithRecipe(OpType::kLinear, components, selector, recipe, allocator);
     if (!checked.ok()) {
         state.SkipWithError(checked.status().ToString());
         return;
     }
-    if ((*checked)->storage().nbytes() != (bpanel ? *cpu::CpuBPanelF32Kc512Nr16PackedByteSize(n, k) : logical_bytes)) {
+    if ((*checked)->storage().nbytes() != *cpu::CpuBPanelF32Kc512Nr16PackedByteSize(n, k)) {
         state.SkipWithError("packed size amplification correctness guard failed");
         return;
     }
@@ -455,8 +455,6 @@ void BenchmarkWeightPacking(benchmark::State& state, bool bpanel) {
             benchmark::Counter::kIsRate, benchmark::Counter::OneK::kIs1000);
 }
 
-void BM_WeightPackingCpuBpanel(benchmark::State& state) { BenchmarkWeightPacking(state, true); }
-void BM_WeightPackingCpuIdentity(benchmark::State& state) { BenchmarkWeightPacking(state, false); }
 
 void BenchmarkPackingInclusive(benchmark::State& state, bool bpanel) {
     const int64_t m = state.range(0), k = state.range(1), n = state.range(2), calls = state.range(3);
@@ -564,11 +562,6 @@ BENCHMARK(BM_WeightPackingCpuBpanel)
         ->Args({11008, 4096})
         ->ArgNames({"N", "K"});
 
-BENCHMARK(BM_WeightPackingCpuIdentity)
-        ->Args({4096, 4096})
-        ->Args({4096, 768})
-        ->Args({11008, 4096})
-        ->ArgNames({"N", "K"});
 
 BENCHMARK(BM_LinearBpanelPackingInclusive)
         ->Args({1, 4096, 4096, 1})

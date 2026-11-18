@@ -36,7 +36,7 @@
 | binding 期消费 | `KernelParamsBuildContext::packed_weight`（opaque `PackedWeightView`：data/nbytes/logical dtype+shape/枚举 recipe_layout/alignment）；**无 tile 字段** | `include/aethermind/backend/kernel_types.h` |
 | packed 校验闸口 | `ValidateIdentityPackedWeight` 与 `ValidateBPanelF32PackedWeight` 分别是 identity / bpanel 两个 layout 的消费侧闸口 | `include/aethermind/backend/cpu/packed_weight_validation.h`、`src/backend/cpu/packed_weight_validation.cpp` |
 | execute 期消费 | `KernelContext::packed_weights` 指针 | `include/aethermind/backend/kernel_context.h` |
-| packed 消费者样板 | Linear/QkvLinear/GateUpLinear 各有 identity 与 `cpu_bpanel_f32_kc512_nr16` 两个 packed 变体（bpanel 需 AVX2+FMA，与 identity 同 priority，当前选举落 identity）；Qkv/GateUp 的 identity 路径按 q/k/v out_features 行偏移切分 | `src/backend/cpu/kernels/{linear,qkv_linear,gate_up_linear}/*entry.cpp` |
+| packed 消费者样板 | Linear/QkvLinear/GateUpLinear 各有 identity 与 `cpu_bpanel_f32_kc512_nr16` 两个 packed 变体（bpanel 需 AVX2+FMA，priority 10 低于 identity optimized 的 20，当前选举落 identity）；Qkv/GateUp 的 identity 路径按 q/k/v out_features 行偏移切分 | `src/backend/cpu/kernels/{linear,qkv_linear,gate_up_linear}/*entry.cpp` |
 | 打包循环原型 | `PackBPanel`（plain blocked 路径仍在运行时执行，kc_len clamp 传入；packed-B driver 直接消费 artifact，不再运行时打包 B） | `src/backend/cpu/kernels/gemm/gemm_f32_avx2.cpp` |
 
 四个缺口（§3 设计已全部落地）：
@@ -179,7 +179,7 @@ Load HF → BuildLlamaDense → Lower            Execute (zero alloc):
 
 2. **独立 `PackedGemmF32Args` vs 扩展 `GemmArgs`** → 独立结构。plain 合同是 byte 指针 + 元素步长，具体 entry 确定精度；packed 需要 exact 布局与切片描述。`PackedGemmF32Args` 保留 F32 布局身份，`packed_b` 借用 byte storage，由 F32 driver 解释，不把 packed bytes 当作 plain RHS。
 
-3. **params arena 硬约束**：`KernelParamsBuilder` 产物必须 trivially destructible 且 `params_size <= kMaxKernelParamsSize = 512`（`kernel_types.h`）。`PackingRecipe` 含 `std::string`，不能整体入 params——`PackedGemmF32Args` 只存 POD 切片（指针 + int64 切片尺寸）；layout 常量在每个 driver TU 内编译期绑定（§3.1 已立约 layout 名唯一确定 nr/kc，不引入 op/selector→layout 的二级查表，避免再添一层可漂移映射）。
+3. **params arena 硬约束**：`KernelParamsBuilder` 产物必须 trivially destructible 且 `params_size <= kMaxKernelParamsSize = 512`（`kernel_types.h`）。`PackingRecipe` 为 `{layout, alignment}` 纯数据；params 不重复保存已由 descriptor/plan 冻结的 recipe 身份，`PackedGemmF32Args` 只存 POD 切片（指针 + int64 切片尺寸）；layout 常量在每个 driver TU 内编译期绑定（§3.1 已立约 layout 名唯一确定 nr/kc，不引入 op/selector→layout 的二级查表，避免再添一层可漂移映射）。
 
 4. **artifact 生命周期维持内存态**：`PackedWeightCollection` 不持久化；磁盘缓存/序列化不属本方案。
 
@@ -201,7 +201,7 @@ Load HF → BuildLlamaDense → Lower            Execute (zero alloc):
 | M2 打包器 | KC512/NR16 B-panel 打包实现（identity 链路保持不动）；pad/对齐/放大公式单测（K 侧数值表入 params）；unpack 后与逻辑权重逐元素一致、pad 区为 0；打包吞吐与放大实测（kc=256 vs 512，作为 M3 决策输入） | 工作流 O0/O1 证据 |
 | M3 packed primitive | 三个 driver；与 `RunGemmF32Reference` 对照覆盖母提案 §6.2 boundary shapes（含 M/N/K=0、非整除、pad 尾、masked/partial store 路径）；**测"移除 pack 的净收益"**并记录 B 流量模型（去掉 PackBPanel 不改变 B 总流量：无 NC 层级时每 `mb` 仍重扫 K 面板全部 n_blocks，只是省掉 transpose-gather 与 32KB 写） | O1 correctness + O2 prepared micro/operator benchmark |
 | M4 传递链 | `KernelDef::packing_recipe` + backend recipe 查询入口 + 编排层注入 `Request::recipe` + `Pack(..., recipe)` 三处联动；mismatch（layout/alignment/nbytes）明确失败（注入点与三处联动均已落地，见 §3.5） | 母提案 §7「exact recipe 与 packed B」退出条件 |
-| M5 消费者 | **前置已满足：Linear/RmsNorm/Embedding 的 packed descriptor 已补齐**（per-op packed 使能仍未做，图级开关仍在）；component nr 对齐立约（§4 第 5 条方案 i）+ adapter 校验重写；Qkv/GateUp 切 bpanel 待 benchmark 决议（当前 bpanel 与 identity 同 priority，选举仍落 identity） | fused 数值全链路 + packing break-even + hot/streaming 双模式 |
+| M5 消费者 | **前置已满足：Linear/RmsNorm/Embedding 的 packed descriptor 已补齐**（per-op packed 使能仍未做，图级开关仍在）；component nr 对齐立约（§4 第 5 条方案 i）+ adapter 校验重写；Qkv/GateUp 切 bpanel 待 benchmark 决议（当前 B-panel priority 10 低于 identity optimized 20，选举仍落 identity） | fused 数值全链路 + packing break-even + hot/streaming 双模式 |
 
 依赖关系与母提案依赖图一致：M1-M3 可与「Decode direct-weight AVX2」并行；M4/M5 的前置（recipe 注入点、Linear/RmsNorm/Embedding 的 packed descriptor）均已落地，剩余为证据类退出项（packing break-even、fused 数值全链路、hot/streaming 双模式）。
 

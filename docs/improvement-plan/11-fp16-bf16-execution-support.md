@@ -323,7 +323,7 @@ P1 的限定实现与验收已完成。P0 中 graph options 和 widening 数值�
 
 ### 4.3 P2：16-bit 权重、FP32 activation
 
-首批步骤 1–9 已完成 CPU/O1/plain 与 O2/identity-packed、W16/A32、KV32。步骤 8 已记录 reference baseline，并接入经 feature policy 选择的 Embedding F16C/AVX2 行级 widening。Linear reference 的后续优化、Decode GEMV/Prefill 分块和新 W16 B-panel 依据各自 profiling 证据推进。
+首批步骤 1–9 已完成 CPU/O1/plain 与 O2/identity-packed、W16/A32、KV32。步骤 8 已记录 reference baseline，并接入经 feature policy 选择的 Embedding F16C/AVX2 行级 widening。CPU-02 已接入 W16/A32 SIMD/Decode/small-M/Prefill blocking 与 plain/identity 生产路径，见 [Linear 方案](../operators/linear/linear-optimization.md) 及其机器证据；reference 独立保留，新 W16 B-panel 仍须后续 profiling。
 
 1. **冻结支持矩阵与数值合同。** 落实 §2.1 的 hint 白名单、不一致策略与按角色区分的 actual dtype 准入，明确 P2 F32 累加、reference 的 FMA contraction 策略、误差预算及 near-tie 规则。同步维护本提案版本与变更记录。
 2. **扩展 inference 准入。** 在 [model_execution_policy.h](../../include/aethermind/inference/model_execution_policy.h) 增加 F16/BF16 两个 W16 策略，矩阵严格匹配所选类型，Norm 源接受 F32/F16/BF16。验证 unknown policy、target、preset、known-hint mismatch 和 actual-dtype mismatch 的各分支。
@@ -486,6 +486,8 @@ residual Add 零新增：BF16 语义白名单与 CPU reference 已存在（[add_
 - 相同平台与相同 preset 的确定性，以及现有 Decode 稳态零分配合同必须有运行证据；不将其扩大为所有 Generate 初始化路径零分配。
 
 ### 6.4 性能、资源与发布状态
+
+CPU-02/03 的后续状态：W16/A32 矩阵已不再统一落在 scalar reference，FP32 亦已接入生产 optimized driver。§4.5 步骤 6 的旧 A16/W16 baseline 保留原源码/机器范围，不应将其比值或归因套用于当前 W16 路径；当前同合同 A/B 见 [CPU 算子路线图](../operators/cpu-operator-evolution.md)。
 
 - 分别记录转换/packing/准备耗时、峰值与稳态 RSS、持久权重/packed/KV/activation/workspace 字节、Prefill TTFT 和 Decode tok/s。
 - 覆盖 Prefill/Decode、hot/streaming、代表性维度与 context depth；同机同配置比较。默认 priority 提升需要 registered/prepared、production ExecutionStep 与端到端证据，microbenchmark 只作诊断。

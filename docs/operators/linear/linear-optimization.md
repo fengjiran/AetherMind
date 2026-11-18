@@ -1,6 +1,6 @@
 # CPU Linear 的 W16/A32 优化方案
 
-本方案落实 CPU-02；现有 FP32 GEMM 生产接入归 CPU-03，流程沿用 [算子工作流](../../guides/operator-development-workflow.md)。状态：实施中，退出证据记入对应机器的 Linear/GEMM 记录。
+本方案落实 CPU-02；现有 FP32 GEMM 生产接入归 CPU-03，流程沿用 [算子工作流](../../guides/operator-development-workflow.md)。状态：已实现（Core Ultra 9 285H / GCC 14.2 / WSL2 的限定验收）；退出证据见 [Linear 机器记录](benchmarks/desktop-54h5mmi-linear.md#cpu-02-w16a32-生产优化与-cpu-03-关联闭环) 与 [GEMM 机器记录](../gemm/benchmarks/54h5mmi-gemm.md#cpu-03-fp32-gemm-生产闭环与布局-promotion-决策)。
 
 ## 合同与职责
 
@@ -23,3 +23,7 @@
 - 既有 W16/KV16 模型轨迹、O1/O2 fusion、Generate、错误恢复、owner lifetime 与 Decode malloc-family 门禁继续适用；ASan/UBSan 与真实无特定 ISA 配置分别记账。
 - registered/prepared、ExecutionPlan 与 Generate 分开测量；hot/streaming、准备/packing-inclusive 与稳态执行分开报告。保存优化前二进制和源码补丁，同机独立进程交错 A/B，按 CPU-01 的本机噪声判断收益。
 - 不引入 W16 B-panel。FP32 B-panel 由 CPU-03 对 identity optimized 单独比较；缺少稳定跨形状收益与 packing 摊销证据时保持 candidate。
+
+## CPU-02 退出结果
+
+F16/BF16 plain/identity、Decode/small-M/Prefill blocking、QKV/GateUp engine 复用、边界与 fallback、模型 Generate/零分配、适用 sanitizer 与 ISA 编译变体均已取得对应证据。本机主 workload 的 prepared 与公开 Generate 同合同 A/B 稳定受益；fusion 自身性能仍 Needs More Data。其他机器、native ISA 与产品 7B/4k 门禁独立验收，不因本工作包关闭而扩大支持承诺。

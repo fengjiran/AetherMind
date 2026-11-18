@@ -31,6 +31,13 @@ struct LinearA32W32KernelArgs {
     int64_t output_col_stride{1};
 };
 
+/// @brief Binding-specialized F32 Linear invocation. The code pointer borrows the
+///        same backend/library lifetime as the descriptor that prepared it.
+struct LinearA32W32PreparedArgs {
+    LinearA32W32KernelArgs linear{};
+    Status (*driver)(const LinearA32W32KernelArgs&) noexcept = nullptr;
+};
+
 /// @brief Runs the scalar FP32 Linear reference kernel.
 ///
 /// `args` must have been produced by the binding-time params builder. A zero

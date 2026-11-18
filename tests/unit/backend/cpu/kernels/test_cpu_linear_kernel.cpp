@@ -223,7 +223,7 @@ TEST(CPUKernelLinear, CpuBackendPreparesConfiguredPlainF32Kernel) {
     EXPECT_EQ(std::string_view{kernel->name}, test::ExpectedA32ProjectionKernelName(OpType::kLinear, DataType::Float32()));
     EXPECT_NE(kernel->fn, nullptr);
     EXPECT_NE(kernel->params_builder, nullptr);
-    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::LinearA32W32KernelArgs));
+    EXPECT_EQ(kernel->params_size, sizeof(cpu::detail::LinearA32W32PreparedArgs));
 }
 
 TEST(CPUKernelLinear, RejectsSelectorsWithoutPlainF32ReferenceSupport) {

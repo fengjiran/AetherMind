@@ -43,28 +43,26 @@ AetherMind 不应新增 semantic `Gemm` operator。当前 GEMM 是 CPU backend �
 | 能力 | 当前实现 | 对优化的影响 |
 |---|---|---|
 | GEMM primitive | `RunGemmF32Reference`，三重循环，double accumulator，支持二维 stride | correctness baseline，不是性能基线 |
-| scalar optimized | `RunGemmF32Scalar` 覆盖 `M=1`、small-M（`M<=8`）与 generic-M；K-contiguous 保留 4 列寄存器块，N-contiguous 使用独立 NC/KC 分块并在 K panel 内遍历相邻 N 块，均保留 K 展开 2。前提仍是 lhs K 与 output N 单位 stride 且 RHS K 或 N 连续，`k==0` 与其他布局委托 reference。由 direct benchmark 与 AVX2 primitive fallback 消费，未接入 plain Linear/MatMul descriptor | N-contiguous 局部修复与目标机诊断见机器记录；生产性能仍 Needs More Data；`kScalarSmallMMax=8` 是保守划分而非实测阈值；不能取代 double-accumulation reference oracle |
+| scalar optimized | `RunGemmF32Scalar` 覆盖 `M=1`、small-M（`M<=8`）与 generic-M；K-contiguous 保留 4 列寄存器块，N-contiguous 使用独立 NC/KC 分块并在 K panel 内遍历相邻 N 块，均保留 K 展开 2。前提仍是 lhs K 与 output N 单位 stride 且 RHS K 或 N 连续，`k==0` 与其他布局委托 reference。CPU-03 已接入 plain/identity Linear 与 QKV/GateUp 生产入口，并继续供 AVX2 fallback 消费；MatMul 仍为 reference | N-contiguous 专项仍按其独立机器记录解释；本批主要验收实际 row-major 权重的 K-contiguous 路径；`kScalarSmallMMax=8` 是保守划分而非实测阈值；不能取代 double-accumulation reference oracle |
 | MatMul | FP32 reference；支持 batch broadcast、`transpose_rhs` 和任意已验证 stride | 通用性高，首轮优化不应受其最宽 layout 合同约束 |
-| Linear | plain selector 仍走 double reference；packed identity descriptor 是当前默认 packed 路径；另有 AVX2 bpanel candidate 和 packed scan/blocked driver，绑定期固化 args | candidate 与 identity priority 相同且后注册，当前 global resolve 保持 identity；candidate 只由隔离 registry 测试/benchmark 驱动 |
-| QkvLinear / GateUpLinear | identity-packed reference 保持默认；AVX2 bpanel candidate 对每个输出 slice 使用完整 artifact 的 logical N offset，非 NR 对齐边界走兼容 scan/reference | QKV/GateUp bpanel 的未对齐 component 边界和输出 guard 有 focused tests；全局 priority 未提升 |
-| Embedding / RmsNorm | graph-wide packed lowering 所需的 FP32 identity descriptor 与 opaque-artifact binding builder 已提供 | full tiny-Llama packed executable preparation 可解析所有带 weight 的步骤；这只证明 preparation，不证明 Prefill/Decode 端到端执行 |
+| Linear | plain/identity 按 ISA 选择 scalar/AVX2；binding 冻结具体 Linear driver，小形状与不适合 optimized 的布局保留原 reference；另有 B-panel candidate | identity optimized priority 20，B-panel candidate 10；exact recipe 纳入注册身份，不因 ISA 相同产生去重冲突；candidate 由显式实验入口验证 |
+| QkvLinear / GateUpLinear | identity-packed 的 scalar/AVX2 driver 复用 Linear engine；AVX2 bpanel candidate 对每个输出 slice 使用完整 artifact 的 logical N offset，非 NR 对齐边界走兼容 scan/reference | QKV/GateUp bpanel 的未对齐 component 边界和输出 guard 有 focused tests；全局 priority 未提升 |
+| Embedding / RmsNorm | graph-wide packed lowering 所需的 FP32 identity descriptor 与 opaque-artifact binding builder 已提供 | 已有 tiny/HF O1/O2 Prefill/Decode/Generate 与资源/owner 回归；模型性能与跨平台支持按独立证据解释 |
 | kernel resolve | `CpuBackend::PrepareKernel` 按 selector、CPU feature 和 priority 选 descriptor | resolve 时尚无 concrete shape/layout，不能按 `M/N/K` 选择算法 |
-| binding specialization | `KernelParamsBuilder` 可看到固定的 pointer/shape/stride/dtype | 可在 cold path 选择 GEMV/skinny/blocked driver，并把函数指针写入 prepared params |
+| binding specialization | `KernelParamsBuilder` 可看到固定的 pointer/shape/stride/dtype | F32 Linear 已在 cold path 冻结计算函数：小形状直接保留原 reference 短路径，其他使用 scalar/AVX2；各 GEMM 内部仍按其合同选择分块 |
 | workspace | `ResolvedKernel.workspace_requirement` 在 binding 前规划 | 不能表达依赖 concrete `M/N/K` 的 transient A/B packing scratch |
 | packing recipe | descriptor 声明 recipe；backend query 与 prepare 共用 eligibility resolver；inference 注入 request，recipe、artifact、store key 和 resolved kernel exact-match；共享权重 recipe/op 冲突在准备期拒绝 | recipe 传递链已实现。bpanel 物理 layout 为 `cpu_bpanel_f32_kc512_nr16`，KC512 未完成性能选择 |
 | CPU dispatch | 已有 AVX2/FMA/AVX-512/VNNI/AMX、NEON/DotProd/I8MM/SVE 等 capability model | RMSNorm 有 AVX2+FMA optimized descriptor；GEMM 有 AVX2/FMA packed-B candidates，但默认 identity dispatch 不变 |
 | threading | 当前产品边界为单请求、单线程，现有 kernel 也保持单线程 | 首轮优化保持单线程；并行化属于 runtime 级后续工作 |
-| benchmark | Google Benchmark 包含 plain Linear prepared-path、bpanel candidate prepared hot/streaming Decode/Prefill、cold packing、size amplification 与诊断 break-even estimate | 当前 WSL2 仅有小样本；噪声 floor 和 KC256 对照未完成，production priority 仍为 identity。机器级证据按机成立，见 [GEMM 证据记录](README.md) |
+| benchmark | Google Benchmark 包含 plain Linear prepared-path、bpanel candidate prepared hot/streaming Decode/Prefill、cold packing、size amplification 与诊断 break-even estimate | CPU-02/03 已按机器记录交错 A/B、M sweep、fused/unfused、packing-inclusive 与 Generate；KC256 对照仍未实施，不据此推定 KC512 最优。机器级证据按机成立，见 [GEMM 证据记录](README.md) |
 
-### 2.1 当前主要瓶颈
+### 2.1 当前后续边界
 
-1. reference loop 的 `row → col → k` 每个输出点重新流过 K，缺少 scalar optimized 的 layout specialization、multi-accumulator 和 register blocking，无法复用 A/B 数据；
-2. 新增 AVX2 packed-B scan 与 4x16 blocked candidate，但 global resolve 仍选 identity；性能门禁未通过前不作为默认生产实现，也没有 software prefetch；
-3. 当前默认 `cpu_identity` 仍是 aligned copy；bpanel candidate 可消除其自身执行中的重复 B panel pack，但候选收益与 padding 成本尚无可信性能结论；
-4. Decode 与 Prefill 形状差异巨大，却只能 resolve 到同一个固定 kernel entry；
-5. descriptor-owned recipe 传递链已落地；global dispatch 尚未选择 bpanel candidate，同一 backend 的显式 PackWeights 会拒绝未被当前 feature policy 选中的 recipe；
-6. shape-dependent workspace 尚无合同，不能直接加入 transient panel packing；
-7. benchmark 已覆盖代表性 Linear hot/streaming Decode/Prefill 与 cold packing，但目前是 WSL2 小样本；当前噪声 floor、KC256 对照及 tiny-Llama Prefill→Decode 端到端数据仍缺失。
+1. MatMul 保持独立 reference；当前 Llama 主链的矩阵优化由 Linear/fused Linear 生产入口承载。
+2. identity optimized 与 B-panel candidate 的比较必须包括 Decode/Prefill、hot/streaming、packing 和模型影响，不能仅凭去掉 B packing 提升 priority。
+3. F32 Linear 的小形状与 stride 分类已进入 binding 冷路径；不引入全局 autotuner。W16 driver 的安全域与 fallback 成本包含在正式测量中。
+4. shape-dependent workspace、activation liveness 与通用 worker scratch 仍归后续工作；本批 A/B tiles 固定为最多 128 KiB 栈存储，加上调用帧，不持久化 F32 权重副本。
+5. KC256、新 W16 B-panel、更多 ISA 与线程池仍需各自证据；没有需求与收益证据时不扩张这些组合。
 
 ## 3. 约束与 invariant
 
@@ -117,37 +115,9 @@ GEMM driver
 
 ### 4.1 Backend-internal contracts
 
-当前调用参数为非模板 `GemmArgs`：A/B 使用 `const std::byte*`，output 使用 `std::byte*`，M/N/K 与六个元素 stride 保持原合同。`RunGemmF32Reference` / `RunGemmF32Scalar` / `RunGemmF32Avx2Fma` 明确按 F32 解释存储，内部使用经过调用方验证的 typed pointer；byte 指针不放宽 alignment、对象访问或 dtype 约束。reference 的 double accumulation 与 optimized 的 F32/FMA 归约继续独立。packed-B 仍由独立 `PackedGemmF32Args` 描述 exact F32 布局。本次参数迁移不新增 W16/A16 GEMM entry、不修改 recipe 或 production priority；引用该内部头的调用方须重新编译。
+当前调用参数为非模板 `GemmArgs`：A/B 使用 `const std::byte*`，output 使用 `std::byte*`，M/N/K 与六个元素 stride 保持原合同。`RunGemmF32Reference` / `RunGemmF32Scalar` / `RunGemmF32Avx2Fma` 明确按 F32 解释存储，内部使用经过调用方验证的 typed pointer；byte 指针不放宽 alignment、对象访问或 dtype 约束。reference 的 double accumulation 与 optimized 的 F32/FMA 归约继续独立。packed-B 仍由独立 `PackedGemmF32Args` 描述 exact F32 布局。此前的参数迁移本身不扩张精度支持；CPU-02 后续补入明确的 A32/F16、A32/BF16 optimized entry，identity 物理字节不变。引用内部头与 `RegistrationKey` 的 C++ 调用方须重新编译。
 
-建议引入 backend-private 数据结构，名称仅为设计草案：
-
-```cpp
-struct GemmProblemF32 {
-    const float* a;
-    const void* packed_b;
-    float* c;
-    int64_t m;
-    int64_t n;
-    int64_t k;
-    int64_t a_row_stride;
-    int64_t a_col_stride;
-    int64_t c_row_stride;
-    int64_t c_col_stride;
-};
-
-using GemmDriverF32 = Status (*)(const GemmPreparedF32&) noexcept;
-
-struct GemmPreparedF32 {
-    GemmProblemF32 problem;
-    GemmDriverF32 driver;
-    int32_t mc;
-    int32_t nc;
-    int32_t kc;
-    int32_t mr;
-    int32_t nr;
-    // tail policy and optional epilogue descriptor
-};
-```
+CPU-03 的 F32 Linear 已使用 `LinearA32W32PreparedArgs { linear, driver }`：params builder 复用原有 layout/alias 验证，在 cold path 冻结 scalar、AVX2 或原 reference；小 K/无 SIMD 主体、空输出与不适合 optimized 的合法布局直接保留 reference 短路径。原始 Linear 参数继续表达端口语义，非 reference driver 在内部映射到同一 `GemmArgs`。不新增与 `GemmArgs` 同义的 `GemmProblemF32`，也不引入全局 planner/autotuner。W16 的明确 F16/BF16 entry 与数值 fallback 见 [Linear 方案](../linear/linear-optimization.md)。
 
 这里的核心不是具体字段，而是把两层选择分开：
 
@@ -611,3 +581,7 @@ runtime thread-pool contract + 单线程证据 ──> 多线程与 NUMA
 | 2026-09-19 | 2.1 | 核对代码后修正 §2 三处过期事实：scalar optimized 已落地（仅覆盖 `M=1`、编译期 opt-in）；默认 Linear descriptor 走 Linear 私有的 double 累加循环、**未复用共享 GEMM primitive**；candidate 与 reference 编译期互斥，因此 reference↔candidate 对比必须构建两个二进制（新增 §8 风险行） | 提案的"当前状态"与仓库事实不符会直接误导 scalar/AVX2 候选的采集协议 | `src/backend/cpu/kernels/linear/linear_a32_w32_reference.cpp:20-32`、`linear_entry.cpp:170-204` |
 | 2026-09-19 | 2.0 | 按文档拓扑拆分：§6.8.1 的逐机噪声 floor 表与判读改为原则+链接，方法权威上移指南 §2.4.2；§7 两段机器级采集记录与 scalar 实施记录改为逐机状态表+报告链接；补模板要求的 Change Profile / 关联代码 / 关联测试 / 关联 ADR / 本文档定位字段 | 工作流要求专项提案只保留工作包状态、当前结论与验证报告链接，不粘贴原始 benchmark 数据；同时消除与 `docs/operators/gemm/` 的重复事实 | `70b1f8d8` |
 | 2026-09-18/19 | 1.9 | 采集机 `DESKTOP-QHIHOGQ` 基线与逐机门禁归属 | 第二台机器独立采集，验证噪声 floor 的机器属性 | 证据已清空，2026-09-21 重采 |
+
+## CPU-03 退出结果
+
+本机 identity/scalar/AVX2 的生产闭环已完成，数值、ISA、资源和同合同 prepared/Generate 证据见 [GEMM 机器记录](benchmarks/54h5mmi-gemm.md#cpu-03-fp32-gemm-生产闭环与布局-promotion-决策)。B-panel compute-only Prefill 的局部收益不能抵消 Decode 回退与准备成本，本轮拒绝全局 promotion；保留 candidate 与兼容 slice/tail 路径。MatMul、KC256、双布局、更多 ISA/线程等未实施部分仍按其原触发条件推进。

@@ -130,6 +130,10 @@ TEST_P(CpuLinearOptimized, PreparedPathMatchesIndependentOracleAndPreservesGuard
     const auto kernel_inputs = packed ? std::span<const TensorView>(inputs.data(), 1) : std::span<const TensorView>(inputs);
     const Status built = resolved->params_builder({.inputs = kernel_inputs, .outputs = outputs, .packed_weight = packed_view}, params.data());
     ASSERT_TRUE(built.ok()) << built.ToString();
+    if (precision == 0 && shape.m == 1 && shape.k == 1 && shape.n == 3) {
+        const auto* prepared = reinterpret_cast<const cpu::detail::LinearA32W32PreparedArgs*>(params.data());
+        EXPECT_EQ(prepared->driver, &cpu::detail::RunLinearF32Reference);
+    }
     ASSERT_TRUE(resolved->fn({.kernel_params = params.data()}).ok());
     std::vector<bool> written(output.size(), false);
     for (int64_t m = 0; m < shape.m; ++m) {
@@ -260,9 +264,16 @@ TEST_P(CpuLinearOptimizedSafety, ProductOverflowCannotBeHiddenByFusedCancellatio
         // Scalar product rounding overflows before the addition, while an FMA
         // could cancel its unrounded product back to a finite value.
         cpu::detail::LinearA32W16KernelArgs args{
-                .input = input.data(), .weight = weights.data(), .output = output.data(), .weight_dtype = dtype,
-                .row_count = m, .in_features = k, .out_features = n,
-                .input_row_stride = k, .weight_row_stride = k, .output_row_stride = n};
+                .input = input.data(),
+                .weight = weights.data(),
+                .output = output.data(),
+                .weight_dtype = dtype,
+                .row_count = m,
+                .in_features = k,
+                .out_features = n,
+                .input_row_stride = k,
+                .weight_row_stride = k,
+                .output_row_stride = n};
         ASSERT_TRUE(runner(args).ok());
         for (const float value: output) {
             EXPECT_EQ(value, std::numeric_limits<float>::infinity());

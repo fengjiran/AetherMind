@@ -1,10 +1,10 @@
 # CPU 算子覆盖与生产基线台账
 
-本文是 [CPU 算子演进路线图](cpu-operator-evolution.md) CPU-01 的公共基准与跨算子覆盖台账：冻结参考机器/构建身份与代表模型 revision，记录真实生产准备入口的选核身份，并标记覆盖缺口。算子语义合同、专项提案与单算子性能证据仍归各算子子目录；本文只做跨算子关联，不复制合同，不新建 capability runtime registry。
+本文是 [CPU 算子演进路线图](cpu-operator-evolution.md) CPU-01 的公共基准与跨算子覆盖台账：冻结参考机器/构建身份与代表模型 revision，记录真实生产准备入口的选核身份，并标记覆盖缺口。§1/§2 保留 CPU-01 冻结基准，§3 的矩阵身份随 CPU-02/03 更新；原始基线与后续变更证据分别留存。算子语义合同、专项提案与单算子性能证据仍归各算子子目录；本文只做跨算子关联，不复制合同，不新建 capability runtime registry。
 
 证据遵循 [算子开发与优化工作流](../guides/operator-development-workflow.md) §4–§5：记录追加式、不覆盖；机器级数值不跨机器引用。本文 §6 是跨算子审计记录；单算子性能实验仍记入 `docs/operators/<op>/benchmarks/<machine>-<op>.md`。
 
-状态标记含义：`reference`＝独立正确性 oracle 兼当前默认；`optimized`＝已有 SIMD/ISA 实现且被生产选中；`candidate`＝已注册 eligible 但未被默认选中；`unsupported`＝该 selector 无 eligible kernel（准备期 NOT_FOUND）；`not-run`＝缺少目标硬件或未采集，不等于不支持。
+状态标记含义：`reference`＝保守实现/独立正确性 oracle（是否为默认以实际选核表为准）；`optimized`＝已有 SIMD/ISA 实现且被生产选中；`candidate`＝已注册 eligible 但未被默认选中；`unsupported`＝该 selector 无 eligible kernel（准备期 NOT_FOUND）；`not-run`＝缺少目标硬件或未采集，不等于不支持。
 
 ## 1. 参考机器与构建身份（冻结）
 
@@ -19,7 +19,7 @@
 | Compiler / build | GCC 14.2.0；`build/` Release `-O3 -DNDEBUG`，C++20，sanitizer=none |
 | 构建开关 | `AETHERMIND_ENABLE_AVX2=ON`、`F16C=ON`、`AVX512BF16=ON`、`AVX512FP16=ON`；`GEMM_HAS_AVX2_FMA_KERNEL=1` |
 | effective features | 真实 `DetectCpuCapabilities` 返回 `{SSE4.1, AVX, AVX2, FMA, F16C, AVXVNNI}`；feature policy=default |
-| 构建身份 | commit `cab0c145`，dirty（仅文档改动，无源码变更）；`build/src/libAetherMind.so` 与 HEAD 源码一致 |
+| 构建身份 | commit `cab0c145`，dirty（仅文档改动，无源码变更）；该项描述 CPU-01 冻结时的库；后续 CPU-02/03 源码/二进制身份另记于新增证据 |
 | 备注 | WSL2；`taskset` 仅咨询性，混合拓扑可能被伪造成对称 CPU；核类别/SMT 结论只在裸机采集 |
 
 冻结约束：
@@ -69,22 +69,22 @@ KV16 near-limit 验收模型（`.models/kv16-acceptance`，2048 capacity）由�
 
 | 算子 | act / weight / output | plain | packed-identity |
 |---|---|---|---|
-| Linear | F32 / F32 / F32 | `cpu::linear_f32_w32_reference` | `cpu::linear_f32_w32_packed_identity_reference` |
-| Linear | F32 / F16 / F32 | `cpu::linear_f32_wf16_reference` | `cpu::linear_f32_wf16_packed_identity_reference` |
-| Linear | F32 / BF16 / F32 | `cpu::linear_f32_wbf16_reference` | `cpu::linear_f32_wbf16_packed_identity_reference` |
+| Linear | F32 / F32 / F32 | `cpu::linear_f32_w32_avx2_fma` | `cpu::linear_f32_w32_packed_identity_avx2_fma` |
+| Linear | F32 / F16 / F32 | `cpu::linear_f32_wf16_avx2_fma` | `cpu::linear_f32_wf16_packed_identity_avx2_fma` |
+| Linear | F32 / BF16 / F32 | `cpu::linear_f32_wbf16_avx2_fma` | `cpu::linear_f32_wbf16_packed_identity_avx2_fma` |
 | Linear | BF16 / BF16 / BF16 | `cpu::linear_bf16_wbf16_avx2_fma` | `cpu::linear_bf16_wbf16_packed_identity_avx2_fma` |
 | Linear | BF16 / BF16 / F32 | `cpu::linear_bf16_wbf16_out32_avx2_fma` | `cpu::linear_bf16_wbf16_out32_packed_identity_avx2_fma` |
 | Linear | F16 / F16 / F16 | `cpu::linear_f16_wf16_avx2_fma` | `cpu::linear_f16_wf16_packed_identity_avx2_fma` |
 | Linear | F16 / F16 / F32 | `cpu::linear_f16_wf16_out32_avx2_fma` | `cpu::linear_f16_wf16_out32_packed_identity_avx2_fma` |
-| QkvLinear | F32 / F32 / F32 | **unsupported** | `cpu::qkv_linear_f32_w32_reference` |
-| QkvLinear | F32 / F16 / F32 | **unsupported** | `cpu::qkv_linear_f32_wf16_reference` |
-| QkvLinear | F32 / BF16 / F32 | **unsupported** | `cpu::qkv_linear_f32_wbf16_reference` |
-| GateUpLinear | F32 / F32 / F32 | **unsupported** | `cpu::gate_up_linear_f32_w32_reference` |
-| GateUpLinear | F32 / F16 / F32 | **unsupported** | `cpu::gate_up_linear_f32_wf16_reference` |
-| GateUpLinear | F32 / BF16 / F32 | **unsupported** | `cpu::gate_up_linear_f32_wbf16_reference` |
+| QkvLinear | F32 / F32 / F32 | **unsupported** | `cpu::qkv_linear_f32_w32_avx2_fma` |
+| QkvLinear | F32 / F16 / F32 | **unsupported** | `cpu::qkv_linear_f32_wf16_avx2_fma` |
+| QkvLinear | F32 / BF16 / F32 | **unsupported** | `cpu::qkv_linear_f32_wbf16_avx2_fma` |
+| GateUpLinear | F32 / F32 / F32 | **unsupported** | `cpu::gate_up_linear_f32_w32_avx2_fma` |
+| GateUpLinear | F32 / F16 / F32 | **unsupported** | `cpu::gate_up_linear_f32_wf16_avx2_fma` |
+| GateUpLinear | F32 / BF16 / F32 | **unsupported** | `cpu::gate_up_linear_f32_wbf16_avx2_fma` |
 | MatMul | F32 / F32 / F32 | `cpu::matmul_f32_reference` | **unsupported** |
 
-F32 Linear packed 另有 `cpu::linear_f32_w32_packed_bpanel_candidate`（QKV/GateUp 同名 candidate）已注册且 eligible（AVX2/FMA 满足），priority 10 与 identity reference 相同；选核用严格 `priority >`（[cpu_backend.cpp:405](../../src/backend/cpu/cpu_backend.cpp#L405)），先注册的 identity 胜出，故默认仍为 identity reference。
+F32 Linear packed 另有 `cpu::linear_f32_w32_packed_bpanel_candidate`（QKV/GateUp 同名 candidate）已注册且 eligible（AVX2/FMA 满足），B-panel priority 保持 10，identity optimized 为 20，默认保持 identity；exact recipe 纳入注册去重键，两个布局可在相同 ISA 要求下共存。无 AVX2/FMA 时 F32 为 scalar，W16 为 reference；F16C 缺失只使 A32/F16 回退，A32/BF16 仍可使用 AVX2/FMA。
 
 ### 3.2 Embedding 与 Norm
 
@@ -147,10 +147,10 @@ Add 另注册 Double/Int32/Int64（非 Llama 主链，未列入）；语义-only
 
 | 观察 | 源码依据 | 后续工作包 |
 |---|---|---|
-| FP32 Linear/MatMul 生产默认＝reference；内部 AVX2 GEMM primitive 已编译但无 plain optimized descriptor | [linear_entry.cpp](../../src/backend/cpu/kernels/linear/linear_entry.cpp)、[matmul_entry.cpp](../../src/backend/cpu/kernels/matmul/matmul_entry.cpp)、`GEMM_HAS_AVX2_FMA_KERNEL=1` | CPU-03 |
-| F32 B-panel candidate 已注册 eligible，但 priority 10 与 identity 相同，identity 先注册胜出 | [linear_entry.cpp:999](../../src/backend/cpu/kernels/linear/linear_entry.cpp#L999)、[cpu_backend.cpp:405](../../src/backend/cpu/cpu_backend.cpp#L405) | CPU-03 promotion 决策 |
+| FP32 Linear 已接入 scalar/AVX2 生产入口；MatMul 仍为 reference，不扩张未测 consumer | [linear_entry.cpp](../../src/backend/cpu/kernels/linear/linear_entry.cpp)、[matmul_entry.cpp](../../src/backend/cpu/kernels/matmul/matmul_entry.cpp)、`GEMM_HAS_AVX2_FMA_KERNEL=1` | CPU-03 |
+| F32 B-panel candidate priority 10，identity optimized 20；布局 promotion 继续由完整证据决定 | [linear_entry.cpp:999](../../src/backend/cpu/kernels/linear/linear_entry.cpp#L999)、[cpu_backend.cpp:405](../../src/backend/cpu/cpu_backend.cpp#L405) | CPU-03 promotion 决策 |
 | RmsNorm F32 plain＝AVX2/FMA（priority 20），packed-identity＝reference（priority 10）→ O2/packed F32 RMSNorm 落标量 | [rmsnorm_entry.cpp:534](../../src/backend/cpu/kernels/rmsnorm/rmsnorm_entry.cpp#L534)、[rmsnorm_entry.cpp:671](../../src/backend/cpu/kernels/rmsnorm/rmsnorm_entry.cpp#L671) | CPU-05（fused-vs-unfused） |
-| W16/A32 Linear/QKV/GateUp＝reference（逐元素 scalar widening + F32 归约） | [linear_a32_w16_reference.cpp](../../src/backend/cpu/kernels/linear/linear_a32_w16_reference.cpp) | CPU-02 |
+| W16/A32 Linear/QKV/GateUp 已接入 SIMD/blocking，reference 保留为 ISA/布局/数值 fallback | [Linear 优化方案](linear/linear-optimization.md) | CPU-02（证据见机器记录） |
 | Embedding W16 已有 F16C/AVX2 optimized 默认 | [embedding_entry.cpp](../../src/backend/cpu/kernels/embedding/embedding_entry.cpp) | 复用，不重复建设 |
 | Add F16 缺失（BF16 存在） | [add_entry.cpp](../../src/backend/cpu/kernels/add/add_entry.cpp) | CPU-06 / 精度专题 P4-B |
 | QKV/GateUp plain unsupported（O1 不融合，by design）；MatMul packed unsupported | [optimize_graph.cpp:14](../../src/compiler/optimize_graph.cpp#L14) | 非缺口，记录边界 |
@@ -206,3 +206,9 @@ A16（activation=F16/BF16）在 [model_compiler.cpp:23](../../src/compiler/model
 - 关键告警：tiny fixture 为开销主导，几乎所有指标在 run1→run4 呈**系统性下漂**（WSL2 跨进程非平稳，即便 identity 预读）。这是局部离散观测，`status=observed_noise`、`performance_claim=none`、判读 **Needs More Data**；不得据此设全平台阈值或宣称收益。主路径耗时分布已可追溯，但 promotion 阈值须按机器×组在真实形状/streaming 上另行冻结（工作流 §7.2）。
 - raw：`benchmark-results/operators/cpu01/20261117T015438Z_cab0c145_desktop-54h5mmi_cpu01-noise-floor/`（noise-floor.json、summary、4 份 driver log、metadata）；模型级原始 artifact 在 `benchmark-results/models/20261117T015331Z…aa-1-9bd19702/` 等 4 个 run 目录（含 report/summary/machine/invocation/source.patch）。
 - 结论：**Accepted（同实现噪声与主路径耗时分布观测）**。CPU-01 退出条件的噪声/分布项已取得限定证据；不调整 priority，不推导加速。后续 CPU-02/03/04 的 A/B 须用独立进程交错、真实形状与 streaming，并以本机该组噪声 floor 判读。
+
+### CPU-02/03 后续生产闭环
+
+- candidate 为 `e502fe11` + F32 cold-driver 修正；旧源码、旧库与 candidate 分别保存，M0 基准不被覆盖。
+- §3/§4 已同步当前矩阵 default 身份；实际 12 组 baseline/candidate × F32/F16/BF16 × O1/O2 model plan/Generate trace 均已保存，完整 selectors/recipes 与 kernel 名称可追溯。
+- [CPU-02 Linear 证据](linear/benchmarks/desktop-54h5mmi-linear.md#cpu-02-w16a32-生产优化与-cpu-03-关联闭环) 与 [CPU-03 GEMM 证据](gemm/benchmarks/54h5mmi-gemm.md#cpu-03-fp32-gemm-生产闭环与布局-promotion-决策) 分别记录 935 项 Release 回归、适用 sanitizer、两类编译 fallback、同机交错 A/B、48 份官方模型报告和 B-panel 拒绝提升的决策。该条只关联证据，不把 CPU-01 其余待办或产品 7B/4k 验收标成完成。

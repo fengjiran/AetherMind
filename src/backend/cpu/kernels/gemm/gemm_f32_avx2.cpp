@@ -106,55 +106,48 @@ void RunRowPairAvx2(const float* lhs0, const float* lhs1, const float* rhs,
 constexpr int64_t kBlockedMR = kGemmAvx2MR;
 constexpr int64_t kBlockedNR = kGemmAvx2NR;
 constexpr int64_t kBlockedKC = kGemmAvx2KC;
-// A rows kept resident per K panel; 48 rows x 512 K x 4B = 96 KiB.
-constexpr int64_t kBlockedMB = kGemmAvx2MB;
-
-void PackAPanel(const float* lhs, int64_t lhs_m_stride, int64_t kb,
-                int64_t mb_base, int64_t mb_rows, int64_t kc_len,
-                float* buf_a) noexcept {
-    for (int64_t r = 0; r < mb_rows; ++r) {
-        const float* src = lhs + (mb_base + r) * lhs_m_stride + kb;
-        float* dst = buf_a + r * kBlockedKC;
-        for (int64_t kk = 0; kk < kc_len; ++kk) {
-            dst[kk] = src[kk];
-        }
-    }
-}
 
 // Transposed k-major layout: buf_b[kk * 16 + col] = B[(nb_base + col)][kb + kk].
 void PackBPanel(const float* rhs, int64_t rhs_n_stride, int64_t kb,
                 int64_t nb_base, int64_t kc_len, float* buf_b) noexcept {
-    for (int64_t kk = 0; kk < kc_len; ++kk) {
+    const float* source = rhs + nb_base * rhs_n_stride + kb;
+    const int64_t vector_end = kc_len - kc_len % 8;
+    for (int64_t col = 0; col < kBlockedNR; col += 8) {
+        for (int64_t kk = 0; kk < vector_end; kk += 8) {
+            __m256 rows[8];
+            for (int64_t lane = 0; lane < 8; ++lane) {
+                rows[lane] = _mm256_loadu_ps(source + (col + lane) * rhs_n_stride + kk);
+            }
+            StoreGemmBTile8x8Avx2(rows, buf_b + kk * kBlockedNR + col);
+        }
+    }
+
+    for (int64_t kk = vector_end; kk < kc_len; ++kk) {
         for (int64_t col = 0; col < kBlockedNR; ++col) {
-            buf_b[kk * kBlockedNR + col] = rhs[(nb_base + col) * rhs_n_stride + kb + kk];
+            buf_b[kk * kBlockedNR + col] = source[col * rhs_n_stride + kk];
         }
     }
 }
 
 // out rows use unit output_n_stride (validated by the caller);
 // out_row points at output[mb_base][nb_base].
-
-
 void RunBlockedGemmAvx2(const GemmArgs& args, int64_t m_full, int64_t n_full) noexcept {
-    const float* const lhs_data = reinterpret_cast<const float*>(args.lhs);
-    const float* const rhs_data = reinterpret_cast<const float*>(args.rhs);
-    float* const output_data = reinterpret_cast<float*>(args.output);
+    const auto* const lhs_data = reinterpret_cast<const float*>(args.lhs);
+    const auto* const rhs_data = reinterpret_cast<const float*>(args.rhs);
+    auto* const output_data = reinterpret_cast<float*>(args.output);
 
-    alignas(32) float buf_a[static_cast<size_t>(kBlockedMB * kBlockedKC)];
     alignas(32) float buf_b[static_cast<size_t>(kBlockedKC * kBlockedNR)];
 
+    // Unit K stride permits direct A broadcasts and lets all row tiles
+    // consume a B panel before the next panel is packed.
     for (int64_t kb = 0; kb < args.k; kb += kBlockedKC) {
         const int64_t kc_len = std::min(kBlockedKC, args.k - kb);
-        for (int64_t mb = 0; mb < m_full; mb += kBlockedMB) {
-            const int64_t mb_rows = std::min(kBlockedMB, m_full - mb);
-            PackAPanel(lhs_data, args.lhs_m_stride, kb, mb, mb_rows, kc_len, buf_a);
-            for (int64_t nb = 0; nb < n_full; nb += kBlockedNR) {
-                PackBPanel(rhs_data, args.rhs_n_stride, kb, nb, kc_len, buf_b);
-                for (int64_t row = 0; row < mb_rows; row += kBlockedMR) {
-                    AccumulateF32Tile4x16Avx2(buf_a + row * kBlockedKC, buf_b, kc_len,
-                                              args.output_m_stride,
-                                              output_data + (mb + row) * args.output_m_stride + nb);
-                }
+        for (int64_t nb = 0; nb < n_full; nb += kBlockedNR) {
+            PackBPanel(rhs_data, args.rhs_n_stride, kb, nb, kc_len, buf_b);
+            for (int64_t row = 0; row < m_full; row += kBlockedMR) {
+                AccumulateF32Tile4x16Avx2(lhs_data + row * args.lhs_m_stride + kb, buf_b, kc_len,
+                                          args.output_m_stride, output_data + row * args.output_m_stride + nb,
+                                          args.lhs_m_stride);
             }
         }
     }
@@ -166,9 +159,9 @@ void RunBlockedGemmAvx2(const GemmArgs& args, int64_t m_full, int64_t n_full) no
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status RunGemmF32Avx2Fma(const GemmArgs& args) noexcept {
-    const float* const lhs_data = reinterpret_cast<const float*>(args.lhs);
-    const float* const rhs_data = reinterpret_cast<const float*>(args.rhs);
-    float* const output_data = reinterpret_cast<float*>(args.output);
+    const auto* const lhs_data = reinterpret_cast<const float*>(args.lhs);
+    const auto* const rhs_data = reinterpret_cast<const float*>(args.rhs);
+    auto* const output_data = reinterpret_cast<float*>(args.output);
 
     if (args.m >= 1 && args.m <= 8 && args.k > 0 && args.n >= 0 &&
         args.lhs_k_stride == 1 && args.rhs_k_stride == 1 &&

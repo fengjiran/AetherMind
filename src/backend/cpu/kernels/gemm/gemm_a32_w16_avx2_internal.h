@@ -4,6 +4,7 @@
 #include "aethermind/backend/cpu/kernels/common/simd_utils.h"
 #include "gemm_avx2_internal.h"
 #include "gemm_internal.h"
+#include "gemm_w16_pack_avx2.h"
 
 #include <algorithm>
 #include <cmath>
@@ -23,14 +24,6 @@ inline float GemmInputMagnitude(const float* input, int64_t k) noexcept {
     return magnitude;
 }
 
-inline bool GemmReductionMagnitudeIsSafe(float input, float weight, int64_t k) noexcept {
-    // Bounding the sum of absolute products also bounds every scalar/SIMD
-    // partial sum. Extreme inputs retain the reference's overflow semantics.
-    return std::isfinite(input) && std::isfinite(weight) &&
-           static_cast<double>(input) * static_cast<double>(weight) * static_cast<double>(k) <=
-                   static_cast<double>(std::numeric_limits<float>::max()) * 0.5;
-}
-
 template<class WeightOps, int Rows, int Columns>
 bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col, float input_magnitude) noexcept {
     const auto* input = reinterpret_cast<const float*>(args.lhs);
@@ -41,7 +34,10 @@ bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col, float inp
             sums[r][c] = _mm256_setzero_ps();
         }
     }
-    __m256 weight_magnitude = _mm256_setzero_ps();
+    // A single output row leaves registers for independent magnitude chains.
+    // The 2-row tile uses its remaining registers for the extra FMA sums.
+    constexpr int kMagnitudeChains = Rows == 1 ? Columns : 1;
+    __m256 weight_magnitude[kMagnitudeChains]{};
     const __m256 sign = _mm256_set1_ps(-0.0F);
     int64_t k = 0;
     for (; k + 8 <= args.k; k += 8) {
@@ -52,14 +48,19 @@ bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col, float inp
         for (int c = 0; c < Columns; ++c) {
             const __m256 weights = WeightOps::LoadEight(
                     args.rhs + static_cast<size_t>((col + c) * args.rhs_n_stride + k) * sizeof(uint16_t));
-            weight_magnitude = _mm256_max_ps(weight_magnitude, _mm256_andnot_ps(sign, weights));
+            __m256& magnitude = weight_magnitude[c % kMagnitudeChains];
+            magnitude = _mm256_max_ps(magnitude, _mm256_andnot_ps(sign, weights));
             for (int r = 0; r < Rows; ++r) {
                 sums[r][c] = _mm256_fmadd_ps(inputs[r], weights, sums[r][c]);
             }
         }
     }
+    __m256 reduced_magnitude = weight_magnitude[0];
+    for (int c = 1; c < kMagnitudeChains; ++c) {
+        reduced_magnitude = _mm256_max_ps(reduced_magnitude, weight_magnitude[c]);
+    }
     alignas(32) float magnitudes[8];
-    _mm256_store_ps(magnitudes, weight_magnitude);
+    _mm256_store_ps(magnitudes, reduced_magnitude);
     float max_weight = 0.0F;
     for (const float value: magnitudes) {
         max_weight = std::max(max_weight, value);
@@ -126,6 +127,50 @@ bool TryGemmW16Direct(const GemmArgs& args) noexcept {
     return row == args.m || TryGemmW16Rows<WeightOps, 1>(args, row);
 }
 
+template<class WeightOps, bool PackA>
+bool TryGemmW16FullTiles(const GemmArgs& args, int64_t m_full, int64_t n_full) noexcept {
+    const auto* input = reinterpret_cast<const float*>(args.lhs);
+    auto* output = reinterpret_cast<float*>(args.output);
+
+    // Reuse each B panel across a larger M block. Cap the logical direct A
+    // footprint at 512 KiB per K panel to limit repeated reads and page walks.
+    constexpr int64_t kDirectRows = 256;
+    static_assert(kDirectRows % kGemmAvx2MR == 0);
+    const int64_t row_block = PackA ? kGemmAvx2MB : kDirectRows;
+    const int64_t a_stride = PackA ? kGemmAvx2KC : args.lhs_m_stride;
+    alignas(32) float panel_a[PackA ? kGemmAvx2MB * kGemmAvx2KC : 1];
+    alignas(32) float panel_b[kGemmAvx2KC * kGemmAvx2NR];
+    const size_t weight_row_bytes = static_cast<size_t>(args.rhs_n_stride) * sizeof(uint16_t);
+    for (int64_t kb = 0; kb < args.k; kb += kGemmAvx2KC) {
+        const int64_t kc = std::min(kGemmAvx2KC, args.k - kb);
+        for (int64_t mb = 0; mb < m_full; mb += row_block) {
+            const int64_t rows = std::min(row_block, m_full - mb);
+            const float* source_a = input + mb * args.lhs_m_stride + kb;
+            float max_a = 0.0F;
+            for (int64_t row = 0; row < rows; ++row) {
+                const float* source = source_a + row * args.lhs_m_stride;
+                if constexpr (PackA) {
+                    std::copy_n(source, kc, panel_a + row * kGemmAvx2KC);
+                }
+                max_a = std::max(max_a, GemmInputMagnitude(source, kc));
+            }
+            const float* a = PackA ? panel_a : source_a;
+            for (int64_t nb = 0; nb < n_full; nb += kGemmAvx2NR) {
+                const auto* source = args.rhs + static_cast<size_t>(nb * args.rhs_n_stride + kb) * sizeof(uint16_t);
+                const float max_b = PackGemmW16BPanelAvx2<WeightOps>(source, weight_row_bytes, kc, panel_b);
+                if (!GemmReductionMagnitudeIsSafe(max_a, max_b, args.k)) {
+                    return false;
+                }
+                for (int64_t row = 0; row < rows; row += kGemmAvx2MR) {
+                    AccumulateF32Tile4x16Avx2(a + row * a_stride, panel_b, kc, args.output_m_stride,
+                                              output + (mb + row) * args.output_m_stride + nb, a_stride);
+                }
+            }
+        }
+    }
+    return true;
+}
+
 template<class WeightOps>
 bool TryGemmW16Blocked(const GemmArgs& args) noexcept {
     const auto* input = reinterpret_cast<const float*>(args.lhs);
@@ -138,57 +183,14 @@ bool TryGemmW16Blocked(const GemmArgs& args) noexcept {
     for (int64_t row = 0; row < m_full; ++row) {
         std::fill_n(output + row * args.output_m_stride, n_full, 0.0F);
     }
-
-    // Fixed, bounded per-invocation scratch, shared with the F32 tile shape.
-    // Parallel consumers must first budget this as worker scratch.
-    alignas(32) float panel_a[kGemmAvx2MB * kGemmAvx2KC];
-    alignas(32) float panel_b[kGemmAvx2KC * kGemmAvx2NR];
-    for (int64_t kb = 0; kb < args.k; kb += kGemmAvx2KC) {
-        const int64_t kc = std::min(kGemmAvx2KC, args.k - kb);
-        for (int64_t mb = 0; mb < m_full; mb += kGemmAvx2MB) {
-            const int64_t rows = std::min(kGemmAvx2MB, m_full - mb);
-            float max_a = 0.0F;
-            for (int64_t row = 0; row < rows; ++row) {
-                const float* source = input + (mb + row) * args.lhs_m_stride + kb;
-                std::copy_n(source, kc, panel_a + row * kGemmAvx2KC);
-                max_a = std::max(max_a, GemmInputMagnitude(source, kc));
-            }
-            for (int64_t nb = 0; nb < n_full; nb += kGemmAvx2NR) {
-                __m256 max_b_vector = _mm256_setzero_ps();
-                float max_b = 0.0F;
-                for (int64_t col = 0; col < kGemmAvx2NR; ++col) {
-                    const std::byte* source = args.rhs +
-                                              static_cast<size_t>((nb + col) * args.rhs_n_stride + kb) * sizeof(uint16_t);
-                    int64_t k = 0;
-                    for (; k + 8 <= kc; k += 8) {
-                        const __m256 values = WeightOps::LoadEight(source + static_cast<size_t>(k) * sizeof(uint16_t));
-                        max_b_vector = _mm256_max_ps(max_b_vector, _mm256_andnot_ps(_mm256_set1_ps(-0.0F), values));
-                        alignas(32) float lanes[8];
-                        _mm256_store_ps(lanes, values);
-                        for (int64_t lane = 0; lane < 8; ++lane) {
-                            panel_b[(k + lane) * kGemmAvx2NR + col] = lanes[lane];
-                        }
-                    }
-                    for (; k < kc; ++k) {
-                        const float value = WeightOps::LoadOne(source + static_cast<size_t>(k) * sizeof(uint16_t));
-                        panel_b[k * kGemmAvx2NR + col] = value;
-                        max_b = std::max(max_b, std::fabs(value));
-                    }
-                }
-                alignas(32) float magnitudes[8];
-                _mm256_store_ps(magnitudes, max_b_vector);
-                for (const float value: magnitudes) {
-                    max_b = std::max(max_b, value);
-                }
-                if (!GemmReductionMagnitudeIsSafe(max_a, max_b, args.k)) {
-                    return false;
-                }
-                for (int64_t row = 0; row < rows; row += kGemmAvx2MR) {
-                    AccumulateF32Tile4x16Avx2(panel_a + row * kGemmAvx2KC, panel_b, kc,
-                                              args.output_m_stride, output + (mb + row) * args.output_m_stride + nb);
-                }
-            }
-        }
+    // A short K, such as the narrow-K LM head in the model fixture, has little
+    // B-packing cost and benefits from the smaller C working set of packed A.
+    const bool reuse_b = m_full > kGemmAvx2MB && args.k >= kGemmAvx2KC;
+    const bool computed = reuse_b
+                                  ? TryGemmW16FullTiles<WeightOps, false>(args, m_full, n_full)
+                                  : TryGemmW16FullTiles<WeightOps, true>(args, m_full, n_full);
+    if (!computed) {
+        return false;
     }
     for (int64_t row = 0; row < m_full; ++row) {
         for (int64_t col = 0; col < n_full; ++col) {

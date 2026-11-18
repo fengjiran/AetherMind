@@ -3,6 +3,10 @@
 
 /// @file gemm_internal.h
 /// @brief Backend-internal GEMM arguments and precision-specific primitives.
+///
+/// This header is included by translation units compiled without per-ISA flags
+/// (scalar and reference GEMMs included), so it must stay ISA-neutral; keep
+/// intrinsics and other ISA-specific code in per-ISA internal headers.
 
 #include "aethermind/base/status.h"
 
@@ -104,7 +108,7 @@ Status RunGemmF32PackedBBlocked(const PackedGemmF32Args& args) noexcept;
 /// SIMD paths require nonzero K, unit-stride lhs K, K-contiguous RHS, and
 /// unit-stride output N; `M=1..8` uses the row-pair fast path with a
 /// multi-target core for a leftover odd row, while `M>=9` uses the blocked
-/// 4x16 micro-kernel with A/B panel packing and row-pair edge handling. Every
+/// 4x16 micro-kernel with direct A, transient B packing and row-pair edge handling. Every
 /// other reference-legal input delegates to the scalar candidate, which may
 /// in turn delegate to the reference oracle.
 Status RunGemmF32Avx2Fma(const GemmArgs& args) noexcept;

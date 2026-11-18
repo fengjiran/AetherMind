@@ -156,26 +156,26 @@ void RunKContiguousOutputBlock(const GemmArgs& args, int64_t first_row,
         output_rows[i] = output_data + (first_row + i) * args.output_m_stride + first_col;
     }
 
-    int64_t inner = 0;
-    std::array weights{
-            rhs_data + first_col * args.rhs_n_stride,
-            rhs_data + (first_col + 1) * args.rhs_n_stride,
-            rhs_data + (first_col + 2) * args.rhs_n_stride,
-            rhs_data + (first_col + 3) * args.rhs_n_stride,
-    };
+    std::array<const float*, static_cast<size_t>(kScalarKContiguousOutputBlock)> weights{};
+    for (int c = 0; c < kScalarKContiguousOutputBlock; ++c) {
+        weights[static_cast<size_t>(c)] = rhs_data + (first_col + c) * args.rhs_n_stride;
+    }
 
+    // Release builds compile with -O3: the constant-bound column loops below
+    // are fully unrolled and the local arrays scalar-replaced, so this loop
+    // form keeps hand-unrolled codegen while indices follow
+    // kScalarKContiguousOutputBlock.
+    int64_t inner = 0;
     for (; inner + 1 < args.k; inner += 2) {
         for (int r = 0; r < Rows; ++r) {
             const float lhs0 = lhs_rows[r][inner];
             const float lhs1 = lhs_rows[r][inner + 1];
-            sums[r][0] += lhs0 * weights[0][0];
-            sums[r][0] += lhs1 * weights[0][1];
-            sums[r][1] += lhs0 * weights[1][0];
-            sums[r][1] += lhs1 * weights[1][1];
-            sums[r][2] += lhs0 * weights[2][0];
-            sums[r][2] += lhs1 * weights[2][1];
-            sums[r][3] += lhs0 * weights[3][0];
-            sums[r][3] += lhs1 * weights[3][1];
+            for (int c = 0; c < kScalarKContiguousOutputBlock; ++c) {
+                const auto index = static_cast<size_t>(c);
+                const float* const weight = weights[index];
+                sums[r][index] += lhs0 * weight[0];
+                sums[r][index] += lhs1 * weight[1];
+            }
         }
 
         for (auto& weight: weights) {
@@ -186,18 +186,15 @@ void RunKContiguousOutputBlock(const GemmArgs& args, int64_t first_row,
     if (inner < args.k) {
         for (int r = 0; r < Rows; ++r) {
             const float lhs0 = lhs_rows[r][inner];
-            sums[r][0] += lhs0 * weights[0][0];
-            sums[r][1] += lhs0 * weights[1][0];
-            sums[r][2] += lhs0 * weights[2][0];
-            sums[r][3] += lhs0 * weights[3][0];
+            for (int c = 0; c < kScalarKContiguousOutputBlock; ++c) {
+                sums[r][static_cast<size_t>(c)] += lhs0 * weights[static_cast<size_t>(c)][0];
+            }
         }
     }
 
     for (int r = 0; r < Rows; ++r) {
-        output_rows[r][0] = sums[r][0];
-        output_rows[r][1] = sums[r][1];
-        output_rows[r][2] = sums[r][2];
-        output_rows[r][3] = sums[r][3];
+        std::copy_n(sums[r].data(), static_cast<size_t>(kScalarKContiguousOutputBlock),
+                    output_rows[r]);
     }
 }
 

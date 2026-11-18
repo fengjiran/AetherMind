@@ -1,6 +1,13 @@
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_GEMM_GEMM_AVX2_INTERNAL_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_GEMM_GEMM_AVX2_INTERNAL_H
 
+/// @file gemm_avx2_internal.h
+/// @brief Shared AVX2 F32 GEMM tile and blocking constants.
+///
+/// Only translation units compiled with AVX2 and FMA enabled (`-mavx2 -mfma`)
+/// may include this header: it exposes `<immintrin.h>` types and intrinsics
+/// whose inline definitions are compiled into every consuming TU.
+
 #include <cstdint>
 #include <immintrin.h>
 
@@ -11,11 +18,43 @@ inline constexpr int64_t kGemmAvx2NR = 16;
 inline constexpr int64_t kGemmAvx2MR = 4;
 inline constexpr int64_t kGemmAvx2MB = 48;
 
+// NOLINTBEGIN(portability-simd-intrinsics)
+// This microkernel is intentionally AVX2-specific; per-ISA kernels are the
+// backend's design, so the portability check does not apply.
+// A source row holds eight consecutive K values from one weight row. Write
+// each transposed row to eight adjacent N lanes of the F32 compute panel.
+inline void StoreGemmBTile8x8Avx2(const __m256 (&rows)[8], float* out) noexcept {
+    const __m256 pair01_lo = _mm256_unpacklo_ps(rows[0], rows[1]);
+    const __m256 pair01_hi = _mm256_unpackhi_ps(rows[0], rows[1]);
+    const __m256 pair23_lo = _mm256_unpacklo_ps(rows[2], rows[3]);
+    const __m256 pair23_hi = _mm256_unpackhi_ps(rows[2], rows[3]);
+    const __m256 pair45_lo = _mm256_unpacklo_ps(rows[4], rows[5]);
+    const __m256 pair45_hi = _mm256_unpackhi_ps(rows[4], rows[5]);
+    const __m256 pair67_lo = _mm256_unpacklo_ps(rows[6], rows[7]);
+    const __m256 pair67_hi = _mm256_unpackhi_ps(rows[6], rows[7]);
+
+    const __m256 first4[4]{
+            _mm256_shuffle_ps(pair01_lo, pair23_lo, 0x44),
+            _mm256_shuffle_ps(pair01_lo, pair23_lo, 0xee),
+            _mm256_shuffle_ps(pair01_hi, pair23_hi, 0x44),
+            _mm256_shuffle_ps(pair01_hi, pair23_hi, 0xee)};
+    const __m256 last4[4]{
+            _mm256_shuffle_ps(pair45_lo, pair67_lo, 0x44),
+            _mm256_shuffle_ps(pair45_lo, pair67_lo, 0xee),
+            _mm256_shuffle_ps(pair45_hi, pair67_hi, 0x44),
+            _mm256_shuffle_ps(pair45_hi, pair67_hi, 0xee)};
+    for (int i = 0; i < 4; ++i) {
+        _mm256_store_ps(out + i * kGemmAvx2NR, _mm256_permute2f128_ps(first4[i], last4[i], 0x20));
+        _mm256_store_ps(out + (i + 4) * kGemmAvx2NR, _mm256_permute2f128_ps(first4[i], last4[i], 0x31));
+    }
+}
+
 // Shared F32 accumulation tile. Callers own precision-specific panel loading,
 // shape/stride admission, tails and numerical fallbacks.
 inline void AccumulateF32Tile4x16Avx2(const float* buf_a, const float* buf_b,
                                       int64_t kc_len, int64_t output_m_stride,
-                                      float* out_row0) noexcept {
+                                      float* out_row0,
+                                      int64_t a_row_stride = kGemmAvx2KC) noexcept {
     __m256 acc00 = _mm256_setzero_ps();
     __m256 acc01 = _mm256_setzero_ps();
     __m256 acc10 = _mm256_setzero_ps();
@@ -26,9 +65,9 @@ inline void AccumulateF32Tile4x16Avx2(const float* buf_a, const float* buf_b,
     __m256 acc31 = _mm256_setzero_ps();
 
     const float* a0 = buf_a;
-    const float* a1 = a0 + kGemmAvx2KC;
-    const float* a2 = a1 + kGemmAvx2KC;
-    const float* a3 = a2 + kGemmAvx2KC;
+    const float* a1 = a0 + a_row_stride;
+    const float* a2 = a1 + a_row_stride;
+    const float* a3 = a2 + a_row_stride;
 
     for (int64_t kk = 0; kk < kc_len; ++kk) {
         const __m256 x0 = _mm256_set1_ps(a0[kk]);
@@ -68,6 +107,7 @@ inline void AccumulateF32Tile4x16Avx2(const float* buf_a, const float* buf_b,
     _mm256_storeu_ps(out3, _mm256_add_ps(o30, acc30));
     _mm256_storeu_ps(out3 + 8, _mm256_add_ps(o31, acc31));
 }
+// NOLINTEND(portability-simd-intrinsics)
 
 } // namespace aethermind::cpu::detail
 #endif

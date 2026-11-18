@@ -12,6 +12,7 @@ import sys
 LIBRARY_SOURCES = {
     "src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp",
     "src/backend/cpu/kernels/rmsnorm/rmsnorm_a32_w32_avx2.cpp",
+    "src/backend/cpu/kernels/gemm/gemm_a32_bf16_avx2.cpp",
     "src/backend/cpu/kernels/gemm/gemm_f32_avx2.cpp",
     "src/backend/cpu/kernels/gemm/gemm_packed_b_avx2.cpp",
 }
@@ -21,6 +22,8 @@ AVX_MACROS = ("GEMM_HAS_AVX2_FMA_KERNEL", "RMSNORM_HAS_AVX2_FMA_KERNEL",
 F16C_SOURCE = "src/backend/cpu/fp16_conversion_f16c.cpp"
 AVX2_CONVERSION_SOURCE = "src/backend/cpu/fp16_conversion_avx2.cpp"
 BF16_AVX2_CONVERSION_SOURCE = "src/backend/cpu/bf16_conversion_avx2.cpp"
+W16_F16_GEMM_SOURCE = "src/backend/cpu/kernels/gemm/gemm_a32_f16_avx2.cpp"
+W16_F16_GEMM_MACRO = "GEMM_HAS_A32_F16_AVX2_FMA_KERNEL"
 
 A16_AVX2_SOURCES = {
     "src/backend/cpu/kernels/linear/linear_a16_w16_avx2.cpp",
@@ -92,12 +95,14 @@ def verify(source_dir, build_dir, expect_avx2, expect_f16c=False, expect_avx2_co
     legacy_sources = LIBRARY_SOURCES | {TEST_SOURCE}
     a16_sources = A16_AVX2_SOURCES | A16_AVX512BF16_SOURCES | A16_AVX512FP16_SOURCES
     optional_sources = (legacy_sources
-                        | {F16C_SOURCE, AVX2_CONVERSION_SOURCE, BF16_AVX2_CONVERSION_SOURCE}
+                        | {F16C_SOURCE, AVX2_CONVERSION_SOURCE, BF16_AVX2_CONVERSION_SOURCE, W16_F16_GEMM_SOURCE}
                         | a16_sources)
     expected = {name: {"-mavx2", "-mfma"} for name in
                 ((LIBRARY_SOURCES | ({TEST_SOURCE} if tests_enabled else set())) if expect_avx2 else set())}
     if expect_f16c:
         expected[F16C_SOURCE] = {"-mavx", "-mf16c"}
+    if expect_avx2 and expect_f16c:
+        expected[W16_F16_GEMM_SOURCE] = {"-mavx2", "-mfma", "-mavx", "-mf16c"}
     if expect_avx2_conversion:
         expected[AVX2_CONVERSION_SOURCE] = {"-mavx2"}
         expected[BF16_AVX2_CONVERSION_SOURCE] = {"-mavx2"}
@@ -150,6 +155,8 @@ def verify(source_dir, build_dir, expect_avx2, expect_f16c=False, expect_avx2_co
         forbidden = set(AVX_MACROS) if not expect_avx2 else set()
         if not expect_f16c:
             forbidden.add("FP16_HAS_F16C_CONVERSION")
+        if not (expect_avx2 and expect_f16c):
+            forbidden.add(W16_F16_GEMM_MACRO)
         if not expect_avx2_conversion:
             forbidden.add("FP16_HAS_AVX2_CONVERSION")
             forbidden.add("BF16_HAS_AVX2_CONVERSION")

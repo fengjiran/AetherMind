@@ -2,7 +2,7 @@
 #define AETHERMIND_BACKEND_CPU_KERNELS_ATTENTION_ATTENTION_INTERNAL_H
 
 /// @file attention_internal.h
-/// @brief Internal contracts for the scalar CPU FP32 Attention kernel.
+/// @brief Prepared arguments and compute entry points for CPU Attention.
 
 #include "aethermind/base/kv_cache_binding.h"
 #include "aethermind/base/status.h"
@@ -88,6 +88,12 @@ struct AttentionA16KernelArgs {
 /// exactly once without per-invocation allocation.
 Status RunAttentionA16Reference(const AttentionA16KernelArgs& args,
                                 const KVCacheReadBinding& read) noexcept;
+
+// Optional kernels accept the same prevalidated arguments as their references.
+Status RunAttentionF32Avx2(const AttentionA32KernelArgs&, const KVCacheReadBinding&) noexcept;
+Status RunAttentionKVF16Avx2(const AttentionA32KernelArgs&, const KVCacheReadBinding&) noexcept;
+Status RunAttentionKVBF16Avx2(const AttentionA32KernelArgs&, const KVCacheReadBinding&) noexcept;
+Status RunAttentionBF16Avx2(const AttentionA16KernelArgs&, const KVCacheReadBinding&) noexcept;
 
 } // namespace aethermind::cpu::detail
 

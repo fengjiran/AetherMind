@@ -35,7 +35,7 @@ KernelSelector MakeSelector(DataType act_dtype) {
 
 StatusOr<ResolvedKernel> PrepareKernel(DataType act_dtype, int64_t num_q_heads,
                                        int64_t num_kv_heads, int64_t head_dim) {
-    CpuBackend backend;
+    CpuBackend backend(CpuFeaturePolicy{.disabled_features = CpuFeatureSet::From({CpuFeature::kAvx2})});
     return backend.PrepareKernel(OpType::kAttention, MakeSelector(act_dtype),
                                  OpParams{AttentionParams{.num_q_heads = num_q_heads,
                                                           .num_kv_heads = num_kv_heads,

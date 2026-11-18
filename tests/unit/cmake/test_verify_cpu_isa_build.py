@@ -97,7 +97,7 @@ class CpuIsaBuildContract(unittest.TestCase):
 
     def test_avx2_implementations_have_isolated_options(self):
         result = self.verify(self.commands(True), True)
-        self.assertEqual(len(result["isa_translation_units"]), 5)
+        self.assertEqual(set(result["isa_translation_units"]), ISA.LIBRARY_SOURCES | {ISA.TEST_SOURCE})
 
     def test_baseline_rejects_optional_source(self):
         with self.assertRaisesRegex(ValueError, "Optional AVX2 source"):

@@ -87,8 +87,8 @@ Status ValidateActivation(const TensorLike& tensor, std::string_view role) noexc
     return Status::Ok();
 }
 
-Status BuildAttentionF32ReferenceArgs(const KernelParamsBuildContext& context,
-                                      void* params_buffer) noexcept {
+Status BuildAttentionA32Args(const KernelParamsBuildContext& context,
+                             void* params_buffer) noexcept {
     if (context.inputs.size() != 1 || context.outputs.size() != 1) {
         return Status::InvalidArgument(
                 "CPU Attention requires one query input and one output");
@@ -280,14 +280,15 @@ Status BuildAttentionF32Metadata(const OpParams& params,
     return Status::Ok();
 }
 
-Status AttentionF32ReferenceEntry(const KernelContext& ctx) noexcept {
+template<auto Run = &RunAttentionF32Reference>
+Status AttentionF32Entry(const KernelContext& ctx) noexcept {
     const auto* const args = static_cast<const AttentionA32KernelArgs*>(ctx.kernel_params);
     if (args == nullptr || ctx.kv_read == nullptr) {
         return Status::FailedPrecondition(
                 "CPU Attention requires prepared args and a KV read binding");
     }
     AM_RETURN_IF_ERROR(ValidateReadBinding(*args, *ctx.kv_read));
-    return RunAttentionF32Reference(*args, *ctx.kv_read);
+    return Run(*args, *ctx.kv_read);
 }
 
 // --- KV16 (Q=F32, K/V cache F16/BF16) path ---
@@ -395,23 +396,20 @@ Status ValidateReadBindingKV16(const AttentionA32KernelArgs& args,
             value_footprint, "value cache");
 }
 
-Status AttentionKV16ReferenceEntry(const KernelContext& ctx,
-                                   DataType expected_dtype) noexcept {
+template<bool Bfloat, auto Run = nullptr>
+Status AttentionKV16Entry(const KernelContext& ctx) noexcept {
+    const DataType expected_dtype = Bfloat ? DataType::BFloat(16) : DataType::Float(16);
     const auto* const args = static_cast<const AttentionA32KernelArgs*>(ctx.kernel_params);
     if (args == nullptr || ctx.kv_read == nullptr) {
         return Status::FailedPrecondition(
                 "CPU Attention requires prepared args and a KV read binding");
     }
     AM_RETURN_IF_ERROR(ValidateReadBindingKV16(*args, *ctx.kv_read, expected_dtype));
-    return RunAttentionKV16Reference(*args, *ctx.kv_read, expected_dtype);
-}
-
-Status AttentionF16ReferenceEntry(const KernelContext& ctx) noexcept {
-    return AttentionKV16ReferenceEntry(ctx, DataType::Float(16));
-}
-
-Status AttentionBF16ReferenceEntry(const KernelContext& ctx) noexcept {
-    return AttentionKV16ReferenceEntry(ctx, DataType::BFloat(16));
+    if constexpr (!std::is_same_v<decltype(Run), std::nullptr_t>) {
+        return Run(*args, *ctx.kv_read);
+    } else {
+        return RunAttentionKV16Reference(*args, *ctx.kv_read, expected_dtype);
+    }
 }
 
 // --- A16 (Q, K/V cache, and output share one 16-bit dtype) path ---
@@ -420,8 +418,8 @@ Status AttentionBF16ReferenceEntry(const KernelContext& ctx) noexcept {
 // footprints with the A16 activation dtype as the expected storage dtype.
 
 template<bool Bfloat>
-Status BuildAttentionA16ReferenceArgs(const KernelParamsBuildContext& context,
-                                      void* params_buffer) noexcept {
+Status BuildAttentionA16Args(const KernelParamsBuildContext& context,
+                             void* params_buffer) noexcept {
     const DataType expected = Bfloat ? DataType::BFloat(16) : DataType::Float(16);
     if (context.inputs.size() != 1 || context.outputs.size() != 1) {
         return Status::InvalidArgument(
@@ -578,14 +576,15 @@ Status ValidateReadBindingA16(const AttentionA16KernelArgs& args,
             value_footprint, "value cache");
 }
 
-Status AttentionA16ReferenceEntry(const KernelContext& ctx) noexcept {
+template<auto Run = &RunAttentionA16Reference>
+Status AttentionA16Entry(const KernelContext& ctx) noexcept {
     const auto* const args = static_cast<const AttentionA16KernelArgs*>(ctx.kernel_params);
     if (args == nullptr || ctx.kv_read == nullptr) {
         return Status::FailedPrecondition(
                 "CPU A16 Attention requires prepared args and a KV read binding");
     }
     AM_RETURN_IF_ERROR(ValidateReadBindingA16(*args, *ctx.kv_read));
-    return RunAttentionA16Reference(*args, *ctx.kv_read);
+    return Run(*args, *ctx.kv_read);
 }
 
 } // namespace
@@ -598,68 +597,39 @@ static_assert(std::is_trivially_destructible_v<AttentionA16KernelArgs>);
 static_assert(alignof(AttentionA16KernelArgs) <= alignof(std::max_align_t));
 static_assert(sizeof(AttentionA16KernelArgs) <= kMaxKernelParamsSize);
 
-AM_REGISTER_KERNEL(
-        CpuAttentionF32Reference,
-        KernelDef{
-                .op_type = OpType::kAttention,
-                .selector = KernelSelector{
-                        .device_type = DeviceType::kCPU,
-                        .act_dtype = DataType::Float32(),
-                        .output_dtype = DataType::Float32(),
-                        .weight_dtype = DataType::Float32(),
-                        .state_dtype = DataType::Float32(),
-                        .weight_format = WeightFormat::kPlain,
-                        .phase = ExecPhase::kBoth,
-                },
-                .kernel_func = &AttentionF32ReferenceEntry,
-                .priority = 10,
-                .params_size = sizeof(AttentionA32KernelArgs),
-                .params_builder = &BuildAttentionF32ReferenceArgs,
-                .metadata_builder = &BuildAttentionF32Metadata,
-                .name = "cpu::attention_f32_kv32_reference"})
+KernelDef A32Attention(DataType state_dtype, KernelFunc fn, std::string_view name) {
+    return KernelDef{
+            .op_type = OpType::kAttention,
+            .selector = KernelSelector{
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+                    .state_dtype = state_dtype,
+                    .weight_format = WeightFormat::kPlain,
+                    .phase = ExecPhase::kBoth,
+            },
+            .kernel_func = fn,
+            .priority = 10,
+            .params_size = sizeof(AttentionA32KernelArgs),
+            .params_builder = &BuildAttentionA32Args,
+            .metadata_builder = &BuildAttentionF32Metadata,
+            .name = name,
+    };
+}
 
-AM_REGISTER_KERNEL(
-        CpuAttentionF16Reference,
-        KernelDef{
-                .op_type = OpType::kAttention,
-                .selector = KernelSelector{
-                        .device_type = DeviceType::kCPU,
-                        .act_dtype = DataType::Float32(),
-                        .output_dtype = DataType::Float32(),
-                        .weight_dtype = DataType::Float32(),
-                        .state_dtype = DataType::Float(16),
-                        .weight_format = WeightFormat::kPlain,
-                        .phase = ExecPhase::kBoth,
-                },
-                .kernel_func = &AttentionF16ReferenceEntry,
-                .priority = 10,
-                .params_size = sizeof(AttentionA32KernelArgs),
-                .params_builder = &BuildAttentionF32ReferenceArgs,
-                .metadata_builder = &BuildAttentionF32Metadata,
-                .name = "cpu::attention_f32_kvf16_reference"})
-
-AM_REGISTER_KERNEL(
-        CpuAttentionBF16Reference,
-        KernelDef{
-                .op_type = OpType::kAttention,
-                .selector = KernelSelector{
-                        .device_type = DeviceType::kCPU,
-                        .act_dtype = DataType::Float32(),
-                        .output_dtype = DataType::Float32(),
-                        .weight_dtype = DataType::Float32(),
-                        .state_dtype = DataType::BFloat(16),
-                        .weight_format = WeightFormat::kPlain,
-                        .phase = ExecPhase::kBoth,
-                },
-                .kernel_func = &AttentionBF16ReferenceEntry,
-                .priority = 10,
-                .params_size = sizeof(AttentionA32KernelArgs),
-                .params_builder = &BuildAttentionF32ReferenceArgs,
-                .metadata_builder = &BuildAttentionF32Metadata,
-                .name = "cpu::attention_f32_kvbf16_reference"})
+AM_REGISTER_KERNEL(CpuAttentionF32Reference,
+                   A32Attention(DataType::Float32(), &AttentionF32Entry<>,
+                                "cpu::attention_f32_kv32_reference"))
+AM_REGISTER_KERNEL(CpuAttentionF16Reference,
+                   A32Attention(DataType::Float(16), &AttentionKV16Entry<false>,
+                                "cpu::attention_f32_kvf16_reference"))
+AM_REGISTER_KERNEL(CpuAttentionBF16Reference,
+                   A32Attention(DataType::BFloat(16), &AttentionKV16Entry<true>,
+                                "cpu::attention_f32_kvbf16_reference"))
 
 template<bool Bfloat>
-KernelDef A16Attention(std::string_view name) {
+KernelDef A16Attention(std::string_view name, KernelFunc fn = &AttentionA16Entry<>) {
     return KernelDef{
             .op_type = OpType::kAttention,
             .selector = KernelSelector{
@@ -671,10 +641,10 @@ KernelDef A16Attention(std::string_view name) {
                     .weight_format = WeightFormat::kPlain,
                     .phase = ExecPhase::kBoth,
             },
-            .kernel_func = &AttentionA16ReferenceEntry,
+            .kernel_func = fn,
             .priority = 10,
             .params_size = sizeof(AttentionA16KernelArgs),
-            .params_builder = &BuildAttentionA16ReferenceArgs<Bfloat>,
+            .params_builder = &BuildAttentionA16Args<Bfloat>,
             .metadata_builder = &BuildAttentionF32Metadata,
             .name = name,
     };
@@ -684,5 +654,33 @@ AM_REGISTER_KERNEL(CpuAttentionA16F16Reference,
                    (A16Attention<false>("cpu::attention_f16_kvf16_reference")))
 AM_REGISTER_KERNEL(CpuAttentionA16Bf16Reference,
                    (A16Attention<true>("cpu::attention_bf16_kvbf16_reference")))
+
+#if defined(ATTENTION_HAS_AVX2_KERNEL)
+KernelDef Avx2Attention(KernelDef def, bool f16c = false) {
+    def.cpu_requirements = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma});
+    if (f16c) {
+        def.cpu_requirements.Enable(CpuFeature::kF16c);
+    }
+    def.priority = 20;
+    return def;
+}
+
+AM_REGISTER_KERNEL(CpuAttentionF32Avx2,
+                   Avx2Attention(A32Attention(DataType::Float32(), &AttentionF32Entry<&RunAttentionF32Avx2>,
+                                              "cpu::attention_f32_kv32_avx2")))
+AM_REGISTER_KERNEL(CpuAttentionKVBF16Avx2,
+                   Avx2Attention(A32Attention(DataType::BFloat(16), &AttentionKV16Entry<true, &RunAttentionKVBF16Avx2>,
+                                              "cpu::attention_f32_kvbf16_avx2")))
+AM_REGISTER_KERNEL(CpuAttentionBF16Avx2,
+                   Avx2Attention(A16Attention<true>("cpu::attention_bf16_kvbf16_avx2",
+                                                    &AttentionA16Entry<&RunAttentionBF16Avx2>)))
+#endif
+
+#if defined(ATTENTION_HAS_KVF16_AVX2_KERNEL)
+AM_REGISTER_KERNEL(CpuAttentionKVF16Avx2,
+                   Avx2Attention(A32Attention(DataType::Float(16), &AttentionKV16Entry<false, &RunAttentionKVF16Avx2>,
+                                              "cpu::attention_f32_kvf16_avx2"),
+                                 true))
+#endif
 
 } // namespace aethermind::cpu::detail

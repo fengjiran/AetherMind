@@ -3,7 +3,13 @@ file(GLOB_RECURSE SRC_FILES CONFIGURE_DEPENDS
         ${PROJECT_SOURCE_DIR}/src/*.cc
 )
 
+set(AETHERMIND_ATTENTION_AVX2_SOURCE
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/attention/attention_avx2.cpp)
+set(AETHERMIND_ATTENTION_KVF16_SOURCE
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/attention/attention_kvf16_avx2.cpp)
+
 set(AETHERMIND_AVX2_SOURCES
+        ${AETHERMIND_ATTENTION_AVX2_SOURCE}
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/common/dot_product_f32_avx2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a32_w32_avx2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_f32_avx2.cpp
@@ -18,7 +24,7 @@ endif ()
 set(AETHERMIND_GEMM_A32_F16_SOURCE
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_a32_f16_avx2.cpp)
 if (NOT AETHERMIND_HAS_AVX2_FMA OR NOT AETHERMIND_HAS_F16C)
-    list(REMOVE_ITEM SRC_FILES ${AETHERMIND_GEMM_A32_F16_SOURCE})
+    list(REMOVE_ITEM SRC_FILES ${AETHERMIND_GEMM_A32_F16_SOURCE} ${AETHERMIND_ATTENTION_KVF16_SOURCE})
 endif ()
 
 set(AETHERMIND_F16C_CONVERSION_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/fp16_conversion_f16c.cpp)
@@ -137,7 +143,11 @@ endif (BACKTRACE_ON_SEGFAULT)
 
 # Consumers use these definitions to know which optional symbols exist. Runtime
 # eligibility still comes from CPU/OS detection and descriptor requirements.
+# Keep the reference reduction order and IEEE special-value handling in the SIMD TUs.
+set_property(SOURCE ${AETHERMIND_ATTENTION_AVX2_SOURCE} ${AETHERMIND_ATTENTION_KVF16_SOURCE}
+             APPEND PROPERTY COMPILE_OPTIONS -fno-fast-math -ffp-contract=off)
 if (AETHERMIND_HAS_AVX2_FMA)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE ATTENTION_HAS_AVX2_KERNEL=1)
     aethermind_configure_avx2_sources(${AETHERMIND_AVX2_SOURCES})
     target_compile_definitions(${PROJECT_NAME} PUBLIC RMSNORM_HAS_AVX2_FMA_KERNEL=1)
     target_compile_definitions(${PROJECT_NAME} PUBLIC GEMM_HAS_AVX2_FMA_KERNEL=1)
@@ -145,8 +155,9 @@ if (AETHERMIND_HAS_AVX2_FMA)
 endif ()
 
 if (AETHERMIND_HAS_AVX2_FMA AND AETHERMIND_HAS_F16C)
-    aethermind_configure_avx2_sources(${AETHERMIND_GEMM_A32_F16_SOURCE})
-    aethermind_configure_f16c_sources(${AETHERMIND_GEMM_A32_F16_SOURCE})
+    aethermind_configure_avx2_sources(${AETHERMIND_GEMM_A32_F16_SOURCE} ${AETHERMIND_ATTENTION_KVF16_SOURCE})
+    aethermind_configure_f16c_sources(${AETHERMIND_GEMM_A32_F16_SOURCE} ${AETHERMIND_ATTENTION_KVF16_SOURCE})
+    target_compile_definitions(${PROJECT_NAME} PRIVATE ATTENTION_HAS_KVF16_AVX2_KERNEL=1)
     target_compile_definitions(${PROJECT_NAME} PUBLIC GEMM_HAS_A32_F16_AVX2_FMA_KERNEL=1)
 endif ()
 

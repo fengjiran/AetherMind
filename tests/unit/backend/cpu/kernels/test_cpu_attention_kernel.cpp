@@ -33,7 +33,7 @@ StatusOr<ResolvedKernel> PrepareAttentionKernel(
         int64_t num_q_heads = 1,
         int64_t num_kv_heads = 1,
         int64_t head_dim = 2) {
-    CpuBackend backend;
+    CpuBackend backend(CpuFeaturePolicy{.disabled_features = CpuFeatureSet::From({CpuFeature::kAvx2})});
     return backend.PrepareKernel(
             OpType::kAttention, MakeAttentionSelector(),
             OpParams{AttentionParams{

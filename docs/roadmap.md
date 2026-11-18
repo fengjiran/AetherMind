@@ -5,7 +5,7 @@
 
 | 方向 | 状态 | 当前目标 | 提案 |
 |---|---|---|---|
-| CPU 算子覆盖与性能 | Draft | 首批完善 W16/A32 SIMD/GEMV、FP32 GEMM 生产链、Attention SIMD 与 AddRmsNorm；量化合同提前推进，随后按依赖接入并行与平台扩展 | [CPU 算子路线图](operators/cpu-operator-evolution.md) |
+| CPU 算子覆盖与性能 | In Progress | W16/A32、FP32 GEMM、Attention SIMD、Decode GQA 复用与 Prefill 双行分块已有本机生产路径证据；推进 AddRmsNorm 与模型重新 profiling | [CPU 算子路线图](operators/cpu-operator-evolution.md) |
 | 工程质量体系 | Draft | capability 台账、验证 profile 与风险治理 | [02](improvement-plan/02-engineering-quality-system.md) |
 | 系统能力路线图 | Draft | 全仓库 capability gap 与实施排序 | [06](improvement-plan/06-system-capability-evolution-roadmap.md) |
 | KV / Attention 演进 | In Progress | KV owner/epoch、静态布局预算与 CPU Attention 优化准入 | [08](improvement-plan/08-kv-cache-and-attention-capability-evolution.md) |

@@ -19,6 +19,12 @@
 
 ### Changed
 
+- CPU Attention 的兼容 AVX2 Prefill 在相邻两行之间复用公共 K/V 前缀，按行处理 causal 对角，保留归约顺序和短 Prefill 回退。见 [Prefill 方案](docs/operators/attention/attention-optimization.md)。
+
+- CPU Attention 单 token Decode 在兼容 GQA/MQA 布局中按 query head 对复用 K/V 读取与 widening，保留各 head 的数值归约及原路径 fallback。见 [Decode 验收](docs/operators/attention/benchmarks/desktop-qhihogq-attention.md#cpu-04-第二段decode-gqakv-复用)。
+
+- CPU Attention 新增 F32、A32/KV16 和 BF16 A16 的 AVX2 路径，保留 causal 可见性、FP32 归约顺序和 reference fallback。见 [Attention 验收](docs/operators/attention/benchmarks/desktop-qhihogq-attention.md)。
+
 - CPU W16/A32 长 Prefill 直接读取 A，临时 B panel 在更大的 M block 内复用，减少重复 widening 和转置。见 [GEMM 机器记录](docs/operators/gemm/benchmarks/54h5mmi-gemm.md)。
 
 - CPU AVX2 GEMM 的 FP32 Prefill 直接读取 A 并跨 M tiles 复用 B panel。W16/A32 加入向量转置与 Decode 幅值分链。FP16/BF16 同型 Linear 的 blocked 路径保留 FP32 partial sums，最后一次写出 16-bit 或 FP32 结果。见 [GEMM 机器记录](docs/operators/gemm/benchmarks/54h5mmi-gemm.md)。

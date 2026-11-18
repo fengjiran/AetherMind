@@ -120,6 +120,8 @@ F32 Linear packed 另有 `cpu::linear_f32_w32_packed_bpanel_candidate`（QKV/Gat
 | RoPE | BF16 / BF16 / — / BF16 | `cpu::rope_bf16_reference` |
 | RoPE | F16 / F16 / — / F16 | `cpu::rope_f16_reference` |
 
+本表的 Attention 名称为 CPU-01 冻结时的观测。CPU-04 首段之后，在实测 AVX2/FMA 主机，前四个 Attention selector 的 O1/O2 Prefill 和 Decode 均解析至对应 `_avx2` descriptor；KV FP16 另需 F16C。具体 fast path 仍取决于 Q/output stride 和 head_dim；FP16 A16 保持 reference。见 [CPU-04 证据](attention/benchmarks/desktop-qhihogq-attention.md)。
+
 KVCacheUpdate 为 state-only step，output_dtype undefined；Attention 的 weight fallback 跟随 activation，KV dtype 由 state_dtype 携带。
 
 ### 3.4 小算子与语义-only 算子

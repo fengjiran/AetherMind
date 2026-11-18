@@ -2,7 +2,7 @@
 
 本文编排 CPU 算子演进的实施顺序、跨模块依赖与退出条件。当前活跃计划入口见 [roadmap](../roadmap.md)，产品范围见 [product](../product.md)，模块所有权遵循 [AGENTS.md §2.1](../../AGENTS.md)。
 
-本文记录后续增量及各工作包的实施状态；已实现项仅在对应退出证据列明的机器、模型、精度与 workload 范围成立。初版现状表来自源码核对，未重新运行测试/性能；后续 CPU-02/03 的实际验证与测量已链接于 §4.1，不泛化为全部产品目标达成。后续工作包编号 `CPU-*` 与编译预设 O1/O2、算子工作流 O0–O4 分别独立。
+本文记录后续增量及各工作包的实施状态；已实现项仅在对应退出证据列明的机器、模型、精度与 workload 范围成立。初版现状表来自源码核对，未重新运行测试/性能；后续 CPU-02/03/04 的实际验证与测量已链接于 §4.1，不泛化为全部产品目标达成。后续工作包编号 `CPU-*` 与编译预设 O1/O2、算子工作流 O0–O4 分别独立。
 
 ## 1. 现状分析
 
@@ -16,7 +16,7 @@
 | W16/A32 | Linear、LM head、QKV、GateUp 已接入 AVX2/FMA W16 driver，F16 还需 F16C；O1/plain 与 O2/identity-packed 使用同一 recipe 下的 Decode/Prefill driver，reference 继续独立保留 | SIMD widening、Decode GEMV、Prefill blocking；见 [reference](../../src/backend/cpu/kernels/linear/linear_a32_w16_reference.cpp)、[Linear 证据](linear/benchmarks/desktop-54h5mmi-linear.md) |
 | BF16 A16 | 高层 Load 已准入 activation/weight 的 BF16 同 dtype 组合（KV 组合约束在编译期校验）；Linear/RMSNorm 已有 AVX2 widening 和 AVX-512 实现，其他主链算子已有 reference | 扩大目标 shape/硬件证据，随后按 profile 优化；见 [Load](../../src/inference/executable_model.cpp)、[精度专题 §4.5](../improvement-plan/11-fp16-bf16-execution-support.md) |
 | FP16 A16 | kernel 层已有实现，高层 Load 因 FP32 residual/Cast 路径未完成而明确返回 Unimplemented | 按精度专题 P4-B 补齐模型路径；不能由单 kernel 可调用推导模型支持 |
-| Attention / KV | F32、A32/KV16、A16 reference 已存在；当前 Attention 不物化完整 score matrix，但两遍扫描重复计算 QK | SIMD、GQA KV 复用、Decode/Prefill 分组优化；见 [F32 reference](../../src/backend/cpu/kernels/attention/attention_a32_kv32_reference.cpp)、[KV16 reference](../../src/backend/cpu/kernels/attention/attention_a32_kv16_reference.cpp) |
+| Attention / KV | F32、A32/KV16、BF16 A16 已接入 AVX2 并保留 reference；仍两遍扫描重算 QK，不物化完整 score matrix | 单 token Decode 已支持配对 GQA/KV 复用，Prefill 已支持相邻两行共享公共 K/V 前缀。见 [SIMD 证据](attention/benchmarks/desktop-qhihogq-attention.md)、[F32 reference](../../src/backend/cpu/kernels/attention/attention_a32_kv32_reference.cpp)、[KV16 reference](../../src/backend/cpu/kernels/attention/attention_a32_kv16_reference.cpp) |
 | 融合与小算子 | FP32 RMSNorm 已有 AVX2；QKV/GateUp/AddRmsNorm 的部分默认路径仍是 reference；A16 编译主动关闭 QKV/GateUp/AddRmsNorm fusion | 检查 O2 fused-vs-unfused，避免优化单算子后让融合路径仍落在标量实现；见 [compiler](../../src/compiler/model_compiler.cpp)、[CPU kernels](../../src/backend/cpu/kernels/) |
 | 通用执行覆盖 | Softmax、Reshape、Permute、Reorder、Cast 有语义定义，当前 CPU registry 缺少相应 standalone runtime kernel | 按真实 consumer 补齐；常量折叠成功不代表动态执行可用；见 [OpType](../../include/aethermind/operators/op_type.h)、[operator inference](../../src/operators/operator_inference.cpp) |
 | 算子内并行 / 量化 | 当前 Runtime 未提供生产 worker pool；INT8/INT4 尚无完整加载、准备、kernel、Generate 链 | 分别建立 threading 和 quantization 纵向合同；见 [RuntimeOptions](../../include/aethermind/runtime/runtime_options.h)、[HF validator](../../src/model/formats/hf/hf_model_validator.cpp) |
@@ -201,7 +201,7 @@ CPU-01 的 ISA 台账必须分别记录真实检测与合成 capabilities：机�
 | CPU-01 覆盖与基线 | 进行中（[覆盖台账](cpu-coverage-baseline.md)：参考机器/构建与代表模型 revision 已冻结、跨算子真实选核身份已记、同实现噪声与主路径耗时分布已取得限定观测；M0 基准达成，单算子 README 能力表与状态漂移修订收尾中） | 算子 README 能力表、prepared/ExecutionPlan/model benchmark、真实 kernel/recipe 身份；冻结参考机器规格与代表模型 revision；修订相关状态漂移 | 当前生产入口 | 主要组合可追溯，明确 unsupported/not-run；取得同实现噪声与主路径耗时分布 |
 | CPU-02 W16/A32 矩阵计算 | 已实现（[本机限定验收](linear/benchmarks/desktop-54h5mmi-linear.md#cpu-02-w16a32-生产优化与-cpu-03-关联闭环)） | backend Linear SIMD widening、Decode/small-M、QKV/GateUp 复用，随后 Prefill blocking | CPU-01 与既有 W16 合同 | F16/BF16、plain/identity、tail/stride/fallback 数值通过；生产收益稳定，稳态零分配 |
 | CPU-03 FP32 GEMM 生产闭环 | 已实现（[identity 生产闭环；B-panel 全局 promotion 拒绝](gemm/benchmarks/54h5mmi-gemm.md#cpu-03-fp32-gemm-生产闭环与布局-promotion-决策)） | 已有 scalar/AVX2 driver 接入；B-panel candidate 与 composite consumers 的 promotion 决策 | CPU-01；可与 CPU-02 独立实施 | registered/prepared、fused/unfused、模型路径与 packing 摊销均有证据；保留无收益组合的 fallback |
-| CPU-04 Attention / KV | 待实施 | SIMD 基线 → Decode GQA/KV blocking → Prefill blocking/online softmax | CPU-01；引入 scratch 时补相应规划 | context/geometry/精度矩阵、事务/visibility 与数值门禁通过；短长 context 收益和资源成本分别可解释 |
+| CPU-04 Attention / KV | SIMD、Decode GQA/KV 复用与 Prefill 双行分块已实现并完成本机限定验证（[证据](attention/benchmarks/desktop-qhihogq-attention.md)）；更宽 tiles、score strip/online softmax 按 profile 推进 | SIMD 基线 → Decode GQA/KV blocking → Prefill blocking/online softmax | CPU-01；引入 scratch 时补相应规划 | context/geometry/精度矩阵、事务/visibility 与数值门禁通过；短长 context 收益和资源成本分别可解释 |
 | CPU-05 小算子与融合 | 待实施 | 首批 AddRmsNorm；其余按 profile 补 Add/SiluMul/RoPE/KVUpdate 等 | CPU-01；按优化后的模型重新 profile | 保留输出、alias、rounding 与 residual；fused/unfused 生产对照通过 |
 | CPU-06 精度与执行覆盖 | 待实施 | Cast + FP32 residual 的 FP16 A16 模型路径；consumer 驱动的 shape/layout/Softmax kernel | CPU-01、精度专题 P4-B；家族 consumer 按需触发 | schema/Infer/graph/lowering/prepare/kernel/model 全链覆盖；合法路径可执行，unsupported 在准备期可诊断 |
 | CPU-07 资源规划 | 待实施 | binding-dependent scratch、worker scratch、workspace lifetime、activation liveness 与预算 | CPU-01；按实际 scratch 需求拆分 | sizing/query 与执行一致，alignment/overflow/cap/OOM/alias 覆盖；复用不破坏已准备地址与 lifetime |
@@ -214,7 +214,7 @@ CPU-01 的 ISA 台账必须分别记录真实检测与合成 capabilities：机�
 1. **CPU-01**：补齐矩阵/Attention 主路径台账，复用现有 runner 记录实际 descriptor/recipe、热点和噪声；冻结参考机器规格与代表模型 revision 作为公共基准，并记录 AVX-512 机器上实际 resolve 的 kernel 身份；不新建 capability runtime registry。进展见 [覆盖台账](cpu-coverage-baseline.md)：`desktop-54h5mmi` 机器/构建身份与 tiny fixture 代表模型 revision 已冻结，跨算子真实选核身份与覆盖缺口已记，4 进程同实现噪声 floor 与主路径耗时分布已取得限定观测（M0 基准达成）；native AVX-512 仍 not-run，单算子 README 能力表与状态漂移修订收尾中。
 2. **CPU-02 首段（已完成，完整工作包证据见 §4.1）**：实现 W16/A32 plain/identity AVX2 widening 与 `M=1` GEMV，保持数值策略；随后覆盖 QKV/GateUp 与 small-M。
 3. **CPU-03（已完成本机闭环）**：为已有 FP32 driver 完成生产 descriptor/adapter；补齐 B-panel 对照、tail、packing 与 Generate 证据，再决定 promotion。
-4. **CPU-04 首段**：实现 Attention SIMD 候选，建立 F32/KV16/BF16 A16 的对应 baseline；随后推进 GQA 复用与 blocking。
+4. **CPU-04（前三段的生产路径已在本机验证）**：F32/KV16/BF16 A16 已接入 AVX2、Decode GQA/KV 复用和 Prefill 双行分块；进一步 Prefill 调优按长 context profile 决定。
 5. **CPU-05 首段**：补齐 AddRmsNorm SIMD 并验证 O2 路径，随后根据重新 profiling 的结果决定小算子顺序。
 
 首批首段组合的端到端里程碑（M1 已按本机限定范围达成，证据见 §4.1）：M0 = CPU-01 台账与参考基准冻结；M1 = CPU-02 首段 W16/A32 Decode 全链（prepared → ExecutionPlan → Generate）与 CPU-03 FP32 生产闭环；M2 = CPU-04 首段 Attention SIMD 与 CPU-05 首段 AddRmsNorm 后的重新 profile。其余工作包按触发条件推进，不占用上述关键路径。

@@ -1,6 +1,10 @@
 # CPU Attention 与 P3 KV16 合同
 
-当前 CPU production kernel 含 F32（Q/K/V/output 均 F32）与 KV16（Q=F32、K/V cache=同一 F16/BF16、output=F32）reference；operator inference 已接受同型与 A32→KV16 mixed 签名，`state_dtype` 参与 selector 身份。**P3 mixed-KV reference 已实现，并在 reduced fixture 上通过四组合模型验收（O1/O2，KV16 vs KV32 实测容差 + 固定排名规则）；§2.8 校准数值 fixture（2048）的正式生产验收已通过，SIMD/优化路径仍待推进。** 状态以 [11 号提案 §2.7–2.8](../../improvement-plan/11-fp16-bf16-execution-support.md) 的实施/验收门禁为准，遵循 [算子工作流](../../guides/operator-development-workflow.md)。
+CPU-04 首段已接入 AVX2：F32、A32/KV FP16（额外要求 F16C）、A32/KV BF16、BF16 A16 在可用 ISA 和兼容 head 形状上选择 SIMD；原有 reference 保留，FP16 A16 仍仅有 reference。见 [优化方案](attention-optimization.md) 与 [本机证据](benchmarks/desktop-qhihogq-attention.md)。P3 的 reduced 模型和 2048-token 校准验收范围仍见 [11 号提案 §2.7–2.8](../../improvement-plan/11-fp16-bf16-execution-support.md)。
+
+CPU-04 第二段已接入 [Decode GQA/KV 复用](attention-optimization.md)：具备已提交历史的单 token Decode 在兼容 shape 上两两共享 K/V 加载与 widening，其余请求保持既有路径。该路径使用两遍扫描；score 缓存原型未提升为生产分支。
+
+CPU-04 第三段已接入 [Prefill 双 query 行](attention-optimization.md)：兼容的 AVX2 Prefill 从 32 行起复用相邻行的公共 K/V 前缀，并按行处理 causal 对角。保留两遍扫描与原 FP32 归约，不增加 workspace。
 
 ## 端口与布局（P3 O0）
 
@@ -10,7 +14,7 @@
 | `k_cache` / `v_cache` | 同一 scalar F16 或 BF16 | `[num_kv_heads, cache_len, head_dim]`，读取实际 state |
 | `output` | scalar F32 | 跟随 q 的逻辑 shape |
 
-保留已有同型 operator inference 合同；mixed tuple 只新增上述两种，既有 A16 语义不代表 CPU A16 kernel 可执行。head 数、head_dim 和 seq_len 均为正，`num_q_heads % num_kv_heads == 0`，K/V 逻辑 geometry 相等。query/output 支持既有合法正元素 stride，output 行不得重叠，实际地址须满足 float 自然对齐。
+保留已有同型 operator inference 合同；mixed tuple 只新增上述两种，同型 A16 的模型准入由精度专题定义。head 数、head_dim 和 seq_len 均为正，`num_q_heads % num_kv_heads == 0`，K/V 逻辑 geometry 相等。query/output 支持既有合法正元素 stride，output 行不得重叠，实际地址须满足 float 自然对齐。
 
 state specs、selector.state_dtype、KV view/layout 和 invocation binding 必须同型，不能仅放宽 entry 的 F32 检查。state ports 虽不参与 compact shape inference，仍参与独立 state dtype 推导。Attention 没有 weight port，selector 的 weight fallback 继续由 activation 决定，KV dtype 不写入 weight_dtype。精度来自端口 TensorSpec，现有 AttentionParams/serde 不新增平行的 KV 精度字段。
 
@@ -49,6 +53,6 @@ KV 指针、read frontiers 和 query positions 只通过本次 `kv_read` binding
 - independent reference 必须显式量化 cache；不能用未量化 K/V 或同一生产 helper 生成 expected。
 - 覆盖 F16/BF16、MHA/GQA/MQA、Prefill/Decode、history/current token、stride/tail/padding、alias/overflow 和特殊值分类。
 - 模型实现正确性与同 W16 的 KV32 质量对照分开验收；固定预算、校准资产与四种 W×KV 组合以 [11 号提案 §2.8](../../improvement-plan/11-fp16-bf16-execution-support.md) 为唯一准入来源。
-- O1/plain 与 O2/identity-packed 均已闭环；SIMD 与任何性能收益须另有 prepared、production-path 和端到端证据。
+- O1/plain 与 O2/identity-packed 均可选用上述 SIMD descriptor。性能结论限于对应机器记录。
 
-当前源码入口见 [attention_entry.cpp](../../../src/backend/cpu/kernels/attention/attention_entry.cpp)，已有 F32 回归见 [test_cpu_attention_kernel.cpp](../../../tests/unit/backend/cpu/kernels/test_cpu_attention_kernel.cpp)，事务回归见 [test_kvcache_update_kernel.cpp](../../../tests/unit/execution/test_kvcache_update_kernel.cpp)。F32/KV16/A16 各组合的真实生产选核身份（当前均为 reference）见 [CPU 覆盖台账 §3.3](../cpu-coverage-baseline.md#33-attention--kv--ropeplain-为生产请求无-weight-packing)。
+当前源码入口见 [attention_entry.cpp](../../../src/backend/cpu/kernels/attention/attention_entry.cpp)，已有 F32 回归见 [test_cpu_attention_kernel.cpp](../../../tests/unit/backend/cpu/kernels/test_cpu_attention_kernel.cpp)，事务回归见 [test_kvcache_update_kernel.cpp](../../../tests/unit/execution/test_kvcache_update_kernel.cpp)。F32/KV16/A16 各组合的生产选核身份见 [CPU 覆盖台账 §3.3](../cpu-coverage-baseline.md#33-attention--kv--ropeplain-为生产请求无-weight-packing)。

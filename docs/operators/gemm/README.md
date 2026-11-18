@@ -26,6 +26,8 @@
 | AVX2 bpanel | Candidate / correctness verified | KC512 layout、Linear/QKV/GateUp scan/blocked 与尾块测试已落地；global identity descriptor 保持默认 |
 | identity/scalar/AVX2 生产性能 | Accepted（本机限定） | [CPU-03 记录](benchmarks/54h5mmi-gemm.md#cpu-03-fp32-gemm-生产闭环与布局-promotion-决策)：registered/prepared、Generate、M sweep、fused/unfused 与 packing-inclusive 均已对照；参考实现独立保留 |
 | 性能与 KC 选择 | **B-panel 全局 promotion 拒绝；KC 选择仍 Needs More Data** | CPU-02/03 的本机实现对照单独记账；B-panel 与 identity 的全边界比较决定 promotion，KC256 未测，不宣称 KC512 最优 |
-| 下一轮 CPU 与 CUDA | Proposed | 先验证现有布局下的 W16/A32 Prefill panel 与各精度 Decode，随后扩展 A16 blocking。CUDA 从 FP32 O1/plain 基线开始。见 [实施顺序](cpu-gemm-optimization.md#71-cpu-0203-之后的实施顺序) |
+| AVX2 Prefill 与 W16 Decode | Implemented | FP32 direct A 与 B panel 复用，W16/A32 SIMD panel 转置与单行幅值分链，同型 A16 的 FP32 分块累加。见 [实施顺序](cpu-gemm-optimization.md#71-cpu-0203-之后的实施顺序) 和 [机器记录](benchmarks/54h5mmi-gemm.md) |
+| W16/A32 长 Prefill | Implemented | direct A 与有界 M block 的 B panel 复用。Decode 的单核带宽对照见 [机器记录](benchmarks/54h5mmi-gemm.md) |
+| CUDA | Proposed | 从 FP32 O1/plain 基线开始。见 [CUDA 接入顺序](cpu-gemm-optimization.md#74-cuda-接入顺序) |
 
 决策合同见 [backend 模块设计](../../modules/backend.md) 的 packed weight 与布局章节。F32 Linear/QKV/GateUp 的默认 packed descriptor 为 identity optimized，B-panel candidate 以较低 priority 注册。各组合见 [CPU 覆盖台账 §3.1/§4](../cpu-coverage-baseline.md#31-矩阵计算)。

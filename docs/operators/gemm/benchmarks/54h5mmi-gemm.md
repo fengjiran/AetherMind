@@ -234,3 +234,54 @@ Cold packing：`N=4096,K=4096` median 66.83 ms，packed size 64 MiB（amplificat
 - 同进程复核：`interleaved.sh` 将同配置的两个 primitive 放在同一进程下交替执行，每组 10 对，数据与输出缓冲相同。最终版的 8 个单行 K-contiguous 用例，成对延迟差的中位数为 −6.1% 至 +2.3%。两种采集方式对部分形状仍有差异，生产性能门禁维持 Needs More Data。
 - Prepared Linear smoke：用 `CpuFeaturePolicy` 屏蔽 AVX2，经实际 prepare/bind/execute 解析到 `cpu::linear_f32_w32_scalar`。旧版与最终版的 `1/33/31` hot 均通过原 `1e-5` guard，`1/4096/4096` streaming 均触发该 guard。临时 harness 使用 direct scalar 已有 `1e-4` 容差后，两组各 3 次重复均通过。原 guard 失败记录保留，仓库 benchmark 的容差保持原值。
 - raw：`benchmark-results/operators/gemm/20261118T023144Z_33de2046460a_54h5mmi_kcontig-single-row-dedup/`，包含两轮 direct 采集、源码快照、反汇编、同进程对照、prepared smoke 与测试 XML。本地 gitignored。
+
+## AVX2 临时 panel、单行 GEMV 与同型 A16 blocking
+
+- 基线为 `bacdaca9afb2` 加实施前已有工作树差异。数据使用本机 Release、单线程、`taskset -c 2` 和 default effective ISA。保存每个阶段的源码差异、共享库、测量程序及 SHA-256。`measure.py` 运行 4 对 AB/BA 交错独立进程、每进程 3 repetitions、`--benchmark_min_time=0.02s`。以下取进程中位数的中位数，包含 prepared driver 调用。streaming 对照轮转 256 MiB 权重。`perf` 缺本 WSL2 kernel 对应工具，硬件 PMU 数值未采集。
+- 幅值分链与 direct A 分别对照。FP32 仅改 SIMD 转置的早期候选在代表形状上没有稳定收益，最终加入 direct A 和跨完整 M tiles 的 B panel 复用。W16/A32 的 Prefill 保留原 `KC=512` 和 `MB=48`，本轮测独立 B panel 转置。Decode 实验以已有转置的 driver 为基线，只比较单行幅值归约分链。A/A control 中部分短 K 形状的中位数差约 9%，纳秒级变化仅作观察。
+
+| Prepared Linear | M / K / N | 基线 → 候选（ms） | 证据 |
+|---|---|---:|---|
+| FP32 plain Prefill | 64 / 4096 / 4096 | 27.575 → 21.740 | `f32-direct-a-ab.csv` |
+| FP32 identity Prefill | 64 / 4096 / 4096 | 25.623 → 21.155 | 同上 |
+| FP16 权重 / A32 plain Prefill | 16 / 4096 / 4096 | 15.633 → 8.475 | `transpose-ab.csv` |
+| BF16 权重 / A32 plain Prefill | 16 / 4096 / 4096 | 15.666 → 8.349 | 同上 |
+| FP16 权重 / A32 identity streaming Decode | 1 / 4096 / 4096 | 2.545 → 1.489 | `w16-decode-ab.csv` |
+| BF16 权重 / A32 identity streaming Decode | 1 / 4096 / 4096 | 2.579 → 1.487 | 同上 |
+| 同型 FP16，FP16 output | 16 / 4096 / 4096 | 49.394 → 8.799 | `a16-ab.csv` |
+| 同型 BF16，BF16 output | 16 / 4096 / 4096 | 55.581 → 9.238 | 同上 |
+
+- 同型 A16 的阻塞对照还含 F32 输出、`M=9/49, K=N=513` 和 LM head `128/16/32000`。独立 FP64 oracle 由已存储的 dtype 解码，窄输出以对区间两端做同 dtype 舍入验证。FP32 `M=16` 多数组进程区间重叠。W16 QKV/GateUp、plain/packed、短 K 及调整前后的观察值保留在 raw 文件。
+- 模型 A/B 使用 `measure_models.py`，从固定 tiny Llama checkpoint 走真实 Load、Compile、Prepare、内部 ExecutionPlan 和同步 Generate。每种同精度、同 preset 的 4 对交错进程各完成 1 次 warmup 与 5 次测量。对照组覆盖 FP32、FP16/BF16 权重 A32、BF16 A16，含 O1/plain 和 O2/identity-packed。每轮核对报告 schema、同步 Generate 与内部执行轨迹、相同 workload 的输出 token IDs。模型权重、prompt、编译配置与全部值见 `model-ab-direct-a/` 及最终复采记录。
+- 定量栈开销以 Release `-fstack-usage` 记录为准。FP32 blocked 单函数为 33216 B，原 CPU-03 记录为 131584 B。同型 FP16/BF16 blocked 单函数为 156160 B，另有上层调用帧。工作区使用固定栈缓冲，无额外模型 artifact 或运行期堆分配。
+- Release 聚焦集 653/653 通过，含 FP32、W16、BF16 A16/KV16、冻结 near-limit 数值预算与 Decode malloc-family 回归。ASan/UBSan 共 621 项通过、2 项跳过、0 项失败，禁用 LSan，单独排除依赖 malloc interposer 的测试。新增测试覆盖跨 K-panel 只舍入一次、M/N/K 尾块与未对齐地址，以及 BF16 极端输入触发全量 reference 回退。
+- ASan 首轮的 BF16 回退案例触发 SIGILL。反汇编证明 GCC 选择了 AVX-512 编译单元中弱链接的 `LoadA16Element`，其 ASan 栈清理包含 EVEX `vmovdqu8`。A16 helpers 改用内部链接后，通过隔离复现与聚焦集复验。ISA fixture 同步补齐 W16 两个 optional TU 的 flags 和宏校验。AVX2 ON/F16C OFF 的 prepare/bind/execute 探针验证 FP16 reference、BF16 AVX2，选择身份和数值均通过。
+- AVX2/F16C OFF 构建复验 234 项通过、6 项依 ISA 跳过。Release 与上述两类非默认构建的 ISA flags 检查均通过。
+- 最终共享库以 `final/source.patch`、`final/sha256.txt` 定位。以同一 benchmark 程序驱动两侧共享库，`final-prepared-ab.csv` 的 `M=16, K=N=4096` W16/A32 Prefill 分别为 FP16 15.175→9.068 ms、BF16 15.450→8.734 ms。对应 identity streaming Decode 为 2.558→1.592 ms、2.587→1.621 ms。同型 A16 窄输出 Prefill 为 FP16 46.919→9.942 ms、BF16 52.351→8.869 ms。FP32 `M=64, K=N=4096` 首轮复采区间重叠，再次复采从 28.388→23.653 ms 且进程区间分离。FP32 `K=N=512` 与同型 A16 `M=8` 的最终多轮结果有波动，性能门禁保持 Needs More Data。
+- 最终模型复采的 BF16 A16 O1/plain Generate 从 45.051→31.848 ms，两个进程区间分离。BF16 A16 O2/identity 及 FP32、W16/A32 的 tiny Generate 区间重叠。本次短 FP32 O2 内部 Decode 的中位数偏差复现为约 +20%，同实现 A/A 的偏差约 +25%。补做 64 个 Decode step 后，内部 Decode 为 0.077→0.084 ms/token，公开 Generate 为 13.773→13.968 ms，双方进程区间重叠。短 Decode 偏差仍归 Needs More Data。所有同 workload 的 token 轨迹一致。
+- 结论为 Accepted（WSL2 限定的 W16/A32 Prefill/Decode、A16 Prefill 与 FP32 代表性长 Prefill）。保持现有 recipe、ISA priority 与单线程执行，原生 AVX-512/AMX、代表规模模型、更多 KC/MB 组合与裸机 PMU 保留独立验收。原始记录位于 `benchmark-results/operators/gemm/20261118T063844Z_bacdaca9afb2_54h5mmi_cpu-panel/`，含命令、源码快照、样本、失败日志及其复验。
+
+## W16/A32 长 Prefill panel 复用与 Decode 带宽对照
+
+- 基线为 `bacdaca9afb2` 加本轮开始前的工作树差异，候选基于同一配置与源树。四组独立进程交错 AB/BA，每进程 3 repetitions，`taskset -c 2`，Release，已注册的 prepared Linear 路径。使用同一个 benchmark 程序驱动基线和最终共享库，oracle 与权重准备均在计时外。所有身份、命令和原始数据位于 `benchmark-results/operators/gemm/20261118T091318Z_bacdaca9afb2_54h5mmi_w16-reuse/`。
+- 长 Prefill 采用 direct A，每个 K panel 中同一 B tile 复用至多 256 行。与旧 48 行相比，`M=512` 的同一 B tile 从 11 次 widening/transpose 降到 2 次。256 行将当次 K panel 的逻辑 A 元素量限制在 512 KiB。实际地址跨度由输入 stride 决定。有界 scratch 仍在栈上，GCC `-fstack-usage` 的函数帧为 32992 B，packed-A 分支为 131296 B。最终仅当完整 M 行数大于 48 且 K 至少为 512 时使用 direct A。
+- 首 K panel 直接写 C 独立于 B panel 复用比较。用寄存器中的 +0 保留原加法语义。候选的相关 prepared 中位数为 −5.2% 至 +2.5%，未形成跨形状的稳定收益，保留原清零与累加实现。原始数据见 `overwrite-ab.csv`。
+- 单核读取对照用 `g++ -O3 -std=c++20 -mavx2 -DNDEBUG read-bandwidth.cpp` 编译，`taskset -c 2` 扫描 256 MiB 已预触碰缓冲并核对 checksum。四进程的中位数为 19.93–21.37 GB/s。相同 affinity 下，FP16/BF16 权重的 identity streaming Decode 每次读取 32 MiB 逻辑权重，基线 A/A 各边的中位数为 1.50–1.60 ms，折合 20.9–22.4 GB/s。该量级比较支持保留现有 Decode kernel。测量取决于本机 WSL2 与访问模式，从逻辑吞吐无法反推物理 DRAM 带宽。
+- 初版 direct A 对 K 无下限。512-token tiny Llama O2 复测中，FP16/BF16 W16/A32 内部 Prefill 从 38.625/37.064 ms 增至 59.868/54.772 ms。该模型的 LM head 为 K=16、N=32000，重排 B 的成本低，C 约占 62.5 MiB。此组未达门禁，候选、原始数据和失败结果保存在 `final/` 与 `model-long-ab-final/`。最终增加 K 下限，重新比较实际模型与 prepared 短 K 边界。
+- 最终 Release 聚焦集 560/560 通过，ASan/UBSan 聚焦集 251/251 通过，LSan 关闭。用例覆盖 48 和 256 行分界、K/N 尾块、padded stride、非对齐权重与全输出回退。Release ISA flags 校验通过。禁用 F16C 的构建经 `M=53, K=521` 的真实 prepare/bind/execute 探针验证，FP16 走 reference、BF16 走 AVX2，输出均为预期值。
+
+最终 prepared Linear 数据来自 `qualified-ab.csv`。各值为进程中位数的中位数，单位 ms。
+
+| Layout / phase | M / K / N | FP16 权重 | BF16 权重 |
+|---|---|---:|---:|
+| identity Prefill | 64 / 4096 / 4096 | 26.340 → 22.254 | 27.025 → 22.440 |
+| plain Prefill，非整除 shape | 53 / 521 / 517 | 0.469 → 0.388 | 0.434 → 0.374 |
+| plain Prefill，多 M block | 512 / 512 / 512 | 3.275 → 2.736 | 3.348 → 3.058 |
+| plain 短 K 控制组 | 512 / 16 / 4096 | 1.693 → 1.599 | 1.650 → 1.631 |
+| identity streaming Decode | 1 / 4096 / 4096 | 1.526 → 1.547 | 1.560 → 1.523 |
+
+代表性 `M=64` 的 Prefill 两种精度进程区间均分离。短 K 与 Decode 对照区间重叠。二进制、源码和 SHA-256 见 `qualified/`。
+
+最终 `model-ab-qualified/` 与 `model-long-ab-qualified/` 各用 4 对独立进程、每进程 1 次 warmup 与 5 次重复，验证 128/512-token tiny Llama、FP16/BF16 权重、O1/O2 的内部 ExecutionPlan 和公开 Generate。全部同 workload 的 token 轨迹一致。加入 K 下限后，512-token O2 内部 Prefill 的 FP16/BF16 中位数分别为 40.259→39.139 ms 和 38.709→42.223 ms，双方进程区间均有重叠，初版的大幅回退未复现。128/512-token 各配置的公开 Generate 区间均重叠。
+
+结论为 Accepted（本机代表形状的 W16/A32 长 Prefill 复用）。tiny 模型端到端加速仍为 Needs More Data。首 panel 直接写 C 保持实验结论，Decode 保留现有 GEMV。

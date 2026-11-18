@@ -19,6 +19,10 @@
 
 ### Changed
 
+- CPU W16/A32 长 Prefill 直接读取 A，临时 B panel 在更大的 M block 内复用，减少重复 widening 和转置。见 [GEMM 机器记录](docs/operators/gemm/benchmarks/54h5mmi-gemm.md)。
+
+- CPU AVX2 GEMM 的 FP32 Prefill 直接读取 A 并跨 M tiles 复用 B panel。W16/A32 加入向量转置与 Decode 幅值分链。FP16/BF16 同型 Linear 的 blocked 路径保留 FP32 partial sums，最后一次写出 16-bit 或 FP32 结果。见 [GEMM 机器记录](docs/operators/gemm/benchmarks/54h5mmi-gemm.md)。
+
 - FP32 Linear/QKV/GateUp 生产入口接入 portable scalar/AVX2 GEMM，F32 Linear 在 binding 期冻结兼容 driver；reference 独立保留，B-panel 本轮未提升为全局默认。`RegistrationKey` 纳入 exact `PackingRecipe`，相同 selector/ISA 的不同布局可共存；C++ 消费者须重新编译，C ABI v1 不变。
 
 - `Half(float)` 的 FP32→FP16 转换从 FTZ 迁移为固定 RNE + gradual underflow，保留 signed zero，正确处理 subnormal 舍入进位与溢出；NaN 继续 quiet 并保留 sign 与可容纳的 payload。转换不依赖浮点环境、不设置异常标志；构造、二元算术、复合赋值及数学 helper 的窄化结果现在可产生 FP16 subnormal。`numeric_limits<Half>::round_style` 显式为 `round_to_nearest`，`is_iec559` 保持 false。

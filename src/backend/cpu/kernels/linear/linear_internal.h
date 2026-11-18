@@ -125,8 +125,9 @@ bool IsBf16NativeDotProductSafe(const std::byte* input,
 /// @brief Runs the A16 x W16 Linear AVX2/FMA widening kernel.
 ///
 /// F16 uses F16C widening and BF16 uses an exact left-shift widening; both
-/// accumulate in F32 with fused multiply-add. Non-unit column strides delegate
-/// to the scalar reference so the prepared-args contract never fails on layout.
+/// accumulate in F32 with fused multiply-add. Blocked shapes retain FP32
+/// partial sums until the output conversion. Non-unit input/weight column
+/// strides and exceptional blocked inputs use the scalar reference.
 Status RunLinearA16Avx2Fma(const LinearA16W16KernelArgs& args) noexcept;
 #endif
 

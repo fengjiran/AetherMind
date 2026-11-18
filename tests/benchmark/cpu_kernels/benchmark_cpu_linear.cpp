@@ -75,15 +75,17 @@ void FillDeterministic(std::vector<float>& values) {
 }
 
 Status BuildLinearPreparedParams(const ResolvedKernel& kernel,
-                                 const float* input,
+                                 const void* input,
                                  const void* weight,
                                  DataType weight_dtype,
-                                 float* output,
+                                 void* output,
                                  int64_t m,
                                  int64_t k,
                                  int64_t n,
                                  PreparedLinearInvocation& prepared,
-                                 const PackedWeight* artifact = nullptr) noexcept {
+                                 const PackedWeight* artifact = nullptr,
+                                 DataType act_dtype = DataType::Float32(),
+                                 DataType output_dtype = DataType::Float32()) noexcept {
     const std::array<int64_t, 2> input_shape = {m, k};
     const std::array<int64_t, 2> input_strides = {k, 1};
     const std::array<int64_t, 2> weight_shape = {n, k};
@@ -91,11 +93,11 @@ Status BuildLinearPreparedParams(const ResolvedKernel& kernel,
     const std::array<int64_t, 2> output_shape = {m, n};
     const std::array<int64_t, 2> output_strides = {n, 1};
     const std::array<TensorView, 2> inputs{
-            TensorView{input, DataType::Float32(), input_shape, input_strides},
+            TensorView{input, act_dtype, input_shape, input_strides},
             TensorView{weight, weight_dtype, weight_shape, weight_strides},
     };
     const std::array<MutableTensorView, 1> outputs{
-            MutableTensorView{output, DataType::Float32(), output_shape, output_strides},
+            MutableTensorView{output, output_dtype, output_shape, output_strides},
     };
     std::optional<PackedWeightView> packed_view;
     if (artifact != nullptr) {
@@ -208,10 +210,13 @@ void SetLinearCounters(benchmark::State& state,
                        size_t weight_replica_count,
                        size_t weight_working_set_bytes,
                        bool includes_compute,
-                       size_t weight_element_size = sizeof(float)) {
+                       size_t weight_element_size = sizeof(float),
+                       size_t input_element_size = sizeof(float),
+                       size_t output_element_size = sizeof(float)) {
     const int64_t output_elements = m * n;
     const int64_t logical_bytes =
-            static_cast<int64_t>(sizeof(float)) * (m * k + output_elements) +
+            static_cast<int64_t>(input_element_size) * m * k +
+            static_cast<int64_t>(output_element_size) * output_elements +
             static_cast<int64_t>(weight_element_size) * n * k;
     state.counters["M"] = static_cast<double>(m);
     state.counters["K"] = static_cast<double>(k);
@@ -376,11 +381,12 @@ Status ValidateLinearW16AgainstDoubleOracle(const ResolvedKernel& kernel,
                                             const PreparedLinearInvocation& prepared,
                                             const float* input,
                                             const std::byte* weight,
-                                            float* output,
+                                            void* output,
                                             int64_t m,
                                             int64_t k,
                                             int64_t n,
-                                            DataType dtype) {
+                                            DataType dtype,
+                                            DataType output_dtype = DataType::Float32()) {
     const double unit_roundoff =
             static_cast<double>(std::numeric_limits<float>::epsilon()) / 2.0;
     const double gamma = (2.0 * static_cast<double>(k) * unit_roundoff) /
@@ -412,21 +418,104 @@ Status ValidateLinearW16AgainstDoubleOracle(const ResolvedKernel& kernel,
         }
     }
 
-    std::fill_n(output, output_elements, std::numeric_limits<float>::quiet_NaN());
+    std::memset(output, 0xff, output_elements * static_cast<size_t>(output_dtype.nbytes()));
     AM_RETURN_IF_ERROR(InvokePreparedLinear(kernel, prepared));
     for (size_t index = 0; index < output_elements; ++index) {
-        if (!std::isfinite(output[index])) {
+        float actual;
+        double lower = static_cast<double>(expected[index]) - bounds[index];
+        double upper = static_cast<double>(expected[index]) + bounds[index];
+        if (output_dtype == DataType::Float32()) {
+            actual = static_cast<const float*>(output)[index];
+        } else {
+            actual = WidenFromBits(static_cast<const uint16_t*>(output)[index], output_dtype);
+            lower = WidenFromBits(NarrowToBits(static_cast<float>(lower), output_dtype), output_dtype);
+            upper = WidenFromBits(NarrowToBits(static_cast<float>(upper), output_dtype), output_dtype);
+        }
+        if (!std::isfinite(actual)) {
             return Status::Internal(
                     "W16 Linear benchmark correctness guard produced NaN or Inf");
         }
-        if (std::abs(static_cast<double>(output[index]) -
-                     static_cast<double>(expected[index])) > bounds[index]) {
+        if (actual < lower || actual > upper) {
             return Status::Internal(
                     "W16 Linear benchmark correctness guard exceeds the double-oracle bound");
         }
     }
     return Status::Ok();
 }
+
+void BM_LinearA16PreparedHot(benchmark::State& state, DataType dtype, bool fp32_output) {
+    const int64_t m = state.range(0);
+    const int64_t k = state.range(1);
+    const int64_t n = state.range(2);
+    const DataType output_dtype = fp32_output ? DataType::Float32() : dtype;
+    std::vector<float> decoded_input(static_cast<size_t>(m * k));
+    std::vector<uint16_t> input(decoded_input.size());
+    std::vector<uint16_t> weight(static_cast<size_t>(n * k));
+    for (size_t index = 0; index < input.size(); ++index) {
+        input[index] = NarrowToBits(DeterministicValue(index), dtype);
+        decoded_input[index] = WidenFromBits(input[index], dtype);
+    }
+    for (size_t index = 0; index < weight.size(); ++index) {
+        weight[index] = NarrowToBits(DeterministicValue(index + 13), dtype);
+    }
+    const auto output_elements = static_cast<size_t>(m * n);
+    std::vector<float> output32(fp32_output ? output_elements : 0);
+    std::vector<uint16_t> output16(fp32_output ? 0 : output_elements);
+    void* output = fp32_output ? static_cast<void*>(output32.data()) : output16.data();
+    auto selector = MakePlainLinearSelector(dtype);
+    selector.act_dtype = dtype;
+    selector.output_dtype = output_dtype;
+    selector.phase = m == 1 ? ExecPhase::kDecode : ExecPhase::kPrefill;
+    CpuBackend backend;
+    const auto kernel = backend.PrepareKernel(
+            OpType::kLinear, selector, OpParams{LinearParams{.output_dtype = output_dtype}});
+    if (!kernel.ok()) {
+        state.SkipWithError(kernel.status().ToString());
+        return;
+    }
+    PreparedLinearInvocation prepared;
+    const Status built = BuildLinearPreparedParams(
+            *kernel, input.data(), weight.data(), dtype, output, m, k, n, prepared,
+            nullptr, dtype, output_dtype);
+    if (!built.ok()) {
+        state.SkipWithError(built.ToString());
+        return;
+    }
+    const Status correctness = ValidateLinearW16AgainstDoubleOracle(
+            *kernel, prepared, decoded_input.data(), reinterpret_cast<const std::byte*>(weight.data()),
+            output, m, k, n, dtype, output_dtype);
+    if (!correctness.ok()) {
+        state.SkipWithError(correctness.ToString());
+        return;
+    }
+    state.SetLabel(BenchmarkLabel(*kernel, LinearBenchmarkMode::kPreparedHot));
+    for (auto _: state) {
+        const Status status = InvokePreparedLinear(*kernel, prepared);
+        if (!status.ok()) {
+            state.SkipWithError(status.ToString());
+            break;
+        }
+        benchmark::DoNotOptimize(output);
+    }
+    SetLinearCounters(state, m, k, n, 1, weight.size() * sizeof(uint16_t),
+                      true, sizeof(uint16_t), sizeof(uint16_t), output_dtype.nbytes());
+}
+
+void A16Cases(benchmark::internal::Benchmark* benchmark) {
+    benchmark->Args({1, 4096, 4096})
+            ->Args({8, 512, 512})
+            ->Args({9, 513, 513})
+            ->Args({16, 4096, 4096})
+            ->Args({64, 4096, 4096})
+            ->Args({49, 513, 513})
+            ->Args({128, 16, 32000})
+            ->ArgNames({"M", "K", "N"});
+}
+
+BENCHMARK_CAPTURE(BM_LinearA16PreparedHot, f16, DataType::Float(16), false)->Apply(A16Cases);
+BENCHMARK_CAPTURE(BM_LinearA16PreparedHot, bf16, DataType::BFloat(16), false)->Apply(A16Cases);
+BENCHMARK_CAPTURE(BM_LinearA16PreparedHot, f16_out32, DataType::Float(16), true)->Apply(A16Cases);
+BENCHMARK_CAPTURE(BM_LinearA16PreparedHot, bf16_out32, DataType::BFloat(16), true)->Apply(A16Cases);
 
 void BenchmarkLinearW16PreparedPath(benchmark::State& state,
                                     LinearBenchmarkMode mode,
@@ -618,6 +707,10 @@ BENCHMARK_CAPTURE(BM_LinearW16PreparedHot, f16, DataType::Float(16))
         // Prefill projections.
         ->Args({16, 4096, 4096})
         ->Args({64, 4096, 4096})
+        ->Args({48, 512, 512})
+        ->Args({53, 521, 517})
+        ->Args({128, 1536, 2048})
+        ->Args({512, 16, 4096})
         // Small/tail shapes used to guard future tile-specific paths.
         ->Args({1, 33, 31})
         ->Args({2, 32, 33})
@@ -639,6 +732,10 @@ BENCHMARK_CAPTURE(BM_LinearW16PreparedHot, bf16, DataType::BFloat(16))
         ->Args({1, 4096, 32000})
         ->Args({16, 4096, 4096})
         ->Args({64, 4096, 4096})
+        ->Args({48, 512, 512})
+        ->Args({53, 521, 517})
+        ->Args({128, 1536, 2048})
+        ->Args({512, 16, 4096})
         ->Args({1, 33, 31})
         ->Args({2, 32, 33})
         ->Args({2, 512, 512})

@@ -6,12 +6,14 @@
 #include "aethermind/dtypes/bfloat16.h"
 #include "aethermind/dtypes/half.h"
 #include "aethermind/operators/op_params.h"
+#include "backend/cpu/kernels/linear/linear_internal.h"
 
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -240,6 +242,129 @@ TEST(LinearA16Avx2Fma, MatchesDoublePrecisionOracleWithTailElements) {
             }
         }
     }
+}
+
+TEST(LinearA16Avx2Fma, BlockedProjectionNarrowsAfterAllKPanels) {
+#if defined(A16_HAS_AVX2_FMA_KERNEL)
+    const CpuBackend detected;
+    const auto required = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c});
+    if (!detected.cpu_capabilities().effective_features.ContainsAll(required)) {
+        GTEST_SKIP() << "AVX2/FMA/F16C are required to execute the blocked driver";
+    }
+    CpuBackend backend(Synthetic(required));
+    constexpr int64_t m = 49, k = 521, n = 131;
+    constexpr std::array<int64_t, 2> input_shape{m, k};
+    constexpr std::array<int64_t, 2> weight_shape{n, k};
+    constexpr std::array<int64_t, 2> output_shape{m, n};
+    constexpr std::array<int64_t, 2> input_strides{k + 3, 1};
+    constexpr std::array<int64_t, 2> weight_strides{k + 5, 1};
+    constexpr std::array<int64_t, 2> output_strides{n + 4, 1};
+    for (const DataType dtype: {DataType::Float(16), DataType::BFloat(16)}) {
+        std::vector<std::byte> input(1 + 2 * m * input_strides[0]);
+        std::vector<std::byte> weight(1 + 2 * n * weight_strides[0]);
+        for (int64_t row = 0; row < m; ++row) {
+            const int64_t offset = row * input_strides[0];
+            WriteA16(input.data() + 1, 512.0F, dtype, offset);
+            WriteA16(input.data() + 1, static_cast<float>(row % 7 + 2) * 0.25F, dtype, offset + 1);
+            WriteA16(input.data() + 1, -512.0F, dtype, offset + 512);
+            WriteA16(input.data() + 1, 1.0F, dtype, offset + 520);
+        }
+        for (int64_t col = 0; col < n; ++col) {
+            const int64_t offset = col * weight_strides[0];
+            WriteA16(weight.data() + 1, 512.0F, dtype, offset);
+            WriteA16(weight.data() + 1, static_cast<float>(col % 5 + 2) * 0.5F, dtype, offset + 1);
+            WriteA16(weight.data() + 1, 512.0F, dtype, offset + 512);
+            WriteA16(weight.data() + 1, 0.125F, dtype, offset + 520);
+        }
+        const std::array<TensorView, 2> inputs{
+                TensorView(input.data() + 1, dtype, input_shape, input_strides),
+                TensorView(weight.data() + 1, dtype, weight_shape, weight_strides)};
+        for (const DataType output_dtype: {dtype, DataType::Float32()}) {
+            const auto kernel = backend.PrepareKernel(
+                    OpType::kLinear, MakeSelector(dtype, output_dtype), MakeParams(dtype, output_dtype));
+            ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+            const size_t output_bytes = static_cast<size_t>(output_dtype.nbytes());
+            constexpr std::byte sentinel{0xff};
+            std::vector<std::byte> output(1 + output_bytes * m * output_strides[0], sentinel);
+            const std::array<MutableTensorView, 1> outputs{
+                    MutableTensorView(output.data() + 1, output_dtype, output_shape, output_strides)};
+            PreparedParams prepared;
+            ASSERT_TRUE(kernel->params_builder(
+                                      {.inputs = inputs, .outputs = outputs, .attrs = kernel->attrs}, prepared.storage.data())
+                                .ok());
+            ASSERT_TRUE(kernel->fn({.kernel_params = prepared.storage.data(), .attrs = kernel->attrs}).ok());
+
+            // The first panel contains a sum above the F16 range and too large
+            // for BF16 to retain the small term. The next panel cancels it.
+            EXPECT_EQ(output.front(), sentinel);
+            for (int64_t row = 0; row < m; ++row) {
+                for (int64_t col = 0; col < n; ++col) {
+                    const float expected = static_cast<float>((row % 7 + 2) * (col % 5 + 2) + 1) * 0.125F;
+                    const size_t index = static_cast<size_t>(row * output_strides[0] + col);
+                    float actual;
+                    if (output_dtype == DataType::Float32()) {
+                        std::memcpy(&actual, output.data() + 1 + index * output_bytes, output_bytes);
+                    } else {
+                        actual = ReadA16(output.data() + 1, dtype, index);
+                    }
+                    EXPECT_EQ(actual, expected) << "row=" << row << " col=" << col;
+                }
+                const size_t start = 1 + static_cast<size_t>(row * output_strides[0] + n) * output_bytes;
+                for (size_t byte = 0; byte < 4 * output_bytes; ++byte) {
+                    EXPECT_EQ(output[start + byte], sentinel);
+                }
+            }
+        }
+    }
+#else
+    GTEST_SKIP() << "A16 SIMD was not compiled";
+#endif
+}
+
+TEST(LinearA16Avx2Fma, BlockedProjectionPreservesBf16ProductOverflow) {
+#if defined(A16_HAS_AVX2_FMA_KERNEL)
+    const CpuBackend backend;
+    if (!backend.cpu_capabilities().effective_features.ContainsAll(
+                CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma, CpuFeature::kF16c}))) {
+        GTEST_SKIP() << "AVX2/FMA/F16C are required to execute the blocked driver";
+    }
+    const DataType dtype = DataType::BFloat(16);
+    constexpr int64_t m = 9, k = 17, n = 131;
+    std::array<std::byte, m * k * sizeof(uint16_t)> input{};
+    std::array<std::byte, n * k * sizeof(uint16_t)> weight{};
+    std::array<float, m * n> output{};
+    output.fill(std::numeric_limits<float>::quiet_NaN());
+    for (int64_t row = 0; row < m; ++row) {
+        WriteA16(input.data(), -0x1p127F, dtype, row * k);
+        WriteA16(input.data(), 0x1p127F, dtype, row * k + 8);
+    }
+    // A product in the final N block overflows before cancellation. A fused
+    // evaluation would be finite, so the blocked path must use the reference.
+    WriteA16(weight.data(), 1.0F, dtype, (n - 1) * k);
+    WriteA16(weight.data(), 2.0F, dtype, (n - 1) * k + 8);
+    const cpu::detail::LinearA16W16KernelArgs args{
+            .input = input.data(),
+            .weight = weight.data(),
+            .output = reinterpret_cast<std::byte*>(output.data()),
+            .act_dtype = dtype,
+            .output_dtype = DataType::Float32(),
+            .row_count = m,
+            .in_features = k,
+            .out_features = n,
+            .input_row_stride = k,
+            .weight_row_stride = k,
+            .output_row_stride = n,
+    };
+    ASSERT_TRUE(cpu::detail::RunLinearA16Avx2Fma(args).ok());
+    for (int64_t row = 0; row < m; ++row) {
+        for (int64_t col = 0; col < n - 1; ++col) {
+            EXPECT_EQ(output[row * n + col], 0.0F);
+        }
+        EXPECT_EQ(output[row * n + n - 1], std::numeric_limits<float>::infinity());
+    }
+#else
+    GTEST_SKIP() << "A16 SIMD was not compiled";
+#endif
 }
 
 } // namespace

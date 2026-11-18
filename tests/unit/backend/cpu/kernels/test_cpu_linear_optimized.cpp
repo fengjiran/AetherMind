@@ -167,7 +167,8 @@ INSTANTIATE_TEST_SUITE_P(
         testing::Combine(testing::Values(0, 1, 2), testing::Bool(), testing::Bool(),
                          testing::Values(Shape{1, 1, 3}, Shape{1, 7, 5}, Shape{1, 9, 19}, Shape{2, 33, 19},
                                          Shape{4, 513, 35}, Shape{8, 32, 16}, Shape{9, 33, 19}, Shape{11, 513, 35},
-                                         Shape{49, 17, 19}, Shape{32, 32, 33}, Shape{2, 0, 7}, Shape{0, 7, 5}, Shape{2, 7, 0})));
+                                         Shape{49, 17, 19}, Shape{53, 521, 35}, Shape{261, 512, 17}, Shape{32, 32, 33},
+                                         Shape{2, 0, 7}, Shape{0, 7, 5}, Shape{2, 7, 0})));
 
 class CpuLinearOptimizedSafety : public testing::TestWithParam<bool> {};
 
@@ -190,8 +191,8 @@ TEST_P(CpuLinearOptimizedSafety, ExtremeMagnitudeAndNonFiniteValuesUseFullRefere
     if (!backend.cpu_capabilities().effective_features.ContainsAll(CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}))) {
         GTEST_SKIP() << "AVX2/FMA execution requires actual hardware";
     }
-    for (const int64_t m: {1, 11}) {
-        constexpr int64_t k = 33;
+    for (const int64_t m: {1, 11, 53}) {
+        const int64_t k = m == 53 ? 521 : 33;
         constexpr int64_t n = 19;
         for (const float special: {std::numeric_limits<float>::max(), std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {
             std::vector<float> input(static_cast<size_t>(m * k), special);
@@ -248,8 +249,9 @@ TEST_P(CpuLinearOptimizedSafety, ProductOverflowCannotBeHiddenByFusedCancellatio
     if (!backend.cpu_capabilities().effective_features.ContainsAll(CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}))) {
         GTEST_SKIP() << "AVX2/FMA execution requires actual hardware";
     }
-    for (const int64_t m: {1, 11}) {
-        constexpr int64_t k = 33, n = 19;
+    for (const int64_t m: {1, 11, 53}) {
+        const int64_t k = m == 53 ? 521 : 33;
+        constexpr int64_t n = 19;
         std::vector<float> input(static_cast<size_t>(m * k), 0.0F);
         std::vector<std::byte> weights(static_cast<size_t>(n * k) * 2);
         std::vector<float> output(static_cast<size_t>(m * n));

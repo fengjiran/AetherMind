@@ -1,6 +1,6 @@
 # Changelog
 
-本文件记录 AetherMind 的行为可见变更（API 变更、配置变更、性能基线变化、缺陷修复），按语义化版本组织。设计背景见 `docs/modules/` 与 `docs/architecture.md`，文档规则见 `docs/README.md`。
+本文件记录 AetherMind 的行为可见变更（API 变更、配置变更、性能基线变化、缺陷修复），按语义化版本组织。设计背景见 [项目手册](docs/handbook/README.md) 与 [系统架构](docs/architecture.md)，文档规则见 `docs/README.md`。
 
 ## [Unreleased]
 

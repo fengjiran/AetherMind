@@ -296,7 +296,7 @@ E1 完全满足需要：(a) 补充上述深度核验，或 (b) 明确裁决结�
 
 - **包含（治理范围）**：仓库根 `README.md`、`AGENTS.md`、`CHANGELOG.md`；`docs/` 下全部 .md（含 `archive/`、`improvement-plan/`、`templates/`）；
 - **包含（仅登记，Out of Scope）**：`docs/agent/` 下全部 .md——按 [documentation-guide.md §1 准入条件](../archive/guides/documentation-guide.md)，`docs/agent/` 是独立子系统，本规范不适用于其内部文档。清查表为全景统计列出这些文件，但**排除在 E1–E9、状态迁移、命名和 metadata 门禁之外**。唯一交叉点是 ADR 互链（documentation-guide.md §3.3）；
-- **排除**：`3rdparty/`、`build*/`、`.models/`、`.qoder/`、`.trae/`、`.omo/`、`.sisyphus/`、`.codex/`、`.gemini/`、`.idea/`、`.vscode/`、`.cache/`、`.agents/`、`tools/agent_memory/`（外部代码、构建产物、工具元数据、历史草稿）。
+- **排除**：第三方代码、构建产物、模型资产、本地配置、缓存、工具生成内容和历史草稿。
 
 ### 5.3 硬约束
 

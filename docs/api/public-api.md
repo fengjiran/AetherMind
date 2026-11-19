@@ -2,7 +2,7 @@
 
 > 本文件汇总 AetherMind 公共 API 的语义，与头文件 Doxygen 注释**同源同步**：修改头文件注释必须同步本文件，反之亦然。
 >
-> 构建选项与运行配置以根 [README.md](../../README.md) 为单一事实源。C++ 提供 `ExecutableModel::Load/Prepare` 与 `InferenceSession::Generate`，支持 CPU FP32 和显式 [W16/A32 Llama Dense](../guides/w16-fp32-inference.md)，M6 C ABI 提供 CPU strict FP32 runtime/model/session 调用。能力与产品目标见 [产品文档](../product.md) 和 [10 号方案](../improvement-plan/10-upper-level-runtime-assembly.md)。
+> 构建选项与运行配置见根 [README.md](../../README.md)。CPU Llama Dense 的各入口、精度组合和验证范围见 [产品能力表](../product.md#14-当前能力与验证状态)。
 
 ## 1. C ABI（include/c_api.h）
 
@@ -105,7 +105,7 @@
 
 M5 将这两项规则归入 inference，CLI 与 M6 C adapter 消费同一实现，没有旧应用 namespace alias 或兼容转发。跨对象 KV 相等与 compiled state dtype 校验仍属于 adapter。
 
-`WeightPolicy::kKeepFp16WeightsFp32Activation` / `kKeepBf16WeightsFp32Activation` 要求 Embedding、LM head 和所有矩阵权重实际为选定的 scalar F16/BF16，Norm 源允许 F32/F16/BF16。已识别的 scalar floating hint（含 auto/缺省）仅保留为 provenance，允许与实际权重不同，activation 固定为 F32。KV 默认 F32；两个 retained-W16 policy 可在 CPU O1/plain 与 O2/identity-packed 显式选择 F16/BF16 KV，W 与 KV 独立，全部层 K/V 同型。完整准备及数值合同见 [W16 执行指南](../guides/w16-fp32-inference.md)。
+两个 retained-W16 policy（`kKeepFp16WeightsFp32Activation`、`kKeepBf16WeightsFp32Activation`）要求 Embedding、LM head 和所有矩阵权重实际为选定的 scalar F16 或 BF16。Norm 源允许 scalar F32/F16/BF16，准备期只拓宽其中的 16-bit Norm。已识别的 scalar floating hint（含 auto/缺省）作为来源信息保留，允许与实际权重不同。
 
 `RawWeightFp32ConversionOptions::scope` 默认 `kAllRequiredWeights`，`kNormWeightsOnly` 仅转换 Final/Input/PostAttention Norm。两个 widening callback 均须非空，payload 分配前验证所有 source metadata、owner 账本和 cap。结果模型保活原矩阵 backing 与独立 Norm Buffer。`ComputeRawWeightViewStorageUsage(span<const RawWeightView* const>)` 复用 owner identity 和 range union 统计所选 source views，支持 retained W16 backing，空集合返回完整零账本，空 view 指针返回 InvalidArgument。
 
@@ -143,12 +143,14 @@ M5 将这两项规则归入 inference，CLI 与 M6 C adapter 消费同一实现�
 |---|---|
 | `static StatusOr<ExecutableModel> Prepare(Runtime&, LoweredModelArtifact, const ModelLimits& = {})` | 唯一生产准备入口；消费 artifact，编排权重物化、执行计划构建与 immutable weight/constant bindings。失败不发布部分准备的模型。 |
 | `static StatusOr<ExecutableModel> Load(Runtime&, const std::filesystem::path&, const ModelLoadOptions&)` | 目录到可执行模型的入口：加载、按 `WeightPolicy` 准入与可选转换、按 preset 与 target 编译，再调用 `Prepare`。Runtime 已存在，options 必须显式传入；`{}` 为 CPU strict FP32 O1/plain。 |
-| `ModelLimits` / `ModelLoadOptions` | 前者配置模型与 packed payload 限额；后者包含 `preset`、目标设备 `target`（默认 CPU）、源权重策略 `weights`、`limits` 和 `kv_dtype`（默认 F32）。`kConvertToFp32` 将 F16/BF16 拓宽为 F32，目前只允许 CPU O1/plain、KV32；KV16 仅对 CPU retained-W16 policy 开放。 |
+| `ModelLimits` / `ModelLoadOptions` | 前者配置模型与 packed payload 限额。后者包含 `preset`、`target`、`weights`、`limits`、`kv_dtype` 和 `activation_dtype`。两个 dtype 字段均默认为 F32，接受 scalar F32/F16/BF16。 |
 | `ExecutableModel::plan(ExecPhase)` / `immutable_weight_bindings(ExecPhase)` | 返回模型拥有的 plan/binding table 的借用指针，phase 不匹配报错；Prefill/Decode 当前共享一个不可变 plan。binding table 不含请求 token/position 输入。 |
 | `artifact_id()` / `phase()` / `context_limit()` / `vocab_size()` | 查询编译产物身份、phase、模型 context 上限与词表大小。 |
 | `IsPreparedFor(const Runtime&)` | 检查模型 resolve 的 kernels 是否属于该 Runtime。 |
 
-KV16 Load 要求已有、地址稳定的 Runtime KV Manager，其实际 dtype 必须与 `ModelLoadOptions::kv_dtype` 一致；不一致在权重转换和 packing 前失败，Load 不重建 Runtime。Graph state spec、`KernelSelector::state_dtype`、view/layout 和调用期 binding 保持相同 dtype。无 state 的 selector 使用唯一 undefined，按严格相等匹配。KVUpdate 在 K 经 RoPE 后和 V 写入 cache 时 narrow；Attention 从 cache widening 后以 F32 归约。C++ options/selector 布局变化要求消费者重新构建，C ABI/产品 CLI 保持 strict FP32。限定模型、数值与验证范围见 [P3 验收记录](../archive/tests/kv16_execution_validation_2026-11-12.md)。
+- `weights` 选择源权重策略。两个 retained-W16 policy 中的 `Fp32Activation` 是历史命名，实际 activation 由 `activation_dtype` 指定。
+- KV16 仅对 retained-W16 policy 开放。使用 FP32 activation 时，`kv_dtype` 可独立于矩阵精度选择。使用 FP16 或 BF16 activation 时，须选同型 retained-W16 policy 及同型 KV。支持的 preset 和 residual 精度见 [产品能力表](../product.md#14-当前能力与验证状态)。
+- 调用方先构造 Runtime。KV16 要求其中已启用 KV Manager。只要 Manager 存在，其物理 KV dtype 就必须与 `kv_dtype` 相同。不一致在读取 checkpoint 前返回 `InvalidArgument`。KV16 缺少 Manager 时返回 `FailedPrecondition`。
 
 任意 `ModelCompileOptions` 的调用方显式调用 `ModelLoader`、`ModelCompiler`，再调用 `ExecutableModel::Prepare`。CLI 保持 Compile 成功后构建 Runtime；C adapter 保持 Prepare 前的 Runtime/model KV 校验。旧创建自由函数与转发 overload 已删除，无兼容别名。
 
@@ -165,7 +167,7 @@ KV16 Load 要求已有、地址稳定的 Runtime KV Manager，其实际 dtype �
 
 prompt 必须非空；prompt/EOS 必须在词表范围内，prompt 长度须满足模型 context。N=0 仍进行这些校验，随后返回空 vector，不预约 KV、不执行模型，也不要求 prompt 满足物理 KV capacity。request buffer、binding、workspace 或 activation 分配传播出的 `std::bad_alloc` 转为空 message 的 `ResourceExhausted`。
 
-共享同一 Runtime 的所有 Generate 调用必须由宿主串行化，包括不同 Session；当前接口不承诺并发 Session。推荐销毁顺序为 Session → ExecutableModel → Runtime。阶段执行与资源细节见 [InferenceSession 模块设计](../modules/inference.md)。
+共享同一 Runtime 的所有 Generate 调用必须由宿主串行化，包括不同 Session；当前接口不承诺并发 Session。推荐销毁顺序为 Session → ExecutableModel → Runtime。阶段执行与资源细节见 [InferenceSession 模块设计](../handbook/API%20参考文档/C++%20公开%20API/InferenceSession%20API.md)。
 
 ### `Allocator::TryAllocate`（include/aethermind/memory/allocator.h）
 
@@ -359,5 +361,5 @@ prompt 必须非空；prompt/EOS 必须在词表范围内，prompt 长度须满�
 
 - 头文件：`include/c_api.h`、`include/aethermind/model/model_loader.h`、`include/aethermind/compiler/model_compiler.h`、`include/aethermind/runtime/runtime_builder.h`、`include/aethermind/inference/executable_model.h`、`include/aethermind/inference/inference_session.h`、`include/aethermind/execution/executor.h`（Doxygen 注释为语义事实源）
 - 架构总览：[docs/architecture.md](../architecture.md)（§一 API 服务层、§八 当前实现与未闭环项）
-- ModelLoader 模块设计：[docs/modules/model.md](../modules/model.md)
+- ModelLoader 模块设计：[模型系统](../handbook/核心模块设计/模型系统%20%28Model%29.md)
 - 注释规范：[docs/guides/cpp_comment_guidelines.md](../guides/cpp_comment_guidelines.md)

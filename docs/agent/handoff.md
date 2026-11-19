@@ -1,4 +1,6 @@
-# 当前工作 handoff
+# 上轮文档整理记录
+
+> 本轮迁移已完成。当前阅读入口见 [文档导航](../README.md)，在研工作见 [路线图](../roadmap.md)。
 
 ## 已完成
 
@@ -8,7 +10,7 @@
 - Phase 3：保留 9 篇常用指南；建立 `docs/roadmap.md`；`docs/product.md` 收敛到 479 行。
 - Phase 4：`reviews/tests/logs/decisions/templates` 与废弃指南移入 `docs/archive/`；删除 PRD 符号链接；新增 `tools/check_docs_links.py`，活跃文档链接检查为 0 断链。
 
-## 当前结构
+## 当时的目录结构
 
 ```
 README.md / AGENTS.md / CHANGELOG.md
@@ -19,9 +21,3 @@ docs/
   archive/            # 冷存储，不索引、不参与链接检查
   agent/              # project.md + handoff.md
 ```
-
-## 注意
-
-- `docs/improvement-plan/` 仍包含已实现/被取代/在研提案；当前优先级以 `docs/roadmap.md` 为准。
-- `docs/archive/` 只读、不维护；需要追溯历史设计或验证报告时再查阅。
-- 任何新增或移动文档后运行 `python3 tools/check_docs_links.py`。

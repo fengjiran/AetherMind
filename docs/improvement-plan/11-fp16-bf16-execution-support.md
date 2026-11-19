@@ -362,7 +362,7 @@ P1 的限定实现与验收已完成。P0 中 graph options 和 widening 数值�
 
 ### 4.5 P4：16-bit activation 与 native compute（首批设计已冻结）
 
-本节记录 P4-A 的首批合同和验收快照。FP16 A16 的当前准入与独立验收见 §4.6。
+本节记录 P4-A 的首批合同和验收快照。本节所述 FP16 activation 的 `Unimplemented` 仅适用于当时的 P4-A。FP16 A16 的现行准入与独立验收见 [P4-B](#46-p4-bfp16-计算与-fp32-residual)。
 
 P4 首批（P4-A）冻结 A16 合同，并把 native ISA kernel 纳入主线实现（无单独准入阶段）；C ABI/CLI 保持 strict F32。本机无 AVX-512/AMX（仅 avx2/f16c/fma），native 代码经"编译器探针 + per-TU 隔离 + runtime `effective_features` 过滤"机制随主线交付：新硬件到位后跑同一套 P4 验收套件补齐硬件数值证据；逐 ISA 状态按 §6.4 分别标记，属状态记账而非准入壁垒。BF16 先行理由为指数域安全（activation/residual 动态范围）与 BF16 checkpoint 生态，非 `VDPBF16PS` 成熟度（那是未来硬件理由）。
 
@@ -412,7 +412,7 @@ residual Add 零新增：BF16 语义白名单与 CPU reference 已存在（[add_
 
 **native BF16 subnormal 修复（2026-11-16）。** `VDPBF16PS` 固定 DAZ/FTZ，Linear 因而先对 vector body 做整数安全域检查：非零乘数对须为 finite normal，biased exponent 和在 `[142, 379]`；下界保证每个乘积及 F32 部分和均为 `FLT_MIN` 的整数倍，覆盖 normal 乘数相消后产生 subnormal 的情况。超出安全域时重算整个 invocation，使用既有 scalar reference；scalar tail 继续沿用 F32 运算。RMSNorm 保留向量 F32 计算，将 16-lane 结果经固定栈缓冲交给既有整数 RNE narrowing，避免 `VCVTNEPS2BF16` 把 subnormal 清零。新增向量主体/tail、normal product underflow、相消、signed zero 与 RNE/normal 边界回归；本机覆盖 reference/AVX2 和 portable 安全域，AVX-512 硅片数值证据仍待对应硬件。该修复不修改冻结预算；Release 相关 77 项通过（含 2048 near-limit），ASan/UBSan 相关 75 项通过、1 项 interposer 用例跳过（Release 已通过），sanitizer 本轮排除 near-limit 且未启用 LSan。安全域预扫描及 narrowing 的性能成本尚未在 native 硬件测量。
 
-**步骤 5 验收记录（2026-11-13）。** P4-A 可执行 preset 明确为 **BF16 全同型**（A=W=KV=residual）：FP16 A16 的 residual 必须保持 F32，其边界 Cast kernel 属 P4-B，因此 `Load` 对 F16 activation 返回 `Unimplemented`（诊断显式引用 P4-B），F16 A16 kernel 仅保留在 kernel 层。模型级验收分两层：
+**步骤 5 验收记录（2026-11-13）。** P4-A 可执行 preset 为 **BF16 全同型**（A=W=KV=residual）。当时 FP16 A16 仅在 kernel 层可用，`Load` 对 F16 activation 返回 `Unimplemented`。[P4-B](#46-p4-bfp16-计算与-fp32-residual) 后续补齐 FP32 residual 的 Cast 边界并开放模型执行。P4-A 模型级验收分两层：
 
 - **reduced fixture**（`test_a16_model_acceptance.cpp`，BF16）：O1/O2 × Prefill + 2 Decode 与同 W16/A32/KV32 对照，含 near-capacity（14→16）、GQA+tied、Generate 两次重复一致、Decode 稳态 malloc-family 全零（2 preset）。实测最大归一化误差（日志 properties）：标准 0.30/0.22/0.38、near-capacity 0.57/0.41/0.89、GQA+tied 0.17/0.27/0.05，均低于 1。另以"真 A16"负例断言 A16 与 F32 轨迹非逐位相同（防止静默执行 F32 kernel），并断言 Runtime KV dtype 与 activation 不一致时 `Load` 早拒。
 - **校准 fixture**（`test_a16_calibrated_acceptance.cpp` + `tools/prepare_a16_reference.py` 导入 `impl_f64_oracle`）：5 个数值 case（含 2046→2048 near-limit）× BF16 × O1/O2，对 F64 同构 oracle 满足 §4.5 impl 预算，near-limit 额外与同 W16/A32 实时运行满足 quality 预算与固定排名规则。fixture 由 `test_a16_reference_identities.h` 逐文件校验 bytes + FNV-1a64。
@@ -432,7 +432,7 @@ residual Add 零新增：BF16 语义白名单与 CPU reference 已存在（[add_
 - 本机 A16 preset 端到端约快 3.8×（decode）/ 5.1×（prefill），但差异**主要来自 kernel 路径而非数据宽度**：A16 Linear/RmsNorm 在本机选中 AVX2/FMA widening 实现，而 W16/A32 只有 scalar reference；两侧权重都是 16-bit W16，读取字节数相同。native AVX-512 未参与，本机不能证明 native 收益。
 - 内存侧本 fixture 无可测收益：head_dim 4 时 KV 每 token 行被 64 B 对齐支配（F32 16 B 与 BF16 8 B 都填充到 64 B），且 prefill 被 `[128, 32000]` F32 logits 缓冲主导。按同一公式，head_dim ≥ 32 时 KV 才出现 2× 收益；hidden 很小（16）时 O2 identity packing 也不产生收益。
 - 因此本 baseline 支持"发布 preset 在本机可用且更快"，**不支持**"A16 相比 F32 普遍更快"或"native AVX-512 已验证收益"的结论。跨机/跨 preset 比较仍须同一 runner、同一 workload 身份与至少 4 次独立进程分散度（见 `tests/benchmark/models/README.md`）。
-- 工具链同步：`aethermind_model_benchmark`、`run_model_benchmark.py`、`verify_model_benchmark.py` 新增 `activation_dtype` 身份字段（schema 2 可选，历史报告按 F32 解释），并对 A16 校验同 dtype 权重/KV 与 P4-B 的 F16 不可执行性。
+- 工具链同步：P4-A 的 `aethermind_model_benchmark`、`run_model_benchmark.py`、`verify_model_benchmark.py` 新增 `activation_dtype` 身份字段（schema 2 可选，历史报告按 F32 解释）。当时工具校验 A16 的同型权重和 KV，并拒绝 FP16 activation。FP16 的后续执行范围见 [P4-B](#46-p4-bfp16-计算与-fp32-residual)。
 - ISA 专用 SiluMul/Attention 路径的步骤 6 决策：本批不新增。当前 fixture（hidden 16）的 decode 由 LMHead/Linear 主导，未单独测量这两类算子的占比；在缺少 AVX-512 硅片数值证据的前提下，保留 scalar reference 与 AVX2 Linear/RmsNorm，待真实模型 profile 后按 O4 门禁另行评估。
 
 **退出条件。** 2 组合 × O1/O2 的 Prefill/多次 Decode/Generate、EOS/容量/OOM 重试、冻结预算 + 固定排名规则（含 2046→2048 near-limit 的校准 fixture 正式生产验收）、Decode 稳态零分配、确定性/重复性（两次独立进程逐位一致）与负例（真 A16 vs 贴标签 A32、ISA fallback 不改精度合同、selector 篡改拒绝、Cast folding 复用冻结位合同、fusion 不得移除必需窄化）全部通过；逐 ISA 状态单独记录后才标记对应支持（"已实现；编译/dispatch/仿真已验证；硬件数值证据待采集"为状态记账，非准入壁垒）；不泛化为所有 dtype 或平台组合。
@@ -511,7 +511,7 @@ CPU-02/03 的后续状态：W16/A32 矩阵已不再统一落在 scalar reference
 - 证据按 [算子工作流](../guides/operator-development-workflow.md) 写入对应算子机器记录及 raw artifact，不在本提案填入未经验证的加速倍数或占位 benchmark 文件。
 - 每个 preset、phase、layout、ISA/fallback 单独标记状态；只有实际通过相应门禁后，才同步更新模块设计、算子合同/API 文档、产品 capability 和行为变更记录。该 Draft 不修改 PRD 的已交付状态。
 
-**A16 逐 ISA 状态。** 下表区分当前选核行为与验证范围；沿用 §4.5 的自动 eligibility 策略，验证状态不构成运行时禁用条件。对应 descriptor 已编译、selector 匹配且 effective features 满足时，Linear/RMSNorm 会优先选择 native，具体 priority 见 [backend 选核规则](../modules/backend.md#42-准备期解析)。合成 capabilities 只用于选核测试，不能用于在缺少指令的机器上执行 native entry。
+**A16 逐 ISA 状态。** 下表区分当前选核行为与验证范围；沿用 §4.5 的自动 eligibility 策略，验证状态不构成运行时禁用条件。对应 descriptor 已编译、selector 匹配且 effective features 满足时，Linear/RMSNorm 会优先选择 native，具体 priority 见 [backend 选核规则](../handbook/核心模块设计/后端系统%20%28Backend%29/后端系统%20%28Backend%29.md#cpu-后端选择算法)。合成 capabilities 只用于选核测试，不能用于在缺少指令的机器上执行 native entry。
 
 | 路径 | 编译 / dispatch 证据 | 真实硬件数值 / 模型证据 | 性能状态 |
 |---|---|---|---|

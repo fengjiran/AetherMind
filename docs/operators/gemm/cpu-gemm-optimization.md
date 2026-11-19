@@ -10,7 +10,7 @@
 - **工作流规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
 - **关联代码**: `src/backend/cpu/kernels/gemm/`、`src/backend/cpu/cpu_backend.cpp`、`src/backend/cpu/cpu_backend_internal.h`
 - **关联测试**: `tests/unit/backend/cpu/kernels/`、`tests/benchmark/cpu_kernels/`
-- **关联 ADR**: 决策结论已并入 [backend 模块设计](../../modules/backend.md) 的 packed weight 与布局章节
+- **关联 ADR**: 决策结论已并入 [backend 模块设计](../../handbook/核心模块设计/后端系统%20%28Backend%29/后端系统%20%28Backend%29.md) 的 packed weight 与布局章节
 - **关联模块**: backend / execution / model / benchmark
 
 ## 1. 结论与范围
@@ -623,7 +623,7 @@ CUDA 证据使用目标 GPU 上的 registered/prepared 路径、CUDA Events 与 
 - [架构总览](../../architecture.md)：模块边界与执行数据流。
 - [算子开发与优化工作流 §7 优化方法](../../guides/operator-development-workflow.md#7-优化方法)：Roofline、SIMD、packing、blocking、fusion 与 benchmark 通用方法；§7.2 为噪声 floor 与最小可信 delta 的方法权威。
 - [GEMM 证据记录](README.md)：本算子全部机器级数值、噪声 floor、反汇编与 Roofline 定位的权威位置。
-- [Dispatch 设计](../../modules/backend.md)：kernel registry、selector 与 capability dispatch。
+- [Dispatch 设计](../../handbook/核心模块设计/后端系统%20%28Backend%29/后端系统%20%28Backend%29.md)：kernel registry、selector 与 capability dispatch。
 - [InferenceSession / Generate 前置闭环计划](../../improvement-plan/01-inference-session-generate-readiness.md)：真实 Prefill/Decode vertical slice 与端到端门禁。
 
 ## 11. 变更记录

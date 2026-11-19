@@ -180,7 +180,7 @@ scheme/metadata 合同 → INT8 reference → W8/A32 优化
 保持 [CPU ISA 构建隔离](../../src/CMakeLists.txt) 与 runtime effective feature filtering，不给整个库使用 `-march=native`。每种 ISA 分别记录编译、dispatch/fallback、真实硬件数值与性能状态。
 
 1. AVX2/FMA/F16C：首批生产优化与稳定 fallback。
-2. AVX-512 BF16/FP16：验证已有 kernel，测量数值保护检查、转换、归约与降频等实际成本。现有 Linear/RMSNorm native descriptor 的 priority 高于 AVX2/reference（数值见 [backend 选核规则](../modules/backend.md#42-准备期解析)）；已编译且 effective features 满足时，native **已会被生产准备入口自动选中**。这是精度专题 §4.5 的既有策略，不代表真实硬件数值/性能已验收，状态文字也不会阻止选核。后续 priority 调整仍须生产证据，不能根据向量宽度推定收益；逐 ISA 状态与硬件补验项见 [精度专题 §6.4](../improvement-plan/11-fp16-bf16-execution-support.md#64-性能资源与发布状态)。
+2. AVX-512 BF16/FP16：验证已有 kernel，测量数值保护检查、转换、归约与降频等实际成本。现有 Linear/RMSNorm native descriptor 的 priority 高于 AVX2/reference（数值见 [backend 选核规则](../handbook/核心模块设计/后端系统%20%28Backend%29/后端系统%20%28Backend%29.md#cpu-后端选择算法)）；已编译且 effective features 满足时，native **已会被生产准备入口自动选中**。这是精度专题 §4.5 的既有策略，不代表真实硬件数值/性能已验收，状态文字也不会阻止选核。后续 priority 调整仍须生产证据，不能根据向量宽度推定收益；逐 ISA 状态与硬件补验项见 [精度专题 §6.4](../improvement-plan/11-fp16-bf16-execution-support.md#64-性能资源与发布状态)。
 3. AMX：在目标硬件、OS 状态管理与允许的精度合同齐备后，优先研究大 M Prefill；Decode 独立评估。
 4. AArch64：目标平台进入验收后建设 NEON，随后按硬件与 workload 决定 BF16/I8MM/SVE；保留 portable fallback。
 

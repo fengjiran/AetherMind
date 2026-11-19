@@ -31,4 +31,4 @@
 | W16/A32 长 Prefill | Implemented | direct A 与有界 M block 的 B panel 复用。Decode 的单核带宽对照见 [机器记录](benchmarks/54h5mmi-gemm.md) |
 | CUDA | Proposed | 从 FP32 O1/plain 基线开始。见 [CUDA 接入顺序](cpu-gemm-optimization.md#74-cuda-接入顺序) |
 
-决策合同见 [backend 模块设计](../../modules/backend.md) 的 packed weight 与布局章节。F32 Linear/QKV/GateUp 的默认 packed descriptor 为 identity optimized，B-panel candidate 以较低 priority 注册。各组合见 [CPU 覆盖台账 §3.1/§4](../cpu-coverage-baseline.md#31-矩阵计算)。
+决策合同见 [backend 模块设计](../../handbook/核心模块设计/后端系统%20%28Backend%29/后端系统%20%28Backend%29.md) 的 packed weight 与布局章节。F32 Linear/QKV/GateUp 的默认 packed descriptor 为 identity optimized，B-panel candidate 以较低 priority 注册。各组合见 [CPU 覆盖台账 §3.1/§4](../cpu-coverage-baseline.md#31-矩阵计算)。

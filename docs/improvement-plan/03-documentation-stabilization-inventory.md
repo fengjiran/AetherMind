@@ -29,7 +29,7 @@
 
 - **包含（治理范围）**：仓库根 `README.md`、`AGENTS.md`、`CHANGELOG.md`；`docs/` 下全部 .md（含 `archive/`、`improvement-plan/`、`templates/`）。
 - **包含（仅登记，Out of Scope）**：`docs/agent/` 下全部 .md——按 [documentation-guide.md §1](../archive/guides/documentation-guide.md) 准入条件，`docs/agent/` 是独立子系统。清查表为全景统计列出，但排除在 E1–E9、状态迁移、命名和 metadata 门禁之外。
-- **排除**：`3rdparty/`、`build*/`、`.models/`、`.qoder/`、`.trae/`、`.omo/`、`.sisyphus/`、`.codex/`、`.gemini/`、`.idea/`、`.vscode/`、`.cache/`、`.agents/`、`tools/agent_memory/`。
+- **排除**：第三方代码、构建产物、模型资产、本地配置、缓存和工具生成内容。
 - **总数**：143 篇（根 3 + `docs/` 140）；其中治理范围 89 篇，Out of Scope 54 篇（`docs/agent/`）。
 
 **docs/agent/ 覆盖规则**：清查表中所有 `docs/agent/` 路径的行统一适用以下覆盖，无需逐行修改：

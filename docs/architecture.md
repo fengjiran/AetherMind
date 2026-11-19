@@ -1,6 +1,6 @@
 # AetherMind 系统架构
 
-> 本文档描述已验证实现，是全系统唯一的架构权威。术语见 [docs/README.md](README.md)，产品范围与验收标准见 [product.md](product.md)。其他文档引用本文档章节，不复制内容。
+> 本文档描述已验证实现，是全系统唯一的架构权威。产品范围与验收标准见 [product.md](product.md)。其他文档引用本文档章节，不复制内容。
 
 ## 系统架构总览
 
@@ -130,7 +130,7 @@ API 服务层是 AetherMind **进程内**集成/服务边界。它不是 HTTP/gR
 | **当前模块** | `RuntimeBuilder`、`Runtime`、`Executor`、`KVCacheManager`、`PreparedExecutionBindings`、`ExecutionContext`、`ModelLoader`、`ExecutableModel::Prepare`/`ExecutableModel`、`InferenceSession` |
 | **主要输入** | 已编译的 `ExecutionPlan`、其对应的模型 artifact（必要时含 `PackedWeightCollection`）、Prompt Token 序列、`GenerationConfig{max_new_tokens, eos_token_id}` |
 | **主要输出** | 执行步骤结果（tensor 写入 workspace / KV cache 位置）；`InferenceSession::Generate` 返回本次新生成的 Token IDs（含 Prefill 预测的首 token 与触发停止的 EOS） |
-| **当前缺口** | C ABI 与同步 Generate 已闭环（session reservation → Prefill → Decode loop → Argmax/stop → 释放预约），见 [InferenceSession 模块设计](modules/inference.md)。仓库中不存在独立的 `PrefillPath`/`DecodePath` 类型：phase 区分由 `ExecutableModel::plan(phase)` 与 Session 的两份 `PhaseContract` 承担。剩余缺口为跨调用 KV 复用、多 Session/并发 Generate、采样策略与算子覆盖扩展 |
+| **当前缺口** | C ABI 与同步 Generate 已闭环（session reservation → Prefill → Decode loop → Argmax/stop → 释放预约），见 [InferenceSession 模块设计](handbook/API%20参考文档/C++%20公开%20API/InferenceSession%20API.md)。仓库中不存在独立的 `PrefillPath`/`DecodePath` 类型：phase 区分由 `ExecutableModel::plan(phase)` 与 Session 的两份 `PhaseContract` 承担。剩余缺口为跨调用 KV 复用、多 Session/并发 Generate、采样策略与算子覆盖扩展 |
 | **禁止责任泄漏** | 不得承担请求排队/批处理、不得处理网络 IO、不得承担算子级 dispatch 决策（仅为调用方） |
 
 > 当前生命周期为 `RuntimeBuilder::Build → Runtime`、`ModelCompiler::Compile → LoweredModelArtifact`、`ExecutableModel::Prepare → ExecutableModel`（内含 `ExecutionPlanBuilder::Build → ExecutionPlan`）、`InferenceSession::Create/Generate`，其请求内为 `PrepareExecutionBindings → PreparedExecutionBindings`、`ExecutionContext::Create → Executor::Execute`。shape/layout/aliasing premise、deferred shape constraints 和 kernel params 均在 `PrepareExecutionBindings` 冷路径验证；`LayerRunner` 只读取已准备的 bindings，绑定 step workspace 并调用冻结的 `step.kernel.fn`。Generate 状态机（session reservation → Prefill → Decode loop → Argmax/stop）与 C ABI 均已实现（v1.0 尚未发布）；跨调用 KV 复用、多 Session 并发与采样策略仍未承诺。
@@ -193,54 +193,60 @@ flowchart LR
 | **当前模块** | `LayerRunner`（执行私有）、`KernelInvoker`、`CpuBackend`、`KernelRegistry`（全局 singleton + `AM_REGISTER_KERNEL` 静态注册）、`CPUAllocator`；`WorkspaceArena`/`WorkspaceBinding` 为 base 层共享契约，backend 与 execution 均单向依赖 |
 | **主要输入** | `ExecutionPlan`（已 resolve 的 `ExecutionStep` 序列）、`ExecutionContext`（workspace base、KV view 等动态绑定） |
 | **主要输出** | 各 step 计算结果的 tensor 写入（workspace + KV cache 位置）；Token IDs 由 `InferenceSession::Generate` 经 Argmax 产生 |
-| **当前缺口** | CPU backend/kernel dispatch 已通过 plan-build-time resolve 就位；更完整的 Llama layer 算子覆盖、W16/A32 与 KV16 之外的精度的支持仍在推进 |
+| **当前覆盖** | CPU backend 在 plan-build-time resolve。各精度的算子覆盖与验证状态见 [产品能力表](product.md#14-当前能力与验证状态) |
 | **禁止责任泄漏** | 不得感知模型拓扑、不得承担请求编排、不得在热路径做 registry/hash/string lookup 或对象虚调用、不得将宽对象（`Runtime*`）下放给 kernel |
 
 > kernel prepare 能力由硬件执行层通过 `Backend::PrepareKernel` 暴露，但 prepare 的发起方是执行数据契约层的 `ExecutionPlanBuilder`；它将 selector 与 typed OpParams 交给 backend，并将返回的 `ResolvedKernel` 冻结在计划中。
 
 ### 执行阶段调用序列
 
-以下时序图展示已实现的同步 Generate 执行流；C ABI、C++ API 与 CLI 共用同一条路径。
+下图展示 `max_new_tokens > 0` 时的同步成功路径。C++ API 和 CLI 直接调用 `InferenceSession::Generate`，C ABI 经适配层调用。零生成请求在校验后直接返回，C ABI 的短 buffer 及其他失败规则见 [Runtime C ABI](api/runtime-c-abi.md#6-generate-的-buffer长度与状态)。
 
 ```mermaid
 sequenceDiagram
-    participant App as 外部应用
-    participant API as API 服务层 (C ABI / C++)
-    participant Exec as 调度控制层 (InferenceSession)
-    participant LR as 硬件执行层
+    participant App as C/C++ 调用方或 CLI
+    participant ABI as C ABI 适配层
+    participant Exec as InferenceSession
+    participant LR as Executor / LayerRunner
     participant KV as KVCacheManager
 
-    App->>API: am_session_generate / InferenceSession::Generate
-    API->>Exec: Generate(prompt, config)
+    alt C ABI
+        App->>ABI: am_session_generate(...)
+        Note over ABI: 校验参数与输出容量
+        ABI->>Exec: Generate(prompt, config)
+    else C++ API 或 CLI
+        App->>Exec: Generate(prompt, config)
+    end
 
-    Note over Exec: PrepareSession: 绑定 KV slot + workspace
-
-    Exec->>KV: KVCacheManager::ReserveForSession(prompt_len, max_new_tokens)
+    Note over Exec: 校验请求，计算 future_kv_appends = max_new_tokens - 1
+    Exec->>KV: ReserveForSession(prompt_len, future_kv_appends)
     KV-->>Exec: KVCacheSessionView (逻辑视图)
 
     rect rgb(200, 230, 200)
-        Note over Exec,LR: Prefill
-        Exec->>LR: Executor::Execute(prefill_plan, bindings)
-        Note over LR: 全量 prompt 各层前向 → 写入 KV
+        Note over Exec: 准备 workspace 和 Prefill context
+        Exec->>LR: Execute(prefill_plan, prefill_context)
+        Note over LR: 执行 prompt 前向，完整 plan 成功后提交 KV 水位
         LR-->>Exec: Status::Ok()
-        Note over Exec: Argmax 选出首 token
+        Note over Exec: 读取 Argmax 输出的首个 token
     end
 
-    rect rgb(230, 230, 200)
-        Note over Exec,LR: Decode Loop
-        loop DecodeStep
-            Exec->>LR: Executor::Execute(decode_step_plan, bindings)
-            Note over LR: 单 token 各层前向 → 读写 KV
+    opt 未达 token 上限且未生成 EOS
+        Note over Exec: 准备一次 Decode context
+        loop 每个 Decode step
+            Exec->>LR: Execute(decode_plan, decode_context)
+            Note over LR: 执行单 token 前向，完整 plan 成功后提交 KV 水位
             LR-->>Exec: Status::Ok()
-            Note over Exec: Argmax + Stop Check
+            Note over Exec: 读取 Argmax 输出并检查停止条件
         end
     end
 
-    Exec-->>API: vector<uint32_t> output_tokens
-    API-->>App: output_tokens + finish_reason
-
-    Note over Exec,LR: InferenceSession 拥有 Generate 循环；LayerRunner 只执行已冻结的 plan
-    Note over LR: LayerRunner 不直接输出 Token IDs
+    Exec->>KV: ReleaseSession(view)
+    alt C ABI
+        Exec-->>ABI: StatusOr（含新 token IDs）
+        ABI-->>App: AM_STATUS_OK，写入新 token IDs 和实际长度
+    else C++ API 或 CLI
+        Exec-->>App: StatusOr（含新 token IDs）
+    end
 ```
 
 ---
@@ -316,7 +322,7 @@ flowchart LR
 
 ### 依赖方向
 
-AetherMind 的代码依赖规则是**自上而下单向依赖**，允许上层调用下层接口，禁止下层反向依赖上层。
+下图展示概念层之间的调用和产物关系。源码模块的单向依赖及例外见下方 [依赖规则](#跨模块依赖规则)。
 
 ```mermaid
 flowchart TB
@@ -369,20 +375,37 @@ flowchart TB
 
 ### 规则说明
 
-**硬规则（编译期/设计期检查）**：
+- 入口通过公开构建块完成编排。执行层与调用来源解耦，kernel 使用窄执行资源，禁止持有 `Runtime*`、`InferenceSession*` 等宽对象指针。
+- 上游持有不可变产物。`LoweredModelArtifact` 拥有 `LoadedModel` 和 `LoweredGraph`，`ExecutionPlan` 由调用方或模型管理侧持有。execution/backend 消费借用的引用或按值冻结的 plan 数据。
+- 结果向上回传，依赖指向下层。层间通过窄接口（struct、span、function pointer）通信。
 
-1. **API 服务层仅依赖调度控制层暴露的集成边界**，不得绕过控制层直接操作 compiler 或硬件执行细节（如 kernel 函数指针）。底层构建块（`RuntimeBuilder`、`Executor`）仍公开用于自定义装配，但不改变 C ABI 的依赖方向。
-2. **调度控制层不可见 API 服务层细节**。`Executor` 不知道调用方是 C ABI 还是 C++ API。
-3. **graph 仅依赖 operators、shape_inference 与 base**，禁止依赖 compiler、execution、backend、model；graph 构建入口（`BuildModelGraph` / per-family builders）位于 model，graph 只拥有语义 IR、rewrite framework 与 backend-independent semantic passes。
-4. **compiler 可依赖 model、graph 与 semantic base**，负责优化 pipeline composition、lowering 和 `LoweredGraph`；禁止依赖 execution、backend、runtime 或查询 kernel registry。
-5. **execution 实现消费 compiler artifact，并负责 StateAliasPlan、workspace 与 kernel planning**；execution 不得依赖 graph，public headers 只前向声明 `LoweredGraph`。
-6. **backend/runtime 禁止依赖 graph、compiler、model**。Kernel 函数不允许持有 `Runtime*`、`InferenceSession*` 等宽对象指针。
-7. **不可变产物的所有权由上游持有**：`LoweredModelArtifact` 持有 `LoadedModel` 与 `LoweredGraph`，`ExecutionPlan` 由调用方或模型管理侧持有；execution/backend 只消费引用或按值冻结的 plan 数据。
+### 源码模块所有权
 
-**软规则（设计原则）**：
+| 模块 | Public header 根目录 | 实现根目录 | 职责与不可越界规则 |
+| --- | --- | --- | --- |
+| **graph** | `include/aethermind/graph/` | `src/graph/` | 通用 Graph IR、nodes/values/specs、GraphOpBuilder、GraphRewriteSession/GraphPassManager、ConstantFolding/DCE/SiluMul 等 backend-independent semantic passes、诊断 dump。**不得依赖 compiler/execution/backend/model**，也不得出现 Backend/Kernel/Workspace/DeviceType 执行层细节；target-aware pipeline composition 与 lowering 不属于本模块。 |
+| **operators** | `include/aethermind/operators/` | `src/operators/` | 算子语义契约层：OpType 枚举、OperatorSchema（端口名顺序为语义 ABI）、OpParams（typed variant，禁止 std::any）、`Infer*` 自由函数（参数验证 + dtype 验证 + shape 推导 + deferred ShapeConstraints）、OpParams 序列化/反序列化。**不含执行层细节**：不得引用 ModelGraph/LoweredGraph/Backend/Kernel。 |
+| **compiler** | `include/aethermind/compiler/` | `src/compiler/` | 编译阶段编排：默认 semantic pipeline composition、`ModelCompiler`、`ModelCompileOptions`、`LowerModelGraph`、不可变且经结构验证的 `LoweredGraph`/`LoweredStepSpec`/`LoweredModelArtifact`。可携带 base 层 `KernelSelector`，但**不得依赖 execution/backend/runtime**，不得查询 kernel registry。 |
+| **execution** | `include/aethermind/execution/` | `src/execution/` | 执行数据契约层：ExecutionPlan、`PreparedExecutionBindings`（plan 的 cold-path tensor specialization）、`ExecutionContext`（窄执行资源）、供手工/低层调用的 untrusted `ExecutionPlanNodeSpec`、StateAliasPlan、LayerRunner、ExecutionPlanBuilder。Public headers 只前向声明 `LoweredGraph`；实现可依赖 compiler artifact，负责将其 state aliases 转为 runtime StateAliasPlan、workspace planning 与 kernel resolve。 |
+| **kv_cache** | `include/aethermind/kv_cache/` | `src/kv_cache/` | 静态 KV 物理状态域：公开 `kv_cache_layout.h` 定义独立的布局值类型 `KVCacheLayout`，`kv_cache_session_view.h` 定义 generation-checked `KVCacheSessionView`；View 仅借用 storage/session state，不暴露 `Buffer`。`detail/kv_cache_state.h` 保留 Manager-owned 的 `KVCacheStorage`（按值拥有 layout 与 K/V Buffer）及 `KVCacheSessionState { generation, capacity_tokens, prompt_len, committed_tokens, Lifecycle }`，其中 `Lifecycle` 为 `Idle`/`AwaitingPrefill`/`PrefillCommitted`。`KVCacheManager` 按值持有 storage/session state，`layout()` 返回 `storage_.layout` 的 const 引用，管理连续 K/V storage、单 session reservation、commit watermark 与窄读写 binding，并通过 `Init` 收到的 `Allocator&` 获取 K/V plane Buffer（只借用、不保存该引用），使 KV storage 与其余受管存储使用统一分配策略。`KVCacheSessionView::CommitAppend(begin, end) const noexcept` 是公开提交入口；调用方必须先证明完整 append plan 成功且所有 layer 写完，方法自身只验证 generation、lifecycle、begin/end 与容量，不证明写入完成。只依赖 base、dtypes、memory；不依赖 runtime/execution/inference/model/backend，不承载算子语义或 whole-plan transaction；不提供旧 View 类型或头的兼容 alias。 |
+| **runtime** | `include/aethermind/runtime/` | `src/runtime/` | 执行期运行时资源聚合层：Runtime/RuntimeBuilder（backend、allocator 与按值拥有的 `KVCacheManager`）、workspace 规划（`PlanWorkspaceRequirements`/`WorkspacePlanLayout`）。**不得依赖 execution/compiler/graph/model**；依赖 kv_cache；execution 可直接依赖 runtime 和 kv_cache。 |
+| **model** | `include/aethermind/model/` | `src/model/` | 模型加载与前端适配：HfModelConfig/HfDirectoryReader/HfModelValidator、ResolvedModelWeights、**LoadedModel**（只持有 config + resolved raw weights/backing storage）、ModelLoader（仅 HF I/O/validation/resolution）、**模型家族识别与图构建**（`ParseModelArchitecture` 是家族判定唯一权威；`BuildModelGraph` 是 HF → semantic graph 唯一转换权威的 dispatch 入口，按家族路由到 per-family builder，如 `BuildLlamaDense` 将 HF RoPE 字段规范化为 typed `RoPEAlgorithmParams`，legacy `su` 映射为 `LongRoPE`，unknown type 拒绝）。ModelCompiler 归 compiler；ModelLoader 不调用 graph、backend 或 prepack。`ConvertRawModelWeightsToFp32` 是显式构图前转换入口，通过传入 Allocator 分配自持 Buffer 的 RawStorage，保留源 config/hint；不属于 Loader 或 Compiler 的隐式行为。`ModelGraphBuildOptions` 显式携带 activation/KV dtype，不转换 payload。 |
+| **inference** | `include/aethermind/inference/` | `src/inference/` | 模型准备与会话编排层：`WeightBindingMetadata`（immutable 绑定所借用的 shape/stride 元数据所有权）、`ExecutableModel`（拥有 `LoweredModelArtifact`、packed artifacts、immutable external weight/constant bindings 与 phase ExecutionPlan）及其唯一生产准备入口 `ExecutableModel::Prepare`；`InferenceSession`/`Generate` 同步编排与 `model_execution_policy.h` 的共享 FP32 准入/模型 KV 配置映射，以及 `inference_options.h` 的设备无关 `CompilePreset` 与 `MakeCompileOptions(preset, target)` 编译映射 与 `MakeCpuRuntimeOptions` 模型感知运行前值映射亦归本模块；后者统一 CPU defaults、显式 KV dtype 与几何、Runtime budget 与 CPU feature policy，只读 metadata，不分配或创建 Runtime，Runtime 层不得反向依赖它。目标感知准备入口 `ExecutableModel::Load` 按 `ModelLoadOptions::weights` 编排 Load→可选 Convert→Compile→Prepare，retained-W16 按角色仅转换 Norm。精度组合与准入范围见 [产品能力表](product.md#14-当前能力与验证状态)。共享策略仅只读 metadata，不转换 payload、不分配 KV、不校验既有 Runtime/model；后者归 C adapter 私有 helper。**不得被 graph/operators/compiler/execution/runtime/model/backend 反向依赖**；只做编排、产品准入与所有权聚合，不承担算子语义、kernel resolve、weight materialization 算法或 KV 物理存储职责。 |
+| **C runtime adapter** | `include/c_api.h` | `src/c_api_runtime.cpp` | 外部 C 入口：opaque handle 与 Runtime 稳定 owner 链、配置/version、Status/异常/error 适配、buffer 合同、私有 Runtime/model KV 一致性校验；复用 inference 共享准入/映射/preset 及既有 Compile/Prepare/Generate，不复制算法或修改宿主 logger，不被下层模块反向依赖。 |
+| **shape_inference** | `include/aethermind/shape_inference/` | `src/shape_inference/` | TensorSpec、ShapeSymbol、ShapeConstraint、InferenceResult 等通用形状推导基础设施。 |
+| **backend / kernels** | `include/aethermind/backend/` + per-ISA kernels | `src/backend/` | Backend 抽象、KernelRegistry、ExecutionStep 运行时执行（基于 base 层 `KernelSelector` 纯数据契约做内核匹配，见 `base/kernel_selector.h`），以及经 `Backend::PackWeights` 契约暴露的权重打包服务（layout 权威在 backend，composite 物化/对齐/分配由 backend 落实）。CPU packing 经 `Backend::PackWeights` 收到的 `Allocator&` 分配产物存储（只借用、不保存该引用），布局权威与打包职责仍归 backend，不借此改变 Runtime `Allocator` 的接口。不得依赖 Graph IR 或 OperatorSchema 的语义细节；可 include operators 的纯数据 dtype 契约头（`kXxxSupportedDTypes`/`IsXxxSupportedDType`）及 backend-independent 的 `rope_frequency_resolver.h`（RoPE 频率公式契约）。 |
 
-8. 结果向上回传、调用向下传递。下层从不"向上查找"或依赖上层类型。
-9. 层间通过窄接口（struct、span、function pointer）通信，避免传递高层抽象类型。
+#### 跨模块依赖规则
+
+- operators → shape_inference（+ dtypes/base 基础库）
+- graph → operators + shape_inference + base
+- compiler → model + graph + operators + shape_inference + base
+- kv_cache → base + dtypes + memory
+- execution → runtime + kv_cache + compiler + operators + shape_inference + base（不直接依赖 graph，public headers 不 include compiler）；实现可依赖 model 的权重组装契约（`PackedWeightCollection`/`WeightArtifactKey`）；公共头可含 backend 的纯数据契约头（`ResolvedKernel`/`PackedWeight`/`KernelSelector`）
+- runtime → kv_cache + base + backend（backend registry/factory）+ memory
+- model → graph + operators + formats/hf + memory（显式逻辑权重转换使用 Allocator/Buffer，不承担物理 packing 布局职责）；权重组装组件（`WeightPackingRequest`/`PrepackWeightRequests`/`PackedWeightCollection`）可依赖 backend 的打包契约（`PackedWeight`/`PackingRecipe`），打包执行必须经 `Backend::PackWeights` 抽象入口，不得依赖其余 backend/kernels 细节（不 include 具体 prepacker 实现）
+- inference → execution + compiler + model + runtime + kv_cache（+ graph/operators 的纯数据 payload 契约 `WeightValue`/`ConstantValue`/`WeightBinding`，以及 base 的 `TensorView`/`KernelSelector`）；位于依赖最上层，任何下层模块不得依赖 inference
+- backend/kernels → operators（OpParams/OpType，及 `kXxxSupportedDTypes`/`IsXxxSupportedDType` 等纯数据 dtype 契约头，以及 backend-independent 的 `rope_frequency_resolver.h` 频率公式契约；不得依赖其余语义细节）不得反向依赖 graph/compiler/model；执行期共享契约（`WorkspaceArena`/`WorkspaceBinding`/`KernelSelector`）统一放在 base 层；`ResolvedKernel`/`PackedWeight`/`PackingRecipe` 等 backend 纯数据契约头供 execution/model 上层直接依赖，不再额外下沉
 
 ### 为什么这样分层
 
@@ -421,7 +444,7 @@ flowchart TB
 | **执行引擎** | `Executor::Execute` → `LayerRunner::Run`；`InferenceSession::Generate` 的 Prefill/Decode/Argmax/stop 状态机 | intra-op 并行优化与更完整的 kernel 覆盖 | Continuous batching、request scheduling |
 | **KV Cache** | `KVCacheManager`（静态预分配 Init + ReserveForSession）、`KVCacheSessionView`（逻辑读写）；Runtime 按值拥有 Manager | 跨请求 KV 复用 | PagedAttention、动态扩容 |
 | **采样** | Argmax 已集成到 Generate 循环 | - | Temperature / top-k / top-p |
-| **Backend** | CPU Backend（`CpuBackend` factory/freeze/resolve、`KernelRegistry` 全局 singleton + `AM_REGISTER_KERNEL`）；C++ W16/A32 与 KV16 执行策略 | 更完整的 Llama-layer 算子覆盖与 SIMD kernel | GPU/CUDA、CANN |
+| **Backend** | CPU Backend（`CpuBackend` factory/freeze/resolve、`KernelRegistry` 全局 singleton + `AM_REGISTER_KERNEL`） | 更完整的 Llama-layer 算子覆盖与 SIMD kernel | GPU/CUDA、CANN |
 | **内存** | `CPUAllocator`（`posix_memalign`、junk fill、可选 THP）、`WorkspaceArena`（Bind/Reset） | - | - |
 
 当前主路径为 `ModelLoader::Load → ModelCompiler::Compile → ExecutableModel::Prepare → InferenceSession::Generate`；`Executor::Execute`/`LayerRunner::Run` 只负责按已冻结的 plan 逐 step 执行。
@@ -430,19 +453,7 @@ flowchart TB
 
 ## 九、当前产品边界速查
 
-| 包含 | 排除 |
-|------|------|
-| Token IDs 输入/输出 | ❌ 字符串/文本输入输出 |
-| CPU-only 后端（当前 x86_64 AVX2/FMA；其他 ISA 不承诺） | ❌ GPU/CUDA 后端 |
-| 同步单请求执行 | ❌ 异步/流式 API |
-| 贪婪采样（Argmax） | ❌ Temperature / Top-K / Top-P |
-| 静态预分配 KV Cache | ❌ PagedAttention / 动态 Cache |
-| `config.json` + `*.safetensors` 模型加载 | ❌ Tokenizer 集成 |
-| Llama 家族 Dense 模型 | ❌ MoE / Encoder-Decoder |
-| 进程内 C ABI v1 / C++ API / CLI | ❌ HTTP/gRPC 服务接口 |
-| C++ 显式 FP32 兼容、W16/A32 与 KV16；CLI/C ABI 严格 FP32 | ❌ FP16/BF16 activation、INT8/INT4 执行 |
-| 单请求生命周期管理 | ❌ 请求调度 / Continuous Batching |
-| 推理引擎内部接口 | ❌ 外部服务治理、A/B 测试 |
+产品范围与非目标见 [产品定位与边界](product.md#11-定位与边界)，各入口的精度组合与验证范围见 [产品能力表](product.md#14-当前能力与验证状态)。
 
 ---
 
@@ -544,22 +555,22 @@ flowchart TB
 | 文档 | 覆盖内容 |
 |------|----------|
 | [product.md](product.md) | 当前产品需求、验收标准、边界定义 |
-| [modules/foundation.md](modules/foundation.md) | base / dtypes / memory：Status、TensorView、分配器与 workspace 契约 |
-| [modules/amstring.md](modules/amstring.md) | SSO 字符串库的布局、存储与策略 |
-| [modules/shape-inference.md](modules/shape-inference.md) | 符号维度、shape 约束与执行期保障 |
-| [modules/model.md](modules/model.md) | HF 加载、家族识别、权重绑定与打包请求 |
-| [modules/graph.md](modules/graph.md) | 语义图 IR、rewrite、passes 与不变量 |
-| [modules/operators.md](modules/operators.md) | 算子 schema、OpParams、Infer* 与序列化 |
-| [modules/compiler.md](modules/compiler.md) | 编译阶段、优化 pipeline、lowering 与 artifact |
-| [modules/execution.md](modules/execution.md) | ExecutionPlan、bindings、context 与逐 step 执行 |
-| [modules/runtime.md](modules/runtime.md) | Runtime 装配、资源所有权与 workspace 规划 |
-| [modules/kv-cache.md](modules/kv-cache.md) | KV 布局、静态分配、reservation 与 commit |
-| [modules/backend.md](modules/backend.md) | KernelRegistry、kernel resolve、packing 与 CPU 能力 |
-| [modules/inference.md](modules/inference.md) | ExecutableModel、InferenceSession 与 Generate |
+| [内存管理系统](handbook/内存管理系统/内存管理系统.md) | base / dtypes / memory：Status、TensorView、分配器与 workspace 契约 |
+| [amstring](handbook/组件速查/amstring%20字符串库/架构设计.md) | SSO 字符串库的布局、存储与策略 |
+| [形状推断系统](handbook/形状推断系统.md) | 符号维度、shape 约束与执行期保障 |
+| [模型系统](handbook/核心模块设计/模型系统%20%28Model%29.md) | HF 加载、家族识别、权重绑定与打包请求 |
+| [计算图系统](handbook/核心模块设计/计算图系统%20%28Graph%29/计算图系统%20%28Graph%29.md) | 语义图 IR、rewrite、passes 与不变量 |
+| [算子契约与元数据](handbook/核心模块设计/算子系统%20%28Operators%29/算子契约与元数据.md) | 算子 schema、OpParams、Infer* 与序列化 |
+| [编译器系统](handbook/核心模块设计/编译器系统%20%28Compiler%29.md) | 编译阶段、优化 pipeline、lowering 与 artifact |
+| [执行引擎](handbook/核心模块设计/执行引擎%20%28Execution%29.md) | ExecutionPlan、bindings、context 与逐 step 执行 |
+| [运行时系统](handbook/核心模块设计/运行时系统%20%28Runtime%29.md) | Runtime 装配、资源所有权与 workspace 规划 |
+| [KV Cache 系统](handbook/核心模块设计/KV%20Cache%20系统.md) | KV 布局、静态分配、reservation 与 commit |
+| [后端系统](handbook/核心模块设计/后端系统%20%28Backend%29/后端系统%20%28Backend%29.md) | KernelRegistry、kernel resolve、packing 与 CPU 能力 |
+| [InferenceSession API](handbook/API%20参考文档/C++%20公开%20API/InferenceSession%20API.md) | ExecutableModel、InferenceSession 与 Generate |
 
 ### 维护规则
 
 1. **源代码证明当前状态**。本文档中的"当前已实现"标记在编写时已验证源代码与测试文件。如有偏差，以代码行为为准。
 2. **产品目标以 `product.md` 为准**。它是当前产品功能需求与验收标准的唯一权威来源。
-3. **本文档为宏观架构总览**，不替代模块设计。模块的精确接口、数据结构与设计决策见 `modules/`。
+3. 本文档维护跨模块架构。各模块实现、数据结构与测试入口见 [项目手册](handbook/README.md)。
 4. **当发现本文档与代码不符时**，请更新本文档以反映当前代码事实，或在 PR 中标注偏离，而非修改代码去迎合文档。

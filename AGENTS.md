@@ -29,30 +29,7 @@
 
 ### 2.1 源码模块所有权（严格边界）
 
-| 模块 | Public header 根目录 | 实现根目录 | 职责与不可越界规则 |
-| --- | --- | --- | --- |
-| **graph** | `include/aethermind/graph/` | `src/graph/` | 通用 Graph IR、nodes/values/specs、GraphOpBuilder、GraphRewriteSession/GraphPassManager、ConstantFolding/DCE/SiluMul 等 backend-independent semantic passes、诊断 dump。**不得依赖 compiler/execution/backend/model**，也不得出现 Backend/Kernel/Workspace/DeviceType 执行层细节；target-aware pipeline composition 与 lowering 不属于本模块。 |
-| **operators** | `include/aethermind/operators/` | `src/operators/` | 算子语义契约层：OpType 枚举、OperatorSchema（端口名顺序为语义 ABI）、OpParams（typed variant，禁止 std::any）、`Infer*` 自由函数（参数验证 + dtype 验证 + shape 推导 + deferred ShapeConstraints）、OpParams 序列化/反序列化。**不含执行层细节**：不得引用 ModelGraph/LoweredGraph/Backend/Kernel。 |
-| **compiler** | `include/aethermind/compiler/` | `src/compiler/` | 编译阶段编排：默认 semantic pipeline composition、`ModelCompiler`、`ModelCompileOptions`、`LowerModelGraph`、不可变且经结构验证的 `LoweredGraph`/`LoweredStepSpec`/`LoweredModelArtifact`。可携带 base 层 `KernelSelector`，但**不得依赖 execution/backend/runtime**，不得查询 kernel registry。 |
-| **execution** | `include/aethermind/execution/` | `src/execution/` | 执行数据契约层：ExecutionPlan、`PreparedExecutionBindings`（plan 的 cold-path tensor specialization）、`ExecutionContext`（窄执行资源）、供手工/低层调用的 untrusted `ExecutionPlanNodeSpec`、StateAliasPlan、LayerRunner、ExecutionPlanBuilder。Public headers 只前向声明 `LoweredGraph`；实现可依赖 compiler artifact，负责将其 state aliases 转为 runtime StateAliasPlan、workspace planning 与 kernel resolve。 |
-| **kv_cache** | `include/aethermind/kv_cache/` | `src/kv_cache/` | 静态 KV 物理状态域：公开 `kv_cache_layout.h` 定义独立的布局值类型 `KVCacheLayout`，`kv_cache_session_view.h` 定义 generation-checked `KVCacheSessionView`；View 仅借用 storage/session state，不暴露 `Buffer`。`detail/kv_cache_state.h` 保留 Manager-owned 的 `KVCacheStorage`（按值拥有 layout 与 K/V Buffer）及 `KVCacheSessionState { generation, capacity_tokens, prompt_len, committed_tokens, Lifecycle }`，其中 `Lifecycle` 为 `Idle`/`AwaitingPrefill`/`PrefillCommitted`。`KVCacheManager` 按值持有 storage/session state，`layout()` 返回 `storage_.layout` 的 const 引用，管理连续 K/V storage、单 session reservation、commit watermark 与窄读写 binding，并通过 `Init` 收到的 `Allocator&` 获取 K/V plane Buffer（只借用、不保存该引用），使 KV storage 与其余受管存储使用统一分配策略。`KVCacheSessionView::CommitAppend(begin, end) const noexcept` 是公开提交入口；调用方必须先证明完整 append plan 成功且所有 layer 写完，方法自身只验证 generation、lifecycle、begin/end 与容量，不证明写入完成。只依赖 base、dtypes、memory；不依赖 runtime/execution/inference/model/backend，不承载算子语义或 whole-plan transaction；不提供旧 View 类型或头的兼容 alias。 |
-| **runtime** | `include/aethermind/runtime/` | `src/runtime/` | 执行期运行时资源聚合层：Runtime/RuntimeBuilder（backend、allocator 与按值拥有的 `KVCacheManager`）、workspace 规划（`PlanWorkspaceRequirements`/`WorkspacePlanLayout`）。**不得依赖 execution/compiler/graph/model**；依赖 kv_cache；execution 可直接依赖 runtime 和 kv_cache。 |
-| **model** | `include/aethermind/model/` | `src/model/` | 模型加载与前端适配：HfModelConfig/HfDirectoryReader/HfModelValidator、ResolvedModelWeights、**LoadedModel**（只持有 config + resolved raw weights/backing storage）、ModelLoader（仅 HF I/O/validation/resolution）、**模型家族识别与图构建**（`ParseModelArchitecture` 是家族判定唯一权威；`BuildModelGraph` 是 HF → semantic graph 唯一转换权威的 dispatch 入口，按家族路由到 per-family builder，如 `BuildLlamaDense` 将 HF RoPE 字段规范化为 typed `RoPEAlgorithmParams`，legacy `su` 映射为 `LongRoPE`，unknown type 拒绝）。ModelCompiler 归 compiler；ModelLoader 不调用 graph、backend 或 prepack。`ConvertRawModelWeightsToFp32` 是显式构图前转换入口，通过传入 Allocator 分配自持 Buffer 的 RawStorage，保留源 config/hint；不属于 Loader 或 Compiler 的隐式行为。`ModelGraphBuildOptions` 显式携带 activation/KV dtype，不转换 payload。 |
-| **inference** | `include/aethermind/inference/` | `src/inference/` | 模型准备与会话编排层：`WeightBindingMetadata`（immutable 绑定所借用的 shape/stride 元数据所有权）、`ExecutableModel`（拥有 `LoweredModelArtifact`、packed artifacts、immutable external weight/constant bindings 与 phase ExecutionPlan）及其唯一生产准备入口 `ExecutableModel::Prepare`；`InferenceSession`/`Generate` 同步编排与 `model_execution_policy.h` 的共享 FP32 准入/模型 KV 配置映射，以及 `inference_options.h` 的设备无关 `CompilePreset` 与 `MakeCompileOptions(preset, target)` 编译映射 与 `MakeCpuRuntimeOptions` 模型感知运行前值映射亦归本模块；后者统一 CPU defaults、FP32 KV geometry、Runtime budget 与 CPU feature policy，只读 metadata，不分配或创建 Runtime，Runtime 层不得反向依赖它。目标感知准备入口 `ExecutableModel::Load` 按 `ModelLoadOptions::weights` 编排 Load→可选 Convert→Compile→Prepare，compatibility 允许 CPU O1/plain FP32；显式 W16/A32 policy 支持 CPU O1/plain 与 O2/identity-packed，按角色仅转换 Norm；C ABI/CLI 继续 strict FP32。共享策略仅只读 metadata，不转换 payload、不分配 KV、不校验既有 Runtime/model；后者归 C adapter 私有 helper。**不得被 graph/operators/compiler/execution/runtime/model/backend 反向依赖**；只做编排、产品准入与所有权聚合，不承担算子语义、kernel resolve、weight materialization 算法或 KV 物理存储职责。 |
-| **C runtime adapter** | `include/c_api.h` | `src/c_api_runtime.cpp` | 外部 C 入口：opaque handle 与 Runtime 稳定 owner 链、配置/version、Status/异常/error 适配、buffer 合同、私有 Runtime/model KV 一致性校验；复用 inference 共享准入/映射/preset 及既有 Compile/Prepare/Generate，不复制算法或修改宿主 logger，不被下层模块反向依赖。 |
-| **shape_inference** | `include/aethermind/shape_inference/` | `src/shape_inference/` | TensorSpec、ShapeSymbol、ShapeConstraint、InferenceResult 等通用形状推导基础设施。 |
-| **backend / kernels** | `include/aethermind/backend/` + per-ISA kernels | `src/backend/` | Backend 抽象、KernelRegistry、ExecutionStep 运行时执行（基于 base 层 `KernelSelector` 纯数据契约做内核匹配，见 `base/kernel_selector.h`），以及经 `Backend::PackWeights` 契约暴露的权重打包服务（layout 权威在 backend，composite 物化/对齐/分配由 backend 落实）。CPU packing 经 `Backend::PackWeights` 收到的 `Allocator&` 分配产物存储（只借用、不保存该引用），布局权威与打包职责仍归 backend，不借此改变 Runtime `Allocator` 的接口。不得依赖 Graph IR 或 OperatorSchema 的语义细节；可 include operators 的纯数据 dtype 契约头（`kXxxSupportedDTypes`/`IsXxxSupportedDType`）及 backend-independent 的 `rope_frequency_resolver.h`（RoPE 频率公式契约）。 |
-
-**跨模块依赖规则**：
-- operators → shape_inference（+ dtypes/base 基础库）
-- graph → operators + shape_inference
-- compiler → model + graph + operators + shape_inference + base
-- kv_cache → base + dtypes + memory
-- execution → runtime + kv_cache + compiler + operators + shape_inference + base（public headers 不 include compiler）；实现可依赖 model 的权重组装契约（`PackedWeightCollection`/`WeightArtifactKey`）；公共头可含 backend 的纯数据契约头（`ResolvedKernel`/`PackedWeight`/`KernelSelector`）
-- runtime → kv_cache + base + backend（backend registry/factory）+ memory
-- model → graph + operators + formats/hf + memory（显式逻辑权重转换使用 Allocator/Buffer，不承担物理 packing 布局职责）；权重组装组件（`WeightPackingRequest`/`PrepackWeightRequests`/`PackedWeightCollection`）可依赖 backend 的打包契约（`PackedWeight`/`PackingRecipe`），打包执行必须经 `Backend::PackWeights` 抽象入口，不得依赖其余 backend/kernels 细节（不 include 具体 prepacker 实现）
-- inference → execution + compiler + model + runtime + kv_cache（+ graph/operators 的纯数据 payload 契约 `WeightValue`/`ConstantValue`/`WeightBinding`，以及 base 的 `TensorView`/`KernelSelector`）；位于依赖最上层，任何下层模块不得依赖 inference
-- backend/kernels → operators（OpParams/OpType，及 `kXxxSupportedDTypes`/`IsXxxSupportedDType` 等纯数据 dtype 契约头，以及 backend-independent 的 `rope_frequency_resolver.h` 频率公式契约；不得依赖其余语义细节）不得反向依赖 graph/model；执行期共享契约（`WorkspaceArena`/`WorkspaceBinding`/`KernelSelector`）统一放在 base 层；`ResolvedKernel`/`PackedWeight`/`PackingRecipe` 等 backend 纯数据契约头供 execution/model 上层直接依赖，不再额外下沉
+模块职责、所有权和依赖规则见 [架构文档的源码模块所有权](docs/architecture.md#源码模块所有权)。修改跨模块接口、所有权或依赖时，按该节检查。
 
 **权重准备文件约定**：model/weight 的 `weight_binding_resolver.h` 定义角色到 raw weight 的解析入口，`weight_packing_request.h` 定义请求数据，`packed_weight_collection.h` 定义 `WeightArtifactKey`、`PackedWeightCollection` 与自由函数构建入口 `PrepackWeightRequests`；该头仅前向声明 Allocator、Backend 与 WeightPackingRequest，批量打包实现归 `packed_weight_collection.cpp`。backend 的 `packing_recipe.h` 与 `packed_weight.h` 分别定义布局身份与产物接口；CPU identity/B-panel 共用 `backend/cpu/cpu_packed_weight_layout.h` 布局契约，尺寸公式实现归对应 `.cpp`，独立于 backend 打包实现，kernel 消费布局契约与 CPU 层的 `backend/cpu/packed_weight_validation.h`。请求 recipe 查询与合并定义在 `src/inference/executable_model.cpp`，私有声明与 Decode helper 统一放在 `src/inference/inference_internal.h`，由 `ExecutableModel::Prepare` 编排；调用方按职责包含对应头文件。
 
@@ -131,7 +108,7 @@ AETHERMIND_INFER_BINARY="$PWD/build-infer/apps/inference/aethermind_infer" \
 ```
 若本地可用，可基于 `build/compile_commands.json` 运行 `clang-tidy`。
 
-文档相对链接检查：`python3 tools/check_docs_links.py`（扫描 `docs/`，排除 `docs/archive/`）。
+文档链接检查使用 `python3 tools/check_docs_links.py`。默认检查根目录 `README.md`、`AGENTS.md`、`CHANGELOG.md` 和 `docs/` 非归档文档中的相对链接及 Markdown 标题锚点。
 
 ## 7. 代码风格规范
 
@@ -186,10 +163,8 @@ Tests use GoogleTest and live under `tests/unit/` (see §4 for run commands).
 See full test writing rules:
 - `docs/guides/test_writing_guidelines.md`
 
-## 10. 额外 AI 指南
-- `.cursorrules`：不存在
-- `.cursor/rules/`：不存在
-- `.github/copilot-instructions.md`：不存在
+## 10. 产品文档
+
 - `docs/product.md`：**当前产品需求与验收标准**（产品范围、公开 API、架构或验收标准相关工作时必读）
 
 ## 11. 指令优先级与作用域
@@ -207,10 +182,10 @@ See full test writing rules:
 
 使用仓库内上下文恢复或继续已有工作时：
 
-1. 先读本文件与 `docs/agent/memory/project.md`；后者只记录跨模块稳定事实。
-2. 当前任务状态与下一步见 `docs/agent/handoff.md`；该文件不存在时不加载历史 handoff。
-3. 需要模块边界、接口或所有权细节时，按路径读取 `docs/architecture.md` 与 `docs/modules/<module>.md`。
-4. `docs/guides/**` 按需引用，不进入默认启动路径。
+1. 先读本文件，按需通过 [文档导航](docs/README.md) 找到任务相关资料。
+2. 继续已有任务时，按该任务明确指定的 handoff 恢复。仅在追溯上轮文档整理时阅读 `docs/agent/handoff.md`。
+3. 修改模块边界、接口或所有权时，读取 [源码模块所有权](docs/architecture.md#源码模块所有权)，并从 [项目手册](docs/handbook/README.md) 查对应实现、接口与测试。
+4. `docs/guides/**` 按需引用。
 5. 默认启动加载量控制在 ≤15,000 tokens；超出时只保留本文件和用户明确指定的文件。
 
 约束：

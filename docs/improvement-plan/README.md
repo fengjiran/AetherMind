@@ -1,40 +1,29 @@
 # AetherMind 演进提案索引
 
-> 本目录存放未来架构演进提案（"将来要做什么"）。当前优先级入口见 [roadmap.md](../roadmap.md)，通用写作规则见 [docs/README.md](../README.md)。
->
-> 专题文档章节规范：现状分析 / 目标架构 / 方案与备选 / 实施步骤 / 风险与依赖 / 验收标准。
-> 状态流转：Draft → In Progress → Implemented → Superseded。
+跨专题优先级见 [路线图](../roadmap.md)。每篇专题维护自身方案、实施步骤和验收标准，产品能力以 [产品需求](../product.md#14-当前能力与验证状态) 为准。
 
 ## 专题目录
 
-| 编号 | 专题 | 状态 | 最后更新 |
-|---|---|---|---|
-| 01 | [InferenceSession / Generate 前置闭环计划](01-inference-session-generate-readiness.md) | Implemented | 2026-09-24 |
-| 02 | [工程质量体系建设方案](02-engineering-quality-system.md) | Draft | 2026-10-22 |
-| 03 | [文档系统稳定化方案](03-documentation-stabilization.md) | Superseded | 2026-09-17 |
-| 05 | [KVCache Manager 演进方案](05-kv-cache-manager-evolution.md) | Superseded | 2026-09-24 |
-| 06 | [AetherMind 系统能力演进路线图](06-system-capability-evolution-roadmap.md) | Draft | 2026-10-22 |
-| 07 | [ExecutableModel 生产准备入口方案](07-executable-model-preparation.md) | Implemented | 2026-09-23 |
-| 08 | [KV Cache 与 CPU Attention 能力演进方案](08-kv-cache-and-attention-capability-evolution.md) | In Progress | 2026-10-29 |
-| 09 | [Qwen 与 MoE 模型架构支持方案](09-qwen-and-moe-architecture-support.md) | Draft | 2026-10-20 |
-| 10 | [上层 Runtime 组装与推理入口实施方案](10-upper-level-runtime-assembly.md) | Implemented | 2026-10-22 |
-| 11 | [FP16 / BF16 执行支持方案](11-fp16-bf16-execution-support.md) | In Progress | 2026-10-29 |
-| 12 | [CUDA 后端与执行支持方案](12-cuda-backend-execution-support.md) | Draft | 2026-11-05 |
-| 13 | [借鉴 DeepInfer 的生产验证与质量实施方案](13-deepinfer-quality-and-validation.md) | In Progress | 2026-10-28 |
+| 专题 | 状态 |
+|---|---|
+| [02 工程质量体系](02-engineering-quality-system.md) | Draft |
+| [06 系统能力演进路线图](06-system-capability-evolution-roadmap.md) | Draft |
+| [08 KV Cache 与 CPU Attention](08-kv-cache-and-attention-capability-evolution.md) | In Progress |
+| [09 Qwen 与 MoE](09-qwen-and-moe-architecture-support.md) | Draft |
+| [11 FP16 / BF16 执行](11-fp16-bf16-execution-support.md) | In Progress |
+| [12 CUDA 后端](12-cuda-backend-execution-support.md) | Draft |
+| [13 生产验证与质量](13-deepinfer-quality-and-validation.md) | In Progress |
 
-## 推荐阅读路径
+算子专项见 [CPU 算子路线图](../operators/cpu-operator-evolution.md) 和 [GEMM 优化方案（原 04）](../operators/gemm/cpu-gemm-optimization.md)。机器级记录见 [GEMM 基准索引](../operators/gemm/README.md)。
 
-- [CPU 算子覆盖与性能演进路线图](../operators/cpu-operator-evolution.md)：跨算子优先级、CPU-01–10 工作包、线程/资源/量化依赖及生产验收；文档归算子目录，复用既有 GEMM、KV 与精度专题。
-- [01-inference-session-generate-readiness.md](01-inference-session-generate-readiness.md)：从 execution state/resource contract、ExecutableModel、reference kernel 到 public Generate 的实施门禁。
-- [02-engineering-quality-system.md](02-engineering-quality-system.md)：以 capability、风险台账、变更 profile 和 vertical slice 组织全仓库质量建设。
-- [03-documentation-stabilization.md](03-documentation-stabilization.md)：Batch -1 前置里程碑，D0–D5 与退出条件 E1–E9；配套清查表 [03-documentation-stabilization-inventory.md](03-documentation-stabilization-inventory.md)。
-- [05-kv-cache-manager-evolution.md](05-kv-cache-manager-evolution.md)：历史 KV 草案，当前事实与实施优先级由 08 号提案取代。
-- [06-system-capability-evolution-roadmap.md](06-system-capability-evolution-roadmap.md)：全仓库 capability gap、模块级演进裁决与 Batch A–F 实施排序；关联 09 模型家族、11 精度与 12 CUDA 的独立主线，§11.4 记录单权重 identity 条件式零复制的待优化项与验收。
-- [07-executable-model-preparation.md](07-executable-model-preparation.md)：01 号计划 M2 的细化，`LoweredModelArtifact → ExecutableModel` 唯一生产准备入口、权重绑定映射与 inference 模块归属。
-- [08-kv-cache-and-attention-capability-evolution.md](08-kv-cache-and-attention-capability-evolution.md)：当前 KV owner/epoch、静态布局与分阶段 payload budget，CPU Attention 优化证据门禁和 Paged KV 长期准入。
-- [09-qwen-and-moe-architecture-support.md](09-qwen-and-moe-architecture-support.md)：公共合同→Qwen3 Dense→Qwen3 MoE 主线；含 R1–R8 改造、binding 冷路径 workspace specialization、统一 decoder I/O、多 packed bindings 与验收，另列其他家族优先级和独立分支。
-- [10-upper-level-runtime-assembly.md](10-upper-level-runtime-assembly.md)：M0–M6 已完成，交付 CPU FP32 独立 C++ 入口和正式 C ABI、共享策略、owner/buffer/error 合同与分层验收；既有 LSAN 与全部产品 hard gates 仍单独记录。
-- [11-fp16-bf16-execution-support.md](11-fp16-bf16-execution-support.md)：显式 FP32 兼容执行→W16/A32→独立 KV16→A16 的分阶段提案；包含 logical weight ownership、构图精度、数值/ISA 合同、selector/layout 迁移与 production 验收。
-- [12-cuda-backend-execution-support.md](12-cuda-backend-execution-support.md)：单 GPU 同步生成基线；明确 target-aware 编译管线、binding 冷路径 specialization、device placement、显存权重所有权、stream 完成与 KV 事务，细化可选 CUDA 工程构建、链接与验证矩阵，并按 FP32→FP16/BF16→性能优化分阶段验收。
-- [13-deepinfer-quality-and-validation.md](13-deepinfer-quality-and-validation.md)：复用 02 的质量模型、10 的产品入口和算子工作流，细化模型 golden、teacher-forcing 数值等价、CTest/sanitizer/ISA、模型级 benchmark 与交付验证的 Q1–Q5 工作包；不扩大当前产品能力。
-- 原 04 号 GEMM 专项提案已于 2026-09-19 迁出本目录：方案、路线与工作包状态见 [CPU GEMM 优化方案](../operators/gemm/cpu-gemm-optimization.md)，机器级证据见 [GEMM 算子索引](../operators/gemm/README.md)；算子专项提案的位置见 [算子开发与优化工作流](../guides/operator-development-workflow.md)。
+## 历史专题
+
+| 专题 | 归档状态 |
+|---|---|
+| [01 InferenceSession / Generate 前置闭环](01-inference-session-generate-readiness.md) | Implemented |
+| [03 文档系统稳定化](03-documentation-stabilization.md) · [配套清查表](03-documentation-stabilization-inventory.md) | Superseded |
+| [05 KVCache Manager 演进草案](05-kv-cache-manager-evolution.md) | Superseded，由 08 承接 |
+| [07 ExecutableModel 生产准备](07-executable-model-preparation.md) | Implemented |
+| [10 上层 Runtime 组装与推理入口](10-upper-level-runtime-assembly.md) | Implemented |
+
+历史验收和设计快照见 [归档](../archive/README.md)。

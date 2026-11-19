@@ -8,35 +8,11 @@
 
 ## Overview
 
-AetherMind is a C++20 desktop/server CPU inference engine. Its standalone CLI and C ABI provide synchronous, single-request FP32 Llama Dense greedy generation with static KV storage and Token IDs I/O. The C++ API also supports explicit F16/BF16-to-FP32 conversion and retained-W16 execution policies. Validation uses tiny HF and generated checkpoints; it does not establish large-model performance or completion of every product hard gate.
-
-GPU offloading, serving, and distributed execution are direction-only and documented in the [product document appendix](docs/product.md); they are not current delivery commitments.
-
-### Delivered C++ Slice
-
-| Included                                            | Excluded                                       |
-|-----------------------------------------------------|------------------------------------------------|
-| CPU execution, validated on Linux/x86_64            | GPU / CUDA execution                           |
-| Llama Dense FP32 and explicit C++ W16/A32 execution | Other families, MoE, encoder-decoder           |
-| Greedy sampling                                     | temperature / top-k / top-p                    |
-| Static pre-allocated KV cache (FP32 or explicit KV16) | PagedAttention, continuous batching            |
-| FP32 activations and logits                         | FP16/BF16 activations, INT8/INT4 execution     |
-| Token IDs I/O (no tokenizer)                        | HTTP/gRPC serving                              |
-
-The [product document](docs/product.md) defines broader product targets, including quantized execution. HF loader acceptance of a dtype or family does not imply executable support. The standalone CLI and [runtime C ABI v1](docs/api/runtime-c-abi.md) retain strict FP32 source admission; their scoped validation does not establish every product or release gate.
+AetherMind is a C++20 desktop/server CPU inference engine for Llama Dense. It provides synchronous, single-request greedy generation with static KV storage and Token IDs I/O. Model-level validation primarily covers tiny Hugging Face and generated checkpoints on Linux/x86_64.
 
 ### C++ Weight Policies
 
-`ExecutableModel::Load(runtime, directory, options)` selects source-weight handling through `ModelLoadOptions::weights`:
-
-| `WeightPolicy`                   | Prepared weights                                                   | Supported CPU presets        |
-|----------------------------------|--------------------------------------------------------------------|------------------------------|
-| `kRequireFp32` (default)         | FP32 source weights                                                | O1/plain, O2/packed          |
-| `kConvertToFp32`                 | FP32 weights retained; F16/BF16 widened to FP32 before compilation | O1/plain                     |
-| `kKeepFp16WeightsFp32Activation` | F16 matrices retained; Norm weights converted to FP32              | O1/plain, O2/identity-packed |
-| `kKeepBf16WeightsFp32Activation` | BF16 matrices retained; Norm weights converted to FP32             | O1/plain, O2/identity-packed |
-
-Retained-W16 policies keep Embedding, Linear and LM-head matrices in the selected 16-bit format, with FP32 activations, accumulation, KV and logits. Linear currently uses reference kernels; two-byte matrix storage does not imply higher throughput. See the [FP32 compatibility guide](docs/guides/fp32-compatible-inference.md), [W16/A32 guide](docs/guides/w16-fp32-inference.md), and [scoped W16 validation](docs/archive/tests/w16_fp32_execution_validation_2026-11-11.md).
+The standalone CLI and [C ABI v1](docs/api/runtime-c-abi.md) use strict FP32. C++ `ExecutableModel::Load` also supports explicit F16/BF16-to-FP32 conversion, W16/A32 with optional KV16, and FP16/BF16 A16. See the [precision and validation matrix](docs/product.md#14-当前能力与验证状态) for supported combinations and the [public API reference](docs/api/public-api.md) for configuration and lifetime requirements.
 
 ## Key Features
 
@@ -57,7 +33,7 @@ ModelLoader::Load → ModelCompiler::Compile → RuntimeBuilder::TryBuild
 
 In this CLI path, compilation precedes KV allocation. Callers with an existing Runtime can instead use `ExecutableModel::Load`, which performs Load → source-weight admission and optional conversion → Compile → Prepare. The C ABI also creates Runtime before loading a model, then validates the Runtime against the compiled model before preparation.
 
-Runtime must remain at a stable address from preparation onward and outlive the prepared model and session. The application returns owning Token IDs. Source ownership and dependency rules are defined in [AGENTS.md](AGENTS.md), with the detailed [architecture overview](docs/architecture.md) and [assembly plan](docs/improvement-plan/10-upper-level-runtime-assembly.md) covering the contracts. See the [public API reference](docs/api/public-api.md), [Runtime configuration guide](docs/guides/runtime-configuration.md), and [resource budgeting guide](docs/guides/resource-budgeting.md) for configuration, payload limits, and resource queries.
+Runtime must remain at a stable address from preparation onward and outlive the prepared model and session. The application returns owning Token IDs. See the [module ownership and dependency rules](docs/architecture.md#源码模块所有权) and the [assembly plan](docs/improvement-plan/10-upper-level-runtime-assembly.md) for the contracts. See the [public API reference](docs/api/public-api.md), [Runtime configuration guide](docs/guides/runtime-configuration.md), and [resource budgeting guide](docs/guides/resource-budgeting.md) for configuration, payload limits, and resource queries.
 
 ## Project Structure
 
@@ -92,7 +68,7 @@ AetherMind/
 │   ├── README.md            # Documentation map, authority order, writing rules
 │   ├── architecture.md      # System architecture
 │   ├── product.md           # Product scope and acceptance criteria
-│   ├── modules/             # One design document per module
+│   ├── handbook/            # Implementation, integration, and validation documentation
 │   ├── guides/              # Coding style, tests, operator workflow
 │   └── operators/           # Operator contracts and evidence
 └── tools/                   # Development and maintenance tools
@@ -184,7 +160,7 @@ python3 tools/run_model_benchmark.py \
 
 Prepare the [numerical fixtures](tests/fixtures/inference_numerical/README.md) first. The [model measurement guide](tests/benchmark/models/README.md) defines timing boundaries, separate profiling/allocation modes, baseline builds, complete raw artifacts, report checks, and same-implementation noise observations. Raw runs go under gitignored `benchmark-results/models/`; identity collection reads model files before execution, so loading times are not cold-cache startup measurements. Performance capture is explicit and does not run in the default correctness presets.
 
-The model benchmark accepts `--weights require-fp32` (default), `convert-fp32`, `keep-fp16`, or `keep-bf16`, following the C++ policy/preset matrix above. The measurement guide includes retained-W16 examples using the [admission fixtures](tests/fixtures/inference_admission/README.md).
+The model benchmark accepts `--weights require-fp32` (default), `convert-fp32`, `keep-fp16`, or `keep-bf16`, following the [C++ precision matrix](docs/product.md#14-当前能力与验证状态). The measurement guide includes retained-W16 examples using the [admission fixtures](tests/fixtures/inference_admission/README.md).
 
 ### CMake Options
 
@@ -329,7 +305,7 @@ The baseline preset runs the production/lifecycle slice with reference and packe
 
 `fixture.cpu_isa_build` checks `compile_commands.json` for target-wide ISA uplift and per-file isolation; ISA implementation files also stay outside Unity and LTO merging. Update the explicit source manifest and its negative tests when adding an ISA implementation. Backend feature policy controls descriptor eligibility; internal dot-product dispatch independently detects host features. The baseline build excludes those optional implementations at compile time. Physical non-AVX hardware execution remains a separate platform qualification.
 
-FP16 and BF16 batch conversions use the Runtime backend's effective features through prepared function tables, without fresh detection inside conversion loops. See the [FP16 conversion contract and evidence](docs/operators/fp16_conversion/README.md) and [BF16 conversion contract and evidence](docs/operators/bf16_conversion/README.md). The selected weight policy determines whether matrix weights are widened during preparation or retained for W16/A32 execution.
+FP16 and BF16 batch conversions use the Runtime backend's effective features through prepared function tables, without fresh detection inside conversion loops. See the [FP16 conversion contract and evidence](docs/operators/fp16_conversion/README.md) and [BF16 conversion contract and evidence](docs/operators/bf16_conversion/README.md).
 
 ### Sanitizer Builds
 
@@ -413,6 +389,7 @@ Use `IsValidAlignment(alignment)` and `AlignOffsetUp(offset, alignment)` from `a
 | Document                                                                                     | Description                                               |
 |----------------------------------------------------------------------------------------------|-----------------------------------------------------------|
 | [docs/README.md](docs/README.md)                                                             | Documentation map, authority order, and writing rules     |
+| [Project handbook](docs/handbook/README.md)                                              | Implementation, API integration, operation, and tests    |
 | [docs/architecture.md](docs/architecture.md)                                                 | System architecture, dependency rules, and invariants     |
 | [docs/product.md](docs/product.md)                                                           | Current product requirements and acceptance criteria      |
 | [docs/roadmap.md](docs/roadmap.md)                                                           | Active engineering directions and priorities              |
@@ -420,9 +397,7 @@ Use `IsValidAlignment(alignment)` and `AlignOffsetUp(offset, alignment)` from `a
 
 ## Product Scope and Evolution
 
-- **Implemented scope**: CPU Llama Dense with strict FP32 CLI/C ABI and explicit C++ FP32 compatibility or W16/A32 policies, static KV cache (FP32 or explicit C++ KV16), and synchronous greedy generation.
-- **Current product requirements**: The [product document](docs/product.md) additionally requires INT8/INT4 quantization; executable quantized inference remains a target beyond the implemented slice above.
-- **Long-term directions, not committed**: GPU offloading, continuous batching, HTTP API, PagedAttention, and speculative decoding. See the [product document appendix](docs/product.md).
+The [product requirements](docs/product.md) describe acceptance criteria, pending deliverables such as INT8/INT4 execution, and longer-term directions.
 
 ## FAQ
 
@@ -434,9 +409,6 @@ No. GPU/CUDA backends are a long-term direction, not a current product commitmen
 
 **Q: Which models are supported?**
 Llama-family dense models loaded from HuggingFace format (`config.json` + `*.safetensors`). MoE, encoder-decoder, and sliding-window attention models are explicitly rejected.
-
-**Q: Can I run FP16 or BF16 checkpoints?**
-The C++ `ExecutableModel::Load` API supports explicit FP32 conversion on CPU O1/plain, or retained F16/BF16 matrices with FP32 activations/KV on CPU O1/plain and O2/identity-packed. See [C++ Weight Policies](#c-weight-policies). The standalone CLI and C ABI continue to require FP32 source weights.
 
 **Q: What sampling strategies are supported?**
 Greedy sampling only (`argmax(logits)`). Temperature / top-k / top-p are outside the current product scope.

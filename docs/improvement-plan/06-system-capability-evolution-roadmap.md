@@ -676,6 +676,8 @@ microkernel
 
 ### 17.1 当前需要裁决的漂移
 
+以下为早期盘点快照。选核时机、算子并行和多 Session 验收的现行合同见 [产品执行约束](../product.md#33-执行引擎) 与 [集成测试](../product.md#52-集成测试)。精度和量化状态见 [产品能力表](../product.md#14-当前能力与验证状态)。
+
 - PRD 同时描述单线程与 OpenMP kernel 并行；
 - PRD 写 compile-time/static dispatch，而实现是 planning-time registry resolve + frozen function pointer；
 - PRD 承诺 INT8/INT4，但 loader/kernel 尚未支持；

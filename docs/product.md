@@ -1,9 +1,9 @@
 # AetherMind 产品需求
 
-> 产品范围、验收标准与非目标的唯一权威。系统架构见 [architecture.md](architecture.md)，模块设计见 [modules/](modules/)。
+> 产品范围、验收标准与非目标的唯一权威。系统架构见 [architecture.md](architecture.md)，模块设计见 [项目手册](handbook/README.md)。
 
 - **核心目标**：交付生产级桌面/服务器 CPU 本地推理引擎，并为服务化、异构计算和分布式演进保留可验证的架构边界。
-- **关键技术**：C++20、Safetensors、FP32 / W16-A32 / BF16 A16、Static KV Cache；INT8/INT4 为待交付目标。
+- **关键技术**：C++20、Safetensors、FP32 与显式 16-bit 精度策略、静态 KV Cache。
 
 ---
 
@@ -72,17 +72,22 @@
 
 ### 1.4 当前能力与验证状态
 
+以下是 CPU Llama Dense 的已实现组合。所有组合的 Norm 权重和 logits 都是 FP32。C++ 的精度配置通过 `ExecutableModel::Load` 选择，字段和前置条件见 [公共 API](api/public-api.md)。
+
+| 入口与模式 | CPU preset | 矩阵权重 | Activation / KV / 跨层 residual | 已有验证 |
+|------------|------------|----------|-----------------------------------|----------|
+| C++ strict FP32（默认） | O1/plain、O2/packed | FP32 源权重 | FP32 / FP32 / FP32 | tiny HF 和生成 checkpoint 的 Prefill、Decode、Generate |
+| C++ FP32 compatibility | O1/plain | 保留 FP32 源权重，显式拓宽 F16/BF16 源权重 | FP32 / FP32 / FP32 | [独立解码权重对照与生成轨迹](archive/tests/fp32_compatibility_validation_2026-10-29.md) |
+| C++ W16/A32 | O1/plain、O2/identity-packed | FP16 或 BF16 | FP32 / FP32 / FP32 | [W16 模型验收](archive/tests/w16_fp32_execution_validation_2026-11-11.md)。W16 projection 使用 FP32 累加，优化路径与 fallback 见 [Linear](operators/linear/README.md) |
+| C++ W16/A32 + KV16 | O1/plain、O2/identity-packed | FP16 或 BF16 | FP32 / FP16 或 BF16 / FP32 | W 与 KV 独立选择，四种组合的限定 fixture 与 2048-token 校准见 [P3 验收](archive/tests/kv16_execution_validation_2026-11-12.md) |
+| C++ FP16 A16 | O1/plain、O2/identity-packed | FP16 | FP16 计算分支 / FP16 / FP32 | Load/Generate 与独立 MHA/GQA/MQA 校准，含 2048-token 边界，见 [P4-B](improvement-plan/11-fp16-bf16-execution-support.md#46-p4-bfp16-计算与-fp32-residual) |
+| C++ BF16 A16 | O1/plain、O2/identity-packed | BF16 | BF16 / BF16 / BF16 | Load/Generate 与限定 fixture 校准，含 2048-token 边界，见 [P4-A 验收](improvement-plan/11-fp16-bf16-execution-support.md#45-p416-bit-activation-与-native-compute首批设计已冻结) |
+| 独立 CLI / C ABI v1.0 strict FP32 | O1/plain、O2/packed | FP32 源权重 | FP32 / FP32 / FP32 | CLI 集成和 C 调用的限定验收，入口见 [§5.1](#51-当前测试入口与待完成门禁) |
+
 | 能力 | 当前实现与支持范围 | 边界 |
 |------|--------------------|------|
-| C++ FP32 Llama Dense | CPU O1/plain、O2/packed；同步 Prefill/Decode/Generate | tiny HF / 生成 checkpoint 的限定验证；不代表大模型质量 |
-| C++ FP32 compatibility | 显式将 F16/BF16 权重拓宽为 FP32；CPU O1/plain | 不保留 16-bit 矩阵 |
-| C++ W16/A32 | 保留 F16 或 BF16 矩阵，仅转换 Norm；FP32 activation、累加、KV、logits；CPU O1/plain、O2/identity-packed | Linear/LM head 与 QKV/GateUp 按有效 ISA 选择 SIMD/blocking；不适用时回退 reference，见 [Linear](operators/linear/README.md) |
-| C++ BF16 A16 | 显式选择 BF16 activation、矩阵、KV 与跨层 residual，Norm 权重及 logits 为 F32；CPU O1/plain、O2/identity-packed | 已有高层 Load/Generate 与限定 fixture 验收；A16 的 QKV/GateUp/AddRmsNorm fusion 关闭，范围见 [精度专题 §4.5](improvement-plan/11-fp16-bf16-execution-support.md#45-p416-bit-activation-与-native-compute首批设计已冻结) |
-| C++ FP16 A16 | FP16 矩阵、计算分支及 KV，FP32 residual、Norm 和 logits。CPU O1/plain、O2/identity-packed | Load/Generate 和独立 MHA/GQA/MQA 校准已通过，2048-token 范围见 [P4-B](operators/cast/README.md) |
-| 独立 CLI / C ABI v1.0 | 已实现，继续采用 CPU strict FP32 source admission | 不开放 C++ reduced-weight policy |
-| 静态 KV 与资源预算 | KV 默认 F32，C++ retained-W16 可显式选择 F16/BF16；支持模型、packed、KV、workspace 与请求 payload 限额及资源查询 | 见 [资源预算指南](guides/resource-budgeting.md) |
+| 静态 KV 与资源预算 | 支持模型、packed、KV、workspace 与请求 payload 限额及资源查询 | 见 [资源预算指南](guides/resource-budgeting.md) |
 | INT8/INT4 仅权重量化 | 保留为当前产品交付需求；尚无端到端量化执行链 | loader 接受 dtype/metadata 不等于 quantized graph、packing、kernel 与生成已接通 |
-| FP16/BF16 KV | C++ CPU W16/A32 的四种 W×KV 组合、O1/plain 与 O2/identity-packed 已接通 | 限定 fixture 验收；不代表任意模型/平台质量或加速保证 |
 | 算子内并行 | 尚未建立 OpenMP/线程池生产执行与验收证据 | 需另行明确线程所有权、确定性、零分配与 TSAN 合同 |
 | 7B 量化模型与目标性能 | 目标见 §4.1，尚未完成代表性模型验收 | tiny fixture 或 microbenchmark 不能替代大模型质量、冷启动、RSS 与吞吐证据 |
 
@@ -94,7 +99,7 @@
 
 ### 2.1 分层与边界
 
-当前产品采用 `inference → compiler/model/graph/execution/backend/runtime/kv_cache` 的分层调用。唯一权威分层图、依赖方向与模块地图见 [architecture.md](architecture.md)，模块细节见 [modules/](modules/)。
+当前产品采用 `inference → compiler/model/graph/execution/backend/runtime/kv_cache` 的分层调用。唯一权威分层图、依赖方向与模块地图见 [architecture.md](architecture.md)，模块细节见 [项目手册](handbook/README.md)。
 
 产品级硬约束：
 
@@ -102,8 +107,8 @@
 - 单进程、同步、单请求；不承诺 request scheduler、批处理或多 Session 并发 Generate。
 - 单 active KV session slot；KV 静态预分配、不自动扩容；Paged KV 为长期方向。
 - 准备期选核，执行期只调用冻结 kernel；Decode 稳态零分配，`Generate` 整体不是零分配接口。
-- 模块所有权以 [AGENTS.md](../AGENTS.md) §2.1 为准；产品边界不以 Concepts 或模板等语言特性定义。
-- 编译错误必须先于 KV 分配；Runtime 从 Prepare 起保持地址稳定，并长于 model、plan 与 session。
+- 模块所有权见 [架构文档](architecture.md#源码模块所有权)。
+- 独立 CLI 在编译成功后分配 KV。C++ `ExecutableModel::Load` 与 C ABI 模型加载使用调用方已创建的 Runtime。Runtime 从 Prepare 起保持地址稳定，并长于 model、plan 与 session。
 
 ### 2.2 API 边界定义
 
@@ -111,16 +116,7 @@
 
 `InferenceSession::Generate` 与 Runtime C ABI v1.0 均已实现。C ABI 合同由 M5 冻结、M6 接通，继续限定 CPU strict FP32。C++ 通过 `ExecutableModel::Load(Runtime&, directory, ModelLoadOptions)` 显式选择权重策略，或通过分阶段 Load/Compile 后调用 `ExecutableModel::Prepare`。精确声明、预算与 lifetime 以 [公共 API](api/public-api.md)、[c_api.h](../include/c_api.h) 和 [Runtime C ABI v1](api/runtime-c-abi.md) 为准。
 
-| `ModelLoadOptions::weights` | 权重处理 | CPU preset |
-|---------------------------|----------|------------|
-| `WeightPolicy::kRequireFp32`（默认） | 源权重要求 scalar FP32 | O1/plain、O2/packed |
-| `WeightPolicy::kConvertToFp32` | 保留 FP32 view，F16/BF16 必需权重显式拓宽为 FP32 | O1/plain |
-| `WeightPolicy::kKeepFp16WeightsFp32Activation` | 保留 F16 矩阵，仅转换 Norm 为 FP32 | O1/plain、O2/identity-packed |
-| `WeightPolicy::kKeepBf16WeightsFp32Activation` | 保留 BF16 矩阵，仅转换 Norm 为 FP32 | O1/plain、O2/identity-packed |
-
-上表按默认 `ModelLoadOptions::activation_dtype = Float32()` 描述。W16/A32 要求 Embedding、Linear/LM head 等矩阵的实际 dtype 匹配选定 policy，Norm 源可为 scalar F32/F16/BF16；activation、residual、logits 为 FP32，W16 projection 使用 FP32 累加。KV 默认 FP32，retained-W16 policy 可显式选择 F16/BF16，与矩阵精度独立，所有层 K/V 同型。O2 的 W16 identity/composite artifacts 保留两字节元素，并产生额外 packed storage。使用与数值合同见 [FP32 compatibility](guides/fp32-compatible-inference.md) 和 [W16/A32](guides/w16-fp32-inference.md)。这些 C++ policy 不改变 CLI/C ABI 的 strict FP32 准入。
-
-C++ A16 通过同型 retained-W16 policy 与显式 `activation_dtype`、`kv_dtype` 选择。Runtime KV dtype 必须与之匹配。FP16 保持跨层 residual、Norm 和 logits 为 FP32，边界由显式 Cast 表达。BF16 的矩阵、activation、KV 和 residual 为同型 BF16，Norm 权重与 logits 为 FP32。policy 名中的 `Fp32Activation` 是历史命名，实际 activation 以独立字段为准。支持范围和舍入合同见 [FP16 A16](operators/cast/README.md) 和 [BF16 A16](improvement-plan/11-fp16-bf16-execution-support.md#45-p416-bit-activation-与-native-compute首批设计已冻结)。
+CPU preset、权重、activation 与 KV 的支持组合见 [§1.4](#14-当前能力与验证状态)。使用示例见 [FP32 compatibility](guides/fp32-compatible-inference.md)、[W16/A32 与 KV16](guides/w16-fp32-inference.md) 和 [FP16 A16](operators/cast/README.md)。
 
 ```cpp
 // C++ API
@@ -185,7 +181,7 @@ am_status_code am_session_generate(
 | attention | GQA、MQA、MHA | sliding window、MoE、encoder-decoder 拒绝 |
 | activation | `hidden_act = "silu"`，构建 SwiGLU | 其他 activation 拒绝，新增支持须贯通语义、graph、kernel 与模型测试 |
 | norm | RMSNorm | 不提供 LayerNorm 模型执行 |
-| weight / activation precision | strict FP32、显式 FP32 compatibility、F16/BF16 W16/A32、FP16/BF16 A16 | 按 §2.2 的 policy、activation/KV 选项和实际 resolved weight dtype 准入 |
+| weight / activation precision | 见 [精度矩阵](#14-当前能力与验证状态) | 按 policy、activation/KV 选项和实际 resolved weight dtype 准入 |
 | quantization | 目标：INT8 per-channel、INT4 group-wise（group_size=128） | 待端到端实现与 scheme-specific 验收；其他 scheme 不承诺 |
 
 ### 3.2 内存管理
@@ -194,7 +190,7 @@ am_status_code am_session_generate(
 
 ```text
 当前高层执行的存储组成：
-Model weights：FP32，或 W16 矩阵 + FP32 Norm（包括 BF16 A16）
+Model weights：FP32，或 W16 矩阵 + FP32 Norm
     └─ O2 按 recipe 另持有 packed artifacts
 KV cache：默认 FP32；C++ retained-W16 可显式选 F16/BF16 K/V planes，Runtime 构造时静态分配
     └─ [layer][head][token][head_dim]，物理 padding/strides 由 layout 决定
@@ -202,9 +198,7 @@ Request：workspace + max(Prefill activation, Decode activation)
     └─ 两个 activation arena 分阶段存活；Decode bindings/params 准备后复用
 ```
 
-KV capacity 由调用方显式设置并受模型 context、checked layout bytes 和预算约束；4k 是长序列验收目标，不是统一的硬编码容量上限。请求内不自动扩容 KV。FP16/BF16 KV 的当前数值验收限定于 P3 记录列出的 fixture 与 2048-token 范围；更大上下文独立验收。INT8/INT4 权重及约 3.5 GB 的 7B INT4 逻辑 payload 属于目标估算，不能据此推导总内存占用已达标。
-
-BF16 A16 使用同型 BF16 K/V planes 与 activation/residual，不保留平行的全量 F32 KV 或 residual 副本；其精度与 2048 near-limit 验收按 P4-A 单独解释，不能沿用 P3 的 W×KV 交叉支持矩阵。
+KV capacity 由调用方显式设置并受模型 context、checked layout bytes 和预算约束。请求内不自动扩容 KV。4k 是长序列验收目标，各精度的现有验证范围见 [§1.4](#14-当前能力与验证状态)。INT8/INT4 权重及约 3.5 GB 的 7B INT4 逻辑 payload 属于目标估算，进程总内存仍需实测。
 
 **资源预算与失败行为**：
 
@@ -260,6 +254,8 @@ Output Tokens
 - **数值基准**：reference kernel 的累加精度按算子合同定义。当前 FP32 Linear reference 使用 double 累加，W16 projection reference 按 K 升序进行独立 FP32 product/add。CPU FP32 RoPE 使用 double 计算频率、角度、三角函数和旋转乘加，最终写回 FP32；与固定版本 HF 按误差门禁对照，见 [RoPE 算子契约](operators/rope/RoPE算子契约.md) 和 [W16/A32 数值合同](guides/w16-fp32-inference.md)。
 
 #### [P0] 内核列表（最小集）
+
+下表记录 FP32 基线、W16/A32 基线及量化交付要求。扩展精度的端到端范围见 [§1.4](#14-当前能力与验证状态)。
 
 | 算子 | 当前实现 / 交付目标 | 验证方式 |
 |------|--------------------|----------|
@@ -478,7 +474,7 @@ ctest --preset validation-numerical
 - [公共 API](api/public-api.md) 与 [Runtime C ABI v1](api/runtime-c-abi.md)
 - [FP32 compatibility](guides/fp32-compatible-inference.md) 与 [W16/A32](guides/w16-fp32-inference.md)
 - [CPU Runtime 配置](guides/runtime-configuration.md) 与 [资源预算](guides/resource-budgeting.md)
-- [Allocator 公共接口](../include/aethermind/memory/allocator.h) 与 [基础库模块设计](modules/foundation.md)
+- [Allocator 公共接口](../include/aethermind/memory/allocator.h) 与 [基础库模块设计](handbook/内存管理系统/内存管理系统.md)
 - [算子开发与证据流程](guides/operator-development-workflow.md)
 - [最终验证指南](guides/final-validation.md)
 

@@ -1,19 +1,12 @@
 # 在研方向
 
-> 本文件只记录当前活跃方向。实现完成后，结论并入 `architecture.md` / `modules/` 与 `CHANGELOG.md`，并从本表移除。
-> 详细提案与历史记录保留在 `improvement-plan/`，但本表才是当前优先级入口。
+当前优先事项如下。专题工作包、草案和历史记录见 [演进提案索引](improvement-plan/README.md)。
 
-| 方向 | 状态 | 当前目标 | 提案 |
-|---|---|---|---|
-| CPU 算子覆盖与性能 | In Progress | 矩阵、Attention、AddRmsNorm 和 FP32/BF16 SiluMul 已有本机生产路径证据。CPU-05 完成限定验收并更新后续热点 | [CPU 算子路线图](operators/cpu-operator-evolution.md) |
-| 工程质量体系 | Draft | capability 台账、验证 profile 与风险治理 | [02](improvement-plan/02-engineering-quality-system.md) |
-| 系统能力路线图 | Draft | 全仓库 capability gap 与实施排序 | [06](improvement-plan/06-system-capability-evolution-roadmap.md) |
-| KV / Attention 演进 | In Progress | KV owner/epoch、静态布局预算与 CPU Attention 优化准入 | [08](improvement-plan/08-kv-cache-and-attention-capability-evolution.md) |
-| Qwen 与 MoE | Draft | 公共合同、Qwen3 Dense 到 MoE 的改造顺序 | [09](improvement-plan/09-qwen-and-moe-architecture-support.md) |
-| FP16 / BF16 执行 | In Progress | W16/A32、KV16、A16 的精度合同与验收门禁 | [11](improvement-plan/11-fp16-bf16-execution-support.md) |
-| CUDA 后端 | Draft | 单 GPU 同步基线、target-aware 编译与验证矩阵 | [12](improvement-plan/12-cuda-backend-execution-support.md) |
-| 生产验证与质量 | In Progress | 模型 golden、teacher-forcing 等价、CTest/sanitizer/ISA 与 benchmark | [13](improvement-plan/13-deepinfer-quality-and-validation.md) |
+| 方向 | 当前目标 | 实施入口 |
+|---|---|---|
+| CPU 算子覆盖与性能 | 按生产路径 profiling 推进剩余热点和算子覆盖 | [CPU 算子路线图](operators/cpu-operator-evolution.md) |
+| KV / Attention 演进 | 维护静态 KV 的布局预算和提交合同，按真实负载选择下一阶段 Attention 优化 | [KV Cache 与 CPU Attention](improvement-plan/08-kv-cache-and-attention-capability-evolution.md) |
+| FP16 / BF16 执行 | 补齐 A16 的 AVX-512 真机数值与性能证据 | [FP16 / BF16 执行方案](improvement-plan/11-fp16-bf16-execution-support.md#64-性能资源与发布状态) |
+| 生产验证与质量 | 补齐剩余模型数值、平台组合和交付验证 | [生产验证实施方案](improvement-plan/13-deepinfer-quality-and-validation.md) |
 
-已实现或被取代的方案（01、03、05、07、10）仍保留在 `improvement-plan/` 供追溯，不再作为在研方向。
-
-已知缺陷与短周期待办见 [issues.md](issues.md)；产品范围与验收标准见 [product.md](product.md)；系统现状见 [architecture.md](architecture.md)。
+已知缺陷见 [问题清单](issues.md#未解决)，产品范围和验收标准见 [产品需求](product.md)。

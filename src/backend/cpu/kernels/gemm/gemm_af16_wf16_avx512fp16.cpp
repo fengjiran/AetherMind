@@ -1,13 +1,12 @@
 #include "aethermind/backend/cpu/kernels/common/a16_utils.h"
-#include "linear_internal.h"
+#include "aethermind/backend/cpu/kernels/common/simd_utils.h"
+#include "gemm_a16_w16_internal.h"
 
 #if defined(__AVX512F__) && defined(__AVX512FP16__)
 #include <immintrin.h>
 #endif
 
-#include <array>
-
-// AVX512-FP16 native A16 Linear. FP16 elements are widened with the native
+// AVX512-FP16 A16/W16 GEMM. FP16 elements are widened with the native
 // conversion and accumulated with fused multiply-add over 16 F32 lanes. FP16
 // products are exact in F32, so only the fused accumulation and lane reduction
 // order differ from the scalar reference; this TU owns that contract and is
@@ -19,16 +18,6 @@ namespace {
 #if defined(__AVX512F__) && defined(__AVX512FP16__)
 AM_ALWAYS_INLINE __m512 LoadF16x16(const std::byte* data) noexcept {
     return _mm512_cvtph_ps(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(data)));
-}
-
-AM_ALWAYS_INLINE float ReduceLanes(__m512 value) noexcept {
-    alignas(64) std::array<float, 16> lanes{};
-    _mm512_store_ps(lanes.data(), value);
-    float sum = 0.0F;
-    for (const float lane: lanes) {
-        sum = sum + lane;
-    }
-    return sum;
 }
 
 float DotProduct(const std::byte* input, const std::byte* weight, int64_t in_features) noexcept {
@@ -54,28 +43,29 @@ float DotProduct(const std::byte* input, const std::byte* weight, int64_t in_fea
 } // namespace
 
 #if defined(__AVX512F__) && defined(__AVX512FP16__)
-Status RunLinearA16F16Avx512Fp16(const LinearA16W16KernelArgs& args) noexcept {
-    if (args.act_dtype != DataType::Float(16) ||
-        args.input_col_stride != 1 || args.weight_col_stride != 1 ||
-        args.row_count == 0 || args.out_features == 0 || args.in_features == 0) {
-        return RunLinearA16Reference(args);
+Status RunGemmAF16WF16Avx512Fp16(const GemmA16W16Args& params) noexcept {
+    const GemmArgs& args = params.gemm;
+    if (params.operand_dtype != DataType::Float(16) ||
+        args.lhs_k_stride != 1 || args.rhs_k_stride != 1 ||
+        args.m == 0 || args.n == 0 || args.k == 0) {
+        return RunGemmA16W16Reference(params);
     }
 
-    const size_t output_bytes = A16ElementBytes(args.output_dtype);
-    for (int64_t row = 0; row < args.row_count; ++row) {
+    const size_t output_bytes = A16ElementBytes(params.output_dtype);
+    for (int64_t row = 0; row < args.m; ++row) {
         const std::byte* const input_row =
-                args.input + static_cast<size_t>(row * args.input_row_stride) * sizeof(uint16_t);
-        for (int64_t col = 0; col < args.out_features; ++col) {
+                args.lhs + static_cast<size_t>(row * args.lhs_m_stride) * sizeof(uint16_t);
+        for (int64_t col = 0; col < args.n; ++col) {
             const std::byte* const weight_row =
-                    args.weight +
-                    static_cast<size_t>(col * args.weight_row_stride) * sizeof(uint16_t);
+                    args.rhs +
+                    static_cast<size_t>(col * args.rhs_n_stride) * sizeof(uint16_t);
             StoreA16Element(
                     args.output +
-                            static_cast<size_t>(row * args.output_row_stride +
-                                                col * args.output_col_stride) *
+                            static_cast<size_t>(row * args.output_m_stride +
+                                                col * args.output_n_stride) *
                                     output_bytes,
-                    DotProduct(input_row, weight_row, args.in_features),
-                    args.output_dtype);
+                    DotProduct(input_row, weight_row, args.k),
+                    params.output_dtype);
         }
     }
     return Status::Ok();

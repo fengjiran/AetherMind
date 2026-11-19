@@ -38,6 +38,10 @@ struct AddRmsNormA32W32KernelArgs {
 /// @brief Executes the scalar FP32 AddRmsNorm reference micro-kernel.
 Status RunAddRmsNormF32Reference(const AddRmsNormA32W32KernelArgs& args) noexcept;
 
+#if defined(ADD_RMSNORM_HAS_AVX2_KERNEL)
+Status RunAddRmsNormF32Avx2(const AddRmsNormA32W32KernelArgs& args) noexcept;
+#endif
+
 } // namespace aethermind::cpu::detail
 
 #endif // AETHERMIND_BACKEND_CPU_KERNELS_ADD_RMSNORM_ADD_RMSNORM_INTERNAL_H

@@ -14,7 +14,7 @@
 namespace aethermind::cpu::detail {
 
 inline float GemmInputMagnitude(const float* input, int64_t k) noexcept {
-    float magnitude = 0.0F;
+    float magnitude = 0.0f;
     for (int64_t i = 0; i < k; ++i) {
         if (!std::isfinite(input[i])) {
             return std::numeric_limits<float>::infinity();
@@ -24,19 +24,21 @@ inline float GemmInputMagnitude(const float* input, int64_t k) noexcept {
     return magnitude;
 }
 
-template<class WeightOps, int Rows, int Columns>
-bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col, float input_magnitude) noexcept {
+template<class WeightOps, int Rows, int Cols>
+bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col,
+                       float input_magnitude) noexcept {
     const auto* input = reinterpret_cast<const float*>(args.lhs);
     auto* output = reinterpret_cast<float*>(args.output);
-    __m256 sums[Rows][Columns];
+    __m256 sums[Rows][Cols];
     for (int r = 0; r < Rows; ++r) {
-        for (int c = 0; c < Columns; ++c) {
+        for (int c = 0; c < Cols; ++c) {
             sums[r][c] = _mm256_setzero_ps();
         }
     }
+
     // A single output row leaves registers for independent magnitude chains.
     // The 2-row tile uses its remaining registers for the extra FMA sums.
-    constexpr int kMagnitudeChains = Rows == 1 ? Columns : 1;
+    constexpr int kMagnitudeChains = Rows == 1 ? Cols : 1;
     __m256 weight_magnitude[kMagnitudeChains]{};
     const __m256 sign = _mm256_set1_ps(-0.0F);
     int64_t k = 0;
@@ -45,7 +47,8 @@ bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col, float inp
         for (int r = 0; r < Rows; ++r) {
             inputs[r] = _mm256_loadu_ps(input + (row + r) * args.lhs_m_stride + k);
         }
-        for (int c = 0; c < Columns; ++c) {
+
+        for (int c = 0; c < Cols; ++c) {
             const __m256 weights = WeightOps::LoadEight(
                     args.rhs + static_cast<size_t>((col + c) * args.rhs_n_stride + k) * sizeof(uint16_t));
             __m256& magnitude = weight_magnitude[c % kMagnitudeChains];
@@ -55,24 +58,28 @@ bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col, float inp
             }
         }
     }
+
     __m256 reduced_magnitude = weight_magnitude[0];
     for (int c = 1; c < kMagnitudeChains; ++c) {
         reduced_magnitude = _mm256_max_ps(reduced_magnitude, weight_magnitude[c]);
     }
+
     alignas(32) float magnitudes[8];
     _mm256_store_ps(magnitudes, reduced_magnitude);
     float max_weight = 0.0F;
     for (const float value: magnitudes) {
         max_weight = std::max(max_weight, value);
     }
-    float results[Rows][Columns];
+
+    float results[Rows][Cols];
     for (int r = 0; r < Rows; ++r) {
-        for (int c = 0; c < Columns; ++c) {
+        for (int c = 0; c < Cols; ++c) {
             results[r][c] = HorizontalSumAvx2(sums[r][c]);
         }
     }
+
     for (; k < args.k; ++k) {
-        for (int c = 0; c < Columns; ++c) {
+        for (int c = 0; c < Cols; ++c) {
             const float weight = WeightOps::LoadOne(
                     args.rhs + static_cast<size_t>((col + c) * args.rhs_n_stride + k) * sizeof(uint16_t));
             max_weight = std::max(max_weight, std::fabs(weight));
@@ -81,11 +88,13 @@ bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col, float inp
             }
         }
     }
+
     if (!GemmReductionMagnitudeIsSafe(input_magnitude, max_weight, args.k)) {
         return false;
     }
+
     for (int r = 0; r < Rows; ++r) {
-        for (int c = 0; c < Columns; ++c) {
+        for (int c = 0; c < Cols; ++c) {
             if (!std::isfinite(results[r][c])) {
                 return false;
             }
@@ -98,16 +107,20 @@ bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col, float inp
 template<class WeightOps, int Rows>
 bool TryGemmW16Rows(const GemmArgs& args, int64_t row) noexcept {
     const auto* input = reinterpret_cast<const float*>(args.lhs);
-    float max_input = 0.0F;
+    float max_input = 0.0f;
     for (int r = 0; r < Rows; ++r) {
-        max_input = std::max(max_input, GemmInputMagnitude(input + (row + r) * args.lhs_m_stride, args.k));
+        max_input = std::max(
+                max_input,
+                GemmInputMagnitude(input + (row + r) * args.lhs_m_stride, args.k));
     }
+
     int64_t col = 0;
     for (; col + 4 <= args.n; col += 4) {
         if (!TryGemmW16DotTile<WeightOps, Rows, 4>(args, row, col, max_input)) {
             return false;
         }
     }
+
     for (; col < args.n; ++col) {
         if (!TryGemmW16DotTile<WeightOps, Rows, 1>(args, row, col, max_input)) {
             return false;
@@ -192,6 +205,7 @@ bool TryGemmW16Blocked(const GemmArgs& args) noexcept {
     if (!computed) {
         return false;
     }
+
     for (int64_t row = 0; row < m_full; ++row) {
         for (int64_t col = 0; col < n_full; ++col) {
             if (!std::isfinite(output[row * args.output_m_stride + col])) {
@@ -199,6 +213,7 @@ bool TryGemmW16Blocked(const GemmArgs& args) noexcept {
             }
         }
     }
+
     if (n_full < args.n) {
         GemmArgs edge = args;
         edge.m = m_full;
@@ -209,6 +224,7 @@ bool TryGemmW16Blocked(const GemmArgs& args) noexcept {
             return false;
         }
     }
+
     if (m_full < args.m) {
         GemmArgs edge = args;
         edge.m -= m_full;

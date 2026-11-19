@@ -113,12 +113,12 @@ void PackBPanel(const float* rhs, int64_t rhs_n_stride, int64_t kb,
     const float* source = rhs + nb_base * rhs_n_stride + kb;
     const int64_t vector_end = kc_len - kc_len % 8;
     for (int64_t col = 0; col < kBlockedNR; col += 8) {
-        for (int64_t kk = 0; kk < vector_end; kk += 8) {
+        for (int64_t k = 0; k < vector_end; k += 8) {
             __m256 rows[8];
             for (int64_t lane = 0; lane < 8; ++lane) {
-                rows[lane] = _mm256_loadu_ps(source + (col + lane) * rhs_n_stride + kk);
+                rows[lane] = _mm256_loadu_ps(source + (col + lane) * rhs_n_stride + k);
             }
-            StoreGemmBTile8x8Avx2(rows, buf_b + kk * kBlockedNR + col);
+            StoreGemmBTile8x8Avx2(rows, buf_b + k * kBlockedNR + col);
         }
     }
 
@@ -159,7 +159,7 @@ void RunBlockedGemmAvx2(const GemmArgs& args, int64_t m_full, int64_t n_full) no
 } // namespace
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
-Status RunGemmF32Avx2Fma(const GemmArgs& args) noexcept {
+Status RunGemmA32W32Avx2Fma(const GemmArgs& args) noexcept {
     const auto* const lhs_data = reinterpret_cast<const float*>(args.lhs);
     const auto* const rhs_data = reinterpret_cast<const float*>(args.rhs);
     auto* const output_data = reinterpret_cast<float*>(args.output);
@@ -249,7 +249,7 @@ Status RunGemmF32Avx2Fma(const GemmArgs& args) noexcept {
         }
         return Status::Ok();
     }
-    return RunGemmF32Scalar(args);
+    return RunGemmA32W32Scalar(args);
 }
 #endif
 

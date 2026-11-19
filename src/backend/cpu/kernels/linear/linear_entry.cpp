@@ -7,6 +7,7 @@
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/base/check.h"
+#include "backend/cpu/kernels/gemm/gemm_a16_w16_internal.h"
 #include "linear_internal.h"
 
 #include <array>
@@ -464,31 +465,26 @@ Status BuildLinearA16Args(const KernelParamsBuildContext& context,
 
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "A16 Linear input"));
+    GemmA16W16Args args{
+            .gemm = {.m = row_count, .n = out_features, .k = in_features},
+            .operand_dtype = act_dtype,
+            .output_dtype = output_dtype,
+    };
+    GemmArgs& gemm = args.gemm;
     if (row_count == 0 || out_features == 0) {
-        ::new (params_buffer) LinearA16W16KernelArgs{
-                .act_dtype = act_dtype,
-                .output_dtype = output_dtype,
-                .row_count = row_count,
-                .in_features = in_features,
-                .out_features = out_features,
-        };
+        ::new (params_buffer) GemmA16W16Args(args);
         return Status::Ok();
     }
 
     AM_ASSIGN_OR_RETURN(const RowwiseViewAnalysis output_analysis,
                         AnalyzeRowwiseView(output, "A16 Linear output"));
     AM_RETURN_IF_ERROR(ValidateRowwiseOutputLayout("A16 Linear output", output_analysis));
+    gemm.output = static_cast<std::byte*>(output.data());
+    gemm.output_m_stride = output_analysis.row_stride();
+    gemm.output_n_stride = output_analysis.column_stride();
     if (in_features == 0) {
-        ::new (params_buffer) LinearA16W16KernelArgs{
-                .output = static_cast<std::byte*>(output.data()),
-                .act_dtype = act_dtype,
-                .output_dtype = output_dtype,
-                .row_count = output_analysis.row_count(),
-                .in_features = 0,
-                .out_features = out_features,
-                .output_row_stride = output_analysis.row_stride(),
-                .output_col_stride = output_analysis.column_stride(),
-        };
+        gemm.m = output_analysis.row_count();
+        ::new (params_buffer) GemmA16W16Args(args);
         return Status::Ok();
     }
 
@@ -508,22 +504,14 @@ Status BuildLinearA16Args(const KernelParamsBuildContext& context,
             "CPU A16 Linear", output_analysis.footprint(), "output",
             weight_analysis.footprint(), "weight"));
 
-    ::new (params_buffer) LinearA16W16KernelArgs{
-            .input = static_cast<const std::byte*>(input.data()),
-            .weight = static_cast<const std::byte*>(weight.data()),
-            .output = static_cast<std::byte*>(output.data()),
-            .act_dtype = act_dtype,
-            .output_dtype = output_dtype,
-            .row_count = input_analysis.row_count(),
-            .in_features = in_features,
-            .out_features = out_features,
-            .input_row_stride = input_analysis.row_stride(),
-            .input_col_stride = input_analysis.column_stride(),
-            .weight_row_stride = weight_analysis.row_stride(),
-            .weight_col_stride = weight_analysis.column_stride(),
-            .output_row_stride = output_analysis.row_stride(),
-            .output_col_stride = output_analysis.column_stride(),
-    };
+    gemm.lhs = static_cast<const std::byte*>(input.data());
+    gemm.rhs = static_cast<const std::byte*>(weight.data());
+    gemm.m = input_analysis.row_count();
+    gemm.lhs_m_stride = input_analysis.row_stride();
+    gemm.lhs_k_stride = input_analysis.column_stride();
+    gemm.rhs_k_stride = weight_analysis.column_stride();
+    gemm.rhs_n_stride = weight_analysis.row_stride();
+    ::new (params_buffer) GemmA16W16Args(args);
     return Status::Ok();
 }
 
@@ -592,15 +580,14 @@ Status BuildLinearA16PackedIdentityArgs(const KernelParamsBuildContext& context,
 
     AM_ASSIGN_OR_RETURN(const int64_t row_count,
                         ComputeFlattenedRowCount(input, "LinearA16KernelEntry"));
-    LinearA16W16KernelArgs args{
-            .act_dtype = act_dtype,
+    GemmA16W16Args args{
+            .gemm = {.m = row_count, .n = out_features, .k = in_features},
+            .operand_dtype = act_dtype,
             .output_dtype = output_dtype,
-            .row_count = row_count,
-            .in_features = in_features,
-            .out_features = out_features,
     };
+    GemmArgs& gemm = args.gemm;
     if (row_count == 0 || out_features == 0) {
-        ::new (params_buffer) LinearA16W16KernelArgs(args);
+        ::new (params_buffer) GemmA16W16Args(args);
         return Status::Ok();
     }
 
@@ -613,14 +600,14 @@ Status BuildLinearA16PackedIdentityArgs(const KernelParamsBuildContext& context,
                 "Packed A16 Linear requires non-null output for non-empty tensors");
     }
 
-    args.output = static_cast<std::byte*>(output.data());
-    args.output_row_stride = output_analysis.row_stride();
-    args.output_col_stride = output_analysis.column_stride();
+    gemm.output = static_cast<std::byte*>(output.data());
+    gemm.output_m_stride = output_analysis.row_stride();
+    gemm.output_n_stride = output_analysis.column_stride();
 
     // Zero K only zero-fills the output and reads neither input nor weight, so
     // their empty buffers may legally carry null data pointers.
     if (in_features == 0) {
-        ::new (params_buffer) LinearA16W16KernelArgs(args);
+        ::new (params_buffer) GemmA16W16Args(args);
         return Status::Ok();
     }
 
@@ -647,14 +634,14 @@ Status BuildLinearA16PackedIdentityArgs(const KernelParamsBuildContext& context,
             "CPU A16 Linear", output_analysis.footprint().envelope(), "output",
             packed_range, "packed weight"));
 
-    args.input = static_cast<const std::byte*>(input.data());
-    args.weight = static_cast<const std::byte*>(packed.data);
-    args.row_count = input_analysis.row_count();
-    args.input_row_stride = input_analysis.row_stride();
-    args.input_col_stride = input_analysis.column_stride();
-    args.weight_row_stride = in_features;
-    args.weight_col_stride = 1;
-    ::new (params_buffer) LinearA16W16KernelArgs(args);
+    gemm.lhs = static_cast<const std::byte*>(input.data());
+    gemm.rhs = static_cast<const std::byte*>(packed.data);
+    gemm.m = input_analysis.row_count();
+    gemm.lhs_m_stride = input_analysis.row_stride();
+    gemm.lhs_k_stride = input_analysis.column_stride();
+    gemm.rhs_k_stride = 1;
+    gemm.rhs_n_stride = in_features;
+    ::new (params_buffer) GemmA16W16Args(args);
     return Status::Ok();
 }
 
@@ -825,7 +812,7 @@ Status BuildLinearF32BpanelArgs(const KernelParamsBuildContext& context,
 Status LinearF32PackedBEntry(const KernelContext& ctx) noexcept {
     const auto* args = static_cast<const PackedGemmF32Args*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
-    return RunGemmF32PackedB(*args);
+    return RunGemmA32W32PackedB(*args);
 }
 #endif
 
@@ -872,32 +859,32 @@ Status LinearF32W16ReferenceEntry(const KernelContext& ctx) noexcept {
 }
 
 Status LinearA16ReferenceEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const LinearA16W16KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const GemmA16W16Args*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
-    return RunLinearA16Reference(*args);
+    return RunGemmA16W16Reference(*args);
 }
 
 #if defined(A16_HAS_AVX2_FMA_KERNEL)
 Status LinearA16Avx2FmaEntry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const LinearA16W16KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const GemmA16W16Args*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
-    return RunLinearA16Avx2Fma(*args);
+    return RunGemmA16W16Avx2Fma(*args);
 }
 #endif
 
 #if defined(A16_HAS_AVX512BF16_KERNEL)
 Status LinearA16Bf16Avx512Bf16Entry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const LinearA16W16KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const GemmA16W16Args*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
-    return RunLinearA16Bf16Avx512Bf16(*args);
+    return RunGemmABf16WBf16Avx512Bf16(*args);
 }
 #endif
 
 #if defined(A16_HAS_AVX512FP16_KERNEL)
 Status LinearA16F16Avx512Fp16Entry(const KernelContext& ctx) noexcept {
-    const auto* args = static_cast<const LinearA16W16KernelArgs*>(ctx.kernel_params);
+    const auto* args = static_cast<const GemmA16W16Args*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
-    return RunLinearA16F16Avx512Fp16(*args);
+    return RunGemmAF16WF16Avx512Fp16(*args);
 }
 #endif
 
@@ -1050,9 +1037,9 @@ AM_REGISTER_KERNEL(
                 .name = "cpu::linear_f32_w32_packed_bpanel_candidate"})
 #endif
 
-static_assert(std::is_trivially_destructible_v<LinearA16W16KernelArgs>);
-static_assert(alignof(LinearA16W16KernelArgs) <= alignof(std::max_align_t));
-static_assert(sizeof(LinearA16W16KernelArgs) <= kMaxKernelParamsSize);
+static_assert(std::is_trivially_destructible_v<GemmA16W16Args>);
+static_assert(alignof(GemmA16W16Args) <= alignof(std::max_align_t));
+static_assert(sizeof(GemmA16W16Args) <= kMaxKernelParamsSize);
 
 AM_REGISTER_KERNEL(
         CpuLinearA16F16Reference,
@@ -1068,7 +1055,7 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16W16KernelArgs),
+                .params_size = sizeof(GemmA16W16Args),
                 .params_builder = &BuildLinearA16Args<false>,
                 .name = "cpu::linear_f16_wf16_reference"})
 
@@ -1086,7 +1073,7 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16W16KernelArgs),
+                .params_size = sizeof(GemmA16W16Args),
                 .params_builder = &BuildLinearA16Args<true>,
                 .name = "cpu::linear_bf16_wbf16_reference"})
 
@@ -1104,7 +1091,7 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16W16KernelArgs),
+                .params_size = sizeof(GemmA16W16Args),
                 .params_builder = &BuildLinearA16Args<false>,
                 .name = "cpu::linear_f16_wf16_out32_reference"})
 
@@ -1122,7 +1109,7 @@ AM_REGISTER_KERNEL(
                 },
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16W16KernelArgs),
+                .params_size = sizeof(GemmA16W16Args),
                 .params_builder = &BuildLinearA16Args<true>,
                 .name = "cpu::linear_bf16_wbf16_out32_reference"})
 
@@ -1141,7 +1128,7 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16W16KernelArgs),
+                .params_size = sizeof(GemmA16W16Args),
                 .params_builder = &BuildLinearA16PackedIdentityArgs<false>,
                 .name = "cpu::linear_f16_wf16_packed_identity_reference"})
 
@@ -1160,7 +1147,7 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16W16KernelArgs),
+                .params_size = sizeof(GemmA16W16Args),
                 .params_builder = &BuildLinearA16PackedIdentityArgs<true>,
                 .name = "cpu::linear_bf16_wbf16_packed_identity_reference"})
 
@@ -1179,7 +1166,7 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16W16KernelArgs),
+                .params_size = sizeof(GemmA16W16Args),
                 .params_builder = &BuildLinearA16PackedIdentityArgs<false>,
                 .name = "cpu::linear_f16_wf16_out32_packed_identity_reference"})
 
@@ -1198,7 +1185,7 @@ AM_REGISTER_KERNEL(
                 .packing_recipe = CpuIdentityPackingRecipe(),
                 .kernel_func = &LinearA16ReferenceEntry,
                 .priority = 10,
-                .params_size = sizeof(LinearA16W16KernelArgs),
+                .params_size = sizeof(GemmA16W16Args),
                 .params_builder = &BuildLinearA16PackedIdentityArgs<true>,
                 .name = "cpu::linear_bf16_wbf16_out32_packed_identity_reference"})
 
@@ -1230,7 +1217,7 @@ KernelDef A16LinearDef(Status (*entry)(const KernelContext&) noexcept,
             .cpu_requirements = requirements,
             .kernel_func = entry,
             .priority = priority,
-            .params_size = sizeof(LinearA16W16KernelArgs),
+            .params_size = sizeof(GemmA16W16Args),
             .params_builder = Packed ? &BuildLinearA16PackedIdentityArgs<Bfloat> : &BuildLinearA16Args<Bfloat>,
             .name = name,
     };

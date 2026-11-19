@@ -32,9 +32,9 @@ void FillValues(std::vector<float>& values) {
 
 void ExpectCandidateNearReference(const cpu::detail::GemmArgs& candidate_args,
                                   const cpu::detail::GemmArgs& reference_args) {
-    const Status candidate = cpu::detail::RunGemmF32Scalar(candidate_args);
+    const Status candidate = cpu::detail::RunGemmA32W32Scalar(candidate_args);
     ASSERT_TRUE(candidate.ok()) << candidate.ToString();
-    const Status reference = cpu::detail::RunGemmF32Reference(reference_args);
+    const Status reference = cpu::detail::RunGemmA32W32Reference(reference_args);
     ASSERT_TRUE(reference.ok()) << reference.ToString();
 
     for (int64_t row = 0; row < candidate_args.m; ++row) {
@@ -297,7 +297,7 @@ TEST(CPUKernelGemmScalar, NContiguousBlocksOverwriteNanOutputAndPreserveUnaligne
         }
     }
     const auto first_output = output;
-    ASSERT_TRUE(cpu::detail::RunGemmF32Scalar(args).ok());
+    ASSERT_TRUE(cpu::detail::RunGemmA32W32Scalar(args).ok());
     EXPECT_EQ(output, first_output);
 }
 
@@ -317,7 +317,7 @@ TEST(CPUKernelGemmScalar, NContiguousPreservesAscendingKAccumulation) {
         rhs[static_cast<size_t>(129 * n + col)] = 1.0F;
         rhs[static_cast<size_t>(256 * n + col)] = 1.0F;
     }
-    const auto status = cpu::detail::RunGemmF32Scalar(cpu::detail::GemmArgs{
+    const auto status = cpu::detail::RunGemmA32W32Scalar(cpu::detail::GemmArgs{
             .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
             .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
             .output = reinterpret_cast<std::byte*>(output.data()),
@@ -361,9 +361,9 @@ TEST(CPUKernelGemmScalar, NContiguousBlockedSteadyStateDoesNotAllocate) {
             .output_m_stride = n,
             .output_n_stride = 1,
     };
-    ASSERT_TRUE(cpu::detail::RunGemmF32Scalar(args).ok());
+    ASSERT_TRUE(cpu::detail::RunGemmA32W32Scalar(args).ok());
     test::BeginMallocCallCounting();
-    const auto status = cpu::detail::RunGemmF32Scalar(args);
+    const auto status = cpu::detail::RunGemmA32W32Scalar(args);
     const auto counts = test::EndMallocCallCounting();
     EXPECT_TRUE(status.ok());
     EXPECT_EQ(counts.malloc_calls, 0U);
@@ -460,7 +460,7 @@ TEST(CPUKernelGemmScalar, M1NonUnitOutputStrideFallsBackToReference) {
 TEST(CPUKernelGemmScalar, ZeroInnerDimensionWritesPositiveZeroWithoutInputs) {
     std::array<float, 13> output{};
     output.fill(-7.0F);
-    const Status status = cpu::detail::RunGemmF32Scalar(cpu::detail::GemmArgs{
+    const Status status = cpu::detail::RunGemmA32W32Scalar(cpu::detail::GemmArgs{
             .output = reinterpret_cast<std::byte*>(output.data()),
             .m = 3,
             .n = 3,
@@ -479,14 +479,14 @@ TEST(CPUKernelGemmScalar, ZeroInnerDimensionWritesPositiveZeroWithoutInputs) {
 }
 
 TEST(CPUKernelGemmScalar, ZeroOutputDimensionsAreNoOps) {
-    const Status zero_m = cpu::detail::RunGemmF32Scalar(cpu::detail::GemmArgs{
+    const Status zero_m = cpu::detail::RunGemmA32W32Scalar(cpu::detail::GemmArgs{
             .m = 0,
             .n = 3,
             .k = 7,
     });
     ASSERT_TRUE(zero_m.ok()) << zero_m.ToString();
 
-    const Status zero_n = cpu::detail::RunGemmF32Scalar(cpu::detail::GemmArgs{
+    const Status zero_n = cpu::detail::RunGemmA32W32Scalar(cpu::detail::GemmArgs{
             .m = 3,
             .n = 0,
             .k = 7,
@@ -505,7 +505,7 @@ TEST(CPUKernelGemmScalar, OverwritesExistingOutput) {
             4.0F,
     };
     std::array<float, 2> output = {101.0F, -101.0F};
-    const Status status = cpu::detail::RunGemmF32Scalar(cpu::detail::GemmArgs{
+    const Status status = cpu::detail::RunGemmA32W32Scalar(cpu::detail::GemmArgs{
             .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
             .rhs = reinterpret_cast<const std::byte*>(weights.data()),
             .output = reinterpret_cast<std::byte*>(output.data()),

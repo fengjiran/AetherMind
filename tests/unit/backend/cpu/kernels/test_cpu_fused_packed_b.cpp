@@ -80,7 +80,7 @@ void ExpectSegmentNearReference(const std::vector<float>& input,
             .output_m_stride = output_stride,
             .output_n_stride = 1,
     };
-    const Status status = cpu::detail::RunGemmF32Reference(reference);
+    const Status status = cpu::detail::RunGemmA32W32Reference(reference);
     ASSERT_TRUE(status.ok()) << status.ToString();
     for (int64_t row = 0; row < rows; ++row) {
         for (int64_t col = 0; col < output_n; ++col) {

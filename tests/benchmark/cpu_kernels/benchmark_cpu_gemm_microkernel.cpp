@@ -155,31 +155,31 @@ void BenchmarkGemmF32(benchmark::State& state, RhsLayout rhs_layout, GemmRunner 
 
 void BM_GemmF32ReferenceNContiguous(benchmark::State& state) {
     BenchmarkGemmF32(state, RhsLayout::kNContiguous,
-                     &cpu::detail::RunGemmF32Reference,
+                     &cpu::detail::RunGemmA32W32Reference,
                      1.0e-5F);
 }
 
 void BM_GemmF32ReferenceKContiguous(benchmark::State& state) {
     BenchmarkGemmF32(state, RhsLayout::kKContiguous,
-                     &cpu::detail::RunGemmF32Reference,
+                     &cpu::detail::RunGemmA32W32Reference,
                      1.0e-5F);
 }
 
 void BM_GemmF32ScalarOptimizedNContiguous(benchmark::State& state) {
     BenchmarkGemmF32(state, RhsLayout::kNContiguous,
-                     &cpu::detail::RunGemmF32Scalar,
+                     &cpu::detail::RunGemmA32W32Scalar,
                      1.0e-4F);
 }
 
 void BM_GemmF32ScalarOptimizedKContiguous(benchmark::State& state) {
     BenchmarkGemmF32(state, RhsLayout::kKContiguous,
-                     &cpu::detail::RunGemmF32Scalar,
+                     &cpu::detail::RunGemmA32W32Scalar,
                      1.0e-4F);
 }
 
 void BM_GemmF32ScalarOptimizedNContiguousPadded(benchmark::State& state) {
     BenchmarkGemmF32(state, RhsLayout::kNContiguous,
-                     &cpu::detail::RunGemmF32Scalar,
+                     &cpu::detail::RunGemmA32W32Scalar,
                      1.0e-4F, 13);
 }
 
@@ -193,7 +193,7 @@ void BM_GemmF32Avx2FmaKContiguous(benchmark::State& state) {
         return;
     }
     BenchmarkGemmF32(state, RhsLayout::kKContiguous,
-                     &cpu::detail::RunGemmF32Avx2Fma,
+                     &cpu::detail::RunGemmA32W32Avx2Fma,
                      2.0e-4F);
 }
 #endif

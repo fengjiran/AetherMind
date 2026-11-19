@@ -39,6 +39,14 @@ struct SiluMulA32KernelArgs {
 /// Runs the FP32, broadcast- and stride-aware SiluMul reference micro-kernel.
 Status RunSiluMulF32Reference(const SiluMulA32KernelArgs& args) noexcept;
 
+/// Evaluates a contiguous range using the scalar reference arithmetic.
+void RunSiluMulF32FlatReference(const float* gate, const float* up, float* output,
+                                int64_t numel) noexcept;
+
+#if defined(SILU_MUL_HAS_AVX2_KERNEL)
+Status RunSiluMulF32Avx2Fma(const SiluMulA32KernelArgs& args) noexcept;
+#endif
+
 /// Pre-validated A16 arguments for the broadcast-aware SiluMul reference kernel.
 ///
 /// Element buffers are byte-addressed 16-bit storage; strides stay in elements
@@ -64,6 +72,14 @@ struct SiluMulA16KernelArgs {
 
 /// Runs the A16, broadcast- and stride-aware SiluMul reference micro-kernel.
 Status RunSiluMulA16Reference(const SiluMulA16KernelArgs& args) noexcept;
+
+/// Evaluates a contiguous range with the scalar A16 widening and narrowing.
+void RunSiluMulA16FlatReference(const std::byte* gate, const std::byte* up,
+                                std::byte* output, DataType dtype, int64_t numel) noexcept;
+
+#if defined(SILU_MUL_HAS_AVX2_KERNEL)
+Status RunSiluMulBf16Avx2Fma(const SiluMulA16KernelArgs& args) noexcept;
+#endif
 
 } // namespace aethermind::cpu::detail
 

@@ -1,9 +1,9 @@
 #include "aethermind/backend/cpu/kernels/common/a16_utils.h"
 #include "aethermind/backend/cpu/kernels/common/simd_utils.h"
-#include "linear_internal.h"
+#include "gemm_a16_w16_internal.h"
 
 #if defined(__AVX2__) && defined(__FMA__) && defined(__F16C__)
-#include "../gemm/gemm_w16_pack_avx2.h"
+#include "gemm_w16_pack_avx2.h"
 
 #include <algorithm>
 #include <cmath>
@@ -78,7 +78,8 @@ float PackWeightTail(const std::byte* source, size_t row_bytes,
 }
 
 template<class Widen>
-bool TryRunBlocked(const LinearA16W16KernelArgs& args) noexcept {
+bool TryRunBlocked(const GemmA16W16Args& params) noexcept {
+    const GemmArgs& args = params.gemm;
     // Carry the FP32 sums across K panels and round only while publishing the
     // completed output block. Scratch stays bounded independently of M/N/K.
     constexpr int64_t kOutputColumns = 128;
@@ -86,29 +87,29 @@ bool TryRunBlocked(const LinearA16W16KernelArgs& args) noexcept {
     alignas(32) float panel_a[kGemmAvx2MB * kGemmAvx2KC];
     alignas(32) float panel_b[kGemmAvx2KC * kGemmAvx2NR];
     alignas(32) float sums[kGemmAvx2MB * kOutputColumns];
-    const size_t input_row_bytes = static_cast<size_t>(args.input_row_stride) * sizeof(uint16_t);
-    const size_t weight_row_bytes = static_cast<size_t>(args.weight_row_stride) * sizeof(uint16_t);
-    const size_t output_bytes = A16ElementBytes(args.output_dtype);
+    const size_t input_row_bytes = static_cast<size_t>(args.lhs_m_stride) * sizeof(uint16_t);
+    const size_t weight_row_bytes = static_cast<size_t>(args.rhs_n_stride) * sizeof(uint16_t);
+    const size_t output_bytes = A16ElementBytes(params.output_dtype);
 
-    for (int64_t mb = 0; mb < args.row_count; mb += kGemmAvx2MB) {
-        const int64_t rows = std::min(args.row_count - mb, kGemmAvx2MB);
+    for (int64_t mb = 0; mb < args.m; mb += kGemmAvx2MB) {
+        const int64_t rows = std::min(args.m - mb, kGemmAvx2MB);
         const int64_t padded_rows = (rows + kGemmAvx2MR - 1) / kGemmAvx2MR * kGemmAvx2MR;
-        for (int64_t nb = 0; nb < args.out_features; nb += kOutputColumns) {
-            const int64_t cols = std::min(args.out_features - nb, kOutputColumns);
+        for (int64_t nb = 0; nb < args.n; nb += kOutputColumns) {
+            const int64_t cols = std::min(args.n - nb, kOutputColumns);
             const int64_t padded_cols = (cols + kGemmAvx2NR - 1) / kGemmAvx2NR * kGemmAvx2NR;
             std::fill_n(sums, padded_rows * padded_cols, 0.0F);
-            for (int64_t kb = 0; kb < args.in_features; kb += kGemmAvx2KC) {
-                const int64_t kc = std::min(args.in_features - kb, kGemmAvx2KC);
+            for (int64_t kb = 0; kb < args.k; kb += kGemmAvx2KC) {
+                const int64_t kc = std::min(args.k - kb, kGemmAvx2KC);
                 const size_t k_offset = static_cast<size_t>(kb) * sizeof(uint16_t);
                 const float max_a = PackActivationRows<Widen>(
-                        args.input + static_cast<size_t>(mb) * input_row_bytes + k_offset,
+                        args.lhs + static_cast<size_t>(mb) * input_row_bytes + k_offset,
                         input_row_bytes, rows, padded_rows, kc, panel_a);
                 for (int64_t col = 0; col < cols; col += kGemmAvx2NR) {
-                    const auto* weight = args.weight + static_cast<size_t>(nb + col) * weight_row_bytes + k_offset;
+                    const auto* weight = args.rhs + static_cast<size_t>(nb + col) * weight_row_bytes + k_offset;
                     const float max_b = cols - col >= kGemmAvx2NR
                                                 ? PackGemmW16BPanelAvx2<Widen>(weight, weight_row_bytes, kc, panel_b)
                                                 : PackWeightTail<Widen>(weight, weight_row_bytes, cols - col, kc, panel_b);
-                    if (!GemmReductionMagnitudeIsSafe(max_a, max_b, args.in_features)) {
+                    if (!GemmReductionMagnitudeIsSafe(max_a, max_b, args.k)) {
                         return false;
                     }
                     for (int64_t row = 0; row < padded_rows; row += kGemmAvx2MR) {
@@ -119,13 +120,13 @@ bool TryRunBlocked(const LinearA16W16KernelArgs& args) noexcept {
             }
             for (int64_t row = 0; row < rows; ++row) {
                 auto* dest = args.output +
-                             static_cast<size_t>((mb + row) * args.output_row_stride + nb) * output_bytes;
+                             static_cast<size_t>((mb + row) * args.output_m_stride + nb) * output_bytes;
                 for (int64_t col = 0; col < cols; ++col) {
                     const float value = sums[row * padded_cols + col];
                     if (!std::isfinite(value)) {
                         return false;
                     }
-                    StoreA16Element(dest + col * output_bytes, value, args.output_dtype);
+                    StoreA16Element(dest + col * output_bytes, value, params.output_dtype);
                 }
             }
         }
@@ -134,38 +135,39 @@ bool TryRunBlocked(const LinearA16W16KernelArgs& args) noexcept {
 }
 
 template<class Widen>
-Status RunAvx2(const LinearA16W16KernelArgs& args) noexcept {
+Status RunAvx2(const GemmA16W16Args& params) noexcept {
+    const GemmArgs& args = params.gemm;
     // The vector loop requires unit column strides; any other positive layout
     // uses the scalar reference so the prepared arguments never fail.
-    if (args.input_col_stride != 1 || args.weight_col_stride != 1 ||
-        args.row_count == 0 || args.out_features == 0 || args.in_features == 0) {
-        return RunLinearA16Reference(args);
+    if (args.lhs_k_stride != 1 || args.rhs_k_stride != 1 ||
+        args.m == 0 || args.n == 0 || args.k == 0) {
+        return RunGemmA16W16Reference(params);
     }
 
-    if (args.row_count > 8 && args.in_features >= 8 && args.out_features >= kGemmAvx2NR &&
-        args.output_col_stride == 1) {
+    if (args.m > 8 && args.k >= 8 && args.n >= kGemmAvx2NR &&
+        args.output_n_stride == 1) {
         // A rejected block may follow completed blocks. The reference
         // overwrites the whole disjoint output in that case.
-        return TryRunBlocked<Widen>(args) ? Status::Ok() : RunLinearA16Reference(args);
+        return TryRunBlocked<Widen>(params) ? Status::Ok() : RunGemmA16W16Reference(params);
     }
 
-    const size_t input_bytes = A16ElementBytes(args.act_dtype);
-    const size_t weight_bytes = A16ElementBytes(args.act_dtype);
-    const size_t output_bytes = A16ElementBytes(args.output_dtype);
+    const size_t input_bytes = A16ElementBytes(params.operand_dtype);
+    const size_t weight_bytes = A16ElementBytes(params.operand_dtype);
+    const size_t output_bytes = A16ElementBytes(params.output_dtype);
 
-    for (int64_t row = 0; row < args.row_count; ++row) {
+    for (int64_t row = 0; row < args.m; ++row) {
         const std::byte* const input_row =
-                args.input + static_cast<size_t>(row * args.input_row_stride) * input_bytes;
-        for (int64_t col = 0; col < args.out_features; ++col) {
+                args.lhs + static_cast<size_t>(row * args.lhs_m_stride) * input_bytes;
+        for (int64_t col = 0; col < args.n; ++col) {
             const std::byte* const weight_row =
-                    args.weight + static_cast<size_t>(col * args.weight_row_stride) * weight_bytes;
-            const float sum = DotProduct<Widen>(input_row, weight_row, args.in_features);
+                    args.rhs + static_cast<size_t>(col * args.rhs_n_stride) * weight_bytes;
+            const float sum = DotProduct<Widen>(input_row, weight_row, args.k);
             StoreA16Element(
                     args.output +
-                            static_cast<size_t>(row * args.output_row_stride +
-                                                col * args.output_col_stride) *
+                            static_cast<size_t>(row * args.output_m_stride +
+                                                col * args.output_n_stride) *
                                     output_bytes,
-                    sum, args.output_dtype);
+                    sum, params.output_dtype);
         }
     }
     return Status::Ok();
@@ -176,11 +178,11 @@ Status RunAvx2(const LinearA16W16KernelArgs& args) noexcept {
 } // namespace
 
 #if defined(__AVX2__) && defined(__FMA__) && defined(__F16C__)
-Status RunLinearA16Avx2Fma(const LinearA16W16KernelArgs& args) noexcept {
-    if (args.act_dtype == DataType::BFloat(16)) {
-        return RunAvx2<Bf16GemmWeightOps>(args);
+Status RunGemmA16W16Avx2Fma(const GemmA16W16Args& params) noexcept {
+    if (params.operand_dtype == DataType::BFloat(16)) {
+        return RunAvx2<Bf16GemmWeightOps>(params);
     }
-    return RunAvx2<F16GemmWeightOps>(args);
+    return RunAvx2<F16GemmWeightOps>(params);
 }
 #endif
 

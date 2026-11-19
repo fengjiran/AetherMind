@@ -60,14 +60,14 @@ struct PackedGemmF32Args {
 
 /// @brief Runs the scalar FP32 reference GEMM.
 ///
-/// All RunGemmF32* entries interpret accessed operands as naturally aligned
+/// The direct RunGemmA32W32* entries interpret accessed operands as naturally aligned
 /// float storage; byte pointers do not admit F16/BF16 or unaligned scalar
 /// accesses. A zero `m` or `n` is a no-op. A zero `k` writes `+0.0F` to every
 /// output element without reading `lhs` or `rhs`.
-Status RunGemmF32Reference(const GemmArgs& args) noexcept;
+Status RunGemmA32W32Reference(const GemmArgs& args) noexcept;
 
 /// @brief Runs the double-accumulation oracle over the KC=512, NR=16 packed-B layout.
-Status RunGemmF32PackedBReference(const PackedGemmF32Args& args) noexcept;
+Status RunGemmA32W32PackedBReference(const PackedGemmF32Args& args) noexcept;
 
 /// @brief Runs the scalar-optimized FP32 GEMM candidate.
 ///
@@ -75,31 +75,31 @@ Status RunGemmF32PackedBReference(const PackedGemmF32Args& args) noexcept;
 /// reference oracle. It specializes pre-validated M=1, small-M, and generic-M
 /// cases with unit-stride lhs K, unit-stride output N, and either contiguous
 /// RHS K or N. Every other reference-legal layout falls back to
-/// RunGemmF32Reference. The N-contiguous driver interleaves N tiles within K
+/// RunGemmA32W32Reference. The N-contiguous driver interleaves N tiles within K
 /// panels, carrying ascending-K FP32 sums through bounded stack storage and
 /// partial output; the first panel overwrites output without reading it.
 /// It uses no intrinsics or heap allocation.
-Status RunGemmF32Scalar(const GemmArgs& args) noexcept;
+Status RunGemmA32W32Scalar(const GemmArgs& args) noexcept;
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 /// @brief Attempts F32 x BF16 computation without allocating or narrowing A.
 /// @return False requests full reference recomputation, including any output
 ///         already written; callers must guarantee disjoint input/weight/output.
-bool TryRunGemmA32Bf16Avx2Fma(const GemmArgs& args) noexcept;
+bool TryRunGemmA32WBf16Avx2Fma(const GemmArgs& args) noexcept;
 
 #if defined(GEMM_HAS_A32_F16_AVX2_FMA_KERNEL)
 /// @brief Same attempt contract for F32 x F16; requires AVX2/FMA/F16C.
-bool TryRunGemmA32F16Avx2Fma(const GemmArgs& args) noexcept;
+bool TryRunGemmA32WF16Avx2Fma(const GemmArgs& args) noexcept;
 #endif
 
 /// @brief Runs the AVX2 scan or blocked consumer for packed-B, with fallback.
-Status RunGemmF32PackedB(const PackedGemmF32Args& args) noexcept;
+Status RunGemmA32W32PackedB(const PackedGemmF32Args& args) noexcept;
 
 /// @brief AVX2 packed-B scan driver, including partial N and arbitrary M.
-Status RunGemmF32PackedBScan(const PackedGemmF32Args& args) noexcept;
+Status RunGemmA32W32PackedBScan(const PackedGemmF32Args& args) noexcept;
 
 /// @brief AVX2 packed-B blocked prefill driver with scan fallback.
-Status RunGemmF32PackedBBlocked(const PackedGemmF32Args& args) noexcept;
+Status RunGemmA32W32PackedBBlocked(const PackedGemmF32Args& args) noexcept;
 
 /// @brief Runs the AVX2/FMA FP32 GEMM candidate with compatible fallback.
 ///
@@ -111,7 +111,7 @@ Status RunGemmF32PackedBBlocked(const PackedGemmF32Args& args) noexcept;
 /// 4x16 micro-kernel with direct A, transient B packing and row-pair edge handling. Every
 /// other reference-legal input delegates to the scalar candidate, which may
 /// in turn delegate to the reference oracle.
-Status RunGemmF32Avx2Fma(const GemmArgs& args) noexcept;
+Status RunGemmA32W32Avx2Fma(const GemmArgs& args) noexcept;
 #endif
 
 } // namespace aethermind::cpu::detail

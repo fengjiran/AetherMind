@@ -34,9 +34,9 @@ bool CanExecuteAvx2Fma() {
 
 void ExpectAvx2NearReference(const cpu::detail::GemmArgs& candidate_args,
                              const cpu::detail::GemmArgs& reference_args) {
-    const Status candidate = cpu::detail::RunGemmF32Avx2Fma(candidate_args);
+    const Status candidate = cpu::detail::RunGemmA32W32Avx2Fma(candidate_args);
     ASSERT_TRUE(candidate.ok()) << candidate.ToString();
-    const Status reference = cpu::detail::RunGemmF32Reference(reference_args);
+    const Status reference = cpu::detail::RunGemmA32W32Reference(reference_args);
     ASSERT_TRUE(reference.ok()) << reference.ToString();
 
     const float scale_adjusted_absolute_tolerance =
@@ -390,7 +390,7 @@ TEST(CPUKernelGemmAvx2, PreservesZeroDimensionAndOverwriteSemantics) {
 
     std::array<float, 8> zero_output{};
     zero_output.fill(-7.0F);
-    const Status zero_k = cpu::detail::RunGemmF32Avx2Fma(cpu::detail::GemmArgs{
+    const Status zero_k = cpu::detail::RunGemmA32W32Avx2Fma(cpu::detail::GemmArgs{
             .output = reinterpret_cast<std::byte*>(zero_output.data()),
             .m = 1,
             .n = 3,
@@ -404,17 +404,17 @@ TEST(CPUKernelGemmAvx2, PreservesZeroDimensionAndOverwriteSemantics) {
         EXPECT_FALSE(std::signbit(zero_output[static_cast<size_t>(col)]));
     }
 
-    EXPECT_TRUE(cpu::detail::RunGemmF32Avx2Fma(cpu::detail::GemmArgs{
-                                                       .m = 0,
-                                                       .n = 3,
-                                                       .k = 7,
-                                               })
+    EXPECT_TRUE(cpu::detail::RunGemmA32W32Avx2Fma(cpu::detail::GemmArgs{
+                                                          .m = 0,
+                                                          .n = 3,
+                                                          .k = 7,
+                                                  })
                         .ok());
-    EXPECT_TRUE(cpu::detail::RunGemmF32Avx2Fma(cpu::detail::GemmArgs{
-                                                       .m = 1,
-                                                       .n = 0,
-                                                       .k = 7,
-                                               })
+    EXPECT_TRUE(cpu::detail::RunGemmA32W32Avx2Fma(cpu::detail::GemmArgs{
+                                                          .m = 1,
+                                                          .n = 0,
+                                                          .k = 7,
+                                                  })
                         .ok());
 
     constexpr std::array<float, 3> lhs = {1.0F, -2.0F, 0.5F};
@@ -427,7 +427,7 @@ TEST(CPUKernelGemmAvx2, PreservesZeroDimensionAndOverwriteSemantics) {
             4.0F,
     };
     std::array<float, 2> output = {101.0F, -101.0F};
-    const Status overwrite = cpu::detail::RunGemmF32Avx2Fma(cpu::detail::GemmArgs{
+    const Status overwrite = cpu::detail::RunGemmA32W32Avx2Fma(cpu::detail::GemmArgs{
             .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
             .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
             .output = reinterpret_cast<std::byte*>(output.data()),

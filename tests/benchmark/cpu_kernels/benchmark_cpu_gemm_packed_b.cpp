@@ -130,7 +130,7 @@ Status CheckAgainstReference(const ResolvedKernel& kernel,
                              int64_t n) {
     std::vector<float> expected(static_cast<size_t>(m * n),
                                 std::numeric_limits<float>::quiet_NaN());
-    AM_RETURN_IF_ERROR(cpu::detail::RunGemmF32Reference(cpu::detail::GemmArgs{
+    AM_RETURN_IF_ERROR(cpu::detail::RunGemmA32W32Reference(cpu::detail::GemmArgs{
             .lhs = reinterpret_cast<const std::byte*>(input.data()),
             .rhs = reinterpret_cast<const std::byte*>(weights.data()),
             .output = reinterpret_cast<std::byte*>(expected.data()),

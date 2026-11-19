@@ -49,8 +49,9 @@ KernelSelector MakeAddRmsNormSelector(WeightFormat weight_format) {
 
 StatusOr<ResolvedKernel> PrepareAddRmsNormKernel(
         WeightFormat weight_format = WeightFormat::kPlain,
-        float epsilon = kEpsilon) {
-    CpuBackend backend;
+        float epsilon = kEpsilon,
+        CpuFeaturePolicy policy = {}) {
+    CpuBackend backend(policy);
     return backend.PrepareKernel(
             OpType::kAddRmsNorm, MakeAddRmsNormSelector(weight_format),
             OpParams{AddRmsNormParams{.eps = epsilon}});
@@ -193,21 +194,90 @@ void ExpectRowsNear(const float* input,
 }
 
 TEST(CPUKernelAddRmsNorm, ResolvesPlainAndPackedIdentityDescriptors) {
+    const CpuBackend backend;
+    const bool expect_avx2 =
+#if defined(RMSNORM_HAS_AVX2_FMA_KERNEL)
+            backend.cpu_capabilities().effective_features.ContainsAll(
+                    CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}));
+#else
+            false;
+#endif
     const auto plain = PrepareAddRmsNormKernel(WeightFormat::kPlain);
     ASSERT_TRUE(plain.ok()) << plain.status().ToString();
-    EXPECT_EQ(std::string_view(plain->name), "cpu::add_rmsnorm_f32_w32_reference");
+    EXPECT_EQ(plain->name, expect_avx2 ? "cpu::add_rmsnorm_f32_w32_avx2"
+                                       : "cpu::add_rmsnorm_f32_w32_reference");
     EXPECT_EQ(plain->params_size, sizeof(cpu::detail::AddRmsNormA32W32KernelArgs));
     EXPECT_NE(plain->fn, nullptr);
     EXPECT_NE(plain->params_builder, nullptr);
 
     const auto packed = PrepareAddRmsNormKernel(WeightFormat::kPacked);
     ASSERT_TRUE(packed.ok()) << packed.status().ToString();
-    EXPECT_EQ(std::string_view(packed->name),
-              "cpu::add_rmsnorm_f32_w32_packed_identity_reference");
+    EXPECT_EQ(packed->name, expect_avx2 ? "cpu::add_rmsnorm_f32_w32_packed_identity_avx2"
+                                        : "cpu::add_rmsnorm_f32_w32_packed_identity_reference");
+    EXPECT_EQ(packed->expected_packing_recipe, CpuIdentityPackingRecipe());
     EXPECT_EQ(packed->params_size, sizeof(cpu::detail::AddRmsNormA32W32KernelArgs));
     EXPECT_NE(packed->fn, nullptr);
     EXPECT_NE(packed->params_builder, nullptr);
     EXPECT_FALSE(PrepareAddRmsNormKernel(WeightFormat::kPlain, 0.0F).ok());
+}
+
+TEST(CPUKernelAddRmsNorm, OrderedF64ReductionMatchesReferenceForPaddedRowsAndTail) {
+    constexpr int64_t hidden = 35;
+    constexpr int64_t row_stride = 39;
+    constexpr std::array<int64_t, 2> shape{2, hidden};
+    constexpr std::array<int64_t, 2> strides{row_stride, 1};
+    constexpr std::array<int64_t, 1> weight_shape{hidden};
+    constexpr std::array<int64_t, 1> weight_strides{1};
+    constexpr float sentinel = -99.0F;
+    alignas(64) std::array<float, hidden> weight{};
+    std::array<float, 2 * row_stride> input{}, residual{};
+    std::array<float, 2 * row_stride> expected{}, expected_residual{}, actual{}, actual_residual{};
+    for (int64_t col = 0; col < hidden; ++col) {
+        weight[col] = static_cast<float>(col % 11 - 5) / 8.0F;
+        input[col] = static_cast<float>(col - 16) / 37.0F;
+        residual[col] = static_cast<float>(col % 7) / 19.0F;
+        input[row_stride + col] = std::ldexp(input[col], 120);
+        residual[row_stride + col] = std::ldexp(residual[col], 120);
+    }
+    input[0] = 16777216.0F;
+    residual[0] = 1.0F;
+    expected.fill(sentinel);
+    expected_residual.fill(sentinel);
+    actual.fill(sentinel);
+    actual_residual.fill(sentinel);
+    const auto dtype = DataType::Float32();
+    const auto views = [&](auto& output, auto& new_residual) {
+        return AddRmsNormTestViews{
+                .input = TensorView(input.data(), dtype, shape, strides),
+                .residual = TensorView(residual.data(), dtype, shape, strides),
+                .weight = TensorView(weight.data(), dtype, weight_shape, weight_strides),
+                .output = MutableTensorView(output.data(), dtype, shape, strides),
+                .new_residual = MutableTensorView(new_residual.data(), dtype, shape, strides),
+        };
+    };
+    const auto scalar = PrepareAddRmsNormKernel(
+            WeightFormat::kPlain, kEpsilon,
+            CpuFeaturePolicy{.disabled_features = CpuFeatureSet::From({CpuFeature::kAvx2})});
+    ASSERT_TRUE(scalar.ok());
+    EXPECT_TRUE(scalar->name.ends_with("_reference"));
+    ASSERT_TRUE(RunPlainAddRmsNorm(*scalar, views(expected, expected_residual)).ok());
+    EXPECT_EQ(expected_residual.front(), input.front());
+
+    const auto plain = PrepareAddRmsNormKernel();
+    ASSERT_TRUE(plain.ok());
+    ASSERT_TRUE(RunPlainAddRmsNorm(*plain, views(actual, actual_residual)).ok());
+    EXPECT_EQ(actual, expected);
+    EXPECT_EQ(actual_residual, expected_residual);
+
+    actual.fill(sentinel);
+    actual_residual.fill(sentinel);
+    const auto packed = PrepareAddRmsNormKernel(WeightFormat::kPacked);
+    ASSERT_TRUE(packed.ok());
+    ASSERT_TRUE(RunPackedAddRmsNorm(*packed, views(actual, actual_residual),
+                                    MakeIdentityPackedWeight(weight.data(), sizeof(weight), weight_shape))
+                        .ok());
+    EXPECT_EQ(actual, expected);
+    EXPECT_EQ(actual_residual, expected_residual);
 }
 
 TEST(CPUKernelAddRmsNorm, PlainReferenceSupportsPaddedAndNonUnitStrides) {

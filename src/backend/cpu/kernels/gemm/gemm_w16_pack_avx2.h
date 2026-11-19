@@ -49,7 +49,8 @@ inline bool GemmReductionMagnitudeIsSafe(float input, float weight, int64_t k) n
 }
 
 template<class WeightOps>
-float PackGemmW16BPanelAvx2(const std::byte* weight, size_t row_bytes, int64_t kc, float* panel) noexcept {
+float PackGemmW16BPanelAvx2(const std::byte* weight, size_t row_bytes,
+                            int64_t kc, float* panel) noexcept {
     static_assert(kGemmAvx2NR % 8 == 0);
     __m256 max_vector = _mm256_setzero_ps();
     float max_tail = 0.0F;
@@ -70,6 +71,7 @@ float PackGemmW16BPanelAvx2(const std::byte* weight, size_t row_bytes, int64_t k
             }
             StoreGemmBTile8x8Avx2(rows, panel + k * kGemmAvx2NR + col);
         }
+
         for (; k < kc; ++k) {
             const auto* source = stripe + static_cast<size_t>(k) * sizeof(uint16_t);
             for (size_t lane = 0; lane < 8; ++lane) {

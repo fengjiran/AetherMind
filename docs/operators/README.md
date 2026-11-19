@@ -36,6 +36,9 @@ docs/operators/
 |---|---|---|
 | GEMM | [gemm/](gemm/) | 证据按机器记录（一机器一文件，54H5MMI / QHIHOGQ）；2026-09-21 清空重采 |
 | RMSNorm | [rmsnorm/](rmsnorm/) | 契约（contract basis） |
+| AddRmsNorm | [add_rmsnorm/](add_rmsnorm/) | FP32 plain/identity AVX2、O2 融合与未融合对照 |
+| SiluMul | [silu_mul/](silu_mul/) | FP32/BF16 AVX2、prepared 和模型对照 |
+| Cast | [cast/](cast/) | F32 ↔ F16 动态 Cast 和 FP16 A16 模型路径 |
 | RoPE | [rope/](rope/) | 契约（contract basis） |
 | Linear | [linear/](linear/) | F32 与 W16/A32 reference、plain/identity-packed、单机基线 |
 | Embedding | [embedding/](embedding/) | F32 output、W16 scalar/F16C/AVX2 行级 widening 与单机基线 |

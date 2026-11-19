@@ -564,8 +564,8 @@ Status GateUpLinearF32W16ReferenceEntry(const KernelContext& ctx) noexcept {
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status RunGateUpLinearF32PackedB(
         const GateUpLinearA32W32PackedBKernelArgs& args) noexcept {
-    AM_RETURN_IF_ERROR(RunGemmF32PackedB(args.gate));
-    return RunGemmF32PackedB(args.up);
+    AM_RETURN_IF_ERROR(RunGemmA32W32PackedB(args.gate));
+    return RunGemmA32W32PackedB(args.up);
 }
 #endif
 

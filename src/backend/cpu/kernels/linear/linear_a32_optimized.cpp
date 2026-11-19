@@ -24,16 +24,16 @@ GemmArgs MakeLinearGemmArgs(const Args& args) noexcept {
 } // namespace
 
 Status RunLinearF32Scalar(const LinearA32W32KernelArgs& args) noexcept {
-    return RunGemmF32Scalar(MakeLinearGemmArgs(args));
+    return RunGemmA32W32Scalar(MakeLinearGemmArgs(args));
 }
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status RunLinearF32Avx2Fma(const LinearA32W32KernelArgs& args) noexcept {
-    return RunGemmF32Avx2Fma(MakeLinearGemmArgs(args));
+    return RunGemmA32W32Avx2Fma(MakeLinearGemmArgs(args));
 }
 
 Status RunLinearF32Bf16Avx2Fma(const LinearA32W16KernelArgs& args) noexcept {
-    if (!TryRunGemmA32Bf16Avx2Fma(MakeLinearGemmArgs(args))) {
+    if (!TryRunGemmA32WBf16Avx2Fma(MakeLinearGemmArgs(args))) {
         return RunLinearF32W16Reference(args);
     }
     return Status::Ok();
@@ -42,7 +42,7 @@ Status RunLinearF32Bf16Avx2Fma(const LinearA32W16KernelArgs& args) noexcept {
 
 #if defined(GEMM_HAS_A32_F16_AVX2_FMA_KERNEL)
 Status RunLinearF32F16Avx2Fma(const LinearA32W16KernelArgs& args) noexcept {
-    if (!TryRunGemmA32F16Avx2Fma(MakeLinearGemmArgs(args))) {
+    if (!TryRunGemmA32WF16Avx2Fma(MakeLinearGemmArgs(args))) {
         return RunLinearF32W16Reference(args);
     }
     return Status::Ok();

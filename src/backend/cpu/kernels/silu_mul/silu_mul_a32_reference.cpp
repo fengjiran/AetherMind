@@ -7,15 +7,20 @@
 
 namespace aethermind::cpu::detail {
 
+void RunSiluMulF32FlatReference(const float* gate, const float* up, float* output,
+                                int64_t numel) noexcept {
+    for (int64_t index = 0; index < numel; ++index) {
+        output[index] = ComputeSiluF32(gate[index]) * up[index];
+    }
+}
+
 Status RunSiluMulF32Reference(const SiluMulA32KernelArgs& args) noexcept {
     if (args.numel == 0) {
         return Status::Ok();
     }
 
     if (args.is_flat) {
-        for (int64_t index = 0; index < args.numel; ++index) {
-            args.output_data[index] = ComputeSiluF32(args.gate_data[index]) * args.up_data[index];
-        }
+        RunSiluMulF32FlatReference(args.gate_data, args.up_data, args.output_data, args.numel);
         return Status::Ok();
     }
 

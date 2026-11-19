@@ -1,11 +1,11 @@
 #include "aethermind/backend/cpu/kernels/common/a16_utils.h"
+#include "aethermind/backend/cpu/kernels/common/simd_utils.h"
 #include "rmsnorm_internal.h"
 
 #if defined(__AVX512F__) && defined(__AVX512FP16__)
 #include <immintrin.h>
 #endif
 
-#include <array>
 #include <cmath>
 
 // AVX512-FP16 native RMSNorm. FP16 elements are widened and narrowed with the
@@ -18,16 +18,6 @@ namespace {
 #if defined(__AVX512F__) && defined(__AVX512FP16__)
 AM_ALWAYS_INLINE __m512 LoadF16x16(const std::byte* data) noexcept {
     return _mm512_cvtph_ps(_mm256_loadu_si256(reinterpret_cast<const __m256i*>(data)));
-}
-
-AM_ALWAYS_INLINE float ReduceLanes(__m512 value) noexcept {
-    alignas(64) std::array<float, 16> lanes{};
-    _mm512_store_ps(lanes.data(), value);
-    float sum = 0.0F;
-    for (const float lane: lanes) {
-        sum = sum + lane;
-    }
-    return sum;
 }
 
 #endif

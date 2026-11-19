@@ -6,7 +6,7 @@
 #include "aethermind/dtypes/bfloat16.h"
 #include "aethermind/dtypes/half.h"
 #include "aethermind/operators/op_params.h"
-#include "backend/cpu/kernels/linear/linear_internal.h"
+#include "backend/cpu/kernels/gemm/gemm_a16_w16_internal.h"
 
 #include <array>
 #include <cmath>
@@ -342,20 +342,25 @@ TEST(LinearA16Avx2Fma, BlockedProjectionPreservesBf16ProductOverflow) {
     // evaluation would be finite, so the blocked path must use the reference.
     WriteA16(weight.data(), 1.0F, dtype, (n - 1) * k);
     WriteA16(weight.data(), 2.0F, dtype, (n - 1) * k + 8);
-    const cpu::detail::LinearA16W16KernelArgs args{
-            .input = input.data(),
-            .weight = weight.data(),
-            .output = reinterpret_cast<std::byte*>(output.data()),
-            .act_dtype = dtype,
+    const cpu::detail::GemmA16W16Args args{
+            .gemm = {
+                    .lhs = input.data(),
+                    .rhs = weight.data(),
+                    .output = reinterpret_cast<std::byte*>(output.data()),
+                    .m = m,
+                    .n = n,
+                    .k = k,
+                    .lhs_m_stride = k,
+                    .lhs_k_stride = 1,
+                    .rhs_k_stride = 1,
+                    .rhs_n_stride = k,
+                    .output_m_stride = n,
+                    .output_n_stride = 1,
+            },
+            .operand_dtype = dtype,
             .output_dtype = DataType::Float32(),
-            .row_count = m,
-            .in_features = k,
-            .out_features = n,
-            .input_row_stride = k,
-            .weight_row_stride = k,
-            .output_row_stride = n,
     };
-    ASSERT_TRUE(cpu::detail::RunLinearA16Avx2Fma(args).ok());
+    ASSERT_TRUE(cpu::detail::RunGemmA16W16Avx2Fma(args).ok());
     for (int64_t row = 0; row < m; ++row) {
         for (int64_t col = 0; col < n - 1; ++col) {
             EXPECT_EQ(output[row * n + col], 0.0F);

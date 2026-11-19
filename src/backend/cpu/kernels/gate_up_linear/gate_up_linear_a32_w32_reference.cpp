@@ -10,7 +10,7 @@ Status RunProjection(const GateUpLinearA32W32KernelArgs& args,
                      int64_t out_features,
                      int64_t output_row_stride,
                      int64_t output_col_stride) noexcept {
-    return RunGemmF32Reference(GemmArgs{
+    return RunGemmA32W32Reference(GemmArgs{
             .lhs = reinterpret_cast<const std::byte*>(args.in_features == 0 ? nullptr : args.input),
             .rhs = reinterpret_cast<const std::byte*>(args.in_features == 0 ? nullptr : weight),
             .output = reinterpret_cast<std::byte*>(output),

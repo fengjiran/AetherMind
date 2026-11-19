@@ -273,7 +273,7 @@ void RunGenericM(const GemmArgs& args) noexcept {
 
 } // namespace
 
-Status RunGemmF32Scalar(const GemmArgs& args) noexcept {
+Status RunGemmA32W32Scalar(const GemmArgs& args) noexcept {
     if (args.m == 0 || args.n == 0) {
         return Status::Ok();
     }
@@ -281,7 +281,7 @@ Status RunGemmF32Scalar(const GemmArgs& args) noexcept {
     // Preserve the reference's exact zero-inner semantics and retain it for
     // every layout that this candidate does not explicitly optimize.
     if (args.k == 0 || args.lhs_k_stride != 1 || args.output_n_stride != 1) {
-        return RunGemmF32Reference(args);
+        return RunGemmA32W32Reference(args);
     }
 
     if (args.rhs_k_stride == 1) {
@@ -305,7 +305,7 @@ Status RunGemmF32Scalar(const GemmArgs& args) noexcept {
         }
         return Status::Ok();
     }
-    return RunGemmF32Reference(args);
+    return RunGemmA32W32Reference(args);
 }
 
 } // namespace aethermind::cpu::detail

@@ -120,10 +120,10 @@ void ExpectPackedDriverMatchesReference(int64_t m,
     };
 
     const Status packed_status = blocked
-                                         ? cpu::detail::RunGemmF32PackedBBlocked(packed_args)
-                                         : cpu::detail::RunGemmF32PackedBScan(packed_args);
+                                         ? cpu::detail::RunGemmA32W32PackedBBlocked(packed_args)
+                                         : cpu::detail::RunGemmA32W32PackedBScan(packed_args);
     ASSERT_TRUE(packed_status.ok()) << packed_status.ToString();
-    ASSERT_TRUE(cpu::detail::RunGemmF32Reference(reference_args).ok());
+    ASSERT_TRUE(cpu::detail::RunGemmA32W32Reference(reference_args).ok());
     const float absolute_tolerance =
             2.0e-4F + 2.0e-5F * std::sqrt(static_cast<float>(k));
     for (int64_t row = 0; row < m; ++row) {
@@ -266,7 +266,7 @@ TEST(CpuGemmPackedB, RegisteredCandidateDescriptorPacksAndExecutes) {
             .output_m_stride = output_stride,
             .output_n_stride = 1,
     };
-    ASSERT_TRUE(cpu::detail::RunGemmF32Reference(reference).ok());
+    ASSERT_TRUE(cpu::detail::RunGemmA32W32Reference(reference).ok());
     for (int64_t row = 0; row < m; ++row) {
         for (int64_t col = 0; col < n; ++col) {
             const size_t index = static_cast<size_t>(row * output_stride + col);

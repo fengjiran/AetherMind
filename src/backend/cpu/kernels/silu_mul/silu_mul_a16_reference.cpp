@@ -15,20 +15,24 @@ float LoadElement(const std::byte* data, int64_t offset, DataType dtype) noexcep
 
 } // namespace
 
+void RunSiluMulA16FlatReference(const std::byte* gate, const std::byte* up,
+                                std::byte* output, DataType dtype, int64_t numel) noexcept {
+    const size_t element_bytes = A16ElementBytes(dtype);
+    for (int64_t index = 0; index < numel; ++index) {
+        const size_t offset = static_cast<size_t>(index) * element_bytes;
+        const float product = ComputeSiluF32(LoadA16Element(gate + offset, dtype)) *
+                              LoadA16Element(up + offset, dtype);
+        StoreA16Element(output + offset, product, dtype);
+    }
+}
+
 Status RunSiluMulA16Reference(const SiluMulA16KernelArgs& args) noexcept {
     if (args.numel == 0) {
         return Status::Ok();
     }
 
     if (args.is_flat) {
-        for (int64_t index = 0; index < args.numel; ++index) {
-            const float product =
-                    ComputeSiluF32(LoadElement(args.gate_data, index, args.act_dtype)) *
-                    LoadElement(args.up_data, index, args.act_dtype);
-            StoreA16Element(args.output_data +
-                                    static_cast<size_t>(index) * A16ElementBytes(args.act_dtype),
-                            product, args.act_dtype);
-        }
+        RunSiluMulA16FlatReference(args.gate_data, args.up_data, args.output_data, args.act_dtype, args.numel);
         return Status::Ok();
     }
 

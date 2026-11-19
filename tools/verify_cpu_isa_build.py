@@ -10,35 +10,38 @@ import sys
 
 
 LIBRARY_SOURCES = {
+    "src/backend/cpu/kernels/add_rmsnorm/add_rmsnorm_a32_w32_avx2.cpp",
     "src/backend/cpu/kernels/attention/attention_avx2.cpp",
     "src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp",
     "src/backend/cpu/kernels/rmsnorm/rmsnorm_a32_w32_avx2.cpp",
-    "src/backend/cpu/kernels/gemm/gemm_a32_bf16_avx2.cpp",
-    "src/backend/cpu/kernels/gemm/gemm_f32_avx2.cpp",
-    "src/backend/cpu/kernels/gemm/gemm_packed_b_avx2.cpp",
+    "src/backend/cpu/kernels/silu_mul/silu_mul_avx2.cpp",
+    "src/backend/cpu/kernels/gemm/gemm_a32_wbf16_avx2.cpp",
+    "src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp",
+    "src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp",
 }
 TEST_SOURCE = "tests/unit/backend/cpu/kernels/avx_learning/test_avx_learning_avx2.cpp"
 AVX_MACROS = ("GEMM_HAS_AVX2_FMA_KERNEL", "RMSNORM_HAS_AVX2_FMA_KERNEL",
               "DOT_PRODUCT_HAS_AVX2_FMA_KERNEL", "AETHERMIND_TEST_HAS_AVX2_FMA",
-              "ATTENTION_HAS_AVX2_KERNEL")
+              "ATTENTION_HAS_AVX2_KERNEL", "ADD_RMSNORM_HAS_AVX2_KERNEL",
+              "SILU_MUL_HAS_AVX2_KERNEL")
 F16C_SOURCE = "src/backend/cpu/fp16_conversion_f16c.cpp"
 AVX2_CONVERSION_SOURCE = "src/backend/cpu/fp16_conversion_avx2.cpp"
 BF16_AVX2_CONVERSION_SOURCE = "src/backend/cpu/bf16_conversion_avx2.cpp"
-W16_F16_GEMM_SOURCE = "src/backend/cpu/kernels/gemm/gemm_a32_f16_avx2.cpp"
+W16_F16_GEMM_SOURCE = "src/backend/cpu/kernels/gemm/gemm_a32_wf16_avx2.cpp"
 W16_F16_GEMM_MACRO = "GEMM_HAS_A32_F16_AVX2_FMA_KERNEL"
 KVF16_ATTENTION_SOURCE = "src/backend/cpu/kernels/attention/attention_kvf16_avx2.cpp"
 KVF16_ATTENTION_MACRO = "ATTENTION_HAS_KVF16_AVX2_KERNEL"
 
 A16_AVX2_SOURCES = {
-    "src/backend/cpu/kernels/linear/linear_a16_w16_avx2.cpp",
+    "src/backend/cpu/kernels/gemm/gemm_a16_w16_avx2.cpp",
     "src/backend/cpu/kernels/rmsnorm/rmsnorm_a16_w32_avx2.cpp",
 }
 A16_AVX512BF16_SOURCES = {
-    "src/backend/cpu/kernels/linear/linear_a16_w16_avx512bf16.cpp",
+    "src/backend/cpu/kernels/gemm/gemm_abf16_wbf16_avx512bf16.cpp",
     "src/backend/cpu/kernels/rmsnorm/rmsnorm_a16_w32_avx512bf16.cpp",
 }
 A16_AVX512FP16_SOURCES = {
-    "src/backend/cpu/kernels/linear/linear_a16_w16_avx512fp16.cpp",
+    "src/backend/cpu/kernels/gemm/gemm_af16_wf16_avx512fp16.cpp",
     "src/backend/cpu/kernels/rmsnorm/rmsnorm_a16_w32_avx512fp16.cpp",
 }
 A16_AVX2_MACRO = "A16_HAS_AVX2_FMA_KERNEL"

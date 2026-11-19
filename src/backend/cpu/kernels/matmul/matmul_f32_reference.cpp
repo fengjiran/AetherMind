@@ -22,7 +22,7 @@ Status RunMatMulF32Reference(const MatMulF32KernelArgs& args) noexcept {
             output_offset += coordinate * args.output_batch_strides[axis];
         }
 
-        AM_RETURN_IF_ERROR(RunGemmF32Reference(GemmArgs{
+        AM_RETURN_IF_ERROR(RunGemmA32W32Reference(GemmArgs{
                 .lhs = reinterpret_cast<const std::byte*>(args.k == 0 ? nullptr : args.lhs + lhs_offset),
                 .rhs = reinterpret_cast<const std::byte*>(args.k == 0 ? nullptr : args.rhs + rhs_offset),
                 .output = reinterpret_cast<std::byte*>(args.output + output_offset),

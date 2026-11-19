@@ -287,11 +287,51 @@ Status BuildAddRmsNormF32Metadata(const OpParams& params,
     return Status::Ok();
 }
 
-Status AddRmsNormF32ReferenceEntry(const KernelContext& context) noexcept {
+template<bool Optimized = false>
+Status AddRmsNormF32Entry(const KernelContext& context) noexcept {
     const auto* args = static_cast<const AddRmsNormA32W32KernelArgs*>(context.kernel_params);
     AM_DCHECK(args != nullptr);
+#if defined(ADD_RMSNORM_HAS_AVX2_KERNEL)
+    if constexpr (Optimized) {
+        if (args->hidden_size >= 8 && args->input_col_stride == 1 &&
+            args->residual_col_stride == 1 && args->weight_stride == 1 &&
+            args->output_col_stride == 1 && args->new_residual_col_stride == 1) {
+            return RunAddRmsNormF32Avx2(*args);
+        }
+    }
+#endif
     return RunAddRmsNormF32Reference(*args);
 }
+
+KernelDef MakeAddRmsNormF32Def(bool packed, KernelFunc run, std::string_view name,
+                               CpuFeatureSet requirements = {}, int priority = 10) {
+    return KernelDef{
+            .op_type = OpType::kAddRmsNorm,
+            .selector = KernelSelector{
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+                    .weight_format = packed ? WeightFormat::kPacked : WeightFormat::kPlain,
+                    .phase = ExecPhase::kBoth,
+            },
+            .packing_recipe = packed ? CpuIdentityPackingRecipe() : PackingRecipe{},
+            .cpu_requirements = requirements,
+            .kernel_func = run,
+            .priority = priority,
+            .params_size = sizeof(AddRmsNormA32W32KernelArgs),
+            .params_builder = packed ? &BuildAddRmsNormF32PackedIdentityArgs : &BuildAddRmsNormF32PlainArgs,
+            .metadata_builder = &BuildAddRmsNormF32Metadata,
+            .name = name,
+    };
+}
+
+#if defined(ADD_RMSNORM_HAS_AVX2_KERNEL)
+KernelDef MakeAddRmsNormF32Avx2Def(bool packed, std::string_view name) {
+    return MakeAddRmsNormF32Def(packed, &AddRmsNormF32Entry<true>, name,
+                                CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}), 20);
+}
+#endif
 
 } // namespace
 
@@ -301,41 +341,17 @@ static_assert(alignof(AddRmsNormA32W32KernelArgs) <= alignof(std::max_align_t));
 
 AM_REGISTER_KERNEL(
         CpuAddRmsNormF32Reference,
-        KernelDef{
-                .op_type = OpType::kAddRmsNorm,
-                .selector = KernelSelector{
-                        .device_type = DeviceType::kCPU,
-                        .act_dtype = DataType::Float32(),
-                        .output_dtype = DataType::Float32(),
-                        .weight_dtype = DataType::Float32(),
-                        .weight_format = WeightFormat::kPlain,
-                        .phase = ExecPhase::kBoth,
-                },
-                .kernel_func = &AddRmsNormF32ReferenceEntry,
-                .priority = 10,
-                .params_size = sizeof(AddRmsNormA32W32KernelArgs),
-                .params_builder = &BuildAddRmsNormF32PlainArgs,
-                .metadata_builder = &BuildAddRmsNormF32Metadata,
-                .name = "cpu::add_rmsnorm_f32_w32_reference"})
+        MakeAddRmsNormF32Def(false, &AddRmsNormF32Entry<>, "cpu::add_rmsnorm_f32_w32_reference"))
 
 AM_REGISTER_KERNEL(
         CpuAddRmsNormF32PackedIdentityReference,
-        KernelDef{
-                .op_type = OpType::kAddRmsNorm,
-                .selector = KernelSelector{
-                        .device_type = DeviceType::kCPU,
-                        .act_dtype = DataType::Float32(),
-                        .output_dtype = DataType::Float32(),
-                        .weight_dtype = DataType::Float32(),
-                        .weight_format = WeightFormat::kPacked,
-                        .phase = ExecPhase::kBoth,
-                },
-                .packing_recipe = CpuIdentityPackingRecipe(),
-                .kernel_func = &AddRmsNormF32ReferenceEntry,
-                .priority = 10,
-                .params_size = sizeof(AddRmsNormA32W32KernelArgs),
-                .params_builder = &BuildAddRmsNormF32PackedIdentityArgs,
-                .metadata_builder = &BuildAddRmsNormF32Metadata,
-                .name = "cpu::add_rmsnorm_f32_w32_packed_identity_reference"})
+        MakeAddRmsNormF32Def(true, &AddRmsNormF32Entry<>, "cpu::add_rmsnorm_f32_w32_packed_identity_reference"))
+
+#if defined(ADD_RMSNORM_HAS_AVX2_KERNEL)
+AM_REGISTER_KERNEL(CpuAddRmsNormF32Avx2,
+                   MakeAddRmsNormF32Avx2Def(false, "cpu::add_rmsnorm_f32_w32_avx2"))
+AM_REGISTER_KERNEL(CpuAddRmsNormF32PackedIdentityAvx2,
+                   MakeAddRmsNormF32Avx2Def(true, "cpu::add_rmsnorm_f32_w32_packed_identity_avx2"))
+#endif
 
 } // namespace aethermind::cpu::detail

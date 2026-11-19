@@ -2,7 +2,7 @@
 
 namespace aethermind::cpu::detail {
 
-Status RunGemmF32Reference(const GemmArgs& args) noexcept {
+Status RunGemmA32W32Reference(const GemmArgs& args) noexcept {
     const auto* const lhs = reinterpret_cast<const float*>(args.lhs);
     const auto* const rhs = reinterpret_cast<const float*>(args.rhs);
     auto* const output = reinterpret_cast<float*>(args.output);

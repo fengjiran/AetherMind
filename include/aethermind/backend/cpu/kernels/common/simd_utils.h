@@ -3,7 +3,9 @@
 
 #include "aethermind/base/macros.h"
 
-#if defined(__AVX2__)
+#include <array>
+
+#if defined(__AVX2__) || defined(__AVX512F__)
 #include <immintrin.h>
 #endif
 
@@ -20,6 +22,22 @@ AM_NODISCARD AM_ALWAYS_INLINE float HorizontalSumAvx2(__m256 v) noexcept {
     vsum = _mm_hadd_ps(vsum, vsum);
     vsum = _mm_hadd_ps(vsum, vsum);
     return _mm_cvtss_f32(vsum);
+}
+// NOLINTEND(portability-simd-intrinsics)
+#endif
+
+#if defined(__AVX512F__)
+// NOLINTBEGIN(portability-simd-intrinsics)
+// This helper is intentionally AVX-512-specific; per-ISA kernels are the
+// backend's design, so the portability check does not apply.
+AM_NODISCARD AM_ALWAYS_INLINE float ReduceLanes(__m512 v) noexcept {
+    alignas(64) std::array<float, 16> lanes{};
+    _mm512_store_ps(lanes.data(), v);
+    float sum = 0.0F;
+    for (const float lane: lanes) {
+        sum = sum + lane;
+    }
+    return sum;
 }
 // NOLINTEND(portability-simd-intrinsics)
 #endif

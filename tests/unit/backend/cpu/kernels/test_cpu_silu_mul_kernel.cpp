@@ -6,12 +6,16 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
+#include <bit>
+#include <cfenv>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -29,8 +33,9 @@ KernelSelector MakeSelector(const DataType& dtype = DataType::Float32()) {
     };
 }
 
-StatusOr<ResolvedKernel> PrepareSiluMulKernel(const DataType& dtype = DataType::Float32()) {
-    CpuBackend backend;
+StatusOr<ResolvedKernel> PrepareSiluMulKernel(const DataType& dtype = DataType::Float32(),
+                                              CpuFeaturePolicy policy = {}) {
+    CpuBackend backend(policy);
     return backend.PrepareKernel(OpType::kSiluMul, MakeSelector(dtype), OpParams{SiluMulParams{}});
 }
 
@@ -63,8 +68,8 @@ StatusOr<PreparedKernelParams> BuildSiluMulPreparedParams(
     return prepared;
 }
 
-Status RunSiluMul(const SiluMulTestViews& views) noexcept {
-    const auto kernel = PrepareSiluMulKernel();
+Status RunSiluMul(const SiluMulTestViews& views, CpuFeaturePolicy policy = {}) noexcept {
+    const auto kernel = PrepareSiluMulKernel(DataType::Float32(), policy);
     if (!kernel.ok()) {
         return kernel.status();
     }
@@ -90,16 +95,130 @@ float ExpectedSiluMul(float gate, float up) {
     return ExpectedSilu(gate) * up;
 }
 
-TEST(CPUKernelSiluMul, ResolvesF32ReferenceDescriptor) {
+TEST(CPUKernelSiluMul, SelectsF32KernelUsingEffectiveFeatures) {
     const auto kernel = PrepareSiluMulKernel();
     ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
 
-    EXPECT_EQ(kernel->name, "cpu::silu_mul_f32_reference");
+    bool expect_avx2 = false;
+#if defined(RMSNORM_HAS_AVX2_FMA_KERNEL)
+    const CpuBackend backend;
+    expect_avx2 = backend.cpu_capabilities().effective_features.ContainsAll(
+            CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}));
+#endif
+    EXPECT_EQ(kernel->name, expect_avx2 ? "cpu::silu_mul_f32_avx2_fma"
+                                        : "cpu::silu_mul_f32_reference");
+    const auto fallback = PrepareSiluMulKernel(
+            DataType::Float32(),
+            CpuFeaturePolicy{.disabled_features = CpuFeatureSet::From({CpuFeature::kAvx2})});
+    ASSERT_TRUE(fallback.ok());
+    EXPECT_EQ(fallback->name, "cpu::silu_mul_f32_reference");
     EXPECT_EQ(kernel->op_type, OpType::kSiluMul);
     EXPECT_EQ(kernel->params_size, sizeof(SiluMulA32KernelArgs));
     EXPECT_NE(kernel->params_builder, nullptr);
     EXPECT_TRUE(kernel->attrs.empty());
     EXPECT_EQ(kernel->workspace_requirement.bytes, 0U);
+}
+
+TEST(CPUKernelSiluMul, FlatInPlaceVectorAndTailMeetIndependentF64Budget) {
+    constexpr int64_t n = 65539;
+    constexpr std::array<int64_t, 1> shape{n};
+    constexpr std::array<int64_t, 1> strides{1};
+    const auto dtype = DataType::Float32();
+    std::vector<float> gate(n + 1), up(n + 1);
+    for (int64_t i = 0; i < n; ++i) {
+        gate[i] = -16.0F + static_cast<float>(i % 65537) * 0x1p-11F;
+        up[i] = 0.125F + static_cast<float>(i % 61) * 0.1F;
+        if (i % 2 == 1) {
+            up[i] = -up[i];
+        }
+    }
+    gate[23] = 16.0F;
+    gate[n] = up[n] = 24.0F;
+    const auto input_gate = gate;
+    const auto input_up = up;
+    for (float* output: {gate.data(), up.data()}) {
+        ASSERT_TRUE(RunSiluMul({TensorView(gate.data(), dtype, shape, strides),
+                                TensorView(up.data(), dtype, shape, strides),
+                                MutableTensorView(output, dtype, shape, strides)})
+                            .ok());
+        double max_relative_error = 0.0;
+        for (int64_t i = 0; i < n; ++i) {
+            const double x = input_gate[i];
+            const double expected = x * input_up[i] / (1.0 + std::exp(-x));
+            ASSERT_TRUE(std::isfinite(output[i]));
+            if (expected == 0.0) {
+                EXPECT_EQ(output[i], 0.0F);
+            } else {
+                max_relative_error = std::max(max_relative_error, std::abs(output[i] / expected - 1.0));
+            }
+        }
+        EXPECT_LE(max_relative_error, 6 * std::numeric_limits<float>::epsilon());
+        EXPECT_EQ(output[n], 24.0F);
+        // Restore the changed input without invalidating the borrowed pointer.
+        std::copy(input_gate.begin(), input_gate.end(), gate.begin());
+        std::copy(input_up.begin(), input_up.end(), up.begin());
+    }
+}
+
+TEST(CPUKernelSiluMul, MixedVectorAndExceptionalBlocksPreserveScalarClassification) {
+    constexpr int64_t n = 65;
+    constexpr std::array<int64_t, 1> shape{n};
+    constexpr std::array<int64_t, 1> strides{1};
+    const auto dtype = DataType::Float32();
+    std::array<float, n> gate{}, up{}, actual{}, expected{};
+    gate.fill(1.75F);
+    up.fill(2.0F);
+    gate[0] = -0.0F;
+    up[1] = -0.0F;
+    gate[8] = -std::numeric_limits<float>::infinity();
+    gate[16] = std::numeric_limits<float>::quiet_NaN();
+    up[24] = -std::numeric_limits<float>::infinity();
+    gate[32] = -std::numeric_limits<float>::denorm_min();
+    up[40] = std::numeric_limits<float>::max();
+    gate[48] = -100.0F;
+    gate[56] = 0x1p-33F;
+    gate[64] = -16.000002F;
+    const auto views = [&](auto& output) {
+        return SiluMulTestViews{TensorView(gate.data(), dtype, shape, strides),
+                                TensorView(up.data(), dtype, shape, strides),
+                                MutableTensorView(output.data(), dtype, shape, strides)};
+    };
+    ASSERT_TRUE(RunSiluMul(views(expected), CpuFeaturePolicy{
+                                                    .disabled_features = CpuFeatureSet::From({CpuFeature::kAvx2})})
+                        .ok());
+    ASSERT_TRUE(RunSiluMul(views(actual)).ok());
+    for (int64_t i = 0; i < n; ++i) {
+        if (std::isnan(expected[i])) {
+            EXPECT_TRUE(std::isnan(actual[i]));
+        } else if (i < 2 || i >= 8) {
+            EXPECT_EQ(std::bit_cast<uint32_t>(actual[i]), std::bit_cast<uint32_t>(expected[i]));
+        }
+    }
+}
+
+TEST(CPUKernelSiluMul, DirectedRoundingMatchesScalar) {
+    constexpr int64_t n = 64;
+    constexpr std::array<int64_t, 1> shape{n};
+    constexpr std::array<int64_t, 1> strides{1};
+    const auto dtype = DataType::Float32();
+    std::array<float, n> gate{}, up{}, actual{}, expected{};
+    gate.fill(-0.42F);
+    up.fill(0.83F);
+    const auto views = [&](auto& output) {
+        return SiluMulTestViews{TensorView(gate.data(), dtype, shape, strides),
+                                TensorView(up.data(), dtype, shape, strides),
+                                MutableTensorView(output.data(), dtype, shape, strides)};
+    };
+    const int original = std::fegetround();
+    ASSERT_NE(original, -1);
+    ASSERT_EQ(std::fesetround(FE_DOWNWARD), 0);
+    const auto scalar = RunSiluMul(
+            views(expected), CpuFeaturePolicy{.disabled_features = CpuFeatureSet::From({CpuFeature::kAvx2})});
+    const auto selected = RunSiluMul(views(actual));
+    ASSERT_EQ(std::fesetround(original), 0);
+    ASSERT_TRUE(scalar.ok());
+    ASSERT_TRUE(selected.ok());
+    EXPECT_EQ(actual, expected);
 }
 
 TEST(CPUKernelSiluMul, Float16SelectorResolvesA16Reference) {

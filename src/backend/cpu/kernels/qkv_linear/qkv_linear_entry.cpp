@@ -643,9 +643,9 @@ Status QkvLinearF32W16ReferenceEntry(const KernelContext& ctx) noexcept {
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status RunQkvLinearF32PackedB(const QkvLinearA32W32PackedBKernelArgs& args) noexcept {
-    AM_RETURN_IF_ERROR(RunGemmF32PackedB(args.query));
-    AM_RETURN_IF_ERROR(RunGemmF32PackedB(args.key));
-    return RunGemmF32PackedB(args.value);
+    AM_RETURN_IF_ERROR(RunGemmA32W32PackedB(args.query));
+    AM_RETURN_IF_ERROR(RunGemmA32W32PackedB(args.key));
+    return RunGemmA32W32PackedB(args.value);
 }
 #endif
 

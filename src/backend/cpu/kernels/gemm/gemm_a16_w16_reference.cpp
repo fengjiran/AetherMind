@@ -1,5 +1,5 @@
 #include "aethermind/backend/cpu/kernels/common/a16_utils.h"
-#include "linear_internal.h"
+#include "gemm_a16_w16_internal.h"
 
 #include <cstring>
 
@@ -39,24 +39,25 @@ bool IsBf16NativeDotProductSafe(const std::byte* input,
     return true;
 }
 
-Status RunLinearA16Reference(const LinearA16W16KernelArgs& args) noexcept {
-    if (args.row_count == 0 || args.out_features == 0) {
+Status RunGemmA16W16Reference(const GemmA16W16Args& params) noexcept {
+    const GemmArgs& args = params.gemm;
+    if (args.m == 0 || args.n == 0) {
         return Status::Ok();
     }
 
-    const size_t input_bytes = A16ElementBytes(args.act_dtype);
-    const size_t weight_bytes = A16ElementBytes(args.act_dtype);
-    const size_t output_bytes = A16ElementBytes(args.output_dtype);
+    const size_t input_bytes = A16ElementBytes(params.operand_dtype);
+    const size_t weight_bytes = A16ElementBytes(params.operand_dtype);
+    const size_t output_bytes = A16ElementBytes(params.output_dtype);
 
-    if (args.in_features == 0) {
+    if (args.k == 0) {
         const float zero = 0.0F;
-        for (int64_t row = 0; row < args.row_count; ++row) {
-            for (int64_t col = 0; col < args.out_features; ++col) {
+        for (int64_t row = 0; row < args.m; ++row) {
+            for (int64_t col = 0; col < args.n; ++col) {
                 std::byte* const destination =
                         args.output +
-                        (static_cast<size_t>(row * args.output_row_stride + col * args.output_col_stride)) *
+                        (static_cast<size_t>(row * args.output_m_stride + col * args.output_n_stride)) *
                                 output_bytes;
-                if (args.output_dtype == DataType::Float32()) {
+                if (params.output_dtype == DataType::Float32()) {
                     std::memcpy(destination, &zero, sizeof(zero));
                 } else {
                     const uint16_t zero_bits = 0U;
@@ -67,28 +68,28 @@ Status RunLinearA16Reference(const LinearA16W16KernelArgs& args) noexcept {
         return Status::Ok();
     }
 
-    for (int64_t row = 0; row < args.row_count; ++row) {
-        for (int64_t col = 0; col < args.out_features; ++col) {
+    for (int64_t row = 0; row < args.m; ++row) {
+        for (int64_t col = 0; col < args.n; ++col) {
             const std::byte* const weight_row =
-                    args.weight +
-                    static_cast<size_t>(col * args.weight_row_stride) * weight_bytes;
+                    args.rhs +
+                    static_cast<size_t>(col * args.rhs_n_stride) * weight_bytes;
             float sum = 0.0F;
-            for (int64_t k = 0; k < args.in_features; ++k) {
+            for (int64_t k = 0; k < args.k; ++k) {
                 const std::byte* const input_element =
-                        args.input +
-                        (static_cast<size_t>(row * args.input_row_stride + k * args.input_col_stride)) *
+                        args.lhs +
+                        (static_cast<size_t>(row * args.lhs_m_stride + k * args.lhs_k_stride)) *
                                 input_bytes;
                 const std::byte* const weight_element =
                         weight_row +
-                        static_cast<size_t>(k * args.weight_col_stride) * weight_bytes;
-                sum += LoadA16Element(input_element, args.act_dtype) *
-                       LoadA16Element(weight_element, args.act_dtype);
+                        static_cast<size_t>(k * args.rhs_k_stride) * weight_bytes;
+                sum += LoadA16Element(input_element, params.operand_dtype) *
+                       LoadA16Element(weight_element, params.operand_dtype);
             }
             std::byte* const destination =
                     args.output +
-                    (static_cast<size_t>(row * args.output_row_stride + col * args.output_col_stride)) *
+                    (static_cast<size_t>(row * args.output_m_stride + col * args.output_n_stride)) *
                             output_bytes;
-            StoreA16Element(destination, sum, args.output_dtype);
+            StoreA16Element(destination, sum, params.output_dtype);
         }
     }
     return Status::Ok();

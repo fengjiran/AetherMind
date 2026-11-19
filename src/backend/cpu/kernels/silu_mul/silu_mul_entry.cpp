@@ -10,8 +10,8 @@
 namespace aethermind::cpu::detail {
 namespace {
 
-Status BuildSiluMulF32ReferenceArgs(const KernelParamsBuildContext& context,
-                                    void* params_buffer) noexcept {
+Status BuildSiluMulF32Args(const KernelParamsBuildContext& context,
+                           void* params_buffer) noexcept {
     const auto inputs = context.inputs;
     const auto outputs = context.outputs;
     if (inputs.size() != 2 || outputs.size() != 1) {
@@ -56,10 +56,39 @@ Status BuildSiluMulF32ReferenceArgs(const KernelParamsBuildContext& context,
     return Status::Ok();
 }
 
-Status SiluMulF32ReferenceEntry(const KernelContext& ctx) noexcept {
+template<bool Optimized = false>
+Status SiluMulF32Entry(const KernelContext& ctx) noexcept {
     const auto* args = static_cast<const SiluMulA32KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
+#if defined(SILU_MUL_HAS_AVX2_KERNEL)
+    if constexpr (Optimized) {
+        if (args->is_flat && args->numel >= 32) {
+            return RunSiluMulF32Avx2Fma(*args);
+        }
+    }
+#endif
     return RunSiluMulF32Reference(*args);
+}
+
+KernelDef F32SiluMul(KernelFunc run, std::string_view name, CpuFeatureSet requirements = {},
+                     int priority = 10) {
+    return KernelDef{
+            .op_type = OpType::kSiluMul,
+            .selector = KernelSelector{
+                    .device_type = DeviceType::kCPU,
+                    .act_dtype = DataType::Float32(),
+                    .output_dtype = DataType::Float32(),
+                    .weight_dtype = DataType::Float32(),
+                    .weight_format = WeightFormat::kPlain,
+                    .phase = ExecPhase::kBoth,
+            },
+            .cpu_requirements = requirements,
+            .kernel_func = run,
+            .priority = priority,
+            .params_size = sizeof(SiluMulA32KernelArgs),
+            .params_builder = &BuildSiluMulF32Args,
+            .name = name,
+    };
 }
 
 template<bool Bfloat>
@@ -111,14 +140,23 @@ Status BuildSiluMulA16ReferenceArgs(const KernelParamsBuildContext& context,
     return Status::Ok();
 }
 
-Status SiluMulA16ReferenceEntry(const KernelContext& ctx) noexcept {
+template<bool Optimized = false>
+Status SiluMulA16Entry(const KernelContext& ctx) noexcept {
     const auto* args = static_cast<const SiluMulA16KernelArgs*>(ctx.kernel_params);
     AM_DCHECK(args != nullptr);
+#if defined(SILU_MUL_HAS_AVX2_KERNEL)
+    if constexpr (Optimized) {
+        if (args->is_flat && args->numel >= 32) {
+            return RunSiluMulBf16Avx2Fma(*args);
+        }
+    }
+#endif
     return RunSiluMulA16Reference(*args);
 }
 
 template<bool Bfloat>
-KernelDef A16SiluMul(std::string_view name) {
+KernelDef A16SiluMul(std::string_view name, KernelFunc run = &SiluMulA16Entry<>,
+                     CpuFeatureSet requirements = {}, int priority = 10) {
     return KernelDef{
             .op_type = OpType::kSiluMul,
             .selector = KernelSelector{
@@ -129,8 +167,9 @@ KernelDef A16SiluMul(std::string_view name) {
                     .weight_format = WeightFormat::kPlain,
                     .phase = ExecPhase::kBoth,
             },
-            .kernel_func = &SiluMulA16ReferenceEntry,
-            .priority = 10,
+            .cpu_requirements = requirements,
+            .kernel_func = run,
+            .priority = priority,
             .params_size = sizeof(SiluMulA16KernelArgs),
             .params_builder = &BuildSiluMulA16ReferenceArgs<Bfloat>,
             .name = name,
@@ -147,26 +186,23 @@ static_assert(alignof(SiluMulA16KernelArgs) <= alignof(std::max_align_t));
 static_assert(sizeof(SiluMulA16KernelArgs) <= kMaxKernelParamsSize);
 
 AM_REGISTER_KERNEL(CpuSiluMulF32Reference,
-                   KernelDef{
-                           .op_type = OpType::kSiluMul,
-                           .selector = KernelSelector{
-                                   .device_type = DeviceType::kCPU,
-                                   .act_dtype = DataType::Float32(),
-                                   .output_dtype = DataType::Float32(),
-                                   .weight_dtype = DataType::Float32(),
-                                   .weight_format = WeightFormat::kPlain,
-                                   .phase = ExecPhase::kBoth,
-                           },
-                           .kernel_func = &SiluMulF32ReferenceEntry,
-                           .priority = 10,
-                           .params_size = sizeof(SiluMulA32KernelArgs),
-                           .params_builder = &BuildSiluMulF32ReferenceArgs,
-                           .name = "cpu::silu_mul_f32_reference",
-                   })
+                   F32SiluMul(&SiluMulF32Entry<>, "cpu::silu_mul_f32_reference"))
+
+#if defined(SILU_MUL_HAS_AVX2_KERNEL)
+AM_REGISTER_KERNEL(CpuSiluMulF32Avx2Fma,
+                   F32SiluMul(&SiluMulF32Entry<true>, "cpu::silu_mul_f32_avx2_fma",
+                              CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}), 20))
+#endif
 
 AM_REGISTER_KERNEL(CpuSiluMulA16F16Reference,
                    (A16SiluMul<false>("cpu::silu_mul_f16_reference")))
 AM_REGISTER_KERNEL(CpuSiluMulA16Bf16Reference,
                    (A16SiluMul<true>("cpu::silu_mul_bf16_reference")))
+
+#if defined(SILU_MUL_HAS_AVX2_KERNEL)
+AM_REGISTER_KERNEL(CpuSiluMulA16Bf16Avx2Fma,
+                   A16SiluMul<true>("cpu::silu_mul_bf16_avx2_fma", &SiluMulA16Entry<true>,
+                                    CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma}), 20))
+#endif
 
 } // namespace aethermind::cpu::detail

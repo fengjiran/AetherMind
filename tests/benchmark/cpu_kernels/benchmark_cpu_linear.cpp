@@ -140,7 +140,7 @@ Status ValidateLinearAgainstGemmReference(const ResolvedKernel& kernel,
     const auto output_elements = static_cast<size_t>(m * n);
     std::vector<float> expected(output_elements,
                                 std::numeric_limits<float>::quiet_NaN());
-    AM_RETURN_IF_ERROR(cpu::detail::RunGemmF32Reference(cpu::detail::GemmArgs{
+    AM_RETURN_IF_ERROR(cpu::detail::RunGemmA32W32Reference(cpu::detail::GemmArgs{
             .lhs = reinterpret_cast<const std::byte*>(input),
             .rhs = reinterpret_cast<const std::byte*>(weight),
             .output = reinterpret_cast<std::byte*>(expected.data()),

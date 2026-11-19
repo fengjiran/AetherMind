@@ -1,8 +1,8 @@
 # GEMM 优化方案
 
 - **状态**: In Progress
-- **版本**: 2.9
-- **日期**: 2026-11-18
+- **版本**: 2.10
+- **日期**: 2026-11-19
 - **文档定位**: 本算子的优化原理、合同、阶段与状态。**机器级实测数值、噪声 floor 与 Roofline 百分比不在本文详述**，权威位置见 [GEMM 证据记录](README.md)
 - **产品边界**: [AetherMind 当前产品需求](../../product.md)
 - **架构基线**: [架构总览](../../architecture.md)
@@ -43,12 +43,12 @@ CPU-02/03 已建立生产基线。下一轮优先在 **plain / identity-packed**
 
 | 能力 | 当前实现 | 对优化的影响 |
 |---|---|---|
-| GEMM primitive | `RunGemmF32Reference`，三重循环，double accumulator，支持二维 stride | correctness baseline，不是性能基线 |
-| scalar optimized | `RunGemmF32Scalar` 覆盖 `M=1`、small-M（`M<=8`）与 generic-M；K-contiguous 保留 4 列寄存器块，N-contiguous 使用独立 NC/KC 分块并在 K panel 内遍历相邻 N 块，均保留 K 展开 2。前提仍是 lhs K 与 output N 单位 stride 且 RHS K 或 N 连续，`k==0` 与其他布局委托 reference。CPU-03 已接入 plain/identity Linear 与 QKV/GateUp 生产入口，并继续供 AVX2 fallback 消费；MatMul 仍为 reference | N-contiguous 专项仍按其独立机器记录解释；本批主要验收实际 row-major 权重的 K-contiguous 路径；`kScalarSmallMMax=8` 是保守划分而非实测阈值；不能取代 double-accumulation reference oracle |
+| GEMM primitive | `RunGemmA32W32Reference`，三重循环，double accumulator，支持二维 stride | correctness baseline，不是性能基线 |
+| scalar optimized | `RunGemmA32W32Scalar` 覆盖 `M=1`、small-M（`M<=8`）与 generic-M；K-contiguous 保留 4 列寄存器块，N-contiguous 使用独立 NC/KC 分块并在 K panel 内遍历相邻 N 块，均保留 K 展开 2。前提仍是 lhs K 与 output N 单位 stride 且 RHS K 或 N 连续，`k==0` 与其他布局委托 reference。CPU-03 已接入 plain/identity Linear 与 QKV/GateUp 生产入口，并继续供 AVX2 fallback 消费；MatMul 仍为 reference | N-contiguous 专项仍按其独立机器记录解释；本批主要验收实际 row-major 权重的 K-contiguous 路径；`kScalarSmallMMax=8` 是保守划分而非实测阈值；不能取代 double-accumulation reference oracle |
 | MatMul | FP32 reference；支持 batch broadcast、`transpose_rhs` 和任意已验证 stride | 通用性高，首轮优化不应受其最宽 layout 合同约束 |
 | Linear | plain/identity 按 ISA 选择 scalar/AVX2；binding 冻结具体 Linear driver，小形状与不适合 optimized 的布局保留原 reference；另有 B-panel candidate | identity optimized priority 20，B-panel candidate 10；exact recipe 纳入注册身份，不因 ISA 相同产生去重冲突；candidate 由显式实验入口验证 |
 | A32 × F16/BF16 | Linear、LM head、QKV、GateUp 已使用 AVX2/FMA widening 路径，F16 额外需要 F16C。大 M 复用 F32 4×16 microkernel | Prefill 先验证 panel 重排、重复 widening 与数值检查成本。保留完整 W16 model 权重和 F32 activation/output。见 [Linear 优化方案](../linear/linear-optimization.md) |
-| 同型 F16/BF16 A16 | Linear 已有 scalar、AVX2 widening 与 AVX-512 实现。BF16 有限定 Load/Generate 验收，F16 kernel 原语可测，高层 Load 等待 P4-B | 大 M 仍有跨行复用空间。真实 AVX-512 执行与性能仍待目标机器验证。见 [精度方案](../../improvement-plan/11-fp16-bf16-execution-support.md#45-p416-bit-activation-与-native-compute首批设计已冻结) |
+| 同型 F16/BF16 A16 | Linear 已有 scalar、AVX2 widening 与 AVX-512 实现。FP16 与 BF16 各有 Load/Generate 限定验收，FP16 使用 [P4-B](../cast/README.md) 的 FP32 residual | 真实 AVX-512 执行与性能仍待目标机器验证 |
 | QkvLinear / GateUpLinear | identity-packed 的 scalar/AVX2 driver 复用 Linear engine；AVX2 bpanel candidate 对每个输出 slice 使用完整 artifact 的 logical N offset，非 NR 对齐边界走兼容 scan/reference | QKV/GateUp bpanel 的未对齐 component 边界和输出 guard 有 focused tests；全局 priority 未提升 |
 | Embedding / RmsNorm | graph-wide packed lowering 所需的 FP32 identity descriptor 与 opaque-artifact binding builder 已提供 | 已有 tiny/HF O1/O2 Prefill/Decode/Generate 与资源/owner 回归；模型性能与跨平台支持按独立证据解释 |
 | kernel resolve | `CpuBackend::PrepareKernel` 按 selector、CPU feature 和 priority 选 descriptor | resolve 时尚无 concrete shape/layout，不能按 `M/N/K` 选择算法 |
@@ -118,9 +118,11 @@ GEMM driver
 
 ### 4.1 Backend-internal contracts
 
-当前调用参数为非模板 `GemmArgs`：A/B 使用 `const std::byte*`，output 使用 `std::byte*`，M/N/K 与六个元素 stride 保持原合同。`RunGemmF32Reference` / `RunGemmF32Scalar` / `RunGemmF32Avx2Fma` 明确按 F32 解释存储，内部使用经过调用方验证的 typed pointer；byte 指针不放宽 alignment、对象访问或 dtype 约束。reference 的 double accumulation 与 optimized 的 F32/FMA 归约继续独立。packed-B 仍由独立 `PackedGemmF32Args` 描述 exact F32 布局。此前的参数迁移本身不扩张精度支持；CPU-02 后续补入明确的 A32/F16、A32/BF16 optimized entry，identity 物理字节不变。引用内部头与 `RegistrationKey` 的 C++ 调用方须重新编译。
+当前调用参数为非模板 `GemmArgs`：A/B 使用 `const std::byte*`，output 使用 `std::byte*`，M/N/K 与六个元素 stride 保持原合同。`RunGemmA32W32Reference` / `RunGemmA32W32Scalar` / `RunGemmA32W32Avx2Fma` 明确按 F32 解释存储，内部使用经过调用方验证的 typed pointer；byte 指针不放宽 alignment、对象访问或 dtype 约束。reference 的 double accumulation 与 optimized 的 F32/FMA 归约继续独立。packed-B 仍由独立 `PackedGemmF32Args` 描述 exact F32 布局。此前的参数迁移本身不扩张精度支持；CPU-02 后续补入明确的 A32/F16、A32/BF16 optimized entry，identity 物理字节不变。引用内部头与 `RegistrationKey` 的 C++ 调用方须重新编译。
 
 CPU-03 的 F32 Linear 已使用 `LinearA32W32PreparedArgs { linear, driver }`：params builder 复用原有 layout/alias 验证，在 cold path 冻结 scalar、AVX2 或原 reference；小 K/无 SIMD 主体、空输出与不适合 optimized 的合法布局直接保留 reference 短路径。原始 Linear 参数继续表达端口语义，非 reference driver 在内部映射到同一 `GemmArgs`。不新增与 `GemmArgs` 同义的 `GemmProblemF32`，也不引入全局 planner/autotuner。W16 的明确 F16/BF16 entry 与数值 fallback 见 [Linear 方案](../linear/linear-optimization.md)。
+
+同型 FP16/BF16 由 `GemmA16W16Args` 复用 `GemmArgs` 的矩阵与 stride 表示，并记录公共 operand dtype 和独立 output dtype。Linear 的 plain 与 identity-packed params builder 校验后直接构造该参数。reference、AVX2 widening、AVX-512 FP16/BF16、数值回退以及最终写回均由 GEMM driver 实现。Linear 持有算子注册、布局和 alias 校验、权重绑定。见 [A16/W16 内部合同](../../../src/backend/cpu/kernels/gemm/gemm_a16_w16_internal.h)。
 
 这里的核心不是具体字段，而是把两层选择分开：
 
@@ -141,7 +143,7 @@ CPU-03 的 F32 Linear 已使用 `LinearA32W32PreparedArgs { linear, driver }`：
 
 ### 4.3 Scalar optimized 路径
 
-scalar optimized 必须是独立实现，不能修改或覆盖 `RunGemmF32Reference`。建议使用 backend-private 的 `RunGemmF32ScalarOptimized` 或等价 driver。
+scalar optimized 必须是独立实现，不能修改或覆盖 `RunGemmA32W32Reference`。建议使用 backend-private 的 `RunGemmA32W32ScalarOptimized` 或等价 driver。
 
 优先验证以下机制：
 
@@ -303,7 +305,7 @@ Resolved ISA kernel
 
 ### 6.4 Baseline 与对照
 
-- correctness oracle：`RunGemmF32Reference` 或算子 reference kernel；
+- correctness oracle：`RunGemmA32W32Reference` 或算子 reference kernel；
 - performance baseline 为同精度、同 preset、同权重格式下的当前 production driver。reference 对照用于诊断原始差距；
 - scalar candidate：scalar optimized（允许 auto-vectorization；不建设 strict 归因变体）；
 - ISA candidate：AVX2/AVX-512/量化 descriptor；
@@ -409,7 +411,7 @@ runtime thread-pool contract + 单线程证据 ──> 多线程与 NUMA
 
 目标是先建立可重复、可解释的 correctness 与性能事实，不修改 production 优先级。
 
-- 保留 `RunGemmF32Reference` 的 double accumulation，作为 correctness oracle；
+- 保留 `RunGemmA32W32Reference` 的 double accumulation，作为 correctness oracle；
 - 明确外部语义为 `C = A × B`；K blocking 所需的 accumulate 仅为 microkernel 内部状态，不扩张成公共 `alpha/beta` API；
 - 新增 prepared Linear/GEMM、packing 和 cache-mode benchmark；
 - 覆盖 Decode/Prefill canonical shapes、tile boundary、zero-size、合法 stride、unaligned pointer、alias/injectivity 和 overflow；
@@ -421,7 +423,7 @@ runtime thread-pool contract + 单线程证据 ──> 多线程与 NUMA
 
 目标是在不依赖显式 SIMD 的前提下，独立验证 loop/layout、address generation、unroll、multi-accumulator 和 scalar register blocking 的收益，同时建立可移植的 optimized fallback。
 
-- 新增独立 `RunGemmF32ScalarOptimized` 或等价 backend-private driver，不修改 `RunGemmF32Reference`；
+- 新增独立 `RunGemmA32W32ScalarOptimized` 或等价 backend-private driver，不修改 `RunGemmA32W32Reference`；
 - 分别覆盖 N-contiguous 与 K-contiguous RHS，优先优化 `M=1`/small-M；
 - 测试 pointer bumping、K unroll、multi-accumulator 与小型 scalar register block，所有参数由 benchmark 决定；
 - binding time 根据 concrete `M/N/K/stride` 选择 scalar fast driver 或 reference-compatible fallback；
@@ -628,6 +630,7 @@ CUDA 证据使用目标 GPU 上的 registered/prepared 路径、CUDA Events 与 
 
 | 日期 | 版本 | 变更 | 原因 | 证据/PR |
 |---|---|---|---|---|
+| 2026-11-19 | 2.10 | 将同型 A16/W16 的 reference 和 ISA drivers 归入 GEMM | 复用矩阵参数并分离 Linear 绑定与矩阵计算 | [GEMM 机器记录](benchmarks/54h5mmi-gemm.md) |
 | 2026-11-18 | 2.9 | W16/A32 长 Prefill 用 direct A 跨更大 M block 复用 B panel，补充 Decode 单核带宽对照 | 减少重复 widening 和转置，限制每块 A 的读取范围 | [GEMM 机器记录](benchmarks/54h5mmi-gemm.md) |
 | 2026-11-18 | 2.8 | 落实 CPU AVX2 SIMD panel、FP32 direct A、W16 单行幅值分链与同型 A16 blocking | 降低 panel 搬运与 Decode 依赖链成本，同时复用 FP32 microkernel | [GEMM 机器记录](benchmarks/54h5mmi-gemm.md) |
 | 2026-11-18 | 2.7 | 补充 CPU-02/03 之后的 FP32、W16/A32、A16 路线和 CUDA 接入顺序 | 以当前 optimized production 为性能基线，优先减少 W16 panel 重排和转换开销 | 方案更新，基于 `33de2046` 的源码与既有机器记录 |

@@ -4,7 +4,7 @@
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/dtypes/bfloat16.h"
 #include "aethermind/operators/operator_inference.h"
-#include "backend/cpu/kernels/linear/linear_internal.h"
+#include "backend/cpu/kernels/gemm/gemm_a16_w16_internal.h"
 #include "backend/cpu/kernels/test_fp_environment_helpers.h"
 
 #include <gtest/gtest.h>
@@ -143,6 +143,50 @@ TEST(LinearA16Kernel, Bf16LmHeadKeepsFloat32Output) {
     ASSERT_TRUE(status.ok()) << status.ToString();
     EXPECT_FLOAT_EQ(output[0], 1.0F);
     EXPECT_FLOAT_EQ(output[1], 1.5F);
+}
+
+TEST(LinearA16Kernel, MapsNonUnitFeatureStridesToGemmOperands) {
+    const DataType dtype = DataType::BFloat(16);
+    const auto kernel = PrepareA16Kernel(dtype, DataType::Float32());
+    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+
+    const std::array<int64_t, 2> input_shape{2, 3};
+    const std::array<int64_t, 2> weight_shape{2, 3};
+    const std::array<int64_t, 2> output_shape{2, 2};
+    const std::array<int64_t, 2> input_strides{8, 2};
+    const std::array<int64_t, 2> weight_strides{9, 3};
+    const std::array<int64_t, 2> output_strides{7, 2};
+    std::array<uint16_t, 13> input;
+    std::array<uint16_t, 16> weight;
+    input.fill(Bf16Bits(99.0F));
+    weight.fill(Bf16Bits(99.0F));
+    input[0] = Bf16Bits(1.0F);
+    input[2] = Bf16Bits(2.0F);
+    input[4] = Bf16Bits(3.0F);
+    input[8] = Bf16Bits(4.0F);
+    input[10] = Bf16Bits(-1.0F);
+    input[12] = Bf16Bits(2.0F);
+    weight[0] = Bf16Bits(-1.0F);
+    weight[3] = Bf16Bits(0.0F);
+    weight[6] = Bf16Bits(2.0F);
+    weight[9] = Bf16Bits(0.0F);
+    weight[12] = Bf16Bits(1.0F);
+    weight[15] = Bf16Bits(2.0F);
+    constexpr float guard = -123.0F;
+    std::array<float, 10> output;
+    output.fill(guard);
+    const std::array<TensorView, 2> inputs{
+            TensorView(input.data(), dtype, input_shape, input_strides),
+            TensorView(weight.data(), dtype, weight_shape, weight_strides)};
+    const std::array<MutableTensorView, 1> outputs{
+            MutableTensorView(output.data(), DataType::Float32(), output_shape, output_strides)};
+    PreparedParams prepared;
+    const Status built = kernel->params_builder(
+            {.inputs = inputs, .outputs = outputs, .attrs = kernel->attrs}, prepared.storage.data());
+    ASSERT_TRUE(built.ok()) << built.ToString();
+    ASSERT_TRUE(kernel->fn({.kernel_params = prepared.storage.data(), .attrs = kernel->attrs}).ok());
+    const std::array expected{5.0F, guard, 8.0F, guard, guard, guard, guard, 0.0F, guard, 3.0F};
+    EXPECT_EQ(output, expected);
 }
 
 TEST(LinearA16Kernel, RejectsActivationViewThatDoesNotMatchSelector) {

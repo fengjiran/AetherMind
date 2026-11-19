@@ -19,7 +19,7 @@
 
 | 能力 | 状态 | 说明 |
 |---|---|---|
-| 共享参数边界 | Implemented | 非模板 `GemmArgs`，A/B/output 为 byte 指针，stride 保持元素单位；明确的 `RunGemmF32*` entry 决定存储解释与数值合同，packed-B 参数及 F32 布局独立保留 |
+| 共享参数边界 | Implemented | 非模板 `GemmArgs`，A/B/output 为 byte 指针，stride 保持元素单位；明确的 `RunGemm*` entry 决定存储解释与数值合同，packed-B 参数及 F32 布局独立保留 |
 | portable scalar N-contiguous | Implemented / local diagnostic | 独立 NC/KC 分块与连续 N 遍历，覆盖 M=1/small-M/generic-M；correctness、guard、升序 K 与零 malloc 已回归；N-contiguous 专项性能按本机记录解释；CPU-03 将 scalar 接入 Linear 生产入口，MatMul 仍为 reference |
 | exact recipe 生产链 | Implemented | descriptor → backend query → inference request → pack artifact → exact-key store / plan |
 | graph-wide packed preparation / execution | Implemented | Linear、Embedding、RmsNorm、QKV、GateUp、AddRmsNorm identity consumers 已覆盖；tiny tied-GQA Llama 的 O1 plain / O2 packed 全模型回归覆盖 scalar-oracle logits/KV、Prefill→Decode、重复 Generate 与 prepared Decode 零 malloc；HF 目录加载入口亦覆盖两种准备路径 |
@@ -27,6 +27,7 @@
 | identity/scalar/AVX2 生产性能 | Accepted（本机限定） | [CPU-03 记录](benchmarks/54h5mmi-gemm.md#cpu-03-fp32-gemm-生产闭环与布局-promotion-决策)：registered/prepared、Generate、M sweep、fused/unfused 与 packing-inclusive 均已对照；参考实现独立保留 |
 | 性能与 KC 选择 | **B-panel 全局 promotion 拒绝；KC 选择仍 Needs More Data** | CPU-02/03 的本机实现对照单独记账；B-panel 与 identity 的全边界比较决定 promotion，KC256 未测，不宣称 KC512 最优 |
 | AVX2 Prefill 与 W16 Decode | Implemented | FP32 direct A 与 B panel 复用，W16/A32 SIMD panel 转置与单行幅值分链，同型 A16 的 FP32 分块累加。见 [实施顺序](cpu-gemm-optimization.md#71-cpu-0203-之后的实施顺序) 和 [机器记录](benchmarks/54h5mmi-gemm.md) |
+| A16/W16 GEMM driver | Implemented | 同型 FP16/BF16 的 reference 和 ISA 路径通过共享参数供 Linear 调用，结果以同型 16-bit 或 FP32 写回。见 [内部合同](cpu-gemm-optimization.md#41-backend-internal-contracts) |
 | W16/A32 长 Prefill | Implemented | direct A 与有界 M block 的 B panel 复用。Decode 的单核带宽对照见 [机器记录](benchmarks/54h5mmi-gemm.md) |
 | CUDA | Proposed | 从 FP32 O1/plain 基线开始。见 [CUDA 接入顺序](cpu-gemm-optimization.md#74-cuda-接入顺序) |
 

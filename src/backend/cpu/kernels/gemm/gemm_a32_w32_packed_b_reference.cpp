@@ -22,7 +22,7 @@ size_t PackedBIndex(int64_t n, int64_t k, int64_t n_blocks) noexcept {
 
 } // namespace
 
-Status RunGemmF32PackedBReference(const PackedGemmF32Args& packed) noexcept {
+Status RunGemmA32W32PackedBReference(const PackedGemmF32Args& packed) noexcept {
     const GemmArgs& args = packed.gemm;
     if (args.m < 0 || args.n < 0 || args.k < 0 || packed.logical_n < 0 ||
         packed.logical_k < 0 || args.k != packed.logical_k ||

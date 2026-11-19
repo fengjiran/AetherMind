@@ -7,14 +7,20 @@ set(AETHERMIND_ATTENTION_AVX2_SOURCE
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/attention/attention_avx2.cpp)
 set(AETHERMIND_ATTENTION_KVF16_SOURCE
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/attention/attention_kvf16_avx2.cpp)
+set(AETHERMIND_ADD_RMSNORM_AVX2_SOURCE
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/add_rmsnorm/add_rmsnorm_a32_w32_avx2.cpp)
+set(AETHERMIND_SILU_MUL_AVX2_SOURCE
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/silu_mul/silu_mul_avx2.cpp)
 
 set(AETHERMIND_AVX2_SOURCES
         ${AETHERMIND_ATTENTION_AVX2_SOURCE}
+        ${AETHERMIND_ADD_RMSNORM_AVX2_SOURCE}
+        ${AETHERMIND_SILU_MUL_AVX2_SOURCE}
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/common/dot_product_f32_avx2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a32_w32_avx2.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_f32_avx2.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_a32_bf16_avx2.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_packed_b_avx2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_a32_wbf16_avx2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp
 )
 
 if (NOT AETHERMIND_HAS_AVX2_FMA)
@@ -22,7 +28,7 @@ if (NOT AETHERMIND_HAS_AVX2_FMA)
 endif ()
 
 set(AETHERMIND_GEMM_A32_F16_SOURCE
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_a32_f16_avx2.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_a32_wf16_avx2.cpp)
 if (NOT AETHERMIND_HAS_AVX2_FMA OR NOT AETHERMIND_HAS_F16C)
     list(REMOVE_ITEM SRC_FILES ${AETHERMIND_GEMM_A32_F16_SOURCE} ${AETHERMIND_ATTENTION_KVF16_SOURCE})
 endif ()
@@ -40,15 +46,15 @@ if (NOT AETHERMIND_HAS_AVX2)
 endif ()
 
 set(AETHERMIND_A16_AVX2_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_w16_avx2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_a16_w16_avx2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_w32_avx2.cpp
 )
 set(AETHERMIND_A16_AVX512BF16_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_w16_avx512bf16.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_abf16_wbf16_avx512bf16.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_w32_avx512bf16.cpp
 )
 set(AETHERMIND_A16_AVX512FP16_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_w16_avx512fp16.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_af16_wf16_avx512fp16.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_w32_avx512fp16.cpp
 )
 
@@ -73,7 +79,7 @@ target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 # a16_kv16) reference families.
 set(AETHERMIND_STRICT_FP_REFERENCE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a32_w16_reference.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/linear/linear_a16_w16_reference.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_a16_w16_reference.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/embedding/embedding_a16_w16_reference.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a16_w32_reference.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rope/rope_a16_reference.cpp
@@ -145,9 +151,16 @@ endif (BACKTRACE_ON_SEGFAULT)
 # eligibility still comes from CPU/OS detection and descriptor requirements.
 # Keep the reference reduction order and IEEE special-value handling in the SIMD TUs.
 set_property(SOURCE ${AETHERMIND_ATTENTION_AVX2_SOURCE} ${AETHERMIND_ATTENTION_KVF16_SOURCE}
+                    ${AETHERMIND_ADD_RMSNORM_AVX2_SOURCE} ${AETHERMIND_SILU_MUL_AVX2_SOURCE}
              APPEND PROPERTY COMPILE_OPTIONS -fno-fast-math -ffp-contract=off)
 if (AETHERMIND_HAS_AVX2_FMA)
     target_compile_definitions(${PROJECT_NAME} PRIVATE ATTENTION_HAS_AVX2_KERNEL=1)
+    set_property(SOURCE ${AETHERMIND_ADD_RMSNORM_AVX2_SOURCE}
+                        backend/cpu/kernels/add_rmsnorm/add_rmsnorm_entry.cpp
+                 APPEND PROPERTY COMPILE_DEFINITIONS ADD_RMSNORM_HAS_AVX2_KERNEL=1)
+    set_property(SOURCE ${AETHERMIND_SILU_MUL_AVX2_SOURCE}
+                        backend/cpu/kernels/silu_mul/silu_mul_entry.cpp
+                 APPEND PROPERTY COMPILE_DEFINITIONS SILU_MUL_HAS_AVX2_KERNEL=1)
     aethermind_configure_avx2_sources(${AETHERMIND_AVX2_SOURCES})
     target_compile_definitions(${PROJECT_NAME} PUBLIC RMSNORM_HAS_AVX2_FMA_KERNEL=1)
     target_compile_definitions(${PROJECT_NAME} PUBLIC GEMM_HAS_AVX2_FMA_KERNEL=1)

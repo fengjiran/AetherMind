@@ -149,7 +149,7 @@ Cold packing：`N=4096,K=4096` median 66.83 ms，packed size 64 MiB（amplificat
 
 ## GEMM 参数统一为 byte 指针与明确精度入口
 
-- commit：`cab0c145`（dirty；源码补丁及 SHA-256 见 raw）。非模板 `GemmArgs` 替代旧 FP32 参数名，A/B/output 统一为 byte 指针、stride 保持元素单位；`RunGemmF32*` entry 与 reference/optimized 各自数值合同保留。`PackedGemmF32Args` 独立描述 F32 B-panel，边缘切片先按 float 元素偏移再转 byte 地址。
+- commit：`cab0c145`（dirty；源码补丁及 SHA-256 见 raw）。非模板 `GemmArgs` 替代旧 FP32 参数名，A/B/output 统一为 byte 指针、stride 保持元素单位；`RunGemm*` entry 与 reference/optimized 各自数值合同保留。`PackedGemmF32Args` 独立描述 F32 B-panel，边缘切片先按 float 元素偏移再转 byte 地址。
 - 命令：`cmake --build build --target aethermind_unit_tests aethermind_benchmark -j 4`；先跑 `--gtest_filter=CpuGemmPackedB.BlockedHandlesMAndNTailsWithoutOverwritingEdges`，再跑 `--gtest_filter='*Gemm*:*MatMul*:*QkvLinear*:*GateUpLinear*:*TinyLlama*:*DirectPrefillDecode*:*HfFixedTrajectory*:*CPUKernelLinear*:*LinearA16*'`。同过滤器运行 Debug ASan/UBSan（`ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1`）；完整命令、构建日志与 XML 见 raw。
 - 结果：Release **302/302 通过**；ASan/UBSan **291 通过、11 skip、0 失败**，无地址/UB 诊断。11 项为 sanitizer 下既有 malloc-interposer 不兼容测试，Release 均已通过；本轮未启用 LSan。覆盖 plain/packed、M/N/K tail、strides/guards、zero-size、fallback、fused consumers、HF/tiny-model Prefill/Decode/Generate 与 Release Decode 零分配。
 - 构建纠正：首次 Debug 链接发现适配层的 `TensorView::data<std::byte>()` 请求了未支持的 dtype 映射；改用无类型 `data()` 的 byte cast 后，Release 与 Debug 均重新构建并完成上述回归。初次失败日志与源码快照保留。
@@ -285,3 +285,10 @@ Cold packing：`N=4096,K=4096` median 66.83 ms，packed size 64 MiB（amplificat
 最终 `model-ab-qualified/` 与 `model-long-ab-qualified/` 各用 4 对独立进程、每进程 1 次 warmup 与 5 次重复，验证 128/512-token tiny Llama、FP16/BF16 权重、O1/O2 的内部 ExecutionPlan 和公开 Generate。全部同 workload 的 token 轨迹一致。加入 K 下限后，512-token O2 内部 Prefill 的 FP16/BF16 中位数分别为 40.259→39.139 ms 和 38.709→42.223 ms，双方进程区间均有重叠，初版的大幅回退未复现。128/512-token 各配置的公开 Generate 区间均重叠。
 
 结论为 Accepted（本机代表形状的 W16/A32 长 Prefill 复用）。tiny 模型端到端加速仍为 Needs More Data。首 panel 直接写 C 保持实验结论，Decode 保留现有 GEMV。
+
+## A16/W16 GEMM driver 提取
+
+- 基线为 `4a048033fcaa` 加迁移前的工作树差异。reference、AVX2、AVX-512 FP16 与 AVX-512 BF16 的计算从 Linear 迁入 GEMM。候选使用同一编译配置与工作树。源码差异、构建命令、可执行文件和 SHA-256 位于 `benchmark-results/operators/gemm/20261119T080832Z_4a048033fcaa_54h5mmi_a16-driver/`。
+- Release 聚焦集 582/582 通过，其中包含真实注册与绑定、非单位 K/N stride 及输出 guard、跨 panel 累加和异常回退、BF16 A16 与 FP16 P4-B 的独立 oracle 和近容量 Generate 回归。ISA 编译检查确认 reference 的 `-ffp-contract=off` 与各可选 TU 隔离。禁用 F16C 的构建在本机通过 FP16/BF16 A16 的 prepare/bind/execute 探针，均解析为 FP32-output reference。
+- ASan/UBSan 聚焦集 21/21 通过，LSan 关闭。AVX-512 的验证范围为编译与合成能力选核。
+- prepared Linear 使用同一 benchmark 程序驱动两侧 Release 共享库，`taskset -c 2`，四对独立进程 AB/BA 交错，每进程 3 repetitions。覆盖同型 FP16/BF16、16-bit 和 FP32 输出，以及 `M=1/16, K=N=4096`。`prepared-ab.csv` 八组的进程中位数区间均有重叠。FP16 窄输出 Prefill 首轮为 8.745→9.840 ms，同实现 A/A 的对应中位数波动约 7.9%，定向复测为 9.518→9.544 ms。验收为本机职责提取和行为回归通过，性能对照未证实稳定变化。

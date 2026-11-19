@@ -1,4 +1,5 @@
 #include "aethermind/backend/cpu/kernels/common/a16_utils.h"
+#include "aethermind/backend/cpu/kernels/common/simd_utils.h"
 #include "aethermind/dtypes/bf16_conversion.h"
 #include "rmsnorm_internal.h"
 
@@ -20,16 +21,6 @@ namespace {
 AM_ALWAYS_INLINE __m512 LoadBf16x16(const std::byte* data) noexcept {
     const __m256i raw = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(data));
     return _mm512_castsi512_ps(_mm512_slli_epi32(_mm512_cvtepu16_epi32(raw), 16));
-}
-
-AM_ALWAYS_INLINE float ReduceLanes(__m512 value) noexcept {
-    alignas(64) std::array<float, 16> lanes{};
-    _mm512_store_ps(lanes.data(), value);
-    float sum = 0.0F;
-    for (const float lane: lanes) {
-        sum = sum + lane;
-    }
-    return sum;
 }
 
 #endif

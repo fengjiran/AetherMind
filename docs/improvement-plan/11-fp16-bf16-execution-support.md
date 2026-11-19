@@ -9,7 +9,7 @@
 - **算子工作流**: [算子开发与优化工作流](../guides/operator-development-workflow.md)
 - **关联模块**: dtypes / model / operators / graph / compiler / backend / execution / kv_cache / runtime / inference
 
-本文是阶段化提案。P1 的显式 FP32 compatibility 已完成限定实现和 tiny checkpoint 验证，见 [FP32 兼容推理指南](../guides/fp32-compatible-inference.md) 与 [P1 验证报告](../archive/tests/fp32_compatibility_validation_2026-10-29.md)。P2 首批 CPU/O1/plain 与 O2/identity-packed、W16/A32/KV32 已完成限定验收，入口见 [W16 指南](../guides/w16-fp32-inference.md)，源码身份与 sanitizer 范围见 [P2 验收记录](../archive/tests/w16_fp32_execution_validation_2026-11-11.md)。P3 步骤 1–10 核心已完成：首批合同（§2.7–2.8）冻结与独立校准、mixed-KV 语义、`state_dtype` 身份迁移、布局账本、KV16 读写 reference、plan 事务、显式 `kv_dtype` 配置链、reduced fixture 四组合模型验收、§2.8 冻结预算校准 fixture（2048）正式生产验收、ASan/UBSan、prepared-operator baseline 与文档收口。KV16 在 CPU O1/O2 上端到端可执行并通过冻结预算验收；production ExecutionStep/模型级 baseline 与 SIMD 优化为后续 refinement；C ABI/CLI 保持 strict F32。P4 步骤 1–6 已落地（§4.5）：ISA 探针与 `kAvx512Fp16` detection、独立校准与冻结预算（含校准器与冻结放置对齐的修正）、Cast/`output_dtype`/`activation_dtype` 基础设施、A16 kernel 层（O1 reference 全算子集 + A16 Linear/RmsNorm 的 AVX2 widening fallback 与 AVX-512 native）、BF16 全同型模型级验收（reduced fixture + 2048 near-limit 校准 fixture、ASan/UBSan、零分配、两次独立进程重复性、负例），以及经官方 runner 校验的 baseline（A16 preset 本机 decode 3.8× / prefill 5.1×，但归因于 AVX2 kernel 路径；无 AVX-512 硬件，native 收益未验证）。FP16 A16 的模型级执行归 P4-B（F32 residual + Cast）。新硬件 native 数值证据（步骤 7）待执行。
+本文是阶段化提案。P1 的显式 FP32 compatibility 已完成限定实现和 tiny checkpoint 验证，见 [FP32 兼容推理指南](../guides/fp32-compatible-inference.md) 与 [P1 验证报告](../archive/tests/fp32_compatibility_validation_2026-10-29.md)。P2 首批 CPU/O1/plain 与 O2/identity-packed、W16/A32/KV32 已完成限定验收，入口见 [W16 指南](../guides/w16-fp32-inference.md)，源码身份与 sanitizer 范围见 [P2 验收记录](../archive/tests/w16_fp32_execution_validation_2026-11-11.md)。P3 步骤 1–10 核心已完成：首批合同（§2.7–2.8）冻结与独立校准、mixed-KV 语义、`state_dtype` 身份迁移、布局账本、KV16 读写 reference、plan 事务、显式 `kv_dtype` 配置链、reduced fixture 四组合模型验收、§2.8 冻结预算校准 fixture（2048）正式生产验收、ASan/UBSan、prepared-operator baseline 与文档收口。KV16 在 CPU O1/O2 上端到端可执行并通过冻结预算验收；production ExecutionStep/模型级 baseline 与 SIMD 优化为后续 refinement；C ABI/CLI 保持 strict F32。P4 步骤 1–6 已落地（§4.5）：ISA 探针与 `kAvx512Fp16` detection、独立校准与冻结预算（含校准器与冻结放置对齐的修正）、Cast/`output_dtype`/`activation_dtype` 基础设施、A16 kernel 层（O1 reference 全算子集 + A16 Linear/RmsNorm 的 AVX2 widening fallback 与 AVX-512 native）、BF16 全同型模型级验收（reduced fixture + 2048 near-limit 校准 fixture、ASan/UBSan、零分配、两次独立进程重复性、负例），以及经官方 runner 校验的 baseline（A16 preset 本机 decode 3.8× / prefill 5.1×，但归因于 AVX2 kernel 路径；无 AVX-512 硬件，native 收益未验证）。FP16 A16 的模型级执行已按 P4-B 在 CPU O1/O2 完成限定验收，见 §4.6。新硬件 native 数值证据（步骤 7）待执行。
 
 P2 的转换基础已包括 [FP16 批量转换](../operators/fp16_conversion/README.md) 的 scalar、F16C widening、AVX2 narrowing，以及 [BF16 批量转换](../operators/bf16_conversion/README.md) 的双向 scalar/AVX2、checked byte spans、prepared Backend 函数表和 P1 callback。下文冻结 P2 的准入、Embedding、Norm-only 和 kernel args 合同，P2 能力状态由各批次退出门禁判定。
 
@@ -362,6 +362,8 @@ P1 的限定实现与验收已完成。P0 中 graph options 和 widening 数值�
 
 ### 4.5 P4：16-bit activation 与 native compute（首批设计已冻结）
 
+本节记录 P4-A 的首批合同和验收快照。FP16 A16 的当前准入与独立验收见 §4.6。
+
 P4 首批（P4-A）冻结 A16 合同，并把 native ISA kernel 纳入主线实现（无单独准入阶段）；C ABI/CLI 保持 strict F32。本机无 AVX-512/AMX（仅 avx2/f16c/fma），native 代码经"编译器探针 + per-TU 隔离 + runtime `effective_features` 过滤"机制随主线交付：新硬件到位后跑同一套 P4 验收套件补齐硬件数值证据；逐 ISA 状态按 §6.4 分别标记，属状态记账而非准入壁垒。BF16 先行理由为指数域安全（activation/residual 动态范围）与 BF16 checkpoint 生态，非 `VDPBF16PS` 成熟度（那是未来硬件理由）。
 
 **支持矩阵与配置。** 首批仅 2 种同型三元组（A=W=KV）：F16、BF16；4 是 P3 的 W×KV 交叉数，不适用。P4-A 的**可执行** preset 限定为 BF16 全同型；F16 的 A=W=KV kernel 已随本批实现并通过 kernel 级验收，但模型级执行要求 residual 保持 F32（P4-B）并需要 residual 边界的 Cast kernel，故 `Load` 对 F16 activation 显式返回 `Unimplemented`。KV 维度显式声明：首批 KV=A16 同型，A16×KV32（KVUpdate widening 新 mixed 方向，P3 未覆盖）不在首批。BF16 preset 为全 A16 同型（A=W=KV=residual=BF16，对齐业界 W16A16 主流）：残差流跨层 BF16 持久，Add 结果即新的跨层 hidden、无 F32 副本，残差 Cast 消除。FP16 preset（P4-B）residual 仍强制 F32（跨层累积溢出风险），全 F16 residual 须独立校准后另评。A16 preset 仅与同 dtype W16 policy、CPU、O1/plain、O2/packed 组合；`ModelLoadOptions.activation_dtype` 独立字段驱动，不扩张 `WeightPolicy`（§2.7 先例）。既有 policy 枚举名含 `Fp32Activation` 为历史命名：A16 复用时诊断按实际 `activation_dtype` 生成，不按枚举名声称 F32，enum 不重命名。替换 [executable_model.cpp](../../src/inference/executable_model.cpp) 的 activation 硬编码。
@@ -435,6 +437,21 @@ residual Add 零新增：BF16 语义白名单与 CPU reference 已存在（[add_
 
 **退出条件。** 2 组合 × O1/O2 的 Prefill/多次 Decode/Generate、EOS/容量/OOM 重试、冻结预算 + 固定排名规则（含 2046→2048 near-limit 的校准 fixture 正式生产验收）、Decode 稳态零分配、确定性/重复性（两次独立进程逐位一致）与负例（真 A16 vs 贴标签 A32、ISA fallback 不改精度合同、selector 篡改拒绝、Cast folding 复用冻结位合同、fusion 不得移除必需窄化）全部通过；逐 ISA 状态单独记录后才标记对应支持（"已实现；编译/dispatch/仿真已验证；硬件数值证据待采集"为状态记账，非准入壁垒）；不泛化为所有 dtype 或平台组合。
 
+### 4.6 P4-B：FP16 计算与 FP32 residual
+
+CPU-06 首段已在 CPU O1/plain 和 O2/identity-packed 打通 C++ `Load → Compile → Prepare → Prefill/Decode → Generate`。FP16 权重、计算分支和 KV 同型。跨层 residual、RMSNorm 输入输出和权重为 FP32。沿用 A16 的未融合图。CLI 和 C ABI 使用既有 strict FP32 准入。
+
+Embedding 从 FP16 直接拓宽到 FP32。RMSNorm 在 FP32 residual 上执行，输出在进入 Q/K/V、gate/up 或 LM head 前窄化。Attention 输出投影和 MLP down projection 先写出 FP16，再拓宽并与 residual 作 FP32 Add。K 保留两次窄化（投影和 RoPE），KVUpdate 直接写 FP16 cache。LM head 直接写 F32 logits。动态 Cast 注册所需的两个方向，绑定时验证范围、输出 injectivity 和输入输出互斥。详见 [Cast](../operators/cast/README.md)。
+
+独立 oracle 由 `tools/calibrate_p4b_reference.py` 生成。使用既有冻结的五组 FP16 checkpoint，FP64 oracle 保留同一 FP32 residual 和 FP32 RMSNorm 写回边界，另以 FP32 算术轨迹校准。生产测试比较独立 oracle，并在 near-limit 与同源 W16/A32/KV32 比较质量。预算为逐元素 `atol + rtol × abs(ref)`。
+
+| 比较 | Logits (atol, rtol) | K/V (atol, rtol) |
+|---|---:|---:|
+| P4-B 生产与独立 oracle | 1e-4, 1e-3 | 2e-4, 2e-3 |
+| P4-B 生产与 W16/A32/KV32 | 2e-3, 6e-3 | 1e-3, 1e-2 |
+
+`P4BCalibratedAcceptance` 在两个 preset 检查 MHA、GQA、MQA、tied 权重、logits 排名、KV 水位和公开 greedy token。2046-token Prefill 后的两步 Decode 到达 2048。两次独立 oracle 生成的文件身份一致。Release 的 malloc-family 门禁覆盖两个 preset 的 prepared Decode。见 [本机记录](../operators/cast/benchmarks/desktop-54h5mmi-cast.md)。
+
 ## 5. 风险与依赖
 
 | 风险/依赖 | 处理与准入条件 |
@@ -500,9 +517,9 @@ CPU-02/03 的后续状态：W16/A32 矩阵已不再统一落在 scalar reference
 |---|---|---|---|
 | reference / AVX2 widening | 主线构建；[Linear dispatch](../../tests/unit/backend/cpu/kernels/test_cpu_linear_a16_dispatch.cpp) 与 [RMSNorm](../../tests/unit/backend/cpu/kernels/test_cpu_rmsnorm_a16_kernel.cpp) 回归；真实本机选核见 [Linear 记录](../operators/linear/benchmarks/desktop-54h5mmi-linear.md#a16-实际选核身份与验证边界核对) / [RMSNorm 记录](../operators/rmsnorm/benchmarks/desktop-54h5mmi-rmsnorm.md#a16-实际选核身份与验证边界核对) | §4.5 步骤 4–5 的 kernel 验收与 BF16 O1/O2 模型/2048 near-limit 验收；FP16 仅 kernel 层 | §4.5 步骤 6 的限定 BF16 fixture baseline，不推导跨机器收益 |
 | AVX-512 BF16 Linear/RMSNorm | per-TU 编译与 descriptor 注册；Linear 合成特征 dispatch 已覆盖；BF16 安全域/窄化的 portable 回归已覆盖 | **not-run：缺少 AVX-512 BF16 目标硬件**；portable 安全域证明不替代 native 指令执行 | **not-run**：native latency、保护预扫描、fallback 占比与降频成本待测 |
-| AVX-512 FP16 Linear/RMSNorm | per-TU 编译与 descriptor 注册；Linear 合成特征 dispatch 已覆盖 | **not-run：缺少 AVX-512 FP16 目标硬件**；高层 FP16 A16 仍被 Load 拒绝 | **not-run**：kernel 性能待测；模型性能依赖 P4-B |
+| AVX-512 FP16 Linear/RMSNorm | per-TU 编译与 descriptor 注册；Linear 合成特征 dispatch 已覆盖 | **not-run：缺少 AVX-512 FP16 目标硬件**；高层 FP16 A16 已完成 §4.6 的本机验收 | **not-run**：kernel 性能待测；目标硬件模型性能待测 |
 
-目标硬件补验须保留真实 `DetectCpuCapabilities` 与 feature policy、完整 selector、实际 `ResolvedKernel::name` 和 exact recipe，分别覆盖 plain/identity-packed、Prefill/Decode、A16/F32 output（Linear）、tail/stride/fallback 和特殊值。先完成 Linear/RMSNorm 的 native 执行与冻结预算对拍，再在 BF16 硬件上运行 §4.5 的 BF16 模型/near-limit 验收；FP16 的模型项保持 blocked-by-P4-B，不能伪记为通过。性能另做同合同、同机交错 A/B，包含 prepared、ExecutionPlan 与可执行模型路径及 native 数值保护成本。原始证据与结果按算子工作流入对应机器记录，并由 CPU-01 台账链接；没有目标硬件的项目保留 not-run。
+目标硬件补验须保留真实 `DetectCpuCapabilities` 与 feature policy、完整 selector、实际 `ResolvedKernel::name` 和 exact recipe，分别覆盖 plain/identity-packed、Prefill/Decode、A16/F32 output（Linear）、tail/stride/fallback 和特殊值。先完成 Linear/RMSNorm 的 native 执行与冻结预算对拍，再在 BF16 硬件上运行 §4.5 的 BF16 模型/near-limit 验收；FP16 目标硬件复用 §4.6 的模型与 near-limit 验收。性能另做同合同、同机交错 A/B，包含 prepared、ExecutionPlan 与可执行模型路径及 native 数值保护成本。原始证据与结果按算子工作流入对应机器记录，并由 CPU-01 台账链接；没有目标硬件的项目保留 not-run。
 
 ## 7. 一手资料
 

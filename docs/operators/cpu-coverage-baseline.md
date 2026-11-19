@@ -129,19 +129,20 @@ KVCacheUpdate 为 state-only step，output_dtype undefined；Attention 的 weigh
 | 算子 | act / output | plain | 备注 |
 |---|---|---|---|
 | Silu | F32 / F32 | `cpu::silu_f32_reference` | |
-| SiluMul | F32 / F32 | `cpu::silu_mul_f32_reference` | O2 fusion 产物 |
-| SiluMul | BF16 / BF16 | `cpu::silu_mul_bf16_reference` | |
+| SiluMul | F32 / F32 | `cpu::silu_mul_f32_avx2_fma` / `cpu::silu_mul_f32_reference` | Llama Dense 直接构图；O1/O2 均可选 SIMD |
+| SiluMul | BF16 / BF16 | `cpu::silu_mul_bf16_avx2_fma` / `cpu::silu_mul_bf16_reference` | 近 BF16 舍入中点回退 |
 | SiluMul | F16 / F16 | `cpu::silu_mul_f16_reference` | |
 | ElementwiseMul | F32 / F32 | `cpu::elementwise_mul_f32_reference` | |
 | Add | F32 / F32 | `cpu::add_f32_reference` | |
 | Add | BF16 / BF16 | `cpu::add_bf16_reference` | |
-| Add | F16 / F16 | **unsupported** | 无 F16 descriptor（FP16 A16 residual 缺口） |
+| Add | F16 / F16 | **unsupported** | P4-B 的 residual Add 使用 F32 |
 | Argmax | F32 / Int64 | `cpu::argmax_f32_reference` | |
 | Softmax | F32 / F32 | **unsupported** | 语义定义存在；Attention 内部 softmax 已执行 |
 | Reshape | F32 / F32 | **unsupported** | 语义-only |
 | Permute | F32 / F32 | **unsupported** | 语义-only |
 | Reorder | F32 / F32 | **unsupported** | 语义-only |
-| Cast | F32→F16、BF16→F32 | **unsupported** | 语义-only；FP16 A16 模型路径依赖 |
+| Cast | F32 ↔ F16 | `cpu::cast_f32_to_f16_reference` / `cpu::cast_f16_to_f32_reference` | FP16 residual 边界 |
+| Cast | BF16 相关转换 | **unsupported**（动态执行） | 语义和常量折叠 |
 
 Add 另注册 Double/Int32/Int64（非 Llama 主链，未列入）；语义-only 算子的常量折叠成功不代表动态执行可用。
 
@@ -154,12 +155,13 @@ Add 另注册 Double/Int32/Int64（非 Llama 主链，未列入）；语义-only
 | RmsNorm F32 plain＝AVX2/FMA（priority 20），packed-identity＝reference（priority 10）→ O2/packed F32 RMSNorm 落标量 | [rmsnorm_entry.cpp:534](../../src/backend/cpu/kernels/rmsnorm/rmsnorm_entry.cpp#L534)、[rmsnorm_entry.cpp:671](../../src/backend/cpu/kernels/rmsnorm/rmsnorm_entry.cpp#L671) | CPU-05（fused-vs-unfused） |
 | W16/A32 Linear/QKV/GateUp 已接入 SIMD/blocking，reference 保留为 ISA/布局/数值 fallback | [Linear 优化方案](linear/linear-optimization.md) | CPU-02（证据见机器记录） |
 | Embedding W16 已有 F16C/AVX2 optimized 默认 | [embedding_entry.cpp](../../src/backend/cpu/kernels/embedding/embedding_entry.cpp) | 复用，不重复建设 |
-| Add F16 缺失（BF16 存在） | [add_entry.cpp](../../src/backend/cpu/kernels/add/add_entry.cpp) | CPU-06 / 精度专题 P4-B |
+| 独立 F16 Add 无 descriptor，P4-B 的残差流使用 F32 Add | [add_entry.cpp](../../src/backend/cpu/kernels/add/add_entry.cpp) | 新 consumer 按需 |
 | QKV/GateUp plain unsupported（O1 不融合，by design）；MatMul packed unsupported | [optimize_graph.cpp:14](../../src/compiler/optimize_graph.cpp#L14) | 非缺口，记录边界 |
-| Attention/KVUpdate/RoPE/小算子主链＝reference | 各 entry | CPU-04 / CPU-05 |
-| Softmax/Reshape/Permute/Reorder/Cast standalone kernel 缺失 | [op_type.h](../../include/aethermind/operators/op_type.h) | CPU-06（consumer 驱动） |
+| Attention SIMD、Decode GQA 复用与 Prefill 双行已接入生产；短形状及不兼容格式按各路径回退 | [Attention](attention/README.md) | CPU-04 |
+| AddRmsNorm F32 plain/identity、SiluMul F32/BF16 已接入 AVX2；KVUpdate、RoPE 等按各入口实现 | [AddRmsNorm](add_rmsnorm/README.md)、[SiluMul](silu_mul/README.md) | CPU-05 |
+| Softmax/Reshape/Permute/Reorder standalone kernel 缺失 | [op_type.h](../../include/aethermind/operators/op_type.h) | CPU-06（consumer 驱动） |
 | A16 编译关闭 QKV/GateUp/AddRmsNorm fusion；AddRmsNorm A16 kernel 缺失 | [model_compiler.cpp:23](../../src/compiler/model_compiler.cpp#L23) | CPU-05 / 精度专题 |
-| FP16 A16 kernel 存在但高层 Load 拒绝（F32 residual/Cast 未完成） | [executable_model.cpp](../../src/inference/executable_model.cpp) | CPU-06 / 精度专题 P4-B |
+| FP16 A16 Load 与 O1/O2 生产链已接通，FP32 residual 与 FP16 KV | [Cast/P4-B](cast/README.md) | CPU-06 首段 |
 | AVX-512 native 已编译、本机不可选；真实硬件数值/性能 not-run | §1 effective features | CPU-10 |
 
 ## 5. 编译预设 / fusion / packing 映射

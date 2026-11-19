@@ -78,7 +78,7 @@
 | C++ FP32 compatibility | 显式将 F16/BF16 权重拓宽为 FP32；CPU O1/plain | 不保留 16-bit 矩阵 |
 | C++ W16/A32 | 保留 F16 或 BF16 矩阵，仅转换 Norm；FP32 activation、累加、KV、logits；CPU O1/plain、O2/identity-packed | Linear/LM head 与 QKV/GateUp 按有效 ISA 选择 SIMD/blocking；不适用时回退 reference，见 [Linear](operators/linear/README.md) |
 | C++ BF16 A16 | 显式选择 BF16 activation、矩阵、KV 与跨层 residual，Norm 权重及 logits 为 F32；CPU O1/plain、O2/identity-packed | 已有高层 Load/Generate 与限定 fixture 验收；A16 的 QKV/GateUp/AddRmsNorm fusion 关闭，范围见 [精度专题 §4.5](improvement-plan/11-fp16-bf16-execution-support.md#45-p416-bit-activation-与-native-compute首批设计已冻结) |
-| C++ FP16 A16 | 已有 kernel 实现；高层 Load 返回 `Unimplemented` | 模型路径等待 P4-B 的 FP32 residual 与边界 Cast；不能由 kernel 可调用推导模型支持 |
+| C++ FP16 A16 | FP16 矩阵、计算分支及 KV，FP32 residual、Norm 和 logits。CPU O1/plain、O2/identity-packed | Load/Generate 和独立 MHA/GQA/MQA 校准已通过，2048-token 范围见 [P4-B](operators/cast/README.md) |
 | 独立 CLI / C ABI v1.0 | 已实现，继续采用 CPU strict FP32 source admission | 不开放 C++ reduced-weight policy |
 | 静态 KV 与资源预算 | KV 默认 F32，C++ retained-W16 可显式选择 F16/BF16；支持模型、packed、KV、workspace 与请求 payload 限额及资源查询 | 见 [资源预算指南](guides/resource-budgeting.md) |
 | INT8/INT4 仅权重量化 | 保留为当前产品交付需求；尚无端到端量化执行链 | loader 接受 dtype/metadata 不等于 quantized graph、packing、kernel 与生成已接通 |
@@ -120,7 +120,7 @@
 
 上表按默认 `ModelLoadOptions::activation_dtype = Float32()` 描述。W16/A32 要求 Embedding、Linear/LM head 等矩阵的实际 dtype 匹配选定 policy，Norm 源可为 scalar F32/F16/BF16；activation、residual、logits 为 FP32，W16 projection 使用 FP32 累加。KV 默认 FP32，retained-W16 policy 可显式选择 F16/BF16，与矩阵精度独立，所有层 K/V 同型。O2 的 W16 identity/composite artifacts 保留两字节元素，并产生额外 packed storage。使用与数值合同见 [FP32 compatibility](guides/fp32-compatible-inference.md) 和 [W16/A32](guides/w16-fp32-inference.md)。这些 C++ policy 不改变 CLI/C ABI 的 strict FP32 准入。
 
-C++ BF16 A16 通过 `kKeepBf16WeightsFp32Activation` 配合显式 `activation_dtype = BFloat(16)`、`kv_dtype = BFloat(16)` 选择，Runtime KV dtype 也必须为 BF16。policy 名中的 `Fp32Activation` 是历史命名，实际 activation 以独立字段为准。该路径仅接受同型 BF16 矩阵/activation/KV/residual，Norm 权重与 logits 为 F32；不开放 A16×KV32 或 F16/BF16 交叉组合。FP16 activation 在 Load 阶段返回指向 P4-B 的 `Unimplemented`。逐端口 rounding、数值预算与验证范围以精度专题 §4.5 为准。
+C++ A16 通过同型 retained-W16 policy 与显式 `activation_dtype`、`kv_dtype` 选择。Runtime KV dtype 必须与之匹配。FP16 保持跨层 residual、Norm 和 logits 为 FP32，边界由显式 Cast 表达。BF16 的矩阵、activation、KV 和 residual 为同型 BF16，Norm 权重与 logits 为 FP32。policy 名中的 `Fp32Activation` 是历史命名，实际 activation 以独立字段为准。支持范围和舍入合同见 [FP16 A16](operators/cast/README.md) 和 [BF16 A16](improvement-plan/11-fp16-bf16-execution-support.md#45-p416-bit-activation-与-native-compute首批设计已冻结)。
 
 ```cpp
 // C++ API
@@ -185,7 +185,7 @@ am_status_code am_session_generate(
 | attention | GQA、MQA、MHA | sliding window、MoE、encoder-decoder 拒绝 |
 | activation | `hidden_act = "silu"`，构建 SwiGLU | 其他 activation 拒绝，新增支持须贯通语义、graph、kernel 与模型测试 |
 | norm | RMSNorm | 不提供 LayerNorm 模型执行 |
-| weight / activation precision | strict FP32、显式 FP32 compatibility、F16/BF16 W16/A32、BF16 A16 | 按 §2.2 的 policy、activation/KV 选项和实际 resolved weight dtype 准入；FP16 A16 模型路径拒绝，不隐式转换 |
+| weight / activation precision | strict FP32、显式 FP32 compatibility、F16/BF16 W16/A32、FP16/BF16 A16 | 按 §2.2 的 policy、activation/KV 选项和实际 resolved weight dtype 准入 |
 | quantization | 目标：INT8 per-channel、INT4 group-wise（group_size=128） | 待端到端实现与 scheme-specific 验收；其他 scheme 不承诺 |
 
 ### 3.2 内存管理
@@ -375,11 +375,11 @@ TSAN 在 `main` 前因主机环境启动失败须单独记录；sanitizer 不兼
 |------|----------|------|
 | HF 加载/准入 | `ModelLoader_*`、`HfFixedTrajectory` | parser/loader 与固定轨迹；不代表所有模型 |
 | 执行/Session | `TinyLlamaExecution`、`DirectPrefillDecode` | scalar oracle、Generate、OOM/重试、KV 生命周期 |
-| 精度策略 | `Fp32CompatibleInference`、`W16*`、`KV16*`、`A16LoadAdmission`、`A16ModelAcceptance`、`A16CalibratedAcceptance` | 转换/保留策略及 BF16 A16 的数值、预算与零分配；FP16 A16 高层拒绝 |
+| 精度策略 | `Fp32CompatibleInference`、`W16*`、`KV16*`、`A16LoadAdmission`、`A16ModelAcceptance`、`A16CalibratedAcceptance`、`P4BCalibratedAcceptance` | 转换与保留策略、FP16/BF16 A16 数值、预算和零分配 |
 | KV/资源 | `KVCache*`、`*ResourceLimits` | generation/commit、payload cap；不替代 RSS |
 | C ABI/CLI | `CAbi*`、`InferenceCliIntegration` | strict FP32、buffer/error/owner |
 | ISA/sanitizer | baseline/AVX2、ASan/UBSan/LSan、TSAN presets | 每个候选与 fallback 的适用覆盖 |
-| 待完成 | INT8/INT4、FP16 A16 模型路径、AVX-512 硬件数值/性能验收、代表性 4k/7B、100 次确定性、其他平台 | 需实际实现与可执行门禁 |
+| 待完成 | INT8/INT4、AVX-512 硬件数值/性能验收、代表性 4k/7B、100 次确定性、其他平台 | 需实际实现与可执行门禁 |
 
 既有五批集成入口：
 

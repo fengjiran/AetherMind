@@ -6,6 +6,8 @@
 
 ### Added
 
+- C++ CPU O1/plain 与 O2/identity-packed 接入 Llama Dense FP16 A16，使用匹配的 FP16 权重和 KV，保留 FP32 residual、Norm 和 logits。动态 CPU Cast 支持 F32 ↔ F16。验证范围见 [P4-B](docs/operators/cast/README.md)。
+
 - CPU W16/A32 Linear/LM head、QKV/GateUp 的 plain/identity AVX2/FMA widening、small-M 与 Prefill blocking；FP16 另需 F16C，BF16 不依赖 F16C。参考路径、冻结误差预算与 Decode 零分配保留；同机验收范围见 [CPU 算子路线图](docs/operators/cpu-operator-evolution.md)。
 
 - CPU Llama Dense 的 retained-W16 C++ policy 支持显式 F16/BF16 KV，W 与 KV 独立选择，activation/residual/logits 保持 F32。新增 `ModelLoadOptions::kv_dtype`、`CpuRuntimeAssemblyOptions::kv_dtype`、通用 `MakeKVCacheOptions` 和严格匹配的 `KernelSelector::state_dtype`；KVUpdate 在写入时 narrow、Attention 在读取时 widen，完整 plan 成功后发布 watermark。独立量化 oracle、四组合 O1/O2、2048 context、Decode 零分配和 prepared/ExecutionStep/model baseline 的范围见 [P3 验收](docs/archive/tests/kv16_execution_validation_2026-11-12.md)。C++ 消费者需重新构建，C ABI/产品 CLI 保持 strict FP32。
@@ -18,6 +20,10 @@
 - `docs/archive/decisions/` 决策记录目录与 `docs/archive/` 归档区建立。
 
 ### Changed
+
+- CPU FP32 和 BF16 SiluMul 增加 AVX2/FMA 路径，适用于连续同形状的输入输出。保留广播、stride 和特殊值的 scalar 路径，BF16 在近舍入中点时重算。见 [SiluMul](docs/operators/silu_mul/README.md)。
+
+- CPU FP32 AddRmsNorm 的 plain 和 identity-packed 路径按有效 CPU 特性选择 AVX2。保留 FP32 residual 舍入、顺序 FP64 归约与 scalar fallback。验证范围见 [AddRmsNorm](docs/operators/add_rmsnorm/README.md)。
 
 - CPU Attention 的兼容 AVX2 Prefill 在相邻两行之间复用公共 K/V 前缀，按行处理 causal 对角，保留归约顺序和短 Prefill 回退。见 [Prefill 方案](docs/operators/attention/attention-optimization.md)。
 

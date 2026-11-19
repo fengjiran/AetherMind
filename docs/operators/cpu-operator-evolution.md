@@ -15,14 +15,14 @@
 | FP32 Linear / MatMul | reference 保持独立计算路径；Linear/QKV/GateUp 已接入 scalar/AVX2 GEMM，MatMul 保持 reference；packed-B candidate 与 identity optimized 并存，identity 保持默认 | 接通并验证 optimized production path；见 [Linear entry](../../src/backend/cpu/kernels/linear/linear_entry.cpp)、[MatMul](../../src/backend/cpu/kernels/matmul/matmul_f32_reference.cpp)、[GEMM 状态](gemm/README.md) |
 | W16/A32 | Linear、LM head、QKV、GateUp 已接入 AVX2/FMA W16 driver，F16 还需 F16C；O1/plain 与 O2/identity-packed 使用同一 recipe 下的 Decode/Prefill driver，reference 继续独立保留 | SIMD widening、Decode GEMV、Prefill blocking；见 [reference](../../src/backend/cpu/kernels/linear/linear_a32_w16_reference.cpp)、[Linear 证据](linear/benchmarks/desktop-54h5mmi-linear.md) |
 | BF16 A16 | 高层 Load 已准入 activation/weight 的 BF16 同 dtype 组合（KV 组合约束在编译期校验）；Linear/RMSNorm 已有 AVX2 widening 和 AVX-512 实现，其他主链算子已有 reference | 扩大目标 shape/硬件证据，随后按 profile 优化；见 [Load](../../src/inference/executable_model.cpp)、[精度专题 §4.5](../improvement-plan/11-fp16-bf16-execution-support.md) |
-| FP16 A16 | kernel 层已有实现，高层 Load 因 FP32 residual/Cast 路径未完成而明确返回 Unimplemented | 按精度专题 P4-B 补齐模型路径；不能由单 kernel 可调用推导模型支持 |
+| FP16 A16 | 显式 FP16 计算、权重和 KV，经边界 Cast 接到 FP32 residual，CPU O1/O2 已执行 | [P4-B](cast/README.md) 的 MHA/GQA/MQA 和 2048-token 限定校准 |
 | Attention / KV | F32、A32/KV16、BF16 A16 已接入 AVX2 并保留 reference；仍两遍扫描重算 QK，不物化完整 score matrix | 单 token Decode 已支持配对 GQA/KV 复用，Prefill 已支持相邻两行共享公共 K/V 前缀。见 [SIMD 证据](attention/benchmarks/desktop-qhihogq-attention.md)、[F32 reference](../../src/backend/cpu/kernels/attention/attention_a32_kv32_reference.cpp)、[KV16 reference](../../src/backend/cpu/kernels/attention/attention_a32_kv16_reference.cpp) |
 | 融合与小算子 | FP32 RMSNorm 已有 AVX2；QKV/GateUp/AddRmsNorm 的部分默认路径仍是 reference；A16 编译主动关闭 QKV/GateUp/AddRmsNorm fusion | 检查 O2 fused-vs-unfused，避免优化单算子后让融合路径仍落在标量实现；见 [compiler](../../src/compiler/model_compiler.cpp)、[CPU kernels](../../src/backend/cpu/kernels/) |
 | 通用执行覆盖 | Softmax、Reshape、Permute、Reorder、Cast 有语义定义，当前 CPU registry 缺少相应 standalone runtime kernel | 按真实 consumer 补齐；常量折叠成功不代表动态执行可用；见 [OpType](../../include/aethermind/operators/op_type.h)、[operator inference](../../src/operators/operator_inference.cpp) |
 | 算子内并行 / 量化 | 当前 Runtime 未提供生产 worker pool；INT8/INT4 尚无完整加载、准备、kernel、Generate 链 | 分别建立 threading 和 quantization 纵向合同；见 [RuntimeOptions](../../include/aethermind/runtime/runtime_options.h)、[HF validator](../../src/model/formats/hf/hf_model_validator.cpp) |
 | 资源复用 | workspace requirement 与 activation arena 主要按顺序累计，尚无完整 lifetime/liveness reuse | 在引入 tile/worker scratch 时纳入规划与预算；见 [workspace planner](../../src/runtime/workspace_planner.cpp)、[activation planning](../../src/execution/execution_bindings.cpp) |
 
-精度状态以实际入口和专题证据为准。[product §1.4](../product.md#14-当前能力与验证状态) 分别记录 BF16 A16 的限定模型路径、FP16 A16 的高层拒绝与 native ISA 的待验证状态；限定 fixture 验收不能扩展为任意模型、平台或上下文的承诺。
+精度状态以实际入口和专题证据为准。[product §1.4](../product.md#14-当前能力与验证状态) 记录 FP16 与 BF16 A16 的限定模型路径和 native ISA 的验证边界。
 
 ### 1.2 优先级的机制依据
 
@@ -202,8 +202,8 @@ CPU-01 的 ISA 台账必须分别记录真实检测与合成 capabilities：机�
 | CPU-02 W16/A32 矩阵计算 | 已实现（[本机限定验收](linear/benchmarks/desktop-54h5mmi-linear.md#cpu-02-w16a32-生产优化与-cpu-03-关联闭环)） | backend Linear SIMD widening、Decode/small-M、QKV/GateUp 复用，随后 Prefill blocking | CPU-01 与既有 W16 合同 | F16/BF16、plain/identity、tail/stride/fallback 数值通过；生产收益稳定，稳态零分配 |
 | CPU-03 FP32 GEMM 生产闭环 | 已实现（[identity 生产闭环；B-panel 全局 promotion 拒绝](gemm/benchmarks/54h5mmi-gemm.md#cpu-03-fp32-gemm-生产闭环与布局-promotion-决策)） | 已有 scalar/AVX2 driver 接入；B-panel candidate 与 composite consumers 的 promotion 决策 | CPU-01；可与 CPU-02 独立实施 | registered/prepared、fused/unfused、模型路径与 packing 摊销均有证据；保留无收益组合的 fallback |
 | CPU-04 Attention / KV | SIMD、Decode GQA/KV 复用与 Prefill 双行分块已实现并完成本机限定验证（[证据](attention/benchmarks/desktop-qhihogq-attention.md)）；更宽 tiles、score strip/online softmax 按 profile 推进 | SIMD 基线 → Decode GQA/KV blocking → Prefill blocking/online softmax | CPU-01；引入 scratch 时补相应规划 | context/geometry/精度矩阵、事务/visibility 与数值门禁通过；短长 context 收益和资源成本分别可解释 |
-| CPU-05 小算子与融合 | 待实施 | 首批 AddRmsNorm；其余按 profile 补 Add/SiluMul/RoPE/KVUpdate 等 | CPU-01；按优化后的模型重新 profile | 保留输出、alias、rounding 与 residual；fused/unfused 生产对照通过 |
-| CPU-06 精度与执行覆盖 | 待实施 | Cast + FP32 residual 的 FP16 A16 模型路径；consumer 驱动的 shape/layout/Softmax kernel | CPU-01、精度专题 P4-B；家族 consumer 按需触发 | schema/Infer/graph/lowering/prepare/kernel/model 全链覆盖；合法路径可执行，unsupported 在准备期可诊断 |
+| CPU-05 小算子与融合 | 本机限定验收完成（[FP32 AddRmsNorm](add_rmsnorm/benchmarks/desktop-54h5mmi-add-rmsnorm.md)、[FP32/BF16 SiluMul](silu_mul/benchmarks/desktop-54h5mmi-silu-mul.md)）。重新 profiling 后，BF16 A16 RoPE、F16 KVUpdate 和 BF16 Add 保留为按负载触发的后续候选 | AddRmsNorm SIMD、SiluMul SIMD、生产对照和热点复核 | CPU-01，按优化后的模型重新 profile | 保留两个 AddRmsNorm 输出、alias、rounding 与 residual，prepared 和生产模型对照通过 |
+| CPU-06 精度与执行覆盖 | 首段 [FP16 A16 与 FP32 residual](cast/README.md) 已完成限定验收。其他 shape/layout/Softmax kernel 随 consumer 推进 | Cast 与 P4-B 模型路径，按 consumer 补动态执行 | CPU-01、精度专题 P4-B | schema/Infer/graph/lowering/prepare/kernel/model 全链覆盖 |
 | CPU-07 资源规划 | 待实施 | binding-dependent scratch、worker scratch、workspace lifetime、activation liveness 与预算 | CPU-01；按实际 scratch 需求拆分 | sizing/query 与执行一致，alignment/overflow/cap/OOM/alias 覆盖；复用不破坏已准备地址与 lifetime |
 | CPU-08 算子内并行 | 待实施 | Runtime pool、窄接口、同步完成/失败收敛、tile 并行与阈值 | 对应串行 kernel 稳定；所需 CPU-07 资源链已具备 | 单线程不回退；scaling/barrier 可解释；TSAN、重复性、失败清理与零分配区间通过 |
 | CPU-09 INT8 / INT4 | 待实施 | scheme 合同、reference、packing/identity、W8/W4 GEMV/GEMM 与模型执行 | 合同/reference 可从 CPU-01 启动；optimized 复用相关矩阵 primitive，不硬依赖 CPU-08 | 逐 scheme 数值/质量/资源/性能闭环，代表性模型验收，未知格式 fail closed |
@@ -215,9 +215,9 @@ CPU-01 的 ISA 台账必须分别记录真实检测与合成 capabilities：机�
 2. **CPU-02 首段（已完成，完整工作包证据见 §4.1）**：实现 W16/A32 plain/identity AVX2 widening 与 `M=1` GEMV，保持数值策略；随后覆盖 QKV/GateUp 与 small-M。
 3. **CPU-03（已完成本机闭环）**：为已有 FP32 driver 完成生产 descriptor/adapter；补齐 B-panel 对照、tail、packing 与 Generate 证据，再决定 promotion。
 4. **CPU-04（前三段的生产路径已在本机验证）**：F32/KV16/BF16 A16 已接入 AVX2、Decode GQA/KV 复用和 Prefill 双行分块；进一步 Prefill 调优按长 context profile 决定。
-5. **CPU-05 首段**：补齐 AddRmsNorm SIMD 并验证 O2 路径，随后根据重新 profiling 的结果决定小算子顺序。
+5. **CPU-05（已完成本机限定验收）**：AddRmsNorm SIMD 进入 O2 路径。扩大 GQA 形状后确定 SiluMul 为首要小算子热点，FP32 和 BF16 SIMD 均完成数值与生产对照。根据新 profile 记录后续候选。
 
-首批首段组合的端到端里程碑（M1 已按本机限定范围达成，证据见 §4.1）：M0 = CPU-01 台账与参考基准冻结；M1 = CPU-02 首段 W16/A32 Decode 全链（prepared → ExecutionPlan → Generate）与 CPU-03 FP32 生产闭环；M2 = CPU-04 首段 Attention SIMD 与 CPU-05 首段 AddRmsNorm 后的重新 profile。其余工作包按触发条件推进，不占用上述关键路径。
+首批首段组合的端到端里程碑（M1、M2 已按本机限定范围达成，证据见 §4.1）：M0 = CPU-01 台账与参考基准冻结；M1 = CPU-02 首段 W16/A32 Decode 全链（prepared → ExecutionPlan → Generate）与 CPU-03 FP32 生产闭环；M2 = CPU-04 首段 Attention SIMD 与 CPU-05 首段 AddRmsNorm 后的重新 profile。其余工作包按触发条件推进，不占用上述关键路径。
 
 CPU-09 的合同/reference 可提前推进；CPU-06 按 FP16 或新 consumer 需求启动。CPU-08 在相应串行核心稳定后接入，不等待所有小算子、精度与平台全部完成。没有 profile 支持时，不提前实现完整 autotuner、cost-based optimizer 或通用 Primitive IR。
 

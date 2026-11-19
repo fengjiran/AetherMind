@@ -286,6 +286,8 @@ The [independent HF numerical reference instructions](tests/fixtures/inference_n
 
 The Linux CLI/direct-Session integration suite additionally requires the standalone executable from Run Inference above. Set `AETHERMIND_INFER_BINARY` to its absolute path; missing executables or unsupported platforms fail this integration gate explicitly. This variable is consumed by tests only. The Python CLI tests also require the existing C toolchain for Linux/glibc failure injection. Commands and scoped results are recorded in the [M4 validation report](docs/archive/tests/upper_level_runtime_assembly_m4_validation_2026-10-22.md).
 
+For `P4BCalibratedAcceptance`, use the pinned Python environment from the numerical reference instructions and the [KV16 fixture](tests/fixtures/kv16_reference/README.md). Run `python tools/calibrate_p4b_reference.py --source .models/kv16-reference --output .models/p4b-reference` to generate the FP16 compute / FP32 residual oracle. The CTest fixture uses the same tool with `--verify`, which needs only Python's standard library. With a custom `AETHERMIND_TEST_MODELS_DIR`, put `p4b-reference` under that root.
+
 ```bash
 # Run all unit tests after preparing fixtures and building the standalone CLI
 AETHERMIND_INFER_BINARY="$PWD/build-infer/apps/inference/aethermind_infer" \

@@ -3,7 +3,6 @@
 
 #include <filesystem>
 #include <gtest/gtest.h>
-#include <string>
 
 namespace {
 using namespace aethermind;
@@ -61,26 +60,35 @@ TEST(A16LoadAdmission, RejectsNonCpuTarget) {
 }
 
 TEST(A16LoadAdmission, AcceptsSameDtypePresetAndForwardsToLoader) {
-    Runtime runtime = MakeRuntime();
-    const ModelLoadOptions options{
-            .weights = WeightPolicy::kKeepBf16WeightsFp32Activation,
-            .activation_dtype = DataType::BFloat(16)};
-    const auto model = ExecutableModel::Load(runtime, kMissingDirectory, options);
-    EXPECT_FALSE(model.ok());
-    EXPECT_NE(model.status(), StatusCode::kUnimplemented);
+    for (const auto dtype: {DataType::Float(16), DataType::BFloat(16)}) {
+        RuntimeOptions runtime_options;
+        runtime_options.kv_cache = {.enable_manager = true, .num_layers = 1, .num_kv_heads = 1, .max_tokens = 2, .head_dim = 2, .kv_dtype = dtype};
+        RuntimeBuilder builder;
+        builder.WithOptions(runtime_options);
+        Runtime runtime = builder.Build();
+        const ModelLoadOptions options{
+                .weights = dtype == DataType::Float(16) ? WeightPolicy::kKeepFp16WeightsFp32Activation
+                                                        : WeightPolicy::kKeepBf16WeightsFp32Activation,
+                .kv_dtype = dtype,
+                .activation_dtype = dtype};
+        const auto model = ExecutableModel::Load(runtime, kMissingDirectory, options);
+        ASSERT_FALSE(model.ok());
+        EXPECT_TRUE(model.status().message().starts_with("ExecutableModel::Load loading failed:"))
+                << model.status().ToString();
+    }
 }
 
-TEST(A16LoadAdmission, RejectsFloat16ActivationUntilP4bResidualCastsExist) {
-    // P4-A executes the full-same-type BF16 preset only; FP16 keeps an F32
-    // residual stream and needs Cast kernels on that boundary (P4-B).
+TEST(A16LoadAdmission, RejectsUnmatchedKvDTypeBeforeModelIo) {
     Runtime runtime = MakeRuntime();
-    const ModelLoadOptions options{
-            .weights = WeightPolicy::kKeepFp16WeightsFp32Activation,
-            .activation_dtype = DataType::Float(16)};
-    const auto model = ExecutableModel::Load(runtime, kMissingDirectory, options);
-    EXPECT_EQ(model.status(), StatusCode::kUnimplemented);
-    EXPECT_NE(model.status().message().find("P4-B"), std::string::npos)
-            << model.status().message();
+    for (const auto kv_dtype: {DataType::Float32(), DataType::BFloat(16)}) {
+        const ModelLoadOptions options{
+                .weights = WeightPolicy::kKeepFp16WeightsFp32Activation,
+                .kv_dtype = kv_dtype,
+                .activation_dtype = DataType::Float(16)};
+        const auto model = ExecutableModel::Load(runtime, kMissingDirectory, options);
+        EXPECT_EQ(model.status(), StatusCode::kUnimplemented);
+        EXPECT_EQ(model.status().message(), "A16 activation requires the same-dtype KV storage");
+    }
 }
 
 } // namespace

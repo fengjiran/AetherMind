@@ -32,7 +32,19 @@ struct DecoderLayerParams {
     float rms_norm_eps = 0.0F;
     RoPEParams rope;
     AttentionParams attention;
+    bool fp32_residual = false;
 };
+
+StatusOr<GraphValueId> CastResidualBoundary(ModelGraph& graph,
+                                            std::optional<uint32_t> layer,
+                                            GraphValueId input, DataType target,
+                                            bool fp32_residual, std::string_view name) {
+    if (!fp32_residual) {
+        return input;
+    }
+    return AddCast(graph, layer, input, target,
+                   (layer.has_value() ? detail::LayerPrefix(*layer) : std::string{}) + std::string(name));
+}
 
 StatusOr<GraphValueId> BuildAttentionBlock(ModelGraph& graph,
                                            uint32_t layer,
@@ -46,7 +58,7 @@ StatusOr<GraphValueId> BuildAttentionBlock(ModelGraph& graph,
     const RawWeightView& o_proj_weight = layer_weights.attn.o_proj;
     const auto norm_dtype = layer_weights.norm.input_rmsnorm.dtype;
 
-    AM_ASSIGN_OR_RETURN(const GraphValueId normed,
+    AM_ASSIGN_OR_RETURN(const GraphValueId norm,
                         AddRmsNorm(
                                 graph,
                                 input.hidden,
@@ -55,6 +67,9 @@ StatusOr<GraphValueId> BuildAttentionBlock(ModelGraph& graph,
                                                              TransformerWeightRole::kInputNorm),
                                 params.rms_norm_eps,
                                 detail::WeightDebugName(TransformerWeightRole::kInputNorm, layer)));
+    AM_ASSIGN_OR_RETURN(const GraphValueId normed,
+                        CastResidualBoundary(graph, layer, norm, DataType::Float(16),
+                                             params.fp32_residual, "attention_input_cast"));
     AM_ASSIGN_OR_RETURN(const GraphValueId q,
                         AddLinear(
                                 graph,
@@ -113,14 +128,18 @@ StatusOr<GraphValueId> BuildAttentionBlock(ModelGraph& graph,
                                   MakeTransformerWeightBinding(layer,
                                                                TransformerWeightRole::kAttentionO),
                                   detail::WeightDebugName(TransformerWeightRole::kAttentionO, layer)));
+    AM_ASSIGN_OR_RETURN(const GraphValueId o_residual,
+                        CastResidualBoundary(graph, layer, o_proj, DataType::Float32(),
+                                             params.fp32_residual, "attention_residual_cast"));
     AM_ASSIGN_OR_RETURN(const GraphValueId residual,
                         AddElementwiseAdd(graph,
                                           layer,
                                           input.hidden,
-                                          o_proj,
+                                          o_residual,
                                           detail::LayerPrefix(layer) + "post_attention_add"));
 
-    AM_CHECK(graph.GetNodes().size() - block_begin == kAttentionBlockNodeCount,
+    AM_CHECK(graph.GetNodes().size() - block_begin ==
+                     kAttentionBlockNodeCount + (params.fp32_residual ? 2 : 0),
              "Attention block node count changed unexpectedly");
     return residual;
 }
@@ -136,7 +155,7 @@ StatusOr<GraphValueId> BuildMlpBlock(ModelGraph& graph,
     const RawWeightView& up_weight = layer_weights.mlp.up_proj;
     const RawWeightView& down_weight = layer_weights.mlp.down_proj;
 
-    AM_ASSIGN_OR_RETURN(const GraphValueId normed,
+    AM_ASSIGN_OR_RETURN(const GraphValueId norm,
                         AddRmsNorm(
                                 graph,
                                 input,
@@ -145,6 +164,9 @@ StatusOr<GraphValueId> BuildMlpBlock(ModelGraph& graph,
                                                              TransformerWeightRole::kPostAttentionNorm),
                                 params.rms_norm_eps,
                                 detail::WeightDebugName(TransformerWeightRole::kPostAttentionNorm, layer)));
+    AM_ASSIGN_OR_RETURN(const GraphValueId normed,
+                        CastResidualBoundary(graph, layer, norm, DataType::Float(16),
+                                             params.fp32_residual, "mlp_input_cast"));
     AM_ASSIGN_OR_RETURN(const GraphValueId gate,
                         AddLinear(
                                 graph,
@@ -180,15 +202,19 @@ StatusOr<GraphValueId> BuildMlpBlock(ModelGraph& graph,
                                 MakeTransformerWeightBinding(layer,
                                                              TransformerWeightRole::kMlpDown),
                                 detail::WeightDebugName(TransformerWeightRole::kMlpDown, layer)));
+    AM_ASSIGN_OR_RETURN(const GraphValueId down_residual,
+                        CastResidualBoundary(graph, layer, down, DataType::Float32(),
+                                             params.fp32_residual, "mlp_residual_cast"));
     AM_ASSIGN_OR_RETURN(const GraphValueId residual,
                         AddElementwiseAdd(
                                 graph,
                                 layer,
                                 input,
-                                down,
+                                down_residual,
                                 detail::LayerPrefix(layer) + "mlp_add"));
 
-    AM_CHECK(graph.GetNodes().size() - block_begin == kMlpBlockNodeCount,
+    AM_CHECK(graph.GetNodes().size() - block_begin ==
+                     kMlpBlockNodeCount + (params.fp32_residual ? 2 : 0),
              "MLP block node count changed unexpectedly");
     return residual;
 }
@@ -260,11 +286,20 @@ StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
                                                   ? DataType::Float32()
                                                   : config.weight_dtype_hint)
                                        : options.activation_dtype;
+    // P4-B normalizes the residual in F32 before narrowing to the FP16 branch.
+    const bool fp32_residual = options.activation_dtype == DataType::Float(16);
+    const DataType residual_dtype = fp32_residual ? DataType::Float32() : act_dtype;
     EmbeddingParams embedding_params{};
-    if (options.activation_dtype == DataType::Float32()) {
-        embedding_params.output_dtype = act_dtype;
+    if (options.activation_dtype == DataType::Float32() || fp32_residual) {
+        embedding_params.output_dtype = residual_dtype;
     }
     const DataType kv_dtype = options.kv_dtype.IsUndefined() ? act_dtype : options.kv_dtype;
+    if (fp32_residual && weights.embed_tokens.dtype != act_dtype) {
+        return Status::InvalidArgument("BuildLlamaDense: FP16 activation requires FP16 embedding weights");
+    }
+    if (fp32_residual && kv_dtype != act_dtype) {
+        return Status::InvalidArgument("BuildLlamaDense: FP16 activation requires FP16 KV storage");
+    }
     const ShapeSymbol seq_len = ShapeSymbol::Create();
     const ShapeSymbol kv_len = ShapeSymbol::Create();
     const int64_t head_dim = config.head_dim != 0 ? config.head_dim
@@ -288,6 +323,7 @@ StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
                     .num_kv_heads = config.num_key_value_heads,
                     .head_dim = head_dim,
             },
+            .fp32_residual = fp32_residual,
     };
 
     ModelGraph graph;
@@ -307,9 +343,9 @@ StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
                                                         std::nullopt),
                                 embedding_params));
     if (!options.activation_dtype.IsUndefined() &&
-        graph.GetValue(hidden).spec.dtype != act_dtype) {
+        graph.GetValue(hidden).spec.dtype != residual_dtype) {
         return Status::InvalidArgument(
-                "BuildLlamaDense: explicit activation_dtype must match "
+                "BuildLlamaDense: residual dtype must match "
                 "the inferred Embedding output_dtype");
     }
 
@@ -330,7 +366,7 @@ StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
                                             KVCachePair{.k = k_cache, .v = v_cache}));
     }
 
-    AM_ASSIGN_OR_RETURN(const GraphValueId final_hidden,
+    AM_ASSIGN_OR_RETURN(const GraphValueId final_norm,
                         AddRmsNorm(
                                 graph,
                                 hidden,
@@ -340,6 +376,9 @@ StatusOr<ModelGraph> BuildLlamaDense(const HfModelConfig& config,
                                 params.rms_norm_eps,
                                 detail::WeightDebugName(TransformerWeightRole::kFinalNorm,
                                                         std::nullopt)));
+    AM_ASSIGN_OR_RETURN(const GraphValueId final_hidden,
+                        CastResidualBoundary(graph, std::nullopt, final_norm, DataType::Float(16),
+                                             fp32_residual, "lm_head_input_cast"));
     constexpr WeightBinding lm_head_binding = MakeTransformerWeightBinding(
             std::nullopt, TransformerWeightRole::kLmHead);
     const RawWeightView* lm_head_weight = ResolveWeightBinding(lm_head_binding, weights);

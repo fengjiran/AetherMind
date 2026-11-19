@@ -1,7 +1,9 @@
 #include "aethermind/inference/executable_model.h"
 #include "aethermind/inference/inference_options.h"
+#include "aethermind/inference/inference_session.h"
 #include "aethermind/runtime/runtime_builder.h"
 #include "inference/fixtures/a16_reference_identities.h"
+#include "inference/fixtures/p4b_reference_identities.h"
 #include "inference/test_hf_fixed_trajectory_helpers.h"
 
 #include <algorithm>
@@ -40,17 +42,19 @@ struct FrozenBudget {
     float kv_rtol;
 };
 
-FrozenBudget ImplementationBudget() {
-    // BF16 same-type triplet; the FP16 preset belongs to P4-B.
-    return {2e-4F, 2e-3F, 2e-3F, 2e-2F};
+FrozenBudget ImplementationBudget(bool fp16) {
+    return fp16 ? FrozenBudget{1e-4F, 1e-3F, 2e-4F, 2e-3F}
+                : FrozenBudget{2e-4F, 2e-3F, 2e-3F, 2e-2F};
 }
 
-FrozenBudget QualityBudget() {
-    return {1e-2F, 3e-2F, 5e-3F, 3e-2F};
+FrozenBudget QualityBudget(bool fp16) {
+    return fp16 ? FrozenBudget{2e-3F, 6e-3F, 1e-3F, 1e-2F}
+                : FrozenBudget{1e-2F, 3e-2F, 5e-3F, 3e-2F};
 }
 
-Status VerifyReferenceBundle(const fs::path& root) {
-    for (const auto& expected: test::a16::kFileIdentities) {
+template<typename Identities>
+Status VerifyReferenceBundle(const fs::path& root, const Identities& identities) {
+    for (const auto& expected: identities) {
         const fs::path path = root / expected.path;
         std::error_code error;
         const auto size = fs::file_size(path, error);
@@ -195,17 +199,17 @@ bool LogitsRankingWithin(const numerical::TensorData<float>& actual,
     return true;
 }
 
-ModelLoadOptions A16Options(CompilePreset preset) {
+ModelLoadOptions A16Options(CompilePreset preset, bool fp16) {
+    const auto dtype = fp16 ? DataType::Float(16) : DataType::BFloat(16);
     return {.preset = preset,
-            .weights = WeightPolicy::kKeepBf16WeightsFp32Activation,
-            .kv_dtype = DataType::BFloat(16),
-            .activation_dtype = DataType::BFloat(16)};
+            .weights = fp16 ? WeightPolicy::kKeepFp16WeightsFp32Activation
+                            : WeightPolicy::kKeepBf16WeightsFp32Activation,
+            .kv_dtype = dtype,
+            .activation_dtype = dtype};
 }
 
-ModelLoadOptions A32Options(CompilePreset preset) {
-    return {.preset = preset,
-            .weights = WeightPolicy::kKeepBf16WeightsFp32Activation,
-            .kv_dtype = DataType::Float32()};
+ModelLoadOptions A32Options(CompilePreset preset, bool fp16) {
+    return {.preset = preset, .weights = A16Options(preset, fp16).weights};
 }
 
 StatusOr<numerical::CapturedTrajectory> RunTrajectory(Runtime& runtime,
@@ -317,16 +321,75 @@ StatusOr<numerical::CapturedTrajectory> RunTrajectory(Runtime& runtime,
     return ::testing::AssertionSuccess();
 }
 
-void CheckCaseAgainstIndependentOracle(std::string_view case_id, bool run_quality_layer) {
-    const fs::path root = fs::path(AETHERMIND_TEST_MODELS_DIR) / "a16-reference";
-    const auto verified = VerifyReferenceBundle(root);
+void ExpectFp16ResidualPlan(const ExecutionPlan& plan, size_t layers) {
+    const auto f16 = DataType::Float(16);
+    const auto f32 = DataType::Float32();
+    size_t narrow = 0, widen = 0, adds = 0, norms = 0, logits = 0;
+    std::vector<OpType> producer(plan.values().size(), OpType::kUnknown);
+    for (const auto& step: plan.steps()) {
+        const auto op = step.kernel.op_type;
+        const auto& selector = step.selector;
+        if (op == OpType::kCast) {
+            ASSERT_EQ(step.inputs.size(), 1U);
+            if (selector.act_dtype == f32) {
+                ++narrow;
+                EXPECT_EQ(selector.output_dtype, f16);
+                EXPECT_EQ(producer[step.inputs.front().index], OpType::kRmsNorm);
+            } else {
+                ++widen;
+                EXPECT_EQ(selector.act_dtype, f16);
+                EXPECT_EQ(selector.output_dtype, f32);
+                EXPECT_EQ(producer[step.inputs.front().index], OpType::kLinear);
+            }
+        } else if (op == OpType::kAdd) {
+            ++adds;
+            EXPECT_EQ(selector.act_dtype, f32);
+            EXPECT_EQ(selector.output_dtype, f32);
+            ASSERT_EQ(step.inputs.size(), 2U);
+            EXPECT_EQ(producer[step.inputs[1].index], OpType::kCast);
+        } else if (op == OpType::kRmsNorm) {
+            ++norms;
+            EXPECT_EQ(selector.act_dtype, f32);
+            EXPECT_EQ(selector.weight_dtype, f32);
+            EXPECT_EQ(selector.output_dtype, f32);
+            ASSERT_FALSE(step.inputs.empty());
+            const auto residual_producer = producer[step.inputs[0].index];
+            EXPECT_TRUE(residual_producer == OpType::kEmbedding || residual_producer == OpType::kAdd);
+        } else if (op == OpType::kLinear) {
+            EXPECT_EQ(selector.act_dtype, f16);
+            EXPECT_EQ(selector.weight_dtype, f16);
+            if (selector.output_dtype == f32) {
+                ++logits;
+            }
+        } else if (op == OpType::kAttention || op == OpType::kKVCacheUpdate) {
+            EXPECT_EQ(selector.act_dtype, f16);
+            EXPECT_EQ(selector.state_dtype, f16);
+        }
+        for (const auto& output: step.outputs) {
+            producer[output.index] = op;
+        }
+    }
+    EXPECT_EQ(narrow, 2 * layers + 1);
+    EXPECT_EQ(widen, 2 * layers);
+    EXPECT_EQ(adds, 2 * layers);
+    EXPECT_EQ(norms, 2 * layers + 1);
+    EXPECT_EQ(logits, 1U);
+}
+
+void CheckCaseAgainstIndependentOracle(std::string_view case_id, bool run_quality_layer,
+                                       bool fp16 = false) {
+    const fs::path root = fs::path(AETHERMIND_TEST_MODELS_DIR) /
+                          (fp16 ? "p4b-reference" : "a16-reference");
+    const auto verified = fp16 ? VerifyReferenceBundle(root, test::p4b::kFileIdentities)
+                               : VerifyReferenceBundle(root, test::a16::kFileIdentities);
     ASSERT_TRUE(verified.ok()) << verified.ToString()
-                               << "; prepare assets with tools/prepare_a16_reference.py";
-    const fs::path model_dir = root / case_id / "wbf16";
+                               << (fp16 ? " (tools/calibrate_p4b_reference.py)"
+                                        : " (tools/prepare_a16_reference.py)");
+    const fs::path model_dir = fp16 ? root / case_id : root / case_id / "wbf16";
     auto loaded = ModelLoader::Load(model_dir);
     ASSERT_TRUE(loaded.ok()) << loaded.status().ToString();
     const HfModelConfig config = (*loaded)->GetConfig();
-    const fs::path oracle_path = model_dir / "oracle-af16.safetensors";
+    const fs::path oracle_path = model_dir / (fp16 ? "oracle.safetensors" : "oracle-af16.safetensors");
     const auto independent = LoadIndependentReference(oracle_path);
     ASSERT_TRUE(independent.ok()) << independent.status().ToString();
     const auto valid = numerical::ValidateReference(*independent, config,
@@ -335,24 +398,33 @@ void CheckCaseAgainstIndependentOracle(std::string_view case_id, bool run_qualit
 
     for (const auto preset: {CompilePreset::kO1Plain, CompilePreset::kO2Packed}) {
         const std::string preset_name = preset == CompilePreset::kO1Plain ? "o1" : "o2";
-        SCOPED_TRACE(std::string(case_id) + "/abf16/" + preset_name);
+        const std::string precision = fp16 ? "af16" : "abf16";
+        SCOPED_TRACE(std::string(case_id) + "/" + precision + "/" + preset_name);
+        const auto load_options = A16Options(preset, fp16);
         auto options = MakeCpuRuntimeOptions(config,
                                              {.context_tokens = independent->prompt.size() + 2,
-                                              .kv_dtype = DataType::BFloat(16)});
+                                              .kv_dtype = load_options.kv_dtype});
         ASSERT_TRUE(options.ok()) << options.status().ToString();
         RuntimeBuilder builder;
         builder.WithOptions(*options);
         auto runtime_result = builder.TryBuild();
         ASSERT_TRUE(runtime_result.ok()) << runtime_result.status().ToString();
         Runtime runtime = std::move(*runtime_result);
-        auto model = ExecutableModel::Load(runtime, model_dir, A16Options(preset));
+        auto model = ExecutableModel::Load(runtime, model_dir, load_options);
         ASSERT_TRUE(model.ok()) << model.status().ToString();
+        if (fp16) {
+            for (const auto phase: {ExecPhase::kPrefill, ExecPhase::kDecode}) {
+                const auto plan = model->plan(phase);
+                ASSERT_TRUE(plan.ok()) << plan.status().ToString();
+                ExpectFp16ResidualPlan(**plan, static_cast<size_t>(config.num_hidden_layers));
+            }
+        }
         const auto actual = RunTrajectory(runtime, *model, independent->prompt,
                                           independent->decode_inputs,
                                           independent->stages[0].logit_rows);
         ASSERT_TRUE(actual.ok()) << actual.status().ToString();
-        const FrozenBudget budget = ImplementationBudget();
-        std::string prefix = std::string(case_id) + "_abf16_" + preset_name;
+        const FrozenBudget budget = ImplementationBudget(fp16);
+        std::string prefix = std::string(case_id) + "_" + precision + "_" + preset_name;
         std::replace(prefix.begin(), prefix.end(), '-', '_');
         for (size_t stage = 0; stage < numerical::kStageNames.size(); ++stage) {
             const auto& a = (*actual)[stage];
@@ -371,6 +443,17 @@ void CheckCaseAgainstIndependentOracle(std::string_view case_id, bool run_qualit
                                             budget.logits_atol, budget.logits_rtol));
         }
 
+        if (fp16) {
+            auto session = InferenceSession::Create(
+                    runtime, std::make_shared<ExecutableModel>(std::move(*model)));
+            ASSERT_TRUE(session.ok()) << session.status().ToString();
+            std::vector<uint32_t> prompt(independent->prompt.begin(), independent->prompt.end());
+            std::vector<uint32_t> expected(independent->greedy_tokens.begin(), independent->greedy_tokens.end());
+            const auto generated = session->Generate(prompt, {.max_new_tokens = expected.size()});
+            ASSERT_TRUE(generated.ok()) << generated.status().ToString();
+            EXPECT_EQ(*generated, expected);
+        }
+
         if (!run_quality_layer) {
             continue;
         }
@@ -385,13 +468,13 @@ void CheckCaseAgainstIndependentOracle(std::string_view case_id, bool run_qualit
         auto baseline_runtime_result = baseline_builder.TryBuild();
         ASSERT_TRUE(baseline_runtime_result.ok()) << baseline_runtime_result.status().ToString();
         Runtime baseline_runtime = std::move(*baseline_runtime_result);
-        auto baseline = ExecutableModel::Load(baseline_runtime, model_dir, A32Options(preset));
+        auto baseline = ExecutableModel::Load(baseline_runtime, model_dir, A32Options(preset, fp16));
         ASSERT_TRUE(baseline.ok()) << baseline.status().ToString();
         const auto baseline_trajectory = RunTrajectory(
                 baseline_runtime, *baseline, independent->prompt,
                 independent->decode_inputs, independent->stages[0].logit_rows);
         ASSERT_TRUE(baseline_trajectory.ok()) << baseline_trajectory.status().ToString();
-        const FrozenBudget quality = QualityBudget();
+        const FrozenBudget quality = QualityBudget(fp16);
         for (size_t stage = 0; stage < numerical::kStageNames.size(); ++stage) {
             SCOPED_TRACE(numerical::kStageNames[stage]);
             const auto& a = (*actual)[stage];
@@ -422,6 +505,16 @@ TEST(A16CalibratedAcceptance, ShortFixturesMatchIndependentQuantizedOracle) {
 
 TEST(A16CalibratedAcceptance, NearLimitMatchesIndependentQuantizedOracleAndKv32Quality) {
     CheckCaseAgainstIndependentOracle("mha-near-limit", true);
+}
+
+TEST(P4BCalibratedAcceptance, ShortFixturesMatchIndependentFp32ResidualOracle) {
+    for (const std::string_view case_id: {"mha-untied", "mha-tied", "gqa-tail", "mqa-tail"}) {
+        CheckCaseAgainstIndependentOracle(case_id, false, true);
+    }
+}
+
+TEST(P4BCalibratedAcceptance, NearLimitMatchesIndependentOracleAndKv32Quality) {
+    CheckCaseAgainstIndependentOracle("mha-near-limit", true, true);
 }
 
 TEST(A16CalibratedAcceptance, RankingRejectsMalformedOrNonFiniteLogits) {

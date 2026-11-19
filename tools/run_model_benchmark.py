@@ -353,10 +353,9 @@ def main():
     if options.kv_dtype != "f32" and options.weights not in {"keep-fp16", "keep-bf16"}:
         parser.error("kv-dtype f16/bf16 requires weights keep-fp16 or keep-bf16")
     if options.activation_dtype != "f32":
-        if options.activation_dtype == "f16":
-            parser.error("activation-dtype f16 is not executable before the P4-B cast path")
-        if options.weights != "keep-bf16" or options.kv_dtype != "bf16":
-            parser.error("activation-dtype bf16 requires weights keep-bf16 and kv-dtype bf16")
+        weight = {"f16": "keep-fp16", "bf16": "keep-bf16"}[options.activation_dtype]
+        if options.weights != weight or options.kv_dtype != options.activation_dtype:
+            parser.error("A16 requires the same-dtype retained weight policy and KV storage")
     if options.variant and not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,63}", options.variant):
         parser.error("variant must be 1..64 lowercase letters, digits, dots or hyphens")
     try:

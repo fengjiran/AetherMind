@@ -163,6 +163,15 @@ function(aethermind_test_labels name output)
         endif ()
     endif ()
 
+    if (name MATCHES "(^|/)P4BCalibratedAcceptance\\.")
+        list(APPEND labels model numerical numerical-model p4b-model)
+        if (name MATCHES "NearLimit")
+            list(APPEND labels long-context)
+        else ()
+            list(APPEND labels validation)
+        endif ()
+    endif ()
+
     if (name MATCHES "(^|/)(KV16ModelAcceptance|KV16LoadChain|KVCacheUpdateKV16Transaction|CPUKernelAttentionKV16|CPUKernelKVCacheUpdateKV16|A16ModelAcceptance)\\.")
         list(APPEND labels numerical validation)
     endif ()
@@ -310,6 +319,8 @@ function(aethermind_set_discovered_test_properties
                 set_tests_properties("${name}" PROPERTIES FIXTURES_REQUIRED aethermind_kv16_reference_assets)
             elseif ("a16-model" IN_LIST labels)
                 set_tests_properties("${name}" PROPERTIES FIXTURES_REQUIRED aethermind_a16_reference_assets)
+            elseif ("p4b-model" IN_LIST labels)
+                set_tests_properties("${name}" PROPERTIES FIXTURES_REQUIRED aethermind_p4b_reference_assets)
             else ()
                 set_tests_properties("${name}" PROPERTIES FIXTURES_REQUIRED aethermind_numerical_assets)
             endif ()
@@ -424,6 +435,17 @@ function(aethermind_register_tests target)
     set_tests_properties(fixture.a16_reference_assets PROPERTIES
             LABELS "fixture;numerical;a16-model"
             FIXTURES_SETUP aethermind_a16_reference_assets TIMEOUT 120)
+
+    if (Python3_Interpreter_FOUND)
+        add_test(NAME fixture.p4b_reference_assets COMMAND "${Python3_EXECUTABLE}"
+                "${PROJECT_SOURCE_DIR}/tools/calibrate_p4b_reference.py" --verify
+                --output "${AETHERMIND_TEST_MODELS_DIR}/p4b-reference")
+    else ()
+        add_test(NAME fixture.p4b_reference_assets COMMAND "${CMAKE_COMMAND}" -E false)
+    endif ()
+    set_tests_properties(fixture.p4b_reference_assets PROPERTIES
+            LABELS "fixture;numerical;p4b-model"
+            FIXTURES_SETUP aethermind_p4b_reference_assets TIMEOUT 120)
 
     if (AETHERMIND_HAS_AVX2_FMA)
         set(expected_avx2 ON)

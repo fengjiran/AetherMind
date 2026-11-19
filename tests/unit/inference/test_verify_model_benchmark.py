@@ -338,11 +338,10 @@ class ReportContracts(unittest.TestCase):
         with self.assertRaisesRegex(CHECKER.VerificationError, "KV storage dtype"):
             CHECKER.verify_report(wrong_kv)
 
-    def test_f16_activation_is_rejected_until_the_p4b_cast_path(self):
+    def test_f16_activation_is_accepted_with_matching_weights_and_kv(self):
         document = weight_policy(kv_precision(report(), "f16"), "keep-fp16", conversion_ns=50)
         document["engine"]["workload"]["activation_dtype"] = "f16"
-        with self.assertRaisesRegex(CHECKER.VerificationError, "P4-B"):
-            CHECKER.verify_report(document)
+        CHECKER.verify_report(document)
 
     def test_unknown_activation_dtype_is_rejected(self):
         for value in (None, True, 16, "float32", "", []):

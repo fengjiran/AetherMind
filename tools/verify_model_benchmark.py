@@ -216,8 +216,6 @@ def verify_engine(engine):
             "workload: invalid activation_dtype")
     if activation_dtype != "f32":
         expected_weight = "keep-fp16" if activation_dtype == "f16" else "keep-bf16"
-        require(activation_dtype != "f16",
-                "workload: A16 FP16 activation is not executable before the P4-B cast path")
         require(workload["weights"] == expected_weight,
                 "workload: A16 requires the same-dtype retained W16 policy")
         require(kv_dtype == activation_dtype,

@@ -186,14 +186,10 @@ ModelLoadOptions F32Options(bool bfloat16, CompilePreset preset) {
 }
 
 TEST(A16ModelAcceptance, SameDtypeCombinationsMatchKv32WithinCalibratedBudgetsO1ThenO2) {
-    // P4-A executes the full-same-type BF16 preset (A=W=KV=residual). The FP16
-    // preset keeps an F32 residual stream and needs the P4-B Cast path, so it is
-    // rejected at Load admission rather than exercised here.
     size_t verified_combinations = 0;
     for (const CompilePreset preset: {CompilePreset::kO1Plain, CompilePreset::kO2Packed}) {
-        {
-            constexpr bool bfloat16 = true;
-            const DataType act_dtype = DataType::BFloat(16);
+        for (const bool bfloat16: {true, false}) {
+            const DataType act_dtype = bfloat16 ? DataType::BFloat(16) : DataType::Float(16);
             SCOPED_TRACE(std::string(preset == CompilePreset::kO1Plain ? "O1/" : "O2/") +
                          (bfloat16 ? "Bf16" : "F16"));
             const CompatibilityCase test_case{bfloat16, false, 4, "A16Acceptance",
@@ -216,7 +212,8 @@ TEST(A16ModelAcceptance, SameDtypeCombinationsMatchKv32WithinCalibratedBudgetsO1
             for (size_t stage = 0; stage < traj16->size(); ++stage) {
                 SCOPED_TRACE(numerical::kStageNames[stage]);
                 ExpectStageQuality((*traj16)[stage], (*traj32)[stage], act_dtype,
-                                   std::string("o1") + "_" + (bfloat16 ? "bf16" : "f16") + "_" +
+                                   std::string(preset == CompilePreset::kO1Plain ? "o1_" : "o2_") +
+                                           (bfloat16 ? "bf16" : "f16") + "_" +
                                            std::string(numerical::kStageNames[stage]));
                 for (size_t index = 0; index < (*traj16)[stage].logits.values.size(); ++index) {
                     if ((*traj16)[stage].logits.values[index] !=
@@ -242,7 +239,7 @@ TEST(A16ModelAcceptance, SameDtypeCombinationsMatchKv32WithinCalibratedBudgetsO1
             ++verified_combinations;
         }
     }
-    EXPECT_EQ(verified_combinations, 2U);
+    EXPECT_EQ(verified_combinations, 4U);
 }
 
 StatusOr<numerical::CapturedTrajectory> RunLongTrajectory(Runtime& runtime,
@@ -376,10 +373,10 @@ TEST(A16ModelAcceptance, DecodeExecutionHasNoMallocFamilyCallsAfterBinding) {
     }
     size_t verified_combinations = 0;
     for (const CompilePreset preset: {CompilePreset::kO1Plain, CompilePreset::kO2Packed}) {
-        {
-            constexpr bool bfloat16 = true;
-            const DataType act_dtype = DataType::BFloat(16);
-            SCOPED_TRACE(preset == CompilePreset::kO1Plain ? "O1/Bf16" : "O2/Bf16");
+        for (const bool bfloat16: {true, false}) {
+            const DataType act_dtype = bfloat16 ? DataType::BFloat(16) : DataType::Float(16);
+            SCOPED_TRACE(std::string(preset == CompilePreset::kO1Plain ? "O1/" : "O2/") +
+                         (bfloat16 ? "Bf16" : "F16"));
             const CompatibilityCase test_case{bfloat16, false, 4, "A16ZeroAlloc", "float32",
                                               DataType::Float32()};
             TempDirectory directory;
@@ -403,7 +400,7 @@ TEST(A16ModelAcceptance, DecodeExecutionHasNoMallocFamilyCallsAfterBinding) {
             ++verified_combinations;
         }
     }
-    EXPECT_EQ(verified_combinations, 2U);
+    EXPECT_EQ(verified_combinations, 4U);
 }
 
 TEST(A16ModelAcceptance, RejectsRuntimeKvDtypeThatDiffersFromActivation) {

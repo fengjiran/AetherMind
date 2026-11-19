@@ -211,7 +211,7 @@ TEST(ModelGraphBuildOptions, RejectsActivationOverrideWithoutConvertingEmbedding
 
     ASSERT_FALSE(graph.ok());
     EXPECT_EQ(graph.status(), StatusCode::kInvalidArgument);
-    EXPECT_NE(graph.status().message().find("output_dtype"), std::string::npos);
+    EXPECT_NE(graph.status().message().find("FP16 embedding weights"), std::string::npos);
 }
 
 TEST(ModelGraphBuildOptions, ExplicitFloat32ActivationUsesFloat32EmbeddingOutputForW16Weights) {

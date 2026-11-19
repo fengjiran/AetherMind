@@ -576,19 +576,6 @@ StatusOr<ExecutableModel> ExecutableModel::Load(Runtime& runtime,
         return Status::Unimplemented(
                 "KV16 requires a retained W16 weight policy");
     }
-    // The Runtime owns the physical KV layout; Load must not rebuild it. Verify
-    // the requested dtype matches the existing Manager before any conversion or
-    // packing so an inconsistent pair fails early.
-    if (KVCacheManager* manager = runtime.GetKVCacheManager(); manager != nullptr) {
-        if (manager->layout().kv_dtype != options.kv_dtype) {
-            return Status::InvalidArgument(
-                    "Runtime KV cache dtype does not match the requested kv_dtype");
-        }
-    } else if (kv16) {
-        return Status::FailedPrecondition(
-                "KV16 requires an enabled KV cache manager");
-    }
-
     if (!options.activation_dtype.IsScalar() ||
         (options.activation_dtype != DataType::Float32() &&
          options.activation_dtype != DataType::Float(16) &&
@@ -606,14 +593,6 @@ StatusOr<ExecutableModel> ExecutableModel::Load(Runtime& runtime,
                     "A16 activation requires CPU O1/plain or O2/packed");
         }
 
-        // P4-A executes the full-same-type BF16 preset. An FP16 activation keeps
-        // its residual stream in F32 for overflow safety, which requires Cast
-        // kernels on the residual boundary; that path belongs to P4-B.
-        if (options.activation_dtype == DataType::Float(16)) {
-            return Status::Unimplemented(
-                    "A16 FP16 activation requires the P4-B F32 residual Cast path");
-        }
-
         // Same-dtype presets only: an F16 activation needs the F16 weight
         // policy, a BF16 activation the BF16 weight policy.
         const DataType policy_weight_dtype =
@@ -626,6 +605,20 @@ StatusOr<ExecutableModel> ExecutableModel::Load(Runtime& runtime,
             return Status::Unimplemented(
                     "A16 activation requires the same-dtype retained W16 weight policy");
         }
+        if (options.kv_dtype != options.activation_dtype) {
+            return Status::Unimplemented("A16 activation requires the same-dtype KV storage");
+        }
+    }
+
+    // Match the existing Runtime layout before any conversion or packing.
+    if (KVCacheManager* manager = runtime.GetKVCacheManager(); manager != nullptr) {
+        if (manager->layout().kv_dtype != options.kv_dtype) {
+            return Status::InvalidArgument(
+                    "Runtime KV cache dtype does not match the requested kv_dtype");
+        }
+    } else if (kv16) {
+        return Status::FailedPrecondition(
+                "KV16 requires an enabled KV cache manager");
     }
 
     compile_options.graph_build.activation_dtype = options.activation_dtype;

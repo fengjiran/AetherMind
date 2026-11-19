@@ -17,10 +17,10 @@ namespace aethermind {
 /// Undefined fields preserve the builder's legacy policy: the checkpoint hint
 /// (Float32 when absent) supplies the default KV dtype, while activation specs
 /// follow operator inference. An explicit activation policy becomes the default
-/// KV dtype. An explicit Float32 policy sets the Embedding output dtype so a
-/// mixed embedding contract can feed the activation path. Other supported
-/// explicit policies must match its inferred output. Overrides do not convert
-/// weight payloads or alter the source configuration.
+/// KV dtype. Llama Dense uses FP32 Embedding output for explicit FP32 and
+/// FP16 policies. The FP16 policy keeps the residual and Norm in FP32 and
+/// casts at the FP16 compute boundaries. BF16 uses the same-type Embedding
+/// and residual. Overrides do not convert weights or alter source config.
 struct ModelGraphBuildOptions {
     DataType activation_dtype{};
     DataType kv_dtype{};

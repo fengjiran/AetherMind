@@ -1,23 +1,23 @@
 # AetherMind 问题跟踪
 
-> 已知缺陷与优化待办清单，短生命周期条目。在研方向见 [roadmap.md](roadmap.md)，详细提案见 [improvement-plan/](improvement-plan/)，历史决策见 [archive/decisions/](archive/decisions/)。
+> 已知缺陷与优化待办清单，短生命周期条目。当前优先事项与详细提案见 [项目路线图](roadmap/README.md)，历史决策见 [archive/decisions/](archive/decisions/)。
 >
 > 条目格式：`- [ ] <背景与方案简述>（关联：文件/PR/issue 链接）`。修复完成后勾选并在 CHANGELOG 登记（行为可见时）。
 
 ## 未解决
 
-- [ ] `ElementwiseMul` operator inference 与 CPU kernel 支持 broadcast，但 `GraphOpBuilder::AddElementwiseMul` 拒绝不同完整 `TensorSpec`，三层语义不一致（关联：[系统能力演进路线图 §6.2](improvement-plan/06-system-capability-evolution-roadmap.md#62-p0修复-graphopbuilder-与-operator-semantic-漂移)）
-- [ ] `WorkspaceRequirement::lifetime/reusable` 尚未影响 offset 规划，`PlanWorkspaceRequirements` 仍顺序累加全部 requirement（关联：[系统能力演进路线图 §13.3](improvement-plan/06-system-capability-evolution-roadmap.md#133-p1workspace-lifetime-真正生效)）
-- [ ] activation arena 为所有 activation 顺序分配，尚无 producer/last-consumer liveness reuse，峰值接近全部 activation bytes 之和（关联：[系统能力演进路线图 §9.3](improvement-plan/06-system-capability-evolution-roadmap.md#93-p1activation-liveness-planning)）
+- [ ] `ElementwiseMul` operator inference 与 CPU kernel 支持 broadcast，但 `GraphOpBuilder::AddElementwiseMul` 拒绝不同完整 `TensorSpec`，三层语义不一致（关联：[系统能力演进路线图 §6.2](roadmap/06-system-capability-evolution-roadmap.md#62-p0修复-graphopbuilder-与-operator-semantic-漂移)）
+- [ ] `WorkspaceRequirement::lifetime/reusable` 尚未影响 offset 规划，`PlanWorkspaceRequirements` 仍顺序累加全部 requirement（关联：[系统能力演进路线图 §13.3](roadmap/06-system-capability-evolution-roadmap.md#133-p1workspace-lifetime-真正生效)）
+- [ ] activation arena 为所有 activation 顺序分配，尚无 producer/last-consumer liveness reuse，峰值接近全部 activation bytes 之和（关联：[系统能力演进路线图 §9.3](roadmap/06-system-capability-evolution-roadmap.md#93-p1activation-liveness-planning)）
 - [ ] GEMM 尚缺三项 production 门禁证据：裸机 perf/governor/microcode、稳定 5% 级性能门禁（WSL2 噪声 floor 在 binding/小形状超阈值）、raw artifact 的 CI/object-storage retention URL（关联：[GEMM 证据记录与状态](operators/gemm/README.md)）
 
 ## 已解决
 
 - [x] PRD 的算子并行、选核时机和 Session 隔离表述已澄清。见 [执行引擎](product.md#33-执行引擎) 和 [集成测试](product.md#52-集成测试)。
 - [x] HF reader 将 sliding_window 当作未知字段跳过，存在滑窗配置被静默构图为 full attention 的风险（修复：2026-10-26 显式解析，缺失/null 接受，所有显式窗口值拒绝；覆盖加载、直接构图和 runner 分配前失败边界，关联：[第一批验收记录](archive/tests/sliding_window_admission_validation_2026-10-26.md)）
-- [x] `HfModelValidator` 接受 `gelu/relu`，而 `BuildLlamaDense` 固定生成 `SiluMul`，存在 accepted config 被静默编译为错误 MLP 语义的风险（修复：2026-10-21 validator 收窄为仅 `silu`，模型加载与直接构图入口均拒绝 `gelu/relu`；回归 4/4 通过，关联：[系统能力演进路线图 §5.2](improvement-plan/06-system-capability-evolution-roadmap.md#52-p0统一接受的模型和实际语义已闭环)）
-- [x] `KVCacheManager::Init` 重置 generation 导致旧 view 复活（修复：2026-10-11 跨 re-init 保留 generation、拒绝回绕；正式回归覆盖成功/失败 re-init 与已释放副本，关联：[08 号 KV/Attention 演进提案](improvement-plan/08-kv-cache-and-attention-capability-evolution.md)）
-- [x] `KVCacheManager::ResetSession/ReleaseSession` 接受跨 Manager view（修复：2026-10-11 校验 layout/storage/slot owner，拒绝操作且保持双方 reservation；正式回归已通过，关联：[08 号 KV/Attention 演进提案](improvement-plan/08-kv-cache-and-attention-capability-evolution.md)）
+- [x] `HfModelValidator` 接受 `gelu/relu`，而 `BuildLlamaDense` 固定生成 `SiluMul`，存在 accepted config 被静默编译为错误 MLP 语义的风险（修复：2026-10-21 validator 收窄为仅 `silu`，模型加载与直接构图入口均拒绝 `gelu/relu`；回归 4/4 通过，关联：[系统能力演进路线图 §5.2](roadmap/06-system-capability-evolution-roadmap.md#52-p0统一接受的模型和实际语义已闭环)）
+- [x] `KVCacheManager::Init` 重置 generation 导致旧 view 复活（修复：2026-10-11 跨 re-init 保留 generation、拒绝回绕；正式回归覆盖成功/失败 re-init 与已释放副本，关联：[08 号 KV/Attention 演进提案](roadmap/08-kv-cache-and-attention-capability-evolution.md)）
+- [x] `KVCacheManager::ResetSession/ReleaseSession` 接受跨 Manager view（修复：2026-10-11 校验 layout/storage/slot owner，拒绝操作且保持双方 reservation；正式回归已通过，关联：[08 号 KV/Attention 演进提案](roadmap/08-kv-cache-and-attention-capability-evolution.md)）
 - [x] `InferenceSession::Generate` 请求分配 OOM 逃逸异常或因 CPU allocator abort 终止（修复：2026-10-11 将 CPU `ENOMEM` 上报为可恢复失败、在编排和 KV 冷路径边界转换 `bad_alloc`，验证 KV 清理和同 Session 重试，关联：[InferenceSession 设计](handbook/API%20参考文档/C++%20公开%20API/InferenceSession%20API.md)）
 - [x] `docs/designs/` 24 篇设计文档按模块合并为 `docs/modules/` 12 篇；源文档归档到 `docs/archive/designs/`，活跃引用切换到模块文档
 - [x] 核心 9 篇文档中 `Phase 1 / Phase 2` 术语 83 处待分类迁移（修复：2026-09-17 全部迁移为具体 capability 表述；AGENTS.md/README.md/docs/README.md/prd/architecture_overview/public-api 均为 0 处，仅本文件保留元描述）

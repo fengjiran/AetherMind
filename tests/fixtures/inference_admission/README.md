@@ -1,6 +1,6 @@
 # FP32 admission HF fixtures
 
-This directory contains the source recipe and reviewed checksums for milestone M0 of the [upper-level Runtime assembly plan](../../../docs/improvement-plan/10-upper-level-runtime-assembly.md). Test sources live in `tests/unit/apps/inference/`; generated model directories live under the gitignored `.models/inference-admission/`.
+This directory contains the source recipe and reviewed checksums for milestone M0 of the [upper-level Runtime assembly plan](../../../docs/roadmap/10-upper-level-runtime-assembly.md). Test sources live in `tests/unit/apps/inference/`; generated model directories live under the gitignored `.models/inference-admission/`.
 
 These assets verify the inputs to the first FP32 admission policy. They do not demonstrate FP16/BF16 execution support or provide generation goldens.
 

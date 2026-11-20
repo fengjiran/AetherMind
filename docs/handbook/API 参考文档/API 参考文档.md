@@ -34,7 +34,7 @@ AetherMind 的公开 API 分为两个层次：
 - C++ 高层 API：用于构建运行时、加载和准备可执行模型，以及发起同步推理请求。
 - C ABI v1：面向 C/C++/跨语言宿主的可冻结调用契约，提供 Runtime、Model、Session 句柄及 `am_session_generate`。
 
-本参考文档以仓库中的公开头文件、实现文件和官方 API 文档为依据，记录每个类的构造方式、公共方法、参数类型、返回值、异常行为、生命周期、线程安全保证，并给出完整的推理工作流说明与迁移建议。
+本页串联从模型加载到会话生成的工作流，并汇集使用示例、生命周期和迁移说明。公开方法的签名与调用约束见 [C++ API](../../api/public-api.md#2-c-公开构建块includeaethermind)，C 句柄、结构体布局和输出缓冲区规则见 [Runtime C ABI](../../api/runtime-c-abi.md)。各入口的精度组合见 [产品能力矩阵](../../product.md#14-当前能力与验证状态)。
 
 ## 项目结构与公开边界
 AetherMind 的公开头集中在 `include/aethermind/`，C ABI 入口在 `include/c_api.h`；实现位于 `src/` 下对应模块。文档中涉及的核心公开头包括：

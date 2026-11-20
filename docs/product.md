@@ -80,8 +80,8 @@
 | C++ FP32 compatibility | O1/plain | 保留 FP32 源权重，显式拓宽 F16/BF16 源权重 | FP32 / FP32 / FP32 | [独立解码权重对照与生成轨迹](archive/tests/fp32_compatibility_validation_2026-10-29.md) |
 | C++ W16/A32 | O1/plain、O2/identity-packed | FP16 或 BF16 | FP32 / FP32 / FP32 | [W16 模型验收](archive/tests/w16_fp32_execution_validation_2026-11-11.md)。W16 projection 使用 FP32 累加，优化路径与 fallback 见 [Linear](operators/linear/README.md) |
 | C++ W16/A32 + KV16 | O1/plain、O2/identity-packed | FP16 或 BF16 | FP32 / FP16 或 BF16 / FP32 | W 与 KV 独立选择，四种组合的限定 fixture 与 2048-token 校准见 [P3 验收](archive/tests/kv16_execution_validation_2026-11-12.md) |
-| C++ FP16 A16 | O1/plain、O2/identity-packed | FP16 | FP16 计算分支 / FP16 / FP32 | Load/Generate 与独立 MHA/GQA/MQA 校准，含 2048-token 边界，见 [P4-B](improvement-plan/11-fp16-bf16-execution-support.md#46-p4-bfp16-计算与-fp32-residual) |
-| C++ BF16 A16 | O1/plain、O2/identity-packed | BF16 | BF16 / BF16 / BF16 | Load/Generate 与限定 fixture 校准，含 2048-token 边界，见 [P4-A 验收](improvement-plan/11-fp16-bf16-execution-support.md#45-p416-bit-activation-与-native-compute首批设计已冻结) |
+| C++ FP16 A16 | O1/plain、O2/identity-packed | FP16 | FP16 计算分支 / FP16 / FP32 | Load/Generate 与独立 MHA/GQA/MQA 校准，含 2048-token 边界，见 [P4-B](roadmap/11-fp16-bf16-execution-support.md#46-p4-bfp16-计算与-fp32-residual) |
+| C++ BF16 A16 | O1/plain、O2/identity-packed | BF16 | BF16 / BF16 / BF16 | Load/Generate 与限定 fixture 校准，含 2048-token 边界，见 [P4-A 验收](roadmap/11-fp16-bf16-execution-support.md#45-p416-bit-activation-与-native-compute首批设计已冻结) |
 | 独立 CLI / C ABI v1.0 strict FP32 | O1/plain、O2/packed | FP32 源权重 | FP32 / FP32 / FP32 | CLI 集成和 C 调用的限定验收，入口见 [§5.1](#51-当前测试入口与待完成门禁) |
 
 | 能力 | 当前实现与支持范围 | 边界 |
@@ -266,7 +266,7 @@ Output Tokens
 | Linear / LM head | 当前 FP32、W16/A32；O2 按 exact recipe 消费 packed artifacts | 独立 oracle、stride/alias/zero-size、prepared 与模型回归 |
 | Linear (INT8/INT4) | 待交付：仅权重量化 GEMM | 保留误差 < 1% vs FP32 的目标；误差统计量、workload 与质量门禁需在量化专题冻结 |
 | SwiGLU | SiLU 与 gating；semantic fusion 和 kernel 实现分别验证 | 算子及模型数值对照 |
-| Softmax | Attention 的 stable softmax 数值需求；独立 op/kernel 的支持状态单独记录 | 概率归一化、极值与 Attention 数值对照 |
+| Softmax | Attention 内部归约和 FP32/FP16/BF16 的独立 CPU reference | 独立轴、极值、别名和概率归一化见 [Softmax](operators/softmax/README.md) |
 
 ### 3.4 C ABI 规范
 

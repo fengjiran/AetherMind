@@ -1,6 +1,6 @@
 # CPU KVCacheUpdate 与 P3 KV16 合同
 
-当前 CPU production kernel 含 F32（向 F32 cache 写 F32 activation）与 KV16（F32 activation 经固定 RNE 窄化写入 F16/BF16 cache）reference；operator inference 已接受四路同型与 A32→KV16 mixed 签名，`state_dtype` 参与 selector 身份。**P3 mixed-KV reference 已实现，并在 reduced fixture 上通过四组合模型验收与 plan 事务回归（F16/BF16）；§2.8 校准数值 fixture 的正式生产验收已通过，SIMD/优化路径仍待推进。** 总体支持矩阵、配置和验收预算见 [11 号提案 §2.7–2.8](../../improvement-plan/11-fp16-bf16-execution-support.md)，执行遵循 [算子工作流](../../guides/operator-development-workflow.md)。
+当前 CPU production kernel 含 F32（向 F32 cache 写 F32 activation）与 KV16（F32 activation 经固定 RNE 窄化写入 F16/BF16 cache）reference；operator inference 已接受四路同型与 A32→KV16 mixed 签名，`state_dtype` 参与 selector 身份。**P3 mixed-KV reference 已实现，并在 reduced fixture 上通过四组合模型验收与 plan 事务回归（F16/BF16）；§2.8 校准数值 fixture 的正式生产验收已通过，SIMD/优化路径仍待推进。** 总体支持矩阵、配置和验收预算见 [11 号提案 §2.7–2.8](../../roadmap/11-fp16-bf16-execution-support.md)，执行遵循 [算子工作流](../../guides/operator-development-workflow.md)。
 
 ## 端口、输出与转换位置（P3 O0）
 

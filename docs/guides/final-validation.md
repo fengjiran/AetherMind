@@ -2,7 +2,7 @@
 
 - **状态**: Current
 - **日期**: 2026-10-28
-- **范围**: [13 号方案](../improvement-plan/13-deepinfer-quality-and-validation.md) 已实现的第一至第五批；不替代其余平台、模型质量、优化推广或安装交付门禁。
+- **范围**: [13 号方案](../roadmap/13-deepinfer-quality-and-validation.md) 已实现的第一至第五批；不替代其余平台、模型质量、优化推广或安装交付门禁。
 
 ## 1. 入口与前置条件
 

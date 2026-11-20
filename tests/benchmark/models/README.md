@@ -2,7 +2,7 @@
 
 The Linux-only `aethermind_model_benchmark` developer executable measures the CPU Llama path with FP32 activations and selectable F32/F16/BF16 KV, including the retained W16 weight policies. It separates internal prepared execution diagnostics from the public `InferenceSession::Generate` interval. It does not add a product runner or change inference APIs.
 
-The measurement rules follow the [operator workflow](../../../docs/guides/operator-development-workflow.md) and [quality plan Q4](../../../docs/improvement-plan/13-deepinfer-quality-and-validation.md). Results describe the specified model, build, machine, workload, and measurement boundary; they do not establish model quality or an optimization benefit by themselves.
+The measurement rules follow the [operator workflow](../../../docs/guides/operator-development-workflow.md) and [quality plan Q4](../../../docs/roadmap/13-deepinfer-quality-and-validation.md). Results describe the specified model, build, machine, workload, and measurement boundary; they do not establish model quality or an optimization benefit by themselves.
 
 ## Build and prepare assets
 

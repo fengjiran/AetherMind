@@ -44,7 +44,7 @@ AetherMind 的算子系统是推理流水线中连接模型语义、图构建、
 - 为 RoPE 等复杂算子提供后端无关的频率解析接口；
 - 为 CPU 后端提供算子注册、内核选择、SIMD 内核入口与基准测试。
 
-本设计文档聚焦算子契约、元数据管理、19 种算子的语义组织方式、注册机制、形状推导规则以及性能相关实现边界。
+本设计文档聚焦算子元数据、注册机制、形状推导和执行边界。按执行链阅读见 [算子系统总览](../../算子系统/算子系统.md)，具体算子的契约与验证证据见 [算子文档](../../../operators/README.md)。
 
 ## 项目结构
 
@@ -95,7 +95,7 @@ graph TB
 - `ToString` 生成人类可读名称；
 - 作为 `std::hash` 键参与哈希容器。
 
-当前枚举包含 19 个有效算子：
+以下是算子类型及其语义类别。枚举值以 [op_type.h](../../../../include/aethermind/operators/op_type.h) 为准。
 
 | 编号 | 枚举值 | 语义类别 |
 |---|---|---|
@@ -412,7 +412,7 @@ classDiagram
 - [op_params.h:48-210](../../../../include/aethermind/operators/op_params.h#L48-L210)
 - [rope_frequency_resolver.h:18-89](../../../../include/aethermind/operators/rope_frequency_resolver.h#L18-L89)
 
-### 19 种算子实现要点
+### 算子实现要点
 
 由于实现分散在多文件中，这里以“语义层 + 后端入口”的方式总结关键点。
 

@@ -2,6 +2,24 @@
 
 按组件查阅职责、架构、技术栈、编码约定和运行命令。系统阅读入口见 [项目手册](../README.md)。
 
+## 核心执行链
+
+从源码模块直接跳到设计、实现和测试。依赖与所有权见 [系统架构](../../architecture.md#源码模块所有权)。
+
+| 模块 | 设计 | 实现 | 测试 |
+|---|---|---|---|
+| `model` | [模型加载与权重](../核心模块设计/模型系统%20%28Model%29.md) | [src/model](../../../src/model/) | [model](../../../tests/unit/model/) |
+| `graph` | [IR 与语义变换](../核心模块设计/计算图系统%20%28Graph%29/计算图系统%20%28Graph%29.md) | [src/graph](../../../src/graph/) | [graph](../../../tests/unit/graph/) |
+| `operators` | [算子契约与元数据](../核心模块设计/算子系统%20%28Operators%29/算子契约与元数据.md) | [src/operators](../../../src/operators/) | [operators](../../../tests/unit/operators/) |
+| `compiler` | [优化编排与 lowering](../核心模块设计/编译器系统%20%28Compiler%29.md) | [src/compiler](../../../src/compiler/) | [compiler](../../../tests/unit/compiler/) |
+| `execution` | [执行计划、选核与绑定](../核心模块设计/执行引擎%20%28Execution%29.md) | [src/execution](../../../src/execution/) | [execution](../../../tests/unit/execution/) |
+| `backend` | [后端注册与权重打包](../核心模块设计/后端系统%20%28Backend%29/后端系统%20%28Backend%29.md) | [src/backend](../../../src/backend/) | [backend](../../../tests/unit/backend/) |
+| `runtime` | [运行时装配与 workspace](../核心模块设计/运行时系统%20%28Runtime%29.md) | [src/runtime](../../../src/runtime/) | [runtime](../../../tests/unit/runtime/) |
+| `kv_cache` | [布局、预约与提交](../核心模块设计/KV%20Cache%20系统.md) | [src/kv_cache](../../../src/kv_cache/) | [kv_cache](../../../tests/unit/kv_cache/) |
+| `inference` | [模型准备](../API%20参考文档/C++%20公开%20API/ExecutableModel%20API.md) · [会话执行](../API%20参考文档/C++%20公开%20API/InferenceSession%20API.md) | [src/inference](../../../src/inference/) | [inference](../../../tests/unit/inference/) |
+
+## 全部组件
+
 | 组件 | 文档 |
 |---|---|
 | AetherMind CMake 构建辅助模块 | [技术栈](AetherMind%20CMake%20构建辅助模块/技术栈.md) · [架构设计](AetherMind%20CMake%20构建辅助模块/架构设计.md) · [概述](AetherMind%20CMake%20构建辅助模块/概述.md) · [特殊配置与命令](AetherMind%20CMake%20构建辅助模块/特殊配置与命令.md) · [编码规范](AetherMind%20CMake%20构建辅助模块/编码规范.md) |

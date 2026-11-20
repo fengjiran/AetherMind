@@ -33,7 +33,7 @@ ModelLoader::Load → ModelCompiler::Compile → RuntimeBuilder::TryBuild
 
 In this CLI path, compilation precedes KV allocation. Callers with an existing Runtime can instead use `ExecutableModel::Load`, which performs Load → source-weight admission and optional conversion → Compile → Prepare. The C ABI also creates Runtime before loading a model, then validates the Runtime against the compiled model before preparation.
 
-Runtime must remain at a stable address from preparation onward and outlive the prepared model and session. The application returns owning Token IDs. See the [module ownership and dependency rules](docs/architecture.md#源码模块所有权) and the [assembly plan](docs/improvement-plan/10-upper-level-runtime-assembly.md) for the contracts. See the [public API reference](docs/api/public-api.md), [Runtime configuration guide](docs/guides/runtime-configuration.md), and [resource budgeting guide](docs/guides/resource-budgeting.md) for configuration, payload limits, and resource queries.
+Runtime must remain at a stable address from preparation onward and outlive the prepared model and session. The application returns owning Token IDs. See the [module ownership and dependency rules](docs/architecture.md#源码模块所有权) and the [assembly plan](docs/roadmap/10-upper-level-runtime-assembly.md) for the contracts. See the [public API reference](docs/api/public-api.md), [Runtime configuration guide](docs/guides/runtime-configuration.md), and [resource budgeting guide](docs/guides/resource-budgeting.md) for configuration, payload limits, and resource queries.
 
 ## Project Structure
 
@@ -70,11 +70,12 @@ AetherMind/
 │   ├── product.md           # Product scope and acceptance criteria
 │   ├── handbook/            # Implementation, integration, and validation documentation
 │   ├── guides/              # Coding style, tests, operator workflow
+│   ├── roadmap/             # Engineering priorities and proposals
 │   └── operators/           # Operator contracts and evidence
 └── tools/                   # Development and maintenance tools
 ```
 
-The optional `aethermind_infer` executable uses the `apps/inference/` runner to load, compile, build Runtime, prepare a model, and generate owning Token IDs through public C++ APIs. CLI and C ABI share strict FP32 source admission/model-to-KV mapping in `inference/model_execution_policy.h` and compilation presets in `inference/inference_options.h`. CLI and model benchmark also use `MakeCpuRuntimeOptions` for model-aware CPU configuration; C ABI constructs Runtime from explicit ABI configuration. Application helpers retain request validation, resource assembly, and I/O. The [assembly plan](docs/improvement-plan/10-upper-level-runtime-assembly.md) records staged validation. Application code stays outside the core shared library; custom builder injection is enabled only for the runner's test compilation.
+The optional `aethermind_infer` executable uses the `apps/inference/` runner to load, compile, build Runtime, prepare a model, and generate owning Token IDs through public C++ APIs. CLI and C ABI share strict FP32 source admission/model-to-KV mapping in `inference/model_execution_policy.h` and compilation presets in `inference/inference_options.h`. CLI and model benchmark also use `MakeCpuRuntimeOptions` for model-aware CPU configuration; C ABI constructs Runtime from explicit ABI configuration. Application helpers retain request validation, resource assembly, and I/O. The [assembly plan](docs/roadmap/10-upper-level-runtime-assembly.md) records staged validation. Application code stays outside the core shared library; custom builder injection is enabled only for the runner's test compilation.
 
 ## Requirements
 
@@ -392,7 +393,7 @@ Use `IsValidAlignment(alignment)` and `AlignOffsetUp(offset, alignment)` from `a
 | [Project handbook](docs/handbook/README.md)                                              | Implementation, API integration, operation, and tests    |
 | [docs/architecture.md](docs/architecture.md)                                                 | System architecture, dependency rules, and invariants     |
 | [docs/product.md](docs/product.md)                                                           | Current product requirements and acceptance criteria      |
-| [docs/roadmap.md](docs/roadmap.md)                                                           | Active engineering directions and priorities              |
+| [Project roadmap](docs/roadmap/README.md)                                                   | Engineering priorities, proposals, and history            |
 | [AGENTS.md](AGENTS.md)                                                                       | Repository-wide engineering guide                         |
 
 ## Product Scope and Evolution

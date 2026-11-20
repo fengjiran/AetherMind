@@ -17,7 +17,7 @@
 
 AetherMind 的 GEMM 是 backend 内部计算 primitive。`Linear`、`QkvLinear`、`GateUpLinear` 与 `MatMul` 各自定义输入输出语义，通过 adapter 校验 shape、stride、alias 和 packed artifact 后调用 backend driver。Graph IR 继续使用这些既有算子。
 
-CPU-02/03 已建立生产基线。下一轮优先在 **plain / identity-packed** 路径上降低 W16/A32 的 Prefill panel 转换和搬运成本，同时独立测量三种权重类型在 Decode 的带宽、转换与归约开销。随后完善同型 A16 Prefill，再按目标硬件证据决定 AVX-512、AMX 与多线程。CUDA 接续 [CUDA 后端方案](../../improvement-plan/12-cuda-backend-execution-support.md)，先交付 FP32，再独立验收 FP16 和 BF16。增量工作包见 [CPU-02/03 之后的实施顺序](#71-cpu-0203-之后的实施顺序)。
+CPU-02/03 已建立生产基线。下一轮优先在 **plain / identity-packed** 路径上降低 W16/A32 的 Prefill panel 转换和搬运成本，同时独立测量三种权重类型在 Decode 的带宽、转换与归约开销。随后完善同型 A16 Prefill，再按目标硬件证据决定 AVX-512、AMX 与多线程。CUDA 接续 [CUDA 后端方案](../../roadmap/12-cuda-backend-execution-support.md)，先交付 FP32，再独立验收 FP16 和 BF16。增量工作包见 [CPU-02/03 之后的实施顺序](#71-cpu-0203-之后的实施顺序)。
 
 单线程与稳态零分配是 CPU 首轮约束。性能对照以同机同精度的 optimized production 为基线，独立 reference 用于正确性。FP32 B-panel 保留 candidate 身份，布局晋升需要把 Decode、Prefill、prepare latency 和模型常驻内存一起纳入评估。
 
@@ -55,7 +55,7 @@ CPU-02/03 已建立生产基线。下一轮优先在 **plain / identity-packed**
 | binding specialization | `KernelParamsBuilder` 可看到固定的 pointer/shape/stride/dtype | F32 Linear 已在 cold path 冻结计算函数：小形状直接保留原 reference 短路径，其他使用 scalar/AVX2；各 GEMM 内部仍按其合同选择分块 |
 | workspace | `ResolvedKernel.workspace_requirement` 在 binding 前规划 | 不能表达依赖 concrete `M/N/K` 的 transient A/B packing scratch |
 | packing recipe | descriptor 声明 recipe；backend query 与 prepare 共用 eligibility resolver；inference 注入 request，recipe、artifact、store key 和 resolved kernel exact-match；共享权重 recipe/op 冲突在准备期拒绝 | recipe 传递链已实现。bpanel 物理 layout 为 `cpu_bpanel_f32_kc512_nr16`，KC512 未完成性能选择 |
-| CUDA | CUDA allocator 仍为 stub，单 GPU backend 与 execution contract 处于设计阶段 | CUDA GEMM production 依赖设备资源、准备期 placement、stream 与完成屏障。见 [CUDA 后端方案](../../improvement-plan/12-cuda-backend-execution-support.md) |
+| CUDA | CUDA allocator 仍为 stub，单 GPU backend 与 execution contract 处于设计阶段 | CUDA GEMM production 依赖设备资源、准备期 placement、stream 与完成屏障。见 [CUDA 后端方案](../../roadmap/12-cuda-backend-execution-support.md) |
 | threading | 当前产品边界为单请求、单线程，现有 kernel 也保持单线程 | 首轮优化保持单线程；并行化属于 runtime 级后续工作 |
 | benchmark | Google Benchmark 包含 plain Linear prepared-path、bpanel candidate prepared hot/streaming Decode/Prefill、cold packing、size amplification 与诊断 break-even estimate | CPU-02/03 已按机器记录交错 A/B、M sweep、fused/unfused、packing-inclusive 与 Generate；KC256 对照仍未实施，不据此推定 KC512 最优。机器级证据按机成立，见 [GEMM 证据记录](README.md) |
 
@@ -527,7 +527,7 @@ CPU 单线程为本轮主线，后续 CUDA 工程按 §7.4 接续。算子性能
 | 1 | 补齐当前基线 | 复用 prepared Linear、projection fusion、packing 和 model benchmark。分 FP32、F16 W16、BF16 W16 采集 Decode、small-M、Prefill，确认实际 descriptor、recipe、driver 和单线程瓶颈。BF16 A16 另建同合同对照，F16 A16 先测 kernel |
 | 2 | W16/A32 Prefill，FP32 作对照 | 保留 AVX2 4×16 计算核心，先对照向量转置 panel pack、widening/检查融合和现有标量散写。再单独比较循环顺序、KC/MB 与 direct A。主形状的 prepared 和 plan 获益、Decode 和 tiny 组无超噪声回退后进入整模型 A/B |
 | 3 | Decode 与 small-M | 优先保持 K-contiguous plain/identity，沿 K 向量化并展开 N 输出。测清瓶颈后调整 register block、归约与 `M/N/K` 阈值，观察 streaming GB/s 和短 K 延迟。接近实测带宽上限时保留当前 driver |
-| 4 | 同型 A16 Prefill | 先做 BF16 A16 的 AVX2 widening blocked candidate，用真实准入路径验收。FP16 复用 tile 框架并独立测试转换、累加和输出，整模型验收依赖 [P4-B](../../improvement-plan/11-fp16-bf16-execution-support.md#45-p416-bit-activation-与-native-compute首批设计已冻结) 的 F32 residual 和 Cast |
+| 4 | 同型 A16 Prefill | 先做 BF16 A16 的 AVX2 widening blocked candidate，用真实准入路径验收。FP16 复用 tile 框架并独立测试转换、累加和输出，整模型验收依赖 [P4-B](../../roadmap/11-fp16-bf16-execution-support.md#45-p416-bit-activation-与-native-compute首批设计已冻结) 的 F32 residual 和 Cast |
 | 5 | 新 ISA、布局与并行 | 真实 AVX-512 机器先对拍现有 A16 kernel，再按 shape 测 AVX-512 widening/FP32 FMA 或 BF16 dot candidate。AMX 面向中大 M，取决于 tile 开销、数值和 OS 权限。多线程依赖 runtime worker pool 和有预算的 scratch，按 M/N 划分独占输出 tile，Decode 以带宽饱和点决定线程数 |
 
 #### Prefill 和 Decode 的优化依据
@@ -562,7 +562,7 @@ CPU 单线程为本轮主线，后续 CUDA 工程按 §7.4 接续。算子性能
 
 ### 7.4 CUDA 接入顺序
 
-CUDA 复用算子语义、dtype tuple、独立 reference、测试向量和 registry/prepare 入口。CPU `GemmArgs`、AVX tiles 与 CPU packed bytes 保持 backend 私有。CUDA adapter 在 concrete binding 校验设备、leading dimensions、alignment、alias、size overflow，冻结设备 kernel 参数。Runtime 所有的 stream/库 handle 在执行期间稳定，weights 在准备期驻留 GPU，workspace 受请求预算约束。完整 plan 的设备完成由 Executor 确认，再发布 KV watermark 和 token；单 GEMM 只在所属 stream 提交。[CUDA 后端方案](../../improvement-plan/12-cuda-backend-execution-support.md)
+CUDA 复用算子语义、dtype tuple、独立 reference、测试向量和 registry/prepare 入口。CPU `GemmArgs`、AVX tiles 与 CPU packed bytes 保持 backend 私有。CUDA adapter 在 concrete binding 校验设备、leading dimensions、alignment、alias、size overflow，冻结设备 kernel 参数。Runtime 所有的 stream/库 handle 在执行期间稳定，weights 在准备期驻留 GPU，workspace 受请求预算约束。完整 plan 的设备完成由 Executor 确认，再发布 KV watermark 和 token；单 GEMM 只在所属 stream 提交。[CUDA 后端方案](../../roadmap/12-cuda-backend-execution-support.md)
 
 1. **FP32 基线。** 先完成可选 CUDA build、device allocator、transfer、stream 与完成屏障，再用 cuBLAS 接通 O1/plain `Linear` 与 `LM head`。对于常规 row-major 和可表达的 padded leading dimensions，column-major `cublasGemmEx` 计算 `C^T = W × A^T`。传 `transa=T, transb=N, m=N, n=M, k=K`，第一个 operand 是 W，第二个是 A，各自 leading dimension 取 row stride。`alpha=1, beta=0`，空输出直接完成，`K=0` 由设备路径写 `+0`。初始使用 `CUBLAS_COMPUTE_32F_PEDANTIC`，TF32 属于独立精度策略。用不对称 M/N/K、padded stride 与独立 oracle 验证映射，再验收完整 FP32 Generate。[cuBLAS GEMM Ex](https://docs.nvidia.com/cuda/cublas/index.html#cublasgemmex)
 2. **FP16 和 BF16 分别接入。** 首批 Tensor Core 候选使用同型 A16/W16、`CUBLAS_COMPUTE_32F` 与显式 output dtype。窄输出的 GEMM Ex 使用 `CUBLAS_MATH_DISALLOW_REDUCED_PRECISION_REDUCTION`，cuBLASLt 排除按窄输出类型归约的 split-K 算法。也可选择 FP32 输出加一次显式 Cast，并计入 scratch 和 launch 成本。通过同精度 oracle 验证 subnormal、overflow、长上下文与真实 FP32 logits。设备路径遇到不符合数值合同的候选时，改用同合同 widening 实现或在准入时拒绝该组合。[cuBLAS GEMM 数值行为](https://docs.nvidia.com/cuda/cublas/index.html#gemm-algorithms-numerical-behavior)、[cuBLASLt reduction scheme](https://docs.nvidia.com/cuda/cublas/index.html#cublasltreductionscheme-t)
@@ -624,7 +624,7 @@ CUDA 证据使用目标 GPU 上的 registered/prepared 路径、CUDA Events 与 
 - [算子开发与优化工作流 §7 优化方法](../../guides/operator-development-workflow.md#7-优化方法)：Roofline、SIMD、packing、blocking、fusion 与 benchmark 通用方法；§7.2 为噪声 floor 与最小可信 delta 的方法权威。
 - [GEMM 证据记录](README.md)：本算子全部机器级数值、噪声 floor、反汇编与 Roofline 定位的权威位置。
 - [Dispatch 设计](../../handbook/核心模块设计/后端系统%20%28Backend%29/后端系统%20%28Backend%29.md)：kernel registry、selector 与 capability dispatch。
-- [InferenceSession / Generate 前置闭环计划](../../improvement-plan/01-inference-session-generate-readiness.md)：真实 Prefill/Decode vertical slice 与端到端门禁。
+- [InferenceSession / Generate 前置闭环计划](../../roadmap/01-inference-session-generate-readiness.md)：真实 Prefill/Decode vertical slice 与端到端门禁。
 
 ## 11. 变更记录
 

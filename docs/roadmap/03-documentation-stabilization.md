@@ -174,7 +174,7 @@
 | 当前架构 | [docs/designs/architecture/architecture_overview.md](../architecture.md) | 全系统唯一权威总览 |
 | Public API 语义 | 头文件 Doxygen + [docs/api/public-api.md](../api/public-api.md) | 同源同步 |
 | 构建选项与运行配置 | 根 [README.md](../../README.md) + CMake | 单一事实源 |
-| 未来工作与演进提案 | [docs/improvement-plan/](../improvement-plan/) | 编号专题 |
+| 未来工作与演进提案 | [docs/improvement-plan/](README.md) | 编号专题 |
 | 已知短生命周期缺陷 | [docs/issues.md](../issues.md) | 每条目 `[x]`/`[ ]` |
 | 历史架构决策 | [docs/archive/decisions/](../archive/decisions/) | ADR，编号全局只增 |
 | 历史审查结果 | [docs/archive/reviews/](../archive/reviews/) | 必须注明快照日期 |

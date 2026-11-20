@@ -1,6 +1,6 @@
 # CPU Attention 与 P3 KV16 合同
 
-CPU-04 首段已接入 AVX2：F32、A32/KV FP16（额外要求 F16C）、A32/KV BF16、BF16 A16 在可用 ISA 和兼容 head 形状上选择 SIMD；原有 reference 保留，FP16 A16 仍仅有 reference。见 [优化方案](attention-optimization.md) 与 [本机证据](benchmarks/desktop-qhihogq-attention.md)。P3 的 reduced 模型和 2048-token 校准验收范围仍见 [11 号提案 §2.7–2.8](../../improvement-plan/11-fp16-bf16-execution-support.md)。
+CPU-04 首段已接入 AVX2：F32、A32/KV FP16（额外要求 F16C）、A32/KV BF16、BF16 A16 在可用 ISA 和兼容 head 形状上选择 SIMD；原有 reference 保留，FP16 A16 仍仅有 reference。见 [优化方案](attention-optimization.md) 与 [本机证据](benchmarks/desktop-qhihogq-attention.md)。P3 的 reduced 模型和 2048-token 校准验收范围仍见 [11 号提案 §2.7–2.8](../../roadmap/11-fp16-bf16-execution-support.md)。
 
 CPU-04 第二段已接入 [Decode GQA/KV 复用](attention-optimization.md)：具备已提交历史的单 token Decode 在兼容 shape 上两两共享 K/V 加载与 widening，其余请求保持既有路径。该路径使用两遍扫描；score 缓存原型未提升为生产分支。
 
@@ -52,7 +52,7 @@ KV 指针、read frontiers 和 query positions 只通过本次 `kv_read` binding
 
 - independent reference 必须显式量化 cache；不能用未量化 K/V 或同一生产 helper 生成 expected。
 - 覆盖 F16/BF16、MHA/GQA/MQA、Prefill/Decode、history/current token、stride/tail/padding、alias/overflow 和特殊值分类。
-- 模型实现正确性与同 W16 的 KV32 质量对照分开验收；固定预算、校准资产与四种 W×KV 组合以 [11 号提案 §2.8](../../improvement-plan/11-fp16-bf16-execution-support.md) 为唯一准入来源。
+- 模型实现正确性与同 W16 的 KV32 质量对照分开验收；固定预算、校准资产与四种 W×KV 组合以 [11 号提案 §2.8](../../roadmap/11-fp16-bf16-execution-support.md) 为唯一准入来源。
 - O1/plain 与 O2/identity-packed 均可选用上述 SIMD descriptor。性能结论限于对应机器记录。
 
 当前源码入口见 [attention_entry.cpp](../../../src/backend/cpu/kernels/attention/attention_entry.cpp)，已有 F32 回归见 [test_cpu_attention_kernel.cpp](../../../tests/unit/backend/cpu/kernels/test_cpu_attention_kernel.cpp)，事务回归见 [test_kvcache_update_kernel.cpp](../../../tests/unit/execution/test_kvcache_update_kernel.cpp)。F32/KV16/A16 各组合的生产选核身份见 [CPU 覆盖台账 §3.3](../cpu-coverage-baseline.md#33-attention--kv--ropeplain-为生产请求无-weight-packing)。

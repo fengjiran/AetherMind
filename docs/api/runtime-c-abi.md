@@ -4,7 +4,7 @@
 - **版本**: 1.0（M5 冻结，M6 实现；尚未发布）
 - **日期**: 2026-10-22
 - **声明事实源**: [include/c_api.h](../../include/c_api.h)
-- **关联方案**: [10 号方案](../improvement-plan/10-upper-level-runtime-assembly.md) §4.3、§6.5
+- **关联方案**: [10 号方案](../roadmap/10-upper-level-runtime-assembly.md) §4.3、§6.5
 - **产品边界**: [产品文档 §3.4](../product.md#34-c-abi-规范)
 
 ## 1. 交付状态与边界

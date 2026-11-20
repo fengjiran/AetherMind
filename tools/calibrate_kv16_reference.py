@@ -11,7 +11,7 @@ This tool does not implement or replace production kernels, allocate two-byte
 KV storage, exercise O1/O2 execution, or measure performance. It only produces
 the independent references and measurements that freeze the §2.8 numerical
 budgets before any KV16 kernel is written. See
-docs/improvement-plan/11-fp16-bf16-execution-support.md §2.7-2.8.
+docs/roadmap/11-fp16-bf16-execution-support.md §2.7-2.8.
 
 Modes:
   selftest    converter bit-oracle checks + comparator negative checks

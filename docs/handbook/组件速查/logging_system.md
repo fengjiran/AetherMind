@@ -17,7 +17,7 @@ AetherMind 使用 **spdlog** 作为唯一日志后端，未引入自定义 logge
 | `tests/benchmark/models/model_benchmark.cpp` | 基准套件在启动时调用 `spdlog::set_level(spdlog::level::off)` 关闭日志输出，避免干扰 benchmark JSON |
 | `CMakeLists.txt` (根) | spdlog 编译选项与 `SPDLOG_USE_STD_FORMAT` 决策逻辑 |
 | `README.md` | 文档化 spdlog 集成行为及旧目录缓存兼容说明 |
-| `docs/improvement-plan/10-upper-level-runtime-assembly.md` | 设计记录中明确约定：仅独立工具 main 配置进程策略，库与 C ABI 不替换宿主 logger；logger 初始化必须是 main 首项可失败操作 |
+| `docs/roadmap/10-upper-level-runtime-assembly.md` | 设计记录中明确约定：仅独立工具 main 配置进程策略，库与 C ABI 不替换宿主 logger；logger 初始化必须是 main 首项可失败操作 |
 
 ## 3. 架构与约定
 
@@ -31,7 +31,7 @@ AetherMind 使用 **spdlog** 作为唯一日志后端，未引入自定义 logge
 
 ## 4. 约定与约束
 
-- **仅 CLI 安装默认 logger**：`docs/improvement-plan/10-upper-level-runtime-assembly.md` 明确要求「仅独立工具 main 配置该进程策略，库与 C ABI 不擅自替换宿主 logger」；`AGENTS.md` 与 `docs/api/public-api.md` 同样声明 C adapter 不改宿主 logger。
+- **仅 CLI 安装默认 logger**：`docs/roadmap/10-upper-level-runtime-assembly.md` 明确要求「仅独立工具 main 配置该进程策略，库与 C ABI 不擅自替换宿主 logger」；`AGENTS.md` 与 `docs/api/public-api.md` 同样声明 C adapter 不改宿主 logger。
 - **logger 初始化必须先于模型加载/Runtime 构建**：同一份改进计划将其列为 M4 测试约束，并通过 `fail_logger_allocation.c` 静态注入 malloc 失败来断言「logger OOM 先于缺路径的 Load 失败」。集成测试同时捕获 stdout/stderr，验证正式工具无额外注入开关。
 - **spdlog 格式后端由构建决定**：根 `CMakeLists.txt` 在无外部 fmt 时默认 `SPDLOG_USE_STD_FORMAT=ON`，否则回退 fmt；README 警告旧 build 目录可能缓存 `OFF`，需要显式 `-DSPDLOG_USE_STD_FORMAT=ON` 重建。
 - **日志调用保持无分配语义**：logger 初始化失败分支以及 main 外层 catch 全部使用 `std::fputs`，避免在 bad_alloc 路径再次分配。

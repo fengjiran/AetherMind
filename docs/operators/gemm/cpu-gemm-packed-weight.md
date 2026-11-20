@@ -20,7 +20,7 @@
 - steady-state 热路径不再执行 B 侧转置打包；A 侧打包与 96KB 栈缓冲保留（packed-B 可省去 32KB `buf_b`）；
 - 为后续量化 recipe（`量化与新 ISA` 阶段）铺好合同基座。
 
-打包与消费两侧的合同骨架大多已存在（`PackingRecipe`、`PackedWeight`、`PackedWeightCollection`、`PackedWeightView`、`ResolvedKernel::expected_packing_recipe`）。本方案补四个缺口：① recipe 表达与校验闸口；② recipe 传递链（descriptor → request → artifact）；③ 按 recipe 打包的服务体；④ packed-B 消费 driver。**四个缺口已按 §3 落地**（现状见 §2）：recipe 传递链全通、打包服务体支持 identity 与 `cpu_bpanel_f32_kc512_nr16` 两种 layout、packed-B 消费 driver 与消费侧闸口均已就位；剩余决策项是 bpanel 是否升为默认选择（需 §6 的 benchmark 结论）。生产编排点（model preparation 调用 packing request 生成与执行）由 `PrepareExecutableModel` 承担（[improvement-plan 07](../../improvement-plan/07-executable-model-preparation.md) M2.4）。
+打包与消费两侧的合同骨架大多已存在（`PackingRecipe`、`PackedWeight`、`PackedWeightCollection`、`PackedWeightView`、`ResolvedKernel::expected_packing_recipe`）。本方案补四个缺口：① recipe 表达与校验闸口；② recipe 传递链（descriptor → request → artifact）；③ 按 recipe 打包的服务体；④ packed-B 消费 driver。**四个缺口已按 §3 落地**（现状见 §2）：recipe 传递链全通、打包服务体支持 identity 与 `cpu_bpanel_f32_kc512_nr16` 两种 layout、packed-B 消费 driver 与消费侧闸口均已就位；剩余决策项是 bpanel 是否升为默认选择（需 §6 的 benchmark 结论）。生产编排点（model preparation 调用 packing request 生成与执行）由 `PrepareExecutableModel` 承担（[improvement-plan 07](../../roadmap/07-executable-model-preparation.md) M2.4）。
 
 ## 2. 现状与缺口
 

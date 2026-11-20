@@ -24,7 +24,7 @@
 12. [结论](#结论)
 
 ## 引言
-AetherMind 面向桌面与服务端 CPU 环境，提供 Llama Dense 模型的同步推理能力。当前交付范围以 FP32 激活、静态 KV 存储和 Token IDs 输入输出为主；GPU 卸载、服务化与分布式执行属于产品方向，不在当前交付承诺中。
+AetherMind 面向桌面与服务端 CPU 环境，提供 Llama Dense 的同步推理、静态 KV 存储与 Token IDs I/O。CLI 与 Runtime C ABI 采用 strict FP32，C++ 的其他精度组合见 [产品能力矩阵](../../product.md#14-当前能力与验证状态)。GPU 卸载、服务化与分布式执行属于产品演进方向。
 
 仓库同时暴露三种集成入口：
 - C++ 公开 API：适合 C++20 应用直接复用模型加载、编译、运行时装配、会话生成等面向对象构建块。

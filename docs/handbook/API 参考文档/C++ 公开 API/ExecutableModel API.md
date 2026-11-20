@@ -185,7 +185,7 @@ sequenceDiagram
 
 **声明语义**
 - 通过模型目录、目标设备和权重策略加载并准备一个可执行模型；
-- 内部会先加载模型，再根据 ModelLoadOptions 进行编译与准备；
+- 先校验 ModelLoadOptions 的精度组合和 Runtime 的 KV 配置，再加载模型并进行编译与准备；
 - 失败时不返回部分模型，错误码会被保留并附加上下文信息；
 - 要求 Runtime 地址稳定且生命周期长于返回的 ExecutableModel。
 
@@ -196,6 +196,8 @@ sequenceDiagram
 | runtime | 提供后端、KV Cache 能力等运行环境引用；必须保持地址稳定且存活时间更长 |
 | directory | 模型目录路径，用于加载权重和元数据 |
 | options | ModelLoadOptions，包含编译预设、目标设备、权重策略、每模型限制、KV 数据类型、激活数据类型 |
+
+精度字段的前置条件见 [公开 API](../../../api/public-api.md#executablemodelincludeaethermindinferenceexecutable_modelh)，已实现组合见 [产品能力矩阵](../../../product.md#14-当前能力与验证状态)。
 
 **返回值**
 - StatusOr<ExecutableModel>：成功时返回可执行模型，失败时返回状态码；常见失败包括模型加载失败、后端不可用、准备失败等。
@@ -296,12 +298,12 @@ sequenceDiagram
 ## 对象生命周期与所有权模型
 
 ### 生命周期顺序
-ExecutableModel 的销毁顺序与其成员声明顺序相反，这是其破坏契约的关键保障：
-1. 释放执行计划；
-2. 释放不可变绑定表；
-3. 释放借用的权重绑定元数据和编译产物后备。
+ExecutableModel 的相关成员按声明的逆序销毁。
 
-这意味着绑定表和计划必须先于它们所借用的后端、权重数据和编译产物销毁。
+1. 销毁执行计划 `plan_` 与不可变绑定表 `bindings_`。
+2. 销毁绑定元数据 `binding_metadata_`、打包权重 `packed_weights_` 与编译产物 `artifact_`。
+
+由 Runtime 持有的后端资源长于整个模型的生命周期。
 
 ```mermaid
 flowchart TD

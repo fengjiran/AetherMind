@@ -24,7 +24,7 @@ inline float GemmInputMagnitude(const float* input, int64_t k) noexcept {
     return magnitude;
 }
 
-template<class WeightOps, int Rows, int Cols>
+template<typename WeightOps, int Rows, int Cols>
 bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col,
                        float input_magnitude) noexcept {
     const auto* input = reinterpret_cast<const float*>(args.lhs);
@@ -40,7 +40,7 @@ bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col,
     // The 2-row tile uses its remaining registers for the extra FMA sums.
     constexpr int kMagnitudeChains = Rows == 1 ? Cols : 1;
     __m256 weight_magnitude[kMagnitudeChains]{};
-    const __m256 sign = _mm256_set1_ps(-0.0F);
+    const __m256 sign = _mm256_set1_ps(-0.0f);
     int64_t k = 0;
     for (; k + 8 <= args.k; k += 8) {
         __m256 inputs[Rows];
@@ -66,7 +66,7 @@ bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col,
 
     alignas(32) float magnitudes[8];
     _mm256_store_ps(magnitudes, reduced_magnitude);
-    float max_weight = 0.0F;
+    float max_weight = 0.0f;
     for (const float value: magnitudes) {
         max_weight = std::max(max_weight, value);
     }
@@ -81,7 +81,8 @@ bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col,
     for (; k < args.k; ++k) {
         for (int c = 0; c < Cols; ++c) {
             const float weight = WeightOps::LoadOne(
-                    args.rhs + static_cast<size_t>((col + c) * args.rhs_n_stride + k) * sizeof(uint16_t));
+                    args.rhs + static_cast<size_t>((col + c) * args.rhs_n_stride + k) *
+                                       sizeof(uint16_t));
             max_weight = std::max(max_weight, std::fabs(weight));
             for (int r = 0; r < Rows; ++r) {
                 results[r][c] += input[(row + r) * args.lhs_m_stride + k] * weight;
@@ -104,7 +105,7 @@ bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col,
     return true;
 }
 
-template<class WeightOps, int Rows>
+template<typename WeightOps, int Rows>
 bool TryGemmW16Rows(const GemmArgs& args, int64_t row) noexcept {
     const auto* input = reinterpret_cast<const float*>(args.lhs);
     float max_input = 0.0f;
@@ -129,7 +130,7 @@ bool TryGemmW16Rows(const GemmArgs& args, int64_t row) noexcept {
     return true;
 }
 
-template<class WeightOps>
+template<typename WeightOps>
 bool TryGemmW16Direct(const GemmArgs& args) noexcept {
     int64_t row = 0;
     for (; row + 2 <= args.m; row += 2) {
@@ -140,7 +141,7 @@ bool TryGemmW16Direct(const GemmArgs& args) noexcept {
     return row == args.m || TryGemmW16Rows<WeightOps, 1>(args, row);
 }
 
-template<class WeightOps, bool PackA>
+template<typename WeightOps, bool PackA>
 bool TryGemmW16FullTiles(const GemmArgs& args, int64_t m_full, int64_t n_full) noexcept {
     const auto* input = reinterpret_cast<const float*>(args.lhs);
     auto* output = reinterpret_cast<float*>(args.output);
@@ -158,25 +159,30 @@ bool TryGemmW16FullTiles(const GemmArgs& args, int64_t m_full, int64_t n_full) n
         const int64_t kc = std::min(kGemmAvx2KC, args.k - kb);
         for (int64_t mb = 0; mb < m_full; mb += row_block) {
             const int64_t rows = std::min(row_block, m_full - mb);
-            const float* source_a = input + mb * args.lhs_m_stride + kb;
-            float max_a = 0.0F;
+            const float* src_a = input + mb * args.lhs_m_stride + kb;
+            float max_a = 0.0f;
             for (int64_t row = 0; row < rows; ++row) {
-                const float* source = source_a + row * args.lhs_m_stride;
+                const float* src = src_a + row * args.lhs_m_stride;
                 if constexpr (PackA) {
-                    std::copy_n(source, kc, panel_a + row * kGemmAvx2KC);
+                    std::copy_n(src, kc, panel_a + row * kGemmAvx2KC);
                 }
-                max_a = std::max(max_a, GemmInputMagnitude(source, kc));
+                max_a = std::max(max_a, GemmInputMagnitude(src, kc));
             }
-            const float* a = PackA ? panel_a : source_a;
+
+            const float* a = PackA ? panel_a : src_a;
             for (int64_t nb = 0; nb < n_full; nb += kGemmAvx2NR) {
-                const auto* source = args.rhs + static_cast<size_t>(nb * args.rhs_n_stride + kb) * sizeof(uint16_t);
-                const float max_b = PackGemmW16BPanelAvx2<WeightOps>(source, weight_row_bytes, kc, panel_b);
-                if (!GemmReductionMagnitudeIsSafe(max_a, max_b, args.k)) {
+                const auto* src = args.rhs +
+                                  static_cast<size_t>(nb * args.rhs_n_stride + kb) * sizeof(uint16_t);
+                if (const float max_b = PackGemmW16BPanelAvx2<WeightOps>(
+                            src, weight_row_bytes, kc, panel_b);
+                    !GemmReductionMagnitudeIsSafe(max_a, max_b, args.k)) {
                     return false;
                 }
+
                 for (int64_t row = 0; row < rows; row += kGemmAvx2MR) {
-                    AccumulateF32Tile4x16Avx2(a + row * a_stride, panel_b, kc, args.output_m_stride,
-                                              output + (mb + row) * args.output_m_stride + nb, a_stride);
+                    AccumulateF32Tile4x16Avx2(
+                            a + row * a_stride, panel_b, kc, args.output_m_stride,
+                            output + (mb + row) * args.output_m_stride + nb, a_stride);
                 }
             }
         }
@@ -184,7 +190,7 @@ bool TryGemmW16FullTiles(const GemmArgs& args, int64_t m_full, int64_t n_full) n
     return true;
 }
 
-template<class WeightOps>
+template<typename WeightOps>
 bool TryGemmW16Blocked(const GemmArgs& args) noexcept {
     const auto* input = reinterpret_cast<const float*>(args.lhs);
     auto* output = reinterpret_cast<float*>(args.output);
@@ -193,9 +199,11 @@ bool TryGemmW16Blocked(const GemmArgs& args) noexcept {
     if (n_full == 0) {
         return TryGemmW16Direct<WeightOps>(args);
     }
+
     for (int64_t row = 0; row < m_full; ++row) {
-        std::fill_n(output + row * args.output_m_stride, n_full, 0.0F);
+        std::fill_n(output + row * args.output_m_stride, n_full, 0.0f);
     }
+
     // A short K, such as the narrow-K LM head in the model fixture, has little
     // B-packing cost and benefits from the smaller C working set of packed A.
     const bool reuse_b = m_full > kGemmAvx2MB && args.k >= kGemmAvx2KC;
@@ -237,7 +245,7 @@ bool TryGemmW16Blocked(const GemmArgs& args) noexcept {
     return true;
 }
 
-template<class WeightOps>
+template<typename WeightOps>
 bool TryGemmA32W16Avx2Fma(const GemmArgs& args) noexcept {
     if (args.m == 0 || args.n == 0 || args.k == 0 ||
         args.lhs_k_stride != 1 || args.rhs_k_stride != 1 || args.output_n_stride != 1) {

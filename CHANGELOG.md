@@ -6,6 +6,8 @@
 
 ### Added
 
+- CPU prepared graph 支持 FP32/FP16/BF16 的 Reshape、Permute、Reorder 和独立 Softmax，以及三种浮点格式之间的六个跨型 Cast 方向。语义图可将只读外部输入连接到 activation 输入端口。[动态执行合同](docs/operators/layout/README.md)。
+
 - C++ CPU O1/plain 与 O2/identity-packed 接入 Llama Dense FP16 A16，使用匹配的 FP16 权重和 KV，保留 FP32 residual、Norm 和 logits。动态 CPU Cast 支持 F32 ↔ F16。验证范围见 [P4-B](docs/operators/cast/README.md)。
 
 - CPU W16/A32 Linear/LM head、QKV/GateUp 的 plain/identity AVX2/FMA widening、small-M 与 Prefill blocking；FP16 另需 F16C，BF16 不依赖 F16C。参考路径、冻结误差预算与 Decode 零分配保留；同机验收范围见 [CPU 算子路线图](docs/operators/cpu-operator-evolution.md)。

@@ -42,6 +42,13 @@ bool PayloadMatchesPort(const GraphValuePayload& payload, OperatorPortKind kind)
     return false;
 }
 
+bool InputPayloadMatchesPort(const GraphValuePayload& payload, OperatorPortKind kind) {
+    // An external tensor may feed an activation port while retaining its
+    // read-only model-input binding. Node outputs still need produced values.
+    return PayloadMatchesPort(payload, kind) ||
+           (kind == OperatorPortKind::kActivation && std::holds_alternative<ModelInputValue>(payload));
+}
+
 const KVCacheStateBinding* AsKVCacheBinding(const StateBinding& binding) noexcept {
     return std::get_if<KVCacheStateBinding>(&binding);
 }
@@ -444,7 +451,7 @@ Status ValidateAddNodePorts(const OperatorSchema& schema,
                     " invalid value id");
         }
 
-        if (!PayloadMatchesPort(values[inputs[i].index].payload, schema.input_ports[i].kind)) {
+        if (!InputPayloadMatchesPort(values[inputs[i].index].payload, schema.input_ports[i].kind)) {
             return Status::InvalidArgument(
                     "input[" + std::to_string(i) + "] " +
                     std::string(schema.input_ports[i].name) + " payload kind mismatch");
@@ -887,8 +894,8 @@ StatusOr<std::vector<GraphNodeId>> ModelGraph::ValidateAndTopologicalOrder() con
                         " invalid value id"));
             }
 
-            if (!PayloadMatchesPort(values_[input.index].payload,
-                                    schema.input_ports[input_index].kind)) {
+            if (!InputPayloadMatchesPort(values_[input.index].payload,
+                                         schema.input_ports[input_index].kind)) {
                 return Status::InvalidArgument(get_msg(
                         "input[" + std::to_string(input_index) + "] " +
                         std::string(schema.input_ports[input_index].name) +

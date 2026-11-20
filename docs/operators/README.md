@@ -1,6 +1,6 @@
 # 算子文档总入口
 
-本目录是 **AetherMind 全部算子文档的唯一存放位置**（2026-09-19 由 `docs/designs/kernel_dev/`、`docs/improvement-plan/04-*` 与 `docs/tests/operators/` 归一）。规范、门禁与方法见唯一规范文档 [算子开发与优化工作流](../guides/operator-development-workflow.md)；实例文档一律按算子沉淀在本目录。
+本目录维护单算子契约、优化方案与验证证据（2026-09-19 由 `docs/designs/kernel_dev/`、`docs/improvement-plan/04-*` 与 `docs/tests/operators/` 归一）。算子语义与执行的衔接见 [手册总览](../handbook/算子系统/算子系统.md)。规范、门禁与方法见 [算子开发与优化工作流](../guides/operator-development-workflow.md)。
 
 后续实施顺序见 [CPU 算子覆盖与性能演进路线图](cpu-operator-evolution.md)：覆盖台账与生产基线、矩阵计算、Attention、小算子/精度覆盖、线程与资源、量化及目标平台扩展。该入口组织跨算子工作包；具体合同、优化方案与机器证据继续归各算子目录。
 
@@ -26,7 +26,7 @@ docs/operators/
 
 ## 规则
 
-- 新增算子的契约、专项提案、证据记录全部建在本目录对应算子子目录下；**不得**再写入 `docs/archive/`、`docs/improvement-plan/` 或新建独立验证目录。
+- 新增算子的契约、专项提案、证据记录全部建在本目录对应算子子目录下；**不得**再写入 `docs/archive/`、`docs/roadmap/` 或新建独立验证目录。
 - 专项提案（原 `improvement-plan/04-*`）已迁入本目录对应算子子目录（2026-09-19）：提案只承载优化原理、合同与工作包状态，证据记入 `benchmarks/` 记录文件，机器级数值不回填提案。
 - 本目录维护算子契约与验证证据。相关实现说明见 [后端系统](../handbook/核心模块设计/后端系统%20%28Backend%29/后端系统%20%28Backend%29.md) 与 [计算图系统](../handbook/核心模块设计/计算图系统%20%28Graph%29/计算图系统%20%28Graph%29.md)。
 
@@ -38,7 +38,9 @@ docs/operators/
 | RMSNorm | [rmsnorm/](rmsnorm/) | 契约（contract basis） |
 | AddRmsNorm | [add_rmsnorm/](add_rmsnorm/) | FP32 plain/identity AVX2、O2 融合与未融合对照 |
 | SiluMul | [silu_mul/](silu_mul/) | FP32/BF16 AVX2、prepared 和模型对照 |
-| Cast | [cast/](cast/) | F32 ↔ F16 动态 Cast 和 FP16 A16 模型路径 |
+| Cast | [cast/](cast/) | F32/F16/BF16 六个动态 Cast 方向和 FP16 A16 模型路径 |
+| Reshape / Permute / Reorder | [layout/](layout/) | 连续复制、轴搬移和连续化的 prepared graph 验收 |
+| Softmax | [softmax/](softmax/) | 独立 CPU reference、轴与非有限值合同 |
 | RoPE | [rope/](rope/) | 契约（contract basis） |
 | Linear | [linear/](linear/) | F32 与 W16/A32 reference、plain/identity-packed、单机基线 |
 | Embedding | [embedding/](embedding/) | F32 output、W16 scalar/F16C/AVX2 行级 widening 与单机基线 |

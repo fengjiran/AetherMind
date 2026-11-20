@@ -1,6 +1,6 @@
 # CPU 算子覆盖与性能演进路线图
 
-本文编排 CPU 算子演进的实施顺序、跨模块依赖与退出条件。当前活跃计划入口见 [roadmap](../roadmap.md)，产品范围见 [product](../product.md)，模块所有权遵循 [AGENTS.md §2.1](../../AGENTS.md)。
+本文编排 CPU 算子演进的实施顺序、跨模块依赖与退出条件。当前活跃计划入口见 [roadmap](../roadmap/README.md)，产品范围见 [product](../product.md)，模块所有权遵循 [AGENTS.md §2.1](../../AGENTS.md)。
 
 本文记录后续增量及各工作包的实施状态；已实现项仅在对应退出证据列明的机器、模型、精度与 workload 范围成立。初版现状表来自源码核对，未重新运行测试/性能；后续 CPU-02/03/04 的实际验证与测量已链接于 §4.1，不泛化为全部产品目标达成。后续工作包编号 `CPU-*` 与编译预设 O1/O2、算子工作流 O0–O4 分别独立。
 
@@ -14,11 +14,11 @@
 |---|---|---|
 | FP32 Linear / MatMul | reference 保持独立计算路径；Linear/QKV/GateUp 已接入 scalar/AVX2 GEMM，MatMul 保持 reference；packed-B candidate 与 identity optimized 并存，identity 保持默认 | 接通并验证 optimized production path；见 [Linear entry](../../src/backend/cpu/kernels/linear/linear_entry.cpp)、[MatMul](../../src/backend/cpu/kernels/matmul/matmul_f32_reference.cpp)、[GEMM 状态](gemm/README.md) |
 | W16/A32 | Linear、LM head、QKV、GateUp 已接入 AVX2/FMA W16 driver，F16 还需 F16C；O1/plain 与 O2/identity-packed 使用同一 recipe 下的 Decode/Prefill driver，reference 继续独立保留 | SIMD widening、Decode GEMV、Prefill blocking；见 [reference](../../src/backend/cpu/kernels/linear/linear_a32_w16_reference.cpp)、[Linear 证据](linear/benchmarks/desktop-54h5mmi-linear.md) |
-| BF16 A16 | 高层 Load 已准入 activation/weight 的 BF16 同 dtype 组合（KV 组合约束在编译期校验）；Linear/RMSNorm 已有 AVX2 widening 和 AVX-512 实现，其他主链算子已有 reference | 扩大目标 shape/硬件证据，随后按 profile 优化；见 [Load](../../src/inference/executable_model.cpp)、[精度专题 §4.5](../improvement-plan/11-fp16-bf16-execution-support.md) |
+| BF16 A16 | 高层 Load 已准入 activation/weight 的 BF16 同 dtype 组合（KV 组合约束在编译期校验）；Linear/RMSNorm 已有 AVX2 widening 和 AVX-512 实现，其他主链算子已有 reference | 扩大目标 shape/硬件证据，随后按 profile 优化；见 [Load](../../src/inference/executable_model.cpp)、[精度专题 §4.5](../roadmap/11-fp16-bf16-execution-support.md) |
 | FP16 A16 | 显式 FP16 计算、权重和 KV，经边界 Cast 接到 FP32 residual，CPU O1/O2 已执行 | [P4-B](cast/README.md) 的 MHA/GQA/MQA 和 2048-token 限定校准 |
 | Attention / KV | F32、A32/KV16、BF16 A16 已接入 AVX2 并保留 reference；仍两遍扫描重算 QK，不物化完整 score matrix | 单 token Decode 已支持配对 GQA/KV 复用，Prefill 已支持相邻两行共享公共 K/V 前缀。见 [SIMD 证据](attention/benchmarks/desktop-qhihogq-attention.md)、[F32 reference](../../src/backend/cpu/kernels/attention/attention_a32_kv32_reference.cpp)、[KV16 reference](../../src/backend/cpu/kernels/attention/attention_a32_kv16_reference.cpp) |
 | 融合与小算子 | FP32 RMSNorm 已有 AVX2；QKV/GateUp/AddRmsNorm 的部分默认路径仍是 reference；A16 编译主动关闭 QKV/GateUp/AddRmsNorm fusion | 检查 O2 fused-vs-unfused，避免优化单算子后让融合路径仍落在标量实现；见 [compiler](../../src/compiler/model_compiler.cpp)、[CPU kernels](../../src/backend/cpu/kernels/) |
-| 通用执行覆盖 | Softmax、Reshape、Permute、Reorder、Cast 有语义定义，当前 CPU registry 缺少相应 standalone runtime kernel | 按真实 consumer 补齐；常量折叠成功不代表动态执行可用；见 [OpType](../../include/aethermind/operators/op_type.h)、[operator inference](../../src/operators/operator_inference.cpp) |
+| 通用执行覆盖 | FP32/FP16/BF16 的动态布局算子、独立 Softmax 和六个跨型 Cast 方向已有 CPU reference | [符号图和 prepared 执行验收](layout/README.md)，后续 dtype 和布局按 consumer 扩展 |
 | 算子内并行 / 量化 | 当前 Runtime 未提供生产 worker pool；INT8/INT4 尚无完整加载、准备、kernel、Generate 链 | 分别建立 threading 和 quantization 纵向合同；见 [RuntimeOptions](../../include/aethermind/runtime/runtime_options.h)、[HF validator](../../src/model/formats/hf/hf_model_validator.cpp) |
 | 资源复用 | workspace requirement 与 activation arena 主要按顺序累计，尚无完整 lifetime/liveness reuse | 在引入 tile/worker scratch 时纳入规划与预算；见 [workspace planner](../../src/runtime/workspace_planner.cpp)、[activation planning](../../src/execution/execution_bindings.cpp) |
 
@@ -117,7 +117,7 @@ FP32 生产闭环以兼容与正确性基线为目标：完成 CPU-03 的证据�
 
 在线归约会改变求和顺序，需覆盖有限值误差、NaN/Inf、极端 score、尾块和 causal mask。KV16/A16 路径读取实际窄化后的 cache，Prefill 不得旁路使用更高精度 K/V。
 
-scratch 由 prepared requirements 与请求 workspace 提供，不保留平行全量 F32 cache。KV 指针、read frontier、query positions 只在本次调用有效；保留 generation、visibility、dtype、stride、alias 和 range 校验。kernel 成功不能替代 whole-plan commit proof。具体状态域合同沿 [KV/Attention 专题](../improvement-plan/08-kv-cache-and-attention-capability-evolution.md) 与 [精度专题](../improvement-plan/11-fp16-bf16-execution-support.md)。
+scratch 由 prepared requirements 与请求 workspace 提供，不保留平行全量 F32 cache。KV 指针、read frontier、query positions 只在本次调用有效；保留 generation、visibility、dtype、stride、alias 和 range 校验。kernel 成功不能替代 whole-plan commit proof。具体状态域合同沿 [KV/Attention 专题](../roadmap/08-kv-cache-and-attention-capability-evolution.md) 与 [精度专题](../roadmap/11-fp16-bf16-execution-support.md)。
 
 ### 3.3 小算子、精度边界与通用执行覆盖
 
@@ -129,10 +129,10 @@ scratch 由 prepared requirements 与请求 workspace 提供，不保留平行�
 | RoPE | SIMD 旋转，评估三角值复用与按需缓存 | 冻结 position、算法参数、容量与预算；Dynamic NTK 的有效频率身份不能误用静态表 |
 | KVCacheUpdate | 批量窄化或同型 copy，减少逐元素转换 | 保留 logical head_dim、padding、写入范围；A16 同型 copy 不重复窄化 |
 | Cast / FP16 A16 | 复用既有 typed Cast 语义与转换合同，补 CPU kernel 和 residual 边界 | 按精度专题 P4-B 先冻结完整 rounding placement；LM head 直接输出 F32 |
-| Reshape | 按 consumer 先做明确的 contiguous copy reference，再评估 view alias | copy 路径验证 numel/dtype/bytes；view 需要 activation alias、last-consumer 与 lifetime 证明 |
-| Permute / Reorder | 语义视图与物理搬移分别处理 | 优先支持真实 consumer 需要的布局；不把 metadata permutation 自动视为零成本 executable view |
-| Standalone Softmax | 有动态消费者时补 CPU kernel | Attention 内部 softmax 已有执行，不因缺 standalone kernel 而判整条 Attention 不可用 |
-| Bias / QK norm 等 | 在现有 Linear、RMSNorm、shape ops 上按家族需求扩展 | 由 [模型家族专题](../improvement-plan/09-qwen-and-moe-architecture-support.md) 触发，不扩张当前 Llama 准入 |
+| Reshape | 连续 copy reference 已接通 | 校验目标、元素数和缓冲区。零拷贝 view 需要独立的 activation alias、last-consumer 与 lifetime 证明 |
+| Permute / Reorder | 轴搬移和连续化 reference 已接通 | 使用独立输出存储，所需 dtype 和布局随 consumer 扩展 |
+| Standalone Softmax | FP32/FP16/BF16 reference 已接通 | 独立规范与验收见 [Softmax](softmax/README.md) |
+| Bias / QK norm 等 | 在现有 Linear、RMSNorm、shape ops 上按家族需求扩展 | 由 [模型家族专题](../roadmap/09-qwen-and-moe-architecture-support.md) 触发，不扩张当前 Llama 准入 |
 
 A16 当前关闭的 QKV/GateUp/AddRmsNorm fusion 只有在对应 kernel、端口精度、rounding 与完整模型证据齐备后再开启。增加 fused operator 或 epilogue 时检查 consumer、残差流、layer boundary、权重绑定和中间舍入，不能单凭代数表达式改写数值合同。
 
@@ -180,7 +180,7 @@ scheme/metadata 合同 → INT8 reference → W8/A32 优化
 保持 [CPU ISA 构建隔离](../../src/CMakeLists.txt) 与 runtime effective feature filtering，不给整个库使用 `-march=native`。每种 ISA 分别记录编译、dispatch/fallback、真实硬件数值与性能状态。
 
 1. AVX2/FMA/F16C：首批生产优化与稳定 fallback。
-2. AVX-512 BF16/FP16：验证已有 kernel，测量数值保护检查、转换、归约与降频等实际成本。现有 Linear/RMSNorm native descriptor 的 priority 高于 AVX2/reference（数值见 [backend 选核规则](../handbook/核心模块设计/后端系统%20%28Backend%29/后端系统%20%28Backend%29.md#cpu-后端选择算法)）；已编译且 effective features 满足时，native **已会被生产准备入口自动选中**。这是精度专题 §4.5 的既有策略，不代表真实硬件数值/性能已验收，状态文字也不会阻止选核。后续 priority 调整仍须生产证据，不能根据向量宽度推定收益；逐 ISA 状态与硬件补验项见 [精度专题 §6.4](../improvement-plan/11-fp16-bf16-execution-support.md#64-性能资源与发布状态)。
+2. AVX-512 BF16/FP16：验证已有 kernel，测量数值保护检查、转换、归约与降频等实际成本。现有 Linear/RMSNorm native descriptor 的 priority 高于 AVX2/reference（数值见 [backend 选核规则](../handbook/核心模块设计/后端系统%20%28Backend%29/后端系统%20%28Backend%29.md#cpu-后端选择算法)）；已编译且 effective features 满足时，native **已会被生产准备入口自动选中**。这是精度专题 §4.5 的既有策略，不代表真实硬件数值/性能已验收，状态文字也不会阻止选核。后续 priority 调整仍须生产证据，不能根据向量宽度推定收益；逐 ISA 状态与硬件补验项见 [精度专题 §6.4](../roadmap/11-fp16-bf16-execution-support.md#64-性能资源与发布状态)。
 3. AMX：在目标硬件、OS 状态管理与允许的精度合同齐备后，优先研究大 M Prefill；Decode 独立评估。
 4. AArch64：目标平台进入验收后建设 NEON，随后按硬件与 workload 决定 BF16/I8MM/SVE；保留 portable fallback。
 
@@ -203,7 +203,7 @@ CPU-01 的 ISA 台账必须分别记录真实检测与合成 capabilities：机�
 | CPU-03 FP32 GEMM 生产闭环 | 已实现（[identity 生产闭环；B-panel 全局 promotion 拒绝](gemm/benchmarks/54h5mmi-gemm.md#cpu-03-fp32-gemm-生产闭环与布局-promotion-决策)） | 已有 scalar/AVX2 driver 接入；B-panel candidate 与 composite consumers 的 promotion 决策 | CPU-01；可与 CPU-02 独立实施 | registered/prepared、fused/unfused、模型路径与 packing 摊销均有证据；保留无收益组合的 fallback |
 | CPU-04 Attention / KV | SIMD、Decode GQA/KV 复用与 Prefill 双行分块已实现并完成本机限定验证（[证据](attention/benchmarks/desktop-qhihogq-attention.md)）；更宽 tiles、score strip/online softmax 按 profile 推进 | SIMD 基线 → Decode GQA/KV blocking → Prefill blocking/online softmax | CPU-01；引入 scratch 时补相应规划 | context/geometry/精度矩阵、事务/visibility 与数值门禁通过；短长 context 收益和资源成本分别可解释 |
 | CPU-05 小算子与融合 | 本机限定验收完成（[FP32 AddRmsNorm](add_rmsnorm/benchmarks/desktop-54h5mmi-add-rmsnorm.md)、[FP32/BF16 SiluMul](silu_mul/benchmarks/desktop-54h5mmi-silu-mul.md)）。重新 profiling 后，BF16 A16 RoPE、F16 KVUpdate 和 BF16 Add 保留为按负载触发的后续候选 | AddRmsNorm SIMD、SiluMul SIMD、生产对照和热点复核 | CPU-01，按优化后的模型重新 profile | 保留两个 AddRmsNorm 输出、alias、rounding 与 residual，prepared 和生产模型对照通过 |
-| CPU-06 精度与执行覆盖 | 首段 [FP16 A16 与 FP32 residual](cast/README.md) 已完成限定验收。其他 shape/layout/Softmax kernel 随 consumer 推进 | Cast 与 P4-B 模型路径，按 consumer 补动态执行 | CPU-01、精度专题 P4-B | schema/Infer/graph/lowering/prepare/kernel/model 全链覆盖 |
+| CPU-06 精度与执行覆盖 | [P4-B 模型路径](cast/README.md)和 [动态布局、独立 Softmax、Cast](layout/README.md) 完成限定验收 | P4-B 与 FP32 residual，FP32/FP16/BF16 的动态执行 | CPU-01、精度专题 P4-B | P4-B 模型路径和动态符号图均经 prepared 执行验证 |
 | CPU-07 资源规划 | 待实施 | binding-dependent scratch、worker scratch、workspace lifetime、activation liveness 与预算 | CPU-01；按实际 scratch 需求拆分 | sizing/query 与执行一致，alignment/overflow/cap/OOM/alias 覆盖；复用不破坏已准备地址与 lifetime |
 | CPU-08 算子内并行 | 待实施 | Runtime pool、窄接口、同步完成/失败收敛、tile 并行与阈值 | 对应串行 kernel 稳定；所需 CPU-07 资源链已具备 | 单线程不回退；scaling/barrier 可解释；TSAN、重复性、失败清理与零分配区间通过 |
 | CPU-09 INT8 / INT4 | 待实施 | scheme 合同、reference、packing/identity、W8/W4 GEMV/GEMM 与模型执行 | 合同/reference 可从 CPU-01 启动；optimized 复用相关矩阵 primitive，不硬依赖 CPU-08 | 逐 scheme 数值/质量/资源/性能闭环，代表性模型验收，未知格式 fail closed |
@@ -219,7 +219,7 @@ CPU-01 的 ISA 台账必须分别记录真实检测与合成 capabilities：机�
 
 首批首段组合的端到端里程碑（M1、M2 已按本机限定范围达成，证据见 §4.1）：M0 = CPU-01 台账与参考基准冻结；M1 = CPU-02 首段 W16/A32 Decode 全链（prepared → ExecutionPlan → Generate）与 CPU-03 FP32 生产闭环；M2 = CPU-04 首段 Attention SIMD 与 CPU-05 首段 AddRmsNorm 后的重新 profile。其余工作包按触发条件推进，不占用上述关键路径。
 
-CPU-09 的合同/reference 可提前推进；CPU-06 按 FP16 或新 consumer 需求启动。CPU-08 在相应串行核心稳定后接入，不等待所有小算子、精度与平台全部完成。没有 profile 支持时，不提前实现完整 autotuner、cost-based optimizer 或通用 Primitive IR。
+CPU-09 的合同/reference 可提前推进。CPU-06 的其他 dtype、动态形状求解或新布局按 consumer 推进。CPU-08 在相应串行核心稳定且所需资源链具备后接入。完整 autotuner、cost-based optimizer 或通用 Primitive IR 由 profile 驱动。
 
 ### 4.3 文档与既有专题的分工
 
@@ -228,8 +228,8 @@ CPU-09 的合同/reference 可提前推进；CPU-06 按 FP16 或新 consumer 需
 | 本路线图 | 跨算子优先级、模块依赖、交付工作包与退出条件 |
 | [算子工作流](../guides/operator-development-workflow.md) | O0–O4、benchmark 方法、记录格式、promotion 与停止规则；本路线图不另建流程 |
 | [GEMM 专项](gemm/cpu-gemm-optimization.md) | GEMV/GEMM engine、tile、packing、driver 与候选方案 |
-| [08 KV/Attention](../improvement-plan/08-kv-cache-and-attention-capability-evolution.md) | KV owner/lifecycle、发布权、物理布局与 Attention 资源边界 |
-| [11 精度](../improvement-plan/11-fp16-bf16-execution-support.md) | W/A/KV 组合、转换、rounding、校准和冻结预算 |
+| [08 KV/Attention](../roadmap/08-kv-cache-and-attention-capability-evolution.md) | KV owner/lifecycle、发布权、物理布局与 Attention 资源边界 |
+| [11 精度](../roadmap/11-fp16-bf16-execution-support.md) | W/A/KV 组合、转换、rounding、校准和冻结预算 |
 
 实施时同步代码、算子合同/状态与触发的模块文档。新的性能实验按算子记录，已接受的架构决策按现有模块/architecture 规则沉淀；不新建独立验证、日志或计划目录。
 

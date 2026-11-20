@@ -10,6 +10,6 @@ CPU-06 首段为 CPU O1/plain 和 O2/identity-packed 打通 Llama Dense 的 FP16
 | Attention 输出投影、MLP down projection | FP16 输出完成舍入，再拓宽到 FP32，与跨层 residual 执行 FP32 Add |
 | LM head | FP16 输入与权重，直接输出 FP32 logits |
 
-Cast 动态 CPU entry 支持 F32→F16 和 F16→F32。保留形状、固定 RNE、gradual underflow、带符号零和 NaN quiet 合同。连续视图走原有 batch conversion reference，支持合法非连续、rank-zero 和空视图。不同 dtype 的输入输出存储须互斥，输出布局须可证 injective，校验在 prepared params 写入前完成。其他 Cast 方向在语义层和常量折叠中可表达。
+动态 CPU Cast 支持 F32、F16、BF16 之间的六个跨型方向。保留形状、固定 RNE、gradual underflow、带符号零和 NaN quiet 合同。F16 与 BF16 通过 F32 转换。连续视图可批量转换，支持合法非连续、rank-zero 和空视图。不同 dtype 的输入输出存储须互斥，输出布局须可证 injective，校验在 prepared params 写入前完成。
 
-A16 图沿用 unfused residual 路径。验证使用独立 FP32 residual oracle，对比 logits、KV、greedy token 与 commit 水位。见 [P4-B 验证范围](../../improvement-plan/11-fp16-bf16-execution-support.md#46-p4-bfp16-计算与-fp32-residual)。
+A16 图沿用 unfused residual 路径。验证使用独立 FP32 residual oracle，对比 logits、KV、greedy token 与 commit 水位。见 [P4-B 验证范围](../../roadmap/11-fp16-bf16-execution-support.md#46-p4-bfp16-计算与-fp32-residual)。

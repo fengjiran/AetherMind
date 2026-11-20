@@ -235,30 +235,22 @@ const std::array kOperatorSchemas{
                 .op_type = OpType::kReshape,
                 .input_ports = {Input("input", OperatorPortKind::kActivation)},
                 .output_ports = {Output("output")},
-                // Semantic-only: pure and deterministic (so DCE-removable),
-                // but not advertised as compile-time evaluable (no constant
-                // evaluator exists; ReshapeParams is not yet a constant-foldable
-                // surface).
+                // The runtime copies logical element order into the bound output.
                 .traits = RuntimeOnly(),
         },
         OperatorSchema{
                 .op_type = OpType::kPermute,
                 .input_ports = {Input("input", OperatorPortKind::kActivation)},
                 .output_ports = {Output("output")},
-                // Semantic-only: pure and deterministic (so DCE-removable),
-                // but not advertised as compile-time evaluable (no constant
-                // evaluator exists; PermuteParams is not yet a constant-foldable
-                // surface).
+                // Runtime materialization follows the logical permutation.
                 .traits = RuntimeOnly(),
         },
         OperatorSchema{
                 .op_type = OpType::kReorder,
                 .input_ports = {Input("input", OperatorPortKind::kActivation)},
                 .output_ports = {Output("output")},
-                // Semantic-only: pure and deterministic (so DCE-removable when
-                // dead), but not compile-time evaluable. Reorder records a
-                // physical materialization intent (canonical contiguous) that
-                // prevents algebraic identity erasure of live nodes.
+                // A live Reorder carries canonical contiguous materialization
+                // intent and must survive logical identity rewrites.
                 .traits = RuntimeOnly(),
         },
         OperatorSchema{

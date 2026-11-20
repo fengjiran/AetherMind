@@ -137,12 +137,12 @@ KVCacheUpdate 为 state-only step，output_dtype undefined；Attention 的 weigh
 | Add | BF16 / BF16 | `cpu::add_bf16_reference` | |
 | Add | F16 / F16 | **unsupported** | P4-B 的 residual Add 使用 F32 |
 | Argmax | F32 / Int64 | `cpu::argmax_f32_reference` | |
-| Softmax | F32 / F32 | **unsupported** | 语义定义存在；Attention 内部 softmax 已执行 |
-| Reshape | F32 / F32 | **unsupported** | 语义-only |
-| Permute | F32 / F32 | **unsupported** | 语义-only |
-| Reorder | F32 / F32 | **unsupported** | 语义-only |
+| Softmax | F32/F16/BF16 同型 | `cpu::softmax_{f32,f16,bf16}_reference` | 按轴稳定归一化 |
+| Reshape | F32/F16/BF16 同型 | `cpu::reshape_{f32,f16,bf16}_reference` | 输入和输出连续复制 |
+| Permute | F32/F16/BF16 同型 | `cpu::permute_{f32,f16,bf16}_reference` | 按轴映射物化 |
+| Reorder | F32/F16/BF16 同型 | `cpu::reorder_{f32,f16,bf16}_reference` | 保留逻辑坐标，输出连续 |
 | Cast | F32 ↔ F16 | `cpu::cast_f32_to_f16_reference` / `cpu::cast_f16_to_f32_reference` | FP16 residual 边界 |
-| Cast | BF16 相关转换 | **unsupported**（动态执行） | 语义和常量折叠 |
+| Cast | F32 ↔ BF16、F16 ↔ BF16 | 四个对应 `cpu::cast_*_reference` | 动态执行与常量折叠均支持 |
 
 Add 另注册 Double/Int32/Int64（非 Llama 主链，未列入）；语义-only 算子的常量折叠成功不代表动态执行可用。
 
@@ -159,7 +159,7 @@ Add 另注册 Double/Int32/Int64（非 Llama 主链，未列入）；语义-only
 | QKV/GateUp plain unsupported（O1 不融合，by design）；MatMul packed unsupported | [optimize_graph.cpp:14](../../src/compiler/optimize_graph.cpp#L14) | 非缺口，记录边界 |
 | Attention SIMD、Decode GQA 复用与 Prefill 双行已接入生产；短形状及不兼容格式按各路径回退 | [Attention](attention/README.md) | CPU-04 |
 | AddRmsNorm F32 plain/identity、SiluMul F32/BF16 已接入 AVX2；KVUpdate、RoPE 等按各入口实现 | [AddRmsNorm](add_rmsnorm/README.md)、[SiluMul](silu_mul/README.md) | CPU-05 |
-| Softmax/Reshape/Permute/Reorder standalone kernel 缺失 | [op_type.h](../../include/aethermind/operators/op_type.h) | CPU-06（consumer 驱动） |
+| 独立 Softmax 和布局算子的 FP32/FP16/BF16 reference 已接通 | [动态执行](layout/README.md) | CPU-06 |
 | A16 编译关闭 QKV/GateUp/AddRmsNorm fusion；AddRmsNorm A16 kernel 缺失 | [model_compiler.cpp:23](../../src/compiler/model_compiler.cpp#L23) | CPU-05 / 精度专题 |
 | FP16 A16 Load 与 O1/O2 生产链已接通，FP32 residual 与 FP16 KV | [Cast/P4-B](cast/README.md) | CPU-06 首段 |
 | AVX-512 native 已编译、本机不可选；真实硬件数值/性能 not-run | §1 effective features | CPU-10 |

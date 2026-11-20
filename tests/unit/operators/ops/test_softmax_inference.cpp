@@ -22,10 +22,11 @@ TEST(SoftmaxInference, PreservesFloat32AndRank) {
     EXPECT_EQ(result->outputs[0].shape.rank().value(), 2);
 }
 
-TEST(SoftmaxInference, AcceptsAxisOutOfRange) {
+TEST(SoftmaxInference, RejectsAxisOutOfRangeForRankedInputs) {
     auto input = MakeSpec(DataType::Float32(), {4, 256});
     std::vector<TensorSpec> inputs = {input};
-    EXPECT_TRUE(InferOperator(OpType::kSoftmax, SoftmaxParams{5}, inputs).ok());
+    EXPECT_EQ(InferOperator(OpType::kSoftmax, SoftmaxParams{5}, inputs).status(), StatusCode::kInvalidArgument);
+    EXPECT_EQ(InferOperator(OpType::kSoftmax, SoftmaxParams{-3}, inputs).status(), StatusCode::kInvalidArgument);
 }
 
 TEST(SoftmaxInference, UnrankedSkipsAxisCheck) {

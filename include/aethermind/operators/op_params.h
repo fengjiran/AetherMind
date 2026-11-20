@@ -213,6 +213,8 @@ struct MatMulParams {
     bool transpose_rhs = false;
 };
 
+/// @brief Normalizes each slice of the selected axis. Negative axes are relative
+/// to the input rank. An empty tensor produces an empty result.
 struct SoftmaxParams {
     int64_t axis = -1;
 };

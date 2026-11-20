@@ -176,6 +176,10 @@ function(aethermind_test_labels name output)
         list(APPEND labels numerical validation)
     endif ()
 
+    if (name MATCHES "(^|/)(CpuDynamicOperators|CPUKernelCast|SoftmaxInference)\\.")
+        list(APPEND labels numerical validation)
+    endif ()
+
     if (name MATCHES "(^|/)(HfFixedTrajectory|HfNumericalFaultInjection|HfNumericalComparison)\\.")
         list(APPEND labels numerical validation)
     endif ()

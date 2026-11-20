@@ -2,10 +2,14 @@
 #include "aethermind/backend/kernel_context.h"
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/base/shape_and_stride.h"
+#include "aethermind/dtypes/bf16_conversion.h"
+#include "aethermind/dtypes/bfloat16.h"
 #include "aethermind/dtypes/fp16_conversion.h"
+#include "aethermind/dtypes/half.h"
 #include "aethermind/operators/op_params.h"
 
 #include <array>
+#include <cstring>
 #include <new>
 #include <type_traits>
 #include <vector>
@@ -24,26 +28,16 @@ struct CastArgs {
     std::array<int64_t, ShapeAndStride::kMaxRank> destination_strides{};
 };
 
-template<bool Narrow>
-DataType SourceType() {
-    return Narrow ? DataType::Float32() : DataType::Float(16);
-}
-
-template<bool Narrow>
-DataType DestinationType() {
-    return Narrow ? DataType::Float(16) : DataType::Float32();
-}
-
-template<bool Narrow>
+template<typename To>
 Status BuildMetadata(const OpParams& params, std::vector<std::byte>&) {
     const auto* cast = std::get_if<CastParams>(&params);
-    if (cast == nullptr || cast->target_dtype != DestinationType<Narrow>()) {
+    if (cast == nullptr || cast->target_dtype != DataType::Make<To>()) {
         return Status::InvalidArgument("CPU Cast target_dtype must match the resolved kernel");
     }
     return Status::Ok();
 }
 
-template<bool Narrow>
+template<typename From, typename To>
 Status Bind(const KernelParamsBuildContext& context, void* storage) noexcept {
     if (context.inputs.size() != 1 || context.outputs.size() != 1) {
         return Status::InvalidArgument("CPU Cast requires one input and one output");
@@ -51,7 +45,7 @@ Status Bind(const KernelParamsBuildContext& context, void* storage) noexcept {
     const auto& source = context.inputs.front();
     const auto& destination = context.outputs.front();
     if (!source.is_valid() || !destination.is_valid() ||
-        source.dtype() != SourceType<Narrow>() || destination.dtype() != DestinationType<Narrow>() ||
+        source.dtype() != DataType::Make<From>() || destination.dtype() != DataType::Make<To>() ||
         source.shape() != destination.shape()) {
         return Status::InvalidArgument("CPU Cast requires valid views with matching shapes and resolved dtypes");
     }
@@ -79,19 +73,42 @@ Status Bind(const KernelParamsBuildContext& context, void* storage) noexcept {
     return Status::Ok();
 }
 
-template<bool Narrow>
+template<typename From, typename To>
+void Convert(const std::byte* source, std::byte* destination, size_t count) noexcept {
+    if constexpr (std::is_same_v<From, float>) {
+        if constexpr (std::is_same_v<To, Half>) {
+            ConvertFp32ToFp16Scalar(source, destination, count);
+        } else {
+            ConvertFp32ToBf16Scalar(source, destination, count);
+        }
+    } else if constexpr (std::is_same_v<To, float>) {
+        if constexpr (std::is_same_v<From, Half>) {
+            ConvertFp16ToFp32Scalar(source, destination, count);
+        } else {
+            ConvertBf16ToFp32Scalar(source, destination, count);
+        }
+    } else {
+        // Every finite F16/BF16 value is exactly representable in F32.
+        // Widening and narrowing also reuse the existing NaN bit contracts.
+        for (size_t i = 0; i < count; ++i) {
+            From value{};
+            std::memcpy(&value, source + i * sizeof(From), sizeof(From));
+            const To converted(static_cast<float>(value));
+            std::memcpy(destination + i * sizeof(To), &converted, sizeof(To));
+        }
+    }
+}
+
+template<typename From, typename To>
 Status Run(const KernelContext& context) noexcept {
     const auto& args = *static_cast<const CastArgs*>(context.kernel_params);
     if (args.count == 0) {
         return Status::Ok();
     }
-    constexpr auto convert = Narrow ? ConvertFp32ToFp16Scalar : ConvertFp16ToFp32Scalar;
     if (args.contiguous) {
-        convert(args.source, args.destination, static_cast<size_t>(args.count));
+        Convert<From, To>(args.source, args.destination, static_cast<size_t>(args.count));
         return Status::Ok();
     }
-    constexpr size_t source_bytes = Narrow ? sizeof(float) : sizeof(uint16_t);
-    constexpr size_t destination_bytes = Narrow ? sizeof(uint16_t) : sizeof(float);
     for (int64_t i = 0; i < args.count; ++i) {
         int64_t remaining = i;
         size_t source_offset = 0;
@@ -102,27 +119,27 @@ Status Run(const KernelContext& context) noexcept {
             source_offset += static_cast<size_t>(coord * args.source_strides[axis]);
             destination_offset += static_cast<size_t>(coord * args.destination_strides[axis]);
         }
-        convert(args.source + source_offset * source_bytes,
-                args.destination + destination_offset * destination_bytes, 1);
+        Convert<From, To>(args.source + source_offset * sizeof(From),
+                          args.destination + destination_offset * sizeof(To), 1);
     }
     return Status::Ok();
 }
 
-template<bool Narrow>
+template<typename From, typename To>
 KernelDef MakeCast(std::string_view name) {
     return {
             .op_type = OpType::kCast,
             .selector = {.device_type = DeviceType::kCPU,
-                         .act_dtype = SourceType<Narrow>(),
-                         .output_dtype = DestinationType<Narrow>(),
-                         .weight_dtype = SourceType<Narrow>(),
+                         .act_dtype = DataType::Make<From>(),
+                         .output_dtype = DataType::Make<To>(),
+                         .weight_dtype = DataType::Make<From>(),
                          .weight_format = WeightFormat::kPlain,
                          .phase = ExecPhase::kBoth},
-            .kernel_func = &Run<Narrow>,
+            .kernel_func = &Run<From, To>,
             .priority = 10,
             .params_size = sizeof(CastArgs),
-            .params_builder = &Bind<Narrow>,
-            .metadata_builder = &BuildMetadata<Narrow>,
+            .params_builder = &Bind<From, To>,
+            .metadata_builder = &BuildMetadata<To>,
             .name = name,
     };
 }
@@ -133,7 +150,11 @@ static_assert(alignof(CastArgs) <= alignof(std::max_align_t));
 
 } // namespace
 
-AM_REGISTER_KERNEL(CpuCastF32ToF16Reference, MakeCast<true>("cpu::cast_f32_to_f16_reference"))
-AM_REGISTER_KERNEL(CpuCastF16ToF32Reference, MakeCast<false>("cpu::cast_f16_to_f32_reference"))
+AM_REGISTER_KERNEL(CpuCastF32ToF16Reference, (MakeCast<float, Half>("cpu::cast_f32_to_f16_reference")))
+AM_REGISTER_KERNEL(CpuCastF16ToF32Reference, (MakeCast<Half, float>("cpu::cast_f16_to_f32_reference")))
+AM_REGISTER_KERNEL(CpuCastF32ToBf16Reference, (MakeCast<float, BFloat16>("cpu::cast_f32_to_bf16_reference")))
+AM_REGISTER_KERNEL(CpuCastBf16ToF32Reference, (MakeCast<BFloat16, float>("cpu::cast_bf16_to_f32_reference")))
+AM_REGISTER_KERNEL(CpuCastF16ToBf16Reference, (MakeCast<Half, BFloat16>("cpu::cast_f16_to_bf16_reference")))
+AM_REGISTER_KERNEL(CpuCastBf16ToF16Reference, (MakeCast<BFloat16, Half>("cpu::cast_bf16_to_f16_reference")))
 
 } // namespace aethermind::cpu::detail

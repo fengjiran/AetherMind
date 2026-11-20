@@ -83,8 +83,39 @@ TEST(CPUKernelCast, EmptyBindingAndTargetValidation) {
                         .ok());
     const auto inconsistent = ResolveCast(f32, f16, f32);
     EXPECT_EQ(inconsistent.status(), StatusCode::kInvalidArgument);
-    const auto unsupported = ResolveCast(f32, DataType::BFloat(16), DataType::BFloat(16));
+    const auto unsupported = ResolveCast(f32, DataType::Int(32), DataType::Int(32));
     EXPECT_FALSE(unsupported.ok());
+}
+
+TEST(CPUKernelCast, Bf16DirectionsPreserveBitsAndUseFixedRne) {
+    constexpr std::array<int64_t, 1> shape{6}, strides{1};
+    constexpr std::array<uint16_t, 6> half{0x8000, 0x3c04, 0x3c0c, 0x0001, 0x7c00, 0x7c09};
+    constexpr std::array<uint16_t, 6> bf16_bits{0x8000, 0x3f80, 0x3f82, 0x3380, 0x7f80, 0x7fc1};
+    constexpr std::array<uint32_t, 6> f32_bits{
+            0x80000000, 0x3f800000, 0x3f820000, 0x33800000, 0x7f800000, 0x7fc10000};
+    constexpr std::array<uint16_t, 6> to_half{0x8000, 0x3c00, 0x3c10, 0x0001, 0x7c00, 0x7e08};
+    const auto f32 = DataType::Float32();
+    const auto f16 = DataType::Float(16);
+    const auto bf16 = DataType::BFloat(16);
+
+    std::array<uint16_t, 6> narrowed{}, converted{};
+    std::array<uint32_t, 6> widened{};
+    ASSERT_TRUE(Cast(TensorView(half.data(), f16, shape, strides),
+                     MutableTensorView(narrowed.data(), bf16, shape, strides))
+                        .ok());
+    EXPECT_EQ(narrowed, bf16_bits);
+    ASSERT_TRUE(Cast(TensorView(narrowed.data(), bf16, shape, strides),
+                     MutableTensorView(widened.data(), f32, shape, strides))
+                        .ok());
+    EXPECT_EQ(widened, f32_bits);
+    ASSERT_TRUE(Cast(TensorView(widened.data(), f32, shape, strides),
+                     MutableTensorView(narrowed.data(), bf16, shape, strides))
+                        .ok());
+    EXPECT_EQ(narrowed, bf16_bits);
+    ASSERT_TRUE(Cast(TensorView(narrowed.data(), bf16, shape, strides),
+                     MutableTensorView(converted.data(), f16, shape, strides))
+                        .ok());
+    EXPECT_EQ(converted, to_half);
 }
 
 } // namespace

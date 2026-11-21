@@ -556,7 +556,7 @@ flowchart TB
 |------|----------|
 | [product.md](product.md) | 当前产品需求、验收标准、边界定义 |
 | [内存管理系统](handbook/内存管理系统/内存管理系统.md) | base / dtypes / memory：Status、TensorView、分配器与 workspace 契约 |
-| [amstring](handbook/组件速查/amstring%20字符串库/架构设计.md) | SSO 字符串库的布局、存储与策略 |
+| [amstring](handbook/组件速查.md#amstring-字符串库) | SSO 字符串库的布局、存储与策略 |
 | [形状推断系统](handbook/形状推断系统.md) | 符号维度、shape 约束与执行期保障 |
 | [模型系统](handbook/核心模块设计/模型系统%20%28Model%29.md) | HF 加载、家族识别、权重绑定与打包请求 |
 | [计算图系统](handbook/核心模块设计/计算图系统%20%28Graph%29/计算图系统%20%28Graph%29.md) | 语义图 IR、rewrite、passes 与不变量 |

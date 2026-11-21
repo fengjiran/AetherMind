@@ -19,7 +19,7 @@
 - [x] `KVCacheManager::Init` 重置 generation 导致旧 view 复活（修复：2026-10-11 跨 re-init 保留 generation、拒绝回绕；正式回归覆盖成功/失败 re-init 与已释放副本，关联：[08 号 KV/Attention 演进提案](roadmap/08-kv-cache-and-attention-capability-evolution.md)）
 - [x] `KVCacheManager::ResetSession/ReleaseSession` 接受跨 Manager view（修复：2026-10-11 校验 layout/storage/slot owner，拒绝操作且保持双方 reservation；正式回归已通过，关联：[08 号 KV/Attention 演进提案](roadmap/08-kv-cache-and-attention-capability-evolution.md)）
 - [x] `InferenceSession::Generate` 请求分配 OOM 逃逸异常或因 CPU allocator abort 终止（修复：2026-10-11 将 CPU `ENOMEM` 上报为可恢复失败、在编排和 KV 冷路径边界转换 `bad_alloc`，验证 KV 清理和同 Session 重试，关联：[InferenceSession 设计](handbook/API%20参考文档/C++%20公开%20API/InferenceSession%20API.md)）
-- [x] `docs/designs/` 24 篇设计文档按模块合并为 `docs/modules/` 12 篇；源文档归档到 `docs/archive/designs/`，活跃引用切换到模块文档
+- [x] `docs/designs/` 24 篇设计文档按模块合并为 `docs/modules/` 12 篇，随后整体退役并重建为 `docs/handbook/`；源文档归档到 `docs/archive/designs/`，活跃引用已切换
 - [x] 核心 9 篇文档中 `Phase 1 / Phase 2` 术语 83 处待分类迁移（修复：2026-09-17 全部迁移为具体 capability 表述；AGENTS.md/README.md/docs/README.md/prd/architecture_overview/public-api 均为 0 处，仅本文件保留元描述）
 - [x] verify_docs.py 覆盖不足（历史：2026-09-14 曾实现 D5a 全部 7 项；Phase 0 已删除该工具，改由 `docs/README.md` 的写作规则约束）
 - [x] designs/amstring/ 中 development_plan、milestones、task_checklist 分类违规（修复：2026-09-14 归档到 docs/archive/designs-legacy/）

@@ -1,8 +1,8 @@
 # CPU GEMM Packed Weight 提案
 
 - **状态**: Proposed
-- **版本**: 1.9
-- **日期**: 2026-10-09
+- **版本**: 1.10
+- **日期**: 2026-11-22
 - **文档定位**: `exact recipe` 与 `packed-B` 阶段（[CPU GEMM 优化方案](cpu-gemm-optimization.md) §7）的具体化设计；只含方案内容，状态与机器级证据不在此维护。
 - **产品边界**: [AetherMind 当前产品需求](../../product.md)
 - **工作流规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
@@ -37,7 +37,7 @@
 | packed 校验闸口 | `ValidateIdentityPackedWeight` 与 `ValidateBPanelF32PackedWeight` 分别是 identity / bpanel 两个 layout 的消费侧闸口 | `include/aethermind/backend/cpu/packed_weight_validation.h`、`src/backend/cpu/packed_weight_validation.cpp` |
 | execute 期消费 | `KernelContext::packed_weights` 指针 | `include/aethermind/backend/kernel_context.h` |
 | packed 消费者样板 | Linear/QkvLinear/GateUpLinear 各有 identity 与 `cpu_bpanel_f32_kc512_nr16` 两个 packed 变体（bpanel 需 AVX2+FMA，priority 10 低于 identity optimized 的 20，当前选举落 identity）；Qkv/GateUp 的 identity 路径按 q/k/v out_features 行偏移切分 | `src/backend/cpu/kernels/{linear,qkv_linear,gate_up_linear}/*entry.cpp` |
-| 打包循环原型 | `PackBPanel`（plain blocked 路径仍在运行时执行，kc_len clamp 传入；packed-B driver 直接消费 artifact，不再运行时打包 B） | `src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp` |
+| 打包循环原型 | `PackGemmBPanelAvx2`（plain blocked 路径以 `<F32GemmWeightOps, false>` 实例在运行时执行，kc_len clamp 传入；packed-B driver 直接消费 artifact，不再运行时打包 B） | `src/backend/cpu/kernels/gemm/gemm_avx2_internal.h`、`src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp` |
 
 四个缺口（§3 设计已全部落地）：
 
@@ -69,7 +69,7 @@ k_panels = ceil(K / kc), n_blocks = ceil(N / nr)   （K/N 取自 logical_shape�
 
 ### 3.2 物理布局（v1, AVX2）
 
-与现有 `PackBPanel` / `MicroKernel4x16` **块内字节布局**逐字节一致；块间遍历顺序不同——运行时 blocked 路径是 `(kb, mb, nb)`（B 每 `mb` 块重打包），artifact 是 `(k_panels, n_blocks)` 顺序流。仅把打包时机从运行时移到准备期：
+与现有 `PackGemmBPanelAvx2` / `AccumulateF32Tile4x16Avx2` **块内字节布局**逐字节一致；块间遍历顺序不同——运行时 blocked 路径是 `(kb, mb, nb)`（B 每 `mb` 块重打包），artifact 是 `(k_panels, n_blocks)` 顺序流。仅把打包时机从运行时移到准备期：
 
 ```text
 B 逻辑 [N, K]（权重 [out, in]）
@@ -87,21 +87,21 @@ B 逻辑 [N, K]（权重 [out, in]）
 pad-0 满 tile **不等于**"kernel 永不做 tail 分支"。三类 tail 分别立约：
 
 - **K 尾（A 侧读）**：K 循环按 binding 期计算的 `kc_len = min(kc, K - pk*kc)` clamp——每面板一次常量、非 per-element 分支。不得读满 kc 而越过该面板的 K 边界（末面板满宽读取会越出该行 `lhs` 尾部，末行会越出 tensor）。
-- **N 尾（输出列）**：`MicroKernel4x16` 无条件写 16 列，`output_m_stride == n` 时写满会污染下一行（末行越界写出）。处理三选一（driver 内部实现选择）：masked/partial column store 写末块；NR<16 列变体（窄块）；N 尾交由 compatible packed driver（见 §3.6）。
+- **N 尾（输出列）**：`AccumulateF32Tile4x16Avx2` 无条件写 16 列，`output_m_stride == n` 时写满会污染下一行（末行越界写出）。处理三选一（driver 内部实现选择）：masked/partial column store 写末块；NR<16 列变体（窄块）；N 尾交由 compatible packed driver（见 §3.6）。
 - **M 尾（输出行）**：`m % kBlockedMR != 0` 的底部行同样不能用满 4 行 microkernel，复用 §3.4 scan driver 的 MR∈{1..8} 广播变体（MR=余数行数）或交 compatible driver。
 
 今天 blocked 路径的 M/N 尾复用 row-pair 消费 plain B（`args.rhs + n_full*rhs_n_stride`），packed-only artifact 下该回退路径不存在——**这是 packed-B 相对 plain 路径的合同收窄，必须在 §3.6 逐条列出**，不能依赖"顺手复用"。
 
 ### 3.4 打包与消费 primitive（缺口 3、4）
 
-**打包侧（已落地）**：`cpu_backend.cpp` 内部 `cpu::internal::PackWeightsWithRecipe` 按**显式 recipe** 分派——identity 字节拷贝与 `cpu_bpanel_f32_kc512_nr16`（复用 `PackBPanel` 逻辑 + pad 处理，常量与字节尺寸不变式在 `cpu_packed_weight_layout.h/.cpp`）；`CpuBackend::PackWeights(op, components, selector, recipe)` 校验 recipe 后调用该内部 primitive，生产布局选择以 `GetPackingRecipe` 为准；隔离测试/benchmark 可直接调用内部函数，不引入 registry 查询。单个 identity 组件支持任意合法 rank，但必须连续；多个组件仍要求 rank-2、相同 dtype 和 feature count。直接使用 identity 的测试通过 `CpuIdentityPackingRecipe()` 显式指定布局。
+**打包侧（已落地）**：`cpu_backend.cpp` 内部 `cpu::internal::PackWeightsWithRecipe` 按**显式 recipe** 分派——identity 字节拷贝与 `cpu_bpanel_f32_kc512_nr16`（复用 `CpuBPanelF32Kc512Nr16ElementIndex` 布局契约 + pad 处理，常量与字节尺寸不变式在 `cpu_packed_weight_layout.h/.cpp`）；`CpuBackend::PackWeights(op, components, selector, recipe)` 校验 recipe 后调用该内部 primitive，生产布局选择以 `GetPackingRecipe` 为准；隔离测试/benchmark 可直接调用内部函数，不引入 registry 查询。单个 identity 组件支持任意合法 rank，但必须连续；多个组件仍要求 rank-2、相同 dtype 和 feature count。直接使用 identity 的测试通过 `CpuIdentityPackingRecipe()` 显式指定布局。
 
 **消费侧（已落地）**：backend-private `PackedGemmF32Args`（POD：packed 指针 + 切片描述 + logical N/K + tile 常量与 k_panels/n_blocks，**不得整体嵌入 `PackingRecipe`**——params 受 arena 硬约束，见 §4 第 3 条）与三个 driver（`gemm_a32_w32_packed_b_reference.cpp` / `gemm_a32_w32_packed_b_avx2.cpp`，分发入口 `RunGemmA32W32PackedB`）：
 
 | Driver | 形状 | 行为 |
 |---|---|---|
-| `RunGemmA32W32PackedBScan` | M 小（decode/skinny） | `MicroKernel4x16` 的 MR∈{1..8} 广播变体：每个 `kk` 取该行 A 标量广播、加载 16 宽连续 B 向量、FMA 进 16 个累加器（沿 N 向量化、**无水平归约**）；M=1 即 MR=1。不做"沿 K 向量化 + 归纳"形态——bpanel 下同列相邻 K 元素间隔 `nr*4=64B`，K 向量化会丢掉 B 读顺序化的全部收益 |
-| `RunGemmA32W32PackedBBlocked` | M 大（prefill） | 现有 `RunBlockedGemmAvx2` 去掉 `PackBPanel`，按 `(k_panels, n_blocks)` 直接消费 |
+| `RunGemmA32W32PackedBScan` | M 小（decode/skinny） | `AccumulateF32Tile4x16Avx2` 的 MR∈{1..8} 广播变体：每个 `kk` 取该行 A 标量广播、加载 16 宽连续 B 向量、FMA 进 16 个累加器（沿 N 向量化、**无水平归约**）；M=1 即 MR=1。不做"沿 K 向量化 + 归纳"形态——bpanel 下同列相邻 K 元素间隔 `nr*4=64B`，K 向量化会丢掉 B 读顺序化的全部收益 |
+| `RunGemmA32W32PackedBBlocked` | M 大（prefill） | 现有 `RunBlockedGemmAvx2` 去掉 `PackGemmBPanelAvx2`，按 `(k_panels, n_blocks)` 直接消费 |
 | `RunGemmA32W32PackedBReference` | 兼容 fallback / 测试对照 | 标量消费 packed 布局；与 double oracle 对比时按 layout 常量 unpad 视角求和 |
 
 数值合同：packed 布局只是数据搬移 + 零填充，乘加次序与累加路数不变。验收容差沿用现有测试口径：绝对误差 `2.0e-4 + 2.0e-5*sqrt(k)` **或**相对误差 `2.0e-4`（见 `tests/unit/backend/cpu/kernels/test_cpu_gemm_avx2.cpp`）。pad 只在末面板尾部追加 `+0.0` 项，累加次序不变，结果与未 pad 逐 bit 相同——唯一例外是 `-0.0 + 0.0 → +0.0` 的符号位变化（写 bit-exact 断言时注意）。
@@ -175,7 +175,7 @@ Load HF → BuildLlamaDense → Lower            Execute (zero alloc):
    | 1280 | 3 | +20% | 3×512/1280（小模型宽） |
    | 768 | 2 | +33% | 2×512/768（GQA 的 k/v 常见量级） |
 
-   备选：kc=256 使 4096/11008/14336 全整除（11008=43×256），K=768 放大降为 0，块降至 16KB、A 面板 buffer 降至 48KB。但 kc 减半 → k_panels 翻倍 → 输出 C 的 read-modify-write 趟数与 microkernel 调用次数翻倍（`MicroKernel4x16` 每面板都 load-add-store 输出，`gemm_a32_w32_avx2.cpp:169-188`）；A 打包总量不变（恒 M×K×4）。大 M 下这是二阶成本，方向与 pad 收益相反——kc 定值归 M3 消费侧 benchmark。kc 是 layout 常量，无论取哪个值都编入 layout 名。
+   备选：kc=256 使 4096/11008/14336 全整除（11008=43×256），K=768 放大降为 0，块降至 16KB、A 面板 buffer 降至 48KB。但 kc 减半 → k_panels 翻倍 → 输出 C 的 read-modify-write 趟数与 microkernel 调用次数翻倍（`AccumulateF32Tile4x16Avx2` 每面板都 load-add-store 输出，`gemm_avx2_internal.h:122-179`）；A 打包总量不变（恒 M×K×4）。大 M 下这是二阶成本，方向与 pad 收益相反——kc 定值归 M3 消费侧 benchmark。kc 是 layout 常量，无论取哪个值都编入 layout 名。
 
 2. **独立 `PackedGemmF32Args` vs 扩展 `GemmArgs`** → 独立结构。plain 合同是 byte 指针 + 元素步长，具体 entry 确定精度；packed 需要 exact 布局与切片描述。`PackedGemmF32Args` 保留 F32 布局身份，`packed_b` 借用 byte storage，由 F32 driver 解释，不把 packed bytes 当作 plain RHS。
 
@@ -199,7 +199,7 @@ Load HF → BuildLlamaDense → Lower            Execute (zero alloc):
 |---|---|---|
 | M1 合同 | layout 命名/版本规则 + `cpu_packed_weight_layout.h` 常量头；nbytes 不变式两侧独立推导互证单测；**不扩展 PackingRecipe** | 合同单测通过 |
 | M2 打包器 | KC512/NR16 B-panel 打包实现（identity 链路保持不动）；pad/对齐/放大公式单测（K 侧数值表入 params）；unpack 后与逻辑权重逐元素一致、pad 区为 0；打包吞吐与放大实测（kc=256 vs 512，作为 M3 决策输入） | 工作流 O0/O1 证据 |
-| M3 packed primitive | 三个 driver；与 `RunGemmA32W32Reference` 对照覆盖母提案 §6.2 boundary shapes（含 M/N/K=0、非整除、pad 尾、masked/partial store 路径）；**测"移除 pack 的净收益"**并记录 B 流量模型（去掉 PackBPanel 不改变 B 总流量：无 NC 层级时每 `mb` 仍重扫 K 面板全部 n_blocks，只是省掉 transpose-gather 与 32KB 写） | O1 correctness + O2 prepared micro/operator benchmark |
+| M3 packed primitive | 三个 driver；与 `RunGemmA32W32Reference` 对照覆盖母提案 §6.2 boundary shapes（含 M/N/K=0、非整除、pad 尾、masked/partial store 路径）；**测"移除 pack 的净收益"**并记录 B 流量模型（去掉 `PackGemmBPanelAvx2` 运行时打包不改变 B 总流量：无 NC 层级时每 `mb` 仍重扫 K 面板全部 n_blocks，只是省掉 transpose-gather 与 32KB 写） | O1 correctness + O2 prepared micro/operator benchmark |
 | M4 传递链 | `KernelDef::packing_recipe` + backend recipe 查询入口 + 编排层注入 `Request::recipe` + `Pack(..., recipe)` 三处联动；mismatch（layout/alignment/nbytes）明确失败（注入点与三处联动均已落地，见 §3.5） | 母提案 §7「exact recipe 与 packed B」退出条件 |
 | M5 消费者 | **前置已满足：Linear/RmsNorm/Embedding 的 packed descriptor 已补齐**（per-op packed 使能仍未做，图级开关仍在）；component nr 对齐立约（§4 第 5 条方案 i）+ adapter 校验重写；Qkv/GateUp 切 bpanel 待 benchmark 决议（当前 B-panel priority 10 低于 identity optimized 20，选举仍落 identity） | fused 数值全链路 + packing break-even + hot/streaming 双模式 |
 
@@ -228,6 +228,7 @@ Load HF → BuildLlamaDense → Lower            Execute (zero alloc):
 
 | 日期 | 版本 | 变更 | 原因 |
 |---|---|---|---|
+| 2026-11-22 | 1.10 | 内部符号同步：`PackBPanel` → `PackGemmBPanelAvx2`、`MicroKernel4x16` → `AccumulateF32Tile4x16Avx2`，打包布局索引统一为 `CpuBPanelF32Kc512Nr16ElementIndex`；块内字节布局与遍历序不变 | GEMM 微内核与 B 面板打包器重复实现合并，文档引用与代码同步 |
 | 2026-10-09 | 1.9 | PackingRecipe.layout 与 PackedWeightView.recipe_layout 改为 PackingLayout；None/未知值校验贯穿 producer/consumer，ToString 保留诊断标签；两种物理字节格式、tile 与 alignment 保持 | 封闭布局集合采用枚举身份，消除字符串借用与任意名称匹配 |
 | 2026-10-08 | 1.8 | 文件职责同步：PackingRecipe、identity/B-panel 布局契约、请求数据、Store 和 inference recipe 解析各有对应单元；消费校验改名 packed_weight_validation；生产流程、布局及 recipe 身份保持 | 减少无关头文件依赖，消除声明与实现位置不对应 |
 | 2026-10-05 | 1.7 | `PrepackWeightRequests` 签名同步为返回 `StatusOr<PackedWeightStore>`（§1 打包执行行、§3.5 传递链与要点末条）：store 由函数创建并绑定批内 source，失败全有或全无；recipe 缺失错误码据实为 `InvalidArgument` | out-param sink 语义不诚实（全部调用者都新建局部 store），循环中途失败会留下部分打包产物；返回 store 使全有或全无成为结构性保证 |

@@ -221,7 +221,7 @@ classDiagram
     class RunGemmA32W32Scalar
     class RunGemmA32W32Avx2Fma
     class RunGemmA32W32PackedB
-    class PackBPanel
+    class PackGemmBPanelAvx2
     class RunRowPairAvx2
     class RunBlockedGemmAvx2
 
@@ -230,12 +230,13 @@ classDiagram
     RunGemmA32W32Avx2Fma --> GemmArgs : "消费"
     RunGemmA32W32PackedB --> PackedGemmF32Args : "消费"
     RunBlockedGemmAvx2 --> GemmArgs : "消费"
-    PackBPanel --> GemmArgs : "生成 B panel"
+    PackGemmBPanelAvx2 --> GemmArgs : "生成 B panel"
     RunRowPairAvx2 --> GemmArgs : "小 M 快速路径"
 ```
 
 **图示来源**
 - [src/backend/cpu/kernels/gemm/gemm_internal.h:20-119](../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L20-L119)
+- [src/backend/cpu/kernels/gemm/gemm_avx2_internal.h:1-183](../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L1-L183)
 - [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-200](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L200)
 
 #### 数据对齐与输入合同

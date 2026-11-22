@@ -107,34 +107,13 @@ constexpr int64_t kBlockedMR = kGemmAvx2MR;
 constexpr int64_t kBlockedNR = kGemmAvx2NR;
 constexpr int64_t kBlockedKC = kGemmAvx2KC;
 
-// Transposed k-major layout: buf_b[kk * 16 + col] = B[(nb_base + col)][kb + kk].
-void PackBPanel(const float* rhs, int64_t rhs_n_stride, int64_t kb,
-                int64_t nb_base, int64_t kc_len, float* buf_b) noexcept {
-    const float* source = rhs + nb_base * rhs_n_stride + kb;
-    const int64_t vector_end = kc_len - kc_len % 8;
-    for (int64_t col = 0; col < kBlockedNR; col += 8) {
-        for (int64_t k = 0; k < vector_end; k += 8) {
-            __m256 rows[8];
-            for (int64_t lane = 0; lane < 8; ++lane) {
-                rows[lane] = _mm256_loadu_ps(source + (col + lane) * rhs_n_stride + k);
-            }
-            StoreGemmBTile8x8Avx2(rows, buf_b + k * kBlockedNR + col);
-        }
-    }
-
-    for (int64_t kk = vector_end; kk < kc_len; ++kk) {
-        for (int64_t col = 0; col < kBlockedNR; ++col) {
-            buf_b[kk * kBlockedNR + col] = source[col * rhs_n_stride + kk];
-        }
-    }
-}
-
 // out rows use unit output_n_stride (validated by the caller);
 // out_row points at output[mb_base][nb_base].
 void RunBlockedGemmAvx2(const GemmArgs& args, int64_t m_full, int64_t n_full) noexcept {
     const auto* const lhs_data = reinterpret_cast<const float*>(args.lhs);
-    const auto* const rhs_data = reinterpret_cast<const float*>(args.rhs);
+    const auto* const rhs_data = reinterpret_cast<const std::byte*>(args.rhs);
     auto* const output_data = reinterpret_cast<float*>(args.output);
+    const size_t rhs_row_bytes = static_cast<size_t>(args.rhs_n_stride) * sizeof(float);
 
     alignas(32) float buf_b[static_cast<size_t>(kBlockedKC * kBlockedNR)];
 
@@ -143,7 +122,11 @@ void RunBlockedGemmAvx2(const GemmArgs& args, int64_t m_full, int64_t n_full) no
     for (int64_t kb = 0; kb < args.k; kb += kBlockedKC) {
         const int64_t kc_len = std::min(kBlockedKC, args.k - kb);
         for (int64_t nb = 0; nb < n_full; nb += kBlockedNR) {
-            PackBPanel(rhs_data, args.rhs_n_stride, kb, nb, kc_len, buf_b);
+            const auto* const b_source =
+                    rhs_data +
+                    static_cast<size_t>(nb * args.rhs_n_stride + kb) * sizeof(float);
+            PackGemmBPanelAvx2<F32GemmWeightOps, false>(
+                    b_source, rhs_row_bytes, kc_len, buf_b);
             for (int64_t row = 0; row < m_full; row += kBlockedMR) {
                 AccumulateF32Tile4x16Avx2(lhs_data + row * args.lhs_m_stride + kb,
                                           buf_b, kc_len, args.output_m_stride,

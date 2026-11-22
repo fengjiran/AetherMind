@@ -1,6 +1,5 @@
-#include "gemm_internal.h"
-
 #include "aethermind/base/macros.h"
+#include "gemm_internal.h"
 
 #include <algorithm>
 #include <array>

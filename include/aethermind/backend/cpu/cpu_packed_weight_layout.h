@@ -32,6 +32,19 @@ inline constexpr size_t kCpuBPanelF32Kc512Nr16Alignment = 64;
 inline constexpr int64_t kCpuBPanelF32Kc512Nr16NR = 16;
 inline constexpr int64_t kCpuBPanelF32Kc512Nr16KC = 512;
 
+/// @brief Index of logical element (n, k) in the KC=512, NR=16 F32 B-panel artifact.
+/// Coordinates beyond the logical N/K select padding slots filled with +0.0F.
+inline size_t CpuBPanelF32Kc512Nr16ElementIndex(int64_t n, int64_t k, int64_t n_blocks) noexcept {
+    const size_t panel = static_cast<size_t>(k / kCpuBPanelF32Kc512Nr16KC);
+    const size_t block = static_cast<size_t>(n / kCpuBPanelF32Kc512Nr16NR);
+    const size_t panel_row = static_cast<size_t>(k % kCpuBPanelF32Kc512Nr16KC);
+    const size_t column = static_cast<size_t>(n % kCpuBPanelF32Kc512Nr16NR);
+    const size_t panel_offset = panel * static_cast<size_t>(n_blocks) + block;
+    return (panel_offset * static_cast<size_t>(kCpuBPanelF32Kc512Nr16KC) + panel_row) *
+                   static_cast<size_t>(kCpuBPanelF32Kc512Nr16NR) +
+           column;
+}
+
 /// @brief Returns the recipe for the KC=512, NR=16 FP32 B-panel layout.
 inline PackingRecipe CpuBPanelF32Kc512Nr16Recipe() {
     return {.layout = kCpuBPanelF32Kc512Nr16Layout,

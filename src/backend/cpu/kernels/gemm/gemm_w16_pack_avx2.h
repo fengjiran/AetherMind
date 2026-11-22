@@ -4,7 +4,6 @@
 #include "aethermind/dtypes/half.h"
 #include "gemm_avx2_internal.h"
 
-#include <algorithm>
 #include <bit>
 #include <cmath>
 #include <cstddef>
@@ -14,6 +13,8 @@
 namespace aethermind::cpu::detail {
 
 struct Bf16GemmWeightOps {
+    static constexpr size_t kElementBytes = sizeof(uint16_t);
+
     static __m256 LoadEight(const std::byte* data) noexcept {
         const __m128i bits = _mm_loadu_si128(reinterpret_cast<const __m128i*>(data));
         return _mm256_castsi256_ps(_mm256_slli_epi32(_mm256_cvtepu16_epi32(bits), 16));
@@ -28,6 +29,8 @@ struct Bf16GemmWeightOps {
 
 #if defined(__F16C__)
 struct F16GemmWeightOps {
+    static constexpr size_t kElementBytes = sizeof(uint16_t);
+
     static __m256 LoadEight(const std::byte* data) noexcept {
         return _mm256_cvtph_ps(_mm_loadu_si128(reinterpret_cast<const __m128i*>(data)));
     }
@@ -51,42 +54,7 @@ inline bool GemmReductionMagnitudeIsSafe(float input, float weight, int64_t k) n
 template<class WeightOps>
 float PackGemmW16BPanelAvx2(const std::byte* weight, size_t row_bytes,
                             int64_t kc, float* panel) noexcept {
-    static_assert(kGemmAvx2NR % 8 == 0);
-    __m256 max_vector = _mm256_setzero_ps();
-    float max_tail = 0.0F;
-    // Pack eight weight rows at a time to limit active source lines when
-    // power-of-two row strides map the rows to the same L1 cache sets.
-    for (int64_t col = 0; col < kGemmAvx2NR; col += 8) {
-        const auto* stripe = weight + static_cast<size_t>(col) * row_bytes;
-        int64_t k = 0;
-        for (; k + 8 <= kc; k += 8) {
-            const auto* source = stripe + static_cast<size_t>(k) * sizeof(uint16_t);
-            __m256 rows[8];
-            for (size_t lane = 0; lane < 8; ++lane) {
-                rows[lane] = WeightOps::LoadEight(source + lane * row_bytes);
-                const __m256 magnitude = _mm256_andnot_ps(_mm256_set1_ps(-0.0F), rows[lane]);
-                // Keep the finite maximum even when a weight is NaN. The
-                // caller detects non-finite results and recomputes the output.
-                max_vector = _mm256_max_ps(magnitude, max_vector);
-            }
-            StoreGemmBTile8x8Avx2(rows, panel + k * kGemmAvx2NR + col);
-        }
-
-        for (; k < kc; ++k) {
-            const auto* source = stripe + static_cast<size_t>(k) * sizeof(uint16_t);
-            for (size_t lane = 0; lane < 8; ++lane) {
-                const float value = WeightOps::LoadOne(source + lane * row_bytes);
-                panel[k * kGemmAvx2NR + col + lane] = value;
-                max_tail = std::max(max_tail, std::fabs(value));
-            }
-        }
-    }
-    alignas(32) float magnitudes[8];
-    _mm256_store_ps(magnitudes, max_vector);
-    for (const float value: magnitudes) {
-        max_tail = std::max(max_tail, value);
-    }
-    return max_tail;
+    return PackGemmBPanelAvx2<WeightOps, true>(weight, row_bytes, kc, panel);
 }
 
 } // namespace aethermind::cpu::detail

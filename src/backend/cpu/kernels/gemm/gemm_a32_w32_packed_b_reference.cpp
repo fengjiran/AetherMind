@@ -6,21 +6,6 @@
 #include <cstdint>
 
 namespace aethermind::cpu::detail {
-namespace {
-
-size_t PackedBIndex(int64_t n, int64_t k, int64_t n_blocks) noexcept {
-    const size_t panel = static_cast<size_t>(k / cpu::kCpuBPanelF32Kc512Nr16KC);
-    const size_t block = static_cast<size_t>(n / cpu::kCpuBPanelF32Kc512Nr16NR);
-    const size_t panel_row = static_cast<size_t>(k % cpu::kCpuBPanelF32Kc512Nr16KC);
-    const size_t column = static_cast<size_t>(n % cpu::kCpuBPanelF32Kc512Nr16NR);
-    return (((panel * static_cast<size_t>(n_blocks) + block) *
-                     static_cast<size_t>(cpu::kCpuBPanelF32Kc512Nr16KC) +
-             panel_row) *
-            static_cast<size_t>(cpu::kCpuBPanelF32Kc512Nr16NR)) +
-           column;
-}
-
-} // namespace
 
 Status RunGemmA32W32PackedBReference(const PackedGemmF32Args& packed) noexcept {
     const GemmArgs& args = packed.gemm;
@@ -82,7 +67,7 @@ Status RunGemmA32W32PackedBReference(const PackedGemmF32Args& packed) noexcept {
             double sum = 0.0;
             for (int64_t k = 0; k < args.k; ++k) {
                 sum += static_cast<double>(lhs_row[k * args.lhs_k_stride]) *
-                       static_cast<double>(packed_b_data[PackedBIndex(weight_n, k, packed.n_blocks)]);
+                       static_cast<double>(packed_b_data[cpu::CpuBPanelF32Kc512Nr16ElementIndex(weight_n, k, packed.n_blocks)]);
             }
             output_row[col * args.output_n_stride] = static_cast<float>(sum);
         }

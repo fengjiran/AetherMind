@@ -332,17 +332,10 @@ StatusOr<std::unique_ptr<PackedWeight>> PackBPanelF32Kc512Nr16Weights(
             const auto* const src = component.data<float>();
             for (int64_t row = 0; row < component.dim(0); ++row) {
                 const size_t logical_row = row_offset + static_cast<size_t>(row);
-                const size_t block = logical_row / static_cast<size_t>(kCpuBPanelF32Kc512Nr16NR);
-                const size_t column = logical_row % static_cast<size_t>(kCpuBPanelF32Kc512Nr16NR);
                 for (int64_t k = 0; k < plan.columns; ++k) {
-                    const auto k_panel = static_cast<size_t>(k / kCpuBPanelF32Kc512Nr16KC);
-                    const auto k_in_panel = static_cast<size_t>(k % kCpuBPanelF32Kc512Nr16KC);
-                    const size_t packed_index =
-                            ((k_panel * n_blocks + block) *
-                                     static_cast<size_t>(kCpuBPanelF32Kc512Nr16KC) +
-                             k_in_panel) *
-                                    static_cast<size_t>(kCpuBPanelF32Kc512Nr16NR) +
-                            column;
+                    const size_t packed_index = CpuBPanelF32Kc512Nr16ElementIndex(
+                            static_cast<int64_t>(logical_row), k,
+                            static_cast<int64_t>(n_blocks));
                     packed_data[packed_index] = src[static_cast<size_t>(row) *
                                                             static_cast<size_t>(plan.columns) +
                                                     static_cast<size_t>(k)];

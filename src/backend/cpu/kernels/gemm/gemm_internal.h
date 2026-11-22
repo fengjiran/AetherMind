@@ -66,9 +66,6 @@ struct PackedGemmF32Args {
 /// output element without reading `lhs` or `rhs`.
 Status RunGemmA32W32Reference(const GemmArgs& args) noexcept;
 
-/// @brief Runs the double-accumulation oracle over the KC=512, NR=16 packed-B layout.
-Status RunGemmA32W32PackedBReference(const PackedGemmF32Args& args) noexcept;
-
 /// @brief Runs the scalar-optimized FP32 GEMM candidate.
 ///
 /// This candidate intentionally remains separate from the double-accumulation
@@ -80,6 +77,9 @@ Status RunGemmA32W32PackedBReference(const PackedGemmF32Args& args) noexcept;
 /// partial output; the first panel overwrites output without reading it.
 /// It uses no intrinsics or heap allocation.
 Status RunGemmA32W32Scalar(const GemmArgs& args) noexcept;
+
+/// @brief Runs the double-accumulation oracle over the KC=512, NR=16 packed-B layout.
+Status RunGemmA32W32PackedBReference(const PackedGemmF32Args& args) noexcept;
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 /// @brief Attempts F32 x BF16 computation without allocating or narrowing A.

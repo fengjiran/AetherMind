@@ -7,7 +7,7 @@
 #include <cstdint>
 
 #if defined(__AVX2__) && defined(__FMA__)
-#include <immintrin.h>
+#include "gemm_avx2_internal.h"
 #endif
 
 namespace aethermind::cpu::detail {
@@ -48,19 +48,10 @@ constexpr int64_t kPackedBMB = 48;
 constexpr int64_t kPackedBNR = cpu::kCpuBPanelF32Kc512Nr16NR;
 constexpr int64_t kPackedBKC = cpu::kCpuBPanelF32Kc512Nr16KC;
 
-size_t PackedBIndex(int64_t n, int64_t k, int64_t n_blocks) noexcept {
-    const size_t panel = static_cast<size_t>(k / kPackedBKC);
-    const size_t block = static_cast<size_t>(n / kPackedBNR);
-    const size_t panel_row = static_cast<size_t>(k % kPackedBKC);
-    const size_t column = static_cast<size_t>(n % kPackedBNR);
-    return (((panel * static_cast<size_t>(n_blocks) + block) *
-                     static_cast<size_t>(kPackedBKC) +
-             panel_row) *
-            static_cast<size_t>(kPackedBNR)) +
-           column;
-}
-
 #if defined(__AVX2__) && defined(__FMA__)
+static_assert(kPackedBMR == kGemmAvx2MR);
+static_assert(kPackedBKC == kGemmAvx2KC);
+static_assert(kPackedBNR == kGemmAvx2NR);
 
 void PackAPanel(const float* lhs,
                 int64_t lhs_m_stride,
@@ -76,55 +67,6 @@ void PackAPanel(const float* lhs,
             destination[kk] = source[kk];
         }
     }
-}
-
-void MicroKernel4x16(const float* buf_a,
-                     const float* buf_b,
-                     int64_t kc_len,
-                     int64_t output_m_stride,
-                     float* output_row0) noexcept {
-    __m256 acc00 = _mm256_setzero_ps();
-    __m256 acc01 = _mm256_setzero_ps();
-    __m256 acc10 = _mm256_setzero_ps();
-    __m256 acc11 = _mm256_setzero_ps();
-    __m256 acc20 = _mm256_setzero_ps();
-    __m256 acc21 = _mm256_setzero_ps();
-    __m256 acc30 = _mm256_setzero_ps();
-    __m256 acc31 = _mm256_setzero_ps();
-
-    const float* const a0 = buf_a;
-    const float* const a1 = a0 + kPackedBKC;
-    const float* const a2 = a1 + kPackedBKC;
-    const float* const a3 = a2 + kPackedBKC;
-    for (int64_t kk = 0; kk < kc_len; ++kk) {
-        const __m256 x0 = _mm256_set1_ps(a0[kk]);
-        const __m256 x1 = _mm256_set1_ps(a1[kk]);
-        const __m256 x2 = _mm256_set1_ps(a2[kk]);
-        const __m256 x3 = _mm256_set1_ps(a3[kk]);
-        const __m256 b0 = _mm256_loadu_ps(buf_b + kk * kPackedBNR);
-        const __m256 b1 = _mm256_loadu_ps(buf_b + kk * kPackedBNR + 8);
-        acc00 = _mm256_fmadd_ps(x0, b0, acc00);
-        acc01 = _mm256_fmadd_ps(x0, b1, acc01);
-        acc10 = _mm256_fmadd_ps(x1, b0, acc10);
-        acc11 = _mm256_fmadd_ps(x1, b1, acc11);
-        acc20 = _mm256_fmadd_ps(x2, b0, acc20);
-        acc21 = _mm256_fmadd_ps(x2, b1, acc21);
-        acc30 = _mm256_fmadd_ps(x3, b0, acc30);
-        acc31 = _mm256_fmadd_ps(x3, b1, acc31);
-    }
-
-    float* const out0 = output_row0;
-    float* const out1 = out0 + output_m_stride;
-    float* const out2 = out1 + output_m_stride;
-    float* const out3 = out2 + output_m_stride;
-    _mm256_storeu_ps(out0, _mm256_add_ps(_mm256_loadu_ps(out0), acc00));
-    _mm256_storeu_ps(out0 + 8, _mm256_add_ps(_mm256_loadu_ps(out0 + 8), acc01));
-    _mm256_storeu_ps(out1, _mm256_add_ps(_mm256_loadu_ps(out1), acc10));
-    _mm256_storeu_ps(out1 + 8, _mm256_add_ps(_mm256_loadu_ps(out1 + 8), acc11));
-    _mm256_storeu_ps(out2, _mm256_add_ps(_mm256_loadu_ps(out2), acc20));
-    _mm256_storeu_ps(out2 + 8, _mm256_add_ps(_mm256_loadu_ps(out2 + 8), acc21));
-    _mm256_storeu_ps(out3, _mm256_add_ps(_mm256_loadu_ps(out3), acc30));
-    _mm256_storeu_ps(out3 + 8, _mm256_add_ps(_mm256_loadu_ps(out3 + 8), acc31));
 }
 
 #endif
@@ -167,7 +109,8 @@ Status RunGemmA32W32PackedBScan(const PackedGemmF32Args& packed) noexcept {
             const int64_t weight_n = packed.weight_n_offset + col;
             for (int64_t k = 0; k < args.k; ++k) {
                 sum += static_cast<double>(lhs_row[k * args.lhs_k_stride]) *
-                       static_cast<double>(packed_b_data[PackedBIndex(weight_n, k, packed.n_blocks)]);
+                       static_cast<double>(packed_b_data[cpu::CpuBPanelF32Kc512Nr16ElementIndex(
+                               weight_n, k, packed.n_blocks)]);
             }
             output_row[col] = static_cast<float>(sum);
         }
@@ -204,7 +147,8 @@ Status RunGemmA32W32PackedBScan(const PackedGemmF32Args& packed) noexcept {
             const int64_t weight_n = packed.weight_n_offset + col;
             for (int64_t k = 0; k < args.k; ++k) {
                 sum += static_cast<double>(lhs_row[k * args.lhs_k_stride]) *
-                       static_cast<double>(packed_b_data[PackedBIndex(weight_n, k, packed.n_blocks)]);
+                       static_cast<double>(packed_b_data[cpu::CpuBPanelF32Kc512Nr16ElementIndex(
+                               weight_n, k, packed.n_blocks)]);
             }
             output_row[col] = static_cast<float>(sum);
         }
@@ -258,10 +202,11 @@ Status RunGemmA32W32PackedBBlocked(const PackedGemmF32Args& packed) noexcept {
                         static_cast<size_t>(kPackedBKC * kPackedBNR);
                 const float* const b_panel = packed_b_data + panel_index;
                 for (int64_t row = 0; row < mb_rows; row += kPackedBMR) {
-                    MicroKernel4x16(
+                    AccumulateF32Tile4x16Avx2(
                             buf_a + row * kPackedBKC, b_panel, kc_len,
                             args.output_m_stride,
-                            output_data + (mb + row) * args.output_m_stride + nb);
+                            output_data + (mb + row) * args.output_m_stride + nb,
+                            kPackedBKC);
                 }
             }
         }

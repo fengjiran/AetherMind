@@ -223,8 +223,9 @@ void RunKContiguousOutputTail(const GemmArgs& args, int64_t first_row,
 template<int Rows>
 AM_ALWAYS_INLINE void RunKContiguousRowBlock(const GemmArgs& args, int64_t first_row) noexcept {
     int64_t col = 0;
-    for (; col + kScalarKContiguousOutputBlock <= args.n; col += kScalarKContiguousOutputBlock) {
+    while (col + kScalarKContiguousOutputBlock <= args.n) {
         RunKContiguousOutputBlock<Rows>(args, first_row, col);
+        col += kScalarKContiguousOutputBlock;
     }
 
     if (col < args.n) {

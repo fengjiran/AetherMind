@@ -196,6 +196,47 @@ void BM_GemmF32Avx2FmaKContiguous(benchmark::State& state) {
                      &cpu::detail::RunGemmA32W32Avx2Fma,
                      2.0e-4F);
 }
+
+// Same production kernel as BM_GemmF32Avx2FmaKContiguous but registered on the
+// tile6 shape table so every Tile6 candidate case has an in-process baseline.
+void BM_GemmF32Avx2FmaKContiguousPeak(benchmark::State& state) {
+    const auto capabilities = cpu::DetectCpuCapabilities();
+    if (!capabilities.ok() ||
+        !capabilities->effective_features.Contains(CpuFeature::kAvx2) ||
+        !capabilities->effective_features.Contains(CpuFeature::kFma)) {
+        state.SkipWithError("AVX2+FMA GEMM benchmark requires effective AVX2 and FMA");
+        return;
+    }
+    BenchmarkGemmF32(state, RhsLayout::kKContiguous,
+                     &cpu::detail::RunGemmA32W32Avx2Fma,
+                     2.0e-4F);
+}
+
+void BM_GemmF32Avx2FmaTile6KContiguous(benchmark::State& state) {
+    const auto capabilities = cpu::DetectCpuCapabilities();
+    if (!capabilities.ok() ||
+        !capabilities->effective_features.Contains(CpuFeature::kAvx2) ||
+        !capabilities->effective_features.Contains(CpuFeature::kFma)) {
+        state.SkipWithError("AVX2+FMA GEMM benchmark requires effective AVX2 and FMA");
+        return;
+    }
+    BenchmarkGemmF32(state, RhsLayout::kKContiguous,
+                     &cpu::detail::RunGemmA32W32Avx2FmaTile6,
+                     2.0e-4F);
+}
+
+void BM_GemmF32Avx2FmaTile6DupAKContiguous(benchmark::State& state) {
+    const auto capabilities = cpu::DetectCpuCapabilities();
+    if (!capabilities.ok() ||
+        !capabilities->effective_features.Contains(CpuFeature::kAvx2) ||
+        !capabilities->effective_features.Contains(CpuFeature::kFma)) {
+        state.SkipWithError("AVX2+FMA GEMM benchmark requires effective AVX2 and FMA");
+        return;
+    }
+    BenchmarkGemmF32(state, RhsLayout::kKContiguous,
+                     &cpu::detail::RunGemmA32W32Avx2FmaTile6DupA,
+                     2.0e-4F);
+}
 #endif
 
 using GemmShape = std::array<int64_t, 3>;
@@ -308,6 +349,32 @@ benchmark::Benchmark* RegisterAvx2GemmShapes(benchmark::Benchmark* benchmark) {
     }
     return benchmark->ArgNames({"M", "K", "N"});
 }
+
+// Prefill-class shapes for the 6x16 candidates. M values divisible by 6
+// (48/96/192) exercise full-tile coverage only; the others include the
+// 4/2-row tile fallbacks so the comparison stays representative of real
+// Prefill. The two tiny cases anchor the M=9 admission boundary and the
+// greedy-decomposition edges near it.
+constexpr std::array<GemmShape, 11> kTile6Shapes{{
+        {16, 4096, 4096},
+        {64, 4096, 4096},
+        {128, 4096, 4096},
+        {48, 4096, 4096},
+        {96, 4096, 4096},
+        {192, 4096, 4096},
+        {512, 4096, 4096},
+        {2048, 4096, 4096},
+        {9, 4096, 4096},
+        {9, 32, 33},
+        {15, 33, 31},
+}};
+
+benchmark::Benchmark* RegisterTile6Shapes(benchmark::Benchmark* benchmark) {
+    for (const auto& shape: kTile6Shapes) {
+        benchmark->Args({shape[0], shape[1], shape[2]});
+    }
+    return benchmark->ArgNames({"M", "K", "N"});
+}
 #endif
 
 const auto* const kGemmF32ReferenceNContiguous = RegisterRefGemmShapes(
@@ -329,6 +396,15 @@ const auto* const kGemmF32ScalarOptimizedNContiguousPadded = RegisterScalarGemmS
 const auto* const kGemmF32Avx2FmaKContiguous = RegisterAvx2GemmShapes(
         benchmark::RegisterBenchmark("BM_GemmF32Avx2FmaKContiguous",
                                      &BM_GemmF32Avx2FmaKContiguous));
+const auto* const kGemmF32Avx2FmaKContiguousPeak = RegisterTile6Shapes(
+        benchmark::RegisterBenchmark("BM_GemmF32Avx2FmaKContiguousPeak",
+                                     &BM_GemmF32Avx2FmaKContiguousPeak));
+const auto* const kGemmF32Avx2FmaTile6KContiguous = RegisterTile6Shapes(
+        benchmark::RegisterBenchmark("BM_GemmF32Avx2FmaTile6KContiguous",
+                                     &BM_GemmF32Avx2FmaTile6KContiguous));
+const auto* const kGemmF32Avx2FmaTile6DupAKContiguous = RegisterTile6Shapes(
+        benchmark::RegisterBenchmark("BM_GemmF32Avx2FmaTile6DupAKContiguous",
+                                     &BM_GemmF32Avx2FmaTile6DupAKContiguous));
 #endif
 
 } // namespace

@@ -19,7 +19,7 @@ namespace aethermind::cpu::detail {
 
 inline constexpr int64_t kGemmAvx2KC = 512;
 inline constexpr int64_t kGemmAvx2NR = 16;
-inline constexpr int64_t kGemmAvx2MR = 4;
+inline constexpr int64_t kGemmAvx2MR6 = 6;
 inline constexpr int64_t kGemmAvx2MB = 48;
 
 // NOLINTBEGIN(portability-simd-intrinsics)
@@ -68,7 +68,7 @@ struct F32GemmWeightOps {
 };
 
 // Packs NR full B rows (row stride in bytes) into the k-major panel layout
-// used by AccumulateF32Tile4x16Avx2: full 8x8 K blocks are transposed with
+// used by the F32 tile kernels: full 8x8 K blocks are transposed with
 // StoreGemmBTile8x8Avx2, the K remainder is scalar. With TrackMagnitude the
 // largest finite |weight| is returned; otherwise the return value is 0.
 template<class WeightOps, bool TrackMagnitude>
@@ -119,63 +119,114 @@ float PackGemmBPanelAvx2(const std::byte* weight, size_t row_bytes,
     return max_tail;
 }
 
-// Shared F32 accumulation tile. Callers own precision-specific panel loading,
-// shape/stride admission, tails and numerical fallbacks.
-inline void AccumulateF32Tile4x16Avx2(const float* buf_a, const float* buf_b,
-                                      int64_t kc_len, int64_t output_m_stride,
-                                      float* out_row0,
-                                      int64_t a_row_stride = kGemmAvx2KC) noexcept {
-    __m256 acc00 = _mm256_setzero_ps();
-    __m256 acc01 = _mm256_setzero_ps();
-    __m256 acc10 = _mm256_setzero_ps();
-    __m256 acc11 = _mm256_setzero_ps();
-    __m256 acc20 = _mm256_setzero_ps();
-    __m256 acc21 = _mm256_setzero_ps();
-    __m256 acc30 = _mm256_setzero_ps();
-    __m256 acc31 = _mm256_setzero_ps();
-
-    const float* a0 = buf_a;
-    const float* a1 = a0 + a_row_stride;
-    const float* a2 = a1 + a_row_stride;
-    const float* a3 = a2 + a_row_stride;
-
-    for (int64_t kk = 0; kk < kc_len; ++kk) {
-        const __m256 x0 = _mm256_set1_ps(a0[kk]);
-        const __m256 x1 = _mm256_set1_ps(a1[kk]);
-        const __m256 x2 = _mm256_set1_ps(a2[kk]);
-        const __m256 x3 = _mm256_set1_ps(a3[kk]);
-        const __m256 b0 = _mm256_loadu_ps(buf_b + kk * kGemmAvx2NR);
-        const __m256 b1 = _mm256_loadu_ps(buf_b + kk * kGemmAvx2NR + 8);
-        acc00 = _mm256_fmadd_ps(x0, b0, acc00);
-        acc01 = _mm256_fmadd_ps(x0, b1, acc01);
-        acc10 = _mm256_fmadd_ps(x1, b0, acc10);
-        acc11 = _mm256_fmadd_ps(x1, b1, acc11);
-        acc20 = _mm256_fmadd_ps(x2, b0, acc20);
-        acc21 = _mm256_fmadd_ps(x2, b1, acc21);
-        acc30 = _mm256_fmadd_ps(x3, b0, acc30);
-        acc31 = _mm256_fmadd_ps(x3, b1, acc31);
+// Shared Nx16 F32 accumulation core (N in {2, 4, 6}): two independent 8-wide
+// accumulator chains per row span the 16 output columns, and the K loop is
+// unrolled by 4 to amortize loop overhead. With N=6 the twelve chains keep
+// both FMA ports busy; the smaller tiles cover M-tail rows with the same
+// panel flow instead of falling back to the row-pair kernel. The B panel is
+// k-major with an NR=16 row stride; `load_a(r, kk)` supplies the A operand
+// for row r at K index kk and differs between the direct-broadcast and
+// broadcast-packed variants.
+template<int Rows, class LoadA>
+void AccumulateF32TileNx16CoreAvx2(const float* buf_b, int64_t kc_len,
+                                   int64_t output_m_stride, float* out_row0,
+                                   LoadA load_a) noexcept {
+    static_assert(Rows >= 1 && Rows <= 6);
+    __m256 acc[Rows][2];
+    for (int r = 0; r < Rows; ++r) {
+        acc[r][0] = _mm256_setzero_ps();
+        acc[r][1] = _mm256_setzero_ps();
     }
 
-    float* out0 = out_row0;
-    float* out1 = out0 + output_m_stride;
-    float* out2 = out1 + output_m_stride;
-    float* out3 = out2 + output_m_stride;
-    __m256 o00 = _mm256_loadu_ps(out0);
-    __m256 o01 = _mm256_loadu_ps(out0 + 8);
-    __m256 o10 = _mm256_loadu_ps(out1);
-    __m256 o11 = _mm256_loadu_ps(out1 + 8);
-    __m256 o20 = _mm256_loadu_ps(out2);
-    __m256 o21 = _mm256_loadu_ps(out2 + 8);
-    __m256 o30 = _mm256_loadu_ps(out3);
-    __m256 o31 = _mm256_loadu_ps(out3 + 8);
-    _mm256_storeu_ps(out0, _mm256_add_ps(o00, acc00));
-    _mm256_storeu_ps(out0 + 8, _mm256_add_ps(o01, acc01));
-    _mm256_storeu_ps(out1, _mm256_add_ps(o10, acc10));
-    _mm256_storeu_ps(out1 + 8, _mm256_add_ps(o11, acc11));
-    _mm256_storeu_ps(out2, _mm256_add_ps(o20, acc20));
-    _mm256_storeu_ps(out2 + 8, _mm256_add_ps(o21, acc21));
-    _mm256_storeu_ps(out3, _mm256_add_ps(o30, acc30));
-    _mm256_storeu_ps(out3 + 8, _mm256_add_ps(o31, acc31));
+    int64_t kk = 0;
+    for (; kk + 4 <= kc_len; kk += 4) {
+        for (int s = 0; s < 4; ++s) {
+            const __m256 b0 = _mm256_load_ps(buf_b + (kk + s) * kGemmAvx2NR);
+            const __m256 b1 = _mm256_load_ps(buf_b + (kk + s) * kGemmAvx2NR + 8);
+            for (int r = 0; r < Rows; ++r) {
+                const __m256 x = load_a(r, kk + s);
+                acc[r][0] = _mm256_fmadd_ps(x, b0, acc[r][0]);
+                acc[r][1] = _mm256_fmadd_ps(x, b1, acc[r][1]);
+            }
+        }
+    }
+
+    for (; kk < kc_len; ++kk) {
+        const __m256 b0 = _mm256_load_ps(buf_b + kk * kGemmAvx2NR);
+        const __m256 b1 = _mm256_load_ps(buf_b + kk * kGemmAvx2NR + 8);
+        for (int r = 0; r < Rows; ++r) {
+            const __m256 x = load_a(r, kk);
+            acc[r][0] = _mm256_fmadd_ps(x, b0, acc[r][0]);
+            acc[r][1] = _mm256_fmadd_ps(x, b1, acc[r][1]);
+        }
+    }
+
+    for (int r = 0; r < Rows; ++r) {
+        float* const out = out_row0 + r * output_m_stride;
+        const __m256 o0 = _mm256_loadu_ps(out);
+        const __m256 o1 = _mm256_loadu_ps(out + 8);
+        _mm256_storeu_ps(out, _mm256_add_ps(o0, acc[r][0]));
+        _mm256_storeu_ps(out + 8, _mm256_add_ps(o1, acc[r][1]));
+    }
+}
+
+// Nx16 tiles reading A directly from the row-major lhs: every A operand is a
+// scalar broadcast from a strided row, no A packing cost and no layout change.
+inline void AccumulateF32Tile6x16Avx2(const float* buf_a, const float* buf_b,
+                                      int64_t kc_len, int64_t output_m_stride,
+                                      float* out_row0, int64_t a_row_stride) noexcept {
+    AccumulateF32TileNx16CoreAvx2<6>(
+            buf_b, kc_len, output_m_stride, out_row0,
+            [=](int r, int64_t k) {
+                return _mm256_broadcast_ss(buf_a + r * a_row_stride + k);
+            });
+}
+
+inline void AccumulateF32Tile4x16UnrolledAvx2(const float* buf_a, const float* buf_b,
+                                              int64_t kc_len, int64_t output_m_stride,
+                                              float* out_row0, int64_t a_row_stride) noexcept {
+    AccumulateF32TileNx16CoreAvx2<4>(
+            buf_b, kc_len, output_m_stride, out_row0,
+            [=](int r, int64_t k) {
+                return _mm256_broadcast_ss(buf_a + r * a_row_stride + k);
+            });
+}
+
+inline void AccumulateF32Tile2x16UnrolledAvx2(const float* buf_a, const float* buf_b,
+                                              int64_t kc_len, int64_t output_m_stride,
+                                              float* out_row0, int64_t a_row_stride) noexcept {
+    AccumulateF32TileNx16CoreAvx2<2>(
+            buf_b, kc_len, output_m_stride, out_row0,
+            [=](int r, int64_t k) {
+                return _mm256_broadcast_ss(buf_a + r * a_row_stride + k);
+            });
+}
+
+// Packs an A panel in broadcast layout: every scalar is replicated eight
+// times so the kernel replaces broadcast shuffles with plain vector loads.
+// Row stride is kc_len * 8 floats; the caller keeps the panel aligned.
+inline void PackGemmAPanelDupAvx2(const float* lhs, int64_t lhs_m_stride,
+                                  int64_t kb, int64_t mb_base, int64_t mb_rows,
+                                  int64_t kc_len, float* buf_a) noexcept {
+    for (int64_t row = 0; row < mb_rows; ++row) {
+        const float* const source = lhs + (mb_base + row) * lhs_m_stride + kb;
+        float* const destination = buf_a + row * kc_len * 8;
+        for (int64_t kk = 0; kk < kc_len; ++kk) {
+            _mm256_store_ps(destination + kk * 8, _mm256_broadcast_ss(source + kk));
+        }
+    }
+}
+
+// 6x16 tile reading A from a broadcast-packed panel (see PackGemmAPanelDupAvx2):
+// the inner loop issues only aligned vector loads and FMAs, no shuffles.
+inline void AccumulateF32Tile6x16DupAvx2(const float* buf_a, const float* buf_b,
+                                         int64_t kc_len, int64_t output_m_stride,
+                                         float* out_row0, int64_t a_row_stride) noexcept {
+    AccumulateF32TileNx16CoreAvx2<6>(
+            buf_b, kc_len, output_m_stride, out_row0,
+            [=](int r, int64_t k) {
+                return _mm256_load_ps(buf_a + r * a_row_stride + k * 8);
+            });
 }
 // NOLINTEND(portability-simd-intrinsics)
 

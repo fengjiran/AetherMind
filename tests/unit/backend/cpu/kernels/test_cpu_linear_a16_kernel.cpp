@@ -13,6 +13,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -365,5 +366,93 @@ TEST(LinearA16Kernel, PackedIdentityZeroInputFeatureDimensionWritesZero) {
         }
     }
 }
+
+struct A16BlockedShape {
+    int64_t rows;
+    int64_t in_features;
+    int64_t out_features;
+    bool fp32_output;
+};
+
+std::string A16BlockedShapeName(const testing::TestParamInfo<A16BlockedShape>& info) {
+    return "M" + std::to_string(info.param.rows) + "K" +
+           std::to_string(info.param.in_features) + "N" +
+           std::to_string(info.param.out_features) +
+           (info.param.fp32_output ? "F32Out" : "Bf16Out");
+}
+
+class LinearA16KernelBlockedTest : public testing::TestWithParam<A16BlockedShape> {};
+
+TEST_P(LinearA16KernelBlockedTest, BlockedPathMatchesWidenedReference) {
+    const A16BlockedShape test_case = GetParam();
+    const DataType output_dtype = test_case.fp32_output ? DataType::Float32() : DataType::BFloat(16);
+    const auto kernel = PrepareA16Kernel(DataType::BFloat(16), output_dtype);
+    ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+
+    const auto value = [](size_t index) {
+        return static_cast<float>(static_cast<int64_t>((index * 17U + 3U) % 59U) - 29) * 0.03125F;
+    };
+    std::vector<uint16_t> input_bits(static_cast<size_t>(test_case.rows * test_case.in_features));
+    std::vector<uint16_t> weight_bits(static_cast<size_t>(test_case.out_features * test_case.in_features));
+    for (size_t i = 0; i < input_bits.size(); ++i) {
+        input_bits[i] = Bf16Bits(value(i + 5));
+    }
+    for (size_t i = 0; i < weight_bits.size(); ++i) {
+        weight_bits[i] = Bf16Bits(value(i));
+    }
+    std::vector<uint16_t> output16;
+    std::vector<float> output32;
+    if (test_case.fp32_output) {
+        output32.resize(static_cast<size_t>(test_case.rows * test_case.out_features));
+    } else {
+        output16.resize(static_cast<size_t>(test_case.rows * test_case.out_features), 0xFFFFU);
+    }
+
+    const Status status = RunA16(*kernel, DataType::BFloat(16), input_bits, weight_bits,
+                                 output16, output32, test_case.rows,
+                                 test_case.in_features, test_case.out_features);
+    ASSERT_TRUE(status.ok()) << status.ToString();
+
+    // Oracle accumulates the widened operands in double; the BF16 output
+    // contract additionally rounds once at the end.
+    for (int64_t row = 0; row < test_case.rows; ++row) {
+        for (int64_t col = 0; col < test_case.out_features; ++col) {
+            double expected = 0.0;
+            double absolute_products = 0.0;
+            for (int64_t k = 0; k < test_case.in_features; ++k) {
+                const double product = static_cast<double>(WidenBf16(input_bits[static_cast<size_t>(row * test_case.in_features + k)])) *
+                                       static_cast<double>(WidenBf16(weight_bits[static_cast<size_t>(col * test_case.in_features + k)]));
+                expected += product;
+                absolute_products += std::fabs(product);
+            }
+            const float rounded_expected = test_case.fp32_output
+                                                   ? static_cast<float>(expected)
+                                                   : WidenBf16(Bf16Bits(static_cast<float>(expected)));
+            const float actual = test_case.fp32_output
+                                         ? output32[static_cast<size_t>(row * test_case.out_features + col)]
+                                         : WidenBf16(output16[static_cast<size_t>(row * test_case.out_features + col)]);
+            const double ku = 2.0 * static_cast<double>(test_case.in_features) *
+                              static_cast<double>(std::numeric_limits<float>::epsilon()) * 0.5;
+            EXPECT_NEAR(actual, rounded_expected,
+                        ku / (1.0 - ku) * absolute_products + 1.0e-6)
+                    << "row=" << row << " col=" << col;
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        BlockedBoundaries,
+        LinearA16KernelBlockedTest,
+        testing::Values(
+                // 6/4/2-row tile edges inside one 48-row scratch block.
+                A16BlockedShape{9, 8, 16, false},
+                A16BlockedShape{15, 512, 33, false},
+                A16BlockedShape{47, 512, 33, true},
+                A16BlockedShape{48, 512, 33, true},
+                A16BlockedShape{49, 512, 33, false},
+                A16BlockedShape{63, 512, 129, true},
+                A16BlockedShape{65, 512, 129, true},
+                A16BlockedShape{17, 513, 17, false}),
+        A16BlockedShapeName);
 
 } // namespace

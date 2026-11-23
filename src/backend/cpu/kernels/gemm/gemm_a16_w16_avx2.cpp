@@ -93,7 +93,9 @@ bool TryRunBlocked(const GemmA16W16Args& params) noexcept {
 
     for (int64_t mb = 0; mb < args.m; mb += kGemmAvx2MB) {
         const int64_t rows = std::min(args.m - mb, kGemmAvx2MB);
-        const int64_t padded_rows = (rows + kGemmAvx2MR - 1) / kGemmAvx2MR * kGemmAvx2MR;
+        // Even padded row count so the 6/4/2-row tile decomposition covers
+        // every scratch row; PackActivationRows zero-fills the padding row.
+        const int64_t padded_rows = (rows + 1) / 2 * 2;
         for (int64_t nb = 0; nb < args.n; nb += kOutputColumns) {
             const int64_t cols = std::min(args.n - nb, kOutputColumns);
             const int64_t padded_cols = (cols + kGemmAvx2NR - 1) / kGemmAvx2NR * kGemmAvx2NR;
@@ -112,9 +114,23 @@ bool TryRunBlocked(const GemmA16W16Args& params) noexcept {
                     if (!GemmReductionMagnitudeIsSafe(max_a, max_b, args.k)) {
                         return false;
                     }
-                    for (int64_t row = 0; row < padded_rows; row += kGemmAvx2MR) {
-                        AccumulateF32Tile4x16Avx2(panel_a + row * kGemmAvx2KC, panel_b,
-                                                  kc, padded_cols, sums + row * padded_cols + col);
+                    for (int64_t row = 0; row < padded_rows;) {
+                        const int64_t remaining = padded_rows - row;
+                        const float* const a_row = panel_a + row * kGemmAvx2KC;
+                        float* const sum_row = sums + row * padded_cols + col;
+                        if (remaining >= kGemmAvx2MR6) {
+                            AccumulateF32Tile6x16Avx2(a_row, panel_b, kc, padded_cols,
+                                                      sum_row, kGemmAvx2KC);
+                            row += kGemmAvx2MR6;
+                        } else if (remaining >= 4) {
+                            AccumulateF32Tile4x16UnrolledAvx2(a_row, panel_b, kc, padded_cols,
+                                                              sum_row, kGemmAvx2KC);
+                            row += 4;
+                        } else {
+                            AccumulateF32Tile2x16UnrolledAvx2(a_row, panel_b, kc, padded_cols,
+                                                              sum_row, kGemmAvx2KC);
+                            row += 2;
+                        }
                     }
                 }
             }

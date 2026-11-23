@@ -108,10 +108,21 @@ Status RunGemmA32W32PackedBBlocked(const PackedGemmF32Args& args) noexcept;
 /// SIMD paths require nonzero K, unit-stride lhs K, K-contiguous RHS, and
 /// unit-stride output N; `M=1..8` uses the row-pair fast path with a
 /// multi-target core for a leftover odd row, while `M>=9` uses the blocked
-/// 4x16 micro-kernel with direct A, transient B packing and row-pair edge handling. Every
-/// other reference-legal input delegates to the scalar candidate, which may
-/// in turn delegate to the reference oracle.
+/// 6x16 micro-kernel with 6/4/2-row tile decomposition, direct A, transient B
+/// packing and row-pair edge handling for the N-tail and a single odd row.
+/// Every other reference-legal input delegates to the scalar candidate, which
+/// may in turn delegate to the reference oracle.
 Status RunGemmA32W32Avx2Fma(const GemmArgs& args) noexcept;
+
+/// @brief Explicit 6x16 blocked entry mirroring the production blocked branch
+/// of RunGemmA32W32Avx2Fma; retained as a measurement/benchmark entry point
+/// and not registered as a separate descriptor.
+Status RunGemmA32W32Avx2FmaTile6(const GemmArgs& args) noexcept;
+
+/// @brief Blocked GEMM candidate: 6x16 micro-kernel over a broadcast-packed A
+/// panel (each scalar replicated 8x) so the inner loop issues no shuffle-port
+/// operations. Measurement candidate only; not registered for production.
+Status RunGemmA32W32Avx2FmaTile6DupA(const GemmArgs& args) noexcept;
 #endif
 
 } // namespace aethermind::cpu::detail

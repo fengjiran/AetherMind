@@ -43,13 +43,12 @@ Status ValidatePackedBArgs(const PackedGemmF32Args& packed) noexcept {
     return Status::Ok();
 }
 
-constexpr int64_t kPackedBMR = 4;
 constexpr int64_t kPackedBMB = 48;
 constexpr int64_t kPackedBNR = cpu::kCpuBPanelF32Kc512Nr16NR;
 constexpr int64_t kPackedBKC = cpu::kCpuBPanelF32Kc512Nr16KC;
 
 #if defined(__AVX2__) && defined(__FMA__)
-static_assert(kPackedBMR == kGemmAvx2MR);
+static_assert(kPackedBMB % 2 == 0);
 static_assert(kPackedBKC == kGemmAvx2KC);
 static_assert(kPackedBNR == kGemmAvx2NR);
 
@@ -171,7 +170,9 @@ Status RunGemmA32W32PackedBBlocked(const PackedGemmF32Args& packed) noexcept {
         args.output == nullptr) {
         return RunGemmA32W32PackedBScan(packed);
     }
-    const int64_t m_full = args.m - args.m % kPackedBMR;
+    // Even row count so the 6/4/2-row tile decomposition covers every blocked
+    // row; at most one odd row remains for the scan M-tail.
+    const int64_t m_full = args.m - args.m % 2;
     const int64_t n_full = args.n - args.n % kPackedBNR;
     if (m_full == 0 || n_full == 0) {
         return RunGemmA32W32PackedBScan(packed);
@@ -201,12 +202,23 @@ Status RunGemmA32W32PackedBBlocked(const PackedGemmF32Args& packed) noexcept {
                         (k_panel * static_cast<size_t>(packed.n_blocks) + n_block) *
                         static_cast<size_t>(kPackedBKC * kPackedBNR);
                 const float* const b_panel = packed_b_data + panel_index;
-                for (int64_t row = 0; row < mb_rows; row += kPackedBMR) {
-                    AccumulateF32Tile4x16Avx2(
-                            buf_a + row * kPackedBKC, b_panel, kc_len,
-                            args.output_m_stride,
-                            output_data + (mb + row) * args.output_m_stride + nb,
-                            kPackedBKC);
+                for (int64_t row = 0; row < mb_rows;) {
+                    const int64_t remaining = mb_rows - row;
+                    const float* const a_row = buf_a + row * kPackedBKC;
+                    float* const out_row = output_data + (mb + row) * args.output_m_stride + nb;
+                    if (remaining >= kGemmAvx2MR6) {
+                        AccumulateF32Tile6x16Avx2(a_row, b_panel, kc_len,
+                                                  args.output_m_stride, out_row, kPackedBKC);
+                        row += kGemmAvx2MR6;
+                    } else if (remaining >= 4) {
+                        AccumulateF32Tile4x16UnrolledAvx2(a_row, b_panel, kc_len,
+                                                          args.output_m_stride, out_row, kPackedBKC);
+                        row += 4;
+                    } else {
+                        AccumulateF32Tile2x16UnrolledAvx2(a_row, b_panel, kc_len,
+                                                          args.output_m_stride, out_row, kPackedBKC);
+                        row += 2;
+                    }
                 }
             }
         }

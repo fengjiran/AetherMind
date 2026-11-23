@@ -160,6 +160,45 @@ TEST(CpuGemmPackedB, BlockedHandlesMAndNTailsWithoutOverwritingEdges) {
     ExpectPackedDriverMatchesReference(11, 19, 33, 35, 16, true);
 }
 
+struct PackedBlockedShape {
+    int64_t m;
+    int64_t n;
+    int64_t k;
+};
+
+std::string PackedBlockedShapeName(const testing::TestParamInfo<PackedBlockedShape>& info) {
+    return "M" + std::to_string(info.param.m) + "K" +
+           std::to_string(info.param.k) + "N" + std::to_string(info.param.n);
+}
+
+class CpuGemmPackedBBlockedBoundaries : public testing::TestWithParam<PackedBlockedShape> {};
+
+TEST_P(CpuGemmPackedBBlockedBoundaries, MatchesReferenceAcrossTileAndBlockEdges) {
+    if (!CanExecutePackedAvx2()) {
+        GTEST_SKIP() << "AVX2+FMA GEMM candidate is unavailable on this host";
+    }
+    // weight_n_offset = 16 keeps the blocked admission (NR-aligned slice)
+    // while exercising a non-zero logical N offset into the artifact.
+    const PackedBlockedShape test_case = GetParam();
+    ExpectPackedDriverMatchesReference(test_case.m, test_case.n, test_case.k,
+                                       test_case.n + 16, 16, true);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+        BlockedTileEdges, CpuGemmPackedBBlockedBoundaries,
+        testing::Values(
+                // 6/4/2-row decomposition edges inside one 48-row M block plus
+                // the 48-row block boundary and the single odd scan row.
+                PackedBlockedShape{9, 17, 33},
+                PackedBlockedShape{15, 19, 33},
+                PackedBlockedShape{17, 33, 35},
+                PackedBlockedShape{47, 19, 33},
+                PackedBlockedShape{48, 33, 35},
+                PackedBlockedShape{49, 19, 33},
+                PackedBlockedShape{63, 33, 513},
+                PackedBlockedShape{65, 17, 513}),
+        PackedBlockedShapeName);
+
 TEST(CpuGemmPackedB, RegisteredCandidateDescriptorPacksAndExecutes) {
     if (!CanExecutePackedAvx2()) {
         GTEST_SKIP() << "AVX2+FMA GEMM candidate is unavailable on this host";

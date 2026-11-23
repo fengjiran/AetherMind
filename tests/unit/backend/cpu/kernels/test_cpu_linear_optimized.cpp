@@ -168,7 +168,12 @@ INSTANTIATE_TEST_SUITE_P(
                          testing::Values(Shape{1, 1, 3}, Shape{1, 7, 5}, Shape{1, 9, 19}, Shape{2, 33, 19},
                                          Shape{4, 513, 35}, Shape{8, 32, 16}, Shape{9, 33, 19}, Shape{11, 513, 35},
                                          Shape{49, 17, 19}, Shape{53, 521, 35}, Shape{261, 512, 17}, Shape{32, 32, 33},
-                                         Shape{2, 0, 7}, Shape{0, 7, 5}, Shape{2, 7, 0})));
+                                         Shape{2, 0, 7}, Shape{0, 7, 5}, Shape{2, 7, 0},
+                                         // W16 blocked 6/4/2-row tile boundaries and the
+                                         // direct-A 252-row block edge.
+                                         Shape{15, 513, 35}, Shape{17, 512, 33}, Shape{47, 512, 33},
+                                         Shape{48, 512, 33}, Shape{63, 512, 33}, Shape{65, 512, 33},
+                                         Shape{255, 512, 17})));
 
 class CpuLinearOptimizedSafety : public testing::TestWithParam<bool> {};
 

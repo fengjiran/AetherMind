@@ -147,9 +147,10 @@ bool TryGemmW16FullTiles(const GemmArgs& args, int64_t m_full, int64_t n_full) n
     auto* output = reinterpret_cast<float*>(args.output);
 
     // Reuse each B panel across a larger M block. Cap the logical direct A
-    // footprint at 512 KiB per K panel to limit repeated reads and page walks.
-    constexpr int64_t kDirectRows = 256;
-    static_assert(kDirectRows % kGemmAvx2MR == 0);
+    // footprint at 512 KiB per K panel to limit repeated reads and page walks;
+    // 252 is the largest multiple of the 6-row tile below that cap.
+    constexpr int64_t kDirectRows = 252;
+    static_assert(kDirectRows % kGemmAvx2MR6 == 0);
     const int64_t row_block = PackA ? kGemmAvx2MB : kDirectRows;
     const int64_t a_stride = PackA ? kGemmAvx2KC : args.lhs_m_stride;
     alignas(32) float panel_a[PackA ? kGemmAvx2MB * kGemmAvx2KC : 1];
@@ -158,6 +159,8 @@ bool TryGemmW16FullTiles(const GemmArgs& args, int64_t m_full, int64_t n_full) n
     for (int64_t kb = 0; kb < args.k; kb += kGemmAvx2KC) {
         const int64_t kc = std::min(kGemmAvx2KC, args.k - kb);
         for (int64_t mb = 0; mb < m_full; mb += row_block) {
+            // Both row_block candidates are even and m_full is rounded to an
+            // even count, so every block decomposes into whole 6/4/2-row tiles.
             const int64_t rows = std::min(row_block, m_full - mb);
             const float* src_a = input + mb * args.lhs_m_stride + kb;
             float max_a = 0.0f;
@@ -179,10 +182,23 @@ bool TryGemmW16FullTiles(const GemmArgs& args, int64_t m_full, int64_t n_full) n
                     return false;
                 }
 
-                for (int64_t row = 0; row < rows; row += kGemmAvx2MR) {
-                    AccumulateF32Tile4x16Avx2(
-                            a + row * a_stride, panel_b, kc, args.output_m_stride,
-                            output + (mb + row) * args.output_m_stride + nb, a_stride);
+                for (int64_t row = 0; row < rows;) {
+                    const int64_t remaining = rows - row;
+                    const float* a_row = a + row * a_stride;
+                    float* const out_row = output + (mb + row) * args.output_m_stride + nb;
+                    if (remaining >= kGemmAvx2MR6) {
+                        AccumulateF32Tile6x16Avx2(a_row, panel_b, kc, args.output_m_stride,
+                                                  out_row, a_stride);
+                        row += kGemmAvx2MR6;
+                    } else if (remaining >= 4) {
+                        AccumulateF32Tile4x16UnrolledAvx2(a_row, panel_b, kc, args.output_m_stride,
+                                                          out_row, a_stride);
+                        row += 4;
+                    } else {
+                        AccumulateF32Tile2x16UnrolledAvx2(a_row, panel_b, kc, args.output_m_stride,
+                                                          out_row, a_stride);
+                        row += 2;
+                    }
                 }
             }
         }
@@ -194,7 +210,9 @@ template<typename WeightOps>
 bool TryGemmW16Blocked(const GemmArgs& args) noexcept {
     const auto* input = reinterpret_cast<const float*>(args.lhs);
     auto* output = reinterpret_cast<float*>(args.output);
-    const int64_t m_full = args.m - args.m % kGemmAvx2MR;
+    // Even row count so the 6/4/2-row tile decomposition covers every blocked
+    // row; at most one odd row remains for the direct M-tail path.
+    const int64_t m_full = args.m - args.m % 2;
     const int64_t n_full = args.n - args.n % kGemmAvx2NR;
     if (n_full == 0) {
         return TryGemmW16Direct<WeightOps>(args);

@@ -187,7 +187,7 @@ AVX2 实现使用 8 个独立累加器链，主循环每次处理 64 个元素�
 GEMM 是 CPU 后端最复杂的 SIMD 内核之一，覆盖：
 - Reference：双精度累加的数值基线。
 - Scalar optimized：纯标量优化 driver，支持 N 连续和 K 连续的 RHS。
-- AVX2/FMA：小 M 行对 fast path、4×16 micro-kernel、B panel 打包、blocked GEMM。
+- AVX2/FMA：小 M 行对 fast path、6×16 micro-kernel、B panel 打包、blocked GEMM。
 - AVX-512 BF16/FP16：同型半精度或混合精度的扩展路径。
 
 ```mermaid
@@ -223,21 +223,21 @@ classDiagram
     class RunGemmA32W32PackedB
     class PackGemmBPanelAvx2
     class RunRowPairAvx2
-    class RunBlockedGemmAvx2
+    class RunBlockedGemmTile6Avx2
 
     RunGemmA32W32Reference --> GemmArgs : "消费"
     RunGemmA32W32Scalar --> GemmArgs : "消费"
     RunGemmA32W32Avx2Fma --> GemmArgs : "消费"
     RunGemmA32W32PackedB --> PackedGemmF32Args : "消费"
-    RunBlockedGemmAvx2 --> GemmArgs : "消费"
+    RunBlockedGemmTile6Avx2 --> GemmArgs : "消费"
     PackGemmBPanelAvx2 --> GemmArgs : "生成 B panel"
     RunRowPairAvx2 --> GemmArgs : "小 M 快速路径"
 ```
 
 **图示来源**
 - [src/backend/cpu/kernels/gemm/gemm_internal.h:20-119](../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L20-L119)
-- [src/backend/cpu/kernels/gemm/gemm_avx2_internal.h:1-183](../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L1-L183)
-- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-200](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L200)
+- [src/backend/cpu/kernels/gemm/gemm_avx2_internal.h:1-234](../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L1-L234)
+- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-347](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L347)
 
 #### 数据对齐与输入合同
 - `GemmArgs` 使用字节指针，不放宽 dtype、对齐或对象访问规则。
@@ -247,7 +247,7 @@ classDiagram
 
 #### 寄存器使用与循环展开
 - 小 M 行对路径每 8 宽 K 步复用两个 LHS 向量，四个列权重流式读取，峰值约 10 个 YMM 寄存器。
-- Blocked GEMM 使用 4×16 micro-kernel，8 个独立累加器链覆盖 64 个输出 lane，饱和两个 FMA 端口。
+- Blocked GEMM 使用 6×16 micro-kernel，12 个独立累加器链覆盖 96 个输出 lane，K 展开 4，饱和两个 FMA 端口；M 尾行按 6/4/2 行分解复用同一 B panel。
 - 主循环按 KC、NR、MR 分块，先打包 B panel，再累积 A 行 tile。
 - 尾部通过逐列 dot product 或标量回退处理未对齐边界。
 
@@ -258,7 +258,7 @@ classDiagram
 
 **章节来源**
 - [src/backend/cpu/kernels/gemm/gemm_internal.h:20-119](../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L20-L119)
-- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-200](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L200)
+- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-347](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L347)
 - [docs/operators/gemm/cpu-gemm-optimization.md](../../operators/gemm/cpu-gemm-optimization.md)
 
 ### RMSNorm 内核
@@ -339,7 +339,7 @@ graph LR
 |---|---|---|
 | 点积 | 8 条独立累加链，主循环 64 元素，尾部 32/16/8 分段 | 有效 AVX2/FMA 检测 |
 | GEMM 小 M | 行对复用 LHS，4 列 B 流读 | LHS K=1、RHS K/N 连续、输出 N=1 |
-| GEMM blocked | 4×16 micro-kernel，B panel 预打包 | KC/NR/MR 由基准确定 |
+| GEMM blocked | 6×16 micro-kernel，B panel 预打包 | KC/NR/MR 由基准确定 |
 | RMSNorm | row-wise 归一化，按 hidden_size 向量吞吐 | weight float 对齐，output injective |
 | SiLU×Mul | 向量 exp 近似 + 安全域判断 + BF16 写回容差 | 最近舍入模式，幅值安全域 |
 
@@ -367,7 +367,7 @@ graph LR
 
 **章节来源**
 - [src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp:1-153](../../../src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp#L1-L153)
-- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-200](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L200)
+- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-347](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L347)
 - [src/backend/cpu/kernels/rmsnorm/rmsnorm_entry.cpp:1-200](../../../src/backend/cpu/kernels/rmsnorm/rmsnorm_entry.cpp#L1-L200)
 - [src/backend/cpu/kernels/silu_mul/silu_mul_avx2.cpp:1-129](../../../src/backend/cpu/kernels/silu_mul/silu_mul_avx2.cpp#L1-L129)
 - [docs/operators/gemm/cpu-gemm-optimization.md](../../operators/gemm/cpu-gemm-optimization.md)
@@ -471,7 +471,7 @@ AetherMind 的 CPU SIMD 内核采用“构建期工具链检测 + 运行期 CPU 
 
 **章节来源**
 - [src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp:1-153](../../../src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp#L1-L153)
-- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-200](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L200)
+- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-347](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L347)
 
 ### 缓存分块与临时面板
 - 对大矩阵乘法使用 MC/NC/KC 分块。
@@ -480,7 +480,7 @@ AetherMind 的 CPU SIMD 内核采用“构建期工具链检测 + 运行期 CPU 
 - 文档明确指出某些 K-panel 分块方案因开销大于收益被移除。
 
 **章节来源**
-- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-200](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L200)
+- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-347](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L347)
 - [docs/operators/gemm/cpu-gemm-optimization.md](../../operators/gemm/cpu-gemm-optimization.md)
 
 ### 安全回退与数值稳健性

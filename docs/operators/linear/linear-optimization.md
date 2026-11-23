@@ -12,7 +12,7 @@
 ## 实现
 
 1. Decode/small-M 用 K 维 8-lane SIMD、两行与四个输出的 register block。F16 用 F16C，BF16 用整数 widening。单行 GEMV 为各输出并行计算幅值上界，随后合并并走原 safety guard。tail 用 byte-safe scalar load。
-2. Prefill 用共享 F32 4×16 microkernel，KC=512。W16 按 8×8 小块 widening 并转置到连续 N lanes。完整 M 行数超过 48 且 K 至少为 512 时直接读 A，临时 B panel 在最多 256 行内复用。
+2. Prefill 用共享 F32 6×16 microkernel，KC=512。W16 按 8×8 小块 widening 并转置到连续 N lanes。完整 M 行数超过 48 且 K 至少为 512 时直接读 A，临时 B panel 在最多 252 行内复用。
 3. direct-A 路径的 B panel 使用 32 KiB 固定栈 scratch，短 blocked 路径的 A/B panel 合计 128 KiB。后续并行化须将调用帧计入 worker scratch 规划。
 4. 使用输入/权重的幅值上界约束 F32 overflow 安全域；不满足时完整重算 reference。非有限输出也回退，防止 fast path 在特殊值上丢失原 reference 的分类语义。安全检查成本计入 production benchmark。
 5. descriptor 只声明必要 ISA；BF16 不依赖 F16C，F16 须同时具备 AVX2/FMA/F16C。编译禁用与 runtime feature policy 都须有 fallback 回归。

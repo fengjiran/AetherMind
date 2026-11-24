@@ -79,7 +79,7 @@ graph TB
 
 **图示来源**
 - [docs/architecture.md](../../architecture.md)
-- [src/backend/cpu/kernels/gemm/gemm_internal.h:1-119](../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L1-L119)
+- [src/backend/cpu/kernels/gemm/gemm_internal.h:1-190](../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L1-L190)
 
 **章节来源**
 - [docs/architecture.md](../../architecture.md)
@@ -235,8 +235,8 @@ classDiagram
 ```
 
 **图示来源**
-- [src/backend/cpu/kernels/gemm/gemm_internal.h:20-119](../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L20-L119)
-- [src/backend/cpu/kernels/gemm/gemm_avx2_internal.h:1-234](../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L1-L234)
+- [src/backend/cpu/kernels/gemm/gemm_internal.h:20-190](../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L20-L190)
+- [src/backend/cpu/kernels/gemm/gemm_avx2_internal.h:1-194](../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L1-L194)
 - [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-347](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L347)
 
 #### 数据对齐与输入合同
@@ -257,7 +257,7 @@ classDiagram
 - 当前实现保留 32 KiB 或更大 panel 的空间局部性，但最终 tile 大小由基准确定。
 
 **章节来源**
-- [src/backend/cpu/kernels/gemm/gemm_internal.h:20-119](../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L20-L119)
+- [src/backend/cpu/kernels/gemm/gemm_internal.h:20-190](../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L20-L190)
 - [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-347](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L347)
 - [docs/operators/gemm/cpu-gemm-optimization.md](../../operators/gemm/cpu-gemm-optimization.md)
 

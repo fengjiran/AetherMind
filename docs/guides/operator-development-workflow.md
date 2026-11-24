@@ -8,26 +8,29 @@
 
 1. **语义先于实现**：先冻结 input/output、dtype、shape、stride/layout、alias、zero-size、overflow 和 numerical semantics，再实现 kernel。
 2. **reference 与 optimized 分离**：reference 是 correctness oracle，不为追求性能而修改成难以审计的实现。
-3. **microbenchmark 不代表产品性能**：必须同时验证真实 registered/prepared production path。
+3. **micro benchmark 不代表产品性能**：必须同时验证真实 registered/prepared production path。
 4. **性能结论必须可追溯**：绑定 commit、机器、benchmark 命令和 raw 数据；无上下文的数字不记录。
 
 ## 3. 工作包与门禁（O0–O4）
 
-算子的机制决定选择哪些工作包（优化实现与纯正确性/调参工作投入不同），但 correctness、production-path 与追溯门禁不可绕过。
+先确定本次交付目标。新增算子先完成 O0、O1 和生产接入检查，即可在已验证范围内交付 reference。已有算子复核其契约和接入证据后，可从 O2 复现基线开始。
 
-| 工作包 | 内容与退出条件 |
+| 工作包 | 工作与退出条件 |
 |---|---|
-| **O0 语义与合同** | 明确端口顺序、dtype/rank/shape、stride/layout、alias/in-place、zero-size/overflow |
-| **O1 Reference** | 简单、可读、独立的 correctness oracle，覆盖完整合法合同 |
-| **O2 Benchmark baseline** | 以 **prepared operator**（registered/resolved kernel + prepared params）为主门禁，microkernel 仅诊断 |
-| **O3 方案与路线** | 非平凡的优化方案、备选与工作包依赖记入本算子 `<op>-optimization.md`；工作包状态记入其 README；过程证据不写进提案 |
-| **O4 实验与调优** | 在记录文件追加（格式见 §4） |
+| **O0 语义与合同** | 定义端口、dtype、rank/shape、stride/layout、alias、空张量、溢出、数值语义和错误行为。区分算子允许的输入与具体后端支持的子集。 |
+| **O1 Reference** | 用可手算样例或独立数值对照验证 reference，覆盖声明支持的范围和错误边界。保留可审计的实现，供优化路径做差分测试。 |
+| **生产接入检查（O1 后）** | 图算子用最小图经过 lowering、计划构建、实际绑定和执行，核对选中的 descriptor、输出和错误传播。backend primitive 通过真实 consumer 验证。声明模型覆盖时，再从对应模型入口验证该步骤或融合路径。 |
+| **O2 Benchmark baseline** | 分别标识正确性 reference、当前默认实现和候选。用同一 selector 与 workload 测量已选核、已绑定参数的算子；首次建立基线时可用 reference。将绑定、准备和稳态执行分别计时。 |
+| **O3 方案与路线** | 写明瓶颈假设、目标 workload、拟做的决定、预期收益和允许回退范围。非平凡方案及备选记入本算子的优化提案，状态记入算子 README。 |
+| **O4 实验与调优** | 将候选与独立 reference 对照，并与 O2 的默认路径做配对性能比较。按预定条件裁决，在 §4 格式的记录中给出适用机器、dtype、phase、shape 和决定。提升默认优先级前，验证实际选核会受影响的 shape；覆盖不足时缩小启用范围或保留候选。 |
+
+计划构建时选核，具体视图在绑定时校验，可变 KV 状态在执行时检查。RMSNorm 的完整示例见[算子系统设计](../operators/算子系统设计.md)。
 
 ## 4. 记录文件
 
 证据记入 `docs/operators/<op>/benchmarks/<machine>-<op>.md`：**一机器一文件**，文件名只含机器名与算子名。日期、工作包编号、"实验日志/验证报告/分析"等分类都不进文件名，需要区分时用文件内的章节和记录条目。每台机器只写自己的文件，数值不跨文件引用；未采集的机器不建空文件。
 
-机器环境以一张表写在文件开头，只写一次。记录只追加、不覆盖，失败与失败的实验同样保留；按追加顺序排列，标题不写日期（时间由 raw run-id 与 commit 定位）。
+机器文件头记录初始环境，每条实验注明与文件头的差异。记录只追加、不覆盖，失败实验同样保留；按追加顺序排列，标题不写日期（时间由 raw run-id 与 commit 定位）。
 
 ````markdown
 # <算子名> 基准记录 — <机器名>
@@ -41,11 +44,13 @@
 
 ## <被测实现或变更，一句话>
 
-- commit：`<sha>`（dirty 时标明）
-- 命令：`<benchmark / test 命令>`
-- 结果：`<case | baseline | candidate | delta | 测试结果>`（median，n=…；不粘贴 JSON 与终端输出）
+- 决策与范围：<要决定什么；机器、dtype、phase、shape、缓存状态、接受条件>
+- 身份：<基线与候选的 commit、构建差异、effective ISA、实际 descriptor/recipe；dirty 源码的恢复信息>
+- 命令与边界：<测试与基准命令；计时包含的步骤、预热和线程配置>
+- 结果：<正确性；独立 A/B 对数、每进程 repetitions、两侧中位数、配对差值及噪声；非计时项按实际填写>
 - raw：`benchmark-results/operators/<op>/<run-id>/`
-- 结论：Accepted / Rejected / Needs More Data；下一步
+- 结论：<Accepted / Rejected / Needs More Data；具体对象、适用范围、是否启用和待补项>
+
 ````
 
 ## 5. Benchmark 与原始数据规范
@@ -53,7 +58,7 @@
 ### 5.1 元数据
 
 - **文件头（每机器一次）**：CPU model、核数/SMT、OS/kernel、compiler + build flags。
-- **每条记录**：git commit + working-tree dirty、benchmark command、结果摘要、raw artifact 引用。
+- **每条记录**：按 §4 模板记录。compiler、build flags、OS 或微码发生变化时，在该条记录注明。用于生产决策的 dirty 构建附可恢复的补丁（含影响结果的未跟踪文件）或源码快照。
 - **全档（仅 end-to-end 结论、production 决策或跨机器比较时补记）**：date/time、baseline/candidate 身份、CPU stepping/microcode、effective CPU features、thread/affinity/NUMA、governor/turbo/SMT、memory configuration、JSON/checksum。
 
 缺少 commit、命令或 artifact 的记录只能作为本地观察，不能用于 production 决策。
@@ -62,86 +67,27 @@
 
 gitignored `benchmark-results/operators/<op>/<run-id>/`（run ID 格式 `YYYYMMDDTHHMMSSZ_<git-sha>_<host-id>_<variant>`）。大量 machine-specific JSON 不进 `docs/`；需长期保留时用 CI artifact，在记录文件中记录 artifact ID、URL、checksum 与 retention。
 
-### 5.3 比较规则
+## 6. 基准比较规则
 
-- baseline/candidate 同机同配置、独立进程交错 A/B、保存全部 repetitions；
-- Decode/Prefill 与 hot/streaming 分组报告；logical bytes 与实际 DRAM traffic 区分；
-- 噪声或置信区间内重叠的差异不得宣称收益；microbenchmark 改善未经 production/integration 验证，不得提高 production priority。
-
-## 6. 决策、评审与反模式
-
-### 6.1 状态流转
-
-记录只追加、不覆盖。门禁不过 → 继续实验 / Rejected / Needs More Data；通过 → closeout（descriptor priority、design、CHANGELOG、issues 按触发更新）。算子当前状态以算子 README 的一句话状态为准。
-
-### 6.2 PR 评审门禁
-
-- [ ] reference 与 optimized 独立；语义/layout/alias/zero-size/overflow 合同未被意外缩窄；
-- [ ] correctness 测试覆盖目标和 fallback；steady-state 计时边界正确；
-- [ ] 性能结论包含核心元数据，microbenchmark 与 production-path 证据已区分；
-- [ ] 记录文件、design、CHANGELOG 按触发条件同步；未运行或未证明内容明确标注。
-
-### 6.3 反模式
-
-- 直接优化 reference kernel；只保存最好数据、删除失败实验；
-- 用 microkernel GFLOP/s 宣称端到端收益；timed loop 内做无意 allocation/validation；
-- baseline/candidate 跨机器或跨配置直接比较；把 raw JSON/长终端输出粘贴进文档；
-- 没有 exact recipe/ownership 证据修改 packed layout；没有 runtime threading contract 就在 kernel 内建线程。
+- 默认在同机同配置下交错启动独立进程，交替使用 A→B 和 B→A 顺序，保存全部 repetitions。先取每个进程的中位数，再按相邻 A/B 对计算差值或百分比，注明指标单位和改善方向。
+- 分开报告独立进程对数、每进程重复数和配对差值的分布。调试时可用同进程交错比较以共享进程环境；注明运行顺序及缓存影响，并用独立进程对验证结论能否跨启动复现。
+- 按目标 workload 区分 Decode/Prefill、hot/streaming。逻辑访问字节和实际 DRAM 流量各自标明。按 §7.2 估计同机同组噪声；配对差值不足以区分收益与噪声时，记录 Needs More Data。
 
 ## 7. 优化方法
 
-### 7.1 契约与 workload
+### 7.1 针对目标负载验证改动
 
-- **契约清单**：输入输出 shape/dtype/layout/stride；contiguous/in-place/aliasing；align 要求；NaN/Inf 传播；累加精度与 fast-math 是否允许近似；epsilon/rounding/denormal 行为；overflow 与 zero-size；目标 workload（latency vs throughput、单核 vs 多核、ISA 与 fallback）；WSL2/容器会把混合拓扑伪造成对称 CPU（`taskset` 仅咨询性）。
-- **Prefill vs Decode**：Prefill 大 GEMM、复用高 → packing/microkernel/多线程分块/epilogue 融合；Decode 每步 1 token、GEMM→GEMV、call overhead 敏感 → small-batch GEMV 专用路径、权重预打包、KV layout、低开销 dispatch、避免小算子起线程。
+从生产路径上耗时的 shape 和 phase 入手，一次验证一个瓶颈假设。例如优化 Decode 的矩阵乘时，用单 token 的实际 shape 测延迟；若声称提升生成速度，再测同一模型的每 token 延迟。具体的 tile、指令和缓存策略见[各算子方案与实测记录](../operators/README.md)。
+
+| 改动 | 需要核对的边界 |
+|---|---|
+| ISA 或 SIMD 内核 | 分别验证缺少必要 ISA 时的选核，以及 ISA 满足但视图布局不满足时的返回状态或回退。数值和性能在支持该 ISA 的机器上验证。以向量宽度前后一项测试尾部读写；只有布局保证最后一行之后仍有足够可读 padding 时才允许 over-read。 |
+| 权重打包 | 打包端和 kernel 须匹配同一 recipe；物理字节格式变更使用新布局 ID。验证尾块，记录额外字节和含打包的准备时间，结合实际复用次数判断收益。 |
+| 算子融合 | 用同一输入对照融合前后的实际执行计划、数值、workspace 和耗时。 |
+| 算子内并行 | 先明确线程与临时存储的所有权、预算、同步完成及失败清理，再验证确定性、TSAN、prepared Decode 稳态零分配、单线程和目标线程数的表现。[CPU 算子路线图](../operators/cpu-operator-evolution.md) |
 
 ### 7.2 正确性与基准
 
-- **Reference vs Baseline**：Reference 用于正确性对齐（可用 double/标准库、不追求性能）；Baseline 是性能对比基准（朴素实现）。
-- **测试体系**：固定用例（最小/常见/大 shape、非 2 的幂与质数维、SIMD 整除与不整除、cache 边界、LLM 常见尺寸）；随机测试（uniform/normal、符号/量级/稀疏/极值）；特殊数值（`±0`/NaN/±Inf/denormal，fast-math 路径须明确处理）。
-- **误差指标**：Elementwise 用 max abs/rel diff；Reduction/RN 用 max diff + double reference；Softmax 加 sum-to-one/argmax；GEMM 用 max diff/rel diff/必要时 ULP；LLM logits 用 top-1/top-k 一致性。
-- **噪声 floor（方法权威）**：固定百分比回退阈值（如 5%）不是常量——噪声 floor 是"机器 × 组"属性。① 区分进程内方差（提高 repetitions 有效）与跨进程系统偏移（无效，须多进程 median 或同进程交错 A/B）；② 用同一实现两轮互比校验阈值（被误判则该组只能人工判读）；③ 判读用该机该组 floor，不用全局常数；④ 核类别/SMT 结论只在裸机采集。
+按算子契约选数值对照和误差指标。例如归约可与高精度结果对照；改变 Softmax 近似时，检查输出误差、归一化和特殊值行为。
 
-### 7.3 理论模型与 Roofline
-
-FLOPs 口径统一（MAC = 2 FLOPs）；Bytes 按实际内存层级流量估算（两遍扫描/写分配/非临时存储改变流量）；`AI = FLOPs/Bytes` 低则大概率 memory-bound，但瓶颈还可能来自 TLB/load-store/shuffle/reduction 链/branch/spilling/同步/NUMA remote；`Attainable = min(Peak Compute, AI × Memory Bandwidth)`，机器平衡点 `= Peak/Bandwidth`，峰值须实测（STREAM、FMA、AVX-512 降频、AMX）。
-
-### 7.4 Profiling（CPU）
-
-贯穿流程：`baseline → profiling → 瓶颈假设 → 单点优化 → 再 profiling`。工具：perf/pmu-tools（计数）、VTune/uProf（pipeline/memory）、likwid（拓扑/带宽）、numactl/taskset（绑定）。关键指标：IPC、L1/L2/LLC miss、DRAM 带宽、branch/TLB miss、vectorization ratio、stalled cycles、port pressure、spilling、remote NUMA。
-
-### 7.5 算法级优化与融合
-
-优先级：`减少计算/访存 > 减少中间 tensor > 提高数据复用 > SIMD/指令级 > 多线程`。融合方向：GEMM epilogue（Bias/Activation/Residual 在写回阶段完成）、RMSNorm/Linear/RoPE 与前后算子、score+mask+softmax、Softmax+value matmul、Dequant+MatMul。Fast math：不默认全局开启、每算子显式声明、LLM 敏感路径端到端验证、近似后通常需 Newton-Raphson。
-
-### 7.6 内存层级优化
-
-连续访问优先（cache line/预取/TLB/SIMD 都受益）；GEMM packing 目标=连续访问+复用+匹配 tile；KV layout 考虑 decode 按 head 连续与对齐；blocking 按寄存器→L1→L2→L3→NUMA 分层；**2 的幂次步长诅咒**（`hidden=2^N` 跨列访问映射同一 cache set，用 padding/swizzling/非 2^N blocking 化解）；align（大 buffer ≥64B、AVX2 32B、AVX-512 64B）；prefetch 只用于硬件难识别的访问；reduction buffer `alignas(64)` 防 false sharing；non-temporal store 只用于短期不读的大输出；量化边反量化边计算、blocking 取 `group_size` 整数倍。
-
-### 7.7 SIMD / 指令级 / Micro-kernel
-
-主循环 + tail（AVX-512 mask、AVX2 scalar/masked/over-read）；多累加器提升 ILP 但防 spilling；FMA 注意与非 FMA 路径结果不 bitwise equal；横向归约只在循环末尾一次；shuffle 高则改 layout/减少跨 lane；dispatch：`Scalar → SSE/NEON → AVX2 → AVX-512 → AMX`，启动测 feature、按 dtype/shape/ISA 选择、预留 fallback、各路径共享测试。
-
-### 7.8 多线程与 NUMA
-
-先让单线程达到合理效率再扩展（顺序：correctness → baseline → profiling → SIMD/memory → scaling → NUMA）。Executor 持长驻线程池（绑核/NUMA 分组/低开销 barrier）；切分维度：norm/softmax 按 batch/row（head）、GEMM 按 M/N tile、attention 按 batch/head/query block；reduction 用线程私有 partial 并对齐、避免 atomic；负载不均用 block cyclic/work stealing/动态调度；NUMA 用 affinity + first-touch + 按 socket 分配。CPU-first 引擎坚持：steady-state zero allocation、single-request low latency、clear fallback。
-
-### 7.9 回归与停止
-
-每次优化做正确性回归、多 shape/ISA 验证、profiling 对比、端到端影响；记录 p50/p90/p99、GB/s、GFLOPS、scaling、decode per-token、MFU/MBU。停止准则：达到目标、接近实测硬件上限、瓶颈落在物理带宽/指令吞吐极限、继续优化收益低于阈值、端到端收益不明显——阈值按算子/shape/平台确定。Autotuning：搜索空间 × 目标函数 × 策略（穷举/贝叶斯）× 缓存最优配置，目标硬件离线运行、保留 fallback。
-
-### 7.10 典型算子策略速查
-
-| 算子 | 关键优化点 |
-|---|---|
-| RMSNorm | 两遍 SIMD + 多累加器；`rsqrt` 由 contract 控制；hidden 固定值专用路径；batch 并行；与 residual/elementwise 融合 |
-| Softmax | max/exp/sum 三段 SIMD、`inv_sum` 代替除法；融合 mask/scale/value matmul；不能直接 `exp(x)`；fast exp 验证误差 |
-| GEMM/GEMV | loop order → packing → cache/register blocking → microkernel → epilogue 融合 → small shape/量化专用；decode 退化为 GEMV，重点权重带宽与 cache 复用 |
-| RoPE | split-half 配对处理、sin/cos 预计算、减少 shuffle、head_dim 固定专用、decode 低开销 |
-| Attention / KV | decode 瓶颈在 KV 读取带宽；block/paged cache、head_dim 对齐、prefetch 历史 block、streaming softmax、多 head/query 并行 |
-
-### 7.11 工程落地
-
-- **Kernel dispatch**：按 op type → dtype/weight_format/phase 结构化过滤 → CPU 按 `effective_features ⊇ cpu_requirements` 过滤 → priority 选择 → shape 特化 kernel 内二次分发 → fallback 必须存在。`CpuFeature` 模型见 [后端系统](../handbook/核心模块设计/后端系统%20%28Backend%29/后端系统%20%28Backend%29.md#cpu-后端选择算法)。
-- **Steady-state zero allocation**：临时 buffer 由 workspace 预分配；初始化阶段分配、推理稳态零分配；小临时用 stack/寄存器。
-- **Benchmark 与 CI 三层**：Correctness CI（每次提交、覆盖各 ISA 与关键 shape）；Performance smoke（每日、宽松阈值）；Full benchmark（定期/手动、供优化决策）。
+按 §6 的配对方式在同一机器、同一 workload 组上把基线与自身比较（A/A），估计噪声，再判读候选的 A/B 差值。进程内增加重复次数只能估计该次运行的波动；跨进程漂移需用独立进程对衡量。若 A/A 已触发该组回退阈值，转为人工判读。核类别与 SMT 结论需在裸机验证。

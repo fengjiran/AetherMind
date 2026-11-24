@@ -122,7 +122,7 @@ GEMM driver
 
 CPU-03 的 F32 Linear 已使用 `LinearA32W32PreparedArgs { linear, driver }`：params builder 复用原有 layout/alias 验证，在 cold path 冻结 scalar、AVX2 或原 reference；小 K/无 SIMD 主体、空输出与不适合 optimized 的合法布局直接保留 reference 短路径。原始 Linear 参数继续表达端口语义，非 reference driver 在内部映射到同一 `GemmArgs`。不新增与 `GemmArgs` 同义的 `GemmProblemF32`，也不引入全局 planner/autotuner。W16 的明确 F16/BF16 entry 与数值 fallback 见 [Linear 方案](../linear/linear-optimization.md)。
 
-同型 FP16/BF16 由 `GemmA16W16Args` 复用 `GemmArgs` 的矩阵与 stride 表示，并记录公共 operand dtype 和独立 output dtype。Linear 的 plain 与 identity-packed params builder 校验后直接构造该参数。reference、AVX2 widening、AVX-512 FP16/BF16、数值回退以及最终写回均由 GEMM driver 实现。Linear 持有算子注册、布局和 alias 校验、权重绑定。见 [A16/W16 内部合同](../../../src/backend/cpu/kernels/gemm/gemm_a16_w16_internal.h)。
+同型 FP16/BF16 由 `GemmA16W16Args` 复用 `GemmArgs` 的矩阵与 stride 表示，并记录公共 operand dtype 和独立 output dtype。Linear 的 plain 与 identity-packed params builder 校验后直接构造该参数。reference、AVX2 widening、AVX-512 FP16/BF16、数值回退以及最终写回均由 GEMM driver 实现。Linear 持有算子注册、布局和 alias 校验、权重绑定。见 [A16/W16 内部合同](../../../src/backend/cpu/kernels/gemm/gemm_internal.h)。
 
 这里的核心不是具体字段，而是把两层选择分开：
 
@@ -621,7 +621,7 @@ CUDA 证据使用目标 GPU 上的 registered/prepared 路径、CUDA Events 与 
 - [算子开发与优化工作流](../../guides/operator-development-workflow.md)：O0–O4 门禁、记录文件格式、Benchmark 与原始数据规范、§7 优化方法。
 - [AetherMind 当前产品需求](../../product.md)：产品范围、单线程边界、INT8/INT4 目标。
 - [架构总览](../../architecture.md)：模块边界与执行数据流。
-- [算子开发与优化工作流 §7 优化方法](../../guides/operator-development-workflow.md#7-优化方法)：Roofline、SIMD、packing、blocking、fusion 与 benchmark 通用方法；§7.2 为噪声 floor 与最小可信 delta 的方法权威。
+- [算子开发与优化工作流 §7 优化方法](../../guides/operator-development-workflow.md#7-优化方法)：目标负载、SIMD、packing 与 fusion 的验证边界；§7.2 为噪声 floor 与最小可信 delta 的方法权威。
 - [GEMM 证据记录](README.md)：本算子全部机器级数值、噪声 floor、反汇编与 Roofline 定位的权威位置。
 - [Dispatch 设计](../../handbook/核心模块设计/后端系统%20%28Backend%29/后端系统%20%28Backend%29.md)：kernel registry、selector 与 capability dispatch。
 - [InferenceSession / Generate 前置闭环计划](../../roadmap/01-inference-session-generate-readiness.md)：真实 Prefill/Decode vertical slice 与端到端门禁。

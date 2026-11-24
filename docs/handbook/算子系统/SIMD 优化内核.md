@@ -13,6 +13,7 @@
 - [src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp](../../../src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp)
 - [src/backend/cpu/kernels/gemm/gemm_internal.h](../../../src/backend/cpu/kernels/gemm/gemm_internal.h)
 - [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp)
+- [GEMM 内核](算子实现详解/GEMM%20内核.md)
 - [src/backend/cpu/kernels/rmsnorm/rmsnorm_entry.cpp](../../../src/backend/cpu/kernels/rmsnorm/rmsnorm_entry.cpp)
 - [src/backend/cpu/kernels/silu_mul/silu_mul_avx2.cpp](../../../src/backend/cpu/kernels/silu_mul/silu_mul_avx2.cpp)
 - [tests/benchmark/cpu_kernels/benchmark_cpu_gemm_microkernel.cpp](../../../tests/benchmark/cpu_kernels/benchmark_cpu_gemm_microkernel.cpp)
@@ -187,8 +188,12 @@ AVX2 实现使用 8 个独立累加器链，主循环每次处理 64 个元素�
 GEMM 是 CPU 后端最复杂的 SIMD 内核之一，覆盖：
 - Reference：双精度累加的数值基线。
 - Scalar optimized：纯标量优化 driver，支持 N 连续和 K 连续的 RHS。
-- AVX2/FMA：小 M 行对 fast path、6×16 micro-kernel、B panel 打包、blocked GEMM。
-- AVX-512 BF16/FP16：同型半精度或混合精度的扩展路径。
+- AVX2/FMA：`M=1..8` 的 2×4 行对、`M>=9` 的 6×16 blocked、B panel 打包与 6/4/2 行分解。
+- packed-B：消费 `[K-panel][N-block][K-row][N-lane]` artifact 的 scan 与 blocked driver。
+- A32/W16 与 A16/W16：F16/BF16 widening、幅值安全域与同型 FP32 累加。
+- AVX-512 BF16/FP16：同型半精度或混合精度的原生点积扩展路径。
+
+逐文件调用链、参数合同、性能数据与 trade-off 见 [GEMM 内核](算子实现详解/GEMM%20内核.md)。
 
 ```mermaid
 classDiagram
@@ -237,28 +242,32 @@ classDiagram
 **图示来源**
 - [src/backend/cpu/kernels/gemm/gemm_internal.h:20-190](../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L20-L190)
 - [src/backend/cpu/kernels/gemm/gemm_avx2_internal.h:1-194](../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L1-L194)
-- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-347](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L347)
+- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-389](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L389)
 
 #### 数据对齐与输入合同
 - `GemmArgs` 使用字节指针，不放宽 dtype、对齐或对象访问规则。
-- AVX2/FMA 路径要求 K 非零、LHS K 步长为 1、RHS K 或 N 连续、输出 N 步长为 1。
-- 小 M 路径要求 LHS K 步长为 1、RHS K 步长为 1、输出 N 步长为 1。
+- F32 AVX2/FMA 路径要求 K 非零、LHS K 步长为 1、RHS K 步长为 1、输出 N 步长为 1；RHS 的 N 步长可以非 1。
+- scalar 路径要求 LHS K 与输出 N 为单位 stride，并进一步要求 RHS 的 K 或 N 至少一个连续；两者都不连续时委托 reference。
+- W16/A16 的 16-bit 操作数按 byte 读取，可不对齐；任何被访问的 F32 地址仍须满足 `alignof(float)`。
+- packed-B 要求 artifact 按 64 字节对齐，且 `packed_nbytes`、`n_blocks`、slice offset 与布局公式精确一致。
 - 所有形状、步长、别名和越界访问由上层或 driver 校验；SIMD 内核本身不做完整高层合法性检查。
 
 #### 寄存器使用与循环展开
 - 小 M 行对路径每 8 宽 K 步复用两个 LHS 向量，四个列权重流式读取，峰值约 10 个 YMM 寄存器。
-- Blocked GEMM 使用 6×16 micro-kernel，12 个独立累加器链覆盖 96 个输出 lane，K 展开 4，饱和两个 FMA 端口；M 尾行按 6/4/2 行分解复用同一 B panel。
-- 主循环按 KC、NR、MR 分块，先打包 B panel，再累积 A 行 tile。
-- 尾部通过逐列 dot product 或标量回退处理未对齐边界。
+- Blocked GEMM 使用 6×16 micro-kernel，12 个独立累加器链覆盖 96 个输出 lane，K 展开 4，饱和两个 FMA 端口；4×16/2×16 变体按 6/4/2 行分解复用同一 B panel。
+- F32 blocked 直接读 A（`broadcast_ss`）；W16 长 Prefill 直接读 A，短 K 打包 A；packed-B 与 A16 按 48 行块打包 A。
+- 主循环按 KC=512、NR=16、M block 分块：F32 direct-A 优先让 B panel 跨全部 M 复用；packed-B 优先让 A panel 跨全部 N 复用。
+- 尾部通过行对、多目标 dot product 或标量回退处理未对齐边界。
 
 #### 缓存友好性设计
-- B panel 预打包成 k-major 布局，使同一 K 面板内的多个 N 列共享一次内存加载。
-- 文档指出 K-panel 缓存分块的收益曾被测量并移除，因为减少/重建累加器的成本超过缓存复用收益。
-- 当前实现保留 32 KiB 或更大 panel 的空间局部性，但最终 tile 大小由基准确定。
+- B panel 预打包成 k-major 布局，使同一 K 面板内的多个 N 列共享一次内存加载；8 行一组的打包降低 L1 set 冲突。
+- 行对路径的 K-panel cache blocking 曾经测量并移除，因为面板级归约/累加器重建成本超过缓存复用收益；这不是 blocked 路径的 KC=512。
+- 32 KiB B panel（512×16×4B）是当前 F32 blocked 的固定预算；W16 packed-A 为 128 KiB，A16 为 152 KiB。
+- KC=256、更宽 N 分块或更大 M block 尚未完成对照，不能宣称当前常量是跨平台最优值。
 
 **章节来源**
 - [src/backend/cpu/kernels/gemm/gemm_internal.h:20-190](../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L20-L190)
-- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-347](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L347)
+- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-389](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L389)
 - [docs/operators/gemm/cpu-gemm-optimization.md](../../operators/gemm/cpu-gemm-optimization.md)
 
 ### RMSNorm 内核
@@ -338,8 +347,10 @@ graph LR
 | 内核 | 主要策略 | 关键约束 |
 |---|---|---|
 | 点积 | 8 条独立累加链，主循环 64 元素，尾部 32/16/8 分段 | 有效 AVX2/FMA 检测 |
-| GEMM 小 M | 行对复用 LHS，4 列 B 流读 | LHS K=1、RHS K/N 连续、输出 N=1 |
-| GEMM blocked | 6×16 micro-kernel，B panel 预打包 | KC/NR/MR 由基准确定 |
+| GEMM 小 M | 2 行 × 4 列 × K8 行对复用 LHS | LHS K=1、RHS K=1、输出 N=1 |
+| GEMM blocked | 6/4/2 × 16 micro-kernel，B panel 预打包；F32 用 direct A | KC=512、NR=16、MR=6；M≥9 |
+| GEMM scalar | 4 列 K-contiguous、32×128 panel、NC/KC=128 | LHS K=1、输出 N=1，RHS K 或 N 连续 |
+| GEMM W16/A16 | widening + 同一 6×16 tile；A16 用 48×128 FP32 输出块 | 幅值安全域；A16 另需 K≥8、N≥16 |
 | RMSNorm | row-wise 归一化，按 hidden_size 向量吞吐 | weight float 对齐，output injective |
 | SiLU×Mul | 向量 exp 近似 + 安全域判断 + BF16 写回容差 | 最近舍入模式，幅值安全域 |
 
@@ -355,9 +366,9 @@ graph LR
 - 未来多线程属于 runtime 级扩展，不应在单个 kernel 内随意引入全局线程池。
 
 ### 缓存友好性
-- 使用 MC/NC/KC 分块降低 L1/L2 压力。
-- 避免过大的 panel 导致容量不足；文档中已移除部分 K-panel 分块优化，因其开销大于收益。
-- 对 small-M 路径保持短路径和低分支成本。
+- 使用 MC/NC/KC 分块降低 L1/L2 压力；F32 blocked 固定 KC=512、NR=16，W16/A16 另用 48 行 M block。
+- 避免过大的 panel 导致容量不足；行对路径的 K-panel 分块已移除，blocked 路径的 KC=512 不在同一结论内。
+- 对 small-M 路径保持短路径和低分支成本；M=1 主要受权重流带宽限制。
 
 ### 回退策略
 - 构建期检测工具链能力。
@@ -367,7 +378,7 @@ graph LR
 
 **章节来源**
 - [src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp:1-153](../../../src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp#L1-L153)
-- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-347](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L347)
+- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-389](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L389)
 - [src/backend/cpu/kernels/rmsnorm/rmsnorm_entry.cpp:1-200](../../../src/backend/cpu/kernels/rmsnorm/rmsnorm_entry.cpp#L1-L200)
 - [src/backend/cpu/kernels/silu_mul/silu_mul_avx2.cpp:1-129](../../../src/backend/cpu/kernels/silu_mul/silu_mul_avx2.cpp#L1-L129)
 - [docs/operators/gemm/cpu-gemm-optimization.md](../../operators/gemm/cpu-gemm-optimization.md)
@@ -471,16 +482,16 @@ AetherMind 的 CPU SIMD 内核采用“构建期工具链检测 + 运行期 CPU 
 
 **章节来源**
 - [src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp:1-153](../../../src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp#L1-L153)
-- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-347](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L347)
+- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-389](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L389)
 
 ### 缓存分块与临时面板
 - 对大矩阵乘法使用 MC/NC/KC 分块。
 - 预打包 B panel 提升空间局部性。
 - 谨慎评估 panel 大小，避免容量不足或打包开销过大。
-- 文档明确指出某些 K-panel 分块方案因开销大于收益被移除。
+- 行对路径的 K-panel 分块因面板级归约开销大于复用收益被移除；blocked 路径保留 KC=512，但 KC=256 尚未完成对照。
 
 **章节来源**
-- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-347](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L347)
+- [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-389](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L389)
 - [docs/operators/gemm/cpu-gemm-optimization.md](../../operators/gemm/cpu-gemm-optimization.md)
 
 ### 安全回退与数值稳健性

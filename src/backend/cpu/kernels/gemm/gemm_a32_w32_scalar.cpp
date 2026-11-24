@@ -69,7 +69,7 @@ void RunNContiguousSmallRowBlock(const GemmArgs& args, int64_t first_row) noexce
 }
 
 template<int Rows>
-void RunNContiguousRowBlock(const GemmArgs& args, int64_t first_row) noexcept {
+void RunRhsNContiguousRowBlock(const GemmArgs& args, int64_t first_row) noexcept {
     if constexpr (Rows > 1) {
         // Bound B's physical span to 32 KiB. Wide accumulator setup is not
         // amortized on these tiny multi-row problems; large strides still use
@@ -141,8 +141,8 @@ void RunNContiguousRowBlock(const GemmArgs& args, int64_t first_row) noexcept {
 }
 
 template<int Rows>
-void RunKContiguousOutputBlock(const GemmArgs& args, int64_t first_row,
-                               int64_t first_col) noexcept {
+void RunRhsKContiguousOutputBlock(const GemmArgs& args, int64_t first_row,
+                                  int64_t first_col) noexcept {
     const auto* const lhs_data = reinterpret_cast<const float*>(args.lhs);
     const auto* const rhs_data = reinterpret_cast<const float*>(args.rhs);
     auto* const output_data = reinterpret_cast<float*>(args.output);
@@ -155,9 +155,9 @@ void RunKContiguousOutputBlock(const GemmArgs& args, int64_t first_row,
         output_rows[i] = output_data + (first_row + i) * args.output_m_stride + first_col;
     }
 
-    std::array<const float*, static_cast<size_t>(kScalarKContiguousOutputBlock)> weights{};
-    for (int c = 0; c < kScalarKContiguousOutputBlock; ++c) {
-        weights[static_cast<size_t>(c)] = rhs_data + (first_col + c) * args.rhs_n_stride;
+    std::array<const float*, kScalarKContiguousOutputBlock> weights{};
+    for (int64_t c = 0; c < kScalarKContiguousOutputBlock; ++c) {
+        weights[c] = rhs_data + (first_col + c) * args.rhs_n_stride;
     }
 
     // Release builds compile with -O3: the constant-bound column loops below
@@ -170,15 +170,9 @@ void RunKContiguousOutputBlock(const GemmArgs& args, int64_t first_row,
             const float lhs0 = lhs_rows[r][inner];
             const float lhs1 = lhs_rows[r][inner + 1];
             for (int c = 0; c < kScalarKContiguousOutputBlock; ++c) {
-                const auto index = static_cast<size_t>(c);
-                const float* const weight = weights[index];
-                sums[r][index] += lhs0 * weight[0];
-                sums[r][index] += lhs1 * weight[1];
+                sums[r][c] += lhs0 * weights[c][inner];
+                sums[r][c] += lhs1 * weights[c][inner + 1];
             }
-        }
-
-        for (auto& weight: weights) {
-            weight += 2;
         }
     }
 
@@ -186,20 +180,20 @@ void RunKContiguousOutputBlock(const GemmArgs& args, int64_t first_row,
         for (int r = 0; r < Rows; ++r) {
             const float lhs0 = lhs_rows[r][inner];
             for (int c = 0; c < kScalarKContiguousOutputBlock; ++c) {
-                sums[r][static_cast<size_t>(c)] += lhs0 * weights[static_cast<size_t>(c)][0];
+                sums[r][c] += lhs0 * weights[c][inner];
             }
         }
     }
 
     for (int r = 0; r < Rows; ++r) {
-        std::copy_n(sums[r].data(), static_cast<size_t>(kScalarKContiguousOutputBlock),
+        std::copy_n(sums[r].data(), kScalarKContiguousOutputBlock,
                     output_rows[r]);
     }
 }
 
 template<int Rows>
-void RunKContiguousOutputTail(const GemmArgs& args, int64_t first_row,
-                              int64_t first_col) noexcept {
+void RunRhsKContiguousOutputTail(const GemmArgs& args, int64_t first_row,
+                                 int64_t first_col) noexcept {
     const auto* const lhs_data = reinterpret_cast<const float*>(args.lhs);
     const auto* const rhs_data = reinterpret_cast<const float*>(args.rhs);
     auto* const output_data = reinterpret_cast<float*>(args.output);
@@ -221,53 +215,55 @@ void RunKContiguousOutputTail(const GemmArgs& args, int64_t first_row,
 // Keep row zero visible when called from the M=1 dispatch. GCC generates a
 // different inner loop when it shares the out-of-line path for arbitrary rows.
 template<int Rows>
-AM_ALWAYS_INLINE void RunKContiguousRowBlock(const GemmArgs& args, int64_t first_row) noexcept {
+AM_ALWAYS_INLINE void RunRhsKContiguousRowBlock(const GemmArgs& args, int64_t first_row) noexcept {
     int64_t col = 0;
     while (col + kScalarKContiguousOutputBlock <= args.n) {
-        RunKContiguousOutputBlock<Rows>(args, first_row, col);
+        RunRhsKContiguousOutputBlock<Rows>(args, first_row, col);
         col += kScalarKContiguousOutputBlock;
     }
 
     if (col < args.n) {
-        RunKContiguousOutputTail<Rows>(args, first_row, col);
+        RunRhsKContiguousOutputTail<Rows>(args, first_row, col);
     }
 }
 
 template<int Rows, bool RhsKContiguous>
 void RunRowBlock(const GemmArgs& args, int64_t first_row) noexcept {
     if constexpr (RhsKContiguous) {
-        RunKContiguousRowBlock<Rows>(args, first_row);
+        RunRhsKContiguousRowBlock<Rows>(args, first_row);
     } else {
-        RunNContiguousRowBlock<Rows>(args, first_row);
+        RunRhsNContiguousRowBlock<Rows>(args, first_row);
     }
 }
 
 template<bool RhsKContiguous>
 void RunSmallM(const GemmArgs& args) noexcept {
-    int64_t r = 0;
-    for (; r + 2 <= args.m; r += 2) {
-        RunRowBlock<2, RhsKContiguous>(args, r);
+    int64_t row = 0;
+    while (row + 2 <= args.m) {
+        RunRowBlock<2, RhsKContiguous>(args, row);
+        row += 2;
     }
 
-    if (r < args.m) {
-        RunRowBlock<1, RhsKContiguous>(args, r);
+    if (row < args.m) {
+        RunRowBlock<1, RhsKContiguous>(args, row);
     }
 }
 
 template<bool RhsKContiguous>
 void RunGenericM(const GemmArgs& args) noexcept {
-    int64_t r = 0;
-    for (; r + 4 <= args.m; r += 4) {
-        RunRowBlock<4, RhsKContiguous>(args, r);
+    int64_t row = 0;
+    while (row + 4 <= args.m) {
+        RunRowBlock<4, RhsKContiguous>(args, row);
+        row += 4;
     }
 
-    if (r + 2 <= args.m) {
-        RunRowBlock<2, RhsKContiguous>(args, r);
-        r += 2;
+    if (row + 2 <= args.m) {
+        RunRowBlock<2, RhsKContiguous>(args, row);
+        row += 2;
     }
 
-    if (r < args.m) {
-        RunRowBlock<1, RhsKContiguous>(args, r);
+    if (row < args.m) {
+        RunRowBlock<1, RhsKContiguous>(args, row);
     }
 }
 
@@ -286,7 +282,7 @@ Status RunGemmA32W32Scalar(const GemmArgs& args) noexcept {
 
     if (args.rhs_k_stride == 1) {
         if (args.m == 1) {
-            RunKContiguousRowBlock<1>(args, 0);
+            RunRhsKContiguousRowBlock<1>(args, 0);
         } else if (args.m <= kScalarSmallMMax) {
             RunSmallM<true>(args);
         } else {
@@ -297,7 +293,7 @@ Status RunGemmA32W32Scalar(const GemmArgs& args) noexcept {
 
     if (args.rhs_n_stride == 1) {
         if (args.m == 1) {
-            RunNContiguousRowBlock<1>(args, 0);
+            RunRhsNContiguousRowBlock<1>(args, 0);
         } else if (args.m <= kScalarSmallMMax) {
             RunSmallM<false>(args);
         } else {

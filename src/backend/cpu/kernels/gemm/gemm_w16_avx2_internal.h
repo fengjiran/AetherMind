@@ -1,14 +1,19 @@
-#ifndef AETHERMIND_BACKEND_CPU_KERNELS_GEMM_GEMM_W16_PACK_AVX2_H
-#define AETHERMIND_BACKEND_CPU_KERNELS_GEMM_GEMM_W16_PACK_AVX2_H
+#ifndef AETHERMIND_BACKEND_CPU_KERNELS_GEMM_GEMM_W16_AVX2_INTERNAL_H
+#define AETHERMIND_BACKEND_CPU_KERNELS_GEMM_GEMM_W16_AVX2_INTERNAL_H
+
+/// @file gemm_w16_avx2_internal.h
+/// @brief Shared AVX2 F16/BF16 weight-load policies and W16 B-panel packing
+///        used by the A16W16 and A32W16 families.
+///
+/// Only translation units compiled with AVX2 and FMA enabled (`-mavx2 -mfma`)
+/// may include this header; F16GemmWeightOps additionally requires F16C.
 
 #include "aethermind/dtypes/half.h"
 #include "gemm_avx2_internal.h"
 
 #include <bit>
-#include <cmath>
 #include <cstddef>
 #include <cstring>
-#include <limits>
 
 namespace aethermind::cpu::detail {
 
@@ -42,14 +47,6 @@ struct F16GemmWeightOps {
     }
 };
 #endif
-
-inline bool GemmReductionMagnitudeIsSafe(float input, float weight, int64_t k) noexcept {
-    // Bounding the sum of absolute products also bounds every scalar/SIMD
-    // partial sum. Extreme inputs retain the reference's overflow semantics.
-    return std::isfinite(input) && std::isfinite(weight) &&
-           static_cast<double>(input) * static_cast<double>(weight) * static_cast<double>(k) <=
-                   static_cast<double>(std::numeric_limits<float>::max()) * 0.5;
-}
 
 template<class WeightOps>
 float PackGemmW16BPanelAvx2(const std::byte* weight, size_t row_bytes,

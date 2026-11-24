@@ -2,7 +2,8 @@
 #define AETHERMIND_BACKEND_CPU_KERNELS_GEMM_GEMM_AVX2_INTERNAL_H
 
 /// @file gemm_avx2_internal.h
-/// @brief Shared AVX2 F32 GEMM tiles, B-panel packing and blocking constants.
+/// @brief Shared dtype-agnostic AVX2 GEMM constants, B-panel packing and F32
+///        tile kernels.
 ///
 /// Only translation units compiled with AVX2 and FMA enabled (`-mavx2 -mfma`)
 /// may include this header: it exposes `<immintrin.h>` types and intrinsics
@@ -12,7 +13,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <immintrin.h>
 
 namespace aethermind::cpu::detail {
@@ -52,20 +52,6 @@ inline void StoreGemmBTile8x8Avx2(const __m256 (&rows)[8], float* out) noexcept 
         _mm256_store_ps(out + (i + 4) * kGemmAvx2NR, _mm256_permute2f128_ps(first4[i], last4[i], 0x31));
     }
 }
-
-struct F32GemmWeightOps {
-    static constexpr size_t kElementBytes = sizeof(float);
-
-    static __m256 LoadEight(const std::byte* data) noexcept {
-        return _mm256_loadu_ps(reinterpret_cast<const float*>(data));
-    }
-
-    static float LoadOne(const std::byte* data) noexcept {
-        float value;
-        std::memcpy(&value, data, sizeof(value));
-        return value;
-    }
-};
 
 // Packs NR full B rows (row stride in bytes) into the k-major panel layout
 // used by the F32 tile kernels: full 8x8 K blocks are transposed with
@@ -202,32 +188,6 @@ inline void AccumulateF32Tile2x16UnrolledAvx2(const float* buf_a, const float* b
             });
 }
 
-// Packs an A panel in broadcast layout: every scalar is replicated eight
-// times so the kernel replaces broadcast shuffles with plain vector loads.
-// Row stride is kc_len * 8 floats; the caller keeps the panel aligned.
-inline void PackGemmAPanelDupAvx2(const float* lhs, int64_t lhs_m_stride,
-                                  int64_t kb, int64_t mb_base, int64_t mb_rows,
-                                  int64_t kc_len, float* buf_a) noexcept {
-    for (int64_t row = 0; row < mb_rows; ++row) {
-        const float* const source = lhs + (mb_base + row) * lhs_m_stride + kb;
-        float* const destination = buf_a + row * kc_len * 8;
-        for (int64_t kk = 0; kk < kc_len; ++kk) {
-            _mm256_store_ps(destination + kk * 8, _mm256_broadcast_ss(source + kk));
-        }
-    }
-}
-
-// 6x16 tile reading A from a broadcast-packed panel (see PackGemmAPanelDupAvx2):
-// the inner loop issues only aligned vector loads and FMAs, no shuffles.
-inline void AccumulateF32Tile6x16DupAvx2(const float* buf_a, const float* buf_b,
-                                         int64_t kc_len, int64_t output_m_stride,
-                                         float* out_row0, int64_t a_row_stride) noexcept {
-    AccumulateF32TileNx16CoreAvx2<6>(
-            buf_b, kc_len, output_m_stride, out_row0,
-            [=](int r, int64_t k) {
-                return _mm256_load_ps(buf_a + r * a_row_stride + k * 8);
-            });
-}
 // NOLINTEND(portability-simd-intrinsics)
 
 } // namespace aethermind::cpu::detail

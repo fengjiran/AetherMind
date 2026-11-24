@@ -51,6 +51,8 @@ target_include_directories(${TEST_TARGET}
         ${PROJECT_SOURCE_DIR}/src
         ${PROJECT_SOURCE_DIR}/apps/inference
         ${PROJECT_SOURCE_DIR}/tests/unit
+        # Measurement-candidate entry declarations shared with the benchmark target.
+        ${PROJECT_SOURCE_DIR}/tests/benchmark/cpu_kernels
 )
 
 target_link_libraries(${TEST_TARGET} PRIVATE

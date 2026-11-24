@@ -4,7 +4,7 @@
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/dtypes/bfloat16.h"
 #include "aethermind/operators/operator_inference.h"
-#include "backend/cpu/kernels/gemm/gemm_a16_w16_internal.h"
+#include "backend/cpu/kernels/gemm/gemm_internal.h"
 #include "backend/cpu/kernels/test_fp_environment_helpers.h"
 
 #include <gtest/gtest.h>

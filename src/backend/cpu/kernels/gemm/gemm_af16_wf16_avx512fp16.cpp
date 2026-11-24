@@ -1,6 +1,6 @@
 #include "aethermind/backend/cpu/kernels/common/a16_utils.h"
 #include "aethermind/backend/cpu/kernels/common/simd_utils.h"
-#include "gemm_a16_w16_internal.h"
+#include "gemm_internal.h"
 
 #if defined(__AVX512F__) && defined(__AVX512FP16__)
 #include <immintrin.h>

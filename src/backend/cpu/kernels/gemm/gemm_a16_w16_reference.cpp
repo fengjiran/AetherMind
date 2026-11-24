@@ -1,5 +1,5 @@
 #include "aethermind/backend/cpu/kernels/common/a16_utils.h"
-#include "gemm_a16_w16_internal.h"
+#include "gemm_internal.h"
 
 #include <cstring>
 

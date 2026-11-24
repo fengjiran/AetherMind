@@ -1,28 +1,24 @@
 #ifndef AETHERMIND_BACKEND_CPU_KERNELS_GEMM_GEMM_A32_W16_AVX2_INTERNAL_H
 #define AETHERMIND_BACKEND_CPU_KERNELS_GEMM_GEMM_A32_W16_AVX2_INTERNAL_H
 
+/// @file gemm_a32_w16_avx2_internal.h
+/// @brief AVX2 F32-activation x 16-bit-weight GEMM kernels for the A32W16 family.
+///
+/// Only translation units compiled with AVX2 and FMA enabled (`-mavx2 -mfma`)
+/// may include this header: it pulls in intrinsics-based inline definitions
+/// from the shared AVX2 headers, and the F16 weight specialization additionally
+/// requires F16C.
+
 #include "aethermind/backend/cpu/kernels/common/simd_utils.h"
 #include "gemm_avx2_internal.h"
 #include "gemm_internal.h"
-#include "gemm_w16_pack_avx2.h"
+#include "gemm_w16_avx2_internal.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <limits>
 
 namespace aethermind::cpu::detail {
-
-inline float GemmInputMagnitude(const float* input, int64_t k) noexcept {
-    float magnitude = 0.0f;
-    for (int64_t i = 0; i < k; ++i) {
-        if (!std::isfinite(input[i])) {
-            return std::numeric_limits<float>::infinity();
-        }
-        magnitude = std::max(magnitude, std::fabs(input[i]));
-    }
-    return magnitude;
-}
 
 template<typename WeightOps, int Rows, int Cols>
 bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col,

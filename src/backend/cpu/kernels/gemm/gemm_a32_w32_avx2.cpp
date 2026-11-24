@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstring>
 
 #if defined(__AVX2__) && defined(__FMA__)
 #include "gemm_avx2_internal.h"
@@ -114,6 +115,20 @@ constexpr int64_t kTile6KC = 256;
 constexpr int64_t kTile6MC = 48;
 constexpr int64_t kTile6NC = 128;
 
+struct F32GemmWeightOps {
+    static constexpr size_t kElementBytes = sizeof(float);
+
+    static __m256 LoadEight(const std::byte* data) noexcept {
+        return _mm256_loadu_ps(reinterpret_cast<const float*>(data));
+    }
+
+    static float LoadOne(const std::byte* data) noexcept {
+        float value;
+        std::memcpy(&value, data, sizeof(value));
+        return value;
+    }
+};
+
 void RunBlockedGemmTile6Avx2(const GemmArgs& args, int64_t m_full, int64_t n_full) noexcept {
     const auto* const lhs_data = reinterpret_cast<const float*>(args.lhs);
     const auto* const rhs_data = reinterpret_cast<const std::byte*>(args.rhs);
@@ -160,6 +175,33 @@ void RunBlockedGemmTile6Avx2(const GemmArgs& args, int64_t m_full, int64_t n_ful
             }
         }
     }
+}
+
+// Packs an A panel in broadcast layout: every scalar is replicated eight
+// times so the kernel replaces broadcast shuffles with plain vector loads.
+// Row stride is kc_len * 8 floats; the caller keeps the panel aligned.
+void PackGemmAPanelDupAvx2(const float* lhs, int64_t lhs_m_stride,
+                           int64_t kb, int64_t mb_base, int64_t mb_rows,
+                           int64_t kc_len, float* buf_a) noexcept {
+    for (int64_t row = 0; row < mb_rows; ++row) {
+        const float* const source = lhs + (mb_base + row) * lhs_m_stride + kb;
+        float* const destination = buf_a + row * kc_len * 8;
+        for (int64_t kk = 0; kk < kc_len; ++kk) {
+            _mm256_store_ps(destination + kk * 8, _mm256_broadcast_ss(source + kk));
+        }
+    }
+}
+
+// 6x16 tile reading A from a broadcast-packed panel (see PackGemmAPanelDupAvx2):
+// the inner loop issues only aligned vector loads and FMAs, no shuffles.
+void AccumulateF32Tile6x16DupAvx2(const float* buf_a, const float* buf_b,
+                                  int64_t kc_len, int64_t output_m_stride,
+                                  float* out_row0, int64_t a_row_stride) noexcept {
+    AccumulateF32TileNx16CoreAvx2<6>(
+            buf_b, kc_len, output_m_stride, out_row0,
+            [=](int r, int64_t k) {
+                return _mm256_load_ps(buf_a + r * a_row_stride + k * 8);
+            });
 }
 
 void RunBlockedGemmTile6DupAAvx2(const GemmArgs& args, int64_t m_full, int64_t n_full) noexcept {

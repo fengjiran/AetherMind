@@ -6,7 +6,7 @@
 #include "aethermind/dtypes/bfloat16.h"
 #include "aethermind/dtypes/half.h"
 #include "aethermind/operators/op_params.h"
-#include "backend/cpu/kernels/gemm/gemm_a16_w16_internal.h"
+#include "backend/cpu/kernels/gemm/gemm_internal.h"
 
 #include <array>
 #include <cmath>

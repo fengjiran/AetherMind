@@ -1,5 +1,6 @@
 #include "aethermind/backend/cpu/cpu_info.h"
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
+#include "gemm_avx2_candidate_entries.h"
 
 #include <algorithm>
 #include <array>

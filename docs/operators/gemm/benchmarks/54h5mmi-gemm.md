@@ -292,3 +292,26 @@ Cold packing：`N=4096,K=4096` median 66.83 ms，packed size 64 MiB（amplificat
 - Release 聚焦集 582/582 通过，其中包含真实注册与绑定、非单位 K/N stride 及输出 guard、跨 panel 累加和异常回退、BF16 A16 与 FP16 P4-B 的独立 oracle 和近容量 Generate 回归。ISA 编译检查确认 reference 的 `-ffp-contract=off` 与各可选 TU 隔离。禁用 F16C 的构建在本机通过 FP16/BF16 A16 的 prepare/bind/execute 探针，均解析为 FP32-output reference。
 - ASan/UBSan 聚焦集 21/21 通过，LSan 关闭。AVX-512 的验证范围为编译与合成能力选核。
 - prepared Linear 使用同一 benchmark 程序驱动两侧 Release 共享库，`taskset -c 2`，四对独立进程 AB/BA 交错，每进程 3 repetitions。覆盖同型 FP16/BF16、16-bit 和 FP32 输出，以及 `M=1/16, K=N=4096`。`prepared-ab.csv` 八组的进程中位数区间均有重叠。FP16 窄输出 Prefill 首轮为 8.745→9.840 ms，同实现 A/A 的对应中位数波动约 7.9%，定向复测为 9.518→9.544 ms。验收为本机职责提取和行为回归通过，性能对照未证实稳定变化。
+
+## Scalar K 连续 Prefill 的行块与临时权重块对照
+
+- 比较对象为 FP32 plain/identity Linear 绑定到 scalar driver 后的稳态调用。基线为 `208d76dc` 的 4×4，直接 2×4 候选按两行遍历完整权重。另测了列块优先的 2×4，以及临时权重块的不同列宽。最终实现对 `M>8,K>=32,N>=32` 的完整 32 列，在栈上将最多 128 个 K 元素转为连续列布局，再由全部 M 行复用。最后不足 32 列沿用直接行块。GCC 14.2 的 `-fstack-usage` 报告新函数单帧 16,832 B，含 16 KiB 权重块。
+- 使用文件头的机器、编译器与 Release 配置。每个进程固定 guest CPU 2。prepared harness 源自仓库 Linear benchmark，以 `CpuFeaturePolicy` 屏蔽 AVX2，核对 `cpu::linear_f32_w32_scalar` 和 `cpu::linear_f32_w32_packed_identity_scalar` 标签。输入生成周期从 251 改为 61，使本组 K 下的定点乘积及部分和可由 FP32 精确表示，保留原有独立 double oracle 和 `1e-5` 检查。direct benchmark 使用仓库原始输入与误差检查。
+- 2×4 与 4×4 在相同 prepared plain hot 输入上的独立进程对为 AB、BA，每进程 3 次。以每进程的中位延迟计算，`M=16,K=N=4096` 的两对分别慢 3.2% 和 3.4%，`M=64` 为快 2.9% 和慢 15.7%。仅缩小行块缺少稳定收益。列块优先的 2×4、固定宽度 4/16/32/64/128 与动态尾块候选只做筛选，原始记录含较慢结果。
+- 下表为完整基线库与最终库的 prepared A/B。AB/BA 交错 4 对，每进程预热 0.01 s、最短计时 0.025 s、3 次重复；取各进程 real-time 中位数，再列两侧的中位数。变化范围为四对各自的延迟变化。计时仅包含已绑定的执行，含临时权重转置。streaming 轮换总计 256 MiB 权重。
+
+| Prepared Linear | M / K / N | 4×4 基线 ms | 最终 ms | 配对延迟变化范围 |
+|---|---|---:|---:|---:|
+| plain hot，面板边界 | 9 / 32 / 32 | 0.00210 | 0.00078 | −67.6% 至 −56.0% |
+| plain hot，含 M/K/N 非整齐维度 | 9 / 513 / 517 | 0.523 | 0.190 | −66.9% 至 −61.5% |
+| plain hot | 16 / 512 / 512 | 0.941 | 0.279 | −72.6% 至 −66.4% |
+| plain hot | 16 / 4096 / 4096 | 56.539 | 21.841 | −63.5% 至 −61.1% |
+| plain hot | 64 / 4096 / 4096 | 236.411 | 63.017 | −76.0% 至 −71.6% |
+| plain streaming | 16 / 4096 / 4096 | 58.535 | 20.541 | −65.9% 至 −62.6% |
+| identity hot | 16 / 4096 / 4096 | 56.832 | 21.644 | −65.8% 至 −56.2% |
+
+- 默认实现的 A/A 另采两对，plain hot 的 `M=16,K=N=4096` 为 −7.9%、+0.3%。小 M 和窄 N 对照有噪声：`M=17,K=4097,N=5` 仍用直接行块，四对 A/B 延迟变化为 −5.9% 至 +63.4%，中位 +7.0%，两对 A/A 为 −5.5%、+9.1%。不据此裁决该控制组的性能变化。相同两个完整库的 direct benchmark 另测两对，每进程 3 次，K 连续 `M=16,K=N=4096` 两对分别下降 66.3% 和 55.3%；N 连续 `M=16,K=N=512` 对照为 +8.5%、−2.0%。
+- Release 聚焦集 173/173 通过，含 scalar、Linear 与融合调用方。新增用例覆盖面板准入、跨 K 面板的抵消与 NaN 输出覆盖、剩余 31 列及 padding guard。另用 ASan/UBSan 编译 scalar TU 和独立探针，LSan 关闭；随机有限 FP32 输入的 168 个 padded shape 与升序标量 oracle 相等，输出保护区完整。
+- 后续阈值扩展：派发条件由 `M>8` 放宽为 `M>=3`（`K>=32,N>=32` 不变），`M=2` 保留原 4 列路径，因为其 B 只有单次遍历，临时 panel 只增加转置开销。直接 primitive 探针 5 轮交替进程取每轮最小值：K 连续 `M=8,K=4096,N=4096` 27.48→11.31 ms、`M=4,K=4096,N=4096` 13.27→9.04 ms、`M=3,K=4096,N=4096` 10.79→8.13 ms、`M=2,K=4096,N=4096` 6.89→7.41 ms（排除依据）；缓存驻留 `M=8,K=512,N=512` 382.4→149.3 µs、`M=4,K=512,N=512` 189.5→105.8 µs、`M=3,K=512,N=512` 142.1→95.7 µs。该组是审查期间的指示性直接测量，未按 §6.7 归档 raw，不作为生产门禁；prepared Linear 与端到端结论沿用上表。
+- 原始目录为 `benchmark-results/operators/gemm/20261124T085913Z_208d76dc_54h5mmi_scalar-prefill/`。包含 `experiment.py build`、`qualify.py run`、`direct.py run`、`verify.py run`、候选源码、最终补丁、构建/测量命令、共享库校验和、每次运行 JSON 与测试 XML。
+- 结论为 Accepted（本机覆盖形状的 scalar Prefill 临时权重块）；直接 2×4 替换未采用。端到端 Generate、多机与多线程性能尚未测量。

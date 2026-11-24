@@ -151,10 +151,20 @@ INSTANTIATE_TEST_SUITE_P(
                 ScalarFastPathCase{RhsLayout::kKContiguous, 1, 32, 31},
                 ScalarFastPathCase{RhsLayout::kKContiguous, 1, 33, 33},
                 ScalarFastPathCase{RhsLayout::kKContiguous, 2, 31, 2},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 2, 32, 32},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 3, 31, 33},
                 ScalarFastPathCase{RhsLayout::kKContiguous, 3, 32, 3},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 3, 32, 32},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 3, 33, 33},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 4, 31, 33},
                 ScalarFastPathCase{RhsLayout::kKContiguous, 4, 33, 4},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 5, 32, 32},
                 ScalarFastPathCase{RhsLayout::kKContiguous, 7, 127, 5},
                 ScalarFastPathCase{RhsLayout::kKContiguous, 8, 128, 31},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 8, 129, 130},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 9, 31, 32},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 9, 32, 32},
+                ScalarFastPathCase{RhsLayout::kKContiguous, 9, 257, 95},
                 ScalarFastPathCase{RhsLayout::kKContiguous, 10, 33, 5},
                 ScalarFastPathCase{RhsLayout::kKContiguous, 11, 33, 5},
                 ScalarFastPathCase{RhsLayout::kKContiguous, 16, 129, 32},
@@ -336,6 +346,49 @@ TEST(CPUKernelGemmScalar, NContiguousPreservesAscendingKAccumulation) {
         EXPECT_FLOAT_EQ(value, 2.0F);
     }
 }
+
+class CPUKernelGemmScalarPrefillTest : public testing::TestWithParam<int64_t> {};
+
+// Covers both the small-M range (M=3) and the generic-M range (M=9) that now
+// share the transposed-panel driver.
+TEST_P(CPUKernelGemmScalarPrefillTest, KContiguousCarriesSumsAcrossPanels) {
+    const int64_t m = GetParam();
+    constexpr int64_t n = 65;
+    constexpr int64_t k = 257;
+    std::vector<float> lhs(static_cast<size_t>(m * k), 1.0F);
+    std::vector<float> rhs(n * k, 0.0F);
+    std::vector<float> output(static_cast<size_t>(m * n), std::numeric_limits<float>::quiet_NaN());
+    for (int64_t col = 0; col < n; ++col) {
+        float* weight = rhs.data() + col * k;
+        weight[0] = 33554432.0F;
+        weight[128] = -33554432.0F;
+        weight[129] = 1.0F;
+        weight[256] = static_cast<float>(col);
+    }
+    const cpu::detail::GemmArgs args{
+            .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+            .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
+            .output = reinterpret_cast<std::byte*>(output.data()),
+            .m = m,
+            .n = n,
+            .k = k,
+            .lhs_m_stride = k,
+            .lhs_k_stride = 1,
+            .rhs_k_stride = 1,
+            .rhs_n_stride = k,
+            .output_m_stride = n,
+            .output_n_stride = 1,
+    };
+    ASSERT_TRUE(cpu::detail::RunGemmA32W32Scalar(args).ok());
+    for (int64_t row = 0; row < m; ++row) {
+        for (int64_t col = 0; col < n; ++col) {
+            EXPECT_EQ(output[static_cast<size_t>(row * n + col)], static_cast<float>(col + 1));
+        }
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(PrefillRowRanges, CPUKernelGemmScalarPrefillTest,
+                         testing::Values(3, 9));
 
 TEST(CPUKernelGemmScalar, NContiguousBlockedSteadyStateDoesNotAllocate) {
     if (!test::MallocInterposerAvailable()) {

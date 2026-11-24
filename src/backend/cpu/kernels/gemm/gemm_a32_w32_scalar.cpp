@@ -11,18 +11,23 @@ constexpr int64_t kScalarKContiguousOutputBlock = 4;
 // Transposed B panel for K-contiguous weights. 32 columns keep the per-row
 // accumulator set in registers/stack with broadcast multiply-adds; a 16-column
 // panel was measured to pick a much slower shuffle-heavy lowering.
-constexpr int64_t kPrefillPanelColumns = 32;
-constexpr int64_t kPrefillPanelDepth = 128;
+constexpr int64_t kScalarKContiguousPanelColumns = 32;
+constexpr int64_t kScalarKContiguousPanelDepth = 128;
+// Below this K the panel transpose is not amortized over enough multiply-adds;
+// such shapes keep the direct 4-column row blocks.
+constexpr int64_t kScalarKContiguousPanelMinK = 32;
 // The panel pays for itself once it removes a full B pass. Row pairs already
 // traverse B once each, so M=2 keeps the 4-column path (measured slower with
 // the panel), while M>=3 folds two or more passes into one.
-constexpr int64_t kPrefillPanelMinM = 3;
+constexpr int64_t kScalarKContiguousPanelMinM = 3;
 // This is an N traversal tile, not Rows * NC independent scalar registers.
 // Accumulators may reside in L1 while each K step consumes adjacent B values.
 constexpr int64_t kScalarNContiguousBlock = 128;
 constexpr int64_t kScalarNContiguousKBlock = 128;
-// This is a conservative driver split for the first scalar candidate, not a
-// measured dispatch threshold.
+// Conservative small-M split for the direct row-block drivers, not a measured
+// threshold. For K-contiguous it only decides the shapes the transposed panel
+// does not take (M=2, K below the panel minimum, or N narrower than a panel);
+// N-contiguous still splits small-M and generic-M here.
 constexpr int64_t kScalarSmallMMax = 8;
 
 template<int Rows>
@@ -169,6 +174,10 @@ void RunRhsKContiguousOutputBlock(const GemmArgs& args, int64_t first_row,
         weights[c] = rhs_data + (first_col + c) * args.rhs_n_stride;
     }
 
+    // Release builds compile with -O3: the constant-bound column loops below
+    // are fully unrolled and the local arrays scalar-replaced, so this loop
+    // form keeps hand-unrolled codegen while indices follow
+    // kScalarKContiguousOutputBlock.
     int64_t inner = 0;
     for (; inner + 1 < args.k; inner += 2) {
         for (int r = 0; r < Rows; ++r) {
@@ -272,20 +281,21 @@ void RunGenericM(const GemmArgs& args) noexcept {
     }
 }
 
-void RunRhsKContiguousPrefill(const GemmArgs& args) noexcept {
+void RunRhsKContiguousPanelRows(const GemmArgs& args) noexcept {
     const auto* lhs = reinterpret_cast<const float*>(args.lhs);
     const auto* rhs = reinterpret_cast<const float*>(args.rhs);
     auto* output = reinterpret_cast<float*>(args.output);
-    alignas(64) float panel[kPrefillPanelDepth][kPrefillPanelColumns];
+    alignas(64) float panel[kScalarKContiguousPanelDepth][kScalarKContiguousPanelColumns];
 
-    // Transpose a bounded slice of B once for all M rows. Each accumulator
-    // then follows ascending K while adjacent output columns vectorize together.
+    // Multi-row (prefill-like) panel path: transpose a bounded B slice once for
+    // all M rows; each accumulator then follows ascending K while adjacent
+    // output columns vectorize together.
     int64_t col = 0;
-    for (; args.n - col >= kPrefillPanelColumns; col += kPrefillPanelColumns) {
+    for (; args.n - col >= kScalarKContiguousPanelColumns; col += kScalarKContiguousPanelColumns) {
         for (int64_t kb = 0; kb < args.k;) {
-            const int64_t kc = std::min(kPrefillPanelDepth, args.k - kb);
+            const int64_t kc = std::min(kScalarKContiguousPanelDepth, args.k - kb);
             for (int64_t k = 0; k < kc; ++k) {
-                for (int64_t c = 0; c < kPrefillPanelColumns; ++c) {
+                for (int64_t c = 0; c < kScalarKContiguousPanelColumns; ++c) {
                     panel[k][c] = rhs[(col + c) * args.rhs_n_stride + kb + k];
                 }
             }
@@ -293,17 +303,17 @@ void RunRhsKContiguousPrefill(const GemmArgs& args) noexcept {
             for (int64_t row = 0; row < args.m; ++row) {
                 const float* input = lhs + row * args.lhs_m_stride + kb;
                 float* dest = output + row * args.output_m_stride + col;
-                std::array<float, kPrefillPanelColumns> sums{};
+                std::array<float, kScalarKContiguousPanelColumns> sums{};
                 if (kb != 0) {
-                    std::copy_n(dest, kPrefillPanelColumns, sums.data());
+                    std::copy_n(dest, kScalarKContiguousPanelColumns, sums.data());
                 }
 
                 for (int64_t k = 0; k < kc; ++k) {
-                    for (int64_t c = 0; c < kPrefillPanelColumns; ++c) {
+                    for (int64_t c = 0; c < kScalarKContiguousPanelColumns; ++c) {
                         sums[c] += input[k] * panel[k][c];
                     }
                 }
-                std::copy_n(sums.data(), kPrefillPanelColumns, dest);
+                std::copy_n(sums.data(), kScalarKContiguousPanelColumns, dest);
             }
             kb += kc;
         }
@@ -334,9 +344,10 @@ Status RunGemmA32W32Scalar(const GemmArgs& args) noexcept {
     if (args.rhs_k_stride == 1) {
         if (args.m == 1) {
             RunRhsKContiguousRowBlock<1>(args, 0);
-        } else if (args.m >= kPrefillPanelMinM && args.n >= kPrefillPanelColumns &&
-                   args.k >= 32) {
-            RunRhsKContiguousPrefill(args);
+        } else if (args.m >= kScalarKContiguousPanelMinM && args.n >= kScalarKContiguousPanelColumns &&
+                   args.k >= kScalarKContiguousPanelMinK) {
+            // Multi-row shapes amortize the transposed panel across all M rows.
+            RunRhsKContiguousPanelRows(args);
         } else if (args.m <= kScalarSmallMMax) {
             RunSmallM<true>(args);
         } else {

@@ -270,7 +270,7 @@ constexpr std::array<GemmShape, 12> kReferenceShapes{{
 // (2..kScalarSmallMMax), and generic M (>kScalarSmallMMax); keep every case
 // on the scalar fast path and shape-identical with the reference registration
 // for direct pairing.
-constexpr std::array<GemmShape, 21> kScalarShapes{{
+constexpr std::array<GemmShape, 22> kScalarShapes{{
         // M=1 Decode projections shared with the reference and AVX2
         // registrations for direct pairing.
         {1, 4096, 4096},
@@ -281,8 +281,10 @@ constexpr std::array<GemmShape, 21> kScalarShapes{{
         {1, 4096, 32000},
         {1, 33, 31},
         {1, 32, 33},
-        // Small-M range: lower bound plus representative row blocks.
+        // Small-M range: lower bound plus representative row blocks. The
+        // M=2 projection anchors the scalar K-contiguous panel boundary.
         {2, 32, 33},
+        {2, 4096, 4096},
         {4, 4096, 4096},
         {8, 4096, 4096},
         // Generic-M range: the first value past kScalarSmallMMax and a wider

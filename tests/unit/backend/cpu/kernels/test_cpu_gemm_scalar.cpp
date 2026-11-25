@@ -121,6 +121,8 @@ INSTANTIATE_TEST_SUITE_P(
                 ScalarFastPathCase{RhsLayout::kNContiguous, 2, 31, 2},
                 ScalarFastPathCase{RhsLayout::kNContiguous, 3, 32, 3},
                 ScalarFastPathCase{RhsLayout::kNContiguous, 4, 33, 4},
+                ScalarFastPathCase{RhsLayout::kNContiguous, 5, 257, 129},
+                ScalarFastPathCase{RhsLayout::kNContiguous, 6, 129, 65},
                 ScalarFastPathCase{RhsLayout::kNContiguous, 7, 127, 5},
                 ScalarFastPathCase{RhsLayout::kNContiguous, 8, 128, 31},
                 ScalarFastPathCase{RhsLayout::kNContiguous, 10, 33, 5},
@@ -314,11 +316,7 @@ TEST(CPUKernelGemmScalar, NContiguousBlocksOverwriteNanOutputAndPreserveUnaligne
 TEST(CPUKernelGemmScalar, NContiguousPreservesAscendingKAccumulation) {
     constexpr int64_t k = 257;
     constexpr int64_t n = 257;
-    std::array<float, k> lhs{};
-    lhs.fill(1.0F);
     std::vector<float> rhs(static_cast<size_t>(k * n), 0.0F);
-    std::array<float, n> output{};
-    output.fill(std::numeric_limits<float>::quiet_NaN());
     for (int64_t col = 0; col < n; ++col) {
         // Independently summing K tiles would lose the +1 at K=129 before
         // cancellation with K=0, whereas carrying the accumulator yields 2.
@@ -327,23 +325,27 @@ TEST(CPUKernelGemmScalar, NContiguousPreservesAscendingKAccumulation) {
         rhs[static_cast<size_t>(129 * n + col)] = 1.0F;
         rhs[static_cast<size_t>(256 * n + col)] = 1.0F;
     }
-    const auto status = cpu::detail::RunGemmA32W32Scalar(cpu::detail::GemmArgs{
-            .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
-            .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
-            .output = reinterpret_cast<std::byte*>(output.data()),
-            .m = 1,
-            .n = n,
-            .k = k,
-            .lhs_m_stride = k,
-            .lhs_k_stride = 1,
-            .rhs_k_stride = n,
-            .rhs_n_stride = 1,
-            .output_m_stride = n,
-            .output_n_stride = 1,
-    });
-    ASSERT_TRUE(status.ok()) << status.ToString();
-    for (float value: output) {
-        EXPECT_FLOAT_EQ(value, 2.0F);
+    for (const int64_t m: {1, 8}) {
+        std::vector<float> lhs(m * k, 1.0F);
+        std::vector<float> output(m * n, std::numeric_limits<float>::quiet_NaN());
+        const auto status = cpu::detail::RunGemmA32W32Scalar(cpu::detail::GemmArgs{
+                .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+                .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
+                .output = reinterpret_cast<std::byte*>(output.data()),
+                .m = m,
+                .n = n,
+                .k = k,
+                .lhs_m_stride = k,
+                .lhs_k_stride = 1,
+                .rhs_k_stride = n,
+                .rhs_n_stride = 1,
+                .output_m_stride = n,
+                .output_n_stride = 1,
+        });
+        ASSERT_TRUE(status.ok()) << status.ToString();
+        for (float value: output) {
+            EXPECT_FLOAT_EQ(value, 2.0F);
+        }
     }
 }
 

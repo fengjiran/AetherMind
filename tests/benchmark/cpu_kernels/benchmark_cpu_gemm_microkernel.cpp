@@ -254,9 +254,7 @@ constexpr std::array<GemmShape, 12> kReferenceShapes{{
         {1, 11008, 4096},
         {1, 4096, 32000},
         {4, 4096, 4096},
-        // Scalar candidate dispatch boundary anchors around
-        // kScalarSmallMMax = 8; keep them shape-identical with the scalar
-        // registration for direct pairing.
+        // Match scalar shapes for two full four-row blocks and a one-row tail.
         {8, 4096, 4096},
         {9, 4096, 4096},
         // A bounded Prefill diagnostic baseline.
@@ -266,10 +264,7 @@ constexpr std::array<GemmShape, 12> kReferenceShapes{{
         {2, 32, 33},
 }};
 
-// The scalar candidate covers three dispatch ranges: M=1, small M
-// (2..kScalarSmallMMax), and generic M (>kScalarSmallMMax); keep every case
-// on the scalar fast path and shape-identical with the reference registration
-// for direct pairing.
+// Shared shapes allow direct comparisons between the two RHS layouts.
 constexpr std::array<GemmShape, 22> kScalarShapes{{
         // M=1 Decode projections shared with the reference and AVX2
         // registrations for direct pairing.
@@ -287,8 +282,7 @@ constexpr std::array<GemmShape, 22> kScalarShapes{{
         {2, 4096, 4096},
         {4, 4096, 4096},
         {8, 4096, 4096},
-        // Generic-M range: the first value past kScalarSmallMMax and a wider
-        // row-block case.
+        // N-contiguous four-row blocks with and without a trailing row.
         {9, 4096, 4096},
         {16, 4096, 4096},
         // Distinguish working-set size, power-of-two stride conflicts, and

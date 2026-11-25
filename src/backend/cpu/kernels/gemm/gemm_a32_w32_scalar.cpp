@@ -24,10 +24,7 @@ constexpr int64_t kScalarKContiguousPanelMinM = 3;
 // Accumulators may reside in L1 while each K step consumes adjacent B values.
 constexpr int64_t kScalarNContiguousBlock = 128;
 constexpr int64_t kScalarNContiguousKBlock = 128;
-// Conservative small-M split for the direct row-block drivers, not a measured
-// threshold. For K-contiguous it only decides the shapes the transposed panel
-// does not take (M=2, K below the panel minimum, or N narrower than a panel);
-// N-contiguous still splits small-M and generic-M here.
+// Conservative small-M split for direct K-contiguous shapes outside the panel path.
 constexpr int64_t kScalarSmallMMax = 8;
 
 template<int Rows>
@@ -291,8 +288,9 @@ void RunRhsKContiguousPanelRows(const GemmArgs& args) noexcept {
     // all M rows; each accumulator then follows ascending K while adjacent
     // output columns vectorize together.
     int64_t col = 0;
-    for (; args.n - col >= kScalarKContiguousPanelColumns; col += kScalarKContiguousPanelColumns) {
-        for (int64_t kb = 0; kb < args.k;) {
+    for (; col + kScalarKContiguousPanelColumns <= args.n; col += kScalarKContiguousPanelColumns) {
+        int64_t kb = 0;
+        while (kb < args.k) {
             const int64_t kc = std::min(kScalarKContiguousPanelDepth, args.k - kb);
             for (int64_t k = 0; k < kc; ++k) {
                 for (int64_t c = 0; c < kScalarKContiguousPanelColumns; ++c) {
@@ -302,18 +300,19 @@ void RunRhsKContiguousPanelRows(const GemmArgs& args) noexcept {
 
             for (int64_t row = 0; row < args.m; ++row) {
                 const float* input = lhs + row * args.lhs_m_stride + kb;
-                float* dest = output + row * args.output_m_stride + col;
+                float* dst = output + row * args.output_m_stride + col;
                 std::array<float, kScalarKContiguousPanelColumns> sums{};
                 if (kb != 0) {
-                    std::copy_n(dest, kScalarKContiguousPanelColumns, sums.data());
+                    std::copy_n(dst, kScalarKContiguousPanelColumns, sums.data());
                 }
 
                 for (int64_t k = 0; k < kc; ++k) {
+                    const auto lhs0 = input[k];
                     for (int64_t c = 0; c < kScalarKContiguousPanelColumns; ++c) {
-                        sums[c] += input[k] * panel[k][c];
+                        sums[c] += lhs0 * panel[k][c];
                     }
                 }
-                std::copy_n(sums.data(), kScalarKContiguousPanelColumns, dest);
+                std::copy_n(sums.data(), kScalarKContiguousPanelColumns, dst);
             }
             kb += kc;
         }
@@ -359,8 +358,6 @@ Status RunGemmA32W32Scalar(const GemmArgs& args) noexcept {
     if (args.rhs_n_stride == 1) {
         if (args.m == 1) {
             RunRhsNContiguousRowBlock<1>(args, 0);
-        } else if (args.m <= kScalarSmallMMax) {
-            RunSmallM<false>(args);
         } else {
             RunGenericM<false>(args);
         }

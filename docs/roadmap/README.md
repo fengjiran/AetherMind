@@ -21,6 +21,7 @@ GEMM 专项见 [GEMM 优化方案（原 04）](../operators/gemm/cpu-gemm-optimi
 - [06 系统能力演进路线图](06-system-capability-evolution-roadmap.md)
 - [09 Qwen 与 MoE](09-qwen-and-moe-architecture-support.md)
 - [12 CUDA 后端](12-cuda-backend-execution-support.md)
+- [14 CPU GEMM 算子内多线程并行方案（CPU-08）](14-cpu-gemm-intra-op-parallelism.md)
 
 ## 历史提案
 

@@ -21,7 +21,7 @@
 |---|---|---|
 | 共享参数边界 | Implemented | 非模板 `GemmArgs`，A/B/output 为 byte 指针，stride 保持元素单位；明确的 `RunGemm*` entry 决定存储解释与数值合同，packed-B 参数及 F32 布局独立保留 |
 | portable scalar K-contiguous Prefill | Implemented / 本机 prepared 验证 | `M>=3,K>=32,N>=32` 的完整列块使用 16 KiB 临时权重 panel（`M=2` 只有一次 B 遍历，保留 4 列路径）；plain/identity 及 streaming 结果见[单机记录](benchmarks/54h5mmi-gemm.md#scalar-k-连续-prefill-的行块与临时权重块对照)。 |
-| portable scalar N-contiguous | Implemented / local diagnostic | 独立 NC/KC 分块与连续 N 遍历，覆盖 M=1/small-M/generic-M；correctness、guard、升序 K 与零 malloc 已回归；N-contiguous 专项性能按本机记录解释；CPU-03 将 scalar 接入 Linear 生产入口，MatMul 仍为 reference |
+| portable scalar N-contiguous | Implemented / 本机 prepared 验证 | 单行使用专用入口，多行按 4/2/1 行分解。NC/KC、升序 K 与零分配合同沿用原实现。N 连续 plain Linear 的同形状对照见[单机记录](benchmarks/54h5mmi-gemm.md#scalar-n-连续路径的四行分块)。 |
 | exact recipe 生产链 | Implemented | descriptor → backend query → inference request → pack artifact → exact-key store / plan |
 | graph-wide packed preparation / execution | Implemented | Linear、Embedding、RmsNorm、QKV、GateUp、AddRmsNorm identity consumers 已覆盖；tiny tied-GQA Llama 的 O1 plain / O2 packed 全模型回归覆盖 scalar-oracle logits/KV、Prefill→Decode、重复 Generate 与 prepared Decode 零 malloc；HF 目录加载入口亦覆盖两种准备路径 |
 | AVX2 bpanel | Candidate / correctness verified | KC512 layout、Linear/QKV/GateUp scan/blocked 与尾块测试已落地；global identity descriptor 保持默认 |

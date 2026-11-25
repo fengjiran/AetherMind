@@ -227,7 +227,7 @@ packed-B 参数在 `GemmArgs` 之上增加 artifact 描述：
 
 **章节来源**
 - [gemm_internal.h:110-186](../../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L110-L186)
-- [gemm_a32_w32_scalar.cpp:333-370](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L333-L370)
+- [gemm_a32_w32_scalar.cpp:332-367](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L332-L367)
 - [gemm_a32_w32_avx2.cpp:314-386](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L314-L386)
 - [gemm_a16_w16_avx2.cpp:153-190](../../../../src/backend/cpu/kernels/gemm/gemm_a16_w16_avx2.cpp#L153-L190)
 
@@ -324,13 +324,12 @@ flowchart TD
     KPath -->|"M>8"| KGeneric["4/2/1 行 4 列 block"]
     ScalarLayout -->|"RHS N 连续"| NPath{"M"}
     NPath -->|"M=1"| N4["4 列 N-contiguous block"]
-    NPath -->|"M≤8"| NSmall["2/1 行 NC/KC"]
-    NPath -->|"M>8"| NGeneric["4/2/1 行 NC/KC"]
+    NPath -->|"M≥2"| NGeneric["4/2/1 行 NC/KC"]
 ```
 
 **图示来源**
 - [gemm_a32_w32_avx2.cpp:314-386](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L314-L386)
-- [gemm_a32_w32_scalar.cpp:333-370](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L333-L370)
+- [gemm_a32_w32_scalar.cpp:332-367](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L332-L367)
 
 ### 数据布局变换
 
@@ -390,10 +389,10 @@ scalar driver 的目标不是替代 AVX2，而是在无 SIMD 或 SIMD 不适用�
 `kScalarSmallMMax = 8` 是保守分界，不是实测阈值；在 K-contiguous 下它只决定 panel 不适用的形状（M=2、K 太小、N 太窄）。
 
 **章节来源**
-- [gemm_a32_w32_scalar.cpp:10-31](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L10-L31)
-- [gemm_a32_w32_scalar.cpp:157-242](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L157-L242)
-- [gemm_a32_w32_scalar.cpp:284-329](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L284-L329)
-- [gemm_a32_w32_scalar.cpp:34-155](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L34-L155)
+- [gemm_a32_w32_scalar.cpp:10-28](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L10-L28)
+- [gemm_a32_w32_scalar.cpp:154-239](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L154-L239)
+- [gemm_a32_w32_scalar.cpp:281-328](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L281-L328)
+- [gemm_a32_w32_scalar.cpp:30-152](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L30-L152)
 
 ### F32 AVX2 小 M 行对
 
@@ -850,7 +849,7 @@ WSL2 下 `taskset` 只是咨询性绑定，且 CPU 频率会在持续负载下�
 把 22.09 GF 折算到约 3.3 GHz，约为 6.7 FLOP/cycle，达到 128-bit 乘加端口（4 lane × 2 端口，8 FLOP/cycle）上限的约 84%。要进一步需要 FMA 或更宽的向量，这已属于 AVX2 路径。
 
 **章节来源**
-- [gemm_a32_w32_scalar.cpp:284-329](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L284-L329)
+- [gemm_a32_w32_scalar.cpp:281-328](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L281-L328)
 - [benchmark_cpu_gemm_microkernel.cpp:160-190](../../../../tests/benchmark/cpu_kernels/benchmark_cpu_gemm_microkernel.cpp#L160-L190)
 
 ### 生产入口与 Tile6 入口的交错等价性
@@ -1009,7 +1008,7 @@ AetherMind 的 GEMM 内核以 `GemmArgs` 为统一边界，把 F32 plain/identit
 
 **章节来源**
 - [gemm_a32_w32_avx2.cpp:314-386](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L314-L386)
-- [gemm_a32_w32_scalar.cpp:333-370](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L333-L370)
+- [gemm_a32_w32_scalar.cpp:332-367](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L332-L367)
 - [54h5mmi-gemm.md](../../../operators/gemm/benchmarks/54h5mmi-gemm.md)
 
 ## 附录
@@ -1039,7 +1038,7 @@ AetherMind 的 GEMM 内核以 `GemmArgs` 为统一边界，把 F32 plain/identit
 
 **章节来源**
 - [gemm_avx2_internal.h:20-23](../../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L20-L23)
-- [gemm_a32_w32_scalar.cpp:10-31](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L10-L31)
+- [gemm_a32_w32_scalar.cpp:10-28](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L10-L28)
 - [gemm_a32_w32_packed_b_avx2.cpp:46-48](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp#L46-L48)
 
 ### B. 分派矩阵

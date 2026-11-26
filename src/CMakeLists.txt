@@ -16,7 +16,7 @@ set(AETHERMIND_AVX2_SOURCES
         ${AETHERMIND_ATTENTION_AVX2_SOURCE}
         ${AETHERMIND_ADD_RMSNORM_AVX2_SOURCE}
         ${AETHERMIND_SILU_MUL_AVX2_SOURCE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/common/dot_product_f32_avx2.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/dot_product/dot_product_f32_avx2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/rmsnorm/rmsnorm_a32_w32_avx2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/backend/cpu/kernels/gemm/gemm_a32_wbf16_avx2.cpp
@@ -164,7 +164,7 @@ if (AETHERMIND_HAS_AVX2_FMA)
     aethermind_configure_avx2_sources(${AETHERMIND_AVX2_SOURCES})
     target_compile_definitions(${PROJECT_NAME} PUBLIC RMSNORM_HAS_AVX2_FMA_KERNEL=1)
     target_compile_definitions(${PROJECT_NAME} PUBLIC GEMM_HAS_AVX2_FMA_KERNEL=1)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC DOT_PRODUCT_HAS_AVX2_FMA_KERNEL=1)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE DOT_PRODUCT_HAS_AVX2_FMA_KERNEL=1)
 endif ()
 
 if (AETHERMIND_HAS_AVX2_FMA AND AETHERMIND_HAS_F16C)

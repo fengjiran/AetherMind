@@ -12,7 +12,7 @@ import sys
 LIBRARY_SOURCES = {
     "src/backend/cpu/kernels/add_rmsnorm/add_rmsnorm_a32_w32_avx2.cpp",
     "src/backend/cpu/kernels/attention/attention_avx2.cpp",
-    "src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp",
+    "src/backend/cpu/kernels/dot_product/dot_product_f32_avx2.cpp",
     "src/backend/cpu/kernels/rmsnorm/rmsnorm_a32_w32_avx2.cpp",
     "src/backend/cpu/kernels/silu_mul/silu_mul_avx2.cpp",
     "src/backend/cpu/kernels/gemm/gemm_a32_wbf16_avx2.cpp",

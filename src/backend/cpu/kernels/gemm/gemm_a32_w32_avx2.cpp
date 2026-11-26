@@ -1,5 +1,5 @@
 #include "aethermind/backend/cpu/kernels/common/simd_utils.h"
-#include "backend/cpu/kernels/common/dot_product_internal.h"
+#include "backend/cpu/kernels/dot_product/dot_product_internal.h"
 #include "gemm_internal.h"
 
 #include <algorithm>

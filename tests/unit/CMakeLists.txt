@@ -82,7 +82,9 @@ set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/inference/test_hf_fixed_trajecto
 # that executes intrinsics receives ISA flags.
 if(AETHERMIND_HAS_AVX2_FMA)
     aethermind_configure_avx2_sources("${AETHERMIND_AVX2_TEST_SOURCE}")
-    target_compile_definitions(${TEST_TARGET} PRIVATE AETHERMIND_TEST_HAS_AVX2_FMA=1)
+    target_compile_definitions(${TEST_TARGET} PRIVATE
+            AETHERMIND_TEST_HAS_AVX2_FMA=1
+            DOT_PRODUCT_HAS_AVX2_FMA_KERNEL=1)
 endif()
 
 if (BUILD_WITH_TORCH)

@@ -1,10 +1,10 @@
-#ifndef AETHERMIND_BACKEND_CPU_KERNELS_COMMON_DOT_PRODUCT_H
-#define AETHERMIND_BACKEND_CPU_KERNELS_COMMON_DOT_PRODUCT_H
+#ifndef AETHERMIND_BACKEND_CPU_KERNELS_DOT_PRODUCT_H
+#define AETHERMIND_BACKEND_CPU_KERNELS_DOT_PRODUCT_H
 
 /// @file dot_product.h
-/// @brief CPU FP32 dot-product primitives shared across kernels.
+/// @brief Internal CPU FP32 dot-product primitives.
 ///
-/// Public entry points dispatch on the runtime-effective CPU feature set:
+/// These entry points dispatch on the runtime-effective CPU feature set:
 /// the AVX2/FMA core runs when the effective features contain both AVX2 and
 /// FMA, otherwise the scalar core runs. Callers never need compile-time
 /// feature knowledge and may include this header on any platform.
@@ -25,8 +25,8 @@ AM_NODISCARD float DotProductF32(const float* a, const float* b, std::size_t n) 
 /// @brief Computes `out[t] = sum_k lhs[k] * rhs[t * rhs_stride + k]` for
 ///        `t` in `[0, num_targets)`.
 ///
-/// This is the rank-1-update / GEMM M=1 core shared with one shared `lhs`
-/// row against `num_targets` K-contiguous `rhs` rows. `rhs_stride` is in
+/// Computes one GEMM output row from a shared `lhs` row and `num_targets`
+/// K-contiguous `rhs` rows. `rhs_stride` is in
 /// elements; each target row is `rhs + t * rhs_stride` and must hold `n`
 /// readable floats (target rows may overlap reads). `out` must hold at
 /// least `num_targets` writable floats. With `n == 0` every target is
@@ -37,4 +37,4 @@ void DotProductF32MultiTarget(const float* lhs, const float* rhs, std::size_t n,
 
 } // namespace aethermind::cpu
 
-#endif // AETHERMIND_BACKEND_CPU_KERNELS_COMMON_DOT_PRODUCT_H
+#endif // AETHERMIND_BACKEND_CPU_KERNELS_DOT_PRODUCT_H

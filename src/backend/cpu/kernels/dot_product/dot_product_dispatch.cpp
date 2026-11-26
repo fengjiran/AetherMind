@@ -1,4 +1,5 @@
 #include "aethermind/backend/cpu/cpu_info.h"
+#include "dot_product.h"
 #include "dot_product_internal.h"
 
 namespace aethermind::cpu {

@@ -1,12 +1,12 @@
-#ifndef AETHERMIND_BACKEND_CPU_KERNELS_COMMON_DOT_PRODUCT_INTERNAL_H
-#define AETHERMIND_BACKEND_CPU_KERNELS_COMMON_DOT_PRODUCT_INTERNAL_H
+#ifndef AETHERMIND_BACKEND_CPU_KERNELS_DOT_PRODUCT_INTERNAL_H
+#define AETHERMIND_BACKEND_CPU_KERNELS_DOT_PRODUCT_INTERNAL_H
 
 /// @file dot_product_internal.h
 /// Internal declarations for the CPU FP32 dot-product cores.
 ///
 /// Exposes the per-ISA cores so tests can exercise each implementation
 /// directly and same-ISA kernels can call a core without re-entering the
-/// public dispatch. The AVX2 core symbol only exists when the library is
+/// runtime dispatch. The AVX2 core symbols are available when the library is
 /// built with AVX2/FMA enabled.
 
 #include "aethermind/base/macros.h"
@@ -38,4 +38,4 @@ void DotProductF32MultiTargetAvx2(const float* lhs, const float* rhs, std::size_
 
 } // namespace aethermind::cpu
 
-#endif // AETHERMIND_BACKEND_CPU_KERNELS_COMMON_DOT_PRODUCT_INTERNAL_H
+#endif // AETHERMIND_BACKEND_CPU_KERNELS_DOT_PRODUCT_INTERNAL_H

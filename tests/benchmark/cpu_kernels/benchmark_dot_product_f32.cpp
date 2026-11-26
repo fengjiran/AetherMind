@@ -1,6 +1,6 @@
 #include <benchmark/benchmark.h>
 
-#include "aethermind/backend/cpu/kernels/common/dot_product.h"
+#include "backend/cpu/kernels/dot_product/dot_product.h"
 
 #include <cstddef>
 #include <cstdint>

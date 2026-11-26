@@ -9,8 +9,8 @@
 - [include/aethermind/backend/cpu/cpu_info.h](../../../include/aethermind/backend/cpu/cpu_info.h)
 - [src/backend/cpu/cpu_capabilities.cpp](../../../src/backend/cpu/cpu_capabilities.cpp)
 - [src/backend/cpu/cpu_info.cpp](../../../src/backend/cpu/cpu_info.cpp)
-- [src/backend/cpu/kernels/common/dot_product_dispatch.cpp](../../../src/backend/cpu/kernels/common/dot_product_dispatch.cpp)
-- [src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp](../../../src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp)
+- [src/backend/cpu/kernels/dot_product/dot_product_dispatch.cpp](../../../src/backend/cpu/kernels/dot_product/dot_product_dispatch.cpp)
+- [src/backend/cpu/kernels/dot_product/dot_product_f32_avx2.cpp](../../../src/backend/cpu/kernels/dot_product/dot_product_f32_avx2.cpp)
 - [src/backend/cpu/kernels/gemm/gemm_internal.h](../../../src/backend/cpu/kernels/gemm/gemm_internal.h)
 - [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp)
 - [GEMM 内核](算子实现详解/GEMM%20内核.md)
@@ -164,7 +164,7 @@ sequenceDiagram
 ## 详细组件分析
 
 ### 点积内核的分发机制
-点积是最基础的 SIMD 示例：当进程检测到有效 AVX2/FMA 时使用 AVX2 实现，否则回退到标量实现。
+FP32 点积微内核位于 CPU 后端私有目录 `src/backend/cpu/kernels/dot_product/`。FP32 AVX2 GEMM 直接调用同 ISA 实现来计算尾列或单行多目标点积。独立入口在 AVX2/FMA 实现已编译且运行时检测可用时选择 SIMD，否则使用标量实现。
 
 ```mermaid
 flowchart TD
@@ -176,13 +176,13 @@ flowchart TD
 ```
 
 **图示来源**
-- [src/backend/cpu/kernels/common/dot_product_dispatch.cpp:1-44](../../../src/backend/cpu/kernels/common/dot_product_dispatch.cpp#L1-L44)
+- [src/backend/cpu/kernels/dot_product/dot_product_dispatch.cpp:1-45](../../../src/backend/cpu/kernels/dot_product/dot_product_dispatch.cpp#L1-L45)
 
 AVX2 实现使用 8 个独立累加器链，主循环每次处理 64 个元素，尾部按 32、16、8 分段处理，最后用标量收尾。多目标版本同时计算多个输出通道，使两个 LHS 向量被多次复用，八个累加器加上两个 LHS 寄存器恰好占用 16 个 YMM 寄存器，避免溢出到栈。
 
 **章节来源**
-- [src/backend/cpu/kernels/common/dot_product_dispatch.cpp:1-44](../../../src/backend/cpu/kernels/common/dot_product_dispatch.cpp#L1-L44)
-- [src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp:1-153](../../../src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp#L1-L153)
+- [src/backend/cpu/kernels/dot_product/dot_product_dispatch.cpp:1-45](../../../src/backend/cpu/kernels/dot_product/dot_product_dispatch.cpp#L1-L45)
+- [src/backend/cpu/kernels/dot_product/dot_product_f32_avx2.cpp:1-153](../../../src/backend/cpu/kernels/dot_product/dot_product_f32_avx2.cpp#L1-L153)
 
 ### GEMM 内核架构
 GEMM 是 CPU 后端最复杂的 SIMD 内核之一，覆盖：
@@ -377,7 +377,7 @@ graph LR
 - 不适合 SIMD fast path 的合法输入应委托 scalar 或 reference，而不是缩小 operator 合同。
 
 **章节来源**
-- [src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp:1-153](../../../src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp#L1-L153)
+- [src/backend/cpu/kernels/dot_product/dot_product_f32_avx2.cpp:1-153](../../../src/backend/cpu/kernels/dot_product/dot_product_f32_avx2.cpp#L1-L153)
 - [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-389](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L389)
 - [src/backend/cpu/kernels/rmsnorm/rmsnorm_entry.cpp:1-200](../../../src/backend/cpu/kernels/rmsnorm/rmsnorm_entry.cpp#L1-L200)
 - [src/backend/cpu/kernels/silu_mul/silu_mul_avx2.cpp:1-129](../../../src/backend/cpu/kernels/silu_mul/silu_mul_avx2.cpp#L1-L129)
@@ -481,7 +481,7 @@ AetherMind 的 CPU SIMD 内核采用“构建期工具链检测 + 运行期 CPU 
 - 对 tail 使用分段处理，而不是在热点路径中做复杂判断。
 
 **章节来源**
-- [src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp:1-153](../../../src/backend/cpu/kernels/common/dot_product_f32_avx2.cpp#L1-L153)
+- [src/backend/cpu/kernels/dot_product/dot_product_f32_avx2.cpp:1-153](../../../src/backend/cpu/kernels/dot_product/dot_product_f32_avx2.cpp#L1-L153)
 - [src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp:1-389](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L389)
 
 ### 缓存分块与临时面板

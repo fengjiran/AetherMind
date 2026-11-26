@@ -1,8 +1,8 @@
 // AVX2/FMA examples keep their GTest entry points in this baseline translation
 // unit. Only the helper implementation is compiled with optional ISA flags.
 #include "aethermind/backend/cpu/cpu_info.h"
-#include "aethermind/backend/cpu/kernels/common/dot_product.h"
 #include "avx_learning/test_avx_learning_helpers.h"
+#include "backend/cpu/kernels/dot_product/dot_product.h"
 
 #include <algorithm>
 #include <cmath>

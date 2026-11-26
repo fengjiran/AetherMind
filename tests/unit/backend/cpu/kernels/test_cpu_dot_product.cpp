@@ -1,6 +1,6 @@
 #include "aethermind/backend/cpu/cpu_info.h"
-#include "aethermind/backend/cpu/kernels/common/dot_product.h"
-#include "backend/cpu/kernels/common/dot_product_internal.h"
+#include "backend/cpu/kernels/dot_product/dot_product.h"
+#include "backend/cpu/kernels/dot_product/dot_product_internal.h"
 
 #include <cmath>
 #include <cstddef>

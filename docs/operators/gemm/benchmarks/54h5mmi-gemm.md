@@ -338,3 +338,94 @@ Cold packing：`N=4096,K=4096` median 66.83 ms，packed size 64 MiB（amplificat
 - `*GemmScalar*:*CPUKernelLinear*` Release 聚焦集 100/100 通过，覆盖四行块与 1/2 行余数、带 padding 的输入输出、跨 K panel 抵消及 NaN 覆盖写。
 - 原始记录位于 `benchmark-results/operators/gemm/20261125T090152Z_f8beb464_54h5mmi_scalar-n-rows/`。`run.sh`、`short.sh`、`large.sh` 包含构建及运行命令；同目录含 harness 源码、进程级 CSV、汇总脚本、源码差异、共享库及校验和、测试 XML。
 - Accepted（本机大形状 N 连续 scalar 与 prepared Linear 的四行分块）。小形状性能受测量波动影响，未据此增设阈值；端到端 Generate 与其他平台未测。
+
+## A32W32 AVX2 实现与性能审核
+
+**决策。** 先修复直接 primitive 的空输出合同。性能工作优先验证 K 连续权重的形状分派：同一台机器、同一个 M，改变工作集即可反转两种现有内核的胜负。6×16 的指令选择合理，GCC 14.2 在其热循环中生成了可消除的栈流量，但消除这些指令的 prepared 延迟收益尚不稳定。维持现有 B-panel 候选优先级。本次只交付审核，实验变体在 raw 目录中。
+
+### 实际执行路径与实现核对
+
+| 路径 | 数据布局、指令与循环 | 审核结果 |
+|---|---|---|
+| 构建与绑定 | x86 可选 TU 单独编译 `-mavx2 -mfma -fno-lto`，排除 unity 合并。CPU 检测含 CPUID、OSXSAVE/XCR0 的 XMM/YMM 状态；descriptor 同时要求 AVX2、FMA。Linear 在 bind 时按实参固定 driver，QKV/GateUp 的对应投影也复用 Linear driver。 | primitive 依赖已校验的 dtype、stride、地址范围、无输出别名以及调用方的 ISA 准入。普通 Linear 可在带 AVX2 标签的 descriptor 内绑定 scalar/reference，单看标签不足以判定执行了 SIMD。 |
+| plain / identity，K 连续，M=1 | A 和每个目标权重沿 K 连续，4 个目标共用两次 A 加载，8 条累加链；每次处理 16 个 K，再处理 8 个和不足 8 个。每四列各自做水平归约，不足四列用单目标 dot。 | 合理利用 8 个 FP32 lane。长 K 可摊薄水平归约，短 K 和少列时归约、调用成本占比上升。 |
+| 同布局，M=2…8 | 2×4 同算两个输入行和四个输出列。每 8 个 K 做 8 条 YMM FMA，奇行走单行，多余 1…3 列对每行调用 dot。 | Release 热循环 6 条 `vmovups` 加 8 条寄存器 FMA，4 个 B 向量各载一次，两行共享。8 个累加器、2 个 A、4 个 B 同时存活，共 14 个 YMM，主循环无向量溢写。源码注释的“10 个 YMM、memory-operand FMA”与本构建不符。每个行对仍重新扫描整份权重。 |
+| 同布局，M≥9 | `K-panel → 16列 → 所有完整偶数行`。KC=512，外部 B 按 8×8 转置写入栈上 32 KiB 的 `[kc,16]` 面板，K 尾逐元素打包。A 直接广播。M 块按 6/4/2 分解，沿 N 的两个 YMM 直接生成 16 个输出，无水平归约。奇行重新读原 B，右侧最多 15 列走行对/点积。 | B 转置由完整 M 块共享，12 条独立累加链与双 FMA 执行能力匹配；M 小、奇行、N 略过整块边界或短 K 时打包和边条代价显著。KC=512 时 6 行 A 占 12 KiB，与 32 KiB B 合计 44 KiB，接近 guest 报告的 48 KiB L1D。容量、相联性与栈流量均影响驻留。 |
+| 其他普通布局 | RHS 仅 N 连续时，原生 primitive 委托 scalar；普通 Linear 在 bind 时可直接选 scalar。非单位 A-K/C-N 等布局可进入 reference。 | 语义回退明确。N 连续允许沿 N 原位向量化，是独立优化机会。 |
+| 预打包 B-panel 候选 | recipe 为 `[K-panel,N-block,512,16]`，基址 64 B 对齐、末块补齐，校验大小、块数、切片范围。M≤8 的 scan 逐行逐 16 列，两条 YMM 链跨 K 累加。blocked 另用 `48×512` 的 A 拷贝（96 KiB 栈），复用同一 6/4/2×16 核。错位的起始列让整个 blocked 请求转 scan；scan 在首个对齐块前及尾列用标量 double。 | packed scan 对长 K 只有两条链，且会逐行重扫 B。blocked 对正确 recipe 可免在线转置，准备期开销、padding 和 Decode 需共同计入。DupA 的 8 倍 A 展开也是实验路径，均不计入 plain 默认成本。 |
+
+普通 FP32 视图只要求自然 float 对齐。外部 A/B/C 的向量访问使用不要求 32 B 对齐的指令或标量广播，临时面板 `alignas(32)`，16-float 行距及两个 8-float 半行均满足对齐加载。完整 K、N 后才执行相应宽度的访问，剩余量单独处理。K=0 交给 scalar/reference 写正零。blocked 先清零 C 的有效核心，每个 K-panel 局部从零累加，再加回 C，边缘覆盖写；其 FP32/FMA 与 double oracle 按容差比较，归约分组随路径而异。上述实现维持同步单线程和调用栈私有临时存储。[主驱动](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp) · [面板与微内核](../../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h) · [点积](../../../../src/backend/cpu/kernels/dot_product/dot_product_f32_avx2.cpp) · [B-panel 消费端](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp) · [Linear 绑定](../../../../src/backend/cpu/kernels/linear/linear_entry.cpp)
+
+### 已复现的正确性问题
+
+**高优先级，N=0 的合法空输出可触发未定义行为。** `RunGemmA32W32Avx2Fma` 的两个快速分支均接受 `n>=0`。直接传入有效 A、空 C、`M=2 或 9,N=0,K=16,output_m_stride=3`，A-K、B-K、C-N stride 均为 1。Clang pointer-overflow sanitizer 分别在主驱动第 334、262 行报告对 null 加 12 字节。问题出在构造行地址，空列循环没有写数据也会触发。普通 prepared Linear 的空维度分支已绕开该入口。现有直接测试的 N=0 参数使用默认零 stride，落到回退，遗漏了两个快分支。建议在 native 入口进行任何行指针算术前对 `M==0 || N==0` 返回 OK，覆盖 M=2/9、空指针和非零行距的 sanitizer 回归；同时核对共享分派的 benchmark 候选入口。基线的 56 项聚焦测试通过，额外 UBSan 两例均复现。[内部零尺寸合同](../../../../src/backend/cpu/kernels/gemm/gemm_internal.h) · [现有用例](../../../../tests/unit/backend/cpu/kernels/test_cpu_gemm_avx2.cpp)
+
+### 单核算力、带宽与缓存
+
+Arrow Lake 的寄存器 YMM FP32 FMA 每条完成 16 FLOP。公开指令实测给出约 2 条/周期、链延迟约 4 周期，故理想单核峰值为 **32 FLOP/周期，即 32 × 实际核心 GHz GFLOP/s**。需要约 8 条独立链才能覆盖这一延迟。WSL2 的 guest CPU 编号无法固定物理 P/E 核，亦缺少执行时核心频率。本机同亲和性、12 条独立寄存器链、每组 96 条 FMA 的校准最快为 **127.21 GFLOP/s**，两进程去掉首样本的中位数为 118.37、94.93。以下利用率统一取实际吞吐除以 127.21，表示相对同机最快计算样本的比例。未用标称睿频或全核总峰值充当分母。[Arrow Lake YMM FMA 延迟与吞吐实测](https://uops.info/html-instr/VFMADD231PS_YMM_YMM_YMM.html)
+
+实际绑定的 Linear，K=N=4096。每进程三次取墙钟中位数，再对两个进程取中位数。GFLOP/s 由 `2MNK/t` 计算。hot 复用一份 64 MiB 权重，streaming 轮换四份。下表排除准备和持久化 packing 时间，包含 plain blocked 的执行期打包。
+
+| 路径 | M | 中位 ms | GFLOP/s | 相对计算峰值 |
+|---|---:|---:|---:|---:|
+| plain hot | 1 | 2.771 | 12.1 | 9.5% |
+| plain streaming | 1 | 3.284 | 10.2 | 8.0% |
+| plain hot | 16 | 9.812 | 54.7 | 43.0% |
+| plain hot | 64 | 23.484 | 91.4 | 71.9% |
+| identity hot | 1 / 16 / 64 | 2.451 / 9.593 / 23.798 | 13.7 / 56.0 / 90.2 | 10.8% / 44.0% / 70.9% |
+| B-panel hot | 1 / 16 / 64 | 4.301 / 6.929 / 25.466 | 7.8 / 77.5 / 84.3 | 6.1% / 60.9% / 66.3% |
+| B-panel streaming | 1 | 4.049 | 8.3 | 6.5% |
+
+- **Decode 对权重读取敏感。** M=1 对每个 4 B 权重做约 2 FLOP，忽略 A/C 时为 0.5 FLOP/B。plain hot 的有效权重读取率为 24.22 GB/s，streaming 为 20.44 GB/s。同期 256 MiB 顺序读加和对照为 15.13–15.73 GB/s，本文前述另一读带宽基线为 19.93–21.37 GB/s。指令、工作集和预取行为不同；有效读取率只按每次调用一份 B 计字节。系统未提供内存控制器计数，物理 DRAM GB/s 及带宽占用百分比未知。
+- **缓存复用可以单独观察。** 固定 `M=1,K=N=512` 的同一 prepared 计算，仅把 1 MiB 单份权重改为轮换 256 份。两进程分别由 14.48 → 69.51 µs、11.40 → 54.44 µs，均慢约 4.8 倍。guest 报告每核 L2 3 MiB、共享 L3 24 MiB。容量变化与局部性瓶颈一致。guest 无 core/uncore PMU，`perf stat` 也缺匹配工具，L1/L2/LLC 命中率、IPC、端口占用均未取得。裸机验证应按核类型固定线程，在相同 hot/streaming 组上采同口径 load hit/miss 事件、cycles/instructions 及内存控制器读写字节。
+- **Prefill 有两类额外流量。** 2×4 每 8 个 K 做 128 FLOP，加载 192 B 的 A/B。6×16 每一个 K 做 192 FLOP，理想寄存器核加载 64 B 的 B、24 B 的 A。前者会跨行对重复读权重，后者要摊销 B 转置、重读 A、C 的多 panel 写回和编译器栈流量。这些字节分别属于指令侧与缓存侧，未计为 DRAM 流量。
+
+### 同形状的 SGEMM 对照
+
+同一诊断程序比较当前 direct primitive 与本机 oneMKL 2025 Update 2 的单线程 `cblas_sgemm`。同数据、同 leading dimension、相同缓存复用方式，row-major、alpha=1、beta=0，K 连续测试为 NT，N 连续测试为 NN。MKL 设为 sequential，调用 `mkl_enable_instructions(MKL_ENABLE_AVX2)` 成功并验证运行库标识；verbose 仅用于独立身份探针。每个实现先预热，两对独立进程交错，每个形状五次计时；表内为进程中位数的中位数。比较包含各自调用内部的工作，输入准备和正确性校验在计时外。[oneMKL ISA 调度说明](https://www.intel.com/content/www/us/en/docs/onemkl/developer-guide-linux/2024-0/instruction-set-specific-dispatch-on-intel-archs.html)
+
+| RHS | M / K / N | AetherMind ms | oneMKL ms | 解读 |
+|---|---|---:|---:|---|
+| K 连续 | 1 / 4096 / 4096 | 2.799 | 2.914 | 两者处于接近的带宽区间 |
+| K 连续 | 2 / 4096 / 4096 | 3.022 | 5.777 | 两行共用权重有利 |
+| K 连续 | 8 / 4096 / 4096 | 12.550 | 7.389 | 两对 MKL 耗时均约为当前的 59% |
+| K 连续 | 9 / 4096 / 4096 | 11.148 | 7.688 | blocked 加一条独立尾行仍较慢 |
+| K 连续 | 16 / 4096 / 4096 | 9.689 | 10.279 | 同量级 |
+| K 连续 | 64 / 4096 / 4096 | 25.637 | 28.416 | 两对胜负不同，无法判定稳定领先 |
+| K 连续 | 8 / 512 / 512 | 0.0472 | 0.1063 | 小工作集有利于当前行对 |
+| N 连续 | 8 / 512 / 512 | 0.1268 | 0.0434 | 当前进入 scalar；MKL 用时约三分之一 |
+| N 连续 | 64 / 512 / 512 | 0.9569 | 0.3136 | 同一布局缺口在较长 Prefill 仍可见 |
+
+### 性能问题、优先级与验证条件
+
+**1. 高优先级：将 M=8/9 硬分界改为受形状约束的分派。** 仅在隔离构建中改变分界，使现有行对与现有 blocked 在完全相同的普通 prepared Linear 上竞争。每行两对 AB/BA 独立进程，每进程三次。差值为 blocked 相对行对的延迟变化；A/A 为相同默认库自比。负号表示耗时下降。
+
+| M / K / N | 行对 ms | blocked ms | 两次配对变化 | 两次 A/A |
+|---|---:|---:|---|---|
+| 8 / 4096 / 4096 | 12.193 | 7.903 | −37.1%、−33.3% | −5.2%、−4.1% |
+| 8 / 512 / 512 | 0.0565 | 0.1264 | +57.8%、+195.3% | +0.6%、+6.4% |
+| 9 / 512 / 512 | 0.0789 | 0.1474 | +49.4%、+122.7% | +11.9%、−33.6% |
+| 9 / 4096 / 4096 | 15.040 | 13.378 | −29.1%、+6.4% | +3.5%、−3.0% |
+
+先以 `M=8,K=N=4096` 为正例、`M=8,K=N=512` 为反例。前者行对对 64 MiB 权重做四轮扫描，后者 1 MiB 的重扫能受益于缓存。建议对 `M=4…12` 及投影矩形（4096×11008 和反向）、N<16、不同 K 与 B 工作集分别扫点，再用低成本、溢出安全的形状判断选择现有路径。候选门槛可设为大形状 prepared 延迟比当前下降至少 20%，小形状保留行对并落入自身 A/A 波动带。大矩阵奇行另测 1×16 在已打包面板上收尾，检验能否消除整份原 B 重扫。现有样本不能确定统一的新 M 或字节阈值。
+
+**2. 中优先级：6×16 的 K×4 展开带来明确的栈流量。** 在最终共享库的主回边内，每四个 K 有 48 条 YMM FMA、24 个广播、8 次面板向量加载，另有 **15 次 32 B 栈写及 3 次带栈操作数的 FMA 读**，共 576 B 指令侧栈访问。其中 12 次写把累加器数组物化到栈；不能按 15 次写推断下一轮必有 15 次读。单次 K 的 12 个累加器、2 个 B、1 个 A 理论上只需 15 个 YMM。诊断候选以显式命名的累加器和 K×1 循环保留原 panel 归约顺序，热回边内向量栈访问降至零。四对交错 prepared plain hot 的结果如下。
+
+| M / K / N | 默认 → 候选 ms | 各对延迟变化 |
+|---|---:|---|
+| 16 / 4096 / 4096 | 9.650 → 9.303 | +18.9%、+2.6%、−2.1%、−6.3% |
+| 64 / 4096 / 4096 | 24.548 → 21.854 | −13.9%、−14.8%、+1.7%、+4.5% |
+| 128 / 512 / 512 | 0.716 → 0.652 | +16.8%、−40.3%、−10.0%、−7.4% |
+
+消除栈访问已验证；生产收益为 **Needs More Data**。建议再比较 K×1/×2、显式寄存器与编译器版本，在裸机核对 stack/load-store 指令、cycles/FMA 和 prepared 延迟。以跨进程增益超过同组 A/A、短 M 无稳定回退为采用条件。该模板也由其他精度的驱动复用，落地时须明确特化范围并运行对应的数值回归。
+
+**3. 按业务布局占比决定优先级：N 连续没有专用 AVX2 内核。** 当前 `rhs_n_stride==1, rhs_k_stride!=1` 走 scalar，多行 512 方阵对照 oneMKL 有约 3 倍延迟差。A 标量广播、沿 N 加载连续 B 的 2/4/6×16 小核可以省去 8×8 转置；输入允许 padded K 行距，加载指令应满足实际对齐。先核实目标 consumer 的该布局占比，再测带原 stride 的 prepared 调用。初步实验目标可设为在 M=8/64、K=N=512 比当前 fallback 快至少 20%，同时维持非单位 C-N、窄 N 和尾列的合同。MKL 差距只表明机会大小。
+
+**4. 次优先级：窄 N、首 K-panel 和 B-panel 的专门开销。** 默认 direct 的 `M=9,K=513,N=15/16/17` 分别为 1.74/3.03/3.30 µs；首个完整 16 列块触发打包，值得和全行对逐形状比较。当前 blocked 对有效 C 先整片清零，首 panel 再 load/add/store；可测首 panel 直接覆盖写，后续 panel 累加，检查 NaN 预填、±0、跨 panel 抵消及 padding，定量目标是消除一次清零和一次首 panel 的 C 读。packed scan 可试沿 K 分链或多行共享 B、对齐核心与前后切片分别处理；减少两链依赖与 double 边条的候选须与独立 oracle 比较。持久 B-panel 的准备时间、额外字节及 Decode 也要进入收益计算，本轮只观察到 M=16 的稳态局部优势。对 KC=128/256/512 的试验应分开变更临时 panel 与持久 recipe，后者改变物理格式需要新布局 ID。
+
+### 证据与可复现范围
+
+- 本机 Core Ultra 9 285H，WSL2，单线程 `taskset -c 2`。GCC 14.2、Release，commit `eb4b97d57bb4` 加上测量前已有的 dot_product 工作树迁移。重配并构建 `aethermind_benchmark` 与 `aethermind_unit_tests`。原始目录为 `benchmark-results/operators/gemm/20261126T022637Z_eb4b97d5_54h5mmi_avx2-audit/`，含已跟踪源码差异、新 dot_product 源码归档、共享库/程序校验和、编译与运行脚本、原始重复值和反汇编。
+- `compile.sh` 构建同机 SGEMM 对照；`roof.cpp` 以 `g++ -O3 -std=c++20 -mavx2 -mfma` 编译；`collect.sh` 采集 direct、oneMKL、计算/读带宽校准及 prepared plain/identity/B-panel。direct 对每个输出行抽取多列，与 double 点积核对；输入使用可精确表示的二进制分数。仓库 prepared benchmark 保留自身的独立参考与容差。
+- `threshold.py`、`threshold-ab.sh` 和 `noise.sh` 复现同形状分派、缓存对照与 A/A。`variant.py` 和 `variant-ab.sh` 生成并加载局部实验库，复现显式累加器的四对实验。`summarize.py` 汇总墙钟结果，`linked-tile6.asm` 可核对已链接生产 6×16。动态加载首次因 taskset 找不到依赖而失败，记录于 `failed-launch.log`；有效采集在固定亲和性后仅向目标程序加载实验库。
+- 正确性命令为 `build/tests/unit/aethermind_unit_tests --gtest_filter='*GemmAvx2*:*GemmPackedB*:*CPUKernelDotProduct*'`，生产库和寄存器候选各 56/56。`null-check.sh` 和 `null.log` 单独给出空输出 sanitizer 复现。无运行期线程或共享可变状态改动。本次未测模型端到端、其他 CPU 或裸机 PMU，结果适用于所列单线程算子与布局。

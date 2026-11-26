@@ -429,3 +429,51 @@ Arrow Lake 的寄存器 YMM FP32 FMA 每条完成 16 FLOP。公开指令实测�
 - `compile.sh` 构建同机 SGEMM 对照；`roof.cpp` 以 `g++ -O3 -std=c++20 -mavx2 -mfma` 编译；`collect.sh` 采集 direct、oneMKL、计算/读带宽校准及 prepared plain/identity/B-panel。direct 对每个输出行抽取多列，与 double 点积核对；输入使用可精确表示的二进制分数。仓库 prepared benchmark 保留自身的独立参考与容差。
 - `threshold.py`、`threshold-ab.sh` 和 `noise.sh` 复现同形状分派、缓存对照与 A/A。`variant.py` 和 `variant-ab.sh` 生成并加载局部实验库，复现显式累加器的四对实验。`summarize.py` 汇总墙钟结果，`linked-tile6.asm` 可核对已链接生产 6×16。动态加载首次因 taskset 找不到依赖而失败，记录于 `failed-launch.log`；有效采集在固定亲和性后仅向目标程序加载实验库。
 - 正确性命令为 `build/tests/unit/aethermind_unit_tests --gtest_filter='*GemmAvx2*:*GemmPackedB*:*CPUKernelDotProduct*'`，生产库和寄存器候选各 56/56。`null-check.sh` 和 `null.log` 单独给出空输出 sanitizer 复现。无运行期线程或共享可变状态改动。本次未测模型端到端、其他 CPU 或裸机 PMU，结果适用于所列单线程算子与布局。
+
+## FP32 AVX2 权重复用与 N 连续路径
+
+- **范围与决定。** 以单线程 prepared Linear 验证 plain 和 identity 权重。K 连续且 `3 <= M <= 9, K >= 128, N > 16` 时，整组输入行复用同一批 16 列原始权重。长投影 `K >= 2048, N >= 1024` 的 blocked 路径让奇数尾行复用当前 B 面板。N 连续且 `M >= 4, K >= 128, N >= 64` 时直接沿 N 向量化，使用 KC=128、4/2/1 行和 16 列，首 panel 覆盖写，后续 panel 继续按升序 K 累加，边条走 scalar。
+- **身份。** Core Ultra 9 285H、WSL2、GCC 14.2 Release，进程固定 guest CPU 2。基线为 `98b8d859` 加上工作树中已完成的空输出修复。候选在此基础上加入上述三个改动。RHS 正常布局测 plain/identity 的 AVX2/FMA descriptor，N 连续测 plain descriptor 内从 scalar 绑定切到 AVX2。实际绑定的 driver 和 descriptor 随每个样本记录。
+- **计时。** 使用仓库 Linear benchmark 派生的 harness。通过注册、binding 和已绑定执行入口调用。标量输入模式周期取 61，以便同一逻辑数据经不同 FP32 归约后用 double GEMM oracle 校验。分配、打包、绑定和正确性检查在计时外，执行期临时 B 打包计入。每个形状预热两次，每进程三次重复，四对独立进程 AB/BA 交错。下表使用进程中位数，单位 ms。配对范围按候选相对基线的时间变化计算。
+
+| 权重布局 | M / K / N | 原实现 ms | 候选 ms | 四对延迟变化范围 |
+|---|---|---:|---:|---:|
+| K 连续 plain | 4 / 4096 / 4096 | 5.705 | 3.854 | −36.1% 至 −22.5% |
+| K 连续 plain | 8 / 4096 / 4096 | 11.623 | 5.876 | −51.0% 至 −42.9% |
+| K 连续 plain | 9 / 4096 / 4096 | 9.621 | 6.889 | −35.4% 至 −24.8% |
+| K 连续 identity | 8 / 4096 / 4096 | 10.047 | 5.253 | −54.2% 至 −36.9% |
+| K 连续 plain | 9 / 512 / 512 | 0.08972 | 0.05143 | −55.9% 至 −36.8% |
+| K 连续 plain | 13 / 4096 / 4096 | 11.425 | 9.100 | −53.4% 至 −13.2% |
+| N 连续 plain | 8 / 512 / 512 | 0.10672 | 0.04369 | −69.0% 至 −54.3% |
+| N 连续 plain | 9 / 512 / 513，K 行距 526 | 0.13997 | 0.06126 | −60.2% 至 −18.1% |
+| N 连续 plain | 64 / 4096 / 4096 | 88.646 | 46.441 | −52.5% 至 −41.7% |
+
+- 两对 A/A 中，`M=8,K=N=4096` 延迟变化约 +0.6% 和 +3.1%。短 K 的 `9/16/512` 与 Decode `1/4096/4096` 的最终配对变化方向混合。偶数行的 `64/4096/4096` 两对 A/A 波动为 +5.6% 和 +100.6%，该组性能仅作观察。较窄的大 K 奇数尾行形状也有混合结果。
+- `sweep` 试验比较旧行对、旧 blocked、16 列和 64 列循环。16 列入选。早期将 16 列循环扩大到 M=12 及 K=16，短 K 与 M=12 大方阵出现回退，最终范围收窄。候选曾在分块行循环内判断奇数尾行，长偶数 M 的样本出现回退。最终把尾行计算放到完整行块之后并复采。
+- 6×16 的 K 展开 1/2、首 panel 直接写 C 各自做了 prepared 诊断。部分形状改善，其他形状回退或落在噪声带。结论为 **Needs More Data**，候选仅保存在 raw。持久 B-panel 仍按上一轮的候选结论使用。
+- **证据。** 原始目录为 `benchmark-results/operators/gemm/20261126T034631Z_98b8d859_54h5mmi_avx2-dispatch/`。其中 `ab.py final-cases.txt base release 4 qualified` 驱动最终完整共享库 A/B，`ab.py longcontrol.txt base base 2 control` 驱动同实现复测。`prepare.py`、`bench.cpp`、`baseline.patch`、`release.patch` 和校验和记录构建身份。`qualified-summary.txt`、`control-summary.txt` 和各 CSV 保留进程内重复值与预编译诊断对照。
+- **正确性。** Release 的 GEMM、Linear、QKV 与 GateUp 聚焦测试共 388 项通过。ASan/UBSan 插桩的 AVX2 GEMM TU 通过 56 项。测试涵盖空输出、带 padding 的奇数尾行与尾列、NaN 输出覆盖和屏蔽 AVX2/FMA 后的 scalar 绑定。仓库 prepared Linear hot/streaming smoke 共 6 组，每组 3 次重复，独立正确性检查均通过。
+- **结论。** 上述生产范围在本机单线程 prepared Linear 验收通过。收益归于所测算子形状。端到端模型加速和跨 CPU 阈值仍待独立验证。
+
+## FP32 AVX2 6x16 微内核的指令吞吐
+
+- **范围与决定。** plain 和 identity Linear 的 6×16 直接 A tile 在热循环中每次推进一个 K。六行共 12 个向量累加器，当前 B 使用两个向量，同一时刻只需一个 A 广播。独立微内核在 GCC 14.2 和本地 Clang 22 编译中均能将这些值留在 YMM。K 按升序执行 FMA，每个面板结束加回 C。
+- **身份与命令。** 基于 `98b8d859` 加前一节三项生产优化。基线与候选使用完整的 GCC 14.2 Release 共享库。Core Ultra 9 285H、WSL2，单线程固定 guest CPU 2。通过实际注册和绑定的 AVX2/FMA Linear 进行 A/B。每进程预热两次、三次计时，五对进程 AB/BA 交错覆盖形状矩阵，另用独立四对聚焦长 Prefill。时间包括执行期的临时 B 打包，权重准备与绑定在计时外。
+- **汇编。** GCC 原主循环每四个 K 执行 48 条向量 FMA，另有 15 次 YMM 栈写和 3 次带栈读的 FMA。新主循环每个 K 执行 12 条向量 FMA，YMM 栈读写为零。K 展开 2/4、显式常量行索引，以及只对 K 整除展开因子时展开的对照，仍出现栈访问。基于已提取主循环的 `llvm-mca -mcpu=arrowlake` 静态估计，两者均约为 6 周期/K。动态吞吐仍取决于实际调度和缓存。
+
+| 权重布局 | M / K / N | 基线 ms | 候选 ms | 四对配对延迟变化 |
+|---|---|---:|---:|---|
+| K 连续 plain | 128 / 512 / 512 | 0.661 | 0.590 | −6.4%、−3.8%、−8.8%、−21.0% |
+| K 连续 plain | 128 / 4096 / 4096 | 47.702 | 41.613 | −6.0%、−19.1%、−22.9%、−2.1% |
+| K 连续 plain | 16 / 512 / 512 | 0.102 | 0.108 | +2.9%、−0.2%、−1.3%、+8.9% |
+
+- 五对形状矩阵及四对聚焦复测中的 M=64 结果方向混合。同实现的两对 A/A 在 plain `64/4096/4096` 上分别为 +25.6% 和 +6.3%。N 连续小形状初轮有正偏差，单独复测的变化范围与同组 A/A 重叠。现阶段的算子收益结论限于所测长 Prefill。
+- 单独的热缓存 tile 对照中，K=512 的四对进程都观察到候选延迟上升，吞吐中位数从 113.17 降到 93.48 GFLOP/s。该诊断反复计算同一个输入和输出 tile，排除了生产调用中的面板打包与不同 tile 指令流。采用候选的依据是消除生产热循环中的溢写和较长 Prefill 的实测改善。
+- **正确性。** 389 项 Release 聚焦测试和 57 项 ASan/UBSan 插桩测试通过。新增用例用独立的逐元素 `std::fma` 对照 512+3 个 K 元素的面板累加顺序，并用 NaN 预填输出。仓库 prepared Linear smoke 的 5 组共 15 次样本均通过既有数值 guard。
+- **原始证据。** `benchmark-results/operators/gemm/20261126T063811Z_98b8d859_54h5mmi_avx2-throughput/` 包含补丁、共享库校验和、`measure.py`、时间样本、`check-assembly.py`、汇编和 `tile.sh`。最终两轮 A/B 命令为 `python3 measure.py qualified.txt base candidate 5 final` 和 `python3 measure.py control-m64.txt base candidate 4 targeted`，脚本通过自身路径定位基准程序。结论为 **Accepted**，适用范围为本机的直接 FP32 6×16 溢写修复及代表性长 Prefill 性能。
+
+## FP32 AVX2 按 RHS 布局分派
+
+- `RunGemmA32W32Avx2Fma` 集中检查空维度、A 和 C 的 stride，并调用内部 K 连续或 N 连续入口。两个 RHS stride 均为 1 时沿用 K 优先。用相同机器、GCC 14.2 Release 和 guest CPU 2 验证入口重构。基线为 `98b8d859` 及重构前的工作树，候选只提取内部入口。
+- Release 聚焦测试 389 项通过。通过实际绑定的 prepared Linear 验证 8 个形状，覆盖 K/N 连续、plain/identity、带 padding 和 scalar 回退。每个形状四对 AB/BA、两对 A/A，每进程三次重复。各形状 A/B 配对延迟变化的中位数为 −0.1% 至 +7.0%，逐对变化方向混合，未检出稳定回退。GCC 将 K 连续入口内联，N 连续函数体机器码逐字节相同。
+- 原始记录位于 `benchmark-results/operators/gemm/20261126T090613Z_98b8d859_54h5mmi_avx2-entry/`，含源代码差异、校验和、`measure.py`、`cases.txt`、A/B 与 A/A 样本。结论为 **Accepted（内部入口重构）**。

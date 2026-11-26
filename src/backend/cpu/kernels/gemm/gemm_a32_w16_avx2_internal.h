@@ -25,10 +25,10 @@ bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col,
                        float input_magnitude) noexcept {
     const auto* input = reinterpret_cast<const float*>(args.lhs);
     auto* output = reinterpret_cast<float*>(args.output);
-    __m256 sums[Rows][Cols];
+    __m256 acc[Rows][Cols];
     for (int r = 0; r < Rows; ++r) {
         for (int c = 0; c < Cols; ++c) {
-            sums[r][c] = _mm256_setzero_ps();
+            acc[r][c] = _mm256_setzero_ps();
         }
     }
 
@@ -50,7 +50,7 @@ bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col,
             __m256& magnitude = weight_magnitude[c % kMagnitudeChains];
             magnitude = _mm256_max_ps(magnitude, _mm256_andnot_ps(sign, weights));
             for (int r = 0; r < Rows; ++r) {
-                sums[r][c] = _mm256_fmadd_ps(inputs[r], weights, sums[r][c]);
+                acc[r][c] = _mm256_fmadd_ps(inputs[r], weights, acc[r][c]);
             }
         }
     }
@@ -70,7 +70,7 @@ bool TryGemmW16DotTile(const GemmArgs& args, int64_t row, int64_t col,
     float results[Rows][Cols];
     for (int r = 0; r < Rows; ++r) {
         for (int c = 0; c < Cols; ++c) {
-            results[r][c] = HorizontalSumAvx2(sums[r][c]);
+            results[r][c] = HorizontalSumAvx2(acc[r][c]);
         }
     }
 

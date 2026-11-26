@@ -128,8 +128,8 @@ Status RunGemmA32W32PackedBScan(const PackedGemmF32Args& packed) noexcept {
                         static_cast<size_t>(kPackedBKC * kPackedBNR);
                 const float* const b_panel = packed_b_data + panel_index;
                 for (int64_t kk = 0; kk < kc_len; ++kk) {
-                    const __m256 x = _mm256_set1_ps(
-                            lhs_row[(kb + kk) * args.lhs_k_stride]);
+                    const __m256 x = _mm256_broadcast_ss(
+                            lhs_row + (kb + kk) * args.lhs_k_stride);
                     const float* const b_row = b_panel + kk * kPackedBNR;
                     acc0 = _mm256_fmadd_ps(x, _mm256_loadu_ps(b_row), acc0);
                     acc1 = _mm256_fmadd_ps(x, _mm256_loadu_ps(b_row + 8), acc1);

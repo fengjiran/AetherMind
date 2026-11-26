@@ -17,6 +17,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cmath>
@@ -561,6 +562,45 @@ TEST(CPUKernelLinear, ReferenceExecutesPositiveColumnStrides) {
 
     ASSERT_TRUE(status.ok()) << status.ToString();
     ExpectLinearRowsNear(input.data(), weight.data(), output.data(), 2, 3, 2, 7, 2, 8, 2, 8, 3);
+}
+
+TEST(CPUKernelLinear, BindsNContiguousWeightsForAvailableIsa) {
+    constexpr int64_t m = 4;
+    constexpr int64_t k = 128;
+    constexpr int64_t n = 65;
+    constexpr int64_t pitch = n + 3;
+    const std::array<int64_t, 2> input_shape{m, k}, input_strides{k, 1};
+    const std::array<int64_t, 2> weight_shape{n, k}, weight_strides{1, pitch};
+    const std::array<int64_t, 2> output_shape{m, n}, output_strides{n, 1};
+    const std::vector<float> input(m * k, 0.5F);
+    const std::vector<float> weight(k * pitch, 0.25F);
+    std::vector<float> output(m * n, std::numeric_limits<float>::quiet_NaN());
+    const LinearTestViews views{
+            .input_tensor = TensorView{input.data(), DataType::Float32(), input_shape, input_strides},
+            .weight_tensor = TensorView{weight.data(), DataType::Float32(), weight_shape, weight_strides},
+            .output_tensor = MutableTensorView{output.data(), DataType::Float32(), output_shape, output_strides},
+    };
+    const auto avx2 = CpuFeatureSet::From({CpuFeature::kAvx2, CpuFeature::kFma});
+    for (const auto policy: {CpuFeaturePolicy{}, CpuFeaturePolicy{.disabled_features = avx2}}) {
+        const auto kernel = PrepareLinearKernel(policy);
+        ASSERT_TRUE(kernel.ok()) << kernel.status().ToString();
+        const auto prepared = BuildLinearPreparedParams(*kernel, views);
+        ASSERT_TRUE(prepared.ok()) << prepared.status().ToString();
+        using namespace cpu::detail;
+        LinearA32W32PreparedArgs bound;
+        std::memcpy(&bound, prepared->storage.data(), sizeof(bound));
+        auto expected_driver = &RunLinearF32Scalar;
+#if defined(GEMM_HAS_AVX2_FMA_KERNEL)
+        if (CpuBackend(policy).cpu_capabilities().effective_features.ContainsAll(avx2)) {
+            expected_driver = &RunLinearF32Avx2Fma;
+        }
+#endif
+        EXPECT_EQ(bound.driver, expected_driver);
+        std::fill(output.begin(), output.end(), std::numeric_limits<float>::quiet_NaN());
+        const Status status = RunLinearEntry(*kernel, *prepared);
+        ASSERT_TRUE(status.ok()) << status.ToString();
+        ExpectLinearRowsNear(input.data(), weight.data(), output.data(), m, k, n, k, 1, 1, pitch, n, 1);
+    }
 }
 
 TEST(CPUKernelLinear, AllowsDisjointViewsInsideOneAllocation) {

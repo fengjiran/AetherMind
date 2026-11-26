@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 #include <gtest/gtest.h>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -162,12 +163,12 @@ TEST(CPUKernelGemmAvx2, SupportsPaddedUnalignedInputsAndOutputGuards) {
     EXPECT_EQ(reference_storage.back(), -37.0F);
 }
 
-TEST(CPUKernelGemmAvx2, FallsBackForNContiguousLayouts) {
+TEST(CPUKernelGemmAvx2, NContiguousPaddedRowsAndTailsMatchReference) {
     if (!CanExecuteAvx2Fma()) {
         GTEST_SKIP() << "AVX2+FMA GEMM kernel is unavailable on this host";
     }
 
-    constexpr int64_t m = 3;
+    constexpr int64_t m = 7;
     constexpr int64_t k = 257;
     constexpr int64_t n = 129;
     constexpr int64_t lhs_m_stride = k + 3;
@@ -179,6 +180,10 @@ TEST(CPUKernelGemmAvx2, FallsBackForNContiguousLayouts) {
     std::vector<float> reference_output(static_cast<size_t>(m * output_m_stride), -17.0F);
     FillValues(lhs);
     FillValues(rhs);
+    for (int64_t row = 0; row < m; ++row) {
+        std::fill_n(candidate_output.data() + row * output_m_stride, n,
+                    std::numeric_limits<float>::quiet_NaN());
+    }
 
     const cpu::detail::GemmArgs candidate_args{
             .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
@@ -272,7 +277,8 @@ INSTANTIATE_TEST_SUITE_P(
                 SmallMShape{4, 32, 33},
                 SmallMShape{7, 33, 31},
                 SmallMShape{8, 64, 9},
-                SmallMShape{8, 1024, 33}),
+                SmallMShape{8, 1024, 33},
+                SmallMShape{9, 128, 35}),
         SmallMShapeName);
 
 class CPUKernelGemmAvx2BlockedTest : public testing::TestWithParam<SmallMShape> {};
@@ -323,13 +329,63 @@ INSTANTIATE_TEST_SUITE_P(
         BlockedShapes,
         CPUKernelGemmAvx2BlockedTest,
         testing::Values(
-                SmallMShape{9, 33, 9},
+                SmallMShape{9, 33, 17},
+                SmallMShape{13, 2049, 1025},
                 SmallMShape{16, 1024, 33},
                 SmallMShape{64, 128, 103},
                 SmallMShape{65, 4097, 33},
                 SmallMShape{128, 1024, 264},
                 SmallMShape{129, 256, 55}),
         SmallMShapeName);
+
+TEST(CPUKernelGemmAvx2, BlockedTilePreservesFmaOrderAcrossKPanels) {
+    if (!CanExecuteAvx2Fma()) {
+        GTEST_SKIP() << "AVX2+FMA GEMM kernel is unavailable on this host";
+    }
+
+    constexpr int64_t m = 12;
+    constexpr int64_t n = 16;
+    constexpr int64_t panel_size = 512;
+    constexpr int64_t k = panel_size + 3;
+    std::vector<float> lhs(m * k);
+    std::vector<float> rhs(n * k);
+    std::vector<float> output(m * n, std::numeric_limits<float>::quiet_NaN());
+    for (int64_t i = 0; i < m * k; ++i) {
+        lhs[i] = static_cast<float>(i % 29 - 14) / 19.0F;
+    }
+    for (int64_t i = 0; i < n * k; ++i) {
+        rhs[i] = static_cast<float>(i % 53 - 26) / 37.0F;
+    }
+    const Status status = cpu::detail::RunGemmA32W32Avx2Fma(cpu::detail::GemmArgs{
+            .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+            .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
+            .output = reinterpret_cast<std::byte*>(output.data()),
+            .m = m,
+            .n = n,
+            .k = k,
+            .lhs_m_stride = k,
+            .lhs_k_stride = 1,
+            .rhs_k_stride = 1,
+            .rhs_n_stride = k,
+            .output_m_stride = n,
+            .output_n_stride = 1,
+    });
+    ASSERT_TRUE(status.ok()) << status.ToString();
+
+    for (int64_t row = 0; row < m; ++row) {
+        for (int64_t col = 0; col < n; ++col) {
+            float expected = 0.0F;
+            for (int64_t begin = 0; begin < k; begin += panel_size) {
+                float sum = 0.0F;
+                for (int64_t inner = begin; inner < std::min(k, begin + panel_size); ++inner) {
+                    sum = std::fma(lhs[row * k + inner], rhs[col * k + inner], sum);
+                }
+                expected += sum;
+            }
+            EXPECT_EQ(output[row * n + col], expected) << "row=" << row << " col=" << col;
+        }
+    }
+}
 
 TEST(CPUKernelGemmAvx2, FallsBackForGenericMAndNonUnitStrides) {
     if (!CanExecuteAvx2Fma()) {
@@ -381,6 +437,30 @@ TEST(CPUKernelGemmAvx2, FallsBackForGenericMAndNonUnitStrides) {
     auto strided_reference_args = strided_args;
     strided_reference_args.output = reinterpret_cast<std::byte*>(reference_output.data());
     ExpectAvx2NearReference(strided_args, strided_reference_args);
+}
+
+TEST(CPUKernelGemmAvx2, AcceptsNullOutputForZeroColumns) {
+    if (!CanExecuteAvx2Fma()) {
+        GTEST_SKIP() << "AVX2+FMA GEMM kernel is unavailable on this host";
+    }
+
+    constexpr int64_t k = 16;
+    const std::array<float, 9 * k> lhs{};
+    for (const int64_t m: {2, 9}) {
+        const cpu::detail::GemmArgs args{
+                .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+                .m = m,
+                .n = 0,
+                .k = k,
+                .lhs_m_stride = k,
+                .lhs_k_stride = 1,
+                .rhs_k_stride = 1,
+                .rhs_n_stride = k,
+                .output_m_stride = 3,
+                .output_n_stride = 1,
+        };
+        EXPECT_TRUE(cpu::detail::RunGemmA32W32Avx2Fma(args).ok()) << "m=" << m;
+    }
 }
 
 TEST(CPUKernelGemmAvx2, PreservesZeroDimensionAndOverwriteSemantics) {

@@ -150,17 +150,20 @@ Status RunGemmA32W32PackedBScan(const PackedGemmF32Args& args) noexcept;
 /// @brief AVX2 packed-B blocked prefill driver with scan fallback.
 Status RunGemmA32W32PackedBBlocked(const PackedGemmF32Args& args) noexcept;
 
+/// @brief Returns whether the N-contiguous AVX2 driver amortizes its tile setup.
+constexpr bool CanUseF32NContiguousAvx2(int64_t m, int64_t k, int64_t n) noexcept {
+    return m >= 4 && k >= 128 && n >= 64;
+}
+
 /// @brief Runs the AVX2/FMA FP32 GEMM candidate with compatible fallback.
 ///
 /// The caller must ensure the host supports AVX2 and FMA before invoking this
 /// entry point (this primitive performs no capability detection itself). The
-/// SIMD paths require nonzero K, unit-stride lhs K, K-contiguous RHS, and
-/// unit-stride output N; `M=1..8` uses the row-pair fast path with a
-/// multi-target core for a leftover odd row, while `M>=9` uses the blocked
-/// 6x16 micro-kernel with 6/4/2-row tile decomposition, direct A, transient B
-/// packing and row-pair edge handling for the N-tail and a single odd row.
-/// Every other reference-legal input delegates to the scalar candidate, which
-/// may in turn delegate to the reference oracle.
+/// SIMD paths require nonzero K and unit-stride lhs K and output N.
+/// For K-contiguous RHS, small M uses row pairs and a multi-target dot
+/// product for an odd row. Larger shapes use transient B packing and a
+/// blocked 6x16 microkernel. Eligible N-contiguous RHS shapes use direct
+/// vector loads along N. Other layouts delegate to the scalar driver.
 Status RunGemmA32W32Avx2Fma(const GemmArgs& args) noexcept;
 #endif
 

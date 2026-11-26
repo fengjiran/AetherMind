@@ -28,6 +28,8 @@
 | identity/scalar/AVX2 生产性能 | Accepted（本机限定） | [CPU-03 记录](benchmarks/54h5mmi-gemm.md#cpu-03-fp32-gemm-生产闭环与布局-promotion-决策)：registered/prepared、Generate、M sweep、fused/unfused 与 packing-inclusive 均已对照；参考实现独立保留 |
 | 性能与 KC 选择 | **B-panel 全局 promotion 拒绝；KC 选择仍 Needs More Data** | CPU-02/03 的本机实现对照单独记账；B-panel 与 identity 的全边界比较决定 promotion，KC256 未测，不宣称 KC512 最优 |
 | AVX2 Prefill 与 W16 Decode | Implemented | FP32 direct A 与 B panel 复用，W16/A32 SIMD panel 转置与单行幅值分链，同型 A16 的 FP32 分块累加。见 [实施顺序](cpu-gemm-optimization.md#71-cpu-0203-之后的实施顺序) 和 [机器记录](benchmarks/54h5mmi-gemm.md) |
+| FP32 AVX2 权重复用 | Implemented / 本机 prepared 验证 | K 连续的小 M 路径按 16 列复用权重，大投影的 blocked 尾行复用 B 面板。N 连续的多行 Linear 直接沿 N 向量化。[形状对照](benchmarks/54h5mmi-gemm.md#fp32-avx2-权重复用与-n-连续路径) |
+| FP32 AVX2 6×16 寄存器分配 | Implemented / 本机 prepared 验证 | plain 和 identity 的直接 A tile 每次推进一个 K，热循环中的 12 个累加器驻留 YMM。[汇编与对照](benchmarks/54h5mmi-gemm.md#fp32-avx2-6x16-微内核的指令吞吐) |
 | A16/W16 GEMM driver | Implemented | 同型 FP16/BF16 的 reference 和 ISA 路径通过共享参数供 Linear 调用，结果以同型 16-bit 或 FP32 写回。见 [内部合同](cpu-gemm-optimization.md#41-backend-internal-contracts) |
 | W16/A32 长 Prefill | Implemented | direct A 与有界 M block 的 B panel 复用。Decode 的单核带宽对照见 [机器记录](benchmarks/54h5mmi-gemm.md) |
 | CUDA | Proposed | 从 FP32 O1/plain 基线开始。见 [CUDA 接入顺序](cpu-gemm-optimization.md#74-cuda-接入顺序) |

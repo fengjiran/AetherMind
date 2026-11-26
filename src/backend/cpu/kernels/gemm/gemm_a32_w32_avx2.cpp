@@ -1,4 +1,5 @@
 #include "aethermind/backend/cpu/kernels/common/simd_utils.h"
+#include "aethermind/base/macros.h"
 #include "backend/cpu/kernels/dot_product/dot_product_internal.h"
 #include "gemm_internal.h"
 
@@ -19,10 +20,7 @@ namespace {
 constexpr int64_t kAvx2RowsPerPair = 2;
 constexpr int64_t kAvx2ColBlock = 4;
 
-// Two rows share every weight stream: per 8-wide K step the two lhs vectors
-// stay in registers while the four column weights stream through
-// memory-operand FMAs. Peak register usage is 8 accumulators + 2 lhs = 10
-// YMM, and the 8 independent accumulator chains saturate both FMA ports.
+// Two rows share each of four weight vectors across eight independent sums.
 void RunRowPairAvx2(const float* lhs0, const float* lhs1, const float* rhs,
                     int64_t k, int64_t n, int64_t rhs_n_stride,
                     float* out0, float* out1) noexcept {
@@ -95,12 +93,36 @@ void RunRowPairAvx2(const float* lhs0, const float* lhs1, const float* rhs,
     }
 }
 
+// Compute a nonempty rectangle directly from K-contiguous weight rows.
+void RunKContiguousRowPairsAvx2(const GemmArgs& args, int64_t row_begin, int64_t row_end,
+                                int64_t col_begin, int64_t cols) noexcept {
+    const auto* lhs = reinterpret_cast<const float*>(args.lhs);
+    const auto* rhs = reinterpret_cast<const float*>(args.rhs) + col_begin * args.rhs_n_stride;
+    auto* output = reinterpret_cast<float*>(args.output) + col_begin;
+    int64_t row = row_begin;
+    while (row + kAvx2RowsPerPair <= row_end) {
+        RunRowPairAvx2(lhs + row * args.lhs_m_stride,
+                       lhs + (row + 1) * args.lhs_m_stride,
+                       rhs, args.k, cols, args.rhs_n_stride,
+                       output + row * args.output_m_stride,
+                       output + (row + 1) * args.output_m_stride);
+        row += kAvx2RowsPerPair;
+    }
+
+    if (row < row_end) {
+        DotProductF32MultiTargetAvx2(
+                lhs + row * args.lhs_m_stride, rhs,
+                static_cast<size_t>(args.k), static_cast<size_t>(cols),
+                static_cast<size_t>(args.rhs_n_stride),
+                output + row * args.output_m_stride);
+    }
+}
+
 // ---- Blocked prefill GEMM -------------------------------------------------
 //
-// Production blocked path: the 6x16 micro-kernel keeps twelve independent
-// accumulator chains (two 8-wide vectors per row) and unrolls K by 4; the
-// greedy 6/4/2-row tile decomposition covers every even row count without a
-// slow row-pair fallback. Tile6DupA is a measurement candidate that
+// The production 6x16 micro-kernel keeps twelve independent accumulator
+// chains. The 6/4/2-row decomposition keeps complete row pairs on the same
+// B panel. Tile6DupA is a measurement candidate that
 // additionally packs A in broadcast layout (each scalar replicated 8x,
 // PackGemmAPanelDupAvx2) so the inner loop runs pure vector loads and FMAs
 // with no shuffle-port traffic; it uses KC=256 panels so the duplicated A
@@ -129,11 +151,46 @@ struct F32GemmWeightOps {
     }
 };
 
+// One K step keeps twelve sums, two B vectors, and one A broadcast live.
+// Keeping this loop separate from the panel driver lets the sums stay in YMM
+// registers across the full panel.
+AM_NOINLINE void AccumulateDirectF32Tile6x16Avx2(
+        const float* lhs, const float* panel, int64_t depth, int64_t output_stride,
+        float* output, int64_t lhs_stride) noexcept {
+    struct RowSum {
+        __m256 lo = _mm256_setzero_ps();
+        __m256 hi = _mm256_setzero_ps();
+    };
+
+    RowSum acc[kTile6MR];
+    const float* rows[kTile6MR];
+    for (int row = 0; row < kTile6MR; ++row) {
+        rows[row] = lhs + row * lhs_stride;
+    }
+
+    for (int64_t k = 0; k < depth; ++k) {
+        const __m256 lo = _mm256_load_ps(panel + k * kBlockedNR);
+        const __m256 hi = _mm256_load_ps(panel + k * kBlockedNR + 8);
+        for (int row = 0; row < kTile6MR; ++row) {
+            const __m256 a = _mm256_broadcast_ss(rows[row] + k);
+            acc[row].lo = _mm256_fmadd_ps(a, lo, acc[row].lo);
+            acc[row].hi = _mm256_fmadd_ps(a, hi, acc[row].hi);
+        }
+    }
+
+    for (int row = 0; row < kTile6MR; ++row) {
+        float* out = output + row * output_stride;
+        _mm256_storeu_ps(out, _mm256_add_ps(_mm256_loadu_ps(out), acc[row].lo));
+        _mm256_storeu_ps(out + 8, _mm256_add_ps(_mm256_loadu_ps(out + 8), acc[row].hi));
+    }
+}
+
 void RunBlockedGemmTile6Avx2(const GemmArgs& args, int64_t m_full, int64_t n_full) noexcept {
     const auto* const lhs_data = reinterpret_cast<const float*>(args.lhs);
     const auto* const rhs_data = reinterpret_cast<const std::byte*>(args.rhs);
     auto* const output_data = reinterpret_cast<float*>(args.output);
     const size_t rhs_row_bytes = static_cast<size_t>(args.rhs_n_stride) * sizeof(float);
+    const int64_t paired_rows = m_full - m_full % 2;
 
     alignas(32) float buf_b[static_cast<size_t>(kBlockedKC * kBlockedNR)];
 
@@ -145,13 +202,10 @@ void RunBlockedGemmTile6Avx2(const GemmArgs& args, int64_t m_full, int64_t n_ful
                     static_cast<size_t>(nb * args.rhs_n_stride + kb) * sizeof(float);
             PackGemmBPanelAvx2<F32GemmWeightOps, false>(
                     b_source, rhs_row_bytes, kc_len, buf_b);
-            // Greedy row decomposition covers the even m_full rows with 6/4/2-row
-            // tiles of the same panel flow, so no row falls back to the slower
-            // row-pair kernel; the dispatch only handles a single odd row.
-            for (int64_t row = 0; row < m_full;) {
-                const int64_t remaining = m_full - row;
+            for (int64_t row = 0; row < paired_rows;) {
+                const int64_t remaining = paired_rows - row;
                 if (remaining >= kTile6MR) {
-                    AccumulateF32Tile6x16Avx2(
+                    AccumulateDirectF32Tile6x16Avx2(
                             lhs_data + row * args.lhs_m_stride + kb,
                             buf_b, kc_len, args.output_m_stride,
                             output_data + row * args.output_m_stride + nb,
@@ -172,6 +226,14 @@ void RunBlockedGemmTile6Avx2(const GemmArgs& args, int64_t m_full, int64_t n_ful
                             args.lhs_m_stride);
                     row += 2;
                 }
+            }
+
+            if (paired_rows < m_full) {
+                const float* lhs_row = lhs_data + paired_rows * args.lhs_m_stride + kb;
+                AccumulateF32TileNx16CoreAvx2<1>(
+                        buf_b, kc_len, args.output_m_stride,
+                        output_data + paired_rows * args.output_m_stride + nb,
+                        [=](int, int64_t k) { return _mm256_broadcast_ss(lhs_row + k); });
             }
         }
     }
@@ -232,6 +294,7 @@ void RunBlockedGemmTile6DupAAvx2(const GemmArgs& args, int64_t m_full, int64_t n
                             b_source, rhs_row_bytes, kc_len,
                             buf_b + sub * kTile6KC);
                 }
+
                 for (int64_t row = 0; row < mb_rows; row += kTile6MR) {
                     for (int64_t sub = 0; sub < nb_len; sub += kBlockedNR) {
                         AccumulateF32Tile6x16DupAvx2(
@@ -247,15 +310,90 @@ void RunBlockedGemmTile6DupAAvx2(const GemmArgs& args, int64_t m_full, int64_t n
     }
 }
 
-#endif
+template<int Rows>
+void RunNContiguousTileAvx2(const float* lhs, const float* rhs, float* output,
+                            const GemmArgs& args, int64_t depth, bool first_panel) noexcept {
+    __m256 acc[Rows][2]{};
+    if (!first_panel) {
+        for (int row = 0; row < Rows; ++row) {
+            const float* dst = output + row * args.output_m_stride;
+            acc[row][0] = _mm256_loadu_ps(dst);
+            acc[row][1] = _mm256_loadu_ps(dst + 8);
+        }
+    }
+
+    for (int64_t k = 0; k < depth; ++k) {
+        const float* weights = rhs + k * args.rhs_k_stride;
+        const __m256 low = _mm256_loadu_ps(weights);
+        const __m256 high = _mm256_loadu_ps(weights + 8);
+        for (int row = 0; row < Rows; ++row) {
+            const __m256 input = _mm256_broadcast_ss(lhs + row * args.lhs_m_stride + k);
+            acc[row][0] = _mm256_fmadd_ps(input, low, acc[row][0]);
+            acc[row][1] = _mm256_fmadd_ps(input, high, acc[row][1]);
+        }
+    }
+
+    for (int row = 0; row < Rows; ++row) {
+        float* dst = output + row * args.output_m_stride;
+        _mm256_storeu_ps(dst, acc[row][0]);
+        _mm256_storeu_ps(dst + 8, acc[row][1]);
+    }
+}
+
+Status RunRhsNContiguousAvx2(const GemmArgs& args) noexcept {
+    const auto* lhs = reinterpret_cast<const float*>(args.lhs);
+    const auto* rhs = reinterpret_cast<const float*>(args.rhs);
+    auto* output = reinterpret_cast<float*>(args.output);
+    const int64_t n_full = args.n - args.n % kBlockedNR;
+    // Limit the number of strided weight rows touched before advancing N.
+    for (int64_t kb = 0; kb < args.k;) {
+        constexpr int64_t kKPanel = 128;
+        const int64_t depth = std::min(kKPanel, args.k - kb);
+        for (int64_t col = 0; col < n_full; col += kBlockedNR) {
+            const float* weights = rhs + kb * args.rhs_k_stride + col;
+            int64_t row = 0;
+            while (row + 4 <= args.m) {
+                RunNContiguousTileAvx2<4>(lhs + row * args.lhs_m_stride + kb,
+                                          weights,
+                                          output + row * args.output_m_stride + col,
+                                          args, depth, kb == 0);
+                row += 4;
+            }
+
+            if (row + 2 <= args.m) {
+                RunNContiguousTileAvx2<2>(lhs + row * args.lhs_m_stride + kb,
+                                          weights,
+                                          output + row * args.output_m_stride + col,
+                                          args, depth, kb == 0);
+                row += 2;
+            }
+
+            if (row < args.m) {
+                RunNContiguousTileAvx2<1>(lhs + row * args.lhs_m_stride + kb,
+                                          weights,
+                                          output + row * args.output_m_stride + col,
+                                          args, depth, kb == 0);
+            }
+        }
+        kb += depth;
+    }
+
+    if (n_full == args.n) {
+        return Status::Ok();
+    }
+
+    GemmArgs tail = args;
+    tail.n -= n_full;
+    tail.rhs = reinterpret_cast<const std::byte*>(rhs + n_full);
+    tail.output = reinterpret_cast<std::byte*>(output + n_full);
+    return RunGemmA32W32Scalar(tail);
+}
 
 // Shared blocked-branch dispatch for the 6x16 candidates: zero the aligned
 // M x N core, run the blocked driver, then cover the N-tail and M-tail with
 // the row-pair and single-row cores (overwrite semantics).
 Status RunBlockedDispatchTile6(const GemmArgs& args, int64_t m_full, int64_t n_full,
                                void (*blocked)(const GemmArgs&, int64_t, int64_t)) noexcept {
-    const auto* const lhs_data = reinterpret_cast<const float*>(args.lhs);
-    const auto* const rhs_data = reinterpret_cast<const float*>(args.rhs);
     auto* const output_data = reinterpret_cast<float*>(args.output);
 
     for (int64_t row = 0; row < m_full; ++row) {
@@ -266,102 +404,69 @@ Status RunBlockedDispatchTile6(const GemmArgs& args, int64_t m_full, int64_t n_f
     }
 
     blocked(args, m_full, n_full);
-    if (const int64_t n_tail = args.n - n_full; n_tail > 0) {
-        int64_t row = 0;
-        for (; row + kAvx2RowsPerPair <= m_full; row += kAvx2RowsPerPair) {
-            RunRowPairAvx2(lhs_data + row * args.lhs_m_stride,
-                           lhs_data + (row + 1) * args.lhs_m_stride,
-                           rhs_data + n_full * args.rhs_n_stride,
-                           args.k, n_tail, args.rhs_n_stride,
-                           output_data + row * args.output_m_stride + n_full,
-                           output_data + (row + 1) * args.output_m_stride + n_full);
-        }
-
-        if (row < m_full) {
-            DotProductF32MultiTargetAvx2(
-                    lhs_data + row * args.lhs_m_stride,
-                    rhs_data + n_full * args.rhs_n_stride,
-                    static_cast<std::size_t>(args.k),
-                    static_cast<std::size_t>(n_tail),
-                    static_cast<std::size_t>(args.rhs_n_stride),
-                    output_data + row * args.output_m_stride + n_full);
-        }
+    if (n_full < args.n) {
+        RunKContiguousRowPairsAvx2(args, 0, m_full, n_full, args.n - n_full);
     }
 
-    int64_t row = m_full;
-    for (; row + kAvx2RowsPerPair <= args.m; row += kAvx2RowsPerPair) {
-        RunRowPairAvx2(lhs_data + row * args.lhs_m_stride,
-                       lhs_data + (row + 1) * args.lhs_m_stride,
-                       rhs_data, args.k, args.n, args.rhs_n_stride,
-                       output_data + row * args.output_m_stride,
-                       output_data + (row + 1) * args.output_m_stride);
-    }
-
-    if (row < args.m) {
-        DotProductF32MultiTargetAvx2(
-                lhs_data + row * args.lhs_m_stride, rhs_data,
-                static_cast<std::size_t>(args.k), static_cast<std::size_t>(args.n),
-                static_cast<std::size_t>(args.rhs_n_stride),
-                output_data + row * args.output_m_stride);
+    if (m_full < args.m) {
+        RunKContiguousRowPairsAvx2(args, m_full, args.m, 0, args.n);
     }
     return Status::Ok();
 }
 
+Status RunRhsKContiguousAvx2(const GemmArgs& args) noexcept {
+    constexpr int64_t kMaxColumnBlockedRows = 9;
+    constexpr int64_t kMinColumnBlockedK = 128;
+    if (args.m > kAvx2RowsPerPair && args.m <= kMaxColumnBlockedRows &&
+        args.k >= kMinColumnBlockedK && args.n > kBlockedNR) {
+        // Share each group of 16 weight rows across all row pairs and the odd
+        // row before advancing N. Short K does too little work per group to
+        // amortize its extra calls.
+        int64_t col = 0;
+        while (col < args.n) {
+            const int64_t delta = std::min(kBlockedNR, args.n - col);
+            RunKContiguousRowPairsAvx2(args, 0, args.m, col, delta);
+            col += delta;
+        }
+        return Status::Ok();
+    }
+
+    if (args.m <= 8 || args.n < kBlockedNR) {
+        RunKContiguousRowPairsAvx2(args, 0, args.m, 0, args.n);
+        return Status::Ok();
+    }
+
+    // On wide projections, reuse the packed weights for an odd row to avoid
+    // rereading the full RHS through the single-row dot-product driver.
+    const bool block_odd_row = args.k >= 2048 && args.n >= 1024;
+    const int64_t m_full = block_odd_row ? args.m : args.m - args.m % 2;
+    const int64_t n_full = args.n - args.n % kBlockedNR;
+    return RunBlockedDispatchTile6(args, m_full, n_full, &RunBlockedGemmTile6Avx2);
+}
+
+#endif
 
 } // namespace
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 Status RunGemmA32W32Avx2Fma(const GemmArgs& args) noexcept {
-    const auto* const lhs_data = reinterpret_cast<const float*>(args.lhs);
-    const auto* const rhs_data = reinterpret_cast<const float*>(args.rhs);
-    auto* const output_data = reinterpret_cast<float*>(args.output);
-
-    if (args.m >= 1 && args.m <= 8 && args.k > 0 && args.n >= 0 &&
-        args.lhs_k_stride == 1 && args.rhs_k_stride == 1 &&
-        args.output_n_stride == 1) {
-        // Small-M K-contiguous fast path: row pairs share each weight stream
-        // (2 rows x 4 columns x 8-wide K), a leftover odd row reuses the
-        // single-row multi-target core. k and n are validated above, so the
-        // signed-to-unsigned casts are safe. Note: K-panel cache blocking was
-        // measured and removed — per-panel reduction/accumulator rebuild cost
-        // outweighed the cache reuse win (see benchmark history for details).
-        int64_t row = 0;
-        for (; row + kAvx2RowsPerPair <= args.m; row += kAvx2RowsPerPair) {
-            RunRowPairAvx2(lhs_data + row * args.lhs_m_stride,
-                           lhs_data + (row + 1) * args.lhs_m_stride,
-                           rhs_data, args.k, args.n, args.rhs_n_stride,
-                           output_data + row * args.output_m_stride,
-                           output_data + (row + 1) * args.output_m_stride);
-        }
-
-        if (row < args.m) {
-            DotProductF32MultiTargetAvx2(
-                    lhs_data + row * args.lhs_m_stride, rhs_data,
-                    static_cast<std::size_t>(args.k), static_cast<std::size_t>(args.n),
-                    static_cast<std::size_t>(args.rhs_n_stride),
-                    output_data + row * args.output_m_stride);
-        }
-        return Status::Ok();
+    if (args.m <= 0 || args.n <= 0 || args.k <= 0 || args.lhs_k_stride != 1 ||
+        args.output_n_stride != 1) {
+        return RunGemmA32W32Scalar(args);
     }
 
-    if (args.m >= 9 && args.k > 0 && args.n >= 0 &&
-        args.lhs_k_stride == 1 && args.rhs_k_stride == 1 &&
-        args.output_n_stride == 1) {
-        // Blocked prefill path: the 6x16 micro-kernel with 6/4/2-row tile
-        // decomposition covers the aligned M x N core (zeroed first, then
-        // accumulated across K panels); the right N-tail columns and the
-        // single odd M-tail row reuse the row-pair and single-row cores with
-        // overwrite semantics.
-        const int64_t m_full = args.m - args.m % 2;
-        const int64_t n_full = args.n - args.n % kBlockedNR;
-        return RunBlockedDispatchTile6(args, m_full, n_full,
-                                       &RunBlockedGemmTile6Avx2);
+    if (args.rhs_k_stride == 1) {
+        return RunRhsKContiguousAvx2(args);
+    }
+
+    if (args.rhs_n_stride == 1 && CanUseF32NContiguousAvx2(args.m, args.k, args.n)) {
+        return RunRhsNContiguousAvx2(args);
     }
     return RunGemmA32W32Scalar(args);
 }
 
 Status RunGemmA32W32Avx2FmaTile6(const GemmArgs& args) noexcept {
-    if (args.m >= 9 && args.k > 0 && args.n >= 0 &&
+    if (args.m >= 9 && args.k > 0 && args.n > 0 &&
         args.lhs_k_stride == 1 && args.rhs_k_stride == 1 &&
         args.output_n_stride == 1) {
         // Even row count so the 6/4/2-row tile decomposition covers every
@@ -374,7 +479,7 @@ Status RunGemmA32W32Avx2FmaTile6(const GemmArgs& args) noexcept {
 }
 
 Status RunGemmA32W32Avx2FmaTile6DupA(const GemmArgs& args) noexcept {
-    if (args.m >= 9 && args.k > 0 && args.n >= 0 &&
+    if (args.m >= 9 && args.k > 0 && args.n > 0 &&
         args.lhs_k_stride == 1 && args.rhs_k_stride == 1 &&
         args.output_n_stride == 1) {
         const int64_t m_full = args.m - args.m % kTile6MR;

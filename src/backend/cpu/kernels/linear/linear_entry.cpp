@@ -827,7 +827,9 @@ Status BuildLinearF32OptimizedArgs(const KernelParamsBuildContext& context, void
     auto driver = &RunLinearF32Scalar;
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
     if constexpr (Native) {
-        if (bound.weight_col_stride == 1) {
+        if (bound.weight_col_stride == 1 ||
+            (bound.weight_row_stride == 1 &&
+             CanUseF32NContiguousAvx2(bound.row_count, bound.in_features, bound.out_features))) {
             driver = &RunLinearF32Avx2Fma;
         }
     }

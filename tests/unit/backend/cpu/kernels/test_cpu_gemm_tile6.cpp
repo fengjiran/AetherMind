@@ -356,7 +356,21 @@ TEST(CPUKernelGemmTile6, PreservesZeroDimensionAndOverwriteSemantics) {
         }
 
         EXPECT_TRUE(RunTile6(entry, cpu::detail::GemmArgs{.m = 0, .n = 3, .k = 7}).ok());
-        EXPECT_TRUE(RunTile6(entry, cpu::detail::GemmArgs{.m = 1, .n = 0, .k = 7}).ok());
+        constexpr int64_t k = 16;
+        const std::array<float, 9 * k> lhs{};
+        const cpu::detail::GemmArgs empty_output{
+                .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+                .m = 9,
+                .n = 0,
+                .k = k,
+                .lhs_m_stride = k,
+                .lhs_k_stride = 1,
+                .rhs_k_stride = 1,
+                .rhs_n_stride = k,
+                .output_m_stride = 3,
+                .output_n_stride = 1,
+        };
+        EXPECT_TRUE(RunTile6(entry, empty_output).ok()) << Tile6EntryName(entry);
     }
 }
 

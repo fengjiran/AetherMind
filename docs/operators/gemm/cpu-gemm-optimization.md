@@ -141,6 +141,8 @@ CPU-03 的 F32 Linear 已使用 `LinearA32W32PreparedArgs { linear, driver }`：
 
 `threshold` 和 tile 参数必须由 benchmark 在目标 CPU 上确定，不写成跨平台常量。首轮可以提供保守静态表；后续只允许在 model preparation/binding cold path 做轻量选择，不在每次 Execute 自动调优。
 
+FP32 AVX2 的 K 连续路径以 16 列为一组复用原始权重。适用范围为 `3 <= M <= 9, K >= 128, N > 16`，覆盖原来的 M=8/9 分界。更长的 blocked Prefill 在大投影上用 1×16 处理奇数尾行，复用当前 B 面板。N 连续且 `M >= 4, K >= 128, N >= 64` 时，Linear 可绑定专用 AVX2 路径，沿 N 直接加载权重。该路径以 128 个 K 元素为一块，按 4/2/1 行累加，最后不足 16 列委托 scalar。[本机对照](benchmarks/54h5mmi-gemm.md#fp32-avx2-权重复用与-n-连续路径)
+
 ### 4.3 Scalar optimized 路径
 
 scalar optimized 必须是独立实现，不能修改或覆盖 `RunGemmA32W32Reference`。建议使用 backend-private 的 `RunGemmA32W32ScalarOptimized` 或等价 driver。

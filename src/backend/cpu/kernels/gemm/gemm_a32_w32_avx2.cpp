@@ -20,6 +20,7 @@ namespace {
 constexpr int64_t kAvx2RowsPerPair = 2;
 constexpr int64_t kAvx2ColBlock = 4;
 
+// NOLINTBEGIN(portability-simd-intrinsics)
 // Two rows share each of four weight vectors across eight independent sums.
 void RunRowPairAvx2(const float* lhs0, const float* lhs1, const float* rhs,
                     int64_t k, int64_t n, int64_t rhs_n_stride,
@@ -444,6 +445,7 @@ Status RunRhsKContiguousAvx2(const GemmArgs& args) noexcept {
     return RunBlockedDispatchTile6(args, m_full, n_full, &RunBlockedGemmTile6Avx2);
 }
 
+// NOLINTEND(portability-simd-intrinsics)
 #endif
 
 } // namespace

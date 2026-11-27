@@ -88,11 +88,11 @@ inline F32Avx2Plan PlanF32Avx2(const GemmArgs& args) noexcept {
                     F32Avx2Strategy::kRowPairs,
                     args.m, args.n, false};
         }
+
         // Wide projections amortize folding the final M row into the B-panel
         // loop; shorter shapes keep it on the row-pair tail, where rereading
         // the RHS costs less.
-        const bool include_odd_row =
-                args.k >= kBlockedOddRowMinK && args.n >= kBlockedOddRowMinN;
+        bool include_odd_row = args.k >= kBlockedOddRowMinK && args.n >= kBlockedOddRowMinN;
         return {F32Avx2Layout::kRhsKContiguous,
                 F32Avx2Strategy::kBlockedTile6,
                 include_odd_row ? args.m : args.m - args.m % 2,
@@ -119,8 +119,9 @@ constexpr PackedBStrategy PlanPackedB(const PackedGemmF32Args& packed) noexcept 
     if (args.k == 0 || args.output_n_stride != 1) {
         return PackedBStrategy::kReference;
     }
+
     constexpr int64_t kBlockedMinM = 9;
-    constexpr int64_t nr = cpu::kCpuBPanelF32Kc512Nr16NR;
+    constexpr int64_t nr = kCpuBPanelF32Kc512Nr16NR;
     if (args.m >= kBlockedMinM && args.n >= nr && args.lhs_k_stride == 1 &&
         packed.weight_n_offset % nr == 0) {
         return PackedBStrategy::kBlocked;

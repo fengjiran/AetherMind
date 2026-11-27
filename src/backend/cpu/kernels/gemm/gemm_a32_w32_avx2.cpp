@@ -339,11 +339,13 @@ AM_NOINLINE Status RunBlockedWithRowPairTailsAvx2(const GemmArgs& args, int64_t 
 
     RunCore(args, m_full, n_full);
     if (n_full < args.n) {
-        RunRowPairRectDriverAvx2(args, 0, m_full, n_full, args.n - n_full);
+        RunRowPairRectDriverAvx2(
+                args, 0, m_full, n_full, args.n - n_full);
     }
 
     if (m_full < args.m) {
-        RunRowPairRectDriverAvx2(args, m_full, args.m, 0, args.n);
+        RunRowPairRectDriverAvx2(
+                args, m_full, args.m, 0, args.n);
     }
     return Status::Ok();
 }
@@ -365,8 +367,7 @@ Status RunKContiguousPlanAvx2(const GemmArgs& args, const F32Avx2Plan& plan) noe
     }
 
     AM_DCHECK(plan.strategy == F32Avx2Strategy::kBlockedTile6);
-    return RunBlockedWithRowPairTailsAvx2<RunBlockedTile6DriverAvx2>(
-            args, plan.m_full, plan.n_full);
+    return RunBlockedWithRowPairTailsAvx2<RunBlockedTile6DriverAvx2>(args, plan.m_full, plan.n_full);
 }
 
 Status RunNContiguousPlanAvx2(const GemmArgs& args, int64_t n_full) noexcept {
@@ -377,10 +378,8 @@ Status RunNContiguousPlanAvx2(const GemmArgs& args, int64_t n_full) noexcept {
 
     GemmArgs tail = args;
     tail.n -= n_full;
-    tail.rhs = reinterpret_cast<const std::byte*>(
-            reinterpret_cast<const float*>(args.rhs) + n_full);
-    tail.output = reinterpret_cast<std::byte*>(
-            reinterpret_cast<float*>(args.output) + n_full);
+    tail.rhs = reinterpret_cast<const std::byte*>(reinterpret_cast<const float*>(args.rhs) + n_full);
+    tail.output = reinterpret_cast<std::byte*>(reinterpret_cast<float*>(args.output) + n_full);
     return RunGemmA32W32Scalar(tail);
 }
 

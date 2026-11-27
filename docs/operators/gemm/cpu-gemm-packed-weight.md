@@ -1,8 +1,8 @@
 # CPU GEMM Packed Weight 提案
 
 - **状态**: Proposed
-- **版本**: 1.11
-- **日期**: 2026-11-23
+- **版本**: 1.12
+- **日期**: 2026-11-27
 - **文档定位**: `exact recipe` 与 `packed-B` 阶段（[CPU GEMM 优化方案](cpu-gemm-optimization.md) §7）的具体化设计；只含方案内容，状态与机器级证据不在此维护。
 - **产品边界**: [AetherMind 当前产品需求](../../product.md)
 - **工作流规范**: [算子开发与优化工作流](../../guides/operator-development-workflow.md)
@@ -228,6 +228,7 @@ Load HF → BuildLlamaDense → Lower            Execute (zero alloc):
 
 | 日期 | 版本 | 变更 | 原因 |
 |---|---|---|---|
+| 2026-11-27 | 1.12 | 消费侧同步：blocked 首 K panel 覆盖写核心（不再预清零）；`ValidatePackedBArgs` 抽为 ISA 中立共享校验，checked 入口与 `RunGemmA32W32PackedBReference` 共用；reference 入口补直接单测。布局、打包字节与遍历序不变 | 消除首 panel 清零+读回流量，并消除两份校验规则漂移与未引用入口 |
 | 2026-11-23 | 1.11 | 消费侧符号同步：`AccumulateF32Tile4x16Avx2` → `AccumulateF32Tile6x16Avx2`、`RunBlockedGemmAvx2` → `RunBlockedGemmTile6Avx2`；M 尾约定改为按 `m % 2` 判定、块内 6/4/2 行分解；打包布局、块内字节与遍历序不变 | FP32/W16/A16 blocked 路径统一到 6×16 内核后旧 4×16 内核被删除，文档引用与代码同步 |
 | 2026-11-22 | 1.10 | 内部符号同步：`PackBPanel` → `PackGemmBPanelAvx2`、`MicroKernel4x16` → `AccumulateF32Tile4x16Avx2`，打包布局索引统一为 `CpuBPanelF32Kc512Nr16ElementIndex`；块内字节布局与遍历序不变 | GEMM 微内核与 B 面板打包器重复实现合并，文档引用与代码同步 |
 | 2026-10-09 | 1.9 | PackingRecipe.layout 与 PackedWeightView.recipe_layout 改为 PackingLayout；None/未知值校验贯穿 producer/consumer，ToString 保留诊断标签；两种物理字节格式、tile 与 alignment 保持 | 封闭布局集合采用枚举身份，消除字符串借用与任意名称匹配 |

@@ -69,7 +69,7 @@ output[m, n] = sum(k = 0..K-1) lhs[m, k] * rhs[k, n]
 
 **章节来源**
 - [gemm_internal.h:24-194](../../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L24-L194)
-- [gemm_a32_w32_avx2.cpp:279-385](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L279-L385)
+- [gemm_a32_w32_avx2.cpp:332-408](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L332-L408)
 - [cpu-gemm-optimization.md](../../../operators/gemm/cpu-gemm-optimization.md)
 
 ## 文件与职责
@@ -80,12 +80,12 @@ GEMM 代码集中在 `src/backend/cpu/kernels/gemm/`，按“ISA 中立头文件
 |---|---|---|
 | `gemm_internal.h` | `GemmArgs`、`PackedGemmF32Args`、`GemmA16W16Args` 与所有入口声明 | 必须保持 ISA 中立，不能包含 intrinsics；byte 指针不放宽对齐/对象访问规则 |
 | `gemm_a32_w32_policy.h` | A32W32 AVX2 的 `F32Avx2Plan`、`PlanF32Avx2`、`PlanPackedB` 与 N 连续谓词 | 纯函数、ISA 中立；分派阈值只在此处维护 |
-| `gemm_avx2_internal.h` | AVX2/FMA 常量、F32 weight adapter、B panel 打包、Nx16 累加核心、2/4/6 行 tile | 只能被 `-mavx2 -mfma` 翻译单元包含；函数为 inline，会编译进每个消费者 |
+| `gemm_avx2_internal.h` | AVX2/FMA 常量、F32 weight adapter、B panel 打包、Nx16 累加核心、1/2/4/6 行 tile | 只能被 `-mavx2 -mfma` 翻译单元包含；函数为 inline，会编译进每个消费者 |
 | `gemm_a32_w32_reference.cpp` | 双精度累加 oracle | 不参与性能结论；是所有 fallback 的最终语义基线 |
 | `gemm_a32_w32_scalar.cpp` | 可移植标量优化 driver | 无 intrinsics、零堆分配；允许编译器 auto-vectorization |
 | `gemm_a32_w32_avx2.cpp` | F32 AVX2 小 M 行对、K 连续 16 列复用、N 连续 direct、6×16 blocked/direct | 仅 F32 plain/identity；不处理 packed artifact |
-| `gemm_a32_w32_packed_b_reference.cpp` | packed-B 双精度 oracle | 按 B-panel 逻辑索引逐元素求和 |
-| `gemm_a32_w32_packed_b_avx2.cpp` | packed-B scan 与 blocked 消费者 | 消费 exact `cpu_bpanel_f32_kc512_nr16` 字节 |
+| `gemm_a32_w32_packed_b_reference.cpp` | packed-B 共享参数校验与双精度 oracle | 按 B-panel 逻辑索引逐元素求和；校验规则与 checked 入口一致 |
+| `gemm_a32_w32_packed_b_avx2.cpp` | packed-B checked 入口、scan 与 blocked 消费者 | 消费 exact `cpu_bpanel_f32_kc512_nr16` 字节 |
 | `gemm_w16_avx2_internal.h` | F16/BF16 widening policy 与 W16 B panel 打包 | F16 需要 F16C；BF16 用整数移位 widening |
 | `gemm_a32_w16_avx2_internal.h` | F32 activation × 16-bit weight 的 direct/blocked driver | 幅值安全域失败时返回 false，由调用方全量重算 |
 | `gemm_a16_w16_reference.cpp` | 同型 A16/W16 的 F32 累加 oracle | 逐元素 byte-safe widening；零 K 写正零 |
@@ -96,7 +96,7 @@ GEMM 代码集中在 `src/backend/cpu/kernels/gemm/`，按“ISA 中立头文件
 | `linear_entry.cpp` | binding 期冻结 driver、注册 descriptor | 热路径不查 registry、不做 shape 分类 |
 | `tests/benchmark/cpu_kernels/gemm_avx2_candidates.cpp` | DupA 候选 pack/tile/driver/入口 | 仅编译进单测/benchmark，不进入 AetherMind |
 
-F32 direct-A 的 6 行主循环是 `gemm_a32_w32_avx2.cpp` 内的 `AccumulateDirectF32Tile6x16Avx2`，K 逐 1 推进；它的 4/2/1 行尾，以及 packed-B、W16、A16 的 6 行主循环，仍使用 `gemm_avx2_internal.h` 的共享 `AccumulateF32Tile6x16Avx2`，K 展开 4。两者共享 tile 形状，但不是同一实现，性能结论不能互相替代。
+F32 direct-A 的 6 行主循环是 `gemm_a32_w32_avx2.cpp` 内的 `AccumulateDirectF32Tile6x16Avx2`，K 逐 1 推进；它的 4/2/1 行尾，以及 packed-B、W16、A16 的 6/4/2 行块，使用 `gemm_avx2_internal.h` 的共享 `AccumulateF32TileNx16CoreAvx2`（由 6×16/4×16/2×16 包装或直接实例化 `<1>` 调用），K 展开 4。两者共享 tile 形状，但不是同一实现，性能结论不能互相替代。
 
 ```mermaid
 graph TB
@@ -193,7 +193,7 @@ packed-B 参数在 `GemmArgs` 之上增加 artifact 描述：
 
 **章节来源**
 - [gemm_internal.h:50-64](../../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L50-L64)
-- [gemm_a32_w32_packed_b_avx2.cpp:22-48](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp#L22-L48)
+- [gemm_a32_w32_packed_b_reference.cpp:11-41](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_reference.cpp#L11-L41)
 
 ### GemmA16W16Args
 
@@ -241,7 +241,7 @@ N 连续路径要求 `rhs_n_stride == 1` 且满足 `CanUseF32NContiguousAvx2`，
 **章节来源**
 - [gemm_internal.h:110-192](../../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L110-L192)
 - [gemm_a32_w32_scalar.cpp:332-367](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L332-L367)
-- [gemm_a32_w32_avx2.cpp:279-385](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L279-L385)
+- [gemm_a32_w32_avx2.cpp:358-408](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L358-L408)
 - [gemm_a16_w16_avx2.cpp:153-190](../../../../src/backend/cpu/kernels/gemm/gemm_a16_w16_avx2.cpp#L153-L190)
 
 ## 执行路径与数据流
@@ -352,8 +352,8 @@ flowchart TD
 K 连续 16 列路径只覆盖 `M=3..9`；M=9 在 `K>=128,N>16` 时不再进入 blocked。RHS 两个 stride 都非 1 时 scalar 最终委托 reference。
 
 **图示来源**
-- [gemm_a32_w32_avx2.cpp:321-385](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L321-L385)
-- [gemm_a32_w32_avx2.cpp:279-320](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L279-L320)
+- [gemm_a32_w32_avx2.cpp:332-410](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L332-L410)
+- [gemm_a32_w32_avx2.cpp:290-330](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L290-L330)
 - [gemm_a32_w32_scalar.cpp:332-367](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L332-L367)
 
 ### 数据布局变换
@@ -374,8 +374,8 @@ C (row-major, M×N) ◄────────────── 覆盖写 / K 
 **章节来源**
 - [gemm_avx2_internal.h:46-130](../../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L46-L130)
 - [gemm_a32_w32_avx2.cpp:44-251](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L44-L251)
-- [gemm_a32_w32_avx2.cpp:279-320](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L279-L320)
-- [gemm_a32_w32_packed_b_avx2.cpp:66-86](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp#L66-L86)
+- [gemm_a32_w32_avx2.cpp:290-330](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L290-L330)
+- [gemm_a32_w32_packed_b_avx2.cpp:126-196](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp#L126-L196)
 - [gemm_a16_w16_avx2.cpp:80-151](../../../../src/backend/cpu/kernels/gemm/gemm_a16_w16_avx2.cpp#L80-L151)
 
 ## 核心计算流程
@@ -425,9 +425,9 @@ scalar driver 的目标不是替代 AVX2，而是在无 SIMD 或 SIMD 不适用�
 
 ### F32 AVX2 小 M 与 K 连续 16 列复用
 
-`OverwriteF32RowPairAvx2` 按 2 行 A、4 列 B、8 个 K 计算并覆盖输出。K 连续 driver 在它之上分三层：
+`ComputeF32RowPairAvx2` 按 2 行 A、4 列 B、8 个 K 计算并覆盖输出。K 连续 driver 在它之上分三层：
 
-- `3 <= M <= 9 && K >= 128 && N > 16`：外层按 16 列分组调用 `RunRowPairRectDriverAvx2`，每组权重行服务全部 row pair 和最后的奇数行；M=9 长形状走这里，不再进 blocked。
+- `3 <= M <= 9 && K >= 128 && N > 16`：外层按 16 列分组调用 `RunKContiguousRowPairAvx2`，每组权重行服务全部 row pair 和最后的奇数行；M=9 长形状走这里，不再进 blocked。
 - `M <= 8` 或 `N < 16`：按 full-N 的 row-pair。
 - 其余：进入 6×16 blocked（见下一节）。
 
@@ -441,34 +441,34 @@ scalar driver 的目标不是替代 AVX2，而是在无 SIMD 或 SIMD 不适用�
 - 代码注释明确记录：K-panel cache blocking 曾经实现并测量，但面板级归约/累加器重建成本超过缓存复用收益，已移除。
 
 **章节来源**
-- [gemm_a32_w32_avx2.cpp:44-186](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L44-L186)
-- [gemm_a32_w32_avx2.cpp:252-278](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L252-L278)
-- [gemm_a32_w32_avx2.cpp:351-385](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L351-L385)
+- [gemm_a32_w32_avx2.cpp:44-193](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L44-L193)
+- [gemm_a32_w32_avx2.cpp:263-287](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L263-L287)
+- [gemm_a32_w32_avx2.cpp:358-410](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L358-L410)
 
 ### F32 AVX2 blocked 6×16（F32 direct K1）
 
 blocked 路径在 K 连续分派落到最后一行时处理 `M>=10`，或 `M=9` 且 `N==16`，或 `M=9` 且 `K<128 && N>16` 的形状；同时要求 A 的 K stride、RHS 的 K stride 与输出 N stride 均为 1。`M=9` 且 `N<16` 仍走 full-N row pair。
 
 1. 通常 `m_full = m - m % 2`，`n_full = n - n % 16`；`K>=2048 && N>=1024` 时 `m_full = m`，把奇数尾行也交给 blocked。
-2. `RunBlockedWithRowPairTailsAvx2<RunCore>` 先把 `m_full × n_full` 清零，再调用编译期指定的核心内核。
+2. `RunBlockedWithRowPairTailsAvx2<RunCore>` 直接调用编译期指定的核心内核；核心自行覆盖写完整的 `m_full × n_full` 矩形（首个 K panel 覆盖，后续 panel 累加）。
 3. 外层 `kb` 以 512 切 K；中层 `nb` 以 16 切 N。每个 `(kb, nb)` 调用 `PackGemmBPanelAvx2`，把 16 个权重行的 `kc_len` 个 K 元素转成 `[kc][16]` 面板。
 4. 行循环先对 `paired_rows = m_full - m_full % 2` 做 6/4/2 贪心分解：6 行走 F32 专用的 `AccumulateDirectF32Tile6x16Avx2`（K 展开 1），4/2 行走共享的 `AccumulateF32Tile4x16Avx2` / `AccumulateF32Tile2x16Avx2`（K 展开 4）。若 `m_full` 为奇数（宽形状的奇数尾行），最后一行用 `AccumulateF32TileNx16CoreAvx2<1>`。
-5. K 面板之间的部分和通过输出读改写传递：核心在结束时 load-add-store。外部语义仍是覆盖写，第一次 K 面板从清零后的输出开始。
-6. N 尾（最多 15 列）对 `m_full` 行走 `RunRowPairRectDriverAvx2`；当 `m_full` 取偶时，M 尾（最多 1 行）也用 row pair/多目标点积覆盖写全 N。尾块都不使用 blocked 内核。
+5. K 面板之间的部分和通过输出读改写传递：首个 panel 直接 store 覆盖核心，后续 panel load-add-store。外部语义仍是覆盖写，不再预清零。
+6. N 尾（最多 15 列）对 `m_full` 行走 `RunKContiguousRowPairAvx2`；当 `m_full` 取偶时，M 尾（最多 1 行）也用 row pair/多目标点积覆盖写全 N。尾块都不使用 blocked 内核。
 
 ```mermaid
 flowchart LR
     A["A 行（row-major）"] -->|"broadcast_ss"| Core["6/4/2 × 16 累加核心<br/>F32 6 行 direct K1"]
     W["W 行（row-major, N×K）"] --> Pack["PackGemmBPanelAvx2<br/>8×8 转置"] --> Panel["B panel [kc][16]"] -->|"_mm256_load_ps"| Core
-    Core -->|"load-add-store 每个 K panel"| C["C 核心 m_full × n_full"]
-    C -->|"N 尾 ≤15 列"| RP["RunRowPairRectDriverAvx2"]
+    Core -->|"首 panel 覆盖，后续 load-add-store"| C["C 核心 m_full × n_full"]
+    C -->|"N 尾 ≤15 列"| RP["RunKContiguousRowPairAvx2"]
     C -->|"M 尾 1 行（m_full 取偶）"| DP["多目标点积 / row pair"]
     C -->|"宽形状奇数尾行"| Odd["1×16 core 并入 blocked"]
 ```
 
 **图示来源**
-- [gemm_a32_w32_avx2.cpp:50-80](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L50-L80)
-- [gemm_a32_w32_avx2.cpp:195-251](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L195-L251)
+- [gemm_a32_w32_avx2.cpp:51-87](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L51-L87)
+- [gemm_a32_w32_avx2.cpp:199-260](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L199-L260)
 - [gemm_avx2_internal.h:25-210](../../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L25-L210)
 
 微内核结构：
@@ -484,11 +484,15 @@ for k in 0..kc-1:
         acc[r][0] = fma(x, b0, acc[r][0])
         acc[r][1] = fma(x, b1, acc[r][1])
 for r:
-    out[row r][0..7]  += acc[r][0]
-    out[row r][8..15] += acc[r][1]
+    if accumulate:
+        out[row r][0..7]  += acc[r][0]
+        out[row r][8..15] += acc[r][1]
+    else:
+        out[row r][0..7]  = acc[r][0]
+        out[row r][8..15] = acc[r][1]
 ```
 
-共享 6×16 核心（W16/A16/packed-B、以及 F32 的 4/2/1 行尾；K 展开 4）：
+共享 Nx16 核心（N∈{1,2,4,6}；W16/A16/packed-B、以及 F32 的 4/2/1 行尾；K 展开 4）：
 
 ```text
 acc[Rows][2] = 0
@@ -500,11 +504,15 @@ for kk in steps of 4:
             acc[r][0] = fma(x, b0, acc[r][0])
             acc[r][1] = fma(x, b1, acc[r][1])
 for r:
-    out[row r][0..7]  += acc[r][0]
-    out[row r][8..15] += acc[r][1]
+    if accumulate:
+        out[row r][0..7]  += acc[r][0]
+        out[row r][8..15] += acc[r][1]
+    else:
+        out[row r][0..7]  = acc[r][0]
+        out[row r][8..15] = acc[r][1]
 ```
 
-寄存器预算：
+F32 direct-A 与 packed-B 的首个 K panel 传 `accumulate=false`，直接覆盖 tile；后续 panel 读回部分和再累加。W16/A16 仍先清零输出或 scratch，使用默认 `accumulate=true`。寄存器预算：
 
 | tile | 累加器 | B 向量 | A 广播 | 合计 YMM |
 |---|---:|---:|---:|---:|
@@ -526,9 +534,9 @@ N 尾和 M 尾的语义：
 
 **章节来源**
 - [gemm_a32_w32_avx2.cpp:44-251](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L44-L251)
-- [gemm_a32_w32_avx2.cpp:372-385](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L372-L385)
-- [gemm_a32_w32_avx2.cpp:393-403](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L393-L403)
-- [gemm_avx2_internal.h:133-208](../../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L133-L208)
+- [gemm_a32_w32_avx2.cpp:378-410](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L378-L410)
+- [gemm_a32_w32_avx2.cpp:397-410](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L397-L410)
+- [gemm_avx2_internal.h:124-218](../../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L124-L218)
 
 ### F32 AVX2 N 连续 direct
 
@@ -541,8 +549,8 @@ N 尾和 M 尾的语义：
 - 不满足阈值或 `rhs_k_stride`/`rhs_n_stride` 都不连续时，回退到 scalar；scalar 再按自己的布局规则决定是否委托 reference。
 
 **章节来源**
-- [gemm_a32_w32_avx2.cpp:279-320](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L279-L320)
-- [gemm_a32_w32_avx2.cpp:372-385](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L372-L385)
+- [gemm_a32_w32_avx2.cpp:290-330](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L290-L330)
+- [gemm_a32_w32_avx2.cpp:378-410](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L378-L410)
 - [gemm_a32_w32_policy.h:40-107](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_policy.h#L40-L107)
 - [linear_entry.cpp:820-849](../../../../src/backend/cpu/kernels/linear/linear_entry.cpp#L820-L849)
 
@@ -550,7 +558,7 @@ N 尾和 M 尾的语义：
 
 packed artifact 的物理轴顺序是 `[K-panel][N-block][K-row][N-lane]`，形状为 `[ceil(K/512), ceil(N/16), 512, 16]`。N lane 连续；超出逻辑 K/N 的槽位填 `+0.0F`；每个 panel block 64 字节对齐。
 
-三个 packed-B 入口共用 `RunPackedBChecked`。入口先校验一次 artifact，再按 `PlanPackedB` 选择已校验的 scan、blocked 或 reference。K 为零及非单位输出 N stride 走 reference。
+三个 packed-B 入口共用 `RunPackedBChecked`。入口先校验一次 artifact，再按 `PlanPackedB` 选择已校验的 scan、blocked 或 reference。K 为零及非单位输出 N stride 走 reference。校验函数 `ValidatePackedBArgs` 为 ISA 中立共享实现，checked 入口与 `RunGemmA32W32PackedBReference` 使用同一份规则。
 
 `RunPackedBScanValidated`：
 
@@ -562,7 +570,7 @@ packed artifact 的物理轴顺序是 `[K-panel][N-block][K-row][N-lane]`，形�
 `RunPackedBBlockedValidated`：
 
 - `PlanPackedB` 在 `M>=9`、`N>=16`、`lhs_k_stride==1`、`output_n_stride==1` 且 `weight_n_offset%16==0` 时选择 blocked。
-- `m_full = m - m%2`，`n_full = n - n%16`；先清零核心。
+- `m_full = m - m%2`，`n_full = n - n%16`；首个 K panel 覆盖写核心，后续 panel 累加。
 - 循环顺序是 `kb → mb(48 行) → nb(16 列)`：A 面板 48×512（96 KiB）每个 `(kb, mb)` 打包一次，然后在 `nb` 方向复用；B 直接读 artifact。
 - 行循环使用共享 K4 内核的 6/4/2 行块。N 尾和 M 尾直接调用已校验的 scan，子切片继承父调用的 artifact。
 - 与 F32 direct-A 相反：direct-A 让 B panel 跨全部 M 复用，packed-B 让 A panel 跨全部 N 复用，因为 B 已经是不可变 artifact，重复读它比重复打包 A 便宜。
@@ -571,8 +579,8 @@ packed-B 目前是 candidate。CPU-03 的全局 promotion 被拒绝：compute-on
 
 **章节来源**
 - [cpu_packed_weight_layout.h:26-55](../../../../include/aethermind/backend/cpu/cpu_packed_weight_layout.h#L26-L55)
-- [gemm_a32_w32_packed_b_avx2.cpp:93-176](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp#L93-L176)
-- [gemm_a32_w32_packed_b_avx2.cpp:181-275](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp#L181-L275)
+- [gemm_a32_w32_packed_b_avx2.cpp:60-196](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp#L60-L196)
+- [gemm_a32_w32_packed_b_avx2.cpp:200-242](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp#L200-L242)
 - [cpu-gemm-packed-weight.md](../../../operators/gemm/cpu-gemm-packed-weight.md)
 
 ### F32 × W16（A32/W16）
@@ -598,7 +606,7 @@ W16 权重通过 byte 指针读取，按 dtype widening 到 F32：
 - N 尾和 M 尾用 direct 路径覆盖写。
 - 任意 gate 失败 → 返回 false → full reference。原因是已经写出的部分结果必须由一次完整覆盖重算替换。
 
-W16 blocked 的 6/4/2 主循环调用共享 `AccumulateF32Tile6x16Avx2`（K 展开 4）；它不经过 F32 的 direct K1 内核。
+W16 blocked 的 6/4/2 主循环调用共享 `AccumulateF32TileNx16CoreAvx2` 的 6×16/4×16/2×16 包装（K 展开 4）；它不经过 F32 的 direct K1 内核。
 
 栈预算：direct-A 只需 32 KiB B panel；packed-A 需要 96 KiB A + 32 KiB B = 128 KiB。
 
@@ -684,9 +692,9 @@ GEMM 的吞吐首先取决于“同时有多少条独立 FMA 链”。AVX2 只�
 6 行而不是 8 行的原因：8 行需要 16 个累加器，加上 2 个 B 向量和 1 个 A 广播就是 19 个 YMM，必然 spill。6 行用 15 个 YMM，留 1 个给循环/地址计算。若未来有 32 个向量寄存器的 AVX-512F，8×32 或 12×16 才有意义。
 
 **章节来源**
-- [gemm_avx2_internal.h:133-208](../../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L133-L208)
-- [gemm_a32_w32_avx2.cpp:44-186](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L44-L186)
-- [gemm_a32_w32_avx2.cpp:50-80](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L50-L80)
+- [gemm_avx2_internal.h:124-218](../../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L124-L218)
+- [gemm_a32_w32_avx2.cpp:44-193](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L44-L193)
+- [gemm_a32_w32_avx2.cpp:51-87](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L51-L87)
 
 ### 分块与缓存
 
@@ -728,7 +736,7 @@ scalar 的 32×128 panel 是同一思想的标量版本：把 32 个输出列转
 |---|---|---|---|
 | A 行 | `_mm256_loadu_ps`（行对）或 `broadcast_ss`（blocked） | A 的 row stride 可能不是 32B 对齐 | blocked 每 K 每行一次广播 |
 | B panel | `_mm256_load_ps`，两条 32B load | panel 32B 对齐、N 连续 | panel 本身需要一次打包遍历 |
-| 输出 C | `loadu` → add → `storeu`，每个 K panel 一次 | 跨 K 面板保留 FP32 部分和 | C 的读改写流量随 K panel 数增加 |
+| 输出 C | 首 panel `storeu` 覆盖；后续 panel `loadu` → add → `storeu` | 跨 K 面板保留 FP32 部分和 | C 的读改写流量随 K panel 数增加；首 panel 省一次读 |
 | 权重流 | 顺序读取，M=1 时每个权重只读一次 | 充分利用硬件预取 | M=1 受 DRAM 带宽限制 |
 | W16/A16 转换 | 打包时 widening，panel 内已是 F32 | 内层只做 FMA | 增加一次 widening/转置遍历 |
 | packed-B | 直接顺序消费 artifact | 准备期已完成重排 | 常驻内存与准备延迟 |
@@ -777,8 +785,8 @@ scalar 的 32×128 panel 是同一思想的标量版本：把 32 个输出列转
 **章节来源**
 - [cpu-gemm-optimization.md](../../../operators/gemm/cpu-gemm-optimization.md)
 - [gemm_a32_w32_avx2.cpp:44-251](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L44-L251)
-- [gemm_a32_w32_avx2.cpp:279-320](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L279-L320)
-- [gemm_a32_w32_packed_b_avx2.cpp:206-275](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp#L206-L275)
+- [gemm_a32_w32_avx2.cpp:290-330](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L290-L330)
+- [gemm_a32_w32_packed_b_avx2.cpp:200-242](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp#L200-L242)
 
 ### 尾部分解
 
@@ -793,8 +801,8 @@ GEMM 的性能回归通常发生在尾块，而不是主块：
 - A16 把行补齐到偶数、列补齐到 16，只对 scratch 的无效 lane 补零，写回限制在实际 shape。
 
 **章节来源**
-- [gemm_a32_w32_avx2.cpp:372-385](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L372-L385)
-- [gemm_a32_w32_avx2.cpp:279-320](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L279-L320)
+- [gemm_a32_w32_avx2.cpp:378-410](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L378-L410)
+- [gemm_a32_w32_avx2.cpp:290-330](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L290-L330)
 - [gemm_a16_w16_avx2.cpp:94-149](../../../../src/backend/cpu/kernels/gemm/gemm_a16_w16_avx2.cpp#L94-L149)
 
 ### 调度与绑定期特化
@@ -841,7 +849,7 @@ optimized 路径只在能证明数值语义不受损的域内运行：
 
 **章节来源**
 - [gemm_a32_w32_avx2.cpp:44-251](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L44-L251)
-- [gemm_a32_w32_packed_b_avx2.cpp:206-275](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp#L206-L275)
+- [gemm_a32_w32_packed_b_avx2.cpp:200-242](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp#L200-L242)
 - [gemm_a32_w16_avx2_internal.h:148-154](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w16_avx2_internal.h#L148-L154)
 - [gemm_a16_w16_avx2.cpp:84-90](../../../../src/backend/cpu/kernels/gemm/gemm_a16_w16_avx2.cpp#L84-L90)
 
@@ -870,10 +878,10 @@ optimized 路径只在能证明数值语义不受损的域内运行：
 
 **B-panel 全局 promotion**：CPU-03 已拒绝。compute-only Prefill 的局部收益不能抵消 Decode 回退、准备期打包和常驻内存放大；identity descriptor 保持默认，bpanel 保留 candidate 身份。
 
-**旧 4×16 内核**：6×16 晋升后，`AccumulateF32Tile4x16Avx2` 与 `RunBlockedGemmAvx2` 已删除；4×16 只保留 unrolled M 尾变体。生产 FP32/W16/A16 三条 blocked 路径统一消费 6/4/2 tile；F32 6 行是 direct K1，W16/A16 及 F32 4/2/1 尾使用共享 K4。
+**旧 4×16 主内核**：6×16 晋升后，原 4×16 blocked 主循环 `RunBlockedGemmAvx2` 已删除；`AccumulateF32Tile4x16Avx2` 仅作为共享 core 的 4 行 M 尾包装保留（2 行/1 行同理）。生产 FP32/W16/A16 三条 blocked 路径统一消费 6/4/2 tile；F32 6 行是 direct K1，W16/A16 及 F32 4/2/1 尾使用共享 K4。
 
 **章节来源**
-- [tests/benchmark/cpu_kernels/gemm_avx2_candidates.cpp:1-159](../../../../tests/benchmark/cpu_kernels/gemm_avx2_candidates.cpp#L1-L159)
+- [tests/benchmark/cpu_kernels/gemm_avx2_candidates.cpp:1-160](../../../../tests/benchmark/cpu_kernels/gemm_avx2_candidates.cpp#L1-L160)
 - [cpu-gemm-optimization.md](../../../operators/gemm/cpu-gemm-optimization.md)
 
 ## 性能基准与验证结果
@@ -945,7 +953,7 @@ WSL2 下 `taskset` 只是咨询性绑定，且 CPU 频率会在持续负载下�
 
 **章节来源**
 - [54h5mmi-gemm.md:433-473](../../../operators/gemm/benchmarks/54h5mmi-gemm.md#fp32-avx2-权重复用与-n-连续路径)
-- [gemm_a32_w32_avx2.cpp:279-385](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L279-L385)
+- [gemm_a32_w32_avx2.cpp:358-408](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L358-L408)
 - [linear_entry.cpp:820-849](../../../../src/backend/cpu/kernels/linear/linear_entry.cpp#L820-L849)
 
 ### scalar 优化前后
@@ -989,7 +997,7 @@ WSL2 下 `taskset` 只是咨询性绑定，且 CPU 频率会在持续负载下�
 这些值只说明旧分派下仍走 blocked 的形状；旧 Tile6 钩子已移除，M=9 长形状的 row-pair vs 固定 blocked 对拍需要另行建立基准，不能引用本表。顺序 A/B 曾经显示的“12% 提升”主要是频率漂移，不能作为收益证据。
 
 **章节来源**
-- [gemm_a32_w32_avx2.cpp:393-403](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L393-L403)
+- [gemm_a32_w32_avx2.cpp:397-410](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L397-L410)
 - [54h5mmi-gemm.md:501-506](../../../operators/gemm/benchmarks/54h5mmi-gemm.md#移除-fp32-avx2-的强制-tile6-测量入口)
 
 ### Linear prepared 前后（2026-11-24 旧分派）
@@ -1013,18 +1021,19 @@ WSL2 下 `taskset` 只是咨询性绑定，且 CPU 频率会在持续负载下�
 
 ### 测试与门禁
 
-2026-11-27 在当前构建上重新运行（Release，`build/tests/unit/aethermind_unit_tests`）：
+2026-11-28 在当前构建上重新运行（Release，`build-release/tests/unit/aethermind_unit_tests`）：
 
 | 门禁 | 结果 |
 |---|---|
-| `--gtest_filter='*Gemm*'` | 143/143 |
-| `--gtest_filter='*Gemm*:*Linear*'` | 648/648 |
+| `--gtest_filter='*Gemm*'` | 167/167 |
+| `--gtest_filter='*Gemm*:*Linear*'` | 672/672 |
 | `--gtest_filter='*CpuLinearOptimized*'` | 269/269 |
 | `--gtest_filter='*LinearA16Kernel*'` | 16/16 |
 | `--gtest_filter='*GemmScalar*'` | 70/70 |
-| `--gtest_filter='*PackedB*'` | 13/13 |
-| ASan+UBSan `*Gemm*` | 本轮未在当前 HEAD 重跑；build-asan 早于 11-26 变更，不引用旧计数 |
-| `tools/check_docs_links.py` | 全部相对链接与标题锚点通过 |
+| `--gtest_filter='*PackedB*'` | 21/21 |
+| ASan+UBSan `*CpuGemmPackedB*:*CPUKernelGemmTile6*:*LinearA16Kernel*` | 52/52 |
+| Debug 全量可用单测（排除环境/资产门禁） | 5211/5211 |
+| `tools/check_docs_links.py` | 158 文件，0 broken links |
 
 覆盖重点：
 
@@ -1032,13 +1041,14 @@ WSL2 下 `taskset` 只是咨询性绑定，且 CPU 频率会在持续负载下�
 - W16 边界：M=15/17/47/48/63/65/255。
 - A16 blocked 边界：M=9/15/17/47/48/49/63/65。
 - packed-B blocked 边界：M=9/15/17/47/48/49/63/65，`weight_n_offset=16`。
+- packed-B reference 入口：`CpuGemmPackedB.ReferenceEntryMatchesUnpackedReference` 直接对比未打包 reference（M=9、N=16、K=513，`weight_n_offset=16`）。
 - scalar：NC/KC 边界、guard、NaN 原输出、跨 panel 抵消、稳态零 malloc。
 - F32 16 列复用/N 连续/宽奇数尾行：由 `test_cpu_gemm_avx2.cpp` 与 `test_cpu_linear_kernel.cpp` 覆盖；包含带 padding 的奇数尾行/尾列、NaN 覆盖、空输出和 scalar 回退。
 
-ASan 下跳过的是 `CPUKernelGemmScalar.NContiguousBlockedSteadyStateDoesNotAllocate`：ASan 的 allocator interposition 使“零分配”计数不成立，因此在 sanitizer 构建中显式跳过。本轮未在当前 HEAD 重跑 ASan，旧计数不再引用；当前结论只基于上面的 Release 门禁。
+ASan+UBSan 本轮聚焦 packed-B、Tile6 与 A16 blocked 路径，未覆盖 `CPUKernelGemmScalar.NContiguousBlockedSteadyStateDoesNotAllocate`：ASan 的 allocator interposition 会使“零分配”计数不成立。当前结论基于上述 Release 门禁、Debug 全量可用单测与 ASan 聚焦回归。
 
 **章节来源**
-- [test_cpu_gemm_tile6.cpp:1-379](../../../../tests/unit/backend/cpu/kernels/test_cpu_gemm_tile6.cpp#L1-L379)
+- [test_cpu_gemm_tile6.cpp:1-376](../../../../tests/unit/backend/cpu/kernels/test_cpu_gemm_tile6.cpp#L1-L376)
 - [test_cpu_gemm_avx2.cpp](../../../../tests/unit/backend/cpu/kernels/test_cpu_gemm_avx2.cpp)
 - [test_cpu_linear_kernel.cpp](../../../../tests/unit/backend/cpu/kernels/test_cpu_linear_kernel.cpp)
 - [test_cpu_gemm_packed_b.cpp](../../../../tests/unit/backend/cpu/kernels/test_cpu_gemm_packed_b.cpp)
@@ -1091,8 +1101,8 @@ graph LR
 
 **章节来源**
 - [gemm_internal.h:110-192](../../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L110-L192)
-- [gemm_a32_w32_avx2.cpp:279-385](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L279-L385)
-- [gemm_a32_w32_packed_b_avx2.cpp:22-48](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp#L22-L48)
+- [gemm_a32_w32_avx2.cpp:358-408](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L358-L408)
+- [gemm_a32_w32_packed_b_reference.cpp:11-41](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_reference.cpp#L11-L41)
 - [gemm_a16_w16_avx2.cpp:153-190](../../../../src/backend/cpu/kernels/gemm/gemm_a16_w16_avx2.cpp#L153-L190)
 
 ## 后续优化方向
@@ -1130,7 +1140,7 @@ AetherMind 的 GEMM 内核以 `GemmArgs` 为统一边界，把 F32 plain/identit
 2026-11-24 旧分派在 285H/WSL2 上，F32 blocked 在 M=128..512 达到约 97–100 GF，约为同机 cpufp FMA 上限的 79%–81%；M=1 约 12.1 GF，已接近权重流带宽上限。该快照早于 11-26 的 16 列复用/N 连续 direct/direct K1，不能作为当前分派结论。11-26 prepared Linear 对照中，M=9/4096/4096 从 9.621 ms 降到 6.889 ms，N 连续 64/4096/4096 从 88.646 ms 降到 46.441 ms（该组 A/A 波动较大，仅作观察）；完整数据见 [54h5mmi-gemm.md](../../../operators/gemm/benchmarks/54h5mmi-gemm.md#fp32-avx2-权重复用与-n-连续路径)。scalar 优化在 M=4/8/16 提升 1.62×/2.31×/2.76×，M=1 基本持平。所有 promotion 结论都需要在裸机上用交错 A/B 复测后才能跨机引用。
 
 **章节来源**
-- [gemm_a32_w32_avx2.cpp:279-385](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L279-L385)
+- [gemm_a32_w32_avx2.cpp:332-408](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L332-L408)
 - [gemm_a32_w32_avx2.cpp:44-251](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L44-L251)
 - [gemm_a32_w32_scalar.cpp:332-367](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L332-L367)
 - [54h5mmi-gemm.md](../../../operators/gemm/benchmarks/54h5mmi-gemm.md)
@@ -1169,10 +1179,10 @@ AetherMind 的 GEMM 内核以 `GemmArgs` 为统一边界，把 F32 plain/identit
 - [gemm_avx2_internal.h:20-23](../../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L20-L23)
 - [gemm_a32_w32_policy.h:20-53](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_policy.h#L20-L53)
 - [gemm_a32_w32_policy.h:109-127](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_policy.h#L109-L127)
-- [gemm_a32_w32_avx2.cpp:279-385](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L279-L385)
+- [gemm_a32_w32_avx2.cpp:34-38](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L34-L38)
 - [tests/benchmark/cpu_kernels/gemm_avx2_candidates.cpp:29-33](../../../../tests/benchmark/cpu_kernels/gemm_avx2_candidates.cpp#L29-L33)
 - [gemm_a32_w32_scalar.cpp:10-28](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_scalar.cpp#L10-L28)
-- [gemm_a32_w32_packed_b_avx2.cpp:61-63](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp#L61-L63)
+- [gemm_a32_w32_packed_b_avx2.cpp:26-28](../../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp#L26-L28)
 
 ### B. 分派矩阵
 

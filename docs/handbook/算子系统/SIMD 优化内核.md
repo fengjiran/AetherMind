@@ -227,7 +227,7 @@ classDiagram
     class RunGemmA32W32Avx2Fma
     class RunGemmA32W32PackedB
     class PackGemmBPanelAvx2
-    class OverwriteF32RowPairAvx2
+    class ComputeF32RowPairAvx2
     class RunBlockedTile6DriverAvx2
 
     RunGemmA32W32Reference --> GemmArgs : "消费"
@@ -236,13 +236,13 @@ classDiagram
     RunGemmA32W32PackedB --> PackedGemmF32Args : "消费"
     RunBlockedTile6DriverAvx2 --> GemmArgs : "消费"
     PackGemmBPanelAvx2 --> GemmArgs : "生成 B panel"
-    OverwriteF32RowPairAvx2 --> GemmArgs : "小 M 快速路径"
+    ComputeF32RowPairAvx2 --> GemmArgs : "小 M 快速路径"
 ```
 
 **图示来源**
 - [gemm_internal.h:20-194](../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L20-L194)
-- [gemm_avx2_internal.h:1-210](../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L1-L210)
-- [gemm_a32_w32_avx2.cpp:1-422](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L422)
+- [gemm_avx2_internal.h:1-221](../../../src/backend/cpu/kernels/gemm/gemm_avx2_internal.h#L1-L221)
+- [gemm_a32_w32_avx2.cpp:1-411](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L411)
 
 #### 数据对齐与输入合同
 - `GemmArgs` 使用字节指针，不放宽 dtype、对齐或对象访问规则。
@@ -254,7 +254,7 @@ classDiagram
 
 #### 寄存器使用与循环展开
 - 小 M 行对路径每 8 宽 K 步复用两个 LHS 向量，四个列权重流式读取，峰值约 10 个 YMM 寄存器。
-- Blocked GEMM 使用 6×16 micro-kernel，12 个独立累加器链覆盖 96 个输出 lane，K 展开 4，饱和两个 FMA 端口；4×16/2×16 变体按 6/4/2 行分解复用同一 B panel。
+- Blocked GEMM 使用 6×16 micro-kernel，12 个独立累加器链覆盖 96 个输出 lane，饱和两个 FMA 端口；F32 6 行 direct K1，W16/A16/packed-B 及 F32 4/2/1 尾共享 K4；4×16/2×16 变体按 6/4/2 行分解复用同一 B panel。
 - F32 blocked 直接读 A（`broadcast_ss`）；W16 长 Prefill 直接读 A，短 K 打包 A；packed-B 与 A16 按 48 行块打包 A。
 - 主循环按 KC=512、NR=16、M block 分块：F32 direct-A 优先让 B panel 跨全部 M 复用；packed-B 优先让 A panel 跨全部 N 复用。
 - 尾部通过行对、多目标 dot product 或标量回退处理未对齐边界。
@@ -267,7 +267,7 @@ classDiagram
 
 **章节来源**
 - [gemm_internal.h:20-194](../../../src/backend/cpu/kernels/gemm/gemm_internal.h#L20-L194)
-- [gemm_a32_w32_avx2.cpp:1-422](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L422)
+- [gemm_a32_w32_avx2.cpp:1-411](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L411)
 - [docs/operators/gemm/cpu-gemm-optimization.md](../../operators/gemm/cpu-gemm-optimization.md)
 
 ### RMSNorm 内核
@@ -378,7 +378,7 @@ graph LR
 
 **章节来源**
 - [src/backend/cpu/kernels/dot_product/dot_product_f32_avx2.cpp:1-153](../../../src/backend/cpu/kernels/dot_product/dot_product_f32_avx2.cpp#L1-L153)
-- [gemm_a32_w32_avx2.cpp:1-422](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L422)
+- [gemm_a32_w32_avx2.cpp:1-411](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L411)
 - [src/backend/cpu/kernels/rmsnorm/rmsnorm_entry.cpp:1-200](../../../src/backend/cpu/kernels/rmsnorm/rmsnorm_entry.cpp#L1-L200)
 - [src/backend/cpu/kernels/silu_mul/silu_mul_avx2.cpp:1-129](../../../src/backend/cpu/kernels/silu_mul/silu_mul_avx2.cpp#L1-L129)
 - [docs/operators/gemm/cpu-gemm-optimization.md](../../operators/gemm/cpu-gemm-optimization.md)
@@ -482,7 +482,7 @@ AetherMind 的 CPU SIMD 内核采用“构建期工具链检测 + 运行期 CPU 
 
 **章节来源**
 - [src/backend/cpu/kernels/dot_product/dot_product_f32_avx2.cpp:1-153](../../../src/backend/cpu/kernels/dot_product/dot_product_f32_avx2.cpp#L1-L153)
-- [gemm_a32_w32_avx2.cpp:1-422](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L422)
+- [gemm_a32_w32_avx2.cpp:1-411](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L411)
 
 ### 缓存分块与临时面板
 - 对大矩阵乘法使用 MC/NC/KC 分块。
@@ -491,7 +491,7 @@ AetherMind 的 CPU SIMD 内核采用“构建期工具链检测 + 运行期 CPU 
 - 行对路径的 K-panel 分块因面板级归约开销大于复用收益被移除；blocked 路径保留 KC=512，但 KC=256 尚未完成对照。
 
 **章节来源**
-- [gemm_a32_w32_avx2.cpp:1-422](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L422)
+- [gemm_a32_w32_avx2.cpp:1-411](../../../src/backend/cpu/kernels/gemm/gemm_a32_w32_avx2.cpp#L1-L411)
 - [docs/operators/gemm/cpu-gemm-optimization.md](../../operators/gemm/cpu-gemm-optimization.md)
 
 ### 安全回退与数值稳健性

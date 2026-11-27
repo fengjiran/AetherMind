@@ -489,3 +489,18 @@ Arrow Lake 的寄存器 YMM FP32 FMA 每条完成 16 FLOP。公开指令实测�
 - 以 `7f670117` 加重构前工作树为基线。生产和基准入口用模板参数指定核心计算，共享核心区域清零及 M/N 尾部处理。两侧均用 GCC 14.2 Release，单线程固定 guest CPU 2。生产路径的两侧汇编均直接调用核心函数。
 - Release 聚焦测试 389 项通过。6 个 prepared Linear 形状各采四对 AB/BA 和两对 A/A，每进程三次重复。plain `M=16,K=N=4096` 首轮配对中位数为 +8.4%，五对定向复测为 −3.3%，逐对变化为 −13.4% 至 +7.4%。同次复测的三对 A/A 为 +7.7%、+3.2%、−1.4%。尾块形状和 identity 对照也有混合波动。结论为 **Accepted（内部调用关系重构）**。
 - 原始记录位于 `benchmark-results/operators/gemm/20261127T030816Z_7f670117_54h5mmi_avx2-blocked-tails/`，含源代码差异、共享库校验和、生产分派汇编、A/B 和 A/A 样本。
+
+## FP32 B-panel 统一选路与单次校验
+
+- **范围。** 先将纯策略测试移出 AVX2 构建宏，并用覆盖写命名表明行对微内核的输出契约。B-panel checked 入口校验 artifact 和操作数，再按实际形状选择 scan、blocked 或 reference。右尾和底尾继承已校验的 artifact，在合法的子区域直接调用 scan。
+- **身份与边界。** 基线为 `7386556e` 加本轮修改前的 GEMM 重构工作树。候选为本轮实现。两侧均用 GCC 14.2 Release、同一仓库 prepared B-panel benchmark、同一 descriptor 和 recipe、单线程固定 guest CPU 2。绑定和持久权重打包在计时外。命令为 `python3 measure-packed.py ab base candidate 4`，另用两对 A/A 观察波动，每个进程三次重复。
+- **正确性。** Release 聚焦测试 424 项通过。关闭 AVX2 的完整构建通过 13 项策略与绑定测试。两种构建的 ISA 隔离检查均通过。3,225 个普通与 packed 算例的状态、输出值及保护区逐字节一致。独立 ASan/UBSan 测试程序对 packed driver 和 reference 插桩，15 项测试通过。向 Release 测试程序预加载插桩库的首次试验在释放内存时中止，日志保留为无效试验。
+- **性能。** `K=N=4096` 的四组配对延迟中位变化为 M=1 hot −0.15%、M=1 streaming +1.0%、M=16 hot +1.85%、M=16 streaming −1.1%。M=16 hot 有一对 +33.0%，独立四对定向复测为 +0.9%、+8.8%、−0.4%、+5.2%。前后结果支持语义重构，M=16 hot 的轻微变化保留为待复验。
+- **原始记录。** `benchmark-results/operators/gemm/20261127T072410Z_7386556e_54h5mmi_packed-b-dispatch/` 含两阶段源码差异、未跟踪头文件快照、共享库校验和及 AB/BA、A/A、定向复测数据。
+
+## 移除 FP32 AVX2 的强制 Tile6 测量入口
+
+- 以 `7386556e` 加当前重构前工作树为基线。删除强制 blocked 测量入口和对应注册。原直接 A 的测试改走生产分派，DupA 与同形状的生产基准继续执行。
+- GCC 14.2 Release 下，直接删除入口使共享分块编排被内联，`M=16,K=N=512` 的四对 prepared 延迟变化中位数为 +20.3%。最终保持分块编排的独立调用边界。生产入口、分块编排和专用 6×16 微内核的机器码均与基线逐字节一致。
+- 6 个 prepared Linear 形状各采四对 AB/BA，基线另采两对 A/A，每进程三次，固定 guest CPU 2。最终 `M=16,K=N=512` 配对变化中位数为 −2.7%，逐对方向混合。identity 组的四对中位数为 +6.3%，该形状 A/A 的两对中位数为 +27.9%。本轮性能对照用于验证删除测量入口的影响。
+- Release 聚焦测试 424 项、ISA 构建门禁和 4 个保留微基准的正确性检查通过。原始记录为 `benchmark-results/operators/gemm/20261127T082416Z_7386556e_54h5mmi_remove-forced-tile6/`。

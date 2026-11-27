@@ -8,7 +8,7 @@
 
 namespace aethermind::cpu::detail {
 
-Status RunGemmA32W32PackedBReference(const PackedGemmF32Args& packed) noexcept {
+Status ValidatePackedBArgs(const PackedGemmF32Args& packed) noexcept {
     const GemmArgs& args = packed.gemm;
     if (args.m < 0 || args.n < 0 || args.k < 0 || packed.logical_n < 0 ||
         packed.logical_k < 0 || args.k != packed.logical_k ||
@@ -37,6 +37,12 @@ Status RunGemmA32W32PackedBReference(const PackedGemmF32Args& packed) noexcept {
         return Status::InvalidArgument(
                 "Packed GEMM artifact does not match its bpanel byte/alignment contract");
     }
+    return Status::Ok();
+}
+
+Status RunGemmA32W32PackedBReference(const PackedGemmF32Args& packed) noexcept {
+    AM_RETURN_IF_ERROR(ValidatePackedBArgs(packed));
+    const GemmArgs& args = packed.gemm;
     if (args.m == 0 || args.n == 0) {
         return Status::Ok();
     }

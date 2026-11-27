@@ -21,38 +21,6 @@
 namespace aethermind::cpu::detail {
 namespace {
 
-// ---- Validation -----------------------------------------------------------
-
-Status ValidatePackedBArgs(const PackedGemmF32Args& packed) noexcept {
-    const GemmArgs& args = packed.gemm;
-    if (args.m < 0 || args.n < 0 || args.k < 0 || packed.logical_n < 0 ||
-        packed.logical_k < 0 || args.k != packed.logical_k ||
-        packed.weight_n_offset < 0 || packed.n_blocks < 0 ||
-        packed.weight_n_offset > packed.logical_n ||
-        args.n > packed.logical_n - packed.weight_n_offset) {
-        return Status::InvalidArgument("Packed GEMM received invalid dimensions");
-    }
-    const int64_t expected_blocks =
-            packed.logical_n / cpu::kCpuBPanelF32Kc512Nr16NR +
-            (packed.logical_n % cpu::kCpuBPanelF32Kc512Nr16NR != 0);
-    if (packed.n_blocks != expected_blocks) {
-        return Status::InvalidArgument("Packed GEMM n_blocks does not match logical N");
-    }
-    AM_ASSIGN_OR_RETURN(const size_t required_bytes,
-                        cpu::CpuBPanelF32Kc512Nr16PackedByteSize(
-                                packed.logical_n, packed.logical_k));
-    if (packed.packed_nbytes != required_bytes ||
-        (required_bytes != 0 &&
-         (packed.packed_b == nullptr ||
-          reinterpret_cast<std::uintptr_t>(packed.packed_b) %
-                          cpu::kCpuBPanelF32Kc512Nr16Alignment !=
-                  0))) {
-        return Status::InvalidArgument(
-                "Packed GEMM artifact does not match its bpanel byte/alignment contract");
-    }
-    return Status::Ok();
-}
-
 // ---- Blocking constants ---------------------------------------------------
 
 constexpr int64_t kPackedBMB = 48;

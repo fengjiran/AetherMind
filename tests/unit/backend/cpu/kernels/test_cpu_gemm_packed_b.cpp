@@ -153,6 +153,10 @@ TEST(CpuGemmPackedB, ScanSupportsUnalignedOutputSliceKPanelsAndNtail) {
     ExpectPackedDriverMatchesReference(1, 30, 513, 37, 3, &cpu::detail::RunGemmA32W32PackedBScan);
 }
 
+TEST(CpuGemmPackedB, ReferenceEntryMatchesUnpackedReference) {
+    ExpectPackedDriverMatchesReference(9, 16, 513, 32, 16, &cpu::detail::RunGemmA32W32PackedBReference);
+}
+
 TEST(CpuGemmPackedB, BlockedHandlesMAndNTailsWithoutOverwritingEdges) {
     if (!CanExecutePackedAvx2()) {
         GTEST_SKIP() << "AVX2+FMA GEMM candidate is unavailable on this host";
@@ -212,8 +216,10 @@ TEST(CpuGemmPackedB, ValidatesMetadataEvenWithEmptyOutput) {
             .n_blocks = 1,
     };
     EXPECT_TRUE(cpu::detail::RunGemmA32W32PackedB(packed).ok());
+    EXPECT_TRUE(cpu::detail::RunGemmA32W32PackedBReference(packed).ok());
     packed.n_blocks = 0;
     EXPECT_EQ(cpu::detail::RunGemmA32W32PackedB(packed), StatusCode::kInvalidArgument);
+    EXPECT_EQ(cpu::detail::RunGemmA32W32PackedBReference(packed), StatusCode::kInvalidArgument);
 }
 
 TEST(CpuGemmPackedB, RejectsInconsistentArtifactMetadata) {
@@ -267,18 +273,22 @@ TEST(CpuGemmPackedB, RejectsInconsistentArtifactMetadata) {
     auto wrong_blocks = base;
     wrong_blocks.n_blocks += 1;
     EXPECT_FALSE(cpu::detail::RunGemmA32W32PackedB(wrong_blocks).ok());
+    EXPECT_FALSE(cpu::detail::RunGemmA32W32PackedBReference(wrong_blocks).ok());
 
     auto wrong_bytes = base;
     wrong_bytes.packed_nbytes += sizeof(float);
     EXPECT_FALSE(cpu::detail::RunGemmA32W32PackedB(wrong_bytes).ok());
+    EXPECT_FALSE(cpu::detail::RunGemmA32W32PackedBReference(wrong_bytes).ok());
 
     auto wrong_logical_k = base;
     wrong_logical_k.logical_k += 1;
     EXPECT_FALSE(cpu::detail::RunGemmA32W32PackedB(wrong_logical_k).ok());
+    EXPECT_FALSE(cpu::detail::RunGemmA32W32PackedBReference(wrong_logical_k).ok());
 
     auto misaligned = base;
     misaligned.packed_b = reinterpret_cast<const std::byte*>(packed_data + 1);
     EXPECT_FALSE(cpu::detail::RunGemmA32W32PackedB(misaligned).ok());
+    EXPECT_FALSE(cpu::detail::RunGemmA32W32PackedBReference(misaligned).ok());
 }
 
 struct PackedBlockedShape {

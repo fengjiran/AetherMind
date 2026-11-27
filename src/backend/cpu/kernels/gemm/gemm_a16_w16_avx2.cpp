@@ -123,12 +123,12 @@ bool TryRunBlocked(const GemmA16W16Args& params) noexcept {
                                                       sum_row, kGemmAvx2KC);
                             row += kGemmAvx2MR6;
                         } else if (remaining >= 4) {
-                            AccumulateF32Tile4x16UnrolledAvx2(a_row, panel_b, kc, padded_cols,
-                                                              sum_row, kGemmAvx2KC);
+                            AccumulateF32Tile4x16Avx2(a_row, panel_b, kc, padded_cols,
+                                                      sum_row, kGemmAvx2KC);
                             row += 4;
                         } else {
-                            AccumulateF32Tile2x16UnrolledAvx2(a_row, panel_b, kc, padded_cols,
-                                                              sum_row, kGemmAvx2KC);
+                            AccumulateF32Tile2x16Avx2(a_row, panel_b, kc, padded_cols,
+                                                      sum_row, kGemmAvx2KC);
                             row += 2;
                         }
                     }

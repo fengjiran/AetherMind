@@ -168,9 +168,9 @@ inline void AccumulateF32Tile6x16Avx2(const float* buf_a, const float* buf_b,
             });
 }
 
-inline void AccumulateF32Tile4x16UnrolledAvx2(const float* buf_a, const float* buf_b,
-                                              int64_t kc_len, int64_t output_m_stride,
-                                              float* out_row0, int64_t a_row_stride) noexcept {
+inline void AccumulateF32Tile4x16Avx2(const float* buf_a, const float* buf_b,
+                                      int64_t kc_len, int64_t output_m_stride,
+                                      float* out_row0, int64_t a_row_stride) noexcept {
     AccumulateF32TileNx16CoreAvx2<4>(
             buf_b, kc_len, output_m_stride, out_row0,
             [=](int r, int64_t k) {
@@ -178,9 +178,9 @@ inline void AccumulateF32Tile4x16UnrolledAvx2(const float* buf_a, const float* b
             });
 }
 
-inline void AccumulateF32Tile2x16UnrolledAvx2(const float* buf_a, const float* buf_b,
-                                              int64_t kc_len, int64_t output_m_stride,
-                                              float* out_row0, int64_t a_row_stride) noexcept {
+inline void AccumulateF32Tile2x16Avx2(const float* buf_a, const float* buf_b,
+                                      int64_t kc_len, int64_t output_m_stride,
+                                      float* out_row0, int64_t a_row_stride) noexcept {
     AccumulateF32TileNx16CoreAvx2<2>(
             buf_b, kc_len, output_m_stride, out_row0,
             [=](int r, int64_t k) {

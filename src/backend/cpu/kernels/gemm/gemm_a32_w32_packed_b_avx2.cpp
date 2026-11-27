@@ -211,12 +211,12 @@ Status RunGemmA32W32PackedBBlocked(const PackedGemmF32Args& packed) noexcept {
                                                   args.output_m_stride, out_row, kPackedBKC);
                         row += kGemmAvx2MR6;
                     } else if (remaining >= 4) {
-                        AccumulateF32Tile4x16UnrolledAvx2(a_row, b_panel, kc_len,
-                                                          args.output_m_stride, out_row, kPackedBKC);
+                        AccumulateF32Tile4x16Avx2(a_row, b_panel, kc_len,
+                                                  args.output_m_stride, out_row, kPackedBKC);
                         row += 4;
                     } else {
-                        AccumulateF32Tile2x16UnrolledAvx2(a_row, b_panel, kc_len,
-                                                          args.output_m_stride, out_row, kPackedBKC);
+                        AccumulateF32Tile2x16Avx2(a_row, b_panel, kc_len,
+                                                  args.output_m_stride, out_row, kPackedBKC);
                         row += 2;
                     }
                 }

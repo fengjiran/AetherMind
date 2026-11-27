@@ -95,8 +95,8 @@ void RunRowPairAvx2(const float* lhs0, const float* lhs1, const float* rhs,
 }
 
 // Compute a nonempty rectangle directly from K-contiguous weight rows.
-void RunKContiguousRowPairsAvx2(const GemmArgs& args, int64_t row_begin, int64_t row_end,
-                                int64_t col_begin, int64_t cols) noexcept {
+void RunRhsKContiguousRowPairsAvx2(const GemmArgs& args, int64_t row_begin, int64_t row_end,
+                                   int64_t col_begin, int64_t cols) noexcept {
     const auto* lhs = reinterpret_cast<const float*>(args.lhs);
     const auto* rhs = reinterpret_cast<const float*>(args.rhs) + col_begin * args.rhs_n_stride;
     auto* output = reinterpret_cast<float*>(args.output) + col_begin;
@@ -198,14 +198,12 @@ void RunBlockedGemmTile6Avx2(const GemmArgs& args, int64_t m_full, int64_t n_ful
     for (int64_t kb = 0; kb < args.k; kb += kBlockedKC) {
         const int64_t kc_len = std::min(kBlockedKC, args.k - kb);
         for (int64_t nb = 0; nb < n_full; nb += kBlockedNR) {
-            const auto* const b_source =
+            const auto* const b_src =
                     rhs_data +
                     static_cast<size_t>(nb * args.rhs_n_stride + kb) * sizeof(float);
-            PackGemmBPanelAvx2<F32GemmWeightOps, false>(
-                    b_source, rhs_row_bytes, kc_len, buf_b);
+            PackGemmBPanelAvx2<F32GemmWeightOps, false>(b_src, rhs_row_bytes, kc_len, buf_b);
             for (int64_t row = 0; row < paired_rows;) {
-                const int64_t remaining = paired_rows - row;
-                if (remaining >= kTile6MR) {
+                if (const int64_t remaining = paired_rows - row; remaining >= kTile6MR) {
                     AccumulateDirectF32Tile6x16Avx2(
                             lhs_data + row * args.lhs_m_stride + kb,
                             buf_b, kc_len, args.output_m_stride,
@@ -213,14 +211,14 @@ void RunBlockedGemmTile6Avx2(const GemmArgs& args, int64_t m_full, int64_t n_ful
                             args.lhs_m_stride);
                     row += kTile6MR;
                 } else if (remaining >= 4) {
-                    AccumulateF32Tile4x16UnrolledAvx2(
+                    AccumulateF32Tile4x16Avx2(
                             lhs_data + row * args.lhs_m_stride + kb,
                             buf_b, kc_len, args.output_m_stride,
                             output_data + row * args.output_m_stride + nb,
                             args.lhs_m_stride);
                     row += 4;
                 } else {
-                    AccumulateF32Tile2x16UnrolledAvx2(
+                    AccumulateF32Tile2x16Avx2(
                             lhs_data + row * args.lhs_m_stride + kb,
                             buf_b, kc_len, args.output_m_stride,
                             output_data + row * args.output_m_stride + nb,
@@ -234,7 +232,9 @@ void RunBlockedGemmTile6Avx2(const GemmArgs& args, int64_t m_full, int64_t n_ful
                 AccumulateF32TileNx16CoreAvx2<1>(
                         buf_b, kc_len, args.output_m_stride,
                         output_data + paired_rows * args.output_m_stride + nb,
-                        [=](int, int64_t k) { return _mm256_broadcast_ss(lhs_row + k); });
+                        [=](int, int64_t k) {
+                            return _mm256_broadcast_ss(lhs_row + k);
+                        });
             }
         }
     }
@@ -390,11 +390,10 @@ Status RunRhsNContiguousAvx2(const GemmArgs& args) noexcept {
     return RunGemmA32W32Scalar(tail);
 }
 
-// Shared blocked-branch dispatch for the 6x16 candidates: zero the aligned
-// M x N core, run the blocked driver, then cover the N-tail and M-tail with
-// the row-pair and single-row cores (overwrite semantics).
-Status RunBlockedDispatchTile6(const GemmArgs& args, int64_t m_full, int64_t n_full,
-                               void (*blocked)(const GemmArgs&, int64_t, int64_t)) noexcept {
+// RunCore accumulates into the zeroed core rectangle. The row-pair driver
+// overwrites any remaining columns and rows.
+template<void (*RunCore)(const GemmArgs&, int64_t, int64_t) noexcept>
+Status RunBlockedGemmWithTails(const GemmArgs& args, int64_t m_full, int64_t n_full) noexcept {
     auto* const output_data = reinterpret_cast<float*>(args.output);
 
     for (int64_t row = 0; row < m_full; ++row) {
@@ -404,45 +403,61 @@ Status RunBlockedDispatchTile6(const GemmArgs& args, int64_t m_full, int64_t n_f
         }
     }
 
-    blocked(args, m_full, n_full);
+    RunCore(args, m_full, n_full);
     if (n_full < args.n) {
-        RunKContiguousRowPairsAvx2(args, 0, m_full, n_full, args.n - n_full);
+        RunRhsKContiguousRowPairsAvx2(
+                args, 0, m_full, n_full, args.n - n_full);
     }
 
     if (m_full < args.m) {
-        RunKContiguousRowPairsAvx2(args, m_full, args.m, 0, args.n);
+        RunRhsKContiguousRowPairsAvx2(
+                args, m_full, args.m, 0, args.n);
     }
     return Status::Ok();
 }
 
-Status RunRhsKContiguousAvx2(const GemmArgs& args) noexcept {
-    constexpr int64_t kMaxColumnBlockedRows = 9;
-    constexpr int64_t kMinColumnBlockedK = 128;
-    if (args.m > kAvx2RowsPerPair && args.m <= kMaxColumnBlockedRows &&
-        args.k >= kMinColumnBlockedK && args.n > kBlockedNR) {
-        // Share each group of 16 weight rows across all row pairs and the odd
-        // row before advancing N. Short K does too little work per group to
-        // amortize its extra calls.
-        int64_t col = 0;
-        while (col < args.n) {
-            const int64_t delta = std::min(kBlockedNR, args.n - col);
-            RunKContiguousRowPairsAvx2(args, 0, args.m, col, delta);
-            col += delta;
-        }
+Status RunRhsKContiguousSmallMAvx2(const GemmArgs& args, bool use_col_blocks) noexcept {
+    if (!use_col_blocks) {
+        RunRhsKContiguousRowPairsAvx2(args, 0, args.m, 0, args.n);
         return Status::Ok();
     }
 
-    if (args.m <= 8 || args.n < kBlockedNR) {
-        RunKContiguousRowPairsAvx2(args, 0, args.m, 0, args.n);
-        return Status::Ok();
+    // Share each group of 16 weight rows across all row pairs and the odd
+    // row before advancing N.
+    int64_t col = 0;
+    while (col < args.n) {
+        const int64_t cols = std::min(kBlockedNR, args.n - col);
+        RunRhsKContiguousRowPairsAvx2(args, 0, args.m, col, cols);
+        col += cols;
     }
+    return Status::Ok();
+}
 
+Status RunRhsKContiguousBlockedAvx2(const GemmArgs& args) noexcept {
     // On wide projections, reuse the packed weights for an odd row to avoid
     // rereading the full RHS through the single-row dot-product driver.
     const bool block_odd_row = args.k >= 2048 && args.n >= 1024;
     const int64_t m_full = block_odd_row ? args.m : args.m - args.m % 2;
     const int64_t n_full = args.n - args.n % kBlockedNR;
-    return RunBlockedDispatchTile6(args, m_full, n_full, &RunBlockedGemmTile6Avx2);
+    return RunBlockedGemmWithTails<RunBlockedGemmTile6Avx2>(args, m_full, n_full);
+}
+
+Status RunRhsKContiguousAvx2(const GemmArgs& args) noexcept {
+    if (args.n < kBlockedNR) {
+        RunRhsKContiguousRowPairsAvx2(args, 0, args.m, 0, args.n);
+        return Status::Ok();
+    }
+
+    constexpr int64_t kMaxSmallMRows = 8;
+    constexpr int64_t kMaxColumnBlockedRows = 9;
+    constexpr int64_t kMinColumnBlockedK = 128;
+    // Short K does too little work per column block to amortize its extra calls.
+    bool use_col_blocks = args.m > kAvx2RowsPerPair && args.m <= kMaxColumnBlockedRows &&
+                          args.k >= kMinColumnBlockedK && args.n > kBlockedNR;
+    if (args.m <= kMaxSmallMRows || use_col_blocks) {
+        return RunRhsKContiguousSmallMAvx2(args, use_col_blocks);
+    }
+    return RunRhsKContiguousBlockedAvx2(args);
 }
 
 // NOLINTEND(portability-simd-intrinsics)
@@ -475,7 +490,7 @@ Status RunGemmA32W32Avx2FmaTile6(const GemmArgs& args) noexcept {
         // blocked row; at most one odd row remains for the single-row core.
         const int64_t m_full = args.m - args.m % 2;
         const int64_t n_full = args.n - args.n % kBlockedNR;
-        return RunBlockedDispatchTile6(args, m_full, n_full, &RunBlockedGemmTile6Avx2);
+        return RunBlockedGemmWithTails<RunBlockedGemmTile6Avx2>(args, m_full, n_full);
     }
     return RunGemmA32W32Scalar(args);
 }
@@ -486,8 +501,7 @@ Status RunGemmA32W32Avx2FmaTile6DupA(const GemmArgs& args) noexcept {
         args.output_n_stride == 1) {
         const int64_t m_full = args.m - args.m % kTile6MR;
         const int64_t n_full = args.n - args.n % kBlockedNR;
-        return RunBlockedDispatchTile6(args, m_full, n_full,
-                                       &RunBlockedGemmTile6DupAAvx2);
+        return RunBlockedGemmWithTails<RunBlockedGemmTile6DupAAvx2>(args, m_full, n_full);
     }
     return RunGemmA32W32Scalar(args);
 }

@@ -187,12 +187,12 @@ bool TryGemmW16FullTiles(const GemmArgs& args, int64_t m_full, int64_t n_full) n
                                                   out_row, a_stride);
                         row += kGemmAvx2MR6;
                     } else if (remaining >= 4) {
-                        AccumulateF32Tile4x16UnrolledAvx2(a_row, panel_b, kc, args.output_m_stride,
-                                                          out_row, a_stride);
+                        AccumulateF32Tile4x16Avx2(a_row, panel_b, kc, args.output_m_stride,
+                                                  out_row, a_stride);
                         row += 4;
                     } else {
-                        AccumulateF32Tile2x16UnrolledAvx2(a_row, panel_b, kc, args.output_m_stride,
-                                                          out_row, a_stride);
+                        AccumulateF32Tile2x16Avx2(a_row, panel_b, kc, args.output_m_stride,
+                                                  out_row, a_stride);
                         row += 2;
                     }
                 }

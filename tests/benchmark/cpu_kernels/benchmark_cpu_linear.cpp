@@ -654,6 +654,9 @@ BENCHMARK(BM_LinearPreparedHot)
         // Prefill projections.
         ->Args({16, 4096, 4096})
         ->Args({64, 4096, 4096})
+        // Prefill-scale shapes for L2/L3 out-of-cache behavior.
+        ->Args({512, 4096, 4096})
+        ->Args({2048, 4096, 4096})
         ->Args({16, 4096, 22016})
         ->Args({16, 11008, 4096})
         // Small/tail shapes used to guard future tile-specific paths.

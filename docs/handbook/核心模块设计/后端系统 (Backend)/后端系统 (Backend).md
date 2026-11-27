@@ -105,7 +105,7 @@ graph TB
 - [cpu_packed_weight_layout.h:1-55](../../../../include/aethermind/backend/cpu/cpu_packed_weight_layout.h#L1-L55)
 - [backend_registry.cpp:1-48](../../../../src/backend/backend_registry.cpp#L1-L48)
 - [kernel_registry.cpp:1-138](../../../../src/backend/kernel_registry.cpp#L1-L138)
-- [cpu_backend.cpp:1-551](../../../../src/backend/cpu/cpu_backend.cpp#L1-L551)
+- [cpu_backend.cpp:1-544](../../../../src/backend/cpu/cpu_backend.cpp#L1-L544)
 - [cpu_capabilities.cpp:1-75](../../../../src/backend/cpu/cpu_capabilities.cpp#L1-L75)
 - [cpu_packed_weight_layout.cpp:1-33](../../../../src/backend/cpu/cpu_packed_weight_layout.cpp#L1-L33)
 - [kernel_static_registration.h:1-24](../../../../include/aethermind/backend/kernel_static_registration.h#L1-L24)
@@ -162,12 +162,12 @@ sequenceDiagram
 
 **图表来源**
 - [kernel_registry.cpp:31-138](../../../../src/backend/kernel_registry.cpp#L31-L138)
-- [cpu_backend.cpp:360-551](../../../../src/backend/cpu/cpu_backend.cpp#L360-L551)
+- [cpu_backend.cpp:360-544](../../../../src/backend/cpu/cpu_backend.cpp#L360-L544)
 - [backend_registry.cpp:5-48](../../../../src/backend/backend_registry.cpp#L5-L48)
 
 **章节来源**
 - [kernel_registry.cpp:1-138](../../../../src/backend/kernel_registry.cpp#L1-L138)
-- [cpu_backend.cpp:360-551](../../../../src/backend/cpu/cpu_backend.cpp#L360-L551)
+- [cpu_backend.cpp:360-544](../../../../src/backend/cpu/cpu_backend.cpp#L360-L544)
 - [backend_registry.cpp:1-48](../../../../src/backend/backend_registry.cpp#L1-L48)
 
 ## 详细组件分析
@@ -370,11 +370,11 @@ graph LR
 
 **图表来源**
 - [backend_registry.cpp:5-48](../../../../src/backend/backend_registry.cpp#L5-L48)
-- [cpu_backend.cpp:509-551](../../../../src/backend/cpu/cpu_backend.cpp#L509-L551)
+- [cpu_backend.cpp:509-544](../../../../src/backend/cpu/cpu_backend.cpp#L509-L544)
 
 **章节来源**
 - [backend_registry.cpp:1-48](../../../../src/backend/backend_registry.cpp#L1-L48)
-- [cpu_backend.cpp:509-551](../../../../src/backend/cpu/cpu_backend.cpp#L509-L551)
+- [cpu_backend.cpp:509-544](../../../../src/backend/cpu/cpu_backend.cpp#L509-L544)
 
 ## 依赖关系分析
 后端模块依赖方向严格分层：
@@ -455,7 +455,7 @@ graph TB
 
 **章节来源**
 - [kernel_registry.cpp:1-138](../../../../src/backend/kernel_registry.cpp#L1-L138)
-- [cpu_backend.cpp:360-551](../../../../src/backend/cpu/cpu_backend.cpp#L360-L551)
+- [cpu_backend.cpp:360-544](../../../../src/backend/cpu/cpu_backend.cpp#L360-L544)
 - [kernel_def.h:69-133](../../../../include/aethermind/backend/kernel_def.h#L69-L133)
 - [packing_recipe.h:24-36](../../../../include/aethermind/backend/packing_recipe.h#L24-L36)
 
@@ -519,5 +519,5 @@ AetherMind 的后端系统以 `Backend` 抽象为核心，通过 `KernelRegistry
 
 参考路径：
 - [kernel_registry.cpp:31-138](../../../../src/backend/kernel_registry.cpp#L31-L138)
-- [cpu_backend.cpp:416-551](../../../../src/backend/cpu/cpu_backend.cpp#L416-L551)
+- [cpu_backend.cpp:416-544](../../../../src/backend/cpu/cpu_backend.cpp#L416-L544)
 - [cpu_capabilities.h:120-219](../../../../include/aethermind/backend/cpu/cpu_capabilities.h#L120-L219)

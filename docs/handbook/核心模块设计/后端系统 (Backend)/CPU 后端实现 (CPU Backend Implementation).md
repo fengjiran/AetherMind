@@ -70,7 +70,7 @@ graph TB
 
 **图示来源**
 - [cpu_backend.h:1-157](../../../../include/aethermind/backend/cpu/cpu_backend.h#L1-L157)
-- [cpu_backend.cpp:1-551](../../../../src/backend/cpu/cpu_backend.cpp#L1-L551)
+- [cpu_backend.cpp:1-544](../../../../src/backend/cpu/cpu_backend.cpp#L1-L544)
 - [cpu_capabilities.h:1-219](../../../../include/aethermind/backend/cpu/cpu_capabilities.h#L1-L219)
 - [cpu_info.h:1-55](../../../../include/aethermind/backend/cpu/cpu_info.h#L1-L55)
 - [cpu_packed_weight_layout.h:1-55](../../../../include/aethermind/backend/cpu/cpu_packed_weight_layout.h#L1-L55)
@@ -78,7 +78,7 @@ graph TB
 
 **章节来源**
 - [cpu_backend.h:1-157](../../../../include/aethermind/backend/cpu/cpu_backend.h#L1-L157)
-- [cpu_backend.cpp:1-551](../../../../src/backend/cpu/cpu_backend.cpp#L1-L551)
+- [cpu_backend.cpp:1-544](../../../../src/backend/cpu/cpu_backend.cpp#L1-L544)
 - [cpu_capabilities.h:1-219](../../../../include/aethermind/backend/cpu/cpu_capabilities.h#L1-L219)
 - [cpu_info.h:1-55](../../../../include/aethermind/backend/cpu/cpu_info.h#L1-L55)
 
@@ -125,11 +125,11 @@ sequenceDiagram
 ```
 
 **图示来源**
-- [cpu_backend.cpp:400-551](../../../../src/backend/cpu/cpu_backend.cpp#L400-L551)
+- [cpu_backend.cpp:400-544](../../../../src/backend/cpu/cpu_backend.cpp#L400-L544)
 - [cpu_info.cpp:201-356](../../../../src/backend/cpu/cpu_info.cpp#L201-L356)
 
 **章节来源**
-- [cpu_backend.cpp:350-551](../../../../src/backend/cpu/cpu_backend.cpp#L350-L551)
+- [cpu_backend.cpp:350-544](../../../../src/backend/cpu/cpu_backend.cpp#L350-L544)
 - [cpu_info.cpp:201-356](../../../../src/backend/cpu/cpu_info.cpp#L201-L356)
 
 ## 详细组件分析
@@ -177,12 +177,12 @@ classDiagram
 
 **图示来源**
 - [cpu_backend.h:1-157](../../../../include/aethermind/backend/cpu/cpu_backend.h#L1-L157)
-- [cpu_backend.cpp:400-551](../../../../src/backend/cpu/cpu_backend.cpp#L400-L551)
+- [cpu_backend.cpp:400-544](../../../../src/backend/cpu/cpu_backend.cpp#L400-L544)
 - [cpu_capabilities.h:201-219](../../../../include/aethermind/backend/cpu/cpu_capabilities.h#L201-L219)
 
 **章节来源**
 - [cpu_backend.h:1-157](../../../../include/aethermind/backend/cpu/cpu_backend.h#L1-L157)
-- [cpu_backend.cpp:400-551](../../../../src/backend/cpu/cpu_backend.cpp#L400-L551)
+- [cpu_backend.cpp:400-544](../../../../src/backend/cpu/cpu_backend.cpp#L400-L544)
 
 ### CpuCapabilities 与动态能力检测
 `CpuCapabilities` 将能力分为三层：
@@ -276,10 +276,10 @@ flowchart TD
 ```
 
 **图示来源**
-- [cpu_backend.cpp:400-551](../../../../src/backend/cpu/cpu_backend.cpp#L400-L551)
+- [cpu_backend.cpp:400-544](../../../../src/backend/cpu/cpu_backend.cpp#L400-L544)
 
 **章节来源**
-- [cpu_backend.cpp:400-551](../../../../src/backend/cpu/cpu_backend.cpp#L400-L551)
+- [cpu_backend.cpp:400-544](../../../../src/backend/cpu/cpu_backend.cpp#L400-L544)
 
 ### Fp16/Bf16 转换函数的硬件加速路径
 转换函数选择同样基于 `effective_features`，并且要求至少具备 AVX：
@@ -438,13 +438,13 @@ graph LR
 ```
 
 **图示来源**
-- [cpu_backend.cpp:1-551](../../../../src/backend/cpu/cpu_backend.cpp#L1-L551)
+- [cpu_backend.cpp:1-544](../../../../src/backend/cpu/cpu_backend.cpp#L1-L544)
 - [cpu_info.cpp:201-356](../../../../src/backend/cpu/cpu_info.cpp#L201-L356)
 - [fp16_conversion.cpp:1-26](../../../../src/backend/cpu/fp16_conversion.cpp#L1-L26)
 - [bf16_conversion.cpp:1-21](../../../../src/backend/cpu/bf16_conversion.cpp#L1-L21)
 
 **章节来源**
-- [cpu_backend.cpp:1-551](../../../../src/backend/cpu/cpu_backend.cpp#L1-L551)
+- [cpu_backend.cpp:1-544](../../../../src/backend/cpu/cpu_backend.cpp#L1-L544)
 - [cpu_info.cpp:201-356](../../../../src/backend/cpu/cpu_info.cpp#L201-L356)
 
 ## 性能与内存特性
@@ -499,7 +499,7 @@ graph LR
 - 若数值异常，检查 NaN、无穷、次正规数的处理分支是否与标量语义一致。
 
 **章节来源**
-- [cpu_backend.cpp:201-551](../../../../src/backend/cpu/cpu_backend.cpp#L201-L551)
+- [cpu_backend.cpp:201-544](../../../../src/backend/cpu/cpu_backend.cpp#L201-L544)
 - [cpu_info.cpp:201-356](../../../../src/backend/cpu/cpu_info.cpp#L201-L356)
 - [cpu_packed_weight_layout.cpp:1-33](../../../../src/backend/cpu/cpu_packed_weight_layout.cpp#L1-L33)
 - [fp16_conversion.cpp:1-26](../../../../src/backend/cpu/fp16_conversion.cpp#L1-L26)

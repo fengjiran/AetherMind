@@ -314,7 +314,7 @@ flowchart TD
 - [operator_inference.cpp:31-110](../../../../src/operators/operator_inference.cpp#L31-L110)
 
 **章节来源**
-- [operator_schema.cpp:66-324](../../../../src/operators/operator_schema.cpp#L66-L324)
+- [operator_schema.cpp:66-316](../../../../src/operators/operator_schema.cpp#L66-L316)
 
 ### 算子推断调度器 `InferOperator`
 

@@ -323,11 +323,11 @@ classDiagram
 
 图表来源
 - [cpu_backend.h:1-157](../../../../include/aethermind/backend/cpu/cpu_backend.h#L1-L157)
-- [cpu_backend.cpp:1-551](../../../../src/backend/cpu/cpu_backend.cpp#L1-L551)
+- [cpu_backend.cpp:1-544](../../../../src/backend/cpu/cpu_backend.cpp#L1-L544)
 
 章节来源
 - [cpu_backend.h:1-157](../../../../include/aethermind/backend/cpu/cpu_backend.h#L1-L157)
-- [cpu_backend.cpp:1-551](../../../../src/backend/cpu/cpu_backend.cpp#L1-L551)
+- [cpu_backend.cpp:1-544](../../../../src/backend/cpu/cpu_backend.cpp#L1-L544)
 
 ### 设备类型路由与默认后端选择
 设备类型由 DeviceType 表示，包含 kCPU、kCUDA、kCANN、kUndefined。RuntimeBuilder 的默认策略是：

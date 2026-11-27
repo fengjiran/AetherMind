@@ -81,7 +81,7 @@ graph TB
 - [packed_weight.h:1-38](../../../../include/aethermind/backend/packed_weight.h#L1-L38)
 - [packing_recipe.h:1-65](../../../../include/aethermind/backend/packing_recipe.h#L1-L65)
 - [cpu_backend.h:1-157](../../../../include/aethermind/backend/cpu/cpu_backend.h#L1-L157)
-- [cpu_backend.cpp:25-551](../../../../src/backend/cpu/cpu_backend.cpp#L25-L551)
+- [cpu_backend.cpp:25-544](../../../../src/backend/cpu/cpu_backend.cpp#L25-L544)
 - [cpu_packed_weight_layout.h:1-55](../../../../include/aethermind/backend/cpu/cpu_packed_weight_layout.h#L1-L55)
 - [cpu_packed_weight_layout.cpp:1-33](../../../../src/backend/cpu/cpu_packed_weight_layout.cpp#L1-L33)
 - [packed_weight_validation.cpp:1-137](../../../../src/backend/cpu/packed_weight_validation.cpp#L1-L137)
@@ -92,7 +92,7 @@ graph TB
 - [packed_weight.h:1-38](../../../../include/aethermind/backend/packed_weight.h#L1-L38)
 - [packing_recipe.h:1-65](../../../../include/aethermind/backend/packing_recipe.h#L1-L65)
 - [cpu_backend.h:1-157](../../../../include/aethermind/backend/cpu/cpu_backend.h#L1-L157)
-- [cpu_backend.cpp:25-551](../../../../src/backend/cpu/cpu_backend.cpp#L25-L551)
+- [cpu_backend.cpp:25-544](../../../../src/backend/cpu/cpu_backend.cpp#L25-L544)
 - [cpu_packed_weight_layout.h:1-55](../../../../include/aethermind/backend/cpu/cpu_packed_weight_layout.h#L1-L55)
 - [cpu_packed_weight_layout.cpp:1-33](../../../../src/backend/cpu/cpu_packed_weight_layout.cpp#L1-L33)
 - [packed_weight_validation.cpp:1-137](../../../../src/backend/cpu/packed_weight_validation.cpp#L1-L137)
@@ -169,7 +169,7 @@ sequenceDiagram
 **图表来源**
 - [weight_packing_request_builder.cpp:1-153](../../../../src/compiler/weight_packing_request_builder.cpp#L1-L153)
 - [packed_weight_collection.h:1-168](../../../../include/aethermind/model/weight/packed_weight_collection.h#L1-L168)
-- [cpu_backend.cpp:508-551](../../../../src/backend/cpu/cpu_backend.cpp#L508-L551)
+- [cpu_backend.cpp:508-544](../../../../src/backend/cpu/cpu_backend.cpp#L508-L544)
 - [cpu_backend.cpp:361-383](../../../../src/backend/cpu/cpu_backend.cpp#L361-L383)
 
 ## 详细组件分析
@@ -188,7 +188,7 @@ sequenceDiagram
 **章节来源**
 - [packed_weight.h:1-38](../../../../include/aethermind/backend/packed_weight.h#L1-L38)
 - [packed_weight_collection.h:24-168](../../../../include/aethermind/model/weight/packed_weight_collection.h#L24-L168)
-- [cpu_backend.cpp:508-551](../../../../src/backend/cpu/cpu_backend.cpp#L508-L551)
+- [cpu_backend.cpp:508-544](../../../../src/backend/cpu/cpu_backend.cpp#L508-L544)
 
 ### CpuPackedWeight 具体实现
 `CpuPackedWeight` 是 `PackedWeight` 的唯一已知 CPU 实现，保存：
@@ -389,7 +389,7 @@ flowchart TD
 - [cpu_backend.cpp:299-354](../../../../src/backend/cpu/cpu_backend.cpp#L299-L354)
 
 **章节来源**
-- [cpu_backend.cpp:537-551](../../../../src/backend/cpu/cpu_backend.cpp#L537-L551)
+- [cpu_backend.cpp:537-544](../../../../src/backend/cpu/cpu_backend.cpp#L537-L544)
 - [cpu_backend.cpp:299-383](../../../../src/backend/cpu/cpu_backend.cpp#L299-L383)
 
 ### BuildWeightPackingRequests：编译器侧请求构建
@@ -484,7 +484,7 @@ graph LR
 **图表来源**
 - [weight_packing_request_builder.cpp:1-153](../../../../src/compiler/weight_packing_request_builder.cpp#L1-L153)
 - [packed_weight_collection.cpp:1-200](../../../../src/model/weight/packed_weight_collection.cpp#L1-L200)
-- [cpu_backend.cpp:25-551](../../../../src/backend/cpu/cpu_backend.cpp#L25-L551)
+- [cpu_backend.cpp:25-544](../../../../src/backend/cpu/cpu_backend.cpp#L25-L544)
 - [cpu_packed_weight_layout.cpp:1-33](../../../../src/backend/cpu/cpu_packed_weight_layout.cpp#L1-L33)
 - [packed_weight_validation.cpp:1-137](../../../../src/backend/cpu/packed_weight_validation.cpp#L1-L137)
 - [packed_weight.h:1-38](../../../../include/aethermind/backend/packed_weight.h#L1-L38)
@@ -495,7 +495,7 @@ graph LR
 **章节来源**
 - [weight_packing_request_builder.cpp:1-153](../../../../src/compiler/weight_packing_request_builder.cpp#L1-L153)
 - [packed_weight_collection.cpp:1-200](../../../../src/model/weight/packed_weight_collection.cpp#L1-L200)
-- [cpu_backend.cpp:25-551](../../../../src/backend/cpu/cpu_backend.cpp#L25-L551)
+- [cpu_backend.cpp:25-544](../../../../src/backend/cpu/cpu_backend.cpp#L25-L544)
 - [cpu_packed_weight_layout.cpp:1-33](../../../../src/backend/cpu/cpu_packed_weight_layout.cpp#L1-L33)
 - [packed_weight_validation.cpp:1-137](../../../../src/backend/cpu/packed_weight_validation.cpp#L1-L137)
 - [packed_weight.h:1-38](../../../../include/aethermind/backend/packed_weight.h#L1-L38)
@@ -657,7 +657,7 @@ flowchart TD
 **章节来源**
 - [cpu_backend.cpp:94-143](../../../../src/backend/cpu/cpu_backend.cpp#L94-L143)
 - [cpu_backend.cpp:257-383](../../../../src/backend/cpu/cpu_backend.cpp#L257-L383)
-- [cpu_backend.cpp:508-551](../../../../src/backend/cpu/cpu_backend.cpp#L508-L551)
+- [cpu_backend.cpp:508-544](../../../../src/backend/cpu/cpu_backend.cpp#L508-L544)
 - [packed_weight_validation.cpp:1-137](../../../../src/backend/cpu/packed_weight_validation.cpp#L1-L137)
 - [packed_weight_collection.cpp:1-200](../../../../src/model/weight/packed_weight_collection.cpp#L1-L200)
 

@@ -89,7 +89,7 @@ graph TB
 - [bf16_conversion.h:13-74](../../../../include/aethermind/dtypes/bf16_conversion.h#L13-L74)
 - [backend_factory.h:19-44](../../../../include/aethermind/backend/backend_factory.h#L19-L44)
 - [backend_registry.h:20-63](../../../../include/aethermind/backend/backend_registry.h#L20-L63)
-- [cpu_backend.cpp:501-551](../../../../src/backend/cpu/cpu_backend.cpp#L501-L551)
+- [cpu_backend.cpp:501-544](../../../../src/backend/cpu/cpu_backend.cpp#L501-L544)
 
 **章节来源**
 - [backend.h:1-163](../../../../include/aethermind/backend/backend.h#L1-L163)
@@ -152,7 +152,7 @@ classDiagram
 
 **图示来源**
 - [backend.h:26-161](../../../../include/aethermind/backend/backend.h#L26-L161)
-- [cpu_backend.cpp:501-551](../../../../src/backend/cpu/cpu_backend.cpp#L501-L551)
+- [cpu_backend.cpp:501-544](../../../../src/backend/cpu/cpu_backend.cpp#L501-L544)
 - [backend_factory.h:19-44](../../../../include/aethermind/backend/backend_factory.h#L19-L44)
 - [backend_registry.h:20-63](../../../../include/aethermind/backend/backend_registry.h#L20-L63)
 
@@ -208,12 +208,12 @@ sequenceDiagram
 
 **图示来源**
 - [backend_registry.cpp:19-48](../../../../src/backend/backend_registry.cpp#L19-L48)
-- [cpu_backend.cpp:501-551](../../../../src/backend/cpu/cpu_backend.cpp#L501-L551)
+- [cpu_backend.cpp:501-544](../../../../src/backend/cpu/cpu_backend.cpp#L501-L544)
 
 **章节来源**
 - [backend_registry.h:20-63](../../../../include/aethermind/backend/backend_registry.h#L20-L63)
 - [backend_registry.cpp:1-48](../../../../src/backend/backend_registry.cpp#L1-L48)
-- [cpu_backend.cpp:501-551](../../../../src/backend/cpu/cpu_backend.cpp#L501-L551)
+- [cpu_backend.cpp:501-544](../../../../src/backend/cpu/cpu_backend.cpp#L501-L544)
 
 ## 详细组件分析
 
@@ -279,12 +279,12 @@ flowchart TD
 ```
 
 **图示来源**
-- [cpu_backend.cpp:543-551](../../../../src/backend/cpu/cpu_backend.cpp#L543-L551)
+- [cpu_backend.cpp:543-544](../../../../src/backend/cpu/cpu_backend.cpp#L543-L544)
 - [packing_recipe.h:13-64](../../../../include/aethermind/backend/packing_recipe.h#L13-L64)
 
 **章节来源**
 - [backend.h:91-106](../../../../include/aethermind/backend/backend.h#L91-L106)
-- [cpu_backend.cpp:543-551](../../../../src/backend/cpu/cpu_backend.cpp#L543-L551)
+- [cpu_backend.cpp:543-544](../../../../src/backend/cpu/cpu_backend.cpp#L543-L544)
 
 ### PackWeights：物理布局转换契约
 `PackWeights` 是后端拥有权威性的权重布局转换入口。它的契约非常严格：
@@ -551,7 +551,7 @@ CPU 后端示例中，`std::bad_alloc` 会被捕获并转为 `ResourceExhausted`
 **章节来源**
 - [backend_factory.h:19-44](../../../../include/aethermind/backend/backend_factory.h#L19-L44)
 - [backend_registry.h:20-63](../../../../include/aethermind/backend/backend_registry.h#L20-L63)
-- [cpu_backend.cpp:501-551](../../../../src/backend/cpu/cpu_backend.cpp#L501-L551)
+- [cpu_backend.cpp:501-544](../../../../src/backend/cpu/cpu_backend.cpp#L501-L544)
 
 ## 故障排查
 
@@ -568,7 +568,7 @@ CPU 后端示例中，`std::bad_alloc` 会被捕获并转为 `ResourceExhausted`
 | 多线程崩溃 | 共享可变后端状态或并发访问注册表 | 避免共享可变状态，或在 `BackendRegistry` 层加锁 |
 
 **章节来源**
-- [cpu_backend.cpp:501-551](../../../../src/backend/cpu/cpu_backend.cpp#L501-L551)
+- [cpu_backend.cpp:501-544](../../../../src/backend/cpu/cpu_backend.cpp#L501-L544)
 - [backend_registry.cpp:1-48](../../../../src/backend/backend_registry.cpp#L1-L48)
 - [allocator.h:19-87](../../../../include/aethermind/memory/allocator.h#L19-L87)
 

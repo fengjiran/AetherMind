@@ -477,3 +477,15 @@ Arrow Lake 的寄存器 YMM FP32 FMA 每条完成 16 FLOP。公开指令实测�
 - `RunGemmA32W32Avx2Fma` 集中检查空维度、A 和 C 的 stride，并调用内部 K 连续或 N 连续入口。两个 RHS stride 均为 1 时沿用 K 优先。用相同机器、GCC 14.2 Release 和 guest CPU 2 验证入口重构。基线为 `98b8d859` 及重构前的工作树，候选只提取内部入口。
 - Release 聚焦测试 389 项通过。通过实际绑定的 prepared Linear 验证 8 个形状，覆盖 K/N 连续、plain/identity、带 padding 和 scalar 回退。每个形状四对 AB/BA、两对 A/A，每进程三次重复。各形状 A/B 配对延迟变化的中位数为 −0.1% 至 +7.0%，逐对变化方向混合，未检出稳定回退。GCC 将 K 连续入口内联，N 连续函数体机器码逐字节相同。
 - 原始记录位于 `benchmark-results/operators/gemm/20261126T090613Z_98b8d859_54h5mmi_avx2-entry/`，含源代码差异、校验和、`measure.py`、`cases.txt`、A/B 与 A/A 样本。结论为 **Accepted（内部入口重构）**。
+
+## FP32 AVX2 K 连续的小 M 与分块分派
+
+- 以 `7f670117` 加重构前工作树为基线。K 连续入口优先处理 `N<16` 的行对路径，再按现有 M/K/N 条件选择小 M 点积或 6×16 分块入口。两侧均用 GCC 14.2 Release，共用 prepared Linear harness，单线程固定 guest CPU 2。
+- Release 聚焦测试 389 项通过。首轮 11 个形状各采四对 AB/BA 和两对 A/A，每进程三次重复。包含 M=9、K=127/128、N=16/17 的边界及窄 N。大方阵 `M=9,K=N=4096` 首轮配对中位数为 +11.3%，定向复测五对的变化为 0.0%、−4.0%、+1.5%、+8.0%、−7.5%。`M=8,K=N=4096` 和 `M=16,K=N=512` 定向复测的配对中位数分别为 −1.7% 和 +2.3%，落在同组 A/A 波动范围内。结论为 **Accepted（内部职责拆分）**。
+- 原始记录位于 `benchmark-results/operators/gemm/20261127T024652Z_7f670117_54h5mmi_avx2-k-dispatch/`。含两侧库的校验和、差异、`measure.py`、形状列表、A/B、A/A 和汇总。
+
+## FP32 AVX2 分块核心的编译期选择
+
+- 以 `7f670117` 加重构前工作树为基线。生产和基准入口用模板参数指定核心计算，共享核心区域清零及 M/N 尾部处理。两侧均用 GCC 14.2 Release，单线程固定 guest CPU 2。生产路径的两侧汇编均直接调用核心函数。
+- Release 聚焦测试 389 项通过。6 个 prepared Linear 形状各采四对 AB/BA 和两对 A/A，每进程三次重复。plain `M=16,K=N=4096` 首轮配对中位数为 +8.4%，五对定向复测为 −3.3%，逐对变化为 −13.4% 至 +7.4%。同次复测的三对 A/A 为 +7.7%、+3.2%、−1.4%。尾块形状和 identity 对照也有混合波动。结论为 **Accepted（内部调用关系重构）**。
+- 原始记录位于 `benchmark-results/operators/gemm/20261127T030816Z_7f670117_54h5mmi_avx2-blocked-tails/`，含源代码差异、共享库校验和、生产分派汇编、A/B 和 A/A 样本。

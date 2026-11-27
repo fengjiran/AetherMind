@@ -58,7 +58,8 @@ void AccumulateF32Tile6x16DupAvx2(const float* buf_a, const float* buf_b,
             buf_b, kc_len, output_m_stride, out_row0,
             [=](int r, int64_t k) {
                 return _mm256_load_ps(buf_a + r * a_row_stride + k * 8);
-            });
+            },
+            true);
 }
 
 void RunBlockedTile6DupADriverAvx2(const GemmArgs& args, int64_t m_full,

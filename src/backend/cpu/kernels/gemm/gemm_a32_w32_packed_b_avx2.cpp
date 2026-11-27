@@ -120,8 +120,9 @@ void RunPackedBScanValidated(const PackedGemmF32Args& packed) noexcept {
     }
 }
 
-// Executes a validated slice selected for blocked GEMM. The two edge slices
-// inherit the artifact and stay within the validated output bounds.
+// Executes a validated slice selected for blocked GEMM. The first K panel
+// overwrites the core rectangle; later panels accumulate into it. The two edge
+// slices inherit the artifact and stay within the validated output bounds.
 void RunPackedBBlockedValidated(const PackedGemmF32Args& packed) noexcept {
     const GemmArgs& args = packed.gemm;
     // Even row count so the 6/4/2-row tile decomposition covers every blocked
@@ -132,16 +133,12 @@ void RunPackedBBlockedValidated(const PackedGemmF32Args& packed) noexcept {
     float* const output_data = reinterpret_cast<float*>(args.output);
     const float* const packed_b_data = reinterpret_cast<const float*>(packed.packed_b);
 
-    for (int64_t row = 0; row < m_full; ++row) {
-        float* const output_row = output_data + row * args.output_m_stride;
-        std::fill_n(output_row, n_full, 0.0F);
-    }
-
     alignas(32) float buf_a[static_cast<size_t>(kPackedBMB * kPackedBKC)];
     int64_t kb = 0;
     size_t k_panel = 0;
     while (kb < args.k) {
         const int64_t kc_len = std::min(kPackedBKC, args.k - kb);
+        const bool accumulate = kb != 0;
         for (int64_t mb = 0; mb < m_full; mb += kPackedBMB) {
             const int64_t mb_rows = std::min(kPackedBMB, m_full - mb);
             PackF32APanelKc512(lhs_data, args.lhs_m_stride, kb, mb, mb_rows,
@@ -155,19 +152,23 @@ void RunPackedBBlockedValidated(const PackedGemmF32Args& packed) noexcept {
                 const float* const b_panel = packed_b_data + panel_index;
                 for (int64_t row = 0; row < mb_rows;) {
                     const int64_t remaining = mb_rows - row;
+                    AM_DCHECK(remaining % 2 == 0);
                     const float* const a_row = buf_a + row * kPackedBKC;
                     float* const out_row = output_data + (mb + row) * args.output_m_stride + nb;
                     if (remaining >= kGemmAvx2MR6) {
                         AccumulateF32Tile6x16Avx2(a_row, b_panel, kc_len,
-                                                  args.output_m_stride, out_row, kPackedBKC);
+                                                  args.output_m_stride, out_row, kPackedBKC,
+                                                  accumulate);
                         row += kGemmAvx2MR6;
                     } else if (remaining >= 4) {
                         AccumulateF32Tile4x16Avx2(a_row, b_panel, kc_len,
-                                                  args.output_m_stride, out_row, kPackedBKC);
+                                                  args.output_m_stride, out_row, kPackedBKC,
+                                                  accumulate);
                         row += 4;
                     } else {
                         AccumulateF32Tile2x16Avx2(a_row, b_panel, kc_len,
-                                                  args.output_m_stride, out_row, kPackedBKC);
+                                                  args.output_m_stride, out_row, kPackedBKC,
+                                                  accumulate);
                         row += 2;
                     }
                 }

@@ -2,8 +2,8 @@
 /// @brief F32 (A32W32) AVX2 GEMM entry, blocking drivers and tile primitives.
 ///
 /// Layer map (dependencies point downward only):
-///   L4 entry/orchestration: RunGemmA32W32Avx2Fma; owns zero-fill, tails
-///      and the only scalar fallback.
+///   L4 entry/orchestration: RunGemmA32W32Avx2Fma; owns the dispatch plan,
+///      tail coverage and scalar delegation.
 ///   L3 drivers: panel/rectangle loops over pre-described extents; never call
 ///      scalar or reference fallbacks.
 ///   L2 primitives: single-tile intrinsics; no Status, allocation or fallback.
@@ -46,10 +46,11 @@ static_assert(kF32Avx2NR == kGemmAvx2NR);
 
 // One K step keeps twelve sums, two B vectors, and one A broadcast live.
 // Keeping this loop separate from the panel driver lets the sums stay in YMM
-// registers across the full panel.
+// registers across the full panel. The first K panel overwrites the output;
+// later panels add their partial sums.
 AM_NOINLINE void AccumulateDirectF32Tile6x16Avx2(
         const float* lhs, const float* panel, int64_t depth, int64_t output_stride,
-        float* output, int64_t lhs_stride) noexcept {
+        float* output, int64_t lhs_stride, bool accumulate) noexcept {
     struct RowSum {
         __m256 lo = _mm256_setzero_ps();
         __m256 hi = _mm256_setzero_ps();
@@ -73,15 +74,22 @@ AM_NOINLINE void AccumulateDirectF32Tile6x16Avx2(
 
     for (int row = 0; row < kTile6MR; ++row) {
         float* out = output + row * output_stride;
-        _mm256_storeu_ps(out, _mm256_add_ps(_mm256_loadu_ps(out), acc[row].lo));
-        _mm256_storeu_ps(out + 8, _mm256_add_ps(_mm256_loadu_ps(out + 8), acc[row].hi));
+        __m256 lo = acc[row].lo;
+        __m256 hi = acc[row].hi;
+        if (accumulate) {
+            lo = _mm256_add_ps(_mm256_loadu_ps(out), lo);
+            hi = _mm256_add_ps(_mm256_loadu_ps(out + 8), hi);
+        }
+        _mm256_storeu_ps(out, lo);
+        _mm256_storeu_ps(out + 8, hi);
     }
 }
 
+// Computes a 2-row x N K-contiguous GEMM tile and overwrites the output.
 // Two rows share each of four weight vectors across eight independent sums.
-void OverwriteF32RowPairAvx2(const float* lhs0, const float* lhs1, const float* rhs,
-                             int64_t k, int64_t n, int64_t rhs_n_stride,
-                             float* out0, float* out1) noexcept {
+void ComputeF32RowPairAvx2(const float* lhs0, const float* lhs1, const float* rhs,
+                           int64_t k, int64_t n, int64_t rhs_n_stride,
+                           float* out0, float* out1) noexcept {
     int64_t col = 0;
     for (; col + kAvx2ColBlock <= n; col += kAvx2ColBlock) {
         const float* r0 = rhs + col * rhs_n_stride;
@@ -205,32 +213,35 @@ void RunBlockedTile6DriverAvx2(const GemmArgs& args, int64_t m_full, int64_t n_f
 
     for (int64_t kb = 0; kb < args.k; kb += kBlockedKC) {
         const int64_t kc_len = std::min(kBlockedKC, args.k - kb);
+        const bool accumulate = kb != 0;
         for (int64_t nb = 0; nb < n_full; nb += kBlockedNR) {
             const auto* const b_src =
                     rhs_data +
                     static_cast<size_t>(nb * args.rhs_n_stride + kb) * sizeof(float);
             PackGemmBPanelAvx2<F32GemmWeightOps, false>(b_src, rhs_row_bytes, kc_len, buf_b);
             for (int64_t row = 0; row < paired_rows;) {
-                if (const int64_t remaining = paired_rows - row; remaining >= kTile6MR) {
+                const int64_t remaining = paired_rows - row;
+                AM_DCHECK(remaining % 2 == 0);
+                if (remaining >= kTile6MR) {
                     AccumulateDirectF32Tile6x16Avx2(
                             lhs_data + row * args.lhs_m_stride + kb,
                             buf_b, kc_len, args.output_m_stride,
                             output_data + row * args.output_m_stride + nb,
-                            args.lhs_m_stride);
+                            args.lhs_m_stride, accumulate);
                     row += kTile6MR;
                 } else if (remaining >= 4) {
                     AccumulateF32Tile4x16Avx2(
                             lhs_data + row * args.lhs_m_stride + kb,
                             buf_b, kc_len, args.output_m_stride,
                             output_data + row * args.output_m_stride + nb,
-                            args.lhs_m_stride);
+                            args.lhs_m_stride, accumulate);
                     row += 4;
                 } else {
                     AccumulateF32Tile2x16Avx2(
                             lhs_data + row * args.lhs_m_stride + kb,
                             buf_b, kc_len, args.output_m_stride,
                             output_data + row * args.output_m_stride + nb,
-                            args.lhs_m_stride);
+                            args.lhs_m_stride, accumulate);
                     row += 2;
                 }
             }
@@ -242,15 +253,16 @@ void RunBlockedTile6DriverAvx2(const GemmArgs& args, int64_t m_full, int64_t n_f
                         output_data + paired_rows * args.output_m_stride + nb,
                         [=](int, int64_t k) {
                             return _mm256_broadcast_ss(lhs_row + k);
-                        });
+                        },
+                        accumulate);
             }
         }
     }
 }
 
 // Overwrites a nonempty rectangle directly from K-contiguous weight rows.
-void RunRowPairRectDriverAvx2(const GemmArgs& args, int64_t row_begin, int64_t row_end,
-                              int64_t col_begin, int64_t cols) noexcept {
+void RunKContiguousRowPairAvx2(const GemmArgs& args, int64_t row_begin, int64_t row_end,
+                               int64_t col_begin, int64_t cols) noexcept {
     AM_DCHECK(row_begin < row_end);
     AM_DCHECK(cols > 0);
     const auto* lhs = reinterpret_cast<const float*>(args.lhs);
@@ -258,11 +270,11 @@ void RunRowPairRectDriverAvx2(const GemmArgs& args, int64_t row_begin, int64_t r
     auto* output = reinterpret_cast<float*>(args.output) + col_begin;
     int64_t row = row_begin;
     while (row + kAvx2RowsPerPair <= row_end) {
-        OverwriteF32RowPairAvx2(lhs + row * args.lhs_m_stride,
-                                lhs + (row + 1) * args.lhs_m_stride,
-                                rhs, args.k, cols, args.rhs_n_stride,
-                                output + row * args.output_m_stride,
-                                output + (row + 1) * args.output_m_stride);
+        ComputeF32RowPairAvx2(lhs + row * args.lhs_m_stride,
+                              lhs + (row + 1) * args.lhs_m_stride,
+                              rhs, args.k, cols, args.rhs_n_stride,
+                              output + row * args.output_m_stride,
+                              output + (row + 1) * args.output_m_stride);
         row += kAvx2RowsPerPair;
     }
 
@@ -320,31 +332,25 @@ void RunNContiguousDriverAvx2(const GemmArgs& args, int64_t n_full) noexcept {
 
 // ---- L4 orchestration -----------------------------------------------------
 
-// Zeroes the aligned core, accumulates it through RunCore, then overwrites the
-// N and M tails with the row-pair driver. Keep it out of line to limit
-// code size in the dispatcher.
+// Runs the core over the aligned m_full x n_full rectangle, then overwrites the
+// N and M tails with the row-pair driver. RunCore must write every element of
+// the rectangle itself: its first K panel overwrites the output and later
+// panels accumulate into it. Keep it out of line to limit code size in the
+// dispatcher.
 template<void (*RunCore)(const GemmArgs&, int64_t, int64_t) noexcept>
 AM_NOINLINE Status RunBlockedWithRowPairTailsAvx2(const GemmArgs& args, int64_t m_full,
                                                   int64_t n_full) noexcept {
     AM_DCHECK(m_full >= 0 && m_full <= args.m);
     AM_DCHECK(n_full >= 0 && n_full <= args.n);
-    auto* const output_data = reinterpret_cast<float*>(args.output);
-
-    for (int64_t row = 0; row < m_full; ++row) {
-        float* out_row = output_data + row * args.output_m_stride;
-        for (int64_t col = 0; col < n_full; ++col) {
-            out_row[col] = 0.0f;
-        }
-    }
 
     RunCore(args, m_full, n_full);
     if (n_full < args.n) {
-        RunRowPairRectDriverAvx2(
+        RunKContiguousRowPairAvx2(
                 args, 0, m_full, n_full, args.n - n_full);
     }
 
     if (m_full < args.m) {
-        RunRowPairRectDriverAvx2(
+        RunKContiguousRowPairAvx2(
                 args, m_full, args.m, 0, args.n);
     }
     return Status::Ok();
@@ -352,7 +358,7 @@ AM_NOINLINE Status RunBlockedWithRowPairTailsAvx2(const GemmArgs& args, int64_t 
 
 Status RunKContiguousPlanAvx2(const GemmArgs& args, const F32Avx2Plan& plan) noexcept {
     if (plan.strategy == F32Avx2Strategy::kRowPairs) {
-        RunRowPairRectDriverAvx2(args, 0, args.m, 0, args.n);
+        RunKContiguousRowPairAvx2(args, 0, args.m, 0, args.n);
         return Status::Ok();
     }
 
@@ -360,7 +366,7 @@ Status RunKContiguousPlanAvx2(const GemmArgs& args, const F32Avx2Plan& plan) noe
         int64_t col = 0;
         while (col < args.n) {
             const int64_t cols = std::min(kBlockedNR, args.n - col);
-            RunRowPairRectDriverAvx2(args, 0, args.m, col, cols);
+            RunKContiguousRowPairAvx2(args, 0, args.m, col, cols);
             col += cols;
         }
         return Status::Ok();

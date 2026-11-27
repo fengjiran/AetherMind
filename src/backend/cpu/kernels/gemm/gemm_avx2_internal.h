@@ -121,18 +121,19 @@ float PackGemmBPanelAvx2(const std::byte* weight, size_t row_bytes,
     return max_tail;
 }
 
-// Shared Nx16 F32 accumulation core (N in {2, 4, 6}): two independent 8-wide
+// Shared Nx16 F32 accumulation core (N in {1, 2, 4, 6}): two independent 8-wide
 // accumulator chains per row span the 16 output columns, and the K loop is
 // unrolled by 4 to amortize loop overhead. With N=6 the twelve chains keep
 // both FMA ports busy; the smaller tiles cover M-tail rows with the same
 // panel flow instead of falling back to the row-pair kernel. The B panel is
 // k-major with an NR=16 row stride; `load_a(r, kk)` supplies the A operand
 // for row r at K index kk and differs between the direct-broadcast and
-// broadcast-packed variants.
+// broadcast-packed variants. `accumulate=false` overwrites the output tile and
+// is used by the first K panel; later panels add their partial sums.
 template<int Rows, typename LoadA>
 void AccumulateF32TileNx16CoreAvx2(const float* buf_b, int64_t kc_len,
                                    int64_t output_m_stride, float* out_row0,
-                                   LoadA load_a) noexcept {
+                                   LoadA load_a, bool accumulate) noexcept {
     static_assert(Rows >= 1 && Rows <= 6);
     __m256 acc[Rows][2];
     for (int r = 0; r < Rows; ++r) {
@@ -165,10 +166,14 @@ void AccumulateF32TileNx16CoreAvx2(const float* buf_b, int64_t kc_len,
 
     for (int r = 0; r < Rows; ++r) {
         float* const out = out_row0 + r * output_m_stride;
-        const __m256 o0 = _mm256_loadu_ps(out);
-        const __m256 o1 = _mm256_loadu_ps(out + 8);
-        _mm256_storeu_ps(out, _mm256_add_ps(o0, acc[r][0]));
-        _mm256_storeu_ps(out + 8, _mm256_add_ps(o1, acc[r][1]));
+        __m256 o0 = acc[r][0];
+        __m256 o1 = acc[r][1];
+        if (accumulate) {
+            o0 = _mm256_add_ps(_mm256_loadu_ps(out), o0);
+            o1 = _mm256_add_ps(_mm256_loadu_ps(out + 8), o1);
+        }
+        _mm256_storeu_ps(out, o0);
+        _mm256_storeu_ps(out + 8, o1);
     }
 }
 
@@ -176,32 +181,38 @@ void AccumulateF32TileNx16CoreAvx2(const float* buf_b, int64_t kc_len,
 // scalar broadcast from a strided row, no A packing cost and no layout change.
 inline void AccumulateF32Tile6x16Avx2(const float* buf_a, const float* buf_b,
                                       int64_t kc_len, int64_t output_m_stride,
-                                      float* out_row0, int64_t a_row_stride) noexcept {
+                                      float* out_row0, int64_t a_row_stride,
+                                      bool accumulate = true) noexcept {
     AccumulateF32TileNx16CoreAvx2<6>(
             buf_b, kc_len, output_m_stride, out_row0,
             [=](int r, int64_t k) {
                 return _mm256_broadcast_ss(buf_a + r * a_row_stride + k);
-            });
+            },
+            accumulate);
 }
 
 inline void AccumulateF32Tile4x16Avx2(const float* buf_a, const float* buf_b,
                                       int64_t kc_len, int64_t output_m_stride,
-                                      float* out_row0, int64_t a_row_stride) noexcept {
+                                      float* out_row0, int64_t a_row_stride,
+                                      bool accumulate = true) noexcept {
     AccumulateF32TileNx16CoreAvx2<4>(
             buf_b, kc_len, output_m_stride, out_row0,
             [=](int r, int64_t k) {
                 return _mm256_broadcast_ss(buf_a + r * a_row_stride + k);
-            });
+            },
+            accumulate);
 }
 
 inline void AccumulateF32Tile2x16Avx2(const float* buf_a, const float* buf_b,
                                       int64_t kc_len, int64_t output_m_stride,
-                                      float* out_row0, int64_t a_row_stride) noexcept {
+                                      float* out_row0, int64_t a_row_stride,
+                                      bool accumulate = true) noexcept {
     AccumulateF32TileNx16CoreAvx2<2>(
             buf_b, kc_len, output_m_stride, out_row0,
             [=](int r, int64_t k) {
                 return _mm256_broadcast_ss(buf_a + r * a_row_stride + k);
-            });
+            },
+            accumulate);
 }
 
 // NOLINTEND(portability-simd-intrinsics)

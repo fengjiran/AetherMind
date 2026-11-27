@@ -17,11 +17,8 @@ using namespace aethermind;
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
 
-// Focused correctness tests for the 6x16 blocked GEMM measurement candidates
-// (RunGemmA32W32Avx2FmaTile6 and RunGemmA32W32Avx2FmaTile6DupA). Both are
-// production-unregistered candidates, so this file only guards their internal
-// tile decomposition, panel blocking and fallback contracts against the
-// double-accumulation reference oracle.
+// Exercise the production AVX2 GEMM and the DupA candidate around tile and
+// panel boundaries against the double-accumulation reference.
 
 float TestValue(size_t index) {
     return static_cast<float>(static_cast<int64_t>((index * 17U + 5U) % 29U) - 14) * 0.125F;
@@ -41,14 +38,14 @@ bool CanExecuteAvx2Fma() {
 }
 
 enum class Tile6Entry {
-    kDirect,
+    kProduction,
     kDupA,
 };
 
 const char* Tile6EntryName(Tile6Entry entry) {
     switch (entry) {
-        case Tile6Entry::kDirect:
-            return "direct";
+        case Tile6Entry::kProduction:
+            return "production";
         case Tile6Entry::kDupA:
             return "dupA";
     }
@@ -57,8 +54,8 @@ const char* Tile6EntryName(Tile6Entry entry) {
 
 Status RunTile6(Tile6Entry entry, const cpu::detail::GemmArgs& args) noexcept {
     switch (entry) {
-        case Tile6Entry::kDirect:
-            return cpu::detail::RunGemmA32W32Avx2FmaTile6(args);
+        case Tile6Entry::kProduction:
+            return cpu::detail::RunGemmA32W32Avx2Fma(args);
         case Tile6Entry::kDupA:
             return cpu::detail::RunGemmA32W32Avx2FmaTile6DupA(args);
     }
@@ -105,9 +102,9 @@ std::string Tile6ShapeName(const testing::TestParamInfo<Tile6Shape>& info) {
            "N" + std::to_string(info.param.n);
 }
 
-class CPUKernelGemmTile6BlockedTest : public testing::TestWithParam<Tile6Shape> {};
+class CPUKernelGemmTile6BoundaryTest : public testing::TestWithParam<Tile6Shape> {};
 
-TEST_P(CPUKernelGemmTile6BlockedTest, MatchesDoubleReference) {
+TEST_P(CPUKernelGemmTile6BoundaryTest, MatchesDoubleReference) {
     if (!CanExecuteAvx2Fma()) {
         GTEST_SKIP() << "AVX2+FMA GEMM kernel is unavailable on this host";
     }
@@ -151,19 +148,19 @@ TEST_P(CPUKernelGemmTile6BlockedTest, MatchesDoubleReference) {
 
 INSTANTIATE_TEST_SUITE_P(
         Tile6Boundaries,
-        CPUKernelGemmTile6BlockedTest,
+        CPUKernelGemmTile6BoundaryTest,
         testing::Values(
-                // Direct entry: 6/4/2-row greedy decomposition boundaries plus
-                // a single odd row on the leftover-row core.
-                Tile6Shape{Tile6Entry::kDirect, 9, 33, 9},
-                Tile6Shape{Tile6Entry::kDirect, 10, 17, 17},
-                Tile6Shape{Tile6Entry::kDirect, 11, 31, 31},
-                Tile6Shape{Tile6Entry::kDirect, 15, 513, 15},
-                Tile6Shape{Tile6Entry::kDirect, 16, 1024, 33},
-                Tile6Shape{Tile6Entry::kDirect, 17, 511, 65},
-                Tile6Shape{Tile6Entry::kDirect, 33, 4097, 17},
-                Tile6Shape{Tile6Entry::kDirect, 64, 512, 129},
-                Tile6Shape{Tile6Entry::kDirect, 129, 1025, 264},
+                // Production entry: narrow-N row pairs, 6/4/2-row blocked
+                // decomposition and the odd-row tail.
+                Tile6Shape{Tile6Entry::kProduction, 9, 33, 9},
+                Tile6Shape{Tile6Entry::kProduction, 10, 17, 17},
+                Tile6Shape{Tile6Entry::kProduction, 11, 31, 31},
+                Tile6Shape{Tile6Entry::kProduction, 15, 513, 15},
+                Tile6Shape{Tile6Entry::kProduction, 16, 1024, 33},
+                Tile6Shape{Tile6Entry::kProduction, 17, 511, 65},
+                Tile6Shape{Tile6Entry::kProduction, 33, 4097, 17},
+                Tile6Shape{Tile6Entry::kProduction, 64, 512, 129},
+                Tile6Shape{Tile6Entry::kProduction, 129, 1025, 264},
                 // Dup-A entry: KC=256 / MC=48 / NC=128 panel boundaries and
                 // their off-by-one neighbours.
                 Tile6Shape{Tile6Entry::kDupA, 9, 33, 9},
@@ -208,7 +205,7 @@ TEST(CPUKernelGemmTile6, OverwritesNanPrefilledOutput) {
     };
     auto reference_args = candidate_args;
     reference_args.output = reinterpret_cast<std::byte*>(reference_output.data());
-    for (const Tile6Entry entry: {Tile6Entry::kDirect, Tile6Entry::kDupA}) {
+    for (const Tile6Entry entry: {Tile6Entry::kProduction, Tile6Entry::kDupA}) {
         // Re-poison the candidate buffer so each entry proves it overwrites
         // every logical output element on its own.
         std::fill(candidate_output.begin(), candidate_output.end(),
@@ -227,7 +224,7 @@ TEST(CPUKernelGemmTile6, CancelsAcrossKPanelsInAscendingOrder) {
 
     // Alternating +1/-1 products over an even K: ascending accumulation keeps
     // every partial sum in {-1, 0, +1} exactly, so the result must be exactly
-    // +0.0 across two K panels for both drivers. M >= 9 and N = NR keep both
+    // +0.0 across K panels for both drivers. M >= 9 and N = NR keep both
     // entries fully on the blocked path (12 rows decompose to two 6-row tiles).
     constexpr int64_t m = 12;
     constexpr int64_t k = 1024;
@@ -240,7 +237,7 @@ TEST(CPUKernelGemmTile6, CancelsAcrossKPanelsInAscendingOrder) {
         }
     }
 
-    for (const Tile6Entry entry: {Tile6Entry::kDirect, Tile6Entry::kDupA}) {
+    for (const Tile6Entry entry: {Tile6Entry::kProduction, Tile6Entry::kDupA}) {
         std::vector<float> output(static_cast<size_t>(m * n), -7.0F);
         const cpu::detail::GemmArgs candidate_args{
                 .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
@@ -265,12 +262,12 @@ TEST(CPUKernelGemmTile6, CancelsAcrossKPanelsInAscendingOrder) {
     }
 }
 
-TEST(CPUKernelGemmTile6, FallsBackToScalarForSmallMAndNonUnitStrides) {
+TEST(CPUKernelGemmTile6, HandlesSmallMAndNContiguousWeights) {
     if (!CanExecuteAvx2Fma()) {
         GTEST_SKIP() << "AVX2+FMA GEMM kernel is unavailable on this host";
     }
 
-    // M < 9 with a K-contiguous layout takes the scalar small-M driver.
+    // The production entry uses row pairs here. DupA falls back to scalar.
     constexpr int64_t small_m = 3;
     constexpr int64_t k = 257;
     constexpr int64_t n = 129;
@@ -297,12 +294,12 @@ TEST(CPUKernelGemmTile6, FallsBackToScalarForSmallMAndNonUnitStrides) {
     };
     auto small_m_reference_args = small_m_args;
     small_m_reference_args.output = reinterpret_cast<std::byte*>(reference_output.data());
-    for (const Tile6Entry entry: {Tile6Entry::kDirect, Tile6Entry::kDupA}) {
+    for (const Tile6Entry entry: {Tile6Entry::kProduction, Tile6Entry::kDupA}) {
         ExpectTile6NearReference(entry, small_m_args, small_m_reference_args);
     }
 
-    // N-contiguous RHS and non-unit lhs K stride both leave the blocked fast
-    // path and take the scalar drivers.
+    // The production entry selects the N-contiguous SIMD path here. DupA
+    // delegates to the scalar driver.
     constexpr int64_t m = 16;
     constexpr int64_t rhs_k_stride = n + 4;
     std::vector<float> strided_lhs(static_cast<size_t>(m * (k + 3)));
@@ -328,7 +325,7 @@ TEST(CPUKernelGemmTile6, FallsBackToScalarForSmallMAndNonUnitStrides) {
     };
     auto strided_reference_args = strided_args;
     strided_reference_args.output = reinterpret_cast<std::byte*>(strided_reference.data());
-    for (const Tile6Entry entry: {Tile6Entry::kDirect, Tile6Entry::kDupA}) {
+    for (const Tile6Entry entry: {Tile6Entry::kProduction, Tile6Entry::kDupA}) {
         ExpectTile6NearReference(entry, strided_args, strided_reference_args);
     }
 }
@@ -338,7 +335,7 @@ TEST(CPUKernelGemmTile6, PreservesZeroDimensionAndOverwriteSemantics) {
         GTEST_SKIP() << "AVX2+FMA GEMM kernel is unavailable on this host";
     }
 
-    for (const Tile6Entry entry: {Tile6Entry::kDirect, Tile6Entry::kDupA}) {
+    for (const Tile6Entry entry: {Tile6Entry::kProduction, Tile6Entry::kDupA}) {
         std::array<float, 8> zero_output{};
         zero_output.fill(-7.0F);
         const Status zero_k = RunTile6(entry, cpu::detail::GemmArgs{

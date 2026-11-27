@@ -1,5 +1,6 @@
 #include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/base/macros.h"
+#include "gemm_a32_w32_packed_b_internal.h"
 #include "gemm_internal.h"
 
 #include <cstddef>
@@ -42,6 +43,15 @@ Status RunGemmA32W32PackedBReference(const PackedGemmF32Args& packed) noexcept {
     if (args.output == nullptr) {
         return Status::InvalidArgument("Packed GEMM requires non-null output data");
     }
+    if (args.k > 0 && args.lhs == nullptr) {
+        return Status::InvalidArgument("Packed GEMM requires non-null input data");
+    }
+    RunPackedBReferenceValidated(packed);
+    return Status::Ok();
+}
+
+void RunPackedBReferenceValidated(const PackedGemmF32Args& packed) noexcept {
+    const GemmArgs& args = packed.gemm;
     float* const output_data = reinterpret_cast<float*>(args.output);
     if (args.k == 0) {
         for (int64_t row = 0; row < args.m; ++row) {
@@ -50,11 +60,7 @@ Status RunGemmA32W32PackedBReference(const PackedGemmF32Args& packed) noexcept {
                             col * args.output_n_stride] = 0.0F;
             }
         }
-        return Status::Ok();
-    }
-    if (args.lhs == nullptr) {
-        return Status::InvalidArgument(
-                "Packed GEMM requires non-null input data");
+        return;
     }
     const float* const lhs_data = reinterpret_cast<const float*>(args.lhs);
     const float* const packed_b_data = reinterpret_cast<const float*>(packed.packed_b);
@@ -72,7 +78,6 @@ Status RunGemmA32W32PackedBReference(const PackedGemmF32Args& packed) noexcept {
             output_row[col * args.output_n_stride] = static_cast<float>(sum);
         }
     }
-    return Status::Ok();
 }
 
 } // namespace aethermind::cpu::detail

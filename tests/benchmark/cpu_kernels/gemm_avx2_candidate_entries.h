@@ -3,14 +3,12 @@
 
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
 
+// The DupA implementation is compiled into the unit-test and benchmark
+// executables from gemm_avx2_candidates.cpp.
+
 namespace aethermind::cpu::detail {
 
 #if defined(GEMM_HAS_AVX2_FMA_KERNEL)
-/// @brief Explicit 6x16 blocked entry mirroring the production blocked branch
-/// of RunGemmA32W32Avx2Fma. Measurement entry point only; not registered as a
-/// kernel descriptor.
-Status RunGemmA32W32Avx2FmaTile6(const GemmArgs& args) noexcept;
-
 /// @brief Blocked 6x16 candidate over a broadcast-packed A panel (each scalar
 /// replicated 8x) so the inner loop issues no shuffle-port operations.
 /// Measurement entry point only; not registered for production.

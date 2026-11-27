@@ -107,6 +107,12 @@ bool IsBf16NativeDotProductSafe(const std::byte* input,
                                 const std::byte* weight,
                                 int64_t element_count) noexcept;
 
+// Validation responsibilities:
+// - plain RunGemmA32W32* entries: the caller validates GemmArgs; the AVX2 entry
+//   re-applies only its dispatch gate in PlanF32Avx2 (gemm_a32_w32_policy.h);
+// - packed-B checked entries: validate PackedGemmF32Args (dimensions, n_blocks,
+//   byte size, artifact alignment) once before choosing a driver.
+
 /// @brief Runs the scalar FP32 reference GEMM.
 ///
 /// The direct RunGemmA32W32* entries interpret accessed operands as naturally aligned
@@ -149,11 +155,6 @@ Status RunGemmA32W32PackedBScan(const PackedGemmF32Args& args) noexcept;
 
 /// @brief AVX2 packed-B blocked prefill driver with scan fallback.
 Status RunGemmA32W32PackedBBlocked(const PackedGemmF32Args& args) noexcept;
-
-/// @brief Returns whether the N-contiguous AVX2 driver amortizes its tile setup.
-constexpr bool CanUseF32NContiguousAvx2(int64_t m, int64_t k, int64_t n) noexcept {
-    return m >= 4 && k >= 128 && n >= 64;
-}
 
 /// @brief Runs the AVX2/FMA FP32 GEMM candidate with compatible fallback.
 ///

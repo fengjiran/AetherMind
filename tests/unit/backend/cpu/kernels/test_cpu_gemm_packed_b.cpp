@@ -57,12 +57,14 @@ std::unique_ptr<PackedWeight> PackBpanel(int64_t n,
     return std::move(*packed);
 }
 
+using PackedGemmDriver = Status (*)(const cpu::detail::PackedGemmF32Args&) noexcept;
+
 void ExpectPackedDriverMatchesReference(int64_t m,
                                         int64_t n,
                                         int64_t k,
                                         int64_t logical_n,
                                         int64_t weight_n_offset,
-                                        bool blocked) {
+                                        PackedGemmDriver driver) {
     const int64_t output_n = n;
     const int64_t output_stride = output_n + 3;
     std::vector<float> lhs(static_cast<size_t>(m * k));
@@ -119,9 +121,7 @@ void ExpectPackedDriverMatchesReference(int64_t m,
             .output_n_stride = 1,
     };
 
-    const Status packed_status = blocked
-                                         ? cpu::detail::RunGemmA32W32PackedBBlocked(packed_args)
-                                         : cpu::detail::RunGemmA32W32PackedBScan(packed_args);
+    const Status packed_status = driver(packed_args);
     ASSERT_TRUE(packed_status.ok()) << packed_status.ToString();
     ASSERT_TRUE(cpu::detail::RunGemmA32W32Reference(reference_args).ok());
     const float absolute_tolerance =
@@ -150,14 +150,135 @@ TEST(CpuGemmPackedB, ScanSupportsUnalignedOutputSliceKPanelsAndNtail) {
     if (!CanExecutePackedAvx2()) {
         GTEST_SKIP() << "AVX2+FMA GEMM candidate is unavailable on this host";
     }
-    ExpectPackedDriverMatchesReference(1, 30, 513, 37, 3, false);
+    ExpectPackedDriverMatchesReference(1, 30, 513, 37, 3, &cpu::detail::RunGemmA32W32PackedBScan);
 }
 
 TEST(CpuGemmPackedB, BlockedHandlesMAndNTailsWithoutOverwritingEdges) {
     if (!CanExecutePackedAvx2()) {
         GTEST_SKIP() << "AVX2+FMA GEMM candidate is unavailable on this host";
     }
-    ExpectPackedDriverMatchesReference(11, 19, 33, 35, 16, true);
+    ExpectPackedDriverMatchesReference(11, 19, 33, 35, 16, &cpu::detail::RunGemmA32W32PackedB);
+}
+
+TEST(CpuGemmPackedB, SelectsScanWhenLargeMHasNoFullColumnTile) {
+    if (!CanExecutePackedAvx2()) {
+        GTEST_SKIP() << "AVX2+FMA GEMM candidate is unavailable on this host";
+    }
+    ExpectPackedDriverMatchesReference(9, 15, 513, 31, 16, &cpu::detail::RunGemmA32W32PackedB);
+}
+
+TEST(CpuGemmPackedB, ZeroKWritesPositiveZeroToStridedOutput) {
+    if (!CanExecutePackedAvx2()) {
+        GTEST_SKIP() << "AVX2+FMA GEMM candidate is unavailable on this host";
+    }
+    constexpr int64_t m = 9;
+    constexpr int64_t n = 3;
+    constexpr int64_t output_stride = n * 2 + 1;
+    std::array<float, m * output_stride> output;
+    output.fill(-7.0F);
+    const cpu::detail::PackedGemmF32Args packed{
+            .gemm = cpu::detail::GemmArgs{
+                    .output = reinterpret_cast<std::byte*>(output.data()),
+                    .m = m,
+                    .n = n,
+                    .output_m_stride = output_stride,
+                    .output_n_stride = 2,
+            },
+            .logical_n = n,
+            .n_blocks = 1,
+    };
+    const Status status = cpu::detail::RunGemmA32W32PackedB(packed);
+    ASSERT_TRUE(status.ok()) << status.ToString();
+    for (int64_t row = 0; row < m; ++row) {
+        for (int64_t col = 0; col < output_stride; ++col) {
+            const float value = output[row * output_stride + col];
+            if (col < n * 2 && col % 2 == 0) {
+                EXPECT_EQ(value, 0.0F);
+                EXPECT_FALSE(std::signbit(value));
+            } else {
+                EXPECT_EQ(value, -7.0F);
+            }
+        }
+    }
+}
+
+TEST(CpuGemmPackedB, ValidatesMetadataEvenWithEmptyOutput) {
+    if (!CanExecutePackedAvx2()) {
+        GTEST_SKIP() << "AVX2+FMA GEMM candidate is unavailable on this host";
+    }
+    cpu::detail::PackedGemmF32Args packed{
+            .gemm = cpu::detail::GemmArgs{.m = 9},
+            .logical_n = 16,
+            .n_blocks = 1,
+    };
+    EXPECT_TRUE(cpu::detail::RunGemmA32W32PackedB(packed).ok());
+    packed.n_blocks = 0;
+    EXPECT_EQ(cpu::detail::RunGemmA32W32PackedB(packed), StatusCode::kInvalidArgument);
+}
+
+TEST(CpuGemmPackedB, RejectsInconsistentArtifactMetadata) {
+    if (!CanExecutePackedAvx2()) {
+        GTEST_SKIP() << "AVX2+FMA GEMM candidate is unavailable on this host";
+    }
+
+    constexpr int64_t n = 33;
+    constexpr int64_t k = 129;
+    std::vector<float> lhs(static_cast<size_t>(k));
+    std::vector<float> weights(static_cast<size_t>(n * k));
+    std::vector<float> output(static_cast<size_t>(n), 3.0F);
+    Fill(lhs);
+    Fill(weights);
+
+    const KernelSelector selector{
+            .device_type = DeviceType::kCPU,
+            .act_dtype = DataType::Float32(),
+            .output_dtype = DataType::Float32(),
+            .weight_dtype = DataType::Float32(),
+            .weight_format = WeightFormat::kPacked,
+            .phase = ExecPhase::kBoth,
+    };
+    auto artifact = PackBpanel(n, k, weights, selector);
+    ASSERT_NE(artifact, nullptr);
+    const auto* const packed_data =
+            static_cast<const float*>(artifact->storage().data());
+    const int64_t n_blocks = n / cpu::kCpuBPanelF32Kc512Nr16NR +
+                             (n % cpu::kCpuBPanelF32Kc512Nr16NR != 0);
+    const cpu::detail::PackedGemmF32Args base{
+            .gemm = cpu::detail::GemmArgs{
+                    .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+                    .output = reinterpret_cast<std::byte*>(output.data()),
+                    .m = 1,
+                    .n = n,
+                    .k = k,
+                    .lhs_m_stride = k,
+                    .lhs_k_stride = 1,
+                    .output_m_stride = n,
+                    .output_n_stride = 1,
+            },
+            .packed_b = reinterpret_cast<const std::byte*>(packed_data),
+            .packed_nbytes = artifact->storage().nbytes(),
+            .logical_n = n,
+            .logical_k = k,
+            .weight_n_offset = 0,
+            .n_blocks = n_blocks,
+    };
+    ASSERT_TRUE(cpu::detail::RunGemmA32W32PackedB(base).ok());
+
+    auto wrong_blocks = base;
+    wrong_blocks.n_blocks += 1;
+    EXPECT_FALSE(cpu::detail::RunGemmA32W32PackedB(wrong_blocks).ok());
+
+    auto wrong_bytes = base;
+    wrong_bytes.packed_nbytes += sizeof(float);
+    EXPECT_FALSE(cpu::detail::RunGemmA32W32PackedB(wrong_bytes).ok());
+
+    auto wrong_logical_k = base;
+    wrong_logical_k.logical_k += 1;
+    EXPECT_FALSE(cpu::detail::RunGemmA32W32PackedB(wrong_logical_k).ok());
+
+    auto misaligned = base;
+    misaligned.packed_b = reinterpret_cast<const std::byte*>(packed_data + 1);
+    EXPECT_FALSE(cpu::detail::RunGemmA32W32PackedB(misaligned).ok());
 }
 
 struct PackedBlockedShape {
@@ -181,7 +302,8 @@ TEST_P(CpuGemmPackedBBlockedBoundaries, MatchesReferenceAcrossTileAndBlockEdges)
     // while exercising a non-zero logical N offset into the artifact.
     const PackedBlockedShape test_case = GetParam();
     ExpectPackedDriverMatchesReference(test_case.m, test_case.n, test_case.k,
-                                       test_case.n + 16, 16, true);
+                                       test_case.n + 16, 16,
+                                       &cpu::detail::RunGemmA32W32PackedBBlocked);
 }
 
 INSTANTIATE_TEST_SUITE_P(

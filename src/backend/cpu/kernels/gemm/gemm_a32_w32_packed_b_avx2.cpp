@@ -1,5 +1,13 @@
+/// @file gemm_a32_w32_packed_b_avx2.cpp
+/// @brief F32 GEMM consuming the exact KC=512, NR=16 packed-B artifact.
+///
+/// Checked entries validate the borrowed artifact and select a driver.
+/// The AVX2 drivers consume validated slices, including blocked edge regions.
+
 #include "aethermind/backend/cpu/cpu_packed_weight_layout.h"
 #include "aethermind/base/macros.h"
+#include "gemm_a32_w32_packed_b_internal.h"
+#include "gemm_a32_w32_policy.h"
 #include "gemm_internal.h"
 
 #include <algorithm>
@@ -12,6 +20,8 @@
 
 namespace aethermind::cpu::detail {
 namespace {
+
+// ---- Validation -----------------------------------------------------------
 
 Status ValidatePackedBArgs(const PackedGemmF32Args& packed) noexcept {
     const GemmArgs& args = packed.gemm;
@@ -43,6 +53,8 @@ Status ValidatePackedBArgs(const PackedGemmF32Args& packed) noexcept {
     return Status::Ok();
 }
 
+// ---- Blocking constants ---------------------------------------------------
+
 constexpr int64_t kPackedBMB = 48;
 constexpr int64_t kPackedBNR = cpu::kCpuBPanelF32Kc512Nr16NR;
 constexpr int64_t kPackedBKC = cpu::kCpuBPanelF32Kc512Nr16KC;
@@ -52,13 +64,18 @@ static_assert(kPackedBMB % 2 == 0);
 static_assert(kPackedBKC == kGemmAvx2KC);
 static_assert(kPackedBNR == kGemmAvx2NR);
 
-void PackAPanel(const float* lhs,
-                int64_t lhs_m_stride,
-                int64_t kb,
-                int64_t mb_base,
-                int64_t mb_rows,
-                int64_t kc_len,
-                float* buf_a) noexcept {
+// ---- L2 A-panel packing ---------------------------------------------------
+
+// Copies `mb_rows` A rows of the current KC panel into a [mb_rows][KC] buffer.
+// Only [0, kc_len) K columns are written; the caller keeps buf_a aligned.
+void PackF32APanelKc512(const float* lhs,
+                        int64_t lhs_m_stride,
+                        int64_t kb,
+                        int64_t mb_base,
+                        int64_t mb_rows,
+                        int64_t kc_len,
+                        float* buf_a) noexcept {
+    AM_DCHECK(kc_len <= kPackedBKC);
     for (int64_t row = 0; row < mb_rows; ++row) {
         const float* const source = lhs + (mb_base + row) * lhs_m_stride + kb;
         float* const destination = buf_a + row * kPackedBKC;
@@ -68,31 +85,12 @@ void PackAPanel(const float* lhs,
     }
 }
 
-#endif
+// ---- L3 drivers -----------------------------------------------------------
 
-} // namespace
-
-Status RunGemmA32W32PackedBScan(const PackedGemmF32Args& packed) noexcept {
+// Scans a validated slice with K > 0 and unit output N stride. Scalar edges
+// accumulate in double, matching the packed reference semantics.
+void RunPackedBScanValidated(const PackedGemmF32Args& packed) noexcept {
     const GemmArgs& args = packed.gemm;
-    AM_RETURN_IF_ERROR(ValidatePackedBArgs(packed));
-    if (args.m == 0 || args.n == 0) {
-        return Status::Ok();
-    }
-    if (args.output == nullptr) {
-        return Status::InvalidArgument("Packed GEMM scan requires output data");
-    }
-    if (args.k == 0) {
-        return RunGemmA32W32PackedBReference(packed);
-    }
-    if (args.lhs == nullptr) {
-        return Status::InvalidArgument("Packed GEMM scan requires input data");
-    }
-#if !defined(__AVX2__) || !defined(__FMA__)
-    return RunGemmA32W32PackedBReference(packed);
-#else
-    if (args.output_n_stride != 1) {
-        return RunGemmA32W32PackedBReference(packed);
-    }
     const float* const lhs_data = reinterpret_cast<const float*>(args.lhs);
     float* const output_data = reinterpret_cast<float*>(args.output);
     const float* const packed_b_data = reinterpret_cast<const float*>(packed.packed_b);
@@ -152,31 +150,16 @@ Status RunGemmA32W32PackedBScan(const PackedGemmF32Args& packed) noexcept {
             output_row[col] = static_cast<float>(sum);
         }
     }
-    return Status::Ok();
-#endif
 }
 
-Status RunGemmA32W32PackedBBlocked(const PackedGemmF32Args& packed) noexcept {
+// Executes a validated slice selected for blocked GEMM. The two edge slices
+// inherit the artifact and stay within the validated output bounds.
+void RunPackedBBlockedValidated(const PackedGemmF32Args& packed) noexcept {
     const GemmArgs& args = packed.gemm;
-    AM_RETURN_IF_ERROR(ValidatePackedBArgs(packed));
-    if (args.m == 0 || args.n == 0 || args.k == 0) {
-        return RunGemmA32W32PackedBScan(packed);
-    }
-#if !defined(__AVX2__) || !defined(__FMA__)
-    return RunGemmA32W32PackedBReference(packed);
-#else
-    if (args.m < 9 || args.lhs_k_stride != 1 || args.output_n_stride != 1 ||
-        packed.weight_n_offset % kPackedBNR != 0 || args.lhs == nullptr ||
-        args.output == nullptr) {
-        return RunGemmA32W32PackedBScan(packed);
-    }
     // Even row count so the 6/4/2-row tile decomposition covers every blocked
     // row; at most one odd row remains for the scan M-tail.
     const int64_t m_full = args.m - args.m % 2;
     const int64_t n_full = args.n - args.n % kPackedBNR;
-    if (m_full == 0 || n_full == 0) {
-        return RunGemmA32W32PackedBScan(packed);
-    }
     const float* const lhs_data = reinterpret_cast<const float*>(args.lhs);
     float* const output_data = reinterpret_cast<float*>(args.output);
     const float* const packed_b_data = reinterpret_cast<const float*>(packed.packed_b);
@@ -193,8 +176,8 @@ Status RunGemmA32W32PackedBBlocked(const PackedGemmF32Args& packed) noexcept {
         const int64_t kc_len = std::min(kPackedBKC, args.k - kb);
         for (int64_t mb = 0; mb < m_full; mb += kPackedBMB) {
             const int64_t mb_rows = std::min(kPackedBMB, m_full - mb);
-            PackAPanel(lhs_data, args.lhs_m_stride, kb, mb, mb_rows, kc_len,
-                       buf_a);
+            PackF32APanelKc512(lhs_data, args.lhs_m_stride, kb, mb, mb_rows,
+                               kc_len, buf_a);
             for (int64_t nb = 0; nb < n_full; nb += kPackedBNR) {
                 const int64_t weight_n = packed.weight_n_offset + nb;
                 const size_t n_block = static_cast<size_t>(weight_n / kPackedBNR);
@@ -232,22 +215,62 @@ Status RunGemmA32W32PackedBBlocked(const PackedGemmF32Args& packed) noexcept {
         right_edge.gemm.n = args.n - n_full;
         right_edge.gemm.output = reinterpret_cast<std::byte*>(output_data + n_full);
         right_edge.weight_n_offset += n_full;
-        AM_RETURN_IF_ERROR(RunGemmA32W32PackedBScan(right_edge));
+        RunPackedBScanValidated(right_edge);
     }
     if (m_full < args.m) {
         PackedGemmF32Args bottom_edge = packed;
         bottom_edge.gemm.lhs = reinterpret_cast<const std::byte*>(lhs_data + m_full * args.lhs_m_stride);
         bottom_edge.gemm.output = reinterpret_cast<std::byte*>(output_data + m_full * args.output_m_stride);
         bottom_edge.gemm.m = args.m - m_full;
-        AM_RETURN_IF_ERROR(RunGemmA32W32PackedBScan(bottom_edge));
+        RunPackedBScanValidated(bottom_edge);
     }
-    return Status::Ok();
-#endif
 }
 
-Status RunGemmA32W32PackedB(const PackedGemmF32Args& args) noexcept {
-    return args.gemm.m >= 9 ? RunGemmA32W32PackedBBlocked(args)
-                            : RunGemmA32W32PackedBScan(args);
+#endif
+
+// ---- L4 entry -------------------------------------------------------------
+
+Status RunPackedBChecked(const PackedGemmF32Args& packed,
+                         [[maybe_unused]] bool allow_blocked) noexcept {
+    AM_RETURN_IF_ERROR(ValidatePackedBArgs(packed));
+    const GemmArgs& args = packed.gemm;
+    if (args.m == 0 || args.n == 0) {
+        return Status::Ok();
+    }
+    if (args.output == nullptr) {
+        return Status::InvalidArgument("Packed GEMM scan requires output data");
+    }
+    if (args.k > 0 && args.lhs == nullptr) {
+        return Status::InvalidArgument("Packed GEMM scan requires input data");
+    }
+
+#if defined(__AVX2__) && defined(__FMA__)
+    const PackedBStrategy strategy = PlanPackedB(packed);
+    if (allow_blocked && strategy == PackedBStrategy::kBlocked) {
+        RunPackedBBlockedValidated(packed);
+        return Status::Ok();
+    }
+    if (strategy != PackedBStrategy::kReference) {
+        RunPackedBScanValidated(packed);
+        return Status::Ok();
+    }
+#endif
+    RunPackedBReferenceValidated(packed);
+    return Status::Ok();
+}
+
+} // namespace
+
+Status RunGemmA32W32PackedBScan(const PackedGemmF32Args& packed) noexcept {
+    return RunPackedBChecked(packed, false);
+}
+
+Status RunGemmA32W32PackedBBlocked(const PackedGemmF32Args& packed) noexcept {
+    return RunPackedBChecked(packed, true);
+}
+
+Status RunGemmA32W32PackedB(const PackedGemmF32Args& packed) noexcept {
+    return RunPackedBChecked(packed, true);
 }
 
 } // namespace aethermind::cpu::detail

@@ -17,17 +17,25 @@ class CpuIsaBuildContract(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="aethermind-isa-build-")
         self.addCleanup(self.temporary.cleanup)
         self.build_dir = Path(self.temporary.name)
-        (self.build_dir / "CMakeCache.txt").write_text("BUILD_TESTS:BOOL=ON\n")
+        self.set_cache(tests=True, benchmarks=False)
+
+    def set_cache(self, tests, benchmarks):
+        (self.build_dir / "CMakeCache.txt").write_text(
+            f"BUILD_TESTS:BOOL={'ON' if tests else 'OFF'}\n"
+            f"BUILD_BENCHMARKS:BOOL={'ON' if benchmarks else 'OFF'}\n")
 
     def entry(self, name, flags=()):
         return {"directory": str(self.build_dir), "file": str(SOURCE_DIR / name),
                 "arguments": ["c++", "-std=c++20", *flags, "-c", str(SOURCE_DIR / name)]}
 
-    def commands(self, avx2):
+    def commands(self, avx2, include_candidate=True):
         entries = [self.entry("tests/unit/backend/cpu/kernels/test_avx_learning.cpp")]
         if avx2:
             entries.extend(self.entry(name, ("-mavx2", "-mfma", "-fno-lto"))
                            for name in sorted(ISA.LIBRARY_SOURCES | {ISA.TEST_SOURCE}))
+            if include_candidate:
+                entries.append(self.entry(ISA.CANDIDATE_SOURCE,
+                                          ("-mavx2", "-mfma", "-fno-lto")))
         return entries
 
     def a16_entries(self, a16_avx2=False, a16_avx512bf16=False, a16_avx512fp16=False):
@@ -97,7 +105,55 @@ class CpuIsaBuildContract(unittest.TestCase):
 
     def test_avx2_implementations_have_isolated_options(self):
         result = self.verify(self.commands(True), True)
-        self.assertEqual(set(result["isa_translation_units"]), ISA.LIBRARY_SOURCES | {ISA.TEST_SOURCE})
+        self.assertEqual(set(result["isa_translation_units"]),
+                         ISA.LIBRARY_SOURCES | {ISA.TEST_SOURCE, ISA.CANDIDATE_SOURCE})
+
+    def test_candidate_is_expected_with_benchmarks_only(self):
+        self.set_cache(tests=False, benchmarks=True)
+        flags = ("-mavx2", "-mfma", "-fno-lto")
+        entries = [self.entry("tests/unit/backend/cpu/kernels/test_avx_learning.cpp")]
+        entries.extend(self.entry(name, flags) for name in sorted(ISA.LIBRARY_SOURCES))
+        entries.append(self.entry(ISA.CANDIDATE_SOURCE, flags))
+        result = self.verify(entries, True)
+        self.assertEqual(set(result["isa_translation_units"]),
+                         ISA.LIBRARY_SOURCES | {ISA.CANDIDATE_SOURCE})
+
+    def test_candidate_is_optional_when_test_targets_are_disabled(self):
+        self.set_cache(tests=False, benchmarks=False)
+        flags = ("-mavx2", "-mfma", "-fno-lto")
+        entries = [self.entry("tests/unit/backend/cpu/kernels/test_avx_learning.cpp")]
+        entries.extend(self.entry(name, flags) for name in sorted(ISA.LIBRARY_SOURCES))
+        result = self.verify(entries, True)
+        self.assertEqual(set(result["isa_translation_units"]), ISA.LIBRARY_SOURCES)
+
+        entries.append(self.entry(ISA.CANDIDATE_SOURCE, flags))
+        with self.assertRaisesRegex(ValueError, "Optional AVX2 candidate source compiled in baseline"):
+            self.verify(entries, True)
+
+    def test_candidate_requires_isolated_options(self):
+        for flags in (("-mavx2", "-mfma"),
+                      ("-mavx2", "-fno-lto"),
+                      ("-mavx2", "-mfma", "-fno-lto", "-mavx512f")):
+            entries = self.commands(True, include_candidate=False)
+            entries.append(self.entry(ISA.CANDIDATE_SOURCE, flags))
+            with self.subTest(flags=flags), self.assertRaisesRegex(ValueError, "invalid ISA/LTO"):
+                self.verify(entries, True)
+
+    def test_candidate_cannot_merge_into_unity(self):
+        unity = self.build_dir / "CMakeFiles/unit.dir/Unity/unity_0_cxx.cxx"
+        unity.parent.mkdir(parents=True)
+        unity.write_text('#include "' + str(SOURCE_DIR / ISA.CANDIDATE_SOURCE) + '"\n')
+        entries = self.commands(True)
+        entries.append({"directory": str(self.build_dir), "file": str(unity),
+                        "arguments": ["c++", "-c", str(unity)]})
+        with self.assertRaisesRegex(ValueError, "merged into Unity"):
+            self.verify(entries, True)
+
+    def test_missing_candidate_fails(self):
+        entries = [entry for entry in self.commands(True)
+                   if not entry["file"].endswith(ISA.CANDIDATE_SOURCE)]
+        with self.assertRaisesRegex(ValueError, "Missing optional implementation"):
+            self.verify(entries, True)
 
     def test_baseline_rejects_optional_source(self):
         with self.assertRaisesRegex(ValueError, "Optional AVX2 source"):

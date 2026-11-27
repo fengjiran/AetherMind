@@ -1,4 +1,5 @@
 #include "aethermind/backend/cpu/cpu_info.h"
+#include "backend/cpu/kernels/gemm/gemm_a32_w32_policy.h"
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
 
 #include <algorithm>
@@ -209,6 +210,42 @@ TEST(CPUKernelGemmAvx2, NContiguousPaddedRowsAndTailsMatchReference) {
     }
 }
 
+TEST(CPUKernelGemmAvx2, NContiguousGateMinimumMatchesReference) {
+    if (!CanExecuteAvx2Fma()) {
+        GTEST_SKIP() << "AVX2+FMA GEMM kernel is unavailable on this host";
+    }
+
+    constexpr int64_t m = 4;
+    constexpr int64_t k = 128;
+    constexpr int64_t n = 64;
+    constexpr int64_t output_m_stride = n + 2;
+    constexpr int64_t rhs_k_stride = n + 3;
+    std::vector<float> lhs(static_cast<size_t>(m * k));
+    std::vector<float> rhs(static_cast<size_t>(k * rhs_k_stride));
+    std::vector<float> candidate_output(static_cast<size_t>(m * output_m_stride), 5.0F);
+    std::vector<float> reference_output(static_cast<size_t>(m * output_m_stride), -11.0F);
+    FillValues(lhs);
+    FillValues(rhs);
+
+    const cpu::detail::GemmArgs candidate_args{
+            .lhs = reinterpret_cast<const std::byte*>(lhs.data()),
+            .rhs = reinterpret_cast<const std::byte*>(rhs.data()),
+            .output = reinterpret_cast<std::byte*>(candidate_output.data()),
+            .m = m,
+            .n = n,
+            .k = k,
+            .lhs_m_stride = k,
+            .lhs_k_stride = 1,
+            .rhs_k_stride = rhs_k_stride,
+            .rhs_n_stride = 1,
+            .output_m_stride = output_m_stride,
+            .output_n_stride = 1,
+    };
+    auto reference_args = candidate_args;
+    reference_args.output = reinterpret_cast<std::byte*>(reference_output.data());
+    ExpectAvx2NearReference(candidate_args, reference_args);
+}
+
 struct SmallMShape {
     int64_t m;
     int64_t k;
@@ -278,6 +315,9 @@ INSTANTIATE_TEST_SUITE_P(
                 SmallMShape{7, 33, 31},
                 SmallMShape{8, 64, 9},
                 SmallMShape{8, 1024, 33},
+                SmallMShape{9, 128, 16},
+                SmallMShape{9, 127, 17},
+                SmallMShape{9, 128, 17},
                 SmallMShape{9, 128, 35}),
         SmallMShapeName);
 
@@ -331,6 +371,12 @@ INSTANTIATE_TEST_SUITE_P(
         testing::Values(
                 SmallMShape{9, 33, 17},
                 SmallMShape{13, 2049, 1025},
+                // Wide-projection odd-row threshold: K=2048 and N=1024 enable
+                // folding the odd row into the blocked driver; either value
+                // one below keeps the even M prefix plus row-pair M tail.
+                SmallMShape{11, 2048, 1024},
+                SmallMShape{11, 2047, 1024},
+                SmallMShape{11, 2048, 1023},
                 SmallMShape{16, 1024, 33},
                 SmallMShape{64, 128, 103},
                 SmallMShape{65, 4097, 33},
@@ -527,5 +573,165 @@ TEST(CPUKernelGemmAvx2, PreservesZeroDimensionAndOverwriteSemantics) {
 }
 
 #endif
+
+cpu::detail::GemmArgs MakePlanArgs(int64_t m, int64_t n, int64_t k,
+                                   int64_t rhs_k_stride, int64_t rhs_n_stride) {
+    return cpu::detail::GemmArgs{
+            .m = m,
+            .n = n,
+            .k = k,
+            .lhs_m_stride = k,
+            .lhs_k_stride = 1,
+            .rhs_k_stride = rhs_k_stride,
+            .rhs_n_stride = rhs_n_stride,
+            .output_m_stride = n,
+            .output_n_stride = 1,
+    };
+}
+
+TEST(CPUKernelGemmAvx2Policy, RejectsZeroDimensionsAndNonUnitStrides) {
+    using cpu::detail::F32Avx2Layout;
+    EXPECT_EQ(cpu::detail::PlanF32Avx2(MakePlanArgs(0, 8, 8, 1, 1)).layout,
+              F32Avx2Layout::kUnsupported);
+    EXPECT_EQ(cpu::detail::PlanF32Avx2(MakePlanArgs(1, 0, 8, 1, 1)).layout,
+              F32Avx2Layout::kUnsupported);
+    EXPECT_EQ(cpu::detail::PlanF32Avx2(MakePlanArgs(1, 8, 0, 1, 1)).layout,
+              F32Avx2Layout::kUnsupported);
+
+    cpu::detail::GemmArgs args = MakePlanArgs(4, 64, 128, 1, 1);
+    args.lhs_k_stride = 2;
+    EXPECT_EQ(cpu::detail::PlanF32Avx2(args).layout, F32Avx2Layout::kUnsupported);
+
+    args = MakePlanArgs(4, 64, 128, 1, 1);
+    args.output_n_stride = 2;
+    EXPECT_EQ(cpu::detail::PlanF32Avx2(args).layout, F32Avx2Layout::kUnsupported);
+}
+
+TEST(CPUKernelGemmAvx2Policy, SelectsRowPairsForNarrowColumns) {
+    using cpu::detail::F32Avx2Layout;
+    using cpu::detail::F32Avx2Strategy;
+    const cpu::detail::F32Avx2Plan plan =
+            cpu::detail::PlanF32Avx2(MakePlanArgs(9, 15, 128, 1, 1));
+    EXPECT_EQ(plan.layout, F32Avx2Layout::kRhsKContiguous);
+    EXPECT_EQ(plan.strategy, F32Avx2Strategy::kRowPairs);
+    EXPECT_EQ(plan.m_full, 9);
+    EXPECT_EQ(plan.n_full, 15);
+    EXPECT_FALSE(plan.include_odd_row);
+}
+
+TEST(CPUKernelGemmAvx2Policy, SelectsColumnBlockedRowPairsForSmallM) {
+    using cpu::detail::F32Avx2Strategy;
+    EXPECT_EQ(cpu::detail::PlanF32Avx2(MakePlanArgs(3, 17, 128, 1, 1)).strategy,
+              F32Avx2Strategy::kColumnBlockedRowPairs);
+    EXPECT_EQ(cpu::detail::PlanF32Avx2(MakePlanArgs(9, 17, 128, 1, 1)).strategy,
+              F32Avx2Strategy::kColumnBlockedRowPairs);
+}
+
+TEST(CPUKernelGemmAvx2Policy, KeepsRowPairsForShortKOrTinyM) {
+    using cpu::detail::F32Avx2Strategy;
+    EXPECT_EQ(cpu::detail::PlanF32Avx2(MakePlanArgs(8, 17, 127, 1, 1)).strategy,
+              F32Avx2Strategy::kRowPairs);
+    EXPECT_EQ(cpu::detail::PlanF32Avx2(MakePlanArgs(2, 17, 128, 1, 1)).strategy,
+              F32Avx2Strategy::kRowPairs);
+}
+
+TEST(CPUKernelGemmAvx2Policy, SelectsBlockedTile6AboveSmallM) {
+    using cpu::detail::F32Avx2Strategy;
+    const cpu::detail::F32Avx2Plan even =
+            cpu::detail::PlanF32Avx2(MakePlanArgs(10, 64, 1024, 1, 1));
+    EXPECT_EQ(even.strategy, F32Avx2Strategy::kBlockedTile6);
+    EXPECT_EQ(even.m_full, 10);
+    EXPECT_EQ(even.n_full, 64);
+    EXPECT_FALSE(even.include_odd_row);
+
+    const cpu::detail::F32Avx2Plan odd =
+            cpu::detail::PlanF32Avx2(MakePlanArgs(11, 64, 1024, 1, 1));
+    EXPECT_EQ(odd.m_full, 10);
+}
+
+TEST(CPUKernelGemmAvx2Policy, AlignsBlockedRectangleToColumnTiles) {
+    const cpu::detail::F32Avx2Plan plan =
+            cpu::detail::PlanF32Avx2(MakePlanArgs(11, 1025, 2047, 1, 1));
+    EXPECT_EQ(plan.m_full, 10);
+    EXPECT_EQ(plan.n_full, 1024);
+    EXPECT_FALSE(plan.include_odd_row);
+}
+
+TEST(CPUKernelGemmAvx2Policy, IncludesOddRowOnWideProjections) {
+    const cpu::detail::F32Avx2Plan plan =
+            cpu::detail::PlanF32Avx2(MakePlanArgs(11, 1024, 2048, 1, 1));
+    EXPECT_TRUE(plan.include_odd_row);
+    EXPECT_EQ(plan.m_full, 11);
+    EXPECT_EQ(plan.n_full, 1024);
+}
+
+TEST(CPUKernelGemmAvx2Policy, SelectsNContiguousOnlyAboveGate) {
+    using cpu::detail::F32Avx2Layout;
+    const cpu::detail::F32Avx2Plan plan =
+            cpu::detail::PlanF32Avx2(MakePlanArgs(4, 64, 128, 7, 1));
+    EXPECT_EQ(plan.layout, F32Avx2Layout::kRhsNContiguous);
+    EXPECT_EQ(plan.m_full, 4);
+    EXPECT_EQ(plan.n_full, 64);
+
+    EXPECT_EQ(cpu::detail::PlanF32Avx2(MakePlanArgs(3, 64, 128, 7, 1)).layout,
+              F32Avx2Layout::kUnsupported);
+    EXPECT_EQ(cpu::detail::PlanF32Avx2(MakePlanArgs(4, 63, 128, 7, 1)).layout,
+              F32Avx2Layout::kUnsupported);
+    EXPECT_EQ(cpu::detail::PlanF32Avx2(MakePlanArgs(4, 64, 127, 7, 1)).layout,
+              F32Avx2Layout::kUnsupported);
+}
+
+TEST(CPUKernelGemmAvx2Policy, PrefersKContiguousWhenBothStridesAreUnit) {
+    EXPECT_EQ(cpu::detail::PlanF32Avx2(MakePlanArgs(4, 64, 128, 1, 1)).layout,
+              cpu::detail::F32Avx2Layout::kRhsKContiguous);
+}
+
+TEST(CPUKernelGemmAvx2Policy, SelectsPackedBConsumerAtNineRows) {
+    using cpu::detail::PackedBStrategy;
+    using cpu::detail::PackedGemmF32Args;
+    PackedGemmF32Args packed{
+            .gemm = MakePlanArgs(8, 16, 128, 0, 0),
+            .logical_n = 32,
+            .logical_k = 128,
+            .weight_n_offset = 16,
+            .n_blocks = 2,
+    };
+    EXPECT_EQ(cpu::detail::PlanPackedB(packed), PackedBStrategy::kScan);
+    packed.gemm.m = 9;
+    EXPECT_EQ(cpu::detail::PlanPackedB(packed), PackedBStrategy::kBlocked);
+    packed.gemm.n = 15;
+    EXPECT_EQ(cpu::detail::PlanPackedB(packed), PackedBStrategy::kScan);
+}
+
+TEST(CPUKernelGemmAvx2Policy, PackedBScanHandlesUnalignedSlicesAndInputKStride) {
+    using cpu::detail::PackedBStrategy;
+    cpu::detail::PackedGemmF32Args packed{
+            .gemm = MakePlanArgs(9, 16, 128, 0, 0),
+            .logical_n = 32,
+            .logical_k = 128,
+            .weight_n_offset = 15,
+            .n_blocks = 2,
+    };
+    EXPECT_EQ(cpu::detail::PlanPackedB(packed), PackedBStrategy::kScan);
+    packed.weight_n_offset = 16;
+    packed.gemm.lhs_k_stride = 2;
+    EXPECT_EQ(cpu::detail::PlanPackedB(packed), PackedBStrategy::kScan);
+}
+
+TEST(CPUKernelGemmAvx2Policy, PackedBReferenceHandlesStridedOutputAndZeroK) {
+    using cpu::detail::PackedBStrategy;
+    cpu::detail::PackedGemmF32Args packed{
+            .gemm = MakePlanArgs(9, 16, 128, 0, 0),
+            .logical_n = 16,
+            .logical_k = 128,
+            .n_blocks = 1,
+    };
+    packed.gemm.output_n_stride = 2;
+    EXPECT_EQ(cpu::detail::PlanPackedB(packed), PackedBStrategy::kReference);
+    packed.gemm.output_n_stride = 1;
+    packed.gemm.k = 0;
+    packed.logical_k = 0;
+    EXPECT_EQ(cpu::detail::PlanPackedB(packed), PackedBStrategy::kReference);
+}
 
 } // namespace

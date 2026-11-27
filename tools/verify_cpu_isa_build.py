@@ -20,6 +20,7 @@ LIBRARY_SOURCES = {
     "src/backend/cpu/kernels/gemm/gemm_a32_w32_packed_b_avx2.cpp",
 }
 TEST_SOURCE = "tests/unit/backend/cpu/kernels/avx_learning/test_avx_learning_avx2.cpp"
+CANDIDATE_SOURCE = "tests/benchmark/cpu_kernels/gemm_avx2_candidates.cpp"
 AVX_MACROS = ("GEMM_HAS_AVX2_FMA_KERNEL", "RMSNORM_HAS_AVX2_FMA_KERNEL",
               "DOT_PRODUCT_HAS_AVX2_FMA_KERNEL", "AETHERMIND_TEST_HAS_AVX2_FMA",
               "ATTENTION_HAS_AVX2_KERNEL", "ADD_RMSNORM_HAS_AVX2_KERNEL",
@@ -96,17 +97,27 @@ def verify(source_dir, build_dir, expect_avx2, expect_f16c=False, expect_avx2_co
     source_dir = source_dir.resolve()
     entries = json.loads((build_dir / "compile_commands.json").read_text())
     cache = (build_dir / "CMakeCache.txt").read_text()
-    tests_value = next((line.split("=", 1)[1] for line in cache.splitlines()
-                        if line.startswith("BUILD_TESTS:BOOL=")), "OFF").upper()
-    tests_enabled = tests_value not in {"", "0", "OFF", "NO", "FALSE", "N", "IGNORE", "NOTFOUND"}
+    disabled_bools = {"", "0", "OFF", "NO", "FALSE", "N", "IGNORE", "NOTFOUND"}
+
+    def cache_enabled(name):
+        value = next((line.split("=", 1)[1] for line in cache.splitlines()
+                      if line.startswith(f"{name}:BOOL=")), "OFF").upper()
+        return value not in disabled_bools
+
+    tests_enabled = cache_enabled("BUILD_TESTS")
+    benchmarks_enabled = cache_enabled("BUILD_BENCHMARKS")
     legacy_sources = LIBRARY_SOURCES | {TEST_SOURCE}
+    candidate_sources = {CANDIDATE_SOURCE}
     a16_sources = A16_AVX2_SOURCES | A16_AVX512BF16_SOURCES | A16_AVX512FP16_SOURCES
     optional_sources = (legacy_sources
                         | {F16C_SOURCE, AVX2_CONVERSION_SOURCE, BF16_AVX2_CONVERSION_SOURCE, W16_F16_GEMM_SOURCE,
                            KVF16_ATTENTION_SOURCE}
-                        | a16_sources)
+                        | a16_sources
+                        | candidate_sources)
     expected = {name: {"-mavx2", "-mfma"} for name in
                 ((LIBRARY_SOURCES | ({TEST_SOURCE} if tests_enabled else set())) if expect_avx2 else set())}
+    if expect_avx2 and (tests_enabled or benchmarks_enabled):
+        expected[CANDIDATE_SOURCE] = {"-mavx2", "-mfma"}
     if expect_f16c:
         expected[F16C_SOURCE] = {"-mavx", "-mf16c"}
     if expect_avx2 and expect_f16c:
@@ -150,6 +161,8 @@ def verify(source_dir, build_dir, expect_avx2, expect_f16c=False, expect_avx2_co
                     kind = "A16 AVX512-BF16"
                 elif relative in A16_AVX512FP16_SOURCES:
                     kind = "A16 AVX512-FP16"
+                elif relative in candidate_sources:
+                    kind = "AVX2 candidate"
                 else:
                     kind = "FP16"
                 raise ValueError(f"Optional {kind} source compiled in baseline: {relative}")

@@ -198,8 +198,7 @@ void BM_GemmF32Avx2FmaKContiguous(benchmark::State& state) {
                      2.0e-4F);
 }
 
-// Same production kernel as BM_GemmF32Avx2FmaKContiguous but registered on the
-// tile6 shape table so every Tile6 candidate case has an in-process baseline.
+// Uses the production entry on the same shape table as the DupA candidate.
 void BM_GemmF32Avx2FmaKContiguousPeak(benchmark::State& state) {
     const auto capabilities = cpu::DetectCpuCapabilities();
     if (!capabilities.ok() ||
@@ -210,19 +209,6 @@ void BM_GemmF32Avx2FmaKContiguousPeak(benchmark::State& state) {
     }
     BenchmarkGemmF32(state, RhsLayout::kKContiguous,
                      &cpu::detail::RunGemmA32W32Avx2Fma,
-                     2.0e-4F);
-}
-
-void BM_GemmF32Avx2FmaTile6KContiguous(benchmark::State& state) {
-    const auto capabilities = cpu::DetectCpuCapabilities();
-    if (!capabilities.ok() ||
-        !capabilities->effective_features.Contains(CpuFeature::kAvx2) ||
-        !capabilities->effective_features.Contains(CpuFeature::kFma)) {
-        state.SkipWithError("AVX2+FMA GEMM benchmark requires effective AVX2 and FMA");
-        return;
-    }
-    BenchmarkGemmF32(state, RhsLayout::kKContiguous,
-                     &cpu::detail::RunGemmA32W32Avx2FmaTile6,
                      2.0e-4F);
 }
 
@@ -347,7 +333,7 @@ benchmark::Benchmark* RegisterAvx2GemmShapes(benchmark::Benchmark* benchmark) {
     return benchmark->ArgNames({"M", "K", "N"});
 }
 
-// Prefill-class shapes for the 6x16 candidates. M values divisible by 6
+// Prefill-class shapes for the production and DupA entries. M values divisible by 6
 // (48/96/192) exercise full-tile coverage only; the others include the
 // 4/2-row tile fallbacks so the comparison stays representative of real
 // Prefill. The two tiny cases anchor the M=9 admission boundary and the
@@ -396,9 +382,6 @@ const auto* const kGemmF32Avx2FmaKContiguous = RegisterAvx2GemmShapes(
 const auto* const kGemmF32Avx2FmaKContiguousPeak = RegisterTile6Shapes(
         benchmark::RegisterBenchmark("BM_GemmF32Avx2FmaKContiguousPeak",
                                      &BM_GemmF32Avx2FmaKContiguousPeak));
-const auto* const kGemmF32Avx2FmaTile6KContiguous = RegisterTile6Shapes(
-        benchmark::RegisterBenchmark("BM_GemmF32Avx2FmaTile6KContiguous",
-                                     &BM_GemmF32Avx2FmaTile6KContiguous));
 const auto* const kGemmF32Avx2FmaTile6DupAKContiguous = RegisterTile6Shapes(
         benchmark::RegisterBenchmark("BM_GemmF32Avx2FmaTile6DupAKContiguous",
                                      &BM_GemmF32Avx2FmaTile6DupAKContiguous));

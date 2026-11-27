@@ -15,6 +15,15 @@ endif()
 add_executable(${TEST_TARGET} ${TEST_SRC_FILES})
 aethermind_apply_sanitizer(${TEST_TARGET})
 
+# Compile the test-only A32W32 GEMM measurement candidates into this executable
+# rather than the library, matching the benchmark target.
+if (AETHERMIND_HAS_AVX2_FMA)
+    set(AETHERMIND_GEMM_CANDIDATE_SOURCE
+            ${PROJECT_SOURCE_DIR}/tests/benchmark/cpu_kernels/gemm_avx2_candidates.cpp)
+    target_sources(${TEST_TARGET} PRIVATE ${AETHERMIND_GEMM_CANDIDATE_SOURCE})
+    aethermind_configure_avx2_sources(${AETHERMIND_GEMM_CANDIDATE_SOURCE})
+endif ()
+
 # Compile the frozen ABI contract as C11, not as a C++ translation unit. New
 # runtime declarations are checked without providing placeholder definitions.
 target_sources(${TEST_TARGET} PRIVATE

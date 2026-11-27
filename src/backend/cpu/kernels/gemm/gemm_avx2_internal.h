@@ -2,8 +2,8 @@
 #define AETHERMIND_BACKEND_CPU_KERNELS_GEMM_GEMM_AVX2_INTERNAL_H
 
 /// @file gemm_avx2_internal.h
-/// @brief Shared dtype-agnostic AVX2 GEMM constants, B-panel packing and F32
-///        tile kernels.
+/// @brief Shared dtype-agnostic AVX2 GEMM constants, weight adapters, B-panel
+///        packing and F32 tile kernels.
 ///
 /// Only translation units compiled with AVX2 and FMA enabled (`-mavx2 -mfma`)
 /// may include this header: it exposes `<immintrin.h>` types and intrinsics
@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <immintrin.h>
 
 namespace aethermind::cpu::detail {
@@ -21,6 +22,21 @@ inline constexpr int64_t kGemmAvx2KC = 512;
 inline constexpr int64_t kGemmAvx2NR = 16;
 inline constexpr int64_t kGemmAvx2MR6 = 6;
 inline constexpr int64_t kGemmAvx2MB = 48;
+
+/// @brief Weight adapter for plain F32 rows consumed by PackGemmBPanelAvx2.
+struct F32GemmWeightOps {
+    static constexpr size_t kElementBytes = sizeof(float);
+
+    static __m256 LoadEight(const std::byte* data) noexcept {
+        return _mm256_loadu_ps(reinterpret_cast<const float*>(data));
+    }
+
+    static float LoadOne(const std::byte* data) noexcept {
+        float value;
+        std::memcpy(&value, data, sizeof(value));
+        return value;
+    }
+};
 
 // NOLINTBEGIN(portability-simd-intrinsics)
 // This microkernel is intentionally AVX2-specific; per-ISA kernels are the
@@ -113,7 +129,7 @@ float PackGemmBPanelAvx2(const std::byte* weight, size_t row_bytes,
 // k-major with an NR=16 row stride; `load_a(r, kk)` supplies the A operand
 // for row r at K index kk and differs between the direct-broadcast and
 // broadcast-packed variants.
-template<int Rows, class LoadA>
+template<int Rows, typename LoadA>
 void AccumulateF32TileNx16CoreAvx2(const float* buf_b, int64_t kc_len,
                                    int64_t output_m_stride, float* out_row0,
                                    LoadA load_a) noexcept {

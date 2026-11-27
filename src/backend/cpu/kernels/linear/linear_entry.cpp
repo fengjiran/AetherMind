@@ -7,6 +7,7 @@
 #include "aethermind/backend/kernel_static_registration.h"
 #include "aethermind/backend/kernel_types.h"
 #include "aethermind/base/check.h"
+#include "backend/cpu/kernels/gemm/gemm_a32_w32_policy.h"
 #include "backend/cpu/kernels/gemm/gemm_internal.h"
 #include "linear_internal.h"
 

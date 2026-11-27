@@ -6,6 +6,16 @@ file(GLOB_RECURSE TEST_SRC_FILES CONFIGURE_DEPENDS
 # Keep that main out of the Google Benchmark executable.
 list(FILTER TEST_SRC_FILES EXCLUDE REGEX "/models/")
 
+# A32W32 AVX2 measurement candidates are test-only: compile them into this
+# executable (not into the library) and only where AVX2/FMA is available.
+set(AETHERMIND_GEMM_CANDIDATE_SOURCE
+        ${PROJECT_SOURCE_DIR}/tests/benchmark/cpu_kernels/gemm_avx2_candidates.cpp)
+if (AETHERMIND_HAS_AVX2_FMA)
+    aethermind_configure_avx2_sources(${AETHERMIND_GEMM_CANDIDATE_SOURCE})
+else ()
+    list(REMOVE_ITEM TEST_SRC_FILES ${AETHERMIND_GEMM_CANDIDATE_SOURCE})
+endif ()
+
 add_executable(${BENCHMARK_TARGET} ${TEST_SRC_FILES})
 aethermind_apply_sanitizer(${BENCHMARK_TARGET})
 

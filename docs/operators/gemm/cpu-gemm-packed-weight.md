@@ -101,7 +101,7 @@ pad-0 满 tile **不等于**"kernel 永不做 tail 分支"。三类 tail 分别�
 | Driver | 形状 | 行为 |
 |---|---|---|
 | `RunGemmA32W32PackedBScan` | M 小（decode/skinny） | Nx16 tile 的 MR∈{1..8} 广播变体：每个 `kk` 取该行 A 标量广播、加载 16 宽连续 B 向量、FMA 进 16 个累加器（沿 N 向量化、**无水平归约**）；M=1 即 MR=1。不做"沿 K 向量化 + 归纳"形态——bpanel 下同列相邻 K 元素间隔 `nr*4=64B`，K 向量化会丢掉 B 读顺序化的全部收益 |
-| `RunGemmA32W32PackedBBlocked` | M 大（prefill） | 现有 `RunBlockedGemmTile6Avx2` 去掉 `PackGemmBPanelAvx2`，按 `(k_panels, n_blocks)` 直接消费；M 块内按 6/4/2 行分解 |
+| `RunGemmA32W32PackedBBlocked` | M 大（prefill） | 现有 `RunBlockedTile6DriverAvx2` 去掉 `PackGemmBPanelAvx2`，按 `(k_panels, n_blocks)` 直接消费；M 块内按 6/4/2 行分解 |
 | `RunGemmA32W32PackedBReference` | 兼容 fallback / 测试对照 | 标量消费 packed 布局；与 double oracle 对比时按 layout 常量 unpad 视角求和 |
 
 数值合同：packed 布局只是数据搬移 + 零填充，乘加次序与累加路数不变。验收容差沿用现有测试口径：绝对误差 `2.0e-4 + 2.0e-5*sqrt(k)` **或**相对误差 `2.0e-4`（见 `tests/unit/backend/cpu/kernels/test_cpu_gemm_avx2.cpp`）。pad 只在末面板尾部追加 `+0.0` 项，累加次序不变，结果与未 pad 逐 bit 相同——唯一例外是 `-0.0 + 0.0 → +0.0` 的符号位变化（写 bit-exact 断言时注意）。
